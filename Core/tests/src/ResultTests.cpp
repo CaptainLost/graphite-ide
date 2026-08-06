@@ -1,9 +1,11 @@
 #include <doctest/doctest.h>
 
+#include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 
 #include <memory>
 #include <string>
+#include <type_traits>
 
 using core::Error;
 using core::ErrorCode;
@@ -56,4 +58,25 @@ TEST_CASE("Result<void> rozroznia sukces od bledu")
     CHECK(ok.HasValue());
     CHECK_FALSE(failed.HasValue());
     CHECK(failed.GetError().code == ErrorCode::AccessDenied);
+}
+
+TEST_CASE("Typ dziedziczacy po NonCopyable pozostaje przenoszalny")
+{
+    struct Movable : core::NonCopyable
+    {
+        explicit Movable(int v) : value(v) {}
+        Movable(Movable&&) = default;
+        Movable& operator=(Movable&&) = default;
+
+        int value = 0;
+    };
+
+    static_assert(std::is_move_constructible_v<Movable>);
+    static_assert(std::is_move_assignable_v<Movable>);
+    static_assert(!std::is_copy_constructible_v<Movable>);
+
+    Movable source{7};
+    Movable moved{std::move(source)};
+
+    CHECK(moved.value == 7);
 }

@@ -2,6 +2,7 @@
 
 namespace core
 {
+    /// Blocks copying while leaving move semantics available to derived classes.
     class NonCopyable
     {
     protected:
@@ -10,5 +11,8 @@ namespace core
 
         NonCopyable(const NonCopyable&) = delete;
         NonCopyable& operator=(const NonCopyable&) = delete;
+
+        NonCopyable(NonCopyable&&) = default;
+        NonCopyable& operator=(NonCopyable&&) = default;
     };
 }
