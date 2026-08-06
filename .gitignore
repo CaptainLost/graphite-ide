@@ -1,0 +1,19 @@
+# Build output
+bin/
+bin-int/
+
+# Generated project files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+Makefile
+*.make
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# ImGui runtime state
+imgui.ini
