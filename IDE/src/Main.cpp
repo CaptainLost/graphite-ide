@@ -1,11 +1,9 @@
 #include "Core/Base/Log.h"
-#include "Core/Base/RingBufferSink.h"
+#include "Core/Gui/ImGuiRenderer.h"
 #include "Core/Platform/Window.h"
 #include "Core/Version.h"
 
-#include <windows.h>
-
-#include <GL/gl.h>
+#include <imgui.h>
 
 #include <memory>
 
@@ -23,21 +21,25 @@ int main()
 
     const std::unique_ptr<core::Window> window = std::move(windowResult).Value();
 
+    core::ImGuiRenderer gui;
+    if (const auto init = gui.Init(*window); !init)
+    {
+        CORE_ERROR("Start przerwany: {}", init.GetError().message);
+        return 1;
+    }
+
     while (!window->ShouldClose())
     {
         window->PollEvents();
 
-        int width = 0;
-        int height = 0;
-        window->FramebufferSize(width, height);
-
-        glViewport(0, 0, width, height);
-        glClearColor(0.10f, 0.11f, 0.13f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        gui.BeginFrame();
+        ImGui::ShowDemoWindow();
+        gui.EndFrame(*window);
 
         window->SwapBuffers();
     }
 
+    gui.Shutdown();
     CORE_INFO("IDE zamkniete");
     return 0;
 }
