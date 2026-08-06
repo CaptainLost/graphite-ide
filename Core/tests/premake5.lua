@@ -3,6 +3,8 @@ project "CoreTests"
     language "C++"
     cppdialect "C++20"
     staticruntime "on"
+    warnings "High"
+    fatalwarnings { "All" }
 
     targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
     objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
@@ -11,9 +13,15 @@ project "CoreTests"
 
     includedirs
     {
-        "%{wks.location}/Core/src",
+        "%{wks.location}/Core/src"
+    }
+
+    externalincludedirs
+    {
         "%{IncludeDir.doctest}"
     }
+
+    externalwarnings "Off"
 
     links { "Core", "GLFW", "ImGui", "opengl32.lib" }
 
