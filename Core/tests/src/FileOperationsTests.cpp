@@ -173,6 +173,17 @@ TEST_CASE("Rename reports a missing source")
     CHECK(renamed.GetError().code == core::ErrorCode::NotFound);
 }
 
+TEST_CASE("Rename reports a missing source through the OS error")
+{
+    TempDirectory temp;
+
+    const auto renamed = Rename(temp.Path() / "ghost.txt", temp.Path() / "target.txt");
+
+    REQUIRE_FALSE(renamed.HasValue());
+    CHECK(renamed.GetError().code == core::ErrorCode::NotFound);
+    CHECK_FALSE(std::filesystem::exists(temp.Path() / "target.txt"));
+}
+
 TEST_CASE("Duplicate copies a file beside the original and returns the new path")
 {
     TempDirectory temp;

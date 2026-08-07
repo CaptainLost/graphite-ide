@@ -8,6 +8,9 @@
 #include <cctype>
 #include <fstream>
 #include <string>
+#include <windows.h>
+
+#undef CreateDirectory
 
 namespace core::fs
 {
@@ -33,20 +36,33 @@ namespace core::fs
 
     Result<void> CreateEmptyFile(const std::filesystem::path& path)
     {
-        std::error_code code;
-        if (std::filesystem::exists(path, code))
-        {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' already exists", ToUtf8(path))};
-        }
+        // CREATE_NEW makes the OS itself refuse an existing target, so there is no
+        // window between a check and the act in which someone else's file could appear
+        // and be truncated.
+        const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                            FILE_ATTRIBUTE_NORMAL, nullptr);
 
-        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
-        if (!stream.is_open())
+        if (handle == INVALID_HANDLE_VALUE)
         {
+            const DWORD error = ::GetLastError();
+
+            if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS)
+            {
+                return Error{ErrorCode::InvalidArgument,
+                             std::format("'{}' already exists", ToUtf8(path))};
+            }
+
+            if (error == ERROR_ACCESS_DENIED)
+            {
+                return Error{ErrorCode::AccessDenied,
+                             std::format("cannot create '{}': access denied", ToUtf8(path))};
+            }
+
             return Error{ErrorCode::IoFailure,
-                         std::format("cannot create '{}'", ToUtf8(path))};
+                         std::format("cannot create '{}' (error {})", ToUtf8(path), error)};
         }
 
+        ::CloseHandle(handle);
         return Result<void>::Ok();
     }
 
@@ -70,26 +86,27 @@ namespace core::fs
 
     Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to)
     {
-        std::error_code code;
-        if (!std::filesystem::exists(from, code))
-        {
+        // No MOVEFILE_REPLACE_EXISTING: the OS refuses an occupied destination, so the
+        // destination cannot be clobbered by a file that appears after a check.
+        if (::MoveFileExW(from.c_str(), to.c_str(), 0) != 0)
+            return Result<void>::Ok();
+
+        const DWORD error = ::GetLastError();
+
+        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
             return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(from))};
-        }
 
-        if (std::filesystem::exists(to, code))
+        if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
+            return Error{ErrorCode::InvalidArgument, std::format("'{}' already exists", ToUtf8(to))};
+
+        if (error == ERROR_ACCESS_DENIED)
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' already exists", ToUtf8(to))};
+            return Error{ErrorCode::AccessDenied,
+                         std::format("cannot rename '{}': access denied", ToUtf8(from))};
         }
 
-        std::filesystem::rename(from, to, code);
-        if (code)
-        {
-            return Error{ErrorCode::IoFailure,
-                         std::format("cannot rename '{}': {}", ToUtf8(from), code.message())};
-        }
-
-        return Result<void>::Ok();
+        return Error{ErrorCode::IoFailure,
+                     std::format("cannot rename '{}' (error {})", ToUtf8(from), error)};
     }
 
     Result<std::filesystem::path> Duplicate(const std::filesystem::path& path)
