@@ -33,6 +33,11 @@ namespace ide
     public:
         explicit Workspace(core::EventBus& events) : m_events(events) {}
 
+        /// Neither copyable nor movable: the tree holds a query that captures `this`, so
+        /// a moved-from workspace would leave that query pointing at the old object.
+        Workspace(Workspace&&) = delete;
+        Workspace& operator=(Workspace&&) = delete;
+
         /// Opens a folder as the workspace root. On failure the previous root stays.
         core::Result<void> Open(const std::filesystem::path& root);
 
@@ -44,9 +49,6 @@ namespace ide
         void SelectFile(const std::filesystem::path& path);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
-        /// True when the open folder is inside a git working tree. False is ordinary —
-        /// plenty of folders are not repositories — and simply means nothing is ignored.
-        [[nodiscard]] bool IsInRepository() const noexcept { return m_repository.has_value(); }
         [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_root; }
         [[nodiscard]] core::FileTree& Tree() noexcept { return m_tree; }
         [[nodiscard]] const std::filesystem::path& SelectedFile() const noexcept

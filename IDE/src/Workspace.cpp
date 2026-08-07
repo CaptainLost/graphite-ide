@@ -37,8 +37,8 @@ namespace ide
 
         // A folder that is not a repository is completely normal, so a failure here is
         // logged at trace level and leaves the tree with no ignore query at all.
-        m_repository.reset();
         m_tree.SetIgnoreQuery({});
+        m_repository.reset();
 
         if (auto repository = core::git::Repository::Open(root); repository)
         {
@@ -46,7 +46,13 @@ namespace ide
 
             m_tree.SetIgnoreQuery(
                 [this](const std::filesystem::path& path, bool) -> bool
-                { return m_repository->IsIgnored(path); });
+                {
+                    // The tree is emptied before the repository is, so this cannot fire
+                    // without one. Checking anyway costs a branch against a syscall and
+                    // turns a future ordering slip into a wrong answer rather than
+                    // undefined behaviour.
+                    return m_repository && m_repository->IsIgnored(path);
+                });
 
             m_tree.Refresh(m_tree.Root());
 
@@ -72,8 +78,10 @@ namespace ide
 
         const std::filesystem::path closed = m_root;
 
-        m_repository.reset();
+        // Drop the query before the repository it reads, not after: between those two
+        // statements the tree would hold a query pointing at an empty optional.
         m_tree.SetIgnoreQuery({});
+        m_repository.reset();
         m_tree = core::FileTree{};
         m_root.clear();
         m_selectedFile.clear();
