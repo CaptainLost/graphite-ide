@@ -2,8 +2,10 @@
 
 #include "Core/Event/EventBus.h"
 #include "Core/Fs/FileTree.h"
+#include "Core/Git/Repository.h"
 
 #include <filesystem>
+#include <optional>
 
 namespace ide
 {
@@ -31,6 +33,11 @@ namespace ide
     public:
         explicit Workspace(core::EventBus& events) : m_events(events) {}
 
+        /// Neither copyable nor movable: the tree holds a query that captures `this`, so
+        /// a moved-from workspace would leave that query pointing at the old object.
+        Workspace(Workspace&&) = delete;
+        Workspace& operator=(Workspace&&) = delete;
+
         /// Opens a folder as the workspace root. On failure the previous root stays.
         core::Result<void> Open(const std::filesystem::path& root);
 
@@ -51,6 +58,10 @@ namespace ide
 
     private:
         core::EventBus& m_events;
+        /// Declared before m_tree on purpose: the tree holds a query that reads this
+        /// repository, and members are destroyed in reverse declaration order, so the
+        /// tree must go first.
+        std::optional<core::git::Repository> m_repository;
         core::FileTree m_tree;
         std::filesystem::path m_root;
         std::filesystem::path m_selectedFile;

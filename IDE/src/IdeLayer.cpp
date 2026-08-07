@@ -57,6 +57,8 @@ namespace ide
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
+        ApplyIgnoredDisplay(IgnoredDisplayFromString(Settings::LoadIgnoredDisplay()), false);
+
         std::filesystem::path startFolder = m_initialFolder;
         if (startFolder.empty())
             startFolder = Settings::LoadLastFolder();
@@ -79,6 +81,17 @@ namespace ide
         // Panels render outside the host window — inside it they would dock as ordinary
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
+    }
+
+    void IdeLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
+    {
+        m_ignoredDisplay = display;
+
+        if (auto* files = static_cast<FileTreePanel*>(m_panels.Find("files")); files != nullptr)
+            files->SetIgnoredDisplay(display);
+
+        if (persist)
+            Settings::SaveIgnoredDisplay(IgnoredDisplayToString(display));
     }
 
     void IdeLayer::RenderMenuBar()
@@ -105,6 +118,22 @@ namespace ide
         if (ImGui::BeginMenu("View"))
         {
             m_panels.RenderViewMenuItems();
+            ImGui::Separator();
+
+            if (ImGui::BeginMenu("Ignored Files"))
+            {
+                if (ImGui::MenuItem("Show", nullptr, m_ignoredDisplay == IgnoredDisplay::Show))
+                    ApplyIgnoredDisplay(IgnoredDisplay::Show, true);
+
+                if (ImGui::MenuItem("Dim", nullptr, m_ignoredDisplay == IgnoredDisplay::Dim))
+                    ApplyIgnoredDisplay(IgnoredDisplay::Dim, true);
+
+                if (ImGui::MenuItem("Hide", nullptr, m_ignoredDisplay == IgnoredDisplay::Hide))
+                    ApplyIgnoredDisplay(IgnoredDisplay::Hide, true);
+
+                ImGui::EndMenu();
+            }
+
             ImGui::Separator();
 
             if (ImGui::MenuItem("Reset Layout"))

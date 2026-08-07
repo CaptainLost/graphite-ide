@@ -4,7 +4,9 @@
 #include "Core/Base/Result.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace core
@@ -19,8 +21,15 @@ namespace core
         bool expanded = false;
         bool loaded = false;      // children have been read from disk
         bool accessible = true;   // false when the directory could not be read
+        bool ignored = false;      // the ignore query said to treat this as excluded
         std::vector<FileNode> children;
     };
+
+    /// Answers whether a path should be treated as excluded. FileTree calls this while
+    /// loading a directory and caches the answer on the node, because the real
+    /// implementation reads rules files off disk and is far too expensive to run per
+    /// frame. Supplied by the application: the filesystem layer has no idea git exists.
+    using IgnoreQuery = std::function<bool(const std::filesystem::path& path, bool isDirectory)>;
 
     /// The tree model behind the file panel. Knows nothing about ImGui, which is what
     /// makes it unit-testable.
@@ -37,6 +46,11 @@ namespace core
 
         void Collapse(FileNode& node);
 
+        /// Installs the query used from the next load onwards. Nodes already loaded keep
+        /// the verdict they were given — refresh them to re-ask. An unset query means
+        /// nothing is ignored.
+        void SetIgnoreQuery(IgnoreQuery query) { m_ignoreQuery = std::move(query); }
+
         /// Re-reads the node from disk, preserving the expansion state of the subtree:
         /// nodes that still exist keep their expanded/loaded flags and their loaded
         /// children, vanished nodes are dropped, and new ones appear collapsed.
@@ -50,8 +64,11 @@ namespace core
         [[nodiscard]] const FileNode& Root() const noexcept { return m_root; }
 
     private:
+        [[nodiscard]] bool AskIgnored(const std::filesystem::path& path, bool isDirectory) const;
+
         FileNode m_root;
         bool m_hasRoot = false;
+        IgnoreQuery m_ignoreQuery;
     };
 
     /// Ordering used inside every directory: directories first, then files, each group

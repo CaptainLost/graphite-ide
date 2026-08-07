@@ -4,6 +4,9 @@
 
 #include "TempDirectory.h"
 
+#include <utility>
+#include <vector>
+
 using core::FileNode;
 using core::FileTree;
 
@@ -232,4 +235,139 @@ TEST_CASE("Refresh on a node that was never loaded does nothing")
 
     CHECK_FALSE(tree.Root().loaded);
     CHECK(tree.Root().children.empty());
+}
+
+TEST_CASE("Without a query nothing is ignored")
+{
+    TempDirectory temp;
+    temp.MakeFile("a.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    REQUIRE(tree.Root().children.size() == 1);
+    CHECK_FALSE(tree.Root().children[0].ignored);
+}
+
+TEST_CASE("Expand marks the children the query rejects")
+{
+    TempDirectory temp;
+    temp.MakeFile("keep.txt", "x");
+    temp.MakeFile("drop.txt", "x");
+
+    FileTree tree;
+    tree.SetIgnoreQuery([](const std::filesystem::path& path, bool)
+                        { return path.filename() == "drop.txt"; });
+
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    for (const FileNode& child : tree.Root().children)
+    {
+        if (child.name == "drop.txt")
+            CHECK(child.ignored);
+        else
+            CHECK_FALSE(child.ignored);
+    }
+}
+
+TEST_CASE("The query is told whether the entry is a directory")
+{
+    TempDirectory temp;
+    temp.MakeDir("folder");
+    temp.MakeFile("file.txt", "x");
+
+    std::vector<std::pair<std::string, bool>> seen;
+
+    FileTree tree;
+    tree.SetIgnoreQuery(
+        [&seen](const std::filesystem::path& path, bool isDirectory)
+        {
+            seen.emplace_back(path.filename().string(), isDirectory);
+            return false;
+        });
+
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    REQUIRE(seen.size() == 2);
+
+    for (const auto& [name, isDirectory] : seen)
+    {
+        if (name == "folder")
+            CHECK(isDirectory);
+        else
+            CHECK_FALSE(isDirectory);
+    }
+}
+
+TEST_CASE("Refresh re-asks the query so a changed verdict takes effect")
+{
+    TempDirectory temp;
+    temp.MakeFile("a.txt", "x");
+
+    bool ignoreEverything = false;
+
+    FileTree tree;
+    tree.SetIgnoreQuery([&ignoreEverything](const std::filesystem::path&, bool)
+                        { return ignoreEverything; });
+
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(tree.Root().children.size() == 1);
+    REQUIRE_FALSE(tree.Root().children[0].ignored);
+
+    // The rules file could have changed on disk between loads, so a carried-over node
+    // must have its verdict refreshed rather than kept.
+    ignoreEverything = true;
+    tree.Refresh(tree.Root());
+
+    REQUIRE(tree.Root().children.size() == 1);
+    CHECK(tree.Root().children[0].ignored);
+}
+
+TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
+{
+    TempDirectory temp;
+    temp.MakeFile("stays.txt", "x");
+    temp.MakeDir("sub");
+
+    int calls = 0;
+
+    FileTree tree;
+    tree.SetIgnoreQuery([&calls](const std::filesystem::path&, bool)
+                        {
+                            ++calls;
+                            return false;
+                        });
+
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(calls == 2);
+
+    calls = 0;
+    tree.Refresh(tree.Root());
+
+    // Both entries survive the refresh, and both are asked about again.
+    CHECK(calls == 2);
+}
+
+TEST_CASE("Replacing the query does not disturb already loaded nodes")
+{
+    TempDirectory temp;
+    temp.MakeFile("a.txt", "x");
+
+    FileTree tree;
+    tree.SetIgnoreQuery([](const std::filesystem::path&, bool) { return true; });
+
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(tree.Root().children[0].ignored);
+
+    // The flag is cached, so swapping the query alone changes nothing until something
+    // reloads. That is deliberate: the caller decides when to pay the cost.
+    tree.SetIgnoreQuery([](const std::filesystem::path&, bool) { return false; });
+
+    CHECK(tree.Root().children[0].ignored);
 }

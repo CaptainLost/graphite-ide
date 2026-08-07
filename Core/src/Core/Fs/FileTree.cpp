@@ -63,6 +63,13 @@ namespace core
         return Result<void>::Ok();
     }
 
+    bool FileTree::AskIgnored(const std::filesystem::path& path, bool isDirectory) const
+    {
+        // No query means no opinion, which is the right answer for a folder that is not
+        // a repository at all.
+        return m_ignoreQuery ? m_ignoreQuery(path, isDirectory) : false;
+    }
+
     Result<void> FileTree::Expand(FileNode& node)
     {
         if (!node.isDirectory)
@@ -95,6 +102,7 @@ namespace core
             child.path = entry.path;
             child.name = entry.name;
             child.isDirectory = entry.isDirectory;
+            child.ignored = AskIgnored(entry.path, entry.isDirectory);
             node.children.push_back(std::move(child));
         }
 
@@ -139,6 +147,7 @@ namespace core
                 // Carry the whole subtree over, then let the recursion below bring it
                 // up to date. This is what keeps the user's open folders open.
                 node.children.push_back(std::move(*match));
+                node.children.back().ignored = AskIgnored(entry.path, entry.isDirectory);
                 previous.erase(match);
                 continue;
             }
@@ -147,6 +156,7 @@ namespace core
             child.path = entry.path;
             child.name = entry.name;
             child.isDirectory = entry.isDirectory;
+            child.ignored = AskIgnored(entry.path, entry.isDirectory);
             node.children.push_back(std::move(child));
         }
 
