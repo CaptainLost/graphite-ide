@@ -42,4 +42,23 @@ namespace core::platform
                      "locating the executable is not implemented on this platform"};
 #endif
     }
+
+    bool IsForeground()
+    {
+#ifdef CORE_PLATFORM_WINDOWS
+        const HWND foreground = ::GetForegroundWindow();
+
+        // Null when the foreground window belongs to another desktop, or during the
+        // moment a window is being switched. Not ours either way.
+        if (foreground == nullptr)
+            return false;
+
+        DWORD owner = 0;
+        ::GetWindowThreadProcessId(foreground, &owner);
+
+        return owner == ::GetCurrentProcessId();
+#else
+        return true;
+#endif
+    }
 }

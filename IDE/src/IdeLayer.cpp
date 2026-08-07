@@ -8,6 +8,7 @@
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/Process.h"
 
 #include <imgui.h>
 
@@ -80,29 +81,33 @@ namespace ide
 
     void IdeLayer::UpdateFocusReload(float deltaSeconds)
     {
-        if (!core::Application::Get().GetWindow().IsFocused())
+        // The process, not the main window: a panel dragged out into its own viewport is
+        // a separate OS window, and working in one used to read as having left the
+        // application — so coming back to the main window announced a return from an
+        // absence that never happened.
+        if (!core::platform::IsForeground())
         {
-            m_secondsUnfocused += deltaSeconds;
-            m_windowFocused = false;
+            m_secondsInBackground += deltaSeconds;
+            m_appForeground = false;
             return;
         }
 
         // Only the moment focus returns, not every frame it is held.
-        if (!m_windowFocused)
+        if (!m_appForeground)
         {
-            m_windowFocused = true;
+            m_appForeground = true;
 
             // Reload itself does nothing without an open folder, but the log line would
             // still claim a reload happened. A trace that reports work nobody did is
             // worse than no trace at all — it is the sort of thing someone later spends
             // an afternoon believing.
-            if (m_secondsUnfocused >= kReloadAfterSecondsAway && m_workspace.IsOpen())
+            if (m_secondsInBackground >= kReloadAfterSecondsAway && m_workspace.IsOpen())
             {
-                CORE_TRACE("Reloading the workspace after {:.1f}s away", m_secondsUnfocused);
+                CORE_TRACE("Reloading the workspace after {:.1f}s away", m_secondsInBackground);
                 m_workspace.Reload();
             }
 
-            m_secondsUnfocused = 0.0f;
+            m_secondsInBackground = 0.0f;
         }
     }
 
