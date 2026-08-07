@@ -22,8 +22,8 @@ namespace
 
         while (std::chrono::steady_clock::now() < deadline)
         {
-            if (auto changes = watcher.TakeSettledChanges(); !changes.empty())
-                return changes;
+            if (auto changes = watcher.TakeSettled(); !changes.directories.empty())
+                return changes.directories;
 
             std::this_thread::sleep_for(std::chrono::milliseconds{20});
         }

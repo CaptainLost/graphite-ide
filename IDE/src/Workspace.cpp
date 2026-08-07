@@ -95,22 +95,24 @@ namespace ide
         if (!m_watcher)
             return;
 
-        const std::vector<std::filesystem::path> changed = m_watcher->TakeSettledChanges();
+        const core::DirectoryWatcher::Changes changed = m_watcher->TakeSettled();
 
-        if (changed.empty())
+        if (changed.directories.empty() && !changed.overflowed)
             return;
 
-        if (m_watcher->Overflowed())
+        if (changed.overflowed)
         {
             // Individual paths were lost, so nothing narrower than the whole tree is
-            // trustworthy. Refresh recurses into everything loaded.
+            // trustworthy. Refresh recurses into everything loaded. Note that this batch
+            // carries no paths at all — testing the vector first would skip it.
             CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
             m_tree.Refresh(m_tree.Root());
-            return;
         }
-
-        for (const std::filesystem::path& directory : changed)
-            RefreshChanged(directory);
+        else
+        {
+            for (const std::filesystem::path& directory : changed.directories)
+                RefreshChanged(directory);
+        }
 
         // A `git init` in a terminal shows up as a change in the root. Retried only while
         // there is no repository, so the ordinary case costs one pointer test.

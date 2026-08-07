@@ -3,7 +3,6 @@
 #include "Core/Fs/DirectoryWatcher.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
@@ -153,7 +152,13 @@ namespace core
 
             if (!::GetOverlappedResult(static_cast<HANDLE>(m_directory), &overlapped, &bytes,
                                        FALSE))
+            {
+                // Say so: from here the watcher is permanently dead and the consumer just
+                // sees nothing ever change again, which is very hard to guess at.
+                CORE_WARN("Stopped watching '{}': the change notification failed",
+                          m_root.string());
                 break;
+            }
 
             if (bytes == 0)
             {
@@ -164,20 +169,37 @@ namespace core
                 continue;
             }
 
-            const auto* record = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(buffer.data());
+            // Walked with an explicit offset checked against `bytes` rather than by
+            // following NextEntryOffset on trust. The kernel is not expected to hand back
+            // a malformed chain, but reading past the buffer on the one day it does is
+            // not a failure worth risking for two comparisons.
+            const auto* const base = reinterpret_cast<const std::byte*>(buffer.data());
 
-            while (true)
+            for (DWORD offset = 0; offset < bytes;)
             {
+                const auto* record =
+                    reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(base + offset);
+
+                const DWORD headerBytes = offsetof(FILE_NOTIFY_INFORMATION, FileName);
+
+                if (offset + headerBytes + record->FileNameLength > bytes)
+                {
+                    CORE_WARN("Discarding a truncated change record while watching '{}'",
+                              m_root.string());
+                    break;
+                }
+
                 const std::wstring name(record->FileName,
                                         record->FileNameLength / sizeof(wchar_t));
 
                 RecordChange(m_root / name);
 
+                // Zero terminates the chain; anything that does not move forward would
+                // spin here forever, so both end the walk.
                 if (record->NextEntryOffset == 0)
                     break;
 
-                record = reinterpret_cast<const FILE_NOTIFY_INFORMATION*>(
-                    reinterpret_cast<const std::byte*>(record) + record->NextEntryOffset);
+                offset += record->NextEntryOffset;
             }
         }
 
@@ -204,17 +226,16 @@ namespace core
 #endif
     }
 
-    std::vector<std::filesystem::path> DirectoryWatcher::TakeSettledChanges()
+    DirectoryWatcher::Changes DirectoryWatcher::TakeSettled()
     {
+        // One lock for both reads: the overflow flag belongs to the batch being taken,
+        // and a second lock would let another take run in between and clear it.
         std::scoped_lock lock{m_mutex};
-        return m_collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
-    }
 
-    bool DirectoryWatcher::Overflowed() const
-    {
-        // const_cast rather than a mutable member: the mutex protects a logically const
-        // read, and this keeps the member declaration honest about what it guards.
-        std::scoped_lock lock{const_cast<std::mutex&>(m_mutex)};
-        return m_collector.Overflowed();
+        Changes changes;
+        changes.directories = m_collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
+        changes.overflowed = m_collector.Overflowed();
+
+        return changes;
     }
 }

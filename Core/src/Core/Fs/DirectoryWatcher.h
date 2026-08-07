@@ -4,7 +4,6 @@
 #include "Core/Base/Result.h"
 #include "Core/Fs/ChangeCollector.h"
 
-#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -34,13 +33,26 @@ namespace core
         [[nodiscard]] static Result<std::unique_ptr<DirectoryWatcher>> Start(
             const std::filesystem::path& root);
 
-        /// The directories that changed, once the disk has been quiet for kQuietPeriod;
-        /// otherwise empty. Safe to call every frame.
-        [[nodiscard]] std::vector<std::filesystem::path> TakeSettledChanges();
+        /// What one settled batch reports.
+        struct Changes
+        {
+            /// The directories that changed. Empty while the disk is still busy — and
+            /// also empty when `overflowed` is set, since in that case the individual
+            /// paths are exactly what was lost.
+            std::vector<std::filesystem::path> directories;
 
-        /// True when the last TakeSettledChanges released a lost-changes marker, meaning
-        /// individual paths were dropped and everything held should be refreshed.
-        [[nodiscard]] bool Overflowed() const;
+            /// Individual paths were dropped and everything held should be refreshed.
+            bool overflowed = false;
+        };
+
+        /// The changes settled since the last call, once the disk has been quiet for
+        /// kQuietPeriod. Safe to call every frame.
+        ///
+        /// Both fields come back together on purpose. They were once two calls, and the
+        /// first consumer written against that API returned early on an empty vector and
+        /// so could never observe an overflow — which is the one case that reports no
+        /// paths at all. A caller cannot make that mistake with a single result.
+        [[nodiscard]] Changes TakeSettled();
 
     private:
         DirectoryWatcher() = default;
