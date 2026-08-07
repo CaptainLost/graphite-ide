@@ -108,6 +108,14 @@ namespace ide
 
         const core::DirectoryWatcher::Changes changed = m_watcher->TakeSettled();
 
+        if (changed.movedTo)
+        {
+            // Handled to the exclusion of everything else in this batch: the directories
+            // it carries are spelled under the old root and match nothing any more.
+            HandleRootMoved(*changed.movedTo);
+            return;
+        }
+
         if (changed.directories.empty() && !changed.overflowed)
             return;
 
@@ -218,6 +226,54 @@ namespace ide
         m_tree.Refresh(m_tree.Root());
 
         CORE_INFO("Resumed watching '{}' after a failure", m_root.string());
+    }
+
+    void Workspace::HandleRootMoved(const std::filesystem::path& destination)
+    {
+        const std::filesystem::path from = m_root;
+        const std::filesystem::path to = core::fs::NormalizeDirectory(destination);
+
+        CORE_INFO("Workspace moved from '{}' to '{}'", from.string(), to.string());
+
+        m_root = to;
+        m_tree.Rebase(to);
+
+        // Rewritten rather than cleared: the same file is still selected, it just lives
+        // somewhere else now.
+        if (!m_selectedFile.empty())
+        {
+            const std::filesystem::path relative = m_selectedFile.lexically_relative(from);
+
+            m_selectedFile = relative.empty() ? std::filesystem::path{} : to / relative;
+        }
+
+        // The watcher's handle still works — it followed the directory, which is how the
+        // move was noticed at all — but the copy of the root inside its thread is stale,
+        // and that copy is what every reported path is built from. Restarting is the only
+        // way to correct it without reaching into a running thread.
+        m_watcherResumed = false;
+        m_watcher.reset();
+
+        if (auto watcher = core::DirectoryWatcher::Start(to); watcher)
+        {
+            m_watcher = std::move(watcher).Value();
+        }
+        else
+        {
+            CORE_WARN("Cannot watch '{}' after the move: {}", to.string(),
+                      watcher.GetError().message);
+        }
+
+        // libgit2 bakes the path into the handle, so the repository has to be opened
+        // again from the new location whatever the old one said.
+        TryOpenRepository();
+
+        // Nothing was read from disk during the rebase, so this is the first look at the
+        // new location — and the ignore query may have just changed too.
+        m_tree.Refresh(m_tree.Root());
+
+        Settings::SaveLastFolder(to);
+        m_events.Publish(WorkspaceRootMovedEvent{from, to});
     }
 
     void Workspace::RefreshChanged(const std::filesystem::path& directory)

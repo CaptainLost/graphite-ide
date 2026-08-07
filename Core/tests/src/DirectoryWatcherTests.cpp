@@ -7,6 +7,9 @@
 #include <doctest/doctest.h>
 
 #include <chrono>
+#include <fstream>
+#include <optional>
+#include <string>
 #include <thread>
 
 using namespace core;
@@ -168,4 +171,135 @@ TEST_CASE("A watcher stops running once its directory is deleted")
     }
 
     CHECK(stopped);
+}
+
+namespace
+{
+    /// Polls until the watcher reports a move or the deadline passes. The detection is a
+    /// timed poll on the worker thread, so this has to allow at least one interval.
+    std::optional<std::filesystem::path> WaitForMove(DirectoryWatcher& watcher,
+                                                     std::chrono::seconds timeout)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + timeout;
+
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            if (auto changes = watcher.TakeSettled(); changes.movedTo)
+                return changes.movedTo;
+
+            std::this_thread::sleep_for(std::chrono::milliseconds{20});
+        }
+
+        return std::nullopt;
+    }
+}
+
+TEST_CASE("A watched directory that is renamed is reported at its new path")
+{
+    TempDirectory temp;
+    const std::filesystem::path watched = temp.MakeDir("before");
+
+    auto watcher = DirectoryWatcher::Start(watched);
+    REQUIRE(watcher.HasValue());
+
+    std::error_code code;
+    std::filesystem::rename(watched, temp.Path() / "after", code);
+    REQUIRE_FALSE(code);
+
+    const auto moved = WaitForMove(*watcher.Value(), std::chrono::seconds{10});
+
+    REQUIRE(moved.has_value());
+    CHECK(*moved == temp.Path() / "after");
+}
+
+TEST_CASE("A watched directory that is moved elsewhere is reported at its new path")
+{
+    TempDirectory temp;
+    const std::filesystem::path watched = temp.MakeDir("origin/watched");
+    temp.MakeDir("destination");
+
+    auto watcher = DirectoryWatcher::Start(watched);
+    REQUIRE(watcher.HasValue());
+
+    // Moving and renaming are the same operation to the filesystem, but the resulting
+    // path differs in more than its last component, so both are worth pinning.
+    std::error_code code;
+    std::filesystem::rename(watched, temp.Path() / "destination" / "watched", code);
+    REQUIRE_FALSE(code);
+
+    const auto moved = WaitForMove(*watcher.Value(), std::chrono::seconds{10});
+
+    REQUIRE(moved.has_value());
+    CHECK(*moved == temp.Path() / "destination" / "watched");
+}
+
+TEST_CASE("A directory that stays put is never reported as moved")
+{
+    TempDirectory temp;
+    temp.MakeFile("a.txt", "x");
+
+    auto watcher = DirectoryWatcher::Start(temp.Path());
+    REQUIRE(watcher.HasValue());
+
+    // Ordinary activity must not be mistaken for a move — and neither must the case
+    // difference between the path the caller passed and the one the filesystem stores,
+    // which is why the baseline comes from the handle rather than from that argument.
+    temp.MakeFile("b.txt", "x");
+
+    // Five seconds against a two-second interval, so at least two polls run even on a
+    // loaded machine. At three the test could pass by simply not having polled.
+    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{5}).has_value());
+}
+
+TEST_CASE("A move is reported once, not on every poll")
+{
+    TempDirectory temp;
+    const std::filesystem::path watched = temp.MakeDir("before");
+
+    auto watcher = DirectoryWatcher::Start(watched);
+    REQUIRE(watcher.HasValue());
+
+    std::error_code code;
+    std::filesystem::rename(watched, temp.Path() / "after", code);
+    REQUIRE_FALSE(code);
+
+    REQUIRE(WaitForMove(*watcher.Value(), std::chrono::seconds{10}).has_value());
+
+    // The consumer acts on it by re-pointing the workspace; being told again afterwards
+    // would make it do that work over and over.
+    // Five seconds against a two-second interval, so at least two polls run even on a
+    // loaded machine. At three the test could pass by simply not having polled.
+    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{5}).has_value());
+}
+
+TEST_CASE("A move is noticed even while the directory is busy")
+{
+    TempDirectory temp;
+    const std::filesystem::path watched = temp.MakeDir("busy");
+
+    auto watcher = DirectoryWatcher::Start(watched);
+    REQUIRE(watcher.HasValue());
+
+    std::error_code code;
+    std::filesystem::rename(watched, temp.Path() / "busy-moved", code);
+    REQUIRE_FALSE(code);
+
+    // Writing faster than kMoveCheckInterval. The check used to run only when the wait
+    // expired, and every notification restarts that wait — so a directory under a build
+    // would never be checked at all, which is exactly when a move is most likely and least affordable to miss.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+    std::optional<std::filesystem::path> moved;
+
+    for (int i = 0; !moved && std::chrono::steady_clock::now() < deadline; ++i)
+    {
+        std::ofstream{temp.Path() / "busy-moved" / ("churn" + std::to_string(i) + ".txt")}
+            << "x";
+
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+
+        moved = watcher.Value()->TakeSettled().movedTo;
+    }
+
+    REQUIRE(moved.has_value());
+    CHECK(*moved == temp.Path() / "busy-moved");
 }

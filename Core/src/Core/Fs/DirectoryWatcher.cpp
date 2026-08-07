@@ -90,6 +90,11 @@ namespace core
         watcher->m_directory = directory;
         watcher->m_stopEvent = stopEvent;
 
+        // Taken before the thread starts, so the worker never sees an empty baseline and
+        // mistakes it for a move.
+        watcher->m_watchedPath = watcher->QueryHandlePath();
+        watcher->m_lastMoveCheck = ChangeCollector::Clock::now();
+
         // Started last: the thread reads the members above, so they must all be set.
         watcher->m_thread = std::thread{[raw = watcher.get()] { raw->Run(); }};
 
@@ -141,7 +146,30 @@ namespace core
             }
 
             const HANDLE waited[] = {ioEvent, static_cast<HANDLE>(m_stopEvent)};
-            const DWORD signalled = ::WaitForMultipleObjects(2, waited, FALSE, INFINITE);
+            DWORD signalled = WAIT_TIMEOUT;
+
+            while (true)
+            {
+                signalled = ::WaitForMultipleObjects(
+                    2, waited, FALSE, static_cast<DWORD>(kMoveCheckInterval.count()));
+
+                // Driven by elapsed time rather than by the wait expiring. A directory
+                // busier than the interval never lets it expire — every notification
+                // restarts the clock — and that is precisely when a move would go
+                // unnoticed, because after one the handle keeps reporting activity from
+                // the new location.
+                //
+                // Skipped while stopping, so a shutdown never waits on an API call that
+                // a disconnected network share could sit on.
+                if (signalled != WAIT_OBJECT_0 + 1)
+                    CheckForMoveIfDue();
+
+                if (signalled != WAIT_TIMEOUT)
+                    break;
+
+                // The read is still outstanding and stays that way; this loop only
+                // borrows the idle time between notifications.
+            }
 
             if (signalled != WAIT_OBJECT_0)
             {
@@ -237,6 +265,111 @@ namespace core
 #endif
     }
 
+    std::filesystem::path DirectoryWatcher::QueryHandlePath() const
+    {
+#ifdef CORE_PLATFORM_WINDOWS
+        // Asked for twice: once for the length, once for the content. The two calls do
+        // not agree on what they count — a call that could not fit the path returns the
+        // size *including* the terminator, while one that succeeded returns the length
+        // *excluding* it. So `length` already has room for the terminator, and a second
+        // call reporting `written >= length` means the path grew between the two calls
+        // rather than that it just fit. Do not "simplify" either of those.
+        const DWORD length =
+            ::GetFinalPathNameByHandleW(static_cast<HANDLE>(m_directory), nullptr, 0,
+                                        FILE_NAME_NORMALIZED);
+
+        if (length == 0)
+            return {};
+
+        std::wstring buffer(length, L'\0');
+
+        const DWORD written = ::GetFinalPathNameByHandleW(
+            static_cast<HANDLE>(m_directory), buffer.data(), length, FILE_NAME_NORMALIZED);
+
+        if (written == 0 || written >= length)
+            return {};
+
+        buffer.resize(written);
+
+        // The result carries the \\?\ extended-length prefix, which nothing else in the
+        // application uses and which would make every comparison fail.
+        //
+        // A network location — including a mapped drive letter — comes back as
+        // \\?\UNC\server\share, where stripping only the first four characters leaves
+        // `UNC\server\share`: not an ugly path but a wrong one, naming nothing. It has to
+        // become \\server\share instead, so this case is tested first.
+        constexpr std::wstring_view kUncPrefix = LR"(\\?\UNC\)";
+        constexpr std::wstring_view kExtendedPrefix = LR"(\\?\)";
+
+        if (buffer.starts_with(kUncPrefix))
+            buffer.replace(0, kUncPrefix.size(), LR"(\\)");
+        else if (buffer.starts_with(kExtendedPrefix))
+            buffer.erase(0, kExtendedPrefix.size());
+
+        return std::filesystem::path{buffer};
+#else
+        return {};
+#endif
+    }
+
+    void DirectoryWatcher::CheckForMove()
+    {
+#ifdef CORE_PLATFORM_WINDOWS
+        const std::filesystem::path current = QueryHandlePath();
+
+        // An unanswerable handle is not a move. It happens while the directory is being
+        // deleted, and that path ends the loop by itself through the failing read.
+        if (current.empty())
+            return;
+
+        // An empty baseline means the query failed back in Start rather than that the
+        // directory was somewhere else. Adopt the first answer instead of announcing a
+        // move to where we already are, which would cost the workspace a pointless
+        // watcher restart and repository reopen.
+        if (m_watchedPath.empty())
+        {
+            m_watchedPath = current;
+            m_root = current;
+            return;
+        }
+
+        if (current == m_watchedPath)
+            return;
+
+        CORE_INFO("The watched directory moved from '{}' to '{}'", m_watchedPath.string(),
+                  current.string());
+
+        // The baseline advances, so the move is reported once rather than on every poll
+        // from here on.
+        m_watchedPath = current;
+
+        // So does the root every reported path is built from. Both are touched only by
+        // this thread after Start returns, so neither needs the lock.
+        m_root = current;
+
+        std::scoped_lock lock{m_mutex};
+
+        // Whatever was already collected is spelled under the old location and matches
+        // nothing any more. Dropping it here rather than leaving it to the consumer
+        // matters: only the batch carrying `movedTo` is documented as suspect, so
+        // anything still inside the quiet period would surface in the *next* batch
+        // looking perfectly current.
+        m_collector = ChangeCollector{};
+        m_movedTo = current;
+#endif
+    }
+
+    void DirectoryWatcher::CheckForMoveIfDue()
+    {
+        const auto now = ChangeCollector::Clock::now();
+
+        if (now - m_lastMoveCheck < kMoveCheckInterval)
+            return;
+
+        m_lastMoveCheck = now;
+        CheckForMove();
+    }
+
     void DirectoryWatcher::RecordChange(const std::filesystem::path& path)
     {
 #ifdef CORE_PLATFORM_WINDOWS
@@ -277,13 +410,14 @@ namespace core
 
     DirectoryWatcher::Changes DirectoryWatcher::TakeSettled()
     {
-        // One lock for both reads: the overflow flag belongs to the batch being taken,
-        // and a second lock would let another take run in between and clear it.
+        // One lock for all three: they describe the same batch, and separate calls would
+        // let another take run in between and consume half of it.
         std::scoped_lock lock{m_mutex};
 
         Changes changes;
         changes.directories = m_collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
         changes.overflowed = m_collector.Overflowed();
+        changes.movedTo = std::exchange(m_movedTo, std::nullopt);
 
         return changes;
     }

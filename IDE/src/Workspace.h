@@ -28,6 +28,15 @@ namespace ide
         std::filesystem::path path;
     };
 
+    /// The open folder was renamed or moved on disk and the workspace followed it.
+    /// Anything holding a path below the old root should rewrite it — the tree has
+    /// already done so.
+    struct WorkspaceRootMovedEvent
+    {
+        std::filesystem::path from;
+        std::filesystem::path to;
+    };
+
     /// The open folder, its tree, and the selected file. Panels talk to it through
     /// the event bus rather than holding each other.
     class Workspace final
@@ -74,6 +83,8 @@ namespace ide
 
         /// Tries once to start watching again, then leaves the workspace unwatched.
         void HandleDeadWatcher();
+
+        void HandleRootMoved(const std::filesystem::path& destination);
 
         core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this

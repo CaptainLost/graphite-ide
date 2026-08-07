@@ -23,6 +23,13 @@ public:
         std::error_code ec;
         std::filesystem::remove_all(m_path, ec);
         std::filesystem::create_directories(m_path, ec);
+
+        // Resolved once the directory exists, so tests can compare this against a path
+        // the OS reported back to them. TEMP may be spelled with a short 8.3 name or in
+        // a different case than the filesystem stores, and either would make an
+        // otherwise correct comparison fail on someone else's machine.
+        if (auto resolved = std::filesystem::canonical(m_path, ec); !ec)
+            m_path = std::move(resolved);
     }
 
     ~TempDirectory()

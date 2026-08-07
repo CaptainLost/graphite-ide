@@ -353,6 +353,99 @@ TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
     CHECK(calls == 2);
 }
 
+TEST_CASE("Rebase rewrites the root and every loaded descendant")
+{
+    TempDirectory temp;
+    temp.MakeDir("sub");
+    temp.MakeFile("sub/deep.txt", "x");
+    temp.MakeFile("top.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    FileNode* sub = nullptr;
+
+    for (FileNode& child : tree.Root().children)
+    {
+        if (child.name == "sub")
+            sub = &child;
+    }
+
+    REQUIRE(sub != nullptr);
+    REQUIRE(tree.Expand(*sub).HasValue());
+
+    const std::filesystem::path moved = temp.Path().parent_path() / "moved-elsewhere";
+    tree.Rebase(moved);
+
+    CHECK(tree.Root().path == moved);
+
+    for (const FileNode& child : tree.Root().children)
+    {
+        CHECK(child.path.parent_path() == moved);
+
+        // The rewrite has to reach the whole subtree, not just the immediate children —
+        // a half-rewritten tree would refresh some nodes and silently skip others.
+        for (const FileNode& grandChild : child.children)
+            CHECK(grandChild.path.parent_path() == moved / child.name);
+    }
+}
+
+TEST_CASE("Rebase leaves everything except the paths alone")
+{
+    TempDirectory temp;
+    temp.MakeDir("sub");
+    temp.MakeFile("top.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    FileNode* sub = nullptr;
+
+    for (FileNode& child : tree.Root().children)
+    {
+        if (child.name == "sub")
+            sub = &child;
+    }
+
+    REQUIRE(sub != nullptr);
+    REQUIRE(tree.Expand(*sub).HasValue());
+    sub->expanded = true;
+
+    const std::size_t childCount = tree.Root().children.size();
+
+    tree.Rebase(temp.Path().parent_path() / "moved-elsewhere");
+
+    // The point of rebasing rather than reopening: the user's expansion state survives.
+    REQUIRE(tree.Root().children.size() == childCount);
+
+    for (const FileNode& child : tree.Root().children)
+    {
+        if (child.name != "sub")
+            continue;
+
+        CHECK(child.name == "sub");
+        CHECK(child.isDirectory);
+        CHECK(child.expanded);
+        CHECK(child.loaded);
+    }
+}
+
+TEST_CASE("Rebase on a tree with no root does nothing")
+{
+    FileTree tree;
+
+    tree.Rebase("D:/somewhere");
+
+    CHECK_FALSE(tree.HasRoot());
+
+    // Asserting on HasRoot alone would pass with the guard deleted, because nothing in
+    // the rewrite touches that flag — it would just quietly write a path into a root
+    // node that does not exist. The path is what proves the guard ran.
+    CHECK(tree.Root().path.empty());
+}
+
 TEST_CASE("Replacing the query does not disturb already loaded nodes")
 {
     TempDirectory temp;
@@ -370,4 +463,36 @@ TEST_CASE("Replacing the query does not disturb already loaded nodes")
     tree.SetIgnoreQuery([](const std::filesystem::path&, bool) { return false; });
 
     CHECK(tree.Root().children[0].ignored);
+}
+
+TEST_CASE("Rebase renames the root node to match its new location")
+{
+    TempDirectory temp;
+    const std::filesystem::path before = temp.MakeDir("before");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(before).HasValue());
+    REQUIRE(tree.Root().name == "before");
+
+    tree.Rebase(temp.Path() / "after");
+
+    // The root is the one node a rename can rename. Checking only the path would let the
+    // tree go on displaying the old folder name beside a perfectly correct path — which
+    // is what the panel actually shows the user.
+    CHECK(tree.Root().name == "after");
+    CHECK(tree.Root().path == temp.Path() / "after");
+}
+
+TEST_CASE("Rebase onto a drive root leaves the node with a usable name")
+{
+    TempDirectory temp;
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+
+    tree.Rebase("D:/");
+
+    // A drive root has no filename component, so the plain answer would be an empty
+    // label rendering as a blank row.
+    CHECK_FALSE(tree.Root().name.empty());
 }

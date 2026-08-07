@@ -168,4 +168,37 @@ namespace core
                 Refresh(child);
         }
     }
+
+    void FileTree::Rebase(const std::filesystem::path& newRoot)
+    {
+        if (!m_hasRoot)
+            return;
+
+        const std::filesystem::path normalized = fs::NormalizeDirectory(newRoot);
+
+        RebaseNode(m_root, normalized);
+
+        // The root is the one node whose name a move can change — a child keeps its name
+        // and only moves underneath. Without this the tree would go on displaying the
+        // folder's previous name while every path beneath it was already correct.
+        //
+        // The fallback mirrors SetRoot: a drive root has no filename component, and an
+        // empty label would render as a blank row.
+        m_root.name = fs::ToUtf8(normalized.filename());
+
+        if (m_root.name.empty())
+            m_root.name = fs::ToUtf8(normalized);
+    }
+
+    void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)
+    {
+        node.path = newPath;
+
+        // Rebuilt from the parent's new path and the child's own name rather than by
+        // string surgery on the old path: the two spellings only have to agree on the
+        // part being replaced, and a prefix replacement would quietly do nothing if they
+        // differed in case or separators.
+        for (FileNode& child : node.children)
+            RebaseNode(child, newPath / child.name);
+    }
 }
