@@ -2,6 +2,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/Shell.h"
 
 namespace ide
 {
@@ -91,6 +92,35 @@ namespace ide
         return false;
     }
 
+    void FileTreePanel::RenderContextMenu(const core::FileNode& node)
+    {
+        if (!ImGui::BeginPopupContextItem())
+            return;
+
+        if (ImGui::MenuItem("Show in Explorer"))
+        {
+            if (const auto revealed = core::Shell::RevealInFileBrowser(node.path); !revealed)
+                CORE_ERROR("{}", revealed.GetError().message);
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Copy Path"))
+            ImGui::SetClipboardText(core::fs::ToUtf8(node.path).c_str());
+
+        if (ImGui::MenuItem("Copy Relative Path"))
+        {
+            std::error_code code;
+            const std::filesystem::path relative =
+                std::filesystem::relative(node.path, m_workspace.Root(), code);
+
+            // No common prefix means relative() fails; the absolute path is still useful.
+            ImGui::SetClipboardText(core::fs::ToUtf8(code ? node.path : relative).c_str());
+        }
+
+        ImGui::EndPopup();
+    }
+
     // Must not mutate the tree while walking it: this recurses over node.children by
     // reference, and today the only mutating actions (opening a folder, refreshing)
     // happen in RenderToolbar, strictly before the walk starts. A future right-click
@@ -107,6 +137,8 @@ namespace ide
 
             if (ImGui::Selectable(node.name.c_str(), selected))
                 m_workspace.SelectFile(node.path);
+
+            RenderContextMenu(node);
 
             return;
         }
@@ -128,6 +160,8 @@ namespace ide
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("This folder could not be read.");
         }
+
+        RenderContextMenu(node);
 
         if (open)
         {

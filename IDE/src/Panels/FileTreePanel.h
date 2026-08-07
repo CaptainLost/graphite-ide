@@ -22,6 +22,7 @@ namespace ide
         void RenderToolbar();
         void RenderEmptyState();
         void RenderNode(core::FileNode& node);
+        void RenderContextMenu(const core::FileNode& node);
         [[nodiscard]] bool PassesFilter(const core::FileNode& node) const;
 
         Workspace& m_workspace;
