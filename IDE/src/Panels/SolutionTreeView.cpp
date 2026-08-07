@@ -127,18 +127,18 @@ namespace ide
     {
         if (!m_workspace.IsOpen())
         {
-            ImGui::TextUnformatted("Open a folder to see its solution.");
+            ImGui::TextUnformatted("Open a folder to see its Visual Studio solution.");
             return;
         }
 
         if (m_workspace.SolutionCandidates().empty())
         {
-            ImGui::TextUnformatted("No solution file in this folder.");
+            ImGui::TextUnformatted("No Visual Studio solution in this folder.");
             return;
         }
 
         // Candidates exist but none loaded, so reading the chosen one failed. The reason
         // was logged to the console when it happened.
-        ImGui::TextUnformatted("The solution could not be read. See the console.");
+        ImGui::TextUnformatted("This Visual Studio solution could not be read. See the console.");
     }
 }

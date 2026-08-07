@@ -56,7 +56,10 @@ namespace ide
 
     void ExplorerPanel::RenderHeader()
     {
-        const char* current = m_mode == Mode::Files ? "Files" : "Solution";
+        // Named in full rather than just "Solution": the word alone would not say
+        // which kind, and premake workspaces or CMake projects would each want the
+        // same slot with different meaning.
+        const char* current = m_mode == Mode::Files ? "Files" : "Visual Studio Solution";
 
         ImGui::SetNextItemWidth(-1.0f);
 
@@ -65,7 +68,7 @@ namespace ide
             if (ImGui::Selectable("Files", m_mode == Mode::Files))
                 SetMode(Mode::Files);
 
-            if (ImGui::Selectable("Solution", m_mode == Mode::Solution))
+            if (ImGui::Selectable("Visual Studio Solution", m_mode == Mode::Solution))
                 SetMode(Mode::Solution);
 
             ImGui::EndCombo();

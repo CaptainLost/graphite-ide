@@ -128,6 +128,12 @@ namespace ide
         void FindSolutions();
         void LoadSolution();
 
+        /// Whether any of the changed directories could hold the solution file or one
+        /// of its project files. Everything else — build output above all — must not
+        /// cost a re-parse.
+        [[nodiscard]] bool TouchesSolution(
+            const std::vector<std::filesystem::path>& directories) const;
+
         core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this
         /// repository, and members are destroyed in reverse declaration order, so the

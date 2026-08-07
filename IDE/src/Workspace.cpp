@@ -11,6 +11,21 @@
 
 namespace ide
 {
+    namespace
+    {
+        /// Walks every project in the tree. Solution folders nest, so a plain loop over
+        /// one level would miss most of them.
+        template <typename Visitor>
+        void ForEachProject(const core::sln::Folder& folder, Visitor&& visit)
+        {
+            for (const core::sln::Project& project : folder.projects)
+                visit(project);
+
+            for (const core::sln::Folder& child : folder.folders)
+                ForEachProject(child, visit);
+        }
+    }
+
     core::Result<void> Workspace::Open(const std::filesystem::path& requested)
     {
         // Normalise once, here, where a path enters the workspace. A command-line
@@ -159,10 +174,46 @@ namespace ide
         for (const std::filesystem::path& directory : changed.directories)
             RefreshChanged(directory);
 
-        // A regenerated solution or project file arrives as an ordinary change. Re-reading
-        // the whole solution is deliberate: it is milliseconds, and the watcher's quiet
-        // period has already collapsed a burst of regenerated files into one batch.
-        LoadSolution();
+        // Only when the change could plausibly be a solution or project file. Reloading on
+        // every batch means a build writing into bin/ re-parses the whole solution, which
+        // showed up immediately in practice: opening this repository moments after a build
+        // read it four times over.
+        if (TouchesSolution(changed.directories))
+            LoadSolution();
+    }
+
+    bool Workspace::TouchesSolution(const std::vector<std::filesystem::path>& directories) const
+    {
+        if (m_selectedSolution.empty())
+            return false;
+
+        const std::filesystem::path solutionDirectory = m_selectedSolution.parent_path();
+
+        for (const std::filesystem::path& directory : directories)
+        {
+            // The solution's own directory covers the .slnx itself and anything beside it.
+            if (directory == solutionDirectory)
+                return true;
+
+            if (!m_solution)
+                continue;
+
+            // A project file changing means the project's contents may have changed. Its
+            // .filters sibling lives in the same directory, so one comparison covers both.
+            bool matched = false;
+
+            ForEachProject(m_solution->root,
+                           [&directory, &matched](const core::sln::Project& project)
+                           {
+                               if (project.path.parent_path() == directory)
+                                   matched = true;
+                           });
+
+            if (matched)
+                return true;
+        }
+
+        return false;
     }
 
     void Workspace::Reload()
