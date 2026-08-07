@@ -19,6 +19,7 @@ Makefile
 # Runtime state written next to the executable
 imgui.ini
 ide.ini
+ide.json
 
 # The premake binary is intentionally kept in the repo
 !vendor/bin/
