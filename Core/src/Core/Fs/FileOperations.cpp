@@ -8,9 +8,12 @@
 #include <cctype>
 #include <fstream>
 #include <string>
-#include <windows.h>
 
-#include <shellapi.h>
+#ifdef CORE_PLATFORM_WINDOWS
+    #include <windows.h>
+
+    #include <shellapi.h>
+#endif
 
 namespace core::fs
 {
@@ -36,6 +39,7 @@ namespace core::fs
 
     Result<void> CreateEmptyFile(const std::filesystem::path& path)
     {
+#ifdef CORE_PLATFORM_WINDOWS
         // CREATE_NEW makes the OS itself refuse an existing target, so there is no
         // window between a check and the act in which someone else's file could appear
         // and be truncated.
@@ -64,6 +68,14 @@ namespace core::fs
 
         ::CloseHandle(handle);
         return Result<void>::Ok();
+#else
+        // std::filesystem has no atomic exclusive-create before C++23, and this
+        // operation exists precisely to refuse an existing target, so a check-then-act
+        // fallback would be a silent downgrade rather than a port.
+        return Error{ErrorCode::Unsupported,
+                     std::format("creating '{}' is not implemented on this platform",
+                                 ToUtf8(path))};
+#endif
     }
 
     Result<void> MakeDirectory(const std::filesystem::path& path)
@@ -86,6 +98,7 @@ namespace core::fs
 
     Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to)
     {
+#ifdef CORE_PLATFORM_WINDOWS
         // No MOVEFILE_REPLACE_EXISTING: the OS refuses an occupied destination, so the
         // destination cannot be clobbered by a file that appears after a check.
         if (::MoveFileExW(from.c_str(), to.c_str(), 0) != 0)
@@ -107,6 +120,13 @@ namespace core::fs
 
         return Error{ErrorCode::IoFailure,
                      std::format("cannot rename '{}' (error {})", ToUtf8(from), error)};
+#else
+        // std::filesystem::rename replaces an existing destination, which this function
+        // must never do; a correct port needs the platform's own non-replacing move.
+        return Error{ErrorCode::Unsupported,
+                     std::format("renaming '{}' is not implemented on this platform",
+                                 ToUtf8(from))};
+#endif
     }
 
     Result<std::filesystem::path> Duplicate(const std::filesystem::path& path)
@@ -141,6 +161,7 @@ namespace core::fs
             return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(path))};
         }
 
+#ifdef CORE_PLATFORM_WINDOWS
         // SHFILEOPSTRUCTW::pFrom is a list of paths terminated by an EXTRA null. Passing
         // an ordinary null-terminated string makes the API read past the buffer.
         std::wstring source = path.wstring();
@@ -161,6 +182,12 @@ namespace core::fs
         }
 
         return Result<void>::Ok();
+#else
+        return Error{ErrorCode::Unsupported,
+                     std::format("moving '{}' to the recycle bin is not implemented on "
+                                 "this platform",
+                                 ToUtf8(path))};
+#endif
     }
 
     std::filesystem::path MakeUniquePath(const std::filesystem::path& path)

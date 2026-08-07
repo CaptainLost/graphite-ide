@@ -4,9 +4,11 @@
 
 #include "Core/Fs/FileSystem.h"
 
-#include <windows.h>
+#ifdef CORE_PLATFORM_WINDOWS
+    #include <windows.h>
 
-#include <shellapi.h>
+    #include <shellapi.h>
+#endif
 
 namespace core
 {
@@ -19,6 +21,7 @@ namespace core
                          std::format("'{}' no longer exists", fs::ToUtf8(path))};
         }
 
+#ifdef CORE_PLATFORM_WINDOWS
         // explorer.exe only understands backslashes after /select. Handed a path with
         // forward slashes — which is what a command-line argument or a settings file
         // usually carries — it silently ignores the argument and opens a default folder
@@ -49,5 +52,11 @@ namespace core
         }
 
         return Result<void>::Ok();
+#else
+        return Error{ErrorCode::Unsupported,
+                     std::format("opening a file browser for '{}' is not implemented on "
+                                 "this platform",
+                                 fs::ToUtf8(path))};
+#endif
     }
 }
