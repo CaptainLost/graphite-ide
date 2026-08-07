@@ -85,7 +85,7 @@ namespace ide
         {
             m_windowFocused = true;
 
-            if (m_secondsUnfocused >= kReloadAfterSecondsAway)
+            if (m_secondsUnfocused >= kReloadAfterSecondsAway && m_workspace.IsOpen())
             {
                 CORE_TRACE("Reloading the workspace after {:.1f}s away", m_secondsUnfocused);
                 m_workspace.Reload();
