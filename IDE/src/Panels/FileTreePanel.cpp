@@ -401,6 +401,19 @@ namespace ide
             m_focusRenameField = false;
         }
 
+        // A directory's label sits to the right of its arrow, so shift the field by the
+        // same amount — otherwise the name visibly jumps left the moment editing starts.
+        // Files have no arrow and need no shift.
+        constexpr float kFieldPaddingX = 2.0f;
+        const float indent =
+            node.isDirectory ? ImGui::GetTreeNodeToLabelSpacing() - kFieldPaddingX : 0.0f;
+
+        if (indent > 0.0f)
+            ImGui::Indent(indent);
+
+        // The theme's frame padding is sized for buttons and would make the edited row
+        // taller than its neighbours, shoving the rest of the tree down.
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kFieldPaddingX, 0.0f));
         ImGui::SetNextItemWidth(-1.0f);
 
         const bool committed =
@@ -418,13 +431,16 @@ namespace ide
         // mistake and clicked away still ends instead of leaving the row stuck.
         const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
 
+        ImGui::PopStyleVar();
+
+        if (indent > 0.0f)
+            ImGui::Unindent(indent);
+
         if (cancelled)
         {
             m_renamingPath.clear();
-            return true;
         }
-
-        if (committed || deactivated)
+        else if (committed || deactivated)
         {
             RecordAction(PendingAction{PendingAction::Kind::Rename, node.path, m_renameBuffer.data()});
             m_renamingPath.clear();
