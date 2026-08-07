@@ -4,6 +4,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Fs/ChangeCollector.h"
 
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
@@ -55,6 +56,12 @@ namespace core
         /// paths at all. A caller cannot make that mistake with a single result.
         [[nodiscard]] Changes TakeSettled();
 
+        /// False once the watching thread has given up — the directory was deleted, or
+        /// the OS refused a notification. From that point TakeSettled reports nothing
+        /// ever again, which is indistinguishable from a quiet disk, so a consumer that
+        /// cares has to ask.
+        [[nodiscard]] bool IsRunning() const noexcept { return m_running.load(); }
+
     private:
         DirectoryWatcher() = default;
 
@@ -65,6 +72,11 @@ namespace core
         std::thread m_thread;
         std::mutex m_mutex;              // guards m_collector
         ChangeCollector m_collector;
+
+        /// Atomic rather than under the mutex: the reader is a UI frame asking a yes/no
+        /// question, and making it queue behind the worker's writes would be paying for
+        /// a guarantee it does not need.
+        std::atomic<bool> m_running{true};
 
         /// Opaque on purpose: these are Win32 HANDLEs, and the header must not drag
         /// windows.h into every translation unit that watches a directory.

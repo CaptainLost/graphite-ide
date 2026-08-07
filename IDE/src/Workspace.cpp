@@ -41,6 +41,10 @@ namespace ide
         TryOpenRepository();
         m_tree.Refresh(m_tree.Root());
 
+        // A new folder gets a fresh resume budget: the previous one having failed says
+        // nothing about this one.
+        m_watcherResumed = false;
+
         if (auto watcher = core::DirectoryWatcher::Start(root); watcher)
         {
             m_watcher = std::move(watcher).Value();
@@ -96,33 +100,124 @@ namespace ide
         if (!m_watcher)
             return;
 
+        if (!m_watcher->IsRunning())
+        {
+            HandleDeadWatcher();
+            return;
+        }
+
         const core::DirectoryWatcher::Changes changed = m_watcher->TakeSettled();
 
         if (changed.directories.empty() && !changed.overflowed)
             return;
 
-        if (changed.overflowed)
+        // Settled before the directories are refreshed, not after. Installing or dropping
+        // the ignore query changes what every node should say, so a refresh that ran
+        // first would bake in the previous answer and hold it until some unrelated change
+        // came along.
+        const bool repositoryChanged = SyncRepository();
+
+        if (repositoryChanged || changed.overflowed)
         {
-            // Individual paths were lost, so nothing narrower than the whole tree is
-            // trustworthy — which also covers whatever paths this batch did carry.
-            // Usually it carries none, so testing the vector first would skip this
-            // entirely.
-            CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
+            // Either every verdict in the tree just became stale, or individual paths
+            // were lost. Both mean nothing narrower than the whole tree is trustworthy —
+            // which also covers whatever paths this batch did carry.
+            if (changed.overflowed)
+                CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
+
             m_tree.Refresh(m_tree.Root());
-        }
-        else
-        {
-            // FindNode runs afresh inside RefreshChanged on every iteration, and it has
-            // to: Refresh rebuilds the children vector, so any FileNode* collected up
-            // front would dangle by the second entry.
-            for (const std::filesystem::path& directory : changed.directories)
-                RefreshChanged(directory);
+            return;
         }
 
-        // A `git init` in a terminal shows up as a change in the root. Retried only while
-        // there is no repository, so the ordinary case costs one pointer test.
+        // FindNode runs afresh inside RefreshChanged on every iteration, and it has to:
+        // Refresh rebuilds the children vector, so any FileNode* collected up front would
+        // dangle by the second entry.
+        for (const std::filesystem::path& directory : changed.directories)
+            RefreshChanged(directory);
+    }
+
+    bool Workspace::SyncRepository()
+    {
         if (!m_repository)
+        {
+            // A `git init` in a terminal. Attempted only while there is none, so the
+            // ordinary case costs one optional test.
             TryOpenRepository();
+            return m_repository.has_value();
+        }
+
+        // A bare repository has no working directory at all, so there is no .git beside
+        // it to look for and the probe below would test a relative path against whatever
+        // the process's working directory happens to be.
+        if (m_repository->WorkingDirectory().empty())
+            return false;
+
+        // Checked against the repository's own working directory rather than m_root: the
+        // workspace can be a subdirectory of the repository, where m_root/.git never
+        // existed in the first place.
+        std::error_code code;
+        const bool present = std::filesystem::exists(m_repository->WorkingDirectory() / ".git",
+                                                     code);
+
+        // `code` being set means the question could not be answered — a denied parent, a
+        // network share that blinked, an indexer holding things briefly. That is not the
+        // same as an answer of "gone", and acting on it would drop a perfectly good
+        // repository and announce it in the log.
+        if (code || present)
+            return false;
+
+        // libgit2 does not notice this on its own. With .git gone it keeps answering from
+        // the handle it already holds, reading .gitignore straight out of the working
+        // tree — so entries would stay dimmed for a folder that is no longer a
+        // repository. Pinned by a test in GitRepositoryTests.cpp.
+        CORE_INFO("The git repository at '{}' is gone",
+                  m_repository->WorkingDirectory().string());
+
+        m_tree.SetIgnoreQuery({});
+        m_repository.reset();
+
+        return true;
+    }
+
+    void Workspace::HandleDeadWatcher()
+    {
+        // Dropped rather than kept: with its thread gone the object reports nothing for
+        // the rest of the session, and clearing it makes the next frame return early
+        // instead of arriving back here.
+        m_watcher.reset();
+
+        if (m_watcherResumed)
+        {
+            CORE_WARN("Giving up watching '{}' for changes: it failed twice",
+                      m_root.string());
+            return;
+        }
+
+        m_watcherResumed = true;
+
+        auto watcher = core::DirectoryWatcher::Start(m_root);
+
+        if (!watcher)
+        {
+            // The usual reason is that the folder was deleted or renamed out from under
+            // the workspace. The tree stays as it is rather than being closed: a stale
+            // view the user can act on beats one that vanishes without being asked.
+            CORE_WARN("Cannot resume watching '{}': {}", m_root.string(),
+                      watcher.GetError().message);
+            return;
+        }
+
+        m_watcher = std::move(watcher).Value();
+
+        // Whatever happened while nothing was watching is simply gone, so the tree is
+        // re-read wholesale rather than trusted — and the repository is settled first,
+        // because .git may well be what disappeared during the blind window. Refreshing
+        // before that would re-ask a repository that is no longer there and bake the
+        // stale answer back in.
+        (void)SyncRepository();
+        m_tree.Refresh(m_tree.Root());
+
+        CORE_INFO("Resumed watching '{}' after a failure", m_root.string());
     }
 
     void Workspace::RefreshChanged(const std::filesystem::path& directory)

@@ -121,3 +121,51 @@ TEST_CASE("Destroying a watcher with no changes pending returns promptly")
     // the directory. This test is the whole reason for the stop event.
     CHECK(std::chrono::steady_clock::now() - before < std::chrono::seconds{2});
 }
+
+TEST_CASE("A change to the repository's exclude file is reported as a root change")
+{
+    TempDirectory temp;
+    temp.MakeDir(".git/info");
+
+    auto watcher = DirectoryWatcher::Start(temp.Path());
+    REQUIRE(watcher.HasValue());
+
+    temp.MakeFile(".git/info/exclude", "build/");
+
+    const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+
+    REQUIRE_FALSE(changes.empty());
+
+    // The root, not the directory holding the file: these rules apply to the whole tree,
+    // and refreshing the root is what re-asks every loaded node.
+    CHECK(changes[0] == temp.Path());
+}
+
+TEST_CASE("A watcher stops running once its directory is deleted")
+{
+    TempDirectory temp;
+
+    auto watcher = DirectoryWatcher::Start(temp.Path());
+    REQUIRE(watcher.HasValue());
+    REQUIRE(watcher.Value()->IsRunning());
+
+    // Deleting the watched directory is what kills the thread in practice, and the whole
+    // point of IsRunning is that the consumer cannot tell this apart from a quiet disk
+    // any other way — TakeSettled simply returns nothing, for ever.
+    std::error_code code;
+    std::filesystem::remove_all(temp.Path(), code);
+    REQUIRE_FALSE(code);
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    bool stopped = false;
+
+    while (!stopped && std::chrono::steady_clock::now() < deadline)
+    {
+        stopped = !watcher.Value()->IsRunning();
+
+        if (!stopped)
+            std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    }
+
+    CHECK(stopped);
+}

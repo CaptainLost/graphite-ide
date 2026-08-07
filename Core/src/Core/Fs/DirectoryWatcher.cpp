@@ -103,6 +103,14 @@ namespace core
 
     void DirectoryWatcher::Run()
     {
+        // Whatever way this function leaves — an orderly stop or a failure — the thread
+        // is gone afterwards and nothing more will be reported.
+        struct RunningFlag
+        {
+            std::atomic<bool>& flag;
+            ~RunningFlag() { flag.store(false); }
+        } runningFlag{m_running};
+
 #ifdef CORE_PLATFORM_WINDOWS
         // DWORD-aligned as ReadDirectoryChangesW requires; a vector<char> would not be.
         std::vector<DWORD> buffer(kBufferBytes / sizeof(DWORD));
@@ -233,6 +241,25 @@ namespace core
     {
 #ifdef CORE_PLATFORM_WINDOWS
         const std::filesystem::path relative = path.lexically_relative(m_root);
+
+        // git keeps a second set of ignore rules here, private to this clone and not
+        // committed. It is the one thing under .git worth hearing about, so it is
+        // matched before the blanket filter below drops the rest.
+        //
+        // Reported as the root rather than as the directory holding it: what changed is
+        // the verdict for every entry in the tree, and refreshing the root is what
+        // re-asks them all.
+        //
+        // Only reachable when the watched directory is the repository's own root. Open a
+        // subdirectory of a repository — or a worktree, whose real git directory lives
+        // elsewhere — and this file sits outside the watched subtree, where nothing can
+        // see it change.
+        if (relative == std::filesystem::path{".git"} / "info" / "exclude")
+        {
+            std::scoped_lock lock{m_mutex};
+            m_collector.Add(m_root, ChangeCollector::Clock::now());
+            return;
+        }
 
         if (IsInsideGitDirectory(relative))
             return;

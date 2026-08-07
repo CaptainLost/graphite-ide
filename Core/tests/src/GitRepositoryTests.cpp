@@ -215,3 +215,33 @@ TEST_CASE("A moved-from repository does not double-free")
     // objects runs at the end of this scope and must not free the same handle twice.
     CHECK_FALSE(moved.WorkingDirectory().empty());
 }
+
+TEST_CASE("An open repository keeps answering after its .git directory is deleted")
+{
+    TempDirectory temp;
+    InitRepository(temp.Path());
+    temp.MakeFile(".gitignore", "*.log\n");
+    temp.MakeFile("build.log", "x");
+
+    auto opened = Repository::Open(temp.Path());
+    REQUIRE(opened.HasValue());
+
+    Repository repository = std::move(opened).Value();
+    REQUIRE(repository.IsIgnored(temp.Path() / "build.log"));
+
+    std::error_code code;
+    std::filesystem::remove_all(temp.Path() / ".git", code);
+    REQUIRE_FALSE(code);
+
+    // Not the intuitive answer, which is why it is pinned here. The folder is no longer
+    // a repository, but .gitignore lives in the working tree rather than in .git, and
+    // libgit2 goes on reading it through the handle it already holds. So the verdict
+    // survives the repository that justified it.
+    //
+    // Callers therefore cannot wait to be told. ide::Workspace::SyncRepository watches
+    // for .git disappearing and drops the repository itself; without that, a folder that
+    // stopped being a repository would keep dimming entries for the rest of the session.
+    INFO("If this fails, libgit2 changed and now invalidates the handle itself — "
+         "re-evaluate whether ide::Workspace::SyncRepository is still needed.");
+    CHECK(repository.IsIgnored(temp.Path() / "build.log"));
+}
