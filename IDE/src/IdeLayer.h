@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IgnoredDisplay.h"
 #include "Workspace.h"
 
 #include "Core/App/Layer.h"
@@ -25,6 +26,7 @@ namespace ide
 
     private:
         void RenderMenuBar();
+        void ApplyIgnoredDisplay(IgnoredDisplay display, bool persist);
 
         std::shared_ptr<core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;
@@ -33,5 +35,6 @@ namespace ide
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;
+        IgnoredDisplay m_ignoredDisplay = IgnoredDisplay::Dim;
     };
 }

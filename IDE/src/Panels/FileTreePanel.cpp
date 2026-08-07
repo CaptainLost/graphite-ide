@@ -481,15 +481,26 @@ namespace ide
         if (!PassesFilter(node))
             return;
 
+        if (node.ignored && m_ignoredDisplay == IgnoredDisplay::Hide)
+            return;
+
         if (!node.isDirectory)
         {
             if (RenderRenameEditor(node))
                 return;
 
+            const bool dimmed = node.ignored && m_ignoredDisplay == IgnoredDisplay::Dim;
+
+            if (dimmed)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+
             const bool selected = m_workspace.SelectedFile() == node.path;
 
             if (ImGui::Selectable(node.name.c_str(), selected))
                 m_workspace.SelectFile(node.path);
+
+            if (dimmed)
+                ImGui::PopStyleColor();
 
             RenderContextMenu(node);
 
@@ -509,17 +520,20 @@ namespace ide
         if (node.expanded)
             flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
-        if (!node.accessible)
+        const bool dimmed =
+            !node.accessible || (node.ignored && m_ignoredDisplay == IgnoredDisplay::Dim);
+
+        if (dimmed)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
         const bool open =
             ImGui::TreeNodeEx(core::fs::ToUtf8(node.path).c_str(), flags, "%s", node.name.c_str());
 
-        if (!node.accessible)
+        if (dimmed)
         {
             ImGui::PopStyleColor();
 
-            if (ImGui::IsItemHovered())
+            if (!node.accessible && ImGui::IsItemHovered())
                 ImGui::SetTooltip("This folder could not be read.");
         }
 
