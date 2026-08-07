@@ -24,3 +24,6 @@ ide.ini
 !vendor/bin/
 !vendor/bin/premake/
 !vendor/bin/premake/premake5.exe
+
+# Internal design docs and plans, kept locally only
+docs/superpowers/
