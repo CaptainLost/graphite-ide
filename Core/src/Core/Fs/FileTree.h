@@ -60,10 +60,11 @@ namespace core
         void Refresh(FileNode& node);
 
         /// Re-points the tree at the same content in a new location, after the root
-        /// directory was renamed or moved on disk. Every node's path is rewritten;
-        /// nothing is read from disk and no other state changes, so the expansion the
-        /// user built up survives — which is the whole reason this exists rather than
-        /// simply reopening the folder.
+        /// directory was renamed or moved on disk. Every node's path is rewritten, and so
+        /// is the root's name, since a rename is exactly what changes it. Nothing is read
+        /// from disk and nothing else changes, so the expansion the user built up
+        /// survives — which is the whole reason this exists rather than simply reopening
+        /// the folder.
         ///
         /// Does nothing when there is no root.
         void Rebase(const std::filesystem::path& newRoot);

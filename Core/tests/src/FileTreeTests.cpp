@@ -464,3 +464,35 @@ TEST_CASE("Replacing the query does not disturb already loaded nodes")
 
     CHECK(tree.Root().children[0].ignored);
 }
+
+TEST_CASE("Rebase renames the root node to match its new location")
+{
+    TempDirectory temp;
+    const std::filesystem::path before = temp.MakeDir("before");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(before).HasValue());
+    REQUIRE(tree.Root().name == "before");
+
+    tree.Rebase(temp.Path() / "after");
+
+    // The root is the one node a rename can rename. Checking only the path would let the
+    // tree go on displaying the old folder name beside a perfectly correct path — which
+    // is what the panel actually shows the user.
+    CHECK(tree.Root().name == "after");
+    CHECK(tree.Root().path == temp.Path() / "after");
+}
+
+TEST_CASE("Rebase onto a drive root leaves the node with a usable name")
+{
+    TempDirectory temp;
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+
+    tree.Rebase("D:/");
+
+    // A drive root has no filename component, so the plain answer would be an empty
+    // label rendering as a blank row.
+    CHECK_FALSE(tree.Root().name.empty());
+}

@@ -246,7 +246,9 @@ TEST_CASE("A directory that stays put is never reported as moved")
     // which is why the baseline comes from the handle rather than from that argument.
     temp.MakeFile("b.txt", "x");
 
-    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{3}).has_value());
+    // Five seconds against a two-second interval, so at least two polls run even on a
+    // loaded machine. At three the test could pass by simply not having polled.
+    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{5}).has_value());
 }
 
 TEST_CASE("A move is reported once, not on every poll")
@@ -265,7 +267,9 @@ TEST_CASE("A move is reported once, not on every poll")
 
     // The consumer acts on it by re-pointing the workspace; being told again afterwards
     // would make it do that work over and over.
-    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{3}).has_value());
+    // Five seconds against a two-second interval, so at least two polls run even on a
+    // loaded machine. At three the test could pass by simply not having polled.
+    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{5}).has_value());
 }
 
 TEST_CASE("A move is noticed even while the directory is busy")
@@ -282,7 +286,7 @@ TEST_CASE("A move is noticed even while the directory is busy")
 
     // Writing faster than kMoveCheckInterval. The check used to run only when the wait
     // expired, and every notification restarts that wait — so a directory under a build
-    // would never be checked at all, which is exactly when this matters least to miss.
+    // would never be checked at all, which is exactly when a move is most likely and least affordable to miss.
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
     std::optional<std::filesystem::path> moved;
 

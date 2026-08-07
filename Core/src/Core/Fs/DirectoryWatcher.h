@@ -56,7 +56,7 @@ namespace core
         /// The changes settled since the last call, once the disk has been quiet for
         /// kQuietPeriod. Safe to call every frame.
         ///
-        /// Both fields come back together on purpose. They were once two calls, and the
+        /// The fields come back together on purpose. They were once two calls, and the
         /// first consumer written against that API returned early on an empty vector and
         /// so could never observe an overflow — which is the one case that reports no
         /// paths at all. A caller cannot make that mistake with a single result.
@@ -86,7 +86,7 @@ namespace core
 
         std::filesystem::path m_root;
         std::thread m_thread;
-        std::mutex m_mutex;              // guards m_collector
+        std::mutex m_mutex;              // guards m_collector and m_movedTo
         ChangeCollector m_collector;
 
         /// Atomic rather than under the mutex: the reader is a UI frame asking a yes/no

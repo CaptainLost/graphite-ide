@@ -319,7 +319,21 @@ namespace core
 
         // An unanswerable handle is not a move. It happens while the directory is being
         // deleted, and that path ends the loop by itself through the failing read.
-        if (current.empty() || current == m_watchedPath)
+        if (current.empty())
+            return;
+
+        // An empty baseline means the query failed back in Start rather than that the
+        // directory was somewhere else. Adopt the first answer instead of announcing a
+        // move to where we already are, which would cost the workspace a pointless
+        // watcher restart and repository reopen.
+        if (m_watchedPath.empty())
+        {
+            m_watchedPath = current;
+            m_root = current;
+            return;
+        }
+
+        if (current == m_watchedPath)
             return;
 
         CORE_INFO("The watched directory moved from '{}' to '{}'", m_watchedPath.string(),
