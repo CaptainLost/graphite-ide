@@ -72,3 +72,27 @@ TEST_CASE("Clear odlacza warstwy w kolejnosci odwrotnej do dodania")
     CHECK(journal[1] == "a:detach");
     CHECK(stack.Size() == 0);
 }
+
+TEST_CASE("Dodanie warstwy w trakcie iteracji po kopii nie uniewaznia przebiegu")
+{
+    std::vector<std::string> journal;
+    core::LayerStack stack;
+
+    stack.Push(std::make_unique<RecordingLayer>("a", journal));
+    stack.Push(std::make_unique<RecordingLayer>("b", journal));
+    journal.clear();
+
+    std::vector<core::Layer*> snapshot;
+    for (auto& layer : stack)
+        snapshot.push_back(layer.get());
+
+    for (core::Layer* layer : snapshot)
+    {
+        layer->OnUpdate(0.016f);
+        stack.Push(std::make_unique<RecordingLayer>("dodana", journal));
+    }
+
+    CHECK(stack.Size() == 4);
+    CHECK(journal[0] == "a:update");
+    CHECK(journal[2] == "b:update");
+}

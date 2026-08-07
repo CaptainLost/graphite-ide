@@ -7,6 +7,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace core
 {
@@ -44,6 +45,7 @@ namespace core
         std::unique_ptr<Window> m_window;
         ImGuiRenderer m_gui;
         LayerStack m_layers;
+        std::vector<Layer*> m_frameLayers;
         bool m_running = false;
         double m_lastFrameTime = 0.0;
 

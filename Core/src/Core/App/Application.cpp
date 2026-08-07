@@ -74,12 +74,19 @@ namespace core
 
             m_window->PollEvents();
 
+            // Iterujemy po kopii wskaznikow: warstwa moze w trakcie klatki dodac kolejna warstwe,
+            // a przealokowany vector uniewaznilby iterator. Kopia chroni przed dodaniem — gdyby
+            // kiedys pojawilo sie usuwanie warstw, trzeba ja bedzie przemyslec ponownie.
+            m_frameLayers.clear();
             for (auto& layer : m_layers)
+                m_frameLayers.push_back(layer.get());
+
+            for (Layer* layer : m_frameLayers)
                 layer->OnUpdate(delta);
 
             m_gui.BeginFrame();
 
-            for (auto& layer : m_layers)
+            for (Layer* layer : m_frameLayers)
                 layer->OnUIRender();
 
             m_gui.EndFrame(*m_window);
