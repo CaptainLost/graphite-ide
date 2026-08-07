@@ -53,9 +53,17 @@
 #define GIT_IO_WSAPOLL 1
 
 /* SHA1 and SHA256 both implemented via the native Windows CryptoAPI/CNG
- * backend (src/util/hash/win32.c), selected via cmake/SelectHashes.cmake's
- * "Win32" branch. This avoids pulling in the bundled sha1dc/rfc6234
- * implementations for a single vendored source file. */
+ * backend (src/util/hash/win32.c), a deliberate choice rather than what
+ * cmake/SelectHashes.cmake would pick by default for this configuration
+ * (no TLS backend, USE_SHA1/USE_SHA256 left at their own ON default): that
+ * unmodified default is GIT_SHA1_COLLISIONDETECT for SHA1 and
+ * GIT_SHA256_BUILTIN for SHA256. The Win32 backend is one of the other
+ * branches SelectHashes.cmake supports (reached when USE_SHA1/USE_SHA256
+ * are set to "HTTPS" and the HTTPS backend resolves to Schannel/WinHTTP);
+ * it was selected here because the task brief's Step 3 starting-file list
+ * names src/util/hash/win32.c explicitly, and it avoids pulling in the
+ * bundled sha1dc/rfc6234 implementations for a single vendored source
+ * file. It compiles clean and works; it is simply not the default. */
 #define GIT_SHA1_WIN32 1
 #define GIT_SHA256_WIN32 1
 
