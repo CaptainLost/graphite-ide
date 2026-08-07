@@ -32,14 +32,14 @@ namespace ide
         /// from OnUpdate so its early return governs only itself.
         void UpdateFocusReload(float deltaSeconds);
 
-        /// How long the window has to have been away before coming back triggers a
-        /// reload. Alt-tabbing to glance at something and returning is not a reason to
-        /// re-read every open directory, and the watcher has been running the whole time
-        /// anyway — this is only for the ignore rules it cannot see.
+        /// How long the application has to have been in the background before coming
+        /// back triggers a reload. Alt-tabbing to glance at something and returning is
+        /// not a reason to re-read every open directory, and the watcher has been running
+        /// the whole time anyway — this is only for the ignore rules it cannot see.
         static constexpr float kReloadAfterSecondsAway = 2.0f;
 
-        bool m_windowFocused = true;
-        float m_secondsUnfocused = 0.0f;
+        bool m_appForeground = true;
+        float m_secondsInBackground = 0.0f;
 
         std::shared_ptr<core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;

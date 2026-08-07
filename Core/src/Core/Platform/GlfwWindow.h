@@ -18,8 +18,6 @@ namespace core
         [[nodiscard]] bool ShouldClose() const override;
         void RequestClose() override;
 
-        [[nodiscard]] bool IsFocused() const override;
-
         void FramebufferSize(int& width, int& height) const override;
         void SetVSync(bool enabled) override;
 
