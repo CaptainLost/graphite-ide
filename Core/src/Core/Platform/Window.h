@@ -28,7 +28,6 @@ namespace core
         [[nodiscard]] virtual bool ShouldClose() const = 0;
         virtual void RequestClose() = 0;
 
-
         virtual void FramebufferSize(int& width, int& height) const = 0;
         virtual void SetVSync(bool enabled) = 0;
 
