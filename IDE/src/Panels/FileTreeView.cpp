@@ -1,4 +1,4 @@
-#include "Panels/FileTreePanel.h"
+#include "Panels/FileTreeView.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileOperations.h"
@@ -12,12 +12,11 @@
 
 namespace ide
 {
-    FileTreePanel::FileTreePanel(Workspace& workspace)
-        : core::Panel("files", "Files"), m_workspace(workspace)
+    FileTreeView::FileTreeView(Workspace& workspace) : m_workspace(workspace)
     {
     }
 
-    void FileTreePanel::OnUIRender()
+    void FileTreeView::Render()
     {
         if (!m_workspace.IsOpen())
         {
@@ -42,7 +41,7 @@ namespace ide
         RenderDeleteConfirmation();
     }
 
-    void FileTreePanel::RenderToolbar()
+    void FileTreeView::RenderToolbar()
     {
         if (ImGui::Button("Refresh"))
         {
@@ -60,7 +59,7 @@ namespace ide
         m_filter.Draw("##fileFilter");
     }
 
-    void FileTreePanel::RenderEmptyState()
+    void FileTreeView::RenderEmptyState()
     {
         constexpr const char* kMessage = "No folder open.";
         const ImVec2 buttonSize{140.0f, 0.0f};
@@ -84,7 +83,7 @@ namespace ide
             OpenFolderInteractively(m_workspace);
     }
 
-    bool FileTreePanel::PassesFilter(const core::FileNode& node) const
+    bool FileTreeView::PassesFilter(const core::FileNode& node) const
     {
         if (!m_filter.IsActive())
             return true;
@@ -103,7 +102,7 @@ namespace ide
         return false;
     }
 
-    void FileTreePanel::RenderContextMenu(const core::FileNode& node)
+    void FileTreeView::RenderContextMenu(const core::FileNode& node)
     {
         // BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
         // the menu be dragged anywhere by its body — a popup has no title bar, so its
@@ -207,7 +206,7 @@ namespace ide
         ImGui::EndPopup();
     }
 
-    core::FileNode* FileTreePanel::FindNode(const std::filesystem::path& path)
+    core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
     {
         if (!m_workspace.IsOpen())
             return nullptr;
@@ -231,7 +230,7 @@ namespace ide
         return nullptr;
     }
 
-    void FileTreePanel::RefreshParentOf(const std::filesystem::path& path)
+    void FileTreeView::RefreshParentOf(const std::filesystem::path& path)
     {
         core::FileNode* parent = FindNode(path.parent_path());
 
@@ -240,7 +239,7 @@ namespace ide
             m_workspace.Tree().Refresh(*parent);
     }
 
-    void FileTreePanel::RecordAction(PendingAction action)
+    void FileTreeView::RecordAction(PendingAction action)
     {
         // One slot, two producers: the context menu and the rename editor can both fire
         // in the same frame. Assigning the whole struct keeps stale fields from leaking
@@ -254,7 +253,7 @@ namespace ide
         m_pending = std::move(action);
     }
 
-    void FileTreePanel::ExecutePendingAction()
+    void FileTreeView::ExecutePendingAction()
     {
         const PendingAction action = m_pending;
         m_pending = PendingAction{};
@@ -275,7 +274,7 @@ namespace ide
         }
     }
 
-    void FileTreePanel::HandleDelete(const PendingAction& action)
+    void FileTreeView::HandleDelete(const PendingAction& action)
     {
         // Deletion is the one irreversible-looking action, so it goes through a
         // confirmation rather than straight to the filesystem.
@@ -284,13 +283,13 @@ namespace ide
         m_openDeleteConfirmation = true;
     }
 
-    void FileTreePanel::HandleRefresh(const PendingAction& action)
+    void FileTreeView::HandleRefresh(const PendingAction& action)
     {
         if (core::FileNode* node = FindNode(action.target); node != nullptr)
             m_workspace.Tree().Refresh(*node);
     }
 
-    void FileTreePanel::HandleRename(const PendingAction& action)
+    void FileTreeView::HandleRename(const PendingAction& action)
     {
         if (!core::fs::IsValidFileName(action.name))
         {
@@ -313,7 +312,7 @@ namespace ide
         RefreshParentOf(action.target);
     }
 
-    void FileTreePanel::HandleDuplicate(const PendingAction& action)
+    void FileTreeView::HandleDuplicate(const PendingAction& action)
     {
         const auto copied = core::fs::Duplicate(action.target);
 
@@ -326,7 +325,7 @@ namespace ide
         RefreshParentOf(action.target);
     }
 
-    void FileTreePanel::HandleCreate(const PendingAction& action)
+    void FileTreeView::HandleCreate(const PendingAction& action)
     {
         if (!core::fs::IsValidFileName(action.name))
         {
@@ -364,7 +363,7 @@ namespace ide
         CORE_INFO("Created '{}'", core::fs::ToUtf8(target));
     }
 
-    void FileTreePanel::RenderDeleteConfirmation()
+    void FileTreeView::RenderDeleteConfirmation()
     {
         if (m_openDeleteConfirmation)
         {
@@ -404,7 +403,7 @@ namespace ide
         ImGui::EndPopup();
     }
 
-    bool FileTreePanel::RenderRenameEditor(const core::FileNode& node)
+    bool FileTreeView::RenderRenameEditor(const core::FileNode& node)
     {
         if (m_renamingPath != node.path)
             return false;
@@ -476,7 +475,7 @@ namespace ide
     // node.children by reference. Context menu commands therefore record a
     // PendingAction instead of acting immediately; ExecutePendingAction runs the
     // recorded action after the walk finishes, once it is safe to mutate.
-    void FileTreePanel::RenderNode(core::FileNode& node)
+    void FileTreeView::RenderNode(core::FileNode& node)
     {
         if (!PassesFilter(node))
             return;

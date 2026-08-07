@@ -1,13 +1,17 @@
 #pragma once
 
+#include "WorkspaceSettings.h"
+
 #include "Core/Event/EventBus.h"
 #include "Core/Fs/DirectoryWatcher.h"
 #include "Core/Fs/FileTree.h"
 #include "Core/Git/Repository.h"
+#include "Core/Sln/SolutionReader.h"
 
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace ide
 {
@@ -83,6 +87,29 @@ namespace ide
             return m_selectedFile;
         }
 
+        /// The solution being shown, when one was found and parsed.
+        ///
+        /// Not named Solution(): a member function of that name would shadow the type
+        /// core::sln::Solution everywhere inside this class.
+        [[nodiscard]] const std::optional<core::sln::Solution>& LoadedSolution() const noexcept
+        {
+            return m_solution;
+        }
+
+        /// Every solution file found in the workspace root. More than one puts a chooser
+        /// in the panel header.
+        [[nodiscard]] const std::vector<std::filesystem::path>& SolutionCandidates() const noexcept
+        {
+            return m_solutionCandidates;
+        }
+
+        /// Switches to one of the candidates and remembers the choice.
+        void SelectSolution(const std::filesystem::path& path);
+
+        /// Settings stored in this folder's .graphite directory. Not named Settings():
+        /// that would shadow the ide::Settings type throughout this class.
+        [[nodiscard]] WorkspaceSettings& FolderSettings() noexcept { return m_settings; }
+
     private:
         [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);
         void RefreshChanged(const std::filesystem::path& directory);
@@ -97,6 +124,9 @@ namespace ide
         void HandleDeadWatcher();
 
         void HandleRootMoved(const std::filesystem::path& destination);
+
+        void FindSolutions();
+        void LoadSolution();
 
         core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this
@@ -114,6 +144,15 @@ namespace ide
         bool m_watcherResumed = false;
         std::filesystem::path m_root;
         std::filesystem::path m_selectedFile;
+
+        std::optional<core::sln::Solution> m_solution;
+        std::vector<std::filesystem::path> m_solutionCandidates;
+        std::filesystem::path m_selectedSolution;
+
+        /// Rebuilt by Open for each root, so it always points at the folder in front of
+        /// the user. Default-constructed with an empty root, where reads give nothing and
+        /// writes do nothing.
+        WorkspaceSettings m_settings{std::filesystem::path{}};
     };
 
     /// Shows the system folder picker and opens the chosen folder. Cancelling does

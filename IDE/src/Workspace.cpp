@@ -6,6 +6,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/FileDialog.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace ide
@@ -56,6 +57,14 @@ namespace ide
             m_watcher.reset();
         }
 
+        // Rebuilt for the new root before anything reads it: the store is per folder, so
+        // the previous workspace's file must not be consulted for this one.
+        m_settings = WorkspaceSettings{root};
+        m_selectedSolution = core::fs::FromUtf8(m_settings.Get("selectedSolution"));
+
+        FindSolutions();
+        LoadSolution();
+
         Settings::SaveLastFolder(root);
         m_events.Publish(WorkspaceOpenedEvent{root});
 
@@ -80,6 +89,10 @@ namespace ide
         m_tree = core::FileTree{};
         m_root.clear();
         m_selectedFile.clear();
+
+        m_solution.reset();
+        m_solutionCandidates.clear();
+        m_selectedSolution.clear();
 
         // An empty stored value reads back as "nothing remembered", so this is how the
         // closed state survives a restart.
@@ -134,6 +147,9 @@ namespace ide
                 CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 
             m_tree.Refresh(m_tree.Root());
+
+            FindSolutions();
+            LoadSolution();
             return;
         }
 
@@ -142,6 +158,11 @@ namespace ide
         // dangle by the second entry.
         for (const std::filesystem::path& directory : changed.directories)
             RefreshChanged(directory);
+
+        // A regenerated solution or project file arrives as an ordinary change. Re-reading
+        // the whole solution is deliberate: it is milliseconds, and the watcher's quiet
+        // period has already collapsed a burst of regenerated files into one batch.
+        LoadSolution();
     }
 
     void Workspace::Reload()
@@ -155,6 +176,9 @@ namespace ide
         (void)SyncRepository();
 
         m_tree.Refresh(m_tree.Root());
+
+        FindSolutions();
+        LoadSolution();
     }
 
     bool Workspace::SyncRepository()
@@ -347,6 +371,86 @@ namespace ide
             { return m_repository && m_repository->IsIgnored(path); });
 
         CORE_INFO("Git repository detected at '{}'", m_repository->WorkingDirectory().string());
+    }
+
+    void Workspace::FindSolutions()
+    {
+        m_solutionCandidates.clear();
+
+        const auto entries = core::fs::ReadDirectory(m_root);
+
+        if (!entries)
+            return;
+
+        std::vector<std::filesystem::path> legacy;
+
+        for (const core::fs::DirectoryEntry& entry : entries.Value())
+        {
+            if (entry.isDirectory)
+                continue;
+
+            if (entry.path.extension() == ".slnx")
+                m_solutionCandidates.push_back(entry.path);
+            else if (entry.path.extension() == ".sln")
+                legacy.push_back(entry.path);
+        }
+
+        // A .sln beside a .slnx of the same name is the same solution in the older
+        // format, so it is not offered twice. The .slnx wins: it is what Visual Studio
+        // 2026 writes, and in this repository the .sln is a stale leftover.
+        for (const std::filesystem::path& candidate : legacy)
+        {
+            const bool supersededByXml =
+                std::any_of(m_solutionCandidates.begin(), m_solutionCandidates.end(),
+                            [&candidate](const std::filesystem::path& xml)
+                            { return xml.stem() == candidate.stem(); });
+
+            if (!supersededByXml)
+                m_solutionCandidates.push_back(candidate);
+        }
+
+        std::sort(m_solutionCandidates.begin(), m_solutionCandidates.end());
+    }
+
+    void Workspace::LoadSolution()
+    {
+        m_solution.reset();
+
+        if (m_solutionCandidates.empty())
+        {
+            m_selectedSolution.clear();
+            return;
+        }
+
+        // A remembered choice that is no longer on disk falls back to the first, rather
+        // than leaving the view empty for a reason the user cannot see.
+        const bool remembered =
+            std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(),
+                      m_selectedSolution) != m_solutionCandidates.end();
+
+        if (!remembered)
+            m_selectedSolution = m_solutionCandidates.front();
+
+        auto solution = core::sln::ReadSolution(m_selectedSolution);
+
+        if (!solution)
+        {
+            CORE_WARN("Cannot read '{}': {}", m_selectedSolution.string(),
+                      solution.GetError().message);
+            return;
+        }
+
+        m_solution.emplace(std::move(solution).Value());
+
+        CORE_INFO("Solution '{}' loaded with {} projects", m_solution->name,
+                  m_solution->projectCount);
+    }
+
+    void Workspace::SelectSolution(const std::filesystem::path& path)
+    {
+        m_selectedSolution = path;
+        m_settings.Set("selectedSolution", core::fs::ToUtf8(path));
+        LoadSolution();
     }
 
     void OpenFolderInteractively(Workspace& workspace)

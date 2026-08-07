@@ -1,7 +1,7 @@
 #include "IdeLayer.h"
 
 #include "Panels/ConsolePanel.h"
-#include "Panels/FileTreePanel.h"
+#include "Panels/ExplorerPanel.h"
 #include "Panels/PlaceholderPanel.h"
 #include "Settings.h"
 
@@ -34,7 +34,7 @@ namespace ide
 
     void IdeLayer::OnAttach()
     {
-        m_panels.Add(std::make_unique<FileTreePanel>(m_workspace));
+        m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace));
 
         auto* editor = static_cast<PlaceholderPanel*>(
             m_panels.Add(std::make_unique<PlaceholderPanel>("editor", "Editor",
@@ -126,7 +126,7 @@ namespace ide
     {
         m_ignoredDisplay = display;
 
-        if (auto* files = static_cast<FileTreePanel*>(m_panels.Find("files")); files != nullptr)
+        if (auto* files = static_cast<ExplorerPanel*>(m_panels.Find("files")); files != nullptr)
             files->SetIgnoredDisplay(display);
 
         if (persist)
