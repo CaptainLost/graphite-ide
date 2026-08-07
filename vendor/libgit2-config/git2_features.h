@@ -1,0 +1,86 @@
+/*
+ * Hand-written replacement for the CMake-generated `git2_features.h`.
+ *
+ * libgit2 normally derives this header from
+ * `src/util/git2_features.h.in` via `configure_file()` in its CMake build.
+ * Since this project vendors libgit2 as a plain premake StaticLib instead of
+ * running its CMake configuration, this file plays that role by hand.
+ *
+ * Written for libgit2 v1.8.4. It must be revisited whenever the vendored
+ * `vendor/libgit2` submodule is upgraded to a different version, because the
+ * set of available defines (and the logic that would have chosen them) can
+ * change between releases.
+ *
+ * Every define below appears in `src/util/git2_features.h.in` at v1.8.4.
+ * Nothing else may be added here: an unrecognised define is silently
+ * ignored by the sources and will not surface as a build error.
+ *
+ * Configuration this file encodes: Windows x64, threads enabled, bundled
+ * (builtin) regex, bundled (builtin) HTTP parser, no TLS backend and no
+ * SSH/NTLM/GSSAPI. This is *not* a "no network" build: the http:// and
+ * git:// smart transports are unconditionally referenced by
+ * src/libgit2/transport.c's static transport table (only ssh:// is behind
+ * an #ifdef), so they always compile in. Without a TLS backend, an actual
+ * `https://` fetch fails at runtime by design — this integration
+ * deliberately buys only local repository queries plus a linkable,
+ * runnable library. See vendor/premake/libgit2.lua for the full file-list
+ * derivation, including the list of files deliberately left out and why.
+ */
+#ifndef INCLUDE_features_h__
+#define INCLUDE_features_h__
+
+/* Threads are enabled (CMake option USE_THREADS defaults to ON;
+ * see src/CMakeLists.txt). */
+#define GIT_THREADS 1
+
+/* Target is a 64-bit architecture (CMake sets this when
+ * CMAKE_SIZEOF_VOID_P is 8; see src/CMakeLists.txt). */
+#define GIT_ARCH_64 1
+
+/* Bundled PCRE regex backend, as requested by the task brief. On the
+ * CMake side this is REGEX_BACKEND=builtin in cmake/SelectRegex.cmake. */
+#define GIT_REGEX_BUILTIN 1
+
+/* MSVC's qsort_s() has the signature checked by the GIT_QSORT_MSC probe in
+ * src/CMakeLists.txt; MSVC on Windows always provides it. */
+#define GIT_QSORT_MSC 1
+
+/* WSAPoll() is unconditionally selected on Windows: cmake/../src/CMakeLists.txt
+ * has `if(WIN32) set(GIT_IO_WSAPOLL 1)`. */
+#define GIT_IO_WSAPOLL 1
+
+/* SHA1 and SHA256 both implemented via the native Windows CryptoAPI/CNG
+ * backend (src/util/hash/win32.c), rather than the CMake default for this
+ * configuration (no TLS backend, USE_SHA1/USE_SHA256 left at their own ON
+ * default), which is GIT_SHA1_COLLISIONDETECT for SHA1 and
+ * GIT_SHA256_BUILTIN for SHA256.
+ *
+ * GIT_SHA1_COLLISIONDETECT (the sha1dc implementation) buys detection of
+ * SHAttered-class chosen-prefix collision attacks while hashing objects —
+ * it notices when two different inputs have been deliberately crafted to
+ * hash to the same SHA-1, which plain SHA-1 cannot. Taking the Win32
+ * backend instead trades that detection away, in exchange for not
+ * vendoring sha1dc and the bundled rfc6234 SHA-256 implementation:
+ * roughly fifteen fewer source files, using CryptoAPI/CNG (already present
+ * on every target Windows install) instead.
+ *
+ * That trade was judged acceptable here because this integration only
+ * hashes objects for the user's own local repositories — there is no
+ * scenario where a third party supplies a crafted object for this process
+ * to hash, which is the threat collision detection defends against.
+ * Anyone re-deriving this header for a different use (for instance,
+ * hashing objects fetched from an untrusted remote) should reconsider this
+ * choice rather than carry it forward unexamined. */
+#define GIT_SHA1_WIN32 1
+#define GIT_SHA256_WIN32 1
+
+/* Bundled (builtin) llhttp parser backs the smart HTTP transport, which
+ * src/libgit2/transport.c references unconditionally. This is the CMake
+ * default too (cmake/SelectHTTPParser.cmake's else() branch, taken when no
+ * system http-parser/llhttp is requested) and needs nothing beyond the
+ * three self-contained files in deps/llhttp (no system library). Do not
+ * define GIT_HTTPPARSER_HTTPPARSER or GIT_HTTPPARSER_LLHTTP: both mean "use
+ * a system-installed parser", which is not the case here. */
+#define GIT_HTTPPARSER_BUILTIN 1
+
+#endif
