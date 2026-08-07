@@ -35,6 +35,29 @@ namespace ide
         m_root = root;
         m_selectedFile.clear();
 
+        // A folder that is not a repository is completely normal, so a failure here is
+        // logged at trace level and leaves the tree with no ignore query at all.
+        m_repository.reset();
+        m_tree.SetIgnoreQuery({});
+
+        if (auto repository = core::git::Repository::Open(root); repository)
+        {
+            m_repository.emplace(std::move(repository).Value());
+
+            m_tree.SetIgnoreQuery(
+                [this](const std::filesystem::path& path, bool) -> bool
+                { return m_repository->IsIgnored(path); });
+
+            m_tree.Refresh(m_tree.Root());
+
+            CORE_INFO("Git repository detected at '{}'", m_repository->WorkingDirectory().string());
+        }
+        else
+        {
+            CORE_TRACE("'{}' is not inside a git repository: {}", root.string(),
+                       repository.GetError().message);
+        }
+
         Settings::SaveLastFolder(root);
         m_events.Publish(WorkspaceOpenedEvent{root});
 
@@ -49,6 +72,8 @@ namespace ide
 
         const std::filesystem::path closed = m_root;
 
+        m_repository.reset();
+        m_tree.SetIgnoreQuery({});
         m_tree = core::FileTree{};
         m_root.clear();
         m_selectedFile.clear();

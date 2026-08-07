@@ -2,8 +2,10 @@
 
 #include "Core/Event/EventBus.h"
 #include "Core/Fs/FileTree.h"
+#include "Core/Git/Repository.h"
 
 #include <filesystem>
+#include <optional>
 
 namespace ide
 {
@@ -42,6 +44,9 @@ namespace ide
         void SelectFile(const std::filesystem::path& path);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
+        /// True when the open folder is inside a git working tree. False is ordinary —
+        /// plenty of folders are not repositories — and simply means nothing is ignored.
+        [[nodiscard]] bool IsInRepository() const noexcept { return m_repository.has_value(); }
         [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_root; }
         [[nodiscard]] core::FileTree& Tree() noexcept { return m_tree; }
         [[nodiscard]] const std::filesystem::path& SelectedFile() const noexcept
@@ -51,6 +56,10 @@ namespace ide
 
     private:
         core::EventBus& m_events;
+        /// Declared before m_tree on purpose: the tree holds a query that reads this
+        /// repository, and members are destroyed in reverse declaration order, so the
+        /// tree must go first.
+        std::optional<core::git::Repository> m_repository;
         core::FileTree m_tree;
         std::filesystem::path m_root;
         std::filesystem::path m_selectedFile;
