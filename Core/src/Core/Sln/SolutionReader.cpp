@@ -7,6 +7,7 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -98,17 +99,33 @@ namespace core::sln
         }
     }
 
-    Result<Solution> ReadSolution(const std::filesystem::path& path)
+    Result<Solution> ReadSolution(const std::filesystem::path& requested)
     {
         std::error_code code;
 
-        if (!std::filesystem::is_regular_file(path, code))
+        if (!std::filesystem::is_regular_file(requested, code))
         {
             return Error{ErrorCode::NotFound,
-                         std::format("no solution file at '{}'", path.string())};
+                         std::format("no solution file at '{}'", requested.string())};
         }
 
-        if (path.extension() != ".slnx")
+        // Resolved once, here, rather than trusting the caller. Every project path is
+        // built by appending to this one, and the model promises absolute paths — a
+        // relative argument would quietly hand back relative projects that only resolve
+        // while the process happens to sit in the right directory.
+        std::filesystem::path path = std::filesystem::absolute(requested, code);
+
+        if (code)
+            path = requested;
+
+        // Compared case-insensitively: the filesystem this runs on is, and rejecting
+        // MyApp.SLNX as an unknown format would be a lie about a perfectly ordinary file.
+        std::string extension = fs::ToUtf8(path.extension());
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char character)
+                       { return static_cast<char>(std::tolower(character)); });
+
+        if (extension != ".slnx")
         {
             return Error{ErrorCode::Unsupported,
                          std::format("'{}' is not a solution format this build can read",

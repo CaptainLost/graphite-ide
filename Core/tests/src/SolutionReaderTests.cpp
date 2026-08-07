@@ -122,11 +122,13 @@ TEST_CASE("Projects land in their folder with an absolute path")
 TEST_CASE("Nested solution folders are nested in the model")
 {
     TempDirectory temp;
+    // The child is declared *before* its parent on purpose. EnsureFolder exists to make
+    // that work, and declaring them in the easy order would leave that unproven.
     const auto file = temp.MakeFile("Nested.slnx", R"(<Solution>
-  <Folder Name="/Group/" />
   <Folder Name="/Group/Inner/">
     <Project Path="a\A.vcxproj" />
   </Folder>
+  <Folder Name="/Group/" />
 </Solution>
 )");
 
@@ -202,16 +204,71 @@ TEST_CASE("A project whose file is missing is marked rather than dropped")
 TEST_CASE("Project contents are left unread by the solution reader")
 {
     TempDirectory temp;
-    const auto file = temp.MakeFile("MyApp.slnx", kSampleSlnx);
+
+    // A real project file, with real contents, sitting exactly where the solution says.
+    // The earlier version of this test used a fixture whose project files did not exist,
+    // so it proved nothing: a reader that opened every project would still have left the
+    // fields untouched. Reading is a separate layer and this is what holds it there.
+    temp.MakeFile("App/App.vcxproj", R"(<?xml version="1.0"?>
+<Project>
+  <ItemGroup>
+    <ClCompile Include="Main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.vcxproj" />
+  </ItemGroup>
+</Project>
+)");
+
+    const auto file = temp.MakeFile("Real.slnx",
+                                    R"(<Solution><Project Path="App\App.vcxproj" /></Solution>)");
 
     const auto solution = core::sln::ReadSolution(file);
     REQUIRE(solution.HasValue());
+    REQUIRE(solution.Value().root.projects.size() == 1);
 
-    const Folder* app = FindFolder(solution.Value().root, "App");
-    REQUIRE(app != nullptr);
-    REQUIRE(app->projects.size() == 1);
+    const Project& project = solution.Value().root.projects[0];
 
-    // Reading what is inside a project is a separate layer with its own readers. Nothing
-    // here opens the .vcxproj — it does not even exist in this fixture.
-    CHECK_FALSE(app->projects[0].contentRead);
+    REQUIRE(project.exists);
+    CHECK_FALSE(project.contentRead);
+    CHECK(project.content.root.files.empty());
+    CHECK(project.content.root.folders.empty());
+    CHECK(project.content.references.empty());
+}
+
+TEST_CASE("A .sln is reported as unsupported rather than misread")
+{
+    TempDirectory temp;
+    const auto file = temp.MakeFile("Legacy.sln", "Microsoft Visual Studio Solution File\n");
+
+    // The header promises this until the legacy parser lands behind the same call, and a
+    // caller offering both formats branches on the code.
+    const auto solution = core::sln::ReadSolution(file);
+
+    REQUIRE_FALSE(solution.HasValue());
+    CHECK(solution.GetError().code == core::ErrorCode::Unsupported);
+}
+
+TEST_CASE("An uppercase extension is still a solution")
+{
+    TempDirectory temp;
+    const auto file = temp.MakeFile("Shouty.SLNX", "<Solution />");
+
+    // The filesystem does not care about the case, so neither may this.
+    const auto solution = core::sln::ReadSolution(file);
+
+    CHECK(solution.HasValue());
+}
+
+TEST_CASE("Valid XML that is not a solution is rejected")
+{
+    TempDirectory temp;
+    const auto file = temp.MakeFile("Wrong.slnx", "<Project><ItemGroup /></Project>");
+
+    // Parses perfectly well and means nothing here — worth its own branch, because the
+    // failure otherwise looks like a corrupt file rather than the wrong one.
+    const auto solution = core::sln::ReadSolution(file);
+
+    REQUIRE_FALSE(solution.HasValue());
+    CHECK(solution.GetError().code == core::ErrorCode::InvalidArgument);
 }
