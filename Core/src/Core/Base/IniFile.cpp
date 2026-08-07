@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <system_error>
 
 namespace core
 {
@@ -60,13 +61,34 @@ namespace core
 
     bool IniFile::Save(const std::filesystem::path& path) const
     {
-        std::ofstream stream{path, std::ios::trunc};
-        if (!stream.is_open())
+        // Write beside the target and rename into place: truncating the real file first
+        // would destroy every stored setting if the write then failed partway.
+        std::filesystem::path temporary = path;
+        temporary += ".tmp";
+
+        {
+            std::ofstream stream{temporary, std::ios::trunc};
+            if (!stream.is_open())
+                return false;
+
+            for (const Entry& entry : m_entries)
+                stream << entry.key << '=' << entry.value << '\n';
+
+            if (!stream.good())
+                return false;
+        }
+
+        std::error_code code;
+        std::filesystem::rename(temporary, path, code);
+
+        if (code)
+        {
+            // Leave no debris behind when the swap fails; the original file is untouched.
+            std::error_code ignored;
+            std::filesystem::remove(temporary, ignored);
             return false;
+        }
 
-        for (const Entry& entry : m_entries)
-            stream << entry.key << '=' << entry.value << '\n';
-
-        return stream.good();
+        return true;
     }
 }

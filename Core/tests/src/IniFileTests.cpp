@@ -108,3 +108,21 @@ TEST_CASE("A trailing carriage return is not part of the value")
     // carry a stray CR; it must not end up inside the value.
     CHECK(IniFile::Load(path).Get("mode") == "dim");
 }
+
+TEST_CASE("A failed save leaves the previous file intact")
+{
+    TempDirectory temp;
+    const auto path = temp.Path() / "settings.ini";
+
+    IniFile original;
+    original.Set("lastFolder", "D:\\Repos\\IDE");
+    REQUIRE(original.Save(path));
+
+    IniFile doomed;
+    doomed.Set("lastFolder", "D:\\Elsewhere");
+    CHECK_FALSE(doomed.Save(temp.Path() / "missing-directory" / "settings.ini"));
+
+    // The unrelated file must be untouched, and no stray temporary left behind.
+    CHECK(IniFile::Load(path).Get("lastFolder") == "D:\\Repos\\IDE");
+    CHECK_FALSE(std::filesystem::exists(temp.Path() / "settings.ini.tmp"));
+}
