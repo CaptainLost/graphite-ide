@@ -140,16 +140,21 @@ namespace ide
                 RecordAction(PendingAction{PendingAction::Kind::Duplicate, node.path, {}});
         }
 
-        if (node.isDirectory)
-        {
-            ImGui::Separator();
+        // Creating from a file means creating beside it, in its folder — the same thing
+        // Explorer and VS Code do. Restricting this to directories would force the user
+        // to hunt for the parent row just to make a sibling.
+        const std::filesystem::path creationTarget =
+            node.isDirectory ? node.path : node.path.parent_path();
 
-            if (ImGui::MenuItem("New File"))
-                RecordAction(PendingAction{PendingAction::Kind::CreateFile, node.path, "new file.txt"});
+        ImGui::Separator();
 
-            if (ImGui::MenuItem("New Folder"))
-                RecordAction(PendingAction{PendingAction::Kind::MakeDirectory, node.path, "new folder"});
-        }
+        if (ImGui::MenuItem("New File"))
+            RecordAction(
+                PendingAction{PendingAction::Kind::CreateFile, creationTarget, "new file.txt"});
+
+        if (ImGui::MenuItem("New Folder"))
+            RecordAction(
+                PendingAction{PendingAction::Kind::MakeDirectory, creationTarget, "new folder"});
 
         if (!isRoot)
         {
