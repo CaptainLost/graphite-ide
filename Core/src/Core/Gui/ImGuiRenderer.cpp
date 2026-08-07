@@ -46,8 +46,16 @@ namespace core
         // to outlive the context — a local would dangle at the next save.
         static std::string iniPath = []
         {
-            if (const auto directory = platform::ExecutableDirectory(); directory)
+            const auto directory = platform::ExecutableDirectory();
+
+            if (directory)
                 return fs::ToUtf8(directory.Value() / "imgui.ini");
+
+            // Falling back to the working directory keeps the layout working rather than
+            // losing it, but say so: a layout that silently moves between launches is
+            // otherwise very hard to explain.
+            CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
+                      directory.GetError().message);
 
             return std::string{"imgui.ini"};
         }();
