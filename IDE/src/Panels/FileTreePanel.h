@@ -7,6 +7,7 @@
 
 #include <imgui.h>
 
+#include <array>
 #include <filesystem>
 #include <string>
 
@@ -48,6 +49,7 @@ namespace ide
         void RenderNode(core::FileNode& node);
         void RenderContextMenu(const core::FileNode& node);
         void RenderDeleteConfirmation();
+        [[nodiscard]] bool RenderRenameEditor(const core::FileNode& node);
         void ExecutePendingAction();
         [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);
         void RefreshParentOf(const std::filesystem::path& path);
@@ -58,5 +60,11 @@ namespace ide
         PendingAction m_pending;
         std::filesystem::path m_deleteCandidate;
         bool m_openDeleteConfirmation = false;
+
+        /// Keyed by path rather than by a pointer to the node: a refresh can drop the
+        /// node being edited, and a stale pointer would be written through.
+        std::filesystem::path m_renamingPath;
+        std::array<char, 260> m_renameBuffer{};
+        bool m_focusRenameField = false;
     };
 }

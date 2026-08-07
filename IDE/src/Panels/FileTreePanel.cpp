@@ -5,6 +5,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Shell.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace ide
@@ -128,6 +129,18 @@ namespace ide
 
         ImGui::Separator();
 
+        if (ImGui::MenuItem("Rename"))
+        {
+            m_renamingPath = node.path;
+            m_focusRenameField = true;
+
+            const std::string current = core::fs::ToUtf8(node.path.filename());
+            const std::size_t copied = std::min(current.size(), m_renameBuffer.size() - 1);
+
+            std::fill(m_renameBuffer.begin(), m_renameBuffer.end(), '\0');
+            std::copy_n(current.begin(), copied, m_renameBuffer.begin());
+        }
+
         if (ImGui::MenuItem("Delete"))
         {
             m_pending.kind = PendingAction::Kind::Delete;
@@ -206,6 +219,30 @@ namespace ide
             return;
         }
 
+        case PendingAction::Kind::Rename:
+        {
+            if (!core::fs::IsValidFileName(action.name))
+            {
+                CORE_ERROR("'{}' is not a valid file name", action.name);
+                return;
+            }
+
+            const std::filesystem::path target =
+                action.target.parent_path() / core::fs::FromUtf8(action.name);
+
+            if (target == action.target)
+                return;
+
+            if (const auto renamed = core::fs::Rename(action.target, target); !renamed)
+            {
+                CORE_ERROR("{}", renamed.GetError().message);
+                return;
+            }
+
+            RefreshParentOf(action.target);
+            return;
+        }
+
         default:
             return;
         }
@@ -251,11 +288,43 @@ namespace ide
         ImGui::EndPopup();
     }
 
-    // Must not mutate the tree while walking it: this recurses over node.children by
-    // reference, and today the only mutating actions (opening a folder, refreshing)
-    // happen in RenderToolbar, strictly before the walk starts. A future right-click
-    // context menu that mutates the tree from inside RenderNode (e.g. delete, rename)
-    // would invalidate the very vector being iterated.
+    bool FileTreePanel::RenderRenameEditor(const core::FileNode& node)
+    {
+        if (m_renamingPath != node.path)
+            return false;
+
+        if (m_focusRenameField)
+        {
+            ImGui::SetKeyboardFocusHere();
+            m_focusRenameField = false;
+        }
+
+        ImGui::SetNextItemWidth(-1.0f);
+
+        const bool committed =
+            ImGui::InputText("##renameField", m_renameBuffer.data(), m_renameBuffer.size(),
+                             ImGuiInputTextFlags_EnterReturnsTrue |
+                                 ImGuiInputTextFlags_AutoSelectAll);
+
+        if (committed)
+        {
+            m_pending.kind = PendingAction::Kind::Rename;
+            m_pending.target = node.path;
+            m_pending.name = m_renameBuffer.data();
+            m_renamingPath.clear();
+        }
+        else if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+        {
+            m_renamingPath.clear();
+        }
+
+        return true;
+    }
+
+    // RenderNode must not mutate the tree while walking it: it recurses over
+    // node.children by reference. Context menu commands therefore record a
+    // PendingAction instead of acting immediately; ExecutePendingAction runs the
+    // recorded action after the walk finishes, once it is safe to mutate.
     void FileTreePanel::RenderNode(core::FileNode& node)
     {
         if (!PassesFilter(node))
@@ -263,6 +332,9 @@ namespace ide
 
         if (!node.isDirectory)
         {
+            if (RenderRenameEditor(node))
+                return;
+
             const bool selected = m_workspace.SelectedFile() == node.path;
 
             if (ImGui::Selectable(node.name.c_str(), selected))
@@ -272,6 +344,9 @@ namespace ide
 
             return;
         }
+
+        if (RenderRenameEditor(node))
+            return;
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (node.expanded)
