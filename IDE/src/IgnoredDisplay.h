@@ -12,7 +12,7 @@ namespace ide
         Hide    ///< Leave them out of the tree.
     };
 
-    /// The token written to `ide.ini`. Deliberately not the enumerator name, so the
+    /// The token written to `ide.json`. Deliberately not the enumerator name, so the
     /// stored file does not change meaning if the enumerators are ever reordered.
     [[nodiscard]] constexpr std::string_view IgnoredDisplayToString(IgnoredDisplay display)
     {

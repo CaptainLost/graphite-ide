@@ -1,6 +1,6 @@
 #include "Settings.h"
 
-#include "Core/Base/IniFile.h"
+#include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
@@ -23,14 +23,14 @@ namespace ide
                 const auto directory = core::platform::ExecutableDirectory();
 
                 if (directory)
-                    return directory.Value() / "ide.ini";
+                    return directory.Value() / "ide.json";
 
                 // Falling back to the working directory keeps settings working rather
                 // than losing them, which is the better failure for a preferences file.
-                CORE_WARN("Cannot locate the executable directory, using 'ide.ini' as-is: {}",
+                CORE_WARN("Cannot locate the executable directory, using 'ide.json' as-is: {}",
                           directory.GetError().message);
 
-                return std::filesystem::path{"ide.ini"};
+                return std::filesystem::path{"ide.json"};
             }();
 
             return path;
@@ -38,7 +38,7 @@ namespace ide
 
         void WriteValue(const char* key, std::string value)
         {
-            core::IniFile file = core::IniFile::Load(SettingsPath());
+            core::JsonFile file = core::JsonFile::Load(SettingsPath());
             file.Set(key, std::move(value));
 
             if (!file.Save(SettingsPath()))
@@ -48,7 +48,7 @@ namespace ide
 
     std::filesystem::path Settings::LoadLastFolder()
     {
-        return core::fs::FromUtf8(core::IniFile::Load(SettingsPath()).Get(kLastFolderKey));
+        return core::fs::FromUtf8(core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
     }
 
     void Settings::SaveLastFolder(const std::filesystem::path& folder)
@@ -58,7 +58,7 @@ namespace ide
 
     std::string Settings::LoadIgnoredDisplay()
     {
-        return core::IniFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
+        return core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
     }
 
     void Settings::SaveIgnoredDisplay(std::string_view mode)
