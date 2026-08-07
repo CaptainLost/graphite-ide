@@ -6,6 +6,7 @@
 #include "Core/Platform/Shell.h"
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 namespace ide
@@ -106,6 +107,10 @@ namespace ide
         if (!ImGui::BeginPopupContextItem())
             return;
 
+        // The workspace root has no parent inside the tree, so renaming, deleting or
+        // duplicating it would leave the panel pointing at a path that no longer exists.
+        const bool isRoot = m_workspace.IsOpen() && node.path == m_workspace.Root();
+
         if (ImGui::MenuItem("Show in Explorer"))
         {
             if (const auto revealed = core::Shell::RevealInFileBrowser(node.path); !revealed)
@@ -127,12 +132,12 @@ namespace ide
             ImGui::SetClipboardText(core::fs::ToUtf8(code ? node.path : relative).c_str());
         }
 
-        ImGui::Separator();
-
-        if (ImGui::MenuItem("Duplicate"))
+        if (!isRoot)
         {
-            m_pending.kind = PendingAction::Kind::Duplicate;
-            m_pending.target = node.path;
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Duplicate"))
+                RecordAction(PendingAction{PendingAction::Kind::Duplicate, node.path, {}});
         }
 
         if (node.isDirectory)
@@ -140,38 +145,36 @@ namespace ide
             ImGui::Separator();
 
             if (ImGui::MenuItem("New File"))
-            {
-                m_pending.kind = PendingAction::Kind::CreateFile;
-                m_pending.target = node.path;
-                m_pending.name = "new file.txt";
-            }
+                RecordAction(PendingAction{PendingAction::Kind::CreateFile, node.path, "new file.txt"});
 
             if (ImGui::MenuItem("New Folder"))
+                RecordAction(PendingAction{PendingAction::Kind::MakeDirectory, node.path, "new folder"});
+        }
+
+        if (!isRoot)
+        {
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Rename"))
             {
-                m_pending.kind = PendingAction::Kind::MakeDirectory;
-                m_pending.target = node.path;
-                m_pending.name = "new folder";
+                const std::string current = core::fs::ToUtf8(node.path.filename());
+
+                if (current.size() >= m_renameBuffer.size())
+                {
+                    CORE_ERROR("Cannot rename '{}': the name is too long to edit", current);
+                }
+                else
+                {
+                    m_renamingPath = node.path;
+                    m_focusRenameField = true;
+
+                    std::fill(m_renameBuffer.begin(), m_renameBuffer.end(), '\0');
+                    std::copy_n(current.begin(), current.size(), m_renameBuffer.begin());
+                }
             }
-        }
 
-        ImGui::Separator();
-
-        if (ImGui::MenuItem("Rename"))
-        {
-            m_renamingPath = node.path;
-            m_focusRenameField = true;
-
-            const std::string current = core::fs::ToUtf8(node.path.filename());
-            const std::size_t copied = std::min(current.size(), m_renameBuffer.size() - 1);
-
-            std::fill(m_renameBuffer.begin(), m_renameBuffer.end(), '\0');
-            std::copy_n(current.begin(), copied, m_renameBuffer.begin());
-        }
-
-        if (ImGui::MenuItem("Delete"))
-        {
-            m_pending.kind = PendingAction::Kind::Delete;
-            m_pending.target = node.path;
+            if (ImGui::MenuItem("Delete"))
+                RecordAction(PendingAction{PendingAction::Kind::Delete, node.path, {}});
         }
 
         if (node.isDirectory)
@@ -179,10 +182,7 @@ namespace ide
             ImGui::Separator();
 
             if (ImGui::MenuItem("Refresh"))
-            {
-                m_pending.kind = PendingAction::Kind::Refresh;
-                m_pending.target = node.path;
-            }
+                RecordAction(PendingAction{PendingAction::Kind::Refresh, node.path, {}});
         }
 
         ImGui::EndPopup();
@@ -219,6 +219,20 @@ namespace ide
         // Outside the tree, or the parent was never loaded: nothing on screen to update.
         if (parent != nullptr)
             m_workspace.Tree().Refresh(*parent);
+    }
+
+    void FileTreePanel::RecordAction(PendingAction action)
+    {
+        // One slot, two producers: the context menu and the rename editor can both fire
+        // in the same frame. Assigning the whole struct keeps stale fields from leaking
+        // between kinds, and the warning makes a dropped request visible instead of
+        // silent.
+        if (m_pending.kind != PendingAction::Kind::None)
+        {
+            CORE_WARN("Discarding a pending file action that was replaced before it ran");
+        }
+
+        m_pending = std::move(action);
     }
 
     void FileTreePanel::ExecutePendingAction()
@@ -310,11 +324,18 @@ namespace ide
 
             if (core::FileNode* parent = FindNode(action.target); parent != nullptr)
             {
-                // Expand first so a folder the user never opened still shows what was
-                // just created inside it.
-                (void)m_workspace.Tree().Expand(*parent);
-                m_workspace.Tree().Refresh(*parent);
+                // Load the folder if it was never opened, otherwise re-read it. Doing both
+                // would read the same directory from disk twice.
+                if (!parent->loaded)
+                    (void)m_workspace.Tree().Expand(*parent);
+                else
+                    m_workspace.Tree().Refresh(*parent);
+
+                parent->expanded = true;
+                m_forceOpenPath = action.target;
             }
+
+            CORE_INFO("Created '{}'", core::fs::ToUtf8(target));
 
             return;
         }
@@ -400,9 +421,7 @@ namespace ide
 
         if (committed || deactivated)
         {
-            m_pending.kind = PendingAction::Kind::Rename;
-            m_pending.target = node.path;
-            m_pending.name = m_renameBuffer.data();
+            RecordAction(PendingAction{PendingAction::Kind::Rename, node.path, m_renameBuffer.data()});
             m_renamingPath.clear();
         }
 
@@ -435,6 +454,12 @@ namespace ide
 
         if (RenderRenameEditor(node))
             return;
+
+        if (!m_forceOpenPath.empty() && m_forceOpenPath == node.path)
+        {
+            ImGui::SetNextItemOpen(true);
+            m_forceOpenPath.clear();
+        }
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (node.expanded)
