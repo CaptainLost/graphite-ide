@@ -439,6 +439,11 @@ TEST_CASE("Rebase on a tree with no root does nothing")
     tree.Rebase("D:/somewhere");
 
     CHECK_FALSE(tree.HasRoot());
+
+    // Asserting on HasRoot alone would pass with the guard deleted, because nothing in
+    // the rewrite touches that flag — it would just quietly write a path into a root
+    // node that does not exist. The path is what proves the guard ran.
+    CHECK(tree.Root().path.empty());
 }
 
 TEST_CASE("Replacing the query does not disturb already loaded nodes")

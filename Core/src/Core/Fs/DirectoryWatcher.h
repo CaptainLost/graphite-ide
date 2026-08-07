@@ -77,6 +77,11 @@ namespace core
         [[nodiscard]] std::filesystem::path QueryHandlePath() const;
 
         void CheckForMove();
+
+        /// CheckForMove, but only once per kMoveCheckInterval. Called on every return
+        /// from the wait rather than only on expiry, so a directory too busy to ever let
+        /// the wait expire is still checked.
+        void CheckForMoveIfDue();
         void RecordChange(const std::filesystem::path& path);
 
         std::filesystem::path m_root;
@@ -100,6 +105,9 @@ namespace core
         /// spelling of the name, so `d:\work` opened by the user comes back as `D:\Work`
         /// and every session would begin by declaring a move.
         std::filesystem::path m_watchedPath;
+
+        /// When the handle was last asked. Worker-only, like m_watchedPath.
+        ChangeCollector::Clock::time_point m_lastMoveCheck;
 
         /// Guarded by m_mutex alongside the collector.
         std::optional<std::filesystem::path> m_movedTo;

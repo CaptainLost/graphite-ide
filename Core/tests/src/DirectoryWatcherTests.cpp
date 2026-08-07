@@ -7,7 +7,9 @@
 #include <doctest/doctest.h>
 
 #include <chrono>
+#include <fstream>
 #include <optional>
+#include <string>
 #include <thread>
 
 using namespace core;
@@ -264,4 +266,36 @@ TEST_CASE("A move is reported once, not on every poll")
     // The consumer acts on it by re-pointing the workspace; being told again afterwards
     // would make it do that work over and over.
     CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{3}).has_value());
+}
+
+TEST_CASE("A move is noticed even while the directory is busy")
+{
+    TempDirectory temp;
+    const std::filesystem::path watched = temp.MakeDir("busy");
+
+    auto watcher = DirectoryWatcher::Start(watched);
+    REQUIRE(watcher.HasValue());
+
+    std::error_code code;
+    std::filesystem::rename(watched, temp.Path() / "busy-moved", code);
+    REQUIRE_FALSE(code);
+
+    // Writing faster than kMoveCheckInterval. The check used to run only when the wait
+    // expired, and every notification restarts that wait — so a directory under a build
+    // would never be checked at all, which is exactly when this matters least to miss.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+    std::optional<std::filesystem::path> moved;
+
+    for (int i = 0; !moved && std::chrono::steady_clock::now() < deadline; ++i)
+    {
+        std::ofstream{temp.Path() / "busy-moved" / ("churn" + std::to_string(i) + ".txt")}
+            << "x";
+
+        std::this_thread::sleep_for(std::chrono::milliseconds{100});
+
+        moved = watcher.Value()->TakeSettled().movedTo;
+    }
+
+    REQUIRE(moved.has_value());
+    CHECK(*moved == temp.Path() / "busy-moved");
 }
