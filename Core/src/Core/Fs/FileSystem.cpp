@@ -44,8 +44,12 @@ namespace core::fs
     Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
     {
         std::error_code code;
+        // Use directory_options::none rather than skip_permission_denied: if the directory
+        // itself is unreadable, we must report an error. skip_permission_denied would
+        // silently turn that into an empty listing, making unreadable folders indistinguishable
+        // from genuinely empty ones, breaking the contract for consumers to mark them inaccessible.
         std::filesystem::directory_iterator iterator{
-            path, std::filesystem::directory_options::skip_permission_denied, code};
+            path, std::filesystem::directory_options::none, code};
 
         if (code)
         {

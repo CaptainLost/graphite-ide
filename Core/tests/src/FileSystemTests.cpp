@@ -74,3 +74,14 @@ TEST_CASE("ReadDirectory fills the full path of every entry")
     REQUIRE(result.Value().size() == 1);
     CHECK(result.Value()[0].path == expected);
 }
+
+TEST_CASE("ReadDirectory reports a file path as an error, not an empty listing")
+{
+    TempDirectory temp;
+    const auto file = temp.MakeFile("not-a-directory.txt", "x");
+
+    auto result = ReadDirectory(file);
+
+    REQUIRE_FALSE(result.HasValue());
+    CHECK(result.GetError().code != ErrorCode::None);
+}
