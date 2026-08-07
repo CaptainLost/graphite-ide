@@ -1,8 +1,11 @@
 #include "Panels/FileTreePanel.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Shell.h"
+
+#include <vector>
 
 namespace ide
 {
@@ -29,6 +32,11 @@ namespace ide
         }
 
         ImGui::EndChild();
+
+        // Both run outside the walk: the executor mutates the tree, and the modal must
+        // not be nested inside the child window.
+        ExecutePendingAction();
+        RenderDeleteConfirmation();
     }
 
     void FileTreePanel::RenderToolbar()
@@ -116,6 +124,128 @@ namespace ide
 
             // No common prefix means relative() fails; the absolute path is still useful.
             ImGui::SetClipboardText(core::fs::ToUtf8(code ? node.path : relative).c_str());
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Delete"))
+        {
+            m_pending.kind = PendingAction::Kind::Delete;
+            m_pending.target = node.path;
+        }
+
+        if (node.isDirectory)
+        {
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Refresh"))
+            {
+                m_pending.kind = PendingAction::Kind::Refresh;
+                m_pending.target = node.path;
+            }
+        }
+
+        ImGui::EndPopup();
+    }
+
+    core::FileNode* FileTreePanel::FindNode(const std::filesystem::path& path)
+    {
+        if (!m_workspace.IsOpen())
+            return nullptr;
+
+        // Depth-first over an explicit stack: the tree is only as deep as the user has
+        // expanded it, and this avoids a recursive helper for a two-line job.
+        std::vector<core::FileNode*> stack{&m_workspace.Tree().Root()};
+
+        while (!stack.empty())
+        {
+            core::FileNode* node = stack.back();
+            stack.pop_back();
+
+            if (node->path == path)
+                return node;
+
+            for (core::FileNode& child : node->children)
+                stack.push_back(&child);
+        }
+
+        return nullptr;
+    }
+
+    void FileTreePanel::RefreshParentOf(const std::filesystem::path& path)
+    {
+        core::FileNode* parent = FindNode(path.parent_path());
+
+        // Outside the tree, or the parent was never loaded: nothing on screen to update.
+        if (parent != nullptr)
+            m_workspace.Tree().Refresh(*parent);
+    }
+
+    void FileTreePanel::ExecutePendingAction()
+    {
+        const PendingAction action = m_pending;
+        m_pending = PendingAction{};
+
+        switch (action.kind)
+        {
+        case PendingAction::Kind::None:
+            return;
+
+        case PendingAction::Kind::Delete:
+            // Deletion is the one irreversible-looking action, so it goes through a
+            // confirmation rather than straight to the filesystem.
+            m_deleteCandidate = action.target;
+            m_openDeleteConfirmation = true;
+            return;
+
+        case PendingAction::Kind::Refresh:
+        {
+            if (core::FileNode* node = FindNode(action.target); node != nullptr)
+                m_workspace.Tree().Refresh(*node);
+
+            return;
+        }
+
+        default:
+            return;
+        }
+    }
+
+    void FileTreePanel::RenderDeleteConfirmation()
+    {
+        if (m_openDeleteConfirmation)
+        {
+            ImGui::OpenPopup("Delete##fileTreeDelete");
+            m_openDeleteConfirmation = false;
+        }
+
+        if (!ImGui::BeginPopupModal("Delete##fileTreeDelete", nullptr,
+                                    ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            return;
+        }
+
+        ImGui::Text("Move \"%s\" to the Recycle Bin?",
+                    core::fs::ToUtf8(m_deleteCandidate.filename()).c_str());
+        ImGui::Spacing();
+
+        if (ImGui::Button("Move to Recycle Bin", ImVec2(160.0f, 0.0f)))
+        {
+            if (const auto removed = core::fs::MoveToRecycleBin(m_deleteCandidate); !removed)
+                CORE_ERROR("{}", removed.GetError().message);
+            else
+                RefreshParentOf(m_deleteCandidate);
+
+            m_deleteCandidate.clear();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+        {
+            m_deleteCandidate.clear();
+            ImGui::CloseCurrentPopup();
         }
 
         ImGui::EndPopup();
