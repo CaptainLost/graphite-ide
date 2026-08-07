@@ -2,6 +2,7 @@
 
 #include "Core/App/LayerStack.h"
 #include "Core/Base/NonCopyable.h"
+#include "Core/Base/Result.h"
 #include "Core/Gui/ImGuiRenderer.h"
 #include "Core/Platform/Window.h"
 
@@ -25,7 +26,9 @@ namespace core
         explicit Application(ApplicationSpec spec);
         virtual ~Application();
 
-        void Run();
+        /// Runs the main loop until the window is closed or Close() is called.
+        /// Returns an error if the window or the ImGui renderer failed to initialize.
+        Result<void> Run();
         void Close();
 
         Layer& PushLayer(std::unique_ptr<Layer> layer);

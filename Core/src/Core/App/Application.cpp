@@ -38,7 +38,7 @@ namespace core
         m_running = false;
     }
 
-    void Application::Run()
+    Result<void> Application::Run()
     {
         WindowSpec windowSpec;
         windowSpec.title = m_spec.name;
@@ -49,16 +49,16 @@ namespace core
         if (!windowResult)
         {
             CORE_ERROR("Startup aborted: {}", windowResult.GetError().message);
-            return;
+            return windowResult.GetError();
         }
 
         m_window = std::move(windowResult).Value();
 
-        if (const auto init = m_gui.Init(*m_window); !init)
+        if (auto init = m_gui.Init(*m_window); !init)
         {
             CORE_ERROR("Startup aborted: {}", init.GetError().message);
             m_window.reset();
-            return;
+            return init.GetError();
         }
 
         OnInit();
@@ -98,5 +98,7 @@ namespace core
         m_layers.Clear();
         m_gui.Shutdown();
         m_window.reset();
+
+        return Result<void>::Ok();
     }
 }

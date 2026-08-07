@@ -31,12 +31,12 @@ TEST_CASE("Push calls OnAttach and returns a reference to the layer")
     std::vector<std::string> journal;
     core::LayerStack stack;
 
-    core::Layer& layer = stack.Push(std::make_unique<RecordingLayer>("pierwsza", journal));
+    core::Layer& layer = stack.Push(std::make_unique<RecordingLayer>("first", journal));
 
     CHECK(stack.Size() == 1);
-    CHECK(layer.Name() == "pierwsza");
+    CHECK(layer.Name() == "first");
     REQUIRE(journal.size() == 1);
-    CHECK(journal[0] == "pierwsza:attach");
+    CHECK(journal[0] == "first:attach");
 }
 
 TEST_CASE("Iteration preserves insertion order")
@@ -89,7 +89,7 @@ TEST_CASE("Adding a layer during iteration over the copy does not invalidate the
     for (core::Layer* layer : snapshot)
     {
         layer->OnUpdate(0.016f);
-        stack.Push(std::make_unique<RecordingLayer>("dodana", journal));
+        stack.Push(std::make_unique<RecordingLayer>("added", journal));
     }
 
     CHECK(stack.Size() == 4);

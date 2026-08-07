@@ -19,7 +19,7 @@ Makefile
 # ImGui runtime state
 imgui.ini
 
-# Binarka premake jest celowo trzymana w repo
+# The premake binary is intentionally kept in the repo
 !vendor/bin/
 !vendor/bin/premake/
 !vendor/bin/premake/premake5.exe

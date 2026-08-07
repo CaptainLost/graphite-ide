@@ -72,7 +72,8 @@ namespace core
         for (auto& panel : m_panels)
         {
             bool visible = panel->IsVisible();
-            if (ImGui::MenuItem(panel->Title().c_str(), nullptr, &visible))
+            const std::string label = panel->Title() + "###" + panel->Id();
+            if (ImGui::MenuItem(label.c_str(), nullptr, &visible))
                 panel->SetVisible(visible);
         }
     }

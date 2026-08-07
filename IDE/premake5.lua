@@ -19,8 +19,8 @@ project "IDE"
         "%{IncludeDir.ImGui}"
     }
 
-    -- GLFW, ImGui i opengl32 sa wymienione jawnie: biblioteka statyczna Core
-    -- nie przenosi na konsumenta swoich wejsc linkera.
+    -- GLFW, ImGui and opengl32 are listed explicitly: the Core static library
+    -- does not propagate its own linker inputs to a consumer.
     links { "Core", "GLFW", "ImGui", "opengl32.lib" }
 
     filter "system:windows"
@@ -40,6 +40,7 @@ project "IDE"
 
     filter "configurations:Dist"
         kind "WindowedApp"
+        entrypoint "mainCRTStartup"
         defines { "CORE_DIST" }
         runtime "Release"
         optimize "on"

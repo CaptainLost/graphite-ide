@@ -40,7 +40,7 @@ TEST_CASE("Add rejects a duplicate identifier")
     core::PanelManager panels;
     panels.Add(std::make_unique<CountingPanel>("console", "Console"));
 
-    core::Panel* duplicate = panels.Add(std::make_unique<CountingPanel>("console", "Inna"));
+    core::Panel* duplicate = panels.Add(std::make_unique<CountingPanel>("console", "Other"));
 
     CHECK(duplicate == nullptr);
     CHECK(panels.Count() == 1);
@@ -50,7 +50,7 @@ TEST_CASE("Find returns nullptr for an unknown identifier")
 {
     core::PanelManager panels;
 
-    CHECK(panels.Find("nie-ma") == nullptr);
+    CHECK(panels.Find("missing") == nullptr);
 }
 
 TEST_CASE("SetVisible changes visibility and signals an unknown identifier")
@@ -60,7 +60,7 @@ TEST_CASE("SetVisible changes visibility and signals an unknown identifier")
 
     CHECK(panels.SetVisible("files", false));
     CHECK_FALSE(panel->IsVisible());
-    CHECK_FALSE(panels.SetVisible("nie-ma", true));
+    CHECK_FALSE(panels.SetVisible("missing", true));
 }
 
 TEST_CASE("OnUpdate reaches all panels, including hidden ones")

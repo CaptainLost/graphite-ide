@@ -41,13 +41,13 @@ TEST_CASE("ValueOr returns the fallback value on error")
 
 TEST_CASE("Result works with a move-only type")
 {
-    Result<std::unique_ptr<std::string>> result{std::make_unique<std::string>("tresc")};
+    Result<std::unique_ptr<std::string>> result{std::make_unique<std::string>("content")};
 
     REQUIRE(result.HasValue());
     std::unique_ptr<std::string> taken = std::move(result).Value();
 
     REQUIRE(taken != nullptr);
-    CHECK(*taken == "tresc");
+    CHECK(*taken == "content");
 }
 
 TEST_CASE("Result<void> distinguishes success from error")
