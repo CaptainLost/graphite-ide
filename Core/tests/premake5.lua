@@ -23,7 +23,7 @@ project "CoreTests"
 
     externalwarnings "Off"
 
-    links { "Core", "GLFW", "ImGui", "opengl32.lib" }
+    links { "Core", "GLFW", "ImGui", "opengl32.lib", "ole32.lib" }
 
     filter "system:windows"
         systemversion "latest"
