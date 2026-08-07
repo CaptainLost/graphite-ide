@@ -6,6 +6,7 @@
 #include "Core/Platform/Shell.h"
 
 #include <algorithm>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -104,7 +105,20 @@ namespace ide
 
     void FileTreePanel::RenderContextMenu(const core::FileNode& node)
     {
-        if (!ImGui::BeginPopupContextItem())
+        // BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
+        // the menu be dragged anywhere by its body — a popup has no title bar, so its
+        // whole surface counts as draggable background. ConfigWindowsMoveFromTitleBarOnly
+        // does not help: its cancel path is skipped for windows that have no title bar.
+        // So open the popup by hand and use BeginPopup, which does take window flags.
+        const std::string popupId = "##ctx" + core::fs::ToUtf8(node.path);
+
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
+        {
+            ImGui::OpenPopup(popupId.c_str());
+        }
+
+        if (!ImGui::BeginPopup(popupId.c_str(), ImGuiWindowFlags_NoMove))
             return;
 
         // The workspace root has no parent inside the tree, so renaming, deleting or
