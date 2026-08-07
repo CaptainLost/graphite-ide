@@ -138,6 +138,22 @@ TEST_CASE("A negation with a wildcard does override a parent rule")
     CHECK_FALSE(repository.IsIgnored(temp.Path() / "sub" / "keep.log"));
 }
 
+TEST_CASE("A file whose name begins with two dots is inside the tree")
+{
+    TempDirectory temp;
+    InitRepository(temp.Path());
+    temp.MakeFile(".gitignore", "..config\n");
+    temp.MakeFile("..config", "x");
+
+    auto opened = Repository::Open(temp.Path());
+    REQUIRE(opened.HasValue());
+
+    // "..config" is a single path component, not a parent reference. A string-prefix
+    // test for ".." would treat it as outside the working tree and answer "not
+    // ignored" for every such file, whatever the rules say.
+    CHECK(opened.Value().IsIgnored(temp.Path() / "..config"));
+}
+
 TEST_CASE("The repository exposes its working directory")
 {
     TempDirectory temp;

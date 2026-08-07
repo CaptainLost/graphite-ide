@@ -80,15 +80,21 @@ namespace core::git
             return false;
 
         std::error_code code;
-        std::filesystem::path relative =
+        const std::filesystem::path relative =
             std::filesystem::relative(path, m_workingDirectory, code);
 
-        // Outside the working tree there is nothing for git to have an opinion about.
-        if (code || relative.empty() || fs::ToUtf8(relative).rfind("..", 0) == 0)
+        // A leading ".." component means the path sits outside the working tree, and
+        // there is nothing for git to have an opinion about. Comparing components rather
+        // than the string keeps an in-tree file called "..config" from being mistaken
+        // for one.
+        const bool outsideTree =
+            relative.begin() != relative.end() && *relative.begin() == "..";
+
+        if (code || relative.empty() || outsideTree)
             return false;
 
-        // git speaks forward slashes on every platform.
-        relative.make_preferred();
+        // git speaks forward slashes on every platform; the relative path may carry
+        // native separators, so they are translated explicitly below.
         std::string text = fs::ToUtf8(relative);
 
         for (char& character : text)
