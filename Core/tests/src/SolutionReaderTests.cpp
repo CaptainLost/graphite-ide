@@ -201,14 +201,11 @@ TEST_CASE("A project whose file is missing is marked rather than dropped")
     CHECK_FALSE(solution.Value().root.projects[1].exists);
 }
 
-TEST_CASE("Project contents are left unread by the solution reader")
+TEST_CASE("Project contents are read by the solution reader")
 {
     TempDirectory temp;
 
     // A real project file, with real contents, sitting exactly where the solution says.
-    // The earlier version of this test used a fixture whose project files did not exist,
-    // so it proved nothing: a reader that opened every project would still have left the
-    // fields untouched. Reading is a separate layer and this is what holds it there.
     temp.MakeFile("App/App.vcxproj", R"(<?xml version="1.0"?>
 <Project>
   <ItemGroup>
@@ -230,10 +227,10 @@ TEST_CASE("Project contents are left unread by the solution reader")
     const Project& project = solution.Value().root.projects[0];
 
     REQUIRE(project.exists);
-    CHECK_FALSE(project.contentRead);
-    CHECK(project.content.root.files.empty());
+    CHECK(project.contentRead);
+    CHECK_FALSE(project.content.root.files.empty());
     CHECK(project.content.root.folders.empty());
-    CHECK(project.content.references.empty());
+    CHECK_FALSE(project.content.references.empty());
 }
 
 TEST_CASE("A .sln is reported as unsupported rather than misread")

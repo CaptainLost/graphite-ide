@@ -2,7 +2,10 @@
 
 #include "Core/Sln/SolutionReader.h"
 
+#include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Sln/ProjectContentReader.h"
+#include "Core/Sln/VcxprojReader.h"
 
 #include <pugixml.hpp>
 
@@ -97,6 +100,42 @@ namespace core::sln
                 ++count;
             }
         }
+
+        /// Every reader this build knows about. A project no reader claims keeps
+        /// contentRead == false and shows as a leaf, so an unsupported project type never
+        /// costs more than its own contents.
+        void FillContent(Folder& folder)
+        {
+            static const VcxprojReader kVcxproj;
+            static const ProjectContentReader* const kReaders[] = {&kVcxproj};
+
+            for (Project& project : folder.projects)
+            {
+                for (const ProjectContentReader* reader : kReaders)
+                {
+                    if (!reader->Handles(project.path))
+                        continue;
+
+                    auto content = reader->Read(project.path);
+
+                    // A project that cannot be read does not sink the solution: the
+                    // structure around it is still true and still useful.
+                    if (!content)
+                    {
+                        CORE_TRACE("Cannot read '{}': {}", project.path.string(),
+                                   content.GetError().message);
+                        break;
+                    }
+
+                    project.content = std::move(content).Value();
+                    project.contentRead = true;
+                    break;
+                }
+            }
+
+            for (Folder& child : folder.folders)
+                FillContent(child);
+        }
     }
 
     Result<Solution> ReadSolution(const std::filesystem::path& requested)
@@ -169,6 +208,8 @@ namespace core::sln
             Folder& folder = EnsureFolder(solution.root, parts);
             ReadProjects(node, folder, directory, solution.projectCount);
         }
+
+        FillContent(solution.root);
 
         return solution;
     }
