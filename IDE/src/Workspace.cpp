@@ -465,11 +465,11 @@ namespace ide
 
     void Workspace::LoadSolution()
     {
-        m_solution.reset();
-
         if (m_solutionCandidates.empty())
         {
+            m_solution.reset();
             m_selectedSolution.clear();
+            m_solutionStamp = {};
             return;
         }
 
@@ -481,6 +481,22 @@ namespace ide
 
         if (!remembered)
             m_selectedSolution = m_solutionCandidates.front();
+
+        // Guarded here rather than at each caller. There are five, reached from window
+        // focus, from the watcher, from the toolbar and from opening a folder, and an
+        // earlier attempt to gate just one of them left the rest re-parsing on every
+        // batch — the log showed the same solution read a dozen times in one session.
+        //
+        // Comparing the file's write time answers the only question that matters, and
+        // answers it for every caller at once.
+        std::error_code code;
+        const auto stamp = std::filesystem::last_write_time(m_selectedSolution, code);
+
+        if (!code && m_solution && m_solution->path == m_selectedSolution && stamp == m_solutionStamp)
+            return;
+
+        m_solution.reset();
+        m_solutionStamp = code ? std::filesystem::file_time_type{} : stamp;
 
         auto solution = core::sln::ReadSolution(m_selectedSolution);
 

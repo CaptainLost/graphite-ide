@@ -155,6 +155,11 @@ namespace ide
         std::vector<std::filesystem::path> m_solutionCandidates;
         std::filesystem::path m_selectedSolution;
 
+        /// Write time of the solution file as last parsed. Reloading is asked for from
+        /// several directions — focus returning, the watcher, the toolbar — and this is
+        /// what makes the ones with nothing to do cost a single stat.
+        std::filesystem::file_time_type m_solutionStamp;
+
         /// Rebuilt by Open for each root, so it always points at the folder in front of
         /// the user. Default-constructed with an empty root, where reads give nothing and
         /// writes do nothing.
