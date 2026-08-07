@@ -8,13 +8,18 @@
 namespace ide
 {
     /// Published after a folder becomes the workspace root.
-    struct WorkspaceOpened
+    struct WorkspaceOpenedEvent
     {
         std::filesystem::path root;
     };
 
+    /// Published after the workspace is closed and no folder is open any more.
+    struct WorkspaceClosedEvent
+    {
+    };
+
     /// Published when the user picks a file in the tree.
-    struct FileSelected
+    struct FileSelectedEvent
     {
         std::filesystem::path path;
     };
@@ -28,6 +33,11 @@ namespace ide
 
         /// Opens a folder as the workspace root. On failure the previous root stays.
         core::Result<void> Open(const std::filesystem::path& root);
+
+        /// Drops the open folder, its tree and the selection, and forgets the remembered
+        /// folder so the next launch starts empty. Closing is an explicit decision, so it
+        /// has to survive a restart. Does nothing when no folder is open.
+        void Close();
 
         void SelectFile(const std::filesystem::path& path);
 
