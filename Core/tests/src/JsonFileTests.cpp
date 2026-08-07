@@ -5,6 +5,7 @@
 #include "TempDirectory.h"
 
 #include <filesystem>
+#include <utility>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -121,11 +122,15 @@ TEST_CASE("A malformed file loads as empty rather than throwing")
 TEST_CASE("A non-string value reads back as empty rather than throwing")
 {
     TempDirectory temp;
-    const auto path = temp.MakeFile("settings.json", "{ \"count\": 42 }");
+    const auto path = temp.MakeFile("settings.json", "{ \"count\": 42, \"mode\": \"dim\" }");
 
     const JsonFile read = JsonFile::Load(path);
 
     CHECK(read.Get("count").empty());
+
+    // The neighbouring key proves the file was read at all — without it this test would
+    // also pass if parsing had failed outright and everything came back empty.
+    CHECK(read.Get("mode") == "dim");
 }
 
 TEST_CASE("Saving is human-readable, not a single-line blob")
@@ -159,4 +164,45 @@ TEST_CASE("A failed save leaves the previous file intact")
     // The unrelated file must be untouched, and no stray temporary left behind.
     CHECK(JsonFile::Load(path).Get("lastFolder") == "D:\\Repos\\IDE");
     CHECK_FALSE(std::filesystem::exists(temp.Path() / "settings.json.tmp"));
+}
+
+TEST_CASE("A value that is not valid UTF-8 is saved instead of throwing")
+{
+    TempDirectory temp;
+    const auto path = temp.Path() / "settings.json";
+
+    JsonFile written;
+
+    // Lone continuation bytes: not reachable from today's callers, which pass paths and
+    // fixed tokens, but Set takes any std::string and this class is public API of a
+    // library meant to be reused. Serialising rejects malformed UTF-8 unless told to
+    // substitute, and it would throw out of Core — with the temporary file already open,
+    // so the failure would also leave debris behind.
+    written.Set("broken", std::string{"aÿþb"});
+
+    REQUIRE(written.Save(path));
+    CHECK(std::filesystem::exists(path));
+    CHECK_FALSE(std::filesystem::exists(temp.Path() / "settings.json.tmp"));
+
+    // Readable afterwards: the mangled characters became replacement characters rather
+    // than corrupting the document.
+    const JsonFile read = JsonFile::Load(path);
+    CHECK_FALSE(read.Get("broken").empty());
+}
+
+TEST_CASE("A moved-from file leaves the source usable enough to destroy")
+{
+    TempDirectory temp;
+    const auto path = temp.Path() / "settings.json";
+
+    JsonFile original;
+    original.Set("lastFolder", "D:\\Repos\\IDE");
+
+    const JsonFile moved = std::move(original);
+
+    // The document lives behind a pointer, so moving empties the source. Nothing may
+    // read through it afterwards, but its destructor still runs at the end of this scope
+    // and must not fall over.
+    CHECK(moved.Get("lastFolder") == "D:\\Repos\\IDE");
+    CHECK(moved.Save(path));
 }
