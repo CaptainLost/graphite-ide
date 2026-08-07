@@ -11,7 +11,6 @@ IncludeDir["GLFW"]    = "%{wks.location}/vendor/glfw/include"
 IncludeDir["ImGui"]   = "%{wks.location}/vendor/imgui"
 IncludeDir["doctest"] = "%{wks.location}/vendor/doctest"
 IncludeDir["libgit2"]       = "%{wks.location}/vendor/libgit2/include"
-IncludeDir["libgit2Config"] = "%{wks.location}/vendor/libgit2-config"
 
 group "Dependencies"
     include "vendor/premake/glfw.lua"

@@ -1,5 +1,5 @@
 -- libgit2 is vendored without running its CMake configuration; the comments
--- in vendor/libgit2-config/git2_features.h describe how that header was
+-- in the `defines` block below describe how each of its values was
 -- hand-derived. File lists mirror src/util/CMakeLists.txt and
 -- src/libgit2/CMakeLists.txt for a Windows x64 build with threads, bundled
 -- regex, bundled zlib, and the bundled HTTP parser. Note this is *not* a
@@ -17,7 +17,8 @@
 -- Never needed — files CMake's own glob would sweep in, deliberately left
 -- out, each because the linker never demanded the symbol it provides:
 --   streams/schannel.c          Windows TLS backend; no TLS backend is
---                                configured at all (see git2_features.h).
+--                                configured at all (see the `defines` block
+--                                below).
 --   streams/stransport.c        Apple Secure Transport TLS backend; not
 --                                applicable to a Windows-only build.
 --   streams/openssl_dynamic.c   Runtime-loaded OpenSSL TLS backend; same
@@ -44,12 +45,12 @@
 --                                it stays inert since GIT_NTLM is undefined.
 --
 -- Upgrading the submodule: bump the vendor/libgit2 submodule to the new
--- tag, then re-derive vendor/libgit2-config/git2_features.h by diffing the
--- new src/util/git2_features.h.in and the cmake/Select*.cmake files
--- against the version this was derived from. Rebuild, and if the linker
--- demands a symbol from a file not listed above, add that one file — not
--- its whole directory — with a comment explaining why it was needed, the
--- same way every entry below streams/ and transports/ in this file is
+-- tag, then re-derive the libgit2 portion of the `defines` block below by
+-- diffing the new src/util/git2_features.h.in and the cmake/Select*.cmake
+-- files against the version this was derived from. Rebuild, and if the
+-- linker demands a symbol from a file not listed above, add that one file —
+-- not its whole directory — with a comment explaining why it was needed,
+-- the same way every entry below streams/ and transports/ in this file is
 -- documented.
 
 project "libgit2"
@@ -214,26 +215,134 @@ project "libgit2"
 
     includedirs
     {
-        -- pcre-config must come first: deps/pcre's sources do
-        -- #include "config.h" (quoted), and vendor/libgit2/src/libgit2 also
-        -- happens to contain an unrelated config.h (the git-config-file
-        -- API header) that would otherwise shadow it if searched first.
-        "%{wks.location}/vendor/libgit2-config/pcre-config",
         "%{wks.location}/vendor/libgit2/src/libgit2",
         "%{wks.location}/vendor/libgit2/src/util",
         "%{wks.location}/vendor/libgit2/include",
         "%{wks.location}/vendor/libgit2/deps/zlib",
         "%{wks.location}/vendor/libgit2/deps/pcre",
         "%{wks.location}/vendor/libgit2/deps/xdiff",
-        "%{wks.location}/vendor/libgit2/deps/llhttp",
-        "%{IncludeDir.libgit2Config}"
+        "%{wks.location}/vendor/libgit2/deps/llhttp"
     }
 
     defines
     {
-        -- Bundled PCRE reads its generated config.h when this is set
-        -- (deps/pcre/CMakeLists.txt: add_definitions(-DHAVE_CONFIG_H)).
-        "HAVE_CONFIG_H"
+        -- libgit2 normally reads these from a CMake-generated git2_features.h.
+        -- This build has no CMake, and libgit2 supports that directly: defining
+        -- LIBGIT2_NO_FEATURES_H suppresses the include (src/util/git2_util.h),
+        -- so the values arrive on the command line instead. Written for
+        -- libgit2 v1.8.4; every value below appears in
+        -- src/util/git2_features.h.in at that version, and none of it may be
+        -- extended casually -- an unrecognised define is silently ignored by
+        -- the sources and will not surface as a build error.
+        --
+        -- Configuration this encodes: Windows x64, threads enabled, bundled
+        -- (builtin) regex, bundled (builtin) HTTP parser, no TLS backend and
+        -- no SSH/NTLM/GSSAPI. This is *not* a "no network" build: the http://
+        -- and git:// smart transports are unconditionally referenced by
+        -- src/libgit2/transport.c's static transport table (only ssh:// is
+        -- behind an #ifdef), so they always compile in. Without a TLS
+        -- backend, an actual https:// fetch fails at runtime by design --
+        -- this integration deliberately buys only local repository queries
+        -- plus a linkable, runnable library. See the file-list derivation
+        -- above, including the list of files deliberately left out and why.
+        "LIBGIT2_NO_FEATURES_H",
+
+        -- Threads are enabled (CMake option USE_THREADS defaults to ON;
+        -- see src/CMakeLists.txt).
+        "GIT_THREADS=1",
+
+        -- Target is a 64-bit architecture (CMake sets this when
+        -- CMAKE_SIZEOF_VOID_P is 8; see src/CMakeLists.txt).
+        "GIT_ARCH_64=1",
+
+        -- Bundled PCRE regex backend, as requested by the task brief. On the
+        -- CMake side this is REGEX_BACKEND=builtin in cmake/SelectRegex.cmake.
+        "GIT_REGEX_BUILTIN=1",
+
+        -- MSVC's qsort_s() has the signature checked by the GIT_QSORT_MSC probe
+        -- in src/CMakeLists.txt; MSVC on Windows always provides it.
+        "GIT_QSORT_MSC=1",
+
+        -- WSAPoll() is unconditionally selected on Windows: cmake/../src/CMakeLists.txt
+        -- has `if(WIN32) set(GIT_IO_WSAPOLL 1)`.
+        "GIT_IO_WSAPOLL=1",
+
+        -- SHA1 and SHA256 both implemented via the native Windows CryptoAPI/CNG
+        -- backend (src/util/hash/win32.c), rather than the CMake default for this
+        -- configuration (no TLS backend, USE_SHA1/USE_SHA256 left at their own ON
+        -- default), which is GIT_SHA1_COLLISIONDETECT for SHA1 and
+        -- GIT_SHA256_BUILTIN for SHA256.
+        --
+        -- GIT_SHA1_COLLISIONDETECT (the sha1dc implementation) buys detection of
+        -- SHAttered-class chosen-prefix collision attacks while hashing objects --
+        -- it notices when two different inputs have been deliberately crafted to
+        -- hash to the same SHA-1, which plain SHA-1 cannot. Taking the Win32
+        -- backend instead trades that detection away, in exchange for not
+        -- vendoring sha1dc and the bundled rfc6234 SHA-256 implementation:
+        -- roughly fifteen fewer source files, using CryptoAPI/CNG (already
+        -- present on every target Windows install) instead.
+        --
+        -- That trade was judged acceptable here because this integration only
+        -- hashes objects for the user's own local repositories -- there is no
+        -- scenario where a third party supplies a crafted object for this
+        -- process to hash, which is the threat collision detection defends
+        -- against. Anyone re-deriving this block for a different use (for
+        -- instance, hashing objects fetched from an untrusted remote) should
+        -- reconsider this choice rather than carry it forward unexamined.
+        "GIT_SHA1_WIN32=1",
+        "GIT_SHA256_WIN32=1",
+
+        -- Bundled (builtin) llhttp parser backs the smart HTTP transport, which
+        -- src/libgit2/transport.c references unconditionally. This is the CMake
+        -- default too (cmake/SelectHTTPParser.cmake's else() branch, taken when no
+        -- system http-parser/llhttp is requested) and needs nothing beyond the
+        -- three self-contained files in deps/llhttp (no system library). Do not
+        -- define GIT_HTTPPARSER_HTTPPARSER or GIT_HTTPPARSER_LLHTTP: both mean "use
+        -- a system-installed parser", which is not the case here.
+        "GIT_HTTPPARSER_BUILTIN=1",
+
+        -- The bundled PCRE reads a CMake-generated config.h only when
+        -- HAVE_CONFIG_H is set. Leaving it unset removes that dependency, so
+        -- PCRE's settings arrive on the command line too, using the same
+        -- fixed values that deps/pcre/CMakeLists.txt sets for a CMake build
+        -- (SUPPORT_PCRE8, PCRE_LINK_SIZE, etc.) plus the platform HAVE_*
+        -- checks appropriate for MSVC on Windows. Written for libgit2 v1.8.4
+        -- (bundled PCRE snapshot); revisit when the vendor/libgit2 submodule
+        -- is upgraded.
+
+        -- Platform capability checks (deps/pcre/CMakeLists.txt: check_include_file /
+        -- check_function_exists). MSVC provides these; it has no dirent.h or
+        -- unistd.h.
+        "HAVE_SYS_TYPES_H=1",
+        "HAVE_SYS_STAT_H=1",
+        "HAVE_WINDOWS_H=1",
+        "HAVE_STDINT_H=1",
+        "HAVE_INTTYPES_H=1",
+
+        "HAVE_MEMMOVE=1",
+        "HAVE_STRERROR=1",
+        "HAVE_STRTOLL=1",
+        "HAVE__STRTOI64=1",
+
+        "HAVE_LONG_LONG=1",
+        "HAVE_UNSIGNED_LONG_LONG=1",
+
+        -- User-configurable options, fixed by deps/pcre/CMakeLists.txt regardless
+        -- of platform.
+        "SUPPORT_PCRE8=1",
+        "NO_RECURSE=1",
+
+        "NEWLINE=10",
+        "POSIX_MALLOC_THRESHOLD=10",
+        "LINK_SIZE=2",
+        "PARENS_NEST_LIMIT=250",
+        "MATCH_LIMIT=10000000",
+        -- The header's value here is the name MATCH_LIMIT, not a literal --
+        -- this preserves that indirection, matching PCRE's own config template.
+        "MATCH_LIMIT_RECURSION=MATCH_LIMIT",
+
+        "MAX_NAME_SIZE=32",
+        "MAX_NAME_COUNT=10000"
     }
 
     filter "system:windows"
