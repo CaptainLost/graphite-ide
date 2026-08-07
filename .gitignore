@@ -27,3 +27,6 @@ ide.ini
 
 # Internal design docs and plans, kept locally only
 docs/superpowers/
+
+# Parallel work trees
+.worktrees/
