@@ -12,8 +12,6 @@
 
 #include <shellapi.h>
 
-#undef CreateDirectory
-
 namespace core::fs
 {
     namespace
@@ -68,7 +66,7 @@ namespace core::fs
         return Result<void>::Ok();
     }
 
-    Result<void> CreateDirectory(const std::filesystem::path& path)
+    Result<void> MakeDirectory(const std::filesystem::path& path)
     {
         std::error_code code;
         if (std::filesystem::exists(path, code))

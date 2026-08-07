@@ -12,7 +12,7 @@ namespace core::fs
     Result<void> CreateEmptyFile(const std::filesystem::path& path);
 
     /// Creates a single directory. Fails when anything already occupies the path.
-    Result<void> CreateDirectory(const std::filesystem::path& path);
+    Result<void> MakeDirectory(const std::filesystem::path& path);
 
     /// Renames or moves an entry. Fails when the source is missing or the target exists.
     Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to);

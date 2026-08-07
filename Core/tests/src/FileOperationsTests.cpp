@@ -6,10 +6,10 @@
 
 #include <fstream>
 
-using core::fs::CreateDirectory;
 using core::fs::CreateEmptyFile;
 using core::fs::Duplicate;
 using core::fs::IsValidFileName;
+using core::fs::MakeDirectory;
 using core::fs::MakeUniquePath;
 using core::fs::MoveToRecycleBin;
 using core::fs::Rename;
@@ -126,15 +126,15 @@ TEST_CASE("CreateEmptyFile creates a file and refuses to overwrite one")
     CHECK(again.GetError().code == core::ErrorCode::InvalidArgument);
 }
 
-TEST_CASE("CreateDirectory creates a directory and refuses an occupied name")
+TEST_CASE("MakeDirectory creates a directory and refuses an occupied name")
 {
     TempDirectory temp;
     const auto target = temp.Path() / "sub";
 
-    REQUIRE(CreateDirectory(target).HasValue());
+    REQUIRE(MakeDirectory(target).HasValue());
     CHECK(std::filesystem::is_directory(target));
 
-    const auto again = CreateDirectory(target);
+    const auto again = MakeDirectory(target);
     REQUIRE_FALSE(again.HasValue());
     CHECK(again.GetError().code == core::ErrorCode::InvalidArgument);
 }
