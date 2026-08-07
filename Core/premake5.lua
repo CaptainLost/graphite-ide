@@ -25,7 +25,8 @@ project "Core"
     externalincludedirs
     {
         "%{IncludeDir.libgit2}",
-        "%{IncludeDir.pugixml}"
+        "%{IncludeDir.pugixml}",
+        "%{IncludeDir.json}"
     }
     externalwarnings "Off"
 

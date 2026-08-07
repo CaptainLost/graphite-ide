@@ -12,6 +12,7 @@ IncludeDir["ImGui"]   = "%{wks.location}/vendor/imgui"
 IncludeDir["doctest"] = "%{wks.location}/vendor/doctest"
 IncludeDir["libgit2"]       = "%{wks.location}/vendor/libgit2/include"
 IncludeDir["pugixml"]       = "%{wks.location}/vendor/pugixml/src"
+IncludeDir["json"]    = "%{wks.location}/vendor/json/single_include"
 
 group "Dependencies"
     include "vendor/premake/glfw.lua"

@@ -20,7 +20,8 @@ project "CoreTests"
     {
         "%{IncludeDir.doctest}",
         "%{IncludeDir.libgit2}",
-        "%{IncludeDir.pugixml}"
+        "%{IncludeDir.pugixml}",
+        "%{IncludeDir.json}"
     }
 
     externalwarnings "Off"
