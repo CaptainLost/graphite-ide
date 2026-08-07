@@ -28,6 +28,10 @@ namespace ide
         void RenderMenuBar();
         void ApplyIgnoredDisplay(IgnoredDisplay display, bool persist);
 
+        /// Reloads the workspace when the window comes back after a pause. Separated
+        /// from OnUpdate so its early return governs only itself.
+        void UpdateFocusReload(float deltaSeconds);
+
         /// How long the window has to have been away before coming back triggers a
         /// reload. Alt-tabbing to glance at something and returning is not a reason to
         /// re-read every open directory, and the watcher has been running the whole time
