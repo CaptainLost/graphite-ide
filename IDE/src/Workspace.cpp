@@ -7,8 +7,15 @@
 
 namespace ide
 {
-    core::Result<void> Workspace::Open(const std::filesystem::path& root)
+    core::Result<void> Workspace::Open(const std::filesystem::path& requested)
     {
+        // Normalise once, here, where a path enters the workspace. A command-line
+        // argument or a settings file can carry forward slashes, and every path in the
+        // tree is derived from this one — so a single conversion keeps the whole app,
+        // including the system file browser, on native separators.
+        std::filesystem::path root = requested.lexically_normal();
+        root.make_preferred();
+
         core::FileTree candidate;
 
         // Build the new tree first: a failed open must leave the current one untouched.

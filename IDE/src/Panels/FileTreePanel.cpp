@@ -1,7 +1,14 @@
 #include "Panels/FileTreePanel.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/Shell.h"
+
+#include <algorithm>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace ide
 {
@@ -28,6 +35,11 @@ namespace ide
         }
 
         ImGui::EndChild();
+
+        // Both run outside the walk: the executor mutates the tree, and the modal must
+        // not be nested inside the child window.
+        ExecutePendingAction();
+        RenderDeleteConfirmation();
     }
 
     void FileTreePanel::RenderToolbar()
@@ -91,11 +103,379 @@ namespace ide
         return false;
     }
 
-    // Must not mutate the tree while walking it: this recurses over node.children by
-    // reference, and today the only mutating actions (opening a folder, refreshing)
-    // happen in RenderToolbar, strictly before the walk starts. A future right-click
-    // context menu that mutates the tree from inside RenderNode (e.g. delete, rename)
-    // would invalidate the very vector being iterated.
+    void FileTreePanel::RenderContextMenu(const core::FileNode& node)
+    {
+        // BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
+        // the menu be dragged anywhere by its body — a popup has no title bar, so its
+        // whole surface counts as draggable background. ConfigWindowsMoveFromTitleBarOnly
+        // does not help: its cancel path is skipped for windows that have no title bar.
+        // So open the popup by hand and use BeginPopup, which does take window flags.
+        const std::string popupId = "##ctx" + core::fs::ToUtf8(node.path);
+
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+            ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
+        {
+            ImGui::OpenPopup(popupId.c_str());
+        }
+
+        if (!ImGui::BeginPopup(popupId.c_str(), ImGuiWindowFlags_NoMove))
+            return;
+
+        // The workspace root has no parent inside the tree, so renaming, deleting or
+        // duplicating it would leave the panel pointing at a path that no longer exists.
+        const bool isRoot = m_workspace.IsOpen() && node.path == m_workspace.Root();
+
+        if (ImGui::MenuItem("Show in Explorer"))
+        {
+            if (const auto revealed = core::Shell::RevealInFileBrowser(node.path); !revealed)
+                CORE_ERROR("{}", revealed.GetError().message);
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Copy Path"))
+            ImGui::SetClipboardText(core::fs::ToUtf8(node.path).c_str());
+
+        if (ImGui::MenuItem("Copy Relative Path"))
+        {
+            std::error_code code;
+            const std::filesystem::path relative =
+                std::filesystem::relative(node.path, m_workspace.Root(), code);
+
+            // No common prefix means relative() fails; the absolute path is still useful.
+            ImGui::SetClipboardText(core::fs::ToUtf8(code ? node.path : relative).c_str());
+        }
+
+        if (!isRoot)
+        {
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Duplicate"))
+                RecordAction(PendingAction{PendingAction::Kind::Duplicate, node.path, {}});
+        }
+
+        // Creating from a file means creating beside it, in its folder — the same thing
+        // Explorer and VS Code do. Restricting this to directories would force the user
+        // to hunt for the parent row just to make a sibling.
+        const std::filesystem::path creationTarget =
+            node.isDirectory ? node.path : node.path.parent_path();
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("New File"))
+            RecordAction(
+                PendingAction{PendingAction::Kind::CreateFile, creationTarget, "new file.txt"});
+
+        if (ImGui::MenuItem("New Folder"))
+            RecordAction(
+                PendingAction{PendingAction::Kind::MakeDirectory, creationTarget, "new folder"});
+
+        if (!isRoot)
+        {
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Rename"))
+            {
+                const std::string current = core::fs::ToUtf8(node.path.filename());
+
+                if (current.size() >= m_renameBuffer.size())
+                {
+                    CORE_ERROR("Cannot rename '{}': the name is too long to edit", current);
+                }
+                else
+                {
+                    m_renamingPath = node.path;
+                    m_focusRenameField = true;
+
+                    std::fill(m_renameBuffer.begin(), m_renameBuffer.end(), '\0');
+                    std::copy_n(current.begin(), current.size(), m_renameBuffer.begin());
+                }
+            }
+
+            if (ImGui::MenuItem("Delete"))
+                RecordAction(PendingAction{PendingAction::Kind::Delete, node.path, {}});
+        }
+
+        if (node.isDirectory)
+        {
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("Refresh"))
+                RecordAction(PendingAction{PendingAction::Kind::Refresh, node.path, {}});
+        }
+
+        ImGui::EndPopup();
+    }
+
+    core::FileNode* FileTreePanel::FindNode(const std::filesystem::path& path)
+    {
+        if (!m_workspace.IsOpen())
+            return nullptr;
+
+        // Depth-first over an explicit stack: the tree is only as deep as the user has
+        // expanded it, and this avoids a recursive helper for a two-line job.
+        std::vector<core::FileNode*> stack{&m_workspace.Tree().Root()};
+
+        while (!stack.empty())
+        {
+            core::FileNode* node = stack.back();
+            stack.pop_back();
+
+            if (node->path == path)
+                return node;
+
+            for (core::FileNode& child : node->children)
+                stack.push_back(&child);
+        }
+
+        return nullptr;
+    }
+
+    void FileTreePanel::RefreshParentOf(const std::filesystem::path& path)
+    {
+        core::FileNode* parent = FindNode(path.parent_path());
+
+        // Outside the tree, or the parent was never loaded: nothing on screen to update.
+        if (parent != nullptr)
+            m_workspace.Tree().Refresh(*parent);
+    }
+
+    void FileTreePanel::RecordAction(PendingAction action)
+    {
+        // One slot, two producers: the context menu and the rename editor can both fire
+        // in the same frame. Assigning the whole struct keeps stale fields from leaking
+        // between kinds, and the warning makes a dropped request visible instead of
+        // silent.
+        if (m_pending.kind != PendingAction::Kind::None)
+        {
+            CORE_WARN("Discarding a pending file action that was replaced before it ran");
+        }
+
+        m_pending = std::move(action);
+    }
+
+    void FileTreePanel::ExecutePendingAction()
+    {
+        const PendingAction action = m_pending;
+        m_pending = PendingAction{};
+
+        switch (action.kind)
+        {
+        case PendingAction::Kind::None:
+            return;
+
+        case PendingAction::Kind::Delete:
+            // Deletion is the one irreversible-looking action, so it goes through a
+            // confirmation rather than straight to the filesystem.
+            m_renamingPath.clear();
+            m_deleteCandidate = action.target;
+            m_openDeleteConfirmation = true;
+            return;
+
+        case PendingAction::Kind::Refresh:
+        {
+            if (core::FileNode* node = FindNode(action.target); node != nullptr)
+                m_workspace.Tree().Refresh(*node);
+
+            return;
+        }
+
+        case PendingAction::Kind::Rename:
+        {
+            if (!core::fs::IsValidFileName(action.name))
+            {
+                CORE_ERROR("'{}' is not a valid file name", action.name);
+                return;
+            }
+
+            const std::filesystem::path target =
+                action.target.parent_path() / core::fs::FromUtf8(action.name);
+
+            if (target == action.target)
+                return;
+
+            if (const auto renamed = core::fs::Rename(action.target, target); !renamed)
+            {
+                CORE_ERROR("{}", renamed.GetError().message);
+                return;
+            }
+
+            RefreshParentOf(action.target);
+            return;
+        }
+
+        case PendingAction::Kind::Duplicate:
+        {
+            const auto copied = core::fs::Duplicate(action.target);
+
+            if (!copied)
+            {
+                CORE_ERROR("{}", copied.GetError().message);
+                return;
+            }
+
+            RefreshParentOf(action.target);
+            return;
+        }
+
+        case PendingAction::Kind::CreateFile:
+        case PendingAction::Kind::MakeDirectory:
+        {
+            if (!core::fs::IsValidFileName(action.name))
+            {
+                CORE_ERROR("'{}' is not a valid file name", action.name);
+                return;
+            }
+
+            // MakeUniquePath keeps repeated clicks from failing on the default name.
+            const std::filesystem::path target =
+                core::fs::MakeUniquePath(action.target / core::fs::FromUtf8(action.name));
+
+            const auto created = action.kind == PendingAction::Kind::CreateFile
+                                     ? core::fs::CreateEmptyFile(target)
+                                     : core::fs::MakeDirectory(target);
+
+            if (!created)
+            {
+                CORE_ERROR("{}", created.GetError().message);
+                return;
+            }
+
+            if (core::FileNode* parent = FindNode(action.target); parent != nullptr)
+            {
+                // Load the folder if it was never opened, otherwise re-read it. Doing both
+                // would read the same directory from disk twice.
+                if (!parent->loaded)
+                    (void)m_workspace.Tree().Expand(*parent);
+                else
+                    m_workspace.Tree().Refresh(*parent);
+
+                parent->expanded = true;
+                m_forceOpenPath = action.target;
+            }
+
+            CORE_INFO("Created '{}'", core::fs::ToUtf8(target));
+
+            return;
+        }
+
+        default:
+            return;
+        }
+    }
+
+    void FileTreePanel::RenderDeleteConfirmation()
+    {
+        if (m_openDeleteConfirmation)
+        {
+            ImGui::OpenPopup("Delete##fileTreeDelete");
+            m_openDeleteConfirmation = false;
+        }
+
+        if (!ImGui::BeginPopupModal("Delete##fileTreeDelete", nullptr,
+                                    ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            return;
+        }
+
+        ImGui::Text("Move \"%s\" to the Recycle Bin?",
+                    core::fs::ToUtf8(m_deleteCandidate.filename()).c_str());
+        ImGui::Spacing();
+
+        if (ImGui::Button("Move to Recycle Bin", ImVec2(160.0f, 0.0f)))
+        {
+            if (const auto removed = core::fs::MoveToRecycleBin(m_deleteCandidate); !removed)
+                CORE_ERROR("{}", removed.GetError().message);
+            else
+                RefreshParentOf(m_deleteCandidate);
+
+            m_deleteCandidate.clear();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+        {
+            m_deleteCandidate.clear();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
+    }
+
+    bool FileTreePanel::RenderRenameEditor(const core::FileNode& node)
+    {
+        if (m_renamingPath != node.path)
+            return false;
+
+        if (m_focusRenameField)
+        {
+            ImGui::SetKeyboardFocusHere();
+            m_focusRenameField = false;
+        }
+
+        // A directory's label sits to the right of its arrow, so shift the field by the
+        // same amount — otherwise the name visibly jumps left the moment editing starts.
+        // Files have no arrow and need no shift.
+        constexpr float kFieldPaddingX = 2.0f;
+        const float indent =
+            node.isDirectory ? ImGui::GetTreeNodeToLabelSpacing() - kFieldPaddingX : 0.0f;
+
+        if (indent > 0.0f)
+            ImGui::Indent(indent);
+
+        // The theme's frame padding is sized for buttons and would make the edited row
+        // taller than its neighbours, shoving the rest of the tree down.
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kFieldPaddingX, 0.0f));
+
+        // Fit the field to the name rather than the panel: a full-width box for a short
+        // name reads as a dialog dropped into the tree. One character of slack leaves
+        // room for the caret, and it grows as the user types.
+        constexpr float kMinFieldWidth = 90.0f;
+        const float textWidth = ImGui::CalcTextSize(m_renameBuffer.data()).x;
+        const float fitted = textWidth + kFieldPaddingX * 2.0f + ImGui::GetFontSize();
+        const float available = ImGui::GetContentRegionAvail().x;
+
+        ImGui::SetNextItemWidth(std::clamp(fitted, kMinFieldWidth, available));
+
+        const bool committed =
+            ImGui::InputText("##renameField", m_renameBuffer.data(), m_renameBuffer.size(),
+                             ImGuiInputTextFlags_EnterReturnsTrue |
+                                 ImGuiInputTextFlags_AutoSelectAll);
+
+        // Escape cancels, but only while this field owns the keyboard — an unscoped key
+        // poll would also catch an Escape aimed at a modal elsewhere and silently throw
+        // away what the user typed here.
+        const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+        // Any other way of leaving the field commits, the way Explorer and VS Code behave.
+        // IsItemDeactivated fires whether or not the text changed, so a rename opened by
+        // mistake and clicked away still ends instead of leaving the row stuck.
+        const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
+
+        ImGui::PopStyleVar();
+
+        if (indent > 0.0f)
+            ImGui::Unindent(indent);
+
+        if (cancelled)
+        {
+            m_renamingPath.clear();
+        }
+        else if (committed || deactivated)
+        {
+            RecordAction(PendingAction{PendingAction::Kind::Rename, node.path, m_renameBuffer.data()});
+            m_renamingPath.clear();
+        }
+
+        return true;
+    }
+
+    // RenderNode must not mutate the tree while walking it: it recurses over
+    // node.children by reference. Context menu commands therefore record a
+    // PendingAction instead of acting immediately; ExecutePendingAction runs the
+    // recorded action after the walk finishes, once it is safe to mutate.
     void FileTreePanel::RenderNode(core::FileNode& node)
     {
         if (!PassesFilter(node))
@@ -103,12 +483,26 @@ namespace ide
 
         if (!node.isDirectory)
         {
+            if (RenderRenameEditor(node))
+                return;
+
             const bool selected = m_workspace.SelectedFile() == node.path;
 
             if (ImGui::Selectable(node.name.c_str(), selected))
                 m_workspace.SelectFile(node.path);
 
+            RenderContextMenu(node);
+
             return;
+        }
+
+        if (RenderRenameEditor(node))
+            return;
+
+        if (!m_forceOpenPath.empty() && m_forceOpenPath == node.path)
+        {
+            ImGui::SetNextItemOpen(true);
+            m_forceOpenPath.clear();
         }
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -128,6 +522,8 @@ namespace ide
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("This folder could not be read.");
         }
+
+        RenderContextMenu(node);
 
         if (open)
         {

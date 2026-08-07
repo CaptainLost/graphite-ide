@@ -34,6 +34,12 @@ namespace core
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io.IniFilename = "imgui.ini";
 
+        // By default ImGui lets a window be dragged by any empty part of its body, which
+        // makes context menus and popups draggable — they have no title bar, so their
+        // whole surface counts. Panels are moved by their dock tabs and dialogs by their
+        // title bars, so nothing in this application needs the permissive behaviour.
+        io.ConfigWindowsMoveFromTitleBarOnly = true;
+
         Theme::ApplyDark();
 
         // With undocked panels, viewports get their own system windows —
