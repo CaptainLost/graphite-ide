@@ -3,6 +3,7 @@
 #include "Settings.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Platform/FileDialog.h"
 
 #include <vector>
@@ -12,11 +13,11 @@ namespace ide
     core::Result<void> Workspace::Open(const std::filesystem::path& requested)
     {
         // Normalise once, here, where a path enters the workspace. A command-line
-        // argument or a settings file can carry forward slashes, and every path in the
-        // tree is derived from this one — so a single conversion keeps the whole app,
-        // including the system file browser, on native separators.
-        std::filesystem::path root = requested.lexically_normal();
-        root.make_preferred();
+        // argument or a settings file can carry forward slashes or a trailing separator,
+        // and every path in the tree is derived from this one — so a single conversion
+        // keeps the whole app on one spelling, including the system file browser and the
+        // change notifications the watcher matches against tree nodes.
+        const std::filesystem::path root = core::fs::NormalizeDirectory(requested);
 
         core::FileTree candidate;
 
@@ -103,13 +104,17 @@ namespace ide
         if (changed.overflowed)
         {
             // Individual paths were lost, so nothing narrower than the whole tree is
-            // trustworthy. Refresh recurses into everything loaded. Note that this batch
-            // carries no paths at all — testing the vector first would skip it.
+            // trustworthy — which also covers whatever paths this batch did carry.
+            // Usually it carries none, so testing the vector first would skip this
+            // entirely.
             CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
             m_tree.Refresh(m_tree.Root());
         }
         else
         {
+            // FindNode runs afresh inside RefreshChanged on every iteration, and it has
+            // to: Refresh rebuilds the children vector, so any FileNode* collected up
+            // front would dangle by the second entry.
             for (const std::filesystem::path& directory : changed.directories)
                 RefreshChanged(directory);
         }

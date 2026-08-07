@@ -107,4 +107,22 @@ namespace core::fs
 
         return entries;
     }
+
+    std::filesystem::path NormalizeDirectory(const std::filesystem::path& path)
+    {
+        std::filesystem::path normalized = path.lexically_normal();
+        normalized.make_preferred();
+
+        // lexically_normal leaves a trailing separator in place, which shows up as an
+        // empty final element and makes the path unequal to the same directory spelled
+        // without it. has_filename() is false exactly in that case.
+        //
+        // has_relative_path() guards the roots: for `D:/` there is nothing to strip, and
+        // parent_path() would return `D:` — a drive-relative path meaning "wherever that
+        // drive's cursor happens to be", which is not the same directory at all.
+        if (!normalized.has_filename() && normalized.has_relative_path())
+            normalized = normalized.parent_path();
+
+        return normalized;
+    }
 }

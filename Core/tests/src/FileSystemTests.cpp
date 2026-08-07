@@ -10,6 +10,7 @@
 
 using core::ErrorCode;
 using core::fs::DirectoryEntry;
+using core::fs::NormalizeDirectory;
 using core::fs::ReadDirectory;
 
 namespace
@@ -104,4 +105,45 @@ TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
     CHECK(result.Value()[0].name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
     CHECK(core::fs::ToUtf8(result.Value()[0].path.filename()) ==
           "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+}
+
+TEST_CASE("NormalizeDirectory strips a trailing separator")
+{
+    // What tab completion in cmd and PowerShell produces. Without this the workspace
+    // root would never compare equal to the same directory reported by the watcher.
+    const std::filesystem::path expected{"D:\\work\\project"};
+
+    CHECK(NormalizeDirectory("D:/work/project/") == expected);
+    CHECK(NormalizeDirectory("D:\\work\\project\\") == expected);
+}
+
+TEST_CASE("NormalizeDirectory leaves a path without a trailing separator alone")
+{
+    CHECK(NormalizeDirectory("D:/work/project")
+          == std::filesystem::path{"D:\\work\\project"});
+}
+
+TEST_CASE("NormalizeDirectory keeps a drive root intact")
+{
+    // Stripping here would yield `D:`, which names whatever directory that drive's
+    // cursor points at rather than its root.
+    const std::filesystem::path expected{"D:\\"};
+
+    CHECK(NormalizeDirectory("D:/") == expected);
+    CHECK(NormalizeDirectory("D:\\") == expected);
+}
+
+TEST_CASE("NormalizeDirectory converts separators and resolves dot segments")
+{
+    CHECK(NormalizeDirectory("D:/work/./project/../project")
+          == std::filesystem::path{"D:\\work\\project"});
+}
+
+TEST_CASE("A normalized path compares equal to one built by appending")
+{
+    // The property the whole function exists for: a node path and a path assembled from
+    // the same root must match, or a refresh silently reaches nothing.
+    const std::filesystem::path root = NormalizeDirectory("D:/work/project/");
+
+    CHECK((root / "file.txt").parent_path() == root);
 }

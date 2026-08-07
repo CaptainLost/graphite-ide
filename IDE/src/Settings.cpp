@@ -20,12 +20,16 @@ namespace ide
         {
             static const std::filesystem::path path = []
             {
-                if (const auto directory = core::platform::ExecutableDirectory(); directory)
+                const auto directory = core::platform::ExecutableDirectory();
+
+                if (directory)
                     return directory.Value() / "ide.ini";
 
                 // Falling back to the working directory keeps settings working rather
                 // than losing them, which is the better failure for a preferences file.
-                CORE_WARN("Cannot locate the executable directory, using '{}' as-is", "ide.ini");
+                CORE_WARN("Cannot locate the executable directory, using 'ide.ini' as-is: {}",
+                          directory.GetError().message);
+
                 return std::filesystem::path{"ide.ini"};
             }();
 

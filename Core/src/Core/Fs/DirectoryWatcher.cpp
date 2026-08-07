@@ -137,7 +137,15 @@ namespace core
 
             if (signalled != WAIT_OBJECT_0)
             {
-                // Stopping, or the wait failed. Cancel the outstanding read and wait for
+                // Stopping is the ordinary way out and says nothing; a failed wait is a
+                // bug or a closed handle and would otherwise look identical from outside.
+                if (signalled == WAIT_FAILED)
+                {
+                    CORE_WARN("Stopped watching '{}': the change wait failed",
+                              m_root.string());
+                }
+
+                // Cancel the outstanding read and wait for
                 // the kernel to finish with the buffer before it goes out of scope —
                 // skipping this is a use-after-free that fires only under load.
                 ::CancelIoEx(static_cast<HANDLE>(m_directory), &overlapped);
@@ -153,8 +161,21 @@ namespace core
             if (!::GetOverlappedResult(static_cast<HANDLE>(m_directory), &overlapped, &bytes,
                                        FALSE))
             {
-                // Say so: from here the watcher is permanently dead and the consumer just
-                // sees nothing ever change again, which is very hard to guess at.
+                // An overflow is reported here on some paths and as a zero byte count on
+                // others, depending on how the status is surfaced. Both are the same
+                // event and neither is fatal — treating this one as a failure would end
+                // the loop and silently stop watching for the rest of the session,
+                // exactly when the disk is busiest.
+                if (::GetLastError() == ERROR_NOTIFY_ENUM_DIR)
+                {
+                    std::scoped_lock lock{m_mutex};
+                    m_collector.AddOverflow(ChangeCollector::Clock::now());
+                    continue;
+                }
+
+                // Anything else is fatal. Say so: from here the watcher is permanently
+                // dead and the consumer just sees nothing ever change again, which is
+                // very hard to guess at.
                 CORE_WARN("Stopped watching '{}': the change notification failed",
                           m_root.string());
                 break;
@@ -162,8 +183,9 @@ namespace core
 
             if (bytes == 0)
             {
-                // The kernel could not keep up and dropped the individual records. The
-                // consumer has to assume everything it holds is stale.
+                // The other spelling of the same overflow: the kernel could not keep up
+                // and discarded the individual records, so the consumer has to assume
+                // everything it holds is stale.
                 std::scoped_lock lock{m_mutex};
                 m_collector.AddOverflow(ChangeCollector::Clock::now());
                 continue;

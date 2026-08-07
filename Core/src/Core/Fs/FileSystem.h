@@ -32,4 +32,19 @@ namespace core::fs
 
     /// Rebuilds a path from UTF-8 bytes produced by ToUtf8.
     std::filesystem::path FromUtf8(std::string_view text);
+
+    /// Puts a directory path into the one spelling everything else derives from:
+    /// normalised, native separators, and no trailing separator.
+    ///
+    /// The trailing separator is the part that matters and the part std::filesystem will
+    /// not do for you — `lexically_normal` keeps it. `D:/work/` and `D:/work` name the
+    /// same directory but do not compare equal, because the first decomposes into an
+    /// extra empty element. Anything that later matches a path against this one — a tree
+    /// node against a change notification, say — would silently never match. Tab
+    /// completion in both cmd and PowerShell appends that separator, so this is a path a
+    /// user reaches by accident rather than a malformed one.
+    ///
+    /// A root such as `D:/` keeps its separator: removing it would name a drive-relative
+    /// path, which is a different thing entirely.
+    std::filesystem::path NormalizeDirectory(const std::filesystem::path& path);
 }

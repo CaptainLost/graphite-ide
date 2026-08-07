@@ -36,9 +36,10 @@ namespace core
         /// What one settled batch reports.
         struct Changes
         {
-            /// The directories that changed. Empty while the disk is still busy — and
-            /// also empty when `overflowed` is set, since in that case the individual
-            /// paths are exactly what was lost.
+            /// The directories that changed. Empty while the disk is still busy, and
+            /// usually empty when `overflowed` is set — though not necessarily, since a
+            /// batch can carry paths recorded before the overflow happened. Treat
+            /// `overflowed` as covering these rather than excluding them.
             std::vector<std::filesystem::path> directories;
 
             /// Individual paths were dropped and everything held should be refreshed.
