@@ -5,6 +5,8 @@
 #include "Core/Base/Log.h"
 #include "Core/Platform/FileDialog.h"
 
+#include <vector>
+
 namespace ide
 {
     core::Result<void> Workspace::Open(const std::filesystem::path& requested)
@@ -35,33 +37,18 @@ namespace ide
         m_root = root;
         m_selectedFile.clear();
 
-        // A folder that is not a repository is completely normal, so a failure here is
-        // logged at trace level and leaves the tree with no ignore query at all.
-        m_tree.SetIgnoreQuery({});
-        m_repository.reset();
+        TryOpenRepository();
+        m_tree.Refresh(m_tree.Root());
 
-        if (auto repository = core::git::Repository::Open(root); repository)
+        if (auto watcher = core::DirectoryWatcher::Start(root); watcher)
         {
-            m_repository.emplace(std::move(repository).Value());
-
-            m_tree.SetIgnoreQuery(
-                [this](const std::filesystem::path& path, bool) -> bool
-                {
-                    // The tree is emptied before the repository is, so this cannot fire
-                    // without one. Checking anyway costs a branch against a syscall and
-                    // turns a future ordering slip into a wrong answer rather than
-                    // undefined behaviour.
-                    return m_repository && m_repository->IsIgnored(path);
-                });
-
-            m_tree.Refresh(m_tree.Root());
-
-            CORE_INFO("Git repository detected at '{}'", m_repository->WorkingDirectory().string());
+            m_watcher = std::move(watcher).Value();
         }
         else
         {
-            CORE_TRACE("'{}' is not inside a git repository: {}", root.string(),
-                       repository.GetError().message);
+            // Not fatal: the tree still works, it just will not notice outside changes.
+            CORE_WARN("Cannot watch '{}': {}", root.string(), watcher.GetError().message);
+            m_watcher.reset();
         }
 
         Settings::SaveLastFolder(root);
@@ -77,6 +64,9 @@ namespace ide
             return;
 
         const std::filesystem::path closed = m_root;
+
+        // Stopped first: the thread reports into the tree that the next lines replace.
+        m_watcher.reset();
 
         // Drop the query before the repository it reads, not after: between those two
         // statements the tree would hold a query pointing at an empty optional.
@@ -98,6 +88,94 @@ namespace ide
     {
         m_selectedFile = path;
         m_events.Publish(FileSelectedEvent{path});
+    }
+
+    void Workspace::Update()
+    {
+        if (!m_watcher)
+            return;
+
+        const std::vector<std::filesystem::path> changed = m_watcher->TakeSettledChanges();
+
+        if (changed.empty())
+            return;
+
+        if (m_watcher->Overflowed())
+        {
+            // Individual paths were lost, so nothing narrower than the whole tree is
+            // trustworthy. Refresh recurses into everything loaded.
+            CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
+            m_tree.Refresh(m_tree.Root());
+            return;
+        }
+
+        for (const std::filesystem::path& directory : changed)
+            RefreshChanged(directory);
+
+        // A `git init` in a terminal shows up as a change in the root. Retried only while
+        // there is no repository, so the ordinary case costs one pointer test.
+        if (!m_repository)
+            TryOpenRepository();
+    }
+
+    void Workspace::RefreshChanged(const std::filesystem::path& directory)
+    {
+        core::FileNode* node = FindNode(directory);
+
+        // Not found means the directory was never expanded, so there is nothing loaded to
+        // correct — it will read the current state whenever the user opens it.
+        if (node != nullptr && node->isDirectory && node->loaded)
+            m_tree.Refresh(*node);
+    }
+
+    core::FileNode* Workspace::FindNode(const std::filesystem::path& path)
+    {
+        if (!m_tree.HasRoot())
+            return nullptr;
+
+        // An explicit stack rather than recursion: a deep tree is user-supplied input and
+        // this runs every frame that something changed.
+        std::vector<core::FileNode*> pending{&m_tree.Root()};
+
+        while (!pending.empty())
+        {
+            core::FileNode* node = pending.back();
+            pending.pop_back();
+
+            if (node->path == path)
+                return node;
+
+            for (core::FileNode& child : node->children)
+            {
+                if (child.isDirectory)
+                    pending.push_back(&child);
+            }
+        }
+
+        return nullptr;
+    }
+
+    void Workspace::TryOpenRepository()
+    {
+        m_tree.SetIgnoreQuery({});
+        m_repository.reset();
+
+        auto repository = core::git::Repository::Open(m_root);
+
+        if (!repository)
+        {
+            CORE_TRACE("'{}' is not inside a git repository: {}", m_root.string(),
+                       repository.GetError().message);
+            return;
+        }
+
+        m_repository.emplace(std::move(repository).Value());
+
+        m_tree.SetIgnoreQuery(
+            [this](const std::filesystem::path& path, bool) -> bool
+            { return m_repository && m_repository->IsIgnored(path); });
+
+        CORE_INFO("Git repository detected at '{}'", m_repository->WorkingDirectory().string());
     }
 
     void OpenFolderInteractively(Workspace& workspace)
