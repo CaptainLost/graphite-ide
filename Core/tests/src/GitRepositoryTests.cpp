@@ -241,5 +241,7 @@ TEST_CASE("An open repository keeps answering after its .git directory is delete
     // Callers therefore cannot wait to be told. ide::Workspace::SyncRepository watches
     // for .git disappearing and drops the repository itself; without that, a folder that
     // stopped being a repository would keep dimming entries for the rest of the session.
+    INFO("If this fails, libgit2 changed and now invalidates the handle itself — "
+         "re-evaluate whether ide::Workspace::SyncRepository is still needed.");
     CHECK(repository.IsIgnored(temp.Path() / "build.log"));
 }

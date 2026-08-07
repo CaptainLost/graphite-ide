@@ -122,6 +122,9 @@ namespace ide
             // Either every verdict in the tree just became stale, or individual paths
             // were lost. Both mean nothing narrower than the whole tree is trustworthy —
             // which also covers whatever paths this batch did carry.
+            if (changed.overflowed)
+                CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
+
             m_tree.Refresh(m_tree.Root());
             return;
         }
@@ -143,12 +146,24 @@ namespace ide
             return m_repository.has_value();
         }
 
+        // A bare repository has no working directory at all, so there is no .git beside
+        // it to look for and the probe below would test a relative path against whatever
+        // the process's working directory happens to be.
+        if (m_repository->WorkingDirectory().empty())
+            return false;
+
         // Checked against the repository's own working directory rather than m_root: the
         // workspace can be a subdirectory of the repository, where m_root/.git never
         // existed in the first place.
         std::error_code code;
+        const bool present = std::filesystem::exists(m_repository->WorkingDirectory() / ".git",
+                                                     code);
 
-        if (std::filesystem::exists(m_repository->WorkingDirectory() / ".git", code))
+        // `code` being set means the question could not be answered — a denied parent, a
+        // network share that blinked, an indexer holding things briefly. That is not the
+        // same as an answer of "gone", and acting on it would drop a perfectly good
+        // repository and announce it in the log.
+        if (code || present)
             return false;
 
         // libgit2 does not notice this on its own. With .git gone it keeps answering from
@@ -195,7 +210,11 @@ namespace ide
         m_watcher = std::move(watcher).Value();
 
         // Whatever happened while nothing was watching is simply gone, so the tree is
-        // re-read wholesale rather than trusted.
+        // re-read wholesale rather than trusted — and the repository is settled first,
+        // because .git may well be what disappeared during the blind window. Refreshing
+        // before that would re-ask a repository that is no longer there and bake the
+        // stale answer back in.
+        (void)SyncRepository();
         m_tree.Refresh(m_tree.Root());
 
         CORE_INFO("Resumed watching '{}' after a failure", m_root.string());

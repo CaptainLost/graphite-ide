@@ -249,6 +249,11 @@ namespace core
         // Reported as the root rather than as the directory holding it: what changed is
         // the verdict for every entry in the tree, and refreshing the root is what
         // re-asks them all.
+        //
+        // Only reachable when the watched directory is the repository's own root. Open a
+        // subdirectory of a repository — or a worktree, whose real git directory lives
+        // elsewhere — and this file sits outside the watched subtree, where nothing can
+        // see it change.
         if (relative == std::filesystem::path{".git"} / "info" / "exclude")
         {
             std::scoped_lock lock{m_mutex};

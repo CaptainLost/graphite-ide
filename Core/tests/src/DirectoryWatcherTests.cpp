@@ -141,12 +141,31 @@ TEST_CASE("A change to the repository's exclude file is reported as a root chang
     CHECK(changes[0] == temp.Path());
 }
 
-TEST_CASE("A fresh watcher reports itself as running")
+TEST_CASE("A watcher stops running once its directory is deleted")
 {
     TempDirectory temp;
 
     auto watcher = DirectoryWatcher::Start(temp.Path());
     REQUIRE(watcher.HasValue());
+    REQUIRE(watcher.Value()->IsRunning());
 
-    CHECK(watcher.Value()->IsRunning());
+    // Deleting the watched directory is what kills the thread in practice, and the whole
+    // point of IsRunning is that the consumer cannot tell this apart from a quiet disk
+    // any other way — TakeSettled simply returns nothing, for ever.
+    std::error_code code;
+    std::filesystem::remove_all(temp.Path(), code);
+    REQUIRE_FALSE(code);
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+    bool stopped = false;
+
+    while (!stopped && std::chrono::steady_clock::now() < deadline)
+    {
+        stopped = !watcher.Value()->IsRunning();
+
+        if (!stopped)
+            std::this_thread::sleep_for(std::chrono::milliseconds{20});
+    }
+
+    CHECK(stopped);
 }
