@@ -10,6 +10,8 @@
 #include <string>
 #include <windows.h>
 
+#include <shellapi.h>
+
 #undef CreateDirectory
 
 namespace core::fs
@@ -131,6 +133,36 @@ namespace core::fs
         }
 
         return target;
+    }
+
+    Result<void> MoveToRecycleBin(const std::filesystem::path& path)
+    {
+        std::error_code code;
+        if (!std::filesystem::exists(path, code))
+        {
+            return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(path))};
+        }
+
+        // SHFILEOPSTRUCTW::pFrom is a list of paths terminated by an EXTRA null. Passing
+        // an ordinary null-terminated string makes the API read past the buffer.
+        std::wstring source = path.wstring();
+        source.push_back(L'\0');
+        source.push_back(L'\0');
+
+        SHFILEOPSTRUCTW operation{};
+        operation.wFunc = FO_DELETE;
+        operation.pFrom = source.c_str();
+        operation.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+
+        const int result = ::SHFileOperationW(&operation);
+
+        if (result != 0 || operation.fAnyOperationsAborted != FALSE)
+        {
+            return Error{ErrorCode::IoFailure,
+                         std::format("cannot move '{}' to the Recycle Bin", ToUtf8(path))};
+        }
+
+        return Result<void>::Ok();
     }
 
     std::filesystem::path MakeUniquePath(const std::filesystem::path& path)

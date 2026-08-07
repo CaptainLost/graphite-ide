@@ -11,6 +11,7 @@ using core::fs::CreateEmptyFile;
 using core::fs::Duplicate;
 using core::fs::IsValidFileName;
 using core::fs::MakeUniquePath;
+using core::fs::MoveToRecycleBin;
 using core::fs::Rename;
 
 TEST_CASE("MakeUniquePath returns the original path when nothing collides")
@@ -221,4 +222,25 @@ TEST_CASE("Duplicate reports a missing source")
 
     REQUIRE_FALSE(copied.HasValue());
     CHECK(copied.GetError().code == core::ErrorCode::NotFound);
+}
+
+TEST_CASE("MoveToRecycleBin removes a file from its path")
+{
+    TempDirectory temp;
+    const auto doomed = temp.MakeFile("doomed.txt", "x");
+
+    REQUIRE(MoveToRecycleBin(doomed).HasValue());
+
+    // Where it went is the Recycle Bin's business; that it left this path is ours.
+    CHECK_FALSE(std::filesystem::exists(doomed));
+}
+
+TEST_CASE("MoveToRecycleBin reports a missing path")
+{
+    TempDirectory temp;
+
+    const auto removed = MoveToRecycleBin(temp.Path() / "ghost.txt");
+
+    REQUIRE_FALSE(removed.HasValue());
+    CHECK(removed.GetError().code == core::ErrorCode::NotFound);
 }

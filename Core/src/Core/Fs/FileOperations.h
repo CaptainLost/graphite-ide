@@ -21,6 +21,10 @@ namespace core::fs
     /// Directories are copied recursively.
     Result<std::filesystem::path> Duplicate(const std::filesystem::path& path);
 
+    /// Moves an entry to the Recycle Bin rather than deleting it, so a mistake stays
+    /// recoverable by ordinary system means. Directories go recursively.
+    Result<void> MoveToRecycleBin(const std::filesystem::path& path);
+
     /// Returns `path` unchanged when nothing occupies it, otherwise the first free
     /// variant: "main copy.cpp", then "main copy 2.cpp", and so on. The extension is
     /// whatever std::filesystem calls the extension.
