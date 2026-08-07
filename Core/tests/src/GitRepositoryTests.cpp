@@ -7,6 +7,10 @@
 
 #include <git2.h>
 
+#include <fstream>
+#include <string>
+#include <string_view>
+
 using core::git::Repository;
 
 namespace
@@ -244,4 +248,88 @@ TEST_CASE("An open repository keeps answering after its .git directory is delete
     INFO("If this fails, libgit2 changed and now invalidates the handle itself — "
          "re-evaluate whether ide::Workspace::SyncRepository is still needed.");
     CHECK(repository.IsIgnored(temp.Path() / "build.log"));
+}
+
+namespace
+{
+    /// Points the repository's config at an excludes file, the way core.excludesFile
+    /// normally does from the user's global config. Written into the repository config
+    /// instead so the test cannot disturb the machine it runs on.
+    void SetExcludesFile(const std::filesystem::path& repository,
+                         const std::filesystem::path& excludes)
+    {
+        std::string text = core::fs::ToUtf8(excludes);
+
+        for (char& character : text)
+        {
+            if (character == '\\')
+                character = '/';
+        }
+
+        std::ofstream config{repository / ".git" / "config", std::ios::app};
+        config << "\texcludesfile = " << text << "\n";
+    }
+
+    void WriteFile(const std::filesystem::path& path, std::string_view contents)
+    {
+        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+        stream << contents;
+    }
+}
+
+TEST_CASE("An edited excludes file is picked up without reopening the repository")
+{
+    TempDirectory temp;
+    InitRepository(temp.Path());
+    temp.MakeFile("build.log", "x");
+
+    const auto excludes = temp.Path() / "my-excludes";
+    WriteFile(excludes, "\n");
+    SetExcludesFile(temp.Path(), excludes);
+
+    auto opened = Repository::Open(temp.Path());
+    REQUIRE(opened.HasValue());
+
+    Repository repository = std::move(opened).Value();
+    REQUIRE_FALSE(repository.IsIgnored(temp.Path() / "build.log"));
+
+    WriteFile(excludes, "*.log\n");
+
+    // libgit2 revalidates rule files by timestamp and size on every query, so editing
+    // one takes effect through nothing more than a refresh of the tree. That holds for
+    // the file core.excludesFile points at just as it does for .gitignore, which is why
+    // this file lives outside the working tree and is still covered.
+    CHECK(repository.IsIgnored(temp.Path() / "build.log"));
+}
+
+TEST_CASE("Repointing core.excludesFile needs the repository reopened")
+{
+    TempDirectory temp;
+    InitRepository(temp.Path());
+    temp.MakeFile("build.log", "x");
+
+    const auto empty = temp.Path() / "empty-excludes";
+    const auto real = temp.Path() / "real-excludes";
+    WriteFile(empty, "\n");
+    WriteFile(real, "*.log\n");
+    SetExcludesFile(temp.Path(), empty);
+
+    auto opened = Repository::Open(temp.Path());
+    REQUIRE(opened.HasValue());
+
+    Repository repository = std::move(opened).Value();
+    REQUIRE_FALSE(repository.IsIgnored(temp.Path() / "build.log"));
+
+    SetExcludesFile(temp.Path(), real);
+
+    // The other half of the answer, and the surprising one: the *contents* of a rule
+    // file are revalidated, but the configuration saying which file to read is not. It
+    // is resolved once when the repository is opened and cached in the handle.
+    //
+    // So a refresh covers editing the ignore rules, and only changing which file holds
+    // them requires reopening the folder. That is a once-in-a-long-while action, which
+    // is why nothing in the application reopens on its own.
+    INFO("If this fails, libgit2 started rereading config — a refresh would then cover "
+         "this case too and any workaround built around it can go.");
+    CHECK_FALSE(repository.IsIgnored(temp.Path() / "build.log"));
 }
