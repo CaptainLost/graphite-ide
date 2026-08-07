@@ -129,6 +129,33 @@ namespace ide
 
         ImGui::Separator();
 
+        if (ImGui::MenuItem("Duplicate"))
+        {
+            m_pending.kind = PendingAction::Kind::Duplicate;
+            m_pending.target = node.path;
+        }
+
+        if (node.isDirectory)
+        {
+            ImGui::Separator();
+
+            if (ImGui::MenuItem("New File"))
+            {
+                m_pending.kind = PendingAction::Kind::CreateFile;
+                m_pending.target = node.path;
+                m_pending.name = "new file.txt";
+            }
+
+            if (ImGui::MenuItem("New Folder"))
+            {
+                m_pending.kind = PendingAction::Kind::MakeDirectory;
+                m_pending.target = node.path;
+                m_pending.name = "new folder";
+            }
+        }
+
+        ImGui::Separator();
+
         if (ImGui::MenuItem("Rename"))
         {
             m_renamingPath = node.path;
@@ -241,6 +268,54 @@ namespace ide
             }
 
             RefreshParentOf(action.target);
+            return;
+        }
+
+        case PendingAction::Kind::Duplicate:
+        {
+            const auto copied = core::fs::Duplicate(action.target);
+
+            if (!copied)
+            {
+                CORE_ERROR("{}", copied.GetError().message);
+                return;
+            }
+
+            RefreshParentOf(action.target);
+            return;
+        }
+
+        case PendingAction::Kind::CreateFile:
+        case PendingAction::Kind::MakeDirectory:
+        {
+            if (!core::fs::IsValidFileName(action.name))
+            {
+                CORE_ERROR("'{}' is not a valid file name", action.name);
+                return;
+            }
+
+            // MakeUniquePath keeps repeated clicks from failing on the default name.
+            const std::filesystem::path target =
+                core::fs::MakeUniquePath(action.target / core::fs::FromUtf8(action.name));
+
+            const auto created = action.kind == PendingAction::Kind::CreateFile
+                                     ? core::fs::CreateEmptyFile(target)
+                                     : core::fs::MakeDirectory(target);
+
+            if (!created)
+            {
+                CORE_ERROR("{}", created.GetError().message);
+                return;
+            }
+
+            if (core::FileNode* parent = FindNode(action.target); parent != nullptr)
+            {
+                // Expand first so a folder the user never opened still shows what was
+                // just created inside it.
+                (void)m_workspace.Tree().Expand(*parent);
+                m_workspace.Tree().Refresh(*parent);
+            }
+
             return;
         }
 
