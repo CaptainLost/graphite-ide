@@ -12,14 +12,14 @@ namespace ide
 
     void FileTreePanel::OnUIRender()
     {
-        RenderToolbar();
-        ImGui::Separator();
-
         if (!m_workspace.IsOpen())
         {
             RenderEmptyState();
             return;
         }
+
+        RenderToolbar();
+        ImGui::Separator();
 
         if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar))
@@ -32,12 +32,7 @@ namespace ide
 
     void FileTreePanel::RenderToolbar()
     {
-        if (ImGui::Button("Open Folder"))
-            OpenFolderInteractively(m_workspace);
-
-        ImGui::SameLine();
-
-        if (ImGui::Button("Refresh") && m_workspace.IsOpen())
+        if (ImGui::Button("Refresh"))
         {
             core::FileNode& root = m_workspace.Tree().Root();
             m_workspace.Tree().Refresh(root);
@@ -55,8 +50,26 @@ namespace ide
 
     void FileTreePanel::RenderEmptyState()
     {
-        ImGui::TextDisabled("No folder open.");
-        ImGui::TextDisabled("Use File \xe2\x86\x92 Open Folder to pick one.");
+        constexpr const char* kMessage = "No folder open.";
+        const ImVec2 buttonSize{140.0f, 0.0f};
+        const float available = ImGui::GetContentRegionAvail().x;
+
+        // Sit the block a third of the way down so it reads as an invitation rather than
+        // a caption pinned under the tab bar.
+        ImGui::Dummy(ImVec2(0.0f, ImGui::GetContentRegionAvail().y * 0.33f));
+
+        const float messageWidth = ImGui::CalcTextSize(kMessage).x;
+        if (available > messageWidth)
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (available - messageWidth) * 0.5f);
+
+        ImGui::TextDisabled("%s", kMessage);
+        ImGui::Spacing();
+
+        if (available > buttonSize.x)
+            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (available - buttonSize.x) * 0.5f);
+
+        if (ImGui::Button("Open Folder", buttonSize))
+            OpenFolderInteractively(m_workspace);
     }
 
     bool FileTreePanel::PassesFilter(const core::FileNode& node) const
