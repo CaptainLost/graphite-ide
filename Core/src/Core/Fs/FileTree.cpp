@@ -168,4 +168,24 @@ namespace core
                 Refresh(child);
         }
     }
+
+    void FileTree::Rebase(const std::filesystem::path& newRoot)
+    {
+        if (!m_hasRoot)
+            return;
+
+        RebaseNode(m_root, fs::NormalizeDirectory(newRoot));
+    }
+
+    void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)
+    {
+        node.path = newPath;
+
+        // Rebuilt from the parent's new path and the child's own name rather than by
+        // string surgery on the old path: the two spellings only have to agree on the
+        // part being replaced, and a prefix replacement would quietly do nothing if they
+        // differed in case or separators.
+        for (FileNode& child : node.children)
+            RebaseNode(child, newPath / child.name);
+    }
 }

@@ -353,6 +353,94 @@ TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
     CHECK(calls == 2);
 }
 
+TEST_CASE("Rebase rewrites the root and every loaded descendant")
+{
+    TempDirectory temp;
+    temp.MakeDir("sub");
+    temp.MakeFile("sub/deep.txt", "x");
+    temp.MakeFile("top.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    FileNode* sub = nullptr;
+
+    for (FileNode& child : tree.Root().children)
+    {
+        if (child.name == "sub")
+            sub = &child;
+    }
+
+    REQUIRE(sub != nullptr);
+    REQUIRE(tree.Expand(*sub).HasValue());
+
+    const std::filesystem::path moved = temp.Path().parent_path() / "moved-elsewhere";
+    tree.Rebase(moved);
+
+    CHECK(tree.Root().path == moved);
+
+    for (const FileNode& child : tree.Root().children)
+    {
+        CHECK(child.path.parent_path() == moved);
+
+        // The rewrite has to reach the whole subtree, not just the immediate children —
+        // a half-rewritten tree would refresh some nodes and silently skip others.
+        for (const FileNode& grandChild : child.children)
+            CHECK(grandChild.path.parent_path() == moved / child.name);
+    }
+}
+
+TEST_CASE("Rebase leaves everything except the paths alone")
+{
+    TempDirectory temp;
+    temp.MakeDir("sub");
+    temp.MakeFile("top.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    FileNode* sub = nullptr;
+
+    for (FileNode& child : tree.Root().children)
+    {
+        if (child.name == "sub")
+            sub = &child;
+    }
+
+    REQUIRE(sub != nullptr);
+    REQUIRE(tree.Expand(*sub).HasValue());
+    sub->expanded = true;
+
+    const std::size_t childCount = tree.Root().children.size();
+
+    tree.Rebase(temp.Path().parent_path() / "moved-elsewhere");
+
+    // The point of rebasing rather than reopening: the user's expansion state survives.
+    REQUIRE(tree.Root().children.size() == childCount);
+
+    for (const FileNode& child : tree.Root().children)
+    {
+        if (child.name != "sub")
+            continue;
+
+        CHECK(child.name == "sub");
+        CHECK(child.isDirectory);
+        CHECK(child.expanded);
+        CHECK(child.loaded);
+    }
+}
+
+TEST_CASE("Rebase on a tree with no root does nothing")
+{
+    FileTree tree;
+
+    tree.Rebase("D:/somewhere");
+
+    CHECK_FALSE(tree.HasRoot());
+}
+
 TEST_CASE("Replacing the query does not disturb already loaded nodes")
 {
     TempDirectory temp;

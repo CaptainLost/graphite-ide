@@ -59,12 +59,23 @@ namespace core
         /// it is marked inaccessible (FileNode::accessible = false) and logged instead.
         void Refresh(FileNode& node);
 
+        /// Re-points the tree at the same content in a new location, after the root
+        /// directory was renamed or moved on disk. Every node's path is rewritten;
+        /// nothing is read from disk and no other state changes, so the expansion the
+        /// user built up survives — which is the whole reason this exists rather than
+        /// simply reopening the folder.
+        ///
+        /// Does nothing when there is no root.
+        void Rebase(const std::filesystem::path& newRoot);
+
         [[nodiscard]] bool HasRoot() const noexcept { return m_hasRoot; }
         [[nodiscard]] FileNode& Root() noexcept { return m_root; }
         [[nodiscard]] const FileNode& Root() const noexcept { return m_root; }
 
     private:
         [[nodiscard]] bool AskIgnored(const std::filesystem::path& path, bool isDirectory) const;
+
+        static void RebaseNode(FileNode& node, const std::filesystem::path& newPath);
 
         FileNode m_root;
         bool m_hasRoot = false;
