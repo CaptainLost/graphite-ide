@@ -2,12 +2,15 @@
 
 #include "Core/Platform/FileDialog.h"
 
-#include <windows.h>
+#ifdef CORE_PLATFORM_WINDOWS
+    #include <windows.h>
 
-#include <shobjidl.h>
+    #include <shobjidl.h>
+#endif
 
 namespace core
 {
+#ifdef CORE_PLATFORM_WINDOWS
     namespace
     {
         /// Scoped COM initialisation. The picker is the only COM user in the process,
@@ -52,9 +55,11 @@ namespace core
             return wide;
         }
     }
+#endif
 
     Result<std::filesystem::path> FileDialog::PickFolder(const std::string& title)
     {
+#ifdef CORE_PLATFORM_WINDOWS
         const ComGuard com;
         if (!com.Ok())
             return Error{ErrorCode::Unsupported, "COM initialisation failed"};
@@ -118,5 +123,9 @@ namespace core
             return Error{ErrorCode::IoFailure, "the selected item has no filesystem path"};
 
         return picked;
+#else
+        return Error{ErrorCode::Unsupported,
+                     "a native folder picker is not implemented on this platform"};
+#endif
     }
 }

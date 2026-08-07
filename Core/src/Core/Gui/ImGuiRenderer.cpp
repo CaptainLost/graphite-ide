@@ -10,9 +10,15 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 
-#include <windows.h>
+#ifdef CORE_PLATFORM_WINDOWS
+    // <GL/gl.h> on Windows depends on typedefs from <windows.h>, so the order matters
+    // and windows.h has to come first.
+    #include <windows.h>
 
-#include <GL/gl.h>
+    #include <GL/gl.h>
+#else
+    #include <GL/gl.h>
+#endif
 
 #include <GLFW/glfw3.h>
 
