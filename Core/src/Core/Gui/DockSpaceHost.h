@@ -26,10 +26,16 @@ namespace core
         void Begin(const DockLayout& layout);
         void End();
 
-        /// Przy nastepnej klatce odtwarza uklad domyslny.
-        void RequestLayoutReset() { m_layoutBuilt = false; }
+        /// Przy nastepnej klatce odtwarza uklad domyslny, porzucajac obecny uklad
+        /// (rowniez ten wczytany z imgui.ini lub zmieniony recznie przez uzytkownika).
+        void RequestLayoutReset()
+        {
+            m_layoutBuilt = false;
+            m_forceRebuild = true;
+        }
 
     private:
         bool m_layoutBuilt = false;
+        bool m_forceRebuild = false;
     };
 }

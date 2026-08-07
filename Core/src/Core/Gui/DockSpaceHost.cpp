@@ -50,10 +50,18 @@ namespace core
 
         m_layoutBuilt = true;
 
-        // Uklad zapisany w imgui.ini ma pierwszenstwo — budujemy tylko pusty wezel.
-        ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockSpaceId);
-        if (node != nullptr && node->IsSplitNode())
-            return;
+        // Uklad zapisany w imgui.ini ma pierwszenstwo przy starcie — budujemy tylko pusty
+        // wezel. Jawny reset omija ten straznik, bo wtedy wlasnie chcemy nadpisac to,
+        // co uzytkownik ma teraz na ekranie.
+        const bool forced = m_forceRebuild;
+        m_forceRebuild = false;
+
+        if (!forced)
+        {
+            ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockSpaceId);
+            if (node != nullptr && node->IsSplitNode())
+                return;
+        }
 
         ImGui::DockBuilderRemoveNode(dockSpaceId);
         ImGui::DockBuilderAddNode(dockSpaceId, ImGuiDockNodeFlags_DockSpace);
