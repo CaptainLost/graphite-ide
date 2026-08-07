@@ -186,17 +186,36 @@ namespace core
             if (!line.empty() && line.back() == '\r')
                 line.pop_back();
 
-            // Trailing spaces are not part of a pattern unless the last one is escaped.
-            while (!line.empty() && line.back() == ' ')
+            // Trailing spaces are dropped unless escaped. Walk the whole run backwards:
+            // stopping at the first escaped space would leave the backslashes of the earlier
+            // ones baked into the pattern.
+            std::size_t trimEnd = line.size();
+            while (trimEnd > 0 && line[trimEnd - 1] == ' ')
             {
-                if (line.size() >= 2 && line[line.size() - 2] == '\\')
-                {
-                    line.erase(line.size() - 2, 1);
-                    break;
-                }
+                // An odd number of backslashes immediately before a space escapes it.
+                std::size_t backslashes = 0;
+                while (backslashes + 2 <= trimEnd && line[trimEnd - 2 - backslashes] == '\\')
+                    ++backslashes;
 
-                line.pop_back();
+                if (backslashes % 2 == 1)
+                    break;
+
+                --trimEnd;
             }
+
+            line.erase(trimEnd);
+
+            // An escaped space is a literal space, so drop the backslash that escaped it.
+            std::size_t write = 0;
+            for (std::size_t read = 0; read < line.size(); ++read)
+            {
+                if (line[read] == '\\' && read + 1 < line.size() && line[read + 1] == ' ')
+                    continue;
+
+                line[write++] = line[read];
+            }
+
+            line.erase(write);
 
             if (line.empty() || line.front() == '#')
                 continue;

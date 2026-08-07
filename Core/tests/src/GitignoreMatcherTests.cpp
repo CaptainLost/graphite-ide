@@ -109,6 +109,14 @@ TEST_CASE("Trailing whitespace is stripped unless escaped")
     CHECK(IgnoresFile("build\\ \n", "build "));
 }
 
+TEST_CASE("A whole run of escaped trailing spaces survives")
+{
+    // Stopping after the first escaped space would leave a stray backslash in the
+    // pattern, so it would match a path containing a backslash and nothing else.
+    CHECK(IgnoresFile("build\\ \\ \n", "build  "));
+    CHECK_FALSE(IgnoresFile("build\\ \\ \n", "build\\  "));
+}
+
 TEST_CASE("A leading escape lets a pattern start with a hash or a bang")
 {
     CHECK(IgnoresFile("\\#notacomment", "#notacomment"));
