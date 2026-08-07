@@ -61,8 +61,12 @@ TEST_CASE("Subscribing from inside a handler does not disturb the running dispat
 {
     core::EventBus bus;
     int firstCalls = 0;
+    int secondCalls = 0;
     int lateCalls = 0;
 
+    // Two handlers must already be registered: with only one, the dispatch loop
+    // never dereferences an iterator after the reallocation, so the copy in
+    // Publish would look unnecessary even though it is not.
     bus.Subscribe<Opened>(
         [&bus, &firstCalls, &lateCalls](const Opened&)
         {
@@ -70,14 +74,19 @@ TEST_CASE("Subscribing from inside a handler does not disturb the running dispat
             bus.Subscribe<Opened>([&lateCalls](const Opened&) { ++lateCalls; });
         });
 
+    bus.Subscribe<Opened>([&secondCalls](const Opened&) { ++secondCalls; });
+
     bus.Publish(Opened{"one"});
 
     CHECK(firstCalls == 1);
-    CHECK(lateCalls == 0);      // the new handler starts from the next publish
-    CHECK(bus.HandlerCount<Opened>() == 2);
+    CHECK(secondCalls == 1);     // reached even though the vector grew mid-dispatch
+    CHECK(lateCalls == 0);       // the new handler starts from the next publish
+    CHECK(bus.HandlerCount<Opened>() == 3);
 
     bus.Publish(Opened{"two"});
 
     CHECK(firstCalls == 2);
+    CHECK(secondCalls == 2);
     CHECK(lateCalls == 1);
+    CHECK(bus.HandlerCount<Opened>() == 4);
 }
