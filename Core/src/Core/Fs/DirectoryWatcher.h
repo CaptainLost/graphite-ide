@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -45,6 +46,11 @@ namespace core
 
             /// Individual paths were dropped and everything held should be refreshed.
             bool overflowed = false;
+
+            /// Set when the watched directory itself was renamed or moved, to wherever it
+            /// is now. The directories above are spelled under the *old* location and are
+            /// meaningless once this is set — handle the move and discard them.
+            std::optional<std::filesystem::path> movedTo;
         };
 
         /// The changes settled since the last call, once the disk has been quiet for
@@ -66,6 +72,11 @@ namespace core
         DirectoryWatcher() = default;
 
         void Run();
+
+        /// Asks the open handle where it currently lives. Empty when it cannot be asked.
+        [[nodiscard]] std::filesystem::path QueryHandlePath() const;
+
+        void CheckForMove();
         void RecordChange(const std::filesystem::path& path);
 
         std::filesystem::path m_root;
@@ -77,6 +88,21 @@ namespace core
         /// question, and making it queue behind the worker's writes would be paying for
         /// a guarantee it does not need.
         std::atomic<bool> m_running{true};
+
+        /// How often the worker asks its handle where it now lives. A rename produces no
+        /// notification of any kind, so this poll is the only way to find out — but the
+        /// thread is already waiting, so the cost is a wait that expires rather than any
+        /// extra work.
+        static constexpr std::chrono::milliseconds kMoveCheckInterval{2000};
+
+        /// The path the handle reported at startup, which is the baseline a later reading
+        /// is compared against. Deliberately not m_root: the filesystem stores its own
+        /// spelling of the name, so `d:\work` opened by the user comes back as `D:\Work`
+        /// and every session would begin by declaring a move.
+        std::filesystem::path m_watchedPath;
+
+        /// Guarded by m_mutex alongside the collector.
+        std::optional<std::filesystem::path> m_movedTo;
 
         /// Opaque on purpose: these are Win32 HANDLEs, and the header must not drag
         /// windows.h into every translation unit that watches a directory.
