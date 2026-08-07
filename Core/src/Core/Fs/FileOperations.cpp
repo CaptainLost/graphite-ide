@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cctype>
+#include <fstream>
 #include <string>
 
 namespace core::fs
@@ -28,6 +29,91 @@ namespace core::fs
 
             return true;
         }
+    }
+
+    Result<void> CreateEmptyFile(const std::filesystem::path& path)
+    {
+        std::error_code code;
+        if (std::filesystem::exists(path, code))
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         std::format("'{}' already exists", ToUtf8(path))};
+        }
+
+        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+        if (!stream.is_open())
+        {
+            return Error{ErrorCode::IoFailure,
+                         std::format("cannot create '{}'", ToUtf8(path))};
+        }
+
+        return Result<void>::Ok();
+    }
+
+    Result<void> CreateDirectory(const std::filesystem::path& path)
+    {
+        std::error_code code;
+        if (std::filesystem::exists(path, code))
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         std::format("'{}' already exists", ToUtf8(path))};
+        }
+
+        if (!std::filesystem::create_directory(path, code) || code)
+        {
+            return Error{ErrorCode::IoFailure,
+                         std::format("cannot create '{}': {}", ToUtf8(path), code.message())};
+        }
+
+        return Result<void>::Ok();
+    }
+
+    Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to)
+    {
+        std::error_code code;
+        if (!std::filesystem::exists(from, code))
+        {
+            return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(from))};
+        }
+
+        if (std::filesystem::exists(to, code))
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         std::format("'{}' already exists", ToUtf8(to))};
+        }
+
+        std::filesystem::rename(from, to, code);
+        if (code)
+        {
+            return Error{ErrorCode::IoFailure,
+                         std::format("cannot rename '{}': {}", ToUtf8(from), code.message())};
+        }
+
+        return Result<void>::Ok();
+    }
+
+    Result<std::filesystem::path> Duplicate(const std::filesystem::path& path)
+    {
+        std::error_code code;
+        if (!std::filesystem::exists(path, code))
+        {
+            return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(path))};
+        }
+
+        const std::filesystem::path target = MakeUniquePath(path);
+
+        std::filesystem::copy(path, target,
+                              std::filesystem::copy_options::recursive |
+                                  std::filesystem::copy_options::copy_symlinks,
+                              code);
+
+        if (code)
+        {
+            return Error{ErrorCode::IoFailure,
+                         std::format("cannot copy '{}': {}", ToUtf8(path), code.message())};
+        }
+
+        return target;
     }
 
     std::filesystem::path MakeUniquePath(const std::filesystem::path& path)
