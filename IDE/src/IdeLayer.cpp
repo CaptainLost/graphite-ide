@@ -69,6 +69,7 @@ namespace ide
 
     void IdeLayer::OnUpdate(float deltaSeconds)
     {
+        m_workspace.Update();
         m_panels.OnUpdate(deltaSeconds);
     }
 

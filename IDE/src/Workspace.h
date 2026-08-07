@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Core/Event/EventBus.h"
+#include "Core/Fs/DirectoryWatcher.h"
 #include "Core/Fs/FileTree.h"
 #include "Core/Git/Repository.h"
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 
 namespace ide
@@ -46,6 +48,10 @@ namespace ide
         /// has to survive a restart. Does nothing when no folder is open.
         void Close();
 
+        /// Applies any filesystem changes noticed since the last frame. Cheap when
+        /// nothing happened, which is the overwhelmingly common case.
+        void Update();
+
         void SelectFile(const std::filesystem::path& path);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
@@ -57,12 +63,19 @@ namespace ide
         }
 
     private:
+        [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);
+        void RefreshChanged(const std::filesystem::path& directory);
+        void TryOpenRepository();
+
         core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this
         /// repository, and members are destroyed in reverse declaration order, so the
         /// tree must go first.
         std::optional<core::git::Repository> m_repository;
         core::FileTree m_tree;
+        /// Declared after m_tree so it is destroyed first: its thread must be stopped
+        /// before the tree it reports into goes away.
+        std::unique_ptr<core::DirectoryWatcher> m_watcher;
         std::filesystem::path m_root;
         std::filesystem::path m_selectedFile;
     };
