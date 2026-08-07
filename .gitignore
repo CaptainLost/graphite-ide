@@ -28,5 +28,8 @@ ide.ini
 # Internal design docs and plans, kept locally only
 docs/superpowers/
 
+# Scratch files written by subagents while executing a plan
+.superpowers/
+
 # Parallel work trees
 .worktrees/
