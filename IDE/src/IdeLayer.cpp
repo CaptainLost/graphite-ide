@@ -7,6 +7,7 @@
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 
 #include <imgui.h>
 
@@ -37,7 +38,7 @@ namespace ide
             [editor](const FileSelected& event)
             {
                 if (editor != nullptr)
-                    editor->SetMessage(event.path.string());
+                    editor->SetMessage(core::fs::ToUtf8(event.path));
             });
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
