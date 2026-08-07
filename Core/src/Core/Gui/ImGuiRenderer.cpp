@@ -3,12 +3,16 @@
 #include "Core/Gui/ImGuiRenderer.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Gui/Theme.h"
+#include "Core/Platform/Process.h"
 #include "Core/Platform/Window.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+
+#include <string>
 
 #ifdef CORE_PLATFORM_WINDOWS
     // <GL/gl.h> on Windows depends on typedefs from <windows.h>, so the order matters
@@ -38,7 +42,17 @@ namespace core
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        io.IniFilename = "imgui.ini";
+        // ImGui stores this pointer rather than copying the string, so the storage has
+        // to outlive the context — a local would dangle at the next save.
+        static std::string iniPath = []
+        {
+            if (const auto directory = platform::ExecutableDirectory(); directory)
+                return fs::ToUtf8(directory.Value() / "imgui.ini");
+
+            return std::string{"imgui.ini"};
+        }();
+
+        io.IniFilename = iniPath.c_str();
 
         // By default ImGui lets a window be dragged by any empty part of its body, which
         // makes context menus and popups draggable — they have no title bar, so their
