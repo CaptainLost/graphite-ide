@@ -16,8 +16,9 @@ Makefile
 *.user
 *.suo
 
-# ImGui runtime state
+# Runtime state written next to the executable
 imgui.ini
+ide.ini
 
 # The premake binary is intentionally kept in the repo
 !vendor/bin/
