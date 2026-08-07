@@ -52,6 +52,11 @@ namespace core
         glfwSetWindowShouldClose(m_handle, GLFW_TRUE);
     }
 
+    bool GlfwWindow::IsFocused() const
+    {
+        return glfwGetWindowAttrib(m_handle, GLFW_FOCUSED) != 0;
+    }
+
     void GlfwWindow::FramebufferSize(int& width, int& height) const
     {
         glfwGetFramebufferSize(m_handle, &width, &height);

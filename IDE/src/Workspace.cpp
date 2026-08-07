@@ -144,6 +144,19 @@ namespace ide
             RefreshChanged(directory);
     }
 
+    void Workspace::Reload()
+    {
+        if (!m_tree.HasRoot())
+            return;
+
+        // Settled before the tree is re-read, not after: installing or dropping the
+        // ignore query changes what every node should say, and a refresh that ran first
+        // would bake in the previous answer.
+        (void)SyncRepository();
+
+        m_tree.Refresh(m_tree.Root());
+    }
+
     bool Workspace::SyncRepository()
     {
         if (!m_repository)

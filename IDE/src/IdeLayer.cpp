@@ -71,6 +71,39 @@ namespace ide
     {
         m_workspace.Update();
         m_panels.OnUpdate(deltaSeconds);
+
+        // In its own function so its early return cannot swallow the calls above. An
+        // earlier revision had this logic inlined here and dropped the panel update
+        // silently — nothing failed, because no panel overrides it yet.
+        UpdateFocusReload(deltaSeconds);
+    }
+
+    void IdeLayer::UpdateFocusReload(float deltaSeconds)
+    {
+        if (!core::Application::Get().GetWindow().IsFocused())
+        {
+            m_secondsUnfocused += deltaSeconds;
+            m_windowFocused = false;
+            return;
+        }
+
+        // Only the moment focus returns, not every frame it is held.
+        if (!m_windowFocused)
+        {
+            m_windowFocused = true;
+
+            // Reload itself does nothing without an open folder, but the log line would
+            // still claim a reload happened. A trace that reports work nobody did is
+            // worse than no trace at all — it is the sort of thing someone later spends
+            // an afternoon believing.
+            if (m_secondsUnfocused >= kReloadAfterSecondsAway && m_workspace.IsOpen())
+            {
+                CORE_TRACE("Reloading the workspace after {:.1f}s away", m_secondsUnfocused);
+                m_workspace.Reload();
+            }
+
+            m_secondsUnfocused = 0.0f;
+        }
     }
 
     void IdeLayer::OnUIRender()

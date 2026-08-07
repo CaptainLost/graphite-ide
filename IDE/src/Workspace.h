@@ -61,6 +61,18 @@ namespace ide
         /// nothing happened, which is the overwhelmingly common case.
         void Update();
 
+        /// Re-reads the repository state and every loaded directory. Cheap enough to run
+        /// on demand, far too expensive to run per frame.
+        ///
+        /// The repository handle is settled, not reopened, so git configuration read at
+        /// open time does not come back. In particular, repointing `core.excludesFile` at
+        /// a different file has no effect until the folder is reopened — libgit2 caches
+        /// that setting in the handle, which a test in GitRepositoryTests.cpp pins.
+        /// Editing the file it already points at does take effect.
+        ///
+        /// Does nothing when no folder is open.
+        void Reload();
+
         void SelectFile(const std::filesystem::path& path);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
