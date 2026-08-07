@@ -67,6 +67,14 @@ namespace ide
         void RefreshChanged(const std::filesystem::path& directory);
         void TryOpenRepository();
 
+        /// Opens or drops the repository to match what is on disk. Returns true when it
+        /// changed either way, which means every cached ignore verdict in the tree is now
+        /// stale.
+        [[nodiscard]] bool SyncRepository();
+
+        /// Tries once to start watching again, then leaves the workspace unwatched.
+        void HandleDeadWatcher();
+
         core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this
         /// repository, and members are destroyed in reverse declaration order, so the
@@ -76,6 +84,11 @@ namespace ide
         /// Declared after m_tree so it is destroyed first: its thread must be stopped
         /// before the tree it reports into goes away.
         std::unique_ptr<core::DirectoryWatcher> m_watcher;
+
+        /// One resume attempt per open folder. A watcher that dies twice is failing for a
+        /// reason retrying will not fix, and restarting a thread every frame would be far
+        /// worse than not watching at all.
+        bool m_watcherResumed = false;
         std::filesystem::path m_root;
         std::filesystem::path m_selectedFile;
     };

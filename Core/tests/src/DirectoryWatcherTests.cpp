@@ -121,3 +121,32 @@ TEST_CASE("Destroying a watcher with no changes pending returns promptly")
     // the directory. This test is the whole reason for the stop event.
     CHECK(std::chrono::steady_clock::now() - before < std::chrono::seconds{2});
 }
+
+TEST_CASE("A change to the repository's exclude file is reported as a root change")
+{
+    TempDirectory temp;
+    temp.MakeDir(".git/info");
+
+    auto watcher = DirectoryWatcher::Start(temp.Path());
+    REQUIRE(watcher.HasValue());
+
+    temp.MakeFile(".git/info/exclude", "build/");
+
+    const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+
+    REQUIRE_FALSE(changes.empty());
+
+    // The root, not the directory holding the file: these rules apply to the whole tree,
+    // and refreshing the root is what re-asks every loaded node.
+    CHECK(changes[0] == temp.Path());
+}
+
+TEST_CASE("A fresh watcher reports itself as running")
+{
+    TempDirectory temp;
+
+    auto watcher = DirectoryWatcher::Start(temp.Path());
+    REQUIRE(watcher.HasValue());
+
+    CHECK(watcher.Value()->IsRunning());
+}
