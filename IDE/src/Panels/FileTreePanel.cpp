@@ -261,107 +261,107 @@ namespace ide
 
         switch (action.kind)
         {
-        case PendingAction::Kind::None:
-            return;
-
-        case PendingAction::Kind::Delete:
-            // Deletion is the one irreversible-looking action, so it goes through a
-            // confirmation rather than straight to the filesystem.
-            m_renamingPath.clear();
-            m_deleteCandidate = action.target;
-            m_openDeleteConfirmation = true;
-            return;
-
-        case PendingAction::Kind::Refresh:
-        {
-            if (core::FileNode* node = FindNode(action.target); node != nullptr)
-                m_workspace.Tree().Refresh(*node);
-
-            return;
-        }
-
-        case PendingAction::Kind::Rename:
-        {
-            if (!core::fs::IsValidFileName(action.name))
-            {
-                CORE_ERROR("'{}' is not a valid file name", action.name);
-                return;
-            }
-
-            const std::filesystem::path target =
-                action.target.parent_path() / core::fs::FromUtf8(action.name);
-
-            if (target == action.target)
-                return;
-
-            if (const auto renamed = core::fs::Rename(action.target, target); !renamed)
-            {
-                CORE_ERROR("{}", renamed.GetError().message);
-                return;
-            }
-
-            RefreshParentOf(action.target);
-            return;
-        }
-
-        case PendingAction::Kind::Duplicate:
-        {
-            const auto copied = core::fs::Duplicate(action.target);
-
-            if (!copied)
-            {
-                CORE_ERROR("{}", copied.GetError().message);
-                return;
-            }
-
-            RefreshParentOf(action.target);
-            return;
-        }
-
+        case PendingAction::Kind::None:      return;
+        case PendingAction::Kind::Delete:    HandleDelete(action); return;
+        case PendingAction::Kind::Refresh:   HandleRefresh(action); return;
+        case PendingAction::Kind::Rename:    HandleRename(action); return;
+        case PendingAction::Kind::Duplicate: HandleDuplicate(action); return;
         case PendingAction::Kind::CreateFile:
         case PendingAction::Kind::MakeDirectory:
-        {
-            if (!core::fs::IsValidFileName(action.name))
-            {
-                CORE_ERROR("'{}' is not a valid file name", action.name);
-                return;
-            }
-
-            // MakeUniquePath keeps repeated clicks from failing on the default name.
-            const std::filesystem::path target =
-                core::fs::MakeUniquePath(action.target / core::fs::FromUtf8(action.name));
-
-            const auto created = action.kind == PendingAction::Kind::CreateFile
-                                     ? core::fs::CreateEmptyFile(target)
-                                     : core::fs::MakeDirectory(target);
-
-            if (!created)
-            {
-                CORE_ERROR("{}", created.GetError().message);
-                return;
-            }
-
-            if (core::FileNode* parent = FindNode(action.target); parent != nullptr)
-            {
-                // Load the folder if it was never opened, otherwise re-read it. Doing both
-                // would read the same directory from disk twice.
-                if (!parent->loaded)
-                    (void)m_workspace.Tree().Expand(*parent);
-                else
-                    m_workspace.Tree().Refresh(*parent);
-
-                parent->expanded = true;
-                m_forceOpenPath = action.target;
-            }
-
-            CORE_INFO("Created '{}'", core::fs::ToUtf8(target));
-
+            HandleCreate(action);
             return;
-        }
-
         default:
             return;
         }
+    }
+
+    void FileTreePanel::HandleDelete(const PendingAction& action)
+    {
+        // Deletion is the one irreversible-looking action, so it goes through a
+        // confirmation rather than straight to the filesystem.
+        m_renamingPath.clear();
+        m_deleteCandidate = action.target;
+        m_openDeleteConfirmation = true;
+    }
+
+    void FileTreePanel::HandleRefresh(const PendingAction& action)
+    {
+        if (core::FileNode* node = FindNode(action.target); node != nullptr)
+            m_workspace.Tree().Refresh(*node);
+    }
+
+    void FileTreePanel::HandleRename(const PendingAction& action)
+    {
+        if (!core::fs::IsValidFileName(action.name))
+        {
+            CORE_ERROR("'{}' is not a valid file name", action.name);
+            return;
+        }
+
+        const std::filesystem::path target =
+            action.target.parent_path() / core::fs::FromUtf8(action.name);
+
+        if (target == action.target)
+            return;
+
+        if (const auto renamed = core::fs::Rename(action.target, target); !renamed)
+        {
+            CORE_ERROR("{}", renamed.GetError().message);
+            return;
+        }
+
+        RefreshParentOf(action.target);
+    }
+
+    void FileTreePanel::HandleDuplicate(const PendingAction& action)
+    {
+        const auto copied = core::fs::Duplicate(action.target);
+
+        if (!copied)
+        {
+            CORE_ERROR("{}", copied.GetError().message);
+            return;
+        }
+
+        RefreshParentOf(action.target);
+    }
+
+    void FileTreePanel::HandleCreate(const PendingAction& action)
+    {
+        if (!core::fs::IsValidFileName(action.name))
+        {
+            CORE_ERROR("'{}' is not a valid file name", action.name);
+            return;
+        }
+
+        // MakeUniquePath keeps repeated clicks from failing on the default name.
+        const std::filesystem::path target =
+            core::fs::MakeUniquePath(action.target / core::fs::FromUtf8(action.name));
+
+        const auto created = action.kind == PendingAction::Kind::CreateFile
+                                 ? core::fs::CreateEmptyFile(target)
+                                 : core::fs::MakeDirectory(target);
+
+        if (!created)
+        {
+            CORE_ERROR("{}", created.GetError().message);
+            return;
+        }
+
+        if (core::FileNode* parent = FindNode(action.target); parent != nullptr)
+        {
+            // Load the folder if it was never opened, otherwise re-read it. Doing both
+            // would read the same directory from disk twice.
+            if (!parent->loaded)
+                (void)m_workspace.Tree().Expand(*parent);
+            else
+                m_workspace.Tree().Refresh(*parent);
+
+            parent->expanded = true;
+            m_forceOpenPath = action.target;
+        }
+
+        CORE_INFO("Created '{}'", core::fs::ToUtf8(target));
     }
 
     void FileTreePanel::RenderDeleteConfirmation()

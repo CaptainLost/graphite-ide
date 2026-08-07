@@ -52,6 +52,11 @@ namespace ide
         [[nodiscard]] bool RenderRenameEditor(const core::FileNode& node);
         void RecordAction(PendingAction action);
         void ExecutePendingAction();
+        void HandleDelete(const PendingAction& action);
+        void HandleRefresh(const PendingAction& action);
+        void HandleRename(const PendingAction& action);
+        void HandleDuplicate(const PendingAction& action);
+        void HandleCreate(const PendingAction& action);
         [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);
         void RefreshParentOf(const std::filesystem::path& path);
         [[nodiscard]] bool PassesFilter(const core::FileNode& node) const;
