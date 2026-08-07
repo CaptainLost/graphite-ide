@@ -21,7 +21,7 @@ project "IDE"
 
     -- GLFW, ImGui and opengl32 are listed explicitly: the Core static library
     -- does not propagate its own linker inputs to a consumer.
-    links { "Core", "GLFW", "ImGui", "opengl32.lib", "ole32.lib", "shell32.lib" }
+    links { "Core", "GLFW", "ImGui", "libgit2", "opengl32.lib", "ole32.lib", "shell32.lib" }
 
     filter "system:windows"
         systemversion "latest"

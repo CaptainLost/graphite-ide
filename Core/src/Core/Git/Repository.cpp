@@ -1,0 +1,106 @@
+#include "corepch.h"
+
+#include "Core/Git/Repository.h"
+
+#include "Core/Fs/FileSystem.h"
+
+#include <git2.h>
+
+#include <utility>
+
+namespace core::git
+{
+    namespace
+    {
+        /// libgit2 requires initialisation before any other call and keeps a reference
+        /// count, so initialising once per process on first use is both sufficient and
+        /// safe. A function-local static gives us that with C++'s own thread-safe
+        /// initialisation rather than a hand-rolled flag.
+        void EnsureInitialised()
+        {
+            static const int result = git_libgit2_init();
+            (void)result;
+        }
+    }
+
+    Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
+    {
+        EnsureInitialised();
+
+        git_repository* handle = nullptr;
+        const std::string path = fs::ToUtf8(anyPathInside);
+
+        // ceiling_dirs is null so the search walks up to the filesystem root, matching
+        // what the git command line does from a subdirectory.
+        const int result = git_repository_open_ext(&handle, path.c_str(), 0, nullptr);
+
+        if (result != 0 || handle == nullptr)
+        {
+            return Error{ErrorCode::NotFound,
+                         std::format("'{}' is not inside a git repository", path)};
+        }
+
+        Repository repository;
+        repository.m_handle = handle;
+
+        if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
+            repository.m_workingDirectory = fs::FromUtf8(workdir);
+
+        return repository;
+    }
+
+    Repository::~Repository()
+    {
+        if (m_handle != nullptr)
+            git_repository_free(m_handle);
+    }
+
+    Repository::Repository(Repository&& other) noexcept
+        : m_handle(std::exchange(other.m_handle, nullptr)),
+          m_workingDirectory(std::move(other.m_workingDirectory))
+    {
+    }
+
+    Repository& Repository::operator=(Repository&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        if (m_handle != nullptr)
+            git_repository_free(m_handle);
+
+        m_handle = std::exchange(other.m_handle, nullptr);
+        m_workingDirectory = std::move(other.m_workingDirectory);
+        return *this;
+    }
+
+    bool Repository::IsIgnored(const std::filesystem::path& path) const
+    {
+        if (m_handle == nullptr)
+            return false;
+
+        std::error_code code;
+        std::filesystem::path relative =
+            std::filesystem::relative(path, m_workingDirectory, code);
+
+        // Outside the working tree there is nothing for git to have an opinion about.
+        if (code || relative.empty() || fs::ToUtf8(relative).rfind("..", 0) == 0)
+            return false;
+
+        // git speaks forward slashes on every platform.
+        relative.make_preferred();
+        std::string text = fs::ToUtf8(relative);
+
+        for (char& character : text)
+        {
+            if (character == '\\')
+                character = '/';
+        }
+
+        int ignored = 0;
+        if (git_ignore_path_is_ignored(&ignored, m_handle, text.c_str()) != 0)
+            return false;
+
+        return ignored != 0;
+    }
+}

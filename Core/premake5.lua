@@ -22,6 +22,13 @@ project "Core"
         "%{wks.location}/vendor/imgui/backends"
     }
 
+    externalincludedirs
+    {
+        "%{IncludeDir.libgit2}",
+        "%{IncludeDir.libgit2Config}"
+    }
+    externalwarnings "Off"
+
     links { "GLFW", "ImGui", "opengl32.lib" }
 
     filter "system:windows"
