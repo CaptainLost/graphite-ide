@@ -70,7 +70,29 @@ namespace ide
     void IdeLayer::OnUpdate(float deltaSeconds)
     {
         m_workspace.Update();
-        m_panels.OnUpdate(deltaSeconds);
+
+        const bool focused = core::Application::Get().GetWindow().IsFocused();
+
+        if (!focused)
+        {
+            m_secondsUnfocused += deltaSeconds;
+            m_windowFocused = false;
+            return;
+        }
+
+        // Only the moment focus returns, not every frame it is held.
+        if (!m_windowFocused)
+        {
+            m_windowFocused = true;
+
+            if (m_secondsUnfocused >= kReloadAfterSecondsAway)
+            {
+                CORE_TRACE("Reloading the workspace after {:.1f}s away", m_secondsUnfocused);
+                m_workspace.Reload();
+            }
+
+            m_secondsUnfocused = 0.0f;
+        }
     }
 
     void IdeLayer::OnUIRender()

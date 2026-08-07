@@ -61,6 +61,12 @@ namespace ide
         /// nothing happened, which is the overwhelmingly common case.
         void Update();
 
+        /// Re-reads everything the workspace holds: the repository state and every loaded
+        /// directory. Cheap enough to run on demand, far too expensive to run per frame.
+        ///
+        /// Does nothing when no folder is open.
+        void Reload();
+
         void SelectFile(const std::filesystem::path& path);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }

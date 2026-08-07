@@ -28,6 +28,12 @@ namespace core
         [[nodiscard]] virtual bool ShouldClose() const = 0;
         virtual void RequestClose() = 0;
 
+        /// Whether the window currently has keyboard focus. A query rather than a
+        /// callback because Window has no event mechanism, and the one caller already
+        /// runs every frame — adding a dispatch system for a single boolean would cost
+        /// more than it explains.
+        [[nodiscard]] virtual bool IsFocused() const = 0;
+
         virtual void FramebufferSize(int& width, int& height) const = 0;
         virtual void SetVSync(bool enabled) = 0;
 

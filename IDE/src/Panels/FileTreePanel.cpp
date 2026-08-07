@@ -46,8 +46,8 @@ namespace ide
     {
         if (ImGui::Button("Refresh"))
         {
+            m_workspace.Reload();
             core::FileNode& root = m_workspace.Tree().Root();
-            m_workspace.Tree().Refresh(root);
 
             if (root.accessible)
                 CORE_INFO("File tree refreshed");
