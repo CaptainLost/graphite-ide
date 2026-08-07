@@ -1,14 +1,56 @@
--- libgit2 is vendored without running its CMake configuration (see
--- vendor/libgit2-config/README-equivalent comments in git2_features.h).
--- File lists mirror src/util/CMakeLists.txt and src/libgit2/CMakeLists.txt
--- for a Windows x64 build with threads, bundled regex, bundled zlib, and
--- the bundled HTTP parser. Note this is *not* a network-free build: the
--- http:// and git:// smart transports are referenced unconditionally by
--- src/libgit2/transport.c's static transport table (only ssh:// is behind
--- an #ifdef), so they always compile in; there is simply no TLS backend
--- configured, so https:// fetches fail at runtime by design. See
--- task-1-report.md for the full derivation and every adjustment made
--- while getting this to link.
+-- libgit2 is vendored without running its CMake configuration; the comments
+-- in vendor/libgit2-config/git2_features.h describe how that header was
+-- hand-derived. File lists mirror src/util/CMakeLists.txt and
+-- src/libgit2/CMakeLists.txt for a Windows x64 build with threads, bundled
+-- regex, bundled zlib, and the bundled HTTP parser. Note this is *not* a
+-- network-free build: the http:// and git:// smart transports are
+-- referenced unconditionally by src/libgit2/transport.c's static transport
+-- table (only ssh:// is behind an #ifdef), so they always compile in; there
+-- is simply no TLS backend configured, so https:// fetches fail at runtime
+-- by design.
+--
+-- Build cost: this compiles roughly 230 .c files on every clean build, and
+-- the vendored submodule checkout is about 34 MB on disk. libgit2 is its
+-- own premake project, so day to day it only rebuilds when the submodule's
+-- checked-out commit moves.
+--
+-- Never needed — files CMake's own glob would sweep in, deliberately left
+-- out, each because the linker never demanded the symbol it provides:
+--   streams/schannel.c          Windows TLS backend; no TLS backend is
+--                                configured at all (see git2_features.h).
+--   streams/stransport.c        Apple Secure Transport TLS backend; not
+--                                applicable to a Windows-only build.
+--   streams/openssl_dynamic.c   Runtime-loaded OpenSSL TLS backend; same
+--                                reason as schannel.c.
+--   streams/openssl_legacy.c    Legacy-OpenSSL variant of the above.
+--   transports/winhttp.c        WinHTTP-backed https:// transport; https://
+--                                is unreachable anyway without a TLS backend.
+--   transports/ssh.c            SSH transport; SSH support was not
+--                                configured (GIT_SSH left undefined).
+--   transports/ssh_exec.c       exec-based SSH transport variant; same
+--                                reason as ssh.c.
+--   transports/auth_gssapi.c    Kerberos/GSSAPI auth; not configured, and
+--                                Windows routes negotiate/NTLM through the
+--                                native SSPI path in auth_sspi.c instead.
+--   transports/auth_ntlmclient.c  Portable NTLM implementation; superseded
+--                                on Windows by auth_sspi.c, which resolves
+--                                to a real implementation whenever GIT_WIN32
+--                                is defined, regardless of GIT_NTLM.
+--   transports/credential_helpers.c  Reads git-credential-* helper output;
+--                                no credential helper integration is wired
+--                                up in this integration.
+--   deps/ntlmclient/             Whole directory backing
+--                                auth_ntlmclient.c above — same reason, and
+--                                it stays inert since GIT_NTLM is undefined.
+--
+-- Upgrading the submodule: bump the vendor/libgit2 submodule to the new
+-- tag, then re-derive vendor/libgit2-config/git2_features.h by diffing the
+-- new src/util/git2_features.h.in and the cmake/Select*.cmake files
+-- against the version this was derived from. Rebuild, and if the linker
+-- demands a symbol from a file not listed above, add that one file — not
+-- its whole directory — with a comment explaining why it was needed, the
+-- same way every entry below streams/ and transports/ in this file is
+-- documented.
 
 project "libgit2"
     kind "StaticLib"
@@ -32,8 +74,7 @@ project "libgit2"
         -- streams/ and transports/, which CMake's glob would sweep in
         -- wholesale. Both directories are added back file-by-file below,
         -- each only because the linker demanded that specific symbol --
-        -- see the comments by each entry and task-1-report.md for the
-        -- full trail.
+        -- see the comments by each entry below.
         "%{wks.location}/vendor/libgit2/src/libgit2/*.c",
         "%{wks.location}/vendor/libgit2/src/libgit2/*.h",
 

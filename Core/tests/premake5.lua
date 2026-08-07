@@ -19,8 +19,7 @@ project "CoreTests"
     externalincludedirs
     {
         "%{IncludeDir.doctest}",
-        "%{IncludeDir.libgit2}",
-        "%{IncludeDir.libgit2Config}"
+        "%{IncludeDir.libgit2}"
     }
 
     externalwarnings "Off"

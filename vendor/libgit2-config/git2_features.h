@@ -23,11 +23,8 @@
  * an #ifdef), so they always compile in. Without a TLS backend, an actual
  * `https://` fetch fails at runtime by design — this integration
  * deliberately buys only local repository queries plus a linkable,
- * runnable library. See task-1-report.md for the full trail, including a
- * correction: `deps/llhttp` was initially (wrongly) treated as an
- * out-of-scope network dependency and is in fact libgit2's own bundled,
- * dependency-free HTTP parser (like deps/zlib and deps/pcre), not a
- * system package or TLS/network stack.
+ * runnable library. See vendor/premake/libgit2.lua for the full file-list
+ * derivation, including the list of files deliberately left out and why.
  */
 #ifndef INCLUDE_features_h__
 #define INCLUDE_features_h__
@@ -53,17 +50,27 @@
 #define GIT_IO_WSAPOLL 1
 
 /* SHA1 and SHA256 both implemented via the native Windows CryptoAPI/CNG
- * backend (src/util/hash/win32.c), a deliberate choice rather than what
- * cmake/SelectHashes.cmake would pick by default for this configuration
- * (no TLS backend, USE_SHA1/USE_SHA256 left at their own ON default): that
- * unmodified default is GIT_SHA1_COLLISIONDETECT for SHA1 and
- * GIT_SHA256_BUILTIN for SHA256. The Win32 backend is one of the other
- * branches SelectHashes.cmake supports (reached when USE_SHA1/USE_SHA256
- * are set to "HTTPS" and the HTTPS backend resolves to Schannel/WinHTTP);
- * it was selected here because the task brief's Step 3 starting-file list
- * names src/util/hash/win32.c explicitly, and it avoids pulling in the
- * bundled sha1dc/rfc6234 implementations for a single vendored source
- * file. It compiles clean and works; it is simply not the default. */
+ * backend (src/util/hash/win32.c), rather than the CMake default for this
+ * configuration (no TLS backend, USE_SHA1/USE_SHA256 left at their own ON
+ * default), which is GIT_SHA1_COLLISIONDETECT for SHA1 and
+ * GIT_SHA256_BUILTIN for SHA256.
+ *
+ * GIT_SHA1_COLLISIONDETECT (the sha1dc implementation) buys detection of
+ * SHAttered-class chosen-prefix collision attacks while hashing objects —
+ * it notices when two different inputs have been deliberately crafted to
+ * hash to the same SHA-1, which plain SHA-1 cannot. Taking the Win32
+ * backend instead trades that detection away, in exchange for not
+ * vendoring sha1dc and the bundled rfc6234 SHA-256 implementation:
+ * roughly fifteen fewer source files, using CryptoAPI/CNG (already present
+ * on every target Windows install) instead.
+ *
+ * That trade was judged acceptable here because this integration only
+ * hashes objects for the user's own local repositories — there is no
+ * scenario where a third party supplies a crafted object for this process
+ * to hash, which is the threat collision detection defends against.
+ * Anyone re-deriving this header for a different use (for instance,
+ * hashing objects fetched from an untrusted remote) should reconsider this
+ * choice rather than carry it forward unexamined. */
 #define GIT_SHA1_WIN32 1
 #define GIT_SHA256_WIN32 1
 

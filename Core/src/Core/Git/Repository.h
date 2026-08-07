@@ -30,6 +30,11 @@ namespace core::git
         /// the global and repository-local excludes. A path outside the working tree, or
         /// any failure, reads as not ignored — the tree must stay usable when the answer
         /// is unavailable.
+        ///
+        /// Not cheap: each call stats the path, then walks a stack of .gitignore files
+        /// from the working directory down to it, re-stating each one along the way.
+        /// It is meant for filling a cached flag when a directory is loaded, not for
+        /// calling from a render loop.
         [[nodiscard]] bool IsIgnored(const std::filesystem::path& path) const;
 
         [[nodiscard]] const std::filesystem::path& WorkingDirectory() const noexcept

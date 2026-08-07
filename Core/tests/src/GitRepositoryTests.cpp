@@ -154,6 +154,42 @@ TEST_CASE("A file whose name begins with two dots is inside the tree")
     CHECK(opened.Value().IsIgnored(temp.Path() / "..config"));
 }
 
+TEST_CASE("A file inside an ignored directory is ignored")
+{
+    TempDirectory temp;
+    InitRepository(temp.Path());
+    temp.MakeFile(".gitignore", "build/\n");
+    temp.MakeFile("build/output.o", "x");
+
+    auto opened = Repository::Open(temp.Path());
+    REQUIRE(opened.HasValue());
+
+    // The commonest shape in a real tree, and the one the file tree will ask about
+    // most: the rule names the directory, the query names a file underneath it.
+    CHECK(opened.Value().IsIgnored(temp.Path() / "build" / "output.o"));
+}
+
+TEST_CASE("A directory-only rule ignores the directory itself")
+{
+    TempDirectory temp;
+    InitRepository(temp.Path());
+    temp.MakeFile(".gitignore", "build/\n");
+    temp.MakeDir("build");
+    temp.MakeFile("build.txt", "x");
+
+    auto opened = Repository::Open(temp.Path());
+    REQUIRE(opened.HasValue());
+
+    const Repository& repository = opened.Value();
+
+    CHECK(repository.IsIgnored(temp.Path() / "build"));
+
+    // The trailing slash means directories only, so the similarly named file must
+    // not match. The hand-rolled matcher pinned this before it was deleted; nothing
+    // pinned it afterwards until now.
+    CHECK_FALSE(repository.IsIgnored(temp.Path() / "build.txt"));
+}
+
 TEST_CASE("The repository exposes its working directory")
 {
     TempDirectory temp;

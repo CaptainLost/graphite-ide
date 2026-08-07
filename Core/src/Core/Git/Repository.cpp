@@ -2,6 +2,7 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 
 #include <git2.h>
@@ -19,7 +20,9 @@ namespace core::git
         void EnsureInitialised()
         {
             static const int result = git_libgit2_init();
-            (void)result;
+
+            if (result < 0)
+                CORE_ERROR("libgit2 failed to initialise (code {})", result);
         }
     }
 
@@ -36,8 +39,21 @@ namespace core::git
 
         if (result != 0 || handle == nullptr)
         {
-            return Error{ErrorCode::NotFound,
-                         std::format("'{}' is not inside a git repository", path)};
+            // libgit2's own message names the real cause — a .git file pointing at a
+            // deleted worktree reads very differently from an unreadable directory, and
+            // collapsing both into "not a repository" throws that away.
+            const git_error* detail = git_error_last();
+            const std::string message =
+                detail != nullptr && detail->message != nullptr ? detail->message : "unknown error";
+
+            ErrorCode code = ErrorCode::IoFailure;
+
+            if (result == GIT_ENOTFOUND)
+                code = ErrorCode::NotFound;
+            else if (result == GIT_EAUTH)
+                code = ErrorCode::AccessDenied;
+
+            return Error{code, std::format("cannot open a git repository at '{}': {}", path, message)};
         }
 
         Repository repository;
@@ -105,7 +121,10 @@ namespace core::git
 
         int ignored = 0;
         if (git_ignore_path_is_ignored(&ignored, m_handle, text.c_str()) != 0)
+        {
+            CORE_TRACE("Cannot determine ignore status for '{}'", text);
             return false;
+        }
 
         return ignored != 0;
     }
