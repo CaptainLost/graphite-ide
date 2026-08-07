@@ -2,8 +2,6 @@
 
 #include "Core/Platform/FileDialog.h"
 
-#include "Core/Base/Log.h"
-
 #include <windows.h>
 
 #include <shobjidl.h>
@@ -69,8 +67,12 @@ namespace core
             return Error{ErrorCode::Unsupported, "cannot create the system folder dialog"};
 
         DWORD options = 0;
-        dialog->GetOptions(&options);
-        dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+        if (FAILED(dialog->GetOptions(&options)) ||
+            FAILED(dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST)))
+        {
+            dialog->Release();
+            return Error{ErrorCode::Unsupported, "cannot configure the dialog as a folder picker"};
+        }
 
         const std::wstring wideTitle = Widen(title);
         if (!wideTitle.empty())
