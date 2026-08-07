@@ -22,6 +22,8 @@ namespace ide
             ImGui::TextDisabled("%s", m_message.c_str());
         }
 
+        void SetMessage(std::string message) { m_message = std::move(message); }
+
     private:
         std::string m_message;
     };

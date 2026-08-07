@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <memory>
@@ -12,6 +13,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <typeindex>
 #include <unordered_map>
 #include <utility>
 #include <variant>

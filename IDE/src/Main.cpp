@@ -6,6 +6,7 @@
 #include "Core/Version.h"
 
 #include <exception>
+#include <filesystem>
 #include <memory>
 
 namespace
@@ -15,20 +16,27 @@ namespace
     class IdeApplication final : public core::Application
     {
     public:
-        explicit IdeApplication(std::shared_ptr<core::RingBufferSink> sink)
-            : core::Application(core::ApplicationSpec{"IDE", 1600, 900}), m_sink(std::move(sink))
+        IdeApplication(std::shared_ptr<core::RingBufferSink> sink,
+                       std::filesystem::path initialFolder)
+            : core::Application(core::ApplicationSpec{"IDE", 1600, 900}),
+              m_sink(std::move(sink)),
+              m_initialFolder(std::move(initialFolder))
         {
         }
 
     protected:
-        void OnInit() override { PushLayer(std::make_unique<ide::IdeLayer>(m_sink)); }
+        void OnInit() override
+        {
+            PushLayer(std::make_unique<ide::IdeLayer>(m_sink, m_initialFolder));
+        }
 
     private:
         std::shared_ptr<core::RingBufferSink> m_sink;
+        std::filesystem::path m_initialFolder;
     };
 }
 
-int main()
+int main(int argc, char** argv)
 {
     auto consoleSink = std::make_shared<core::RingBufferSink>(kConsoleCapacity);
 
@@ -41,7 +49,11 @@ int main()
     {
         CORE_INFO("IDE {}", core::Version::String());
 
-        IdeApplication app{consoleSink};
+        std::filesystem::path initialFolder;
+        if (argc > 1)
+            initialFolder = argv[1];
+
+        IdeApplication app{consoleSink, initialFolder};
         if (const auto result = app.Run(); !result)
         {
             CORE_ERROR("IDE terminated: {}", result.GetError().message);
