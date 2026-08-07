@@ -4,6 +4,7 @@ bin-int/
 
 # Generated project files
 *.sln
+*.slnx
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
@@ -17,3 +18,8 @@ Makefile
 
 # ImGui runtime state
 imgui.ini
+
+# The premake binary is intentionally kept in the repo
+!vendor/bin/
+!vendor/bin/premake/
+!vendor/bin/premake/premake5.exe
