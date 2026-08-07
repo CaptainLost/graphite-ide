@@ -10,20 +10,20 @@ using core::Logger;
 using core::LogLevel;
 using core::RingBufferSink;
 
-TEST_CASE("RingBufferSink zapamietuje wpisy w kolejnosci")
+TEST_CASE("RingBufferSink remembers entries in order")
 {
     RingBufferSink sink{4};
 
-    sink.Write(LogEntry{LogLevel::Info, "pierwszy"});
-    sink.Write(LogEntry{LogLevel::Warn, "drugi"});
+    sink.Write(LogEntry{LogLevel::Info, "first"});
+    sink.Write(LogEntry{LogLevel::Warn, "second"});
 
     const auto entries = sink.Snapshot();
     REQUIRE(entries.size() == 2);
-    CHECK(entries[0].message == "pierwszy");
+    CHECK(entries[0].message == "first");
     CHECK(entries[1].level == LogLevel::Warn);
 }
 
-TEST_CASE("RingBufferSink po przepelnieniu gubi najstarsze wpisy")
+TEST_CASE("RingBufferSink drops the oldest entries on overflow")
 {
     RingBufferSink sink{3};
 
@@ -37,10 +37,10 @@ TEST_CASE("RingBufferSink po przepelnieniu gubi najstarsze wpisy")
     CHECK(entries[2].message == "5");
 }
 
-TEST_CASE("Clear opróżnia bufor")
+TEST_CASE("Clear empties the buffer")
 {
     RingBufferSink sink{4};
-    sink.Write(LogEntry{LogLevel::Info, "cokolwiek"});
+    sink.Write(LogEntry{LogLevel::Info, "whatever"});
 
     sink.Clear();
 
@@ -48,24 +48,24 @@ TEST_CASE("Clear opróżnia bufor")
     CHECK(sink.Snapshot().empty());
 }
 
-TEST_CASE("Logger rozsyla wpisy do podpietych sinkow")
+TEST_CASE("Logger dispatches entries to attached sinks")
 {
     auto sink = std::make_shared<RingBufferSink>(8);
 
     Logger::Get().ClearSinks();
     Logger::Get().SetLevel(LogLevel::Trace);
     Logger::Get().AddSink(sink);
-    Logger::Get().Write(LogLevel::Error, "awaria");
+    Logger::Get().Write(LogLevel::Error, "failure");
 
     const auto entries = sink->Snapshot();
     REQUIRE(entries.size() == 1);
     CHECK(entries[0].level == LogLevel::Error);
-    CHECK(entries[0].message == "awaria");
+    CHECK(entries[0].message == "failure");
 
     Logger::Get().ClearSinks();
 }
 
-TEST_CASE("Logger odfiltrowuje wpisy ponizej ustawionego poziomu")
+TEST_CASE("Logger filters out entries below the configured level")
 {
     auto sink = std::make_shared<RingBufferSink>(8);
 
@@ -73,18 +73,18 @@ TEST_CASE("Logger odfiltrowuje wpisy ponizej ustawionego poziomu")
     Logger::Get().AddSink(sink);
     Logger::Get().SetLevel(LogLevel::Warn);
 
-    Logger::Get().Write(LogLevel::Info, "pominiety");
-    Logger::Get().Write(LogLevel::Error, "przepuszczony");
+    Logger::Get().Write(LogLevel::Info, "skipped");
+    Logger::Get().Write(LogLevel::Error, "passed through");
 
     const auto entries = sink->Snapshot();
     REQUIRE(entries.size() == 1);
-    CHECK(entries[0].message == "przepuszczony");
+    CHECK(entries[0].message == "passed through");
 
     Logger::Get().ClearSinks();
     Logger::Get().SetLevel(LogLevel::Trace);
 }
 
-TEST_CASE("Makro CORE_INFO formatuje argumenty")
+TEST_CASE("The CORE_INFO macro formats arguments")
 {
     auto sink = std::make_shared<RingBufferSink>(8);
 
@@ -92,11 +92,11 @@ TEST_CASE("Makro CORE_INFO formatuje argumenty")
     Logger::Get().SetLevel(LogLevel::Trace);
     Logger::Get().AddSink(sink);
 
-    CORE_INFO("plik {} ma {} linii", "main.cpp", 12);
+    CORE_INFO("file {} has {} lines", "main.cpp", 12);
 
     const auto entries = sink->Snapshot();
     REQUIRE(entries.size() == 1);
-    CHECK(entries[0].message == "plik main.cpp ma 12 linii");
+    CHECK(entries[0].message == "file main.cpp has 12 lines");
 
     Logger::Get().ClearSinks();
 }

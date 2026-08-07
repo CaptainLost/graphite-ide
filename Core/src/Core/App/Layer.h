@@ -7,7 +7,7 @@
 
 namespace core
 {
-    /// Jednostka zycia aplikacji: dostaje aktualizacje i rysuje wlasne UI.
+    /// Unit of application lifetime: receives updates and draws its own UI.
     class Layer : NonCopyable
     {
     public:

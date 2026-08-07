@@ -11,7 +11,7 @@ using core::Error;
 using core::ErrorCode;
 using core::Result;
 
-TEST_CASE("Result przechowuje wartosc")
+TEST_CASE("Result stores a value")
 {
     Result<int> result{42};
 
@@ -20,26 +20,26 @@ TEST_CASE("Result przechowuje wartosc")
     CHECK(result.Value() == 42);
 }
 
-TEST_CASE("Result przechowuje blad")
+TEST_CASE("Result stores an error")
 {
-    Result<int> result{Error{ErrorCode::NotFound, "nie ma pliku"}};
+    Result<int> result{Error{ErrorCode::NotFound, "no such file"}};
 
     CHECK_FALSE(result.HasValue());
     CHECK_FALSE(static_cast<bool>(result));
     CHECK(result.GetError().code == ErrorCode::NotFound);
-    CHECK(result.GetError().message == "nie ma pliku");
+    CHECK(result.GetError().message == "no such file");
 }
 
-TEST_CASE("ValueOr zwraca wartosc zastepcza przy bledzie")
+TEST_CASE("ValueOr returns the fallback value on error")
 {
     Result<int> ok{7};
-    Result<int> failed{Error{ErrorCode::IoFailure, "dysk"}};
+    Result<int> failed{Error{ErrorCode::IoFailure, "disk"}};
 
     CHECK(ok.ValueOr(-1) == 7);
     CHECK(failed.ValueOr(-1) == -1);
 }
 
-TEST_CASE("Result dziala z typem tylko-przenoszalnym")
+TEST_CASE("Result works with a move-only type")
 {
     Result<std::unique_ptr<std::string>> result{std::make_unique<std::string>("tresc")};
 
@@ -50,17 +50,17 @@ TEST_CASE("Result dziala z typem tylko-przenoszalnym")
     CHECK(*taken == "tresc");
 }
 
-TEST_CASE("Result<void> rozroznia sukces od bledu")
+TEST_CASE("Result<void> distinguishes success from error")
 {
     Result<void> ok = Result<void>::Ok();
-    Result<void> failed{Error{ErrorCode::AccessDenied, "brak dostepu"}};
+    Result<void> failed{Error{ErrorCode::AccessDenied, "no access"}};
 
     CHECK(ok.HasValue());
     CHECK_FALSE(failed.HasValue());
     CHECK(failed.GetError().code == ErrorCode::AccessDenied);
 }
 
-TEST_CASE("Typ dziedziczacy po NonCopyable pozostaje przenoszalny")
+TEST_CASE("A type inheriting from NonCopyable remains movable")
 {
     struct Movable : core::NonCopyable
     {

@@ -1,39 +1,44 @@
+#include "IdeLayer.h"
+
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
+#include "Core/Base/RingBufferSink.h"
 #include "Core/Version.h"
-
-#include <imgui.h>
 
 #include <memory>
 
 namespace
 {
-    class DemoLayer final : public core::Layer
-    {
-    public:
-        DemoLayer() : core::Layer("Demo") {}
-
-        void OnUIRender() override { ImGui::ShowDemoWindow(); }
-    };
+    constexpr std::size_t kConsoleCapacity = 4096;
 
     class IdeApplication final : public core::Application
     {
     public:
-        IdeApplication() : core::Application(core::ApplicationSpec{"IDE", 1600, 900}) {}
+        explicit IdeApplication(std::shared_ptr<core::RingBufferSink> sink)
+            : core::Application(core::ApplicationSpec{"IDE", 1600, 900}), m_sink(std::move(sink))
+        {
+        }
 
     protected:
-        void OnInit() override { PushLayer(std::make_unique<DemoLayer>()); }
+        void OnInit() override { PushLayer(std::make_unique<ide::IdeLayer>(m_sink)); }
+
+    private:
+        std::shared_ptr<core::RingBufferSink> m_sink;
     };
 }
 
 int main()
 {
+    auto consoleSink = std::make_shared<core::RingBufferSink>(kConsoleCapacity);
+
     core::Logger::Get().AddSink(std::make_shared<core::ConsoleSink>());
+    core::Logger::Get().AddSink(consoleSink);
+
     CORE_INFO("IDE {}", core::Version::String());
 
-    IdeApplication app;
+    IdeApplication app{consoleSink};
     app.Run();
 
-    CORE_INFO("IDE zamkniete");
+    CORE_INFO("IDE closed");
     return 0;
 }

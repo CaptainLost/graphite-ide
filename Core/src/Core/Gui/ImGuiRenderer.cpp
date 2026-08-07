@@ -36,8 +36,8 @@ namespace core
 
         Theme::ApplyDark();
 
-        // Przy oderwanych panelach viewporty maja wlasne okna systemowe —
-        // zaokraglenie i przezroczystosc wygladalyby na nich obco.
+        // With undocked panels, viewports get their own system windows —
+        // rounding and transparency would look out of place on them.
         if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
         {
             ImGuiStyle& style = ImGui::GetStyle();
@@ -49,18 +49,18 @@ namespace core
         if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
         {
             ImGui::DestroyContext();
-            return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL sie nie powiodlo"};
+            return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL failed"};
         }
 
         if (!ImGui_ImplOpenGL3_Init("#version 330 core"))
         {
             ImGui_ImplGlfw_Shutdown();
             ImGui::DestroyContext();
-            return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init sie nie powiodlo"};
+            return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
         }
 
         m_initialized = true;
-        CORE_INFO("ImGui zainicjalizowane (docking + viewporty)");
+        CORE_INFO("ImGui initialized (docking + viewports)");
         return Result<void>::Ok();
     }
 

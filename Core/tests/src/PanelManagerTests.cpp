@@ -22,7 +22,7 @@ namespace
     };
 }
 
-TEST_CASE("Add rejestruje panel i pozwala go odnalezc po identyfikatorze")
+TEST_CASE("Add registers a panel and allows finding it by identifier")
 {
     core::PanelManager panels;
 
@@ -35,7 +35,7 @@ TEST_CASE("Add rejestruje panel i pozwala go odnalezc po identyfikatorze")
     CHECK(added->IsVisible());
 }
 
-TEST_CASE("Add odrzuca powtorzony identyfikator")
+TEST_CASE("Add rejects a duplicate identifier")
 {
     core::PanelManager panels;
     panels.Add(std::make_unique<CountingPanel>("console", "Console"));
@@ -46,14 +46,14 @@ TEST_CASE("Add odrzuca powtorzony identyfikator")
     CHECK(panels.Count() == 1);
 }
 
-TEST_CASE("Find zwraca nullptr dla nieznanego identyfikatora")
+TEST_CASE("Find returns nullptr for an unknown identifier")
 {
     core::PanelManager panels;
 
     CHECK(panels.Find("nie-ma") == nullptr);
 }
 
-TEST_CASE("SetVisible zmienia widocznosc i sygnalizuje nieznany identyfikator")
+TEST_CASE("SetVisible changes visibility and signals an unknown identifier")
 {
     core::PanelManager panels;
     core::Panel* panel = panels.Add(std::make_unique<CountingPanel>("files", "Files"));
@@ -63,7 +63,7 @@ TEST_CASE("SetVisible zmienia widocznosc i sygnalizuje nieznany identyfikator")
     CHECK_FALSE(panels.SetVisible("nie-ma", true));
 }
 
-TEST_CASE("OnUpdate dociera do wszystkich paneli, takze ukrytych")
+TEST_CASE("OnUpdate reaches all panels, including hidden ones")
 {
     core::PanelManager panels;
     auto* visible = static_cast<CountingPanel*>(

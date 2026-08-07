@@ -16,7 +16,7 @@ namespace core
         bool vsync = true;
     };
 
-    /// Okno systemowe wraz z kontekstem OpenGL. Warstwa aplikacji nie widzi GLFW.
+    /// System window together with the OpenGL context. The application layer doesn't see GLFW.
     class Window : NonCopyable
     {
     public:
@@ -31,7 +31,7 @@ namespace core
         virtual void FramebufferSize(int& width, int& height) const = 0;
         virtual void SetVSync(bool enabled) = 0;
 
-        /// Uchwyt platformowy — dla backendu ImGui. Realnie GLFWwindow*.
+        /// Platform handle — for the ImGui backend. In practice a GLFWwindow*.
         [[nodiscard]] virtual void* NativeHandle() const = 0;
 
         static Result<std::unique_ptr<Window>> Create(const WindowSpec& spec);

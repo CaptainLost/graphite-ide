@@ -14,19 +14,19 @@ namespace core
     class PanelManager final : NonCopyable
     {
     public:
-        /// Zwraca nullptr, jesli panel o takim identyfikatorze juz istnieje.
+        /// Returns nullptr if a panel with that identifier already exists.
         Panel* Add(std::unique_ptr<Panel> panel);
 
         [[nodiscard]] Panel* Find(std::string_view id);
         [[nodiscard]] std::size_t Count() const noexcept { return m_panels.size(); }
 
-        /// Zwraca false, jesli panel o podanym identyfikatorze nie istnieje.
+        /// Returns false if no panel with the given identifier exists.
         bool SetVisible(std::string_view id, bool visible);
 
         void OnUpdate(float deltaSeconds);
         void OnUIRender();
 
-        /// Pozycje przelaczajace widocznosc — do wstawienia w menu View.
+        /// Items that toggle visibility — for insertion into the View menu.
         void RenderViewMenuItems();
 
         void ForEach(const std::function<void(Panel&)>& action);

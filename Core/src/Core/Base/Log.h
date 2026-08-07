@@ -41,8 +41,8 @@ namespace core
         void Write(const LogEntry& entry) override;
     };
 
-    /// Punkt zbiorczy logow. Rozsyla wpisy do wszystkich podpietych sinkow.
-    /// Bezpieczny do wolania z wielu watkow.
+    /// Central hub for logs. Dispatches entries to every attached sink.
+    /// Safe to call from multiple threads.
     class Logger final : NonCopyable
     {
     public:

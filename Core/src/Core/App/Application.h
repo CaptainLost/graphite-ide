@@ -18,7 +18,7 @@ namespace core
         int height = 900;
     };
 
-    /// Wlasciciel okna, warstwy ImGui i petli glownej.
+    /// Owner of the window, the ImGui layer, and the main loop.
     class Application : NonCopyable
     {
     public:
@@ -36,7 +36,7 @@ namespace core
         static Application& Get();
 
     protected:
-        /// Wolane po utworzeniu okna i kontekstu ImGui, przed pierwsza klatka.
+        /// Called after the window and ImGui context are created, before the first frame.
         virtual void OnInit() {}
         virtual void OnShutdown() {}
 

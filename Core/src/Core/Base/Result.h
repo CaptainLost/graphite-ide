@@ -25,7 +25,7 @@ namespace core
         std::string message;
     };
 
-    /// Wynik operacji, ktora moze sie nie udac. Zastepuje wyjatki na granicach modulow.
+    /// Result of an operation that may fail. Replaces exceptions at module boundaries.
     template<typename T>
     class [[nodiscard]] Result
     {
@@ -38,19 +38,19 @@ namespace core
 
         T& Value() &
         {
-            CORE_ASSERT(HasValue(), "Result::Value() na wyniku bledu");
+            CORE_ASSERT(HasValue(), "Result::Value() called on an error result");
             return std::get<0>(m_data);
         }
 
         const T& Value() const&
         {
-            CORE_ASSERT(HasValue(), "Result::Value() na wyniku bledu");
+            CORE_ASSERT(HasValue(), "Result::Value() called on an error result");
             return std::get<0>(m_data);
         }
 
         T&& Value() &&
         {
-            CORE_ASSERT(HasValue(), "Result::Value() na wyniku bledu");
+            CORE_ASSERT(HasValue(), "Result::Value() called on an error result");
             return std::get<0>(std::move(m_data));
         }
 
@@ -61,7 +61,7 @@ namespace core
 
         const Error& GetError() const
         {
-            CORE_ASSERT(!HasValue(), "Result::GetError() na wyniku sukcesu");
+            CORE_ASSERT(!HasValue(), "Result::GetError() called on a success result");
             return std::get<1>(m_data);
         }
 
@@ -69,7 +69,7 @@ namespace core
         std::variant<T, Error> m_data;
     };
 
-    /// Operacja bez wartosci zwracanej — niesie wylacznie informacje o bledzie.
+    /// Operation with no return value — carries only error information.
     template<>
     class [[nodiscard]] Result<void>
     {
@@ -84,7 +84,7 @@ namespace core
 
         const Error& GetError() const
         {
-            CORE_ASSERT(!HasValue(), "Result<void>::GetError() na wyniku sukcesu");
+            CORE_ASSERT(!HasValue(), "Result<void>::GetError() called on a success result");
             return *m_error;
         }
 

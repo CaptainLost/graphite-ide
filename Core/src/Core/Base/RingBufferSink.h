@@ -9,7 +9,7 @@
 
 namespace core
 {
-    /// Sink trzymajacy ostatnie N wpisow. Zrodlo danych dla panelu konsoli w IDE.
+    /// Sink that holds the last N entries. Data source for the console panel in the IDE.
     class RingBufferSink final : public ILogSink
     {
     public:

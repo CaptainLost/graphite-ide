@@ -26,7 +26,7 @@ namespace
     };
 }
 
-TEST_CASE("Push wola OnAttach i zwraca referencje do warstwy")
+TEST_CASE("Push calls OnAttach and returns a reference to the layer")
 {
     std::vector<std::string> journal;
     core::LayerStack stack;
@@ -39,7 +39,7 @@ TEST_CASE("Push wola OnAttach i zwraca referencje do warstwy")
     CHECK(journal[0] == "pierwsza:attach");
 }
 
-TEST_CASE("Iteracja zachowuje kolejnosc dodania")
+TEST_CASE("Iteration preserves insertion order")
 {
     std::vector<std::string> journal;
     core::LayerStack stack;
@@ -56,7 +56,7 @@ TEST_CASE("Iteracja zachowuje kolejnosc dodania")
     CHECK(journal[1] == "b:update");
 }
 
-TEST_CASE("Clear odlacza warstwy w kolejnosci odwrotnej do dodania")
+TEST_CASE("Clear detaches layers in reverse order of addition")
 {
     std::vector<std::string> journal;
     core::LayerStack stack;
@@ -73,7 +73,7 @@ TEST_CASE("Clear odlacza warstwy w kolejnosci odwrotnej do dodania")
     CHECK(stack.Size() == 0);
 }
 
-TEST_CASE("Dodanie warstwy w trakcie iteracji po kopii nie uniewaznia przebiegu")
+TEST_CASE("Adding a layer during iteration over the copy does not invalidate the pass")
 {
     std::vector<std::string> journal;
     core::LayerStack stack;

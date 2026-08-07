@@ -13,7 +13,7 @@ namespace core
 
     Application::Application(ApplicationSpec spec) : m_spec(std::move(spec))
     {
-        CORE_ASSERT(s_instance == nullptr, "Application juz istnieje");
+        CORE_ASSERT(s_instance == nullptr, "Application already exists");
         s_instance = this;
     }
 
@@ -24,7 +24,7 @@ namespace core
 
     Application& Application::Get()
     {
-        CORE_ASSERT(s_instance != nullptr, "Application::Get przed utworzeniem aplikacji");
+        CORE_ASSERT(s_instance != nullptr, "Application::Get called before the application was created");
         return *s_instance;
     }
 
@@ -48,7 +48,7 @@ namespace core
         auto windowResult = Window::Create(windowSpec);
         if (!windowResult)
         {
-            CORE_ERROR("Start przerwany: {}", windowResult.GetError().message);
+            CORE_ERROR("Startup aborted: {}", windowResult.GetError().message);
             return;
         }
 
@@ -56,7 +56,7 @@ namespace core
 
         if (const auto init = m_gui.Init(*m_window); !init)
         {
-            CORE_ERROR("Start przerwany: {}", init.GetError().message);
+            CORE_ERROR("Startup aborted: {}", init.GetError().message);
             m_window.reset();
             return;
         }
@@ -74,9 +74,9 @@ namespace core
 
             m_window->PollEvents();
 
-            // Iterujemy po kopii wskaznikow: warstwa moze w trakcie klatki dodac kolejna warstwe,
-            // a przealokowany vector uniewaznilby iterator. Kopia chroni przed dodaniem — gdyby
-            // kiedys pojawilo sie usuwanie warstw, trzeba ja bedzie przemyslec ponownie.
+            // We iterate over a copy of the pointers: a layer may push another layer during
+            // the frame, and a reallocated vector would invalidate the iterator. The copy guards
+            // against insertion — if layer removal is ever introduced, this will need rethinking.
             m_frameLayers.clear();
             for (auto& layer : m_layers)
                 m_frameLayers.push_back(layer.get());

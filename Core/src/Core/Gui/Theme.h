@@ -5,7 +5,7 @@ namespace core
     class Theme
     {
     public:
-        /// Ciemny motyw IDE: neutralne szarosci, akcent w chlodnym blekicie.
+        /// Dark IDE theme: neutral grays, accent in a cool blue.
         static void ApplyDark();
     };
 }

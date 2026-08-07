@@ -10,7 +10,7 @@ namespace core
 {
     Panel* PanelManager::Add(std::unique_ptr<Panel> panel)
     {
-        CORE_ASSERT(panel != nullptr, "PanelManager::Add dostal pusty wskaznik");
+        CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
 
         if (Find(panel->Id()) != nullptr)
             return nullptr;

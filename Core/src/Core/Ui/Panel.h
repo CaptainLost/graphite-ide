@@ -7,8 +7,8 @@
 
 namespace core
 {
-    /// Dokowalne okno aplikacji. Implementacja rysuje wylacznie wnetrze —
-    /// za Begin/End odpowiada PanelManager.
+    /// Dockable application window. The implementation draws only the interior —
+    /// PanelManager is responsible for Begin/End.
     class Panel : NonCopyable
     {
     public:

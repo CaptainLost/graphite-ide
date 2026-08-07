@@ -7,8 +7,8 @@ namespace core
 {
     class Window;
 
-    /// Cykl zycia Dear ImGui razem z backendami GLFW i OpenGL3.
-    /// Wlacza docking oraz viewporty i utrzymuje uklad w pliku imgui.ini.
+    /// Lifecycle of Dear ImGui together with the GLFW and OpenGL3 backends.
+    /// Enables docking and viewports and keeps the layout in the imgui.ini file.
     class ImGuiRenderer final : NonCopyable
     {
     public:

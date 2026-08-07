@@ -50,9 +50,9 @@ namespace core
 
         m_layoutBuilt = true;
 
-        // Uklad zapisany w imgui.ini ma pierwszenstwo przy starcie — budujemy tylko pusty
-        // wezel. Jawny reset omija ten straznik, bo wtedy wlasnie chcemy nadpisac to,
-        // co uzytkownik ma teraz na ekranie.
+        // The layout saved in imgui.ini takes precedence at startup — we only build an
+        // empty node. An explicit reset bypasses this guard, because that's exactly when we
+        // want to overwrite what the user currently has on screen.
         const bool forced = m_forceRebuild;
         m_forceRebuild = false;
 
@@ -78,7 +78,7 @@ namespace core
         DockPanels(centerId, layout.center);
 
         ImGui::DockBuilderFinish(dockSpaceId);
-        CORE_INFO("Zbudowano domyslny uklad dokow");
+        CORE_INFO("Built default dock layout");
     }
 
     void DockSpaceHost::End()

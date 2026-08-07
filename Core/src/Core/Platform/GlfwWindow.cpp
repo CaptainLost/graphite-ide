@@ -70,7 +70,7 @@ namespace core
             glfwSetErrorCallback(&OnGlfwError);
 
             if (glfwInit() == GLFW_FALSE)
-                return Error{ErrorCode::Unsupported, "glfwInit sie nie powiodlo"};
+                return Error{ErrorCode::Unsupported, "glfwInit failed"};
         }
 
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -86,7 +86,7 @@ namespace core
             if (s_glfwWindowCount == 0)
                 glfwTerminate();
 
-            return Error{ErrorCode::Unsupported, "nie udalo sie utworzyc okna OpenGL 3.3"};
+            return Error{ErrorCode::Unsupported, "failed to create an OpenGL 3.3 window"};
         }
 
         ++s_glfwWindowCount;
@@ -95,7 +95,7 @@ namespace core
         glfwMakeContextCurrent(handle);
         window->SetVSync(spec.vsync);
 
-        CORE_INFO("Okno utworzone: {}x{} \"{}\"", spec.width, spec.height, spec.title);
+        CORE_INFO("Window created: {}x{} \"{}\"", spec.width, spec.height, spec.title);
         return Result<std::unique_ptr<Window>>{std::move(window)};
     }
 }

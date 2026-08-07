@@ -7,7 +7,7 @@
 
 namespace core
 {
-    /// Opis domyslnego rozmieszczenia paneli. Identyfikatory musza odpowiadac Panel::Id().
+    /// Description of the default panel arrangement. Identifiers must match Panel::Id().
     struct DockLayout
     {
         std::vector<std::string> left;
@@ -18,16 +18,16 @@ namespace core
         float bottomRatio = 0.25f;
     };
 
-    /// Niewidoczne okno na cala powierzchnie viewportu, w ktorym zyje dockspace.
-    /// Begin nalezy wolac przed renderowaniem paneli, End po nim.
+    /// Invisible window covering the entire viewport surface, in which the dockspace lives.
+    /// Begin must be called before rendering panels, End afterward.
     class DockSpaceHost final : NonCopyable
     {
     public:
         void Begin(const DockLayout& layout);
         void End();
 
-        /// Przy nastepnej klatce odtwarza uklad domyslny, porzucajac obecny uklad
-        /// (rowniez ten wczytany z imgui.ini lub zmieniony recznie przez uzytkownika).
+        /// On the next frame, rebuilds the default layout, discarding the current layout
+        /// (including one loaded from imgui.ini or modified manually by the user).
         void RequestLayoutReset()
         {
             m_layoutBuilt = false;

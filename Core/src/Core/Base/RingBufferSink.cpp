@@ -8,7 +8,7 @@ namespace core
 {
     RingBufferSink::RingBufferSink(std::size_t capacity) : m_capacity(capacity)
     {
-        CORE_ASSERT(capacity > 0, "RingBufferSink wymaga pojemnosci wiekszej od zera");
+        CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
     }
 
     void RingBufferSink::Write(const LogEntry& entry)
