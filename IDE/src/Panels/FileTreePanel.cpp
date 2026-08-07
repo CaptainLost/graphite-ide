@@ -207,6 +207,7 @@ namespace ide
         case PendingAction::Kind::Delete:
             // Deletion is the one irreversible-looking action, so it goes through a
             // confirmation rather than straight to the filesystem.
+            m_renamingPath.clear();
             m_deleteCandidate = action.target;
             m_openDeleteConfirmation = true;
             return;
@@ -306,15 +307,26 @@ namespace ide
                              ImGuiInputTextFlags_EnterReturnsTrue |
                                  ImGuiInputTextFlags_AutoSelectAll);
 
-        if (committed)
+        // Escape cancels, but only while this field owns the keyboard — an unscoped key
+        // poll would also catch an Escape aimed at a modal elsewhere and silently throw
+        // away what the user typed here.
+        const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+        // Clicking away commits, the way Explorer and VS Code behave. Without this the
+        // row would stay stuck rendering a dead, unfocused field forever.
+        const bool blurred = !cancelled && ImGui::IsItemDeactivatedAfterEdit();
+
+        if (cancelled)
+        {
+            m_renamingPath.clear();
+            return true;
+        }
+
+        if (committed || blurred)
         {
             m_pending.kind = PendingAction::Kind::Rename;
             m_pending.target = node.path;
             m_pending.name = m_renameBuffer.data();
-            m_renamingPath.clear();
-        }
-        else if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-        {
             m_renamingPath.clear();
         }
 
