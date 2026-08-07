@@ -1,6 +1,7 @@
 #include "Settings.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 
 #include <fstream>
 #include <string>
@@ -25,7 +26,7 @@ namespace ide
         while (std::getline(stream, line))
         {
             if (line.rfind(prefix, 0) == 0)
-                return std::filesystem::path{line.substr(prefix.size())};
+                return core::fs::FromUtf8(line.substr(prefix.size()));
         }
 
         return {};
@@ -40,6 +41,6 @@ namespace ide
             return;
         }
 
-        stream << kLastFolderKey << folder.string() << '\n';
+        stream << kLastFolderKey << core::fs::ToUtf8(folder) << '\n';
     }
 }

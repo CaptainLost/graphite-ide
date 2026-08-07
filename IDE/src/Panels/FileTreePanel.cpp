@@ -1,6 +1,7 @@
 #include "Panels/FileTreePanel.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 
 namespace ide
 {
@@ -38,8 +39,13 @@ namespace ide
 
         if (ImGui::Button("Refresh") && m_workspace.IsOpen())
         {
-            (void)m_workspace.Tree().Refresh(m_workspace.Tree().Root());
-            CORE_INFO("File tree refreshed");
+            core::FileNode& root = m_workspace.Tree().Root();
+            m_workspace.Tree().Refresh(root);
+
+            if (root.accessible)
+                CORE_INFO("File tree refreshed");
+            else
+                CORE_WARN("File tree refresh failed: the workspace folder is unreadable");
         }
 
         ImGui::SameLine();
@@ -72,6 +78,11 @@ namespace ide
         return false;
     }
 
+    // Must not mutate the tree while walking it: this recurses over node.children by
+    // reference, and today the only mutating actions (opening a folder, refreshing)
+    // happen in RenderToolbar, strictly before the walk starts. A future right-click
+    // context menu that mutates the tree from inside RenderNode (e.g. delete, rename)
+    // would invalidate the very vector being iterated.
     void FileTreePanel::RenderNode(core::FileNode& node)
     {
         if (!PassesFilter(node))
@@ -94,7 +105,8 @@ namespace ide
         if (!node.accessible)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
-        const bool open = ImGui::TreeNodeEx(node.path.string().c_str(), flags, "%s", node.name.c_str());
+        const bool open =
+            ImGui::TreeNodeEx(core::fs::ToUtf8(node.path).c_str(), flags, "%s", node.name.c_str());
 
         if (!node.accessible)
         {

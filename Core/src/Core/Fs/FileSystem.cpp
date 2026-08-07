@@ -41,6 +41,18 @@ namespace core::fs
         }
     }
 
+    std::string ToUtf8(const std::filesystem::path& path)
+    {
+        const std::u8string utf8 = path.u8string();
+        return std::string{reinterpret_cast<const char*>(utf8.data()), utf8.size()};
+    }
+
+    std::filesystem::path FromUtf8(std::string_view text)
+    {
+        const std::u8string utf8{reinterpret_cast<const char8_t*>(text.data()), text.size()};
+        return std::filesystem::path{utf8};
+    }
+
     Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
     {
         std::error_code code;
@@ -69,16 +81,25 @@ namespace core::fs
 
             DirectoryEntry entry;
             entry.path = iterator->path();
-            entry.name = iterator->path().filename().string();
+            entry.name = ToUtf8(iterator->path().filename());
 
             std::error_code statusCode;
             entry.isDirectory = iterator->is_directory(statusCode);
+
+            if (statusCode)
+            {
+                return Error{TranslateError(statusCode),
+                             std::format("cannot classify '{}': {}", ToUtf8(entry.path),
+                                         statusCode.message())};
+            }
+
             entry.isHidden = IsHidden(entry.path);
 
             if (!entry.isDirectory)
             {
-                const std::uintmax_t size = iterator->file_size(statusCode);
-                entry.size = statusCode ? 0 : static_cast<std::uint64_t>(size);
+                std::error_code sizeCode;
+                const std::uintmax_t size = iterator->file_size(sizeCode);
+                entry.size = sizeCode ? 0 : static_cast<std::uint64_t>(size);
             }
 
             entries.push_back(std::move(entry));

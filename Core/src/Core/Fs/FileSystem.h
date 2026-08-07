@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace core::fs
@@ -23,4 +24,12 @@ namespace core::fs
     /// wrapper exists to turn that into a Result — Core lets no exception cross a
     /// module boundary.
     Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path);
+
+    /// Converts a path to UTF-8. path::string() narrows through the active ANSI
+    /// codepage on Windows, which mangles anything outside it — every std::string
+    /// in this codebase is UTF-8 by contract, so conversions go through here.
+    std::string ToUtf8(const std::filesystem::path& path);
+
+    /// Rebuilds a path from UTF-8 bytes produced by ToUtf8.
+    std::filesystem::path FromUtf8(std::string_view text);
 }

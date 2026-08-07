@@ -5,6 +5,7 @@
 #include "TempDirectory.h"
 
 #include <algorithm>
+#include <fstream>
 #include <string>
 
 using core::ErrorCode;
@@ -84,4 +85,23 @@ TEST_CASE("ReadDirectory reports a file path as an error, not an empty listing")
 
     REQUIRE_FALSE(result.HasValue());
     CHECK(result.GetError().code != ErrorCode::None);
+}
+
+TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
+{
+    TempDirectory temp;
+    const std::filesystem::path expected =
+        temp.Path() / core::fs::FromUtf8("\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+
+    std::ofstream stream{expected, std::ios::binary | std::ios::trunc};
+    stream << "x";
+    stream.close();
+
+    auto result = ReadDirectory(temp.Path());
+
+    REQUIRE(result.HasValue());
+    REQUIRE(result.Value().size() == 1);
+    CHECK(result.Value()[0].name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+    CHECK(core::fs::ToUtf8(result.Value()[0].path.filename()) ==
+          "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 }

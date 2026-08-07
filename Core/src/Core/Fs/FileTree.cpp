@@ -51,10 +51,10 @@ namespace core
 
         m_root = FileNode{};
         m_root.path = root;
-        m_root.name = root.filename().string();
+        m_root.name = fs::ToUtf8(root.filename());
 
         if (m_root.name.empty())
-            m_root.name = root.string();
+            m_root.name = fs::ToUtf8(root);
 
         m_root.isDirectory = true;
         m_hasRoot = true;
@@ -107,10 +107,10 @@ namespace core
         node.expanded = false;
     }
 
-    Result<void> FileTree::Refresh(FileNode& node)
+    void FileTree::Refresh(FileNode& node)
     {
         if (!node.isDirectory || !node.loaded)
-            return Result<void>::Ok();
+            return;
 
         auto entries = fs::ReadDirectory(node.path);
 
@@ -119,7 +119,7 @@ namespace core
             node.accessible = false;
             node.children.clear();
             CORE_WARN("Cannot refresh '{}': {}", node.path.string(), entries.GetError().message);
-            return Result<void>::Ok();
+            return;
         }
 
         node.accessible = true;
@@ -155,13 +155,7 @@ namespace core
         for (FileNode& child : node.children)
         {
             if (child.isDirectory && child.loaded)
-            {
-                const auto refreshed = Refresh(child);
-                if (!refreshed)
-                    return refreshed;
-            }
+                Refresh(child);
         }
-
-        return Result<void>::Ok();
     }
 }

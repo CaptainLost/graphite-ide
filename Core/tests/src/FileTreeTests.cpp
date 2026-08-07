@@ -141,7 +141,7 @@ TEST_CASE("Refresh picks up a file created after the first expansion")
     REQUIRE(tree.Root().children.size() == 1);
 
     temp.MakeFile("b.txt", "x");
-    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+    tree.Refresh(tree.Root());
 
     CHECK(tree.Root().children.size() == 2);
 }
@@ -158,7 +158,7 @@ TEST_CASE("Refresh drops nodes that disappeared from disk")
 
     std::error_code code;
     std::filesystem::remove(doomed, code);
-    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+    tree.Refresh(tree.Root());
 
     REQUIRE(tree.Root().children.size() == 1);
     CHECK(tree.Root().children[0].name == "stays.txt");
@@ -177,7 +177,7 @@ TEST_CASE("Refresh keeps an expanded subdirectory expanded and loaded")
     REQUIRE(tree.Root().children[0].children.size() == 1);
 
     temp.MakeFile("second.txt", "x");
-    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+    tree.Refresh(tree.Root());
 
     REQUIRE(tree.Root().children.size() == 2);
     const FileNode& sub = tree.Root().children[0];
@@ -199,7 +199,7 @@ TEST_CASE("Refresh re-reads an expanded subdirectory so its own changes appear")
     REQUIRE(tree.Expand(tree.Root().children[0]).HasValue());
 
     temp.MakeFile("sub/two.txt", "x");
-    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+    tree.Refresh(tree.Root());
 
     CHECK(tree.Root().children[0].children.size() == 2);
 }
@@ -212,7 +212,7 @@ TEST_CASE("Refresh leaves a collapsed, never-opened subdirectory unloaded")
     FileTree tree;
     REQUIRE(tree.SetRoot(temp.Path()).HasValue());
     REQUIRE(tree.Expand(tree.Root()).HasValue());
-    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+    tree.Refresh(tree.Root());
 
     const FileNode& sub = tree.Root().children[0];
     CHECK_FALSE(sub.expanded);
@@ -228,7 +228,7 @@ TEST_CASE("Refresh on a node that was never loaded does nothing")
     FileTree tree;
     REQUIRE(tree.SetRoot(temp.Path()).HasValue());
 
-    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+    tree.Refresh(tree.Root());
 
     CHECK_FALSE(tree.Root().loaded);
     CHECK(tree.Root().children.empty());

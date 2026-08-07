@@ -35,6 +35,9 @@ namespace core
 
             // Dispatch over a copy: a handler may subscribe while we are iterating,
             // and a reallocated vector would invalidate the iterator underneath us.
+            // This only guards against subscribing during dispatch — a handler that
+            // publishes the same event type it is handling recurses without bound,
+            // the copy does nothing to stop that.
             const std::vector<Handler> handlers = entry->second;
 
             for (const Handler& handler : handlers)

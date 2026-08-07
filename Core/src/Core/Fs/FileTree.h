@@ -41,7 +41,9 @@ namespace core
         /// nodes that still exist keep their expanded/loaded flags and their loaded
         /// children, vanished nodes are dropped, and new ones appear collapsed.
         /// A node that was never loaded stays that way — there is nothing to refresh.
-        Result<void> Refresh(FileNode& node);
+        /// A directory that cannot be re-read is not reported through a return value:
+        /// it is marked inaccessible (FileNode::accessible = false) and logged instead.
+        void Refresh(FileNode& node);
 
         [[nodiscard]] bool HasRoot() const noexcept { return m_hasRoot; }
         [[nodiscard]] FileNode& Root() noexcept { return m_root; }
