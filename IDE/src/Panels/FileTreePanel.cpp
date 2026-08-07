@@ -312,9 +312,10 @@ namespace ide
         // away what the user typed here.
         const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
 
-        // Clicking away commits, the way Explorer and VS Code behave. Without this the
-        // row would stay stuck rendering a dead, unfocused field forever.
-        const bool blurred = !cancelled && ImGui::IsItemDeactivatedAfterEdit();
+        // Any other way of leaving the field commits, the way Explorer and VS Code behave.
+        // IsItemDeactivated fires whether or not the text changed, so a rename opened by
+        // mistake and clicked away still ends instead of leaving the row stuck.
+        const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
 
         if (cancelled)
         {
@@ -322,7 +323,7 @@ namespace ide
             return true;
         }
 
-        if (committed || blurred)
+        if (committed || deactivated)
         {
             m_pending.kind = PendingAction::Kind::Rename;
             m_pending.target = node.path;
