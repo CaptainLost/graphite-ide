@@ -106,4 +106,62 @@ namespace core
     {
         node.expanded = false;
     }
+
+    Result<void> FileTree::Refresh(FileNode& node)
+    {
+        if (!node.isDirectory || !node.loaded)
+            return Result<void>::Ok();
+
+        auto entries = fs::ReadDirectory(node.path);
+
+        if (!entries)
+        {
+            node.accessible = false;
+            node.children.clear();
+            CORE_WARN("Cannot refresh '{}': {}", node.path.string(), entries.GetError().message);
+            return Result<void>::Ok();
+        }
+
+        node.accessible = true;
+
+        std::vector<FileNode> previous = std::move(node.children);
+        node.children.clear();
+        node.children.reserve(entries.Value().size());
+
+        for (const fs::DirectoryEntry& entry : entries.Value())
+        {
+            const auto match = std::find_if(previous.begin(), previous.end(),
+                                            [&entry](const FileNode& candidate)
+                                            { return candidate.path == entry.path; });
+
+            if (match != previous.end() && match->isDirectory == entry.isDirectory)
+            {
+                // Carry the whole subtree over, then let the recursion below bring it
+                // up to date. This is what keeps the user's open folders open.
+                node.children.push_back(std::move(*match));
+                previous.erase(match);
+                continue;
+            }
+
+            FileNode child;
+            child.path = entry.path;
+            child.name = entry.name;
+            child.isDirectory = entry.isDirectory;
+            node.children.push_back(std::move(child));
+        }
+
+        std::sort(node.children.begin(), node.children.end(), FileNodeLess);
+
+        for (FileNode& child : node.children)
+        {
+            if (child.isDirectory && child.loaded)
+            {
+                const auto refreshed = Refresh(child);
+                if (!refreshed)
+                    return refreshed;
+            }
+        }
+
+        return Result<void>::Ok();
+    }
 }

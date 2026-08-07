@@ -37,6 +37,12 @@ namespace core
 
         void Collapse(FileNode& node);
 
+        /// Re-reads the node from disk, preserving the expansion state of the subtree:
+        /// nodes that still exist keep their expanded/loaded flags and their loaded
+        /// children, vanished nodes are dropped, and new ones appear collapsed.
+        /// A node that was never loaded stays that way — there is nothing to refresh.
+        Result<void> Refresh(FileNode& node);
+
         [[nodiscard]] bool HasRoot() const noexcept { return m_hasRoot; }
         [[nodiscard]] FileNode& Root() noexcept { return m_root; }
         [[nodiscard]] const FileNode& Root() const noexcept { return m_root; }

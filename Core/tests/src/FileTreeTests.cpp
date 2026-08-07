@@ -129,3 +129,107 @@ TEST_CASE("Expanding an unreadable directory marks it inaccessible instead of fa
     CHECK(ghost.loaded);
     CHECK(ghost.children.empty());
 }
+
+TEST_CASE("Refresh picks up a file created after the first expansion")
+{
+    TempDirectory temp;
+    temp.MakeFile("a.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(tree.Root().children.size() == 1);
+
+    temp.MakeFile("b.txt", "x");
+    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+
+    CHECK(tree.Root().children.size() == 2);
+}
+
+TEST_CASE("Refresh drops nodes that disappeared from disk")
+{
+    TempDirectory temp;
+    const auto doomed = temp.MakeFile("gone.txt", "x");
+    temp.MakeFile("stays.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+
+    std::error_code code;
+    std::filesystem::remove(doomed, code);
+    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+
+    REQUIRE(tree.Root().children.size() == 1);
+    CHECK(tree.Root().children[0].name == "stays.txt");
+}
+
+TEST_CASE("Refresh keeps an expanded subdirectory expanded and loaded")
+{
+    TempDirectory temp;
+    temp.MakeFile("sub/inner.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(tree.Root().children.size() == 1);
+    REQUIRE(tree.Expand(tree.Root().children[0]).HasValue());
+    REQUIRE(tree.Root().children[0].children.size() == 1);
+
+    temp.MakeFile("second.txt", "x");
+    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+
+    REQUIRE(tree.Root().children.size() == 2);
+    const FileNode& sub = tree.Root().children[0];
+    CHECK(sub.name == "sub");
+    CHECK(sub.expanded);
+    CHECK(sub.loaded);
+    REQUIRE(sub.children.size() == 1);
+    CHECK(sub.children[0].name == "inner.txt");
+}
+
+TEST_CASE("Refresh re-reads an expanded subdirectory so its own changes appear")
+{
+    TempDirectory temp;
+    temp.MakeFile("sub/one.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(tree.Expand(tree.Root().children[0]).HasValue());
+
+    temp.MakeFile("sub/two.txt", "x");
+    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+
+    CHECK(tree.Root().children[0].children.size() == 2);
+}
+
+TEST_CASE("Refresh leaves a collapsed, never-opened subdirectory unloaded")
+{
+    TempDirectory temp;
+    temp.MakeFile("sub/inner.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+    REQUIRE(tree.Expand(tree.Root()).HasValue());
+    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+
+    const FileNode& sub = tree.Root().children[0];
+    CHECK_FALSE(sub.expanded);
+    CHECK_FALSE(sub.loaded);
+    CHECK(sub.children.empty());
+}
+
+TEST_CASE("Refresh on a node that was never loaded does nothing")
+{
+    TempDirectory temp;
+    temp.MakeFile("a.txt", "x");
+
+    FileTree tree;
+    REQUIRE(tree.SetRoot(temp.Path()).HasValue());
+
+    REQUIRE(tree.Refresh(tree.Root()).HasValue());
+
+    CHECK_FALSE(tree.Root().loaded);
+    CHECK(tree.Root().children.empty());
+}
