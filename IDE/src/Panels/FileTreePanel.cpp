@@ -414,7 +414,16 @@ namespace ide
         // The theme's frame padding is sized for buttons and would make the edited row
         // taller than its neighbours, shoving the rest of the tree down.
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kFieldPaddingX, 0.0f));
-        ImGui::SetNextItemWidth(-1.0f);
+
+        // Fit the field to the name rather than the panel: a full-width box for a short
+        // name reads as a dialog dropped into the tree. One character of slack leaves
+        // room for the caret, and it grows as the user types.
+        constexpr float kMinFieldWidth = 90.0f;
+        const float textWidth = ImGui::CalcTextSize(m_renameBuffer.data()).x;
+        const float fitted = textWidth + kFieldPaddingX * 2.0f + ImGui::GetFontSize();
+        const float available = ImGui::GetContentRegionAvail().x;
+
+        ImGui::SetNextItemWidth(std::clamp(fitted, kMinFieldWidth, available));
 
         const bool committed =
             ImGui::InputText("##renameField", m_renameBuffer.data(), m_renameBuffer.size(),

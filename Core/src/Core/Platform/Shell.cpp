@@ -19,7 +19,14 @@ namespace core
                          std::format("'{}' no longer exists", fs::ToUtf8(path))};
         }
 
-        std::wstring quoted = path.wstring();
+        // explorer.exe only understands backslashes after /select. Handed a path with
+        // forward slashes — which is what a command-line argument or a settings file
+        // usually carries — it silently ignores the argument and opens a default folder
+        // instead, which looks to the user like the wrong folder opening at random.
+        std::filesystem::path native = path;
+        native.make_preferred();
+
+        std::wstring quoted = native.wstring();
 
         // A backslash immediately before the closing quote would escape it, so a path
         // ending in one — a drive root such as "D:\" — needs it doubled to survive.
