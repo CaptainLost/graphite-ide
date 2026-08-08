@@ -11,9 +11,12 @@ using namespace core::text;
 
 namespace
 {
+    // A caret that has landed at `offset` without ever having aimed at a column — the
+    // state a click or a fresh document leaves it in, before any vertical motion resolves
+    // a real desiredColumn from it.
     Caret At(std::size_t offset)
     {
-        return Caret{offset, offset, 0};
+        return Caret{offset, offset, NoDesiredColumn};
     }
 
     Caret Step(const TextBuffer& buffer, Caret caret, Motion motion, bool extend = false)

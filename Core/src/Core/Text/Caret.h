@@ -1,11 +1,19 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
 #include <utility>
 
 namespace core::text
 {
     class TextBuffer;
+
+    /// `Caret::desiredColumn` when the caret has not aimed at a column yet — a fresh
+    /// caret, or one a caller built directly rather than through `Move`/`PlaceAt`. Vertical
+    /// motion resolves it from the caret's actual current column on first use; every other
+    /// motion (and `PlaceAt`) always writes a real column, never this sentinel, so the
+    /// field means exactly one of two things: "aiming here" or "not aiming anywhere yet."
+    inline constexpr std::size_t NoDesiredColumn = std::numeric_limits<std::size_t>::max();
 
     /// Where the user is in a document, and what is selected.
     struct Caret
@@ -16,13 +24,17 @@ namespace core::text
         /// Where the selection started. Equal to `offset` means nothing is selected.
         std::size_t anchor = 0;
 
-        /// The column vertical movement aims for.
+        /// The column vertical movement aims for, or `NoDesiredColumn` when nothing has
+        /// set one yet.
         ///
         /// Without it, moving down through a line shorter than the current column sticks
         /// the caret to that short line's end and loses the column for every line after —
-        /// which is noticed immediately. Set by horizontal movement, preserved by
-        /// vertical.
-        std::size_t desiredColumn = 0;
+        /// which is noticed immediately. Every motion but vertical movement resolves this
+        /// to the caret's real column (`PlaceAt` is the supported way to reposition a
+        /// caret and get a correct one); vertical movement carries the previous value
+        /// forward untouched, or resolves `NoDesiredColumn` from the caret's actual column
+        /// if it is the first vertical move in a chain.
+        std::size_t desiredColumn = NoDesiredColumn;
 
         friend bool operator==(const Caret&, const Caret&) = default;
     };

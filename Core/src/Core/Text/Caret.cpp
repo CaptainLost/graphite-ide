@@ -56,14 +56,15 @@ namespace core::text
         }
 
         /// The column a vertical motion should aim for: the caret's stored desiredColumn,
-        /// or its actual current column if that is further right. The two usually agree —
-        /// desiredColumn is kept in sync by every non-vertical motion — but a caret handed
-        /// in with a stale or unset desiredColumn (offset 5 on column 5, desiredColumn 0)
-        /// must still travel to its real column rather than snapping to column 0.
+        /// or — when nothing has aimed one yet — its actual current column. A chain of
+        /// vertical moves keeps re-reading the same resolved value, so a caret that lands
+        /// short on one line still aims at the original column on the next.
         [[nodiscard]] std::size_t DesiredColumnFor(const TextBuffer& buffer, const Caret& caret,
                                                    std::size_t tabWidth)
         {
-            return std::max(ColumnAt(buffer, caret.offset, tabWidth), caret.desiredColumn);
+            return caret.desiredColumn == NoDesiredColumn
+                       ? ColumnAt(buffer, caret.offset, tabWidth)
+                       : caret.desiredColumn;
         }
 
         [[nodiscard]] std::size_t VerticalTarget(const TextBuffer& buffer, const Caret& caret,
@@ -226,7 +227,7 @@ namespace core::text
         Caret caret;
         caret.anchor = WordBoundaryBackward(buffer, at == buffer.Length() ? at : at + 1);
         caret.offset = WordBoundaryForward(buffer, at);
-        caret.desiredColumn = 0;
+        caret.desiredColumn = NoDesiredColumn;
 
         return caret;
     }
@@ -237,7 +238,7 @@ namespace core::text
         caret.anchor = buffer.LineStart(line);
         caret.offset = line + 1 < buffer.LineCount() ? buffer.LineStart(line + 1)
                                                      : buffer.Length();
-        caret.desiredColumn = 0;
+        caret.desiredColumn = NoDesiredColumn;
 
         return caret;
     }
@@ -247,7 +248,7 @@ namespace core::text
         Caret caret;
         caret.anchor = 0;
         caret.offset = buffer.Length();
-        caret.desiredColumn = 0;
+        caret.desiredColumn = NoDesiredColumn;
 
         return caret;
     }
