@@ -74,14 +74,19 @@ namespace core::text
         if (text.empty())
             return;
 
-        const std::size_t at = std::min(offset, m_length);
-        const std::size_t index = SplitAt(at);
-
         const std::size_t appended = m_append.size();
         m_append.append(text);
 
+        InsertPieceRaw(offset, appended, text);
+    }
+
+    void TextBuffer::InsertPieceRaw(std::size_t offset, std::size_t appendOffset, std::string_view text)
+    {
+        const std::size_t at = std::min(offset, m_length);
+        const std::size_t index = SplitAt(at);
+
         m_pieces.insert(m_pieces.begin() + static_cast<std::ptrdiff_t>(index),
-                        Piece{Source::Append, appended, text.size(), at});
+                        Piece{Source::Append, appendOffset, text.size(), at});
 
         RefreshPieceStarts(index);
 
@@ -273,14 +278,29 @@ namespace core::text
             m_lineStarts[at] -= removed;
     }
 
-    void TextBuffer::ApplyEdit(const Edit& edit, bool reversed)
+    void TextBuffer::ApplyEdit(Edit& edit, bool reversed)
     {
         const bool inserting = reversed ? !edit.inserted : edit.inserted;
 
         if (inserting)
-            InsertRaw(edit.offset, edit.text);
+        {
+            // The text may already live in m_append — from this edit's own original
+            // insertion, or from an earlier undo of an erasure. Those bytes are never
+            // removed or rewritten, so a range recorded once stays valid for every later
+            // replay and nothing is appended twice.
+            if (!edit.hasAppendOffset)
+            {
+                edit.appendOffset = m_append.size();
+                m_append.append(edit.text);
+                edit.hasAppendOffset = true;
+            }
+
+            InsertPieceRaw(edit.offset, edit.appendOffset, edit.text);
+        }
         else
+        {
             EraseRaw(edit.offset, edit.offset + edit.text.size());
+        }
     }
 
     void TextBuffer::Insert(std::size_t offset, std::string_view text)
@@ -289,11 +309,12 @@ namespace core::text
             return;
 
         const std::size_t at = std::min(offset, m_length);
+        const std::size_t appendOffset = m_append.size();
 
         InsertRaw(at, text);
 
         m_redo.clear();
-        m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true});
+        m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true, appendOffset, true});
     }
 
     void TextBuffer::Erase(std::size_t from, std::size_t to)

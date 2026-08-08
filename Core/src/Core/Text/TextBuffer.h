@@ -90,6 +90,11 @@ namespace core::text
         /// would stay hidden longest.
         [[nodiscard]] bool LineIndexMatchesRebuild() const;
 
+        /// Bytes held in the append-only buffer that inserted text lands in. Exists for
+        /// diagnostics and so tests can confirm that toggling undo/redo does not grow it
+        /// — an edit's text is appended once and every replay reuses that range.
+        [[nodiscard]] std::size_t AppendBufferSize() const noexcept { return m_append.size(); }
+
     private:
         enum class Source
         {
@@ -141,6 +146,12 @@ namespace core::text
         void InsertRaw(std::size_t offset, std::string_view text);
         void EraseRaw(std::size_t from, std::size_t to);
 
+        /// Inserts a piece that reuses `text.size()` bytes already sitting in m_append at
+        /// `appendOffset`, instead of appending a fresh copy. The half of InsertRaw that
+        /// is not "put bytes in m_append" — shared by a fresh insertion and by replaying
+        /// one whose text is already there.
+        void InsertPieceRaw(std::size_t offset, std::size_t appendOffset, std::string_view text);
+
         /// One reversible edit. An insertion of `text` at `offset` inverts into an
         /// erasure of the same range, and the other way round.
         struct Edit
@@ -149,10 +160,23 @@ namespace core::text
             std::size_t offset = 0;
             std::string text;
             bool inserted = false;
+
+            /// Where `text` lives in m_append, once it has been placed there. Set
+            /// immediately for an insertion, whose text is appended as soon as the edit
+            /// is made; left unset for an erasure until its first undo re-inserts the
+            /// removed text, which until then may live in the original buffer, in
+            /// m_append from an earlier edit, or split across both. Every later replay
+            /// of the same edit reuses this range rather than appending another copy —
+            /// the bytes are never rewritten or removed once appended, so a recorded
+            /// range stays valid for the buffer's lifetime.
+            std::size_t appendOffset = 0;
+            bool hasAppendOffset = false;
         };
 
-        /// Applies an edit without recording it, which is what undo and redo do.
-        void ApplyEdit(const Edit& edit, bool reversed);
+        /// Applies an edit without recording it, which is what undo and redo do. Takes
+        /// the edit by mutable reference to fill in appendOffset the first time its text
+        /// is materialised into m_append.
+        void ApplyEdit(Edit& edit, bool reversed);
 
         std::string m_original;
         std::string m_append;

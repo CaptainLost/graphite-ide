@@ -618,3 +618,45 @@ TEST_CASE("Every offset still round-trips through a position after random edits"
     for (std::size_t offset = 0; offset <= buffer.Length(); ++offset)
         REQUIRE(buffer.ToOffset(buffer.ToPosition(offset)) == offset);
 }
+
+TEST_CASE("Toggling undo/redo on an insertion does not grow the append buffer")
+{
+    // Regression for a leak: replaying an edit used to re-append its text every time,
+    // so oscillating undo/redo over a large paste grew m_append without bound even
+    // though the document's content never changed net of the toggle.
+    TextBuffer buffer{"hello"};
+    buffer.Insert(5, std::string(1000, 'x'));
+
+    buffer.Undo();
+    buffer.Redo();
+    const std::size_t afterFirstCycle = buffer.AppendBufferSize();
+
+    for (int i = 0; i < 200; ++i)
+    {
+        buffer.Undo();
+        buffer.Redo();
+    }
+
+    CHECK(buffer.AppendBufferSize() == afterFirstCycle);
+    CHECK(buffer.Text() == "hello" + std::string(1000, 'x'));
+}
+
+TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
+{
+    TextBuffer buffer{"hello" + std::string(1000, 'x') + "world"};
+    buffer.Erase(5, 1005);
+    REQUIRE(buffer.Text() == "helloworld");
+
+    buffer.Undo();
+    buffer.Redo();
+    const std::size_t afterFirstCycle = buffer.AppendBufferSize();
+
+    for (int i = 0; i < 200; ++i)
+    {
+        buffer.Undo();
+        buffer.Redo();
+    }
+
+    CHECK(buffer.AppendBufferSize() == afterFirstCycle);
+    CHECK(buffer.Text() == "helloworld");
+}
