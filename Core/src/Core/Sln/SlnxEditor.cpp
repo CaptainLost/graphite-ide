@@ -248,15 +248,7 @@ namespace core::sln
                          std::format("'{}' is already in the solution", project.string())};
         }
 
-        // Documented as a failure every caller treats as one; this is the caller that has
-        // to mean it, rather than writing an Id="" that nothing downstream can key off.
         const std::string id = NewGuid();
-
-        if (id.empty())
-        {
-            return Error{ErrorCode::Unsupported,
-                         "this build cannot generate the identifier a project needs"};
-        }
 
         auto container = FindContainer(folder);
 

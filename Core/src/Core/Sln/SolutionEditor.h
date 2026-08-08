@@ -10,8 +10,9 @@ namespace core::sln
 {
     /// A GUID in the braced uppercase form both solution formats use.
     ///
-    /// Implemented on Windows only; elsewhere returns an empty string, which every caller
-    /// treats as a failure to produce one.
+    /// Randomly generated rather than asked of the operating system, which is all a
+    /// version 4 UUID is — so there is no platform branch here and no empty result for a
+    /// caller to check.
     [[nodiscard]] std::string NewGuid();
 
     /// Edits a solution file in place. Everything not touched — formatting, comments, and
