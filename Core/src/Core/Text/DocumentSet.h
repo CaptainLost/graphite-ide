@@ -1,0 +1,93 @@
+#pragma once
+
+#include "Core/Text/Caret.h"
+#include "Core/Text/Encoding.h"
+#include "Core/Text/TextDocument.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace core::text
+{
+    /// Why an open item carries no document.
+    enum class OpenFailure
+    {
+        None,
+        Binary,
+        TooLarge,
+        UnsupportedEncoding,
+        /// The file was there when it opened and has since been deleted. The item stays:
+        /// the content is in memory, so closing it would be the only way to lose
+        /// something we still have.
+        Missing,
+        ReadFailed
+    };
+
+    /// One thing the user has open. Not a document — a document *or* the reason there
+    /// isn't one, because a binary file, a file past the size ceiling, a UTF-16 file and
+    /// a file deleted from disk are all tabs with nothing to show.
+    struct OpenItem
+    {
+        std::filesystem::path path;
+        std::optional<TextDocument> document;
+        OpenFailure failure = OpenFailure::None;
+        std::uint64_t size = 0;
+        Encoding encoding = Encoding::Utf8;
+        Caret caret;
+        bool preview = false;
+    };
+
+    enum class OpenOutcome
+    {
+        /// A new item was added.
+        Opened,
+        /// The file was already open; it was made active instead.
+        Activated,
+        /// Past the size at which the user is asked. Nothing was added — call
+        /// OpenConfirmed to go ahead.
+        NeedsConfirmation,
+        /// An item was added carrying a reason rather than a document.
+        Failed
+    };
+
+    /// What the user should be told about an item with no document. English, because
+    /// every string in this codebase is.
+    [[nodiscard]] std::string FailureMessage(const OpenItem& item);
+
+    /// The set of open documents. Knows nothing about ImGui, which is what makes the
+    /// rules here testable — the Graphite project has no tests at all.
+    class DocumentSet
+    {
+    public:
+        /// Opens a file, or activates it when it is already open.
+        ///
+        /// `permanent` distinguishes a double click from a single one: a single click
+        /// opens a preview, of which there is at most one at a time.
+        OpenOutcome Open(const std::filesystem::path& path, bool permanent);
+
+        /// Opens a file the caller has confirmed despite its size.
+        OpenOutcome OpenConfirmed(const std::filesystem::path& path, bool permanent);
+
+        void Close(std::size_t index);
+        void CloseAll();
+
+        [[nodiscard]] std::optional<std::size_t> Find(const std::filesystem::path& path) const;
+        [[nodiscard]] std::size_t Count() const noexcept { return m_items.size(); }
+
+        [[nodiscard]] OpenItem& At(std::size_t index) { return m_items[index]; }
+        [[nodiscard]] const OpenItem& At(std::size_t index) const { return m_items[index]; }
+
+        void Activate(std::size_t index);
+        [[nodiscard]] std::optional<std::size_t> Active() const noexcept { return m_active; }
+
+    private:
+        OpenOutcome Add(const std::filesystem::path& path, bool permanent, bool confirmed);
+
+        std::vector<OpenItem> m_items;
+        std::optional<std::size_t> m_active;
+    };
+}
