@@ -53,6 +53,48 @@ namespace core::sln
 
             return text;
         }
+
+        /// Splits "App/Sub" into {"App", "Sub"}, dropping empty components so a stray
+        /// slash cannot produce a folder with no name.
+        std::vector<std::string> SplitLogicalPath(const std::string& folder)
+        {
+            std::vector<std::string> parts;
+            std::size_t start = 0;
+
+            while (start < folder.size())
+            {
+                const std::size_t slash = folder.find('/', start);
+                const std::size_t end = slash == std::string::npos ? folder.size() : slash;
+
+                if (end > start)
+                    parts.push_back(folder.substr(start, end - start));
+
+                if (slash == std::string::npos)
+                    break;
+
+                start = slash + 1;
+            }
+
+            return parts;
+        }
+
+        /// Removes the element beginning at `offset` — pugixml's, one past the '<' — and
+        /// its line with it when nothing else shares that line, so no blank one is left
+        /// behind.
+        void EraseElement(std::string& text, std::size_t offset, std::string_view name)
+        {
+            const std::size_t begin = offset - 1;   // back over the '<'
+            const std::size_t end = text::ElementEnd(text, offset, name);
+
+            const auto [lineBegin, lineEnd] = text::LineExtent(text, begin);
+            const bool aloneOnItsLine = text.find_first_not_of(" \t", lineBegin) == begin
+                                        && text.find_first_not_of(" \t\r\n", end) >= lineEnd;
+
+            if (aloneOnItsLine)
+                text.erase(lineBegin, lineEnd - lineBegin);
+            else
+                text.erase(begin, end - begin);
+        }
     }
 
     SlnxEditor::SlnxEditor(std::filesystem::path path, std::string text)
@@ -184,7 +226,20 @@ namespace core::sln
                          std::format("'{}' is already in the solution", project.string())};
         }
 
-        const auto container = FindContainer(folder);
+        auto container = FindContainer(folder);
+
+        // A folder the caller names but the solution does not have yet is created rather
+        // than refused: the folder is scaffolding for the project, not a thing the caller
+        // has to build first.
+        if (!container && container.GetError().code == ErrorCode::NotFound)
+        {
+            const auto created = AddFolder(folder);
+
+            if (!created)
+                return created.GetError();
+
+            container = FindContainer(folder);
+        }
 
         if (!container)
             return container.GetError();
@@ -204,53 +259,226 @@ namespace core::sln
         if (!found)
             return found.GetError();
 
-        const std::size_t begin = found.Value() - 1;   // back over the '<'
-        const std::size_t end = text::ElementEnd(m_text, found.Value(), "Project");
-
-        // The whole line goes, so no blank one is left behind.
-        const auto [lineBegin, lineEnd] = text::LineExtent(m_text, begin);
-        const bool aloneOnItsLine = m_text.find_first_not_of(" \t", lineBegin) == begin
-                                    && m_text.find_first_not_of(" \t\r\n", end) >= lineEnd;
-
-        if (aloneOnItsLine)
-            m_text.erase(lineBegin, lineEnd - lineBegin);
-        else
-            m_text.erase(begin, end - begin);
+        EraseElement(m_text, found.Value(), "Project");
 
         return Result<void>::Ok();
     }
 
-    // The four folder operations arrive with their tests in the next task. They are
-    // declared now so the menu can be written against a complete interface.
     Result<void> SlnxEditor::AddFolder(const std::string& folder)
     {
-        (void)folder;
+        const std::vector<std::string> parts = SplitLogicalPath(folder);
 
-        return Error{ErrorCode::Unsupported, "adding a solution folder is not implemented yet"};
+        if (parts.empty())
+            return Error{ErrorCode::InvalidArgument, "a solution folder needs a name"};
+
+        // Checked before anything is spliced, so a refusal leaves the text untouched.
+        if (FindContainer(folder).HasValue())
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         std::format("the solution already has a folder '{}'", folder)};
+        }
+
+        // Every ancestor that is missing has to be written too: nesting lives in the name,
+        // so a folder whose parent has no element of its own has nothing to hang from.
+        std::vector<std::string> missing;
+        std::string prefix;
+
+        for (const std::string& part : parts)
+        {
+            prefix += prefix.empty() ? part : "/" + part;
+
+            if (!FindContainer(prefix).HasValue())
+                missing.push_back(prefix);
+        }
+
+        // Written deepest first, because each insertion goes in as the container's first
+        // child — so the shallowest ends up first in the file, as a reader expects.
+        for (std::size_t i = missing.size(); i > 0; --i)
+        {
+            const auto root = FindContainer("");
+
+            if (!root)
+                return root.GetError();
+
+            InsertChild(root.Value(), std::format(R"(<Folder Name="/{}/" />)", missing[i - 1]));
+        }
+
+        return Result<void>::Ok();
     }
 
     Result<void> SlnxEditor::RemoveFolder(const std::string& folder)
     {
-        (void)folder;
+        if (folder.empty())
+            return Error{ErrorCode::InvalidArgument, "the solution root is not a folder"};
 
-        return Error{ErrorCode::Unsupported, "removing a solution folder is not implemented yet"};
+        const auto found = FindContainer(folder);
+
+        if (!found)
+            return found.GetError();
+
+        {
+            Parsed parsed{m_text};
+
+            if (!parsed.ok)
+                return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+
+            const std::string wanted = "/" + folder + "/";
+
+            for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
+            {
+                const std::string current = node.attribute("Name").value();
+
+                // A folder that still holds something is refused rather than emptied by
+                // implication, and the refusal names what was found so the caller can act
+                // on it.
+                if (current == wanted)
+                {
+                    const pugi::xml_node child = node.child("Project");
+
+                    if (child)
+                    {
+                        return Error{ErrorCode::InvalidArgument,
+                                     std::format("the folder '{}' still holds the project '{}'",
+                                                 folder, child.attribute("Path").value())};
+                    }
+
+                    continue;
+                }
+
+                if (current.rfind(wanted, 0) == 0)
+                {
+                    return Error{ErrorCode::InvalidArgument,
+                                 std::format("the folder '{}' still holds the folder '{}'", folder,
+                                             current)};
+                }
+            }
+        }
+
+        EraseElement(m_text, found.Value(), "Folder");
+
+        return Result<void>::Ok();
     }
 
     Result<void> SlnxEditor::RenameFolder(const std::string& folder, const std::string& name)
     {
-        (void)folder;
-        (void)name;
+        if (name.empty() || name.find('/') != std::string::npos)
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         std::format("'{}' is not a usable folder name", name)};
+        }
 
-        return Error{ErrorCode::Unsupported, "renaming a solution folder is not implemented yet"};
+        const std::string oldPath = "/" + folder + "/";
+
+        // The parent's path is a prefix of every descendant's, so the new prefix is the
+        // old one with its last component swapped.
+        const std::size_t lastSlash = folder.find_last_of('/');
+        const std::string parent =
+            lastSlash == std::string::npos ? std::string{} : folder.substr(0, lastSlash + 1);
+        const std::string newPath = "/" + parent + name + "/";
+
+        Parsed parsed{m_text};
+
+        if (!parsed.ok)
+            return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+
+        // Offset of the Name attribute's value, and how long it is.
+        std::vector<std::pair<std::size_t, std::size_t>> edits;
+        std::vector<std::string> replacements;
+
+        for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
+        {
+            const std::string current = node.attribute("Name").value();
+
+            if (current.rfind(oldPath, 0) != 0)
+                continue;
+
+            // The attribute's value is not given an offset of its own, so it is found in
+            // the element's own text — the first occurrence after the element start.
+            const auto elementBegin = static_cast<std::size_t>(node.offset_debug());
+            const std::size_t valueBegin = m_text.find(current, elementBegin);
+
+            if (valueBegin == std::string::npos)
+                continue;
+
+            edits.emplace_back(valueBegin, current.size());
+            replacements.push_back(newPath + current.substr(oldPath.size()));
+        }
+
+        if (edits.empty())
+            return Error{ErrorCode::NotFound, std::format("the solution has no folder '{}'", folder)};
+
+        // Applied from the last to the first: replacing a shorter name with a longer one
+        // shifts every offset after it, and applying them forwards would corrupt the file
+        // in a way that still parses.
+        for (std::size_t i = edits.size(); i > 0; --i)
+        {
+            const auto& [begin, length] = edits[i - 1];
+            m_text.replace(begin, length, replacements[i - 1]);
+        }
+
+        return Result<void>::Ok();
     }
 
     Result<void> SlnxEditor::MoveProject(const std::filesystem::path& project,
                                          const std::string& folder)
     {
-        (void)project;
-        (void)folder;
+        const auto found = FindProject(project);
 
-        return Error{ErrorCode::Unsupported, "moving a project is not implemented yet"};
+        if (!found)
+            return found.GetError();
+
+        std::string declared;
+        std::string id;
+
+        {
+            Parsed parsed{m_text};
+
+            if (!parsed.ok)
+                return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+
+            for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
+            {
+                if (static_cast<std::size_t>(node.node().offset_debug()) != found.Value())
+                    continue;
+
+                declared = node.node().attribute("Path").value();
+                id = node.node().attribute("Id").value();
+                break;
+            }
+        }
+
+        if (declared.empty())
+            declared = RelativeProjectPath(m_path, project);
+
+        // The identifier is carried over rather than regenerated: a new one would make the
+        // moved project look like a different project to anything keying off it.
+        if (id.empty())
+            id = NewGuid();
+
+        // The folder is created first, so the removal below is the last thing that can go
+        // wrong — and it cannot, the element having just been found.
+        if (!folder.empty() && !FindContainer(folder).HasValue())
+        {
+            const auto created = AddFolder(folder);
+
+            if (!created)
+                return created.GetError();
+        }
+
+        const auto removed = RemoveProject(project);
+
+        if (!removed)
+            return removed.GetError();
+
+        // Looked up again after the removal, which moved every offset after it.
+        const auto container = FindContainer(folder);
+
+        if (!container)
+            return container.GetError();
+
+        InsertChild(container.Value(), std::format(R"(<Project Path="{}" Id="{}" />)", declared, id));
+
+        return Result<void>::Ok();
     }
 
     Result<void> SlnxEditor::Save()

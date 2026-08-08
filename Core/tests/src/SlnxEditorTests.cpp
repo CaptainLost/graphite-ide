@@ -274,3 +274,209 @@ TEST_CASE("A failed verification leaves the solution and its directory alone")
 
     CHECK_FALSE(std::filesystem::exists(stray));
 }
+
+TEST_CASE("Adding a folder puts it in the solution")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const std::string written = Read(file);
+    CHECK(written.find("<Folder Name=\"/Engine/\"") != std::string::npos);
+
+    // And nothing else moved.
+    CHECK(written.find("<BuildType Name=\"Debug\" />") != std::string::npos);
+}
+
+TEST_CASE("A nested folder creates the ancestors it needs")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+
+    // Nesting is expressed by the name, so both elements have to exist.
+    const std::string written = Read(file);
+    CHECK(written.find("<Folder Name=\"/Engine/\"") != std::string::npos);
+    CHECK(written.find("<Folder Name=\"/Engine/Tests/\"") != std::string::npos);
+}
+
+TEST_CASE("Adding a folder that already exists is refused")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+
+    const auto added = editor.Value()->AddFolder("App");
+
+    REQUIRE_FALSE(added.HasValue());
+    CHECK(added.GetError().code == core::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("Adding a project to a folder that does not exist creates it")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Engine").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+    REQUIRE(solution.Value().root.folders.size() == 2);
+}
+
+TEST_CASE("An empty folder can be removed")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.Value()->RemoveFolder("Engine").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    CHECK(Read(file).find("/Engine/") == std::string::npos);
+}
+
+TEST_CASE("A folder holding a project cannot be removed")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+
+    // Refused rather than deleting a subtree by implication: the user asked to remove one
+    // folder, not to unlist everything inside it.
+    const auto removed = editor.Value()->RemoveFolder("App");
+
+    REQUIRE_FALSE(removed.HasValue());
+    CHECK(removed.GetError().code == core::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("A folder holding another folder cannot be removed")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
+
+    const auto removed = editor.Value()->RemoveFolder("Engine");
+
+    REQUIRE_FALSE(removed.HasValue());
+    CHECK(removed.GetError().code == core::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("Renaming a folder renames its descendants too")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
+    REQUIRE(editor.Value()->RenameFolder("Engine", "Core").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const std::string written = Read(file);
+
+    // The child's name carries the parent's path, so renaming the parent has to rewrite
+    // every descendant or the tree comes apart.
+    CHECK(written.find("<Folder Name=\"/Core/\"") != std::string::npos);
+    CHECK(written.find("<Folder Name=\"/Core/Tests/\"") != std::string::npos);
+    CHECK(written.find("/Engine/") == std::string::npos);
+}
+
+TEST_CASE("Renaming a folder leaves its projects where they are")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->RenameFolder("App", "Application").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+    REQUIRE(solution.Value().root.folders.size() == 1);
+    CHECK(solution.Value().root.folders[0].name == "Application");
+    CHECK(solution.Value().root.folders[0].projects.size() == 1);
+}
+
+TEST_CASE("A project moves between folders")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.Value()
+                ->MoveProject(temp.Path() / "app" / "App.vcxproj", "Engine")
+                .HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+
+    for (const core::sln::Folder& folder : solution.Value().root.folders)
+    {
+        if (folder.name == "Engine")
+            CHECK(folder.projects.size() == 1);
+        else
+            CHECK(folder.projects.empty());
+    }
+}
+
+TEST_CASE("A project moves out of a folder to the solution root")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->MoveProject(temp.Path() / "app" / "App.vcxproj", "").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+    CHECK(solution.Value().root.projects.size() == 1);
+    CHECK(solution.Value().root.folders[0].projects.empty());
+}
+
+TEST_CASE("Moving a project keeps its identifier")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.Value()
+                ->MoveProject(temp.Path() / "app" / "App.vcxproj", "Engine")
+                .HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    // A move is a remove and an add, and a new identifier would make it look like a
+    // different project to anything keying off it.
+    CHECK(Read(file).find("{AAAA0001-0000-0000-0000-000000000000}") != std::string::npos);
+}
