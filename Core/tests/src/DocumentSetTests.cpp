@@ -493,6 +493,23 @@ TEST_CASE("A path outside the moved root is left alone")
     CHECK(documents.At(0).path == path);
 }
 
+TEST_CASE("A path equal to the moved root is rewritten without a trailing dot")
+{
+    TempDirectory directory;
+
+    DocumentSet documents;
+
+    // A directory path is a legitimate OpenItem::path: opening a directory produces a
+    // ReadFailed item at exactly that path, and the workspace root itself can be that
+    // path when the item under test is the root.
+    documents.Open(directory.Path(), true);
+    REQUIRE(documents.Count() == 1);
+
+    documents.RewritePaths(directory.Path(), "D:/moved");
+
+    CHECK(documents.At(0).path == std::filesystem::path{"D:/moved"});
+}
+
 TEST_CASE("A deleted file keeps its window and its content")
 {
     TempDirectory directory;
@@ -517,4 +534,62 @@ TEST_CASE("Marking a file that is not open does nothing")
     documents.MarkMissing("D:/never-opened.txt");
 
     CHECK(documents.Count() == 0);
+}
+
+TEST_CASE("Marking a file missing clears any detail an earlier failure left behind")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "sub";
+    std::filesystem::create_directories(path);
+
+    DocumentSet documents;
+
+    // Opening a directory fails with a specific detail from ProbeFile rather than the
+    // generic Missing message.
+    documents.Open(path, true);
+
+    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.At(0).failure == OpenFailure::ReadFailed);
+    REQUIRE_FALSE(documents.At(0).detail.empty());
+
+    documents.MarkMissing(path);
+
+    CHECK(documents.At(0).failure == OpenFailure::Missing);
+    CHECK(documents.At(0).detail.empty());
+    CHECK(FailureMessage(documents.At(0)).find("exist") != std::string::npos);
+}
+
+TEST_CASE("A single click that needs confirmation does not evict the preview")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "a");
+
+    const auto big = directory.Path() / "big.log";
+
+    // See "A large file asks before it loads, and adds nothing until confirmed" for why
+    // the sample window has to be filled with non-NUL bytes before growing the file.
+    WriteBytes(big, std::string(ProbeSampleSize, 'x'));
+
+#ifdef CORE_PLATFORM_WINDOWS
+    if (!MarkSparse(big))
+    {
+        return;
+    }
+#endif
+
+    std::error_code resizeError;
+    std::filesystem::resize_file(big, LargeFileThreshold + 1, resizeError);
+    REQUIRE_FALSE(resizeError);
+
+    DocumentSet documents;
+    documents.Open(path, false);
+    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.Preview() == std::optional<std::size_t>{0});
+
+    CHECK(documents.Open(big, false) == OpenOutcome::NeedsConfirmation);
+
+    CHECK(documents.Count() == 1);
+    CHECK(documents.At(0).path == path);
+    CHECK(documents.Preview() == std::optional<std::size_t>{0});
 }

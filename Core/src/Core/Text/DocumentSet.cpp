@@ -87,13 +87,17 @@ namespace core::text
         }
 
         // At most one preview at a time: a single click replaces the last one rather than
-        // stacking tabs up. Done before the probe so a refused file still takes the slot's
-        // place rather than leaving two tabs behind.
-        if (!permanent)
+        // stacking tabs up. Called right before an item is actually pushed — not any
+        // earlier — so a path that adds nothing (NeedsConfirmation, answered by never
+        // calling OpenConfirmed) never costs the existing preview its slot.
+        const auto evictPreview = [this, permanent]
         {
-            if (const auto preview = Preview())
-                Close(*preview);
-        }
+            if (!permanent)
+            {
+                if (const auto preview = Preview())
+                    Close(*preview);
+            }
+        };
 
         OpenItem item;
         item.path = path;
@@ -111,6 +115,8 @@ namespace core::text
                                ? OpenFailure::Missing
                                : OpenFailure::ReadFailed;
             item.detail = probe.GetError().message;
+
+            evictPreview();
             m_items.push_back(std::move(item));
             Activate(m_items.size() - 1);
 
@@ -121,7 +127,8 @@ namespace core::text
         item.encoding = probe.Value().encoding;
 
         // Asking has to happen before anything is added, so answering "no" leaves no
-        // trace of the question.
+        // trace of the question — including the preview slot, which stays exactly as it
+        // was since evictPreview has not run yet.
         if (probe.Value().kind == FileKind::LargeText && !confirmed)
             return OpenOutcome::NeedsConfirmation;
 
@@ -154,6 +161,7 @@ namespace core::text
 
         const bool failed = !item.document.has_value();
 
+        evictPreview();
         m_items.push_back(std::move(item));
         Activate(m_items.size() - 1);
 
@@ -243,7 +251,12 @@ namespace core::text
             if (relative.empty() || *relative.begin() == "..")
                 continue;
 
-            item.path = to / relative;
+            // relative is "." when the item path equals `from` exactly — an item can be
+            // the workspace root itself (opening a directory produces a ReadFailed item
+            // at that path). `to / "."` would keep a trailing separator-dot that compares
+            // unequal to `to` itself, breaking Find and duplicate detection, so that case
+            // becomes `to` directly instead of going through the append.
+            item.path = (relative == ".") ? to : to / relative;
         }
     }
 
@@ -255,5 +268,10 @@ namespace core::text
             return;
 
         m_items[*index].failure = OpenFailure::Missing;
+
+        // Whatever detail the previous failure carried — a sharing violation, an
+        // unreadable directory — no longer describes what is wrong. Left in place,
+        // FailureMessage would keep preferring it over "This file no longer exists".
+        m_items[*index].detail.clear();
     }
 }
