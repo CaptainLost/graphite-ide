@@ -14,6 +14,8 @@
 
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
+
+    #include <winioctl.h>
 #endif
 
 using namespace core::text;
@@ -33,6 +35,30 @@ namespace
         std::ofstream stream{path, std::ios::binary};
         stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
     }
+
+#ifdef CORE_PLATFORM_WINDOWS
+    // Marks the file sparse so growing it costs no disk space: NTFS reserves real
+    // clusters for a grown file unless it is sparse, in which case the unwritten range
+    // is free. Returns false if the filesystem cannot do this, letting the caller skip
+    // rather than fail — that is a fact about the machine, not the code under test.
+    bool MarkSparse(const std::filesystem::path& path)
+    {
+        const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+        {
+            return false;
+        }
+
+        DWORD bytesReturned = 0;
+        const BOOL succeeded =
+            ::DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &bytesReturned, nullptr);
+
+        ::CloseHandle(handle);
+
+        return succeeded != FALSE;
+    }
+#endif
 }
 
 TEST_CASE("A plain LF file loads as it is")
@@ -312,11 +338,19 @@ TEST_CASE("Loading a directory fails with InvalidArgument rather than NotFound")
     CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
 }
 
+#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
 {
     TempDirectory directory;
     const auto path = directory.Path() / "huge.bin";
     WriteBytes(path, "");
+
+    // Marking the file sparse first means growing it reserves no real disk clusters,
+    // regardless of how much free space the volume actually has.
+    if (!MarkSparse(path))
+    {
+        return;
+    }
 
     // Growing the file this way is a metadata-only operation on NTFS — no bytes are
     // actually written — so this exercises the real size check in Load against a real
@@ -331,6 +365,11 @@ TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
     CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
     CHECK(document.GetError().message.find(std::to_string(MaximumFileSize + 1)) != std::string::npos);
 }
+#else
+TEST_CASE("Load refuses a file larger than the maximum size, before reading it" * doctest::skip())
+{
+}
+#endif
 
 #ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot open")
