@@ -7,6 +7,7 @@
 #include "Core/Platform/FileDialog.h"
 
 #include <algorithm>
+#include <format>
 #include <vector>
 
 namespace graphite
@@ -84,6 +85,56 @@ namespace graphite
         m_events.Publish(WorkspaceOpenedEvent{root});
 
         CORE_INFO("Workspace opened: '{}'", root.string());
+        return core::Result<void>::Ok();
+    }
+
+    core::Result<void> Workspace::OpenSolution(const std::filesystem::path& solution)
+    {
+        std::error_code code;
+
+        if (!std::filesystem::is_regular_file(solution, code))
+        {
+            return core::Error{core::ErrorCode::NotFound,
+                               std::format("no solution file at '{}'", solution.string())};
+        }
+
+        std::filesystem::path chosen = std::filesystem::absolute(solution, code);
+
+        if (code)
+            chosen = solution;
+
+        chosen = chosen.lexically_normal();
+        chosen.make_preferred();
+
+        // Inside the folder already open? Then the workspace is right as it is, and only
+        // the selection changes. This is the common case: an open repository and a
+        // solution somewhere within it.
+        const bool inside = IsOpen() && !chosen.lexically_relative(m_root).empty()
+                            && *chosen.lexically_relative(m_root).begin() != "..";
+
+        if (!inside)
+        {
+            if (const auto opened = Open(chosen.parent_path()); !opened)
+                return opened;
+        }
+
+        // Added by hand rather than waiting for discovery: the file may sit somewhere
+        // FindSolutions would never look, and the user has just said they want it.
+        if (std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(), chosen)
+            == m_solutionCandidates.end())
+        {
+            m_solutionCandidates.push_back(chosen);
+            std::sort(m_solutionCandidates.begin(), m_solutionCandidates.end());
+        }
+
+        SelectSolution(chosen);
+
+        if (!m_solution)
+        {
+            return core::Error{core::ErrorCode::InvalidArgument,
+                               std::format("cannot read '{}'", chosen.string())};
+        }
+
         return core::Result<void>::Ok();
     }
 
@@ -474,6 +525,20 @@ namespace graphite
                 m_solutionCandidates.push_back(candidate);
         }
 
+        // A solution the user picked by hand may live outside the root, where nothing
+        // above would find it. Dropping it on the next filesystem change would make the
+        // chooser lose an entry for no reason the user could see.
+        if (!m_selectedSolution.empty()
+            && std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(),
+                         m_selectedSolution)
+                   == m_solutionCandidates.end())
+        {
+            std::error_code exists;
+
+            if (std::filesystem::is_regular_file(m_selectedSolution, exists))
+                m_solutionCandidates.push_back(m_selectedSolution);
+        }
+
         std::sort(m_solutionCandidates.begin(), m_solutionCandidates.end());
     }
 
@@ -614,5 +679,27 @@ namespace graphite
             return;
 
         (void)workspace.Open(picked.Value());
+    }
+
+    void OpenSolutionInteractively(Workspace& workspace)
+    {
+        const std::vector<core::FileDialog::Filter> filters = {
+            {"Visual Studio solutions", "*.sln;*.slnx"},
+            {"All files", "*.*"}};
+
+        auto picked = core::FileDialog::PickFile("Open Solution", filters);
+
+        if (!picked)
+        {
+            CORE_ERROR("Cannot open the file picker: {}", picked.GetError().message);
+            return;
+        }
+
+        // An empty path is the user cancelling, which is not worth a log line.
+        if (picked.Value().empty())
+            return;
+
+        if (const auto opened = workspace.OpenSolution(picked.Value()); !opened)
+            CORE_ERROR("Cannot open the solution: {}", opened.GetError().message);
     }
 }
