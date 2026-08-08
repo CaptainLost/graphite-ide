@@ -1,6 +1,9 @@
 #include "Panels/SolutionTreeView.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Gui/Icons.h"
+
+#include <IconsMaterialDesignIcons.h>
 
 #include <string>
 
@@ -44,7 +47,9 @@ namespace graphite
     {
         for (const core::sln::Folder& child : folder.folders)
         {
-            if (ImGui::TreeNodeEx(child.name.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+            const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.name;
+
+            if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
             {
                 RenderFolder(child);
                 ImGui::TreePop();
@@ -64,8 +69,11 @@ namespace graphite
 
         // Said in the label rather than only in a colour: this is the one state in the
         // view the user has to act on, and it is why the solution is worth looking at.
+        const std::string icon =
+            core::IconForExtension(core::fs::ToUtf8(project.path.extension()));
         const std::string label =
-            project.exists ? project.displayName : project.displayName + "  (missing)";
+            icon + "  " + (project.exists ? project.displayName
+                                           : project.displayName + "  (missing)");
 
         if (!project.exists)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -98,7 +106,9 @@ namespace graphite
     {
         for (const core::sln::ContentFolder& child : folder.folders)
         {
-            if (ImGui::TreeNodeEx(child.name.c_str()))
+            const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.name;
+
+            if (ImGui::TreeNodeEx(label.c_str()))
             {
                 RenderContentFolder(child);
                 ImGui::TreePop();
@@ -112,11 +122,15 @@ namespace graphite
 
             const bool selected = m_workspace.SelectedFile() == file.path;
 
+            const std::string label =
+                std::string{core::IconForExtension(core::fs::ToUtf8(file.path.extension()))} +
+                "  " + file.name;
+
             // Keyed by the full path: two projects can hold files of the same name, and
             // ImGui would treat same-labelled siblings as one node.
             ImGui::PushID(core::fs::ToUtf8(file.path).c_str());
 
-            if (ImGui::Selectable(file.name.c_str(), selected))
+            if (ImGui::Selectable(label.c_str(), selected))
                 m_workspace.SelectFile(file.path);
 
             ImGui::PopID();
