@@ -63,6 +63,24 @@ TEST_CASE("An element with children ends after its own closing tag")
     CHECK(ElementEnd(text, 1, "Folder") == text.find("tail"));
 }
 
+TEST_CASE("A closing tag whose name only starts the same does not end the element")
+{
+    const std::string text = R"(<Folder Name="a"><FolderSet Name="b"></FolderSet></Folder>tail)";
+
+    // "</FolderSet>" is not "</Folder>". Matching it by prefix ends the element early, and
+    // a caller splicing at that offset writes into the middle of the child.
+    CHECK(ElementEnd(text, 1, "Folder") == text.find("tail"));
+}
+
+TEST_CASE("A self-closing child of the same name does not raise the nesting depth")
+{
+    const std::string text = R"(<Folder Name="a"><Folder Name="b" /></Folder>tail)";
+
+    // The child never closes, so counting it leaves the depth one too high and the scan
+    // runs off the end — returning the whole text, which a caller then erases.
+    CHECK(ElementEnd(text, 1, "Folder") == text.find("tail"));
+}
+
 TEST_CASE("The line extent covers the whole line and its ending")
 {
     const std::string text = "one\r\ntwo\r\nthree";
