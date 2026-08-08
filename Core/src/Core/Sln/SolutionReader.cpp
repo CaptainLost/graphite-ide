@@ -136,6 +136,24 @@ namespace core::sln
             for (Folder& child : folder.folders)
                 FillContent(child);
         }
+
+        /// Visual Studio lists solution folders and projects sorted, not in the order the
+        /// file declares them. Folders first, then projects, names compared
+        /// case-insensitively — the same rule as the file tree and as a project's own
+        /// contents, so the two views cannot disagree about where a name belongs.
+        void SortSolution(Folder& folder)
+        {
+            std::sort(folder.folders.begin(), folder.folders.end(),
+                      [](const Folder& left, const Folder& right)
+                      { return fs::CompareNames(left.name, right.name) < 0; });
+
+            std::sort(folder.projects.begin(), folder.projects.end(),
+                      [](const Project& left, const Project& right)
+                      { return fs::CompareNames(left.displayName, right.displayName) < 0; });
+
+            for (Folder& child : folder.folders)
+                SortSolution(child);
+        }
     }
 
     Result<Solution> ReadSolution(const std::filesystem::path& requested)
@@ -210,6 +228,7 @@ namespace core::sln
         }
 
         FillContent(solution.root);
+        SortSolution(solution.root);
 
         return solution;
     }

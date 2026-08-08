@@ -222,3 +222,34 @@ TEST_CASE("An uppercase project extension is still claimed")
     CHECK(reader.Handles("C:/work/App.VCXPROJ"));
     CHECK(reader.Handles("C:/work/App.VcxProj"));
 }
+
+TEST_CASE("Files come back sorted, mixing headers and sources")
+{
+    TempDirectory temp;
+    const auto project = temp.MakeFile("App/App.vcxproj", R"(<?xml version="1.0"?>
+<Project>
+  <ItemGroup>
+    <ClInclude Include="Workspace.h" />
+    <ClInclude Include="IdeLayer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Main.cpp" />
+    <ClCompile Include="IdeLayer.cpp" />
+  </ItemGroup>
+</Project>
+)");
+
+    const auto content = VcxprojReader{}.Read(project);
+    REQUIRE(content.HasValue());
+
+    const auto& files = content.Value().root.files;
+    REQUIRE(files.size() == 4);
+
+    // A .vcxproj keeps every ClInclude in one group and every ClCompile in another, so
+    // preserving the file's order would list all the headers above all the sources.
+    // Visual Studio interleaves them by name and so must this.
+    CHECK(files[0].name == "IdeLayer.cpp");
+    CHECK(files[1].name == "IdeLayer.h");
+    CHECK(files[2].name == "Main.cpp");
+    CHECK(files[3].name == "Workspace.h");
+}

@@ -196,9 +196,21 @@ TEST_CASE("A project whose file is missing is marked rather than dropped")
     REQUIRE(solution.HasValue());
     REQUIRE(solution.Value().root.projects.size() == 2);
 
+    // Looked up by name rather than by position: the model is sorted, so declaration
+    // order in the file says nothing about where a project lands.
+    const auto& projects = solution.Value().root.projects;
+
+    const auto real = std::find_if(projects.begin(), projects.end(),
+                                   [](const Project& p) { return p.displayName == "Real"; });
+    const auto gone = std::find_if(projects.begin(), projects.end(),
+                                   [](const Project& p) { return p.displayName == "Gone"; });
+
+    REQUIRE(real != projects.end());
+    REQUIRE(gone != projects.end());
+
     // Both are listed — the solution says so, and that is the fact being reported.
-    CHECK(solution.Value().root.projects[0].exists);
-    CHECK_FALSE(solution.Value().root.projects[1].exists);
+    CHECK(real->exists);
+    CHECK_FALSE(gone->exists);
 }
 
 TEST_CASE("Project contents are read by the solution reader")
@@ -268,4 +280,31 @@ TEST_CASE("Valid XML that is not a solution is rejected")
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == core::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("Folders and projects come back sorted, not in declaration order")
+{
+    TempDirectory temp;
+    const auto file = temp.MakeFile("Sorted.slnx", R"(<Solution>
+  <Folder Name="/Zebra/" />
+  <Folder Name="/apple/" />
+  <Project Path="z\Zulu.vcxproj" />
+  <Project Path="a/alpha.vcxproj" />
+</Solution>
+)");
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+
+    const Folder& root = solution.Value().root;
+
+    // Case-insensitive, so "apple" sits before "Zebra" rather than after it — the rule
+    // the file tree already uses, and the one Visual Studio displays.
+    REQUIRE(root.folders.size() == 2);
+    CHECK(root.folders[0].name == "apple");
+    CHECK(root.folders[1].name == "Zebra");
+
+    REQUIRE(root.projects.size() == 2);
+    CHECK(root.projects[0].displayName == "alpha");
+    CHECK(root.projects[1].displayName == "Zulu");
 }

@@ -102,6 +102,25 @@ namespace core::sln
 
             return assignments;
         }
+
+        /// Visual Studio shows a project's contents sorted, not in the order the file
+        /// happens to list them — and a .vcxproj lists every ClInclude in one group and
+        /// every ClCompile in another, so preserving file order puts all the headers
+        /// above all the sources. Folders first, then names, case-insensitively: the same
+        /// rule the file tree uses.
+        void SortContent(ContentFolder& folder)
+        {
+            std::sort(folder.folders.begin(), folder.folders.end(),
+                      [](const ContentFolder& left, const ContentFolder& right)
+                      { return fs::CompareNames(left.name, right.name) < 0; });
+
+            std::sort(folder.files.begin(), folder.files.end(),
+                      [](const ContentFile& left, const ContentFile& right)
+                      { return fs::CompareNames(left.name, right.name) < 0; });
+
+            for (ContentFolder& child : folder.folders)
+                SortContent(child);
+        }
     }
 
     bool VcxprojReader::Handles(const std::filesystem::path& project) const
@@ -195,6 +214,13 @@ namespace core::sln
                     EnsureContentFolder(content.root, parts).files.push_back(std::move(file));
             }
         }
+
+        SortContent(content.root);
+
+        // References are names too, and Visual Studio lists them sorted.
+        std::sort(content.references.begin(), content.references.end(),
+                  [](const std::string& left, const std::string& right)
+                  { return fs::CompareNames(left, right) < 0; });
 
         return content;
     }
