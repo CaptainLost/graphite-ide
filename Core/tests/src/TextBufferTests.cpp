@@ -603,6 +603,90 @@ TEST_CASE("Random edits keep the line index correct and undo all the way back")
     CHECK(buffer.Revision() == 0);
 }
 
+TEST_CASE("Random edits interleaved with undo and redo match a string oracle at every step")
+{
+    // The forwards-only fuzz test above drives edits and undoes everything at the end,
+    // so Redo is only ever exercised by the three hand-written cases. This interleaves
+    // a fresh edit, an undo, and a redo at every step so a bug reachable only through
+    // that interaction — a redo replaying into a document shape it no longer matches —
+    // has somewhere to surface. The oracle stacks mirror the buffer's own undo/redo
+    // stacks: each holds the full content from just before the edit it would restore.
+    std::mt19937 random{20260810u};
+
+    const std::string initial = "alpha\nbeta\n\ngamma line\ndelta";
+    TextBuffer buffer{initial};
+    std::string oracle = initial;
+
+    std::vector<std::string> undoOracle;
+    std::vector<std::string> redoOracle;
+
+    const std::string fragments[] = {"x", "\n", "hello", "a\nb", "\n\n", "", "long fragment here"};
+
+    for (std::size_t step = 0; step < 400; ++step)
+    {
+        const std::size_t choice = random() % 3;
+
+        if (choice == 1 && buffer.CanUndo())
+        {
+            REQUIRE(buffer.Undo());
+            redoOracle.push_back(oracle);
+            oracle = undoOracle.back();
+            undoOracle.pop_back();
+        }
+        else if (choice == 2 && buffer.CanRedo())
+        {
+            REQUIRE(buffer.Redo());
+            undoOracle.push_back(oracle);
+            oracle = redoOracle.back();
+            redoOracle.pop_back();
+        }
+        else
+        {
+            // Either a fresh edit was chosen, or undo/redo was chosen with nothing on
+            // the corresponding stack to apply it to — either way, falls back to an
+            // edit, exactly as Insert/Erase would clear the redo stack in real use.
+            //
+            // Insert and Erase both skip the undo push for a no-op (an empty fragment,
+            // or an empty/reversed range) — see their early returns — so the oracle
+            // stacks must skip it too, or they drift out of step with the buffer's own.
+            const bool inserting = oracle.empty() || (random() % 2) == 0;
+
+            if (inserting)
+            {
+                const std::size_t at = random() % (oracle.size() + 1);
+                const std::string& fragment = fragments[random() % std::size(fragments)];
+
+                buffer.Insert(at, fragment);
+
+                if (!fragment.empty())
+                {
+                    undoOracle.push_back(oracle);
+                    redoOracle.clear();
+                    oracle.insert(at, fragment);
+                }
+            }
+            else
+            {
+                const std::size_t from = random() % oracle.size();
+                const std::size_t to = from + random() % (oracle.size() - from + 1);
+
+                buffer.Erase(from, to);
+
+                if (from < to)
+                {
+                    undoOracle.push_back(oracle);
+                    redoOracle.clear();
+                    oracle.erase(from, to - from);
+                }
+            }
+        }
+
+        REQUIRE(buffer.Text() == oracle);
+        REQUIRE(buffer.Length() == oracle.size());
+        REQUIRE(buffer.LineIndexMatchesRebuild());
+    }
+}
+
 TEST_CASE("Every offset still round-trips through a position after random edits")
 {
     std::mt19937 random{20260809u};

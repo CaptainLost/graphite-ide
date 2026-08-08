@@ -38,6 +38,14 @@ namespace core::text
         TextBuffer() = default;
         explicit TextBuffer(std::string original);
 
+        /// Inserts `text` at `offset`, clamped to the end.
+        ///
+        /// Precondition: `text` already uses LF line endings. Nothing here normalises
+        /// CRLF — TextDocument::FromContent does that once, on load, before content ever
+        /// reaches this class. A caller inserting text from an external source (stage 3's
+        /// paste from the Windows clipboard, which is always CRLF) must normalise it
+        /// first, or a stray '\r' ends up sitting in the buffer as an empty glyph at the
+        /// end of a line and Bytes() emits "\r\r\n" for it.
         void Insert(std::size_t offset, std::string_view text);
         void Erase(std::size_t from, std::size_t to);
 
@@ -143,7 +151,11 @@ namespace core::text
 
         /// The edit itself, with no undo record. Insert/Erase wrap these; undo and redo
         /// go straight to them so replaying an edit does not record a new one.
-        void InsertRaw(std::size_t offset, std::string_view text);
+        ///
+        /// InsertRaw returns the offset the text actually landed at in m_append, so
+        /// Insert can record it rather than recomputing m_append.size() itself and
+        /// trusting the two calls to agree.
+        std::size_t InsertRaw(std::size_t offset, std::string_view text);
         void EraseRaw(std::size_t from, std::size_t to);
 
         /// Inserts a piece that reuses `text.size()` bytes already sitting in m_append at

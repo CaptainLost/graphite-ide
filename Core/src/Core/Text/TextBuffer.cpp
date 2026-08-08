@@ -69,15 +69,17 @@ namespace core::text
         return index + 1;
     }
 
-    void TextBuffer::InsertRaw(std::size_t offset, std::string_view text)
+    std::size_t TextBuffer::InsertRaw(std::size_t offset, std::string_view text)
     {
         if (text.empty())
-            return;
+            return m_append.size();
 
         const std::size_t appended = m_append.size();
         m_append.append(text);
 
         InsertPieceRaw(offset, appended, text);
+
+        return appended;
     }
 
     void TextBuffer::InsertPieceRaw(std::size_t offset, std::size_t appendOffset, std::string_view text)
@@ -309,9 +311,7 @@ namespace core::text
             return;
 
         const std::size_t at = std::min(offset, m_length);
-        const std::size_t appendOffset = m_append.size();
-
-        InsertRaw(at, text);
+        const std::size_t appendOffset = InsertRaw(at, text);
 
         m_redo.clear();
         m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true, appendOffset, true});
