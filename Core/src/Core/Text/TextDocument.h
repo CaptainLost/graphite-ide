@@ -52,7 +52,9 @@ namespace core::text
 
         /// True when the content is not valid UTF-8. Typing into such a file would put
         /// UTF-8 bytes among bytes in some other encoding and quietly ruin it, so stage 3
-        /// refuses to.
+        /// refuses to. The bytes are kept as they came except for line-ending
+        /// normalisation, which runs regardless of validity — a mixed-ending read-only
+        /// file still comes back with its endings unified, not byte-identical.
         [[nodiscard]] bool IsReadOnly() const noexcept { return m_readOnly; }
 
         /// The content exactly as it should reach disk: the BOM back at the front if
@@ -76,6 +78,11 @@ namespace core::text
         LineEnding m_lineEnding = LineEnding::Lf;
         bool m_wasMixed = false;
         bool m_readOnly = false;
+        /// Whether a byte order mark was stripped from the front of the loaded bytes.
+        /// Tracked independently of m_encoding: invalid UTF-8 following a mark still
+        /// demotes m_encoding to Unknown, but the mark itself was still there and Bytes()
+        /// must still put it back, or a read-only file's bytes would not round-trip.
+        bool m_hadBom = false;
         std::size_t m_savedRevision = 0;
     };
 }

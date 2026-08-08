@@ -2,6 +2,8 @@
 
 #include "Core/Text/TextDocument.h"
 
+#include "TempDirectory.h"
+
 #include <ostream>
 #include <string>
 
@@ -184,4 +186,43 @@ TEST_CASE("Edits made after saving are written back with the file's own line end
     document.Buffer().Insert(document.Buffer().Length(), "three\n");
 
     CHECK(document.Bytes() == "one\r\ntwo\r\nthree\r\n");
+}
+
+TEST_CASE("A byte order mark followed by invalid UTF-8 still round-trips through Bytes")
+{
+    // The mark is real; what follows it is not valid UTF-8 ("część" as Windows-1250
+    // writes it). The mark must still come back — losing it would shrink the file by
+    // three bytes the moment a read-only document's Bytes() is written to disk.
+    const std::string original = "\xEF\xBB\xBF" "cz\xEA\x9C\xE6\r\nnext line\r\n";
+    const TextDocument document = Make(original);
+
+    CHECK(document.IsReadOnly());
+    CHECK(document.FileEncoding() == Encoding::Unknown);
+    CHECK(document.Bytes() == original);
+}
+
+TEST_CASE("Load reads an ordinary file from disk")
+{
+    TempDirectory temp;
+    const std::filesystem::path path = temp.MakeFile("sample.txt", "one\r\ntwo\r\n");
+
+    const auto document = TextDocument::Load(path);
+    REQUIRE(document);
+
+    CHECK(document.Value().Buffer().Text() == "one\ntwo\n");
+    CHECK(document.Value().DocumentLineEnding() == LineEnding::Crlf);
+}
+
+TEST_CASE("Load succeeds on a legitimately empty file")
+{
+    // The naive `buffer << stream.rdbuf()` read sets failbit on the destination stream
+    // for an empty source, which must not be mistaken for the read failing.
+    TempDirectory temp;
+    const std::filesystem::path path = temp.MakeFile("empty.txt", "");
+
+    const auto document = TextDocument::Load(path);
+    REQUIRE(document);
+
+    CHECK(document.Value().Buffer().Text() == "");
+    CHECK(document.Value().Buffer().LineCount() == 1);
 }

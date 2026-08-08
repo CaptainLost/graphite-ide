@@ -4,9 +4,10 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include <cstdint>
 #include <fstream>
-#include <sstream>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace core::text
@@ -66,12 +67,13 @@ namespace core::text
                              + " file yet: " + fs::ToUtf8(path)};
         }
 
-        const std::string_view content =
-            std::string_view{bytes}.substr(BomLength(bytes));
+        const std::size_t bomLength = BomLength(bytes);
+        const std::string_view content = std::string_view{bytes}.substr(bomLength);
 
         TextDocument document;
         document.m_path = std::move(path);
         document.m_encoding = declared;
+        document.m_hadBom = bomLength > 0;
 
         if (!IsValidUtf8(content))
         {
@@ -94,13 +96,31 @@ namespace core::text
         if (!stream.is_open())
             return Error{ErrorCode::NotFound, "Cannot open file: " + fs::ToUtf8(path)};
 
-        std::ostringstream buffer;
-        buffer << stream.rdbuf();
+        // Reading via `buffer << stream.rdbuf()` would not do: a mid-read I/O failure
+        // sets badbit on the destination ostringstream, not on `stream`, so the error
+        // would go unnoticed and a truncated read would be treated as a complete file.
+        // Reading the known size through the ifstream's own read() keeps the failure on
+        // the object we actually check.
+        std::error_code sizeError;
+        const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
 
-        if (stream.bad())
+        if (sizeError)
             return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
 
-        return FromContent(buffer.str(), path);
+        std::string content(static_cast<std::size_t>(size), '\0');
+
+        if (size > 0)
+        {
+            stream.read(content.data(), static_cast<std::streamsize>(size));
+
+            // Trust only a read that filled the whole size seen above; a legitimately
+            // empty file never reaches this branch, so this cannot mistake "nothing to
+            // read" for failure.
+            if (stream.bad() || static_cast<std::uintmax_t>(stream.gcount()) != size)
+                return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
+        }
+
+        return FromContent(std::move(content), path);
     }
 
     std::string TextDocument::Bytes() const
@@ -110,7 +130,10 @@ namespace core::text
         std::string result;
         result.reserve(content.size() + 3);
 
-        if (m_encoding == Encoding::Utf8Bom)
+        // Keyed off m_hadBom rather than m_encoding == Utf8Bom: invalid UTF-8 following a
+        // mark demotes m_encoding to Unknown, but the mark itself still arrived and still
+        // has to go back, or a read-only file's bytes would not round-trip.
+        if (m_hadBom)
             result += "\xEF\xBB\xBF";
 
         if (m_lineEnding == LineEnding::Lf)
