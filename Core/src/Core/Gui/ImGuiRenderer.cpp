@@ -85,7 +85,7 @@ namespace core
         // title bars, so nothing in this application needs the permissive behaviour.
         io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-        constexpr float kBaseFontSize = 13.0f;
+        constexpr float kBaseFontSize = 15.0f;
 
         ImFontConfig textConfig;
         textConfig.SizePixels = kBaseFontSize;
@@ -119,7 +119,7 @@ namespace core
         // PixelSnapH rounds each glyph's horizontal advance to a whole pixel, which is
         // meant for monospaced text but visibly skews a small round icon like the refresh
         // arrows — left off so MDI's curves render at their natural proportions.
-        iconConfig.GlyphMinAdvanceX = 13.0f;
+        iconConfig.GlyphMinAdvanceX = kBaseFontSize;
         // MDI's webfont declares its own vertical metrics (built for CSS line-height, not
         // for sitting on a text baseline), so merged as-is its glyphs sit visibly above the
         // surrounding text's baseline. Nudge them down to align — see
