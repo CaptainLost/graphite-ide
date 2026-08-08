@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Sln/CsprojReader.h"
 #include "Core/Sln/ProjectContentReader.h"
 #include "Core/Sln/SlnParser.h"
 #include "Core/Sln/VcxprojReader.h"
@@ -110,7 +111,8 @@ namespace core::sln
         void FillContent(Folder& folder)
         {
             static const VcxprojReader kVcxproj;
-            static const ProjectContentReader* const kReaders[] = {&kVcxproj};
+            static const CsprojReader kCsproj;
+            static const ProjectContentReader* const kReaders[] = {&kVcxproj, &kCsproj};
 
             for (Project& project : folder.projects)
             {
