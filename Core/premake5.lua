@@ -26,7 +26,8 @@ project "Core"
     {
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.pugixml}",
-        "%{IncludeDir.json}"
+        "%{IncludeDir.json}",
+        "%{IncludeDir.MdiIcons}"
     }
     externalwarnings "Off"
 

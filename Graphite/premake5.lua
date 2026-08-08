@@ -10,13 +10,19 @@ project "Graphite"
     objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
     debugdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
 
+    postbuildcommands
+    {
+        '{COPYFILE} "%{wks.location}/vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"'
+    }
+
     files { "src/**.h", "src/**.cpp" }
 
     includedirs
     {
         "src",
         "%{wks.location}/Core/src",
-        "%{IncludeDir.ImGui}"
+        "%{IncludeDir.ImGui}",
+        "%{IncludeDir.MdiIcons}"
     }
 
     -- GLFW, ImGui and opengl32 are listed explicitly: the Core static library

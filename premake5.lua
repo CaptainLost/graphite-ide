@@ -3,6 +3,7 @@ workspace "Graphite"
     startproject "Graphite"
     configurations { "Debug", "Release", "Dist" }
     flags { "MultiProcessorCompile" }
+    defines { "IMGUI_USE_WCHAR32" }
 
 outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
@@ -13,6 +14,7 @@ IncludeDir["doctest"] = "%{wks.location}/vendor/doctest"
 IncludeDir["libgit2"]       = "%{wks.location}/vendor/libgit2/include"
 IncludeDir["pugixml"]       = "%{wks.location}/vendor/pugixml/src"
 IncludeDir["json"]    = "%{wks.location}/vendor/json/single_include"
+IncludeDir["MdiIcons"] = "%{wks.location}/vendor/fonts"
 
 group "Dependencies"
     include "vendor/premake/glfw.lua"

@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Gui/Icons.h"
 #include "Core/Gui/Theme.h"
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Window.h"
@@ -67,6 +68,43 @@ namespace core
         // whole surface counts. Panels are moved by their dock tabs and dialogs by their
         // title bars, so nothing in this application needs the permissive behaviour.
         io.ConfigWindowsMoveFromTitleBarOnly = true;
+
+        // The vendored ImGui (new atlas system) tags a font added with no explicit size
+        // as using an "implicit reference size" and refuses to MergeMode an explicitly
+        // sized font onto it (assertion in ImFontAtlasFontAdd). Giving the default font
+        // an explicit SizePixels here avoids that: it matches the icon font's size below
+        // and keeps both fonts at the same 13px reference size.
+        ImFontConfig defaultFontConfig;
+        defaultFontConfig.SizePixels = 13.0f;
+        io.Fonts->AddFontDefault(&defaultFontConfig);
+
+        ImFontConfig iconConfig;
+        iconConfig.MergeMode = true;
+        iconConfig.PixelSnapH = true;
+        iconConfig.GlyphMinAdvanceX = 13.0f;
+        // Without this, a missing/unreadable .ttf trips ImGui's internal
+        // IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
+        // (and crashes) in Debug builds instead of letting the CORE_WARN below run.
+        iconConfig.Flags |= ImFontFlags_NoLoadError;
+
+        const auto executableDirectory = platform::ExecutableDirectory();
+        if (executableDirectory)
+        {
+            const auto fontPath =
+                executableDirectory.Value() / "materialdesignicons-webfont.ttf";
+
+            if (io.Fonts->AddFontFromFileTTF(fs::ToUtf8(fontPath).c_str(), 13.0f, &iconConfig,
+                                              UsedGlyphRanges()) == nullptr)
+            {
+                CORE_WARN("Could not load the icon font, the UI will show text only: {}",
+                          fs::ToUtf8(fontPath));
+            }
+        }
+        else
+        {
+            CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
+                      executableDirectory.GetError().message);
+        }
 
         Theme::ApplyDark();
 
