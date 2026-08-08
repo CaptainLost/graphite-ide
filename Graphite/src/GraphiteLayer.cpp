@@ -173,16 +173,29 @@ namespace graphite
             // is also where a branch indicator and file status belong when they arrive.
             if (ImGui::BeginMenu("Git"))
             {
+                // Adjectives, not verbs: the tick beside one of them makes these a state
+                // rather than a command, and four levels deep "Dim" alone no longer says
+                // what it would dim. The submenu names the subject and these name the
+                // treatment, so it reads as "Ignored Files: Dimmed".
                 if (ImGui::BeginMenu("Ignored Files"))
                 {
-                    if (ImGui::MenuItem("Show", nullptr, m_ignoredDisplay == IgnoredDisplay::Show))
+                    if (ImGui::MenuItem("Visible", nullptr,
+                                        m_ignoredDisplay == IgnoredDisplay::Show))
+                    {
                         ApplyIgnoredDisplay(IgnoredDisplay::Show, true);
+                    }
 
-                    if (ImGui::MenuItem("Dim", nullptr, m_ignoredDisplay == IgnoredDisplay::Dim))
+                    if (ImGui::MenuItem("Dimmed", nullptr,
+                                        m_ignoredDisplay == IgnoredDisplay::Dim))
+                    {
                         ApplyIgnoredDisplay(IgnoredDisplay::Dim, true);
+                    }
 
-                    if (ImGui::MenuItem("Hide", nullptr, m_ignoredDisplay == IgnoredDisplay::Hide))
+                    if (ImGui::MenuItem("Hidden", nullptr,
+                                        m_ignoredDisplay == IgnoredDisplay::Hide))
+                    {
                         ApplyIgnoredDisplay(IgnoredDisplay::Hide, true);
+                    }
 
                     ImGui::EndMenu();
                 }
