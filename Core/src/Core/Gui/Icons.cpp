@@ -77,7 +77,7 @@ namespace core
 
     const ImWchar* UsedGlyphRanges()
     {
-        static ImWchar ranges[2 * kUsedIconCount + 1] = {};
+        static ImWchar ranges[2 * kUsedIconCount + 2] = {};
         static bool built = false;
 
         if (!built)
