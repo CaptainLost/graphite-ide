@@ -3,7 +3,10 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Gui/Icons.h"
 #include "Core/Platform/Shell.h"
+
+#include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
 #include <string>
@@ -43,7 +46,7 @@ namespace graphite
 
     void FileTreeView::RenderToolbar()
     {
-        if (ImGui::Button("Refresh"))
+        if (ImGui::Button(ICON_MDI_REFRESH "  Refresh"))
         {
             m_workspace.Reload();
             core::FileNode& root = m_workspace.Tree().Root();
@@ -495,7 +498,11 @@ namespace graphite
 
             const bool selected = m_workspace.SelectedFile() == node.path;
 
-            if (ImGui::Selectable(node.name.c_str(), selected))
+            const std::string label =
+                std::string{core::IconForExtension(core::fs::ToUtf8(node.path.extension()))} +
+                "  " + node.name;
+
+            if (ImGui::Selectable(label.c_str(), selected))
                 m_workspace.SelectFile(node.path);
 
             if (dimmed)
@@ -526,7 +533,9 @@ namespace graphite
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
         const bool open =
-            ImGui::TreeNodeEx(core::fs::ToUtf8(node.path).c_str(), flags, "%s", node.name.c_str());
+            ImGui::TreeNodeEx(core::fs::ToUtf8(node.path).c_str(), flags, "%s  %s",
+                               node.expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER,
+                               node.name.c_str());
 
         if (dimmed)
         {
