@@ -105,9 +105,12 @@ namespace ide
         m_root.clear();
         m_selectedFile.clear();
 
-        m_solution.reset();
-        m_solutionCandidates.clear();
-        m_selectedSolution.clear();
+        ResetSolutionState();
+
+        // Dropped with the folder it belongs to. Left pointing at the closed folder, the
+        // explorer's mode dropdown — which still draws with nothing open — would write
+        // into a workspace the user has just walked away from.
+        m_settings = WorkspaceSettings{std::filesystem::path{}};
 
         // An empty stored value reads back as "nothing remembered", so this is how the
         // closed state survives a restart.
@@ -360,6 +363,17 @@ namespace ide
         // new location — and the ignore query may have just changed too.
         m_tree.Refresh(m_tree.Root());
 
+        // Both hold absolute paths under the old root, so both are rebuilt rather than
+        // rewritten. Left alone, the settings store would keep writing into the folder's
+        // former location — recreating .graphite under a name the user has abandoned —
+        // and every solution path would name a file that no longer exists there.
+        m_settings = WorkspaceSettings{to};
+        ResetSolutionState();
+        m_selectedSolution = core::fs::FromUtf8(m_settings.Get("selectedSolution"));
+
+        FindSolutions();
+        LoadSolution();
+
         Settings::SaveLastFolder(to);
         m_events.Publish(WorkspaceRootMovedEvent{from, to});
     }
@@ -469,7 +483,7 @@ namespace ide
         {
             m_solution.reset();
             m_selectedSolution.clear();
-            m_solutionStamp = {};
+            ForgetSolutionAttempt();
             return;
         }
 
@@ -482,21 +496,30 @@ namespace ide
         if (!remembered)
             m_selectedSolution = m_solutionCandidates.front();
 
-        // Guarded here rather than at each caller. There are five, reached from window
-        // focus, from the watcher, from the toolbar and from opening a folder, and an
-        // earlier attempt to gate just one of them left the rest re-parsing on every
-        // batch — the log showed the same solution read a dozen times in one session.
+        // Guarded here rather than at each caller. There are five — window focus, the
+        // watcher, the toolbar, opening a folder, choosing a solution — and gating only
+        // one of them left the rest re-parsing on every batch.
         //
-        // Comparing the file's write time answers the only question that matters, and
-        // answers it for every caller at once.
-        std::error_code code;
-        const auto stamp = std::filesystem::last_write_time(m_selectedSolution, code);
+        // The stamp covers the project files too, not just the solution: editing a
+        // .vcxproj changes what the tree should show and leaves the .slnx untouched, so a
+        // solution-only stamp would make the view permanently stale for exactly the edit
+        // this feature exists to reflect.
+        //
+        // Recorded even when the parse fails. Otherwise an unreadable solution re-parses
+        // and re-warns on every focus change, which is the same noise the guard removes
+        // from the success path.
+        const std::filesystem::file_time_type stamp = SolutionStamp();
 
-        if (!code && m_solution && m_solution->path == m_selectedSolution && stamp == m_solutionStamp)
+        if (m_solutionAttempted && m_attemptedSolution == m_selectedSolution
+            && stamp == m_solutionStamp)
+        {
             return;
+        }
 
+        m_solutionAttempted = true;
+        m_attemptedSolution = m_selectedSolution;
+        m_solutionStamp = stamp;
         m_solution.reset();
-        m_solutionStamp = code ? std::filesystem::file_time_type{} : stamp;
 
         auto solution = core::sln::ReadSolution(m_selectedSolution);
 
@@ -513,10 +536,67 @@ namespace ide
                   m_solution->projectCount);
     }
 
+
+    std::filesystem::file_time_type Workspace::SolutionStamp() const
+    {
+        std::error_code code;
+        auto newest = std::filesystem::last_write_time(m_selectedSolution, code);
+
+        if (code)
+            newest = {};
+
+        if (!m_solution)
+            return newest;
+
+        ForEachProject(m_solution->root,
+                       [&newest](const core::sln::Project& project)
+                       {
+                           std::error_code projectCode;
+
+                           const auto projectStamp =
+                               std::filesystem::last_write_time(project.path, projectCode);
+
+                           if (!projectCode && projectStamp > newest)
+                               newest = projectStamp;
+
+                           // The .filters sibling is half of what the reader used to build
+                           // this project's folders, so a change to it counts as a change
+                           // to the project.
+                           std::filesystem::path filters = project.path;
+                           filters += ".filters";
+
+                           const auto filtersStamp =
+                               std::filesystem::last_write_time(filters, projectCode);
+
+                           if (!projectCode && filtersStamp > newest)
+                               newest = filtersStamp;
+                       });
+
+        return newest;
+    }
+
+    void Workspace::ForgetSolutionAttempt()
+    {
+        m_solutionAttempted = false;
+        m_attemptedSolution.clear();
+        m_solutionStamp = {};
+    }
+
+    void Workspace::ResetSolutionState()
+    {
+        m_solution.reset();
+        m_solutionCandidates.clear();
+        m_selectedSolution.clear();
+        ForgetSolutionAttempt();
+    }
+
     void Workspace::SelectSolution(const std::filesystem::path& path)
     {
         m_selectedSolution = path;
         m_settings.Set("selectedSolution", core::fs::ToUtf8(path));
+
+        // The guard keys on which solution was attempted, so switching to another is
+        // never mistaken for a repeat of the last one.
         LoadSolution();
     }
 

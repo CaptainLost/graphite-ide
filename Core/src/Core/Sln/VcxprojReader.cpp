@@ -7,6 +7,7 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -105,7 +106,14 @@ namespace core::sln
 
     bool VcxprojReader::Handles(const std::filesystem::path& project) const
     {
-        return project.extension() == ".vcxproj";
+        // Compared case-insensitively, as ReadSolution does for the solution itself: the
+        // filesystem does not care, so App.VCXPROJ must not silently render as a leaf.
+        std::string extension = fs::ToUtf8(project.extension());
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char character)
+                       { return static_cast<char>(std::tolower(character)); });
+
+        return extension == ".vcxproj";
     }
 
     Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const

@@ -134,6 +134,14 @@ namespace ide
         [[nodiscard]] bool TouchesSolution(
             const std::vector<std::filesystem::path>& directories) const;
 
+        /// Newest write time across the solution and the project files it named. Covers
+        /// the project files because editing one changes what the tree should show while
+        /// leaving the solution file untouched.
+        [[nodiscard]] std::filesystem::file_time_type SolutionStamp() const;
+
+        void ForgetSolutionAttempt();
+        void ResetSolutionState();
+
         core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this
         /// repository, and members are destroyed in reverse declaration order, so the
@@ -155,10 +163,16 @@ namespace ide
         std::vector<std::filesystem::path> m_solutionCandidates;
         std::filesystem::path m_selectedSolution;
 
-        /// Write time of the solution file as last parsed. Reloading is asked for from
-        /// several directions — focus returning, the watcher, the toolbar — and this is
-        /// what makes the ones with nothing to do cost a single stat.
+        /// Newest write time across the solution file and every project file it named,
+        /// as of the last attempt. Reloading is asked for from five directions, and this
+        /// is what makes the ones with nothing to do cost a handful of stats.
         std::filesystem::file_time_type m_solutionStamp;
+
+        /// Which solution the stamp belongs to, and whether an attempt was made at all.
+        /// Recorded on failure as well as success, so an unreadable solution is not
+        /// re-parsed and re-reported every time the window regains focus.
+        std::filesystem::path m_attemptedSolution;
+        bool m_solutionAttempted = false;
 
         /// Rebuilt by Open for each root, so it always points at the folder in front of
         /// the user. Default-constructed with an empty root, where reads give nothing and

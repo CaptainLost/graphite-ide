@@ -212,3 +212,13 @@ TEST_CASE("A project file the solution names but disk does not have leaves the r
     REQUIRE(read.Value().root.projects.size() == 1);
     CHECK_FALSE(read.Value().root.projects[0].contentRead);
 }
+
+TEST_CASE("An uppercase project extension is still claimed")
+{
+    const VcxprojReader reader;
+
+    // The filesystem is case-insensitive, so refusing App.VCXPROJ would render a
+    // perfectly ordinary project as a leaf with no contents and no explanation.
+    CHECK(reader.Handles("C:/work/App.VCXPROJ"));
+    CHECK(reader.Handles("C:/work/App.VcxProj"));
+}
