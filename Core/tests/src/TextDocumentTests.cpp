@@ -1,9 +1,11 @@
 #include <doctest/doctest.h>
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Text/TextDocument.h"
 
 #include "TempDirectory.h"
 
+#include <fstream>
 #include <ostream>
 #include <string>
 
@@ -17,6 +19,12 @@ namespace
         REQUIRE(document);
 
         return std::move(document).Value();
+    }
+
+    void WriteBytes(const std::filesystem::path& path, std::string_view contents)
+    {
+        std::ofstream stream{path, std::ios::binary};
+        stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
     }
 }
 
@@ -225,4 +233,55 @@ TEST_CASE("Load succeeds on a legitimately empty file")
 
     CHECK(document.Value().Buffer().Text() == "");
     CHECK(document.Value().Buffer().LineCount() == 1);
+}
+
+TEST_CASE("A file on disk loads with its path and content")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "main.cpp";
+    WriteBytes(path, "int main()\r\n{\r\n}\r\n");
+
+    const auto document = TextDocument::Load(path);
+
+    REQUIRE(document);
+    CHECK(document.Value().Buffer().Text() == "int main()\n{\n}\n");
+    CHECK(document.Value().DocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.Value().Path() == path);
+}
+
+TEST_CASE("A file read from disk is written back byte for byte")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "project.xml";
+    const std::string original = "\xEF\xBB\xBF<Project>\r\n</Project>\r\n";
+    WriteBytes(path, original);
+
+    const auto document = TextDocument::Load(path);
+
+    REQUIRE(document);
+    CHECK(document.Value().Bytes() == original);
+}
+
+TEST_CASE("Loading a file that is not there fails rather than giving an empty document")
+{
+    TempDirectory directory;
+
+    const auto document = TextDocument::Load(directory.Path() / "absent.cpp");
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().code == core::ErrorCode::NotFound);
+}
+
+TEST_CASE("A file whose name is not ASCII loads")
+{
+    // Paths go through the wide-character API, so a name outside the active codepage
+    // has to work — this is what core::fs::ToUtf8 exists for.
+    TempDirectory directory;
+    const auto path = directory.Path() / core::fs::FromUtf8("\xC4\x87wiczenie.txt");
+    WriteBytes(path, "content");
+
+    const auto document = TextDocument::Load(path);
+
+    REQUIRE(document);
+    CHECK(document.Value().Buffer().Text() == "content");
 }
