@@ -46,7 +46,7 @@ namespace graphite
 
     void FileTreeView::RenderToolbar()
     {
-        if (ImGui::Button(ICON_MDI_REFRESH "  Refresh"))
+        if (ImGui::Button(ICON_MDI_REFRESH))
         {
             m_workspace.Reload();
             core::FileNode& root = m_workspace.Tree().Root();
@@ -56,6 +56,9 @@ namespace graphite
             else
                 CORE_WARN("File tree refresh failed: the workspace folder is unreadable");
         }
+
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Refresh");
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);

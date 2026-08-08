@@ -80,7 +80,9 @@ namespace core
 
         ImFontConfig iconConfig;
         iconConfig.MergeMode = true;
-        iconConfig.PixelSnapH = true;
+        // PixelSnapH rounds each glyph's horizontal advance to a whole pixel, which is
+        // meant for monospaced text but visibly skews a small round icon like the refresh
+        // arrows — left off so MDI's curves render at their natural proportions.
         iconConfig.GlyphMinAdvanceX = 13.0f;
         // Without this, a missing/unreadable .ttf trips ImGui's internal
         // IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
