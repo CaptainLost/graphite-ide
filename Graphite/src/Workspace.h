@@ -13,7 +13,7 @@
 #include <optional>
 #include <vector>
 
-namespace ide
+namespace graphite
 {
     /// Published after a folder becomes the workspace root.
     struct WorkspaceOpenedEvent
@@ -107,7 +107,7 @@ namespace ide
         void SelectSolution(const std::filesystem::path& path);
 
         /// Settings stored in this folder's .graphite directory. Not named Settings():
-        /// that would shadow the ide::Settings type throughout this class.
+        /// that would shadow the graphite::Settings type throughout this class.
         [[nodiscard]] WorkspaceSettings& FolderSettings() noexcept { return m_settings; }
 
     private:

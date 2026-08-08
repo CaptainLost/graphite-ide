@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace ide
+namespace graphite
 {
     namespace
     {

@@ -7,7 +7,7 @@
 
 #include <filesystem>
 
-namespace ide
+namespace graphite
 {
     namespace
     {
@@ -23,14 +23,14 @@ namespace ide
                 const auto directory = core::platform::ExecutableDirectory();
 
                 if (directory)
-                    return directory.Value() / "ide.json";
+                    return directory.Value() / "graphite.json";
 
                 // Falling back to the working directory keeps settings working rather
                 // than losing them, which is the better failure for a preferences file.
-                CORE_WARN("Cannot locate the executable directory, using 'ide.json' as-is: {}",
+                CORE_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
                           directory.GetError().message);
 
-                return std::filesystem::path{"ide.json"};
+                return std::filesystem::path{"graphite.json"};
             }();
 
             return path;

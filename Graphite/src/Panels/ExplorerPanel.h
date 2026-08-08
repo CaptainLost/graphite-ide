@@ -7,7 +7,7 @@
 
 #include "Core/Ui/Panel.h"
 
-namespace ide
+namespace graphite
 {
     /// The left-hand panel. Owns the two ways of looking at a workspace and switches
     /// between them, drawing nothing itself beyond that choice.

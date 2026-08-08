@@ -9,7 +9,7 @@
 #include <memory>
 #include <vector>
 
-namespace ide
+namespace graphite
 {
     /// View of the engine logs. Reads the ring buffer filled by Logger.
     class ConsolePanel final : public core::Panel

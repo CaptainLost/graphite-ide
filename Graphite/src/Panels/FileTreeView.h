@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <string>
 
-namespace ide
+namespace graphite
 {
     /// Browses the open workspace folder. Holds no state of its own beyond the filter —
     /// the tree lives in the Workspace.

@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace ide
+namespace graphite
 {
     namespace
     {

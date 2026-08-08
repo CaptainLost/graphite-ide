@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-namespace ide
+namespace graphite
 {
     class PlaceholderPanel final : public core::Panel
     {

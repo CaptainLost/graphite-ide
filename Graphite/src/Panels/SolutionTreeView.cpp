@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace ide
+namespace graphite
 {
     SolutionTreeView::SolutionTreeView(Workspace& workspace) : m_workspace(workspace)
     {

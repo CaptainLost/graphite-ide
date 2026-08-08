@@ -1,4 +1,4 @@
-project "IDE"
+project "Graphite"
     kind "ConsoleApp"
     language "C++"
     cppdialect "C++20"

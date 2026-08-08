@@ -1,6 +1,6 @@
-workspace "IDE"
+workspace "Graphite"
     architecture "x64"
-    startproject "IDE"
+    startproject "Graphite"
     configurations { "Debug", "Release", "Dist" }
     flags { "MultiProcessorCompile" }
 
@@ -27,5 +27,5 @@ group "Engine"
 group ""
 
 group "App"
-    include "IDE"
+    include "Graphite"
 group ""
