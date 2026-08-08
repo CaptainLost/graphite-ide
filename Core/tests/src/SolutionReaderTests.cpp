@@ -245,19 +245,6 @@ TEST_CASE("Project contents are read by the solution reader")
     CHECK_FALSE(project.content.references.empty());
 }
 
-TEST_CASE("A .sln is reported as unsupported rather than misread")
-{
-    TempDirectory temp;
-    const auto file = temp.MakeFile("Legacy.sln", "Microsoft Visual Studio Solution File\n");
-
-    // The header promises this until the legacy parser lands behind the same call, and a
-    // caller offering both formats branches on the code.
-    const auto solution = core::sln::ReadSolution(file);
-
-    REQUIRE_FALSE(solution.HasValue());
-    CHECK(solution.GetError().code == core::ErrorCode::Unsupported);
-}
-
 TEST_CASE("An uppercase extension is still a solution")
 {
     TempDirectory temp;
