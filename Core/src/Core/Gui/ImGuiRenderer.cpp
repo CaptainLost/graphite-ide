@@ -29,6 +29,22 @@
 
 namespace core
 {
+    namespace
+    {
+        ImFont* g_monoFont = nullptr;
+        ImFont* g_monoItalicFont = nullptr;
+    }
+
+    ImFont* ImGuiRenderer::MonoFont() noexcept
+    {
+        return g_monoFont;
+    }
+
+    ImFont* ImGuiRenderer::MonoItalicFont() noexcept
+    {
+        return g_monoItalicFont;
+    }
+
     ImGuiRenderer::~ImGuiRenderer()
     {
         Shutdown();
@@ -69,14 +85,34 @@ namespace core
         // title bars, so nothing in this application needs the permissive behaviour.
         io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-        // The vendored ImGui (new atlas system) tags a font added with no explicit size
-        // as using an "implicit reference size" and refuses to MergeMode an explicitly
-        // sized font onto it (assertion in ImFontAtlasFontAdd). Giving the default font
-        // an explicit SizePixels here avoids that: it matches the icon font's size below
-        // and keeps both fonts at the same 13px reference size.
-        ImFontConfig defaultFontConfig;
-        defaultFontConfig.SizePixels = 13.0f;
-        io.Fonts->AddFontDefault(&defaultFontConfig);
+        constexpr float kBaseFontSize = 13.0f;
+
+        ImFontConfig textConfig;
+        textConfig.SizePixels = kBaseFontSize;
+        // Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
+        // returns nullptr, which crashes a Debug build instead of letting the warning run.
+        textConfig.Flags |= ImFontFlags_NoLoadError;
+
+        const auto executableDirectory = platform::ExecutableDirectory();
+
+        if (executableDirectory)
+        {
+            const auto regular = executableDirectory.Value() / "JetBrainsMono-Regular.ttf";
+
+            g_monoFont = io.Fonts->AddFontFromFileTTF(fs::ToUtf8(regular).c_str(), kBaseFontSize,
+                                                       &textConfig);
+        }
+
+        if (g_monoFont == nullptr)
+        {
+            // ProggyClean has no glyphs beyond Latin-1, so Polish file names will show as
+            // empty boxes — but an IDE that starts is better than one that does not.
+            CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
+
+            ImFontConfig fallbackConfig;
+            fallbackConfig.SizePixels = kBaseFontSize;
+            g_monoFont = io.Fonts->AddFontDefault(&fallbackConfig);
+        }
 
         ImFontConfig iconConfig;
         iconConfig.MergeMode = true;
@@ -94,14 +130,17 @@ namespace core
         // (and crashes) in Debug builds instead of letting the CORE_WARN below run.
         iconConfig.Flags |= ImFontFlags_NoLoadError;
 
-        const auto executableDirectory = platform::ExecutableDirectory();
+        // Merged onto the mono face immediately after it is added — ImGui's dynamic atlas
+        // merges onto whichever font was added last, so this has to happen before the
+        // italic face below, or the icons would land in the italic font and never be
+        // found by code that looks for them on the regular text face.
         if (executableDirectory)
         {
             const auto fontPath =
                 executableDirectory.Value() / "materialdesignicons-webfont.ttf";
 
-            if (io.Fonts->AddFontFromFileTTF(fs::ToUtf8(fontPath).c_str(), 13.0f, &iconConfig,
-                                              UsedGlyphRanges()) == nullptr)
+            if (io.Fonts->AddFontFromFileTTF(fs::ToUtf8(fontPath).c_str(), kBaseFontSize,
+                                              &iconConfig, UsedGlyphRanges()) == nullptr)
             {
                 CORE_WARN("Could not load the icon font, the UI will show text only: {}",
                           fs::ToUtf8(fontPath));
@@ -111,6 +150,18 @@ namespace core
         {
             CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
                       executableDirectory.GetError().message);
+        }
+
+        // Loaded last, after the icon merge above, so the icons stay attached to the
+        // regular mono face rather than this one. Nothing draws with this face yet — a
+        // later task uses it for preview-tab titles — so a load failure here only means
+        // MonoItalicFont() returns null, which callers already have to handle.
+        if (executableDirectory)
+        {
+            const auto italic = executableDirectory.Value() / "JetBrainsMono-Italic.ttf";
+
+            g_monoItalicFont = io.Fonts->AddFontFromFileTTF(fs::ToUtf8(italic).c_str(),
+                                                             kBaseFontSize, &textConfig);
         }
 
         Theme::ApplyDark();

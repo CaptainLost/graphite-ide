@@ -12,7 +12,9 @@ project "Graphite"
 
     postbuildcommands
     {
-        '{COPYFILE} "%{wks.location}/vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"'
+        '{COPYFILE} "%{wks.location}/vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
+        '{COPYFILE} "%{wks.location}/vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
+        '{COPYFILE} "%{wks.location}/vendor/fonts/JetBrainsMono-Italic.ttf" "%{cfg.targetdir}"'
     }
 
     files { "src/**.h", "src/**.cpp" }
