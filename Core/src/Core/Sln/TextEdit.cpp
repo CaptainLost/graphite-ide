@@ -71,6 +71,26 @@ namespace core::sln::text
         return text.size();
     }
 
+    namespace
+    {
+        /// Whether the name in a tag really ends at `after`. Without this a search for
+        /// "Folder" matches the "Folder" inside "<Folderish" or "</FolderSet>", and the
+        /// scan pairs an opening tag with a closing tag belonging to another element.
+        bool NameEndsHere(std::string_view text, std::size_t after, bool opening)
+        {
+            const char following = after < text.size() ? text[after] : '\0';
+
+            if (following == ' ' || following == '\t' || following == '\r' || following == '\n'
+                || following == '>')
+            {
+                return true;
+            }
+
+            // Only an opening tag may be followed by the slash of "/>".
+            return opening && following == '/';
+        }
+    }
+
     std::size_t ElementEnd(std::string_view text, std::size_t offset, std::string_view name)
     {
         const std::size_t tagEnd = OpeningTagEnd(text, offset);
@@ -97,17 +117,21 @@ namespace core::sln::text
 
             if (nextOpen != std::string_view::npos && nextOpen < nextClose)
             {
-                // Only a real element start counts: "<Folderish" is not "<Folder".
-                const std::size_t after = nextOpen + open.size();
-                const char following = after < text.size() ? text[after] : '\0';
+                const std::size_t childEnd = OpeningTagEnd(text, nextOpen + 1);
+                const bool selfClosing = childEnd >= 2 && text[childEnd - 2] == '/';
 
-                if (following == ' ' || following == '\t' || following == '>' || following == '/'
-                    || following == '\r' || following == '\n')
-                {
+                // A self-closing child has no closing tag of its own, so counting it would
+                // leave the depth one too high and swallow the rest of the file.
+                if (NameEndsHere(text, nextOpen + open.size(), true) && !selfClosing)
                     ++depth;
-                }
 
                 position = nextOpen + open.size();
+                continue;
+            }
+
+            if (!NameEndsHere(text, nextClose + close.size(), false))
+            {
+                position = nextClose + close.size();
                 continue;
             }
 
