@@ -41,6 +41,23 @@ namespace core::text
         void Insert(std::size_t offset, std::string_view text);
         void Erase(std::size_t from, std::size_t to);
 
+        /// Reverses the last edit. False when there is nothing left to reverse.
+        bool Undo();
+
+        /// Reapplies the last undone edit. False when there is nothing to reapply.
+        bool Redo();
+
+        [[nodiscard]] bool CanUndo() const noexcept { return !m_undo.empty(); }
+        [[nodiscard]] bool CanRedo() const noexcept { return !m_redo.empty(); }
+
+        /// Identifies the edit currently on top of the undo stack, or 0 for none.
+        ///
+        /// TextDocument remembers this at each save and compares to decide whether the
+        /// document is modified. An identity rather than a depth: undoing one edit and
+        /// making a different one returns the stack to the same depth while the content
+        /// differs, and a depth would call that saved.
+        [[nodiscard]] std::size_t Revision() const noexcept;
+
         [[nodiscard]] std::size_t Length() const noexcept { return m_length; }
         [[nodiscard]] bool Empty() const noexcept { return m_length == 0; }
 
@@ -119,10 +136,31 @@ namespace core::text
         void PatchLineIndexForInsert(std::size_t offset, std::string_view text);
         void PatchLineIndexForErase(std::size_t from, std::size_t to);
 
+        /// The edit itself, with no undo record. Insert/Erase wrap these; undo and redo
+        /// go straight to them so replaying an edit does not record a new one.
+        void InsertRaw(std::size_t offset, std::string_view text);
+        void EraseRaw(std::size_t from, std::size_t to);
+
+        /// One reversible edit. An insertion of `text` at `offset` inverts into an
+        /// erasure of the same range, and the other way round.
+        struct Edit
+        {
+            std::size_t id = 0;
+            std::size_t offset = 0;
+            std::string text;
+            bool inserted = false;
+        };
+
+        /// Applies an edit without recording it, which is what undo and redo do.
+        void ApplyEdit(const Edit& edit, bool reversed);
+
         std::string m_original;
         std::string m_append;
         std::vector<Piece> m_pieces;
         std::size_t m_length = 0;
         std::vector<std::size_t> m_lineStarts{0};
+        std::vector<Edit> m_undo;
+        std::vector<Edit> m_redo;
+        std::size_t m_nextEditId = 1;
     };
 }

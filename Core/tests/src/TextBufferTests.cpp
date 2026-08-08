@@ -3,6 +3,7 @@
 #include "Core/Text/TextBuffer.h"
 
 #include <ostream>
+#include <random>
 #include <string>
 
 using namespace core::text;
@@ -415,4 +416,205 @@ TEST_CASE("An edit far down the document leaves the lines above it alone")
     CHECK(buffer.LineIndexMatchesRebuild());
     CHECK(buffer.LineStart(100) == before);
     CHECK(buffer.LineCount() == 502);
+}
+
+TEST_CASE("A fresh buffer has nothing to undo or redo")
+{
+    TextBuffer buffer{"hello"};
+
+    CHECK_FALSE(buffer.CanUndo());
+    CHECK_FALSE(buffer.CanRedo());
+    CHECK_FALSE(buffer.Undo());
+    CHECK_FALSE(buffer.Redo());
+    CHECK(buffer.Text() == "hello");
+}
+
+TEST_CASE("Undo reverses an insertion")
+{
+    TextBuffer buffer{"hello"};
+    buffer.Insert(5, " world");
+
+    REQUIRE(buffer.CanUndo());
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("Undo reverses an erasure")
+{
+    TextBuffer buffer{"hello world"};
+    buffer.Erase(5, 11);
+    REQUIRE(buffer.Text() == "hello");
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "hello world");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("Redo reapplies what undo took away")
+{
+    TextBuffer buffer{"hello"};
+    buffer.Insert(5, " world");
+    buffer.Undo();
+
+    REQUIRE(buffer.CanRedo());
+    CHECK(buffer.Redo());
+    CHECK(buffer.Text() == "hello world");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("A run of edits undoes and redoes in order")
+{
+    TextBuffer buffer;
+    buffer.Insert(0, "one");
+    buffer.Insert(3, " two");
+    buffer.Insert(7, " three");
+    REQUIRE(buffer.Text() == "one two three");
+
+    buffer.Undo();
+    CHECK(buffer.Text() == "one two");
+    buffer.Undo();
+    CHECK(buffer.Text() == "one");
+    buffer.Undo();
+    CHECK(buffer.Text() == "");
+    CHECK_FALSE(buffer.CanUndo());
+
+    buffer.Redo();
+    CHECK(buffer.Text() == "one");
+    buffer.Redo();
+    buffer.Redo();
+    CHECK(buffer.Text() == "one two three");
+    CHECK_FALSE(buffer.CanRedo());
+}
+
+TEST_CASE("Undo restores the line index, not just the content")
+{
+    TextBuffer buffer{"one\ntwo\nthree"};
+    buffer.Erase(3, 8);
+    // Erase(3, 8) removes "\ntwo\n" (indices 3..7), leaving "one" + "three" fused into a
+    // single line "onethree" with no newline left.
+    REQUIRE(buffer.LineCount() == 1);
+
+    buffer.Undo();
+
+    CHECK(buffer.LineCount() == 3);
+    CHECK(buffer.LineText(1) == "two");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("A new edit throws away what could have been redone")
+{
+    TextBuffer buffer{"hello"};
+    buffer.Insert(5, " world");
+    buffer.Undo();
+    REQUIRE(buffer.CanRedo());
+
+    buffer.Insert(5, "!");
+
+    CHECK_FALSE(buffer.CanRedo());
+    CHECK(buffer.Text() == "hello!");
+}
+
+TEST_CASE("The revision tells apart two edits that leave the stack the same depth")
+{
+    // This is the case a stack depth gets wrong: save, undo, type something else. The
+    // depth is back to where it was while the content is not.
+    TextBuffer buffer{"hello"};
+    buffer.Insert(5, " world");
+
+    const std::size_t saved = buffer.Revision();
+
+    buffer.Undo();
+    CHECK(buffer.Revision() != saved);
+
+    buffer.Insert(5, "!");
+    CHECK(buffer.Revision() != saved);
+
+    buffer.Undo();
+    buffer.Redo();
+    CHECK(buffer.Revision() != saved);
+}
+
+TEST_CASE("Undoing back to a remembered revision reports that revision again")
+{
+    TextBuffer buffer{"hello"};
+    buffer.Insert(5, "!");
+
+    const std::size_t saved = buffer.Revision();
+
+    buffer.Insert(6, "?");
+    REQUIRE(buffer.Revision() != saved);
+
+    buffer.Undo();
+    CHECK(buffer.Revision() == saved);
+}
+
+TEST_CASE("An empty buffer's revision is zero")
+{
+    const TextBuffer buffer{"hello"};
+
+    CHECK(buffer.Revision() == 0);
+}
+
+TEST_CASE("Random edits keep the line index correct and undo all the way back")
+{
+    // The strongest test available here: a std::string is the oracle, the line index is
+    // compared against a rebuilt one after every step, and undoing everything has to
+    // land exactly where it started. The seed is fixed so a failure reproduces.
+    std::mt19937 random{20260808u};
+
+    const std::string initial = "alpha\nbeta\n\ngamma line\ndelta";
+    TextBuffer buffer{initial};
+    std::string oracle = initial;
+
+    const std::string fragments[] = {"x", "\n", "hello", "a\nb", "\n\n", "", "long fragment here"};
+
+    for (std::size_t step = 0; step < 400; ++step)
+    {
+        const bool inserting = oracle.empty() || (random() % 2) == 0;
+
+        if (inserting)
+        {
+            const std::size_t at = random() % (oracle.size() + 1);
+            const std::string& fragment = fragments[random() % std::size(fragments)];
+
+            buffer.Insert(at, fragment);
+            oracle.insert(at, fragment);
+        }
+        else
+        {
+            const std::size_t from = random() % oracle.size();
+            const std::size_t to = from + random() % (oracle.size() - from + 1);
+
+            buffer.Erase(from, to);
+            oracle.erase(from, to - from);
+        }
+
+        REQUIRE(buffer.Text() == oracle);
+        REQUIRE(buffer.Length() == oracle.size());
+        REQUIRE(buffer.LineIndexMatchesRebuild());
+    }
+
+    while (buffer.CanUndo())
+        buffer.Undo();
+
+    CHECK(buffer.Text() == initial);
+    CHECK(buffer.LineIndexMatchesRebuild());
+    CHECK(buffer.Revision() == 0);
+}
+
+TEST_CASE("Every offset still round-trips through a position after random edits")
+{
+    std::mt19937 random{20260809u};
+
+    TextBuffer buffer{"one\ntwo\nthree"};
+
+    for (std::size_t step = 0; step < 100; ++step)
+    {
+        const std::size_t at = random() % (buffer.Length() + 1);
+        buffer.Insert(at, (random() % 3) == 0 ? "\n" : "z");
+    }
+
+    for (std::size_t offset = 0; offset <= buffer.Length(); ++offset)
+        REQUIRE(buffer.ToOffset(buffer.ToPosition(offset)) == offset);
 }

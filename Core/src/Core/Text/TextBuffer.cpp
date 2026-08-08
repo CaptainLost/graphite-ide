@@ -69,7 +69,7 @@ namespace core::text
         return index + 1;
     }
 
-    void TextBuffer::Insert(std::size_t offset, std::string_view text)
+    void TextBuffer::InsertRaw(std::size_t offset, std::string_view text)
     {
         if (text.empty())
             return;
@@ -99,7 +99,7 @@ namespace core::text
         return static_cast<std::size_t>(found - m_pieces.begin());
     }
 
-    void TextBuffer::Erase(std::size_t from, std::size_t to)
+    void TextBuffer::EraseRaw(std::size_t from, std::size_t to)
     {
         const std::size_t end = std::min(to, m_length);
 
@@ -271,5 +271,76 @@ namespace core::text
 
         for (std::size_t at = index; at < m_lineStarts.size(); ++at)
             m_lineStarts[at] -= removed;
+    }
+
+    void TextBuffer::ApplyEdit(const Edit& edit, bool reversed)
+    {
+        const bool inserting = reversed ? !edit.inserted : edit.inserted;
+
+        if (inserting)
+            InsertRaw(edit.offset, edit.text);
+        else
+            EraseRaw(edit.offset, edit.offset + edit.text.size());
+    }
+
+    void TextBuffer::Insert(std::size_t offset, std::string_view text)
+    {
+        if (text.empty())
+            return;
+
+        const std::size_t at = std::min(offset, m_length);
+
+        InsertRaw(at, text);
+
+        m_redo.clear();
+        m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true});
+    }
+
+    void TextBuffer::Erase(std::size_t from, std::size_t to)
+    {
+        const std::size_t end = std::min(to, m_length);
+
+        if (from >= end)
+            return;
+
+        std::string removed = Substring(from, end);
+
+        EraseRaw(from, end);
+
+        m_redo.clear();
+        m_undo.push_back(Edit{m_nextEditId++, from, std::move(removed), false});
+    }
+
+    bool TextBuffer::Undo()
+    {
+        if (m_undo.empty())
+            return false;
+
+        Edit edit = std::move(m_undo.back());
+        m_undo.pop_back();
+
+        ApplyEdit(edit, true);
+        m_redo.push_back(std::move(edit));
+
+        return true;
+    }
+
+    bool TextBuffer::Redo()
+    {
+        if (m_redo.empty())
+            return false;
+
+        Edit edit = std::move(m_redo.back());
+        m_redo.pop_back();
+
+        ApplyEdit(edit, false);
+        m_undo.push_back(std::move(edit));
+
+        return true;
+    }
+
+    std::size_t TextBuffer::Revision() const noexcept
+    {
+        return m_undo.empty() ? 0 : m_undo.back().id;
     }
 }
