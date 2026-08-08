@@ -598,6 +598,9 @@ namespace graphite
 
         m_solutionAttempted = true;
         m_attemptedSolution = m_selectedSolution;
+
+        // Recorded now so a failed parse is not retried at the same stamp; replaced below
+        // once a successful one has told us which projects there are.
         m_solutionStamp = stamp;
         m_solution.reset();
 
@@ -611,6 +614,14 @@ namespace graphite
         }
 
         m_solution.emplace(std::move(solution).Value());
+
+        // Recomputed against the model that was just read. The stamp spans the project
+        // files as well as the solution, and SolutionStamp finds those through m_solution
+        // — which was empty a moment ago, so the value compared above was the solution
+        // file alone. Keeping it would make the very next call see a different stamp and
+        // parse again, which is exactly what happened: one wasted reload after every
+        // start, surfacing at whatever first touched the workspace.
+        m_solutionStamp = SolutionStamp();
 
         CORE_INFO("Solution '{}' loaded with {} projects", m_solution->name,
                   m_solution->projectCount);
