@@ -143,6 +143,9 @@ namespace graphite
             if (ImGui::MenuItem("Open Folder..."))
                 OpenFolderInteractively(m_workspace);
 
+            if (ImGui::MenuItem("Open Solution..."))
+                OpenSolutionInteractively(m_workspace);
+
             if (ImGui::MenuItem("Close Folder", nullptr, false, m_workspace.IsOpen()))
                 m_workspace.Close();
 

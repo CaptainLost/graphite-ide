@@ -295,3 +295,18 @@ TEST_CASE("Folders and projects come back sorted, not in declaration order")
     CHECK(root.projects[0].displayName == "alpha");
     CHECK(root.projects[1].displayName == "Zulu");
 }
+
+TEST_CASE("IsSolutionFile recognises both formats and nothing else")
+{
+    // Exposed so a caller can refuse a file before rearranging itself around it. An
+    // earlier version validated only inside ReadSolution, by which point the workspace
+    // had already been re-rooted and the choice written to disk.
+    CHECK(core::sln::IsSolutionFile("C:/work/App.slnx"));
+    CHECK(core::sln::IsSolutionFile("C:/work/App.sln"));
+    CHECK(core::sln::IsSolutionFile("C:/work/App.SLNX"));
+    CHECK(core::sln::IsSolutionFile("C:/work/App.Sln"));
+
+    CHECK_FALSE(core::sln::IsSolutionFile("C:/work/notes.txt"));
+    CHECK_FALSE(core::sln::IsSolutionFile("C:/work/App.vcxproj"));
+    CHECK_FALSE(core::sln::IsSolutionFile("C:/work/App"));
+}

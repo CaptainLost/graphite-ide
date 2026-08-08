@@ -56,6 +56,15 @@ namespace graphite
         /// Opens a folder as the workspace root. On failure the previous root stays.
         core::Result<void> Open(const std::filesystem::path& root);
 
+        /// Opens a solution file directly.
+        ///
+        /// When the solution already sits inside the open folder, nothing about the
+        /// workspace changes and the solution is simply selected. Otherwise the
+        /// solution's own directory becomes the workspace root — the file tree, the
+        /// watcher and git detection all key off a root, so a solution cannot be opened
+        /// without one.
+        core::Result<void> OpenSolution(const std::filesystem::path& solution);
+
         /// Drops the open folder, its tree and the selection, and forgets the remembered
         /// folder so the next launch starts empty. Closing is an explicit decision, so it
         /// has to survive a restart. Does nothing when no folder is open.
@@ -96,8 +105,9 @@ namespace graphite
             return m_solution;
         }
 
-        /// Every solution file found in the workspace root. More than one puts a chooser
-        /// in the panel header.
+        /// The solutions on offer: those found in the workspace root, plus any the user
+        /// opened by name, which may live anywhere. More than one puts a chooser in the
+        /// panel header.
         [[nodiscard]] const std::vector<std::filesystem::path>& SolutionCandidates() const noexcept
         {
             return m_solutionCandidates;
@@ -184,4 +194,7 @@ namespace graphite
     /// nothing and logs nothing. Shared by the menu item and the panel's button so the
     /// two cannot drift apart.
     void OpenFolderInteractively(Workspace& workspace);
+
+    /// Asks for a solution file and opens it. Does nothing when the user cancels.
+    void OpenSolutionInteractively(Workspace& workspace);
 }

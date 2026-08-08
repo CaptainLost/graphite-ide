@@ -23,6 +23,19 @@ namespace core::sln
 {
     namespace
     {
+        /// Compared case-insensitively, because the filesystem this runs on is: rejecting
+        /// MyApp.SLNX as an unknown format would be a lie about an ordinary file.
+        std::string LowercaseExtension(const std::filesystem::path& path)
+        {
+            std::string extension = fs::ToUtf8(path.extension());
+
+            std::transform(extension.begin(), extension.end(), extension.begin(),
+                           [](unsigned char character)
+                           { return static_cast<char>(std::tolower(character)); });
+
+            return extension;
+        }
+
         /// Splits "/App/Sub/" into {"App", "Sub"}. The slashes in a .slnx folder name
         /// carry the nesting; the elements themselves are siblings in the document.
         std::vector<std::string> SplitFolderPath(std::string_view name)
@@ -220,6 +233,13 @@ namespace core::sln
         }
     }
 
+    bool IsSolutionFile(const std::filesystem::path& path)
+    {
+        const std::string extension = LowercaseExtension(path);
+
+        return extension == ".slnx" || extension == ".sln";
+    }
+
     Result<Solution> ReadSolution(const std::filesystem::path& requested)
     {
         std::error_code code;
@@ -239,21 +259,15 @@ namespace core::sln
         if (code)
             path = requested;
 
-        // Compared case-insensitively: the filesystem this runs on is, and rejecting
-        // MyApp.SLNX as an unknown format would be a lie about a perfectly ordinary file.
-        std::string extension = fs::ToUtf8(path.extension());
-        std::transform(extension.begin(), extension.end(), extension.begin(),
-                       [](unsigned char character)
-                       { return static_cast<char>(std::tolower(character)); });
-
-        if (extension != ".slnx" && extension != ".sln")
+        if (!IsSolutionFile(path))
         {
             return Error{ErrorCode::Unsupported,
                          std::format("'{}' is not a solution format this build can read",
                                      path.string())};
         }
 
-        Result<Solution> parsed = extension == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
+        Result<Solution> parsed =
+            LowercaseExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
 
         if (!parsed)
             return parsed;
