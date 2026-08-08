@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/DocumentWindows.h"
 #include "IgnoredDisplay.h"
 #include "Workspace.h"
 
@@ -7,6 +8,7 @@
 #include "Core/Base/RingBufferSink.h"
 #include "Core/Event/EventBus.h"
 #include "Core/Gui/DockSpaceHost.h"
+#include "Core/Text/DocumentSet.h"
 #include "Core/Ui/PanelManager.h"
 
 #include <filesystem>
@@ -45,6 +47,8 @@ namespace graphite
         std::filesystem::path m_initialFolder;
         core::EventBus m_events;
         Workspace m_workspace{m_events};
+        core::text::DocumentSet m_documents;
+        DocumentWindows m_documentWindows{m_documents};
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;

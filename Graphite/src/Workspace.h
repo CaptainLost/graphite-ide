@@ -32,6 +32,18 @@ namespace graphite
         std::filesystem::path path;
     };
 
+    /// The user asked for a file to be opened in the editor. Distinct from
+    /// FileSelectedEvent: selecting highlights a row, opening puts a window on screen,
+    /// and the tree does the first on a single click and the second on a double one.
+    ///
+    /// `permanent` is false for a single click, which opens a preview - of which there is
+    /// at most one, replaced by the next single click.
+    struct OpenFileRequested
+    {
+        std::filesystem::path path;
+        bool permanent = false;
+    };
+
     /// The open folder was renamed or moved on disk and the workspace followed it.
     /// Anything holding a path below the old root should rewrite it — the tree has
     /// already done so.
@@ -87,6 +99,12 @@ namespace graphite
         void Reload();
 
         void SelectFile(const std::filesystem::path& path);
+
+        /// The user asked for `path` to be opened in the editor - a double click for a
+        /// permanent tab, a single click for a preview. Publishes OpenFileRequested;
+        /// DocumentWindows is what actually opens it, symmetric with SelectFile publishing
+        /// FileSelectedEvent.
+        void RequestOpenFile(const std::filesystem::path& path, bool permanent);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
         [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_root; }

@@ -192,6 +192,11 @@ namespace graphite
         m_events.Publish(FileSelectedEvent{path});
     }
 
+    void Workspace::RequestOpenFile(const std::filesystem::path& path, bool permanent)
+    {
+        m_events.Publish(OpenFileRequested{path, permanent});
+    }
+
     void Workspace::Update()
     {
         if (!m_watcher)

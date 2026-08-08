@@ -505,8 +505,11 @@ namespace graphite
                 std::string{core::IconForExtension(core::fs::ToUtf8(node.path.extension()))} +
                 "  " + node.name;
 
-            if (ImGui::Selectable(label.c_str(), selected))
+            if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
+            {
                 m_workspace.SelectFile(node.path);
+                m_workspace.RequestOpenFile(node.path, ImGui::IsMouseDoubleClicked(0));
+            }
 
             if (dimmed)
                 ImGui::PopStyleColor();

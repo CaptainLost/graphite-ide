@@ -2,12 +2,10 @@
 
 #include "Panels/ConsolePanel.h"
 #include "Panels/ExplorerPanel.h"
-#include "Panels/PlaceholderPanel.h"
 #include "Settings.h"
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 
 #include <imgui.h>
@@ -16,45 +14,33 @@
 
 namespace graphite
 {
-    namespace
-    {
-        /// Shown by the Editor panel until a file is selected, and restored when the
-        /// workspace closes. Kept in one place so the two cannot drift apart.
-        constexpr const char* kEditorPlaceholder = "The code editor will live here.";
-    }
-
     GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
                        std::filesystem::path initialFolder)
         : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder))
     {
         m_layout.left = {"files"};
         m_layout.bottom = {"console"};
-        m_layout.center = {"editor"};
+        m_layout.center = {};
     }
 
     void GraphiteLayer::OnAttach()
     {
         m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace));
 
-        auto* editor = static_cast<PlaceholderPanel*>(
-            m_panels.Add(std::make_unique<PlaceholderPanel>("editor", "Editor",
-                                                            kEditorPlaceholder)));
-
         m_panels.Add(std::make_unique<ConsolePanel>(m_sink));
 
-        m_events.Subscribe<FileSelectedEvent>(
-            [editor](const FileSelectedEvent& event)
+        m_events.Subscribe<OpenFileRequested>(
+            [this](const OpenFileRequested& event)
             {
-                if (editor != nullptr)
-                    editor->SetMessage(core::fs::ToUtf8(event.path));
+                m_documentWindows.RequestOpen(event.path, event.permanent);
             });
 
-        m_events.Subscribe<WorkspaceClosedEvent>(
-            [editor](const WorkspaceClosedEvent&)
-            {
-                if (editor != nullptr)
-                    editor->SetMessage(kEditorPlaceholder);
-            });
+        m_events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&)
+                                                 { m_documents.CloseAll(); });
+
+        m_events.Subscribe<WorkspaceRootMovedEvent>(
+            [this](const WorkspaceRootMovedEvent& event)
+            { m_documents.RewritePaths(event.from, event.to); });
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
@@ -120,6 +106,8 @@ namespace graphite
         // Panels render outside the host window — inside it they would dock as ordinary
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
+
+        m_documentWindows.Render(13.0f);
     }
 
     void GraphiteLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
