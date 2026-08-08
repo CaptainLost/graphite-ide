@@ -3,9 +3,12 @@
 #include "Core/Text/TextDocument.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/FileProbe.h"
 
+#include <array>
 #include <cstdint>
 #include <fstream>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -67,7 +70,7 @@ namespace core::text
                              + " file yet: " + fs::ToUtf8(path)};
         }
 
-        const std::size_t bomLength = BomLength(bytes);
+        const std::size_t bomLength = BomLength(declared);
         const std::string_view content = std::string_view{bytes}.substr(bomLength);
 
         TextDocument document;
@@ -91,34 +94,54 @@ namespace core::text
 
     Result<TextDocument> TextDocument::Load(const std::filesystem::path& path)
     {
-        std::ifstream stream{path, std::ios::binary};
+        // Stat first and distinguish why the path is unusable, the same way ProbeFile
+        // does: "not there" and "there but a directory" and "there but locked by another
+        // process" are different problems and deserve different messages.
+        std::error_code statusError;
+        const auto status = std::filesystem::status(path, statusError);
 
-        if (!stream.is_open())
-            return Error{ErrorCode::NotFound, "Cannot open file: " + fs::ToUtf8(path)};
+        if (statusError || !std::filesystem::exists(status))
+            return Error{ErrorCode::NotFound, "No such file: " + fs::ToUtf8(path)};
 
-        // Reading via `buffer << stream.rdbuf()` would not do: a mid-read I/O failure
-        // sets badbit on the destination ostringstream, not on `stream`, so the error
-        // would go unnoticed and a truncated read would be treated as a complete file.
-        // Reading the known size through the ifstream's own read() keeps the failure on
-        // the object we actually check.
+        if (!std::filesystem::is_regular_file(status))
+            return Error{ErrorCode::InvalidArgument, "Not a file: " + fs::ToUtf8(path)};
+
         std::error_code sizeError;
         const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
 
         if (sizeError)
             return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
 
-        std::string content(static_cast<std::size_t>(size), '\0');
-
-        if (size > 0)
+        // Refused before anything is allocated: a lying or enormous size (a multi-GB
+        // file, or one crafted to report one) must not be able to force a multi-GB
+        // std::string allocation and send std::bad_alloc across this Result boundary.
+        if (size > MaximumFileSize)
         {
-            stream.read(content.data(), static_cast<std::streamsize>(size));
-
-            // Trust only a read that filled the whole size seen above; a legitimately
-            // empty file never reaches this branch, so this cannot mistake "nothing to
-            // read" for failure.
-            if (stream.bad() || static_cast<std::uintmax_t>(stream.gcount()) != size)
-                return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::InvalidArgument, "File is too large to open ("
+                                                          + std::to_string(size)
+                                                          + " bytes): " + fs::ToUtf8(path)};
         }
+
+        std::ifstream stream{path, std::ios::binary};
+
+        if (!stream.is_open())
+            return Error{ErrorCode::AccessDenied, "Cannot open file: " + fs::ToUtf8(path)};
+
+        // Read to the stream's actual end rather than trusting `size`: on Windows the
+        // realistic way for the two to disagree is a file another process is still
+        // appending to, which grows between the file_size() call above and this read. A
+        // read keyed to the earlier size would silently truncate the document instead of
+        // failing loudly, so gcount() decides how much was really there, not `size`.
+        std::string content;
+        content.reserve(static_cast<std::size_t>(size));
+
+        std::array<char, 65536> chunk{};
+
+        while (stream.read(chunk.data(), static_cast<std::streamsize>(chunk.size())) || stream.gcount() > 0)
+            content.append(chunk.data(), static_cast<std::size_t>(stream.gcount()));
+
+        if (stream.bad())
+            return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
 
         return FromContent(std::move(content), path);
     }

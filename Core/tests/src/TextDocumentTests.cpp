@@ -1,13 +1,16 @@
 #include <doctest/doctest.h>
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/FileProbe.h"
 #include "Core/Text/TextDocument.h"
 
 #include "TempDirectory.h"
 
+#include <filesystem>
 #include <fstream>
 #include <ostream>
 #include <string>
+#include <system_error>
 
 using namespace core::text;
 
@@ -105,6 +108,13 @@ TEST_CASE("A file of nothing but newlines keeps every one of them")
 
     CHECK(document.Buffer().LineCount() == 4);
     CHECK(document.Bytes() == "\n\n\n");
+}
+
+TEST_CASE("A lone carriage return next to a real CRLF round-trips untouched")
+{
+    // NormaliseLineEndings only ever folds a "\r\n" pair; a '\r' with no '\n' right
+    // after it is not one of those and must survive exactly as it was.
+    CHECK(Make("a\r\r\nb").Bytes() == "a\r\r\nb");
 }
 
 TEST_CASE("A UTF-8 byte order mark is stripped from the content and put back on save")
@@ -284,4 +294,35 @@ TEST_CASE("A file whose name is not ASCII loads")
 
     REQUIRE(document);
     CHECK(document.Value().Buffer().Text() == "content");
+    CHECK(document.Value().Path() == path);
+}
+
+TEST_CASE("Loading a directory fails with InvalidArgument rather than NotFound")
+{
+    TempDirectory directory;
+
+    const auto document = TextDocument::Load(directory.Path());
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
+}
+
+TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "huge.bin";
+    WriteBytes(path, "");
+
+    // Growing the file this way is a metadata-only operation on NTFS — no bytes are
+    // actually written — so this exercises the real size check in Load against a real
+    // file without the test paying for a genuine half-gigabyte write.
+    std::error_code resizeError;
+    std::filesystem::resize_file(path, MaximumFileSize + 1, resizeError);
+    REQUIRE_FALSE(resizeError);
+
+    const auto document = TextDocument::Load(path);
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(document.GetError().message.find(std::to_string(MaximumFileSize + 1)) != std::string::npos);
 }
