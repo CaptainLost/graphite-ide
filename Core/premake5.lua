@@ -24,11 +24,13 @@ project "Core"
 
     externalincludedirs
     {
-        "%{IncludeDir.libgit2}"
+        "%{IncludeDir.libgit2}",
+        "%{IncludeDir.pugixml}",
+        "%{IncludeDir.json}"
     }
     externalwarnings "Off"
 
-    links { "GLFW", "ImGui", "opengl32.lib" }
+    links { "GLFW", "ImGui", "pugixml", "opengl32.lib" }
 
     filter "system:windows"
         systemversion "latest"

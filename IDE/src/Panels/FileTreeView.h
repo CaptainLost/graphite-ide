@@ -4,7 +4,6 @@
 #include "Workspace.h"
 
 #include "Core/Fs/FileTree.h"
-#include "Core/Ui/Panel.h"
 
 #include <imgui.h>
 
@@ -16,12 +15,14 @@ namespace ide
 {
     /// Browses the open workspace folder. Holds no state of its own beyond the filter —
     /// the tree lives in the Workspace.
-    class FileTreePanel final : public core::Panel
+    ///
+    /// Not a Panel: ExplorerPanel owns this and one other view, and switches between them.
+    class FileTreeView final
     {
     public:
-        explicit FileTreePanel(Workspace& workspace);
+        explicit FileTreeView(Workspace& workspace);
 
-        void OnUIRender() override;
+        void Render();
 
         void SetIgnoredDisplay(IgnoredDisplay display) noexcept { m_ignoredDisplay = display; }
 

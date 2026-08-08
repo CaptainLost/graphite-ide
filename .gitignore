@@ -19,6 +19,10 @@ Makefile
 # Runtime state written next to the executable
 imgui.ini
 ide.ini
+ide.json
+
+# Per-workspace view state written by the IDE itself
+.graphite/
 
 # The premake binary is intentionally kept in the repo
 !vendor/bin/

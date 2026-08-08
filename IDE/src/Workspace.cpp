@@ -6,10 +6,26 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/FileDialog.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace ide
 {
+    namespace
+    {
+        /// Walks every project in the tree. Solution folders nest, so a plain loop over
+        /// one level would miss most of them.
+        template <typename Visitor>
+        void ForEachProject(const core::sln::Folder& folder, Visitor&& visit)
+        {
+            for (const core::sln::Project& project : folder.projects)
+                visit(project);
+
+            for (const core::sln::Folder& child : folder.folders)
+                ForEachProject(child, visit);
+        }
+    }
+
     core::Result<void> Workspace::Open(const std::filesystem::path& requested)
     {
         // Normalise once, here, where a path enters the workspace. A command-line
@@ -56,6 +72,14 @@ namespace ide
             m_watcher.reset();
         }
 
+        // Rebuilt for the new root before anything reads it: the store is per folder, so
+        // the previous workspace's file must not be consulted for this one.
+        m_settings = WorkspaceSettings{root};
+        m_selectedSolution = core::fs::FromUtf8(m_settings.Get("selectedSolution"));
+
+        FindSolutions();
+        LoadSolution();
+
         Settings::SaveLastFolder(root);
         m_events.Publish(WorkspaceOpenedEvent{root});
 
@@ -80,6 +104,13 @@ namespace ide
         m_tree = core::FileTree{};
         m_root.clear();
         m_selectedFile.clear();
+
+        ResetSolutionState();
+
+        // Dropped with the folder it belongs to. Left pointing at the closed folder, the
+        // explorer's mode dropdown — which still draws with nothing open — would write
+        // into a workspace the user has just walked away from.
+        m_settings = WorkspaceSettings{std::filesystem::path{}};
 
         // An empty stored value reads back as "nothing remembered", so this is how the
         // closed state survives a restart.
@@ -134,6 +165,9 @@ namespace ide
                 CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 
             m_tree.Refresh(m_tree.Root());
+
+            FindSolutions();
+            LoadSolution();
             return;
         }
 
@@ -142,6 +176,47 @@ namespace ide
         // dangle by the second entry.
         for (const std::filesystem::path& directory : changed.directories)
             RefreshChanged(directory);
+
+        // Only when the change could plausibly be a solution or project file. Reloading on
+        // every batch means a build writing into bin/ re-parses the whole solution, which
+        // showed up immediately in practice: opening this repository moments after a build
+        // read it four times over.
+        if (TouchesSolution(changed.directories))
+            LoadSolution();
+    }
+
+    bool Workspace::TouchesSolution(const std::vector<std::filesystem::path>& directories) const
+    {
+        if (m_selectedSolution.empty())
+            return false;
+
+        const std::filesystem::path solutionDirectory = m_selectedSolution.parent_path();
+
+        for (const std::filesystem::path& directory : directories)
+        {
+            // The solution's own directory covers the .slnx itself and anything beside it.
+            if (directory == solutionDirectory)
+                return true;
+
+            if (!m_solution)
+                continue;
+
+            // A project file changing means the project's contents may have changed. Its
+            // .filters sibling lives in the same directory, so one comparison covers both.
+            bool matched = false;
+
+            ForEachProject(m_solution->root,
+                           [&directory, &matched](const core::sln::Project& project)
+                           {
+                               if (project.path.parent_path() == directory)
+                                   matched = true;
+                           });
+
+            if (matched)
+                return true;
+        }
+
+        return false;
     }
 
     void Workspace::Reload()
@@ -155,6 +230,9 @@ namespace ide
         (void)SyncRepository();
 
         m_tree.Refresh(m_tree.Root());
+
+        FindSolutions();
+        LoadSolution();
     }
 
     bool Workspace::SyncRepository()
@@ -285,6 +363,17 @@ namespace ide
         // new location — and the ignore query may have just changed too.
         m_tree.Refresh(m_tree.Root());
 
+        // Both hold absolute paths under the old root, so both are rebuilt rather than
+        // rewritten. Left alone, the settings store would keep writing into the folder's
+        // former location — recreating .graphite under a name the user has abandoned —
+        // and every solution path would name a file that no longer exists there.
+        m_settings = WorkspaceSettings{to};
+        ResetSolutionState();
+        m_selectedSolution = core::fs::FromUtf8(m_settings.Get("selectedSolution"));
+
+        FindSolutions();
+        LoadSolution();
+
         Settings::SaveLastFolder(to);
         m_events.Publish(WorkspaceRootMovedEvent{from, to});
     }
@@ -347,6 +436,168 @@ namespace ide
             { return m_repository && m_repository->IsIgnored(path); });
 
         CORE_INFO("Git repository detected at '{}'", m_repository->WorkingDirectory().string());
+    }
+
+    void Workspace::FindSolutions()
+    {
+        m_solutionCandidates.clear();
+
+        const auto entries = core::fs::ReadDirectory(m_root);
+
+        if (!entries)
+            return;
+
+        std::vector<std::filesystem::path> legacy;
+
+        for (const core::fs::DirectoryEntry& entry : entries.Value())
+        {
+            if (entry.isDirectory)
+                continue;
+
+            if (entry.path.extension() == ".slnx")
+                m_solutionCandidates.push_back(entry.path);
+            else if (entry.path.extension() == ".sln")
+                legacy.push_back(entry.path);
+        }
+
+        // A .sln beside a .slnx of the same name is the same solution in the older
+        // format, so it is not offered twice. The .slnx wins: it is what Visual Studio
+        // 2026 writes, and in this repository the .sln is a stale leftover.
+        for (const std::filesystem::path& candidate : legacy)
+        {
+            const bool supersededByXml =
+                std::any_of(m_solutionCandidates.begin(), m_solutionCandidates.end(),
+                            [&candidate](const std::filesystem::path& xml)
+                            { return xml.stem() == candidate.stem(); });
+
+            if (!supersededByXml)
+                m_solutionCandidates.push_back(candidate);
+        }
+
+        std::sort(m_solutionCandidates.begin(), m_solutionCandidates.end());
+    }
+
+    void Workspace::LoadSolution()
+    {
+        if (m_solutionCandidates.empty())
+        {
+            m_solution.reset();
+            m_selectedSolution.clear();
+            ForgetSolutionAttempt();
+            return;
+        }
+
+        // A remembered choice that is no longer on disk falls back to the first, rather
+        // than leaving the view empty for a reason the user cannot see.
+        const bool remembered =
+            std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(),
+                      m_selectedSolution) != m_solutionCandidates.end();
+
+        if (!remembered)
+            m_selectedSolution = m_solutionCandidates.front();
+
+        // Guarded here rather than at each caller. There are five — window focus, the
+        // watcher, the toolbar, opening a folder, choosing a solution — and gating only
+        // one of them left the rest re-parsing on every batch.
+        //
+        // The stamp covers the project files too, not just the solution: editing a
+        // .vcxproj changes what the tree should show and leaves the .slnx untouched, so a
+        // solution-only stamp would make the view permanently stale for exactly the edit
+        // this feature exists to reflect.
+        //
+        // Recorded even when the parse fails. Otherwise an unreadable solution re-parses
+        // and re-warns on every focus change, which is the same noise the guard removes
+        // from the success path.
+        const std::filesystem::file_time_type stamp = SolutionStamp();
+
+        if (m_solutionAttempted && m_attemptedSolution == m_selectedSolution
+            && stamp == m_solutionStamp)
+        {
+            return;
+        }
+
+        m_solutionAttempted = true;
+        m_attemptedSolution = m_selectedSolution;
+        m_solutionStamp = stamp;
+        m_solution.reset();
+
+        auto solution = core::sln::ReadSolution(m_selectedSolution);
+
+        if (!solution)
+        {
+            CORE_WARN("Cannot read '{}': {}", m_selectedSolution.string(),
+                      solution.GetError().message);
+            return;
+        }
+
+        m_solution.emplace(std::move(solution).Value());
+
+        CORE_INFO("Solution '{}' loaded with {} projects", m_solution->name,
+                  m_solution->projectCount);
+    }
+
+
+    std::filesystem::file_time_type Workspace::SolutionStamp() const
+    {
+        std::error_code code;
+        auto newest = std::filesystem::last_write_time(m_selectedSolution, code);
+
+        if (code)
+            newest = {};
+
+        if (!m_solution)
+            return newest;
+
+        ForEachProject(m_solution->root,
+                       [&newest](const core::sln::Project& project)
+                       {
+                           std::error_code projectCode;
+
+                           const auto projectStamp =
+                               std::filesystem::last_write_time(project.path, projectCode);
+
+                           if (!projectCode && projectStamp > newest)
+                               newest = projectStamp;
+
+                           // The .filters sibling is half of what the reader used to build
+                           // this project's folders, so a change to it counts as a change
+                           // to the project.
+                           std::filesystem::path filters = project.path;
+                           filters += ".filters";
+
+                           const auto filtersStamp =
+                               std::filesystem::last_write_time(filters, projectCode);
+
+                           if (!projectCode && filtersStamp > newest)
+                               newest = filtersStamp;
+                       });
+
+        return newest;
+    }
+
+    void Workspace::ForgetSolutionAttempt()
+    {
+        m_solutionAttempted = false;
+        m_attemptedSolution.clear();
+        m_solutionStamp = {};
+    }
+
+    void Workspace::ResetSolutionState()
+    {
+        m_solution.reset();
+        m_solutionCandidates.clear();
+        m_selectedSolution.clear();
+        ForgetSolutionAttempt();
+    }
+
+    void Workspace::SelectSolution(const std::filesystem::path& path)
+    {
+        m_selectedSolution = path;
+        m_settings.Set("selectedSolution", core::fs::ToUtf8(path));
+
+        // The guard keys on which solution was attempted, so switching to another is
+        // never mistaken for a repeat of the last one.
+        LoadSolution();
     }
 
     void OpenFolderInteractively(Workspace& workspace)

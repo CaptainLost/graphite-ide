@@ -10,34 +10,12 @@
 
 namespace core
 {
-    namespace
-    {
-        int CompareCaseInsensitive(const std::string& left, const std::string& right)
-        {
-            const std::size_t count = std::min(left.size(), right.size());
-
-            for (std::size_t i = 0; i < count; ++i)
-            {
-                const int a = std::tolower(static_cast<unsigned char>(left[i]));
-                const int b = std::tolower(static_cast<unsigned char>(right[i]));
-
-                if (a != b)
-                    return a < b ? -1 : 1;
-            }
-
-            if (left.size() == right.size())
-                return 0;
-
-            return left.size() < right.size() ? -1 : 1;
-        }
-    }
-
     bool FileNodeLess(const FileNode& left, const FileNode& right)
     {
         if (left.isDirectory != right.isDirectory)
             return left.isDirectory;
 
-        return CompareCaseInsensitive(left.name, right.name) < 0;
+        return fs::CompareNames(left.name, right.name) < 0;
     }
 
     Result<void> FileTree::SetRoot(const std::filesystem::path& root)

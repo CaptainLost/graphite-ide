@@ -19,12 +19,13 @@ project "CoreTests"
     externalincludedirs
     {
         "%{IncludeDir.doctest}",
-        "%{IncludeDir.libgit2}"
+        "%{IncludeDir.libgit2}",
+        "%{IncludeDir.pugixml}"
     }
 
     externalwarnings "Off"
 
-    links { "Core", "GLFW", "ImGui", "libgit2", "opengl32.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
+    links { "Core", "GLFW", "ImGui", "libgit2", "pugixml", "opengl32.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
 
     filter "system:windows"
         systemversion "latest"

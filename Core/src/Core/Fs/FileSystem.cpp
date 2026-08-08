@@ -1,5 +1,7 @@
 #include "corepch.h"
 
+#include <cctype>
+
 #include "Core/Fs/FileSystem.h"
 
 #include <system_error>
@@ -106,6 +108,25 @@ namespace core::fs
         }
 
         return entries;
+    }
+
+    int CompareNames(std::string_view left, std::string_view right)
+    {
+        const std::size_t count = std::min(left.size(), right.size());
+
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const int a = std::tolower(static_cast<unsigned char>(left[i]));
+            const int b = std::tolower(static_cast<unsigned char>(right[i]));
+
+            if (a != b)
+                return a < b ? -1 : 1;
+        }
+
+        if (left.size() == right.size())
+            return 0;
+
+        return left.size() < right.size() ? -1 : 1;
     }
 
     std::filesystem::path NormalizeDirectory(const std::filesystem::path& path)

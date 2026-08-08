@@ -33,6 +33,10 @@ namespace core::fs
     /// Rebuilds a path from UTF-8 bytes produced by ToUtf8.
     std::filesystem::path FromUtf8(std::string_view text);
 
+    /// Orders two names the way a file browser does: case-insensitively, so "apple" sits
+    /// beside "Apple" rather than after "Zebra". Returns the sign of the comparison.
+    [[nodiscard]] int CompareNames(std::string_view left, std::string_view right);
+
     /// Puts a directory path into the one spelling everything else derives from:
     /// normalised, native separators, and no trailing separator.
     ///
