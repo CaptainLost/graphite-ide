@@ -37,6 +37,7 @@ namespace core
             ICON_MDI_CODE_JSON,
             ICON_MDI_LANGUAGE_MARKDOWN,
             ICON_MDI_LANGUAGE_PYTHON,
+            ICON_MDI_APPLICATION_BRACES,
             ICON_MDI_REFRESH,
         };
 
@@ -59,12 +60,18 @@ namespace core
     {
         const std::string lower = ToLowerWithDot(extension);
 
+        // Project files (.vcxproj, .csproj) get a generic project icon rather than a
+        // language one: the extension names the build tool, not what's compiled inside —
+        // GLFW is a C library built through a .vcxproj, same as any C++ project.
+        if (lower == ".vcxproj" || lower == ".csproj")
+            return ICON_MDI_APPLICATION_BRACES;
+
         if (lower == ".c")
             return ICON_MDI_LANGUAGE_C;
         if (lower == ".cpp" || lower == ".cc" || lower == ".cxx" || lower == ".h" ||
-            lower == ".hpp" || lower == ".hxx" || lower == ".vcxproj")
+            lower == ".hpp" || lower == ".hxx")
             return ICON_MDI_LANGUAGE_CPP;
-        if (lower == ".cs" || lower == ".csproj")
+        if (lower == ".cs")
             return ICON_MDI_LANGUAGE_CSHARP;
         if (lower == ".lua")
             return ICON_MDI_LANGUAGE_LUA;

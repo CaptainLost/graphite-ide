@@ -20,13 +20,19 @@ TEST_CASE("IconForExtension recognizes known source extensions")
     CHECK(std::strcmp(IconForExtension(".h"), ICON_MDI_LANGUAGE_CPP) == 0);
     CHECK(std::strcmp(IconForExtension(".hpp"), ICON_MDI_LANGUAGE_CPP) == 0);
     CHECK(std::strcmp(IconForExtension(".hxx"), ICON_MDI_LANGUAGE_CPP) == 0);
-    CHECK(std::strcmp(IconForExtension(".vcxproj"), ICON_MDI_LANGUAGE_CPP) == 0);
     CHECK(std::strcmp(IconForExtension(".cs"), ICON_MDI_LANGUAGE_CSHARP) == 0);
-    CHECK(std::strcmp(IconForExtension(".csproj"), ICON_MDI_LANGUAGE_CSHARP) == 0);
     CHECK(std::strcmp(IconForExtension(".lua"), ICON_MDI_LANGUAGE_LUA) == 0);
     CHECK(std::strcmp(IconForExtension(".json"), ICON_MDI_CODE_JSON) == 0);
     CHECK(std::strcmp(IconForExtension(".md"), ICON_MDI_LANGUAGE_MARKDOWN) == 0);
     CHECK(std::strcmp(IconForExtension(".py"), ICON_MDI_LANGUAGE_PYTHON) == 0);
+}
+
+TEST_CASE("IconForExtension gives project files a generic icon, not a language one")
+{
+    // .vcxproj names the build tool, not the language inside — a C library like GLFW is
+    // still built through a .vcxproj, same as any C++ project.
+    CHECK(std::strcmp(IconForExtension(".vcxproj"), ICON_MDI_APPLICATION_BRACES) == 0);
+    CHECK(std::strcmp(IconForExtension(".csproj"), ICON_MDI_APPLICATION_BRACES) == 0);
 }
 
 TEST_CASE("IconForExtension falls back to a generic file icon")
@@ -49,10 +55,10 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
     // Decode each icon's UTF-8 by hand (every MDI glyph used here is a 4-byte sequence,
     // since they all sit above U+FFFF) and check it appears as a [c, c] pair.
     const char* icons[] = {
-        ICON_MDI_FILE,          ICON_MDI_FOLDER,           ICON_MDI_FOLDER_OPEN,
-        ICON_MDI_LANGUAGE_C,    ICON_MDI_LANGUAGE_CPP,     ICON_MDI_LANGUAGE_CSHARP,
-        ICON_MDI_LANGUAGE_LUA,  ICON_MDI_CODE_JSON,        ICON_MDI_LANGUAGE_MARKDOWN,
-        ICON_MDI_LANGUAGE_PYTHON, ICON_MDI_REFRESH,
+        ICON_MDI_FILE,          ICON_MDI_FOLDER,             ICON_MDI_FOLDER_OPEN,
+        ICON_MDI_LANGUAGE_C,    ICON_MDI_LANGUAGE_CPP,       ICON_MDI_LANGUAGE_CSHARP,
+        ICON_MDI_LANGUAGE_LUA,  ICON_MDI_CODE_JSON,          ICON_MDI_LANGUAGE_MARKDOWN,
+        ICON_MDI_LANGUAGE_PYTHON, ICON_MDI_APPLICATION_BRACES, ICON_MDI_REFRESH,
     };
 
     for (const char* icon : icons)
