@@ -52,6 +52,27 @@ namespace core::text
         /// The byte at `offset`, or '\0' past the end.
         [[nodiscard]] char CharAt(std::size_t offset) const;
 
+        /// Never zero: an empty document is one empty line.
+        [[nodiscard]] std::size_t LineCount() const noexcept { return m_lineStarts.size(); }
+
+        /// Offset the line begins at. Past the last line, the end of the document.
+        [[nodiscard]] std::size_t LineStart(std::size_t line) const;
+
+        /// Length of the line's content, excluding the '\n' that ends it.
+        [[nodiscard]] std::size_t LineLength(std::size_t line) const;
+
+        /// The line's content, without its line ending.
+        [[nodiscard]] std::string LineText(std::size_t line) const;
+
+        [[nodiscard]] std::size_t ToOffset(Position position) const;
+        [[nodiscard]] Position ToPosition(std::size_t offset) const;
+
+        /// Whether the incrementally patched line index still equals one built from
+        /// scratch. Asserted after every edit in Debug, and checked directly by the
+        /// tests — this is the subtlest arithmetic in the editor and the one place a bug
+        /// would stay hidden longest.
+        [[nodiscard]] bool LineIndexMatchesRebuild() const;
+
     private:
         enum class Source
         {
@@ -91,9 +112,17 @@ namespace core::text
         /// lengths.
         void RefreshPieceStarts(std::size_t index);
 
+        /// Builds the index by walking the content. Deliberately the obvious algorithm:
+        /// it is the yardstick the patched index is measured against.
+        [[nodiscard]] std::vector<std::size_t> BuildLineIndex() const;
+
+        void PatchLineIndexForInsert(std::size_t offset, std::string_view text);
+        void PatchLineIndexForErase(std::size_t from, std::size_t to);
+
         std::string m_original;
         std::string m_append;
         std::vector<Piece> m_pieces;
         std::size_t m_length = 0;
+        std::vector<std::size_t> m_lineStarts{0};
     };
 }

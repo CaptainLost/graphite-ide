@@ -14,6 +14,8 @@ namespace core::text
 
         if (m_length > 0)
             m_pieces.push_back(Piece{Source::Original, 0, m_length, 0});
+
+        m_lineStarts = BuildLineIndex();
     }
 
     const std::string& TextBuffer::SourceBuffer(Source source) const
@@ -82,6 +84,10 @@ namespace core::text
                         Piece{Source::Append, appended, text.size(), at});
 
         RefreshPieceStarts(index);
+
+        PatchLineIndexForInsert(at, text);
+
+        CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
     }
 
     std::size_t TextBuffer::PieceStartingAt(std::size_t offset) const
@@ -119,6 +125,10 @@ namespace core::text
                        m_pieces.begin() + static_cast<std::ptrdiff_t>(last));
 
         RefreshPieceStarts(first);
+
+        PatchLineIndexForErase(from, end);
+
+        CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
     }
 
     std::string TextBuffer::Substring(std::size_t from, std::size_t to) const
@@ -156,5 +166,110 @@ namespace core::text
         const Piece& piece = m_pieces[PieceAt(offset)];
 
         return SourceBuffer(piece.source)[piece.offset + (offset - piece.start)];
+    }
+
+    std::vector<std::size_t> TextBuffer::BuildLineIndex() const
+    {
+        std::vector<std::size_t> starts{0};
+        const std::string content = Text();
+
+        for (std::size_t offset = 0; offset < content.size(); ++offset)
+        {
+            if (content[offset] == '\n')
+                starts.push_back(offset + 1);
+        }
+
+        return starts;
+    }
+
+    bool TextBuffer::LineIndexMatchesRebuild() const
+    {
+        return m_lineStarts == BuildLineIndex();
+    }
+
+    std::size_t TextBuffer::LineStart(std::size_t line) const
+    {
+        if (line >= m_lineStarts.size())
+            return m_length;
+
+        return m_lineStarts[line];
+    }
+
+    std::size_t TextBuffer::LineLength(std::size_t line) const
+    {
+        if (line >= m_lineStarts.size())
+            return 0;
+
+        // Every line but the last is followed by the '\n' that ended it, which is not
+        // part of its text.
+        const std::size_t end =
+            line + 1 < m_lineStarts.size() ? m_lineStarts[line + 1] - 1 : m_length;
+
+        return end - m_lineStarts[line];
+    }
+
+    std::string TextBuffer::LineText(std::size_t line) const
+    {
+        const std::size_t start = LineStart(line);
+
+        return Substring(start, start + LineLength(line));
+    }
+
+    std::size_t TextBuffer::ToOffset(Position position) const
+    {
+        if (position.line >= m_lineStarts.size())
+            return m_length;
+
+        return m_lineStarts[position.line] + std::min(position.column, LineLength(position.line));
+    }
+
+    Position TextBuffer::ToPosition(std::size_t offset) const
+    {
+        const std::size_t at = std::min(offset, m_length);
+
+        // The last line starting at or before `at` is the line `at` sits on.
+        const auto after = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), at);
+        const std::size_t line = static_cast<std::size_t>(after - m_lineStarts.begin()) - 1;
+
+        return Position{line, at - m_lineStarts[line]};
+    }
+
+    void TextBuffer::PatchLineIndexForInsert(std::size_t offset, std::string_view text)
+    {
+        // The first line starting after the insertion point. Everything before it is
+        // untouched, which is the whole reason for patching rather than rebuilding.
+        const auto after = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), offset);
+        const std::size_t index = static_cast<std::size_t>(after - m_lineStarts.begin());
+
+        for (std::size_t at = index; at < m_lineStarts.size(); ++at)
+            m_lineStarts[at] += text.size();
+
+        std::vector<std::size_t> added;
+
+        for (std::size_t at = 0; at < text.size(); ++at)
+        {
+            if (text[at] == '\n')
+                added.push_back(offset + at + 1);
+        }
+
+        m_lineStarts.insert(m_lineStarts.begin() + static_cast<std::ptrdiff_t>(index),
+                            added.begin(), added.end());
+    }
+
+    void TextBuffer::PatchLineIndexForErase(std::size_t from, std::size_t to)
+    {
+        const std::size_t removed = to - from;
+
+        // A line start at s exists because of a '\n' at s - 1. That newline is inside
+        // the erased range exactly when from < s <= to, so those starts go away and the
+        // one at `from` itself, if any, stays.
+        const auto first = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), from);
+        const auto last = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), to);
+
+        const std::size_t index = static_cast<std::size_t>(first - m_lineStarts.begin());
+        m_lineStarts.erase(first, last);
+
+        for (std::size_t at = index; at < m_lineStarts.size(); ++at)
+            m_lineStarts[at] -= removed;
     }
 }
