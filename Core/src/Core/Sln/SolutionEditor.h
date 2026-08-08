@@ -8,11 +8,8 @@
 
 namespace core::sln
 {
-    /// A GUID in the braced uppercase form both solution formats use.
-    ///
-    /// Randomly generated rather than asked of the operating system, which is all a
-    /// version 4 UUID is — so there is no platform branch here and no empty result for a
-    /// caller to check.
+    /// A core::Uuid in the braced uppercase form both solution formats use. The braces
+    /// are the formats' decoration, not part of the identifier.
     [[nodiscard]] std::string NewGuid();
 
     /// Edits a solution file in place. Everything not touched — formatting, comments, and
