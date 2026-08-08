@@ -134,6 +134,54 @@ TEST_CASE("A file that is not there opens as an item saying so, not as silence")
     CHECK(documents.At(0).failure == OpenFailure::Missing);
 }
 
+TEST_CASE("Opening a directory does not claim it does not exist")
+{
+    TempDirectory directory;
+    const auto sub = directory.MakeDir("subfolder");
+
+    DocumentSet documents;
+
+    CHECK(documents.Open(sub, true) == OpenOutcome::Failed);
+    REQUIRE(documents.Count() == 1);
+    CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
+    CHECK(documents.At(0).failure != OpenFailure::Missing);
+    CHECK(FailureMessage(documents.At(0)).find("exist") == std::string::npos);
+}
+
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("Opening a file locked by another handle does not claim it does not exist")
+{
+    // A sharing violation from a handle held open in-process, deterministic and
+    // requiring no second process: opening with dwShareMode 0 denies every other
+    // handle, including the ifstream ProbeFile opens next.
+    TempDirectory directory;
+    const auto path = directory.Path() / "locked.txt";
+    WriteBytes(path, "content");
+
+    const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, /*dwShareMode=*/0, nullptr,
+                                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(handle != INVALID_HANDLE_VALUE);
+
+    DocumentSet documents;
+    const OpenOutcome outcome = documents.Open(path, true);
+
+    // Closed before any assertion can fail the test, so a locked file never survives
+    // into TempDirectory's destructor and takes a later test down with it.
+    ::CloseHandle(handle);
+
+    CHECK(outcome == OpenOutcome::Failed);
+    REQUIRE(documents.Count() == 1);
+    CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
+    CHECK(documents.At(0).failure != OpenFailure::Missing);
+    CHECK(FailureMessage(documents.At(0)).find("exist") == std::string::npos);
+}
+#else
+TEST_CASE("Opening a file locked by another handle does not claim it does not exist"
+          * doctest::skip())
+{
+}
+#endif
+
 TEST_CASE("A large file asks before it loads, and adds nothing until confirmed")
 {
     TempDirectory directory;

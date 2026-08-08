@@ -39,6 +39,14 @@ namespace core::text
         Encoding encoding = Encoding::Utf8;
         Caret caret;
         bool preview = false;
+
+        /// A specific message from whatever failed underneath — ProbeFile's own text for
+        /// a directory, a locked file, or one that could not be measured. Empty for the
+        /// failures classified from a successful probe, where the enumerator alone
+        /// already says everything there is to say. FailureMessage prefers this when
+        /// it is not empty, so a specific reason is never thrown away in favour of a
+        /// vaguer one reconstructed from the enumerator.
+        std::string detail;
     };
 
     enum class OpenOutcome

@@ -25,6 +25,9 @@ namespace core::text
 
     std::string FailureMessage(const OpenItem& item)
     {
+        if (!item.detail.empty())
+            return item.detail;
+
         switch (item.failure)
         {
         case OpenFailure::Binary:
@@ -91,7 +94,14 @@ namespace core::text
 
         if (!probe)
         {
-            item.failure = OpenFailure::Missing;
+            // NotFound is the only code that actually means "gone" — a directory, a
+            // locked file and an unmeasurable one are all still there, so claiming
+            // otherwise would send the user looking for a file sitting right in front
+            // of them. ProbeFile's own message says which one it was.
+            item.failure = probe.GetError().code == core::ErrorCode::NotFound
+                               ? OpenFailure::Missing
+                               : OpenFailure::ReadFailed;
+            item.detail = probe.GetError().message;
             m_items.push_back(std::move(item));
             Activate(m_items.size() - 1);
 
