@@ -30,6 +30,7 @@ namespace core
             ICON_MDI_FILE,
             ICON_MDI_FOLDER,
             ICON_MDI_FOLDER_OPEN,
+            ICON_MDI_LANGUAGE_C,
             ICON_MDI_LANGUAGE_CPP,
             ICON_MDI_LANGUAGE_CSHARP,
             ICON_MDI_LANGUAGE_LUA,
@@ -58,6 +59,8 @@ namespace core
     {
         const std::string lower = ToLowerWithDot(extension);
 
+        if (lower == ".c")
+            return ICON_MDI_LANGUAGE_C;
         if (lower == ".cpp" || lower == ".cc" || lower == ".cxx" || lower == ".h" ||
             lower == ".hpp" || lower == ".hxx" || lower == ".vcxproj")
             return ICON_MDI_LANGUAGE_CPP;

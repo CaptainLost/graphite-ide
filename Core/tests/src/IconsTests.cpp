@@ -11,6 +11,8 @@ using core::UsedGlyphRanges;
 
 TEST_CASE("IconForExtension recognizes known source extensions")
 {
+    CHECK(std::strcmp(IconForExtension(".c"), ICON_MDI_LANGUAGE_C) == 0);
+    CHECK(std::strcmp(IconForExtension(".C"), ICON_MDI_LANGUAGE_C) == 0);
     CHECK(std::strcmp(IconForExtension(".cpp"), ICON_MDI_LANGUAGE_CPP) == 0);
     CHECK(std::strcmp(IconForExtension(".CPP"), ICON_MDI_LANGUAGE_CPP) == 0);
     CHECK(std::strcmp(IconForExtension(".cc"), ICON_MDI_LANGUAGE_CPP) == 0);
@@ -48,9 +50,9 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
     // since they all sit above U+FFFF) and check it appears as a [c, c] pair.
     const char* icons[] = {
         ICON_MDI_FILE,          ICON_MDI_FOLDER,           ICON_MDI_FOLDER_OPEN,
-        ICON_MDI_LANGUAGE_CPP,  ICON_MDI_LANGUAGE_CSHARP,  ICON_MDI_LANGUAGE_LUA,
-        ICON_MDI_CODE_JSON,     ICON_MDI_LANGUAGE_MARKDOWN, ICON_MDI_LANGUAGE_PYTHON,
-        ICON_MDI_REFRESH,
+        ICON_MDI_LANGUAGE_C,    ICON_MDI_LANGUAGE_CPP,     ICON_MDI_LANGUAGE_CSHARP,
+        ICON_MDI_LANGUAGE_LUA,  ICON_MDI_CODE_JSON,        ICON_MDI_LANGUAGE_MARKDOWN,
+        ICON_MDI_LANGUAGE_PYTHON, ICON_MDI_REFRESH,
     };
 
     for (const char* icon : icons)
