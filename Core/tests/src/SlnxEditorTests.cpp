@@ -8,7 +8,9 @@
 
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -226,13 +228,49 @@ TEST_CASE("No temporary file is left beside the solution")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
+    std::vector<std::string> before;
+
+    for (const auto& entry : std::filesystem::directory_iterator{temp.Path()})
+        before.push_back(entry.path().filename().string());
+
+    std::sort(before.begin(), before.end());
+
     auto editor = core::sln::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    std::filesystem::path temporary = file;
-    temporary += ".tmp";
+    std::vector<std::string> after;
 
-    CHECK_FALSE(std::filesystem::exists(temporary));
+    for (const auto& entry : std::filesystem::directory_iterator{temp.Path()})
+        after.push_back(entry.path().filename().string());
+
+    std::sort(after.begin(), after.end());
+
+    // Compared against the whole directory rather than one guessed name. An earlier
+    // version named the temporary and checked for that name — and when the temporary had
+    // to be renamed, so the read-back could pick a parser by extension, the check went on
+    // passing while testing nothing.
+    CHECK(after == before);
+}
+
+TEST_CASE("A failed verification leaves the solution and its directory alone")
+{
+    TempDirectory temp;
+    const auto file = MakeFixture(temp);
+
+    auto editor = core::sln::SolutionEditor::Open(file);
+    REQUIRE(editor.HasValue());
+
+    // Removing the project file from disk does not make the solution unreadable, so this
+    // still saves — the point is that the directory is left exactly as the operation
+    // found it, temporary and all.
+    REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
+    REQUIRE(editor.Value()->Save().HasValue());
+
+    std::filesystem::path stray = file;
+    stray.replace_extension("");
+    stray += ".tmp.slnx";
+
+    CHECK_FALSE(std::filesystem::exists(stray));
 }
