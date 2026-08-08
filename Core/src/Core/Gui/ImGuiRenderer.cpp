@@ -82,6 +82,10 @@ namespace core
         iconConfig.MergeMode = true;
         iconConfig.PixelSnapH = true;
         iconConfig.GlyphMinAdvanceX = 13.0f;
+        // Without this, a missing/unreadable .ttf trips ImGui's internal
+        // IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
+        // (and crashes) in Debug builds instead of letting the CORE_WARN below run.
+        iconConfig.Flags |= ImFontFlags_NoLoadError;
 
         const auto executableDirectory = platform::ExecutableDirectory();
         if (executableDirectory)
