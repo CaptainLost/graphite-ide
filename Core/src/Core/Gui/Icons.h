@@ -16,7 +16,11 @@ namespace core
     /// The codepoint ranges every icon this app can display falls into — everything
     /// IconForExtension can return, plus the small set of general UI icons used directly
     /// at call sites (folder, folder-open, refresh). Zero-terminated, as ImGui glyph
-    /// ranges are. Passed to ImFontAtlas::AddFontFromFileTTF so only these glyphs, not
-    /// MDI's several thousand, get baked into the font atlas.
+    /// ranges are. This is the single source of truth for which icons this app uses, so
+    /// IconForExtension and any general-UI icon usage never drift out of sync with each
+    /// other. It's passed to ImFontAtlas::AddFontFromFileTTF as the legacy preload-range
+    /// argument, which some ImGui backends/paths still honor, but in this app's
+    /// configuration (a dynamic/on-demand texture atlas) it does not strictly limit which
+    /// glyphs get baked or can render — glyphs are baked on demand as they're drawn.
     [[nodiscard]] const ImWchar* UsedGlyphRanges();
 }
