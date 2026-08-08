@@ -245,3 +245,89 @@ TEST_CASE("Contents of C++ projects are filled in for a .sln too")
     REQUIRE(good->content.root.files.size() == 1);
     CHECK(good->content.root.files[0].name == "Main.cpp");
 }
+
+TEST_CASE("Two folders at the same level both keep their projects")
+{
+    TempDirectory temp;
+
+    // The case that broke an earlier version of this parser. It held pointers into the
+    // model while building it, and appending the second folder reallocated the vector the
+    // first one lived in — so the project nested under the first wrote through a dangling
+    // pointer. Every real solution has sibling folders; this one has three.
+    const auto file = temp.MakeFile("Siblings.sln",
+        "Microsoft Visual Studio Solution File, Format Version 12.00\n"
+        "Project(\"{2150E333-8FDC-42A3-9474-1A3956D46DE8}\") = \"A\", \"A\", \"{AAAA0001-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Project(\"{2150E333-8FDC-42A3-9474-1A3956D46DE8}\") = \"B\", \"B\", \"{AAAA0002-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Project(\"{2150E333-8FDC-42A3-9474-1A3956D46DE8}\") = \"C\", \"C\", \"{AAAA0003-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"InA\", \"a\\InA.vcxproj\", \"{BBBB0001-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"InC\", \"c\\InC.vcxproj\", \"{BBBB0002-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Global\n"
+        "\tGlobalSection(NestedProjects) = preSolution\n"
+        "\t\t{BBBB0001-0000-0000-0000-000000000000} = {AAAA0001-0000-0000-0000-000000000000}\n"
+        "\t\t{BBBB0002-0000-0000-0000-000000000000} = {AAAA0003-0000-0000-0000-000000000000}\n"
+        "\tEndGlobalSection\n"
+        "EndGlobal\n");
+
+    const auto solution = core::sln::ReadSolution(file);
+    REQUIRE(solution.HasValue());
+    CHECK(solution.Value().projectCount == 2);
+
+    const Folder* a = FindFolder(solution.Value().root, "A");
+    const Folder* c = FindFolder(solution.Value().root, "C");
+
+    REQUIRE(a != nullptr);
+    REQUIRE(c != nullptr);
+    CHECK(FindProject(*a, "InA") != nullptr);
+    CHECK(FindProject(*c, "InC") != nullptr);
+}
+
+TEST_CASE("Two folders naming each other as parent do not hang")
+{
+    TempDirectory temp;
+
+    // A hand-edited or badly merged solution can say this. Following the chain without a
+    // limit recurses for ever; both folders belong at the root instead.
+    const auto file = temp.MakeFile("Cycle.sln",
+        "Microsoft Visual Studio Solution File, Format Version 12.00\n"
+        "Project(\"{2150E333-8FDC-42A3-9474-1A3956D46DE8}\") = \"A\", \"A\", \"{AAAA0001-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Project(\"{2150E333-8FDC-42A3-9474-1A3956D46DE8}\") = \"B\", \"B\", \"{AAAA0002-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n"
+        "Global\n"
+        "\tGlobalSection(NestedProjects) = preSolution\n"
+        "\t\t{AAAA0001-0000-0000-0000-000000000000} = {AAAA0002-0000-0000-0000-000000000000}\n"
+        "\t\t{AAAA0002-0000-0000-0000-000000000000} = {AAAA0001-0000-0000-0000-000000000000}\n"
+        "\tEndGlobalSection\n"
+        "EndGlobal\n");
+
+    const auto solution = core::sln::ReadSolution(file);
+
+    REQUIRE(solution.HasValue());
+    CHECK(FindFolder(solution.Value().root, "A") != nullptr);
+    CHECK(FindFolder(solution.Value().root, "B") != nullptr);
+}
+
+TEST_CASE("A file written by Visual Studio is read despite its byte-order mark")
+{
+    TempDirectory temp;
+
+    // Visual Studio writes a UTF-8 BOM and a blank line before the header. Demanding the
+    // header on line one at column zero meant this parser could not open the only kind of
+    // file it exists to open.
+    const auto file = temp.MakeFile("Real.sln",
+        "\xEF\xBB\xBF\n"
+        "Microsoft Visual Studio Solution File, Format Version 12.00\n"
+        "# Visual Studio Version 17\n"
+        "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"Only\", \"o\\Only.vcxproj\", \"{BBBB0001-0000-0000-0000-000000000000}\"\n"
+        "EndProject\n");
+
+    const auto solution = core::sln::ReadSolution(file);
+
+    REQUIRE(solution.HasValue());
+    CHECK(solution.Value().projectCount == 1);
+}

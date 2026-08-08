@@ -23,6 +23,13 @@ namespace core::sln
         /// ends in .sln reports an error instead of reading as an empty solution.
         constexpr std::string_view kHeader = "Microsoft Visual Studio Solution File";
 
+        /// UTF-8 byte-order mark, which Visual Studio writes at the start of a .sln.
+        constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
+
+        /// How far in to look for the header before giving up. Visual Studio puts a blank
+        /// line before it; nothing legitimate puts more than a couple.
+        constexpr int kHeaderSearchLines = 4;
+
         /// One `Project(...)` entry, before nesting is known.
         struct Entry
         {
@@ -98,7 +105,32 @@ namespace core::sln
         std::istringstream stream{text};
         std::string rawLine;
 
-        if (!std::getline(stream, rawLine) || Trim(rawLine).find(kHeader) != 0)
+        // Visual Studio writes a UTF-8 byte-order mark and then a blank line before the
+        // header, so a parser that demands the header on line one at column zero cannot
+        // open a file Visual Studio wrote — which is the only kind that matters here.
+        bool headerSeen = false;
+
+        for (int line = 0; line < kHeaderSearchLines && std::getline(stream, rawLine); ++line)
+        {
+            std::string_view candidate = Trim(rawLine);
+
+            if (candidate.starts_with(kByteOrderMark))
+                candidate.remove_prefix(kByteOrderMark.size());
+
+            if (candidate.empty())
+                continue;
+
+            if (candidate.find(kHeader) == 0)
+            {
+                headerSeen = true;
+                break;
+            }
+
+            // A non-empty line that is not the header means this is some other file.
+            break;
+        }
+
+        if (!headerSeen)
         {
             return Error{ErrorCode::InvalidArgument,
                          std::format("'{}' does not begin like a solution file",
@@ -158,60 +190,77 @@ namespace core::sln
 
         const std::filesystem::path directory = path.parent_path();
 
-        // Two passes, because nesting is declared apart from the entries and may name a
-        // parent that appears later in the file. Folders are materialised first so that
-        // every parent exists before anything is placed into it.
-        std::unordered_map<std::string, Folder*> folderById;
+        // Nothing here holds a pointer into the model while it is being built. An earlier
+        // version kept a map of id to Folder* and appended through it, which looked safe
+        // because each folder is appended once — but a *sibling* append reallocates the
+        // same vector, so any solution with two folders at one level wrote through a
+        // dangling pointer. Our own solution has three.
+        //
+        // Instead the shape is worked out entirely in index space, and the model is built
+        // once, bottom-up, by value.
+        std::unordered_map<std::string, std::size_t> indexById;
 
-        // Depth-limited walk: a folder's parent chain is followed to find where it goes,
-        // and a cycle in a corrupt file would otherwise loop for ever.
-        const auto placeFolder = [&](const Entry& entry, auto&& self) -> Folder*
+        for (std::size_t i = 0; i < entries.size(); ++i)
+            indexById.emplace(entries[i].id, i);
+
+        const std::size_t count = entries.size();
+        std::vector<std::vector<std::size_t>> childrenOf(count);
+        std::vector<std::size_t> roots;
+        std::vector<std::size_t> parentOfIndex(count, count);   // count == "no parent"
+
+        for (std::size_t i = 0; i < count; ++i)
         {
-            if (const auto found = folderById.find(entry.id); found != folderById.end())
-                return found->second;
+            const auto link = parentOf.find(entries[i].id);
 
-            Folder* parent = &solution.root;
-
-            if (const auto link = parentOf.find(entry.id); link != parentOf.end())
-            {
-                const auto parentEntry =
-                    std::find_if(entries.begin(), entries.end(),
-                                 [&link](const Entry& candidate)
-                                 { return candidate.isFolder && candidate.id == link->second; });
-
-                if (parentEntry != entries.end() && parentEntry->id != entry.id)
-                    parent = self(*parentEntry, self);
-            }
-
-            Folder created;
-            created.name = entry.name;
-            parent->folders.push_back(std::move(created));
-
-            Folder* placed = &parent->folders.back();
-            folderById.emplace(entry.id, placed);
-
-            return placed;
-        };
-
-        for (const Entry& entry : entries)
-        {
-            if (entry.isFolder)
-                (void)placeFolder(entry, placeFolder);
-        }
-
-        for (const Entry& entry : entries)
-        {
-            if (entry.isFolder)
+            if (link == parentOf.end())
                 continue;
 
-            Folder* parent = &solution.root;
+            const auto parent = indexById.find(link->second);
 
-            if (const auto link = parentOf.find(entry.id); link != parentOf.end())
-            {
-                if (const auto found = folderById.find(link->second); found != folderById.end())
-                    parent = found->second;
-            }
+            // A parent that is not a folder, is not declared, or is the entry itself,
+            // means the entry belongs at the solution root.
+            if (parent == indexById.end() || parent->second == i || !entries[parent->second].isFolder)
+                continue;
 
+            parentOfIndex[i] = parent->second;
+        }
+
+        // Anything whose parent chain does not reach the root is in a cycle — two folders
+        // naming each other, which a hand-edited file can produce. Walking the chain with
+        // a step limit turns that into "belongs at the root" instead of a hang.
+        //
+        // Detected against the untouched links and applied afterwards. Rewriting as it
+        // walks would let the first entry freed from a cycle make the second one's chain
+        // look sound, so of two folders naming each other one would end up inside the
+        // other instead of both standing at the root.
+        std::vector<bool> orphaned(count, false);
+
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            std::size_t walker = parentOfIndex[i];
+
+            for (std::size_t steps = 0; walker != count && steps <= count; ++steps)
+                walker = parentOfIndex[walker];
+
+            orphaned[i] = walker != count;
+        }
+
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (orphaned[i])
+                parentOfIndex[i] = count;
+        }
+
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            if (parentOfIndex[i] == count)
+                roots.push_back(i);
+            else
+                childrenOf[parentOfIndex[i]].push_back(i);
+        }
+
+        const auto makeProject = [&](const Entry& entry)
+        {
             Project project;
             project.displayName = entry.name;
             project.typeId = entry.typeId;
@@ -221,9 +270,48 @@ namespace core::sln
             std::error_code exists;
             project.exists = std::filesystem::is_regular_file(project.path, exists);
 
-            parent->projects.push_back(std::move(project));
-            ++solution.projectCount;
+            return project;
+        };
+
+        // Built by value, children first, so no reference into the tree is ever held
+        // across an append.
+        const auto build = [&](std::size_t index, auto&& self) -> Folder
+        {
+            Folder folder;
+            folder.name = entries[index].name;
+
+            for (const std::size_t child : childrenOf[index])
+            {
+                if (entries[child].isFolder)
+                    folder.folders.push_back(self(child, self));
+                else
+                    folder.projects.push_back(makeProject(entries[child]));
+            }
+
+            return folder;
+        };
+
+        for (const std::size_t index : roots)
+        {
+            if (entries[index].isFolder)
+                solution.root.folders.push_back(build(index, build));
+            else
+                solution.root.projects.push_back(makeProject(entries[index]));
         }
+
+        // Counted from the model rather than while parsing, so an entry dropped for any
+        // reason cannot leave the count disagreeing with the tree.
+        const auto countProjects = [](const Folder& folder, auto&& self) -> std::size_t
+        {
+            std::size_t total = folder.projects.size();
+
+            for (const Folder& child : folder.folders)
+                total += self(child, self);
+
+            return total;
+        };
+
+        solution.projectCount = countProjects(solution.root, countProjects);
 
         return solution;
     }
