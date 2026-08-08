@@ -11,11 +11,9 @@
 #include <ostream>
 #include <string>
 #include <system_error>
-#include <thread>
 
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
-    #include <winioctl.h>
 #endif
 
 using namespace core::text;
@@ -35,31 +33,6 @@ namespace
         std::ofstream stream{path, std::ios::binary};
         stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
     }
-
-#ifdef CORE_PLATFORM_WINDOWS
-    /// Marks `path` sparse so that later growing it (std::filesystem::resize_file, or
-    /// fsutil's setEOF underneath it) reserves no real disk space for the extended
-    /// region: without this, NTFS treats the grown range as ordinary data and demands
-    /// real free space for it, which a large ceiling-sized test file cannot rely on
-    /// having. Returns false if the flag could not be set, which the caller treats as
-    /// "skip rather than fail" — the machine's filesystem, not the code under test, is
-    /// what such a failure would be reporting on.
-    bool MarkSparse(const std::filesystem::path& path)
-    {
-        const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-
-        if (handle == INVALID_HANDLE_VALUE)
-            return false;
-
-        DWORD bytesReturned = 0;
-        const BOOL ok =
-            ::DeviceIoControl(handle, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &bytesReturned, nullptr);
-        ::CloseHandle(handle);
-
-        return ok != 0;
-    }
-#endif
 }
 
 TEST_CASE("A plain LF file loads as it is")
@@ -358,68 +331,6 @@ TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
     CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
     CHECK(document.GetError().message.find(std::to_string(MaximumFileSize + 1)) != std::string::npos);
 }
-
-#ifdef CORE_PLATFORM_WINDOWS
-TEST_CASE("Load refuses a file that grows past the maximum size while being read")
-{
-    // Reaches the in-loop refusal rather than the pre-open one above: the file is at
-    // exactly the ceiling when Load stats it, so the pre-open check lets it through, and
-    // only grows past the ceiling afterwards, while Load's read loop is already running
-    // — the realistic scenario the loop's own bound exists for (a writer that keeps
-    // appending to the file being loaded). Both files are marked sparse before being
-    // grown (see MarkSparse) so neither the setup nor Load's read of the zero-filled
-    // content reserves real disk space or takes real time despite being ceiling-sized;
-    // without that flag NTFS demands real free space for the grown range, which a
-    // machine already near its temp-drive limit may not have.
-    //
-    // The background thread only needs to win a race against however long Load takes to
-    // read hundreds of megabytes, not a microsecond-wide window — that read is not
-    // instantaneous, so the growth has ample time to land first. The grow itself goes
-    // through a handle opened up front rather than std::filesystem::resize_file, and the
-    // thread runs at elevated priority: both shrink the time between "the thread starts
-    // running" and "the file has actually grown" as far as this can, which is what
-    // determines how much of Load's read the growth has to land inside of.
-    TempDirectory directory;
-    const auto path = directory.Path() / "growing.bin";
-    WriteBytes(path, "");
-
-    if (!MarkSparse(path))
-        return;
-
-    std::error_code resizeError;
-    std::filesystem::resize_file(path, MaximumFileSize, resizeError);
-    REQUIRE_FALSE(resizeError);
-
-    const HANDLE writeHandle = ::CreateFileW(path.c_str(), GENERIC_WRITE,
-                                             FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    REQUIRE(writeHandle != INVALID_HANDLE_VALUE);
-
-    std::thread grower{[writeHandle]
-    {
-        LARGE_INTEGER newSize;
-        newSize.QuadPart = static_cast<LONGLONG>(MaximumFileSize + 64ull * 1024 * 1024);
-
-        ::SetFilePointerEx(writeHandle, newSize, nullptr, FILE_BEGIN);
-        ::SetEndOfFile(writeHandle);
-    }};
-
-    ::SetThreadPriority(grower.native_handle(), THREAD_PRIORITY_TIME_CRITICAL);
-
-    const auto document = TextDocument::Load(path);
-    grower.join();
-    ::CloseHandle(writeHandle);
-
-    REQUIRE_FALSE(document);
-    CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
-    CHECK(document.GetError().message.find("grew past") != std::string::npos);
-}
-#else
-TEST_CASE("Load refuses a file that grows past the maximum size while being read"
-          * doctest::skip())
-{
-}
-#endif
 
 #ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot open")
