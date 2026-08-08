@@ -5,12 +5,15 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Sln/ProjectContentReader.h"
+#include "Core/Sln/SlnParser.h"
 #include "Core/Sln/VcxprojReader.h"
 
 #include <pugixml.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -154,6 +157,65 @@ namespace core::sln
             for (Folder& child : folder.folders)
                 SortSolution(child);
         }
+
+        Result<Solution> ReadSlnx(const std::filesystem::path& path)
+        {
+            pugi::xml_document document;
+            const pugi::xml_parse_result parsed = document.load_file(path.c_str());
+
+            if (!parsed)
+            {
+                return Error{ErrorCode::InvalidArgument,
+                             std::format("cannot parse '{}': {}", path.string(),
+                                         parsed.description())};
+            }
+
+            const pugi::xml_node root = document.child("Solution");
+
+            if (!root)
+            {
+                return Error{ErrorCode::InvalidArgument,
+                             std::format("'{}' has no Solution element", path.string())};
+            }
+
+            Solution solution;
+            solution.path = path;
+            solution.name = fs::ToUtf8(path.stem());
+
+            const std::filesystem::path directory = path.parent_path();
+
+            // Projects declared outside any Folder belong to the solution itself.
+            ReadProjects(root, solution.root, directory, solution.projectCount);
+
+            for (const pugi::xml_node& node : root.children("Folder"))
+            {
+                const std::vector<std::string> parts = SplitFolderPath(node.attribute("Name").value());
+
+                if (parts.empty())
+                    continue;
+
+                Folder& folder = EnsureFolder(solution.root, parts);
+                ReadProjects(node, folder, directory, solution.projectCount);
+            }
+
+            return solution;
+        }
+
+        Result<Solution> ReadSlnText(const std::filesystem::path& path)
+        {
+            std::ifstream stream{path, std::ios::binary};
+
+            if (!stream.is_open())
+            {
+                return Error{ErrorCode::IoFailure,
+                             std::format("cannot open '{}'", path.string())};
+            }
+
+            std::ostringstream buffer;
+            buffer << stream.rdbuf();
+
+            return ParseSln(path, buffer.str());
+        }
     }
 
     Result<Solution> ReadSolution(const std::filesystem::path& requested)
@@ -182,51 +244,22 @@ namespace core::sln
                        [](unsigned char character)
                        { return static_cast<char>(std::tolower(character)); });
 
-        if (extension != ".slnx")
+        if (extension != ".slnx" && extension != ".sln")
         {
             return Error{ErrorCode::Unsupported,
                          std::format("'{}' is not a solution format this build can read",
                                      path.string())};
         }
 
-        pugi::xml_document document;
-        const pugi::xml_parse_result parsed = document.load_file(path.c_str());
+        Result<Solution> parsed = extension == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
 
         if (!parsed)
-        {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("cannot parse '{}': {}", path.string(),
-                                     parsed.description())};
-        }
+            return parsed;
 
-        const pugi::xml_node root = document.child("Solution");
+        Solution solution = std::move(parsed).Value();
 
-        if (!root)
-        {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' has no Solution element", path.string())};
-        }
-
-        Solution solution;
-        solution.path = path;
-        solution.name = fs::ToUtf8(path.stem());
-
-        const std::filesystem::path directory = path.parent_path();
-
-        // Projects declared outside any Folder belong to the solution itself.
-        ReadProjects(root, solution.root, directory, solution.projectCount);
-
-        for (const pugi::xml_node& node : root.children("Folder"))
-        {
-            const std::vector<std::string> parts = SplitFolderPath(node.attribute("Name").value());
-
-            if (parts.empty())
-                continue;
-
-            Folder& folder = EnsureFolder(solution.root, parts);
-            ReadProjects(node, folder, directory, solution.projectCount);
-        }
-
+        // Run after either parser, so the two formats cannot drift apart in what they
+        // hand back.
         FillContent(solution.root);
         SortSolution(solution.root);
 
