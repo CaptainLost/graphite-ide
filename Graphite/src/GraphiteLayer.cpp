@@ -146,7 +146,12 @@ namespace graphite
             if (ImGui::MenuItem("Open Solution..."))
                 OpenSolutionInteractively(m_workspace);
 
-            if (ImGui::MenuItem("Close Folder", nullptr, false, m_workspace.IsOpen()))
+            ImGui::Separator();
+
+            // "Workspace" rather than "Folder": closing drops the solution and the
+            // selection along with the folder, and the menu offers two ways to open one.
+            // Naming only the folder would leave the other two looking like they survive.
+            if (ImGui::MenuItem("Close Workspace", nullptr, false, m_workspace.IsOpen()))
                 m_workspace.Close();
 
             ImGui::Separator();
@@ -162,16 +167,25 @@ namespace graphite
             m_panels.RenderViewMenuItems();
             ImGui::Separator();
 
-            if (ImGui::BeginMenu("Ignored Files"))
+            // Nested under Git so it is obvious whose rules decide what is ignored — the
+            // answer comes from .gitignore, .git/info/exclude and the user's global
+            // configuration, and nothing in "Ignored Files" alone said so. The submenu
+            // is also where a branch indicator and file status belong when they arrive.
+            if (ImGui::BeginMenu("Git"))
             {
-                if (ImGui::MenuItem("Show", nullptr, m_ignoredDisplay == IgnoredDisplay::Show))
-                    ApplyIgnoredDisplay(IgnoredDisplay::Show, true);
+                if (ImGui::BeginMenu("Ignored Files"))
+                {
+                    if (ImGui::MenuItem("Show", nullptr, m_ignoredDisplay == IgnoredDisplay::Show))
+                        ApplyIgnoredDisplay(IgnoredDisplay::Show, true);
 
-                if (ImGui::MenuItem("Dim", nullptr, m_ignoredDisplay == IgnoredDisplay::Dim))
-                    ApplyIgnoredDisplay(IgnoredDisplay::Dim, true);
+                    if (ImGui::MenuItem("Dim", nullptr, m_ignoredDisplay == IgnoredDisplay::Dim))
+                        ApplyIgnoredDisplay(IgnoredDisplay::Dim, true);
 
-                if (ImGui::MenuItem("Hide", nullptr, m_ignoredDisplay == IgnoredDisplay::Hide))
-                    ApplyIgnoredDisplay(IgnoredDisplay::Hide, true);
+                    if (ImGui::MenuItem("Hide", nullptr, m_ignoredDisplay == IgnoredDisplay::Hide))
+                        ApplyIgnoredDisplay(IgnoredDisplay::Hide, true);
+
+                    ImGui::EndMenu();
+                }
 
                 ImGui::EndMenu();
             }
