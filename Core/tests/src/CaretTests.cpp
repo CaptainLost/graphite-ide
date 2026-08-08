@@ -108,6 +108,18 @@ TEST_CASE("Down keeps the column across a shorter line")
     CHECK(caret.offset == 12 + 5);        // column 5 of "cccccccc"
 }
 
+TEST_CASE("A stored column smaller than the actual one still wins")
+{
+    // The caret sits at offset 5 on line 0 — actual column 5 — but was built directly with
+    // a stored desiredColumn of 1. That is a real, already-set aim (not the sentinel), so
+    // Down must travel to column 1, not to the caret's current actual column of 5: line 1
+    // is "bb" at offset 9, byte 1 of it (column 1) is offset 10.
+    const TextBuffer buffer{"aaaaaaaa\nbb\ncccccccc"};
+
+    const Caret caret{5, 5, 1};
+    CHECK(Step(buffer, caret, Motion::Down).offset == 10);
+}
+
 TEST_CASE("A horizontal move resets the column the caret aims for")
 {
     const TextBuffer buffer{"aaaaaaaa\nbb\ncccccccc"};

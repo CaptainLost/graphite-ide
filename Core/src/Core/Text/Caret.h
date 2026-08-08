@@ -8,11 +8,14 @@ namespace core::text
 {
     class TextBuffer;
 
-    /// `Caret::desiredColumn` when the caret has not aimed at a column yet — a fresh
-    /// caret, or one a caller built directly rather than through `Move`/`PlaceAt`. Vertical
-    /// motion resolves it from the caret's actual current column on first use; every other
-    /// motion (and `PlaceAt`) always writes a real column, never this sentinel, so the
-    /// field means exactly one of two things: "aiming here" or "not aiming anywhere yet."
+    /// `Caret::desiredColumn` when the caret has not aimed at a column yet. A fresh caret
+    /// starts here, as does one a caller built directly rather than through `Move` or
+    /// `PlaceAt`; `SelectWordAt`, `SelectLineAt` and `SelectAll` also leave their result at
+    /// this sentinel, since a selection has no column to resume aiming at. Vertical motion
+    /// resolves it from the caret's actual current column on first use; every other
+    /// motion — `Move`'s non-vertical branches and `PlaceAt` — always writes a real column
+    /// instead, so the field means exactly one of two things: "aiming here" or "not aiming
+    /// anywhere yet."
     inline constexpr std::size_t NoDesiredColumn = std::numeric_limits<std::size_t>::max();
 
     /// Where the user is in a document, and what is selected.
