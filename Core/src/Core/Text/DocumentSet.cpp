@@ -3,6 +3,7 @@
 #include "Core/Text/DocumentSet.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/Columns.h"
 #include "Core/Text/FileProbe.h"
 
 #include <algorithm>
@@ -152,9 +153,15 @@ namespace core::text
                 auto document = TextDocument::Load(path);
 
                 if (document)
+                {
                     item.document = std::move(document).Value();
+                    item.widestColumn =
+                        WidestColumn(item.document->Buffer(), DefaultTabWidth);
+                }
                 else
+                {
                     item.failure = OpenFailure::ReadFailed;
+                }
             }
             break;
         }

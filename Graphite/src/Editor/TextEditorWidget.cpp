@@ -98,9 +98,11 @@ namespace graphite
         const float gutterWidth =
             static_cast<float>(digits) * cellWidth + kGutterPaddingX * 2.0f;
 
-        const std::size_t widest =
-            core::text::WidestColumn(buffer, core::text::DefaultTabWidth);
-        const float contentWidth = gutterWidth + static_cast<float>(widest + 1) * cellWidth;
+        // Computed once when the document loaded (OpenItem::widestColumn), not walked
+        // here every frame — that would cost a std::string allocation per line, exactly
+        // the per-frame cost the clipper below exists to avoid.
+        const float contentWidth =
+            gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
 
         const ImGuiWindowFlags flags = ImGuiWindowFlags_HorizontalScrollbar;
 

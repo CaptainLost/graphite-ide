@@ -40,6 +40,18 @@ namespace core::text
         Caret caret;
         bool preview = false;
 
+        /// The widest line in the document, in columns (see Columns.h), computed once
+        /// when the document is loaded rather than per frame — WidestColumn walks every
+        /// line and allocates a std::string for each, which is fine once but would defeat
+        /// the point of an editor that only draws its visible rows if it ran every frame.
+        ///
+        /// Nothing in this stage edits a document, so the value never goes stale here.
+        /// Whichever stage adds editing must keep this current itself: growing it when an
+        /// edit makes a line wider is cheap, but shrinking it back down after an edit that
+        /// removes the widest line requires rescanning the whole document, the same way
+        /// loading does.
+        std::size_t widestColumn = 0;
+
         /// A specific message from whatever failed underneath — ProbeFile's own text for
         /// a directory, a locked file, or one that could not be measured. Empty for the
         /// failures classified from a successful probe, where the enumerator alone

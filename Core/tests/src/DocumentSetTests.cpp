@@ -74,6 +74,24 @@ TEST_CASE("Opening a text file adds an item holding the document")
     CHECK(documents.Active() == std::optional<std::size_t>{0});
 }
 
+TEST_CASE("The widest line is measured in columns, not bytes")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "widths.txt";
+    // The Polish line is longer in bytes (9 two-byte characters, 18 bytes) than the
+    // ASCII line (11 one-byte characters, 11 bytes), but narrower in columns: 9 against
+    // 11. A widestColumn computed from byte lengths would pick the Polish line; the
+    // correct answer is the ASCII one.
+    WriteBytes(path, "\xc4\x85\xc4\x87\xc4\x99\xc5\x82\xc5\x84\xc3\xb3\xc5\x9b\xc5\xba\xc5\xbc\n"
+                     "abcdefghijk\n");
+
+    DocumentSet documents;
+
+    CHECK(documents.Open(path, true) == OpenOutcome::Opened);
+    REQUIRE(documents.Count() == 1);
+    CHECK(documents.At(0).widestColumn == 11);
+}
+
 TEST_CASE("Opening the same file twice activates it instead of duplicating it")
 {
     TempDirectory directory;
