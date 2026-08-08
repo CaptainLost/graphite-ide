@@ -6,7 +6,7 @@
 
 #include <imgui.h>
 
-namespace ide
+namespace graphite
 {
     /// Draws the solution the workspace has loaded: solution folders, projects, and — once
     /// a project reader fills them in — the folders and files inside each project.

@@ -12,13 +12,13 @@
 #include <filesystem>
 #include <memory>
 
-namespace ide
+namespace graphite
 {
     /// The layer that assembles the application: panel registry, dockspace, and menu bar.
-    class IdeLayer final : public core::Layer
+    class GraphiteLayer final : public core::Layer
     {
     public:
-        IdeLayer(std::shared_ptr<core::RingBufferSink> sink, std::filesystem::path initialFolder);
+        GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink, std::filesystem::path initialFolder);
 
         void OnAttach() override;
         void OnUpdate(float deltaSeconds) override;

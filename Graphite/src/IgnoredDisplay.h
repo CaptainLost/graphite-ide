@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace ide
+namespace graphite
 {
     /// How the file tree presents entries that git ignores.
     enum class IgnoredDisplay
@@ -12,7 +12,7 @@ namespace ide
         Hide    ///< Leave them out of the tree.
     };
 
-    /// The token written to `ide.json`. Deliberately not the enumerator name, so the
+    /// The token written to `graphite.json`. Deliberately not the enumerator name, so the
     /// stored file does not change meaning if the enumerators are ever reordered.
     [[nodiscard]] constexpr std::string_view IgnoredDisplayToString(IgnoredDisplay display)
     {

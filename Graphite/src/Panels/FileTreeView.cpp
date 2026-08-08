@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace ide
+namespace graphite
 {
     FileTreeView::FileTreeView(Workspace& workspace) : m_workspace(workspace)
     {

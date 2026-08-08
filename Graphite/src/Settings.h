@@ -4,9 +4,9 @@
 #include <string>
 #include <string_view>
 
-namespace ide
+namespace graphite
 {
-    /// Typed access to the values that outlive a session, stored in `ide.json` next to
+    /// Typed access to the values that outlive a session, stored in `graphite.json` next to
     /// `imgui.ini`. Every setter reads the file, changes one key and writes it back, so
     /// settings cannot overwrite each other.
     class Settings

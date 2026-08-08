@@ -1,4 +1,4 @@
-#include "IdeLayer.h"
+#include "GraphiteLayer.h"
 
 #include "Panels/ConsolePanel.h"
 #include "Panels/ExplorerPanel.h"
@@ -14,7 +14,7 @@
 
 #include <utility>
 
-namespace ide
+namespace graphite
 {
     namespace
     {
@@ -23,7 +23,7 @@ namespace ide
         constexpr const char* kEditorPlaceholder = "The code editor will live here.";
     }
 
-    IdeLayer::IdeLayer(std::shared_ptr<core::RingBufferSink> sink,
+    GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
                        std::filesystem::path initialFolder)
         : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder))
     {
@@ -32,7 +32,7 @@ namespace ide
         m_layout.center = {"editor"};
     }
 
-    void IdeLayer::OnAttach()
+    void GraphiteLayer::OnAttach()
     {
         m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace));
 
@@ -68,7 +68,7 @@ namespace ide
             (void)m_workspace.Open(startFolder);
     }
 
-    void IdeLayer::OnUpdate(float deltaSeconds)
+    void GraphiteLayer::OnUpdate(float deltaSeconds)
     {
         m_workspace.Update();
         m_panels.OnUpdate(deltaSeconds);
@@ -79,7 +79,7 @@ namespace ide
         UpdateFocusReload(deltaSeconds);
     }
 
-    void IdeLayer::UpdateFocusReload(float deltaSeconds)
+    void GraphiteLayer::UpdateFocusReload(float deltaSeconds)
     {
         // The process, not the main window: a panel dragged out into its own viewport is
         // a separate OS window, and working in one used to read as having left the
@@ -111,7 +111,7 @@ namespace ide
         }
     }
 
-    void IdeLayer::OnUIRender()
+    void GraphiteLayer::OnUIRender()
     {
         m_dockSpace.Begin(m_layout);
         RenderMenuBar();
@@ -122,7 +122,7 @@ namespace ide
         m_panels.OnUIRender();
     }
 
-    void IdeLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
+    void GraphiteLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
     {
         m_ignoredDisplay = display;
 
@@ -133,7 +133,7 @@ namespace ide
             Settings::SaveIgnoredDisplay(IgnoredDisplayToString(display));
     }
 
-    void IdeLayer::RenderMenuBar()
+    void GraphiteLayer::RenderMenuBar()
     {
         if (!ImGui::BeginMenuBar())
             return;
