@@ -59,13 +59,16 @@ namespace graphite
         // Named in full rather than just "Solution": the word alone would not say
         // which kind, and premake workspaces or CMake projects would each want the
         // same slot with different meaning.
-        const char* current = m_mode == Mode::Files ? "Files" : "Visual Studio Solution";
+        // "File System" rather than "Files" or "Folder": it says what you are looking at,
+        // and "folder" already means three different things in this panel — a directory on
+        // disk, a solution folder, and a filter folder inside a project.
+        const char* current = m_mode == Mode::Files ? "File System" : "Visual Studio Solution";
 
         ImGui::SetNextItemWidth(-1.0f);
 
         if (ImGui::BeginCombo("##explorerMode", current))
         {
-            if (ImGui::Selectable("Files", m_mode == Mode::Files))
+            if (ImGui::Selectable("File System", m_mode == Mode::Files))
                 SetMode(Mode::Files);
 
             if (ImGui::Selectable("Visual Studio Solution", m_mode == Mode::Solution))
