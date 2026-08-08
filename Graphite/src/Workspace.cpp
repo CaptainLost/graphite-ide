@@ -98,6 +98,16 @@ namespace graphite
                                std::format("no solution file at '{}'", solution.string())};
         }
 
+        // Refused before anything is touched. Recognising the mistake inside ReadSolution
+        // would be too late: by then the workspace has been re-rooted, the file recorded
+        // as a candidate, and the choice written to .graphite — where it would come back
+        // as a candidate on every later open.
+        if (!core::sln::IsSolutionFile(solution))
+        {
+            return core::Error{core::ErrorCode::Unsupported,
+                               std::format("'{}' is not a solution file", solution.string())};
+        }
+
         std::filesystem::path chosen = std::filesystem::absolute(solution, code);
 
         if (code)
@@ -109,8 +119,13 @@ namespace graphite
         // Inside the folder already open? Then the workspace is right as it is, and only
         // the selection changes. This is the common case: an open repository and a
         // solution somewhere within it.
-        const bool inside = IsOpen() && !chosen.lexically_relative(m_root).empty()
-                            && *chosen.lexically_relative(m_root).begin() != "..";
+        const std::filesystem::path relative =
+            IsOpen() ? chosen.lexically_relative(m_root) : std::filesystem::path{};
+
+        // Compared by path component, not by string prefix: a sibling directory whose
+        // name merely begins with the root's — C:\work beside C:\workshop — would fool a
+        // prefix test, which this codebase has already been bitten by once.
+        const bool inside = !relative.empty() && *relative.begin() != "..";
 
         if (!inside)
         {

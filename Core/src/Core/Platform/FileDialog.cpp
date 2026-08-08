@@ -124,6 +124,8 @@ namespace core
 
         return picked;
 #else
+        (void)title;
+
         return Error{ErrorCode::Unsupported,
                      "a native folder picker is not implemented on this platform"};
 #endif
@@ -152,8 +154,10 @@ namespace core
             return Error{ErrorCode::Unsupported, "cannot configure the dialog as a file picker"};
         }
 
-        // The COMDLG_FILTERSPEC array points into these strings, so they have to outlive
-        // the call rather than being built inline.
+        // The COMDLG_FILTERSPEC entries hold raw pointers into these strings, so the
+        // vector must not reallocate: moving a wstring with the small-string optimisation
+        // copies its buffer inline and every earlier pointer goes stale. The reserve is
+        // load-bearing, not a performance hint — exactly one push_back per reserved slot.
         std::vector<std::wstring> storage;
         storage.reserve(filters.size() * 2);
 

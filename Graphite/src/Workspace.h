@@ -105,8 +105,9 @@ namespace graphite
             return m_solution;
         }
 
-        /// Every solution file found in the workspace root. More than one puts a chooser
-        /// in the panel header.
+        /// The solutions on offer: those found in the workspace root, plus any the user
+        /// opened by name, which may live anywhere. More than one puts a chooser in the
+        /// panel header.
         [[nodiscard]] const std::vector<std::filesystem::path>& SolutionCandidates() const noexcept
         {
             return m_solutionCandidates;
