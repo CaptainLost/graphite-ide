@@ -92,6 +92,27 @@ namespace core::text
         void Activate(std::size_t index);
         [[nodiscard]] std::optional<std::size_t> Active() const noexcept { return m_active; }
 
+        /// Turns a preview into a permanent item, freeing the preview slot. A double
+        /// click does this, and in stage 3 so will the first edit.
+        void Promote(std::size_t index);
+
+        [[nodiscard]] std::optional<std::size_t> Preview() const;
+
+        /// What the tab should say.
+        ///
+        /// Usually the file name. When another open item shares that name, both gain
+        /// their parent directory — two indistinguishable `main.cpp` tabs is an everyday
+        /// situation in a repository with more than one project in it.
+        [[nodiscard]] std::string DisplayTitle(std::size_t index) const;
+
+        /// Rewrites every path below `from` to sit below `to`, after the workspace root
+        /// was renamed or moved on disk.
+        void RewritePaths(const std::filesystem::path& from, const std::filesystem::path& to);
+
+        /// The file went away while it was open. The item stays and keeps its content —
+        /// closing it would be the only way to lose something still in memory.
+        void MarkMissing(const std::filesystem::path& path);
+
     private:
         OpenOutcome Add(const std::filesystem::path& path, bool permanent, bool confirmed);
 

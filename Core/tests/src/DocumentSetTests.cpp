@@ -328,3 +328,193 @@ TEST_CASE("Each item carries its own caret, so switching away and back keeps the
     CHECK(documents.At(0).caret.offset == 3);
     CHECK(documents.At(1).caret.offset == 0);
 }
+
+TEST_CASE("A single click opens a preview and the next one replaces it")
+{
+    TempDirectory directory;
+    const auto first = directory.Path() / "a.txt";
+    const auto second = directory.Path() / "b.txt";
+    WriteBytes(first, "a");
+    WriteBytes(second, "b");
+
+    DocumentSet documents;
+
+    documents.Open(first, false);
+    REQUIRE(documents.Count() == 1);
+    CHECK(documents.Preview() == std::optional<std::size_t>{0});
+
+    documents.Open(second, false);
+    CHECK(documents.Count() == 1);
+    CHECK(documents.At(0).path == second);
+    CHECK(documents.Preview() == std::optional<std::size_t>{0});
+}
+
+TEST_CASE("A double click opens something that does not get replaced")
+{
+    TempDirectory directory;
+    const auto first = directory.Path() / "a.txt";
+    const auto second = directory.Path() / "b.txt";
+    WriteBytes(first, "a");
+    WriteBytes(second, "b");
+
+    DocumentSet documents;
+    documents.Open(first, true);
+    documents.Open(second, false);
+
+    CHECK(documents.Count() == 2);
+    CHECK_FALSE(documents.At(0).preview);
+    CHECK(documents.At(1).preview);
+}
+
+TEST_CASE("Promoting a preview frees the slot")
+{
+    TempDirectory directory;
+    const auto first = directory.Path() / "a.txt";
+    const auto second = directory.Path() / "b.txt";
+    WriteBytes(first, "a");
+    WriteBytes(second, "b");
+
+    DocumentSet documents;
+    documents.Open(first, false);
+    documents.Promote(0);
+
+    CHECK_FALSE(documents.Preview().has_value());
+
+    documents.Open(second, false);
+
+    CHECK(documents.Count() == 2);
+}
+
+TEST_CASE("Opening an already-open preview permanently promotes it")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "a");
+
+    DocumentSet documents;
+    documents.Open(path, false);
+    REQUIRE(documents.At(0).preview);
+
+    documents.Open(path, true);
+
+    CHECK_FALSE(documents.At(0).preview);
+    CHECK_FALSE(documents.Preview().has_value());
+}
+
+TEST_CASE("Closing the preview clears the slot")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "a");
+
+    DocumentSet documents;
+    documents.Open(path, false);
+    documents.Close(0);
+
+    CHECK_FALSE(documents.Preview().has_value());
+}
+
+TEST_CASE("A title is the file name when nothing collides with it")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "main.cpp";
+    WriteBytes(path, "a");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    CHECK(documents.DisplayTitle(0) == "main.cpp");
+}
+
+TEST_CASE("Two files of the same name both gain their parent directory")
+{
+    TempDirectory directory;
+    std::filesystem::create_directories(directory.Path() / "Core");
+    std::filesystem::create_directories(directory.Path() / "Graphite");
+
+    const auto first = directory.Path() / "Core" / "main.cpp";
+    const auto second = directory.Path() / "Graphite" / "main.cpp";
+    WriteBytes(first, "a");
+    WriteBytes(second, "b");
+
+    DocumentSet documents;
+    documents.Open(first, true);
+    documents.Open(second, true);
+
+    CHECK(documents.DisplayTitle(0) == "Core/main.cpp");
+    CHECK(documents.DisplayTitle(1) == "Graphite/main.cpp");
+}
+
+TEST_CASE("A third file with a different name is not dragged into the disambiguation")
+{
+    TempDirectory directory;
+    std::filesystem::create_directories(directory.Path() / "Core");
+
+    const auto first = directory.Path() / "Core" / "main.cpp";
+    const auto second = directory.Path() / "main.cpp";
+    const auto third = directory.Path() / "other.cpp";
+    WriteBytes(first, "a");
+    WriteBytes(second, "b");
+    WriteBytes(third, "c");
+
+    DocumentSet documents;
+    documents.Open(first, true);
+    documents.Open(second, true);
+    documents.Open(third, true);
+
+    CHECK(documents.DisplayTitle(2) == "other.cpp");
+}
+
+TEST_CASE("Paths follow the workspace root when it moves")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "a");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    documents.RewritePaths(directory.Path(), "D:/moved");
+
+    CHECK(documents.At(0).path == std::filesystem::path{"D:/moved"} / "a.txt");
+}
+
+TEST_CASE("A path outside the moved root is left alone")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "a");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    documents.RewritePaths("D:/somewhere-else", "D:/moved");
+
+    CHECK(documents.At(0).path == path);
+}
+
+TEST_CASE("A deleted file keeps its window and its content")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "still here");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    documents.MarkMissing(path);
+
+    REQUIRE(documents.Count() == 1);
+    CHECK(documents.At(0).failure == OpenFailure::Missing);
+    REQUIRE(documents.At(0).document.has_value());
+    CHECK(documents.At(0).document->Buffer().Text() == "still here");
+}
+
+TEST_CASE("Marking a file that is not open does nothing")
+{
+    DocumentSet documents;
+
+    documents.MarkMissing("D:/never-opened.txt");
+
+    CHECK(documents.Count() == 0);
+}

@@ -86,6 +86,15 @@ namespace core::text
             return OpenOutcome::Activated;
         }
 
+        // At most one preview at a time: a single click replaces the last one rather than
+        // stacking tabs up. Done before the probe so a refused file still takes the slot's
+        // place rather than leaving two tabs behind.
+        if (!permanent)
+        {
+            if (const auto preview = Preview())
+                Close(*preview);
+        }
+
         OpenItem item;
         item.path = path;
         item.preview = !permanent;
@@ -179,5 +188,72 @@ namespace core::text
     {
         m_items.clear();
         m_active.reset();
+    }
+
+    std::optional<std::size_t> DocumentSet::Preview() const
+    {
+        for (std::size_t index = 0; index < m_items.size(); ++index)
+        {
+            if (m_items[index].preview)
+                return index;
+        }
+
+        return std::nullopt;
+    }
+
+    void DocumentSet::Promote(std::size_t index)
+    {
+        if (index < m_items.size())
+            m_items[index].preview = false;
+    }
+
+    std::string DocumentSet::DisplayTitle(std::size_t index) const
+    {
+        if (index >= m_items.size())
+            return {};
+
+        const std::filesystem::path& path = m_items[index].path;
+        const std::string name = fs::ToUtf8(path.filename());
+
+        for (std::size_t other = 0; other < m_items.size(); ++other)
+        {
+            if (other == index)
+                continue;
+
+            if (fs::ToUtf8(m_items[other].path.filename()) != name)
+                continue;
+
+            // Forward slash regardless of platform: this is a label, not a path anyone
+            // will open.
+            return fs::ToUtf8(path.parent_path().filename()) + "/" + name;
+        }
+
+        return name;
+    }
+
+    void DocumentSet::RewritePaths(const std::filesystem::path& from,
+                                   const std::filesystem::path& to)
+    {
+        for (OpenItem& item : m_items)
+        {
+            const auto relative = item.path.lexically_relative(from);
+
+            // lexically_relative yields a path starting with ".." when the target is not
+            // below `from`, and an empty path when it cannot express the relationship.
+            if (relative.empty() || *relative.begin() == "..")
+                continue;
+
+            item.path = to / relative;
+        }
+    }
+
+    void DocumentSet::MarkMissing(const std::filesystem::path& path)
+    {
+        const auto index = Find(path);
+
+        if (!index)
+            return;
+
+        m_items[*index].failure = OpenFailure::Missing;
     }
 }
