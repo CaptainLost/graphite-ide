@@ -84,6 +84,11 @@ namespace core
         // meant for monospaced text but visibly skews a small round icon like the refresh
         // arrows — left off so MDI's curves render at their natural proportions.
         iconConfig.GlyphMinAdvanceX = 13.0f;
+        // MDI's webfont declares its own vertical metrics (built for CSS line-height, not
+        // for sitting on a text baseline), so merged as-is its glyphs sit visibly above the
+        // surrounding text's baseline. Nudge them down to align — see
+        // ImFontConfig::MergeMode's own doc comment, which calls this out by name.
+        iconConfig.GlyphOffset = ImVec2(0.0f, 3.0f);
         // Without this, a missing/unreadable .ttf trips ImGui's internal
         // IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
         // (and crashes) in Debug builds instead of letting the CORE_WARN below run.
