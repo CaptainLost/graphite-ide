@@ -5,16 +5,10 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Sln/SlnxEditor.h"
 
-#ifdef CORE_PLATFORM_WINDOWS
-    #include <windows.h>
-
-    // WIN32_LEAN_AND_MEAN keeps <windows.h> from reaching COM, and CoCreateGuid lives
-    // there.
-    #include <objbase.h>
-#endif
-
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
+#include <random>
 #include <fstream>
 #include <sstream>
 
@@ -37,35 +31,39 @@ namespace core::sln
 
     std::string NewGuid()
     {
-#ifdef CORE_PLATFORM_WINDOWS
-        GUID guid{};
+        // A GUID is a hundred and twenty-two random bits in a fixed layout, not a service
+        // the operating system has to provide. Generating it here rather than asking
+        // CoCreateGuid removes a platform branch, the empty result that branch produced
+        // everywhere else, and the check every caller had to carry for a case it could do
+        // nothing about — a check that would have been the whole of AddProject's behaviour
+        // on any other system.
+        //
+        // random_device seeds and mt19937_64 generates: a conforming random_device is
+        // allowed to be deterministic, and drawing every bit from it is slow where it is
+        // not. thread_local because the engine is stateful and this may be called from the
+        // UI thread and a worker.
+        static thread_local std::mt19937_64 engine{std::random_device{}()};
 
-        if (FAILED(::CoCreateGuid(&guid)))
-            return {};
+        std::uniform_int_distribution<std::uint64_t> distribution;
 
-        // The braced uppercase form both formats use. Assembled by hand rather than with
-        // StringFromGUID2 to avoid a COM allocation and a wide-to-narrow conversion for
-        // thirty-eight ASCII characters.
+        std::uint64_t high = distribution(engine);
+        std::uint64_t low = distribution(engine);
+
+        // Version 4 and variant 1. Neither solution format checks, but a value calling
+        // itself a UUID should say which kind it is.
+        high = (high & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;
+        low = (low & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;
+
         char buffer[39] = {};
 
-        std::snprintf(buffer, sizeof(buffer),
-                      "{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}",
-                      static_cast<unsigned long>(guid.Data1),
-                      static_cast<unsigned int>(guid.Data2),
-                      static_cast<unsigned int>(guid.Data3),
-                      static_cast<unsigned int>(guid.Data4[0]),
-                      static_cast<unsigned int>(guid.Data4[1]),
-                      static_cast<unsigned int>(guid.Data4[2]),
-                      static_cast<unsigned int>(guid.Data4[3]),
-                      static_cast<unsigned int>(guid.Data4[4]),
-                      static_cast<unsigned int>(guid.Data4[5]),
-                      static_cast<unsigned int>(guid.Data4[6]),
-                      static_cast<unsigned int>(guid.Data4[7]));
+        std::snprintf(buffer, sizeof(buffer), "{%08X-%04X-%04X-%04X-%012llX}",
+                      static_cast<unsigned int>(high >> 32),
+                      static_cast<unsigned int>((high >> 16) & 0xFFFFULL),
+                      static_cast<unsigned int>(high & 0xFFFFULL),
+                      static_cast<unsigned int>(low >> 48),
+                      static_cast<unsigned long long>(low & 0xFFFFFFFFFFFFULL));
 
         return std::string{buffer};
-#else
-        return {};
-#endif
     }
 
     Result<std::unique_ptr<SolutionEditor>> SolutionEditor::Open(
