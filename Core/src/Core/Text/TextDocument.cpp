@@ -104,7 +104,7 @@ namespace core::text
             return Error{ErrorCode::NotFound, "No such file: " + fs::ToUtf8(path)};
 
         if (!std::filesystem::is_regular_file(status))
-            return Error{ErrorCode::InvalidArgument, "Not a file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::InvalidArgument, "Not a file (it is a directory): " + fs::ToUtf8(path)};
 
         std::error_code sizeError;
         const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
@@ -132,13 +132,32 @@ namespace core::text
         // appending to, which grows between the file_size() call above and this read. A
         // read keyed to the earlier size would silently truncate the document instead of
         // failing loudly, so gcount() decides how much was really there, not `size`.
+        //
+        // That read still has to stop somewhere: a writer that keeps growing the file
+        // faster than this loop can be refused could otherwise turn "read the whole
+        // file" into "read forever", and even a one-off grower past the ceiling would
+        // land right back in the multi-GB-allocation failure MaximumFileSize exists to
+        // rule out — the exact contract violation the check above already refused, just
+        // reached through the read instead of the stat. So the loop is bounded by the
+        // same ceiling: once more than MaximumFileSize bytes have actually been read,
+        // the file is refused the same way an oversized stat would have been.
         std::string content;
         content.reserve(static_cast<std::size_t>(size));
 
         std::array<char, 65536> chunk{};
 
         while (stream.read(chunk.data(), static_cast<std::streamsize>(chunk.size())) || stream.gcount() > 0)
+        {
             content.append(chunk.data(), static_cast<std::size_t>(stream.gcount()));
+
+            if (content.size() > MaximumFileSize)
+            {
+                return Error{ErrorCode::InvalidArgument,
+                             "File is too large to open (grew past "
+                                 + std::to_string(MaximumFileSize) + " bytes while being read): "
+                                 + fs::ToUtf8(path)};
+            }
+        }
 
         if (stream.bad())
             return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
