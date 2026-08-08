@@ -57,8 +57,10 @@ namespace core::sln
                                                        const std::string& folder) = 0;
 
         /// Writes to a temporary, reads it back with this build's own parser to check the
-        /// change is really there, and only then replaces the file. A malformed write
-        /// therefore never reaches the file the user's Visual Studio has open.
+        /// result is still a solution this build can read, and only then replaces the file.
+        /// A malformed write therefore never reaches the file the user's Visual Studio has
+        /// open. The read-back does not check that the change is present — only that what
+        /// was written parses.
         [[nodiscard]] virtual Result<void> Save() = 0;
 
     protected:

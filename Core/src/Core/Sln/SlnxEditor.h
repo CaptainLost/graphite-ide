@@ -28,8 +28,9 @@ namespace core::sln
         [[nodiscard]] Result<void> Save() override;
 
     private:
-        /// Offset of the `<Solution>` or `<Folder>` element the logical path names, and
-        /// whether it had to be created. Empty `folder` means the solution element.
+        /// Offset of the `<Solution>` or `<Folder>` element the logical path names — pugixml's,
+        /// one past the '<'. Empty `folder` means the solution element. A folder the solution
+        /// does not have is an error here; creating it is the caller's decision.
         [[nodiscard]] Result<std::size_t> FindContainer(const std::string& folder) const;
 
         /// Offset of the `<Project>` element naming this file, or an error when the

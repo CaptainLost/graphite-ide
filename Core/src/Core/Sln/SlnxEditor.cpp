@@ -79,18 +79,23 @@ namespace core::sln
         }
 
         /// Removes the element beginning at `offset` — pugixml's, one past the '<' — and
-        /// its line with it when nothing else shares that line, so no blank one is left
-        /// behind.
+        /// the lines it occupies with it when nothing else shares them, so no blank line is
+        /// left behind.
         void EraseElement(std::string& text, std::size_t offset, std::string_view name)
         {
             const std::size_t begin = offset - 1;   // back over the '<'
             const std::size_t end = text::ElementEnd(text, offset, name);
 
-            const auto [lineBegin, lineEnd] = text::LineExtent(text, begin);
-            const bool aloneOnItsLine = text.find_first_not_of(" \t", lineBegin) == begin
-                                        && text.find_first_not_of(" \t\r\n", end) >= lineEnd;
+            // Both ends are needed: an element with children spans several lines, and
+            // measuring the span from its first line alone erases that one line and leaves
+            // the children and the orphaned closing tag behind.
+            const std::size_t lineBegin = text::LineExtent(text, begin).first;
+            const std::size_t lineEnd = text::LineExtent(text, end).second;
 
-            if (aloneOnItsLine)
+            const bool aloneOnItsLines = text.find_first_not_of(" \t", lineBegin) == begin
+                                         && text.find_first_not_of(" \t\r\n", end) >= lineEnd;
+
+            if (aloneOnItsLines)
                 text.erase(lineBegin, lineEnd - lineBegin);
             else
                 text.erase(begin, end - begin);
@@ -107,7 +112,7 @@ namespace core::sln
         Parsed parsed{m_text};
 
         if (!parsed.ok)
-            return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+            return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
         std::filesystem::path wanted = project.lexically_normal();
         wanted.make_preferred();
@@ -140,7 +145,7 @@ namespace core::sln
         Parsed parsed{m_text};
 
         if (!parsed.ok)
-            return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+            return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
         const pugi::xml_node root = parsed.document.child("Solution");
 
@@ -188,8 +193,11 @@ namespace core::sln
             // and Folder.
             std::size_t nameEnd = offset;
 
+            // A container written with its attributes on the next line ends its name at the
+            // line break, so both terminators belong here too.
             while (nameEnd < m_text.size() && m_text[nameEnd] != ' ' && m_text[nameEnd] != '\t'
-                   && m_text[nameEnd] != '>' && m_text[nameEnd] != '/')
+                   && m_text[nameEnd] != '\r' && m_text[nameEnd] != '\n' && m_text[nameEnd] != '>'
+                   && m_text[nameEnd] != '/')
             {
                 ++nameEnd;
             }
@@ -211,6 +219,20 @@ namespace core::sln
     Result<void> SlnxEditor::AddProject(const std::filesystem::path& project,
                                         const std::string& folder)
     {
+        // A solution names its projects relatively, and there is no relative path from one
+        // drive to another: lexically_relative gives back nothing at all. Writing that
+        // empty string produces a Path="" entry the reader then skips, so the garbage
+        // survives every check that follows.
+        const std::string relative = RelativeProjectPath(m_path, project);
+
+        if (relative.empty())
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         std::format("'{}' is not under the same root as the solution, so the "
+                                     "solution cannot name it",
+                                     project.string())};
+        }
+
         std::error_code code;
 
         if (!std::filesystem::is_regular_file(project, code))
@@ -224,6 +246,16 @@ namespace core::sln
         {
             return Error{ErrorCode::InvalidArgument,
                          std::format("'{}' is already in the solution", project.string())};
+        }
+
+        // Documented as a failure every caller treats as one; this is the caller that has
+        // to mean it, rather than writing an Id="" that nothing downstream can key off.
+        const std::string id = NewGuid();
+
+        if (id.empty())
+        {
+            return Error{ErrorCode::Unsupported,
+                         "this build cannot generate the identifier a project needs"};
         }
 
         auto container = FindContainer(folder);
@@ -244,8 +276,8 @@ namespace core::sln
         if (!container)
             return container.GetError();
 
-        const std::string element = std::format(R"(<Project Path="{}" Id="{}" />)",
-                                                RelativeProjectPath(m_path, project), NewGuid());
+        const std::string element =
+            std::format(R"(<Project Path="{}" Id="{}" />)", relative, id);
 
         InsertChild(container.Value(), element);
 
@@ -320,7 +352,7 @@ namespace core::sln
             Parsed parsed{m_text};
 
             if (!parsed.ok)
-                return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+                return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
             const std::string wanted = "/" + folder + "/";
 
@@ -379,7 +411,7 @@ namespace core::sln
         Parsed parsed{m_text};
 
         if (!parsed.ok)
-            return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+            return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
         // Offset of the Name attribute's value, and how long it is.
         std::vector<std::pair<std::size_t, std::size_t>> edits;
@@ -434,7 +466,7 @@ namespace core::sln
             Parsed parsed{m_text};
 
             if (!parsed.ok)
-                return Error{ErrorCode::InvalidArgument, "the solution can no longer be parsed"};
+                return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
             for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
             {
