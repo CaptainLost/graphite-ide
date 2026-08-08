@@ -17,13 +17,20 @@ namespace core::text
         Utf8Bom,
         Utf16Le,
         Utf16Be,
-        /// Not valid UTF-8 and carrying no BOM that explains why. The bytes are kept as
-        /// they came and the document opens read-only.
+        /// Not valid UTF-8 and carrying no BOM that explains why. The document opens
+        /// read-only, and its bytes are kept as they came except for line-ending
+        /// normalisation, which runs regardless of validity — a mixed-ending read-only
+        /// file still comes back with its endings unified, not byte-identical.
         Unknown
     };
 
     /// Length of the byte order mark starting `bytes`, or 0 when there is none.
     [[nodiscard]] std::size_t BomLength(std::string_view bytes);
+
+    /// Length of the byte order mark for an already-detected encoding. Lets a caller
+    /// that already ran DetectEncoding reuse the result instead of scanning the bytes a
+    /// second time.
+    [[nodiscard]] std::size_t BomLength(Encoding encoding);
 
     /// The encoding the leading bytes declare. Reads the BOM only, never the content, so
     /// a file with no BOM is reported as Utf8 whether or not it validates — deciding

@@ -21,16 +21,26 @@ namespace core::text
 
     std::size_t BomLength(std::string_view bytes)
     {
-        switch (DetectEncoding(bytes))
+        return BomLength(DetectEncoding(bytes));
+    }
+
+    std::size_t BomLength(Encoding encoding)
+    {
+        // No default: fatalwarnings turns a missing case here into a build error the
+        // moment a new encoding is added, the same guarantee EncodingName relies on.
+        switch (encoding)
         {
         case Encoding::Utf8Bom:
             return 3;
         case Encoding::Utf16Le:
         case Encoding::Utf16Be:
             return 2;
-        default:
-            return 0;
+        case Encoding::Utf8:
+        case Encoding::Unknown:
+            break;
         }
+
+        return 0;
     }
 
     Encoding DetectEncoding(std::string_view bytes)
