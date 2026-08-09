@@ -121,16 +121,40 @@ namespace graphite
         if (zoom != 0.0f)
             SetEditorFontSize(m_editorFontSize + zoom);
 
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_0, false))
+        // ImGui::Shortcut, not a raw IsKeyPressed(..., false) plus a manual KeyCtrl
+        // check: Shortcut() matches the modifier set exactly (so Ctrl+Alt+= no longer
+        // also zooms) and routes through the same key-ownership machinery InputText
+        // uses to claim the keyboard, so these do not fire while the file/folder rename
+        // field (FileTreeView, SolutionTreeView) is active. RouteGlobal is needed
+        // because this runs after every window this frame has already Begin/End'd, so
+        // there is no "current" window whose focus a RouteFocused check could compare
+        // against. Each pair (main key, keypad key) is evaluated unconditionally so
+        // routing is registered for both even when the other already fired this frame -
+        // a short-circuited `||` would skip registering the second on any frame the
+        // first was pressed, corrupting its routing for the next frame.
+        //
+        // The View menu's Zoom In/Out/Reset items show these same combinations as their
+        // shortcut text, and both routes end at SetEditorFontSize, so a key press and a
+        // menu click always agree on what "zoom in", "zoom out" and "reset" mean.
+        const bool resetZoom = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_0, ImGuiInputFlags_RouteGlobal);
+        const bool resetZoomKeypad =
+            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Keypad0, ImGuiInputFlags_RouteGlobal);
+
+        if (resetZoom || resetZoomKeypad)
             SetEditorFontSize(kDefaultEditorFontSize);
 
-        // The View menu's Zoom In/Out items show these same combinations as their
-        // shortcut text, and both routes end at SetEditorFontSize, so a key press and a
-        // menu click always agree on what "zoom in" means.
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Equal, false))
+        const bool zoomIn = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Equal, ImGuiInputFlags_RouteGlobal);
+        const bool zoomInKeypad =
+            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd, ImGuiInputFlags_RouteGlobal);
+
+        if (zoomIn || zoomInKeypad)
             SetEditorFontSize(m_editorFontSize + kEditorFontSizeStep);
 
-        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Minus, false))
+        const bool zoomOut = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Minus, ImGuiInputFlags_RouteGlobal);
+        const bool zoomOutKeypad =
+            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract, ImGuiInputFlags_RouteGlobal);
+
+        if (zoomOut || zoomOutKeypad)
             SetEditorFontSize(m_editorFontSize - kEditorFontSizeStep);
     }
 
