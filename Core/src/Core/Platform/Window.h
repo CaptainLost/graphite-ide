@@ -29,7 +29,9 @@ namespace core
         virtual void RequestClose() = 0;
 
         /// Withdraws a close the user asked for, so a layer can put a question on screen
-        /// first. Harmless when no close is pending.
+        /// first. Harmless when no close is pending. The clear is permanent — nothing
+        /// re-raises the flag on its own — so the caller owns asking again later via
+        /// RequestClose().
         virtual void CancelClose() = 0;
 
         virtual void FramebufferSize(int& width, int& height) const = 0;
