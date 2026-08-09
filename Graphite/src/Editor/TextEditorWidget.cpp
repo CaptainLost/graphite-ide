@@ -343,9 +343,11 @@ namespace graphite
             // use TextDisabled at full strength.
             const ImU32 guideColour = ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.35f);
 
-            // Pinned like the rest of the gutter (see numberX below): the number column
-            // sits between the two reserved margins, and only it draws a background or
-            // text — the margins stay empty until the debugger and folding land.
+            // The number is right-aligned within its own column, which sits between the
+            // two reserved margins — but the opaque fill below covers the whole gutter,
+            // margins included: the gutter does not scroll while the guides, selection,
+            // current-line highlight and glyphs behind it do, so anything short of the
+            // full width would leave scrolled content showing through the margins.
             const float numberColumnX0 = origin.x + scrollX + breakpointColumnWidth;
             const float numberColumnX1 = numberColumnX0 + numberColumnWidth;
 
@@ -422,16 +424,17 @@ namespace graphite
                         draw->AddText(ImVec2(textX, y), textColour, expanded.c_str());
                     }
 
-                    // Drawn last and offset by the horizontal scroll, so the numbers stay
-                    // pinned to the left while the text slides under them. Both the fill
-                    // and the number itself stay inside the number column — the reserved
-                    // margins on either side draw nothing.
+                    // Drawn last and offset by the horizontal scroll, so the gutter stays
+                    // pinned to the left while the text slides under it. The fill spans
+                    // the whole gutter — both reserved margins included — so nothing
+                    // scrolled draws through where they sit; the number itself stays
+                    // right-aligned inside its own column.
                     const std::string number = std::to_string(line + 1);
                     const float numberX =
                         numberColumnX1 - kGutterPaddingX - ImGui::CalcTextSize(number.c_str()).x;
 
-                    draw->AddRectFilled(ImVec2(numberColumnX0, y),
-                                        ImVec2(numberColumnX1, y + lineHeight),
+                    draw->AddRectFilled(ImVec2(origin.x + scrollX, y),
+                                        ImVec2(origin.x + scrollX + gutterWidth, y + lineHeight),
                                         ImGui::GetColorU32(ImGuiCol_WindowBg));
                     draw->AddText(ImVec2(numberX, y),
                                   line == caretPosition.line ? textColour : gutterColour,

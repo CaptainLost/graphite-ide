@@ -54,11 +54,18 @@ TEST_CASE("IndentDepth reports the column of the first non-whitespace character"
         CHECK(IndentDepth("", 4) == 0);
     }
 
-    SUBCASE("a line whose first character is non-ASCII")
+    SUBCASE("a tab followed by a non-ASCII character")
     {
-        // "ąb" — no leading whitespace, so depth is 0 whatever the character is.
-        const std::string line = "\xC4\x85""b";
-        CHECK(IndentDepth(line, 4) == 0);
+        // "\tą" — a tab, then a two-byte 'ą' that ends the indentation. The tab is one
+        // byte but advances a full four columns, so the byte offset of 'ą' (1) and its
+        // column (4) disagree; an implementation that returned the raw byte offset of
+        // the first non-whitespace byte — "counting UTF-8 bytes instead of cells" —
+        // would report 1 here, not 4. The line's own first test, "no leading
+        // whitespace", cannot catch that: IndentDepth returns 0 before doing any
+        // per-byte column work at all, so a byte-counting implementation would have
+        // passed it by coincidence.
+        const std::string line = "\t\xC4\x85";
+        CHECK(IndentDepth(line, 4) == 4);
     }
 }
 
@@ -130,6 +137,27 @@ TEST_CASE("IndentDepths resolves blank lines against the lines around them")
         CHECK(depths[0] == 4);
         CHECK(depths[1] == 0);
         CHECK(depths[2] == 0);
+    }
+
+    SUBCASE("a run of consecutive blank lines all resolve to the same shallower depth")
+    {
+        // Three blanks between an eight-deep line and a four-deep one: every one of
+        // them is equidistant from "above" and "below" in the sense that matters —
+        // each carries the same nearest-above (8) and nearest-below (4) as its
+        // neighbours, not a value that decays across the run. This is the case a
+        // scan-outward-per-blank-line implementation would either get wrong (by
+        // averaging or walking only a fixed distance) or turn quadratic on, where the
+        // two-pass carry used here stays linear and exact by construction.
+        const TextBuffer buffer{"        return;\n\n\n\n    x();"};
+
+        const std::vector<std::size_t> depths = IndentDepths(buffer, 4);
+
+        REQUIRE(depths.size() == 5);
+        CHECK(depths[0] == 8);
+        CHECK(depths[1] == 4);
+        CHECK(depths[2] == 4);
+        CHECK(depths[3] == 4);
+        CHECK(depths[4] == 4);
     }
 
     SUBCASE("a document that is entirely blank lines has depth 0 throughout")
