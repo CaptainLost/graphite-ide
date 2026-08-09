@@ -387,7 +387,7 @@ namespace graphite
                     core::fs::ToUtf8(m_deleteCandidate.filename()).c_str());
         ImGui::Spacing();
 
-        if (ImGui::Button("Move to Recycle Bin", ImVec2(160.0f, 0.0f)))
+        if (ImGui::Button("Move"))
         {
             if (const auto removed = core::fs::MoveToRecycleBin(m_deleteCandidate); !removed)
                 CORE_ERROR("{}", removed.GetError().message);
@@ -400,7 +400,7 @@ namespace graphite
 
         ImGui::SameLine();
 
-        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
+        if (ImGui::Button("Cancel"))
         {
             m_deleteCandidate.clear();
             ImGui::CloseCurrentPopup();
