@@ -16,7 +16,8 @@ namespace core::text
 
     /// Every function here returns whether the document changed, leaves the caret,
     /// OpenItem::widestColumn, OpenItem::widestLine and OpenItem::indentDepths consistent
-    /// with the new content, and does nothing at all to a read-only document.
+    /// with the new content, and — with the deliberate exception of Undo and Redo, which
+    /// create no content of their own — does nothing at all to a read-only document.
     ///
     /// They take OpenItem rather than TextDocument because one edit touches four things
     /// at once — the content, the caret and the two caches — and the caches live here.
@@ -46,6 +47,13 @@ namespace core::text
     /// Here rather than on TextBuffer because reversing an edit invalidates exactly what
     /// making one does, and two paths maintaining the same invariants is how they drift
     /// apart.
+    ///
+    /// These two run on a read-only document, unlike everything else here. Read-only means
+    /// "the bytes are in some other encoding, so inserting UTF-8 among them would corrupt
+    /// the file", and these introduce no bytes — they restore a whole content the buffer
+    /// already held. Refusing them would mean a file that turned read-only underneath the
+    /// editor (a clean UTF-8 file rewritten as Latin-1, reloaded silently) could not be
+    /// undone, which is the very thing the silent reload is justified by.
     bool Undo(OpenItem& item);
     bool Redo(OpenItem& item);
 

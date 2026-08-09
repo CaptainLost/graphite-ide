@@ -5,7 +5,13 @@
 #include "Core/Text/Indent.h"
 #include "Core/Text/TextDocument.h"
 
+#include "TempDirectory.h"
+
 #include <doctest/doctest.h>
+
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 namespace
 {
@@ -184,6 +190,53 @@ TEST_CASE("A read-only document refuses every edit")
     CHECK_FALSE(core::text::DeleteBackward(item));
     CHECK_FALSE(core::text::DeleteForward(item));
     CHECK(item.document->Buffer().Text() == "ab\x80xy");
+}
+
+TEST_CASE("A reload that turns the document read-only can still be undone and redone")
+{
+    // The one class of reload where what is on screen genuinely changes character: a
+    // clean UTF-8 file rewritten by another tool in some other encoding. The reload
+    // happens without asking, and the design justifies that precisely by the reload
+    // being undoable — so it has to be, even though the document is read-only afterwards.
+    TempDirectory temp;
+    const std::filesystem::path path = temp.MakeFile("sample.txt", "hello\n");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+
+    core::text::OpenItem item;
+    item.document = std::move(loaded).Value();
+    core::text::RefreshDerived(item);
+    REQUIRE_FALSE(item.document->IsReadOnly());
+
+    {
+        // Latin-1: 0x80 is a lone continuation byte, so the content is no longer valid
+        // UTF-8 and reloading marks the document read-only.
+        const std::string latin1 = "ab\x80xy\n";
+        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+        stream.write(latin1.data(), static_cast<std::streamsize>(latin1.size()));
+    }
+
+    REQUIRE(item.document->ReloadFromDisk());
+    REQUIRE(item.document->IsReadOnly());
+    REQUIRE(item.document->Buffer().Text() == "ab\x80xy\n");
+
+    CHECK(core::text::Undo(item));
+    CHECK(item.document->Buffer().Text() == "hello\n");
+    CheckDerivedCachesAreCorrect(item);
+
+    // And what comes back is writable bytes, not a mixture: undo restores a whole content
+    // the buffer already held rather than inserting anything into the one on screen,
+    // which is why the read-only flag has no business stopping it.
+    CHECK(item.document->Bytes() == "hello\n");
+
+    CHECK(core::text::Redo(item));
+    CHECK(item.document->Buffer().Text() == "ab\x80xy\n");
+    CHECK(item.document->Bytes() == "ab\x80xy\n");
+
+    // Read-only still means read-only for everything that creates new content.
+    CHECK_FALSE(core::text::InsertText(item, "z"));
+    CHECK_FALSE(core::text::InsertNewline(item, {}));
 }
 
 TEST_CASE("A line inserted above unrelated content keeps that content's indent depth")

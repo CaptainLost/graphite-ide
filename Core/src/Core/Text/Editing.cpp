@@ -273,7 +273,18 @@ namespace core::text
 
     bool Undo(OpenItem& item)
     {
-        if (!Editable(item) || !item.document->Buffer().Undo())
+        // Deliberately not guarded by Editable. The read-only flag exists to stop UTF-8
+        // being inserted among bytes in some other encoding, and reversing an edit the
+        // buffer already recorded introduces no new bytes: every state in the history is
+        // one the buffer legitimately held - a whole content from a load or a reload, or
+        // the result of edits made while the document was editable - so Bytes() round
+        // trips from any of them.
+        //
+        // Without this, a reload that turns the document read-only cannot be undone. A
+        // clean UTF-8 file rewritten by another tool as Latin-1 reloads silently, which
+        // the design justifies precisely by the reload being undoable; the previous text
+        // would otherwise sit on the undo stack unreachable.
+        if (!item.document || !item.document->Buffer().Undo())
             return false;
 
         TextBuffer& buffer = item.document->Buffer();
@@ -290,7 +301,9 @@ namespace core::text
 
     bool Redo(OpenItem& item)
     {
-        if (!Editable(item) || !item.document->Buffer().Redo())
+        // Ungated for the same reason as Undo above: it only ever restores a state the
+        // buffer already held.
+        if (!item.document || !item.document->Buffer().Redo())
             return false;
 
         TextBuffer& buffer = item.document->Buffer();
