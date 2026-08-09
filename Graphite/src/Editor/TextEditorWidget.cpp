@@ -108,7 +108,15 @@ namespace graphite
         const float contentWidth = gutterWidth + kGutterPaddingX
             + static_cast<float>(item.widestColumn + 1) * cellWidth;
 
-        const ImGuiWindowFlags flags = ImGuiWindowFlags_HorizontalScrollbar;
+        // NoNavInputs matters as much as the scrollbar flag: with ImGui's keyboard
+        // navigation on and no navigable item inside this child, the arrow keys, Page
+        // Up/Down and Home/End would all additionally be consumed by ImGui's own
+        // scroll-the-window fallback (Home/End jump straight to the document's start or
+        // end via SetScrollY) and fight the caret-driven scrolling below in the same
+        // frame. NoNavInputs makes those fallbacks return early while leaving window
+        // focus and IsWindowFocused() working exactly as before.
+        const ImGuiWindowFlags flags =
+            ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoNavInputs;
 
         if (ImGui::BeginChild("##EditorSurface", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, flags))
         {
@@ -128,12 +136,48 @@ namespace graphite
             const std::size_t pageLines = static_cast<std::size_t>(
                 std::max(1.0f, ImGui::GetWindowHeight() / lineHeight));
 
-            // A click anywhere in the surface takes keyboard focus, which is what makes
-            // the arrow keys reach this window rather than the dockspace.
-            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                ImGui::SetKeyboardFocusHere();
+            // An invisible button the size of the whole scrollable surface, purely so the
+            // mouse handling below can ride ImGui's own button latch instead of building
+            // one by hand. Two things fall out of that for free:
+            //
+            // - IsItemActive() stays true for as long as the button is held, no matter
+            //   where the mouse strays afterward. Checking window hover instead (as a
+            //   first version of this code did) meant a drag that wandered over a
+            //   sibling split's editor handed that *other* document IsWindowHovered() &&
+            //   IsMouseDown() == true on that frame, and it would place its own caret —
+            //   input reaching a document the user is not looking at, by mouse instead of
+            //   by key. IsItemActive() belongs to the item the press started on and
+            //   nothing reassigns it until release, so the drag stays with the document
+            //   it began in.
+            // - IsItemActivated() is true on exactly the one frame the press lands, which
+            //   replaces the old "hovered && clicked" check with one that is already
+            //   scoped to this surface.
+            const ImVec2 surfaceSize(std::max(contentWidth, ImGui::GetWindowWidth()),
+                                     static_cast<float>(buffer.LineCount()) * lineHeight);
+            ImGui::InvisibleButton("##EditorInput", surfaceSize);
+            ImGui::SetCursorScreenPos(origin);
 
-            if (ImGui::IsWindowHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            const bool pressedThisFrame = ImGui::IsItemActivated();
+            const bool held = ImGui::IsItemActive();
+
+            // No explicit focus call is needed here: ButtonBehavior (imgui_widgets.cpp,
+            // around line 630) calls FocusWindow(window) itself the moment a press claims
+            // ActiveId, with `window` being the current window at that point in the code —
+            // this child, not its parent tab — which is exactly what makes the arrow keys
+            // reach this document rather than the dockspace after a click.
+
+            // Only a frame that actually presses the button computes a click, and only a
+            // frame where the mouse has moved since the press computes a drag — never a
+            // frame where the button is merely still held with the mouse motionless.
+            // Without that second condition, every frame between a double or triple
+            // click's press and its release (a click spans several frames at 60 Hz) would
+            // fall into the drag branch below and overwrite the word or line SelectWordAt
+            // / SelectLineAt just selected with PlaceAt(..., true, ...) at the still
+            // stationary mouse position, collapsing the selection to nothing before the
+            // button is ever released.
+            const bool dragging = held && ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+
+            if (pressedThisFrame || dragging)
             {
                 const ImVec2 mouse = ImGui::GetMousePos();
                 const auto row =
@@ -149,7 +193,7 @@ namespace graphite
                     + core::text::ByteOfColumn(buffer.LineText(line), column,
                                                core::text::DefaultTabWidth);
 
-                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                if (pressedThisFrame)
                 {
                     const int clicks = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left);
 
@@ -182,7 +226,11 @@ namespace graphite
             {
                 const ImGuiIO& io = ImGui::GetIO();
                 const bool shift = io.KeyShift;
-                const bool control = io.KeyCtrl;
+                // On Windows, AltGr reports as Ctrl+Alt, not as a key of its own — so
+                // typing a Polish letter that needs AltGr (ą, ć, ę, ...) would otherwise
+                // read as Ctrl+<letter> here. Excluding KeyAlt keeps every shortcut in
+                // this block, not just Ctrl+A and Ctrl+C, from firing on those letters.
+                const bool control = io.KeyCtrl && !io.KeyAlt;
 
                 struct Binding
                 {
