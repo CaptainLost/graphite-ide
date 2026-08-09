@@ -6,11 +6,14 @@
 
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace core;
 
@@ -55,6 +58,90 @@ TEST_CASE("A file created in the watched directory is reported")
 
     REQUIRE_FALSE(changes.empty());
     CHECK(changes[0] == temp.Path());
+}
+
+namespace
+{
+    /// Keeps every core busy for as long as it lives.
+    ///
+    /// The window this file's next test is about is the gap before the watcher's worker
+    /// thread is first scheduled, so it opens far more often when the machine has
+    /// something else to run. Without this the defect hid: the first start in a process
+    /// is slow enough to lose the race about one time in seven, but the ones after it
+    /// are warm and lost it about one time in a hundred, which no practical number of
+    /// rounds turns into a reliable failure.
+    class CpuLoad
+    {
+    public:
+        CpuLoad()
+        {
+            // Two at minimum: on a machine reporting one core there would otherwise be no
+            // competition at all, and the test would quietly stop testing anything.
+            const unsigned count = std::max(2u, std::thread::hardware_concurrency());
+
+            for (unsigned i = 0; i < count; ++i)
+            {
+                m_threads.emplace_back(
+                    [this]
+                    {
+                        // Read through an atomic so the compiler cannot decide the loop
+                        // has no effect and delete it.
+                        while (!m_stop.load(std::memory_order_relaxed))
+                        {
+                        }
+                    });
+            }
+        }
+
+        ~CpuLoad()
+        {
+            m_stop.store(true, std::memory_order_relaxed);
+
+            for (auto& thread : m_threads)
+                thread.join();
+        }
+
+        CpuLoad(const CpuLoad&) = delete;
+        CpuLoad& operator=(const CpuLoad&) = delete;
+
+    private:
+        std::atomic<bool> m_stop{false};
+        std::vector<std::thread> m_threads;
+    };
+}
+
+// No comma in the name on purpose: doctest's -tc filter treats one as a separator
+// between patterns, so a name containing it cannot be selected on its own.
+TEST_CASE("A file created the instant Start returns is reported on every start")
+{
+    const CpuLoad load;
+
+    // The case above already covers this, but only by accident of timing: it starts one
+    // watcher, and when Start returned before the watch was armed it still passed six
+    // times in seven. Twenty starts in a row, each with the cores busy, turn that coin
+    // toss into a near-certainty, so a regression shows up as a failure rather than as an
+    // occasional red run nobody can reproduce.
+    constexpr int kRounds = 20;
+
+    for (int round = 0; round < kRounds; ++round)
+    {
+        CAPTURE(round);
+
+        TempDirectory temp;
+
+        auto watcher = DirectoryWatcher::Start(temp.Path());
+        REQUIRE(watcher.HasValue());
+
+        // Nothing at all between these two lines on purpose. That gap is the defect: the
+        // watch has to be armed by the time Start hands the watcher back, not shortly
+        // afterwards. Do not "stabilise" this with a sleep — it would test nothing.
+        temp.MakeFile("created.txt", "x");
+
+        const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+
+        REQUIRE_FALSE(changes.empty());
+        CHECK(changes[0] == temp.Path());
+    }
 }
 
 TEST_CASE("A file created in a subdirectory reports that subdirectory")

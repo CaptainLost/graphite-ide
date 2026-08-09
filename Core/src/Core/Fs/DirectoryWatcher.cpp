@@ -20,6 +20,14 @@ namespace core
         constexpr DWORD kFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
                                   FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE;
 
+        /// How long Start waits for the worker to arm the watch. All the worker does
+        /// first is create an event and issue one read — microseconds of work — so this is
+        /// not a budget for slow machines but a ceiling on a thread that was never
+        /// scheduled at all. Ten seconds is far beyond any plausible scheduling delay, and
+        /// short enough that a caller which somehow hits it gets an error rather than an
+        /// application that appears to have hung while opening a folder.
+        constexpr std::chrono::seconds kArmTimeout{10};
+
         /// Git rewrites files under .git constantly, so anything inside it is dropped —
         /// but `.git` appearing is how a `git init` in a terminal becomes visible, so the
         /// directory itself passes. Hence "a component other than the last".
@@ -95,8 +103,31 @@ namespace core
         watcher->m_watchedPath = watcher->QueryHandlePath();
         watcher->m_lastMoveCheck = ChangeCollector::Clock::now();
 
+        // Taken before the thread exists, so there is no race over who reaches the shared
+        // state of the promise first.
+        std::future<Result<void>> armed = watcher->m_armed.get_future();
+
         // Started last: the thread reads the members above, so they must all be set.
         watcher->m_thread = std::thread{[raw = watcher.get()] { raw->Run(); }};
+
+        // The handle alone records nothing. Windows begins buffering changes for a
+        // directory only once a ReadDirectoryChangesW has been issued against it, and that
+        // first read happens on the worker — so returning here would hand back a watcher
+        // that is blind for as long as it takes the new thread to be scheduled, and
+        // anything created in that window would never be reported at all. Wait for the
+        // worker to say the watch is armed, or to say it never will be.
+        if (armed.wait_for(kArmTimeout) != std::future_status::ready)
+        {
+            // Returning destroys `watcher`, whose destructor joins the worker. That is the
+            // right thing even here: leaking a thread that still holds the handle would be
+            // worse, and a worker this late is one that has not run yet rather than one
+            // that is stuck, so it finishes as soon as it is scheduled.
+            return Error{ErrorCode::IoFailure,
+                         std::format("timed out arming the watch on '{}'", root.string())};
+        }
+
+        if (const Result<void> outcome = armed.get(); !outcome)
+            return outcome.GetError();
 
         return watcher;
 #else
@@ -116,6 +147,32 @@ namespace core
             ~RunningFlag() { flag.store(false); }
         } runningFlag{m_running};
 
+        // Start is blocked until this is answered, so every way out of this function
+        // before the watch is armed has to answer it — including ones added later.
+        // Answering from a destructor is what makes that true by construction rather than
+        // by remembering; the paths that know better say so first and this becomes a
+        // no-op, since only the first answer counts.
+        struct ArmSignal
+        {
+            std::promise<Result<void>>& promise;
+            bool answered = false;
+
+            void Report(Result<void> outcome)
+            {
+                if (answered)
+                    return;
+
+                answered = true;
+                promise.set_value(std::move(outcome));
+            }
+
+            ~ArmSignal()
+            {
+                Report(Error{ErrorCode::IoFailure,
+                             "the watcher thread stopped before the watch was armed"});
+            }
+        } armSignal{m_armed};
+
 #ifdef CORE_PLATFORM_WINDOWS
         // DWORD-aligned as ReadDirectoryChangesW requires; a vector<char> would not be.
         std::vector<DWORD> buffer(kBufferBytes / sizeof(DWORD));
@@ -124,7 +181,11 @@ namespace core
 
         if (ioEvent == nullptr)
         {
-            CORE_ERROR("Cannot create the watcher I/O event");
+            // Reported to Start rather than only logged: this happens before the watch is
+            // armed, so the caller is still waiting and can be told the truth.
+            armSignal.Report(
+                Error{ErrorCode::IoFailure, "cannot create the watcher I/O event"});
+
             return;
         }
 
@@ -140,10 +201,27 @@ namespace core
                                          kBufferBytes, TRUE, kFilter, &ignored, &overlapped,
                                          nullptr))
             {
-                CORE_WARN("Stopped watching '{}': the directory is no longer readable",
-                          m_root.string());
+                // On the first pass Start is still waiting and turns this into an error the
+                // caller can act on, so logging here as well would say the same thing
+                // twice. Later there is no one left to tell, and the log is all there is.
+                if (armSignal.answered)
+                {
+                    CORE_WARN("Stopped watching '{}': the directory is no longer readable",
+                              m_root.string());
+                }
+
+                armSignal.Report(Error{
+                    ErrorCode::IoFailure,
+                    std::format("cannot watch '{}': the directory is not readable",
+                                m_root.string())});
+
                 break;
             }
+
+            // From here the kernel is recording changes for this handle, which is the
+            // moment Start is waiting for. Set once — the read above runs on every
+            // iteration, but only the first one is the one that opened the window.
+            armSignal.Report(Result<void>::Ok());
 
             const HANDLE waited[] = {ioEvent, static_cast<HANDLE>(m_stopEvent)};
             DWORD signalled = WAIT_TIMEOUT;

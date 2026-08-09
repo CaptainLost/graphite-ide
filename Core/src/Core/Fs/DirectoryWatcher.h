@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -31,7 +32,13 @@ namespace core
         ~DirectoryWatcher();
 
         /// Begins watching `root` and everything below it. Fails if the directory cannot
-        /// be opened.
+        /// be opened, or if the watch cannot be armed.
+        ///
+        /// Returns only once the watch is actually armed, so a change made the instant
+        /// after it returns is seen. Windows buffers nothing for a directory handle until
+        /// a read has been issued against it, and that read happens on the worker thread —
+        /// so returning as soon as the handle existed dropped everything that happened
+        /// before the worker was first scheduled.
         [[nodiscard]] static Result<std::unique_ptr<DirectoryWatcher>> Start(
             const std::filesystem::path& root);
 
@@ -93,6 +100,12 @@ namespace core
         /// question, and making it queue behind the worker's writes would be paying for
         /// a guarantee it does not need.
         std::atomic<bool> m_running{true};
+
+        /// Satisfied by the worker exactly once: with success as soon as the first read
+        /// has been issued, and with an error on every path that leaves the worker before
+        /// that. Start waits on it, so the error is what the caller gets back instead of a
+        /// live-looking watcher whose thread has already died.
+        std::promise<Result<void>> m_armed;
 
         /// How often the worker asks its handle where it now lives. A rename produces no
         /// notification of any kind, so this poll is the only way to find out — but the
