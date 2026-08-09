@@ -55,6 +55,11 @@ namespace core::text
         /// Reapplies the last undone edit. False when there is nothing to reapply.
         bool Redo();
 
+        /// Groups every edit made until the matching EndTransaction into one undo step.
+        /// Nests: only the outermost EndTransaction closes the group.
+        void BeginTransaction();
+        void EndTransaction();
+
         [[nodiscard]] bool CanUndo() const noexcept { return !m_undo.empty(); }
         [[nodiscard]] bool CanRedo() const noexcept { return !m_redo.empty(); }
 
@@ -183,12 +188,22 @@ namespace core::text
             /// range stays valid for the buffer's lifetime.
             std::size_t appendOffset = 0;
             bool hasAppendOffset = false;
+
+            /// Which gesture this edit belongs to. Undo and redo process every edit
+            /// sharing the group on top of the stack, because one gesture can be several
+            /// edits — typing over a selection is an erase and an insert, and undoing
+            /// only half of that would leave the typed character sitting inside the text
+            /// it replaced.
+            std::size_t group = 0;
         };
 
         /// Applies an edit without recording it, which is what undo and redo do. Takes
         /// the edit by mutable reference to fill in appendOffset the first time its text
         /// is materialised into m_append.
         void ApplyEdit(Edit& edit, bool reversed);
+
+        /// The group id a newly recorded edit belongs to.
+        std::size_t GroupForNewEdit();
 
         std::string m_original;
         std::string m_append;
@@ -198,5 +213,9 @@ namespace core::text
         std::vector<Edit> m_undo;
         std::vector<Edit> m_redo;
         std::size_t m_nextEditId = 1;
+        std::size_t m_nextGroupId = 1;
+        std::size_t m_transactionDepth = 0;
+        /// The group this transaction has already opened, or 0 before its first edit.
+        std::size_t m_transactionGroup = 0;
     };
 }

@@ -305,6 +305,33 @@ namespace core::text
         }
     }
 
+    void TextBuffer::BeginTransaction()
+    {
+        if (m_transactionDepth++ == 0)
+            m_transactionGroup = 0;
+    }
+
+    void TextBuffer::EndTransaction()
+    {
+        if (m_transactionDepth > 0)
+            --m_transactionDepth;
+    }
+
+    std::size_t TextBuffer::GroupForNewEdit()
+    {
+        // Inside a transaction every edit joins the one this transaction opened, so the
+        // whole gesture reverses together.
+        if (m_transactionDepth > 0)
+        {
+            if (m_transactionGroup == 0)
+                m_transactionGroup = m_nextGroupId++;
+
+            return m_transactionGroup;
+        }
+
+        return m_nextGroupId++;
+    }
+
     void TextBuffer::Insert(std::size_t offset, std::string_view text)
     {
         if (text.empty())
@@ -314,7 +341,8 @@ namespace core::text
         const std::size_t appendOffset = InsertRaw(at, text);
 
         m_redo.clear();
-        m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true, appendOffset, true});
+        m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true, appendOffset, true,
+                              GroupForNewEdit()});
     }
 
     void TextBuffer::Erase(std::size_t from, std::size_t to)
@@ -329,7 +357,8 @@ namespace core::text
         EraseRaw(from, end);
 
         m_redo.clear();
-        m_undo.push_back(Edit{m_nextEditId++, from, std::move(removed), false});
+        m_undo.push_back(
+            Edit{m_nextEditId++, from, std::move(removed), false, 0, false, GroupForNewEdit()});
     }
 
     bool TextBuffer::Undo()
@@ -337,11 +366,16 @@ namespace core::text
         if (m_undo.empty())
             return false;
 
-        Edit edit = std::move(m_undo.back());
-        m_undo.pop_back();
+        const std::size_t group = m_undo.back().group;
 
-        ApplyEdit(edit, true);
-        m_redo.push_back(std::move(edit));
+        while (!m_undo.empty() && m_undo.back().group == group)
+        {
+            Edit edit = std::move(m_undo.back());
+            m_undo.pop_back();
+
+            ApplyEdit(edit, true);
+            m_redo.push_back(std::move(edit));
+        }
 
         return true;
     }
@@ -351,11 +385,16 @@ namespace core::text
         if (m_redo.empty())
             return false;
 
-        Edit edit = std::move(m_redo.back());
-        m_redo.pop_back();
+        const std::size_t group = m_redo.back().group;
 
-        ApplyEdit(edit, false);
-        m_undo.push_back(std::move(edit));
+        while (!m_redo.empty() && m_redo.back().group == group)
+        {
+            Edit edit = std::move(m_redo.back());
+            m_redo.pop_back();
+
+            ApplyEdit(edit, false);
+            m_undo.push_back(std::move(edit));
+        }
 
         return true;
     }

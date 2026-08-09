@@ -744,3 +744,51 @@ TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
     CHECK(buffer.AppendBufferSize() == afterFirstCycle);
     CHECK(buffer.Text() == "helloworld");
 }
+
+TEST_CASE("Edits inside a transaction undo as one")
+{
+    core::text::TextBuffer buffer{"one two three"};
+
+    buffer.BeginTransaction();
+    buffer.Erase(4, 7);
+    buffer.Insert(4, "TWO");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Text() == "one TWO three");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "one two three");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("Redo reapplies a whole transaction in the original order")
+{
+    core::text::TextBuffer buffer{"one two three"};
+
+    buffer.BeginTransaction();
+    buffer.Erase(4, 7);
+    buffer.Insert(4, "TWO");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Redo());
+    CHECK(buffer.Text() == "one TWO three");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("Nested transactions close only at the outermost end")
+{
+    core::text::TextBuffer buffer{"ab"};
+
+    buffer.BeginTransaction();
+    buffer.Insert(1, "X");
+    buffer.BeginTransaction();
+    buffer.Insert(2, "Y");
+    buffer.EndTransaction();
+    buffer.Insert(3, "Z");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Text() == "aXYZb");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "ab");
+    CHECK_FALSE(buffer.CanUndo());
+}
