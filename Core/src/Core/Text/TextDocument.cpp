@@ -287,11 +287,12 @@ namespace core::text
 
         auto document = FromContent(std::move(content), path);
 
+        // All of the stamp or none of it. A failed last_write_time used to leave both
+        // halves default-constructed, which is not "no stamp" but "a stamp from the epoch
+        // of a zero-byte file" — unequal to every real file, so ChangedOnDisk() answered
+        // true forever after.
         if (document && !timeError)
-        {
-            document.Value().m_diskTime = diskTime;
-            document.Value().m_diskSize = size;
-        }
+            document.Value().m_diskStamp = DiskStamp{diskTime, size};
 
         return document;
     }
@@ -332,6 +333,12 @@ namespace core::text
 
     bool TextDocument::ChangedOnDisk() const
     {
+        // Nothing was ever recorded to compare against — see m_diskStamp. Answering
+        // "changed" here would be answering from ignorance, and every caller treats that
+        // answer as a fact about the file.
+        if (!m_diskStamp)
+            return false;
+
         std::error_code timeError;
         const auto time = std::filesystem::last_write_time(m_path, timeError);
 
@@ -344,7 +351,7 @@ namespace core::text
         if (sizeError)
             return false;
 
-        return time != m_diskTime || size != m_diskSize;
+        return time != m_diskStamp->time || size != m_diskStamp->size;
     }
 
     Result<void> TextDocument::Save()
@@ -389,8 +396,12 @@ namespace core::text
         m_bomEncoding = freshDocument.m_bomEncoding;
 
         MarkSaved();
-        m_diskTime = freshDocument.m_diskTime;
-        m_diskSize = freshDocument.m_diskSize;
+
+        // Including an unknown one: the content now in the buffer is that fresh load's,
+        // so keeping the stamp it was read under - even when that is "no stamp" - is what
+        // keeps the two describing the same thing. Holding on to the previous stamp
+        // instead would describe a file this document no longer contains.
+        m_diskStamp = freshDocument.m_diskStamp;
 
         return {};
     }
@@ -403,10 +414,14 @@ namespace core::text
         std::error_code sizeError;
         const std::uintmax_t size = std::filesystem::file_size(m_path, sizeError);
 
-        if (!timeError)
-            m_diskTime = time;
+        // Both or neither, never one: a new time beside an old size is a stamp describing
+        // a file that never existed. Failing to read either leaves the previous stamp
+        // alone, so the acknowledgement simply did not happen and the question is asked
+        // again - the safe direction, since the alternative is a save that believes it
+        // knows a state it does not.
+        if (timeError || sizeError)
+            return;
 
-        if (!sizeError)
-            m_diskSize = size;
+        m_diskStamp = DiskStamp{time, size};
     }
 }

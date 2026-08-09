@@ -622,6 +622,23 @@ TEST_CASE("A save clears the modified flag and refreshes the stamp")
     CHECK_FALSE(document.ChangedOnDisk());
 }
 
+TEST_CASE("A document that never took a stamp reports no change on disk")
+{
+    // FromContent takes no stamp, which is the same state Load leaves behind when
+    // last_write_time fails — the case a test cannot provoke, and the one this guards.
+    // A default-constructed stamp is not "no stamp": it compares unequal to every real
+    // file, so this used to answer "changed" for good. A clean document would then reload
+    // on every watcher event and every focus regain, each reload stacking another
+    // transaction onto the undo stack, and a dirty one would re-queue its conflict
+    // question on every sweep.
+    const std::filesystem::path path = MakeTempFile("on disk\n");
+
+    auto document = core::text::TextDocument::FromContent("in memory\n", path);
+    REQUIRE(document);
+
+    CHECK_FALSE(document.Value().ChangedOnDisk());
+}
+
 TEST_CASE("A file rewritten by other means is noticed")
 {
     const std::filesystem::path path = MakeTempFile("original\n");

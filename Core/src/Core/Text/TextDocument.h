@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -105,7 +106,10 @@ namespace core::text
 
         /// Whether the file differs from what was last read or written from here.
         /// False when the file cannot be examined at all — a share that blinked must not
-        /// be reported as an edit.
+        /// be reported as an edit — and false, for the same reason, when no stamp was ever
+        /// taken: a document built by FromContent, or one whose last_write_time could not
+        /// be read when it was loaded, has nothing to compare against, and inventing a
+        /// difference out of that would be reporting an edit nobody made.
         [[nodiscard]] bool ChangedOnDisk() const;
 
         /// Writes Bytes() through core::fs::WriteFileAtomically, then marks the content
@@ -150,8 +154,19 @@ namespace core::text
         std::size_t m_savedRevision = 0;
 
         /// The file's modification time and size as they were when its content was last
-        /// read or written.
-        ///
+        /// read or written, held together and as one optional because half a stamp is not
+        /// a stamp: a default-constructed time compares unequal to every real file's, so a
+        /// stamp that was never actually taken would make ChangedOnDisk() permanently
+        /// true — a clean document reloading on every watcher event and every focus
+        /// regain, each reload pushing another transaction onto the undo stack, and a
+        /// dirty one re-queuing its conflict question on every sweep. Nullopt says the
+        /// stamp is unknown, and an unknown stamp is compared against nothing.
+        struct DiskStamp
+        {
+            std::filesystem::file_time_type time{};
+            std::uintmax_t size = 0;
+        };
+
         /// Read BEFORE the content, never after. If the file is rewritten during our read,
         /// a stamp taken beforehand is older than the file's real state and the next
         /// comparison notices; taken afterwards, it would record a state newer than what
@@ -163,7 +178,6 @@ namespace core::text
         /// eventually arrives finds nothing to do. No "ignore the next event" flag and no
         /// timeout — notifications coalesce and arrive late, and both of those tricks
         /// assume they do not.
-        std::filesystem::file_time_type m_diskTime{};
-        std::uintmax_t m_diskSize = 0;
+        std::optional<DiskStamp> m_diskStamp;
     };
 }
