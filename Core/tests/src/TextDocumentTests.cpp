@@ -622,6 +622,39 @@ TEST_CASE("A save clears the modified flag and refreshes the stamp")
     CHECK_FALSE(document.ChangedOnDisk());
 }
 
+TEST_CASE("A save breaks the undo group, so typing after it is a step of its own")
+{
+    const std::filesystem::path path = MakeTempFile("");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+    core::text::TextDocument document = std::move(loaded).Value();
+
+    core::text::TextBuffer& buffer = document.Buffer();
+
+    buffer.BeginTransaction();
+    buffer.Insert(0, "a");
+    buffer.EndTransaction();
+
+    REQUIRE(document.Save());
+
+    // Consecutive typing at the caret's own advance coalesces, so without the
+    // BreakUndoGroup in Save this second insertion joins the first and one Ctrl+Z takes
+    // both — undoing past a save the user watched succeed. The design requires
+    // type-save-type to be two undo steps, and nothing asserted it until now.
+    buffer.BeginTransaction();
+    buffer.Insert(1, "b");
+    buffer.EndTransaction();
+
+    REQUIRE(buffer.Text() == "ab");
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "a");
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text().empty());
+}
+
 TEST_CASE("A document that never took a stamp reports no change on disk")
 {
     // FromContent takes no stamp, which is the same state Load leaves behind when
