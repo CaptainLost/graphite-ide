@@ -80,12 +80,30 @@ namespace core::text
         // unmarked file has nothing stripped from it.
         const std::size_t bomLength = BomLength(bytes);
 
-        auto decoded = Decode(std::string_view{bytes}.substr(bomLength), declared);
+        std::string content;
 
-        if (!decoded)
-            return decoded.GetError();
+        // Decode is called only when it would actually change something. For every other
+        // encoding it returns its input verbatim, which means a second copy of the whole
+        // file: near MaximumFileSize that is another half gigabyte alive at the same time
+        // as these bytes and as the copy NormaliseLineEndings makes below, which is the
+        // peak MaximumFileSize exists to bound. Moving the bytes across instead costs the
+        // memmove that drops the mark and nothing else. TransformsContent is the single
+        // source of truth for which arms transform, so this asks it rather than keeping a
+        // second list of them.
+        if (TransformsContent(declared))
+        {
+            auto decoded = Decode(std::string_view{bytes}.substr(bomLength), declared);
 
-        std::string content = std::move(decoded).Value();
+            if (!decoded)
+                return decoded.GetError();
+
+            content = std::move(decoded).Value();
+        }
+        else
+        {
+            bytes.erase(0, bomLength);
+            content = std::move(bytes);
+        }
 
         // The strict rule, which only a full load can afford. SniffEncoding tolerates
         // input cut mid-unit and saw only the prefix above, so its verdict is a hypothesis
