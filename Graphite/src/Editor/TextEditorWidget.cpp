@@ -154,14 +154,13 @@ namespace graphite
             const float scrollX = ImGui::GetScrollX();
             const ImVec2 origin = ImGui::GetCursorScreenPos();
 
+            // Pre-edit: this frame's mouse and keyboard handling, further down, can
+            // still grow or shrink the document before the frame is over. Kept under
+            // this name only for the interactive rectangle below, which is allowed to
+            // hit-test against a size one frame stale — the reservation the scrollbars
+            // and the clipper actually read is computed fresh, after that handling runs,
+            // immediately before the clipper starts (see currentDocumentHeight below).
             const float documentHeight = static_cast<float>(buffer.LineCount()) * lineHeight;
-
-            // Reserve the full document extent so both scrollbars know how far the
-            // content goes. This Dummy is the *only* thing in this function allowed to
-            // grow ContentSize — see the interactive rectangle below, which deliberately
-            // avoids doing the same.
-            ImGui::Dummy(ImVec2(contentWidth, documentHeight));
-            ImGui::SetCursorScreenPos(origin);
 
             // The one text origin in the file: everything below that positions against
             // the text — clicks, caret, selection, guides — measures from this rather
@@ -500,6 +499,30 @@ namespace graphite
             const float numberColumnX0 = origin.x + scrollX + breakpointColumnWidth;
             const float numberColumnX1 = numberColumnX0 + numberColumnWidth;
 
+            // Reserved from the document as it stands now — after this frame's mouse and
+            // keyboard handling above, not from documentHeight/contentWidth captured
+            // before it (those exist only for the interactive rectangle's hit-testing,
+            // where a frame of lag is imperceptible). Reserving from the pre-edit extent
+            // here instead left the clipper below walking one line past what Dummy had
+            // reserved the instant Enter grew the document — SetCursorPosY landing past
+            // CursorMaxPos is exactly what EndChild's assertion tests for. The same
+            // mismatch ran unnoticed the other way (a deleted line leaving the
+            // reservation one too tall for a frame) and on the other axis (typing into
+            // the longest line leaving the width one cell narrow), neither of which
+            // asserts because neither moves the cursor — but it is the same defect, so
+            // both the height and the width read post-edit state here.
+            //
+            // This Dummy is the *only* thing in this function allowed to grow
+            // ContentSize — see the interactive rectangle above, which deliberately
+            // avoids doing the same — and SetCursorScreenPos puts the cursor straight
+            // back at origin, which is where the clipper's rows below assume it starts.
+            const float currentDocumentHeight = static_cast<float>(buffer.LineCount()) * lineHeight;
+            const float currentContentWidth =
+                gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
+
+            ImGui::Dummy(ImVec2(currentContentWidth, currentDocumentHeight));
+            ImGui::SetCursorScreenPos(origin);
+
             ImGuiListClipper clipper;
             clipper.Begin(static_cast<int>(buffer.LineCount()), lineHeight);
 
@@ -516,9 +539,13 @@ namespace graphite
 
                     if (line == caretPosition.line)
                     {
+                        // currentContentWidth, not contentWidth: this highlight is drawn
+                        // from the same post-edit state the clipper itself is walking,
+                        // so a line that just became the widest one gets the full-width
+                        // highlight this frame rather than one frame later.
                         draw->AddRectFilled(
                             ImVec2(textX, y),
-                            ImVec2(origin.x + std::max(contentWidth, ImGui::GetWindowWidth()),
+                            ImVec2(origin.x + std::max(currentContentWidth, ImGui::GetWindowWidth()),
                                    y + lineHeight),
                             currentLineColour);
                     }

@@ -261,6 +261,13 @@ namespace graphite
 
         if (auto result = item.document->Save())
         {
+            // A document marked Missing whose file this just recreated (Save writes
+            // through WriteFileAtomically, which falls through to MoveFileExW onto a
+            // path that need not already exist) is still there on disk now - the tab
+            // should stop saying "(deleted)". MarkPresent already refuses to touch
+            // Binary, TooLarge and ReadFailed, so it is safe to call unconditionally on
+            // every successful save rather than only when failure was Missing.
+            m_documents.MarkPresent(item.path);
             SetTransientMessage(fileName + " saved");
             return true;
         }
