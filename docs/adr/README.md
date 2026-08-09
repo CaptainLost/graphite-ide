@@ -59,4 +59,15 @@ Check every record's shape with:
 | [0037](0037-i-26-if-you-want-a-cross-compiler-abi-use-a-c-style-subset.md) | I.26: If you want a cross-compiler ABI, use a C-style subset | accepted | 2026-08-09 |
 | [0038](0038-i-27-for-stable-library-abi-consider-the-pimpl-idiom.md) | I.27: For stable library ABI, consider the Pimpl idiom | accepted | 2026-08-09 |
 | [0039](0039-i-30-encapsulate-rule-violations.md) | I.30: Encapsulate rule violations | accepted | 2026-08-09 |
+| [0040](0040-f-1-package-meaningful-operations-as-carefully-named-functions.md) | F.1: Package meaningful operations as carefully named functions | accepted | 2026-08-10 |
+| [0041](0041-f-2-a-function-should-perform-a-single-logical-operation.md) | F.2: A function should perform a single logical operation | accepted | 2026-08-10 |
+| [0042](0042-f-3-keep-functions-short-and-simple.md) | F.3: Keep functions short and simple | accepted | 2026-08-10 |
+| [0043](0043-f-4-if-a-function-might-have-to-be-evaluated-at-compile-time-declare-it-constexpr.md) | F.4: If a function might have to be evaluated at compile time, declare it constexpr | accepted | 2026-08-10 |
+| [0044](0044-f-5-if-a-function-is-very-small-and-time-critical-declare-it-inline.md) | F.5: If a function is very small and time-critical, declare it inline | accepted | 2026-08-10 |
+| [0045](0045-f-6-if-your-function-must-not-throw-declare-it-noexcept.md) | F.6: If your function must not throw, declare it noexcept | accepted | 2026-08-10 |
+| [0046](0046-f-7-for-general-use-take-t-or-t-arguments-rather-than-smart-pointers.md) | F.7: For general use, take T* or T& arguments rather than smart pointers | accepted | 2026-08-10 |
+| [0047](0047-f-8-prefer-pure-functions.md) | F.8: Prefer pure functions | accepted | 2026-08-10 |
+| [0048](0048-f-9-unused-parameters-should-be-unnamed.md) | F.9: Unused parameters should be unnamed | accepted | 2026-08-10 |
+| [0049](0049-f-10-if-an-operation-can-be-reused-give-it-a-name.md) | F.10: If an operation can be reused, give it a name | accepted | 2026-08-10 |
+| [0050](0050-f-11-use-an-unnamed-lambda-if-you-need-a-simple-function-object-in-one-place-only.md) | F.11: Use an unnamed lambda if you need a simple function object in one place only | accepted | 2026-08-10 |
 <!-- /adr-index -->
