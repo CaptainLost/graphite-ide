@@ -40,7 +40,7 @@ namespace graphite
 
         m_events.Subscribe<WorkspaceRootMovedEvent>(
             [this](const WorkspaceRootMovedEvent& event)
-            { m_documents.RewritePaths(event.from, event.to); });
+            { m_documentWindows.HandleRootMoved(event.from, event.to); });
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
