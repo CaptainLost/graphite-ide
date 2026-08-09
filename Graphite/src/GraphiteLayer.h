@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <optional>
 
 namespace graphite
 {
@@ -27,9 +28,46 @@ namespace graphite
         void OnUpdate(float deltaSeconds) override;
         void OnUIRender() override;
 
+        /// Nothing dirty closes immediately. Otherwise raises the flag OnUIRender turns
+        /// into the "Unsaved changes" modal and keeps refusing until the user answers -
+        /// see RenderCloseConfirm and FinishClose for how an answer actually reaches the
+        /// window.
+        bool OnCloseRequested() override;
+
     private:
         void RenderMenuBar();
         void ApplyIgnoredDisplay(IgnoredDisplay display, bool persist);
+
+        /// What answering the "Unsaved changes" question should do once it resolves in
+        /// favour of closing. The exit path and "Close Workspace" both lose whatever is
+        /// unsaved - CloseAll no less than the window closing - so both ask through the
+        /// same modal and differ only in what FinishClose does at the end.
+        enum class ClosePurpose
+        {
+            ExitApplication,
+            CloseWorkspace
+        };
+
+        /// Entry point for both close paths. Performs `purpose` immediately when nothing
+        /// is dirty; otherwise raises the modal RenderCloseConfirm draws and leaves
+        /// `purpose` pending until Save All, Discard All or Cancel resolves it.
+        void RequestCloseConfirmation(ClosePurpose purpose);
+
+        /// Carries out `purpose` once it is safe to - Save All having succeeded, or
+        /// Discard All having been chosen outright. For ExitApplication this has to
+        /// re-arm the window's close flag itself: Window::CancelClose, called by
+        /// Application after this layer first refused (to put the modal on screen), is
+        /// permanent, and nothing re-raises it on its own. See Layer::OnCloseRequested.
+        void FinishClose(ClosePurpose purpose);
+
+        /// Draws the "Unsaved changes" modal raised by RequestCloseConfirmation, listing
+        /// every dirty document with Save All / Discard All / Cancel. Called from
+        /// OnUIRender at a point that is never nested inside another window's Begin/End,
+        /// the same placement DocumentWindows' own modals use and for the same reason:
+        /// OpenPopup/BeginPopupModal need to be called there to draw reliably.
+        void RenderCloseConfirm();
+
+        [[nodiscard]] bool AnyDocumentModified() const;
 
         /// Clamps `newSize` into range, applies it and persists it — the single path
         /// both the Ctrl+wheel handling and the View menu's zoom items go through, so
@@ -66,6 +104,24 @@ namespace graphite
         /// so the choice, once a menu sets it, persists the same way the font size does.
         bool m_indentWithSpaces = true;
         std::size_t m_indentWidth = 4;
+
+        /// Which close is pending while the "Unsaved changes" modal is on screen, or
+        /// nullopt when none is. Cleared the moment the user answers - including
+        /// Cancel - so a later close attempt asks fresh rather than remembering the
+        /// refusal.
+        std::optional<ClosePurpose> m_pendingClosePurpose;
+
+        /// One-shot trigger for the frame RequestCloseConfirmation raises the modal -
+        /// RenderCloseConfirm consumes it the same way DocumentWindows' m_openCloseConfirm
+        /// and friends do, so ImGui::OpenPopup is called exactly once per question.
+        bool m_openCloseConfirmPopup = false;
+
+        /// Set once FinishClose(ExitApplication) has re-armed the window's close flag,
+        /// so the OnCloseRequested asked again next frame returns true unconditionally
+        /// rather than re-checking for dirty documents. That check matters here: Discard
+        /// All does not touch document content, only bypasses asking about it, so every
+        /// document FinishClose was told to discard is still modified when this fires.
+        bool m_closeApproved = false;
 
         std::shared_ptr<core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;

@@ -7,6 +7,7 @@
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 #include "Core/Text/Editing.h"
 
@@ -14,10 +15,16 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <utility>
 
 namespace graphite
 {
+    namespace
+    {
+        constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
+    }
+
     GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
                        std::filesystem::path initialFolder)
         : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder))
@@ -138,6 +145,11 @@ namespace graphite
         RenderMenuBar();
         m_dockSpace.End();
 
+        // Never nested inside the dockspace host's Begin/End above, or any other
+        // window's - see RenderCloseConfirm's own comment for why that matters to a
+        // modal popup.
+        RenderCloseConfirm();
+
         // Panels render outside the host window — inside it they would dock as ordinary
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
@@ -228,12 +240,17 @@ namespace graphite
             // selection along with the folder, and the menu offers two ways to open one.
             // Naming only the folder would leave the other two looking like they survive.
             if (ImGui::MenuItem("Close Workspace", nullptr, false, m_workspace.IsOpen()))
-                m_workspace.Close();
+                RequestCloseConfirmation(ClosePurpose::CloseWorkspace);
 
             ImGui::Separator();
 
+            // Through the window's close flag, not Application::Close() directly:
+            // Application's main loop only asks a layer's OnCloseRequested when
+            // Window::ShouldClose() is true, and Close() alone never sets it. Routing
+            // through RequestClose() puts Exit through the exact same question as the
+            // OS close button and Alt+F4.
             if (ImGui::MenuItem("Exit", "Alt+F4"))
-                core::Application::Get().Close();
+                core::Application::Get().GetWindow().RequestClose();
 
             ImGui::EndMenu();
         }
@@ -320,5 +337,139 @@ namespace graphite
         }
 
         ImGui::EndMenuBar();
+    }
+
+    bool GraphiteLayer::AnyDocumentModified() const
+    {
+        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        {
+            const core::text::OpenItem& item = m_documents.At(index);
+
+            if (item.document && item.document->IsModified())
+                return true;
+        }
+
+        return false;
+    }
+
+    bool GraphiteLayer::OnCloseRequested()
+    {
+        // Save All having succeeded, or Discard All having been chosen, already
+        // answered this - see FinishClose. Re-checking for dirty documents here would
+        // reopen the modal on Discard All, which never touches document content, only
+        // bypasses asking about it.
+        if (m_closeApproved)
+            return true;
+
+        // The modal is already up and unresolved; RenderCloseConfirm owns it from here.
+        if (m_pendingClosePurpose == ClosePurpose::ExitApplication)
+            return false;
+
+        if (!AnyDocumentModified())
+            return true;
+
+        m_pendingClosePurpose = ClosePurpose::ExitApplication;
+        m_openCloseConfirmPopup = true;
+        return false;
+    }
+
+    void GraphiteLayer::RequestCloseConfirmation(ClosePurpose purpose)
+    {
+        if (!AnyDocumentModified())
+        {
+            FinishClose(purpose);
+            return;
+        }
+
+        m_pendingClosePurpose = purpose;
+        m_openCloseConfirmPopup = true;
+    }
+
+    void GraphiteLayer::FinishClose(ClosePurpose purpose)
+    {
+        m_pendingClosePurpose.reset();
+
+        switch (purpose)
+        {
+            case ClosePurpose::ExitApplication:
+                // OnCloseRequested refusing earlier - to raise this very modal - cleared
+                // Window's close flag for good; nothing re-raises it but this call, which
+                // is what lets the main loop ask again next frame and actually break out
+                // of it this time. See Window::CancelClose and Layer::OnCloseRequested.
+                m_closeApproved = true;
+                core::Application::Get().GetWindow().RequestClose();
+                break;
+
+            case ClosePurpose::CloseWorkspace:
+                m_workspace.Close();
+                break;
+        }
+    }
+
+    void GraphiteLayer::RenderCloseConfirm()
+    {
+        if (m_openCloseConfirmPopup)
+        {
+            ImGui::OpenPopup(kUnsavedWorkTitle);
+            m_openCloseConfirmPopup = false;
+        }
+
+        if (!ImGui::BeginPopupModal(kUnsavedWorkTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            return;
+
+        ImGui::TextUnformatted("These files have unsaved changes:");
+        ImGui::Separator();
+
+        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        {
+            const core::text::OpenItem& item = m_documents.At(index);
+
+            if (item.document && item.document->IsModified())
+                ImGui::BulletText("%s", core::fs::ToUtf8(item.path.filename()).c_str());
+        }
+
+        ImGui::Separator();
+
+        // m_pendingClosePurpose can only be unset here if the popup is somehow drawn
+        // without RequestCloseConfirmation having raised it first, which never happens -
+        // ExitApplication is a reasonable fallback all the same, since it is the more
+        // conservative of the two actions FinishClose can take.
+        const ClosePurpose purpose = m_pendingClosePurpose.value_or(ClosePurpose::ExitApplication);
+
+        if (ImGui::Button("Save All"))
+        {
+            // A stopped batch and one that finished with a document skipped over a
+            // conflict both come back false from SaveAllModified, and both mean the same
+            // thing here: some dirty document is not actually saved, so closing now
+            // would lose it exactly as a failed write would. Treating them alike is
+            // deliberate - the status bar SaveAllModified itself sets already says which
+            // one happened and to which file, and this modal simply stays up instead of
+            // closing on a promise it did not keep, so the user can retry (a conflicted
+            // file resolves itself once its own Ctrl+S is answered) or fall through to
+            // Discard All / Cancel with the same picture in front of them.
+            if (m_documentWindows.SaveAllModified())
+            {
+                FinishClose(purpose);
+                ImGui::CloseCurrentPopup();
+            }
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Discard All"))
+        {
+            FinishClose(purpose);
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Cancel"))
+        {
+            m_pendingClosePurpose.reset();
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
     }
 }
