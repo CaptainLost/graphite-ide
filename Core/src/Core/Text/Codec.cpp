@@ -1,0 +1,213 @@
+#include "corepch.h"
+
+#include "Core/Text/Codec.h"
+
+#include <cstdint>
+#include <string>
+
+namespace core::text
+{
+    namespace
+    {
+        constexpr std::uint32_t kHighSurrogateFirst = 0xD800;
+        constexpr std::uint32_t kHighSurrogateLast = 0xDBFF;
+        constexpr std::uint32_t kLowSurrogateFirst = 0xDC00;
+        constexpr std::uint32_t kLowSurrogateLast = 0xDFFF;
+        constexpr std::uint32_t kFirstSupplementary = 0x10000;
+
+        [[nodiscard]] std::uint32_t ReadUnit(std::string_view bytes, std::size_t at,
+                                             bool littleEndian)
+        {
+            const auto first = static_cast<std::uint32_t>(
+                static_cast<unsigned char>(bytes[at]));
+            const auto second = static_cast<std::uint32_t>(
+                static_cast<unsigned char>(bytes[at + 1]));
+
+            return littleEndian ? (second << 8) | first : (first << 8) | second;
+        }
+
+        void AppendUnit(std::string& out, std::uint32_t unit, bool littleEndian)
+        {
+            const auto low = static_cast<char>(unit & 0xFFu);
+            const auto high = static_cast<char>((unit >> 8) & 0xFFu);
+
+            out.push_back(littleEndian ? low : high);
+            out.push_back(littleEndian ? high : low);
+        }
+
+        void AppendUtf8(std::string& out, std::uint32_t codepoint)
+        {
+            if (codepoint < 0x80u)
+            {
+                out.push_back(static_cast<char>(codepoint));
+            }
+            else if (codepoint < 0x800u)
+            {
+                out.push_back(static_cast<char>(0xC0u | (codepoint >> 6)));
+                out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
+            }
+            else if (codepoint < kFirstSupplementary)
+            {
+                out.push_back(static_cast<char>(0xE0u | (codepoint >> 12)));
+                out.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu)));
+                out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
+            }
+            else
+            {
+                out.push_back(static_cast<char>(0xF0u | (codepoint >> 18)));
+                out.push_back(static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu)));
+                out.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu)));
+                out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
+            }
+        }
+
+        [[nodiscard]] Result<std::string> DecodeUtf16(std::string_view bytes,
+                                                      bool littleEndian)
+        {
+            if (bytes.size() % 2 != 0)
+            {
+                return Error{ErrorCode::InvalidArgument,
+                             "UTF-16 file is damaged: odd number of bytes ("
+                                 + std::to_string(bytes.size()) + ")"};
+            }
+
+            std::string out;
+            out.reserve(bytes.size());
+
+            std::size_t at = 0;
+
+            while (at < bytes.size())
+            {
+                const std::uint32_t unit = ReadUnit(bytes, at, littleEndian);
+
+                if (unit >= kLowSurrogateFirst && unit <= kLowSurrogateLast)
+                {
+                    return Error{ErrorCode::InvalidArgument,
+                                 "UTF-16 file is damaged: a low surrogate at byte "
+                                     + std::to_string(at) + " has no high surrogate "
+                                                            "before it"};
+                }
+
+                if (unit >= kHighSurrogateFirst && unit <= kHighSurrogateLast)
+                {
+                    if (at + 4 > bytes.size())
+                    {
+                        return Error{ErrorCode::InvalidArgument,
+                                     "UTF-16 file is damaged: a high surrogate at byte "
+                                         + std::to_string(at) + " is the last unit"};
+                    }
+
+                    const std::uint32_t low = ReadUnit(bytes, at + 2, littleEndian);
+
+                    if (low < kLowSurrogateFirst || low > kLowSurrogateLast)
+                    {
+                        return Error{ErrorCode::InvalidArgument,
+                                     "UTF-16 file is damaged: a high surrogate at byte "
+                                         + std::to_string(at)
+                                         + " is not followed by a low one"};
+                    }
+
+                    AppendUtf8(out, kFirstSupplementary
+                                        + ((unit - kHighSurrogateFirst) << 10)
+                                        + (low - kLowSurrogateFirst));
+                    at += 4;
+                    continue;
+                }
+
+                AppendUtf8(out, unit);
+                at += 2;
+            }
+
+            return out;
+        }
+
+        [[nodiscard]] std::string EncodeUtf16(std::string_view utf8, bool littleEndian)
+        {
+            std::string out;
+            out.reserve(utf8.size() * 2);
+
+            std::size_t at = 0;
+
+            while (at < utf8.size())
+            {
+                const auto lead = static_cast<unsigned char>(utf8[at]);
+
+                std::size_t length = 1;
+                std::uint32_t codepoint = lead;
+
+                if ((lead & 0xE0u) == 0xC0u)
+                {
+                    length = 2;
+                    codepoint = lead & 0x1Fu;
+                }
+                else if ((lead & 0xF0u) == 0xE0u)
+                {
+                    length = 3;
+                    codepoint = lead & 0x0Fu;
+                }
+                else if ((lead & 0xF8u) == 0xF0u)
+                {
+                    length = 4;
+                    codepoint = lead & 0x07u;
+                }
+
+                for (std::size_t index = 1; index < length && at + index < utf8.size();
+                     ++index)
+                {
+                    codepoint = (codepoint << 6)
+                                | (static_cast<unsigned char>(utf8[at + index]) & 0x3Fu);
+                }
+
+                if (codepoint < kFirstSupplementary)
+                {
+                    AppendUnit(out, codepoint, littleEndian);
+                }
+                else
+                {
+                    const std::uint32_t offset = codepoint - kFirstSupplementary;
+
+                    AppendUnit(out, kHighSurrogateFirst + (offset >> 10), littleEndian);
+                    AppendUnit(out, kLowSurrogateFirst + (offset & 0x3FFu), littleEndian);
+                }
+
+                at += length;
+            }
+
+            return out;
+        }
+    }
+
+    Result<std::string> Decode(std::string_view bytes, Encoding encoding)
+    {
+        switch (encoding)
+        {
+        case Encoding::Utf16Le:
+            return DecodeUtf16(bytes, true);
+        case Encoding::Utf16Be:
+            return DecodeUtf16(bytes, false);
+        case Encoding::Utf8:
+        case Encoding::Utf8Bom:
+        case Encoding::Unknown:
+            break;
+        }
+
+        return std::string{bytes};
+    }
+
+    std::string Encode(std::string_view utf8, Encoding encoding)
+    {
+        switch (encoding)
+        {
+        case Encoding::Utf16Le:
+            return EncodeUtf16(utf8, true);
+        case Encoding::Utf16Be:
+            return EncodeUtf16(utf8, false);
+        case Encoding::Utf8:
+        case Encoding::Utf8Bom:
+        case Encoding::Unknown:
+            break;
+        }
+
+        return std::string{utf8};
+    }
+}
