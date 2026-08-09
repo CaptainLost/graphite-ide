@@ -1,5 +1,6 @@
 #include "GraphiteLayer.h"
 
+#include "Editor/StatusBar.h"
 #include "Panels/ConsolePanel.h"
 #include "Panels/ExplorerPanel.h"
 #include "Settings.h"
@@ -99,6 +100,8 @@ namespace graphite
 
     void GraphiteLayer::OnUIRender()
     {
+        DrawStatusBar(m_documents, m_workspace.Root());
+
         m_dockSpace.Begin(m_layout);
         RenderMenuBar();
         m_dockSpace.End();
