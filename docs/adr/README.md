@@ -85,4 +85,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0053](0053-f-17-for-in-out-parameters-pass-by-reference-to-non-const.md) | F.17: For in-out parameters, pass by reference to non-const | accepted | 2026-08-10 |
 | [0054](0054-f-18-for-will-move-from-parameters-pass-by-x-and-std-move-the-parameter.md) | F.18: For will-move-from parameters, pass by X&& and std::move the parameter | accepted | 2026-08-10 |
 | [0055](0055-f-19-for-forward-parameters-pass-by-tp-and-only-std-forward-the-parameter.md) | F.19: For forward parameters, pass by TP&& and only std::forward the parameter | accepted | 2026-08-10 |
+| [0056](0056-f-20-for-out-output-values-prefer-return-values-to-output-parameters.md) | F.20: For out output values, prefer return values to output parameters | accepted | 2026-08-10 |
+| [0057](0057-f-21-to-return-multiple-out-values-prefer-returning-a-struct.md) | F.21: To return multiple out values, prefer returning a struct | accepted | 2026-08-10 |
+| [0058](0058-f-60-prefer-t-over-t-when-no-argument-is-a-valid-option.md) | F.60: Prefer T* over T& when no argument is a valid option | accepted | 2026-08-10 |
 <!-- /adr-index -->
