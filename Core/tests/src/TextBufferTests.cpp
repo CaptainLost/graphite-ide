@@ -939,3 +939,39 @@ TEST_CASE("Coalescing does not grow the append buffer")
 
     CHECK(buffer.AppendBufferSize() == appended);
 }
+
+TEST_CASE("A newline landing on a transaction's later edit still closes the group")
+{
+    core::text::TextBuffer buffer;
+
+    buffer.BeginTransaction();
+    buffer.Insert(0, "a");
+    buffer.Insert(1, "\n");
+    buffer.EndTransaction();
+
+    buffer.BeginTransaction();
+    buffer.Insert(1, "b");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "a\n");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("Typing after an erase-then-insert transaction coalesces with the insert")
+{
+    core::text::TextBuffer buffer{"one two three"};
+
+    buffer.BeginTransaction();
+    buffer.Erase(4, 7);
+    buffer.Insert(4, "TWO");
+    buffer.EndTransaction();
+
+    buffer.BeginTransaction();
+    buffer.Insert(7, "!");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Text() == "one TWO! three");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "one two three");
+}

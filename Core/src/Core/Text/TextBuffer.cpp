@@ -320,21 +320,34 @@ namespace core::text
     std::size_t TextBuffer::GroupForNewEdit(std::size_t from, std::size_t to,
                                             std::string_view text, bool inserted)
     {
+        const bool hasNewline = text.find('\n') != std::string_view::npos;
+
+        std::size_t group;
+
         // Inside a transaction every edit joins the one this transaction opened, so the
         // whole gesture reverses together.
         if (m_transactionDepth > 0 && m_transactionGroup != 0)
-            return m_transactionGroup;
+        {
+            group = m_transactionGroup;
+        }
+        else
+        {
+            const bool continues =
+                !m_breakGroup && !hasNewline && !m_undo.empty()
+                && (inserted ? m_lastGroupKind == GroupKind::Insertion && from == m_insertEnd
+                             : m_lastGroupKind == GroupKind::Deletion
+                                   && (to == m_deleteAt || from == m_deleteAt));
 
-        const bool hasNewline = text.find('\n') != std::string_view::npos;
+            group = continues ? m_undo.back().group : m_nextGroupId++;
 
-        const bool continues =
-            !m_breakGroup && !hasNewline && !m_undo.empty()
-            && (inserted ? m_lastGroupKind == GroupKind::Insertion && from == m_insertEnd
-                         : m_lastGroupKind == GroupKind::Deletion
-                               && (to == m_deleteAt || from == m_deleteAt));
+            if (m_transactionDepth > 0)
+                m_transactionGroup = group;
+        }
 
-        const std::size_t group = continues ? m_undo.back().group : m_nextGroupId++;
-
+        // Runs for every edit, including one that took the transaction shortcut above, so
+        // these describe the group's *last* edit rather than its first — a transaction's
+        // second edit can be the one that lands a newline or turns an erase-then-insert
+        // into something a following keystroke should still coalesce with.
         m_lastGroupKind = inserted ? GroupKind::Insertion : GroupKind::Deletion;
         m_insertEnd = inserted ? from + text.size() : from;
         m_deleteAt = from;
@@ -343,9 +356,6 @@ namespace core::text
         // expects undo to stop at, and it is where an accidental merge would be most
         // confusing.
         m_breakGroup = hasNewline;
-
-        if (m_transactionDepth > 0)
-            m_transactionGroup = group;
 
         return group;
     }
