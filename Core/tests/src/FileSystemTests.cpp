@@ -11,6 +11,7 @@
 using core::ErrorCode;
 using core::fs::DirectoryEntry;
 using core::fs::NormalizeDirectory;
+using core::fs::RelativeTo;
 using core::fs::ReadDirectory;
 
 namespace
@@ -146,4 +147,37 @@ TEST_CASE("A normalized path compares equal to one built by appending")
     const std::filesystem::path root = NormalizeDirectory("D:/work/project/");
 
     CHECK((root / "file.txt").parent_path() == root);
+}
+
+TEST_CASE("RelativeTo spells a path below the base relative to it")
+{
+    const auto relative = RelativeTo("D:/work/project/src/main.cpp", "D:/work/project");
+
+    REQUIRE(relative.has_value());
+    CHECK(*relative == std::filesystem::path{"src"} / "main.cpp");
+}
+
+TEST_CASE("RelativeTo refuses a path that is not below the base")
+{
+    CHECK_FALSE(RelativeTo("D:/elsewhere/main.cpp", "D:/work/project").has_value());
+}
+
+TEST_CASE("RelativeTo refuses a path on another drive")
+{
+    // lexically_relative cannot express this at all and gives an empty path, which is a
+    // different failure from ".." and must not read as success.
+    CHECK_FALSE(RelativeTo("E:/work/main.cpp", "D:/work").has_value());
+}
+
+TEST_CASE("RelativeTo refuses an empty base")
+{
+    CHECK_FALSE(RelativeTo("D:/work/main.cpp", "").has_value());
+}
+
+TEST_CASE("RelativeTo gives \".\" for a path equal to the base")
+{
+    const auto relative = RelativeTo("D:/work/project", "D:/work/project");
+
+    REQUIRE(relative.has_value());
+    CHECK(*relative == ".");
 }

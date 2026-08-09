@@ -260,11 +260,9 @@ namespace core::text
     {
         for (OpenItem& item : m_items)
         {
-            const auto relative = item.path.lexically_relative(from);
+            const auto relative = fs::RelativeTo(item.path, from);
 
-            // lexically_relative yields a path starting with ".." when the target is not
-            // below `from`, and an empty path when it cannot express the relationship.
-            if (relative.empty() || *relative.begin() == "..")
+            if (!relative)
                 continue;
 
             // relative is "." when the item path equals `from` exactly — an item can be
@@ -272,7 +270,7 @@ namespace core::text
             // at that path). `to / "."` would keep a trailing separator-dot that compares
             // unequal to `to` itself, breaking Find and duplicate detection, so that case
             // becomes `to` directly instead of going through the append.
-            item.path = (relative == ".") ? to : to / relative;
+            item.path = (*relative == ".") ? to : to / *relative;
 
             // The document carries its own copy of the path, and that is the one a save
             // writes to. Left behind, it would put the file back where it used to be

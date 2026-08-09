@@ -146,4 +146,18 @@ namespace core::fs
 
         return normalized;
     }
+
+    std::optional<std::filesystem::path> RelativeTo(const std::filesystem::path& path,
+                                                    const std::filesystem::path& base)
+    {
+        if (base.empty())
+            return std::nullopt;
+
+        const std::filesystem::path relative = path.lexically_relative(base);
+
+        if (relative.empty() || *relative.begin() == "..")
+            return std::nullopt;
+
+        return relative;
+    }
 }

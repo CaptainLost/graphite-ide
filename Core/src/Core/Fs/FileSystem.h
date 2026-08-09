@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,4 +52,15 @@ namespace core::fs
     /// A root such as `D:/` keeps its separator: removing it would name a drive-relative
     /// path, which is a different thing entirely.
     std::filesystem::path NormalizeDirectory(const std::filesystem::path& path);
+
+    /// `path` spelled relative to `base`, or nothing when it does not sit below `base`.
+    ///
+    /// Purely lexical — nothing is read from disk, so this answers for paths that do not
+    /// exist. `lexically_relative` alone is not the answer: it yields a path starting
+    /// with ".." when the target is somewhere else entirely, and an empty path when it
+    /// cannot express the relationship at all (a different drive, say), and both of those
+    /// are "no" rather than a usable result. A path equal to `base` gives ".", which is a
+    /// genuine answer and is left to the caller to interpret.
+    [[nodiscard]] std::optional<std::filesystem::path> RelativeTo(
+        const std::filesystem::path& path, const std::filesystem::path& base);
 }

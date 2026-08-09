@@ -22,18 +22,14 @@ namespace graphite
             return mixed ? "LF (mixed)" : "LF";
         }
 
+        /// The path as the user thinks of it: relative to the open folder when it sits
+        /// inside one, and spelled in full when it does not.
         [[nodiscard]] std::string RelativePath(const std::filesystem::path& path,
                                                const std::filesystem::path& root)
         {
-            if (root.empty())
-                return core::fs::ToUtf8(path);
+            const auto relative = core::fs::RelativeTo(path, root);
 
-            const auto relative = path.lexically_relative(root);
-
-            if (relative.empty() || *relative.begin() == "..")
-                return core::fs::ToUtf8(path);
-
-            return core::fs::ToUtf8(relative);
+            return core::fs::ToUtf8(relative ? *relative : path);
         }
     }
 
