@@ -20,5 +20,10 @@ namespace graphite
         /// default, since Core has no opinion about display modes.
         static std::string LoadIgnoredDisplay();
         static void SaveIgnoredDisplay(std::string_view mode);
+
+        /// Returns 0 when nothing was stored, so the caller supplies the default — Core
+        /// has no opinion about font sizes.
+        static float LoadEditorFontSize();
+        static void SaveEditorFontSize(float size);
     };
 }

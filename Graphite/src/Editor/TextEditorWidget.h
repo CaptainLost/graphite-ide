@@ -19,5 +19,8 @@ namespace graphite
     /// Page Up/Down, Ctrl+A and Ctrl+C work while this document's own child window has
     /// keyboard focus. The caret and selection live on `item.caret`, so they survive a
     /// tab switch.
-    void DrawEditor(core::text::OpenItem& item, float fontSize);
+    ///
+    /// Returns the wheel delta the user applied with Ctrl held, or 0. The caller owns the
+    /// font size, since it is shared by every document and persisted.
+    [[nodiscard]] float DrawEditor(core::text::OpenItem& item, float fontSize);
 }

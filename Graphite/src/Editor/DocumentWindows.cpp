@@ -107,12 +107,14 @@ namespace graphite
         }
     }
 
-    void DocumentWindows::Render(float fontSize, unsigned int fallbackDockNode)
+    float DocumentWindows::Render(float fontSize, unsigned int fallbackDockNode)
     {
         // Identities as they stand at the start of this frame - after RequestOpen,
         // CloseAll or HandleRootMoved, all of which run earlier in the same
         // OnUpdate/OnUIRender pass and never inside this function.
         const std::vector<std::string> startingIdentities = CurrentIdentities(m_documents);
+
+        float zoomDelta = 0.0f;
 
         if (m_openSizeQuestion)
         {
@@ -214,7 +216,7 @@ namespace graphite
                 if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     m_documents.Promote(index);
 
-                DrawEditor(item, fontSize);
+                zoomDelta += DrawEditor(item, fontSize);
             }
 
             ImGui::End();
@@ -249,5 +251,7 @@ namespace graphite
         }
 
         m_previousIdentities = CurrentIdentities(m_documents);
+
+        return zoomDelta;
     }
 }

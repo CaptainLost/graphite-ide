@@ -30,6 +30,11 @@ namespace graphite
         void RenderMenuBar();
         void ApplyIgnoredDisplay(IgnoredDisplay display, bool persist);
 
+        /// Clamps `newSize` into range, applies it and persists it — the single path
+        /// both the Ctrl+wheel handling and the View menu's zoom items go through, so
+        /// they cannot drift apart on what "zoom in" or "reset" means.
+        void SetEditorFontSize(float newSize);
+
         /// Reloads the workspace when the window comes back after a pause. Separated
         /// from OnUpdate so its early return governs only itself.
         void UpdateFocusReload(float deltaSeconds);
@@ -42,6 +47,18 @@ namespace graphite
 
         bool m_appForeground = true;
         float m_secondsInBackground = 0.0f;
+
+        /// Editor font size in pixels. Separate from the interface size, so zooming the
+        /// code leaves the menus alone.
+        float m_editorFontSize = 13.0f;
+
+        static constexpr float kMinimumEditorFontSize = 8.0f;
+        static constexpr float kMaximumEditorFontSize = 32.0f;
+        static constexpr float kDefaultEditorFontSize = 13.0f;
+
+        /// The change applied by one click of the View menu's "Zoom In"/"Zoom Out" —
+        /// there is no wheel delta to read from a menu click, so this stands in for one.
+        static constexpr float kEditorFontSizeStep = 1.0f;
 
         std::shared_ptr<core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;

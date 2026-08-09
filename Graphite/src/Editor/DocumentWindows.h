@@ -30,7 +30,11 @@ namespace graphite
         /// core::DockSpaceHost::CenterNodeId(). Passed in rather than held, since
         /// DocumentWindows knows nothing about DockSpaceHost and GraphiteLayer, which owns
         /// both, is a cheap place to connect them.
-        void Render(float fontSize, unsigned int fallbackDockNode);
+        ///
+        /// Returns the total Ctrl+wheel zoom delta applied across every visible document
+        /// this frame - only one can be hovered at a time, so in practice at most one
+        /// contributes, but summing costs nothing and needs no assumption about that.
+        float Render(float fontSize, unsigned int fallbackDockNode);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
         void RequestOpen(const std::filesystem::path& path, bool permanent);

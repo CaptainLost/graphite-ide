@@ -79,12 +79,14 @@ namespace graphite
         }
     }
 
-    void DrawEditor(core::text::OpenItem& item, float fontSize)
+    float DrawEditor(core::text::OpenItem& item, float fontSize)
     {
+        float zoomDelta = 0.0f;
+
         if (!item.document)
         {
             DrawFailure(item);
-            return;
+            return zoomDelta;
         }
 
         ImGui::PushFont(core::ImGuiRenderer::MonoFont(), fontSize);
@@ -222,6 +224,12 @@ namespace graphite
                     item.caret = core::text::PlaceAt(buffer, item.caret, offset, true,
                                                      core::text::DefaultTabWidth);
                 }
+            }
+
+            if (ImGui::IsWindowHovered() && ImGui::GetIO().KeyCtrl
+                && ImGui::GetIO().MouseWheel != 0.0f)
+            {
+                zoomDelta = ImGui::GetIO().MouseWheel;
             }
 
             // The keyboard is scoped to this document's own child window, not merely to
@@ -408,5 +416,7 @@ namespace graphite
 
         ImGui::EndChild();
         ImGui::PopFont();
+
+        return zoomDelta;
     }
 }

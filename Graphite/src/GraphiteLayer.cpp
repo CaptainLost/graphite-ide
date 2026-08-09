@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace graphite
@@ -46,6 +47,11 @@ namespace graphite
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
         ApplyIgnoredDisplay(IgnoredDisplayFromString(Settings::LoadIgnoredDisplay()), false);
+
+        const float storedFontSize = Settings::LoadEditorFontSize();
+
+        if (storedFontSize >= kMinimumEditorFontSize && storedFontSize <= kMaximumEditorFontSize)
+            m_editorFontSize = storedFontSize;
 
         std::filesystem::path startFolder = m_initialFolder;
         if (startFolder.empty())
@@ -110,7 +116,34 @@ namespace graphite
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
 
-        m_documentWindows.Render(13.0f, m_dockSpace.CenterNodeId());
+        const float zoom = m_documentWindows.Render(m_editorFontSize, m_dockSpace.CenterNodeId());
+
+        if (zoom != 0.0f)
+            SetEditorFontSize(m_editorFontSize + zoom);
+
+        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_0, false))
+            SetEditorFontSize(kDefaultEditorFontSize);
+
+        // The View menu's Zoom In/Out items show these same combinations as their
+        // shortcut text, and both routes end at SetEditorFontSize, so a key press and a
+        // menu click always agree on what "zoom in" means.
+        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Equal, false))
+            SetEditorFontSize(m_editorFontSize + kEditorFontSizeStep);
+
+        if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Minus, false))
+            SetEditorFontSize(m_editorFontSize - kEditorFontSizeStep);
+    }
+
+    void GraphiteLayer::SetEditorFontSize(float newSize)
+    {
+        const float clamped =
+            std::clamp(newSize, kMinimumEditorFontSize, kMaximumEditorFontSize);
+
+        if (clamped == m_editorFontSize)
+            return;
+
+        m_editorFontSize = clamped;
+        Settings::SaveEditorFontSize(m_editorFontSize);
     }
 
     void GraphiteLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
@@ -193,6 +226,21 @@ namespace graphite
 
                 ImGui::EndMenu();
             }
+
+            ImGui::Separator();
+
+            // A shortcut nobody can discover is not a shortcut, so Ctrl+Scroll and
+            // Ctrl+0 both get a menu entry — all three feed SetEditorFontSize, the same
+            // function the keyboard shortcuts in OnUIRender call, so the menu and the
+            // keys cannot disagree about what these do.
+            if (ImGui::MenuItem("Zoom In", "Ctrl+="))
+                SetEditorFontSize(m_editorFontSize + kEditorFontSizeStep);
+
+            if (ImGui::MenuItem("Zoom Out", "Ctrl+-"))
+                SetEditorFontSize(m_editorFontSize - kEditorFontSizeStep);
+
+            if (ImGui::MenuItem("Reset Zoom", "Ctrl+0"))
+                SetEditorFontSize(kDefaultEditorFontSize);
 
             ImGui::Separator();
 

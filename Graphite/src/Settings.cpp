@@ -5,6 +5,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 
+#include <cstdlib>
 #include <filesystem>
 
 namespace graphite
@@ -13,6 +14,7 @@ namespace graphite
     {
         constexpr const char* kLastFolderKey = "lastFolder";
         constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
+        constexpr const char* kEditorFontSizeKey = "editorFontSize";
 
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
@@ -64,5 +66,25 @@ namespace graphite
     void Settings::SaveIgnoredDisplay(std::string_view mode)
     {
         WriteValue(kIgnoredDisplayKey, std::string{mode});
+    }
+
+    float Settings::LoadEditorFontSize()
+    {
+        const std::string stored = core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
+
+        char* end = nullptr;
+        const float size = std::strtof(stored.c_str(), &end);
+
+        // An unparseable or empty value (strtof leaves end == stored.data()) reads as
+        // "nothing stored", so the caller's default applies rather than a garbage size.
+        if (end == stored.c_str())
+            return 0.0f;
+
+        return size;
+    }
+
+    void Settings::SaveEditorFontSize(float size)
+    {
+        WriteValue(kEditorFontSizeKey, std::to_string(size));
     }
 }
