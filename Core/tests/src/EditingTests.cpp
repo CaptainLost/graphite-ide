@@ -412,6 +412,36 @@ TEST_CASE("Shift+Tab with no selection removes the indent of just the caret's li
     CheckDerivedCachesAreCorrect(item);
 }
 
+TEST_CASE("Tab with no selection is its own undo step, as the block form is")
+{
+    core::text::OpenItem item = ItemWith("");
+
+    CHECK(core::text::InsertText(item, "ab"));
+    CHECK(core::text::Indent(item, {}));
+    CHECK(item.document->Buffer().Text() == "ab    ");
+
+    // Left to coalesce with the typing before it, one Ctrl+Z would take the "ab" with
+    // it — and Shift+Tab, which has always broken the group, would answer the same
+    // gesture differently.
+    CHECK(core::text::Undo(item));
+    CHECK(item.document->Buffer().Text() == "ab");
+}
+
+TEST_CASE("Shift+Tab with nothing to remove does not break the undo group")
+{
+    core::text::OpenItem item = ItemWith("");
+
+    CHECK(core::text::InsertText(item, "ab"));
+    CHECK_FALSE(core::text::Outdent(item, {}));
+    CHECK(core::text::InsertText(item, "cd"));
+    CHECK(item.document->Buffer().Text() == "abcd");
+
+    // One run of typing is one undo step. The refused Outdent made no edit, so it had no
+    // business splitting it in two.
+    CHECK(core::text::Undo(item));
+    CHECK(item.document->Buffer().Text() == "");
+}
+
 TEST_CASE("A read-only document refuses newline and indentation")
 {
     core::text::OpenItem item = ItemWith("ab\x80xy");

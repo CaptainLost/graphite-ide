@@ -362,10 +362,27 @@ namespace core::text
         const std::string indent =
             style.useSpaces ? std::string(style.width, ' ') : std::string{"\t"};
 
-        if (!HasSelection(item.caret))
-            return InsertText(item, indent);
-
         TextBuffer& buffer = item.document->Buffer();
+
+        if (!HasSelection(item.caret))
+        {
+            // A width of zero would make this insert nothing; InsertText would say so by
+            // returning false, but only after the group had already been broken for an
+            // edit that never happened.
+            if (indent.empty())
+                return false;
+
+            // Bracketed exactly as the block form below is, and as Outdent is either way:
+            // one press of Tab is one press of Ctrl+Z, whether or not anything was
+            // selected and whichever direction it went. Left to coalesce with the typing
+            // around it, Tab and Shift+Tab would answer differently to the same gesture.
+            buffer.BreakUndoGroup();
+            const bool changed = InsertText(item, indent);
+            buffer.BreakUndoGroup();
+
+            return changed;
+        }
+
         const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
 
         buffer.BreakUndoGroup();
@@ -396,15 +413,18 @@ namespace core::text
         TextBuffer& buffer = item.document->Buffer();
         const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
 
-        bool changed = false;
+        // Measured before the buffer is touched at all, so that having nothing to remove
+        // costs no transaction and — the part that was actually wrong — no
+        // BreakUndoGroup. Shift+Tab against a line with no indentation used to break the
+        // group the typing around it belonged to, splitting one gesture's worth of undo
+        // in two over an edit that never happened.
+        //
+        // Each entry is a line start and how many bytes to drop from it.
+        std::vector<std::pair<std::size_t, std::size_t>> removals;
 
-        buffer.BreakUndoGroup();
-        buffer.BeginTransaction();
-
-        for (std::size_t line = lastLine + 1; line > firstLine; --line)
+        for (std::size_t line = firstLine; line <= lastLine; ++line)
         {
-            const std::size_t index = line - 1;
-            const std::string text = buffer.LineText(index);
+            const std::string text = buffer.LineText(line);
 
             std::size_t remove = 0;
 
@@ -418,19 +438,23 @@ namespace core::text
                     ++remove;
             }
 
-            if (remove == 0)
-                continue;
-
-            const std::size_t start = buffer.LineStart(index);
-            buffer.Erase(start, start + remove);
-            changed = true;
+            if (remove > 0)
+                removals.emplace_back(buffer.LineStart(line), remove);
         }
+
+        if (removals.empty())
+            return false;
+
+        buffer.BreakUndoGroup();
+        buffer.BeginTransaction();
+
+        // Back to front, as before: erasing a line's indent moves every offset after it,
+        // and the starts still to be used are the ones above.
+        for (auto entry = removals.rbegin(); entry != removals.rend(); ++entry)
+            buffer.Erase(entry->first, entry->first + entry->second);
 
         buffer.EndTransaction();
         buffer.BreakUndoGroup();
-
-        if (!changed)
-            return false;
 
         item.caret.anchor = buffer.LineStart(firstLine);
         item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
