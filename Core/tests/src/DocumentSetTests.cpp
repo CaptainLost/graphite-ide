@@ -92,6 +92,21 @@ TEST_CASE("The widest line is measured in columns, not bytes")
     CHECK(documents.At(0).widestColumn == 11);
 }
 
+TEST_CASE("Indent depths are computed once when the document loads")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "indent.cpp";
+    WriteBytes(path, "if (x)\n    return;");
+
+    DocumentSet documents;
+
+    CHECK(documents.Open(path, true) == OpenOutcome::Opened);
+    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.At(0).indentDepths.size() == 2);
+    CHECK(documents.At(0).indentDepths[0] == 0);
+    CHECK(documents.At(0).indentDepths[1] == 4);
+}
+
 TEST_CASE("Opening the same file twice activates it instead of duplicating it")
 {
     TempDirectory directory;

@@ -52,6 +52,19 @@ namespace core::text
         /// loading does.
         std::size_t widestColumn = 0;
 
+        /// One indentation depth per line, in columns (see Indent.h), computed once when
+        /// the document is loaded rather than per frame, the same way and for the same
+        /// reason as widestColumn above — IndentDepths walks every line and allocates a
+        /// std::string for each.
+        ///
+        /// Nothing in this stage edits a document, so the value never goes stale here.
+        /// Whichever stage adds editing must keep this current itself: an edit can change
+        /// the depth of the line it lands on, ripple into the blank lines around it
+        /// through the resolution rule in Indent.h, and change nothing else — recomputing
+        /// only the affected run rather than the whole document is possible but is not
+        /// done here.
+        std::vector<std::size_t> indentDepths;
+
         /// A specific message from whatever failed underneath — ProbeFile's own text for
         /// a directory, a locked file, or one that could not be measured. Empty for the
         /// failures classified from a successful probe, where the enumerator alone
