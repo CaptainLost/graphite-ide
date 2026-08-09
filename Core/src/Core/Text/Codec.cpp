@@ -176,6 +176,39 @@ namespace core::text
             return out;
         }
 
+        /// What a codec actually does with the bytes: leave them alone, or transcode
+        /// UTF-16 in one byte order or the other. Decode, Encode and TransformsContent
+        /// all derive from CodecFor, the only default-less switch over Encoding in this
+        /// file, so a new Encoding enumerator forces exactly one decision here — how it
+        /// maps to a Transform — rather than three separate switches that could each
+        /// compile while disagreeing with the others.
+        enum class Transform
+        {
+            PassThrough,
+            Utf16Little,
+            Utf16Big
+        };
+
+        [[nodiscard]] Transform CodecFor(Encoding encoding)
+        {
+            // No default: adding an Encoding enumerator without deciding its Transform
+            // here is a build error, the same guarantee BomLength and EncodingName rely
+            // on elsewhere in this module.
+            switch (encoding)
+            {
+            case Encoding::Utf16Le:
+                return Transform::Utf16Little;
+            case Encoding::Utf16Be:
+                return Transform::Utf16Big;
+            case Encoding::Utf8:
+            case Encoding::Utf8Bom:
+            case Encoding::Unknown:
+                break;
+            }
+
+            return Transform::PassThrough;
+        }
+
         /// Whether decoded UTF-8 looks like prose or code rather than binary noise.
         ///
         /// Byte value alone is not enough: DEL (U+007F) is a single byte >= 0x20, and the
@@ -211,15 +244,13 @@ namespace core::text
 
     Result<std::string> Decode(std::string_view bytes, Encoding encoding)
     {
-        switch (encoding)
+        switch (CodecFor(encoding))
         {
-        case Encoding::Utf16Le:
+        case Transform::Utf16Little:
             return DecodeUtf16(bytes, true);
-        case Encoding::Utf16Be:
+        case Transform::Utf16Big:
             return DecodeUtf16(bytes, false);
-        case Encoding::Utf8:
-        case Encoding::Utf8Bom:
-        case Encoding::Unknown:
+        case Transform::PassThrough:
             break;
         }
 
@@ -228,15 +259,13 @@ namespace core::text
 
     std::string Encode(std::string_view utf8, Encoding encoding)
     {
-        switch (encoding)
+        switch (CodecFor(encoding))
         {
-        case Encoding::Utf16Le:
+        case Transform::Utf16Little:
             return EncodeUtf16(utf8, true);
-        case Encoding::Utf16Be:
+        case Transform::Utf16Big:
             return EncodeUtf16(utf8, false);
-        case Encoding::Utf8:
-        case Encoding::Utf8Bom:
-        case Encoding::Unknown:
+        case Transform::PassThrough:
             break;
         }
 
@@ -245,21 +274,7 @@ namespace core::text
 
     bool TransformsContent(Encoding encoding)
     {
-        // No default: a new encoding that transforms content must be added here
-        // explicitly, or a caller relying on this to gate UTF-8 validation would load it
-        // as editable without ever checking it decodes to valid UTF-8.
-        switch (encoding)
-        {
-        case Encoding::Utf16Le:
-        case Encoding::Utf16Be:
-            return true;
-        case Encoding::Utf8:
-        case Encoding::Utf8Bom:
-        case Encoding::Unknown:
-            break;
-        }
-
-        return false;
+        return CodecFor(encoding) != Transform::PassThrough;
     }
 
     Encoding SniffEncoding(std::string_view bytes)
