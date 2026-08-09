@@ -17,6 +17,16 @@ Check every record's shape with:
 .\scripts\Test-Adr.ps1
 ```
 
+The table below is rebuilt from the records themselves — their titles, statuses
+and dates — so after promoting a record from `proposed`, or after any edit that
+touches those three lines, run:
+
+```powershell
+.\scripts\Update-AdrIndex.ps1
+```
+
+Do not hand-edit the rows between the markers; edit the record and rebuild.
+
 | # | Title | Status | Date |
 |---|---|---|---|
 <!-- adr-index -->

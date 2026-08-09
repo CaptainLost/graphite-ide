@@ -14,9 +14,14 @@ new record is written.
 If you make a decision that outlives the change you are making, record it:
 
 ```powershell
-.\scripts\New-Adr.ps1 "Title in the imperative"
-.\scripts\Test-Adr.ps1
+.\scripts\New-Adr.ps1 "Title in the imperative"   # writes the record, adds the index row
+.\scripts\Update-AdrIndex.ps1                     # rebuilds the index from the records
+.\scripts\Test-Adr.ps1                            # checks every record and its index row
 ```
+
+A record starts as `proposed`. Promoting it means editing the record's `Status:`
+line and then running `Update-AdrIndex.ps1` — the index is derived from the
+records, never hand-edited.
 
 ## Layout
 
@@ -64,6 +69,7 @@ doubt, run the whole suite.
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/NewAdrTests.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/TestAdrTests.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/tests/UpdateAdrIndexTests.ps1
 ```
 
 Plain PowerShell 5.1, no external modules. `Test-Adr.ps1` exits non-zero when a
