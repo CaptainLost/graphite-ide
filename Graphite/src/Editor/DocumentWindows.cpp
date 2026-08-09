@@ -189,10 +189,18 @@ namespace graphite
         {
             // An error is not an answer, the same as below: a share that blinked must not
             // read as "still gone".
-            if (!error && present)
-                m_documents.MarkPresent(item.path);
+            if (error || !present)
+                return;
 
-            return;
+            m_documents.MarkPresent(item.path);
+
+            // Deliberately falls through rather than returning. This is the very event
+            // saying the file came back, and so the one moment its content is most worth
+            // comparing: a file deleted and restored with different content - git checkout
+            // after a git rm - would otherwise go on showing the old content until some
+            // unrelated later sweep happened to notice. MarkPresent only clears the
+            // Missing flag; it does not touch the item's document or its stamp, and the
+            // reference above stays valid across it.
         }
 
         // An error is not an answer. A share that blinked or a directory that briefly
