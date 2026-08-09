@@ -35,10 +35,12 @@ namespace core::text
     public:
         /// Builds a document from bytes already in hand.
         ///
-        /// This is where every decision about the file's form is made: the BOM is
-        /// recognised and stripped, UTF-8 is validated, and CRLF is normalised to LF
-        /// while the dominant style is remembered. Fails only for an encoding that
-        /// cannot be decoded at all, which today means UTF-16.
+        /// This is where every decision about the file's form is made: the encoding is
+        /// sniffed, the BOM is recognised and stripped, the content is decoded to UTF-8
+        /// (validated instead, for encodings Decode passes through unchanged), and CRLF
+        /// is normalised to LF while the dominant style is remembered. Fails only for
+        /// UTF-16 content that is damaged: an odd byte count, or a surrogate half with
+        /// no partner.
         [[nodiscard]] static Result<TextDocument> FromContent(std::string bytes,
                                                               std::filesystem::path path);
 
@@ -75,7 +77,8 @@ namespace core::text
         [[nodiscard]] bool IsReadOnly() const noexcept { return m_readOnly; }
 
         /// The content exactly as it should reach disk: the BOM back at the front if
-        /// there was one, and the remembered line ending throughout.
+        /// there was one, the content re-encoded to m_encoding, and the remembered line
+        /// ending throughout.
         [[nodiscard]] std::string Bytes() const;
 
         /// Whether the content differs from what was last saved.

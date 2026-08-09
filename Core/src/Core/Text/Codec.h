@@ -57,4 +57,12 @@ namespace core::text
     /// Tolerates input cut mid-unit, since callers pass an 8 KB sample as readily as a
     /// whole file.
     [[nodiscard]] Encoding SniffEncoding(std::string_view bytes);
+
+    /// Whether Decode/Encode actually transform content for this encoding, as opposed to
+    /// passing it through unchanged. The single source of truth for which arms of
+    /// Decode's switch do something, so a caller deciding whether content needs UTF-8
+    /// validation (only content Decode did not already guarantee is valid UTF-8 needs
+    /// it) never has to duplicate that switch and risk it drifting out of step —
+    /// especially once single-byte codepages join the encodings that transform.
+    [[nodiscard]] bool TransformsContent(Encoding encoding);
 }

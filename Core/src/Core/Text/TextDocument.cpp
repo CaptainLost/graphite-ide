@@ -90,10 +90,9 @@ namespace core::text
 
         // Only content that was not decoded can fail validation: Decode returns valid
         // UTF-8 by construction, or an error. Validating it here would suggest otherwise.
-        const bool wasDecoded =
-            declared == Encoding::Utf16Le || declared == Encoding::Utf16Be;
-
-        if (!wasDecoded && !IsValidUtf8(content))
+        // TransformsContent is the single source of truth for which arms of Decode's
+        // switch actually decode something, so this stays correct as more of them do.
+        if (!TransformsContent(declared) && !IsValidUtf8(content))
         {
             document.m_encoding = Encoding::Unknown;
             document.m_readOnly = true;

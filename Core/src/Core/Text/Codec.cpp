@@ -243,6 +243,25 @@ namespace core::text
         return std::string{utf8};
     }
 
+    bool TransformsContent(Encoding encoding)
+    {
+        // No default: a new encoding that transforms content must be added here
+        // explicitly, or a caller relying on this to gate UTF-8 validation would load it
+        // as editable without ever checking it decodes to valid UTF-8.
+        switch (encoding)
+        {
+        case Encoding::Utf16Le:
+        case Encoding::Utf16Be:
+            return true;
+        case Encoding::Utf8:
+        case Encoding::Utf8Bom:
+        case Encoding::Unknown:
+            break;
+        }
+
+        return false;
+    }
+
     Encoding SniffEncoding(std::string_view bytes)
     {
         const Encoding declared = DetectEncoding(bytes);
