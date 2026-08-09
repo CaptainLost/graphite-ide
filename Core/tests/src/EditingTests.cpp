@@ -272,6 +272,7 @@ TEST_CASE("Enter in the middle of a line splits it and still indents")
 
     CHECK(core::text::InsertNewline(item, {}));
     CHECK(item.document->Buffer().Text() == "  a\n  b");
+    CheckDerivedCachesAreCorrect(item);
 }
 
 TEST_CASE("Enter on a blank line adds no indentation of its own")
@@ -280,6 +281,7 @@ TEST_CASE("Enter on a blank line adds no indentation of its own")
 
     CHECK(core::text::InsertNewline(item, {}));
     CHECK(item.document->Buffer().Text() == "\n");
+    CheckDerivedCachesAreCorrect(item);
 }
 
 TEST_CASE("Tab without a selection inserts one indent")
@@ -290,10 +292,12 @@ TEST_CASE("Tab without a selection inserts one indent")
 
     CHECK(core::text::Indent(spaces, {}));
     CHECK(spaces.document->Buffer().Text() == "    ab");
+    CheckDerivedCachesAreCorrect(spaces);
 
     core::text::OpenItem tabs = ItemWith("ab");
     CHECK(core::text::Indent(tabs, core::text::IndentStyle{false, 4}));
     CHECK(tabs.document->Buffer().Text() == "\tab");
+    CheckDerivedCachesAreCorrect(tabs);
 }
 
 TEST_CASE("Tab indents every line the selection touches, as one undo step")
@@ -324,6 +328,7 @@ TEST_CASE("A selection ending at the start of a line does not indent that line")
 
     CHECK(core::text::Indent(item, {}));
     CHECK(item.document->Buffer().Text() == "    one\n    two\nthree");
+    CheckDerivedCachesAreCorrect(item);
 }
 
 TEST_CASE("Shift+Tab removes one indent and never more than exists")
@@ -344,6 +349,16 @@ TEST_CASE("Shift+Tab with nothing to remove changes nothing")
     CHECK(item.document->Buffer().Text() == "none");
 }
 
+TEST_CASE("Shift+Tab with no selection removes the indent of just the caret's line")
+{
+    core::text::OpenItem item = ItemWith("    ab");
+    // Default caret: offset 0, anchor 0 — no selection, so BlockLines collapses to the
+    // single line the caret sits on.
+    CHECK(core::text::Outdent(item, {}));
+    CHECK(item.document->Buffer().Text() == "ab");
+    CheckDerivedCachesAreCorrect(item);
+}
+
 TEST_CASE("A read-only document refuses newline and indentation")
 {
     core::text::OpenItem item = ItemWith("ab\x80xy");
@@ -352,4 +367,87 @@ TEST_CASE("A read-only document refuses newline and indentation")
     CHECK_FALSE(core::text::InsertNewline(item, {}));
     CHECK_FALSE(core::text::Indent(item, {}));
     CHECK_FALSE(core::text::Outdent(item, {}));
+}
+
+// --- Coverage for UpdateDerived's incremental branch ---------------------------------
+//
+// Every cache assertion above edits at firstLine == 0, so item.widestLine (unsigned,
+// always >= 0) never satisfies `item.widestLine < firstLine`, and UpdateDerived always
+// takes the full RefreshDerived fallback. CheckDerivedCachesAreCorrect then compares one
+// fresh recomputation against another — it cannot fail regardless of whether the
+// incremental splice in UpdateIndentDepths is correct. The tests below put the widest
+// line at line 0 and edit strictly below it, so the incremental branch is what actually
+// runs, and each one says so explicitly before making the edit.
+
+TEST_CASE("InsertNewline below the widest line splices indentDepths instead of "
+          "misaligning the tail")
+{
+    // Line 0 is the widest line and stays outside every edit below it.
+    core::text::OpenItem item = ItemWith("aaaaaaaaaa\nb\ncd");
+    REQUIRE(item.widestLine == 0);
+
+    // Splits "cd" into "c" / "d" — line 2 is strictly below the widest line, so
+    // UpdateDerived's `item.widestLine < firstLine` check (0 < 2) takes the incremental
+    // branch, and the line count grows from 3 to 4, exercising the splice in
+    // UpdateIndentDepths rather than the resize bug it was written to prevent.
+    item.caret.offset = 14;
+    item.caret.anchor = 14;
+    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 2);
+
+    CHECK(core::text::InsertNewline(item, {}));
+    CHECK(item.document->Buffer().Text() == "aaaaaaaaaa\nb\nc\nd");
+    CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("InsertNewline reaches past a run of blank lines to find the real anchor")
+{
+    // Line 0 is the widest line. Pressing Enter at the end of line 1 creates a new line
+    // that is itself blank (just the copied indent), immediately above two further blank
+    // lines and then a non-blank anchor at line 5. UpdateIndentDepths' `while (blank(to))
+    // ++to;` has to walk through all three blank lines to reach that anchor — a
+    // too-narrow repair range is exactly what this is built to catch.
+    core::text::OpenItem item = ItemWith("xxxxxxxxxxxxxxxx\n    if\n\n\n        end");
+    REQUIRE(item.widestLine == 0);
+
+    item.caret.offset = 23; // end of "    if", the start of the run this test is about
+    item.caret.anchor = 23;
+    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 1);
+
+    CHECK(core::text::InsertNewline(item, {}));
+    CHECK(item.document->Buffer().Text()
+          == "xxxxxxxxxxxxxxxx\n    if\n    \n\n\n        end");
+    CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("Indent on a block below the widest line takes the incremental path")
+{
+    core::text::OpenItem item = ItemWith("xxxxxxxxxxxxxxxx\none\ntwo");
+    REQUIRE(item.widestLine == 0);
+
+    // Selects lines 1 and 2, both strictly below the widest line.
+    item.caret.anchor = 17;
+    item.caret.offset = 24;
+    REQUIRE(item.document->Buffer().ToPosition(item.caret.anchor).line == 1);
+
+    CHECK(core::text::Indent(item, {}));
+    CHECK(item.document->Buffer().Text() == "xxxxxxxxxxxxxxxx\n    one\n    two");
+    CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("Outdent on a block below the widest line takes the incremental path")
+{
+    core::text::OpenItem item = ItemWith("xxxxxxxxxxxxxxxx\n    one\n    two");
+    REQUIRE(item.widestLine == 0);
+
+    item.caret.anchor = 17;
+    item.caret.offset = 32;
+    REQUIRE(item.document->Buffer().ToPosition(item.caret.anchor).line == 1);
+
+    CHECK(core::text::Outdent(item, {}));
+    CHECK(item.document->Buffer().Text() == "xxxxxxxxxxxxxxxx\none\ntwo");
+    CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
 }

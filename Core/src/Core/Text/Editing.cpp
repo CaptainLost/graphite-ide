@@ -311,8 +311,8 @@ namespace core::text
             return false;
 
         TextBuffer& buffer = item.document->Buffer();
-        const std::size_t caretOffset = SelectionRange(item.caret).first;
-        const std::size_t line = buffer.ToPosition(caretOffset).line;
+        const auto [from, to] = SelectionRange(item.caret);
+        const std::size_t line = buffer.ToPosition(from).line;
 
         // Copied verbatim from the current line rather than synthesised from `style`: a
         // tab-indented file should stay tab-indented for the line below it even under a
@@ -323,8 +323,6 @@ namespace core::text
             text.substr(0, indentEnd == std::string::npos ? text.size() : indentEnd);
 
         const std::string insertion = "\n" + indent;
-
-        const auto [from, to] = SelectionRange(item.caret);
 
         buffer.BeginTransaction();
 
