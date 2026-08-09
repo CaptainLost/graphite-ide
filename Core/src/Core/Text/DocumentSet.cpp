@@ -123,8 +123,11 @@ namespace core::text
             return OpenOutcome::Failed;
         }
 
+        // The probe's encoding is deliberately not kept: the document sniffs its own, and
+        // two fields both meaning "the file's encoding" are two answers waiting to differ.
+        // The status bar reads the document's, which is the one the buffer was decoded
+        // with; size has no such counterpart, since a failed item has no document to ask.
         item.size = probe.Value().size;
-        item.encoding = probe.Value().encoding;
 
         // Asking has to happen before anything is added, so answering "no" leaves no
         // trace of the question — including the preview slot, which stays exactly as it

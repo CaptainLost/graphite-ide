@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Core/Text/Caret.h"
-#include "Core/Text/Encoding.h"
 #include "Core/Text/TextDocument.h"
 
 #include <cstddef>
@@ -35,7 +34,6 @@ namespace core::text
         std::optional<TextDocument> document;
         OpenFailure failure = OpenFailure::None;
         std::uint64_t size = 0;
-        Encoding encoding = Encoding::Utf8;
         Caret caret;
         bool preview = false;
 
