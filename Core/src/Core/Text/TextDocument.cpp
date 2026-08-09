@@ -2,6 +2,7 @@
 
 #include "Core/Text/TextDocument.h"
 
+#include "Core/Fs/AtomicWrite.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
@@ -237,6 +238,13 @@ namespace core::text
                                                           + " bytes): " + fs::ToUtf8(path)};
         }
 
+        // Read before the content, not after: see m_diskTime's comment in the header for
+        // why the order matters. A failure here is not fatal to the load — it only means
+        // ChangedOnDisk() cannot see this file changing from its very first comparison,
+        // which is no worse than a share blinking at any other moment.
+        std::error_code timeError;
+        const auto diskTime = std::filesystem::last_write_time(path, timeError);
+
         std::ifstream stream{path, std::ios::binary};
 
         if (!stream.is_open())
@@ -277,7 +285,15 @@ namespace core::text
         if (stream.bad())
             return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
 
-        return FromContent(std::move(content), path);
+        auto document = FromContent(std::move(content), path);
+
+        if (document && !timeError)
+        {
+            document.Value().m_diskTime = diskTime;
+            document.Value().m_diskSize = size;
+        }
+
+        return document;
     }
 
     std::string WithLineEnding(std::string_view text, LineEnding ending)
@@ -312,5 +328,85 @@ namespace core::text
         result += Encode(WithLineEnding(m_buffer.Text(), m_lineEnding), m_encoding);
 
         return result;
+    }
+
+    bool TextDocument::ChangedOnDisk() const
+    {
+        std::error_code timeError;
+        const auto time = std::filesystem::last_write_time(m_path, timeError);
+
+        if (timeError)
+            return false;
+
+        std::error_code sizeError;
+        const std::uintmax_t size = std::filesystem::file_size(m_path, sizeError);
+
+        if (sizeError)
+            return false;
+
+        return time != m_diskTime || size != m_diskSize;
+    }
+
+    Result<void> TextDocument::Save()
+    {
+        auto written = fs::WriteFileAtomically(m_path, Bytes());
+
+        if (!written)
+            return written.GetError();
+
+        MarkSaved();
+        m_buffer.BreakUndoGroup();
+        AcceptDiskState();
+
+        return {};
+    }
+
+    Result<void> TextDocument::ReloadFromDisk()
+    {
+        auto fresh = Load(m_path);
+
+        if (!fresh)
+            return fresh.GetError();
+
+        TextDocument freshDocument = std::move(fresh).Value();
+        const std::string freshText = freshDocument.m_buffer.Text();
+
+        // Bracketed by BreakUndoGroup on both sides so the reload never merges with the
+        // typing that came before it or the typing that comes after: one Ctrl+Z reverses
+        // exactly the reload, nothing more and nothing less.
+        m_buffer.BreakUndoGroup();
+        m_buffer.BeginTransaction();
+        m_buffer.Erase(0, m_buffer.Length());
+        m_buffer.Insert(0, freshText);
+        m_buffer.EndTransaction();
+        m_buffer.BreakUndoGroup();
+
+        m_encoding = freshDocument.m_encoding;
+        m_lineEnding = freshDocument.m_lineEnding;
+        m_wasMixed = freshDocument.m_wasMixed;
+        m_readOnly = freshDocument.m_readOnly;
+        m_hadBom = freshDocument.m_hadBom;
+        m_bomEncoding = freshDocument.m_bomEncoding;
+
+        MarkSaved();
+        m_diskTime = freshDocument.m_diskTime;
+        m_diskSize = freshDocument.m_diskSize;
+
+        return {};
+    }
+
+    void TextDocument::AcceptDiskState()
+    {
+        std::error_code timeError;
+        const auto time = std::filesystem::last_write_time(m_path, timeError);
+
+        std::error_code sizeError;
+        const std::uintmax_t size = std::filesystem::file_size(m_path, sizeError);
+
+        if (!timeError)
+            m_diskTime = time;
+
+        if (!sizeError)
+            m_diskSize = size;
     }
 }

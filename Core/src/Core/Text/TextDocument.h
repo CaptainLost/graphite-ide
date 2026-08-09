@@ -4,6 +4,7 @@
 #include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -102,6 +103,30 @@ namespace core::text
         /// which stage 3 adds.
         void MarkSaved() noexcept { m_savedRevision = m_buffer.Revision(); }
 
+        /// Whether the file differs from what was last read or written from here.
+        /// False when the file cannot be examined at all — a share that blinked must not
+        /// be reported as an edit.
+        [[nodiscard]] bool ChangedOnDisk() const;
+
+        /// Writes Bytes() through core::fs::WriteFileAtomically, then marks the content
+        /// saved and records the new stamp. Does not check ChangedOnDisk() itself: whether
+        /// a stale save should be refused or confirmed is the caller's decision, because
+        /// only the caller can ask.
+        [[nodiscard]] Result<void> Save();
+
+        /// Replaces the content with the file's, as one undo step, and records the new
+        /// stamp. The caret is the caller's to fix up.
+        ///
+        /// On failure nothing is touched: a file that has become binary or truncated
+        /// leaves the document exactly as it was, because discarding what is in memory is
+        /// the worst available answer to "the file went strange".
+        [[nodiscard]] Result<void> ReloadFromDisk();
+
+        /// Records the file's current state as known without reading it — what "keep my
+        /// version" means after a conflict. The next Save() then overwrites without
+        /// asking again.
+        void AcceptDiskState();
+
     private:
         TextBuffer m_buffer;
         std::filesystem::path m_path;
@@ -123,5 +148,22 @@ namespace core::text
         /// Unknown for read-only handling while the mark still has to go back.
         Encoding m_bomEncoding = Encoding::Utf8;
         std::size_t m_savedRevision = 0;
+
+        /// The file's modification time and size as they were when its content was last
+        /// read or written.
+        ///
+        /// Read BEFORE the content, never after. If the file is rewritten during our read,
+        /// a stamp taken beforehand is older than the file's real state and the next
+        /// comparison notices; taken afterwards, it would record a state newer than what
+        /// was actually read and the change would be lost for good. A false "changed"
+        /// costs one reload, a false "unchanged" costs somebody's work.
+        ///
+        /// It is also what keeps our own writes from looking like somebody else's: after a
+        /// save this holds the file we just produced, so the watcher notification that
+        /// eventually arrives finds nothing to do. No "ignore the next event" flag and no
+        /// timeout — notifications coalesce and arrive late, and both of those tricks
+        /// assume they do not.
+        std::filesystem::file_time_type m_diskTime{};
+        std::uintmax_t m_diskSize = 0;
     };
 }

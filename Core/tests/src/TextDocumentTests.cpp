@@ -6,11 +6,14 @@
 
 #include "TempDirectory.h"
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <ostream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
@@ -30,10 +33,28 @@ namespace
         return std::move(document).Value();
     }
 
-    void WriteBytes(const std::filesystem::path& path, std::string_view contents)
+    void WriteAllBytes(const std::filesystem::path& path, std::string_view contents)
     {
         std::ofstream stream{path, std::ios::binary};
         stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+    }
+
+    std::string ReadAllBytes(const std::filesystem::path& path)
+    {
+        std::ifstream stream{path, std::ios::binary};
+        std::string content{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+        return content;
+    }
+
+    /// A file holding `contents`, in a directory shared by the whole test binary and
+    /// named uniquely per call so unrelated tests never collide on one path.
+    std::filesystem::path MakeTempFile(const std::string& contents)
+    {
+        static TempDirectory directory;
+        static std::atomic<int> counter{0};
+
+        const std::string name = "doc-" + std::to_string(counter.fetch_add(1)) + ".tmp";
+        return directory.MakeFile(name, contents);
     }
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -269,7 +290,7 @@ TEST_CASE("A file on disk loads with its path and content")
 {
     TempDirectory directory;
     const auto path = directory.Path() / "main.cpp";
-    WriteBytes(path, "int main()\r\n{\r\n}\r\n");
+    WriteAllBytes(path, "int main()\r\n{\r\n}\r\n");
 
     const auto document = TextDocument::Load(path);
 
@@ -284,7 +305,7 @@ TEST_CASE("A file read from disk is written back byte for byte")
     TempDirectory directory;
     const auto path = directory.Path() / "project.xml";
     const std::string original = "\xEF\xBB\xBF<Project>\r\n</Project>\r\n";
-    WriteBytes(path, original);
+    WriteAllBytes(path, original);
 
     const auto document = TextDocument::Load(path);
 
@@ -308,7 +329,7 @@ TEST_CASE("A file whose name is not ASCII loads")
     // has to work — this is what core::fs::ToUtf8 exists for.
     TempDirectory directory;
     const auto path = directory.Path() / core::fs::FromUtf8("\xC4\x87wiczenie.txt");
-    WriteBytes(path, "content");
+    WriteAllBytes(path, "content");
 
     const auto document = TextDocument::Load(path);
 
@@ -332,7 +353,7 @@ TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
 {
     TempDirectory directory;
     const auto path = directory.Path() / "huge.bin";
-    WriteBytes(path, "");
+    WriteAllBytes(path, "");
 
     // Marking the file sparse first means growing it reserves no real disk clusters,
     // regardless of how much free space the volume actually has.
@@ -368,7 +389,7 @@ TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot o
     // handle, including the ifstream Load opens next.
     TempDirectory directory;
     const auto path = directory.Path() / "locked.txt";
-    WriteBytes(path, "content");
+    WriteAllBytes(path, "content");
 
     const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, /*dwShareMode=*/0, nullptr,
                                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -502,7 +523,7 @@ TEST_CASE("The probe and the document agree about a file that changes shape past
 
     TempDirectory directory;
     const auto path = directory.Path() / "tail.txt";
-    WriteBytes(path, bytes);
+    WriteAllBytes(path, bytes);
 
     const auto probe = ProbeFile(path);
 
@@ -553,4 +574,122 @@ TEST_CASE("A UTF-32 file is refused rather than opened as UTF-16")
 
     REQUIRE_FALSE(document);
     CHECK(document.GetError().message.find("UTF-16 LE") != std::string::npos);
+}
+
+TEST_CASE("Saving round trips every encoding byte for byte")
+{
+    const std::vector<std::string> contents = {
+        "line one\r\nline two\r\n",
+        std::string{"\xef\xbb\xbf"} + "with a mark\r\n",
+        // The std::string{pointer, length} constructor, not a bare literal: a literal
+        // holding "\xff\xfe" followed by NUL bytes truncates at the first NUL, which is
+        // the defect that cost this project a test during stage 2.5.
+        std::string{"\xff\xfe\x61\x00\x62\x00", 6},
+        std::string{"\xfe\xff\x00\x61\x00\x62", 6},
+    };
+
+    for (const std::string& original : contents)
+    {
+        const std::filesystem::path path = MakeTempFile(original);
+
+        auto document = core::text::TextDocument::Load(path);
+        REQUIRE(document);
+        REQUIRE(document.Value().Save());
+
+        CHECK(ReadAllBytes(path) == original);
+    }
+}
+
+TEST_CASE("A save clears the modified flag and refreshes the stamp")
+{
+    const std::filesystem::path path = MakeTempFile("original\n");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+    core::text::TextDocument document = std::move(loaded).Value();
+
+    CHECK_FALSE(document.IsModified());
+    CHECK_FALSE(document.ChangedOnDisk());
+
+    document.Buffer().Insert(0, "more ");
+    CHECK(document.IsModified());
+
+    REQUIRE(document.Save());
+    CHECK_FALSE(document.IsModified());
+
+    // The stamp now describes the file we just wrote, which is what stops our own save
+    // from arriving later as somebody else's change.
+    CHECK_FALSE(document.ChangedOnDisk());
+}
+
+TEST_CASE("A file rewritten by other means is noticed")
+{
+    const std::filesystem::path path = MakeTempFile("original\n");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+    core::text::TextDocument document = std::move(loaded).Value();
+
+    // A different length as well as different content. The check compares size and
+    // modification time, and two writes in quick succession can share a timestamp — a
+    // test relying on the timestamp alone is a test that eventually flickers.
+    WriteAllBytes(path, "replaced from elsewhere\n");
+
+    CHECK(document.ChangedOnDisk());
+}
+
+TEST_CASE("Reloading is one undo step")
+{
+    const std::filesystem::path path = MakeTempFile("original\n");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+    core::text::TextDocument document = std::move(loaded).Value();
+
+    WriteAllBytes(path, "replaced from elsewhere\n");
+    REQUIRE(document.ReloadFromDisk());
+
+    CHECK(document.Buffer().Text() == "replaced from elsewhere\n");
+    CHECK_FALSE(document.IsModified());
+
+    CHECK(document.Buffer().Undo());
+    CHECK(document.Buffer().Text() == "original\n");
+
+    // Undoing a reload puts the document out of step with the file again, which is
+    // exactly what modified means.
+    CHECK(document.IsModified());
+}
+
+TEST_CASE("A reload that cannot decode leaves the document untouched")
+{
+    const std::filesystem::path path = MakeTempFile("original\n");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+    core::text::TextDocument document = std::move(loaded).Value();
+
+    // A lone high surrogate behind a UTF-16 LE mark: recognised as UTF-16, impossible to
+    // decode.
+    WriteAllBytes(path, std::string{"\xff\xfe\x3d\xd8", 4});
+
+    CHECK_FALSE(document.ReloadFromDisk());
+    CHECK(document.Buffer().Text() == "original\n");
+    CHECK_FALSE(document.IsModified());
+}
+
+TEST_CASE("AcceptDiskState silences a change without reading it")
+{
+    const std::filesystem::path path = MakeTempFile("original\n");
+
+    auto loaded = core::text::TextDocument::Load(path);
+    REQUIRE(loaded);
+    core::text::TextDocument document = std::move(loaded).Value();
+
+    WriteAllBytes(path, "replaced from elsewhere\n");
+    REQUIRE(document.ChangedOnDisk());
+
+    document.AcceptDiskState();
+
+    CHECK_FALSE(document.ChangedOnDisk());
+    CHECK(document.Buffer().Text() == "original\n");
 }
