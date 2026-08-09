@@ -66,7 +66,7 @@ namespace core
         m_running = true;
         m_lastFrameTime = glfwGetTime();
 
-        while (m_running && !m_window->ShouldClose())
+        while (m_running)
         {
             const double now = glfwGetTime();
             const auto delta = static_cast<float>(now - m_lastFrameTime);
@@ -80,6 +80,24 @@ namespace core
             m_frameLayers.clear();
             for (auto& layer : m_layers)
                 m_frameLayers.push_back(layer.get());
+
+            if (m_window->ShouldClose())
+            {
+                // Every layer is asked, not just up to the first refusal: a layer that
+                // refuses usually does so by opening a question, and one that never gets
+                // asked never opens its own.
+                bool mayClose = true;
+                for (Layer* layer : m_frameLayers)
+                {
+                    if (!layer->OnCloseRequested())
+                        mayClose = false;
+                }
+
+                if (mayClose)
+                    break;
+
+                m_window->CancelClose();
+            }
 
             for (Layer* layer : m_frameLayers)
                 layer->OnUpdate(delta);

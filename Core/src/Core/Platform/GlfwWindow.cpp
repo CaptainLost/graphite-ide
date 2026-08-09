@@ -52,6 +52,11 @@ namespace core
         glfwSetWindowShouldClose(m_handle, GLFW_TRUE);
     }
 
+    void GlfwWindow::CancelClose()
+    {
+        glfwSetWindowShouldClose(m_handle, GLFW_FALSE);
+    }
+
     void GlfwWindow::FramebufferSize(int& width, int& height) const
     {
         glfwGetFramebufferSize(m_handle, &width, &height);

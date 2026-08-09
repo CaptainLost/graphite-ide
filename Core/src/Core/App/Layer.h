@@ -19,6 +19,11 @@ namespace core
         virtual void OnUpdate(float deltaSeconds) { (void)deltaSeconds; }
         virtual void OnUIRender() {}
 
+        /// Whether the application may close now. A layer returning false is expected to
+        /// be asking the user something; it will be asked again every frame until it
+        /// answers true, which is what lets a modal draw at all.
+        virtual bool OnCloseRequested() { return true; }
+
         [[nodiscard]] const std::string& Name() const noexcept { return m_name; }
 
     private:

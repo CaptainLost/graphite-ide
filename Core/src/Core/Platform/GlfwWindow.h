@@ -17,6 +17,7 @@ namespace core
 
         [[nodiscard]] bool ShouldClose() const override;
         void RequestClose() override;
+        void CancelClose() override;
 
         void FramebufferSize(int& width, int& height) const override;
         void SetVSync(bool enabled) override;
