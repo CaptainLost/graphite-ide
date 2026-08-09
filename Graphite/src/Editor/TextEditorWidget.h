@@ -14,6 +14,10 @@ namespace graphite
     /// costs the same as a hundred-line one. An item with no document draws a centred,
     /// dimmed explanation instead.
     ///
-    /// Input handling arrives in a later task; this draws.
+    /// Also reads mouse and keyboard input for the surface it draws: clicking and
+    /// dragging place the caret and select text, and the arrow keys, Home/End,
+    /// Page Up/Down, Ctrl+A and Ctrl+C work while this document's own child window has
+    /// keyboard focus. The caret and selection live on `item.caret`, so they survive a
+    /// tab switch.
     void DrawEditor(core::text::OpenItem& item, float fontSize);
 }

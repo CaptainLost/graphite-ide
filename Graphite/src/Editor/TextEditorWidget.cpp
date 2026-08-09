@@ -121,6 +121,129 @@ namespace graphite
                                 static_cast<float>(buffer.LineCount()) * lineHeight));
             ImGui::SetCursorScreenPos(origin);
 
+            // Matches textX below exactly: both measure from the same gutter-separator
+            // padding, or a click would land a character or two off from where the glyphs
+            // it is aiming at are actually drawn.
+            const float textOriginX = origin.x + gutterWidth + kGutterPaddingX;
+            const std::size_t pageLines = static_cast<std::size_t>(
+                std::max(1.0f, ImGui::GetWindowHeight() / lineHeight));
+
+            // A click anywhere in the surface takes keyboard focus, which is what makes
+            // the arrow keys reach this window rather than the dockspace.
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                ImGui::SetKeyboardFocusHere();
+
+            if (ImGui::IsWindowHovered() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            {
+                const ImVec2 mouse = ImGui::GetMousePos();
+                const auto row =
+                    static_cast<std::size_t>(std::max(0.0f, (mouse.y - origin.y) / lineHeight));
+                const std::size_t line = std::min(row, buffer.LineCount() - 1);
+
+                const float relativeX = std::max(0.0f, mouse.x - textOriginX);
+                const auto column =
+                    static_cast<std::size_t>((relativeX + cellWidth * 0.5f) / cellWidth);
+
+                const std::size_t offset =
+                    buffer.LineStart(line)
+                    + core::text::ByteOfColumn(buffer.LineText(line), column,
+                                               core::text::DefaultTabWidth);
+
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    const int clicks = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left);
+
+                    if (clicks >= 3)
+                        item.caret = core::text::SelectLineAt(buffer, line);
+                    else if (clicks == 2)
+                        item.caret = core::text::SelectWordAt(buffer, offset);
+                    else
+                        item.caret = core::text::PlaceAt(buffer, item.caret, offset,
+                                                         ImGui::GetIO().KeyShift,
+                                                         core::text::DefaultTabWidth);
+                }
+                else
+                {
+                    // Dragging always extends, whichever way it goes.
+                    item.caret = core::text::PlaceAt(buffer, item.caret, offset, true,
+                                                     core::text::DefaultTabWidth);
+                }
+            }
+
+            // The keyboard is scoped to this document's own child window, not merely to
+            // the parent tab: IsWindowFocused() with no flags checks the *current* window
+            // (the child pushed by BeginChild above), and only the document the user
+            // actually clicked into ever becomes that window. Without this, a key press
+            // reaching any visible editor — including one in another split — could move a
+            // caret the user is not looking at.
+            const std::size_t caretBeforeKeyboard = item.caret.offset;
+
+            if (ImGui::IsWindowFocused())
+            {
+                const ImGuiIO& io = ImGui::GetIO();
+                const bool shift = io.KeyShift;
+                const bool control = io.KeyCtrl;
+
+                struct Binding
+                {
+                    ImGuiKey key;
+                    core::text::Motion plain;
+                    core::text::Motion withControl;
+                };
+
+                const Binding bindings[] = {
+                    {ImGuiKey_LeftArrow, core::text::Motion::Left, core::text::Motion::WordLeft},
+                    {ImGuiKey_RightArrow, core::text::Motion::Right, core::text::Motion::WordRight},
+                    {ImGuiKey_UpArrow, core::text::Motion::Up, core::text::Motion::Up},
+                    {ImGuiKey_DownArrow, core::text::Motion::Down, core::text::Motion::Down},
+                    {ImGuiKey_Home, core::text::Motion::LineStart,
+                     core::text::Motion::DocumentStart},
+                    {ImGuiKey_End, core::text::Motion::LineEnd, core::text::Motion::DocumentEnd},
+                    {ImGuiKey_PageUp, core::text::Motion::PageUp, core::text::Motion::PageUp},
+                    {ImGuiKey_PageDown, core::text::Motion::PageDown,
+                     core::text::Motion::PageDown},
+                };
+
+                for (const Binding& binding : bindings)
+                {
+                    if (!ImGui::IsKeyPressed(binding.key, true))
+                        continue;
+
+                    item.caret =
+                        core::text::Move(buffer, item.caret,
+                                         control ? binding.withControl : binding.plain, shift,
+                                         core::text::DefaultTabWidth, pageLines);
+                }
+
+                if (control && ImGui::IsKeyPressed(ImGuiKey_A, false))
+                    item.caret = core::text::SelectAll(buffer);
+
+                if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
+                {
+                    const auto [from, to] = core::text::SelectionRange(item.caret);
+
+                    if (from != to)
+                        ImGui::SetClipboardText(buffer.Substring(from, to).c_str());
+                }
+            }
+
+            // Scrolling follows the caret only when a key actually moved it this frame —
+            // not merely when the window has keyboard focus, which is true on every frame
+            // it is focused and would fight the user's own scrolling. Comparing the
+            // caret's offset before and after the keyboard block is the honest signal:
+            // it is true exactly when a motion changed where the caret sits, whether or
+            // not the key press also happens to change the selection.
+            if (item.caret.offset != caretBeforeKeyboard)
+            {
+                const core::text::Position where = buffer.ToPosition(item.caret.offset);
+                const float caretY = static_cast<float>(where.line) * lineHeight;
+
+                if (caretY < ImGui::GetScrollY())
+                    ImGui::SetScrollY(caretY);
+                else if (caretY + lineHeight > ImGui::GetScrollY() + ImGui::GetWindowHeight())
+                    ImGui::SetScrollY(caretY + lineHeight - ImGui::GetWindowHeight());
+            }
+
             const core::text::Position caretPosition =
                 buffer.ToPosition(item.caret.offset);
             const auto [selectionFrom, selectionTo] = core::text::SelectionRange(item.caret);
