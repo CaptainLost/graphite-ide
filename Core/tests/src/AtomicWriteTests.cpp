@@ -1,11 +1,15 @@
 #include <doctest/doctest.h>
 
 #include "Core/Fs/AtomicWrite.h"
+#include "Core/Fs/FileSystem.h"
 
 #include "TempDirectory.h"
 
+#include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
+#include <vector>
 
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
@@ -91,10 +95,19 @@ TEST_CASE("A failed write leaves an existing target and its content untouched")
     std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
     CHECK(contents == "original");
 
-    // No debris either: the temporary that held "replaced" must be gone.
+    // No debris either: the temporary that held "replaced" must be gone. The count is
+    // asserted rather than only the names, because an iterator that failed to open the
+    // directory yields nothing at all — a loop body that never runs would let this pass
+    // having checked nothing, which is exactly the shape of a test that quietly stops
+    // testing.
     std::error_code code;
+    std::vector<std::string> names;
+
     for (const auto& entry : std::filesystem::directory_iterator{temp.Path(), code})
-        CHECK(entry.path().filename() == "target.txt");
+        names.push_back(core::fs::ToUtf8(entry.path().filename()));
+
+    CHECK_FALSE(code);
+    CHECK(names == std::vector<std::string>{"target.txt"});
 }
 
 TEST_CASE("An alternate data stream survives an atomic write")
