@@ -160,3 +160,83 @@ TEST_CASE("Encoding writes the byte order it was asked for")
     CHECK(Encode("Hi", Encoding::Utf16Le) == kHiLe);
     CHECK(Encode("Hi", Encoding::Utf16Be) == kHiBe);
 }
+
+TEST_CASE("A byte order mark settles the encoding on its own")
+{
+    CHECK(SniffEncoding("\xEF\xBB\xBFhello") == Encoding::Utf8Bom);
+    CHECK(SniffEncoding(std::string("\xFF\xFEH\0i\0", 6)) == Encoding::Utf16Le);
+    CHECK(SniffEncoding(std::string("\xFE\xFF\0H\0i", 6)) == Encoding::Utf16Be);
+}
+
+TEST_CASE("Ordinary text with no mark is UTF-8")
+{
+    CHECK(SniffEncoding("int main() {}") == Encoding::Utf8);
+    CHECK(SniffEncoding("") == Encoding::Utf8);
+}
+
+TEST_CASE("UTF-16 without a mark is recognised from the parity of its NUL bytes")
+{
+    // "Hello" — NULs at odd positions is little-endian, at even is big-endian.
+    CHECK(SniffEncoding(std::string("H\0e\0l\0l\0o\0", 10)) == Encoding::Utf16Le);
+    CHECK(SniffEncoding(std::string("\0H\0e\0l\0l\0o", 10)) == Encoding::Utf16Be);
+}
+
+TEST_CASE("A file with NUL bytes on both parities is not UTF-16")
+{
+    // Both parities carry NULs, so neither byte order explains the file.
+    const std::string bytes = std::string("\0\0a\0\0b\0\0", 8);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+}
+
+TEST_CASE("A single NUL byte is not enough evidence")
+{
+    CHECK(SniffEncoding(std::string("ab\0d", 4)) == Encoding::Utf8);
+}
+
+TEST_CASE("Binary data whose NULs happen to line up is caught by the decode check")
+{
+    // Every NUL at an odd position, so the parity test passes — but decoded as UTF-16LE
+    // these are control characters, which text does not contain. This is the case that
+    // keeps the third condition from being decoration.
+    const std::string bytes = std::string("\x01\0\x02\0\x03\0\x04\0", 8);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+}
+
+TEST_CASE("Text containing tabs and newlines is still text")
+{
+    const std::string bytes = std::string("a\0\t\0\n\0b\0", 8);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
+}
+
+TEST_CASE("An unpaired surrogate means the bytes are not UTF-16 text")
+{
+    // A high surrogate followed by an ordinary character: NULs line up, but it does not
+    // decode.
+    const std::string bytes = std::string("\x3D\xD8\x69\0\x69\0", 6);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+}
+
+TEST_CASE("A sample cut mid-unit is still recognised")
+{
+    // Nine bytes: four whole units and one stray byte, as an 8 KB sample of a larger
+    // file would be.
+    const std::string bytes = std::string("H\0e\0l\0l\0o", 9);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
+}
+
+TEST_CASE("A character outside Latin-1 does not break the parity rule")
+{
+    // U+0100 is 00 01 little-endian, putting one NUL at the even parity while every
+    // ASCII character puts one at the odd. Nine ASCII characters against that one give
+    // 9 of 10 NULs at the dominant parity, which is exactly the threshold — so this case
+    // also pins where the threshold sits. Note the arithmetic: fewer than nine ASCII
+    // characters here and the file would be called UTF-8.
+    const std::string bytes = std::string("a\0b\0c\0d\0e\0f\0g\0h\0i\0\0\x01", 20);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
+}

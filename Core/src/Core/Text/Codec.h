@@ -30,4 +30,31 @@ namespace core::text
     /// what keeps a read-only file whose bytes failed UTF-8 validation byte-identical
     /// when it is saved.
     [[nodiscard]] std::string Encode(std::string_view utf8, Encoding encoding);
+
+    /// The encoding of a file, from its byte order mark or — failing that — from the
+    /// shape of its bytes.
+    ///
+    /// A mark settles it outright. Without one, UTF-16 is still recognisable: 'A' is
+    /// U+0041, so little-endian writes 41 00 and big-endian 00 41, which puts the NUL at
+    /// an odd or an even position respectively. The parity of the NUL bytes therefore
+    /// answers both "is this UTF-16" and "which byte order" in one pass.
+    ///
+    /// Three conditions, all required, because a file of small 16-bit integers has the
+    /// same byte pattern as UTF-16 text and must not be mistaken for it — once saving
+    /// exists, writing such a file back would destroy it:
+    ///
+    ///  - at least 90% of the NUL bytes sit at one parity. Not 100%: U+0100 is 00 01 in
+    ///    little-endian, putting a NUL at the other parity, and demanding purity would
+    ///    reject legitimate files;
+    ///  - at least two NUL bytes, so a single coincidence does not decide;
+    ///  - the bytes decode, in the implied order, to something shaped like text — no
+    ///    unpaired surrogates, and no control characters besides tab, newline and
+    ///    carriage return.
+    ///
+    /// Anything short of all three gives Utf8, which leaves the caller on whatever path
+    /// it was already on. When uncertain, do not claim it is text.
+    ///
+    /// Tolerates input cut mid-unit, since callers pass an 8 KB sample as readily as a
+    /// whole file.
+    [[nodiscard]] Encoding SniffEncoding(std::string_view bytes);
 }
