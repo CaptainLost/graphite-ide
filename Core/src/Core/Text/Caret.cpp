@@ -3,11 +3,9 @@
 #include "Core/Text/Caret.h"
 
 #include "Core/Text/Columns.h"
-#include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
 #include <algorithm>
-#include <string>
 
 namespace core::text
 {
@@ -108,13 +106,49 @@ namespace core::text
             return at;
         }
 
+        [[nodiscard]] bool IsContinuation(const TextBuffer& buffer, std::size_t offset)
+        {
+            return (static_cast<unsigned char>(buffer.CharAt(offset)) & 0xC0) == 0x80;
+        }
+
+        /// Encoding.h's NextCharacter/PreviousCharacter, asked of the buffer directly.
+        ///
+        /// The string_view versions would need the whole document materialised first, and
+        /// buffer.Text() is a full copy of the piece table — 300 MB per arrow key on a
+        /// file the confirmation modal exists to let the user open. Both of these read a
+        /// handful of bytes around one offset instead, through CharAt's binary search.
+        [[nodiscard]] std::size_t NextCharacterIn(const TextBuffer& buffer, std::size_t offset)
+        {
+            if (offset >= buffer.Length())
+                return buffer.Length();
+
+            std::size_t next = offset + 1;
+
+            while (next < buffer.Length() && IsContinuation(buffer, next))
+                ++next;
+
+            return next;
+        }
+
+        [[nodiscard]] std::size_t PreviousCharacterIn(const TextBuffer& buffer, std::size_t offset)
+        {
+            if (offset == 0 || buffer.Empty())
+                return 0;
+
+            std::size_t previous = std::min(offset, buffer.Length()) - 1;
+
+            while (previous > 0 && IsContinuation(buffer, previous))
+                --previous;
+
+            return previous;
+        }
+
         /// Pulls an arbitrary offset back onto a character boundary.
         [[nodiscard]] std::size_t SnapToBoundary(const TextBuffer& buffer, std::size_t offset)
         {
             std::size_t at = std::min(offset, buffer.Length());
 
-            while (at > 0 && at < buffer.Length()
-                   && (static_cast<unsigned char>(buffer.CharAt(at)) & 0xC0) == 0x80)
+            while (at > 0 && at < buffer.Length() && IsContinuation(buffer, at))
                 --at;
 
             return at;
@@ -145,7 +179,6 @@ namespace core::text
     Caret Move(const TextBuffer& buffer, Caret caret, Motion motion, bool extend,
                std::size_t tabWidth, std::size_t pageLines)
     {
-        const std::string text = buffer.Text();
         const Position position = buffer.ToPosition(caret.offset);
 
         std::size_t target = caret.offset;
@@ -155,10 +188,10 @@ namespace core::text
         switch (motion)
         {
         case Motion::Left:
-            target = PreviousCharacter(text, caret.offset);
+            target = PreviousCharacterIn(buffer, caret.offset);
             break;
         case Motion::Right:
-            target = NextCharacter(text, caret.offset);
+            target = NextCharacterIn(buffer, caret.offset);
             break;
         case Motion::Up:
             verticalColumn = DesiredColumnFor(buffer, caret, tabWidth);

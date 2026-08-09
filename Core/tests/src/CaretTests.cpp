@@ -305,3 +305,35 @@ TEST_CASE("Every motion leaves the caret on a character boundary")
         }
     }
 }
+
+TEST_CASE("Left and right step characters across piece boundaries")
+{
+    // Move reads bytes around the caret straight out of the buffer rather than
+    // materialising the whole document first, so a multi-byte character split across
+    // two pieces has to step exactly as one that sits inside a single piece does.
+    TextBuffer buffer{"ab"};
+
+    // "a" + "ą" + "ę" + "b", assembled so that no inserted character shares a piece
+    // with its neighbours.
+    buffer.Insert(1, "\xC4\x99");
+    buffer.Insert(1, "\xC4\x85");
+
+    REQUIRE(buffer.Text() == "a\xC4\x85\xC4\x99" "b");
+
+    Caret caret = At(0);
+
+    caret = Step(buffer, caret, Motion::Right);
+    CHECK(caret.offset == 1);
+
+    caret = Step(buffer, caret, Motion::Right);
+    CHECK(caret.offset == 3);
+
+    caret = Step(buffer, caret, Motion::Right);
+    CHECK(caret.offset == 5);
+
+    caret = Step(buffer, caret, Motion::Left);
+    CHECK(caret.offset == 3);
+
+    caret = Step(buffer, caret, Motion::Left);
+    CHECK(caret.offset == 1);
+}
