@@ -6,6 +6,14 @@ project "CoreTests"
     warnings "High"
     fatalwarnings { "All" }
 
+    -- Sources are UTF-8 and carry no BOM, so MSVC would otherwise read them through the
+    -- machine's ANSI codepage: an em dash in a message the user reads becomes mojibake on
+    -- a machine whose codepage differs from this one, or trips C4819 - which
+    -- fatalwarnings turns into a build failure. This sets both the source and the
+    -- execution charset to UTF-8, which is what every std::string in this codebase
+    -- already claims to be.
+    buildoptions { "/utf-8" }
+
     targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
     objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
 
