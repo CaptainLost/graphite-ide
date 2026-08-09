@@ -32,4 +32,16 @@ namespace core::text
     /// same caveat about what has to keep it current once editing exists.
     [[nodiscard]] std::vector<std::size_t> IndentDepths(const TextBuffer& buffer,
                                                          std::size_t tabWidth);
+
+    /// The same resolution, but only the depths for lines [firstLine, lastLine], both
+    /// inclusive and clamped to the document. Entry 0 of the result is `firstLine`.
+    ///
+    /// A blank line at either edge of the range still resolves against the nearest
+    /// non-blank line beyond that edge, even when that line falls outside the range —
+    /// the same rule as the whole-document overload, applied to a slice of it instead of
+    /// walking the whole document to get it.
+    [[nodiscard]] std::vector<std::size_t> IndentDepths(const TextBuffer& buffer,
+                                                         std::size_t tabWidth,
+                                                         std::size_t firstLine,
+                                                         std::size_t lastLine);
 }

@@ -3,9 +3,8 @@
 #include "Core/Text/DocumentSet.h"
 
 #include "Core/Fs/FileSystem.h"
-#include "Core/Text/Columns.h"
+#include "Core/Text/Editing.h"
 #include "Core/Text/FileProbe.h"
-#include "Core/Text/Indent.h"
 
 #include <algorithm>
 #include <utility>
@@ -151,10 +150,7 @@ namespace core::text
                 if (document)
                 {
                     item.document = std::move(document).Value();
-                    item.widestColumn =
-                        WidestColumn(item.document->Buffer(), DefaultTabWidth);
-                    item.indentDepths =
-                        IndentDepths(item.document->Buffer(), DefaultTabWidth);
+                    RefreshDerived(item);
                 }
                 else
                 {

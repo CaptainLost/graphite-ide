@@ -49,6 +49,13 @@ namespace core::text
         /// loading does.
         std::size_t widestColumn = 0;
 
+        /// Which line widestColumn was measured from. Editing any other line can only
+        /// raise the value, in constant time; only editing or deleting this one requires
+        /// walking the document again. Without it, the value could only ever grow, and a
+        /// document whose longest line was deleted would keep offering a horizontal
+        /// scroll range with nothing in it.
+        std::size_t widestLine = 0;
+
         /// One indentation depth per line, in columns (see Indent.h), computed once when
         /// the document is loaded rather than per frame, the same way and for the same
         /// reason as widestColumn above — IndentDepths walks every line and allocates a
