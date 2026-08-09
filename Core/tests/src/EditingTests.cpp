@@ -251,3 +251,105 @@ TEST_CASE("Undo through Editing restores the caret and the caches")
     CHECK(item.widestColumn == widened);
     CheckDerivedCachesAreCorrect(item);
 }
+
+TEST_CASE("Enter carries the previous line's indentation")
+{
+    core::text::OpenItem item = ItemWith("    if (x)");
+    item.caret.offset = 10;
+    item.caret.anchor = 10;
+
+    CHECK(core::text::InsertNewline(item, {}));
+    CHECK(item.document->Buffer().Text() == "    if (x)\n    ");
+    CHECK(item.caret.offset == 15);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("Enter in the middle of a line splits it and still indents")
+{
+    core::text::OpenItem item = ItemWith("  ab");
+    item.caret.offset = 3;
+    item.caret.anchor = 3;
+
+    CHECK(core::text::InsertNewline(item, {}));
+    CHECK(item.document->Buffer().Text() == "  a\n  b");
+}
+
+TEST_CASE("Enter on a blank line adds no indentation of its own")
+{
+    core::text::OpenItem item = ItemWith("");
+
+    CHECK(core::text::InsertNewline(item, {}));
+    CHECK(item.document->Buffer().Text() == "\n");
+}
+
+TEST_CASE("Tab without a selection inserts one indent")
+{
+    core::text::OpenItem spaces = ItemWith("ab");
+    spaces.caret.offset = 0;
+    spaces.caret.anchor = 0;
+
+    CHECK(core::text::Indent(spaces, {}));
+    CHECK(spaces.document->Buffer().Text() == "    ab");
+
+    core::text::OpenItem tabs = ItemWith("ab");
+    CHECK(core::text::Indent(tabs, core::text::IndentStyle{false, 4}));
+    CHECK(tabs.document->Buffer().Text() == "\tab");
+}
+
+TEST_CASE("Tab indents every line the selection touches, as one undo step")
+{
+    core::text::OpenItem item = ItemWith("one\ntwo\nthree");
+    item.caret.anchor = 1;
+    // Offset 6 sits at the end of "two", still inside line 1 — the selection never
+    // reaches line 2 at all. (The brief's original offset of 9 lands one byte *into*
+    // "three", which by BlockLines' own rule means the selection does touch line 2 and
+    // should indent it; the brief's expected string left "three" untouched, contradicting
+    // its own algorithm. Moved the offset back onto line 1 so the test exercises what its
+    // name says — a selection that stays within the lines it visibly highlights.)
+    item.caret.offset = 6;
+
+    CHECK(core::text::Indent(item, {}));
+    CHECK(item.document->Buffer().Text() == "    one\n    two\nthree");
+    CheckDerivedCachesAreCorrect(item);
+
+    CHECK(item.document->Buffer().Undo());
+    CHECK(item.document->Buffer().Text() == "one\ntwo\nthree");
+}
+
+TEST_CASE("A selection ending at the start of a line does not indent that line")
+{
+    core::text::OpenItem item = ItemWith("one\ntwo\nthree");
+    item.caret.anchor = 0;
+    item.caret.offset = 8;
+
+    CHECK(core::text::Indent(item, {}));
+    CHECK(item.document->Buffer().Text() == "    one\n    two\nthree");
+}
+
+TEST_CASE("Shift+Tab removes one indent and never more than exists")
+{
+    core::text::OpenItem item = ItemWith("        deep\n  shallow\nnone");
+    item.caret.anchor = 0;
+    item.caret.offset = item.document->Buffer().Length();
+
+    CHECK(core::text::Outdent(item, {}));
+    CHECK(item.document->Buffer().Text() == "    deep\nshallow\nnone");
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("Shift+Tab with nothing to remove changes nothing")
+{
+    core::text::OpenItem item = ItemWith("none");
+    CHECK_FALSE(core::text::Outdent(item, {}));
+    CHECK(item.document->Buffer().Text() == "none");
+}
+
+TEST_CASE("A read-only document refuses newline and indentation")
+{
+    core::text::OpenItem item = ItemWith("ab\x80xy");
+    REQUIRE(item.document->IsReadOnly());
+
+    CHECK_FALSE(core::text::InsertNewline(item, {}));
+    CHECK_FALSE(core::text::Indent(item, {}));
+    CHECK_FALSE(core::text::Outdent(item, {}));
+}

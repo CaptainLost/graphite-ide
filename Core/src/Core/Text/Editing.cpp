@@ -145,6 +145,26 @@ namespace core::text
             UpdateIndentDepths(item, firstLine, lastLine);
         }
 
+        /// The inclusive line range a block indent should touch.
+        ///
+        /// A selection ending exactly at the start of a line does not reach that line.
+        /// Dragging down over two whole lines leaves the offset on the third line's first
+        /// byte, and indenting a line the user cannot see highlighted is a surprise. Only
+        /// when the range would otherwise be empty does the end line stay.
+        std::pair<std::size_t, std::size_t> BlockLines(const TextBuffer& buffer,
+                                                         const Caret& caret)
+        {
+            const auto [from, to] = SelectionRange(caret);
+
+            const std::size_t firstLine = buffer.ToPosition(from).line;
+            std::size_t lastLine = buffer.ToPosition(to).line;
+
+            if (lastLine > firstLine && to == buffer.LineStart(lastLine))
+                --lastLine;
+
+            return {firstLine, lastLine};
+        }
+
         /// Erases the selection, growing one with `motion` first when there is none.
         bool DeleteRange(OpenItem& item, Motion motion)
         {
@@ -281,6 +301,131 @@ namespace core::text
         item.caret.desiredColumn = NoDesiredColumn;
 
         RefreshDerived(item);
+
+        return true;
+    }
+
+    bool InsertNewline(OpenItem& item, IndentStyle /*style*/)
+    {
+        if (!Editable(item))
+            return false;
+
+        TextBuffer& buffer = item.document->Buffer();
+        const std::size_t caretOffset = SelectionRange(item.caret).first;
+        const std::size_t line = buffer.ToPosition(caretOffset).line;
+
+        // Copied verbatim from the current line rather than synthesised from `style`: a
+        // tab-indented file should stay tab-indented for the line below it even under a
+        // spaces setting. The file's own lines are the better authority.
+        const std::string text = buffer.LineText(line);
+        const std::size_t indentEnd = text.find_first_not_of(" \t");
+        const std::string indent =
+            text.substr(0, indentEnd == std::string::npos ? text.size() : indentEnd);
+
+        const std::string insertion = "\n" + indent;
+
+        const auto [from, to] = SelectionRange(item.caret);
+
+        buffer.BeginTransaction();
+
+        if (from != to)
+            buffer.Erase(from, to);
+
+        buffer.Insert(from, insertion);
+        buffer.EndTransaction();
+
+        item.caret.offset = from + insertion.size();
+        item.caret.anchor = item.caret.offset;
+        item.caret.desiredColumn = NoDesiredColumn;
+
+        UpdateDerived(item, line, buffer.ToPosition(item.caret.offset).line);
+
+        return true;
+    }
+
+    bool Indent(OpenItem& item, IndentStyle style)
+    {
+        if (!Editable(item))
+            return false;
+
+        const std::string indent =
+            style.useSpaces ? std::string(style.width, ' ') : std::string{"\t"};
+
+        if (!HasSelection(item.caret))
+            return InsertText(item, indent);
+
+        TextBuffer& buffer = item.document->Buffer();
+        const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
+
+        buffer.BreakUndoGroup();
+        buffer.BeginTransaction();
+
+        for (std::size_t line = lastLine + 1; line > firstLine; --line)
+            buffer.Insert(buffer.LineStart(line - 1), indent);
+
+        buffer.EndTransaction();
+        buffer.BreakUndoGroup();
+
+        // The block stays selected, so Tab pressed again indents the same lines rather
+        // than replacing them with a tab character.
+        item.caret.anchor = buffer.LineStart(firstLine);
+        item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
+        item.caret.desiredColumn = NoDesiredColumn;
+
+        UpdateDerived(item, firstLine, lastLine);
+
+        return true;
+    }
+
+    bool Outdent(OpenItem& item, IndentStyle style)
+    {
+        if (!Editable(item))
+            return false;
+
+        TextBuffer& buffer = item.document->Buffer();
+        const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
+
+        bool changed = false;
+
+        buffer.BreakUndoGroup();
+        buffer.BeginTransaction();
+
+        for (std::size_t line = lastLine + 1; line > firstLine; --line)
+        {
+            const std::size_t index = line - 1;
+            const std::string text = buffer.LineText(index);
+
+            std::size_t remove = 0;
+
+            if (!text.empty() && text[0] == '\t')
+            {
+                remove = 1;
+            }
+            else
+            {
+                while (remove < style.width && remove < text.size() && text[remove] == ' ')
+                    ++remove;
+            }
+
+            if (remove == 0)
+                continue;
+
+            const std::size_t start = buffer.LineStart(index);
+            buffer.Erase(start, start + remove);
+            changed = true;
+        }
+
+        buffer.EndTransaction();
+        buffer.BreakUndoGroup();
+
+        if (!changed)
+            return false;
+
+        item.caret.anchor = buffer.LineStart(firstLine);
+        item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
+        item.caret.desiredColumn = NoDesiredColumn;
+
+        UpdateDerived(item, firstLine, lastLine);
 
         return true;
     }

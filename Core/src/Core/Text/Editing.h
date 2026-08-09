@@ -55,4 +55,22 @@ namespace core::text
     /// alternative is DocumentSet computing them its own way — two recipes for one set of
     /// invariants, which is how they end up disagreeing.
     void RefreshDerived(OpenItem& item);
+
+    /// Splits the line at the caret and indents the new line to match the one above,
+    /// copying its leading whitespace verbatim so a tab-indented file stays tab-indented
+    /// even under a spaces setting.
+    bool InsertNewline(OpenItem& item, IndentStyle style);
+
+    /// Tab. With no selection, inserts one indent at the caret. With a selection, adds one
+    /// indent to the front of every line it touches, in one undo step.
+    ///
+    /// A selection ending exactly at the start of a line does not reach that line —
+    /// selecting two whole lines by dragging down puts the offset at the third line's
+    /// first byte, and indenting a line the user cannot see highlighted is a surprise.
+    bool Indent(OpenItem& item, IndentStyle style);
+
+    /// Shift+Tab. Removes up to one indent from the front of every line the selection
+    /// touches, and less than one where less than one is there. Returns false when no line
+    /// had anything to remove.
+    bool Outdent(OpenItem& item, IndentStyle style);
 }
