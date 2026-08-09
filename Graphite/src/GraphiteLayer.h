@@ -11,6 +11,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Ui/PanelManager.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <memory>
 
@@ -59,6 +60,12 @@ namespace graphite
         /// The change applied by one click of the View menu's "Zoom In"/"Zoom Out" —
         /// there is no wheel delta to read from a menu click, so this stands in for one.
         static constexpr float kEditorFontSizeStep = 1.0f;
+
+        /// What Tab, Enter's auto-indent and the newline splitter insert. No menu edits
+        /// these yet; they exist so DrawEditor has a real IndentStyle to work with and
+        /// so the choice, once a menu sets it, persists the same way the font size does.
+        bool m_indentWithSpaces = true;
+        std::size_t m_indentWidth = 4;
 
         std::shared_ptr<core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;

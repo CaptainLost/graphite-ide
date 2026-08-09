@@ -4,6 +4,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/Editing.h"
 #include "Core/Text/TextDocument.h"
 
 #include <imgui.h>
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace graphite
 {
@@ -73,14 +75,15 @@ namespace graphite
         }
     }
 
-    float DrawEditor(core::text::OpenItem& item, float fontSize)
+    EditorFrameResult DrawEditor(core::text::OpenItem& item, float fontSize,
+                                 core::text::IndentStyle indentStyle)
     {
-        float zoomDelta = 0.0f;
+        EditorFrameResult result;
 
         if (!item.document)
         {
             DrawFailure(item);
-            return zoomDelta;
+            return result;
         }
 
         ImGui::PushFont(core::ImGuiRenderer::MonoFont(), fontSize);
@@ -257,7 +260,7 @@ namespace graphite
             if (ImGui::IsWindowHovered() && ImGui::GetIO().KeyCtrl
                 && ImGui::GetIO().MouseWheel != 0.0f)
             {
-                zoomDelta = ImGui::GetIO().MouseWheel;
+                result.zoomDelta = ImGui::GetIO().MouseWheel;
             }
 
             // The keyboard is scoped to this document's own child window, not merely to
@@ -273,7 +276,6 @@ namespace graphite
             // (once here, once below) risks exactly that if ImGui's focus state ever
             // changes between the two calls in the same frame.
             const bool focused = ImGui::IsWindowFocused();
-            const std::size_t caretBeforeKeyboard = item.caret.offset;
 
             if (focused)
             {
@@ -319,7 +321,18 @@ namespace graphite
                 if (control && ImGui::IsKeyPressed(ImGuiKey_A, false))
                     item.caret = core::text::SelectAll(buffer);
 
-                if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
+                // Whatever moved the caret above — a motion key or Ctrl+A, and the mouse
+                // click or drag earlier in this function, since caretAtFrameStart was
+                // read before either ran — is a different gesture from whatever typing
+                // follows. Breaking the group here, before any of the edits below,
+                // means moving the caret and then typing costs a fresh undo step instead
+                // of merging with whatever was typed before the caret moved.
+                if (item.caret.offset != caretAtFrameStart)
+                    item.document->Buffer().BreakUndoGroup();
+
+                // Cutting and copying share this: cutting is copying followed by
+                // removing the selection, not a separate way of reading the clipboard.
+                const auto copySelection = [&]
                 {
                     const auto [from, to] = core::text::SelectionRange(item.caret);
 
@@ -333,16 +346,102 @@ namespace graphite
 
                         ImGui::SetClipboardText(clipboard.c_str());
                     }
+                };
+
+                // The order below matters: the first match wins, and Enter never reaches
+                // the character queue (it arrives here as a key), so nothing double-fires
+                // it.
+
+                // ImGui delivers ordinary typed text as UTF-16 code units, not bytes —
+                // InsertText's contract is UTF-8, so every character is encoded before
+                // reaching it. Control characters ride along in the same queue; skipping
+                // everything below 0x20 except tab, and 0x7f, is what keeps a stray
+                // Escape from being inserted as a literal character.
+                for (const ImWchar character : io.InputQueueCharacters)
+                {
+                    if ((character < 0x20 && character != '\t') || character == 0x7f)
+                        continue;
+
+                    char utf8[5];
+                    const int length =
+                        ImTextCharToUtf8(utf8, static_cast<unsigned int>(character));
+
+                    if (length > 0)
+                    {
+                        result.edited |= core::text::InsertText(
+                            item, std::string_view(utf8, static_cast<std::size_t>(length)));
+                    }
                 }
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Enter, true)
+                    || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, true))
+                {
+                    result.edited |= core::text::InsertNewline(item, indentStyle);
+                }
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
+                {
+                    result.edited |= control ? core::text::DeleteWordBackward(item)
+                                             : core::text::DeleteBackward(item);
+                }
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Delete, true))
+                {
+                    result.edited |= control ? core::text::DeleteWordForward(item)
+                                             : core::text::DeleteForward(item);
+                }
+
+                // Consumed here rather than left for ImGui's own focus navigation, which
+                // is exactly what NoNavInputs on this child window (see its own comment
+                // above) makes safe — with the nav fallbacks disabled, nothing else is
+                // listening for Tab.
+                if (ImGui::IsKeyPressed(ImGuiKey_Tab, true))
+                {
+                    result.edited |= shift ? core::text::Outdent(item, indentStyle)
+                                           : core::text::Indent(item, indentStyle);
+                }
+
+                if (control && ImGui::IsKeyPressed(ImGuiKey_V, false))
+                {
+                    // An empty clipboard, or one holding something that is not text,
+                    // hands back a null pointer rather than an empty string.
+                    if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
+                        result.edited |= core::text::InsertText(item, clipboard);
+                }
+
+                if (control && ImGui::IsKeyPressed(ImGuiKey_X, false))
+                {
+                    copySelection();
+                    result.edited |= core::text::DeleteBackward(item);
+                }
+
+                if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))
+                    result.edited |= core::text::Undo(item);
+
+                if (control
+                    && (ImGui::IsKeyPressed(ImGuiKey_Y, false)
+                        || (shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))))
+                {
+                    result.edited |= core::text::Redo(item);
+                }
+
+                // Saving is not this widget's decision: a stale document on disk needs
+                // confirming first, and only DocumentWindows knows how to ask that. This
+                // only reports that the user asked.
+                if (control && ImGui::IsKeyPressed(ImGuiKey_S, false))
+                    result.saveRequested = true;
+
+                if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
+                    copySelection();
             }
 
-            // Scrolling follows the caret only when a key actually moved it this frame —
-            // not merely when the window has keyboard focus, which is true on every frame
-            // it is focused and would fight the user's own scrolling. Comparing the
-            // caret's offset before and after the keyboard block is the honest signal:
-            // it is true exactly when a motion changed where the caret sits, whether or
-            // not the key press also happens to change the selection.
-            if (item.caret.offset != caretBeforeKeyboard)
+            // Scrolling follows the caret only when this frame actually moved it — not
+            // merely when the window has keyboard focus, which is true on every frame it
+            // is focused and would fight the user's own scrolling. Comparing the caret's
+            // offset against caretAtFrameStart, read before the mouse and keyboard above
+            // touched anything, is the honest signal: true exactly when a click, a drag,
+            // a motion key or an edit changed where the caret sits.
+            if (item.caret.offset != caretAtFrameStart)
             {
                 const core::text::Position where = buffer.ToPosition(item.caret.offset);
                 const float caretY = static_cast<float>(where.line) * lineHeight;
@@ -525,6 +624,6 @@ namespace graphite
         ImGui::EndChild();
         ImGui::PopFont();
 
-        return zoomDelta;
+        return result;
     }
 }

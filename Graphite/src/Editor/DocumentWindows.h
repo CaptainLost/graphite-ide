@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Text/Editing.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -32,10 +34,14 @@ namespace graphite
         /// DocumentWindows knows nothing about DockSpaceHost and GraphiteLayer, which owns
         /// both, is a cheap place to connect them.
         ///
+        /// `indentStyle` governs what Tab, Enter's auto-indent and the newline splitter
+        /// insert, in whichever document has keyboard focus.
+        ///
         /// Returns the total Ctrl+wheel zoom delta applied across every visible document
         /// this frame - only one can be hovered at a time, so in practice at most one
         /// contributes, but summing costs nothing and needs no assumption about that.
-        float Render(float fontSize, unsigned int fallbackDockNode);
+        float Render(float fontSize, core::text::IndentStyle indentStyle,
+                    unsigned int fallbackDockNode);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
         void RequestOpen(const std::filesystem::path& path, bool permanent);

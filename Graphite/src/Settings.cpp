@@ -15,6 +15,8 @@ namespace graphite
         constexpr const char* kLastFolderKey = "lastFolder";
         constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
         constexpr const char* kEditorFontSizeKey = "editorFontSize";
+        constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
+        constexpr const char* kIndentWidthKey = "indentWidth";
 
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
@@ -86,5 +88,38 @@ namespace graphite
     void Settings::SaveEditorFontSize(float size)
     {
         WriteValue(kEditorFontSizeKey, std::to_string(size));
+    }
+
+    bool Settings::LoadIndentWithSpaces()
+    {
+        // Absent or anything other than an explicit "0" reads as spaces, which is also
+        // IndentStyle's own default — a hand-edited file cannot land on a value this
+        // does not recognise.
+        return core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
+    }
+
+    void Settings::SaveIndentWithSpaces(bool useSpaces)
+    {
+        WriteValue(kIndentWithSpacesKey, useSpaces ? "1" : "0");
+    }
+
+    std::size_t Settings::LoadIndentWidth()
+    {
+        const std::string stored = core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
+
+        char* end = nullptr;
+        const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
+
+        // An unparseable, empty or zero value reads as "nothing stored", so the caller's
+        // default applies rather than an unusable indent width.
+        if (end == stored.c_str() || width == 0)
+            return 0;
+
+        return static_cast<std::size_t>(width);
+    }
+
+    void Settings::SaveIndentWidth(std::size_t width)
+    {
+        WriteValue(kIndentWidthKey, std::to_string(width));
     }
 }

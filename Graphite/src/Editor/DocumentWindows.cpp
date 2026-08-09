@@ -148,7 +148,8 @@ namespace graphite
         }
     }
 
-    float DocumentWindows::Render(float fontSize, unsigned int fallbackDockNode)
+    float DocumentWindows::Render(float fontSize, core::text::IndentStyle indentStyle,
+                                  unsigned int fallbackDockNode)
     {
         // Identities as they stand at the start of this frame - after RequestOpen,
         // CloseAll or HandleRootMoved, all of which run earlier in the same
@@ -274,7 +275,17 @@ namespace graphite
                 if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     m_documents.Promote(index);
 
-                zoomDelta += DrawEditor(item, fontSize);
+                const EditorFrameResult editorResult = DrawEditor(item, fontSize, indentStyle);
+                zoomDelta += editorResult.zoomDelta;
+
+                // The first edit promotes a preview tab exactly as a double click does:
+                // once the user has typed into it, it is no longer something they were
+                // just glancing at.
+                if (editorResult.edited && preview)
+                    m_documents.Promote(index);
+
+                // editorResult.saveRequested: reconciling a stale document against a
+                // save request is the next stage's job, not this one's.
             }
 
             ImGui::End();

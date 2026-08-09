@@ -8,6 +8,7 @@
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
 #include "Core/Platform/Process.h"
+#include "Core/Text/Editing.h"
 
 #include <imgui.h>
 
@@ -56,6 +57,14 @@ namespace graphite
 
         if (storedFontSize >= kMinimumEditorFontSize && storedFontSize <= kMaximumEditorFontSize)
             m_editorFontSize = storedFontSize;
+
+        m_indentWithSpaces = Settings::LoadIndentWithSpaces();
+
+        if (const std::size_t storedIndentWidth = Settings::LoadIndentWidth();
+            storedIndentWidth != 0)
+        {
+            m_indentWidth = storedIndentWidth;
+        }
 
         std::filesystem::path startFolder = m_initialFolder;
         if (startFolder.empty())
@@ -120,7 +129,9 @@ namespace graphite
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
 
-        const float zoom = m_documentWindows.Render(m_editorFontSize, m_dockSpace.CenterNodeId());
+        const core::text::IndentStyle indentStyle{m_indentWithSpaces, m_indentWidth};
+        const float zoom =
+            m_documentWindows.Render(m_editorFontSize, indentStyle, m_dockSpace.CenterNodeId());
 
         if (zoom != 0.0f)
             SetEditorFontSize(m_editorFontSize + zoom);

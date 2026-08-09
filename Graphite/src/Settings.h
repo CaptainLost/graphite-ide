@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -25,5 +26,14 @@ namespace graphite
         /// has no opinion about font sizes.
         static float LoadEditorFontSize();
         static void SaveEditorFontSize(float size);
+
+        /// Returns true when nothing was stored, matching IndentStyle's own default.
+        static bool LoadIndentWithSpaces();
+        static void SaveIndentWithSpaces(bool useSpaces);
+
+        /// Returns 0 when nothing was stored, so the caller supplies the default — 0 is
+        /// not a usable indent width itself.
+        static std::size_t LoadIndentWidth();
+        static void SaveIndentWidth(std::size_t width);
     };
 }
