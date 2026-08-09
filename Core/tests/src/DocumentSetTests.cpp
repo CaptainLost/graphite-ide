@@ -627,6 +627,24 @@ TEST_CASE("A single click that needs confirmation does not evict the preview")
     CHECK(documents.Preview() == std::optional<std::size_t>{0});
 }
 
+TEST_CASE("The document's own path follows the workspace root when it moves")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "a");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+    REQUIRE(documents.At(0).document.has_value());
+
+    documents.RewritePaths(directory.Path(), "D:/moved");
+
+    // Two places hold this path and a save reads the document's own — so the two must
+    // never be allowed to disagree.
+    CHECK(documents.At(0).document->Path() == documents.At(0).path);
+    CHECK(documents.At(0).document->Path() == std::filesystem::path{"D:/moved"} / "a.txt");
+}
+
 TEST_CASE("A deleted file says so in its tab title")
 {
     TempDirectory directory;

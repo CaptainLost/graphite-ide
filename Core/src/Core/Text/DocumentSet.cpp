@@ -273,6 +273,12 @@ namespace core::text
             // unequal to `to` itself, breaking Find and duplicate detection, so that case
             // becomes `to` directly instead of going through the append.
             item.path = (relative == ".") ? to : to / relative;
+
+            // The document carries its own copy of the path, and that is the one a save
+            // writes to. Left behind, it would put the file back where it used to be
+            // without anything on screen suggesting it had.
+            if (item.document)
+                item.document->SetPath(item.path);
         }
     }
 

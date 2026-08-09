@@ -50,6 +50,12 @@ namespace core::text
 
         [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_path; }
 
+        /// Follows the file to where it now lives, after the folder above it was renamed
+        /// or moved on disk. The content is untouched — this only changes where saving
+        /// will write, which is the whole reason it exists: two places holding one path
+        /// is how a save silently lands at the old location.
+        void SetPath(std::filesystem::path path) { m_path = std::move(path); }
+
         /// Not named Encoding(): a member of that name would shadow the type
         /// core::text::Encoding everywhere inside this class.
         [[nodiscard]] Encoding FileEncoding() const noexcept { return m_encoding; }
