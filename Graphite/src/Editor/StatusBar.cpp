@@ -59,6 +59,18 @@ namespace graphite
             const core::text::OpenItem& item = documents.At(*active);
             const core::text::TextBuffer& buffer = item.document->Buffer();
 
+            // The strip is exactly one frame tall: height == FontSize + 2 * FramePadding.y
+            // (that is what GetFrameHeight() above returns), and a line of text is
+            // FontSize tall (GetTextLineHeight()). Centering it means leaving
+            // (height - textHeight) / 2 == FramePadding.y of empty space above the text,
+            // which is what SetCursorPosY places the cursor at — measured from the
+            // window's own top edge, the same origin GetCursorPosY() uses, so this holds
+            // regardless of WindowPadding and stays centred if the font size changes at
+            // runtime. Both sides of the strip share one cursor row, so SameLine() below
+            // carries this same Y to the right-hand group.
+            const float textHeight = ImGui::GetTextLineHeight();
+            ImGui::SetCursorPosY((height - textHeight) * 0.5f);
+
             ImGui::TextUnformatted(RelativePath(item.path, root).c_str());
 
             const core::text::Position where = buffer.ToPosition(item.caret.offset);
