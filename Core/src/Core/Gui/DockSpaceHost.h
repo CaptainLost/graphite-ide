@@ -34,8 +34,24 @@ namespace core
             m_forceRebuild = true;
         }
 
+        /// The id of the node occupying the centre of the layout, for callers that dock
+        /// windows of their own once nothing else has told them where to go. Zero before
+        /// the first Begin, or if docking somehow has no central node.
+        ///
+        /// Looked up fresh each call rather than cached from the frame the layout was
+        /// built: the node the flag lives on is exactly as valid on a frame where Begin
+        /// only restored a layout already in imgui.ini as on the frame that built it.
+        [[nodiscard]] unsigned int CenterNodeId() const;
+
     private:
         bool m_layoutBuilt = false;
         bool m_forceRebuild = false;
+
+        /// The dockspace's own id, recorded every Begin so CenterNodeId() can look up its
+        /// central node without recomputing an ImGui ID outside the window scope it was
+        /// hashed against - GetID(name) depends on the current ID stack, and by the time a
+        /// caller asks for the centre node, Begin/End for the host window has long since
+        /// closed.
+        unsigned int m_dockSpaceId = 0;
     };
 }

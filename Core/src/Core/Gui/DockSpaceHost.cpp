@@ -43,6 +43,7 @@ namespace core
         ImGui::PopStyleVar(3);
 
         const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);
+        m_dockSpaceId = dockSpaceId;
         ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
         if (m_layoutBuilt)
@@ -77,6 +78,14 @@ namespace core
         DockPanels(bottomId, layout.bottom);
         DockPanels(centerId, layout.center);
 
+        // Flagged so CenterNodeId() can find it later without recomputing the split tree,
+        // and so a caller with nothing else to go on - such as a document window opened
+        // before anything has been focused - has somewhere to land. The flag is part of
+        // what imgui.ini saves, so it survives into sessions that only restore the layout
+        // rather than building it.
+        if (ImGuiDockNode* centerNode = ImGui::DockBuilderGetNode(centerId); centerNode != nullptr)
+            centerNode->SetLocalFlags(centerNode->LocalFlags | ImGuiDockNodeFlags_CentralNode);
+
         ImGui::DockBuilderFinish(dockSpaceId);
         CORE_INFO("Built default dock layout");
     }
@@ -84,5 +93,14 @@ namespace core
     void DockSpaceHost::End()
     {
         ImGui::End();
+    }
+
+    unsigned int DockSpaceHost::CenterNodeId() const
+    {
+        if (m_dockSpaceId == 0)
+            return 0;
+
+        const ImGuiDockNode* centerNode = ImGui::DockBuilderGetCentralNode(m_dockSpaceId);
+        return centerNode != nullptr ? centerNode->ID : 0;
     }
 }
