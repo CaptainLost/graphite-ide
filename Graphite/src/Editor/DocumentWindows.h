@@ -40,7 +40,7 @@ namespace graphite
         /// window ImGui has never seen - this is the point where that identity change is
         /// handled deliberately, rather than left to happen: the old dock position is
         /// carried over to the new id where possible, and Render's own bookkeeping (see
-        /// m_previousNames) purges the abandoned imgui.ini entry.
+        /// m_previousIdentities) purges the abandoned imgui.ini entry.
         void HandleRootMoved(const std::filesystem::path& from, const std::filesystem::path& to);
 
     private:
@@ -57,20 +57,30 @@ namespace graphite
         bool m_pendingPermanent = false;
         bool m_openSizeQuestion = false;
 
-        /// The window names Render produced last time it ran. A document can disappear
-        /// between one Render call and the next without going through this window's own
-        /// close button - a single click replacing a preview, or a workspace closing and
-        /// taking every document with it - and neither of those paths has a chance to call
+        /// The identity (core::fs::ToUtf8 of the path, nothing else) of every window
+        /// Render produced last time it ran. A document can disappear between one Render
+        /// call and the next without going through this window's own close button - a
+        /// single click replacing a preview, or a workspace closing and taking every
+        /// document with it - and neither of those paths has a chance to call
         /// ImGui::ClearWindowSettings itself. Comparing against this each frame catches
         /// them instead, so imgui.ini does not keep a section for a window nothing opens
         /// again. A window closed through its own tab is purged immediately in the loop
         /// below and simply will not reappear here next frame.
-        std::vector<std::string> m_previousNames;
+        ///
+        /// Keyed on identity rather than the full "DisplayTitle###path" window name on
+        /// purpose: DisplayTitle changes whenever another open item starts or stops
+        /// sharing its file name, which would make a document that never closed look
+        /// "gone" to a name-based diff - and ImGui::ClearWindowSettings would then find
+        /// and undock the still-open window it renamed *into*, because ImHashStr resets
+        /// at "###" and hashes only what follows it, same as ImGui's own window identity.
+        std::vector<std::string> m_previousIdentities;
 
         /// Where a renamed window should be re-docked on the first frame under its new
-        /// name, keyed by that new name. Populated by HandleRootMoved from the old
-        /// window's dock node, and consumed - erased - the first time that name is seen
-        /// in Render.
+        /// identity, keyed by that new identity (the same core::fs::ToUtf8 path used in
+        /// m_previousIdentities, not the rendered name - the same reasoning applies: the
+        /// display title either side of a rename need not match what was true when the
+        /// rename happened). Populated by HandleRootMoved from the old window's dock node,
+        /// and consumed - erased - the first time that identity is seen in Render.
         std::unordered_map<std::string, unsigned int> m_pendingDockTargets;
     };
 }

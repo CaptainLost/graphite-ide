@@ -28,15 +28,26 @@ namespace graphite
                    + core::fs::ToUtf8(documents.At(index).path);
         }
 
-        [[nodiscard]] std::vector<std::string> CurrentNames(const core::text::DocumentSet& documents)
+        /// The part of WindowName that is actually the window's identity as far as ImGui
+        /// is concerned: ImHashStr resets its running hash at "###" and hashes only what
+        /// follows, so "anything###path" and "path" alone hash identically. Bookkeeping
+        /// that has to survive a display title changing underneath it - two open items
+        /// starting or stopping sharing a file name changes DisplayTitle for both, without
+        /// either one closing - has to be keyed on this, not on WindowName's result.
+        [[nodiscard]] std::string Identity(const core::text::DocumentSet& documents, std::size_t index)
         {
-            std::vector<std::string> names;
-            names.reserve(documents.Count());
+            return core::fs::ToUtf8(documents.At(index).path);
+        }
+
+        [[nodiscard]] std::vector<std::string> CurrentIdentities(const core::text::DocumentSet& documents)
+        {
+            std::vector<std::string> identities;
+            identities.reserve(documents.Count());
 
             for (std::size_t index = 0; index < documents.Count(); ++index)
-                names.push_back(WindowName(documents, index));
+                identities.push_back(Identity(documents, index));
 
-            return names;
+            return identities;
         }
     }
 
@@ -55,47 +66,53 @@ namespace graphite
     void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
                                           const std::filesystem::path& to)
     {
-        const std::vector<std::string> oldNames = CurrentNames(m_documents);
+        const std::vector<std::string> oldIdentities = CurrentIdentities(m_documents);
 
         m_documents.RewritePaths(from, to);
 
-        const std::vector<std::string> newNames = CurrentNames(m_documents);
+        const std::vector<std::string> newIdentities = CurrentIdentities(m_documents);
 
         // RewritePaths only ever changes paths in place, never the count or the order, so
         // the two snapshots line up index for index.
-        for (std::size_t index = 0; index < newNames.size(); ++index)
+        for (std::size_t index = 0; index < newIdentities.size(); ++index)
         {
-            if (newNames[index] == oldNames[index])
+            const std::string& oldIdentity = oldIdentities[index];
+            const std::string& newIdentity = newIdentities[index];
+
+            if (newIdentity == oldIdentity)
                 continue;
 
-            // The old window only exists to ask about if it was ever drawn this session.
-            // When it was, and it had settled into a dock node, carry that node over to
-            // the new name so the document does not visibly jump to the fallback node the
-            // next time it is drawn. imgui.ini's entry under the old name is left for
-            // Render's own bookkeeping to purge, the same way any other document that
-            // stops existing between frames is purged.
-            if (ImGuiWindow* oldWindow = ImGui::FindWindowByName(oldNames[index].c_str());
+            unsigned int target = 0;
+
+            // The live window, if this document was ever drawn under its old identity, is
+            // authoritative for where it currently sits.
+            if (ImGuiWindow* oldWindow = ImGui::FindWindowByName(oldIdentity.c_str());
                 oldWindow != nullptr && oldWindow->DockNode != nullptr)
             {
-                m_pendingDockTargets[newNames[index]] = oldWindow->DockNode->ID;
+                target = oldWindow->DockNode->ID;
             }
+            else if (const auto pending = m_pendingDockTargets.find(oldIdentity);
+                     pending != m_pendingDockTargets.end())
+            {
+                // The root moved again before a Render ever consumed the previous move's
+                // target - chain it forward instead of leaving a dead entry keyed on an
+                // identity nothing will ever look up again.
+                target = pending->second;
+            }
+
+            m_pendingDockTargets.erase(oldIdentity);
+
+            if (target != 0)
+                m_pendingDockTargets[newIdentity] = target;
         }
     }
 
     void DocumentWindows::Render(float fontSize, unsigned int fallbackDockNode)
     {
-        // Catches whatever left the document set since the last time this ran without
-        // going through this loop's own close button - see m_previousNames.
-        {
-            const std::vector<std::string> currentNames = CurrentNames(m_documents);
-
-            for (const std::string& previousName : m_previousNames)
-            {
-                if (std::find(currentNames.begin(), currentNames.end(), previousName)
-                    == currentNames.end())
-                    ImGui::ClearWindowSettings(previousName.c_str());
-            }
-        }
+        // Identities as they stand at the start of this frame - after RequestOpen,
+        // CloseAll or HandleRootMoved, all of which run earlier in the same
+        // OnUpdate/OnUIRender pass and never inside this function.
+        const std::vector<std::string> startingIdentities = CurrentIdentities(m_documents);
 
         if (m_openSizeQuestion)
         {
@@ -131,6 +148,7 @@ namespace graphite
         for (std::size_t index = 0; index < m_documents.Count();)
         {
             core::text::OpenItem& item = m_documents.At(index);
+            const std::string identity = Identity(m_documents, index);
             const std::string name = WindowName(m_documents, index);
 
             if (ImGui::FindWindowByName(name.c_str()) == nullptr)
@@ -140,7 +158,7 @@ namespace graphite
                 // A window carrying over a dock position from before its path was
                 // rewritten takes priority over both: it is more specific than "wherever
                 // was last focused", and right even when nothing has been focused yet.
-                if (const auto pending = m_pendingDockTargets.find(name);
+                if (const auto pending = m_pendingDockTargets.find(identity);
                     pending != m_pendingDockTargets.end())
                 {
                     targetNode = pending->second;
@@ -202,6 +220,21 @@ namespace graphite
             ++index;
         }
 
-        m_previousNames = CurrentNames(m_documents);
+        // Purges whatever left the document set since the last time this ran without
+        // going through this loop's own close button above - see m_previousIdentities.
+        // Deliberately runs after the loop: a renamed document's pending dock target has
+        // to be consumed by Begin() - inside the loop above - before its old identity's
+        // dock node can safely be undocked and possibly deleted here. Purging first would
+        // let ClearWindowSettings tear down a shared node before DockBuilderDockWindow's
+        // deferred settings entry for the new identity ever gets to bind to it, stranding
+        // the renamed document in a fresh orphan node instead of its old spot.
+        for (const std::string& previousIdentity : m_previousIdentities)
+        {
+            if (std::find(startingIdentities.begin(), startingIdentities.end(), previousIdentity)
+                == startingIdentities.end())
+                ImGui::ClearWindowSettings(previousIdentity.c_str());
+        }
+
+        m_previousIdentities = CurrentIdentities(m_documents);
     }
 }
