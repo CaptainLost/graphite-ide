@@ -5,7 +5,6 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
-#include "Core/Text/Encoding.h"
 #include "Core/Text/Indent.h"
 #include "Core/Text/TextDocument.h"
 
@@ -54,7 +53,40 @@ namespace core::text
         {
             const TextBuffer& buffer = item.document->Buffer();
 
-            item.indentDepths.resize(buffer.LineCount(), 0);
+            const std::size_t previousCount = item.indentDepths.size();
+            const std::size_t currentCount = buffer.LineCount();
+
+            // The vector is indexed by line, so lines added or removed at the edit site
+            // shift every entry below them. resize() only pads or truncates the tail,
+            // which pairs surviving depths with the wrong lines the moment the edit
+            // isn't at the very end of the document; splicing at the edit site keeps
+            // every depth below it lined up with the line it actually belongs to.
+            //
+            // `firstLine` is a valid index into the *old* line count in every caller —
+            // each computes it from a position taken before the edit changed the line
+            // count — but it is clamped anyway rather than trusting that indefinitely.
+            const std::size_t at = std::min(firstLine, previousCount);
+
+            if (currentCount > previousCount)
+            {
+                item.indentDepths.insert(
+                    item.indentDepths.begin() + static_cast<std::ptrdiff_t>(at),
+                    currentCount - previousCount, 0);
+            }
+            else if (currentCount < previousCount)
+            {
+                const std::size_t removed = previousCount - currentCount;
+
+                // An edit only ever changes lines from `firstLine` onward, so the lines
+                // that vanished lie within [at, previousCount) by construction — the end
+                // is clamped too, so a future caller whose bookkeeping disagreed would
+                // erase short of the vector's end rather than past it.
+                const std::size_t end = std::min(at + removed, previousCount);
+
+                item.indentDepths.erase(
+                    item.indentDepths.begin() + static_cast<std::ptrdiff_t>(at),
+                    item.indentDepths.begin() + static_cast<std::ptrdiff_t>(end));
+            }
 
             const auto blank = [&buffer](std::size_t line)
             {

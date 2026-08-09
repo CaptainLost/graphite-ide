@@ -186,6 +186,53 @@ TEST_CASE("A read-only document refuses every edit")
     CHECK(item.document->Buffer().Text() == "ab\x80xy");
 }
 
+TEST_CASE("A line inserted above unrelated content keeps that content's indent depth")
+{
+    // Regression test: indentDepths used to be patched with vector::resize, which pads
+    // or truncates the *tail* rather than shifting entries at the edit site. Line 0 is
+    // deliberately the widest line, so the edit below it takes the cheap incremental
+    // path in UpdateDerived rather than a full RefreshDerived that would hide the bug.
+    core::text::OpenItem item = ItemWith("if xxxxxxxxxx:\n    body1\n    body2");
+    REQUIRE(item.widestLine == 0);
+    REQUIRE(item.indentDepths == std::vector<std::size_t>{0, 4, 4});
+
+    // Caret at the start of "    body1" — pressing Enter right above it.
+    item.caret.offset = 15;
+    item.caret.anchor = 15;
+
+    CHECK(core::text::InsertText(item, "\n"));
+    CHECK(item.document->Buffer().Text() == "if xxxxxxxxxx:\n\n    body1\n    body2");
+
+    // With the bug, resize() pads the new line onto the tail instead of at line 1,
+    // and "    body2" — below the widened repair range — is left holding that pad
+    // (0) instead of its own depth (4).
+    CHECK(item.indentDepths == std::vector<std::size_t>{0, 0, 4, 4});
+    CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("A line-joining backspace keeps the indent depth of content below it")
+{
+    // Mirror of the insertion case, on the erase side: previousCount > currentCount
+    // used to truncate the tail rather than remove the entry at the edit site, which
+    // drops the depth of every surviving line below it — here, "two" loses its depth
+    // of 8 and inherits "one"'s stale 4 instead.
+    core::text::OpenItem item = ItemWith("if xxxxxxxxxx:\n    one\n\n        two");
+    REQUIRE(item.widestLine == 0);
+    REQUIRE(item.indentDepths == std::vector<std::size_t>{0, 4, 4, 8});
+
+    // Caret at the start of the blank line — Backspace joins it into "    one".
+    item.caret.offset = 23;
+    item.caret.anchor = 23;
+
+    CHECK(core::text::DeleteBackward(item));
+    CHECK(item.document->Buffer().Text() == "if xxxxxxxxxx:\n    one\n        two");
+
+    CHECK(item.indentDepths == std::vector<std::size_t>{0, 4, 8});
+    CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
+}
+
 TEST_CASE("Undo through Editing restores the caret and the caches")
 {
     core::text::OpenItem item = ItemWith("short\nlonger line here");
