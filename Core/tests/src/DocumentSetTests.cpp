@@ -694,3 +694,37 @@ TEST_CASE("A deleted file that shares its name keeps the disambiguating director
     CHECK(documents.DisplayTitle(0) == "one/main.cpp (deleted)");
     CHECK(documents.DisplayTitle(1) == "two/main.cpp");
 }
+
+TEST_CASE("A missing file that comes back stops being marked deleted")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "still here");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    documents.MarkMissing(path);
+    REQUIRE(documents.At(0).failure == OpenFailure::Missing);
+
+    documents.MarkPresent(path);
+
+    CHECK(documents.At(0).failure == OpenFailure::None);
+    CHECK(documents.DisplayTitle(0).find("(deleted)") == std::string::npos);
+}
+
+TEST_CASE("MarkPresent leaves a failure that is not about the file being gone")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "binary.obj";
+    WriteBytes(path, std::string("MZ\0\0binary", 10));
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    REQUIRE(documents.At(0).failure == OpenFailure::Binary);
+
+    documents.MarkPresent(path);
+
+    CHECK(documents.At(0).failure == OpenFailure::Binary);
+}

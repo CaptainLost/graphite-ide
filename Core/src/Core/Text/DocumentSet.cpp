@@ -286,4 +286,21 @@ namespace core::text
         // FailureMessage would keep preferring it over "This file no longer exists".
         m_items[*index].detail.clear();
     }
+
+    void DocumentSet::MarkPresent(const std::filesystem::path& path)
+    {
+        const auto index = Find(path);
+
+        if (!index)
+            return;
+
+        // Only clear the Missing failure. Binary, TooLarge, and ReadFailed carry no
+        // document at all — clearing one would claim a tab holds content that was never
+        // loaded, and everything downstream would then dereference an empty optional.
+        if (m_items[*index].failure == OpenFailure::Missing)
+        {
+            m_items[*index].failure = OpenFailure::None;
+            m_items[*index].detail.clear();
+        }
+    }
 }

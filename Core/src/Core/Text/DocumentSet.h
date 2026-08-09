@@ -146,6 +146,12 @@ namespace core::text
         /// closing it would be the only way to lose something still in memory.
         void MarkMissing(const std::filesystem::path& path);
 
+        /// The file that was marked missing has come back. Clears the missing flag only
+        /// — if the item failed for another reason (Binary, TooLarge, ReadFailed), this
+        /// does nothing, because those failures carry no document and clearing them would
+        /// claim a tab holds content that was never loaded.
+        void MarkPresent(const std::filesystem::path& path);
+
     private:
         OpenOutcome Add(const std::filesystem::path& path, bool permanent, bool confirmed);
 
