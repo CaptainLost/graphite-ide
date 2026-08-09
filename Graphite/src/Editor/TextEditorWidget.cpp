@@ -101,8 +101,12 @@ namespace graphite
         // Computed once when the document loaded (OpenItem::widestColumn), not walked
         // here every frame — that would cost a std::string allocation per line, exactly
         // the per-frame cost the clipper below exists to avoid.
-        const float contentWidth =
-            gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
+        //
+        // Includes kGutterPaddingX once for the same reason textX does below: text gets
+        // the same breathing room off the gutter separator that the line numbers get off
+        // the window edge, so the reserved width has to grow to match.
+        const float contentWidth = gutterWidth + kGutterPaddingX
+            + static_cast<float>(item.widestColumn + 1) * cellWidth;
 
         const ImGuiWindowFlags flags = ImGuiWindowFlags_HorizontalScrollbar;
 
@@ -135,7 +139,10 @@ namespace graphite
                 {
                     const std::size_t line = static_cast<std::size_t>(row);
                     const float y = origin.y + static_cast<float>(row) * lineHeight;
-                    const float textX = origin.x + gutterWidth;
+                    // Off the gutter separator by kGutterPaddingX, the same air the line
+                    // numbers get off the window's edge - without it the separator sits
+                    // one pixel from the first glyph and reads as part of the text.
+                    const float textX = origin.x + gutterWidth + kGutterPaddingX;
 
                     const std::string text = buffer.LineText(line);
                     const std::size_t lineStart = buffer.LineStart(line);
@@ -195,9 +202,6 @@ namespace graphite
                     draw->AddText(ImVec2(numberX, y),
                                   line == caretPosition.line ? textColour : gutterColour,
                                   number.c_str());
-                    draw->AddLine(ImVec2(origin.x + scrollX + gutterWidth - 1.0f, y),
-                                  ImVec2(origin.x + scrollX + gutterWidth - 1.0f, y + lineHeight),
-                                  gutterColour);
 
                     if (line == caretPosition.line)
                     {
@@ -222,6 +226,22 @@ namespace graphite
             }
 
             clipper.End();
+
+            // Drawn once, after every row's gutter background, rather than once per row:
+            // a segment per line left visible seams where anti-aliased edges met, which
+            // read as a stack of short bars instead of a single rule - and drawing it
+            // before the loop instead of after would have it painted back over by each
+            // row's gutter background rectangle, reintroducing the same seams by a
+            // different route. Anchored to the child window's own screen rect rather than
+            // to document coordinates (unlike a row's y, which is document-relative and
+            // scrolls off-screen), since the divider between gutter and text should always
+            // cover the current view regardless of how far the document has scrolled
+            // vertically. Pinned horizontally the same way the gutter background and
+            // numbers are, by cancelling the scroll baked into origin.x.
+            const float separatorX = origin.x + scrollX + gutterWidth;
+            const float viewTop = ImGui::GetWindowPos().y;
+            draw->AddLine(ImVec2(separatorX, viewTop),
+                          ImVec2(separatorX, viewTop + ImGui::GetWindowHeight()), gutterColour);
         }
 
         ImGui::EndChild();
