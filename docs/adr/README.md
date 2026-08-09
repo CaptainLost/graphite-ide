@@ -80,4 +80,9 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0048](0048-f-9-unused-parameters-should-be-unnamed.md) | F.9: Unused parameters should be unnamed | accepted | 2026-08-10 |
 | [0049](0049-f-10-if-an-operation-can-be-reused-give-it-a-name.md) | F.10: If an operation can be reused, give it a name | accepted | 2026-08-10 |
 | [0050](0050-f-11-use-an-unnamed-lambda-if-you-need-a-simple-function-object-in-one-place-only.md) | F.11: Use an unnamed lambda if you need a simple function object in one place only | accepted | 2026-08-10 |
+| [0051](0051-f-15-prefer-simple-and-conventional-ways-of-passing-information.md) | F.15: Prefer simple and conventional ways of passing information | accepted | 2026-08-10 |
+| [0052](0052-f-16-for-in-parameters-pass-cheaply-copied-types-by-value-and-others-by-reference-to-const.md) | F.16: For in parameters, pass cheaply-copied types by value and others by reference to const | accepted | 2026-08-10 |
+| [0053](0053-f-17-for-in-out-parameters-pass-by-reference-to-non-const.md) | F.17: For in-out parameters, pass by reference to non-const | accepted | 2026-08-10 |
+| [0054](0054-f-18-for-will-move-from-parameters-pass-by-x-and-std-move-the-parameter.md) | F.18: For will-move-from parameters, pass by X&& and std::move the parameter | accepted | 2026-08-10 |
+| [0055](0055-f-19-for-forward-parameters-pass-by-tp-and-only-std-forward-the-parameter.md) | F.19: For forward parameters, pass by TP&& and only std::forward the parameter | accepted | 2026-08-10 |
 <!-- /adr-index -->
