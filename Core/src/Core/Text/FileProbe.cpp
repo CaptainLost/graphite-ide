@@ -3,6 +3,7 @@
 #include "Core/Text/FileProbe.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/Codec.h"
 
 #include <fstream>
 #include <string>
@@ -14,14 +15,15 @@ namespace core::text
     {
         FileProbe probe;
         probe.size = size;
-        probe.encoding = DetectEncoding(sample);
+        probe.encoding = SniffEncoding(sample);
 
         const bool isUtf16 =
             probe.encoding == Encoding::Utf16Le || probe.encoding == Encoding::Utf16Be;
 
-        // UTF-16 text is half NUL bytes, so the mark has to be believed before the NUL
-        // check runs or every UTF-16 file would be called binary. Load refuses it by
-        // name instead.
+        // UTF-16 text is half NUL bytes, so it has to be recognised before this check or
+        // every UTF-16 file would be called binary. SniffEncoding is deliberately hard to
+        // convince: a file of small 16-bit integers has the same byte pattern and must
+        // not end up opened as editable text.
         if (!isUtf16 && sample.find('\0') != std::string_view::npos)
         {
             probe.kind = FileKind::Binary;

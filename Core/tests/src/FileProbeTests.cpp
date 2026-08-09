@@ -126,3 +126,31 @@ TEST_CASE("Probing a directory fails")
 
     REQUIRE_FALSE(probe);
 }
+
+TEST_CASE("UTF-16 without a mark is text, not binary")
+{
+    const std::string le = std::string("H\0e\0l\0l\0o\0", 10);
+    const std::string be = std::string("\0H\0e\0l\0l\0o", 10);
+
+    const FileProbe leProbe = ClassifySample(le, le.size());
+    const FileProbe beProbe = ClassifySample(be, be.size());
+
+    CHECK(leProbe.kind == FileKind::Text);
+    CHECK(leProbe.encoding == Encoding::Utf16Le);
+    CHECK(beProbe.kind == FileKind::Text);
+    CHECK(beProbe.encoding == Encoding::Utf16Be);
+}
+
+TEST_CASE("Binary data is still binary even when its NUL bytes line up")
+{
+    const std::string bytes = std::string("\x01\0\x02\0\x03\0\x04\0", 8);
+
+    CHECK(ClassifySample(bytes, bytes.size()).kind == FileKind::Binary);
+}
+
+TEST_CASE("A large UTF-16 file is judged by its size like any other text")
+{
+    const std::string bytes = std::string("H\0i\0", 4);
+
+    CHECK(ClassifySample(bytes, LargeFileThreshold + 1).kind == FileKind::LargeText);
+}
