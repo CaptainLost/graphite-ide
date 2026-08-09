@@ -39,8 +39,15 @@ $AdrDirectory = (Resolve-Path -LiteralPath $AdrDirectory).Path
 
 $problems = New-Object System.Collections.Generic.List[string]
 
+function Read-Utf8 {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+    # Not Get-Content -Raw: on 5.1 it decodes with the ANSI codepage, which
+    # mangles any character outside ASCII before it is ever matched against.
+    return [System.IO.File]::ReadAllText($Path)
+}
+
 $readmePath = Join-Path $AdrDirectory 'README.md'
-$readme = if (Test-Path -LiteralPath $readmePath) { Get-Content -LiteralPath $readmePath -Raw } else { '' }
+$readme = if (Test-Path -LiteralPath $readmePath) { Read-Utf8 -Path $readmePath } else { '' }
 if ([string]::IsNullOrEmpty($readme)) {
     $problems.Add('README.md is missing or empty, so nothing can be indexed.')
 }
@@ -72,7 +79,7 @@ foreach ($record in $records) {
         $seenNumbers[$number] = $name
     }
 
-    $body = Get-Content -LiteralPath $record.FullName -Raw
+    $body = Read-Utf8 -Path $record.FullName
 
     if ($body -notmatch "(?m)^# $number\. \S") {
         $problems.Add("$name : heading must read '# $number. <title>' and match the filename.")

@@ -25,6 +25,11 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding $false))
 }
 
+function Read-Utf8Text {
+    param([string] $Path)
+    return [System.IO.File]::ReadAllText($Path)
+}
+
 function New-Fixture {
     # A throwaway ADR directory holding only what the script needs to read.
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ("adr-" + [guid]::NewGuid().ToString('N'))
@@ -125,6 +130,31 @@ try {
     $path = & $scriptUnderTest -Title 'Taken' -AdrDirectory $fixture -Date '2026-08-09'
     Assert-That -Because 'skips past a taken number rather than colliding with it' `
         -Condition ((Split-Path $path -Leaf) -eq '0003-taken.md')
+}
+finally {
+    Remove-Item $fixture -Recurse -Force
+}
+
+# --- non-ASCII survives the round trip ---------------------------------------
+$fixture = New-Fixture
+try {
+    # Built from a code point rather than typed literally: PowerShell 5.1 reads
+    # a .ps1 without a BOM as ANSI, so an em dash in this file would itself be
+    # mangled before the test ever ran.
+    $emDash = [char]0x2014
+
+    $templatePath = Join-Path $fixture 'template.md'
+    Write-Utf8NoBom -Path $templatePath -Text ((Read-Utf8Text $templatePath) + "`n`nAn em dash $emDash here.`n")
+
+    $readmePath = Join-Path $fixture 'README.md'
+    Write-Utf8NoBom -Path $readmePath -Text ("Prose with an em dash $emDash in it.`n" + (Read-Utf8Text $readmePath))
+
+    $path = & $scriptUnderTest -Title 'Round trip' -AdrDirectory $fixture -Date '2026-08-09'
+
+    Assert-That -Because 'copies non-ASCII out of the template unharmed' `
+        -Condition ((Read-Utf8Text $path) -match "An em dash $emDash here\.")
+    Assert-That -Because 'leaves non-ASCII in the index unharmed' `
+        -Condition ((Read-Utf8Text $readmePath) -match "Prose with an em dash $emDash in it\.")
 }
 finally {
     Remove-Item $fixture -Recurse -Force

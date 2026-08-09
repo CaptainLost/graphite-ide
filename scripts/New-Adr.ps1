@@ -54,6 +54,13 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding $false))
 }
 
+function Read-Utf8 {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+    # Not Get-Content -Raw: on 5.1 it decodes with the ANSI codepage, so an em
+    # dash read and written back comes out double-encoded.
+    return [System.IO.File]::ReadAllText($Path)
+}
+
 if (-not (Test-Path -LiteralPath $AdrDirectory)) {
     throw "The ADR directory '$AdrDirectory' does not exist."
 }
@@ -87,12 +94,12 @@ if (Test-Path -LiteralPath $recordPath) {
 # Checked before anything is written, so a directory that cannot be indexed
 # does not end up with an orphaned record in it.
 $closingMarker = '<!-- /adr-index -->'
-$readme = Get-Content -LiteralPath $readmePath -Raw
+$readme = Read-Utf8 -Path $readmePath
 if ($readme -notmatch [regex]::Escape($closingMarker)) {
     throw "'$readmePath' has no $closingMarker marker, so the record cannot be indexed."
 }
 
-$body = Get-Content -LiteralPath $templatePath -Raw
+$body = Read-Utf8 -Path $templatePath
 $body = $body.Replace('{{NUMBER}}', $number).Replace('{{TITLE}}', $Title).Replace('{{DATE}}', $Date)
 Write-Utf8NoBom -Path $recordPath -Text $body
 
