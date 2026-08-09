@@ -361,8 +361,26 @@ namespace graphite
         if (m_closeApproved)
             return true;
 
-        // The modal is already up and unresolved; RenderCloseConfirm owns it from here.
-        if (m_pendingClosePurpose == ClosePurpose::ExitApplication)
+        // Some close question is already up and unresolved - not necessarily this one.
+        // "Close Workspace" reaches here too: it opens the same modal with
+        // m_pendingClosePurpose == CloseWorkspace, and the OS close button / Alt+F4
+        // reach Window::ShouldClose() regardless of what ImGui thinks has input focus,
+        // modal or not. Testing `== ExitApplication` here would fall through on a
+        // pending CloseWorkspace question and silently overwrite it below - the user
+        // would be looking at a dialog they opened from the menu, believing Save All
+        // will close the workspace, while it would actually exit the application.
+        // Refusing until whichever question is already open resolves is the
+        // conservative choice; the user can just close again afterwards. This is
+        // deliberately the wider check, not an oversight.
+        if (m_pendingClosePurpose.has_value())
+            return false;
+
+        // Don't stack a second, overlapping modal on top of a per-tab "Save changes to
+        // X before closing?" question (DocumentWindows' own, raised by a tab's close
+        // button while dirty) - same reasoning as above, reached the same way: that
+        // modal blocks ImGui input, but not the OS-level close GLFW reports through
+        // Window::ShouldClose(). Refuse and let the user close again once it resolves.
+        if (m_documentWindows.HasPendingCloseQuestion())
             return false;
 
         if (!AnyDocumentModified())
@@ -420,6 +438,12 @@ namespace graphite
         ImGui::TextUnformatted("These files have unsaved changes:");
         ImGui::Separator();
 
+        // Recomputed every frame this modal is open, deliberately not snapshotted once
+        // when it opens: a failed Save All can leave some documents saved and others
+        // not (see the comment on the Save All button below), and the list here should
+        // reflect that partial progress if the user looks again or retries, rather than
+        // continuing to name a file that already saved cleanly. Recomputing also cannot
+        // go stale the way a snapshot taken once at open time could.
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
         {
             const core::text::OpenItem& item = m_documents.At(index);

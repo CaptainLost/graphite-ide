@@ -107,6 +107,16 @@ namespace graphite
         /// feed DrawStatusBar.
         [[nodiscard]] std::optional<std::string> StatusMessage() const;
 
+        /// Whether a per-tab "Save changes to X before closing?" question - a tab's own
+        /// close button pressed while it was dirty - is queued or currently on screen.
+        /// GraphiteLayer's own exit/close-workspace question checks this before opening
+        /// its modal, so the two never stack and ask overlapping things about the same
+        /// files at once.
+        [[nodiscard]] bool HasPendingCloseQuestion() const noexcept
+        {
+            return m_pendingCloseActive.has_value() || !m_pendingCloseQueue.empty();
+        }
+
     private:
         /// Reconciles one open item against disk: an existence check, exactly as
         /// HandleFilesChanged always ran, plus (added for saving and reconciliation) the
