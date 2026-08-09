@@ -177,11 +177,27 @@ namespace core::text
         }
 
         /// Whether decoded UTF-8 looks like prose or code rather than binary noise.
+        ///
+        /// Byte value alone is not enough: DEL (U+007F) is a single byte >= 0x20, and the
+        /// C1 controls (U+0080-U+009F) encode as C2 80 through C2 9F, whose bytes are also
+        /// >= 0x20. Both are control characters and must be rejected like any other, so
+        /// they are matched by the specific sequences that encode them.
         [[nodiscard]] bool LooksLikeText(std::string_view utf8)
         {
-            for (const char value : utf8)
+            for (std::size_t at = 0; at < utf8.size(); ++at)
             {
-                const auto byte = static_cast<unsigned char>(value);
+                const auto byte = static_cast<unsigned char>(utf8[at]);
+
+                if (byte == 0x7Fu)
+                    return false;
+
+                if (byte == 0xC2u && at + 1 < utf8.size())
+                {
+                    const auto next = static_cast<unsigned char>(utf8[at + 1]);
+
+                    if (next >= 0x80u && next <= 0x9Fu)
+                        return false;
+                }
 
                 if (byte >= 0x20u || byte == '\t' || byte == '\n' || byte == '\r')
                     continue;

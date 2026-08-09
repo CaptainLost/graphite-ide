@@ -240,3 +240,22 @@ TEST_CASE("A character outside Latin-1 does not break the parity rule")
 
     CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
 }
+
+TEST_CASE("Decoded C1 control characters are not text")
+{
+    // Codepoints U+0085, U+0086, U+0087, U+0088 — all C1 controls, all NULs at the odd
+    // parity. Their UTF-8 encoding is C2 85, C2 86, C2 87, C2 88, whose bytes are all
+    // individually >= 0x20, which is exactly what makes them easy to miss.
+    const std::string bytes = std::string("\x85\0\x86\0\x87\0\x88\0", 8);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+}
+
+TEST_CASE("Decoded DEL is not text")
+{
+    // Codepoints U+007F 'A' U+007F 'B' — DEL is a single UTF-8 byte >= 0x20, so it looks
+    // like an ordinary character unless matched specifically.
+    const std::string bytes = std::string("\x7F\0\x41\0\x7F\0\x42\0", 8);
+
+    CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+}
