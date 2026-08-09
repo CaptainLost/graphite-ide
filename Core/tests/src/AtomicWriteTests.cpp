@@ -7,6 +7,10 @@
 #include <fstream>
 #include <string>
 
+#ifdef CORE_PLATFORM_WINDOWS
+    #include <windows.h>
+#endif
+
 using core::fs::WriteFileAtomically;
 
 TEST_CASE("Writing over an existing file leaves the new content")
@@ -65,22 +69,34 @@ TEST_CASE("A write to a missing directory fails and leaves nothing behind")
     CHECK_FALSE(std::filesystem::exists(temp.Path() / "missing-directory"));
 }
 
-TEST_CASE("A failed write leaves the existing target untouched")
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("A failed write leaves an existing target and its content untouched")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "missing-directory" / "target.txt";
+    const auto path = temp.MakeFile("target.txt", "original");
 
-    // The directory does not exist, so the temporary write itself fails — no target and
-    // no debris either.
-    CHECK_FALSE(WriteFileAtomically(path, "content"));
-    CHECK_FALSE(std::filesystem::exists(path));
+    // Opened with no sharing at all, so ReplaceFileW cannot get at it: this is the
+    // "file held open by another program" case ErrorCodeFor exists to name, provoked
+    // deterministically against real content rather than the missing-directory case
+    // covered above, which never has a target to protect in the first place.
+    const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
+                                        FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(handle != INVALID_HANDLE_VALUE);
 
+    CHECK_FALSE(WriteFileAtomically(path, "replaced"));
+
+    ::CloseHandle(handle);
+
+    std::ifstream stream{path, std::ios::binary};
+    std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+    CHECK(contents == "original");
+
+    // No debris either: the temporary that held "replaced" must be gone.
     std::error_code code;
     for (const auto& entry : std::filesystem::directory_iterator{temp.Path(), code})
-        FAIL("unexpected entry left behind: ", entry.path().string());
+        CHECK(entry.path().filename() == "target.txt");
 }
 
-#ifdef CORE_PLATFORM_WINDOWS
 TEST_CASE("An alternate data stream survives an atomic write")
 {
     TempDirectory temp;

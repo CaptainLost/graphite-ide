@@ -13,33 +13,49 @@
 
 namespace core::fs
 {
+    Result<std::filesystem::path> PickAvailablePath(
+        const std::function<std::filesystem::path(int)>& candidateFor)
+    {
+        for (int attempt = 0; attempt < 100; ++attempt)
+        {
+            const std::filesystem::path candidate = candidateFor(attempt);
+
+            std::error_code code;
+            const bool exists = std::filesystem::exists(candidate, code);
+
+            // A stat error is not "nothing is there" — the same reasoning
+            // DocumentWindows::HandleFilesChanged applies before marking an open document
+            // missing. Treating it as absence here could hand back a name something already
+            // occupies; reporting it is the only answer that cannot be quietly wrong.
+            if (code)
+            {
+                return Error{ErrorCode::IoFailure,
+                             std::format("cannot tell whether '{}' exists: {}",
+                                         ToUtf8(candidate), code.message())};
+            }
+
+            if (!exists)
+                return candidate;
+        }
+
+        return Error{ErrorCode::IoFailure, "cannot find an unused name after 100 attempts"};
+    }
+
     namespace
     {
         /// The temporary's name, one that nothing on disk currently holds. `path + ".tmp"`
-        /// is tried first, then a counter is appended, because two saves racing — or a
-        /// stray file left from an earlier crash — must not make one clobber the other's
-        /// scratch file.
+        /// is tried first, then a plain counter appended after it (`.tmp1`, `.tmp2`, ...),
+        /// through the same collision check every scratch file beside a target uses.
         Result<std::filesystem::path> PickTemporaryPath(const std::filesystem::path& path)
         {
-            std::filesystem::path candidate = path;
-            candidate += ".tmp";
-
-            std::error_code code;
-
-            for (int attempt = 0; std::filesystem::exists(candidate, code); ++attempt)
-            {
-                if (attempt >= 100)
+            return PickAvailablePath(
+                [&path](int attempt)
                 {
-                    return Error{ErrorCode::IoFailure,
-                                 std::format("cannot find an unused temporary name beside '{}'",
-                                             ToUtf8(path))};
-                }
-
-                candidate = path;
-                candidate += std::format(".tmp{}", attempt + 1);
-            }
-
-            return candidate;
+                    std::filesystem::path candidate = path;
+                    candidate += attempt == 0 ? std::string{".tmp"}
+                                               : std::format(".tmp{}", attempt);
+                    return candidate;
+                });
         }
 
         /// Writes `bytes` to `temporary`, leaving nothing behind on failure. The target
@@ -101,7 +117,14 @@ namespace core::fs
             std::error_code existsError;
             const bool targetExists = std::filesystem::exists(path, existsError);
 
-            if (targetExists)
+            // A stat error is not "the target is gone" — the same reasoning
+            // DocumentWindows::HandleFilesChanged applies before marking an open document
+            // missing. Skipping ReplaceFileW on the strength of a failed stat would silently
+            // drop the ACLs, creation time and identity this function exists to keep, with
+            // nothing to distinguish that from an ordinary first save. So ReplaceFileW is
+            // attempted whenever the target is known to exist OR the stat could not say it
+            // doesn't; only a stat that confirmed absence skips straight to MoveFileExW.
+            if (targetExists || existsError)
             {
                 // REPLACEFILE_IGNORE_MERGE_ERRORS: proceed when the target's ACLs or
                 // attributes cannot all be carried across, rather than failing the save.
@@ -114,15 +137,23 @@ namespace core::fs
 
                 const DWORD error = ::GetLastError();
 
-                std::error_code ignored;
-                std::filesystem::remove(temporary, ignored);
+                // ReplaceFileW requires an existing target. This code means there genuinely
+                // is none — the stat above could not say so, or the file vanished between
+                // the two calls — which is the ordinary case MoveFileExW below handles, not
+                // a failure to report.
+                if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
+                {
+                    std::error_code ignored;
+                    std::filesystem::remove(temporary, ignored);
 
-                return Error{ErrorCodeFor(error),
-                             std::format("cannot replace '{}' (error {})", ToUtf8(path), error)};
+                    return Error{ErrorCodeFor(error),
+                                 std::format("cannot replace '{}' (error {})", ToUtf8(path), error)};
+                }
             }
 
-            // Nothing to replace. MoveFileExW with MOVEFILE_REPLACE_EXISTING covers the
-            // race in which the file appears between the check above and this call.
+            // Nothing to replace: confirmed absent, or ReplaceFileW just said so.
+            // MoveFileExW with MOVEFILE_REPLACE_EXISTING also covers the race in which the
+            // file appears between whichever check above ran and this call.
             if (::MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING) != 0)
                 return Result<void>::Ok();
 

@@ -512,11 +512,26 @@ namespace core::sln
         // temporary WriteFileAtomically itself uses below. It keeps the solution's own
         // extension, "Sample.tmp.slnx", because ReadSolution picks its parser by
         // extension and a plain ".tmp" would be refused as a format this build cannot
-        // read. It is removed again as soon as the read-back is done.
-        std::filesystem::path scratch = m_path;
-        scratch.replace_extension();
-        scratch += ".tmp";
-        scratch += m_path.extension();
+        // read. Collision avoidance goes through the same helper WriteFileAtomically uses
+        // for its own temporary, rather than a second hand-rolled version of that check —
+        // a leftover scratch file from a crashed earlier save must not be clobbered.
+        std::filesystem::path stem = m_path;
+        stem.replace_extension();
+        const std::filesystem::path extension = m_path.extension();
+
+        const Result<std::filesystem::path> picked = fs::PickAvailablePath(
+            [&stem, &extension](int attempt)
+            {
+                std::filesystem::path candidate = stem;
+                candidate += attempt == 0 ? std::string{".tmp"} : std::format(".tmp{}", attempt);
+                candidate += extension;
+                return candidate;
+            });
+
+        if (!picked)
+            return picked.GetError();
+
+        const std::filesystem::path& scratch = picked.Value();
 
         {
             std::ofstream stream{scratch, std::ios::binary | std::ios::trunc};

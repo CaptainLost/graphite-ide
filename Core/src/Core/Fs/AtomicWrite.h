@@ -3,10 +3,27 @@
 #include "Core/Base/Result.h"
 
 #include <filesystem>
+#include <functional>
 #include <string_view>
 
 namespace core::fs
 {
+    /// Finds a name that nothing on disk currently occupies, so a temporary or scratch file
+    /// never clobbers one left over from an earlier run — a crashed save, another process, a
+    /// second save racing this one. `candidateFor(0)` is tried first; on collision
+    /// `candidateFor(1)`, `candidateFor(2)`, and so on, up to 100 attempts before giving up
+    /// with ErrorCode::IoFailure. A stat that fails outright is not treated as "nothing is
+    /// there" — that would risk handing back a name something already occupies — so it is
+    /// reported as an error too.
+    ///
+    /// The naming scheme is the caller's: WriteFileAtomically appends a plain counter
+    /// (`.tmp`, `.tmp1`, `.tmp2`, ...) since its temporary need not look like any particular
+    /// format, while a caller whose scratch file still has to parse as its own format — a
+    /// .slnx read back before the real save commits, say — splices the counter in before the
+    /// extension instead. Either way the collision check itself lives here, once.
+    [[nodiscard]] Result<std::filesystem::path> PickAvailablePath(
+        const std::function<std::filesystem::path(int)>& candidateFor);
+
     /// Writes `bytes` to `path` so that the file is either its old content or its new
     /// content, never half of either.
     ///
