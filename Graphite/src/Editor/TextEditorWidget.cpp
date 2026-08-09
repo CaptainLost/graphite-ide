@@ -10,6 +10,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <string>
 
@@ -34,6 +35,18 @@ namespace graphite
         /// arrow. Nothing is drawn here yet, for the same reason as the breakpoint
         /// column above.
         constexpr float kFoldColumnCells = 1.0f;
+
+        /// One blink is dark for half of this and lit for the other half.
+        constexpr double kCaretBlinkPeriod = 1.0;
+
+        /// When the caret last moved, on ImGui::GetTime()'s clock. The blink is measured
+        /// from here rather than from zero, so the caret is always lit the instant it
+        /// moves and cannot spend a held arrow key's worth of frames in its dark half.
+        ///
+        /// One value for the whole application, not one per document: only the focused
+        /// editor draws a caret at all (see the IsWindowFocused test below), and exactly
+        /// one editor is focused at a time.
+        double s_caretMovedAt = 0.0;
 
         [[nodiscard]] int DigitCount(std::size_t value)
         {
@@ -73,6 +86,10 @@ namespace graphite
         ImGui::PushFont(core::ImGuiRenderer::MonoFont(), fontSize);
 
         const core::text::TextBuffer& buffer = item.document->Buffer();
+        // Read before anything in this function can move the caret — the mouse below
+        // moves it as readily as the keyboard does, and the blink has to restart for
+        // both.
+        const std::size_t caretAtFrameStart = item.caret.offset;
         const float lineHeight = ImGui::GetTextLineHeight();
         // Every glyph in a monospaced face advances the same, so one measurement is the
         // width of every cell.
@@ -314,7 +331,31 @@ namespace graphite
                     ImGui::SetScrollY(caretY);
                 else if (caretY + lineHeight > ImGui::GetScrollY() + ImGui::GetWindowHeight())
                     ImGui::SetScrollY(caretY + lineHeight - ImGui::GetWindowHeight());
+
+                // The same rule sideways, which End on a long line and Ctrl+Right through
+                // one both need. `caretX` is measured in content coordinates, where the
+                // gutter occupies the first gutterWidth — but the gutter is painted over
+                // the window's left edge rather than scrolling with the content, so the
+                // leftmost text a reader can actually see sits at scrollX + gutterWidth,
+                // and bringing the caret to the left edge means scrolling to
+                // caretX - gutterWidth, not to caretX.
+                const float caretX =
+                    gutterWidth
+                    + static_cast<float>(core::text::ColumnOfByte(
+                          buffer.LineText(where.line), where.column,
+                          core::text::DefaultTabWidth))
+                          * cellWidth;
+
+                if (caretX - gutterWidth < ImGui::GetScrollX())
+                    ImGui::SetScrollX(caretX - gutterWidth);
+                else if (caretX + cellWidth > ImGui::GetScrollX() + ImGui::GetWindowWidth())
+                    ImGui::SetScrollX(caretX + cellWidth - ImGui::GetWindowWidth());
             }
+
+            // Whatever moved it — a key above, a click or a drag earlier in this
+            // function — the blink starts over, so the caret is lit the moment it lands.
+            if (item.caret.offset != caretAtFrameStart)
+                s_caretMovedAt = ImGui::GetTime();
 
             const core::text::Position caretPosition =
                 buffer.ToPosition(item.caret.offset);
@@ -437,12 +478,13 @@ namespace graphite
                                   text, caretPosition.column, core::text::DefaultTabWidth))
                                   * cellWidth;
 
-                        // A blink that resets on movement, so the caret cannot be invisible
-                        // under a held arrow key. The reset lives with input handling; here
-                        // it is simply time-based.
-                        if (ImGui::GetTime() - static_cast<double>(static_cast<int>(
-                                                    ImGui::GetTime() * 2.0) / 2)
-                            < 0.5)
+                        // Measured from the last movement rather than from zero, which is
+                        // what keeps the caret from being invisible under a held arrow
+                        // key: every move restarts the cycle at its lit half.
+                        const double phase =
+                            std::fmod(ImGui::GetTime() - s_caretMovedAt, kCaretBlinkPeriod);
+
+                        if (phase < kCaretBlinkPeriod * 0.5)
                         {
                             draw->AddLine(ImVec2(caretX, y), ImVec2(caretX, y + lineHeight),
                                           textColour, 1.0f);
