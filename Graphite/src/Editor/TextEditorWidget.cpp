@@ -4,6 +4,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/TextDocument.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -11,7 +12,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
-#include <string_view>
 
 namespace graphite
 {
@@ -57,36 +57,6 @@ namespace graphite
             ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + (available.x - size.x) * 0.5f,
                                        ImGui::GetCursorPosY() + (available.y - size.y) * 0.5f));
             ImGui::TextDisabled("%s", message.c_str());
-        }
-
-        /// Expands every tab in `line` into the spaces that reach its next tab stop, so
-        /// the whole line can be drawn with a single AddText call. Tabs are advances
-        /// rather than glyphs, so drawing the raw text directly would leave every
-        /// character after the first tab in the wrong place; this scratch string sidesteps
-        /// that without splitting the draw call into runs. Reuses ColumnOfByte, which
-        /// already knows how a tab and a non-ASCII byte each affect the column, instead of
-        /// re-deriving that here.
-        [[nodiscard]] std::string ExpandTabs(std::string_view line, std::size_t tabWidth)
-        {
-            std::string expanded;
-            expanded.reserve(line.size());
-
-            for (std::size_t i = 0; i < line.size(); ++i)
-            {
-                if (line[i] == '\t')
-                {
-                    const std::size_t column = core::text::ColumnOfByte(line, i, tabWidth);
-                    const std::size_t nextColumn =
-                        core::text::ColumnOfByte(line, i + 1, tabWidth);
-                    expanded.append(nextColumn - column, ' ');
-                }
-                else
-                {
-                    expanded.push_back(line[i]);
-                }
-            }
-
-            return expanded;
         }
     }
 
@@ -316,8 +286,16 @@ namespace graphite
                 {
                     const auto [from, to] = core::text::SelectionRange(item.caret);
 
+                    // Substring hands back the buffer's own LF-only text, and the Windows
+                    // clipboard is CRLF — pasted into Excel or any Win32 EDIT control,
+                    // LF-only text arrives as a single line.
                     if (from != to)
-                        ImGui::SetClipboardText(buffer.Substring(from, to).c_str());
+                    {
+                        const std::string clipboard = core::text::WithLineEnding(
+                            buffer.Substring(from, to), core::text::LineEnding::Crlf);
+
+                        ImGui::SetClipboardText(clipboard.c_str());
+                    }
                 }
             }
 
@@ -427,7 +405,7 @@ namespace graphite
                         // Tabs are advances, not glyphs; expanding them into spaces first
                         // keeps this a single AddText call instead of one run per tab.
                         const std::string expanded =
-                            ExpandTabs(text, core::text::DefaultTabWidth);
+                            core::text::ExpandTabs(text, core::text::DefaultTabWidth);
                         draw->AddText(ImVec2(textX, y), textColour, expanded.c_str());
                     }
 

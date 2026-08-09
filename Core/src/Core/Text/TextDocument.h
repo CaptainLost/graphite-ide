@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace core::text
 {
@@ -14,6 +15,16 @@ namespace core::text
         Lf,
         Crlf
     };
+
+    /// LF-only text rewritten with `ending`.
+    ///
+    /// Everything inside the editor is LF — TextBuffer says so, and TextDocument
+    /// normalises on load — so LF is the only thing this ever has to read. It is what
+    /// puts the file's own ending back when saving, and what the Windows clipboard needs
+    /// on the way out: a Win32 EDIT control and every spreadsheet read LF-only text as a
+    /// single line, so copying five lines and pasting them elsewhere would otherwise
+    /// arrive as one.
+    [[nodiscard]] std::string WithLineEnding(std::string_view text, LineEnding ending);
 
     /// An open text file: its content, and everything tying that content to the file it
     /// came from.

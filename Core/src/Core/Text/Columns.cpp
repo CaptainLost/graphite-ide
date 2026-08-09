@@ -70,6 +70,38 @@ namespace core::text
         return ColumnOfByte(line, line.size(), tabWidth);
     }
 
+    std::string ExpandTabs(std::string_view line, std::size_t tabWidth)
+    {
+        std::string expanded;
+        expanded.reserve(line.size());
+
+        std::size_t column = 0;
+        std::size_t at = 0;
+
+        while (at < line.size())
+        {
+            if (line[at] == '\t')
+            {
+                const std::size_t next = AfterTab(column, tabWidth);
+
+                expanded.append(next - column, ' ');
+                column = next;
+                ++at;
+                continue;
+            }
+
+            // One column per character, however many bytes it takes — the same rule
+            // ColumnOfByte applies, so the two cannot disagree about where a byte lands.
+            const std::size_t next = NextCharacter(line, at);
+
+            expanded.append(line.substr(at, next - at));
+            ++column;
+            at = next;
+        }
+
+        return expanded;
+    }
+
     std::size_t WidestColumn(const TextBuffer& buffer, std::size_t tabWidth)
     {
         std::size_t widest = 0;

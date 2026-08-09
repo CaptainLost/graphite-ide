@@ -400,3 +400,29 @@ TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot o
 {
 }
 #endif
+
+TEST_CASE("LF text keeps its line endings when LF is asked for")
+{
+    CHECK(WithLineEnding("one\ntwo\n", LineEnding::Lf) == "one\ntwo\n");
+}
+
+TEST_CASE("LF text becomes CRLF when CRLF is asked for")
+{
+    CHECK(WithLineEnding("one\ntwo\n", LineEnding::Crlf) == "one\r\ntwo\r\n");
+}
+
+TEST_CASE("Text with no line break is unchanged either way")
+{
+    CHECK(WithLineEnding("one", LineEnding::Lf) == "one");
+    CHECK(WithLineEnding("one", LineEnding::Crlf) == "one");
+}
+
+TEST_CASE("An empty selection converts to nothing")
+{
+    CHECK(WithLineEnding("", LineEnding::Crlf).empty());
+}
+
+TEST_CASE("A blank line becomes its own CRLF rather than being swallowed")
+{
+    CHECK(WithLineEnding("\n\n", LineEnding::Crlf) == "\r\n\r\n");
+}

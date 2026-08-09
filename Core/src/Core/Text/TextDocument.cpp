@@ -165,12 +165,28 @@ namespace core::text
         return FromContent(std::move(content), path);
     }
 
-    std::string TextDocument::Bytes() const
+    std::string WithLineEnding(std::string_view text, LineEnding ending)
     {
-        const std::string content = m_buffer.Text();
+        if (ending == LineEnding::Lf)
+            return std::string{text};
 
         std::string result;
-        result.reserve(content.size() + 3);
+        result.reserve(text.size());
+
+        for (const char byte : text)
+        {
+            if (byte == '\n')
+                result.push_back('\r');
+
+            result.push_back(byte);
+        }
+
+        return result;
+    }
+
+    std::string TextDocument::Bytes() const
+    {
+        std::string result;
 
         // Keyed off m_hadBom rather than m_encoding == Utf8Bom: invalid UTF-8 following a
         // mark demotes m_encoding to Unknown, but the mark itself still arrived and still
@@ -178,19 +194,7 @@ namespace core::text
         if (m_hadBom)
             result += "\xEF\xBB\xBF";
 
-        if (m_lineEnding == LineEnding::Lf)
-        {
-            result += content;
-            return result;
-        }
-
-        for (const char byte : content)
-        {
-            if (byte == '\n')
-                result.push_back('\r');
-
-            result.push_back(byte);
-        }
+        result += WithLineEnding(m_buffer.Text(), m_lineEnding);
 
         return result;
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 #include <string_view>
 
 namespace core::text
@@ -30,6 +31,19 @@ namespace core::text
 
     /// Columns the line occupies — the column one past its last character.
     [[nodiscard]] std::size_t ColumnCount(std::string_view line, std::size_t tabWidth);
+
+    /// The line with every tab replaced by the spaces that reach its next tab stop.
+    ///
+    /// A tab is an advance rather than a glyph, so a renderer drawing the raw bytes would
+    /// put every character after the first tab in the wrong place. Expanding first keeps
+    /// a line one draw call instead of one run per tab, and the result agrees with
+    /// ColumnOfByte by construction — both walk the line the same way.
+    ///
+    /// Linear in the length of the line: the column is carried through the walk, not
+    /// recomputed from byte 0 for each tab. A tab-separated export is an ordinary text
+    /// file as far as the editor is concerned, and re-deriving the column per tab makes
+    /// drawing one quadratic in the number of tabs on the line.
+    [[nodiscard]] std::string ExpandTabs(std::string_view line, std::size_t tabWidth);
 
     /// Widest line in the document, in columns. This is the horizontal scrolling extent.
     /// Walks every line, so it is computed once when a document loads rather than per

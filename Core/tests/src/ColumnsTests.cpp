@@ -178,3 +178,68 @@ TEST_CASE("An empty document has no width")
 
     CHECK(WidestColumn(buffer, 4) == 0);
 }
+
+TEST_CASE("Expanding tabs leaves a line without any alone")
+{
+    CHECK(ExpandTabs("int main()", 4) == "int main()");
+}
+
+TEST_CASE("A tab expands to the spaces that reach its next stop")
+{
+    CHECK(ExpandTabs("\tx", 4) == "    x");
+    CHECK(ExpandTabs("a\tx", 4) == "a   x");
+    CHECK(ExpandTabs("abc\tx", 4) == "abc x");
+    CHECK(ExpandTabs("abcd\tx", 4) == "abcd    x");
+}
+
+TEST_CASE("Consecutive tabs each reach their own stop")
+{
+    CHECK(ExpandTabs("\t\tx", 4) == "        x");
+    CHECK(ExpandTabs("a\t\tx", 4) == "a       x");
+}
+
+TEST_CASE("A non-ASCII character keeps its bytes and costs one column")
+{
+    // Two 'ą' (two bytes each) occupy two columns, so the tab after them reaches
+    // column 4 — two spaces, not two bytes' worth.
+    CHECK(ExpandTabs("\xC4\x85\xC4\x85\tx", 4) == "\xC4\x85\xC4\x85  x");
+}
+
+TEST_CASE("An ASCII byte's column is its index into the expansion")
+{
+    const std::string line = "\ta\tbc\td";
+
+    // The expansion is what the renderer draws; ColumnOfByte is what places the caret
+    // and the selection on top of it. With ASCII throughout, one column is one byte of
+    // the expansion, so the two must agree byte for byte or they disagree on screen.
+    const std::string expanded = ExpandTabs(line, 4);
+
+    for (std::size_t byte = 0; byte <= line.size(); ++byte)
+    {
+        const std::size_t column = ColumnOfByte(line, byte, 4);
+
+        REQUIRE(column <= expanded.size());
+
+        if (byte < line.size() && line[byte] != '\t')
+            CHECK(expanded[column] == line[byte]);
+    }
+}
+
+TEST_CASE("An expanded line occupies exactly as many columns as the original")
+{
+    const std::string line = "\ta\tbc\t\xC4\x85\td";
+
+    CHECK(ColumnCount(ExpandTabs(line, 4), 4) == ColumnCount(line, 4));
+}
+
+TEST_CASE("Expanding an empty line gives an empty line")
+{
+    CHECK(ExpandTabs("", 4).empty());
+}
+
+TEST_CASE("A tab width of zero advances one column at a time")
+{
+    // AfterTab guards against a zero width rather than dividing by it; the expansion
+    // has to survive the same input the rest of Columns.h does.
+    CHECK(ExpandTabs("a\tb", 0) == "a b");
+}
