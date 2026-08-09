@@ -91,9 +91,29 @@ namespace graphite
         // both.
         const std::size_t caretAtFrameStart = item.caret.offset;
         const float lineHeight = ImGui::GetTextLineHeight();
-        // Every glyph in a monospaced face advances the same, so one measurement is the
-        // width of every cell.
-        const float cellWidth = ImGui::CalcTextSize("0").x;
+        // Every glyph in a monospaced face advances the same, so one glyph's advance is
+        // the width of every cell.
+        //
+        // Taken from the baked font rather than from ImGui::CalcTextSize, which ends with
+        // `text_size.x = ImCeilFast(text_size.x)` and so hands back the advance rounded up
+        // to a whole pixel. ImDrawList::AddText advances by the true fractional value, so
+        // a rounded cell width drifts by ceil(advance) - advance per column against the
+        // glyphs it is supposed to line up with — several pixels by column 40, which is
+        // enough to put the caret, the selection edges, the indent guides and the mouse
+        // hit test each a character away from the text. GetCharAdvance is the same number
+        // AddText walks by, unrounded.
+        //
+        // The baked size is whatever ImGui rounded the pushed size to, which is not
+        // necessarily the size in effect (global and DPI scale factors are applied to
+        // GetFontSize() but the bake is picked from the rounded result), so the advance is
+        // scaled from the bake to the current size exactly as ImFont::RenderText does.
+        //
+        // Non-const because GetCharAdvance builds the glyph on demand if this size has not
+        // seen it yet — this ImGui bakes lazily, so the first frame at a new zoom level is
+        // the one that loads it.
+        ImFontBaked* const baked = ImGui::GetFontBaked();
+        const float cellWidth =
+            baked->GetCharAdvance('0') * (ImGui::GetFontSize() / baked->Size);
 
         const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.LineCount()));
         const float breakpointColumnWidth = kBreakpointColumnCells * cellWidth;
@@ -455,9 +475,15 @@ namespace graphite
                     // the whole gutter — both reserved margins included — so nothing
                     // scrolled draws through where they sit; the number itself stays
                     // right-aligned inside its own column.
+                    //
+                    // The number's width comes from cellWidth — every digit is one cell in
+                    // a monospaced face — and not from ImGui::CalcTextSize, which rounds up
+                    // to a whole pixel: the column this is aligned inside was itself sized
+                    // as digits * cellWidth, and two different measurements of one width
+                    // are exactly how the caret drifted off the text in the first place.
                     const std::string number = std::to_string(line + 1);
-                    const float numberX =
-                        numberColumnX1 - kGutterPaddingX - ImGui::CalcTextSize(number.c_str()).x;
+                    const float numberX = numberColumnX1 - kGutterPaddingX
+                        - static_cast<float>(number.size()) * cellWidth;
 
                     draw->AddRectFilled(ImVec2(origin.x + scrollX, y),
                                         ImVec2(origin.x + scrollX + gutterWidth, y + lineHeight),
