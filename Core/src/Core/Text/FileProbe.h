@@ -17,7 +17,10 @@ namespace core::text
         Text,
         /// Text, but past the threshold where the caller asks before loading it.
         LargeText,
-        /// Holds a NUL byte, so it is not text. Refused.
+        /// Holds a NUL byte that no encoding accounts for, so it is not text. Refused.
+        /// UTF-16 is recognised before this rule is applied and is exempt from it — half
+        /// of a UTF-16 file is NUL bytes, and the rule as it once read called every one of
+        /// them binary.
         Binary,
         /// Past the ceiling. Refused even with confirmation.
         TooLarge

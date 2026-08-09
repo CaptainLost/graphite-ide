@@ -127,9 +127,10 @@ namespace core::text
         document.m_path = std::move(path);
         document.m_encoding = declared;
         document.m_hadBom = bomLength > 0;
-        // Captured separately from m_encoding: invalid UTF-8 behind a real mark demotes
-        // m_encoding to Unknown for read-only handling, but Bytes() still has to write
-        // back the mark that was actually there, which means remembering which one.
+        // Assigned whether or not a mark was there, because m_hadBom already says which it
+        // was and Bytes() reads this only when that is true. Captured separately from
+        // m_encoding: invalid UTF-8 behind a real mark demotes m_encoding to Unknown for
+        // read-only handling, but the mark that was actually there still has to go back.
         document.m_bomEncoding = declared;
 
         // Only content that was not decoded can fail validation: Decode returns valid

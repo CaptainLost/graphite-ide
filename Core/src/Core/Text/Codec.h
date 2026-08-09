@@ -10,9 +10,15 @@ namespace core::text
 {
     /// Turns bytes from disk into the UTF-8 the rest of the editor works in.
     ///
-    /// Utf8, Utf8Bom and Unknown pass through untouched — the byte order mark is the
-    /// caller's business, and Unknown means bytes that failed validation and are kept
-    /// verbatim. Only the UTF-16 arms transform anything.
+    /// Content only, on every arm without exception: the byte order mark is the caller's
+    /// business, and nothing here strips one. That is easiest to get wrong on the UTF-16
+    /// arms, where a mark left in place is not an error and does not look like one —
+    /// Decode(whole_file, Utf16Le) succeeds and hands back content starting with U+FEFF,
+    /// an invisible character sitting at column 1 of line 1.
+    ///
+    /// Utf8, Utf8Bom and Unknown pass through untouched — Unknown means bytes that failed
+    /// validation and are kept verbatim. Only the UTF-16 arms transform anything, which is
+    /// what TransformsContent below answers for.
     ///
     /// Fails when UTF-16 input is malformed: an odd byte count, or a surrogate half
     /// without its partner. Such a file cannot be both shown and preserved, because UTF-8
@@ -29,10 +35,20 @@ namespace core::text
     /// Utf8, Utf8Bom and Unknown return the input unchanged. Passing Unknown through is
     /// what keeps a read-only file whose bytes failed UTF-8 validation byte-identical
     /// when it is saved.
+    ///
+    /// The mark is the caller's business on the way out too: no arm writes one, so a
+    /// caller that wants the file marked puts BomBytes in front of what this returns.
     [[nodiscard]] std::string Encode(std::string_view utf8, Encoding encoding);
 
     /// The encoding of a file, from its byte order mark or — failing that — from the
     /// shape of its bytes.
+    ///
+    /// This is the one to call when the question is "what encoding is this file". It wraps
+    /// DetectEncoding, which answers the narrower question "what does the mark say" and is
+    /// worth calling directly only where the mark itself is the subject — as BomLength
+    /// does, to learn how many bytes to skip. Reaching for DetectEncoding to decide how to
+    /// read a file gets every unmarked UTF-16 file wrong, since those carry no mark to
+    /// read.
     ///
     /// A mark settles it outright. Without one, UTF-16 is still recognisable: 'A' is
     /// U+0041, so little-endian writes 41 00 and big-endian 00 41, which puts the NUL at

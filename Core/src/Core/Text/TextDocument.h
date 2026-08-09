@@ -110,9 +110,13 @@ namespace core::text
         /// demotes m_encoding to Unknown, but the mark itself was still there and Bytes()
         /// must still put it back, or a read-only file's bytes would not round-trip.
         bool m_hadBom = false;
-        /// The encoding whose mark was found, kept apart from m_encoding because invalid
-        /// UTF-8 behind a real mark demotes m_encoding to Unknown for read-only handling
-        /// while Bytes() still needs to know which mark to write back.
+        /// Which mark Bytes() writes back, and meaningful only where m_hadBom says there
+        /// was one to write. It holds the sniffed encoding, not a mark that was found:
+        /// SniffEncoding names a UTF-16 file from the shape of its bytes alone, so an
+        /// unmarked one leaves this reading Utf16Le with no mark anywhere in the file —
+        /// harmless, because m_hadBom is false and Bytes() never asks. Kept apart from
+        /// m_encoding because invalid UTF-8 behind a real mark demotes m_encoding to
+        /// Unknown for read-only handling while the mark still has to go back.
         Encoding m_bomEncoding = Encoding::Utf8;
         std::size_t m_savedRevision = 0;
     };

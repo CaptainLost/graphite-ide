@@ -7,10 +7,11 @@ namespace core::text
 {
     /// How a file's bytes encode its characters.
     ///
-    /// Detection is complete; decoding is not. TextDocument loads Utf8 and Utf8Bom and
-    /// refuses the rest by name, so a UTF-16 file gets an honest message instead of
-    /// being called binary. Adding UTF-16 later means adding a branch there, not
-    /// changing anything here.
+    /// Detection and decoding both cover every enumerator here: Codec turns each of them
+    /// into UTF-8 and back, and TextDocument opens all of them rather than refusing any by
+    /// name. Adding one means an arm in each switch over this enumeration — none of which
+    /// carries a default, so the compiler asks for them instead of letting a new encoding
+    /// fall quietly through a catch-all.
     enum class Encoding
     {
         Utf8,
@@ -40,6 +41,10 @@ namespace core::text
     /// The encoding the leading bytes declare. Reads the BOM only, never the content, so
     /// a file with no BOM is reported as Utf8 whether or not it validates — deciding
     /// that is IsValidUtf8's job, on the whole content rather than on a truncated sample.
+    ///
+    /// Not the function to ask what encoding a file is in: an unmarked UTF-16 file comes
+    /// back Utf8 from here. Codec's SniffEncoding wraps this and reads the content when
+    /// the mark says nothing, and that is what a caller deciding how to read a file wants.
     [[nodiscard]] Encoding DetectEncoding(std::string_view bytes);
 
     /// Whether every byte belongs to a well-formed UTF-8 sequence. Rejects truncated
