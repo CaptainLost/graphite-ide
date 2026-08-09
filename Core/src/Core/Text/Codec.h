@@ -58,6 +58,17 @@ namespace core::text
     /// whole file.
     [[nodiscard]] Encoding SniffEncoding(std::string_view bytes);
 
+    /// Whether decoded UTF-8 reads as text rather than as binary noise: no control
+    /// characters besides tab, newline and carriage return, counting DEL and the C1 range
+    /// as the controls they are rather than letting them through on byte value alone.
+    ///
+    /// This is the third of SniffEncoding's conditions, exposed because SniffEncoding
+    /// only ever applies it to whatever its caller sampled. A verdict drawn from a prefix
+    /// is a hypothesis about the rest of the file; a caller that later holds the whole
+    /// file tests that hypothesis by applying the same rule to all of it, and one rule in
+    /// one place is what keeps the two answers from being reached differently.
+    [[nodiscard]] bool LooksLikeText(std::string_view utf8);
+
     /// Whether Decode/Encode actually transform content for this encoding, as opposed to
     /// passing it through unchanged. The single source of truth for which arms of
     /// Decode's switch do something, so a caller deciding whether content needs UTF-8

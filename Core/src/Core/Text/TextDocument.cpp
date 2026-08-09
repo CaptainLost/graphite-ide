@@ -62,7 +62,16 @@ namespace core::text
 
     Result<TextDocument> TextDocument::FromContent(std::string bytes, std::filesystem::path path)
     {
-        const Encoding declared = SniffEncoding(bytes);
+        // The same prefix ProbeFile reads, rather than the whole file. Sharing
+        // SniffEncoding with the probe guarantees the two run the same algorithm; only
+        // giving them the same bytes guarantees they reach the same answer, and their
+        // answers have to agree — the probe decides whether a file may be opened at all,
+        // this decides how to read it. Sniffing the whole file here used to split them on
+        // an unmarked UTF-16 file bigger than the sample whose tail holds a control
+        // character: the probe called it UTF-16 text, this called it UTF-8, and raw
+        // UTF-16 with a NUL after every character landed in a writable buffer.
+        const Encoding declared =
+            SniffEncoding(std::string_view{bytes}.substr(0, ProbeSampleSize));
 
         // BomLength(declared) would be wrong here: SniffEncoding can name a UTF-16 file
         // by the shape of its bytes alone, with no mark actually present, and
@@ -70,14 +79,31 @@ namespace core::text
         // particular file. BomLength(bytes) checks the real leading bytes instead, so an
         // unmarked file has nothing stripped from it.
         const std::size_t bomLength = BomLength(bytes);
-        const std::string_view raw = std::string_view{bytes}.substr(bomLength);
 
-        auto decoded = Decode(raw, declared);
+        auto decoded = Decode(std::string_view{bytes}.substr(bomLength), declared);
 
         if (!decoded)
             return decoded.GetError();
 
         std::string content = std::move(decoded).Value();
+
+        // The strict rule, which only a full load can afford. SniffEncoding tolerates
+        // input cut mid-unit and saw only the prefix above, so its verdict is a hypothesis
+        // about the rest of the file; here the rest has arrived and been decoded, so the
+        // same rule is put to all of it. Two files reach this line and neither may become
+        // a writable document: one whose UTF-16 shape holds for its first 8 KB and not
+        // afterwards, and a UTF-32 one, whose FF FE 00 00 mark opens with the UTF-16 LE
+        // mark and so decodes to a NUL after every character. Refusing is the point — a
+        // false negative costs a moment's confusion, a false positive costs the file at
+        // its first edit. TransformsContent keeps this to content the codec produced;
+        // bytes that only passed through are judged by IsValidUtf8 below, as before.
+        if (TransformsContent(declared) && !LooksLikeText(content))
+        {
+            return Error{ErrorCode::InvalidArgument,
+                         "This is not " + std::string{EncodingName(declared)}
+                             + " text: decoding it gives control characters: "
+                             + fs::ToUtf8(path)};
+        }
 
         TextDocument document;
         document.m_path = std::move(path);

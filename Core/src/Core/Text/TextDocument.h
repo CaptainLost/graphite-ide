@@ -38,9 +38,16 @@ namespace core::text
         /// This is where every decision about the file's form is made: the encoding is
         /// sniffed, the BOM is recognised and stripped, the content is decoded to UTF-8
         /// (validated instead, for encodings Decode passes through unchanged), and CRLF
-        /// is normalised to LF while the dominant style is remembered. Fails only for
-        /// UTF-16 content that is damaged: an odd byte count, or a surrogate half with
-        /// no partner.
+        /// is normalised to LF while the dominant style is remembered.
+        ///
+        /// The encoding is sniffed from the first ProbeSampleSize bytes, not from all of
+        /// them, because FileProbe decides whether this file may be opened at all from
+        /// exactly those bytes and the two verdicts must not be able to differ.
+        ///
+        /// Fails for UTF-16 content that is damaged — an odd byte count, or a surrogate
+        /// half with no partner — and for UTF-16 content that decodes cleanly but does not
+        /// read as text, which is what a sample-sized verdict about a larger file can turn
+        /// out to be wrong about.
         [[nodiscard]] static Result<TextDocument> FromContent(std::string bytes,
                                                               std::filesystem::path path);
 

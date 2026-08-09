@@ -482,3 +482,55 @@ TEST_CASE("An odd byte count is refused as damage rather than opened short")
     REQUIRE_FALSE(document);
     CHECK(document.GetError().message.find("odd") != std::string::npos);
 }
+
+TEST_CASE("The probe and the document agree about a file that changes shape past the sample")
+{
+    // Unmarked UTF-16 LE, clean for exactly the 8 KB the probe reads, with a form feed
+    // just past the end of it. Nothing smaller than ProbeSampleSize can catch this: the
+    // probe and the document only ever disagree when the document can see bytes the
+    // probe could not.
+    std::string bytes;
+    bytes.reserve(ProbeSampleSize + 8);
+
+    while (bytes.size() < ProbeSampleSize)
+        bytes += std::string("a\0", 2);
+
+    REQUIRE(bytes.size() == ProbeSampleSize);
+
+    bytes += std::string("\x0C\0", 2);
+    bytes += std::string("b\0", 2);
+
+    TempDirectory directory;
+    const auto path = directory.Path() / "tail.txt";
+    WriteBytes(path, bytes);
+
+    const auto probe = ProbeFile(path);
+
+    REQUIRE(probe);
+    CHECK(probe.Value().encoding == Encoding::Utf16Le);
+    CHECK(probe.Value().kind == FileKind::Text);
+
+    // The document now reads the same prefix and reaches the same verdict, so the file it
+    // loads is the file the probe cleared. The strict rule then judges the whole decoded
+    // content and refuses it, rather than opening raw UTF-16 as a writable UTF-8 buffer
+    // whose first edit would be written into the middle of a UTF-16 file.
+    const auto document = TextDocument::Load(path);
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().message.find("UTF-16 LE") != std::string::npos);
+}
+
+TEST_CASE("A UTF-32 file is refused rather than opened as UTF-16")
+{
+    // What Set-Content -Encoding UTF32 writes for "Hi". The UTF-32 LE mark FF FE 00 00
+    // opens with the UTF-16 LE mark, so detection names UTF-16 and a mark overrules every
+    // other check — the codec is the only gate left, and U+0000 is a codepoint it decodes
+    // without complaint. Refused now, and the reason is that the decoded content is full
+    // of NUL bytes, which no text is.
+    const auto document =
+        TextDocument::FromContent(std::string("\xFF\xFE\0\0H\0\0\0i\0\0\0", 12),
+                                  "C:/tmp/utf32.txt");
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().message.find("UTF-16 LE") != std::string::npos);
+}
