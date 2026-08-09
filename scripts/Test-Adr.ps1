@@ -64,6 +64,21 @@ $seenNumbers = @{}
 $requiredSections = @('Context', 'Decision', 'Rationale', 'Consequences')
 $consequenceHeadings = @('Positive', 'Negative', 'Neutral')
 
+# Guidance comments copied from template.md. A record that still contains one
+# was scaffolded and never written; every heading is present, so none of the
+# structural checks above would notice.
+$templateHints = @()
+$templatePath = Join-Path $AdrDirectory 'template.md'
+if (Test-Path -LiteralPath $templatePath) {
+    foreach ($match in [regex]::Matches((Read-Utf8 -Path $templatePath), '(?s)<!--(.*?)-->')) {
+        $hint = $match.Groups[1].Value.Trim()
+        # Short comments are markers like the index delimiters, not guidance.
+        if ($hint.Length -ge 20) {
+            $templateHints += $hint
+        }
+    }
+}
+
 foreach ($record in $records) {
     $name = $record.Name
 
@@ -107,6 +122,17 @@ foreach ($record in $records) {
 
     if ($readme -notmatch [regex]::Escape("($name)")) {
         $problems.Add("$name : has no row in the README.md index.")
+    }
+
+    if ($body -match '\{\{') {
+        $problems.Add("$name : contains an unsubstituted {{placeholder}}.")
+    }
+
+    foreach ($hint in $templateHints) {
+        if ($body.Contains($hint)) {
+            $problems.Add("$name : still carries guidance from template.md, so it is unfilled.")
+            break
+        }
     }
 }
 

@@ -25,16 +25,28 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding $false))
 }
 
+function ConvertTo-Lf {
+    param([string] $Text)
+    return $Text -replace "`r`n", "`n"
+}
+
 function New-Fixture {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ("adrcheck-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $root | Out-Null
-    Write-Utf8NoBom -Path (Join-Path $root 'template.md') -Text "# {{NUMBER}}. {{TITLE}}`r`n"
-    Write-Utf8NoBom -Path (Join-Path $root 'README.md') -Text @'
+    Write-Utf8NoBom -Path (Join-Path $root 'template.md') -Text (ConvertTo-Lf @'
+# {{NUMBER}}. {{TITLE}}
+
+## Context
+
+<!-- What forces and constraints were true when this decision was made? Name
+     them; a record without context cannot be re-judged later. -->
+'@)
+    Write-Utf8NoBom -Path (Join-Path $root 'README.md') -Text (ConvertTo-Lf @'
 | # | Title | Status | Date |
 |---|---|---|---|
 <!-- adr-index -->
 <!-- /adr-index -->
-'@
+'@)
     return $root
 }
 
@@ -50,7 +62,7 @@ function Add-Record {
     }
 }
 
-$valid = @'
+$valid = ConvertTo-Lf @'
 # 0001. A well formed record
 
 Status: accepted
@@ -82,6 +94,7 @@ Bad.
 
 Other.
 '@
+
 
 $scriptUnderTest = Join-Path $PSScriptRoot '..\Test-Adr.ps1'
 
@@ -188,6 +201,29 @@ try {
     $result = Invoke-Validator -Root $fixture
     Assert-That -Because 'rejects an index row whose record does not exist' -Condition ($result.ExitCode -eq 1)
     Assert-That -Because 'names the missing record' -Condition ($result.Output -match '0002-ghost\.md')
+}
+finally { Remove-Item $fixture -Recurse -Force }
+
+# --- a scaffolded but unfilled record ----------------------------------------
+$fixture = New-Fixture
+try {
+    $unfilled = $valid -replace '(?m)^Something\.$', @'
+<!-- What forces and constraints were true when this decision was made? Name
+     them; a record without context cannot be re-judged later. -->
+'@
+    Add-Record -Root $fixture -FileName '0001-never-written.md' -Body $unfilled
+    $result = Invoke-Validator -Root $fixture
+    Assert-That -Because 'rejects a record still carrying the template guidance' -Condition ($result.ExitCode -eq 1)
+    Assert-That -Because 'says the record is unfilled' -Condition ($result.Output -match 'unfilled')
+}
+finally { Remove-Item $fixture -Recurse -Force }
+
+# --- an unsubstituted placeholder --------------------------------------------
+$fixture = New-Fixture
+try {
+    Add-Record -Root $fixture -FileName '0001-placeholder.md' -Body ($valid -replace 'Do the thing\.', 'Do {{TITLE}}.')
+    $result = Invoke-Validator -Root $fixture
+    Assert-That -Because 'rejects a record with an unsubstituted placeholder' -Condition ($result.ExitCode -eq 1)
 }
 finally { Remove-Item $fixture -Recurse -Force }
 

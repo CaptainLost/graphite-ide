@@ -39,4 +39,12 @@ Check every record's shape with:
 | [0017](0017-p-11-encapsulate-messy-constructs-rather-than-spreading-through-the-code.md) | P.11: Encapsulate messy constructs, rather than spreading through the code | accepted17 2026-08-09 |
 | [0018](0018-p-12-use-supporting-tools-as-appropriate.md) | P.12: Use supporting tools as appropriate | accepted18 2026-08-09 |
 | [0019](0019-p-13-use-support-libraries-as-appropriate.md) | P.13: Use support libraries as appropriate | accepted19 2026-08-09 |
+| [0020](0020-i-1-make-interfaces-explicit.md) | I.1: Make interfaces explicit | proposed | 2026-08-09 |
+| [0021](0021-i-2-avoid-non-const-global-variables.md) | I.2: Avoid non-const global variables | proposed | 2026-08-09 |
+| [0022](0022-i-3-avoid-singletons.md) | I.3: Avoid singletons | proposed | 2026-08-09 |
+| [0023](0023-i-4-make-interfaces-precisely-and-strongly-typed.md) | I.4: Make interfaces precisely and strongly typed | proposed | 2026-08-09 |
+| [0024](0024-i-5-state-preconditions-if-any.md) | I.5: State preconditions (if any) | proposed | 2026-08-09 |
+| [0025](0025-i-6-prefer-expects-for-expressing-preconditions.md) | I.6: Prefer Expects() for expressing preconditions | proposed | 2026-08-09 |
+| [0026](0026-i-7-state-postconditions.md) | I.7: State postconditions | proposed | 2026-08-09 |
+| [0027](0027-i-8-prefer-ensures-for-expressing-postconditions.md) | I.8: Prefer Ensures() for expressing postconditions | proposed | 2026-08-09 |
 <!-- /adr-index -->

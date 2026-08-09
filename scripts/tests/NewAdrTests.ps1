@@ -30,6 +30,14 @@ function Read-Utf8Text {
     return [System.IO.File]::ReadAllText($Path)
 }
 
+function ConvertTo-Lf {
+    # Here-strings in this file carry whatever line ending git left the script
+    # with, which flips between LF and CRLF. Normalising the fixtures keeps the
+    # assertions from depending on that.
+    param([string] $Text)
+    return $Text -replace "`r`n", "`n"
+}
+
 function New-Fixture {
     # A throwaway ADR directory holding only what the script needs to read.
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ("adr-" + [guid]::NewGuid().ToString('N'))
@@ -55,7 +63,7 @@ Date: {{DATE}}
 
 ### Neutral
 '@
-    Write-Utf8NoBom -Path (Join-Path $root 'template.md') -Text $template
+    Write-Utf8NoBom -Path (Join-Path $root 'template.md') -Text (ConvertTo-Lf $template)
 
     $readme = @'
 | # | Title | Status | Date |
@@ -64,7 +72,7 @@ Date: {{DATE}}
 | [0001](0001-first.md) | First | accepted | 2026-08-09 |
 <!-- /adr-index -->
 '@
-    Write-Utf8NoBom -Path (Join-Path $root 'README.md') -Text $readme
+    Write-Utf8NoBom -Path (Join-Path $root 'README.md') -Text (ConvertTo-Lf $readme)
     Write-Utf8NoBom -Path (Join-Path $root '0001-first.md') -Text "# 0001. First`r`n"
 
     return $root
