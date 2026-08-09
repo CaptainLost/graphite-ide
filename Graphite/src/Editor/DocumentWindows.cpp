@@ -62,6 +62,16 @@ namespace graphite
         m_pendingPath = path;
         m_pendingPermanent = permanent;
         m_openSizeQuestion = true;
+        m_pendingSize = 0;
+
+        // Probed once, here, rather than every frame the modal is open: a stat plus an
+        // 8 KB read per frame is real work when the file sits on a network share, and the
+        // answer cannot change between the question and the reply in any way worth
+        // redrawing for. Open() has just probed the same file successfully - that is what
+        // NeedsConfirmation means - so this second probe is asking a question already
+        // answered, and a failure here means the file went away in between.
+        if (const auto probe = core::text::ProbeFile(path))
+            m_pendingSize = probe.Value().size;
     }
 
     void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
@@ -156,12 +166,18 @@ namespace graphite
         if (ImGui::BeginPopupModal(kSizeQuestionTitle, nullptr,
                                    ImGuiWindowFlags_AlwaysAutoResize))
         {
-            const auto probe = core::text::ProbeFile(m_pendingPath);
-            const std::uint64_t megabytes =
-                probe ? probe.Value().size / (1024 * 1024) : 0;
-
-            ImGui::Text("This file is %llu MB. Load it anyway?",
-                        static_cast<unsigned long long>(megabytes));
+            // A size of zero means the probe in RequestOpen failed, which after a
+            // successful one moments earlier means the file has gone. Claiming "this file
+            // is 0 MB" would be asking permission for a size nobody knows.
+            if (m_pendingSize == 0)
+            {
+                ImGui::TextUnformatted("This file can no longer be read. Load it anyway?");
+            }
+            else
+            {
+                ImGui::Text("This file is %llu MB. Load it anyway?",
+                            static_cast<unsigned long long>(m_pendingSize / (1024 * 1024)));
+            }
             ImGui::Separator();
 
             if (ImGui::Button("Load"))
@@ -199,7 +215,18 @@ namespace graphite
 
             if (justOpened)
             {
-                unsigned int targetNode = m_lastFocusedNode != 0 ? m_lastFocusedNode : fallbackDockNode;
+                // Checked, not merely non-zero: splitting the editor area, opening a file
+                // in the new split and closing it leaves ImGui free to delete the emptied
+                // node, and the id kept here outlives it. Docking to a dead id does not
+                // fail - DockBuilderDockWindow creates a fresh node under no parent - so
+                // the window floats free instead of landing in the centre.
+                const bool lastFocusedAlive =
+                    m_lastFocusedNode != 0 && ImGui::DockBuilderGetNode(m_lastFocusedNode) != nullptr;
+
+                if (!lastFocusedAlive)
+                    m_lastFocusedNode = 0;
+
+                unsigned int targetNode = lastFocusedAlive ? m_lastFocusedNode : fallbackDockNode;
 
                 // A window carrying over a dock position from before its path was
                 // rewritten takes priority over both: it is more specific than "wherever

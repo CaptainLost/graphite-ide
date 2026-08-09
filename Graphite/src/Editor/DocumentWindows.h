@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -71,6 +72,11 @@ namespace graphite
         std::filesystem::path m_pendingPath;
         bool m_pendingPermanent = false;
         bool m_openSizeQuestion = false;
+
+        /// The size the question is about, in bytes, measured once when the question was
+        /// raised. Zero means it could not be measured, which the modal says rather than
+        /// asking about "0 MB".
+        std::uint64_t m_pendingSize = 0;
 
         /// The identity (core::fs::ToUtf8 of the path, nothing else) of every window
         /// Render produced last time it ran. A document can disappear between one Render
