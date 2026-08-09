@@ -128,7 +128,13 @@ namespace graphite
         core::EventBus m_events;
         Workspace m_workspace{m_events};
         core::text::DocumentSet m_documents;
-        DocumentWindows m_documentWindows{m_documents};
+
+        /// Which of the application's five questions currently owns ImGui's single modal
+        /// popup level. Declared before m_documentWindows, which takes it by reference:
+        /// four of the five are drawn there and the "Unsaved changes" one here, and all
+        /// five would otherwise destroy one another. See ModalGate.
+        ModalGate m_modals;
+        DocumentWindows m_documentWindows{m_documents, m_modals};
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;

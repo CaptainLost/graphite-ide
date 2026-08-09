@@ -375,17 +375,14 @@ namespace graphite
         if (m_pendingClosePurpose.has_value())
             return false;
 
-        // Don't stack a second, overlapping modal on top of a per-tab "Save changes to
-        // X before closing?" question (DocumentWindows' own, raised by a tab's close
-        // button while dirty) - same reasoning as above, reached the same way: that
-        // modal blocks ImGui input, but not the OS-level close GLFW reports through
-        // Window::ShouldClose(). Refuse and let the user close again once it resolves.
-        if (m_documentWindows.HasPendingCloseQuestion())
-            return false;
-
         if (!AnyDocumentModified())
             return true;
 
+        // Raised even when another question - one of DocumentWindows' four - is on
+        // screen, which Alt+F4 and the OS close button reach past regardless of ImGui
+        // holding input. RenderCloseConfirm asks the gate before opening anything, so
+        // this is a question queued rather than a modal stacked, and m_pendingClosePurpose
+        // being set keeps this refusing until it is answered.
         m_pendingClosePurpose = ClosePurpose::ExitApplication;
         m_openCloseConfirmPopup = true;
         return false;
@@ -426,14 +423,31 @@ namespace graphite
 
     void GraphiteLayer::RenderCloseConfirm()
     {
-        if (m_openCloseConfirmPopup)
+        // The flag stays raised for as long as another question holds the gate, so an
+        // exit asked for while a per-tab or reload question is up is put on screen the
+        // moment that one resolves rather than being dropped - and dropping it would
+        // matter twice over, since m_pendingClosePurpose (set by the caller) is what
+        // makes OnCloseRequested refuse, and nothing but this modal ever clears it.
+        if (m_openCloseConfirmPopup && m_modals.TryOpen(kUnsavedWorkTitle))
         {
             ImGui::OpenPopup(kUnsavedWorkTitle);
             m_openCloseConfirmPopup = false;
         }
 
         if (!ImGui::BeginPopupModal(kUnsavedWorkTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            // Believed on screen and yet not open: dismissed with Escape, or destroyed.
+            // Treated exactly as Cancel, because leaving m_pendingClosePurpose set would
+            // make OnCloseRequested refuse every close for the rest of the session and
+            // the window could then only be force-quit.
+            if (m_modals.HoldsFor(kUnsavedWorkTitle) && !ImGui::IsPopupOpen(kUnsavedWorkTitle))
+            {
+                m_pendingClosePurpose.reset();
+                m_modals.Close(kUnsavedWorkTitle);
+            }
+
             return;
+        }
 
         ImGui::TextUnformatted("These files have unsaved changes:");
         ImGui::Separator();
@@ -474,6 +488,7 @@ namespace graphite
             if (m_documentWindows.SaveAllModified())
             {
                 FinishClose(purpose);
+                m_modals.Close(kUnsavedWorkTitle);
                 ImGui::CloseCurrentPopup();
             }
         }
@@ -483,6 +498,7 @@ namespace graphite
         if (ImGui::Button("Discard All"))
         {
             FinishClose(purpose);
+            m_modals.Close(kUnsavedWorkTitle);
             ImGui::CloseCurrentPopup();
         }
 
@@ -491,6 +507,7 @@ namespace graphite
         if (ImGui::Button("Cancel"))
         {
             m_pendingClosePurpose.reset();
+            m_modals.Close(kUnsavedWorkTitle);
             ImGui::CloseCurrentPopup();
         }
 

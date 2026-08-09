@@ -393,7 +393,12 @@ namespace graphite
 
         float zoomDelta = 0.0f;
 
-        if (m_openSizeQuestion)
+        // Every question below asks the gate before opening, and keeps its request
+        // pending when refused - see ModalGate for why they cannot simply all open. Each
+        // one also clears its own state when BeginPopupModal comes back false for a popup
+        // ImGui does not have open, so a question destroyed by any route this gate did not
+        // foresee cannot leave the mechanism behind it permanently wedged.
+        if (m_openSizeQuestion && m_modals.TryOpen(kSizeQuestionTitle))
         {
             ImGui::OpenPopup(kSizeQuestionTitle);
             m_openSizeQuestion = false;
@@ -419,15 +424,27 @@ namespace graphite
             if (ImGui::Button("Load"))
             {
                 m_documents.OpenConfirmed(m_pendingPath, m_pendingPermanent);
+                m_modals.Close(kSizeQuestionTitle);
                 ImGui::CloseCurrentPopup();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
+            {
+                m_modals.Close(kSizeQuestionTitle);
                 ImGui::CloseCurrentPopup();
+            }
 
             ImGui::EndPopup();
+        }
+        else if (m_modals.HoldsFor(kSizeQuestionTitle) && !ImGui::IsPopupOpen(kSizeQuestionTitle))
+        {
+            // The popup this gate believes is on screen is not open: it was dismissed with
+            // Escape, or destroyed by something opening over it. Nothing here is a guard
+            // for a later mechanism - the file simply does not open - but the gate must
+            // not stay held on its behalf.
+            m_modals.Close(kSizeQuestionTitle);
         }
 
         // The reload-conflict, overwrite-confirm and close-confirm modals below all live
@@ -437,17 +454,16 @@ namespace graphite
         // place in Render() that is never nested inside either. The loop below only ever
         // sets the flags and paths these read; the actual ImGui calls happen here.
 
-        if (!m_reloadConflictActive && !m_reloadConflictQueue.empty())
+        // The queue is only popped once the gate is actually free: a question popped into
+        // m_reloadConflictActive whose modal never opened would be a question asked of
+        // nobody, and m_reloadConflictActive staying set is what would stop every later
+        // reload question, for every document, from ever being asked again.
+        if (!m_reloadConflictActive && !m_reloadConflictQueue.empty()
+            && m_modals.TryOpen(kReloadConflictTitle))
         {
             m_reloadConflictActive = m_reloadConflictQueue.front();
             m_reloadConflictQueue.erase(m_reloadConflictQueue.begin());
-            m_openReloadConflict = true;
-        }
-
-        if (m_openReloadConflict)
-        {
             ImGui::OpenPopup(kReloadConflictTitle);
-            m_openReloadConflict = false;
         }
 
         if (ImGui::BeginPopupModal(kReloadConflictTitle, nullptr,
@@ -470,6 +486,7 @@ namespace graphite
                 }
 
                 m_reloadConflictActive.reset();
+                m_modals.Close(kReloadConflictTitle);
                 ImGui::CloseCurrentPopup();
             }
 
@@ -487,13 +504,24 @@ namespace graphite
                 }
 
                 m_reloadConflictActive.reset();
+                m_modals.Close(kReloadConflictTitle);
                 ImGui::CloseCurrentPopup();
             }
 
             ImGui::EndPopup();
         }
+        else if (m_modals.HoldsFor(kReloadConflictTitle) && !ImGui::IsPopupOpen(kReloadConflictTitle))
+        {
+            // Gone without an answer. m_reloadConflictActive is the guard that lets the
+            // queue be popped again, so leaving it set would silence every later
+            // "changed on disk" question for the rest of the session. The file itself is
+            // not forgotten: ChangedOnDisk() is still true, so the next watcher sweep or
+            // focus regain queues it afresh.
+            m_reloadConflictActive.reset();
+            m_modals.Close(kReloadConflictTitle);
+        }
 
-        if (m_openOverwriteConfirm)
+        if (m_openOverwriteConfirm && m_modals.TryOpen(kOverwriteConfirmTitle))
         {
             ImGui::OpenPopup(kOverwriteConfirmTitle);
             m_openOverwriteConfirm = false;
@@ -519,6 +547,7 @@ namespace graphite
                 }
 
                 m_overwriteConfirmPath.reset();
+                m_modals.Close(kOverwriteConfirmTitle);
                 ImGui::CloseCurrentPopup();
             }
 
@@ -527,10 +556,20 @@ namespace graphite
             if (ImGui::Button("Cancel"))
             {
                 m_overwriteConfirmPath.reset();
+                m_modals.Close(kOverwriteConfirmTitle);
                 ImGui::CloseCurrentPopup();
             }
 
             ImGui::EndPopup();
+        }
+        else if (m_modals.HoldsFor(kOverwriteConfirmTitle)
+                 && !ImGui::IsPopupOpen(kOverwriteConfirmTitle))
+        {
+            // Gone without an answer, and this is the state RequestSave compares against
+            // before raising the question again - left set, Ctrl+S on this document would
+            // do nothing at all, silently, for the rest of the session.
+            m_overwriteConfirmPath.reset();
+            m_modals.Close(kOverwriteConfirmTitle);
         }
 
         // Pop the next close question off the queue, skipping any entry whose document
@@ -539,24 +578,23 @@ namespace graphite
         // meantime is not skipped: MarkMissing leaves the item and its in-memory content
         // in place, so Save (recreating the file) and Discard both still mean something,
         // and the question stays worth asking.
-        while (!m_pendingCloseActive && !m_pendingCloseQueue.empty())
+        //
+        // Nothing is popped while the gate is busy - which includes the reload question
+        // just above having taken it this very frame. The tab keeps being submitted with
+        // its dot until its turn comes; the question is delayed, never lost.
+        while (!m_pendingCloseActive && !m_pendingCloseQueue.empty() && !m_modals.IsBusy())
         {
             const std::filesystem::path candidate = m_pendingCloseQueue.front();
             m_pendingCloseQueue.erase(m_pendingCloseQueue.begin());
 
             if (const auto index = m_documents.Find(candidate);
                 index && m_documents.At(*index).document
-                && m_documents.At(*index).document->IsModified())
+                && m_documents.At(*index).document->IsModified()
+                && m_modals.TryOpen(kCloseConfirmTitle))
             {
                 m_pendingCloseActive = candidate;
-                m_openCloseConfirm = true;
+                ImGui::OpenPopup(kCloseConfirmTitle);
             }
-        }
-
-        if (m_openCloseConfirm)
-        {
-            ImGui::OpenPopup(kCloseConfirmTitle);
-            m_openCloseConfirm = false;
         }
 
         if (ImGui::BeginPopupModal(kCloseConfirmTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -598,6 +636,7 @@ namespace graphite
                 if (saved)
                 {
                     finishClose();
+                    m_modals.Close(kCloseConfirmTitle);
                     ImGui::CloseCurrentPopup();
                 }
 
@@ -611,6 +650,7 @@ namespace graphite
             if (ImGui::Button("Discard"))
             {
                 finishClose();
+                m_modals.Close(kCloseConfirmTitle);
                 ImGui::CloseCurrentPopup();
             }
 
@@ -619,10 +659,21 @@ namespace graphite
             if (ImGui::Button("Cancel"))
             {
                 m_pendingCloseActive.reset();
+                m_modals.Close(kCloseConfirmTitle);
                 ImGui::CloseCurrentPopup();
             }
 
             ImGui::EndPopup();
+        }
+        else if (m_modals.HoldsFor(kCloseConfirmTitle) && !ImGui::IsPopupOpen(kCloseConfirmTitle))
+        {
+            // Gone without an answer, which counts as Cancel: the tab stays open and
+            // dirty. Clearing m_pendingCloseActive matters beyond this one tab - it is
+            // what lets the queue behind it move again, and (before this became one
+            // question at a time) what a stuck value would have used to refuse every
+            // close of the window itself, forever.
+            m_pendingCloseActive.reset();
+            m_modals.Close(kCloseConfirmTitle);
         }
 
         for (std::size_t index = 0; index < m_documents.Count();)

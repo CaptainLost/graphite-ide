@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Editor/ModalGate.h"
+
 #include "Core/Text/Editing.h"
 
 #include <cstdint>
@@ -27,7 +29,16 @@ namespace graphite
     class DocumentWindows
     {
     public:
-        explicit DocumentWindows(core::text::DocumentSet& documents) : m_documents(documents) {}
+        /// `modals` is the application-wide gate deciding which question may be on screen.
+        /// Four of the five modals in the application are drawn here and the fifth
+        /// (GraphiteLayer's "Unsaved changes" exit question) elsewhere, and every one of
+        /// them opens at ImGui's popup level 0, where a second OpenPopup destroys the
+        /// first - so they all consult the same gate rather than each knowing about the
+        /// others. See ModalGate.
+        DocumentWindows(core::text::DocumentSet& documents, ModalGate& modals)
+            : m_documents(documents), m_modals(modals)
+        {
+        }
 
         /// `fallbackDockNode` is where a document goes when no document has been focused
         /// yet this session - typically the workspace's centre node, from
@@ -107,16 +118,6 @@ namespace graphite
         /// feed DrawStatusBar.
         [[nodiscard]] std::optional<std::string> StatusMessage() const;
 
-        /// Whether a per-tab "Save changes to X before closing?" question - a tab's own
-        /// close button pressed while it was dirty - is queued or currently on screen.
-        /// GraphiteLayer's own exit/close-workspace question checks this before opening
-        /// its modal, so the two never stack and ask overlapping things about the same
-        /// files at once.
-        [[nodiscard]] bool HasPendingCloseQuestion() const noexcept
-        {
-            return m_pendingCloseActive.has_value() || !m_pendingCloseQueue.empty();
-        }
-
     private:
         /// Reconciles one open item against disk: an existence check, exactly as
         /// HandleFilesChanged always ran, plus (added for saving and reconciliation) the
@@ -145,6 +146,11 @@ namespace graphite
 
         core::text::DocumentSet& m_documents;
 
+        /// Who currently owns the one modal level every question in this application
+        /// competes for. Consulted before each of the four OpenPopup calls below and
+        /// released the moment each question is answered - or found to have vanished.
+        ModalGate& m_modals;
+
         /// The dock node the last focused document sits in. A new window goes there, so a
         /// file opened while working in the right-hand split appears in the right-hand
         /// split. Zero means "no document has been focused yet", in which case Render
@@ -152,6 +158,9 @@ namespace graphite
         unsigned int m_lastFocusedNode = 0;
 
         /// The file waiting on the size question, and whether it was a double click.
+        /// m_openSizeQuestion stays true for as long as the gate is held by some other
+        /// question, so a size question raised while one is up is asked afterwards rather
+        /// than dropped.
         std::filesystem::path m_pendingPath;
         bool m_pendingPermanent = false;
         bool m_openSizeQuestion = false;
@@ -205,8 +214,10 @@ namespace graphite
         /// several frames, during which closing an earlier tab would shift every index
         /// after it. Looked up again with DocumentSet::Find when the user answers, and
         /// simply dropped - no crash, no stale write - if the document is gone by then.
+        /// While the gate is held by another question the front of the queue is left
+        /// where it is rather than popped, so the question waits its turn instead of
+        /// being consumed by a modal that never opens.
         std::optional<std::filesystem::path> m_reloadConflictActive;
-        bool m_openReloadConflict = false;
 
         /// The document RequestSave is asking to confirm an overwrite for - ChangedOnDisk()
         /// was true right when Ctrl+S was pressed, meaning a notification was dropped and
@@ -226,7 +237,6 @@ namespace graphite
         /// when none is showing. Same "path, not index" reasoning as
         /// m_reloadConflictActive.
         std::optional<std::filesystem::path> m_pendingCloseActive;
-        bool m_openCloseConfirm = false;
 
         /// A short-lived status bar note and when it expires, both on ImGui::GetTime()'s
         /// clock. Read through StatusMessage().
