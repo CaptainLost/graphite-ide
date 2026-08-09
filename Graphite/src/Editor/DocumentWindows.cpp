@@ -30,6 +30,23 @@ namespace graphite
         /// How long a status bar note stays up once set.
         constexpr double kTransientMessageSeconds = 4.0;
 
+        /// "a, b, c" - how SaveAllModified names the documents it skipped, together
+        /// rather than one status message per file overwriting the last.
+        [[nodiscard]] std::string Join(const std::vector<std::string>& values)
+        {
+            std::string joined;
+
+            for (std::size_t index = 0; index < values.size(); ++index)
+            {
+                if (index > 0)
+                    joined += ", ";
+
+                joined += values[index];
+            }
+
+            return joined;
+        }
+
         [[nodiscard]] std::string WindowName(const core::text::DocumentSet& documents,
                                              std::size_t index)
         {
@@ -279,6 +296,9 @@ namespace graphite
 
     bool DocumentWindows::SaveAllModified()
     {
+        std::vector<std::string> conflicted;
+        std::size_t savedCount = 0;
+
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
         {
             const core::text::OpenItem& item = m_documents.At(index);
@@ -287,22 +307,56 @@ namespace graphite
                 continue;
 
             // The same safety net a single Ctrl+S gets: ChangedOnDisk() true means a
-            // change nobody was told about, and a batch has no chance to ask mid-flight -
-            // silently overwriting it here would be exactly what that net exists to stop.
-            // Treated as this document's failure, which is what stops the batch; the
-            // reason names the document so it is not confused with a write failure.
+            // change nobody was told about. But unlike a single Ctrl+S, a batch has no
+            // good way to ask about it mid-flight without turning into a sequence of
+            // modals - so this document is skipped, not asked about and not silently
+            // overwritten, and the batch continues: three other dirty files having
+            // nothing wrong with them is no reason to leave them unsaved over a fourth
+            // that does. RequestSave (a deliberate per-document Ctrl+S) is still where
+            // this document gets its Overwrite/Cancel question.
             if (item.document->ChangedOnDisk())
             {
-                SetTransientMessage(core::fs::ToUtf8(item.path.filename())
-                                    + " changed on disk; save it individually to confirm");
-                return false;
+                conflicted.push_back(core::fs::ToUtf8(item.path.filename()));
+                continue;
             }
 
+            // A genuine write failure is different from a conflict: it stops the batch
+            // on the spot rather than being collected, since continuing past a real I/O
+            // error would be a batch pretending nothing went wrong. SaveOne has already
+            // put the specific reason - naming this document - in the status bar, and a
+            // summary message here would only bury it.
             if (!SaveOne(index))
                 return false;
+
+            ++savedCount;
         }
 
-        return true;
+        if (conflicted.empty())
+        {
+            if (savedCount > 0)
+            {
+                SetTransientMessage("Saved " + std::to_string(savedCount)
+                                    + (savedCount == 1 ? " file." : " files."));
+            }
+
+            return true;
+        }
+
+        // Named together in one message, not one message per file overwriting the last:
+        // "Saved 4 files. 1 changed on disk and was not saved: Widget.cpp" tells the user
+        // exactly what still needs attention instead of leaving them to assume "saved"
+        // meant all of them.
+        std::string message;
+
+        if (savedCount > 0)
+            message = "Saved " + std::to_string(savedCount) + (savedCount == 1 ? " file. " : " files. ");
+
+        message += std::to_string(conflicted.size()) + " changed on disk and "
+                  + (conflicted.size() == 1 ? "was" : "were") + " not saved: " + Join(conflicted);
+
+        SetTransientMessage(message);
+
+        return false;
     }
 
     void DocumentWindows::SetTransientMessage(std::string text)
@@ -472,6 +526,26 @@ namespace graphite
             ImGui::EndPopup();
         }
 
+        // Pop the next close question off the queue, skipping any entry whose document
+        // is no longer there to ask about - closed some other way (WorkspaceClosedEvent,
+        // say) while it waited its turn. A file merely deleted from disk in the
+        // meantime is not skipped: MarkMissing leaves the item and its in-memory content
+        // in place, so Save (recreating the file) and Discard both still mean something,
+        // and the question stays worth asking.
+        while (!m_pendingCloseActive && !m_pendingCloseQueue.empty())
+        {
+            const std::filesystem::path candidate = m_pendingCloseQueue.front();
+            m_pendingCloseQueue.erase(m_pendingCloseQueue.begin());
+
+            if (const auto index = m_documents.Find(candidate);
+                index && m_documents.At(*index).document
+                && m_documents.At(*index).document->IsModified())
+            {
+                m_pendingCloseActive = candidate;
+                m_openCloseConfirm = true;
+            }
+        }
+
         if (m_openCloseConfirm)
         {
             ImGui::OpenPopup(kCloseConfirmTitle);
@@ -480,8 +554,8 @@ namespace graphite
 
         if (ImGui::BeginPopupModal(kCloseConfirmTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
         {
-            const std::string fileName = m_pendingClosePath
-                                             ? core::fs::ToUtf8(m_pendingClosePath->filename())
+            const std::string fileName = m_pendingCloseActive
+                                             ? core::fs::ToUtf8(m_pendingCloseActive->filename())
                                              : std::string{};
 
             ImGui::Text("Save changes to %s before closing?", fileName.c_str());
@@ -492,25 +566,25 @@ namespace graphite
             // the same way the loop below would have.
             const auto finishClose = [this]
             {
-                if (!m_pendingClosePath)
+                if (!m_pendingCloseActive)
                     return;
 
-                if (const auto index = m_documents.Find(*m_pendingClosePath))
+                if (const auto index = m_documents.Find(*m_pendingCloseActive))
                 {
                     ImGui::ClearWindowSettings(WindowName(m_documents, *index).c_str());
                     m_documents.Close(*index);
                 }
 
-                m_pendingClosePath.reset();
+                m_pendingCloseActive.reset();
             };
 
             if (ImGui::Button("Save"))
             {
                 bool saved = true;
 
-                if (m_pendingClosePath)
+                if (m_pendingCloseActive)
                 {
-                    if (const auto index = m_documents.Find(*m_pendingClosePath))
+                    if (const auto index = m_documents.Find(*m_pendingCloseActive))
                         saved = SaveOne(*index);
                 }
 
@@ -537,7 +611,7 @@ namespace graphite
 
             if (ImGui::Button("Cancel"))
             {
-                m_pendingClosePath.reset();
+                m_pendingCloseActive.reset();
                 ImGui::CloseCurrentPopup();
             }
 
@@ -653,11 +727,17 @@ namespace graphite
                 {
                     // Both versions are somebody's work: not closed here. The tab keeps
                     // being submitted every frame (falling through to ++index below)
-                    // until Save, Discard or Cancel resolves the question raised above.
-                    if (!m_pendingClosePath)
+                    // until its turn comes up in the queue above and Save, Discard or
+                    // Cancel resolves it. Queued rather than replacing whatever is
+                    // already pending, so a second tab's close button pressed before the
+                    // first question resolves still gets its own question, in order,
+                    // instead of being silently dropped.
+                    if (m_pendingCloseActive != item.path
+                        && std::find(m_pendingCloseQueue.begin(), m_pendingCloseQueue.end(),
+                                    item.path)
+                               == m_pendingCloseQueue.end())
                     {
-                        m_pendingClosePath = item.path;
-                        m_openCloseConfirm = true;
+                        m_pendingCloseQueue.push_back(item.path);
                     }
                 }
                 else

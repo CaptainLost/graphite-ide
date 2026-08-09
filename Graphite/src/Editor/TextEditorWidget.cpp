@@ -427,8 +427,12 @@ namespace graphite
 
                 // Saving is not this widget's decision: a stale document on disk needs
                 // confirming first, and only DocumentWindows knows how to ask that. This
-                // only reports that the user asked.
-                if (control && ImGui::IsKeyPressed(ImGuiKey_S, false))
+                // only reports that the user asked. !shift, the same as Ctrl+Z two lines
+                // above: without it Ctrl+Shift+S also reads as a request to save this one
+                // document, colliding with DocumentWindows's own Ctrl+Shift+S handling
+                // for "save every dirty document" and writing this one twice from a
+                // single keypress.
+                if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_S, false))
                     result.saveRequested = true;
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))

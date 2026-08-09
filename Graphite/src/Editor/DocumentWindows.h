@@ -79,15 +79,27 @@ namespace graphite
         /// read by the caller - DocumentWindows knows nothing about GLFW.
         void NotifyWindowFocus(bool focusedNow);
 
-        /// Saves every modified document, stopping at the first failure so a later
-        /// document's success can never hide an earlier one's error. A document whose
-        /// ChangedOnDisk() is true stops it the same way - a batch has no chance to ask
-        /// mid-flight, and silently overwriting it would be exactly what that check
-        /// exists to prevent. Ctrl+Shift+S goes through this; so, in the next stage, does
-        /// the exit question, which is why this is public rather than folded into
-        /// Render() - one save-all recipe, not two. Returns false when a failure stopped
-        /// it early; the failing document stays dirty with its undo history intact and
-        /// the reason in the status bar, the same as a single failed Ctrl+S leaves behind.
+        /// Saves every modified document. A document whose ChangedOnDisk() is true is
+        /// skipped rather than stopping the batch - one stale file among five dirty ones
+        /// is no reason to leave the other four unsaved - and never silently overwritten
+        /// either: asking about each conflict in turn here would be the modal storm the
+        /// queued reload-conflict question exists to avoid, so a conflict only ever gets
+        /// its Overwrite/Cancel question from a deliberate per-document Ctrl+S
+        /// (RequestSave). Every skipped document is named together in one status bar
+        /// message alongside how many saved cleanly, so "saved" never quietly means
+        /// "saved except this one".
+        ///
+        /// A genuine write failure is different: it stops the batch on the spot, since a
+        /// batch that keeps going past a real error is a batch pretending nothing went
+        /// wrong. The failing document stays dirty with its undo history intact and
+        /// SaveOne's own reason - naming that document specifically - is left as the
+        /// status bar message.
+        ///
+        /// Returns true only when every dirty document ended up saved - false for either
+        /// a stopped batch or one that finished with documents skipped over a conflict.
+        /// Ctrl+Shift+S goes through this; so, in the next stage, does the exit question,
+        /// which is why this is public rather than folded into Render() - one save-all
+        /// recipe, not two.
         bool SaveAllModified();
 
         /// A short-lived note for the status bar - what a reload or a failed save just
@@ -193,11 +205,17 @@ namespace graphite
         std::optional<std::filesystem::path> m_overwriteConfirmPath;
         bool m_openOverwriteConfirm = false;
 
-        /// The document a tab's own close button asked to close while it was still dirty.
-        /// Same "path, not index" reasoning as m_reloadConflictActive. At most one at a
-        /// time: a second dirty close request arriving before this one resolves is simply
-        /// left alone - its tab stays open - until the first is answered.
-        std::optional<std::filesystem::path> m_pendingClosePath;
+        /// Documents whose own close button was pressed while they were still dirty,
+        /// oldest first - the same queue-of-paths shape as m_reloadConflictQueue and for
+        /// the same reason: a second tab's close button pressed before the first
+        /// question resolves must still get its own question, in order, rather than
+        /// being silently dropped.
+        std::vector<std::filesystem::path> m_pendingCloseQueue;
+
+        /// The document the close-confirm modal is currently asking about, or nullopt
+        /// when none is showing. Same "path, not index" reasoning as
+        /// m_reloadConflictActive.
+        std::optional<std::filesystem::path> m_pendingCloseActive;
         bool m_openCloseConfirm = false;
 
         /// A short-lived status bar note and when it expires, both on ImGui::GetTime()'s
