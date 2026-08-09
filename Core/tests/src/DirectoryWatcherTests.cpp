@@ -6,7 +6,10 @@
 
 #include <doctest/doctest.h>
 
-#include <algorithm>
+#ifdef CORE_PLATFORM_WINDOWS
+    #include <windows.h>
+#endif
+
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -62,51 +65,89 @@ TEST_CASE("A file created in the watched directory is reported")
 
 namespace
 {
-    /// Keeps every core busy for as long as it lives.
+    /// Squeezes this process onto a single CPU and keeps one thread spinning on it, for
+    /// as long as it lives.
     ///
-    /// The window this file's next test is about is the gap before the watcher's worker
-    /// thread is first scheduled, so it opens far more often when the machine has
-    /// something else to run. Without this the defect hid: the first start in a process
-    /// is slow enough to lose the race about one time in seven, but the ones after it
-    /// are warm and lost it about one time in a hundred, which no practical number of
-    /// rounds turns into a reliable failure.
-    class CpuLoad
+    /// The window the next test is about is the gap before the watcher's worker thread is
+    /// first scheduled, and on an idle multi-core machine that gap barely exists: the new
+    /// thread simply starts on a free core. Without contention the defect hid — the first
+    /// start in a process is slow enough to lose the race about one time in seven, but the
+    /// ones after it are warm and lost it about one time in a hundred, which no practical
+    /// number of rounds turns into a reliable failure.
+    ///
+    /// Contention is therefore the point, and *where* it comes from is what makes this
+    /// safe. The first attempt spun one thread per hardware_concurrency() core, which is
+    /// the wrong question twice over: that number reports the host's cores rather than a
+    /// container's CPU quota, so a 1-CPU CI container carved out of a large host would
+    /// spawn dozens of spinners against a single core and starve the very worker the test
+    /// waits on — failing on *correct* code. Capping the spinners instead was measured and
+    /// does not work: at 2 and at 4 on a 16-core machine the defect went undetected 10
+    /// runs out of 10, because a free core was always available.
+    ///
+    /// Narrowing the process to one CPU gets the contention without the appetite. The
+    /// whole test then consumes a single core no matter how large the host is, so it
+    /// cannot take more than the smallest plausible CI container already has, and the
+    /// single CPU is chosen out of the mask the process is *already* restricted to, so
+    /// this tightens an existing limit rather than fighting it.
+    class SingleCpuContention
     {
     public:
-        CpuLoad()
+        SingleCpuContention()
         {
-            // Two at minimum: on a machine reporting one core there would otherwise be no
-            // competition at all, and the test would quietly stop testing anything.
-            const unsigned count = std::max(2u, std::thread::hardware_concurrency());
+#ifdef CORE_PLATFORM_WINDOWS
+            DWORD_PTR processMask = 0;
+            DWORD_PTR systemMask = 0;
 
-            for (unsigned i = 0; i < count; ++i)
+            if (::GetProcessAffinityMask(::GetCurrentProcess(), &processMask, &systemMask) &&
+                processMask != 0)
             {
-                m_threads.emplace_back(
-                    [this]
-                    {
-                        // Read through an atomic so the compiler cannot decide the loop
-                        // has no effect and delete it.
-                        while (!m_stop.load(std::memory_order_relaxed))
-                        {
-                        }
-                    });
+                m_previousMask = processMask;
+
+                // The lowest CPU already permitted. Written as ~x + 1 rather than -x
+                // because a unary minus on an unsigned type is its own compiler warning,
+                // and warnings are fatal here.
+                const DWORD_PTR single = processMask & (~processMask + 1);
+
+                ::SetProcessAffinityMask(::GetCurrentProcess(), single);
             }
+#endif
+
+            // One spinner is enough once there is only one CPU to spin on, and the
+            // watcher's worker still gets scheduled — it is competing for slices, not
+            // locked out. Everything it has to do before the watch is armed is
+            // microseconds of work against the test's five-second budget.
+            m_spinner = std::thread{[this]
+                                    {
+                                        // Read through an atomic so the compiler cannot
+                                        // decide the loop has no effect and delete it.
+                                        while (!m_stop.load(std::memory_order_relaxed))
+                                        {
+                                        }
+                                    }};
         }
 
-        ~CpuLoad()
+        ~SingleCpuContention()
         {
             m_stop.store(true, std::memory_order_relaxed);
+            m_spinner.join();
 
-            for (auto& thread : m_threads)
-                thread.join();
+#ifdef CORE_PLATFORM_WINDOWS
+            // Restored, or every later test in this process would run on one core.
+            if (m_previousMask != 0)
+                ::SetProcessAffinityMask(::GetCurrentProcess(), m_previousMask);
+#endif
         }
 
-        CpuLoad(const CpuLoad&) = delete;
-        CpuLoad& operator=(const CpuLoad&) = delete;
+        SingleCpuContention(const SingleCpuContention&) = delete;
+        SingleCpuContention& operator=(const SingleCpuContention&) = delete;
 
     private:
         std::atomic<bool> m_stop{false};
-        std::vector<std::thread> m_threads;
+        std::thread m_spinner;
+
+#ifdef CORE_PLATFORM_WINDOWS
+        DWORD_PTR m_previousMask = 0;
+#endif
     };
 }
 
@@ -114,13 +155,19 @@ namespace
 // between patterns, so a name containing it cannot be selected on its own.
 TEST_CASE("A file created the instant Start returns is reported on every start")
 {
-    const CpuLoad load;
+    const SingleCpuContention contention;
 
     // The case above already covers this, but only by accident of timing: it starts one
     // watcher, and when Start returned before the watch was armed it still passed six
-    // times in seven. Twenty starts in a row, each with the cores busy, turn that coin
-    // toss into a near-certainty, so a regression shows up as a failure rather than as an
-    // occasional red run nobody can reproduce.
+    // times in seven, so a regression shows up there as an occasional red run nobody can
+    // reproduce.
+    //
+    // The count is not arithmetic from that one-in-seven — under the contention above the
+    // per-round loss rate is far higher than an idle single start, and the honest
+    // justification is the measurement rather than a calculation. With the fix reverted
+    // this case failed 10 runs out of 10; with it in place it passed 10 out of 10.
+    // Re-measure the same way before trimming this, because the number is only worth what
+    // that experiment says it is.
     constexpr int kRounds = 20;
 
     for (int round = 0; round < kRounds; ++round)

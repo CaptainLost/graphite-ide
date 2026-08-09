@@ -23,9 +23,17 @@ namespace core
         /// How long Start waits for the worker to arm the watch. All the worker does
         /// first is create an event and issue one read — microseconds of work — so this is
         /// not a budget for slow machines but a ceiling on a thread that was never
-        /// scheduled at all. Ten seconds is far beyond any plausible scheduling delay, and
-        /// short enough that a caller which somehow hits it gets an error rather than an
-        /// application that appears to have hung while opening a folder.
+        /// scheduled at all. Ten seconds is far beyond any plausible scheduling delay.
+        ///
+        /// Note what this does and does not bound. It bounds the *wait for the signal*,
+        /// not Start as a whole: once it expires, Start destroys the watcher, and the
+        /// destructor joins the worker with no bound of its own. A worker that has merely
+        /// not been scheduled joins immediately, which is the case this timeout exists
+        /// for. A worker genuinely wedged in a blocking call — GetOverlappedResult on a
+        /// disconnected network share is the documented way to sit forever — will hold
+        /// Start inside that join for as long as it is wedged. That is deliberate:
+        /// detaching a thread that still owns the directory handle to escape the join
+        /// trades a visible hang for a use-after-free, which is a far worse failure.
         constexpr std::chrono::seconds kArmTimeout{10};
 
         /// Git rewrites files under .git constantly, so anything inside it is dropped —
@@ -118,10 +126,12 @@ namespace core
         // worker to say the watch is armed, or to say it never will be.
         if (armed.wait_for(kArmTimeout) != std::future_status::ready)
         {
-            // Returning destroys `watcher`, whose destructor joins the worker. That is the
-            // right thing even here: leaking a thread that still holds the handle would be
-            // worse, and a worker this late is one that has not run yet rather than one
-            // that is stuck, so it finishes as soon as it is scheduled.
+            // Returning destroys `watcher`, whose destructor joins the worker — so this
+            // branch is not an escape hatch from a stuck thread, and a caller debugging a
+            // hung open-folder should look at the join rather than at this timeout. A
+            // worker that has simply not been scheduled joins at once; one wedged in a
+            // blocking call on a dead network path holds Start there until it unwedges.
+            // See kArmTimeout for why that is preferred to detaching.
             return Error{ErrorCode::IoFailure,
                          std::format("timed out arming the watch on '{}'", root.string())};
         }
@@ -155,6 +165,16 @@ namespace core
         struct ArmSignal
         {
             std::promise<Result<void>>& promise;
+
+            /// Built here rather than in the destructor. Its message does not fit a small
+            /// string, so composing it there would allocate while unwinding — and if what
+            /// is unwinding is a bad_alloc from the buffer below, that second allocation
+            /// throws out of an implicitly noexcept destructor and takes the process down
+            /// in exactly the case this backstop exists to survive. Moving a string that
+            /// already exists cannot fail.
+            Result<void> unarmed{Error{ErrorCode::IoFailure,
+                                       "the watcher thread stopped before the watch was armed"}};
+
             bool answered = false;
 
             void Report(Result<void> outcome)
@@ -166,11 +186,7 @@ namespace core
                 promise.set_value(std::move(outcome));
             }
 
-            ~ArmSignal()
-            {
-                Report(Error{ErrorCode::IoFailure,
-                             "the watcher thread stopped before the watch was armed"});
-            }
+            ~ArmSignal() { Report(std::move(unarmed)); }
         } armSignal{m_armed};
 
 #ifdef CORE_PLATFORM_WINDOWS
