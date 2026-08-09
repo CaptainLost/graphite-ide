@@ -2,6 +2,7 @@
 
 #include "Core/Sln/SlnxEditor.h"
 
+#include "Core/Fs/AtomicWrite.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Sln/SolutionReader.h"
 #include "Core/Sln/TextEdit.h"
@@ -507,22 +508,21 @@ namespace core::sln
 
     Result<void> SlnxEditor::Save()
     {
-        // The temporary keeps the solution's own extension — "Sample.tmp.slnx" — because
-        // the read-back below picks its parser by extension, and a plain ".tmp" would be
-        // refused as a format this build cannot read.
-        std::filesystem::path temporary = m_path;
-        temporary.replace_extension();
-        temporary += ".tmp";
-        temporary += m_path.extension();
+        // A scratch file to read back before anything touches the target — not the
+        // temporary WriteFileAtomically itself uses below. It keeps the solution's own
+        // extension, "Sample.tmp.slnx", because ReadSolution picks its parser by
+        // extension and a plain ".tmp" would be refused as a format this build cannot
+        // read. It is removed again as soon as the read-back is done.
+        std::filesystem::path scratch = m_path;
+        scratch.replace_extension();
+        scratch += ".tmp";
+        scratch += m_path.extension();
 
         {
-            std::ofstream stream{temporary, std::ios::binary | std::ios::trunc};
+            std::ofstream stream{scratch, std::ios::binary | std::ios::trunc};
 
             if (!stream.is_open())
-            {
-                return Error{ErrorCode::IoFailure,
-                             std::format("cannot write '{}'", temporary.string())};
-            }
+                return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", fs::ToUtf8(scratch))};
 
             stream << m_text;
 
@@ -531,40 +531,30 @@ namespace core::sln
                 stream.close();
 
                 std::error_code ignored;
-                std::filesystem::remove(temporary, ignored);
+                std::filesystem::remove(scratch, ignored);
 
                 return Error{ErrorCode::IoFailure,
-                             std::format("cannot write '{}'", temporary.string())};
+                             std::format("cannot write '{}'", fs::ToUtf8(scratch))};
             }
         }
 
         // Read back with this build's own parser before the file is replaced. A write that
         // produced something unreadable therefore never reaches the file the user's Visual
         // Studio has open — the only failure in this feature that genuinely hurts.
-        const auto verified = ReadSolution(temporary);
+        const auto verified = ReadSolution(scratch);
+
+        {
+            std::error_code ignored;
+            std::filesystem::remove(scratch, ignored);
+        }
 
         if (!verified)
         {
-            std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
-
             return Error{ErrorCode::IoFailure,
                          std::format("the edited solution could not be read back: {}",
                                      verified.GetError().message)};
         }
 
-        std::error_code code;
-        std::filesystem::rename(temporary, m_path, code);
-
-        if (code)
-        {
-            std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
-
-            return Error{ErrorCode::IoFailure,
-                         std::format("cannot replace '{}'", m_path.string())};
-        }
-
-        return Result<void>::Ok();
+        return fs::WriteFileAtomically(m_path, m_text);
     }
 }

@@ -2,11 +2,12 @@
 
 #include "Core/Base/JsonFile.h"
 
+#include "Core/Fs/AtomicWrite.h"
+
 #include <nlohmann/json.hpp>
 
 #include <fstream>
 #include <sstream>
-#include <system_error>
 #include <utility>
 
 namespace core
@@ -83,40 +84,6 @@ namespace core
         const std::string text =
             m_document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
 
-        // Write beside the target and rename into place: truncating the real file first
-        // would destroy every stored setting if the write then failed partway.
-        std::filesystem::path temporary = path;
-        temporary += ".tmp";
-
-        {
-            std::ofstream stream{temporary, std::ios::trunc};
-            if (!stream.is_open())
-                return false;
-
-            stream << text;
-
-            if (!stream.good())
-            {
-                // Half a file is worse than none, and this one is not the target yet.
-                stream.close();
-
-                std::error_code ignored;
-                std::filesystem::remove(temporary, ignored);
-                return false;
-            }
-        }
-
-        std::error_code code;
-        std::filesystem::rename(temporary, path, code);
-
-        if (code)
-        {
-            // Leave no debris behind when the swap fails; the original file is untouched.
-            std::error_code ignored;
-            std::filesystem::remove(temporary, ignored);
-            return false;
-        }
-
-        return true;
+        return static_cast<bool>(fs::WriteFileAtomically(path, text));
     }
 }
