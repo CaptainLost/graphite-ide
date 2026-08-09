@@ -151,7 +151,20 @@ namespace graphite
             const std::string identity = Identity(m_documents, index);
             const std::string name = WindowName(m_documents, index);
 
-            if (ImGui::FindWindowByName(name.c_str()) == nullptr)
+            // Whether ImGui has ever heard of this window is the wrong question:
+            // ClearWindowSettings (below, and in the purge at the end of this function)
+            // undocks a window but does not destroy it, so a document closed and reopened
+            // reuses the same ImGuiWindow object FindWindowByName would find - stripped of
+            // its dock, with nothing left to redock it. Whether this identity is new
+            // *since last frame* is the right question: false for a document that has
+            // been open continuously, which is what stops a user's drag from being
+            // fought every frame, and true both the first time a document is ever seen
+            // and every time it reappears after being closed.
+            const bool justOpened = std::find(m_previousIdentities.begin(),
+                                              m_previousIdentities.end(), identity)
+                                     == m_previousIdentities.end();
+
+            if (justOpened)
             {
                 unsigned int targetNode = m_lastFocusedNode != 0 ? m_lastFocusedNode : fallbackDockNode;
 
