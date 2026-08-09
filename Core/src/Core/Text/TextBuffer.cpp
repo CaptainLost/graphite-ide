@@ -317,19 +317,37 @@ namespace core::text
             --m_transactionDepth;
     }
 
-    std::size_t TextBuffer::GroupForNewEdit()
+    std::size_t TextBuffer::GroupForNewEdit(std::size_t from, std::size_t to,
+                                            std::string_view text, bool inserted)
     {
         // Inside a transaction every edit joins the one this transaction opened, so the
         // whole gesture reverses together.
-        if (m_transactionDepth > 0)
-        {
-            if (m_transactionGroup == 0)
-                m_transactionGroup = m_nextGroupId++;
-
+        if (m_transactionDepth > 0 && m_transactionGroup != 0)
             return m_transactionGroup;
-        }
 
-        return m_nextGroupId++;
+        const bool hasNewline = text.find('\n') != std::string_view::npos;
+
+        const bool continues =
+            !m_breakGroup && !hasNewline && !m_undo.empty()
+            && (inserted ? m_lastGroupKind == GroupKind::Insertion && from == m_insertEnd
+                         : m_lastGroupKind == GroupKind::Deletion
+                               && (to == m_deleteAt || from == m_deleteAt));
+
+        const std::size_t group = continues ? m_undo.back().group : m_nextGroupId++;
+
+        m_lastGroupKind = inserted ? GroupKind::Insertion : GroupKind::Deletion;
+        m_insertEnd = inserted ? from + text.size() : from;
+        m_deleteAt = from;
+
+        // A group holding a newline is closed behind itself: Enter is a boundary a user
+        // expects undo to stop at, and it is where an accidental merge would be most
+        // confusing.
+        m_breakGroup = hasNewline;
+
+        if (m_transactionDepth > 0)
+            m_transactionGroup = group;
+
+        return group;
     }
 
     void TextBuffer::Insert(std::size_t offset, std::string_view text)
@@ -342,7 +360,7 @@ namespace core::text
 
         m_redo.clear();
         m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true, appendOffset, true,
-                              GroupForNewEdit()});
+                              GroupForNewEdit(at, at, text, true)});
     }
 
     void TextBuffer::Erase(std::size_t from, std::size_t to)
@@ -356,9 +374,10 @@ namespace core::text
 
         EraseRaw(from, end);
 
+        const std::size_t group = GroupForNewEdit(from, end, removed, false);
+
         m_redo.clear();
-        m_undo.push_back(
-            Edit{m_nextEditId++, from, std::move(removed), false, 0, false, GroupForNewEdit()});
+        m_undo.push_back(Edit{m_nextEditId++, from, std::move(removed), false, 0, false, group});
     }
 
     bool TextBuffer::Undo()
@@ -376,6 +395,9 @@ namespace core::text
             ApplyEdit(edit, true);
             m_redo.push_back(std::move(edit));
         }
+
+        m_breakGroup = true;
+        m_lastGroupKind = GroupKind::None;
 
         return true;
     }
@@ -395,6 +417,9 @@ namespace core::text
             ApplyEdit(edit, false);
             m_undo.push_back(std::move(edit));
         }
+
+        m_breakGroup = true;
+        m_lastGroupKind = GroupKind::None;
 
         return true;
     }

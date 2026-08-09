@@ -49,16 +49,22 @@ namespace core::text
         void Insert(std::size_t offset, std::string_view text);
         void Erase(std::size_t from, std::size_t to);
 
-        /// Reverses the last edit. False when there is nothing left to reverse.
+        /// Reverses the last undo group. False when there is nothing left to reverse.
         bool Undo();
 
-        /// Reapplies the last undone edit. False when there is nothing to reapply.
+        /// Reapplies the last undone group. False when there is nothing to reapply.
         bool Redo();
 
         /// Groups every edit made until the matching EndTransaction into one undo step.
         /// Nests: only the outermost EndTransaction closes the group.
         void BeginTransaction();
         void EndTransaction();
+
+        /// Forces the next transaction to start its own undo step rather than joining the
+        /// one before it. Everything that should interrupt typing but is invisible from
+        /// inside this class — the caret moving for any reason but the typing's own
+        /// advance, a save, a reload from disk — says so through this.
+        void BreakUndoGroup() noexcept { m_breakGroup = true; }
 
         [[nodiscard]] bool CanUndo() const noexcept { return !m_undo.empty(); }
         [[nodiscard]] bool CanRedo() const noexcept { return !m_redo.empty(); }
@@ -202,8 +208,10 @@ namespace core::text
         /// is materialised into m_append.
         void ApplyEdit(Edit& edit, bool reversed);
 
-        /// The group id a newly recorded edit belongs to.
-        std::size_t GroupForNewEdit();
+        /// The group id a newly recorded edit belongs to, joining the open group when
+        /// this edit continues it.
+        std::size_t GroupForNewEdit(std::size_t from, std::size_t to, std::string_view text,
+                                    bool inserted);
 
         std::string m_original;
         std::string m_append;
@@ -217,5 +225,25 @@ namespace core::text
         std::size_t m_transactionDepth = 0;
         /// The group this transaction has already opened, or 0 before its first edit.
         std::size_t m_transactionGroup = 0;
+
+        /// What the group on top of the undo stack consists of, which is what decides
+        /// whether the next gesture may join it. Classified by the group's last edit: a
+        /// selection replaced by typed text ends in an insertion, and the character typed
+        /// after it belongs with it.
+        enum class GroupKind
+        {
+            None,
+            Insertion,
+            Deletion
+        };
+
+        GroupKind m_lastGroupKind = GroupKind::None;
+        /// End of the last insertion in the open group — where a further insertion has to
+        /// begin to count as continuing it.
+        std::size_t m_insertEnd = 0;
+        /// Where the open group's deletions are happening. A backspace chain erases the
+        /// range ending here; a forward-delete chain erases the range starting here.
+        std::size_t m_deleteAt = 0;
+        bool m_breakGroup = true;
     };
 }

@@ -467,7 +467,9 @@ TEST_CASE("A run of edits undoes and redoes in order")
 {
     TextBuffer buffer;
     buffer.Insert(0, "one");
+    buffer.BreakUndoGroup();
     buffer.Insert(3, " two");
+    buffer.BreakUndoGroup();
     buffer.Insert(7, " three");
     REQUIRE(buffer.Text() == "one two three");
 
@@ -542,6 +544,7 @@ TEST_CASE("Undoing back to a remembered revision reports that revision again")
 
     const std::size_t saved = buffer.Revision();
 
+    buffer.BreakUndoGroup();
     buffer.Insert(6, "?");
     REQUIRE(buffer.Revision() != saved);
 
@@ -679,6 +682,12 @@ TEST_CASE("Random edits interleaved with undo and redo match a string oracle at 
                     oracle.erase(from, to - from);
                 }
             }
+
+            // Each fresh edit here stands for a whole, independent gesture as far as the
+            // oracle stacks are concerned — they track content one edit at a time. Without
+            // this, two edits that happen to land contiguously would coalesce into one
+            // undo step and a single Undo() would reverse more than the oracle expects.
+            buffer.BreakUndoGroup();
         }
 
         REQUIRE(buffer.Text() == oracle);
@@ -791,4 +800,142 @@ TEST_CASE("Nested transactions close only at the outermost end")
     CHECK(buffer.Undo());
     CHECK(buffer.Text() == "ab");
     CHECK_FALSE(buffer.CanUndo());
+}
+
+TEST_CASE("Consecutive typing undoes as one word")
+{
+    core::text::TextBuffer buffer;
+
+    for (std::size_t index = 0; index < 5; ++index)
+    {
+        buffer.BeginTransaction();
+        buffer.Insert(index, std::string_view{"hello"}.substr(index, 1));
+        buffer.EndTransaction();
+    }
+
+    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text().empty());
+}
+
+TEST_CASE("BreakUndoGroup splits typing into two steps")
+{
+    core::text::TextBuffer buffer;
+
+    buffer.BeginTransaction();
+    buffer.Insert(0, "ab");
+    buffer.EndTransaction();
+
+    buffer.BreakUndoGroup();
+
+    buffer.BeginTransaction();
+    buffer.Insert(2, "cd");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "ab");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text().empty());
+}
+
+TEST_CASE("Typing that is not contiguous starts a new group")
+{
+    core::text::TextBuffer buffer{"xy"};
+
+    buffer.BeginTransaction();
+    buffer.Insert(0, "a");
+    buffer.EndTransaction();
+
+    buffer.BeginTransaction();
+    buffer.Insert(3, "b");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Text() == "axyb");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "axy");
+}
+
+TEST_CASE("A newline ends the group it lands in")
+{
+    core::text::TextBuffer buffer;
+
+    buffer.BeginTransaction();
+    buffer.Insert(0, "a\n");
+    buffer.EndTransaction();
+
+    buffer.BeginTransaction();
+    buffer.Insert(2, "b");
+    buffer.EndTransaction();
+
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "a\n");
+    CHECK(buffer.LineIndexMatchesRebuild());
+}
+
+TEST_CASE("Backspaces coalesce and so do forward deletes")
+{
+    core::text::TextBuffer backspaces{"abcd"};
+
+    for (std::size_t offset = 4; offset > 1; --offset)
+    {
+        backspaces.BeginTransaction();
+        backspaces.Erase(offset - 1, offset);
+        backspaces.EndTransaction();
+    }
+
+    CHECK(backspaces.Text() == "a");
+    CHECK(backspaces.Undo());
+    CHECK(backspaces.Text() == "abcd");
+
+    core::text::TextBuffer forwards{"abcd"};
+
+    for (int count = 0; count < 3; ++count)
+    {
+        forwards.BeginTransaction();
+        forwards.Erase(1, 2);
+        forwards.EndTransaction();
+    }
+
+    CHECK(forwards.Text() == "a");
+    CHECK(forwards.Undo());
+    CHECK(forwards.Text() == "abcd");
+}
+
+TEST_CASE("Deleting after typing does not join the typed group")
+{
+    core::text::TextBuffer buffer;
+
+    buffer.BeginTransaction();
+    buffer.Insert(0, "ab");
+    buffer.EndTransaction();
+
+    buffer.BeginTransaction();
+    buffer.Erase(1, 2);
+    buffer.EndTransaction();
+
+    CHECK(buffer.Text() == "a");
+    CHECK(buffer.Undo());
+    CHECK(buffer.Text() == "ab");
+}
+
+TEST_CASE("Coalescing does not grow the append buffer")
+{
+    core::text::TextBuffer buffer;
+
+    for (std::size_t index = 0; index < 4; ++index)
+    {
+        buffer.BeginTransaction();
+        buffer.Insert(index, "x");
+        buffer.EndTransaction();
+    }
+
+    const std::size_t appended = buffer.AppendBufferSize();
+
+    for (int round = 0; round < 3; ++round)
+    {
+        CHECK(buffer.Undo());
+        CHECK(buffer.Redo());
+    }
+
+    CHECK(buffer.AppendBufferSize() == appended);
 }
