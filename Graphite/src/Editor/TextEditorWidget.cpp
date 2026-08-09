@@ -6,6 +6,7 @@
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -124,9 +125,13 @@ namespace graphite
             const float scrollX = ImGui::GetScrollX();
             const ImVec2 origin = ImGui::GetCursorScreenPos();
 
-            // Reserve the full extent so both scrollbars know how far the content goes.
-            ImGui::Dummy(ImVec2(contentWidth,
-                                static_cast<float>(buffer.LineCount()) * lineHeight));
+            const float documentHeight = static_cast<float>(buffer.LineCount()) * lineHeight;
+
+            // Reserve the full document extent so both scrollbars know how far the
+            // content goes. This Dummy is the *only* thing in this function allowed to
+            // grow ContentSize — see the interactive rectangle below, which deliberately
+            // avoids doing the same.
+            ImGui::Dummy(ImVec2(contentWidth, documentHeight));
             ImGui::SetCursorScreenPos(origin);
 
             // Matches textX below exactly: both measure from the same gutter-separator
@@ -136,26 +141,35 @@ namespace graphite
             const std::size_t pageLines = static_cast<std::size_t>(
                 std::max(1.0f, ImGui::GetWindowHeight() / lineHeight));
 
-            // An invisible button the size of the whole scrollable surface, purely so the
-            // mouse handling below can ride ImGui's own button latch instead of building
-            // one by hand. Two things fall out of that for free:
+            // Mouse handling rides ImGui's own button latch (see the comment on
+            // IsItemActive below) rather than a hand-rolled one. An ImGui::InvisibleButton
+            // would be the obvious way to get that, but InvisibleButton calls ItemSize on
+            // its own bounding box, which pushes DC.CursorMaxPos out to match — and the
+            // interactive area has to be at least as big as the visible window (a click
+            // below a short file's last line, or right of its longest one, must still
+            // land), which is routinely bigger than the document. Sized that way through
+            // InvisibleButton, ContentSize would grow to fill the window on every ordinary
+            // file, and with this child's zero window padding that makes the scrollbar
+            // condition `ContentSize > Size - ScrollbarSize` true unconditionally — a
+            // horizontal scrollbar on every file whose longest line actually fits, and the
+            // same for the vertical one on any file shorter than the pane.
             //
-            // - IsItemActive() stays true for as long as the button is held, no matter
-            //   where the mouse strays afterward. Checking window hover instead (as a
-            //   first version of this code did) meant a drag that wandered over a
-            //   sibling split's editor handed that *other* document IsWindowHovered() &&
-            //   IsMouseDown() == true on that frame, and it would place its own caret —
-            //   input reaching a document the user is not looking at, by mouse instead of
-            //   by key. IsItemActive() belongs to the item the press started on and
-            //   nothing reassigns it until release, so the drag stays with the document
-            //   it began in.
-            // - IsItemActivated() is true on exactly the one frame the press lands, which
-            //   replaces the old "hovered && clicked" check with one that is already
-            //   scoped to this surface.
-            const ImVec2 surfaceSize(std::max(contentWidth, ImGui::GetWindowWidth()),
-                                     static_cast<float>(buffer.LineCount()) * lineHeight);
-            ImGui::InvisibleButton("##EditorInput", surfaceSize);
-            ImGui::SetCursorScreenPos(origin);
+            // So this reproduces InvisibleButton's ItemAdd + ButtonBehavior pair by hand
+            // (imgui_widgets.cpp's own InvisibleButton, minus its ItemSize call) instead:
+            // the interactive rectangle can be exactly as large as it needs to be for
+            // hit-testing without ever being mistaken for the document's own size, because
+            // nothing here calls ItemSize on it. ItemAdd and ButtonBehavior both key off
+            // g.LastItemData.ID / g.ActiveId, not off anything ItemSize would have set, so
+            // IsItemActivated() and IsItemActive() below work exactly as they would after
+            // a real InvisibleButton.
+            const ImVec2 interactiveExtent(std::max(contentWidth, ImGui::GetWindowWidth()),
+                                           std::max(documentHeight, ImGui::GetWindowHeight()));
+            const ImRect interactiveBounds(
+                origin, ImVec2(origin.x + interactiveExtent.x, origin.y + interactiveExtent.y));
+            const ImGuiID interactiveId = ImGui::GetID("##EditorInput");
+
+            ImGui::ItemAdd(interactiveBounds, interactiveId, nullptr, ImGuiItemFlags_NoNav);
+            ImGui::ButtonBehavior(interactiveBounds, interactiveId, nullptr, nullptr);
 
             const bool pressedThisFrame = ImGui::IsItemActivated();
             const bool held = ImGui::IsItemActive();
