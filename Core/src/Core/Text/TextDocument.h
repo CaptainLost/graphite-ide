@@ -100,6 +100,10 @@ namespace core::text
         /// demotes m_encoding to Unknown, but the mark itself was still there and Bytes()
         /// must still put it back, or a read-only file's bytes would not round-trip.
         bool m_hadBom = false;
+        /// The encoding whose mark was found, kept apart from m_encoding because invalid
+        /// UTF-8 behind a real mark demotes m_encoding to Unknown for read-only handling
+        /// while Bytes() still needs to know which mark to write back.
+        Encoding m_bomEncoding = Encoding::Utf8;
         std::size_t m_savedRevision = 0;
     };
 }

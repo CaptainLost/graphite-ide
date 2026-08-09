@@ -43,6 +43,24 @@ namespace core::text
         return 0;
     }
 
+    std::string_view BomBytes(Encoding encoding)
+    {
+        switch (encoding)
+        {
+        case Encoding::Utf8Bom:
+            return "\xEF\xBB\xBF";
+        case Encoding::Utf16Le:
+            return std::string_view{"\xFF\xFE", 2};
+        case Encoding::Utf16Be:
+            return std::string_view{"\xFE\xFF", 2};
+        case Encoding::Utf8:
+        case Encoding::Unknown:
+            break;
+        }
+
+        return {};
+    }
+
     Encoding DetectEncoding(std::string_view bytes)
     {
         if (bytes.size() >= 3 && ByteAt(bytes, 0) == 0xEFu && ByteAt(bytes, 1) == 0xBBu

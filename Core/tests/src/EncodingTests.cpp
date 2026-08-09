@@ -125,3 +125,25 @@ TEST_CASE("Every encoding has a name to show")
     CHECK(EncodingName(Encoding::Utf16Be) == "UTF-16 BE");
     CHECK(EncodingName(Encoding::Unknown) == "Unknown");
 }
+
+TEST_CASE("Each encoding knows the mark it is written with")
+{
+    CHECK(BomBytes(Encoding::Utf8Bom) == std::string_view{"\xEF\xBB\xBF", 3});
+    CHECK(BomBytes(Encoding::Utf16Le) == std::string_view{"\xFF\xFE", 2});
+    CHECK(BomBytes(Encoding::Utf16Be) == std::string_view{"\xFE\xFF", 2});
+    CHECK(BomBytes(Encoding::Utf8).empty());
+    CHECK(BomBytes(Encoding::Unknown).empty());
+}
+
+TEST_CASE("A mark's length matches the bytes it is made of")
+{
+    // BomLength reads a file's leading bytes and BomBytes writes them; if they ever
+    // disagree, a file gains or loses bytes each time it is opened and saved.
+    for (const Encoding encoding :
+         {Encoding::Utf8, Encoding::Utf8Bom, Encoding::Utf16Le, Encoding::Utf16Be})
+    {
+        const std::string_view mark = BomBytes(encoding);
+
+        CHECK(BomLength(std::string{mark} + "rest") == mark.size());
+    }
+}

@@ -3,6 +3,7 @@
 #include "Core/Text/TextDocument.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
 
 #include <array>
@@ -61,24 +62,38 @@ namespace core::text
 
     Result<TextDocument> TextDocument::FromContent(std::string bytes, std::filesystem::path path)
     {
-        const Encoding declared = DetectEncoding(bytes);
+        const Encoding declared = SniffEncoding(bytes);
 
-        if (declared == Encoding::Utf16Le || declared == Encoding::Utf16Be)
-        {
-            return Error{ErrorCode::Unsupported,
-                         "Cannot open a " + std::string{EncodingName(declared)}
-                             + " file yet: " + fs::ToUtf8(path)};
-        }
+        // BomLength(declared) would be wrong here: SniffEncoding can name a UTF-16 file
+        // by the shape of its bytes alone, with no mark actually present, and
+        // BomLength(Encoding) always answers for the encoding as such, not for this
+        // particular file. BomLength(bytes) checks the real leading bytes instead, so an
+        // unmarked file has nothing stripped from it.
+        const std::size_t bomLength = BomLength(bytes);
+        const std::string_view raw = std::string_view{bytes}.substr(bomLength);
 
-        const std::size_t bomLength = BomLength(declared);
-        const std::string_view content = std::string_view{bytes}.substr(bomLength);
+        auto decoded = Decode(raw, declared);
+
+        if (!decoded)
+            return decoded.GetError();
+
+        std::string content = std::move(decoded).Value();
 
         TextDocument document;
         document.m_path = std::move(path);
         document.m_encoding = declared;
         document.m_hadBom = bomLength > 0;
+        // Captured separately from m_encoding: invalid UTF-8 behind a real mark demotes
+        // m_encoding to Unknown for read-only handling, but Bytes() still has to write
+        // back the mark that was actually there, which means remembering which one.
+        document.m_bomEncoding = declared;
 
-        if (!IsValidUtf8(content))
+        // Only content that was not decoded can fail validation: Decode returns valid
+        // UTF-8 by construction, or an error. Validating it here would suggest otherwise.
+        const bool wasDecoded =
+            declared == Encoding::Utf16Le || declared == Encoding::Utf16Be;
+
+        if (!wasDecoded && !IsValidUtf8(content))
         {
             document.m_encoding = Encoding::Unknown;
             document.m_readOnly = true;
@@ -192,9 +207,9 @@ namespace core::text
         // mark demotes m_encoding to Unknown, but the mark itself still arrived and still
         // has to go back, or a read-only file's bytes would not round-trip.
         if (m_hadBom)
-            result += "\xEF\xBB\xBF";
+            result += BomBytes(m_bomEncoding);
 
-        result += WithLineEnding(m_buffer.Text(), m_lineEnding);
+        result += Encode(WithLineEnding(m_buffer.Text(), m_lineEnding), m_encoding);
 
         return result;
     }

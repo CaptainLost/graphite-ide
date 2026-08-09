@@ -176,17 +176,6 @@ TEST_CASE("Content that is not valid UTF-8 loads read-only with its bytes untouc
     CHECK(document.Bytes() == original);
 }
 
-TEST_CASE("A UTF-16 file is refused by name rather than loaded")
-{
-    std::string bytes = "\xFF\xFE";
-    bytes += std::string("h\0e\0l\0l\0o\0", 10);
-
-    const auto document = TextDocument::FromContent(bytes, "C:/tmp/utf16.txt");
-
-    REQUIRE_FALSE(document);
-    CHECK(document.GetError().message.find("UTF-16") != std::string::npos);
-}
-
 TEST_CASE("The document remembers where it came from")
 {
     const TextDocument document = Make("hello");
@@ -425,4 +414,71 @@ TEST_CASE("An empty selection converts to nothing")
 TEST_CASE("A blank line becomes its own CRLF rather than being swallowed")
 {
     CHECK(WithLineEnding("\n\n", LineEnding::Crlf) == "\r\n\r\n");
+}
+
+TEST_CASE("A UTF-16 file with a mark opens and reports its encoding")
+{
+    const auto document = TextDocument::FromContent(
+        std::string("\xFF\xFEH\0i\0", 6), "C:/tmp/utf16.txt");
+
+    REQUIRE(document);
+    CHECK(document.Value().Buffer().Text() == "Hi");
+    CHECK(document.Value().FileEncoding() == Encoding::Utf16Le);
+    CHECK_FALSE(document.Value().IsReadOnly());
+}
+
+TEST_CASE("A UTF-16 file without a mark opens too")
+{
+    const auto document = TextDocument::FromContent(
+        std::string("H\0e\0l\0l\0o\0", 10), "C:/tmp/nobom.txt");
+
+    REQUIRE(document);
+    CHECK(document.Value().Buffer().Text() == "Hello");
+    CHECK(document.Value().FileEncoding() == Encoding::Utf16Le);
+}
+
+TEST_CASE("A UTF-16 file comes back byte for byte, with and without its mark")
+{
+    const std::string withMark = std::string("\xFF\xFEH\0i\0", 6);
+    const std::string withoutMark = std::string("H\0e\0l\0l\0o\0", 10);
+    const std::string bigEndian = std::string("\xFE\xFF\0H\0i", 6);
+
+    for (const std::string& original : {withMark, withoutMark, bigEndian})
+    {
+        const auto document = TextDocument::FromContent(original, "C:/tmp/round.txt");
+
+        REQUIRE(document);
+        CHECK(document.Value().Bytes() == original);
+    }
+}
+
+TEST_CASE("CRLF in a UTF-16 file is normalised and restored like any other file")
+{
+    const std::string original = std::string("a\0\r\0\n\0b\0", 8);
+    const auto document = TextDocument::FromContent(original, "C:/tmp/crlf.txt");
+
+    REQUIRE(document);
+    CHECK(document.Value().Buffer().Text() == "a\nb");
+    CHECK(document.Value().DocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.Value().Bytes() == original);
+}
+
+TEST_CASE("A damaged UTF-16 file is refused with a message naming the damage")
+{
+    // A low surrogate with nothing before it, behind a mark so the encoding is certain.
+    const auto document = TextDocument::FromContent(
+        std::string("\xFF\xFE\x42\xDE", 4), "C:/tmp/damaged.txt");
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().message.find("damaged") != std::string::npos);
+    CHECK(document.GetError().message.find("surrogate") != std::string::npos);
+}
+
+TEST_CASE("An odd byte count is refused as damage rather than opened short")
+{
+    const auto document = TextDocument::FromContent(
+        std::string("\xFF\xFEH\0i", 5), "C:/tmp/odd.txt");
+
+    REQUIRE_FALSE(document);
+    CHECK(document.GetError().message.find("odd") != std::string::npos);
 }

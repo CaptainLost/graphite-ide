@@ -32,6 +32,11 @@ namespace core::text
     /// second time.
     [[nodiscard]] std::size_t BomLength(Encoding encoding);
 
+    /// The bytes of the mark this encoding is written with, or empty when it has none.
+    /// The counterpart of BomLength: that says how many bytes to skip on the way in,
+    /// this says which bytes to write on the way out.
+    [[nodiscard]] std::string_view BomBytes(Encoding encoding);
+
     /// The encoding the leading bytes declare. Reads the BOM only, never the content, so
     /// a file with no BOM is reported as Utf8 whether or not it validates — deciding
     /// that is IsValidUtf8's job, on the whole content rather than on a truncated sample.
