@@ -53,6 +53,22 @@ namespace graphite
         std::filesystem::path to;
     };
 
+    /// Published once the tree has caught up with a batch of filesystem changes.
+    ///
+    /// The watcher reports directories, not individual files, so this carries the
+    /// directories whose contents changed rather than the paths that changed inside
+    /// them. `everything` says the batch was too broad to name any: notifications were
+    /// dropped, or the git state moved, and the whole tree was re-read instead.
+    ///
+    /// Anything holding a path on disk should re-check it — the open documents do,
+    /// because a file deleted from Explorer while its tab is open must stop looking like
+    /// a file that is still there.
+    struct WorkspaceFilesChangedEvent
+    {
+        std::vector<std::filesystem::path> directories;
+        bool everything = false;
+    };
+
     /// The open folder, its tree, and the selected file. Panels talk to it through
     /// the event bus rather than holding each other.
     class Workspace final

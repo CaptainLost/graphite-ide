@@ -626,3 +626,40 @@ TEST_CASE("A single click that needs confirmation does not evict the preview")
     CHECK(documents.At(0).path == path);
     CHECK(documents.Preview() == std::optional<std::size_t>{0});
 }
+
+TEST_CASE("A deleted file says so in its tab title")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "a.txt";
+    WriteBytes(path, "still here");
+
+    DocumentSet documents;
+    documents.Open(path, true);
+
+    REQUIRE(documents.DisplayTitle(0) == "a.txt");
+
+    documents.MarkMissing(path);
+
+    CHECK(documents.DisplayTitle(0) == "a.txt (deleted)");
+}
+
+TEST_CASE("A deleted file that shares its name keeps the disambiguating directory too")
+{
+    TempDirectory directory;
+    const auto first = directory.Path() / "one";
+    const auto second = directory.Path() / "two";
+    std::filesystem::create_directories(first);
+    std::filesystem::create_directories(second);
+
+    WriteBytes(first / "main.cpp", "a");
+    WriteBytes(second / "main.cpp", "b");
+
+    DocumentSet documents;
+    documents.Open(first / "main.cpp", true);
+    documents.Open(second / "main.cpp", true);
+
+    documents.MarkMissing(first / "main.cpp");
+
+    CHECK(documents.DisplayTitle(0) == "one/main.cpp (deleted)");
+    CHECK(documents.DisplayTitle(1) == "two/main.cpp");
+}

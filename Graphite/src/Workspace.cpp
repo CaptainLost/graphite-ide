@@ -239,6 +239,7 @@ namespace graphite
 
             FindSolutions();
             LoadSolution();
+            m_events.Publish(WorkspaceFilesChangedEvent{{}, true});
             return;
         }
 
@@ -254,6 +255,10 @@ namespace graphite
         // read it four times over.
         if (TouchesSolution(changed.directories))
             LoadSolution();
+
+        // Published after the tree has caught up, so a subscriber that looks at both sees
+        // one consistent picture rather than a tree still describing the previous frame.
+        m_events.Publish(WorkspaceFilesChangedEvent{changed.directories, false});
     }
 
     bool Workspace::TouchesSolution(const std::vector<std::filesystem::path>& directories) const

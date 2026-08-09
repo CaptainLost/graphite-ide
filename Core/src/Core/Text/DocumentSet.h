@@ -128,6 +128,10 @@ namespace core::text
         /// Usually the file name. When another open item shares that name, both gain
         /// their parent directory — two indistinguishable `main.cpp` tabs is an everyday
         /// situation in a repository with more than one project in it.
+        ///
+        /// An item marked missing gains "(deleted)". Its content is still in memory and
+        /// still drawn, so without this nothing on screen would say the file behind it
+        /// has gone.
         [[nodiscard]] std::string DisplayTitle(std::size_t index) const;
 
         /// Rewrites every path below `from` to sit below `to`, after the workspace root

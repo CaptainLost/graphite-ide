@@ -233,6 +233,12 @@ namespace core::text
         const std::filesystem::path& path = m_items[index].path;
         const std::string name = fs::ToUtf8(path.filename());
 
+        // A file deleted while it was open keeps its window and its content, so nothing
+        // else on screen would say the file is gone — the tab has to. Appended after any
+        // disambiguating directory below, so the suffix always reads last.
+        const std::string suffix =
+            m_items[index].failure == OpenFailure::Missing ? " (deleted)" : "";
+
         for (std::size_t other = 0; other < m_items.size(); ++other)
         {
             if (other == index)
@@ -243,10 +249,10 @@ namespace core::text
 
             // Forward slash regardless of platform: this is a label, not a path anyone
             // will open.
-            return fs::ToUtf8(path.parent_path().filename()) + "/" + name;
+            return fs::ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
         }
 
-        return name;
+        return name + suffix;
     }
 
     void DocumentSet::RewritePaths(const std::filesystem::path& from,

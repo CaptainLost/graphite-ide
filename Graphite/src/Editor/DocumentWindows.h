@@ -47,6 +47,17 @@ namespace graphite
         /// m_previousIdentities) purges the abandoned imgui.ini entry.
         void HandleRootMoved(const std::filesystem::path& from, const std::filesystem::path& to);
 
+        /// Files changed under one or more directories - or, with `everything`, somewhere
+        /// the watcher could not name. Any open document whose file has since been deleted
+        /// is marked missing, so a tab whose file was removed in Explorer stops claiming
+        /// the file is still there.
+        ///
+        /// The check is a stat per open document sitting in one of those directories,
+        /// which is why it hangs off a change notification rather than running per frame:
+        /// nothing happens on the frames where nothing happened on disk.
+        void HandleFilesChanged(const std::vector<std::filesystem::path>& directories,
+                                bool everything);
+
     private:
         core::text::DocumentSet& m_documents;
 

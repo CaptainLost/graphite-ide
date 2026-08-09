@@ -44,6 +44,10 @@ namespace graphite
             [this](const WorkspaceRootMovedEvent& event)
             { m_documentWindows.HandleRootMoved(event.from, event.to); });
 
+        m_events.Subscribe<WorkspaceFilesChangedEvent>(
+            [this](const WorkspaceFilesChangedEvent& event)
+            { m_documentWindows.HandleFilesChanged(event.directories, event.everything); });
+
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
         ApplyIgnoredDisplay(IgnoredDisplayFromString(Settings::LoadIgnoredDisplay()), false);

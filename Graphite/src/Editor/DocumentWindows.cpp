@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <string>
+#include <system_error>
 
 namespace graphite
 {
@@ -104,6 +105,36 @@ namespace graphite
 
             if (target != 0)
                 m_pendingDockTargets[newIdentity] = target;
+        }
+    }
+
+    void DocumentWindows::HandleFilesChanged(
+        const std::vector<std::filesystem::path>& directories, bool everything)
+    {
+        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        {
+            const core::text::OpenItem& item = m_documents.At(index);
+
+            if (item.failure == core::text::OpenFailure::Missing)
+                continue;
+
+            // The watcher names directories, so an item is worth a stat only when its own
+            // directory is one of them. `everything` means the batch could not be narrowed
+            // down at all - dropped notifications, or a git state change - and every open
+            // document has to be checked.
+            if (!everything
+                && std::find(directories.begin(), directories.end(), item.path.parent_path())
+                       == directories.end())
+                continue;
+
+            std::error_code error;
+            const bool present = std::filesystem::exists(item.path, error);
+
+            // An error is not an answer. A share that blinked or a directory that briefly
+            // denied access must not turn every document open on it into a deleted one -
+            // the same reasoning SyncRepository applies before dropping a repository.
+            if (!error && !present)
+                m_documents.MarkMissing(item.path);
         }
     }
 
