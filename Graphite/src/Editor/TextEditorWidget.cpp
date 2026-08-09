@@ -24,6 +24,17 @@ namespace graphite
         /// 1000 does not shift the text sideways.
         constexpr int kMinimumGutterDigits = 3;
 
+        /// Width, in cells, reserved to the left of the line numbers for a future
+        /// breakpoint marker. Nothing is drawn here yet; the column exists so the
+        /// debugger's arrival does not shift every horizontal position — clicks, caret,
+        /// selection, guides — that the user has already looked at.
+        constexpr float kBreakpointColumnCells = 1.0f;
+
+        /// Width, in cells, reserved to the right of the line numbers for a future fold
+        /// arrow. Nothing is drawn here yet, for the same reason as the breakpoint
+        /// column above.
+        constexpr float kFoldColumnCells = 1.0f;
+
         [[nodiscard]] int DigitCount(std::size_t value)
         {
             int digits = 1;
@@ -98,8 +109,18 @@ namespace graphite
         const float cellWidth = ImGui::CalcTextSize("0").x;
 
         const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.LineCount()));
-        const float gutterWidth =
+        const float breakpointColumnWidth = kBreakpointColumnCells * cellWidth;
+        const float foldColumnWidth = kFoldColumnCells * cellWidth;
+        const float numberColumnWidth =
             static_cast<float>(digits) * cellWidth + kGutterPaddingX * 2.0f;
+
+        // [ breakpoint margin ][ line number ][ fold arrow ]  code
+        //
+        // Only the number column draws anything today; the other two are reserved so
+        // the debugger and code folding — separate stages, still ahead — do not shift
+        // every horizontal position (clicks, caret, selection, guides) the user has
+        // already looked at when they arrive.
+        const float gutterWidth = breakpointColumnWidth + numberColumnWidth + foldColumnWidth;
 
         // Computed once when the document loaded (OpenItem::widestColumn), not walked
         // here every frame — that would cost a std::string allocation per line, exactly
@@ -132,9 +153,9 @@ namespace graphite
             ImGui::Dummy(ImVec2(contentWidth, documentHeight));
             ImGui::SetCursorScreenPos(origin);
 
-            // Matches textX below exactly: both measure from the same gutter width, or a
-            // click would land a character or two off from where the glyphs it is aiming
-            // at are actually drawn.
+            // The one text origin in the file: everything below that positions against
+            // the text — clicks, caret, selection, guides — measures from this rather
+            // than recomputing origin.x + gutterWidth a second time.
             const float textOriginX = origin.x + gutterWidth;
             const std::size_t pageLines = static_cast<std::size_t>(
                 std::max(1.0f, ImGui::GetWindowHeight() / lineHeight));
@@ -318,6 +339,15 @@ namespace graphite
             const ImU32 gutterColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
             const ImU32 selectionColour = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
             const ImU32 currentLineColour = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.45f);
+            // Structure, not content: clearly dimmer than the line numbers, which already
+            // use TextDisabled at full strength.
+            const ImU32 guideColour = ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.35f);
+
+            // Pinned like the rest of the gutter (see numberX below): the number column
+            // sits between the two reserved margins, and only it draws a background or
+            // text — the margins stay empty until the debugger and folding land.
+            const float numberColumnX0 = origin.x + scrollX + breakpointColumnWidth;
+            const float numberColumnX1 = numberColumnX0 + numberColumnWidth;
 
             ImGuiListClipper clipper;
             clipper.Begin(static_cast<int>(buffer.LineCount()), lineHeight);
@@ -328,7 +358,7 @@ namespace graphite
                 {
                     const std::size_t line = static_cast<std::size_t>(row);
                     const float y = origin.y + static_cast<float>(row) * lineHeight;
-                    const float textX = origin.x + gutterWidth;
+                    const float textX = textOriginX;
 
                     const std::string text = buffer.LineText(line);
                     const std::size_t lineStart = buffer.LineStart(line);
@@ -340,6 +370,22 @@ namespace graphite
                             ImVec2(origin.x + std::max(contentWidth, ImGui::GetWindowWidth()),
                                    y + lineHeight),
                             currentLineColour);
+                    }
+
+                    // Under the text and the selection, so neither is ever obscured. One
+                    // segment per row rather than one long line per column: a guide only
+                    // exists on rows whose depth demands it, and a column's guide can stop
+                    // and restart down the file.
+                    const std::size_t depth =
+                        line < item.indentDepths.size() ? item.indentDepths[line] : 0;
+
+                    for (std::size_t column = 0; column < depth;
+                         column += core::text::DefaultTabWidth)
+                    {
+                        const float guideX = textX + static_cast<float>(column) * cellWidth;
+
+                        draw->AddLine(ImVec2(guideX, y), ImVec2(guideX, y + lineHeight),
+                                      guideColour, 1.0f);
                     }
 
                     if (selectionFrom != selectionTo && selectionTo > lineStart
@@ -377,13 +423,15 @@ namespace graphite
                     }
 
                     // Drawn last and offset by the horizontal scroll, so the numbers stay
-                    // pinned to the left while the text slides under them.
+                    // pinned to the left while the text slides under them. Both the fill
+                    // and the number itself stay inside the number column — the reserved
+                    // margins on either side draw nothing.
                     const std::string number = std::to_string(line + 1);
-                    const float numberX = origin.x + scrollX + gutterWidth - kGutterPaddingX
-                                          - ImGui::CalcTextSize(number.c_str()).x;
+                    const float numberX =
+                        numberColumnX1 - kGutterPaddingX - ImGui::CalcTextSize(number.c_str()).x;
 
-                    draw->AddRectFilled(ImVec2(origin.x + scrollX, y),
-                                        ImVec2(origin.x + scrollX + gutterWidth, y + lineHeight),
+                    draw->AddRectFilled(ImVec2(numberColumnX0, y),
+                                        ImVec2(numberColumnX1, y + lineHeight),
                                         ImGui::GetColorU32(ImGuiCol_WindowBg));
                     draw->AddText(ImVec2(numberX, y),
                                   line == caretPosition.line ? textColour : gutterColour,
