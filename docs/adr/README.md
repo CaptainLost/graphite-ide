@@ -26,4 +26,5 @@ Check every record's shape with:
 | [0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md) | Return Result<T> instead of throwing across module boundaries | accepted | 2026-08-09 |
 | [0005](0005-target-c-20-with-headers-not-modules.md) | Target C++20 with headers, not modules | accepted | 2026-08-09 |
 | [0006](0006-require-braces-around-every-control-flow-body.md) | Require braces around every control-flow body | accepted | 2026-08-09 |
+| [0007](0007-p-philosophy.md) | P: Philosophy | accepted | 2026-08-09 |
 <!-- /adr-index -->
