@@ -26,5 +26,17 @@ Check every record's shape with:
 | [0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md) | Return Result<T> instead of throwing across module boundaries | accepted | 2026-08-09 |
 | [0005](0005-target-c-20-with-headers-not-modules.md) | Target C++20 with headers, not modules | accepted | 2026-08-09 |
 | [0006](0006-require-braces-around-every-control-flow-body.md) | Require braces around every control-flow body | accepted | 2026-08-09 |
-| [0007](0007-p-philosophy.md) | P: Philosophy | accepted | 2026-08-09 |
+| [0007](0007-p-1-express-ideas-directly-in-code.md) | P.1: Express ideas directly in code | accepted07 2026-08-09 |
+| [0008](0008-p-2-write-in-iso-standard-c.md) | P.2: Write in ISO Standard C++ | accepted08 2026-08-09 |
+| [0009](0009-p-3-express-intent.md) | P.3: Express intent | accepted09 2026-08-09 |
+| [0010](0010-p-4-ideally-a-program-should-be-statically-type-safe.md) | P.4: Ideally, a program should be statically type safe | accepted10 2026-08-09 |
+| [0011](0011-p-5-prefer-compile-time-checking-to-run-time-checking.md) | P.5: Prefer compile-time checking to run-time checking | accepted11 2026-08-09 |
+| [0012](0012-p-6-what-cannot-be-checked-at-compile-time-should-be-checkable-at-run-time.md) | P.6: What cannot be checked at compile time should be checkable at run time | accepted12 2026-08-09 |
+| [0013](0013-p-7-catch-run-time-errors-early.md) | P.7: Catch run-time errors early | accepted13 2026-08-09 |
+| [0014](0014-p-8-do-not-leak-any-resources.md) | P.8: Do not leak any resources | accepted14 2026-08-09 |
+| [0015](0015-p-9-do-not-waste-time-or-space.md) | P.9: Do not waste time or space | accepted15 2026-08-09 |
+| [0016](0016-p-10-prefer-immutable-data-to-mutable-data.md) | P.10: Prefer immutable data to mutable data | accepted16 2026-08-09 |
+| [0017](0017-p-11-encapsulate-messy-constructs-rather-than-spreading-through-the-code.md) | P.11: Encapsulate messy constructs, rather than spreading through the code | accepted17 2026-08-09 |
+| [0018](0018-p-12-use-supporting-tools-as-appropriate.md) | P.12: Use supporting tools as appropriate | accepted18 2026-08-09 |
+| [0019](0019-p-13-use-support-libraries-as-appropriate.md) | P.13: Use support libraries as appropriate | accepted19 2026-08-09 |
 <!-- /adr-index -->
