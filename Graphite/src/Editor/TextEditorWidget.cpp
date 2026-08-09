@@ -259,9 +259,16 @@ namespace graphite
             // actually clicked into ever becomes that window. Without this, a key press
             // reaching any visible editor — including one in another split — could move a
             // caret the user is not looking at.
+            //
+            // The caret is drawn using this same test further down, rather than a
+            // separately computed one: the keyboard and the blinking caret must never
+            // disagree about which editor is active, and asking IsWindowFocused() twice
+            // (once here, once below) risks exactly that if ImGui's focus state ever
+            // changes between the two calls in the same frame.
+            const bool focused = ImGui::IsWindowFocused();
             const std::size_t caretBeforeKeyboard = item.caret.offset;
 
-            if (ImGui::IsWindowFocused())
+            if (focused)
             {
                 const ImGuiIO& io = ImGui::GetIO();
                 const bool shift = io.KeyShift;
@@ -440,7 +447,11 @@ namespace graphite
                                   line == caretPosition.line ? textColour : gutterColour,
                                   number.c_str());
 
-                    if (line == caretPosition.line)
+                    // Only the focused editor blinks a caret: an unfocused pane still
+                    // shows its selection above (a user glancing at a split needs to see
+                    // what is selected there), but drawing a second blinking caret when
+                    // only one editor receives the keyboard is what this guards against.
+                    if (focused && line == caretPosition.line)
                     {
                         const float caretX =
                             textX
