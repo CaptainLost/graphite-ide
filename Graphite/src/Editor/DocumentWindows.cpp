@@ -40,7 +40,7 @@ namespace graphite
         m_openSizeQuestion = true;
     }
 
-    void DocumentWindows::Render(float fontSize)
+    void DocumentWindows::Render(float fontSize, unsigned int fallbackDockNode)
     {
         if (m_openSizeQuestion)
         {
@@ -78,8 +78,11 @@ namespace graphite
             core::text::OpenItem& item = m_documents.At(index);
             const std::string name = WindowName(m_documents, index);
 
-            if (m_lastFocusedNode != 0 && ImGui::FindWindowByName(name.c_str()) == nullptr)
-                ImGui::DockBuilderDockWindow(name.c_str(), m_lastFocusedNode);
+            const unsigned int targetNode =
+                m_lastFocusedNode != 0 ? m_lastFocusedNode : fallbackDockNode;
+
+            if (targetNode != 0 && ImGui::FindWindowByName(name.c_str()) == nullptr)
+                ImGui::DockBuilderDockWindow(name.c_str(), targetNode);
 
             const bool preview = item.preview;
 

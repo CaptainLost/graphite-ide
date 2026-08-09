@@ -22,7 +22,12 @@ namespace graphite
     public:
         explicit DocumentWindows(core::text::DocumentSet& documents) : m_documents(documents) {}
 
-        void Render(float fontSize);
+        /// `fallbackDockNode` is where a document goes when no document has been focused
+        /// yet this session - typically the workspace's centre node, from
+        /// core::DockSpaceHost::CenterNodeId(). Passed in rather than held, since
+        /// DocumentWindows knows nothing about DockSpaceHost and GraphiteLayer, which owns
+        /// both, is a cheap place to connect them.
+        void Render(float fontSize, unsigned int fallbackDockNode);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
         void RequestOpen(const std::filesystem::path& path, bool permanent);
@@ -32,7 +37,8 @@ namespace graphite
 
         /// The dock node the last focused document sits in. A new window goes there, so a
         /// file opened while working in the right-hand split appears in the right-hand
-        /// split. Zero means "no document has been focused yet" - use the centre.
+        /// split. Zero means "no document has been focused yet", in which case Render
+        /// falls back to the node it was given.
         unsigned int m_lastFocusedNode = 0;
 
         /// The file waiting on the size question, and whether it was a double click.

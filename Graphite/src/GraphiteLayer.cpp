@@ -107,7 +107,7 @@ namespace graphite
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
 
-        m_documentWindows.Render(13.0f);
+        m_documentWindows.Render(13.0f, m_dockSpace.CenterNodeId());
     }
 
     void GraphiteLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
