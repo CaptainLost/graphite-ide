@@ -58,6 +58,35 @@ namespace core::text
 
             return result;
         }
+
+        /// Why decoded content was refused, said in terms of what was actually found in
+        /// it. The two arms fail on different things and a user can act on different
+        /// things, so they do not share a sentence.
+        [[nodiscard]] std::string NotTextMessage(Encoding encoding, bool marked,
+                                                 std::string_view content,
+                                                 const std::filesystem::path& path)
+        {
+            const std::string name{EncodingName(encoding)};
+
+            if (marked)
+            {
+                // One cause dominates this failure by so much that not naming it would be
+                // withholding the answer, and the fix is something the user can carry out.
+                return "This file is marked " + name + ", but decoding it gives a NUL "
+                       "character at byte " + std::to_string(content.find('\0'))
+                       + ", and no text contains one. It is most likely UTF-32: the "
+                         "UTF-32 LE mark FF FE 00 00 begins with the UTF-16 LE mark, so "
+                         "the two cannot be told apart from the first two bytes alone. "
+                         "Re-save it as UTF-8 or UTF-16 to open it here: "
+                       + fs::ToUtf8(path);
+            }
+
+            return "This file carries no byte order mark, so it was taken for " + name
+                   + " from the shape of its first " + std::to_string(ProbeSampleSize)
+                   + " bytes; decoding all of it gives control characters, so it is not "
+                     "text in that encoding after all: "
+                   + fs::ToUtf8(path);
+        }
     }
 
     Result<TextDocument> TextDocument::FromContent(std::string bytes, std::filesystem::path path)
@@ -105,22 +134,49 @@ namespace core::text
             content = std::move(bytes);
         }
 
-        // The strict rule, which only a full load can afford. SniffEncoding tolerates
-        // input cut mid-unit and saw only the prefix above, so its verdict is a hypothesis
-        // about the rest of the file; here the rest has arrived and been decoded, so the
-        // same rule is put to all of it. Two files reach this line and neither may become
-        // a writable document: one whose UTF-16 shape holds for its first 8 KB and not
-        // afterwards, and a UTF-32 one, whose FF FE 00 00 mark opens with the UTF-16 LE
-        // mark and so decodes to a NUL after every character. Refusing is the point — a
-        // false negative costs a moment's confusion, a false positive costs the file at
-        // its first edit. TransformsContent keeps this to content the codec produced;
-        // bytes that only passed through are judged by IsValidUtf8 below, as before.
-        if (TransformsContent(declared) && !LooksLikeText(content))
+        // The strict rule, which only a full load can afford — and how strict it has to be
+        // turns on whether the file said what it was.
+        //
+        // Without a mark, `declared` is a guess: SniffEncoding read the prefix above and
+        // asked "are these bytes UTF-16 at all?", where a wrong yes costs the file. So the
+        // whole decoded content must pass the same text-shape test the guess was drawn
+        // from. A file whose UTF-16 shape holds for its first 8 KB and breaks afterwards
+        // was never UTF-16, and opening it writable would put UTF-8 into the middle of it.
+        //
+        // A mark removes the question, so the test relaxes. FF FE at offset 0 followed by
+        // well-formed UTF-16 is the file stating its own encoding, not a hypothesis worth
+        // second-guessing, and Decode and Encode are exact inverses — a form feed or a C1
+        // control goes back out as the same two bytes it came in as, with no path to
+        // corruption on save. Holding marked files to the shape test refused a .c file
+        // with Emacs page breaks in it that opens without a murmur when the identical text
+        // is saved as UTF-8, since that path validates rather than shape-checks. Same
+        // text, two encodings, two answers: a defect in a C++ IDE.
+        //
+        // What a mark cannot vouch for is a NUL character, and that is the one thing still
+        // disqualifying: it means UTF-32 arriving as UTF-16, because FF FE 00 00 opens
+        // with the UTF-16 LE mark and DetectEncoding stops at the first two bytes, leaving
+        // the codec to decode a NUL after every character. The test is exact rather than
+        // heuristic — U+0000 is a single 0x00 byte in UTF-8 and no continuation byte is
+        // ever 0x00, so a 0x00 anywhere in decoded content is a NUL character and can be
+        // nothing else.
+        //
+        // The marked predicate is a strict subset of the unmarked one: LooksLikeText
+        // already rejects every NUL, 0x00 being below 0x20 and neither tab, LF nor CR. So
+        // this is one rule with a relaxation applied to it, not two rules free to drift.
+        //
+        // TransformsContent keeps all of it to content the codec produced; bytes that only
+        // passed through are judged by IsValidUtf8 below, as before.
+        if (TransformsContent(declared))
         {
-            return Error{ErrorCode::InvalidArgument,
-                         "This is not " + std::string{EncodingName(declared)}
-                             + " text: decoding it gives control characters: "
-                             + fs::ToUtf8(path)};
+            const bool marked = bomLength > 0;
+            const bool acceptable = marked ? content.find('\0') == std::string::npos
+                                           : LooksLikeText(content);
+
+            if (!acceptable)
+            {
+                return Error{ErrorCode::InvalidArgument,
+                             NotTextMessage(declared, marked, content, path)};
+            }
         }
 
         TextDocument document;

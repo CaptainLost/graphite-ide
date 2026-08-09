@@ -45,9 +45,13 @@ namespace core::text
         /// exactly those bytes and the two verdicts must not be able to differ.
         ///
         /// Fails for UTF-16 content that is damaged — an odd byte count, or a surrogate
-        /// half with no partner — and for UTF-16 content that decodes cleanly but does not
-        /// read as text, which is what a sample-sized verdict about a larger file can turn
-        /// out to be wrong about.
+        /// half with no partner — and for UTF-16 content that decodes cleanly but is not
+        /// text after all. How much is demanded of "is text" depends on whether a mark was
+        /// there: an unmarked file was only guessed at, from a sample, so all of it must
+        /// read as text; a marked one stated its own encoding, so only a NUL character
+        /// disqualifies it, that being the signature of a UTF-32 file whose mark begins
+        /// with the UTF-16 LE one. Control characters in a marked file are content, and are
+        /// kept.
         [[nodiscard]] static Result<TextDocument> FromContent(std::string bytes,
                                                               std::filesystem::path path);
 

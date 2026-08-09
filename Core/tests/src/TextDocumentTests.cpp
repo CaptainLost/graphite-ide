@@ -520,6 +520,26 @@ TEST_CASE("The probe and the document agree about a file that changes shape past
     CHECK(document.GetError().message.find("UTF-16 LE") != std::string::npos);
 }
 
+TEST_CASE("A marked UTF-16 file keeps its control characters instead of being refused")
+{
+    // "a", a form feed — the page break Emacs writes into C source — "b", and U+0085, a
+    // C1 control. The identical text saved as UTF-8 opens without complaint, because that
+    // path validates rather than shape-checks, so refusing it here would make the encoding
+    // decide whether a file may be edited. The mark settles what this is, and Decode and
+    // Encode are exact inverses, so both controls go back to disk as the bytes they came
+    // from. The literal is split because 'a' is a hex digit and would otherwise be eaten
+    // by the \xFE escape before it.
+    const std::string original = std::string("\xFF\xFE" "a\0\x0C\0b\0\x85\0", 10);
+
+    const auto document = TextDocument::FromContent(original, "C:/tmp/pagebreak.c");
+
+    REQUIRE(document);
+    CHECK(document.Value().FileEncoding() == Encoding::Utf16Le);
+    CHECK_FALSE(document.Value().IsReadOnly());
+    CHECK(document.Value().Buffer().Text() == std::string("a\x0C" "b\xC2\x85", 5));
+    CHECK(document.Value().Bytes() == original);
+}
+
 TEST_CASE("A UTF-32 file is refused rather than opened as UTF-16")
 {
     // What Set-Content -Encoding UTF32 writes for "Hi". The UTF-32 LE mark FF FE 00 00
