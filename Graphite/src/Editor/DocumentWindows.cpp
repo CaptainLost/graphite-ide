@@ -153,6 +153,11 @@ namespace graphite
 
             const bool preview = item.preview;
 
+            // Only ever reaches this window's own title bar, drawn inside Begin() below
+            // when the window is floating. A docked preview's tab is drawn earlier in the
+            // frame, before this runs - see the comment on MonoItalicFont() - so a docked
+            // preview looks the same as a docked permanent tab. Nothing in this stage
+            // gives the preview state a second, tab-visible marker.
             if (preview)
                 ImGui::PushFont(core::ImGuiRenderer::MonoItalicFont(), 0.0f);
 
