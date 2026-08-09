@@ -141,19 +141,32 @@ TEST_CASE("A binary file opens as an item with a reason rather than nothing at a
     CHECK(FailureMessage(documents.At(0)).find("Binary") != std::string::npos);
 }
 
-TEST_CASE("A UTF-16 file is refused by name, not called binary")
+TEST_CASE("A UTF-16 file now opens as a document rather than a refusal")
 {
     TempDirectory directory;
     const auto path = directory.Path() / "utf16.txt";
-    WriteBytes(path, std::string("\xFF\xFEh\0e\0l\0l\0o\0", 12));
+    WriteBytes(path, std::string("\xFF\xFEH\0e\0l\0l\0o\0", 12));
+
+    DocumentSet documents;
+
+    CHECK(documents.Open(path, true) == OpenOutcome::Opened);
+    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.At(0).document.has_value());
+    CHECK(documents.At(0).document->Buffer().Text() == "Hello");
+}
+
+TEST_CASE("A damaged UTF-16 file says it is damaged, not that the format is unsupported")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "damaged.txt";
+    WriteBytes(path, std::string("\xFF\xFE\x42\xDE", 4));
 
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Failed);
     REQUIRE(documents.Count() == 1);
-    CHECK(documents.At(0).failure == OpenFailure::UnsupportedEncoding);
-    CHECK(documents.At(0).encoding == Encoding::Utf16Le);
-    CHECK(FailureMessage(documents.At(0)).find("UTF-16") != std::string::npos);
+    CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
+    CHECK(FailureMessage(documents.At(0)).find("damaged") != std::string::npos);
 }
 
 TEST_CASE("A file that is not there opens as an item saying so, not as silence")

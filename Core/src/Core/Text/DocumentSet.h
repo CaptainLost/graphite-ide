@@ -19,7 +19,6 @@ namespace core::text
         None,
         Binary,
         TooLarge,
-        UnsupportedEncoding,
         /// The file was there when it opened and has since been deleted. The item stays:
         /// the content is in memory, so closing it would be the only way to lose
         /// something we still have.
@@ -28,8 +27,8 @@ namespace core::text
     };
 
     /// One thing the user has open. Not a document — a document *or* the reason there
-    /// isn't one, because a binary file, a file past the size ceiling, a UTF-16 file and
-    /// a file deleted from disk are all tabs with nothing to show.
+    /// isn't one, because a binary file, a file past the size ceiling and a file deleted
+    /// from disk are all tabs with nothing to show.
     struct OpenItem
     {
         std::filesystem::path path;

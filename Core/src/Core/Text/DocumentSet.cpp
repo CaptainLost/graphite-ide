@@ -36,8 +36,6 @@ namespace core::text
             return "Binary file — " + Kilobytes(item.size);
         case OpenFailure::TooLarge:
             return "This file is " + Megabytes(item.size) + ", too large to open";
-        case OpenFailure::UnsupportedEncoding:
-            return std::string{EncodingName(item.encoding)} + " file, not supported yet";
         case OpenFailure::Missing:
             return "This file no longer exists on disk";
         case OpenFailure::ReadFailed:
@@ -144,12 +142,6 @@ namespace core::text
             break;
         case FileKind::Text:
         case FileKind::LargeText:
-            if (item.encoding == Encoding::Utf16Le || item.encoding == Encoding::Utf16Be)
-            {
-                item.failure = OpenFailure::UnsupportedEncoding;
-                break;
-            }
-
             {
                 auto document = TextDocument::Load(path);
 
@@ -164,6 +156,7 @@ namespace core::text
                 else
                 {
                     item.failure = OpenFailure::ReadFailed;
+                    item.detail = document.GetError().message;
                 }
             }
             break;
