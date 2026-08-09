@@ -10,6 +10,7 @@
 #include "Core/Platform/Process.h"
 #include "Core/Text/Editing.h"
 
+#include <GLFW/glfw3.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -83,6 +84,18 @@ namespace graphite
         // earlier revision had this logic inlined here and dropped the panel update
         // silently — nothing failed, because no panel overrides it yet.
         UpdateFocusReload(deltaSeconds);
+
+        // Watchers drop events — buffer overflow, or a tool touching many files at once —
+        // and returning from another application is exactly when that matters. Reading
+        // the OS-level flag directly (rather than reusing core::platform::IsForeground(),
+        // which UpdateFocusReload above already does) is deliberate: that one answers for
+        // the whole process, true for a panel dragged into its own viewport just as much
+        // as for the main window, where a stale-content sweep only makes sense for the
+        // window whose editors are actually on screen. ImGuiIO::AppFocusLost is not this:
+        // it is a one-frame flag the backend sets on focus *loss*, so it would fire the
+        // sweep as the user leaves rather than as they return.
+        auto* handle = static_cast<GLFWwindow*>(core::Application::Get().GetWindow().NativeHandle());
+        m_documentWindows.NotifyWindowFocus(glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0);
     }
 
     void GraphiteLayer::UpdateFocusReload(float deltaSeconds)
@@ -119,7 +132,7 @@ namespace graphite
 
     void GraphiteLayer::OnUIRender()
     {
-        DrawStatusBar(m_documents, m_workspace.Root());
+        DrawStatusBar(m_documents, m_workspace.Root(), m_documentWindows.StatusMessage());
 
         m_dockSpace.Begin(m_layout);
         RenderMenuBar();

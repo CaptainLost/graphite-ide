@@ -4,8 +4,11 @@
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/Gui/ImGuiRenderer.h"
+#include "Core/Text/Caret.h"
+#include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Core/Text/TextDocument.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -19,6 +22,13 @@ namespace graphite
     namespace
     {
         constexpr const char* kSizeQuestionTitle = "Large file##EditorSizeQuestion";
+        constexpr const char* kReloadConflictTitle = "File changed on disk##EditorReloadConflict";
+        constexpr const char* kOverwriteConfirmTitle =
+            "Overwrite unsaved changes on disk?##EditorOverwriteConfirm";
+        constexpr const char* kCloseConfirmTitle = "Unsaved changes##EditorCloseConfirm";
+
+        /// How long a status bar note stays up once set.
+        constexpr double kTransientMessageSeconds = 4.0;
 
         [[nodiscard]] std::string WindowName(const core::text::DocumentSet& documents,
                                              std::size_t index)
@@ -125,27 +135,191 @@ namespace graphite
         {
             const core::text::OpenItem& item = m_documents.At(index);
 
-            if (item.failure == core::text::OpenFailure::Missing)
-                continue;
-
             // The watcher names directories, so an item is worth a stat only when its own
             // directory is one of them. `everything` means the batch could not be narrowed
             // down at all - dropped notifications, or a git state change - and every open
-            // document has to be checked.
+            // document has to be checked. Items already marked Missing are stated too now
+            // (see CheckItem): the file may have come back.
             if (!everything
                 && std::find(directories.begin(), directories.end(), item.path.parent_path())
                        == directories.end())
                 continue;
 
-            std::error_code error;
-            const bool present = std::filesystem::exists(item.path, error);
-
-            // An error is not an answer. A share that blinked or a directory that briefly
-            // denied access must not turn every document open on it into a deleted one -
-            // the same reasoning SyncRepository applies before dropping a repository.
-            if (!error && !present)
-                m_documents.MarkMissing(item.path);
+            CheckItem(index);
         }
+    }
+
+    void DocumentWindows::NotifyWindowFocus(bool focusedNow)
+    {
+        const bool regained = focusedNow && !m_wasFocused;
+        m_wasFocused = focusedNow;
+
+        if (!regained)
+            return;
+
+        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+            CheckItem(index);
+    }
+
+    void DocumentWindows::CheckItem(std::size_t index)
+    {
+        core::text::OpenItem& item = m_documents.At(index);
+
+        std::error_code error;
+        const bool present = std::filesystem::exists(item.path, error);
+
+        if (item.failure == core::text::OpenFailure::Missing)
+        {
+            // An error is not an answer, the same as below: a share that blinked must not
+            // read as "still gone".
+            if (!error && present)
+                m_documents.MarkPresent(item.path);
+
+            return;
+        }
+
+        // An error is not an answer. A share that blinked or a directory that briefly
+        // denied access must not turn every document open on it into a deleted one - the
+        // same reasoning SyncRepository applies before dropping a repository.
+        if (!error && !present)
+        {
+            m_documents.MarkMissing(item.path);
+            return;
+        }
+
+        if (!item.document || !item.document->ChangedOnDisk())
+            return;
+
+        if (!item.document->IsModified())
+        {
+            ReloadClean(index);
+            return;
+        }
+
+        // Dirty: queue the question rather than asking immediately, so several files
+        // changing in the same batch (a git checkout) are asked about one at a time
+        // instead of every modal fighting to open this frame.
+        const std::filesystem::path& path = item.path;
+
+        if (m_reloadConflictActive == path)
+            return;
+
+        if (std::find(m_reloadConflictQueue.begin(), m_reloadConflictQueue.end(), path)
+            != m_reloadConflictQueue.end())
+            return;
+
+        m_reloadConflictQueue.push_back(path);
+    }
+
+    void DocumentWindows::ReloadClean(std::size_t index)
+    {
+        core::text::OpenItem& item = m_documents.At(index);
+        const std::string fileName = core::fs::ToUtf8(item.path.filename());
+
+        if (auto result = item.document->ReloadFromDisk())
+        {
+            // The reload can shorten the document past where the caret sat. PlaceAt
+            // clamps to the new length and pulls back to a character boundary, the same
+            // as a click past a line's end does.
+            item.caret = core::text::PlaceAt(item.document->Buffer(), item.caret,
+                                             item.caret.offset, false,
+                                             core::text::DefaultTabWidth);
+            core::text::RefreshDerived(item);
+            SetTransientMessage(fileName + " reloaded (changed on disk)");
+        }
+        else
+        {
+            SetTransientMessage("Could not reload " + fileName + ": " + result.GetError().message);
+        }
+    }
+
+    bool DocumentWindows::SaveOne(std::size_t index)
+    {
+        core::text::OpenItem& item = m_documents.At(index);
+
+        if (!item.document)
+            return true;
+
+        const std::string fileName = core::fs::ToUtf8(item.path.filename());
+
+        if (auto result = item.document->Save())
+        {
+            SetTransientMessage(fileName + " saved");
+            return true;
+        }
+        else
+        {
+            SetTransientMessage("Could not save " + fileName + ": " + result.GetError().message);
+            return false;
+        }
+    }
+
+    void DocumentWindows::RequestSave(std::size_t index)
+    {
+        core::text::OpenItem& item = m_documents.At(index);
+
+        if (!item.document)
+            return;
+
+        if (item.document->ChangedOnDisk())
+        {
+            // Never noticed: a dropped notification, with no chance to have asked
+            // earlier. This is the last safety net, immediately before the write.
+            if (m_overwriteConfirmPath != item.path)
+            {
+                m_overwriteConfirmPath = item.path;
+                m_openOverwriteConfirm = true;
+            }
+
+            return;
+        }
+
+        SaveOne(index);
+    }
+
+    bool DocumentWindows::SaveAllModified()
+    {
+        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        {
+            const core::text::OpenItem& item = m_documents.At(index);
+
+            if (!item.document || !item.document->IsModified())
+                continue;
+
+            // The same safety net a single Ctrl+S gets: ChangedOnDisk() true means a
+            // change nobody was told about, and a batch has no chance to ask mid-flight -
+            // silently overwriting it here would be exactly what that net exists to stop.
+            // Treated as this document's failure, which is what stops the batch; the
+            // reason names the document so it is not confused with a write failure.
+            if (item.document->ChangedOnDisk())
+            {
+                SetTransientMessage(core::fs::ToUtf8(item.path.filename())
+                                    + " changed on disk; save it individually to confirm");
+                return false;
+            }
+
+            if (!SaveOne(index))
+                return false;
+        }
+
+        return true;
+    }
+
+    void DocumentWindows::SetTransientMessage(std::string text)
+    {
+        m_transientMessage =
+            TransientMessage{std::move(text), ImGui::GetTime() + kTransientMessageSeconds};
+    }
+
+    std::optional<std::string> DocumentWindows::StatusMessage() const
+    {
+        if (!m_transientMessage)
+            return std::nullopt;
+
+        if (ImGui::GetTime() >= m_transientMessage->expiresAt)
+            return std::nullopt;
+
+        return m_transientMessage->text;
     }
 
     float DocumentWindows::Render(float fontSize, core::text::IndentStyle indentStyle,
@@ -191,6 +365,181 @@ namespace graphite
 
             if (ImGui::Button("Cancel"))
                 ImGui::CloseCurrentPopup();
+
+            ImGui::EndPopup();
+        }
+
+        // The reload-conflict, overwrite-confirm and close-confirm modals below all live
+        // here, before the per-document loop, for the same reason as the size question
+        // above: OpenPopup/BeginPopupModal must not run from inside a Begin/BeginChild
+        // pair that may not be current when the popup needs to draw, and this is the one
+        // place in Render() that is never nested inside either. The loop below only ever
+        // sets the flags and paths these read; the actual ImGui calls happen here.
+
+        if (!m_reloadConflictActive && !m_reloadConflictQueue.empty())
+        {
+            m_reloadConflictActive = m_reloadConflictQueue.front();
+            m_reloadConflictQueue.erase(m_reloadConflictQueue.begin());
+            m_openReloadConflict = true;
+        }
+
+        if (m_openReloadConflict)
+        {
+            ImGui::OpenPopup(kReloadConflictTitle);
+            m_openReloadConflict = false;
+        }
+
+        if (ImGui::BeginPopupModal(kReloadConflictTitle, nullptr,
+                                   ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            const std::string fileName = m_reloadConflictActive
+                                             ? core::fs::ToUtf8(m_reloadConflictActive->filename())
+                                             : std::string{};
+
+            ImGui::Text("%s changed on disk, and this tab has unsaved changes.",
+                        fileName.c_str());
+            ImGui::Separator();
+
+            if (ImGui::Button("Reload from disk (lose my changes)"))
+            {
+                if (m_reloadConflictActive)
+                {
+                    if (const auto index = m_documents.Find(*m_reloadConflictActive))
+                        ReloadClean(*index);
+                }
+
+                m_reloadConflictActive.reset();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::SameLine();
+
+            // The entire acknowledgement mechanism: recording the file's current state as
+            // known is what stops Ctrl+S, or the next sweep, asking about this file again.
+            if (ImGui::Button("Keep my version"))
+            {
+                if (m_reloadConflictActive)
+                {
+                    if (const auto index = m_documents.Find(*m_reloadConflictActive);
+                        index && m_documents.At(*index).document)
+                        m_documents.At(*index).document->AcceptDiskState();
+                }
+
+                m_reloadConflictActive.reset();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        if (m_openOverwriteConfirm)
+        {
+            ImGui::OpenPopup(kOverwriteConfirmTitle);
+            m_openOverwriteConfirm = false;
+        }
+
+        if (ImGui::BeginPopupModal(kOverwriteConfirmTitle, nullptr,
+                                   ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            const std::string fileName = m_overwriteConfirmPath
+                                             ? core::fs::ToUtf8(m_overwriteConfirmPath->filename())
+                                             : std::string{};
+
+            ImGui::Text("%s changed on disk since it was opened. Overwrite it?",
+                        fileName.c_str());
+            ImGui::Separator();
+
+            if (ImGui::Button("Overwrite"))
+            {
+                if (m_overwriteConfirmPath)
+                {
+                    if (const auto index = m_documents.Find(*m_overwriteConfirmPath))
+                        SaveOne(*index);
+                }
+
+                m_overwriteConfirmPath.reset();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Cancel"))
+            {
+                m_overwriteConfirmPath.reset();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        if (m_openCloseConfirm)
+        {
+            ImGui::OpenPopup(kCloseConfirmTitle);
+            m_openCloseConfirm = false;
+        }
+
+        if (ImGui::BeginPopupModal(kCloseConfirmTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            const std::string fileName = m_pendingClosePath
+                                             ? core::fs::ToUtf8(m_pendingClosePath->filename())
+                                             : std::string{};
+
+            ImGui::Text("Save changes to %s before closing?", fileName.c_str());
+            ImGui::Separator();
+
+            // Shared by Save and Discard: finds the tab again by path (it may have moved
+            // since the question was asked, though never far in practice) and closes it
+            // the same way the loop below would have.
+            const auto finishClose = [this]
+            {
+                if (!m_pendingClosePath)
+                    return;
+
+                if (const auto index = m_documents.Find(*m_pendingClosePath))
+                {
+                    ImGui::ClearWindowSettings(WindowName(m_documents, *index).c_str());
+                    m_documents.Close(*index);
+                }
+
+                m_pendingClosePath.reset();
+            };
+
+            if (ImGui::Button("Save"))
+            {
+                bool saved = true;
+
+                if (m_pendingClosePath)
+                {
+                    if (const auto index = m_documents.Find(*m_pendingClosePath))
+                        saved = SaveOne(*index);
+                }
+
+                if (saved)
+                {
+                    finishClose();
+                    ImGui::CloseCurrentPopup();
+                }
+
+                // A failed save changes nothing: the document stays open and dirty, the
+                // reason is already in the status bar via SaveOne, and the question stays
+                // up so the user can try again or choose Discard/Cancel instead.
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Discard"))
+            {
+                finishClose();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::SameLine();
+
+            if (ImGui::Button("Cancel"))
+            {
+                m_pendingClosePath.reset();
+                ImGui::CloseCurrentPopup();
+            }
 
             ImGui::EndPopup();
         }
@@ -253,8 +602,16 @@ namespace graphite
             if (preview)
                 ImGui::PushFont(core::ImGuiRenderer::MonoItalicFont(), 0.0f);
 
+            // The dot next to the tab/title, and - for a docked tab - what stops ImGui
+            // assuming the X means "close now": the window keeps being torn down from the
+            // dock's bookkeeping only if Render stops resubmitting it, which is exactly
+            // what the dirty-close branch below refuses to do until the question resolves.
+            const bool modified = item.document && item.document->IsModified();
+            const ImGuiWindowFlags windowFlags =
+                modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
+
             bool open = true;
-            const bool visible = ImGui::Begin(name.c_str(), &open);
+            const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
 
             if (preview)
                 ImGui::PopFont();
@@ -284,24 +641,48 @@ namespace graphite
                 if (editorResult.edited && preview)
                     m_documents.Promote(index);
 
-                // editorResult.saveRequested: reconciling a stale document against a
-                // save request is the next stage's job, not this one's.
+                if (editorResult.saveRequested)
+                    RequestSave(index);
             }
 
             ImGui::End();
 
             if (!open)
             {
-                // The layout entry goes with the window: position belongs to the group,
-                // not to the file, so a reopened document lands where the user is working
-                // rather than where it was months ago - and imgui.ini stops collecting a
-                // dead section per file ever opened.
-                ImGui::ClearWindowSettings(name.c_str());
-                m_documents.Close(index);
-                continue;
+                if (modified)
+                {
+                    // Both versions are somebody's work: not closed here. The tab keeps
+                    // being submitted every frame (falling through to ++index below)
+                    // until Save, Discard or Cancel resolves the question raised above.
+                    if (!m_pendingClosePath)
+                    {
+                        m_pendingClosePath = item.path;
+                        m_openCloseConfirm = true;
+                    }
+                }
+                else
+                {
+                    // The layout entry goes with the window: position belongs to the
+                    // group, not to the file, so a reopened document lands where the user
+                    // is working rather than where it was months ago - and imgui.ini
+                    // stops collecting a dead section per file ever opened.
+                    ImGui::ClearWindowSettings(name.c_str());
+                    m_documents.Close(index);
+                    continue;
+                }
             }
 
             ++index;
+        }
+
+        // Ctrl+Shift+S over every dirty document. RouteGlobal, the same as
+        // GraphiteLayer's zoom shortcuts and for the same reason: this runs after every
+        // window this frame has already Begin/End'd, so there is no "current" window a
+        // RouteFocused check could compare against.
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S,
+                            ImGuiInputFlags_RouteGlobal))
+        {
+            SaveAllModified();
         }
 
         // Purges whatever left the document set since the last time this ran without

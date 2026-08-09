@@ -31,6 +31,7 @@ project "Graphite"
     {
         "src",
         "%{wks.location}/Core/src",
+        "%{IncludeDir.GLFW}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.MdiIcons}"
     }

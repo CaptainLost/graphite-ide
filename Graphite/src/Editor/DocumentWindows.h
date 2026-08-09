@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -65,7 +66,61 @@ namespace graphite
         void HandleFilesChanged(const std::vector<std::filesystem::path>& directories,
                                 bool everything);
 
+        /// Runs the same reconciliation as HandleFilesChanged, over every open document
+        /// rather than only the ones under directories a watcher named, when `focusedNow`
+        /// marks the frame the OS window regains focus after having lost it (compared
+        /// against the previous call's value, held here). Watchers drop events - buffer
+        /// overflow, or a tool touching many files at once - so this is the safety net for
+        /// the moment that most plausibly matters: coming back to the editor from
+        /// somewhere else. Costs one stat per open document, which is why it only runs on
+        /// the transition rather than every frame.
+        ///
+        /// `focusedNow` is glfwGetWindowAttrib(handle, GLFW_FOCUSED) for the main window,
+        /// read by the caller - DocumentWindows knows nothing about GLFW.
+        void NotifyWindowFocus(bool focusedNow);
+
+        /// Saves every modified document, stopping at the first failure so a later
+        /// document's success can never hide an earlier one's error. A document whose
+        /// ChangedOnDisk() is true stops it the same way - a batch has no chance to ask
+        /// mid-flight, and silently overwriting it would be exactly what that check
+        /// exists to prevent. Ctrl+Shift+S goes through this; so, in the next stage, does
+        /// the exit question, which is why this is public rather than folded into
+        /// Render() - one save-all recipe, not two. Returns false when a failure stopped
+        /// it early; the failing document stays dirty with its undo history intact and
+        /// the reason in the status bar, the same as a single failed Ctrl+S leaves behind.
+        bool SaveAllModified();
+
+        /// A short-lived note for the status bar - what a reload or a failed save just
+        /// did - or nothing once it has expired. GraphiteLayer reads this every frame to
+        /// feed DrawStatusBar.
+        [[nodiscard]] std::optional<std::string> StatusMessage() const;
+
     private:
+        /// Reconciles one open item against disk: an existence check, exactly as
+        /// HandleFilesChanged always ran, plus (added for saving and reconciliation) the
+        /// present-again case for an item marked Missing, and the changed-on-disk case
+        /// for one that carries a document. A stat error is never treated as an answer -
+        /// see HandleFilesChanged's own comment, which this now shares by delegation
+        /// rather than duplicating.
+        void CheckItem(std::size_t index);
+
+        /// The clean-document half of step 3: reload, clamp the caret to the (possibly
+        /// shorter) new content, rebuild the caches, and leave a status bar trace. On
+        /// failure nothing about the document changes; the trace names the error instead.
+        void ReloadClean(std::size_t index);
+
+        /// Writes the document, stopping neither to ask nor to check ChangedOnDisk -
+        /// that is RequestSave's job. Leaves a status bar trace either way. Returns
+        /// whether it succeeded, which is what lets a caller stop a batch (Ctrl+Shift+S,
+        /// the close-tab question) at the first failure.
+        bool SaveOne(std::size_t index);
+
+        /// Ctrl+S over one document: asks first when ChangedOnDisk() says the write would
+        /// clobber a change nobody was told about, otherwise saves immediately.
+        void RequestSave(std::size_t index);
+
+        void SetTransientMessage(std::string text);
+
         core::text::DocumentSet& m_documents;
 
         /// The dock node the last focused document sits in. A new window goes there, so a
@@ -109,5 +164,50 @@ namespace graphite
         /// rename happened). Populated by HandleRootMoved from the old window's dock node,
         /// and consumed - erased - the first time that identity is seen in Render.
         std::unordered_map<std::string, unsigned int> m_pendingDockTargets;
+
+        /// Whether the OS window had focus as of the last NotifyWindowFocus call. Starts
+        /// true: the application is assumed foreground from its first frame, the same
+        /// assumption GraphiteLayer::m_appForeground makes, and false here would fire a
+        /// needless sweep before anything has even been drawn once.
+        bool m_wasFocused = true;
+
+        /// Documents waiting to be asked about a reload conflict - ChangedOnDisk() true
+        /// on a dirty document - oldest first. CheckItem appends; Render pops the front
+        /// into m_reloadConflictActive as soon as no conflict is on screen, so several
+        /// dirty files changing at once (a git checkout) ask one at a time instead of
+        /// fighting over the same modal.
+        std::vector<std::filesystem::path> m_reloadConflictQueue;
+
+        /// The document the reload-conflict modal is currently asking about, or nullopt
+        /// when none is showing. A path rather than an index: the modal can outlive
+        /// several frames, during which closing an earlier tab would shift every index
+        /// after it. Looked up again with DocumentSet::Find when the user answers, and
+        /// simply dropped - no crash, no stale write - if the document is gone by then.
+        std::optional<std::filesystem::path> m_reloadConflictActive;
+        bool m_openReloadConflict = false;
+
+        /// The document RequestSave is asking to confirm an overwrite for - ChangedOnDisk()
+        /// was true right when Ctrl+S was pressed, meaning a notification was dropped and
+        /// this is the last chance to ask. Same "path, not index" reasoning as
+        /// m_reloadConflictActive.
+        std::optional<std::filesystem::path> m_overwriteConfirmPath;
+        bool m_openOverwriteConfirm = false;
+
+        /// The document a tab's own close button asked to close while it was still dirty.
+        /// Same "path, not index" reasoning as m_reloadConflictActive. At most one at a
+        /// time: a second dirty close request arriving before this one resolves is simply
+        /// left alone - its tab stays open - until the first is answered.
+        std::optional<std::filesystem::path> m_pendingClosePath;
+        bool m_openCloseConfirm = false;
+
+        /// A short-lived status bar note and when it expires, both on ImGui::GetTime()'s
+        /// clock. Read through StatusMessage().
+        struct TransientMessage
+        {
+            std::string text;
+            double expiresAt = 0.0;
+        };
+
+        std::optional<TransientMessage> m_transientMessage;
     };
 }

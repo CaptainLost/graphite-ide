@@ -34,7 +34,8 @@ namespace graphite
     }
 
     void DrawStatusBar(const core::text::DocumentSet& documents,
-                       const std::filesystem::path& root)
+                       const std::filesystem::path& root,
+                       const std::optional<std::string>& transientMessage)
     {
         ImGuiViewport* viewport = ImGui::GetMainViewport();
         const float height = ImGui::GetFrameHeight();
@@ -67,7 +68,21 @@ namespace graphite
             const float textHeight = ImGui::GetTextLineHeight();
             ImGui::SetCursorPosY((height - textHeight) * 0.5f);
 
-            ImGui::TextUnformatted(RelativePath(item.path, root).c_str());
+            // A leading marker rather than a colour: the strip has no guarantee its text
+            // colour reads as "warning" against every theme, and a dirty document is not
+            // an error worth one.
+            std::string left = RelativePath(item.path, root);
+
+            if (item.document->IsModified())
+                left = "* " + left;
+
+            // Invalid UTF-8 for its own declared encoding - the one thing that makes
+            // editing refuse to touch a file - is exactly what the status bar exists to
+            // surface, not silently allow.
+            if (item.document->IsReadOnly())
+                left += "  (read-only: not valid text for its encoding)";
+
+            ImGui::TextUnformatted(left.c_str());
 
             const core::text::Position where = buffer.ToPosition(item.caret.offset);
             const std::size_t column = core::text::ColumnOfByte(
@@ -91,6 +106,21 @@ namespace graphite
 
             ImGui::SameLine(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
             ImGui::TextUnformatted(right.c_str());
+        }
+
+        if (transientMessage && !transientMessage->empty())
+        {
+            // Centred using the same math as the row above: the strip is exactly one
+            // frame tall, and (height - textHeight) / 2 is where that leaves for the text
+            // to sit, this time measured from the window's own top edge again rather than
+            // carried over from the row above, since there may have been no active
+            // document to draw one.
+            const float textHeight = ImGui::GetTextLineHeight();
+            const float messageWidth = ImGui::CalcTextSize(transientMessage->c_str()).x;
+
+            ImGui::SetCursorPos(ImVec2((ImGui::GetWindowWidth() - messageWidth) * 0.5f,
+                                       (height - textHeight) * 0.5f));
+            ImGui::TextUnformatted(transientMessage->c_str());
         }
 
         ImGui::End();
