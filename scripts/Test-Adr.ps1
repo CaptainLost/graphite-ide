@@ -120,8 +120,24 @@ foreach ($record in $records) {
         }
     }
 
-    if ($readme -notmatch [regex]::Escape("($name)")) {
-        $problems.Add("$name : has no row in the README.md index.")
+    # The row is matched by shape, not just by presence, so that a mangled row
+    # is reported rather than silently accepted.
+    $rowPattern = '(?m)^\| \[' + $number + '\]\(' + [regex]::Escape($name) + '\) \| ([^|]*) \| ([^|]*) \| ([^|]*) \|\s*$'
+    $row = [regex]::Match($readme, $rowPattern)
+    if (-not $row.Success) {
+        if ($readme -match [regex]::Escape("($name)")) {
+            $problems.Add("$name : its README.md index row is malformed; expected '| [$number]($name) | title | status | date |'.")
+        }
+        else {
+            $problems.Add("$name : has no row in the README.md index.")
+        }
+    }
+    else {
+        $recordStatus = ([regex]::Match($body, '(?m)^Status: (.+?)\s*$')).Groups[1].Value
+        $indexStatus = $row.Groups[2].Value.Trim()
+        if ($recordStatus -ne $indexStatus) {
+            $problems.Add("$name : says '$recordStatus' but the README.md index row says '$indexStatus'.")
+        }
     }
 
     if ($body -match '\{\{') {

@@ -57,7 +57,11 @@ function Add-Record {
         $readmePath = Join-Path $Root 'README.md'
         $readme = Get-Content -LiteralPath $readmePath -Raw
         $number = $FileName.Substring(0, 4)
-        $readme = $readme.Replace('<!-- /adr-index -->', "| [$number]($FileName) | T | accepted | 2026-08-09 |`r`n<!-- /adr-index -->")
+        # Take the status from the record so the index agrees with it, which is
+        # what the validator now requires.
+        $status = ([regex]::Match($Body, '(?m)^Status: (.+?)\s*$')).Groups[1].Value
+        if (-not $status) { $status = 'accepted' }
+        $readme = $readme.Replace('<!-- /adr-index -->', "| [$number]($FileName) | T | $status | 2026-08-09 |`r`n<!-- /adr-index -->")
         Write-Utf8NoBom -Path $readmePath -Text $readme
     }
 }
@@ -201,6 +205,33 @@ try {
     $result = Invoke-Validator -Root $fixture
     Assert-That -Because 'rejects an index row whose record does not exist' -Condition ($result.ExitCode -eq 1)
     Assert-That -Because 'names the missing record' -Condition ($result.Output -match '0002-ghost\.md')
+}
+finally { Remove-Item $fixture -Recurse -Force }
+
+# --- the index row must agree with the record --------------------------------
+$fixture = New-Fixture
+try {
+    # Indexed as accepted, then the record alone is changed — the drift the
+    # validator has to notice.
+    Add-Record -Root $fixture -FileName '0001-a-well-formed-record.md' -Body $valid
+    Write-Utf8NoBom -Path (Join-Path $fixture '0001-a-well-formed-record.md') `
+        -Text ($valid -replace 'Status: accepted', 'Status: rejected')
+    $result = Invoke-Validator -Root $fixture
+    Assert-That -Because 'rejects an index row whose status differs from the record' -Condition ($result.ExitCode -eq 1)
+    Assert-That -Because 'reports the disagreement' -Condition ($result.Output -match 'index')
+}
+finally { Remove-Item $fixture -Recurse -Force }
+
+# --- a malformed index row ----------------------------------------------------
+$fixture = New-Fixture
+try {
+    Add-Record -Root $fixture -FileName '0001-a-well-formed-record.md' -Body $valid
+    $readmePath = Join-Path $fixture 'README.md'
+    $readme = Get-Content -LiteralPath $readmePath -Raw
+    # The shape a nested capture group in a careless -replace leaves behind.
+    Write-Utf8NoBom -Path $readmePath -Text $readme.Replace('| T | accepted | 2026-08-09 |', '| T | accepted01 2026-08-09 |')
+    $result = Invoke-Validator -Root $fixture
+    Assert-That -Because 'rejects an index row with the wrong column count' -Condition ($result.ExitCode -eq 1)
 }
 finally { Remove-Item $fixture -Recurse -Force }
 
