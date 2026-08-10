@@ -39,6 +39,7 @@ namespace core
             ICON_MDI_LANGUAGE_PYTHON,
             ICON_MDI_APPLICATION_BRACES,
             ICON_MDI_REFRESH,
+            ICON_MDI_MAGNIFY,
         };
 
         constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);

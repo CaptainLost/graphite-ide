@@ -44,7 +44,13 @@ namespace graphite
         }
 
         ImGui::SetNextItemWidth(-1.0f);
-        m_filter.Draw("##solutionFilter");
+
+        if (ImGui::InputTextWithHint("##solutionFilter", ICON_MDI_MAGNIFY "  Filter files",
+                                     m_filter.InputBuf, IM_ARRAYSIZE(m_filter.InputBuf)))
+        {
+            m_filter.Build();
+        }
+
         ImGui::Separator();
 
         const core::sln::Solution& solution = *m_workspace.LoadedSolution();

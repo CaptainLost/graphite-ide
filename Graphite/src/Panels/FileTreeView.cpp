@@ -64,7 +64,12 @@ namespace graphite
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);
-        m_filter.Draw("##fileFilter");
+
+        if (ImGui::InputTextWithHint("##fileFilter", ICON_MDI_MAGNIFY "  Filter files",
+                                     m_filter.InputBuf, IM_ARRAYSIZE(m_filter.InputBuf)))
+        {
+            m_filter.Build();
+        }
     }
 
     void FileTreeView::RenderEmptyState()
