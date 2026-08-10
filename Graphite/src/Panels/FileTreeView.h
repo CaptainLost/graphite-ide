@@ -11,6 +11,11 @@
 #include <filesystem>
 #include <string>
 
+namespace core::text
+{
+    class DocumentSet;
+}
+
 namespace graphite
 {
     /// Browses the open workspace folder. Holds no state of its own beyond the filter —
@@ -20,7 +25,10 @@ namespace graphite
     class FileTreeView final
     {
     public:
-        explicit FileTreeView(Workspace& workspace);
+        /// `documents` is read, never touched: the tree marks which files are open and
+        /// which one is on screen, and asks the set rather than keeping its own idea of
+        /// either.
+        FileTreeView(Workspace& workspace, const core::text::DocumentSet& documents);
 
         void Render();
 
@@ -66,6 +74,7 @@ namespace graphite
         [[nodiscard]] bool PassesFilter(const core::FileNode& node) const;
 
         Workspace& m_workspace;
+        const core::text::DocumentSet& m_documents;
         ImGuiTextFilter m_filter;
         PendingAction m_pending;
         std::filesystem::path m_deleteCandidate;

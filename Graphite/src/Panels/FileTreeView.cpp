@@ -5,6 +5,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Gui/Icons.h"
 #include "Core/Platform/Shell.h"
+#include "Core/Text/DocumentSet.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -15,7 +16,8 @@
 
 namespace graphite
 {
-    FileTreeView::FileTreeView(Workspace& workspace) : m_workspace(workspace)
+    FileTreeView::FileTreeView(Workspace& workspace, const core::text::DocumentSet& documents)
+        : m_workspace(workspace), m_documents(documents)
     {
     }
 
@@ -499,13 +501,39 @@ namespace graphite
             if (dimmed)
                 ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
-            const bool selected = m_workspace.SelectedFile() == node.path;
+            // Which document is on screen, and which are merely open, are both facts the
+            // DocumentSet owns - so they are read from it rather than from
+            // Workspace::SelectedFile, which only ever moves when a row here is clicked and
+            // so stayed put whenever the user switched tabs in the editor instead.
+            const auto active = m_documents.Active();
+            const bool isActive = active.has_value() && m_documents.At(*active).path == node.path;
+            const bool isOpen = m_documents.Find(node.path).has_value();
+
+            // An open document that is not the active one gets the same highlight at a
+            // fraction of its opacity: enough to pick the open files out of a long folder,
+            // never enough to compete with the one row saying "this is what you are
+            // looking at". Drawn through Selectable's own selected state rather than a
+            // hand-drawn rect so it lines up with the real highlight exactly.
+            const bool faded = isOpen && !isActive;
+
+            if (faded)
+            {
+                ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+                colour.w *= 0.45f;
+                ImGui::PushStyleColor(ImGuiCol_Header, colour);
+            }
 
             const std::string label =
                 std::string{core::IconForExtension(core::fs::ToUtf8(node.path.extension()))} +
                 "  " + node.name;
 
-            if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
+            const bool clicked = ImGui::Selectable(label.c_str(), isActive || faded,
+                                                   ImGuiSelectableFlags_AllowDoubleClick);
+
+            if (faded)
+                ImGui::PopStyleColor();
+
+            if (clicked)
             {
                 m_workspace.SelectFile(node.path);
                 m_workspace.RequestOpenFile(node.path, ImGui::IsMouseDoubleClicked(0));

@@ -36,7 +36,7 @@ namespace graphite
 
     void GraphiteLayer::OnAttach()
     {
-        m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace));
+        m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace, m_documents));
 
         m_panels.Add(std::make_unique<ConsolePanel>(m_sink));
 

@@ -7,6 +7,11 @@
 
 #include "Core/Ui/Panel.h"
 
+namespace core::text
+{
+    class DocumentSet;
+}
+
 namespace graphite
 {
     /// The left-hand panel. Owns the two ways of looking at a workspace and switches
@@ -17,7 +22,9 @@ namespace graphite
     class ExplorerPanel final : public core::Panel
     {
     public:
-        explicit ExplorerPanel(Workspace& workspace);
+        /// `documents` is passed straight through to the file tree, which marks the open
+        /// files and the one on screen. Read there, never modified.
+        ExplorerPanel(Workspace& workspace, const core::text::DocumentSet& documents);
 
         void OnUIRender() override;
 

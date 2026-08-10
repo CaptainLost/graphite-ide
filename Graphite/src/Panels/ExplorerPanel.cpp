@@ -14,9 +14,9 @@ namespace graphite
         constexpr const char* kModeKey = "explorerMode";
     }
 
-    ExplorerPanel::ExplorerPanel(Workspace& workspace)
-        : core::Panel("files", "Explorer"), m_workspace(workspace), m_files(workspace),
-          m_solution(workspace)
+    ExplorerPanel::ExplorerPanel(Workspace& workspace, const core::text::DocumentSet& documents)
+        : core::Panel("files", "Explorer"), m_workspace(workspace),
+          m_files(workspace, documents), m_solution(workspace)
     {
     }
 
