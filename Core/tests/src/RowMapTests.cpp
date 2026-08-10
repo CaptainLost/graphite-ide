@@ -121,3 +121,36 @@ TEST_CASE("A line of zero rows is skipped, which is what folding will need")
     CHECK(rows.RowAt(0).line == 0);
     CHECK(rows.RowAt(1).line == 2);
 }
+
+TEST_CASE("Two adjacent zero-row lines are both skipped")
+{
+    // What a folded block of several lines looks like to this map. The descent has to
+    // step over a run of them, not just a single one.
+    const TextBuffer buffer = BufferOf("aa\nbb\ncc\ndd");
+
+    RowMap rows;
+    rows.Rebuild(buffer, 80, 4);
+    rows.SetRowsOf(1, 0);
+    rows.SetRowsOf(2, 0);
+
+    CHECK(rows.TotalRows() == 2);
+    CHECK(rows.RowAt(0).line == 0);
+    CHECK(rows.RowAt(1).line == 3);
+    CHECK(rows.FirstRowOf(3) == 1);
+}
+
+TEST_CASE("A zero-row first line does not claim row zero")
+{
+    // The descent starts at line zero, so a folded first line is the case most likely to
+    // be resolved to the wrong line.
+    const TextBuffer buffer = BufferOf("aa\nbb");
+
+    RowMap rows;
+    rows.Rebuild(buffer, 80, 4);
+    rows.SetRowsOf(0, 0);
+
+    CHECK(rows.TotalRows() == 1);
+    CHECK(rows.RowAt(0).line == 1);
+    CHECK(rows.RowAt(0).subRow == 0);
+    CHECK(rows.FirstRowOf(1) == 0);
+}
