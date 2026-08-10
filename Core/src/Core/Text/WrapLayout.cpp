@@ -54,11 +54,6 @@ namespace core::text
                     else
                         break;
                 }
-
-                // If advancing past spaces reached the end of the line, there is nothing
-                // left to put on another row; stop without pushing a break.
-                if (breakAt >= total)
-                    break;
             }
             else
             {
@@ -81,10 +76,7 @@ namespace core::text
                         {
                             // Tab is wider than the row; break after it so the walk
                             // still advances.
-                            if (byte + 1 <= line.size())
-                                breakAt = ColumnOfByte(line, byte + 1, tabWidth);
-                            else
-                                breakAt = ColumnCount(line, tabWidth);
+                            breakAt = ColumnOfByte(line, byte + 1, tabWidth);
                         }
                         else
                         {
@@ -94,6 +86,11 @@ namespace core::text
                     }
                 }
             }
+
+            // If the adjusted break is at or past the end of the line, there is nothing
+            // left to put on another row; stop without pushing a break.
+            if (breakAt >= total)
+                break;
 
             breaks.push_back(breakAt);
             rowStart = breakAt;

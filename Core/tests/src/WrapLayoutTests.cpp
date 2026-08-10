@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/WrapLayout.h"
+#include "Core/Text/Columns.h"
 
 #include <string>
 #include <vector>
@@ -109,4 +110,19 @@ TEST_CASE("A tab wider than the row still advances")
 
     REQUIRE(!breaks.empty());
     CHECK(breaks[0] == 4);
+}
+
+TEST_CASE("A tab wider than the row at the end of a line does not add an empty row")
+{
+    // Columns: "bbbb" is 0-3 and the tab runs to column 8. Breaking after the tab would
+    // start a row one past the end of the line.
+    const std::vector<std::size_t> breaks = WrapColumns("bbbb\t", 3, 4);
+
+    REQUIRE(!breaks.empty());
+    CHECK(breaks.back() < ColumnCount("bbbb\t", 4));
+}
+
+TEST_CASE("A line of a single tab never breaks")
+{
+    CHECK(WrapColumns("\t", 1, 4).empty());
 }
