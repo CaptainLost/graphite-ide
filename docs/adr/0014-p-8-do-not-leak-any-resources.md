@@ -1,44 +1,33 @@
 # 0014. P.8: Do not leak any resources
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
-
-The rule is stated upstream as "Don't leak any resources"; the title here is
-spelled without the apostrophe so that the filename stays clean.
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 
 ## Context
 
-An IDE is a long-running program, which is the case the rule singles out. The
-resources that matter here are a libgit2 repository handle, a Win32 directory
-handle plus its watcher thread, and open file streams.
+Even a slow growth in resource use will, over time, exhaust the availability of
+those resources. This matters particularly for long-running programs, but it is
+an essential piece of responsible programming behaviour regardless.
 
-## Decision
-
-Adopt P.8 as written. Transcribed in full:
-
-> **Reason.** Even a slow growth in resources will, over time, exhaust the
-> availability of those resources. This is particularly important for
-> long-running programs, but is an essential piece of responsible programming
-> behavior.
-
-**Example, bad.**
+The failure is almost always an early return past a manual release:
 
 ```cpp
-void f(const char* name)
+void f(char* name)
 {
     FILE* input = fopen(name, "r");
     // ...
-    if (something) return;   // bad: if something == true, a file handle is leaked
+    if (something) return;   // bad: if something == true, a file handle is
+                             // leaked
     // ...
     fclose(input);
 }
 ```
 
-Prefer RAII:
+RAII removes the possibility rather than the instance:
 
 ```cpp
-void f(const char* name)
+void f(char* name)
 {
     ifstream input {name};
     // ...
@@ -47,80 +36,87 @@ void f(const char* name)
 }
 ```
 
-See also: the resource management section.
+A leak is colloquially "anything that isn't cleaned up". The more important
+classification is "anything that can no longer be cleaned up" — for example,
+allocating an object on the heap and then losing the last pointer to that
+allocation. The rule should not be read as requiring that allocations within
+long-lived objects be returned during program shutdown: relying on
+system-guaranteed cleanup, such as file closing and memory deallocation on
+process shutdown, can simplify code. However, relying on abstractions that
+implicitly clean up can be just as simple, and is often safer.
 
-**Note.** A leak is colloquially "anything that isn't cleaned up." The more
-important classification is "anything that can no longer be cleaned up." For
-example, allocating an object on the heap and then losing the last pointer that
-points to that allocation. This rule should not be taken as requiring that
-allocations within long-lived objects must be returned during program shutdown.
-For example, relying on system guaranteed cleanup such as file closing and
-memory deallocation upon process shutdown can simplify code. However, relying on
-abstractions that implicitly clean up can be as simple, and often safer.
+Enforcing the lifetime safety profile eliminates leaks. Combined with the
+resource safety provided by RAII, it eliminates the need for garbage collection,
+by generating no garbage. Combined further with the type and bounds profiles, it
+yields complete type- and resource-safety, guaranteed by tools.
 
-**Note.** Enforcing the lifetime safety profile eliminates leaks. When combined
-with resource safety provided by RAII, it eliminates the need for "garbage
-collection" (by generating no garbage). Combine this with enforcement of the
-type and bounds profiles and you get complete type- and resource-safety,
-guaranteed by tools.
+## Decision
 
-**Enforcement.**
+Do not leak any resources. Own every resource — memory, file handles, sockets,
+locks, GPU objects, OS handles — through an object whose destructor releases it.
 
-- Look at pointers: Classify them into non-owners (the default) and owners.
-  Where feasible, replace owners with standard-library resource handles (as in
-  the example above). Alternatively, mark an owner as such using `owner` from
-  the GSL.
-- Look for naked `new` and `delete`
-- Look for known resource allocating functions returning raw pointers (such as
-  `fopen`, `malloc`, and `strdup`)
+- Acquire a resource in a constructor and release it in a destructor; do not
+  pair an acquisition with a release statement that control flow can skip.
+- Prefer standard-library resource handles to hand-written ones, and a
+  hand-written RAII type to a raw acquire/release pair.
+- Where a raw owning pointer is unavoidable — at a C boundary, say — mark it as
+  an owner rather than leaving ownership to convention.
+- Treat "the process will clean it up" as acceptable only for genuinely
+  process-lifetime state, and never as a reason to leave ownership unclear.
 
 ## Rationale
 
-Adopted as written; the codebase already follows it. `Repository` owns its
-libgit2 handle and closes it, `DirectoryWatcher`'s destructor stops and joins
-its thread, and file access goes through `std::ifstream`/`std::ofstream` rather
-than `fopen`. `NonCopyable` exists precisely to keep such handles from being
-copied into a double release.
+The distinction the upstream note draws is the useful one: the problem is not
+that memory is still held at exit, it is that the program has lost the ability
+to release it. Ownership that lives in a type is ownership a later edit cannot
+accidentally drop, and every early return, every exception and every new branch
+is exactly such an edit.
 
-The GSL half of the first enforcement point does not apply: this project does
-not vendor the GSL, so an owning raw pointer cannot be marked `owner<T*>`. The
-substitute is not to have owning raw pointers.
-
-The rule's first Note is worth keeping, because it licenses something this
-program does: relying on process shutdown for the last cleanup rather than
-unwinding everything by hand.
+That is also why the rule is phrased as an absolute despite the shutdown
+carve-out. "Leak nothing" is checkable and teachable; "leak only what does not
+matter" requires a judgement at every site.
 
 ## Consequences
 
 ### Positive
 
-- The rule matches existing practice, so it costs nothing to adopt and gives
-  `NonCopyable` and the RAII wrappers a written reason.
-- Names the right target: "anything that can no longer be cleaned up", not
-  "anything still allocated at exit".
+- Early returns and exceptions stop being leak opportunities.
+- The lifetime of a resource is visible in the code as the lifetime of an
+  object, which is a thing readers and tools already track.
+- No garbage collector, and no periodic leak-hunting, because there is no
+  garbage.
 
 ### Negative
 
-- Win32 handles are not RAII by nature, so each one needs a wrapper written by
-  hand — `DirectoryWatcher` carries that cost, and the next platform handle
-  will too.
-- With no `owner<T*>`, a raw pointer's ownership is documented in prose or not
-  at all.
+- Wrapping a C-style resource means writing a small RAII type, with the copy and
+  move operations thought through, for something that was two calls.
+- RAII fixes destruction order to scope exit, which is occasionally not what is
+  wanted, and working around it — release, reset, deferred destruction — is
+  fiddlier than the manual version would have been.
+- The rule as stated is stricter than the note that follows it, so a reader can
+  reasonably arrive at different answers about shutdown-time cleanup.
 
 ### Neutral
 
-- The lifetime safety profile mentioned in the second Note is not enforced here;
-  no tool in this build checks it.
+- Which specific handle type is used for which resource is not decided here.
+- The lifetime, type and bounds profiles are mentioned as the mechanism that
+  would make this tool-enforceable; adopting them is a separate decision, and
+  none is enabled by this record.
 
-## Deviations to fix
+## Enforcement
 
-No leak is currently known. `Repository`, `DirectoryWatcher` and `JsonFile` were
-checked while writing this record and each releases what it acquires. This row
-exists to record that the check was made, not that it found something.
+- Look at pointers: classify them into non-owners (the default) and owners.
+  Where feasible, replace owners with standard-library resource handles.
+  Alternatively, mark an owner as such using `owner` from the GSL.
+- Look for naked `new` and `delete`.
+- Look for known resource-allocating functions returning raw pointers, such as
+  `fopen`, `malloc` and `strdup`.
 
 ## Related
 
-- [0013](0013-p-7-catch-run-time-errors-early.md) — the previous rule.
-- [0015](0015-p-9-do-not-waste-time-or-space.md) — the next rule.
-- [0003](0003-vendor-dependencies-as-git-submodules-built-by-premake.md) —
-  libgit2, whose handle is the main thing being owned.
+- [0012](0012-p-6-what-cannot-be-checked-at-compile-time-should-be-checkable-at-run-time.md)
+  — returning an object that owns *and* knows its size.
+- [0015](0015-p-9-do-not-waste-time-or-space.md) — the other half of "this is
+  C++": correctness of resource use and economy of it.
+- [0017](0017-p-11-encapsulate-messy-constructs-rather-than-spreading-through-the-code.md)
+  — where the remaining raw acquisition code belongs.

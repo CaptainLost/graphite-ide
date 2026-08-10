@@ -1,30 +1,21 @@
 # 0015. P.9: Do not waste time or space
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
-
-The rule is stated upstream as "Don't waste time or space"; the title here is
-spelled without the apostrophe so that the filename stays clean.
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 
 ## Context
 
-The performance-shaped philosophy rule. It bears on the parts of this program
-that run every frame — the panel render path — and on the file tree, which can
-hold a large directory.
+The upstream reason for this rule is three words long: "This is C++." A language
+chosen for control over time and space is being used badly when that control is
+spent on nothing.
 
-## Decision
+Time and space spent well to achieve a goal — speed of development, resource
+safety, simplification of testing — is not wasted. As Alex Stepanov put it,
+"another benefit of striving for efficiency is that the process forces you to
+understand the problem in more depth."
 
-Adopt P.9 as written. Transcribed in full:
-
-> **Reason.** This is C++.
-
-**Note.** Time and space that you spend well to achieve a goal (e.g., speed of
-development, resource safety, or simplification of testing) is not wasted.
-"Another benefit of striving for efficiency is that the process forces you to
-understand the problem in more depth." — Alex Stepanov
-
-**Example, bad.**
+The caricature example collects most of the ways it goes wrong at once:
 
 ```cpp
 struct X {
@@ -32,11 +23,9 @@ struct X {
     int i;
     string s;
     char ch2;
-
     X& operator=(const X& a);
     X(const X&);
 };
-
 X waste(const char* p)
 {
     if (!p) throw Nullptr_error{};
@@ -48,28 +37,20 @@ X waste(const char* p)
     X x;
     x.ch = 'a';
     x.s = string(n);    // give x.s space for *p
-    for (gsl::index i = 0; i < x.s.size(); ++i) x.s[i] = buf[i];  // copy buf into x.s
+    for (gsl::index i = 0; i < x.s.size(); ++i) x.s[i] = buf[i];
     delete[] buf;
     return x;
 }
-
-void driver()
-{
-    X x = waste("Typical argument");
-    // ...
-}
 ```
 
-Yes, this is a caricature, but we have seen every individual mistake in
-production code, and worse. Note that the layout of `X` guarantees that at least
-6 bytes (and most likely more) are wasted. The spurious definition of copy
-operations disables move semantics so that the return operation is slow (please
-note that the Return Value Optimization, RVO, is not guaranteed here). The use
-of `new` and `delete` for `buf` is redundant; if we really needed a local
-string, we should use a local `string`. There are several more performance bugs
-and gratuitous complication.
+Every individual mistake here has been seen in production code, and worse. The
+layout of `X` guarantees that at least 6 bytes, and most likely more, are
+wasted. The spurious definition of the copy operations disables move semantics,
+so the return is slow — the return value optimisation is not guaranteed here.
+The use of `new` and `delete` for `buf` is redundant; if a local string were
+really needed, a local `string` should have been used.
 
-**Example, bad.**
+The second example is real production code:
 
 ```cpp
 void lower(zstring s)
@@ -78,68 +59,87 @@ void lower(zstring s)
 }
 ```
 
-This is actually an example from production code. We can see that in our
-condition we have `i < strlen(s)`. This expression will be evaluated on every
-iteration of the loop, which means that `strlen` must walk through string every
-loop to discover its length. While the string contents are changing, it's
-assumed that `tolower` will not affect the length of the string, so it's better
-to cache the length outside the loop and not incur that cost each iteration.
+The condition contains `i < strlen(s)`, which is evaluated on every iteration,
+so `strlen` walks the whole string every time round the loop. The contents
+change but the length does not, so the length should be computed once outside
+the loop.
 
-**Note.** An individual example of waste is rarely significant, and where it is
-significant, it is typically easily eliminated by an expert. However, waste
-spread liberally across a code base can easily be significant and experts are
-not always as available as we would like. The aim of this rule (and the more
-specific rules that support it) is to eliminate most waste related to the use of
-C++ before it happens. After that, we can look at waste related to algorithms
-and requirements, but that is beyond the scope of these guidelines.
+An individual example of waste is rarely significant, and where it is
+significant it is typically easy for an expert to eliminate. However, waste
+spread liberally across a code base can easily be significant, and experts are
+not always as available as one would like. The aim of this rule, and of the more
+specific rules that support it, is to eliminate most waste related to the *use
+of C++* before it happens. Waste related to algorithms and requirements is a
+separate matter, and beyond the scope of these guidelines.
 
-**Enforcement.** Many more specific rules aim at the overall goals of simplicity
-and elimination of gratuitous waste.
+## Decision
 
-- Flag an unused return value from a user-defined non-defaulted postfix
-  `operator++` or `operator--` function. Prefer using the prefix form instead.
-  (Note: "User-defined non-defaulted" is intended to reduce noise. Review this
-  enforcement if it's still too noisy in practice.)
+Do not waste time or space in the ordinary use of the language.
+
+- Do not declare copy or move operations that the compiler would generate
+  correctly; a hand-written copy constructor suppresses moves.
+- Do not leave a loop-invariant computation in the loop condition, especially
+  one that is O(n) like `strlen`; compute it once before the loop.
+- Do not allocate a buffer to build something a standard container or string
+  could have built directly, and do not copy data twice to get it into place.
+- Order data members so the type does not pay for avoidable padding, where the
+  type is used in bulk.
+- Return by value and let moves and copy elision do their work.
+
+This rule is about waste that comes from how C++ is used, not about optimising
+algorithms. Spending time or space deliberately, to buy safety, clarity or
+testability, is not waste and is not covered by it.
 
 ## Rationale
 
-Adopted, with the Note that qualifies it treated as part of the rule rather
-than as a footnote: time spent on resource safety or on making something
-testable is not waste. That qualification is what keeps this rule from being
-used to argue against `Result<T>`, against `NonCopyable`, or against splitting
-Core from Graphite — all of which cost something and buy something named.
+The reason to write this down is not any single site — a competent reviewer
+catches the `strlen` in the loop condition — but the aggregate. Waste of this
+kind is uniformly distributed, individually below the threshold at which anyone
+profiles, and collectively enough to make a program feel slow with no hotspot to
+point at.
+
+The carve-out is what keeps the rule from being harmful. Read without it, "do
+not waste" becomes an argument against bounds checking, against RAII, against
+meaning-carrying types — against most of the rest of this section.
 
 ## Consequences
 
 ### Positive
 
-- Names the specific mistakes worth watching: repeated work in a loop
-  condition, copies that should be moves, and a copy constructor that silently
-  disables move semantics.
+- Avoidable costs are removed at the point of writing, where they are free to
+  avoid, rather than hunted later.
+- Not writing the copy operations keeps move semantics and gets the fast return
+  for nothing.
+- Thinking about cost tends to produce a better understanding of the problem, as
+  the quote above claims.
 
 ### Negative
 
-- As written it is unfalsifiable. It cannot reject a change without a
-  measurement, and this repository has no benchmark, so in practice it is an
-  attitude rather than a check. Cited without a number, it is an aesthetic
-  argument wearing a rule's clothes.
-- It invites premature optimisation in exactly the code where it is least
-  needed — the render path is bounded by vsync, not by our loops.
+- This rule is a standing invitation to premature optimisation, and the line
+  between "waste" and "not yet measured" is a matter of judgement.
+- Member reordering for padding fights with grouping members by meaning, which
+  is a readability cost paid for a space gain that is often irrelevant.
+- Reviewing for waste costs review time, on changes that are already correct.
 
 ### Neutral
 
-- The one mechanical enforcement it offers, about postfix `operator++`, has no
-  subject in this codebase: no user-defined increment operator exists.
+- Algorithmic and requirements-level efficiency is explicitly out of scope.
+- No profiling or benchmarking practice is established by this record.
 
-## Deviations to fix
+## Enforcement
 
-None recorded. Identifying "waste" honestly requires a measurement, and none has
-been taken; listing suspicions here would be guesswork dressed as an inventory.
-The known deliberate cost is the continuous redraw loop — the application
-renders at full rate when idle — which was accepted knowingly in the original
-design and is a candidate for its own record if it is ever revisited.
+Many more specific rules aim at the overall goals of simplicity and elimination
+of gratuitous waste. Mechanically:
+
+- Flag an unused return value from a user-defined non-defaulted postfix
+  `operator++` or `operator--`; prefer the prefix form. ("User-defined
+  non-defaulted" is intended to reduce noise.)
 
 ## Related
 
-- [0014](0014-p-8-do-not-leak-any-resources.md) — the previous rule.
-- [0016](0016-p-10-prefer-immutable-data-to-mutable-data.md) — the next rule.
+- [0014](0014-p-8-do-not-leak-any-resources.md) — the correctness half of
+  resource use.
+- [0019](0019-p-13-use-support-libraries-as-appropriate.md) — a good library is
+  usually faster than the hand-rolled version, as well as more correct.
+- [0016](0016-p-10-prefer-immutable-data-to-mutable-data.md) — immutability
+  sometimes enables better optimisation.

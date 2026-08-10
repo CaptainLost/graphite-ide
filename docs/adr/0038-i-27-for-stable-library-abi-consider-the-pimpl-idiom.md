@@ -1,29 +1,19 @@
 # 0038. I.27: For stable library ABI, consider the Pimpl idiom
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-No type in this repository uses Pimpl. The closest thing is
-`DirectoryWatcher`, which holds Win32 handles as `void*` members specifically to
-keep `Windows.h` out of its header — the same motive as Pimpl, achieved by
-type-erasing two members instead of all of them.
+Because private data members participate in class layout, and private member
+functions participate in overload resolution, changes to those implementation
+details require recompilation of all users of a class that uses them. A
+non-polymorphic interface class holding a pointer to implementation — Pimpl —
+can isolate the users of a class from changes in its implementation, at the cost
+of an indirection.
 
-## Decision
-
-Adopt I.27 as written, as advice rather than as practice: this project has no
-library ABI to stabilise. Transcribed in full:
-
-> **Reason.** Because private data members participate in class layout and
-> private member functions participate in overload resolution, changes to those
-> implementation details require recompilation of all users of a class that uses
-> them. A non-polymorphic interface class holding a pointer to implementation
-> (Pimpl) can isolate the users of a class from changes in its implementation at
-> the cost of an indirection.
-
-**Example.** interface (`widget.h`)
+The interface, in `widget.h`:
 
 ```cpp
 class widget {
@@ -32,15 +22,16 @@ class widget {
 public:
     void draw(); // public API that will be forwarded to the implementation
     widget(int); // defined in the implementation file
-    ~widget();   // defined in the implementation file, where impl is a complete type
-    widget(widget&&) noexcept; // defined in the implementation file
+    ~widget();   // defined in the implementation file, where impl is a complete
+                 // type
+    widget(widget&&); // defined in the implementation file
     widget(const widget&) = delete;
-    widget& operator=(widget&&) noexcept; // defined in the implementation file
+    widget& operator=(widget&&); // defined in the implementation file
     widget& operator=(const widget&) = delete;
 };
 ```
 
-implementation (`widget.cpp`)
+The implementation, in `widget.cpp`:
 
 ```cpp
 class widget::impl {
@@ -49,63 +40,82 @@ public:
     void draw(const widget& w) { /* ... */ }
     impl(int n) : n(n) {}
 };
+
 void widget::draw() { pimpl->draw(*this); }
 widget::widget(int n) : pimpl{std::make_unique<impl>(n)} {}
-widget::widget(widget&&) noexcept = default;
+widget::widget(widget&&) = default;
 widget::~widget() = default;
-widget& widget::operator=(widget&&) noexcept = default;
+widget& widget::operator=(widget&&) = default;
 ```
 
-**Notes.** See GOTW #100 and cppreference for the trade-offs and additional
-implementation details associated with this idiom.
+Note the shape this forces: the destructor and the move operations must be
+declared in the header and defined in the implementation file, where `impl` is a
+complete type. See GOTW #100 and cppreference for the trade-offs and further
+details.
 
-**Enforcement.** (Not enforceable) It is difficult to reliably identify where an
-interface forms part of an ABI.
+## Decision
+
+Where a class's ABI must stay stable across changes to its implementation, use
+the Pimpl idiom.
+
+- The header declares the public API and a single `std::unique_ptr<impl>`
+  member; no other data members, no private member functions.
+- The destructor and the move operations are declared in the header and defined
+  in the implementation file, where `impl` is complete.
+- Copy operations are deleted unless copying is genuinely wanted, in which case
+  they are written explicitly.
+- Do not apply this to types that are not ABI boundaries. The indirection, the
+  allocation and the forwarding are a real cost, paid on every use.
 
 ## Rationale
 
-Adopted as advice, not applied. The reason the rule gives — insulating users
-from recompilation — has no force in a single-executable build where everything
-recompiles together anyway, and the cost it names, an indirection plus a heap
-allocation per object, is real.
+The problem is that C++ leaks private implementation details into the class's
+layout and into its overload set, so "private" is a visibility rule, not an
+isolation one. Pimpl restores the isolation by making the layout a single
+pointer that never changes.
 
-The second motive for Pimpl, which the rule does not emphasise, does apply here:
-keeping a platform header out of a public header. `DirectoryWatcher` needs
-exactly that and solves it more cheaply, with two `void*` members rather than a
-full implementation object. That solution has its own cost, recorded under
-[0023](0023-i-4-make-interfaces-precisely-and-strongly-typed.md) — a cast at
-every use — and Pimpl is the alternative that would remove those casts at the
-price of an allocation.
-
-So this record's practical content is: **if a header ever needs to hide a
-platform type from its users, Pimpl is the sanctioned way, and it is preferred
-to type-erasing individual members through `void*` when there is more than one
-of them.**
+The narrow scoping is the important part of the decision. The idiom costs an
+allocation, an indirection, and a header that no longer allows inlining, which
+is a bad trade for the great majority of types — those compiled together with
+everything that uses them, where the only cost of a layout change is a rebuild.
 
 ## Consequences
 
 ### Positive
 
-- Names the sanctioned solution for header hygiene, so the next platform-backed
-  type does not have to reinvent the `void*` trick.
+- Implementation changes do not force recompilation of users, and do not break a
+  shipped ABI.
+- Header dependencies shrink: the implementation's includes stay out of the
+  header.
+- Private details are genuinely private, not merely inaccessible.
 
 ### Negative
 
-- Pimpl costs an allocation and an indirection per object, and forces
-  constructor, destructor and move operations out of line — five declarations of
-  boilerplate before the type does anything.
-- Applying it to `DirectoryWatcher` now would be churn for a type that already
-  works; the record does not ask for that.
+- An allocation per object, an indirection per call, and no inlining across the
+  boundary.
+- The special member functions must be declared and defined in specific places,
+  and getting that wrong produces incomplete-type errors that are confusing out
+  of context.
+- Every public function needs a forwarding stub, which is code that exists only
+  to be typed.
 
 ### Neutral
 
-- The ABI-stability motive is inert here for the same reason as in
+- This addresses recompilation and layout stability for one compiler; a
+  cross-compiler ABI is a different and stricter problem, and is
   [0037](0037-i-26-if-you-want-a-cross-compiler-abi-use-a-c-style-subset.md).
+- The idiom is a suggestion — "consider" — not a requirement for library types.
+
+## Enforcement
+
+(Not enforceable.) It is difficult to reliably identify where an interface forms
+part of an ABI.
 
 ## Related
 
 - [0037](0037-i-26-if-you-want-a-cross-compiler-abi-use-a-c-style-subset.md) —
-  the previous rule.
-- [0039](0039-i-30-encapsulate-rule-violations.md) — the next rule.
-- [0023](0023-i-4-make-interfaces-precisely-and-strongly-typed.md) — the `void*`
-  members Pimpl would replace.
+  the cross-compiler case.
+- [0036](0036-i-25-prefer-empty-abstract-classes-as-interfaces-to-class-hierarchies.md)
+  — the other way to keep representation out of an interface.
+- [0017](0017-p-11-encapsulate-messy-constructs-rather-than-spreading-through-the-code.md)
+  — the general principle of keeping implementation from leaking outward.

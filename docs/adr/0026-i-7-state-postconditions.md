@@ -1,34 +1,22 @@
 # 0026. I.7: State postconditions
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-The rule's strongest example — a mutex left locked because the postcondition was
-never stated — has a direct analogue here: `DirectoryWatcher::Start` must leave
-the watcher armed, and its destructor must leave the thread joined. Both are
-stated in comments today.
-
-## Decision
-
-Adopt I.7 as written. Transcribed in full:
-
-> **Reason.** To detect misunderstandings about the result and possibly catch
-> erroneous implementations.
-
-**Example, bad.** Consider:
+Stating postconditions detects misunderstandings about the result, and possibly
+catches erroneous implementations:
 
 ```cpp
 int area(int height, int width) { return height * width; }  // bad
 ```
 
-Here, we (incautiously) left out the precondition specification, so it is not
-explicit that `height` and `width` must be positive. We also left out the
-postcondition specification, so it is not obvious that the algorithm
-(`height * width`) is wrong for areas larger than the largest integer. Overflow
-can happen. Consider using:
+Here the precondition specification was incautiously left out, so it is not
+explicit that `height` and `width` must be positive; and the postcondition was
+left out too, so it is not obvious that `height * width` is wrong for areas
+larger than the largest integer. Overflow can happen. Consider:
 
 ```cpp
 int area(int height, int width)
@@ -39,7 +27,7 @@ int area(int height, int width)
 }
 ```
 
-**Example, bad.** Consider a famous security bug:
+A famous security bug has the same shape:
 
 ```cpp
 void f()    // problematic
@@ -50,8 +38,8 @@ void f()    // problematic
 }
 ```
 
-There was no postcondition stating that the buffer should be cleared and the
-optimizer eliminated the apparently redundant `memset()` call:
+There was no postcondition stating that the buffer should be cleared, and the
+optimiser eliminated the apparently redundant `memset()` call:
 
 ```cpp
 void f()    // better
@@ -63,20 +51,15 @@ void f()    // better
 }
 ```
 
-**Note.** Postconditions are often informally stated in a comment that states the
-purpose of a function; `Ensures()` can be used to make this more systematic,
-visible, and checkable.
+Postconditions are often informally stated in a comment describing the purpose
+of a function; `Ensures()` makes this more systematic, visible and checkable.
+They are especially important when they relate to something not directly
+reflected in a returned result, such as the state of a data structure.
 
-**Note.** Postconditions are especially important when they relate to something
-that is not directly reflected in a returned result, such as a state of a data
-structure used.
-
-**Example.** Consider a function that manipulates a `Record`, using a mutex to
-avoid race conditions:
+Consider a function that manipulates a `Record` using a mutex:
 
 ```cpp
 mutex m;
-
 void manipulate(Record& r)    // don't
 {
     m.lock();
@@ -84,22 +67,15 @@ void manipulate(Record& r)    // don't
 }
 ```
 
-Here, we "forgot" to state that the mutex should be released, so we don't know
-if the failure to ensure release of the mutex was a bug or a feature. Stating
-the postcondition would have made it clear:
+The postcondition that the mutex should be released was never stated, so it is
+unclear whether the missing unlock is a bug or a feature. Stating it makes the
+bug obvious — but only to a human reading comments:
 
 ```cpp
 void manipulate(Record& r)    // postcondition: m is unlocked upon exit
-{
-    m.lock();
-    // ... no m.unlock() ...
-}
 ```
 
-The bug is now obvious (but only to a human reading comments).
-
-Better still, use RAII to ensure that the postcondition ("the lock must be
-released") is enforced in code:
+Better still, use RAII, so the postcondition is enforced in code:
 
 ```cpp
 void manipulate(Record& r)    // best
@@ -109,53 +85,71 @@ void manipulate(Record& r)    // best
 }
 ```
 
-**Note.** Ideally, postconditions are stated in the interface/declaration so that
-users can easily see them. Only postconditions related to the users can be
-stated in the interface. Postconditions related only to internal state belong in
-the definition/implementation.
+Ideally, postconditions are stated in the interface, so that users can see them.
+Only postconditions related to users can be stated there; postconditions related
+only to internal state belong in the implementation.
 
-**Enforcement.** (Not enforceable) This is a philosophical guideline that is
-infeasible to check directly in the general case. Domain specific checkers (like
-lock-holding checkers) exist for many toolchains.
+## Decision
+
+State a function's postconditions — what is true of the result and of any state
+the function touched when it returns.
+
+- Prefer a postcondition enforced by construction. A `lock_guard` states and
+  guarantees "the mutex is unlocked on exit" in a way no comment can.
+- Where the postcondition cannot be built in, state it formally as an assertion.
+- State user-visible postconditions at the declaration; keep postconditions
+  about internal state in the definition.
+- State postconditions especially where the effect is not the return value: a
+  released resource, a modified argument, an updated data structure.
 
 ## Rationale
 
-Adopted as written. Its most useful move for this codebase is the escalation in
-the mutex example: stating the postcondition is better than leaving it implicit,
-but making it structurally impossible to violate is better still. That is the
-argument for RAII, and it is the reason `DirectoryWatcher`'s thread lifetime
-lives in a destructor rather than in a `Stop()` the caller must remember.
+A postcondition is what makes an implementation checkable against its intent. In
+the `area` example, nothing is wrong with the code as written until you know
+what it promised; the overflow only becomes a bug once the promise exists.
 
-The second Note is the one that applies most here: this codebase's important
-postconditions are about state, not return values — a watcher armed, a document
-registered, a `.slnx` left syntactically whole after a splice — and those are
-exactly the ones a return type cannot express.
+The `memset` case is the sharpest argument in the section: without a stated and
+checked postcondition, a correct-looking call was legally deleted by the
+optimiser, and the resulting security bug was invisible in the source.
 
 ## Consequences
 
 ### Positive
 
-- Gives a written reason to prefer a destructor over a documented cleanup call,
-  which is a recurring choice in `Fs` and `Git`.
+- Wrong implementations are caught against a stated intent rather than against a
+  reader's assumption.
+- Effects that are not the return value get documented, which is where informal
+  documentation is weakest.
+- Preferring RAII turns some postconditions into guarantees that cannot be
+  violated.
 
 ### Negative
 
-- Postconditions here live in comments, which the rule itself calls out as
-  visible "only to a human reading comments". Without `Ensures()` there is no
-  stronger form available.
-- The rule cannot be checked, so a postcondition that quietly stops holding
-  produces no signal at all.
+- A postcondition can be as wrong as the code, and a checked-but-wrong
+  postcondition is worse than none: it fails builds for the wrong reason.
+- `Ensures(res > 0)` in the `area` example diagnoses overflow after the
+  undefined behaviour has already happened; checking after the fact is
+  structurally weaker than not overflowing.
+- Writing postconditions on every function is a large amount of text for
+  functions whose result is obvious.
 
 ### Neutral
 
-- The overflow example has little purchase here; this codebase does little
-  arithmetic on user-supplied sizes.
+- Which facility expresses the assertion is
+  [0027](0027-i-8-prefer-ensures-for-expressing-postconditions.md).
+- Not directly checkable in the general case, though domain-specific checkers
+  such as lock-holding checkers exist for many toolchains.
+
+## Enforcement
+
+(Not enforceable.) This is a philosophical guideline that is infeasible to check
+directly in the general case. Domain-specific checkers, like lock-holding
+checkers, exist for many toolchains.
 
 ## Related
 
-- [0025](0025-i-6-prefer-expects-for-expressing-preconditions.md) — the previous
-  rule.
-- [0027](0027-i-8-prefer-ensures-for-expressing-postconditions.md) — the next
-  rule, on the form.
-- [0014](0014-p-8-do-not-leak-any-resources.md) — RAII, which the rule prefers to
-  a stated postcondition.
+- [0024](0024-i-5-state-preconditions-if-any.md) — the other half of the
+  contract.
+- [0027](0027-i-8-prefer-ensures-for-expressing-postconditions.md) — the form.
+- [0014](0014-p-8-do-not-leak-any-resources.md) — RAII as the enforcement
+  mechanism for release postconditions.
