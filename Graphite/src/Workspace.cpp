@@ -27,14 +27,14 @@ namespace graphite
         }
     }
 
-    core::Result<void> Workspace::Open(const std::filesystem::path& requested)
+    core::Result<void> Workspace::OpenFolder(const std::filesystem::path& folderPath)
     {
         // Normalise once, here, where a path enters the workspace. A command-line
         // argument or a settings file can carry forward slashes or a trailing separator,
         // and every path in the tree is derived from this one — so a single conversion
         // keeps the whole app on one spelling, including the system file browser and the
         // change notifications the watcher matches against tree nodes.
-        const std::filesystem::path root = core::fs::NormalizeDirectory(requested);
+        const std::filesystem::path root = core::fs::NormalizeDirectory(folderPath);
 
         core::FileTree candidate;
 
@@ -88,30 +88,30 @@ namespace graphite
         return core::Result<void>::Ok();
     }
 
-    core::Result<void> Workspace::OpenSolution(const std::filesystem::path& solution)
+    core::Result<void> Workspace::OpenSolution(const std::filesystem::path& solutionPath)
     {
         std::error_code code;
 
-        if (!std::filesystem::is_regular_file(solution, code))
+        if (!std::filesystem::is_regular_file(solutionPath, code))
         {
             return core::Error{core::ErrorCode::NotFound,
-                               std::format("no solution file at '{}'", solution.string())};
+                               std::format("no solution file at '{}'", solutionPath.string())};
         }
 
         // Refused before anything is touched. Recognising the mistake inside ReadSolution
         // would be too late: by then the workspace has been re-rooted, the file recorded
         // as a candidate, and the choice written to .graphite — where it would come back
         // as a candidate on every later open.
-        if (!core::sln::IsSolutionFile(solution))
+        if (!core::sln::IsSolutionFile(solutionPath))
         {
             return core::Error{core::ErrorCode::Unsupported,
-                               std::format("'{}' is not a solution file", solution.string())};
+                               std::format("'{}' is not a solution file", solutionPath.string())};
         }
 
-        std::filesystem::path chosen = std::filesystem::absolute(solution, code);
+        std::filesystem::path chosen = std::filesystem::absolute(solutionPath, code);
 
         if (code)
-            chosen = solution;
+            chosen = solutionPath;
 
         chosen = chosen.lexically_normal();
         chosen.make_preferred();
@@ -129,7 +129,7 @@ namespace graphite
 
         if (!inside)
         {
-            if (const auto opened = Open(chosen.parent_path()); !opened)
+            if (const auto opened = OpenFolder(chosen.parent_path()); !opened)
                 return opened;
         }
 
@@ -714,7 +714,7 @@ namespace graphite
         if (picked.Value().empty())
             return;
 
-        (void)workspace.Open(picked.Value());
+        (void)workspace.OpenFolder(picked.Value());
     }
 
     void OpenSolutionInteractively(Workspace& workspace)

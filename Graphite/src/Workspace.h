@@ -82,7 +82,7 @@ namespace graphite
         Workspace& operator=(Workspace&&) = delete;
 
         /// Opens a folder as the workspace root. On failure the previous root stays.
-        core::Result<void> Open(const std::filesystem::path& root);
+        core::Result<void> OpenFolder(const std::filesystem::path& folderPath);
 
         /// Opens a solution file directly.
         ///
@@ -91,7 +91,7 @@ namespace graphite
         /// solution's own directory becomes the workspace root — the file tree, the
         /// watcher and git detection all key off a root, so a solution cannot be opened
         /// without one.
-        core::Result<void> OpenSolution(const std::filesystem::path& solution);
+        core::Result<void> OpenSolution(const std::filesystem::path& solutionPath);
 
         /// Drops the open folder, its tree and the selection, and forgets the remembered
         /// folder so the next launch starts empty. Closing is an explicit decision, so it

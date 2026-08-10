@@ -79,7 +79,7 @@ namespace graphite
             startFolder = Settings::LoadLastFolder();
 
         if (!startFolder.empty())
-            (void)m_workspace.Open(startFolder);
+            (void)m_workspace.OpenFolder(startFolder);
     }
 
     void GraphiteLayer::OnUpdate(float deltaSeconds)
