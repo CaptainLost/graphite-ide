@@ -32,17 +32,11 @@ namespace core
     namespace
     {
         ImFont* g_monoFont = nullptr;
-        ImFont* g_monoItalicFont = nullptr;
     }
 
     ImFont* ImGuiRenderer::MonoFont() noexcept
     {
         return g_monoFont;
-    }
-
-    ImFont* ImGuiRenderer::MonoItalicFont() noexcept
-    {
-        return g_monoItalicFont;
     }
 
     ImGuiRenderer::~ImGuiRenderer()
@@ -131,9 +125,9 @@ namespace core
         iconConfig.Flags |= ImFontFlags_NoLoadError;
 
         // Merged onto the mono face immediately after it is added — ImGui's dynamic atlas
-        // merges onto whichever font was added last, so this has to happen before the
-        // italic face below, or the icons would land in the italic font and never be
-        // found by code that looks for them on the regular text face.
+        // merges onto whichever font was added last. There is only one face now, but the
+        // ordering still matters: any face added here later would take the merge with it
+        // and leave the text face without icons.
         if (executableDirectory)
         {
             const auto fontPath =
@@ -150,18 +144,6 @@ namespace core
         {
             CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
                       executableDirectory.GetError().message);
-        }
-
-        // Loaded last, after the icon merge above, so the icons stay attached to the
-        // regular mono face rather than this one. Nothing draws with this face yet — a
-        // later task uses it for preview-tab titles — so a load failure here only means
-        // MonoItalicFont() returns null, which callers already have to handle.
-        if (executableDirectory)
-        {
-            const auto italic = executableDirectory.Value() / "JetBrainsMono-Italic.ttf";
-
-            g_monoItalicFont = io.Fonts->AddFontFromFileTTF(fs::ToUtf8(italic).c_str(),
-                                                             kBaseFontSize, &textConfig);
         }
 
         Theme::ApplyDark();

@@ -3,7 +3,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Core/Fs/FileSystem.h"
-#include "Core/Gui/ImGuiRenderer.h"
+#include "Core/Gui/Icons.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -52,9 +52,17 @@ namespace graphite
                                              std::size_t index)
         {
             // ImGui shows what precedes ### and identifies by what follows, so the path -
-            // the only identity that cannot collide - stays out of sight.
-            return documents.DisplayTitle(index) + "###"
-                   + core::fs::ToUtf8(documents.At(index).path);
+            // the only identity that cannot collide - stays out of sight. That is also what
+            // makes the icon free to add: everything before ### is decoration, and no
+            // window id, dock position or imgui.ini entry moves because of it.
+            //
+            // The same IconForExtension the explorer rows use, so one file reads the same
+            // in the tree and on its tab. Drawn from the regular mono face, which is the
+            // only one carrying the MDI glyphs - nothing here may push another.
+            const std::filesystem::path& path = documents.At(index).path;
+
+            return std::string{core::IconForExtension(core::fs::ToUtf8(path.extension()))} + "  "
+                   + documents.DisplayTitle(index) + "###" + core::fs::ToUtf8(path);
         }
 
         /// The part of WindowName that is actually the window's identity as far as ImGui
@@ -748,13 +756,45 @@ namespace graphite
 
             const bool preview = item.preview;
 
-            // Only ever reaches this window's own title bar, drawn inside Begin() below
-            // when the window is floating. A docked preview's tab is drawn earlier in the
-            // frame, before this runs - see the comment on MonoItalicFont() - so a docked
-            // preview looks the same as a docked permanent tab. Nothing in this stage
-            // gives the preview state a second, tab-visible marker.
+            // A preview is marked by colour alone. Italic was tried and removed:
+            // it could only ever reach this window's own title bar, drawn inside Begin()
+            // below when the window is floating, because a docked window's tab is drawn
+            // earlier in the frame from inside DockSpace(), and ImGui draws every tab of a
+            // node in one pass with one global font - so no font can mark one docked tab
+            // and not its neighbours. It would also have collided with the icon now in
+            // every title: the MDI glyphs are merged onto the regular mono face alone, so a
+            // title drawn in any other face renders its icon as a missing glyph.
+            //
+            // Colour has neither problem: Begin() -> BeginDocked() calls
+            // StoreDockStyleForWindow, which snapshots the style colours in effect at that
+            // moment into window->DockStyle, and the tab bar swaps the global style to each
+            // window's own snapshot before drawing its tab. So colours pushed here, before
+            // Begin, land on this document's tab and no other.
+            //
+            // The label carries the marker, and the icon in it dims along with the name.
+            // That is a cost, not an oversight: a tab's text is one string drawn by one
+            // RenderTextEllipsis in one colour, and the icon is a glyph inside that same
+            // string, so no per-glyph colour is available without rewriting ImGui's tab
+            // rendering.
+            //
+            // Fading the tab's background instead was tried, and it keeps the icon bright
+            // but says the wrong thing: a preview is nearly always the active tab, and an
+            // active tab is by construction the brightest item on the bar - lighter fill
+            // plus an overline. Fading those only softens a highlight that still reads as
+            // "this one is on top" next to a darker inactive neighbour, and fading it far
+            // enough to lose that would hide which file is actually open.
+            //
+            // Position was tried here too, via ImGuiWindowClass::TabItemFlagsOverrideSet,
+            // and removed: ImGuiTabItemFlags_Trailing only orders a tab last, it does not
+            // pin it to the bar's right edge. TabBarLayout takes ImMin of the right-aligned
+            // offset and the packed one, so the trailing section sits straight after the
+            // central one whenever the bar has room to spare, and the flag changed nothing
+            // visible.
             if (preview)
-                ImGui::PushFont(core::ImGuiRenderer::MonoItalicFont(), 0.0f);
+            {
+                ImGui::PushStyleColor(ImGuiCol_Text,
+                                      ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            }
 
             // The dot next to the tab/title, and - for a docked tab - what stops ImGui
             // assuming the X means "close now": the window keeps being torn down from the
@@ -774,8 +814,10 @@ namespace graphite
             bool open = true;
             const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
 
+            // Popped the moment Begin returns, so the dimming reaches this document's tab
+            // and title bar without following it into the editor's own contents.
             if (preview)
-                ImGui::PopFont();
+                ImGui::PopStyleColor();
 
             if (visible)
             {
