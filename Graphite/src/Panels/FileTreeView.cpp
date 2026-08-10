@@ -528,7 +528,7 @@ namespace graphite
             m_forceOpenPath.clear();
         }
 
-        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
         if (node.expanded)
             flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
