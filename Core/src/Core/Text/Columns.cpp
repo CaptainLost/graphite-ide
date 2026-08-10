@@ -9,15 +9,11 @@
 
 namespace core::text
 {
-    namespace
+    std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth)
     {
-        /// Where a tab starting at `column` lands.
-        [[nodiscard]] std::size_t AfterTab(std::size_t column, std::size_t tabWidth)
-        {
-            const std::size_t width = tabWidth == 0 ? 1 : tabWidth;
+        const std::size_t width = tabWidth == 0 ? 1 : tabWidth;
 
-            return column + width - column % width;
-        }
+        return column + width - column % width;
     }
 
     std::size_t ColumnOfByte(std::string_view line, std::size_t byte, std::size_t tabWidth)
@@ -31,7 +27,7 @@ namespace core::text
         {
             if (line[at] == '\t')
             {
-                column = AfterTab(column, tabWidth);
+                column = ColumnAfterTab(column, tabWidth);
                 ++at;
                 continue;
             }
@@ -53,7 +49,7 @@ namespace core::text
             // A tab covers a run of columns and a character has no inside, so any column
             // before the next boundary resolves to the byte that starts this character.
             const std::size_t next =
-                line[at] == '\t' ? AfterTab(current, tabWidth) : current + 1;
+                line[at] == '\t' ? ColumnAfterTab(current, tabWidth) : current + 1;
 
             if (column < next)
                 return at;
@@ -82,7 +78,7 @@ namespace core::text
         {
             if (line[at] == '\t')
             {
-                const std::size_t next = AfterTab(column, tabWidth);
+                const std::size_t next = ColumnAfterTab(column, tabWidth);
 
                 expanded.append(next - column, ' ');
                 column = next;

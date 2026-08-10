@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Core/Text/Encoding.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextBuffer.h"
+#include "Core/Text/WrapLayout.h"
 
 #include <string>
 
@@ -153,4 +153,33 @@ TEST_CASE("A zero-row first line does not claim row zero")
     CHECK(rows.RowAt(0).line == 1);
     CHECK(rows.RowAt(0).subRow == 0);
     CHECK(rows.FirstRowOf(1) == 0);
+}
+
+TEST_CASE("A caret on a visible line maps correctly around a zero-row line")
+{
+    // CaretToVisual assumes every line occupies at least one row, and a caret *inside* a
+    // zero-row line has no defined answer until stage 5's folding decides what one means.
+    // The lines either side of it are not in doubt, though: they are ordinary visible
+    // lines whose rows have simply moved up. Pinned here so folding cannot quietly break
+    // the composition of a zero-row map with this pair while the undefined case is still
+    // being designed.
+    const TextBuffer buffer = BufferOf("aa\nbb\ncc");
+
+    RowMap rows;
+    rows.Rebuild(buffer, 80, 4);
+    rows.SetRowsOf(1, 0);
+
+    // Line 0 keeps row 0; line 2 (offsets 6 and 7) moves up to row 1.
+    const VisualPosition before = CaretToVisual(buffer, rows, 1, 4);
+
+    CHECK(before.row == 0);
+    CHECK(before.column == 1);
+
+    const VisualPosition after = CaretToVisual(buffer, rows, 7, 4);
+
+    CHECK(after.row == 1);
+    CHECK(after.column == 1);
+
+    CHECK(VisualToCaret(buffer, rows, before, 4) == 1);
+    CHECK(VisualToCaret(buffer, rows, after, 4) == 7);
 }

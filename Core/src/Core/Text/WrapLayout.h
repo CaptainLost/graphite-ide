@@ -21,6 +21,11 @@ namespace core::text
     /// this function knows nothing about gutters. Zero and one are accepted rather than
     /// rejected — a window dragged narrower than a cell is a layout state, not an error —
     /// and both are treated as one column so the walk always advances.
+    ///
+    /// Linear in the length of the line, and it has to stay that way: a minified file is
+    /// one line of megabytes, this runs on the UI thread with no way to cancel it, and
+    /// anything worse than linear here is a frame that never ends. WrapLayoutTests holds a
+    /// performance guard over exactly that.
     [[nodiscard]] std::vector<std::size_t> WrapColumns(std::string_view line,
                                                        std::size_t columnsPerRow,
                                                        std::size_t tabWidth);
@@ -42,6 +47,18 @@ namespace core::text
     /// the caret after End and the caret after Home on the next row are the same offset in
     /// the file but two different places on screen, and the cursor jumps depending on how
     /// it got there.
+    ///
+    /// **Assumes every line occupies at least one row**, which is true of every map
+    /// wrapping builds but not of every map RowMap can hold: RowMap::SetRowsOf can set a
+    /// line to zero rows, and RowMap::FirstRowOf then returns the *next visible line's*
+    /// first row. `FirstRowOf(line) + subRow` would walk into rows belonging to other
+    /// lines, so the caret would draw on the wrong line, the scroll would follow it there
+    /// and a vertical move would step from a row that is not the caret's.
+    ///
+    /// Nothing produces a zero-row line yet. Stage 5's folding will, and it must first
+    /// decide what a caret inside a hidden line means — moved to the fold's visible head,
+    /// or refused before it ever gets there — because this function cannot answer that
+    /// and must not be given the question.
     [[nodiscard]] VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,
                                                 std::size_t offset, std::size_t tabWidth);
 

@@ -24,19 +24,20 @@ namespace core::text
 
         m_rowsPerLine.assign(lines, 0);
         m_breaks.assign(lines, {});
-        m_tree.assign(lines + 1, 0);
-        m_totalRows = 0;
 
-        // Built by repeated SetCount rather than a linear-time Fenwick construction: this
-        // runs on width changes, not per frame, and one obviously correct path is worth
-        // more here than the constant factor.
+        // The counts are filled in directly and the tree built once from them, the same
+        // way the splices below do it. Doing this by repeated SetCount would be a
+        // logarithmic update per line for a tree that is thrown away and rebuilt whole
+        // anyway, and RebuildTree is already the trusted path.
         for (std::size_t line = 0; line < lines; ++line)
         {
             if (columnsPerRow != kNoWrap)
                 m_breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
 
-            SetCount(line, m_breaks[line].size() + 1);
+            m_rowsPerLine[line] = m_breaks[line].size() + 1;
         }
+
+        RebuildTree();
     }
 
     void RowMap::UpdateLine(const TextBuffer& buffer, std::size_t line)
