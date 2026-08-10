@@ -226,6 +226,21 @@ namespace graphite
         std::optional<std::filesystem::path> m_overwriteConfirmPath;
         bool m_openOverwriteConfirm = false;
 
+        /// The document the next Render should bring to the front, or nullopt. Set when
+        /// Open() reports Activated - a file the user picked in the tree that was already
+        /// open - because that path changes nothing ImGui can see: DocumentSet::Activate
+        /// moves m_active, and focus otherwise only ever flows the other way, from
+        /// ImGui::IsWindowFocused into the set. A file that was *not* already open needs
+        /// nothing here, since a window ImGui has just seen for the first time takes focus
+        /// by itself; that is why the gap only ever showed on reopening.
+        ///
+        /// A path rather than an index, as elsewhere here: the request is made outside
+        /// Render, and evicting a preview shifts every index after it. Taken by Render
+        /// before its loop and cleared in the same breath, so it lives exactly one frame -
+        /// a request naming a document that has since gone simply matches nothing and is
+        /// dropped, rather than lingering to steal focus whenever that path is next opened.
+        std::optional<std::filesystem::path> m_focusRequest;
+
         /// Documents whose own close button was pressed while they were still dirty,
         /// oldest first - the same queue-of-paths shape as m_reloadConflictQueue and for
         /// the same reason: a second tab's close button pressed before the first

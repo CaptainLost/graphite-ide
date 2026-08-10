@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace graphite
 {
@@ -82,6 +83,12 @@ namespace graphite
     void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
     {
         const core::text::OpenOutcome outcome = m_documents.Open(path, permanent);
+
+        // Already open: the set has activated it, but nothing about that reaches ImGui,
+        // which goes on showing whichever tab it last focused - so ask Render to bring
+        // this one forward. See m_focusRequest.
+        if (outcome == core::text::OpenOutcome::Activated)
+            m_focusRequest = path;
 
         if (outcome != core::text::OpenOutcome::NeedsConfirmation)
             return;
@@ -398,6 +405,13 @@ namespace graphite
         // CloseAll or HandleRootMoved, all of which run earlier in the same
         // OnUpdate/OnUIRender pass and never inside this function.
         const std::vector<std::string> startingIdentities = CurrentIdentities(m_documents);
+
+        // Taken and cleared in one step: whatever asked for this focus did so earlier in
+        // this same pass, so a request that matches no document this frame never will, and
+        // leaving it set would hand a stolen focus to whichever document next claims that
+        // path.
+        const std::optional<std::filesystem::path> focusRequest =
+            std::exchange(m_focusRequest, std::nullopt);
 
         float zoomDelta = 0.0f;
 
@@ -749,6 +763,13 @@ namespace graphite
             const bool modified = item.document && item.document->IsModified();
             const ImGuiWindowFlags windowFlags =
                 modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
+
+            // Picked in the tree while already open. Begin() is what turns this into a
+            // selected tab on a docked window, which is why it is set here rather than
+            // ImGui::SetWindowFocus being called from RequestOpen against a window that
+            // may not have been submitted yet this frame.
+            if (focusRequest == item.path)
+                ImGui::SetNextWindowFocus();
 
             bool open = true;
             const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
