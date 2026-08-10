@@ -5,6 +5,7 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
+#include "Core/Text/Encoding.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 #include "Core/Text/WrapLayout.h"
@@ -64,6 +65,25 @@ namespace graphite
             }
 
             return digits;
+        }
+
+        /// The byte `columns` cells further into `expanded` than `byte`.
+        ///
+        /// `expanded` has had its tabs turned into spaces already, so one column is one
+        /// character — but not one byte, which is why this walks characters rather than
+        /// adding. Walking on from where the previous row ended costs the width of one
+        /// row; asking ByteOfColumn for the same answer walks from byte 0 of the line
+        /// every time, which on a minified file — one line of several megabytes — is the
+        /// whole file again for each row of it drawn.
+        [[nodiscard]] std::size_t AdvanceColumns(std::string_view expanded, std::size_t byte,
+                                                 std::size_t columns)
+        {
+            std::size_t at = std::min(byte, expanded.size());
+
+            for (std::size_t taken = 0; taken < columns && at < expanded.size(); ++taken)
+                at = core::text::NextCharacter(expanded, at);
+
+            return at;
         }
 
         void DrawFailure(const core::text::OpenItem& item)
@@ -582,6 +602,23 @@ namespace graphite
             ImGuiListClipper clipper;
             clipper.Begin(static_cast<int>(item.rows.TotalRows()), lineHeight);
 
+            // A wrapped line owns a run of consecutive rows, and the clipper walks rows in
+            // ascending order, so the line's text and its tab expansion are fetched once
+            // for that whole run rather than once per row. Without this a minified file —
+            // one line of several megabytes — would be copied and expanded once for every
+            // row of itself on screen, which the clipper does nothing to bound.
+            std::string text;
+            std::string expanded;
+            std::size_t cachedLine = 0;
+            bool haveCachedLine = false;
+
+            // The byte the previous row ended at, and the row that follows it. Valid only
+            // for that one row: the clipper may jump, and a jump lands somewhere the carry
+            // says nothing about.
+            std::size_t carriedByte = 0;
+            std::size_t carriedRow = 0;
+            bool haveCarried = false;
+
             while (clipper.Step())
             {
                 for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
@@ -592,7 +629,17 @@ namespace graphite
                     const float y = origin.y + static_cast<float>(row) * lineHeight;
                     const float textX = textOriginX;
 
-                    const std::string text = buffer.LineText(line);
+                    if (!haveCachedLine || cachedLine != line)
+                    {
+                        text = buffer.LineText(line);
+                        // Tabs are advances, not glyphs; expanding them into spaces first
+                        // keeps a row one AddText call instead of one run per tab.
+                        expanded = core::text::ExpandTabs(text, core::text::DefaultTabWidth);
+                        cachedLine = line;
+                        haveCachedLine = true;
+                        haveCarried = false;
+                    }
+
                     const std::size_t lineStart = buffer.LineStart(line);
 
                     // The slice of the line this row shows, as a half-open column range.
@@ -602,6 +649,22 @@ namespace graphite
                     const std::vector<std::size_t>& breaks = item.rows.BreaksOf(line);
                     const std::size_t fromColumn = ref.subRow == 0 ? 0 : breaks[ref.subRow - 1];
                     const bool lastRowOfLine = ref.subRow >= breaks.size();
+
+                    // Sliced by converting columns to bytes rather than by indexing the
+                    // expanded string with columns: the expansion makes one column one
+                    // *cell*, not one byte, and a line holding anything outside ASCII
+                    // would be cut mid-character by the second reading.
+                    const std::size_t rowFromByte = haveCarried && carriedRow == rowIndex
+                                                        ? carriedByte
+                                                        : AdvanceColumns(expanded, 0, fromColumn);
+                    const std::size_t rowToByte =
+                        lastRowOfLine ? expanded.size()
+                                      : AdvanceColumns(expanded, rowFromByte,
+                                                       breaks[ref.subRow] - fromColumn);
+
+                    carriedByte = rowToByte;
+                    carriedRow = rowIndex + 1;
+                    haveCarried = true;
 
                     if (line == caretPosition.line)
                     {
@@ -667,35 +730,11 @@ namespace graphite
                                             selectionColour);
                     }
 
-                    if (!text.empty())
+                    if (rowFromByte < rowToByte)
                     {
-                        // Tabs are advances, not glyphs; expanding them into spaces first
-                        // keeps this a single AddText call instead of one run per tab.
-                        const std::string expanded =
-                            core::text::ExpandTabs(text, core::text::DefaultTabWidth);
-
-                        // Sliced through ByteOfColumn rather than by indexing the expanded
-                        // string with columns: the expansion makes one column one *cell*,
-                        // not one byte, and a line holding anything outside ASCII would be
-                        // cut mid-character by the second reading.
-                        //
-                        // The expanded text has no tabs left in it, so the tab width it is
-                        // measured with cannot matter; it is passed the same one anyway
-                        // rather than a second number that would have to be kept in step.
-                        const std::size_t fromByte = core::text::ByteOfColumn(
-                            expanded, fromColumn, core::text::DefaultTabWidth);
-                        const std::size_t toByte =
-                            lastRowOfLine ? expanded.size()
-                                          : core::text::ByteOfColumn(
-                                                expanded, breaks[ref.subRow],
-                                                core::text::DefaultTabWidth);
-
-                        if (fromByte < toByte)
-                        {
-                            draw->AddText(ImVec2(textX, y), textColour,
-                                          expanded.data() + fromByte,
-                                          expanded.data() + toByte);
-                        }
+                        draw->AddText(ImVec2(textX, y), textColour,
+                                      expanded.data() + rowFromByte,
+                                      expanded.data() + rowToByte);
                     }
 
                     // Drawn last and offset by the horizontal scroll, so the gutter stays

@@ -52,6 +52,65 @@ namespace core::text
         SetCount(line, m_breaks[line].size() + 1);
     }
 
+    void RowMap::InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count)
+    {
+        if (count == 0)
+            return;
+
+        const std::size_t where = std::min(at, m_rowsPerLine.size());
+        const auto offset = static_cast<std::ptrdiff_t>(where);
+
+        m_rowsPerLine.insert(m_rowsPerLine.begin() + offset, count, 0);
+        m_breaks.insert(m_breaks.begin() + offset, count, std::vector<std::size_t>{});
+
+        for (std::size_t line = where; line < where + count; ++line)
+        {
+            if (m_columnsPerRow != kNoWrap && line < buffer.LineCount())
+                m_breaks[line] = WrapColumns(buffer.LineText(line), m_columnsPerRow, m_tabWidth);
+
+            m_rowsPerLine[line] = m_breaks[line].size() + 1;
+        }
+
+        RebuildTree();
+    }
+
+    void RowMap::RemoveLines(std::size_t at, std::size_t count)
+    {
+        if (count == 0 || at >= m_rowsPerLine.size())
+            return;
+
+        const std::size_t end = std::min(at + count, m_rowsPerLine.size());
+        const auto first = static_cast<std::ptrdiff_t>(at);
+        const auto last = static_cast<std::ptrdiff_t>(end);
+
+        m_rowsPerLine.erase(m_rowsPerLine.begin() + first, m_rowsPerLine.begin() + last);
+        m_breaks.erase(m_breaks.begin() + first, m_breaks.begin() + last);
+
+        RebuildTree();
+    }
+
+    void RowMap::RebuildTree()
+    {
+        const std::size_t lines = m_rowsPerLine.size();
+
+        m_tree.assign(lines + 1, 0);
+        m_totalRows = 0;
+
+        // Linear Fenwick construction: each node takes its own line's count and then hands
+        // its subtotal to its parent, so the whole tree is one pass rather than one
+        // logarithmic update per line.
+        for (std::size_t index = 1; index <= lines; ++index)
+        {
+            m_tree[index] += m_rowsPerLine[index - 1];
+            m_totalRows += m_rowsPerLine[index - 1];
+
+            const std::size_t parent = index + (index & (~index + 1));
+
+            if (parent <= lines)
+                m_tree[parent] += m_tree[index];
+        }
+    }
+
     void RowMap::SetRowsOf(std::size_t line, std::size_t rows)
     {
         if (line < m_rowsPerLine.size())

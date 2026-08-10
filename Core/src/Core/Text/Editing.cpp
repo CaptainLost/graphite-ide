@@ -145,23 +145,26 @@ namespace core::text
 
             UpdateIndentDepths(item, firstLine, lastLine);
 
-            // The row map is indexed by line, so an edit that added or removed lines
-            // moves every entry after it and UpdateLine — which requires an unchanged
-            // line count — cannot repair that. Everything else only re-measures the lines
-            // the edit actually touched, which is what keeps typing into a wrapped line
-            // from walking the whole document.
-            if (item.rows.LineCount() != buffer.LineCount())
-            {
-                item.rows.Rebuild(buffer, item.rows.ColumnsPerRow(), DefaultTabWidth);
-            }
-            else
-            {
-                for (std::size_t line = firstLine; line <= lastLine && line < buffer.LineCount();
-                     ++line)
-                {
-                    item.rows.UpdateLine(buffer, line);
-                }
-            }
+            // The row map is indexed by line, so lines added or removed at the edit site
+            // shift every entry below them — the same problem UpdateIndentDepths solves
+            // just above, spliced the same way and at the same point, so the two caches
+            // cannot disagree about which line an entry belongs to. Nothing here walks the
+            // whole document: the splice measures only the lines that are new, and the
+            // loop after it re-measures only the lines the edit actually touched.
+            //
+            // The map still holds the pre-edit line count at this point — nothing has
+            // touched it yet — so it is what says how many lines came or went.
+            const std::size_t previousLines = item.rows.LineCount();
+            const std::size_t currentLines = buffer.LineCount();
+            const std::size_t at = std::min(firstLine, previousLines);
+
+            if (currentLines > previousLines)
+                item.rows.InsertLines(buffer, at, currentLines - previousLines);
+            else if (currentLines < previousLines)
+                item.rows.RemoveLines(at, previousLines - currentLines);
+
+            for (std::size_t line = firstLine; line <= lastLine && line < currentLines; ++line)
+                item.rows.UpdateLine(buffer, line);
         }
 
         /// The inclusive line range a block indent should touch.

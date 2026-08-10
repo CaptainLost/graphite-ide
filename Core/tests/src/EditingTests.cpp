@@ -3,12 +3,14 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Indent.h"
+#include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
 #include "TempDirectory.h"
 
 #include <doctest/doctest.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -30,7 +32,12 @@ namespace
         return item;
     }
 
-    /// Both caches recomputed from scratch, for comparison against the maintained ones.
+    /// Every cache recomputed from scratch, for comparison against the maintained ones.
+    ///
+    /// The row map is compared at the width it is already wrapping to, not at kNoWrap: a
+    /// map maintained through an edit must come out the same as one built from the
+    /// finished document at that same width, and comparing at any other width would only
+    /// prove the two were built differently.
     void CheckDerivedCachesAreCorrect(const core::text::OpenItem& item)
     {
         const core::text::TextBuffer& buffer = item.document->Buffer();
@@ -39,6 +46,21 @@ namespace
               == core::text::WidestColumn(buffer, core::text::DefaultTabWidth));
         CHECK(item.indentDepths
               == core::text::IndentDepths(buffer, core::text::DefaultTabWidth));
+
+        core::text::RowMap fresh;
+        fresh.Rebuild(buffer, item.rows.ColumnsPerRow(), core::text::DefaultTabWidth);
+
+        REQUIRE(item.rows.LineCount() == buffer.LineCount());
+        CHECK(item.rows.LineCount() == fresh.LineCount());
+        CHECK(item.rows.TotalRows() == fresh.TotalRows());
+
+        for (std::size_t line = 0; line < buffer.LineCount(); ++line)
+        {
+            CAPTURE(line);
+            CHECK(item.rows.RowsOf(line) == fresh.RowsOf(line));
+            CHECK(item.rows.FirstRowOf(line) == fresh.FirstRowOf(line));
+            CHECK(item.rows.BreaksOf(line) == fresh.BreaksOf(line));
+        }
     }
 }
 
@@ -532,5 +554,109 @@ TEST_CASE("Outdent on a block below the widest line takes the incremental path")
     CHECK(core::text::Outdent(item, {}));
     CHECK(item.document->Buffer().Text() == "xxxxxxxxxxxxxxxx\none\ntwo");
     CHECK(item.widestLine == 0);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+// --- The row map under editing --------------------------------------------------------
+//
+// The cases above all leave the map unwrapped, where a line is one row whatever happens to
+// it and a misplaced splice cannot show. These wrap first, exactly as the widget does once
+// it knows the width, so an entry landing against the wrong line changes a row count and
+// is caught. Each edits strictly below the widest line, so UpdateDerived takes its
+// incremental branch rather than falling back to a full RefreshDerived.
+
+namespace
+{
+    /// An item wrapping to `columnsPerRow`, which is the state the widget leaves behind on
+    /// the first frame it draws a document with Word Wrap on.
+    core::text::OpenItem WrappedItemWith(std::string content, std::size_t columnsPerRow)
+    {
+        core::text::OpenItem item = ItemWith(std::move(content));
+
+        item.rows.Rebuild(item.document->Buffer(), columnsPerRow, core::text::DefaultTabWidth);
+
+        return item;
+    }
+}
+
+namespace
+{
+    // Line 0 is the widest and is never edited, so widestLine (0) < firstLine holds and
+    // the incremental branch runs. At ten columns the three lines take three, two and one
+    // row — all different on purpose. Row counts that happened to agree would let a splice
+    // landing at the wrong line pass unnoticed, which is exactly what an earlier draft of
+    // these cases did.
+    const std::string kWrapFixture = "aaaaaaaaaaaaaaaaaaaaaaaaa\nbbbb cccc dddd eeee\nff";
+}
+
+TEST_CASE("InsertNewline below the widest line splices the row map into line")
+{
+    core::text::OpenItem item = WrappedItemWith(kWrapFixture, 10);
+    REQUIRE(item.widestLine == 0);
+    REQUIRE(item.rows.LineCount() == 3);
+    REQUIRE(item.rows.RowsOf(0) == 3);
+    REQUIRE(item.rows.RowsOf(1) == 2);
+    REQUIRE(item.rows.RowsOf(2) == 1);
+
+    const std::size_t rowsBefore = item.rows.TotalRows();
+
+    item.caret.offset = 47; // between the two f's on the last line
+    item.caret.anchor = 47;
+    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 2);
+
+    CHECK(core::text::InsertNewline(item, {}));
+    CHECK(item.document->Buffer().Text()
+          == "aaaaaaaaaaaaaaaaaaaaaaaaa\nbbbb cccc dddd eeee\nf\nf");
+
+    // The width survives the edit: a rebuild at kNoWrap here would unwrap the document
+    // under the user, and nothing else would notice.
+    CHECK(item.rows.ColumnsPerRow() == 10);
+    CHECK(item.rows.LineCount() == item.document->Buffer().LineCount());
+    CHECK(item.rows.TotalRows() == rowsBefore + 1);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("Deleting a line break below the widest line splices the row map out again")
+{
+    core::text::OpenItem item = WrappedItemWith(kWrapFixture, 10);
+    REQUIRE(item.widestLine == 0);
+    REQUIRE(item.rows.LineCount() == 3);
+
+    // At the very start of the last line, so Backspace joins it to the one above. The
+    // merged line is 21 columns and takes three rows where its two halves took three
+    // between them, so the total alone would not prove the splice landed correctly — the
+    // per-line comparison in CheckDerivedCachesAreCorrect is what does.
+    item.caret.offset = 46;
+    item.caret.anchor = 46;
+    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 2);
+
+    CHECK(core::text::DeleteBackward(item));
+    CHECK(item.document->Buffer().Text()
+          == "aaaaaaaaaaaaaaaaaaaaaaaaa\nbbbb cccc dddd eeeeff");
+    CHECK(item.rows.ColumnsPerRow() == 10);
+    CHECK(item.rows.LineCount() == 2);
+    CHECK(item.rows.RowsOf(0) == 3);
+    CHECK(item.rows.RowsOf(1) == 3);
+    CheckDerivedCachesAreCorrect(item);
+}
+
+TEST_CASE("Undo keeps the map wrapping to the width it was built for")
+{
+    // The regression test for the first defect found in this task: RefreshDerived rebuilt
+    // at kNoWrap, so an undo silently unwrapped a document that was on screen — and since
+    // the widget only rebuilds when the *width* changes, it stayed unwrapped until the
+    // window was resized.
+    core::text::OpenItem item = WrappedItemWith(kWrapFixture, 10);
+    const std::size_t rowsBefore = item.rows.TotalRows();
+
+    item.caret.offset = 48; // the end of the document
+    item.caret.anchor = 48;
+    CHECK(core::text::InsertText(item, " gggg hhhh"));
+    CHECK(item.rows.TotalRows() == rowsBefore + 1);
+
+    CHECK(core::text::Undo(item));
+    CHECK(item.document->Buffer().Text() == kWrapFixture);
+    CHECK(item.rows.ColumnsPerRow() == 10);
+    CHECK(item.rows.TotalRows() == rowsBefore);
     CheckDerivedCachesAreCorrect(item);
 }

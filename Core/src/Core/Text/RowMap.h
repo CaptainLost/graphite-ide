@@ -46,8 +46,22 @@ namespace core::text
         void Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow, std::size_t tabWidth);
 
         /// Re-measures one line after an edit to it. The line count must not have changed;
-        /// an edit that adds or removes lines needs a Rebuild.
+        /// an edit that adds or removes lines splices with InsertLines/RemoveLines below.
         void UpdateLine(const TextBuffer& buffer, std::size_t line);
+
+        /// Splices `count` new lines in at `at` and measures them, after an edit grew the
+        /// document.
+        ///
+        /// The alternative is a full Rebuild, which walks every line of the document and
+        /// allocates a std::string for each — a million allocations per Enter in a large
+        /// file, on the path that exists precisely to avoid full walks. This re-measures
+        /// only the lines that are new; the Fenwick tree is rebuilt from the counts, which
+        /// is one pass of integer arithmetic over a vector and touches no text at all.
+        void InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count);
+
+        /// Drops `count` lines from `at`, after an edit shrank the document. Nothing is
+        /// measured: the surviving lines keep the counts they already had.
+        void RemoveLines(std::size_t at, std::size_t count);
 
         /// Forces a line's row count directly, bypassing measurement. The hook stage 5
         /// folds with; nothing in wrapping calls it.
@@ -81,6 +95,10 @@ namespace core::text
 
     private:
         void SetCount(std::size_t line, std::size_t rows);
+        /// Rebuilds the Fenwick tree and the total from m_rowsPerLine, which the splices
+        /// above shift wholesale — every node past the splice point covers a different set
+        /// of lines afterwards, so there is nothing to patch incrementally.
+        void RebuildTree();
         [[nodiscard]] std::size_t PrefixSum(std::size_t line) const;
 
         std::vector<std::size_t> m_rowsPerLine;
