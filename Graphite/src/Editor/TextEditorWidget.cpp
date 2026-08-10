@@ -5,7 +5,9 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
+#include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
+#include "Core/Text/WrapLayout.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -15,6 +17,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace graphite
 {
@@ -76,7 +79,7 @@ namespace graphite
     }
 
     EditorFrameResult DrawEditor(core::text::OpenItem& item, float fontSize,
-                                 core::text::IndentStyle indentStyle)
+                                 core::text::IndentStyle indentStyle, bool wordWrap)
     {
         EditorFrameResult result;
 
@@ -132,12 +135,6 @@ namespace graphite
         // already looked at when they arrive.
         const float gutterWidth = breakpointColumnWidth + numberColumnWidth + foldColumnWidth;
 
-        // Computed once when the document loaded (OpenItem::widestColumn), not walked
-        // here every frame — that would cost a std::string allocation per line, exactly
-        // the per-frame cost the clipper below exists to avoid.
-        const float contentWidth =
-            gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
-
         // NoNavInputs matters as much as the scrollbar flag: with ImGui's keyboard
         // navigation on and no navigable item inside this child, the arrow keys, Page
         // Up/Down and Home/End would all additionally be consumed by ImGui's own
@@ -154,13 +151,45 @@ namespace graphite
             const float scrollX = ImGui::GetScrollX();
             const ImVec2 origin = ImGui::GetCursorScreenPos();
 
+            // What is left for text once the gutter has taken its share, in whole
+            // columns rather than pixels: dragging the window frame crosses a cell
+            // boundary only now and then, so the rebuild below does not run on every
+            // frame of a drag. Never zero — a window narrower than the gutter is a layout
+            // state, not an error, and WrapColumns would stand still on a width of zero.
+            const float available = ImGui::GetContentRegionAvail().x;
+            const std::size_t columnsPerRow =
+                wordWrap ? static_cast<std::size_t>(
+                               std::max(1.0f, (available - gutterWidth) / cellWidth))
+                         : core::text::RowMap::kNoWrap;
+
+            // The line-count test is not redundant with the width test: Editing keeps the
+            // map current through every edit, but a document could reach here without ever
+            // having passed through RefreshDerived, and a map with more lines than the
+            // buffer would send RowAt off the end of it.
+            if (columnsPerRow != item.wrappedTo
+                || item.rows.LineCount() != buffer.LineCount())
+            {
+                item.rows.Rebuild(buffer, columnsPerRow, core::text::DefaultTabWidth);
+                item.wrappedTo = columnsPerRow;
+            }
+
+            // Computed once when the document loaded (OpenItem::widestColumn), not walked
+            // here every frame — that would cost a std::string allocation per line,
+            // exactly the per-frame cost the clipper below exists to avoid.
+            //
+            // With wrapping on nothing is ever drawn past the right edge, so the window's
+            // own width is the extent and widestColumn says nothing about it.
+            const float contentWidth =
+                wordWrap ? available
+                         : gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
+
             // Pre-edit: this frame's mouse and keyboard handling, further down, can
             // still grow or shrink the document before the frame is over. Kept under
             // this name only for the interactive rectangle below, which is allowed to
             // hit-test against a size one frame stale — the reservation the scrollbars
             // and the clipper actually read is computed fresh, after that handling runs,
             // immediately before the clipper starts (see currentDocumentHeight below).
-            const float documentHeight = static_cast<float>(buffer.LineCount()) * lineHeight;
+            const float documentHeight = static_cast<float>(item.rows.TotalRows()) * lineHeight;
 
             // The one text origin in the file: everything below that positions against
             // the text — clicks, caret, selection, guides — measures from this rather
@@ -447,7 +476,16 @@ namespace graphite
             if (item.caret.offset != caretAtFrameStart)
             {
                 const core::text::Position where = buffer.ToPosition(item.caret.offset);
-                const float caretY = static_cast<float>(where.line) * lineHeight;
+                // The row the caret is on, which is its line only while nothing wraps.
+                // Scrolling to the line number in a wrapped document would land wherever
+                // that many rows happen to reach, which is short of the caret by however
+                // much the text above it wrapped.
+                const float caretY =
+                    static_cast<float>(core::text::CaretToVisual(buffer, item.rows,
+                                                                 item.caret.offset,
+                                                                 core::text::DefaultTabWidth)
+                                           .row)
+                    * lineHeight;
 
                 if (caretY < ImGui::GetScrollY())
                     ImGui::SetScrollY(caretY);
@@ -461,17 +499,24 @@ namespace graphite
                 // leftmost text a reader can actually see sits at scrollX + gutterWidth,
                 // and bringing the caret to the left edge means scrolling to
                 // caretX - gutterWidth, not to caretX.
-                const float caretX =
-                    gutterWidth
-                    + static_cast<float>(core::text::ColumnOfByte(
-                          buffer.LineText(where.line), where.column,
-                          core::text::DefaultTabWidth))
-                          * cellWidth;
+                //
+                // Skipped entirely while wrapping: there is no horizontal range to scroll
+                // through, and chasing the caret across one that is zero wide would fight
+                // the vertical scroll above on every frame the caret moves.
+                if (!wordWrap)
+                {
+                    const float caretX =
+                        gutterWidth
+                        + static_cast<float>(core::text::ColumnOfByte(
+                              buffer.LineText(where.line), where.column,
+                              core::text::DefaultTabWidth))
+                              * cellWidth;
 
-                if (caretX - gutterWidth < ImGui::GetScrollX())
-                    ImGui::SetScrollX(caretX - gutterWidth);
-                else if (caretX + cellWidth > ImGui::GetScrollX() + ImGui::GetWindowWidth())
-                    ImGui::SetScrollX(caretX + cellWidth - ImGui::GetWindowWidth());
+                    if (caretX - gutterWidth < ImGui::GetScrollX())
+                        ImGui::SetScrollX(caretX - gutterWidth);
+                    else if (caretX + cellWidth > ImGui::GetScrollX() + ImGui::GetWindowWidth())
+                        ImGui::SetScrollX(caretX + cellWidth - ImGui::GetWindowWidth());
+                }
             }
 
             // Whatever moved it — a key above, a click or a drag earlier in this
@@ -481,6 +526,11 @@ namespace graphite
 
             const core::text::Position caretPosition =
                 buffer.ToPosition(item.caret.offset);
+            // Where the caret is on screen, which is (line, column) only while nothing
+            // wraps. Read once here rather than per row: the loop below only compares
+            // against it, and CaretToVisual walks the caret line's break list.
+            const core::text::VisualPosition caretVisual = core::text::CaretToVisual(
+                buffer, item.rows, item.caret.offset, core::text::DefaultTabWidth);
             const auto [selectionFrom, selectionTo] = core::text::SelectionRange(item.caret);
 
             const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
@@ -516,26 +566,42 @@ namespace graphite
             // ContentSize — see the interactive rectangle above, which deliberately
             // avoids doing the same — and SetCursorScreenPos puts the cursor straight
             // back at origin, which is where the clipper's rows below assume it starts.
-            const float currentDocumentHeight = static_cast<float>(buffer.LineCount()) * lineHeight;
+            //
+            // Rows, not lines: a wrapped line reserves as many of them as it occupies,
+            // and with wrapping off the map gives one row per line, so this is the same
+            // number it always was.
+            const float currentDocumentHeight =
+                static_cast<float>(item.rows.TotalRows()) * lineHeight;
             const float currentContentWidth =
-                gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
+                wordWrap ? available
+                         : gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
 
             ImGui::Dummy(ImVec2(currentContentWidth, currentDocumentHeight));
             ImGui::SetCursorScreenPos(origin);
 
             ImGuiListClipper clipper;
-            clipper.Begin(static_cast<int>(buffer.LineCount()), lineHeight);
+            clipper.Begin(static_cast<int>(item.rows.TotalRows()), lineHeight);
 
             while (clipper.Step())
             {
                 for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
                 {
-                    const std::size_t line = static_cast<std::size_t>(row);
+                    const std::size_t rowIndex = static_cast<std::size_t>(row);
+                    const core::text::RowRef ref = item.rows.RowAt(rowIndex);
+                    const std::size_t line = ref.line;
                     const float y = origin.y + static_cast<float>(row) * lineHeight;
                     const float textX = textOriginX;
 
                     const std::string text = buffer.LineText(line);
                     const std::size_t lineStart = buffer.LineStart(line);
+
+                    // The slice of the line this row shows, as a half-open column range.
+                    // A break column is where the *next* row starts, so it is this row's
+                    // end and the following row's beginning. With wrapping off there are
+                    // no breaks and every row is the whole line.
+                    const std::vector<std::size_t>& breaks = item.rows.BreaksOf(line);
+                    const std::size_t fromColumn = ref.subRow == 0 ? 0 : breaks[ref.subRow - 1];
+                    const bool lastRowOfLine = ref.subRow >= breaks.size();
 
                     if (line == caretPosition.line)
                     {
@@ -557,10 +623,20 @@ namespace graphite
                     const std::size_t depth =
                         line < item.indentDepths.size() ? item.indentDepths[line] : 0;
 
+
+                    // Positioned relative to this row's first column, not to the line's:
+                    // a continuation row starts partway into the line, and a guide drawn
+                    // from the line's own column 0 would sit that far to the right of the
+                    // character it belongs under. A guide whose column is behind this
+                    // row's start belongs to a row above and is not drawn again here.
                     for (std::size_t column = 0; column < depth;
                          column += core::text::DefaultTabWidth)
                     {
-                        const float guideX = textX + static_cast<float>(column) * cellWidth;
+                        if (column < fromColumn)
+                            continue;
+
+                        const float guideX =
+                            textX + static_cast<float>(column - fromColumn) * cellWidth;
 
                         draw->AddLine(ImVec2(guideX, y), ImVec2(guideX, y + lineHeight),
                                       guideColour, 1.0f);
@@ -597,7 +673,29 @@ namespace graphite
                         // keeps this a single AddText call instead of one run per tab.
                         const std::string expanded =
                             core::text::ExpandTabs(text, core::text::DefaultTabWidth);
-                        draw->AddText(ImVec2(textX, y), textColour, expanded.c_str());
+
+                        // Sliced through ByteOfColumn rather than by indexing the expanded
+                        // string with columns: the expansion makes one column one *cell*,
+                        // not one byte, and a line holding anything outside ASCII would be
+                        // cut mid-character by the second reading.
+                        //
+                        // The expanded text has no tabs left in it, so the tab width it is
+                        // measured with cannot matter; it is passed the same one anyway
+                        // rather than a second number that would have to be kept in step.
+                        const std::size_t fromByte = core::text::ByteOfColumn(
+                            expanded, fromColumn, core::text::DefaultTabWidth);
+                        const std::size_t toByte =
+                            lastRowOfLine ? expanded.size()
+                                          : core::text::ByteOfColumn(
+                                                expanded, breaks[ref.subRow],
+                                                core::text::DefaultTabWidth);
+
+                        if (fromByte < toByte)
+                        {
+                            draw->AddText(ImVec2(textX, y), textColour,
+                                          expanded.data() + fromByte,
+                                          expanded.data() + toByte);
+                        }
                     }
 
                     // Drawn last and offset by the horizontal scroll, so the gutter stays
@@ -611,28 +709,40 @@ namespace graphite
                     // to a whole pixel: the column this is aligned inside was itself sized
                     // as digits * cellWidth, and two different measurements of one width
                     // are exactly how the caret drifted off the text in the first place.
-                    const std::string number = std::to_string(line + 1);
-                    const float numberX = numberColumnX1 - kGutterPaddingX
-                        - static_cast<float>(number.size()) * cellWidth;
-
+                    //
+                    // The fill is drawn on every row — it is what stops scrolled content
+                    // showing through the gutter — but the number itself only on a line's
+                    // first row. A continuation row is the same line of the file, and
+                    // repeating its number would say the file has more lines than it does.
                     draw->AddRectFilled(ImVec2(origin.x + scrollX, y),
                                         ImVec2(origin.x + scrollX + gutterWidth, y + lineHeight),
                                         ImGui::GetColorU32(ImGuiCol_WindowBg));
-                    draw->AddText(ImVec2(numberX, y),
-                                  line == caretPosition.line ? textColour : gutterColour,
-                                  number.c_str());
+
+                    if (ref.subRow == 0)
+                    {
+                        const std::string number = std::to_string(line + 1);
+                        const float numberX = numberColumnX1 - kGutterPaddingX
+                            - static_cast<float>(number.size()) * cellWidth;
+
+                        draw->AddText(ImVec2(numberX, y),
+                                      line == caretPosition.line ? textColour : gutterColour,
+                                      number.c_str());
+                    }
 
                     // Only the focused editor blinks a caret: an unfocused pane still
                     // shows its selection above (a user glancing at a split needs to see
                     // what is selected there), but drawing a second blinking caret when
                     // only one editor receives the keyboard is what this guards against.
-                    if (focused && line == caretPosition.line)
+                    //
+                    // Tested against the caret's *row*, not its line: a wrapped line
+                    // occupies several rows and the caret is on exactly one of them, so
+                    // comparing lines would draw it once per row. caretVisual.column is
+                    // already measured from this row's left edge, which is what makes this
+                    // the same arithmetic whether the line wrapped or not.
+                    if (focused && rowIndex == caretVisual.row)
                     {
                         const float caretX =
-                            textX
-                            + static_cast<float>(core::text::ColumnOfByte(
-                                  text, caretPosition.column, core::text::DefaultTabWidth))
-                                  * cellWidth;
+                            textX + static_cast<float>(caretVisual.column) * cellWidth;
 
                         // Measured from the last movement rather than from zero, which is
                         // what keeps the caret from being invisible under a held arrow

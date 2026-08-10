@@ -49,11 +49,15 @@ namespace graphite
         /// `indentStyle` governs what Tab, Enter's auto-indent and the newline splitter
         /// insert, in whichever document has keyboard focus.
         ///
+        /// `wordWrap` is the one editor-wide wrap setting, passed through to every visible
+        /// document rather than held here: like the font size and the indent style, it
+        /// belongs to whoever persists it.
+        ///
         /// Returns the total Ctrl+wheel zoom delta applied across every visible document
         /// this frame - only one can be hovered at a time, so in practice at most one
         /// contributes, but summing costs nothing and needs no assumption about that.
         float Render(float fontSize, core::text::IndentStyle indentStyle,
-                    unsigned int fallbackDockNode);
+                    unsigned int fallbackDockNode, bool wordWrap);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
         void RequestOpen(const std::filesystem::path& path, bool permanent);

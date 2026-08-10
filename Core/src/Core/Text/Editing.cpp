@@ -6,6 +6,7 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Indent.h"
+#include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
 namespace core::text
@@ -143,6 +144,24 @@ namespace core::text
             }
 
             UpdateIndentDepths(item, firstLine, lastLine);
+
+            // The row map is indexed by line, so an edit that added or removed lines
+            // moves every entry after it and UpdateLine — which requires an unchanged
+            // line count — cannot repair that. Everything else only re-measures the lines
+            // the edit actually touched, which is what keeps typing into a wrapped line
+            // from walking the whole document.
+            if (item.rows.LineCount() != buffer.LineCount())
+            {
+                item.rows.Rebuild(buffer, item.rows.ColumnsPerRow(), DefaultTabWidth);
+            }
+            else
+            {
+                for (std::size_t line = firstLine; line <= lastLine && line < buffer.LineCount();
+                     ++line)
+                {
+                    item.rows.UpdateLine(buffer, line);
+                }
+            }
         }
 
         /// The inclusive line range a block indent should touch.
@@ -221,6 +240,14 @@ namespace core::text
                 item.widestLine = line;
             }
         }
+
+        // At the width already in force, not at kNoWrap: this runs after an undo and after
+        // any edit that changed the line count, both of which happen while the document is
+        // on screen and wrapping to a width only the widget knows. Rebuilding unwrapped
+        // here would unwrap the document under the user until the next time the window was
+        // resized. A map that has never been built reports kNoWrap, which is exactly the
+        // unwrapped editor a freshly loaded document should start as.
+        item.rows.Rebuild(buffer, item.rows.ColumnsPerRow(), DefaultTabWidth);
     }
 
     bool InsertText(OpenItem& item, std::string_view utf8)

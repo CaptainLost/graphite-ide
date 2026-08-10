@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Text/Caret.h"
+#include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
 #include <cstddef>
@@ -55,6 +56,19 @@ namespace core::text
         /// document whose longest line was deleted would keep offering a horizontal
         /// scroll range with nothing in it.
         std::size_t widestLine = 0;
+
+        /// Screen rows to lines. Rebuilt by RefreshDerived, kept current line by line by
+        /// UpdateDerived, and rebuilt again by the widget when the width it wraps to
+        /// changes — the item cannot know that width, only the widget can.
+        RowMap rows;
+
+        /// The width `rows` was last rebuilt for by the widget, in columns, so the rebuild
+        /// is skipped on the frames the width did not change — which is nearly all of
+        /// them. Zero rather than RowMap::kNoWrap: zero is not a width the widget can ask
+        /// for, so the first frame of a newly opened document always rebuilds and never
+        /// mistakes the unwrapped map RefreshDerived left behind for one already built to
+        /// the window.
+        std::size_t wrappedTo = 0;
 
         /// One indentation depth per line, in columns (see Indent.h), computed once when
         /// the document is loaded rather than per frame, the same way and for the same

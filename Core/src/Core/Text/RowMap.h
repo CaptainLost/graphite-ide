@@ -56,6 +56,14 @@ namespace core::text
         [[nodiscard]] std::size_t TotalRows() const noexcept { return m_totalRows; }
         [[nodiscard]] std::size_t LineCount() const noexcept { return m_rowsPerLine.size(); }
 
+        /// The width the map was last built for, kNoWrap when it is not wrapping.
+        ///
+        /// Exists so a rebuild forced by something other than the width — an edit that
+        /// added or removed lines, an undo — can be made at the width already in force.
+        /// Only the widget knows that width, and it is not on screen when the edit
+        /// happens, so without this the map would silently fall back to unwrapped.
+        [[nodiscard]] std::size_t ColumnsPerRow() const noexcept { return m_columnsPerRow; }
+
         /// The line at `row`, and which of its rows that is. A row past the end resolves
         /// to the last line, the same way the widget already clamps a click below the
         /// document.
@@ -79,7 +87,10 @@ namespace core::text
         std::vector<std::vector<std::size_t>> m_breaks;
         std::vector<std::size_t> m_tree;   // Fenwick, one-based internally
         std::size_t m_totalRows = 0;
-        std::size_t m_columnsPerRow = 0;
+        /// kNoWrap rather than zero, so a map that has never been built reads as "not
+        /// wrapping" — zero means one column, which would wrap every character onto its
+        /// own row the moment anything rebuilt at the stored width.
+        std::size_t m_columnsPerRow = kNoWrap;
         std::size_t m_tabWidth = 0;
     };
 }

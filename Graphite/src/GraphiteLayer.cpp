@@ -158,7 +158,8 @@ namespace graphite
 
         const core::text::IndentStyle indentStyle{m_indentWithSpaces, m_indentWidth};
         const float zoom =
-            m_documentWindows.Render(m_editorFontSize, indentStyle, m_dockSpace.CenterNodeId());
+            m_documentWindows.Render(m_editorFontSize, indentStyle, m_dockSpace.CenterNodeId(),
+                                     m_wordWrap);
 
         if (zoom != 0.0f)
             SetEditorFontSize(m_editorFontSize + zoom);

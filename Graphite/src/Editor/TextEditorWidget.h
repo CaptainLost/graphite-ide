@@ -40,8 +40,15 @@ namespace graphite
     /// `item.caret`, so they survive a tab switch.
     ///
     /// `indentStyle` governs what Tab, Enter's auto-indent and the newline splitter
-    /// insert. The caller owns the font size and the indent style, since both are shared
-    /// by every document and persisted.
+    /// insert. `wordWrap` makes a line too wide for the window occupy several screen rows
+    /// instead of running off to the right. The caller owns the font size, the indent
+    /// style and the wrap setting, since all three are shared by every document and
+    /// persisted.
+    ///
+    /// Drawing goes through `item.rows` either way: with wrapping off the map is built
+    /// with RowMap::kNoWrap, which gives one row per line — the same picture as before,
+    /// down the same code path, rather than a second renderer to keep in step.
     [[nodiscard]] EditorFrameResult DrawEditor(core::text::OpenItem& item, float fontSize,
-                                               core::text::IndentStyle indentStyle);
+                                               core::text::IndentStyle indentStyle,
+                                               bool wordWrap);
 }

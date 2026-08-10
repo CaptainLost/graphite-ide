@@ -407,7 +407,7 @@ namespace graphite
     }
 
     float DocumentWindows::Render(float fontSize, core::text::IndentStyle indentStyle,
-                                  unsigned int fallbackDockNode)
+                                  unsigned int fallbackDockNode, bool wordWrap)
     {
         // Identities as they stand at the start of this frame - after RequestOpen,
         // CloseAll or HandleRootMoved, all of which run earlier in the same
@@ -835,7 +835,8 @@ namespace graphite
                 if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
                     m_documents.Promote(index);
 
-                const EditorFrameResult editorResult = DrawEditor(item, fontSize, indentStyle);
+                const EditorFrameResult editorResult =
+                    DrawEditor(item, fontSize, indentStyle, wordWrap);
                 zoomDelta += editorResult.zoomDelta;
 
                 // The first edit promotes a preview tab exactly as a double click does:
