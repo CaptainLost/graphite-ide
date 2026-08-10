@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Text/Caret.h"
+#include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
 #include <cstddef>
@@ -24,6 +25,11 @@ namespace core::text
         Missing,
         ReadFailed
     };
+
+    /// `OpenItem::rowAimAt` when nothing is aiming at a row column. No caret offset can
+    /// equal it — an offset is bounded by the document's length — which is what lets the
+    /// aim be validated by a single comparison against the caret.
+    inline constexpr std::size_t NoRowAim = static_cast<std::size_t>(-1);
 
     /// One thing the user has open. Not a document — a document *or* the reason there
     /// isn't one, because a binary file, a file past the size ceiling and a file deleted
@@ -55,6 +61,40 @@ namespace core::text
         /// document whose longest line was deleted would keep offering a horizontal
         /// scroll range with nothing in it.
         std::size_t widestLine = 0;
+
+        /// Screen rows to lines. Rebuilt by RefreshDerived, kept current line by line by
+        /// UpdateDerived, and rebuilt again by the widget when the width it wraps to
+        /// changes — the item cannot know that width, only the widget can.
+        RowMap rows;
+
+        /// The width `rows` was last rebuilt for by the widget, in columns, so the rebuild
+        /// is skipped on the frames the width did not change — which is nearly all of
+        /// them. Zero rather than RowMap::kNoWrap: zero is not a width the widget can ask
+        /// for, so the first frame of a newly opened document always rebuilds and never
+        /// mistakes the unwrapped map RefreshDerived left behind for one already built to
+        /// the window.
+        std::size_t wrappedTo = 0;
+
+        /// The column a run of vertical moves is aiming at, measured within the screen row
+        /// rather than within the line, and the caret offset it was measured at. Owned by
+        /// the widget: `rows` above is the only thing that can turn one into the other, and
+        /// only the widget knows the width that map was built for.
+        ///
+        /// Not `Caret::desiredColumn`. That field is Core's, and Core fills it with a
+        /// column within the *line* — `Move`'s non-vertical branches and `PlaceAt` are its
+        /// only two writers; every edit, undo, redo and the three selection helpers leave
+        /// it at `NoDesiredColumn`. The two columns are the same number only while nothing
+        /// wraps, so vertical motion over rows needs its own. Repairing Core's field behind
+        /// its back instead would have to happen in the right order relative to every other
+        /// thing that can move the caret in one frame, and would still miss a move that
+        /// rewrote the column without moving the offset.
+        ///
+        /// Validated by offset rather than by a flag: the aim is used only when the caret
+        /// is still exactly where it was computed for, so a click, an arrow key, an edit or
+        /// a rebuild invalidates it without having to know it exists. `rowAim` is
+        /// meaningless unless `rowAimAt` is a real offset.
+        std::size_t rowAim = 0;
+        std::size_t rowAimAt = NoRowAim;
 
         /// One indentation depth per line, in columns (see Indent.h), computed once when
         /// the document is loaded rather than per frame, the same way and for the same

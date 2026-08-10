@@ -12,6 +12,16 @@ namespace core::text
     /// window to put it in.
     inline constexpr std::size_t DefaultTabWidth = 4;
 
+    /// The column a tab starting at `column` lands on: the next multiple of `tabWidth`,
+    /// always at least one cell further. A tab width of zero is read as one, so a caller
+    /// that never set one still advances.
+    ///
+    /// Public because a walk that carries the byte and the column together — ExpandTabs
+    /// here, WrapColumns in WrapLayout.cpp — needs the tab rule without going through
+    /// ColumnOfByte, which walks the line from byte 0 and turns such a walk quadratic.
+    /// One definition of the rule, so those walks cannot disagree about where a tab ends.
+    [[nodiscard]] std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth);
+
     /// Screen column of a byte offset within one line's text.
     ///
     /// A column is a grid cell, not a byte: a character outside ASCII occupies one cell

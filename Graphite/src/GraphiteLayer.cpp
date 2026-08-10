@@ -74,6 +74,8 @@ namespace graphite
             m_indentWidth = storedIndentWidth;
         }
 
+        m_wordWrap = Settings::LoadWordWrap();
+
         std::filesystem::path startFolder = m_initialFolder;
         if (startFolder.empty())
             startFolder = Settings::LoadLastFolder();
@@ -156,7 +158,8 @@ namespace graphite
 
         const core::text::IndentStyle indentStyle{m_indentWithSpaces, m_indentWidth};
         const float zoom =
-            m_documentWindows.Render(m_editorFontSize, indentStyle, m_dockSpace.CenterNodeId());
+            m_documentWindows.Render(m_editorFontSize, indentStyle, m_dockSpace.CenterNodeId(),
+                                     m_wordWrap);
 
         if (zoom != 0.0f)
             SetEditorFontSize(m_editorFontSize + zoom);
@@ -259,6 +262,17 @@ namespace graphite
         {
             m_panels.RenderViewMenuItems();
             ImGui::Separator();
+
+            // Deliberately no keyboard shortcut. Alt+Z is the obvious one, and it is a
+            // trap here: AltGr on Windows reports as Ctrl+Alt, and AltGr+Z is 'z' with a
+            // dot above, so a shortcut testing KeyAlt alone would toggle wrapping every
+            // time a Polish word is typed. If one is ever added, its condition has to be
+            // KeyAlt && !KeyCtrl.
+            if (ImGui::MenuItem("Word Wrap", nullptr, m_wordWrap))
+            {
+                m_wordWrap = !m_wordWrap;
+                Settings::SaveWordWrap(m_wordWrap);
+            }
 
             // Nested under Git so it is obvious whose rules decide what is ignored — the
             // answer comes from .gitignore, .git/info/exclude and the user's global

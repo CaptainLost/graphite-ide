@@ -6,6 +6,7 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Indent.h"
+#include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
 namespace core::text
@@ -143,6 +144,27 @@ namespace core::text
             }
 
             UpdateIndentDepths(item, firstLine, lastLine);
+
+            // The row map is indexed by line, so lines added or removed at the edit site
+            // shift every entry below them — the same problem UpdateIndentDepths solves
+            // just above, spliced the same way and at the same point, so the two caches
+            // cannot disagree about which line an entry belongs to. Nothing here walks the
+            // whole document: the splice measures only the lines that are new, and the
+            // loop after it re-measures only the lines the edit actually touched.
+            //
+            // The map still holds the pre-edit line count at this point — nothing has
+            // touched it yet — so it is what says how many lines came or went.
+            const std::size_t previousLines = item.rows.LineCount();
+            const std::size_t currentLines = buffer.LineCount();
+            const std::size_t at = std::min(firstLine, previousLines);
+
+            if (currentLines > previousLines)
+                item.rows.InsertLines(buffer, at, currentLines - previousLines);
+            else if (currentLines < previousLines)
+                item.rows.RemoveLines(at, previousLines - currentLines);
+
+            for (std::size_t line = firstLine; line <= lastLine && line < currentLines; ++line)
+                item.rows.UpdateLine(buffer, line);
         }
 
         /// The inclusive line range a block indent should touch.
@@ -221,6 +243,14 @@ namespace core::text
                 item.widestLine = line;
             }
         }
+
+        // At the width already in force, not at kNoWrap: this runs after an undo and after
+        // any edit that changed the line count, both of which happen while the document is
+        // on screen and wrapping to a width only the widget knows. Rebuilding unwrapped
+        // here would unwrap the document under the user until the next time the window was
+        // resized. A map that has never been built reports kNoWrap, which is exactly the
+        // unwrapped editor a freshly loaded document should start as.
+        item.rows.Rebuild(buffer, item.rows.ColumnsPerRow(), DefaultTabWidth);
     }
 
     bool InsertText(OpenItem& item, std::string_view utf8)
