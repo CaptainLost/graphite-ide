@@ -1,65 +1,80 @@
 # 0016. P.10: Prefer immutable data to mutable data
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 
 ## Context
 
-The shortest of the philosophy rules — upstream it is four sentences and a
-cross-reference, with no example. It matters here mainly for the model types
-that panels read while a background thread may be writing them.
+It is easier to reason about constants than about variables. Something immutable
+cannot change unexpectedly. Sometimes immutability enables better optimisation.
+And there cannot be a data race on a constant.
+
+Upstream, this rule is a pointer: the substance lives in the section on
+constants and immutability, and P.10 exists to state the default. It is recorded
+here for the same reason — so that the default is written down and can be cited,
+rather than reconstructed each time from the rules that depend on it.
 
 ## Decision
 
-Adopt P.10 as written. Transcribed in full:
+Prefer immutable data to mutable data. `const` is the default; mutability is
+what requires a reason.
 
-> **Reason.** It is easier to reason about constants than about variables.
-> Something immutable cannot change unexpectedly. Sometimes immutability enables
-> better optimization. You can't have a data race on a constant.
->
-> See Con: Constants and immutability.
+- Declare a local `const` unless it is assigned after initialisation.
+- Take function parameters by reference to `const` unless the function is meant
+  to modify the argument; a non-`const` reference parameter is a statement that
+  it does.
+- Make a member function `const` unless it modifies the object.
+- Prefer returning a new value to mutating one in place, where the cost is not
+  the point.
+- Where a value is known at compile time, prefer `constexpr` to `const`.
 
 ## Rationale
 
-Adopted as written. Its last clause is the one that earns its place here: this
-program has a watcher thread, so "you can't have a data race on a constant" is
-not an abstraction — it is the reason `ChangeCollector` hands over a batch of
-changes rather than exposing a mutable buffer.
+The whole benefit is in what a reader does not have to do. A `const` binding is
+a fact that holds for the rest of the scope; a mutable one is a question to be
+answered by reading everything in between. In concurrent code that difference is
+not merely convenience: a value that cannot change cannot be raced on, and needs
+no synchronisation at all.
 
-The rule defers its substance to the Con section, so this record is deliberately
-thin. The operative rules — `const` by default, `constexpr` where it applies —
-are transcribed there, and this record exists so that the philosophy section is
-complete and so that Con has something to point back to.
+Making immutability the default rather than an option is what makes it useful.
+If `const` appears only where someone thought to add it, its absence says
+nothing.
 
 ## Consequences
 
 ### Positive
 
-- Gives the threading argument a written home: immutability is the cheapest
-  synchronisation available.
+- Fewer things can change, so less has to be tracked while reading.
+- Data races on constants are impossible, which removes synchronisation
+  questions rather than answering them.
+- The compiler occasionally optimises better, and at minimum diagnoses
+  accidental modification.
 
 ### Negative
 
-- Almost content-free on its own. A reader arriving here for guidance is sent
-  elsewhere, and a record that only forwards is a record that will be skipped.
-- `const` on members conflicts with move semantics and with assignability, so
-  "prefer immutable" has a real cost in the model types that are stored in
-  containers and reassigned.
+- `const` is viral: a `const` member function can only call the `const` member
+  functions of its own object, and correcting a chain of them is a diff far
+  larger than the change that prompted it.
+- A `const` data member makes a class non-assignable — both copy and move
+  assignment are implicitly deleted — which is a trap that appears far from the
+  declaration.
+- Preferring new values to in-place mutation costs copies where mutation would
+  have been free, which pulls against
+  [0015](0015-p-9-do-not-waste-time-or-space.md).
 
 ### Neutral
 
-- The substance is deferred to the Con section, which is not yet transcribed.
-  Until it is, this rule has no operative detail in this directory.
-
-## Deviations to fix
-
-Not assessed. A meaningful inventory would mean auditing every member and
-parameter for missing `const`, which belongs with the Con section rather than
-here.
+- The detailed rules — where `constexpr` beats `const`, what to do about `mutable`
+  and logical constness — are the subject of the upstream constants and
+  immutability section, not of this record.
+- This record states a default, not a prohibition on mutable state.
 
 ## Related
 
-- [0015](0015-p-9-do-not-waste-time-or-space.md) — the previous rule.
-- [0017](0017-p-11-encapsulate-messy-constructs-rather-than-spreading-through-the-code.md)
-  — the next rule.
+- [0007](0007-p-1-express-ideas-directly-in-code.md) — `const` as part of the
+  contract a declaration states.
+- [0009](0009-p-3-express-intent.md) — why the range-`for` binds by reference to
+  `const` by default.
+- [0015](0015-p-9-do-not-waste-time-or-space.md) — the tension this rule has to
+  be weighed against.

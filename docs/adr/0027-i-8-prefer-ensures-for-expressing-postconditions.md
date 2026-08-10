@@ -1,24 +1,13 @@
 # 0027. I.8: Prefer Ensures() for expressing postconditions
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-The postcondition counterpart to I.6. As with `Expects()`, `Ensures()` comes
-from the GSL and is not available here.
-
-## Decision
-
-Adopt I.8 in substance, with `CORE_ASSERT` in place of `Ensures()` where a
-postcondition is worth checking, and RAII in preference to either. Transcribed
-in full:
-
-> **Reason.** To make it clear that the condition is a postcondition and to
-> enable tool use.
-
-**Example.**
+The reason mirrors the precondition case: to make it clear that a condition is a
+postcondition, and to enable tool use.
 
 ```cpp
 void f()
@@ -30,62 +19,77 @@ void f()
 }
 ```
 
-**Note.** Postconditions can be stated in many ways, including comments,
-if-statements, and `assert()`. This can make them hard to distinguish from
-ordinary code, hard to update, hard to manipulate by tools, and might have the
-wrong semantics.
+Postconditions can be stated in many ways, including comments, `if` statements
+and `assert()`. That makes them hard to distinguish from ordinary code, hard to
+update, hard to manipulate by tools, and they might have the wrong semantics.
 
-Alternative: Postconditions of the form "this resource must be released" are
-best expressed by RAII.
+Postconditions of the form "this resource must be released" are best expressed
+by RAII rather than by any assertion.
 
-**Note.** Ideally, that `Ensures` should be part of the interface, but that's not
-easily done. For now, we place it in the definition (function body). Once
-language support becomes available (e.g., see the contract proposal) we will
-adopt the standard version of preconditions, postconditions, and assertions.
+Ideally the `Ensures` would be part of the interface, but that is not easily
+done; for now it is placed in the definition. Once language support becomes
+available — the contract proposal — the standard version of preconditions,
+postconditions and assertions will be adopted.
 
-**Enforcement.** (Not enforceable) Finding the variety of ways postconditions
-can be asserted is not feasible. Warning about those that can be easily
-identified (`assert()`) has questionable value in the absence of a language
-facility.
+## Decision
+
+Express postconditions with a dedicated postcondition facility — `Ensures()` or
+an equivalent facility — rather than with `assert()`, a bare `if`, or a
+comment.
+
+- Use it for conditions that must hold at return, and keep it distinct from
+  ordinary error handling.
+- Do not use an assertion where RAII can make the postcondition hold by
+  construction; a released resource is guaranteed by a guard object, not checked
+  by a condition.
+- When standard contract support arrives, migrate to it.
 
 ## Rationale
 
-Adopted in substance. The rule's Alternative is the operative sentence for this
-codebase: nearly every postcondition worth stating here is of the form "this
-resource must be released", and RAII expresses those in code rather than in a
-check. `Repository`, `DirectoryWatcher` and the file streams already do this.
+Same argument as for preconditions: a postcondition written as an `if` is
+indistinguishable from logic, and a postcondition written as a comment is
+invisible to everything except a careful reader. A dedicated facility makes the
+category searchable and its policy configurable in one place.
 
-Where a postcondition is a value property rather than a resource — a spliced
-`.slnx` still parsing, a line index still consistent with its buffer — the
-honest place for it in this project is a test, not an assert. The `SlnxEditor`
-tests comparing edited files byte for byte are that postcondition, checked in
-CI-visible form rather than in Debug-only code.
+The RAII carve-out is the important half. An assertion that the mutex was
+unlocked fires after the mistake; a `lock_guard` makes the mistake
+unexpressible, which is strictly better and should be preferred wherever the
+postcondition is about a resource.
 
 ## Consequences
 
 ### Positive
 
-- Points the common case at RAII, which is checkable by the compiler rather than
-  at run time.
-- Names tests as the substitute for `Ensures()` on value postconditions, which
-  is where this project already puts its confidence.
+- Postconditions are distinguishable from logic and from error handling.
+- One policy governs what a violation does, across the codebase.
+- The RAII preference converts a class of postcondition into a guarantee.
 
 ### Negative
 
-- Same weakness as [0025](0025-i-6-prefer-expects-for-expressing-preconditions.md):
-  `CORE_ASSERT` vanishes outside Debug and no tool reads it, so "enable tool
-  use" is unmet.
-- A postcondition expressed only as a test is checked for the cases the test
-  covers and nowhere else.
+- The assertion lives in the definition, so callers reading the header do not
+  see it.
+- Whether the check survives into a release build is a configuration question
+  left open here.
+- A postcondition that is expensive to evaluate — checking a whole container is
+  sorted, say — cannot be asserted without changing the cost of the function, so
+  the most valuable postconditions are often the ones that cannot be checked.
 
 ### Neutral
 
-- No `Ensures()`-style checks exist in the codebase today, and this record does
-  not require adding any; it says which form to reach for when one is wanted.
+- Not mechanically enforceable, for the same reason as the precondition case.
+- This record chooses a form; whether a function has a postcondition worth
+  stating is [0026](0026-i-7-state-postconditions.md).
+
+## Enforcement
+
+(Not enforceable.) Finding the variety of ways postconditions can be asserted is
+not feasible. Warning about those that can be easily identified — `assert()` —
+has questionable value in the absence of a language facility.
 
 ## Related
 
-- [0026](0026-i-7-state-postconditions.md) — the previous rule.
-- [0028](0028-i-9-if-an-interface-is-a-template-document-its-parameters-using-concepts.md)
-  — the next rule.
-- [0014](0014-p-8-do-not-leak-any-resources.md) — RAII, the preferred form.
+- [0026](0026-i-7-state-postconditions.md) — the rule this gives a form to.
+- [0025](0025-i-6-prefer-expects-for-expressing-preconditions.md) — the
+  symmetric decision.
+- [0014](0014-p-8-do-not-leak-any-resources.md) — RAII, the preferred mechanism
+  for release postconditions.

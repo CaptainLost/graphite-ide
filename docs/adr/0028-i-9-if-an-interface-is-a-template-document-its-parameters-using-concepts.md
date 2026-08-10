@@ -1,23 +1,13 @@
 # 0028. I.9: If an interface is a template, document its parameters using concepts
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-There is no `concept` and no `requires` clause anywhere in Core or Graphite.
-The templates that exist are few and narrow: `Result<T>`, `EventBus`'s
-subscribe/publish pair, and a handful of container helpers.
-
-## Decision
-
-Adopt I.9 as written. Transcribed in full:
-
-> **Reason.** Make the interface precisely specified and compile-time checkable
-> in the (not so distant) future.
-
-**Example.** Use the C++20 style of requirements specification. For example:
+Concepts make a template interface precisely specified and compile-time
+checkable. The C++20 style of requirements specification:
 
 ```cpp
 template<typename Iter, typename Val>
@@ -28,59 +18,67 @@ Iter find(Iter first, Iter last, Val v)
 }
 ```
 
-See also: Generic programming and concepts.
+Without the constraint, the requirements on `Iter` and `Val` exist only as
+whatever the body happens to use, and are reported only as errors deep inside
+the instantiation.
 
-**Enforcement.** Warn if any non-variadic template parameter is not constrained
-by a concept (in its declaration or mentioned in a `requires` clause).
+## Decision
+
+Constrain the template parameters of any template that forms an interface, using
+concepts.
+
+- Prefer a standard-library concept where one names the requirement.
+- Where none does, define a named concept rather than leaving the requirement
+  implicit in the body or expressed as a raw `requires` expression repeated at
+  each use.
+- Non-variadic template parameters of interface templates are constrained;
+  unconstrained `typename` is for implementation details and for genuinely
+  unconstrained parameters, and is worth a second look either way.
 
 ## Rationale
 
-Adopted, and it is available: C++20 is the language floor by
-[0005](0005-target-c-20-with-headers-not-modules.md), so `requires` and the
-standard concepts are usable today without adding anything.
+A template's parameter list is its interface, and an unconstrained one documents
+nothing: the actual contract is "whatever compiles", discovered by a caller from
+an error message pointing at a line inside the template. A concept moves the
+diagnosis to the call, in terms of a named requirement that was not met.
 
-The rule is adopted for interfaces, which is what it says — a template that is
-part of a header's public surface. It is not extended to implementation-detail
-templates inside a `.cpp`, where the error message a constraint would improve is
-one only the author will ever read.
-
-`EventBus` is the case that would benefit most. Its `Subscribe<TEvent>` accepts
-any type and erases it to `const void*`; a constraint saying what an event type
-must satisfy would turn a confusing cast into a stated requirement.
+This is [0023](0023-i-4-make-interfaces-precisely-and-strongly-typed.md) for
+generic code — the same argument, with concepts playing the part types play for
+non-template parameters.
 
 ## Consequences
 
 ### Positive
 
-- Constrained templates fail at the call with a readable message instead of
-  deep inside instantiation, which matters most for `EventBus`, whose errors
-  currently surface inside a `std::function` conversion.
-- The enforcement point is mechanical, so a future analyser could check it.
+- Errors are reported at the call site, against a named requirement, instead of
+  inside the instantiation.
+- The requirements on a type are readable from the declaration.
+- Overloads can be distinguished by constraint rather than by SFINAE tricks.
 
 ### Negative
 
-- Every constraint is a name to invent and maintain. With this few templates the
-  vocabulary would be mostly one-off concepts used once, which is overhead
-  without the reuse that makes concepts pay.
-- Adding constraints to `Result<T>` would restrict what it can hold for no
-  present benefit; nothing has misused it.
+- Naming the right concept is design work, and a concept that is too tight
+  rejects valid uses while one that is too loose documents nothing.
+- Constraints are part of the interface, so tightening one later is a breaking
+  change.
+- Retrofitting concepts to existing templates is a substantial edit for no
+  behavioural gain.
 
 ### Neutral
 
-- Nothing is retrofitted by this record. It applies to template interfaces
-  written from here on.
+- This record does not require a concept for every template — only for those
+  that form an interface.
+- C++20 is the assumed baseline, since that is the revision in which concepts
+  became a language feature rather than a technical specification.
 
-## Deviations to fix
+## Enforcement
 
-| What | Where | Note |
-|---|---|---|
-| No template parameter anywhere is constrained by a concept or `requires` clause | `Core/src/Core/Base/Result.h`, `Core/src/Core/Event/EventBus.h` | `EventBus::Subscribe` is the one where a constraint would pay for itself |
+- Warn if any non-variadic template parameter is not constrained by a concept,
+  in its declaration or mentioned in a `requires` clause.
 
 ## Related
 
-- [0027](0027-i-8-prefer-ensures-for-expressing-postconditions.md) — the previous
-  rule.
-- [0029](0029-i-10-use-exceptions-to-signal-a-failure-to-perform-a-required-task.md)
-  — the next rule.
-- [0005](0005-target-c-20-with-headers-not-modules.md) — why concepts are
-  available.
+- [0023](0023-i-4-make-interfaces-precisely-and-strongly-typed.md) — the
+  non-generic version of the same rule.
+- [0024](0024-i-5-state-preconditions-if-any.md) — a concept is a precondition
+  that the compiler checks.

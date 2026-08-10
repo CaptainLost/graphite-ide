@@ -1,35 +1,24 @@
 # 0012. P.6: What cannot be checked at compile time should be checkable at run time
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 
 ## Context
 
-The rule argues against `(pointer, count)` interfaces, which is exactly the shape
-Win32 forces on the code in `DirectoryWatcher` and `FileDialog`, and the shape
-several internal buffer-handling functions inherited from it.
+Leaving hard-to-detect errors in a program is asking for crashes and bad
+results. Ideally every error that is not an error in the programmer's logic is
+caught at either compile time or run time. It is impossible to catch all errors
+at compile time, and often not affordable to catch all remaining errors at run
+time. What is achievable is a design in which the errors *could* be caught,
+given sufficient resources — analysis tools, run-time checks, machine time.
 
-## Decision
-
-Adopt P.6 as written. Transcribed in full:
-
-> **Reason.** Leaving hard-to-detect errors in a program is asking for crashes
-> and bad results.
-
-**Note.** Ideally, we catch all errors (that are not errors in the programmer's
-logic) at either compile time or run time. It is impossible to catch all errors
-at compile time and often not affordable to catch all remaining errors at run
-time. However, we should endeavor to write programs that in principle can be
-checked, given sufficient resources (analysis programs, run-time checks, machine
-resources, time).
-
-**Example, bad.**
+That is a property of interfaces, and the upstream examples are all interfaces
+that destroy it. Passing a pointer with no extent:
 
 ```cpp
 // separately compiled, possibly dynamically loaded
 extern void f(int* p);
-
 void g(int n)
 {
     // bad: the number of elements is not passed to f()
@@ -37,60 +26,45 @@ void g(int n)
 }
 ```
 
-Here, a crucial bit of information (the number of elements) has been so
-thoroughly "obscured" that static analysis is probably rendered infeasible and
-dynamic checking can be very difficult when `f()` is part of an ABI so that we
-cannot "instrument" that pointer. We could embed helpful information into the
-free store, but that requires global changes to a system and maybe to the
-compiler. What we have here is a design that makes error detection very hard.
+A crucial bit of information, the number of elements, has been so thoroughly
+obscured that static analysis is probably infeasible, and dynamic checking can
+be very difficult when `f()` is part of an ABI and the pointer cannot be
+instrumented. Helpful information could be embedded into the free store, but
+that requires global changes to a system and maybe to the compiler. This is a
+design that makes error detection very hard.
 
-**Example, bad.** We can of course pass the number of elements along with the
-pointer:
+Passing the count alongside is better, and still not checkable:
 
 ```cpp
-// separately compiled, possibly dynamically loaded
 extern void f2(int* p, int n);
-
 void g2(int n)
 {
-    // bad: the wrong number of elements can be passed to f2()
-    f2(new int[n], n);
+    f2(new int[n], m);  // bad: a wrong number of elements can be passed to f()
 }
 ```
 
-Passing the number of elements as an argument is better (and far more common)
-than just passing the pointer and relying on some (unstated) convention for
-knowing or discovering the number of elements. However (as shown), a simple typo
-can introduce a serious error. The connection between the two arguments of
-`f2()` is conventional, rather than explicit.
+Passing the number of elements as an argument is better, and far more common,
+than relying on some unstated convention for discovering it. But a simple typo
+introduces a serious error: the connection between the two arguments is
+conventional rather than explicit. It is also left implicit whether `f2()` is
+supposed to delete its argument.
 
-Also, it is implicit that `f2()` is supposed to `delete` its argument (or did
-the caller make a second mistake?).
-
-**Example, bad.** The standard library resource management pointers fail to pass
-the size when they point to an object:
+The standard resource-management pointers do not help when they point at an
+array:
 
 ```cpp
-// separately compiled, possibly dynamically loaded
-// NB: this assumes the calling code is ABI-compatible, using a
-// compatible C++ compiler and the same stdlib implementation
 extern void f3(unique_ptr<int[]>, int n);
-
 void g3(int n)
 {
     f3(make_unique<int[]>(n), m);    // bad: pass ownership and size separately
 }
 ```
 
-**Example.** We need to pass the pointer and the number of elements as an
-integral object:
+What works is passing the pointer and the number of elements as one object:
 
 ```cpp
-extern void f4(vector<int>&);   // separately compiled, possibly dynamically loaded
-extern void f4(span<int>);      // separately compiled, possibly dynamically loaded
-                                // NB: this assumes the calling code is ABI-compatible, using a
-                                // compatible C++ compiler and the same stdlib implementation
-
+extern void f4(vector<int>&);
+extern void f4(span<int>);
 void g3(int n)
 {
     vector<int> v(n);
@@ -100,28 +74,23 @@ void g3(int n)
 ```
 
 This design carries the number of elements along as an integral part of an
-object, so that errors are unlikely and dynamic (run-time) checking is always
-feasible, if not always affordable.
-
-**Example.** How do we transfer both ownership and all information needed for
-validating use?
+object, so that errors are unlikely and dynamic checking is always feasible, if
+not always affordable. The same applies when ownership is transferred:
 
 ```cpp
-vector<int> f5(int n)    // OK: move
+vector<int> f5(int n)          // OK: move
 {
     vector<int> v(n);
     // ... initialize v ...
     return v;
 }
-
 unique_ptr<int[]> f6(int n)    // bad: loses n
 {
     auto p = make_unique<int[]>(n);
     // ... initialize *p ...
     return p;
 }
-
-owner<int*> f7(int n)    // bad: loses n and we might forget to delete
+owner<int*> f7(int n)          // bad: loses n and we might forget to delete
 {
     owner<int*> p = new int[n];
     // ... initialize *p ...
@@ -129,59 +98,74 @@ owner<int*> f7(int n)    // bad: loses n and we might forget to delete
 }
 ```
 
-**Example.** `???` — show how possible checks are avoided by interfaces that
-pass polymorphic base classes around, when they actually know what they need? Or
-strings as "free-style" options.
+## Decision
 
-**Enforcement.**
+Design interfaces so that what cannot be checked at compile time remains
+checkable at run time.
 
-- Flag (pointer, count)-style interfaces (this will flag a lot of examples that
-  can't be fixed for compatibility reasons)
-- `???`
+- Pass a range as one object that carries its extent — `span`, a container
+  reference, or a container by value — never as a pointer with the extent
+  implied or passed separately.
+- When transferring ownership of a sequence, transfer an object that knows its
+  own size. Returning `vector<int>` keeps the size; returning
+  `unique_ptr<int[]>` or an owning raw pointer discards it.
+- Do not make the validity of one argument depend on an unstated convention
+  relating it to another.
+
+Whether the checks are actually compiled in is a separate, configurable
+question. This record requires that the information needed to check is present,
+not that every build pays for the check.
 
 ## Rationale
 
-Adopted as written, with the qualification the rule itself supplies: it expects
-to flag interfaces "that can't be fixed for compatibility reasons". Every Win32
-call in this codebase is such an interface. The rule therefore applies to *our*
-functions, not to the boundary with the operating system, and the boundary is
-where those shapes are supposed to stop — which is the same argument as
-[0002](0002-keep-core-free-of-ide-knowledge.md).
+This is the rule that makes checking *possible*; without it, later decisions
+about assertions, contracts and hardened builds have nothing to work with. An
+interface that has thrown the extent away cannot be rescued by any amount of
+diligence at the call site, and if it crosses an ABI it cannot be rescued by
+tooling either.
 
-The `???` markers are transcribed rather than tidied away: they mark where the
-upstream document is unfinished, and a reader is entitled to know that.
+Keeping ownership and extent in the same object also removes the second implicit
+convention in the bad examples — who deletes — which is why the fix reads as a
+simplification rather than as added ceremony.
 
 ## Consequences
 
 ### Positive
 
-- Gives a precise reason to convert internal buffer functions to `std::span`,
-  rather than "spans are nicer".
-- Draws the line in the right place: the Win32 shape is tolerated at the call,
-  not propagated inward.
+- Bounds and ownership are recoverable at run time, so checks can be added later
+  without changing every interface.
+- A whole class of typo — the mismatched count — becomes unexpressible.
+- Static analysis has something to reason about at the boundary.
 
 ### Negative
 
-- Following it fully would mean a `std::span` conversion pass over `Fs` and
-  `Text`, which is real work with no visible behaviour change, and therefore
-  work that will keep being deferred.
+- Range and container types are heavier than a bare pointer at an ABI boundary,
+  and some boundaries — C APIs, dynamically loaded modules — cannot take them at
+  all.
+- `span` assumes ABI compatibility between caller and callee: the same compiler
+  family and the same standard-library implementation. Across a real plugin
+  boundary that assumption fails, and the `(pointer, count)` form comes back for
+  reasons this rule cannot argue away.
+- Checkable is not checked. The design cost is paid whether or not any build
+  ever turns the checks on.
 
 ### Neutral
 
-- The rule's ABI cautions do not apply here; everything is statically linked
-  into one executable.
+- *When* to check is [0013](0013-p-7-catch-run-time-errors-early.md); this
+  record only requires that checking be feasible.
+- Existing `(pointer, count)` interfaces retained for compatibility are a known
+  and accepted exception, flagged rather than fixed.
 
-## Deviations to fix
+## Enforcement
 
-| What | Where | Note |
-|---|---|---|
-| Raw buffer plus length passed between internal functions | `Core/src/Core/Fs/DirectoryWatcher.cpp` (the `ReadDirectoryChangesW` buffer walk) | The Win32 call itself is exempt; the internal walk over the result is not |
-| `std::span` available but unused | `Core/src/corepch.h:13` | Same item as in [0011](0011-p-5-prefer-compile-time-checking-to-run-time-checking.md) |
+- Flag `(pointer, count)`-style interfaces. This will flag a lot of examples
+  that cannot be fixed for compatibility reasons.
 
 ## Related
 
 - [0011](0011-p-5-prefer-compile-time-checking-to-run-time-checking.md) — the
-  previous rule.
-- [0013](0013-p-7-catch-run-time-errors-early.md) — the next rule.
-- [0002](0002-keep-core-free-of-ide-knowledge.md) — where platform shapes are
-  supposed to stop.
+  checks that never need to reach run time.
+- [0013](0013-p-7-catch-run-time-errors-early.md) — where the feasible check
+  should actually be placed.
+- [0014](0014-p-8-do-not-leak-any-resources.md) — the ownership half of the same
+  examples.

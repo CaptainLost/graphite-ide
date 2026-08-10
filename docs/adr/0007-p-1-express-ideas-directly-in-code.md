@@ -1,24 +1,25 @@
 # 0007. P.1: Express ideas directly in code
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 
 ## Context
 
-The first of the philosophy rules, and the one the rest are derived from. It
-bears on every header in Core, where the signature is the whole contract a
-caller sees.
+The philosophy rules are the ones the concrete rules are derived from. They are
+generally not mechanically checkable; individual rules reflecting these themes
+are. Without a philosophical basis the more specific, checkable rules lack a
+rationale, which is why they are recorded here at all rather than left implicit.
 
-## Decision
+P.1 is the first of them, and it bears on every header: a signature is the whole
+contract a caller sees. Compilers do not read comments or
+design documents, and neither do many programmers, consistently. What is
+expressed in code has defined semantics and can, in principle, be checked by
+compilers and other tools. What is expressed only in prose beside the code is
+unchecked, and drifts.
 
-Adopt P.1 as written. Transcribed in full:
-
-> **Reason.** Compilers don't read comments (or design documents) and neither do
-> many programmers (consistently). What is expressed in code has defined
-> semantics and can (in principle) be checked by compilers and other tools.
-
-**Example.**
+The upstream rule shows three shapes of the same failure. A declaration that
+leaves the reader guessing:
 
 ```cpp
 class Date {
@@ -29,11 +30,11 @@ public:
 };
 ```
 
-The first declaration of `month` is explicit about returning a `Month` and about
-not modifying the state of the `Date` object. The second version leaves the
-reader guessing and opens more possibilities for uncaught bugs.
+The first declaration is explicit about returning a `Month` and about not
+modifying the state of the `Date` object. The second leaves the reader guessing
+and opens more possibilities for uncaught bugs.
 
-**Example, bad.** This loop is a restricted form of `std::find`:
+A loop that is a restricted form of `std::find`, open-coded:
 
 ```cpp
 void f(vector<string>& v)
@@ -52,7 +53,7 @@ void f(vector<string>& v)
 }
 ```
 
-**Example, good.** A much clearer expression of intent would be:
+A much clearer expression of intent would be:
 
 ```cpp
 void f(vector<string>& v)
@@ -65,74 +66,101 @@ void f(vector<string>& v)
 }
 ```
 
-A well-designed library expresses intent (what is to be done, rather than just
-how something is being done) far better than direct use of language features.
+A well-designed library expresses intent — what is to be done, rather than just
+how something is being done — far better than direct use of language features.
 
-A C++ programmer should know the basics of the standard library, and use it
-where appropriate. Any programmer should know the basics of the foundation
-libraries of the project being worked on, and use them appropriately. Any
-programmer using these guidelines should know the guidelines support library,
-and use it appropriately.
-
-**Example.**
+And a parameter whose meaning lives nowhere:
 
 ```cpp
-change_speed(double s);   // bad: what does s signify?
-// ...
+change_speed(double s);    // bad: what does s signify?
 change_speed(2.3);
-```
 
-A better approach is to be explicit about the meaning of the double (new speed
-or delta on old speed?) and the unit used:
-
-```cpp
 change_speed(Speed s);     // better: the meaning of s is specified
-// ...
 change_speed(2.3);         // error: no unit
 change_speed(23_m / 10s);  // meters per second
 ```
 
-We could have accepted a plain (unit-less) `double` as a delta, but that would
-have been error-prone. If we wanted both absolute speed and deltas, we would
-have defined a `Delta` type.
+A plain unit-less `double` could have been accepted as a delta, but that would
+have been error-prone. If both absolute speeds and deltas are wanted, a `Delta`
+type is defined.
 
-**Enforcement.** Very hard in general.
+## Decision
 
-- use `const` consistently (check if member functions modify their object; check
-  if functions modify arguments passed by pointer or reference)
-- flag uses of casts (casts neuter the type system)
-- detect code that mimics the standard library (hard)
+Express ideas directly in code. State meaning through the type system and
+through named operations, not through comments, naming conventions, or
+open-coded mechanics.
+
+Concretely:
+
+- Give a function a return type and a `const` qualification that say what it
+  actually does. A query is `const` and returns the type it means; a mutator is
+  not `const`.
+- Prefer a named standard-library or foundation-library operation to an
+  open-coded loop that reimplements one. If a loop is a `find`, a `count`, a
+  `copy`, a `transform` or an `any_of`, write that.
+- Give a parameter a type that carries its meaning and its unit rather than a
+  bare built-in type, wherever the bare type would leave a caller guessing or
+  would accept a wrong-but-well-typed argument.
+
+Anyone writing code under this rule is expected to know the basics of the C++
+standard library, and of whatever foundation libraries the project at hand uses,
+and to reach for them before writing the mechanism by hand.
 
 ## Rationale
 
-Adopted without argument: it is the premise the other twelve philosophy rules
-argue from, and this codebase already leans on it. `Result<T>` exists because
-"this can fail" belongs in the signature rather than in a comment — see
-[0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md),
-which is P.1 applied to error handling.
+This is the rule that gives the rest of the philosophy section its teeth. Every
+later rule — express intent, prefer compile-time checking, do not leak, do not
+waste — is a specialisation of "put it in the code where it can be checked",
+and each one is arguable on its own only because this one is settled.
+
+The alternative in practice is not "no rule" but "the rule lives in comments",
+which is the state the guideline exists to displace: a comment saying a function
+does not modify its argument is worth exactly nothing to the compiler and to the
+next reader who does not believe it.
 
 ## Consequences
 
 ### Positive
 
-- Gives a written basis for asking that a distinction live in the type system
-  rather than in a comment or a naming convention.
+- Intent becomes checkable. What a function returns, and whether it mutates its
+  object, is derivable from the declaration alone by a reader and by a tool.
+- Whole classes of mistake — passing a delta where an absolute value was meant,
+  an off-by-one in a hand-written search — become compile-time errors or stop
+  existing.
+- Code shrinks. A named algorithm is one line where the loop was eight.
 
 ### Negative
 
-- Unfalsifiable in review. Two people can disagree about whether a given piece
-  of code "expresses its idea directly" with no way to settle it, so the rule
-  persuades rather than decides.
-- Taken too far it produces a wrapper type per concept, which costs more
-  reading than it saves.
+- Meaning-carrying types have to be defined, named and maintained, and a wrapper
+  over a `double` is real code with real weight. There is a threshold below
+  which the wrapper costs more than the confusion it prevents, and this record
+  does not say where it is.
+- Library vocabulary has to be learned before it can be used, and a reader who
+  does not know the algorithm reads the one-line version more slowly than the
+  loop.
+- Rewriting code that mimics the standard library is churn in files that were
+  working.
 
 ### Neutral
 
-- The rule's own enforcement notes admit it is "very hard in general". Nothing
-  in this repository checks it.
+- This rule does not by itself prescribe *which* libraries are the vocabulary;
+  that is [0019](0019-p-13-use-support-libraries-as-appropriate.md).
+- Very hard to enforce mechanically. It holds by review, and by the more
+  specific records that follow it.
+
+## Enforcement
+
+Very hard in general.
+
+- Use `const` consistently: check whether member functions modify their object,
+  and whether functions modify arguments passed by pointer or reference.
+- Flag uses of casts; casts neuter the type system.
+- Detect code that mimics the standard library (hard).
 
 ## Related
 
-- [0008](0008-p-2-write-in-iso-standard-c.md) — the next philosophy rule.
-- [0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md) —
-  P.1 applied to failure.
+- [0009](0009-p-3-express-intent.md) — the same idea applied to control flow.
+- [0010](0010-p-4-ideally-a-program-should-be-statically-type-safe.md) — what the
+  type system is being asked to carry.
+- [0019](0019-p-13-use-support-libraries-as-appropriate.md) — the libraries this
+  rule expects to be reached for.

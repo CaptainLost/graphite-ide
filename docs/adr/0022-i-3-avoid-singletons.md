@@ -1,24 +1,12 @@
 # 0022. I.3: Avoid singletons
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-Two singletons exist in Core: `Application::Get()` in
-`Core/src/Core/App/Application.h:39` and `Logger::Get()` in
-`Core/src/Core/Base/Log.h:49`. Both are the classic static accessor returning a
-reference, and both are reachable from any translation unit that includes the
-header.
-
-## Decision
-
-Adopt I.3 as written. Transcribed in full:
-
-> **Reason.** Singletons are basically complicated global objects in disguise.
-
-**Example.**
+Singletons are basically complicated global objects in disguise:
 
 ```cpp
 class Singleton {
@@ -27,13 +15,14 @@ class Singleton {
 };
 ```
 
-There are many variants of the singleton idea. That's part of the problem.
+There are many variants of the singleton idea. That is part of the problem: the
+name does not tell a reader what guarantees they are getting.
 
-**Note.** If you don't want a global object to change, declare it `const` or
-`constexpr`.
+If a global object should not change, declare it `const` or `constexpr`; that
+removes most of the motivation.
 
-**Exception.** You can use the simplest "singleton" (so simple that it is often
-not considered a singleton) to get initialization on first use, if any:
+There is a narrow exception. The simplest "singleton" — so simple that it is
+often not considered one — gives initialisation on first use:
 
 ```cpp
 X& myX()
@@ -44,13 +33,11 @@ X& myX()
 ```
 
 This is one of the most effective solutions to problems related to
-initialization order. In a multi-threaded environment, the initialization of the
-static object does not introduce a race condition (unless you carelessly access
-a shared object from within its constructor).
+initialisation order. In a multi-threaded environment the initialisation of the
+static object does not introduce a race condition, unless a shared object is
+carelessly accessed from within its constructor.
 
-Note that the initialization of a local static does not imply a race condition.
-However, if the destruction of `X` involves an operation that needs to be
-synchronized we must use a less simple solution. For example:
+The variant that does cause trouble is the one that avoids destruction:
 
 ```cpp
 X& myX()
@@ -60,79 +47,87 @@ X& myX()
 }
 ```
 
-Now someone must delete that object in some suitably thread-safe way. That's
-error-prone, so we don't use that technique unless
+Now someone must delete that object in some suitably thread-safe way. That is
+error-prone, so the technique is not used unless all three of the following
+hold: `myX` is in multi-threaded code; the `X` object needs to be destroyed,
+because it releases a resource; and `X`'s destructor's code needs to be
+synchronised.
 
-- `myX` is in multi-threaded code,
-- that `X` object needs to be destroyed (e.g., because it releases a resource),
-  and
-- `X`'s destructor's code needs to be synchronized.
+If, as many do, one defines a singleton as a class for which only one object is
+created, then functions like `myX` are not singletons at all, and this useful
+technique is not an exception to the no-singleton rule.
 
-If you, as many do, define a singleton as a class for which only one object is
-created, functions like `myX` are not singletons, and this useful technique is
-not an exception to the no-singleton rule.
+## Decision
 
-**Enforcement.** Very hard in general.
+Avoid singletons.
 
-- Look for classes with names that include `singleton`.
-- Look for classes for which only a single object is created (by counting
-  objects or by examining constructors).
-- If a class `X` has a public static function that contains a function-local
-  static of the class' type `X` and returns a pointer or reference to it, ban
-  that.
+- Do not write a class whose purpose is to guarantee that only one instance of
+  it exists, and do not give a class a static accessor returning a
+  function-local static of its own type.
+- Where a single instance is genuinely wanted, prefer an ordinary object created
+  once, owned by whatever owns that part of the program, and passed to what
+  needs it.
+- Where the object must not change, make it `const` or `constexpr` at namespace
+  scope instead.
+- Function-local `static` for initialisation on first use is permitted, and is
+  the preferred answer to initialisation-order problems. The `new`-without-
+  `delete` variant is used only when all three conditions above hold.
 
 ## Rationale
 
-Adopted as written — including its third enforcement point, which describes
-`Logger::Get()` exactly and says to ban it.
+A singleton combines the two costs it is meant to solve: it is still a global —
+same hidden dependency, same lifetime questions — and it adds machinery, a
+variant nobody can name precisely, and a hard-wired assumption that one instance
+is enough forever. That last assumption is the one that fails: the second
+instance is always wanted eventually, for a test if nothing else, and by then
+the type has been called from everywhere.
 
-The rule is adopted rather than waived because its complaint is real here. Both
-singletons make their consumers untestable in isolation: a component that logs
-cannot be handed a different logger, and anything reaching `Application::Get()`
-cannot run without an application. That is the same argument
-[0002](0002-keep-core-free-of-ide-knowledge.md) makes about the headless test
-suite, and these two are where it leaks.
-
-The rule's Exception does not cover them. `myX`-style initialization-on-first-use
-is exempt only when it is not treated as *the* instance of a class; both of
-these are.
+Passing the object explicitly costs a parameter and buys back testability, an
+obvious lifetime, and the ability to have two.
 
 ## Consequences
 
 ### Positive
 
-- Names two concrete obstacles to testing rather than leaving them as
-  background discomfort.
-- Points at the cheaper alternative from
-  [0021](0021-i-2-avoid-non-const-global-variables.md): if the state must be
-  global, a plain global object is the more honest form.
+- Lifetime and ownership are visible instead of implied by a static accessor.
+- Tests can construct their own instance rather than sharing one across the
+  whole run.
+- A second instance stops being an architectural change.
 
 ### Negative
 
-- Removing `Logger::Get()` means the `CORE_INFO`/`CORE_WARN`/`CORE_ERROR` macros
-  need a logger from somewhere, and threading one through every call site is a
-  large change for a facility that genuinely is process-wide. This is the
-  deviation least likely to be fixed, and saying otherwise would be dishonest.
-- `Application::Get()` has fewer callers and is the realistic one to remove
-  first.
+- Threading an object through many layers to reach the code that needs it is
+  real friction, and it is exactly the friction singletons exist to avoid.
+- The permitted function-local `static` is a hair's breadth from the banned
+  pattern; the difference is intent, which no tool can see.
+- Destruction order for objects that outlive most of the program remains
+  unsolved by this record.
 
 ### Neutral
 
-- Neither singleton allocates with `new`, so the destruction hazard the rule
-  spends most of its length on does not apply.
+- Whether `myX`-style initialisation-on-first-use counts as a singleton is a
+  definitional argument, settled here by permitting it and naming the conditions
+  under which the leaking variant is acceptable.
+- A global object is often better than a singleton, per
+  [0021](0021-i-2-avoid-non-const-global-variables.md), which is faint praise
+  for both.
 
-## Deviations to fix
+## Enforcement
 
-| What | Where | Note |
-|---|---|---|
-| `Application::Get()` — static accessor to the single application instance | `Core/src/Core/App/Application.h:39` | The realistic one to remove; few callers |
-| `Logger::Get()` — static accessor behind the logging macros | `Core/src/Core/Base/Log.h:49` | Matches the rule's third enforcement point verbatim; removing it is a large change |
+Very hard in general.
+
+- Look for classes with names that include `singleton`.
+- Look for classes for which only a single object is created, by counting
+  objects or by examining constructors.
+- If a class `X` has a public static function that contains a function-local
+  static of the class's type `X` and returns a pointer or reference to it, ban
+  that.
 
 ## Related
 
-- [0021](0021-i-2-avoid-non-const-global-variables.md) — the previous rule,
-  whose Exception argues a global object beats a singleton.
-- [0023](0023-i-4-make-interfaces-precisely-and-strongly-typed.md) — the next
-  rule.
-- [0002](0002-keep-core-free-of-ide-knowledge.md) — the testability these two
-  undercut.
+- [0021](0021-i-2-avoid-non-const-global-variables.md) — the plainer form of the
+  same problem.
+- [0033](0033-i-22-avoid-complex-initialization-of-global-objects.md) — the
+  initialisation-order problem the permitted exception solves.
+- [0020](0020-i-1-make-interfaces-explicit.md) — a singleton reached from inside
+  a function is an implicit interface.

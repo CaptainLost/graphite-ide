@@ -1,31 +1,20 @@
 # 0013. P.7: Catch run-time errors early
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 
 ## Context
 
-Directly relevant to how this codebase validates paths and solution files: the
-rule's "don't validate twice" and "don't pass structured data as strings"
-examples both describe patterns that appear when a `std::filesystem::path`
-becomes a `std::string` and back.
-
-## Decision
-
-Adopt P.7 as written. Transcribed in full:
-
-> **Reason.** Avoid "mysterious" crashes. Avoid errors leading to (possibly
-> unrecognized) wrong results.
-
-**Example.**
+Catching an error late means a mysterious crash, or worse, a wrong result nobody
+recognises as wrong. The upstream example is a range error that the interface
+cannot defend against:
 
 ```cpp
 void increment1(int* p, int n)    // bad: error-prone
 {
     for (int i = 0; i < n; ++i) ++p[i];
 }
-
 void use1(int m)
 {
     const int n = 10;
@@ -37,18 +26,17 @@ void use1(int m)
 }
 ```
 
-Here we made a small error in `use1` that will lead to corrupted data or a
-crash. The (pointer, count)-style interface leaves `increment1()` with no
-realistic way of defending itself against out-of-range errors. If we could check
-subscripts for out of range access, then the error would not be discovered until
-`p[10]` was accessed. We could check earlier and improve the code:
+A small error in `use1` leads to corrupted data or a crash. The
+`(pointer, count)` interface leaves `increment1()` with no realistic way of
+defending itself against out-of-range errors; even with subscript checking, the
+error would not be discovered until `p[10]` was accessed. Checking earlier
+improves it:
 
 ```cpp
 void increment2(span<int> p)
 {
     for (int& x : p) ++x;
 }
-
 void use2(int m)
 {
     const int n = 10;
@@ -59,35 +47,25 @@ void use2(int m)
 }
 ```
 
-Now, `m <= n` can be checked at the point of call (early) rather than later. If
-all we had was a typo so that we meant to use `n` as the bound, the code could
-be further simplified (eliminating the possibility of an error):
+Now `m <= n` can be checked at the point of call rather than later. If the only
+problem was a typo, and `n` was meant, the possibility of the error disappears
+entirely:
 
 ```cpp
-void use3(int m)
-{
-    const int n = 10;
-    int a[n] = {};
-    // ...
-    increment2(a);   // the number of elements of a need not be repeated
-    // ...
-}
+increment2(a);   // the number of elements of a need not be repeated
 ```
 
-**Example, bad.** Don't repeatedly check the same value. Don't pass structured
-data as strings:
+A second failure mode is checking the same thing repeatedly, usually because
+structured data was flattened into a string and has to be re-validated:
 
 ```cpp
 Date read_date(istream& is);           // read date from istream
-
 Date extract_date(const string& s);    // extract date from string
-
 void user1(const string& date)         // manipulate date
 {
     auto d = extract_date(date);
     // ...
 }
-
 void user2()
 {
     Date d = read_date(cin);
@@ -97,98 +75,103 @@ void user2()
 }
 ```
 
-The date is validated twice (by the `Date` constructor) and passed as a
-character string (unstructured data).
+The date is validated twice, by the `Date` constructor, and passed between the
+two as unstructured data.
 
-**Example.** Excess checking can be costly. There are cases where checking early
-is inefficient because you might never need the value, or might only need part
-of the value that is more easily checked than the whole. Similarly, don't add
-validity checks that change the asymptotic behavior of your interface (e.g.,
-don't add a O(n) check to an interface with an average complexity of O(1)).
+Excess checking can also be costly. There are cases where checking early is
+inefficient because the value might never be needed, or because only part of it
+is needed and that part is more easily checked than the whole. Similarly,
+validity checks should not change the asymptotic behaviour of an interface — do
+not add an O(n) check to an interface with an average complexity of O(1). And
+some conditions are not invariants at all:
 
 ```cpp
 class Jet {    // Physics says: e * e < x * x + y * y + z * z
-    float x;
-    float y;
-    float z;
-    float e;
+    float x, y, z, e;
 public:
     Jet(float x, float y, float z, float e)
         :x(x), y(y), z(z), e(e)
     {
         // Should I check here that the values are physically meaningful?
     }
-
     float m() const
     {
         // Should I handle the degenerate case here?
         return sqrt(x * x + y * y + z * z - e * e);
     }
-
-    ???
 };
 ```
 
-The physical law for a jet (`e * e < x * x + y * y + z * z`) is not an invariant
-because of the possibility for measurement errors.
+The physical law for a jet is not an invariant, because of the possibility of
+measurement error.
 
-**Enforcement.**
+## Decision
 
-- Look at pointers and arrays: Do range-checking early and not repeatedly
-- Look at conversions: Eliminate or mark narrowing conversions
-- Look for unchecked values coming from input
-- Look for structured data (objects of classes with invariants) being converted
-  into strings
+Check a run-time error at the earliest point where it can be detected — and
+check it once.
+
+- Check a range at the point where the range is constructed, not at the point
+  where an element is finally touched.
+- Validate input where it enters the program, then keep it in a type that
+  guarantees the validated property, so that later code does not re-check.
+- Do not pass structured data as strings between parts of the program; pass the
+  type whose invariant was already established.
+- Do not add a check that changes the asymptotic complexity of the operation it
+  guards, and do not check what might never be used.
+- Do not turn a condition that is merely usually true — a physical law subject to
+  measurement error, say — into a class invariant.
 
 ## Rationale
 
-Adopted as written, and it is the philosophy rule with the most direct bearing
-on the code as it stands. Two of its four enforcement points describe live
-patterns here: values arriving unchecked from input — a hand-edited `.slnx`, a
-settings JSON, a path typed into a dialog — and structured data flowing as
-strings, which is what happens every time a `path` is stringified to cross an
-interface.
+Early checking is worth having because the distance between the mistake and its
+symptom is what makes debugging expensive; the check's value is in *where* it
+fires, not that it fires.
 
-The third example is also worth keeping in view, because it argues the other
-way: checking early is not free, and a validity check must not change the
-complexity of the interface it guards. That is the reason `FileTree` expands
-lazily rather than validating a whole subtree up front.
+The two limits in the decision are what keep the rule honest. Repeated checking
+costs time and, worse, spreads the definition of "valid" across the codebase, so
+that the copies drift. And a check on the wrong condition — one that does not
+actually always hold — converts a merely inaccurate result into a hard failure,
+which is a downgrade.
 
 ## Consequences
 
 ### Positive
 
-- Gives a name to the rule `JsonFile` already follows: a hand-edited file must
-  not be able to crash the application, so it is validated at the boundary once
-  and trusted afterwards.
-- The "don't check twice" half is a real economy in `Sln`, where the same path
-  passes through several readers.
+- Failures point at their cause instead of at some later innocent code.
+- A validated value carried in its own type is validated once, in one place, by
+  one piece of code.
+- Removing string round-trips removes both the duplicate validation and the
+  chance that the two parsers disagree.
 
 ### Negative
 
-- "Early" and "twice" are judgement calls. The rule cannot say where the
-  boundary is, so it does not settle an argument about whether a given check
-  belongs in the reader or in the caller.
-- Following the fourth point strictly would mean fewer `std::string` parameters
-  and more small types, which costs conversions at every Win32 and ImGui call —
-  both of which want a raw string.
+- Early checks cost time on values that may never be used, and the rule requires
+  judgement about when that cost is worth paying — judgement this record cannot
+  supply per call site.
+- Deciding what belongs in a class invariant is genuinely hard; the `Jet` case
+  has no clean answer upstream either.
+- Introducing validated types for data that arrives as text is a real amount of
+  code.
 
 ### Neutral
 
-- The `???` markers in the third example are transcribed as they appear
-  upstream.
+- How a detected error is reported — exception, error code, result type — is not
+  decided here; see
+  [0029](0029-i-10-use-exceptions-to-signal-a-failure-to-perform-a-required-task.md).
+- This rule presupposes that checking is feasible at all, which is
+  [0012](0012-p-6-what-cannot-be-checked-at-compile-time-should-be-checkable-at-run-time.md).
 
-## Deviations to fix
+## Enforcement
 
-| What | Where | Note |
-|---|---|---|
-| Paths converted to `std::string` and back across interfaces, losing the type that carries the invariant | `Core/src/Core/Sln/*`, `Graphite/src/Workspace.cpp` | The "structured data as strings" pattern the rule names |
-| Narrowing conversions neither eliminated nor marked | `Fs`, `Text` | Same item as in [0010](0010-p-4-ideally-a-program-should-be-statically-type-safe.md) |
+- Look at pointers and arrays: do range-checking early and not repeatedly.
+- Look at conversions: eliminate or mark narrowing conversions.
+- Look for unchecked values coming from input.
+- Look for structured data — objects of classes with invariants — being
+  converted into strings.
 
 ## Related
 
 - [0012](0012-p-6-what-cannot-be-checked-at-compile-time-should-be-checkable-at-run-time.md)
-  — the previous rule.
-- [0014](0014-p-8-do-not-leak-any-resources.md) — the next rule.
-- [0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md) —
-  what happens to an error once it is caught.
+  — the interface property that makes early checking possible.
+- [0011](0011-p-5-prefer-compile-time-checking-to-run-time-checking.md) — the
+  checks that should not be run-time checks at all.

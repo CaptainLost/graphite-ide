@@ -1,93 +1,94 @@
 # 0033. I.22: Avoid complex initialization of global objects
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-The rule numbering jumps from I.13 to I.22 upstream; the gap is in the source
-document and is preserved here.
-
-This codebase has two namespace-scope objects, both in
-`Core/src/Core/Gui/ImGuiRenderer.cpp`, and both are raw pointers initialized to
-null and assigned during startup — which is the shape this rule prefers.
-
-## Decision
-
-Adopt I.22 as written. Transcribed in full:
-
-> **Reason.** Complex initialization can lead to undefined order of execution.
-
-**Example.**
+Complex initialisation can lead to undefined order of execution:
 
 ```cpp
 // file1.c
-
 extern const X x;
-
 const Y y = f(x);   // read x; write y
 
 // file2.c
-
 extern const Y y;
-
 const X x = g(y);   // read y; write x
 ```
 
-Since `x` and `y` are in different translation units the order of calls to `f()`
-and `g()` is undefined; one will access an uninitialized `const`. This shows
-that the order-of-initialization problem for global (namespace scope) objects is
-not limited to global variables.
+Since `x` and `y` are in different translation units, the order of the calls to
+`f()` and `g()` is undefined; one of them will access an uninitialised `const`.
+This also shows that the order-of-initialisation problem for namespace-scope
+objects is not limited to variables that are mutable.
 
-**Note.** Order of initialization problems become particularly difficult to
-handle in concurrent code. It is usually best to avoid global (namespace scope)
-objects altogether.
+Order-of-initialisation problems become particularly difficult to handle in
+concurrent code. It is usually best to avoid namespace-scope objects altogether.
 
-**Enforcement.**
+## Decision
 
-- Flag initializers of globals that call non-`constexpr` functions
-- Flag initializers of globals that access `extern` objects
+Avoid complex initialisation of objects at namespace scope.
+
+- Initialise a namespace-scope object with a constant expression; prefer
+  `constexpr`, and prefer a literal type that needs no dynamic initialisation at
+  all.
+- Do not call a non-`constexpr` function to initialise one.
+- Do not read another translation unit's object to initialise one.
+- Where an object genuinely needs non-trivial construction, give it
+  initialisation on first use through a function-local `static`, or make it
+  owned by something with an explicit lifetime.
 
 ## Rationale
 
-Adopted as written, and currently satisfied — which is worth recording, because
-the natural "improvement" to the globals named in
-[0021](0021-i-2-avoid-non-const-global-variables.md) would break it. Wrapping
-`g_monoFont` in an object constructed at namespace scope would trade a rule this
-project passes for one it does not.
+The failure here is not a bug in the code as written; each file is individually
+reasonable, and the program is broken by the linker's choice of order. That
+makes it undetectable by reading either file, and it can change with a build
+setting, a link order, or an unrelated new file.
 
-Both enforcement points are checkable by eye and both pass: neither global has an
-initializer that calls anything or reads an `extern`.
-
-The Note's advice — avoid namespace-scope objects altogether — is the stronger
-form, and is the subject of I.2 rather than this rule.
+The `const` detail is what makes this rule worth its own record rather than
+being folded into
+[0021](0021-i-2-avoid-non-const-global-variables.md): making the object
+immutable, which fixes the mutation problem, does nothing at all for the
+initialisation-order problem.
 
 ## Consequences
 
 ### Positive
 
-- The current shape is not accidental and is now recorded as the one to keep:
-  namespace-scope state, if any, is a null pointer assigned during a controlled
-  startup, never an object with a constructor.
-- The static initialization order fiasco cannot occur in this codebase as it
-  stands.
+- A class of failure that depends on link order, and cannot be found by reading
+  a translation unit, is removed.
+- Constant initialisation happens before any code runs, so nothing can observe a
+  half-built object.
+- Startup gets cheaper and more predictable.
 
 ### Negative
 
-- Assign-during-startup means there is a window in which the globals are null,
-  and nothing prevents a read in that window. The rule trades an ordering
-  problem for a sequencing one.
+- Initialisation on first use adds a check on every access, and moves the cost
+  to an arbitrary point at runtime rather than to startup.
+- Some objects genuinely need construction — a registry, a cached configuration
+  — and pushing them into functions or into explicitly owned objects is more
+  code than the namespace-scope definition was.
+- Destruction order remains undefined at the other end of the program's life,
+  and this record does not address it.
 
 ### Neutral
 
-- Vendored dependencies may have their own namespace-scope initialization; this
-  record governs Core and Graphite only.
+- The best fix is usually to not have the namespace-scope object at all, which
+  is [0021](0021-i-2-avoid-non-const-global-variables.md)'s business.
+- Function-local `static` is permitted here and in
+  [0022](0022-i-3-avoid-singletons.md), for exactly this reason.
+
+## Enforcement
+
+- Flag initialisers of globals that call non-`constexpr` functions.
+- Flag initialisers of globals that access `extern` objects.
 
 ## Related
 
-- [0032](0032-i-13-do-not-pass-an-array-as-a-single-pointer.md) — the previous
-  rule.
-- [0034](0034-i-23-keep-the-number-of-function-arguments-low.md) — the next rule.
-- [0021](0021-i-2-avoid-non-const-global-variables.md) — the globals this rule
-  constrains.
+- [0021](0021-i-2-avoid-non-const-global-variables.md) — the broader rule about
+  namespace-scope state.
+- [0022](0022-i-3-avoid-singletons.md) — initialisation on first use as the
+  sanctioned escape.
+- [0011](0011-p-5-prefer-compile-time-checking-to-run-time-checking.md) —
+  constant initialisation is the compile-time answer.

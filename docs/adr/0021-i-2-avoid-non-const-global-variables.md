@@ -1,24 +1,13 @@
 # 0021. I.2: Avoid non-const global variables
 
-Status: accepted
-Date: 2026-08-09
-Source: C++ Core Guidelines, release 0.8, Jun 14, 2026, transcribed 2026-08-09
+Status: proposed
+Date: 2026-08-10
+Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 
 ## Context
 
-This repository has two: `g_monoFont` and `g_monoItalicFont`, file-scope
-pointers in `Core/src/Core/Gui/ImGuiRenderer.cpp`, returned by accessor
-functions. They exist because ImGui's font atlas is built once at startup and
-every panel that wants a monospaced font needs to reach it.
-
-## Decision
-
-Adopt I.2 as written. Transcribed in full:
-
-> **Reason.** Non-const global variables hide dependencies and make the
-> dependencies subject to unpredictable changes.
-
-**Example.**
+Non-`const` global variables hide dependencies and make those dependencies
+subject to unpredictable change:
 
 ```cpp
 struct Data {
@@ -29,8 +18,7 @@ void compute()     // don't
 {
     // ... use data ...
 }
-
-void output()     // don't
+void output()      // don't
 {
     // ... use data ...
 }
@@ -38,85 +26,92 @@ void output()     // don't
 
 Who else might modify `data`?
 
-**Warning.** The initialization of global objects is not totally ordered. If you
-use a global object initialize it with a constant. Note that it is possible to
-get undefined initialization order even for `const` objects.
+The initialisation of global objects is not totally ordered. If a global object
+is used, initialise it with a constant — and note that it is possible to get
+undefined initialisation order even for `const` objects.
 
-**Exception.** A global object is often better than a singleton.
-
-**Note.** Global constants are useful.
-
-**Note.** The rule against global variables applies to namespace scope variables
-as well.
-
-Alternative: If you use global (more generally namespace scope) data to avoid
-copying, consider passing the data as an object by reference to `const`. Another
-solution is to define the data as the state of some object and the operations as
-member functions.
-
-**Warning.** Beware of data races: If one thread can access non-local data (or
-data passed by reference) while another thread executes the callee, we can have
-a data race. Every pointer or reference to mutable data is a potential data
-race.
+Two threads make it worse. If one thread can access non-local data, or data
+passed by reference, while another thread executes the callee, there is a data
+race. Every pointer or reference to mutable data is a potential data race. There
+can be no race condition on immutable data.
 
 Using global pointers or references to access and change non-`const`, and
-otherwise non-global, data isn't a better alternative to non-`const` global
-variables since that doesn't solve the issues of hidden dependencies or
-potential race conditions.
+otherwise non-global, data is not a better alternative: it does not solve the
+hidden dependencies or the potential race conditions.
 
-**Note.** You cannot have a race condition on immutable data.
+The rule is "avoid", not "don't use". There will be rare exceptions, such as
+`cin`, `cout` and `cerr`. Global *constants* are useful. A global object is
+often better than a singleton. And the rule applies to namespace-scope variables
+as well as to truly global ones.
 
-**Note.** The rule is "avoid", not "don't use." Of course there will be (rare)
-exceptions, such as `cin`, `cout`, and `cerr`.
+The alternative, where global data was being used to avoid copying, is to pass
+the data as an object by reference to `const`, or to define the data as the
+state of some object and the operations as member functions of it.
 
-**Enforcement.** (Simple) Report all non-`const` variables declared at namespace
-scope and global pointers/references to non-`const` data.
+## Decision
+
+Avoid non-`const` variables at namespace scope, including global pointers and
+references to non-`const` data.
+
+- Prefer passing the data explicitly, by reference to `const`, or making it the
+  state of an object whose member functions are the operations on it.
+- Where a namespace-scope object is genuinely warranted, make it `const` or
+  `constexpr` and initialise it with a constant expression.
+- Treat each remaining non-`const` global as an exception that is named and
+  justified where it is declared, not as an ordinary choice.
 
 ## Rationale
 
-Adopted as written, including the "avoid, not don't use" framing, because the
-two globals this codebase has are close to the exception the rule allows: they
-are set once during startup and only read afterwards, and they hold pointers
-into ImGui's own atlas, which is itself global state this program does not own.
+The cost of a mutable global is paid by every reader of every function that
+touches it: the set of things that can change it is the whole program, so no
+local reasoning is possible. Concurrency turns that from a comprehension problem
+into a correctness one, because a mutable global is shared by definition, and
+sharing without synchronisation is a race.
 
-They are still recorded as a deviation, because the rule's warning applies
-literally: nothing in the type system says they are write-once, and a second
-`ImGuiRenderer` — which nothing forbids — would overwrite them.
-
-Note the rule's Exception, which matters for the next record: a global object is
-often better than a singleton. That is an argument for keeping these as globals
-rather than "fixing" them into a singleton wrapper.
+Immutability is the cheap escape. A `const` global has none of these problems —
+no race, no hidden mutation — which is why the rule is about non-`const`
+globals specifically rather than about globals as such.
 
 ## Consequences
 
 ### Positive
 
-- Sets a low ceiling: two known globals, both in one file, both with a stated
-  reason.
-- The threading warning is live here — the watcher thread exists — so the rule
-  is not theoretical.
+- Dependencies become visible in signatures rather than discoverable by reading
+  every file.
+- A whole category of data race disappears, rather than being managed.
+- Code becomes testable, because state can be constructed per test rather than
+  reset between tests.
 
 ### Negative
 
-- The alternative the rule offers, passing the data as an object, means
-  threading a font handle through every panel that draws text. That is a real
-  cost for something read in a dozen places and written in one.
+- State that really is program-wide has to be threaded through call chains or
+  owned by some object that must itself be reachable, which is often more
+  ceremony than the global was.
+- The obvious workaround — a class with static members, or an object handed
+  around by reference — can reproduce every problem the rule was avoiding while
+  satisfying its letter.
+- "Avoid" is a judgement, so this rule cannot settle any specific case on its
+  own.
 
 ### Neutral
 
-- Global constants are unaffected; the codebase uses them freely, which the rule
-  explicitly permits.
+- Global constants are explicitly fine, and encouraged.
+- The initialisation-order hazard is only partly addressed here; see
+  [0033](0033-i-22-avoid-complex-initialization-of-global-objects.md).
+- Preferring a global object to a singleton is stated here, and the singleton
+  side of it is [0022](0022-i-3-avoid-singletons.md).
 
-## Deviations to fix
+## Enforcement
 
-| What | Where | Note |
-|---|---|---|
-| `g_monoFont`, `g_monoItalicFont` — non-const namespace-scope pointers, set at startup, read from anywhere | `Core/src/Core/Gui/ImGuiRenderer.cpp:40`, `:45` | Write-once by convention only; nothing enforces it |
+- (Simple) Report all non-`const` variables declared at namespace scope, and
+  global pointers or references to non-`const` data.
 
 ## Related
 
-- [0020](0020-i-1-make-interfaces-explicit.md) — the previous rule.
-- [0022](0022-i-3-avoid-singletons.md) — the next rule, and the alternative this
-  one warns against.
-- [0033](0033-i-22-avoid-complex-initialization-of-global-objects.md) — I.22, on
-  the initialization order this rule warns about.
+- [0020](0020-i-1-make-interfaces-explicit.md) — hidden dependencies are what
+  globals are made of.
+- [0022](0022-i-3-avoid-singletons.md) — the same object with a class around it.
+- [0033](0033-i-22-avoid-complex-initialization-of-global-objects.md) — the
+  initialisation-order half.
+- [0016](0016-p-10-prefer-immutable-data-to-mutable-data.md) — why `const` is
+  the escape hatch here.
