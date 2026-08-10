@@ -35,5 +35,10 @@ namespace graphite
         /// not a usable indent width itself.
         static std::size_t LoadIndentWidth();
         static void SaveIndentWidth(std::size_t width);
+
+        /// Returns false when nothing was stored: an editor that starts wrapping without
+        /// being asked would be a surprise, and off is what every previous version did.
+        static bool LoadWordWrap();
+        static void SaveWordWrap(bool wrap);
     };
 }

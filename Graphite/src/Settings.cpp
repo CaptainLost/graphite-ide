@@ -17,6 +17,7 @@ namespace graphite
         constexpr const char* kEditorFontSizeKey = "editorFontSize";
         constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
         constexpr const char* kIndentWidthKey = "indentWidth";
+        constexpr const char* kWordWrapKey = "wordWrap";
 
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
@@ -121,5 +122,15 @@ namespace graphite
     void Settings::SaveIndentWidth(std::size_t width)
     {
         WriteValue(kIndentWidthKey, std::to_string(width));
+    }
+
+    bool Settings::LoadWordWrap()
+    {
+        return core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
+    }
+
+    void Settings::SaveWordWrap(bool wrap)
+    {
+        WriteValue(kWordWrapKey, wrap ? "1" : "0");
     }
 }

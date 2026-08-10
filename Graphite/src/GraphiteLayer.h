@@ -105,6 +105,10 @@ namespace graphite
         bool m_indentWithSpaces = true;
         std::size_t m_indentWidth = 4;
 
+        /// Shared by every document, like the font size and the indent style: one answer
+        /// for the whole editor, loaded once and written back when it changes.
+        bool m_wordWrap = false;
+
         /// Which close is pending while the "Unsaved changes" modal is on screen, or
         /// nullopt when none is. Cleared the moment the user answers - including
         /// Cancel - so a later close attempt asks fresh rather than remembering the
