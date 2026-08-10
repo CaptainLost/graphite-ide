@@ -40,10 +40,60 @@ namespace core::text
                 }
             }
 
-            // No space to break on: a single word wider than the row. Breaking hard at
-            // the limit keeps it on screen instead of letting it run off the edge.
-            if (breakAt == 0)
+            if (breakAt > 0)
+            {
+                // Found a space; skip consecutive spaces so the next row starts on the
+                // first non-space character. A run of spaces stays on the row it ends
+                // even if that makes the row visually wider than columnsPerRow.
+                while (breakAt < total)
+                {
+                    const std::size_t byte = ByteOfColumn(line, breakAt, tabWidth);
+
+                    if (byte < line.size() && line[byte] == ' ')
+                        breakAt++;
+                    else
+                        break;
+                }
+
+                // If advancing past spaces reached the end of the line, there is nothing
+                // left to put on another row; stop without pushing a break.
+                if (breakAt >= total)
+                    break;
+            }
+            else
+            {
+                // No space to break on: a single word wider than the row. Breaking hard at
+                // the limit keeps it on screen instead of letting it run off the edge.
                 breakAt = limit;
+
+                // If the hard break lands inside a tab's run, move back to the tab's start
+                // so the whole tab goes to the next row. If the tab starts at the row's own
+                // start, it is wider than the row, so break after it instead.
+                if (breakAt > rowStart && breakAt <= total)
+                {
+                    const std::size_t byte = ByteOfColumn(line, breakAt - 1, tabWidth);
+
+                    if (byte < line.size() && line[byte] == '\t')
+                    {
+                        const std::size_t tabStart = ColumnOfByte(line, byte, tabWidth);
+
+                        if (tabStart == rowStart)
+                        {
+                            // Tab is wider than the row; break after it so the walk
+                            // still advances.
+                            if (byte + 1 <= line.size())
+                                breakAt = ColumnOfByte(line, byte + 1, tabWidth);
+                            else
+                                breakAt = ColumnCount(line, tabWidth);
+                        }
+                        else
+                        {
+                            // Tab is narrower; move back to where it starts.
+                            breakAt = tabStart;
+                        }
+                    }
+                }
+            }
 
             breaks.push_back(breakAt);
             rowStart = breakAt;

@@ -75,3 +75,38 @@ TEST_CASE("A degenerate row width still terminates")
     CHECK(WrapColumns("abc", 1, 4).size() == 2);
     CHECK(WrapColumns("abc", 0, 4).size() == 2);
 }
+
+TEST_CASE("A space run reaching past the limit keeps the whole run on its row")
+{
+    // The run is invisible, so letting it overflow the row is right; starting the next
+    // row with a space is not.
+    const std::vector<std::size_t> breaks = WrapColumns("aa      bb", 4, 4);
+
+    REQUIRE(breaks.size() == 1);
+    CHECK(breaks[0] == 8);
+}
+
+TEST_CASE("A line of nothing but spaces never breaks")
+{
+    CHECK(WrapColumns("      ", 3, 4).empty());
+}
+
+TEST_CASE("A hard break never lands inside a tab")
+{
+    // Columns: "aaaa" is 0-3, the tab spans 4-7, "bbbb" is 8-11. Breaking at the limit of
+    // 6 would split the tab, so the break moves back to where the tab starts.
+    const std::vector<std::size_t> breaks = WrapColumns("aaaa\tbbbb", 6, 4);
+
+    REQUIRE(!breaks.empty());
+    CHECK(breaks[0] == 4);
+}
+
+TEST_CASE("A tab wider than the row still advances")
+{
+    // The tab starts at the row's own start, so it cannot move back any further; the
+    // break goes after it instead of standing still.
+    const std::vector<std::size_t> breaks = WrapColumns("\tabc", 2, 4);
+
+    REQUIRE(!breaks.empty());
+    CHECK(breaks[0] == 4);
+}
