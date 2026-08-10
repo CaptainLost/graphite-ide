@@ -192,6 +192,12 @@ namespace graphite
             {
                 item.rows.Rebuild(buffer, columnsPerRow, core::text::DefaultTabWidth);
                 item.wrappedTo = columnsPerRow;
+
+                // The aim was a column of the geometry that just went away: after a resize
+                // or a toggle of wrapping, the caret sits at a different row column than
+                // the one it was aiming at. Cleared rather than converted, so the next
+                // vertical move resolves it from where the caret actually is now.
+                item.rowAimAt = core::text::NoRowAim;
             }
 
             // Computed once when the document loaded (OpenItem::widestColumn), not walked
@@ -270,11 +276,6 @@ namespace graphite
             // stationary mouse position, collapsing the selection to nothing before the
             // button is ever released.
             const bool dragging = held && ImGui::IsMouseDragging(ImGuiMouseButton_Left);
-
-            // Set by the row motions below, which write the aim themselves. Everything else
-            // that moves the caret this frame has it re-read from the row map afterwards —
-            // see the block below the keyboard handling.
-            bool aimedByRow = false;
 
             if (pressedThisFrame || dragging)
             {
@@ -400,10 +401,12 @@ namespace graphite
                         .row;
                 };
 
-                // Puts the caret at a column of a row. `aiming` is what separates a
-                // vertical move — which keeps aiming at the column it started from, so a
-                // short row passed on the way does not pull it left for good — from Home
-                // and End, which aim at wherever they land.
+                // Puts the caret at a column of a row, and is the only writer of the aim.
+                // `aiming` is what separates a vertical move — which keeps aiming at the
+                // column it started from, so a short row passed on the way does not pull it
+                // left for good — from Home and End, which stop aiming: the column they
+                // land on is the caret's own row column, which is what the next vertical
+                // move resolves for itself anyway.
                 const auto placeOnRow = [&](std::size_t targetRow, std::size_t column,
                                             bool aiming)
                 {
@@ -416,17 +419,19 @@ namespace graphite
                     // Shift extends, which is the only thing PlaceAt would have done for us
                     // here; its offset snapping and its column are both wrong for this
                     // path — VisualToCaret already lands on a character boundary, and the
-                    // column it wants is a column within the line, not within the row.
+                    // column it writes is a column within the line, not within the row.
                     if (!shift)
                         item.caret.anchor = offset;
 
-                    item.caret.desiredColumn =
-                        aiming ? column
-                               : core::text::CaretToVisual(buffer, item.rows, offset,
-                                                           core::text::DefaultTabWidth)
-                                     .column;
-
-                    aimedByRow = true;
+                    if (aiming)
+                    {
+                        item.rowAim = column;
+                        item.rowAimAt = offset;
+                    }
+                    else
+                    {
+                        item.rowAimAt = core::text::NoRowAim;
+                    }
                 };
 
                 const auto moveByRows = [&](bool down, std::size_t rows)
@@ -434,13 +439,14 @@ namespace graphite
                     const core::text::VisualPosition here = core::text::CaretToVisual(
                         buffer, item.rows, item.caret.offset, core::text::DefaultTabWidth);
 
-                    // desiredColumn is a column within the screen row here — the ruling for
-                    // wrapping — and resolving the sentinel from the caret's current row
-                    // column is what starts a fresh run of vertical moves off correctly.
+                    // The aim is trusted only while the caret is still where it was
+                    // computed for. Anything else that moved the caret — a click, an arrow
+                    // key, an edit, a rebuild at a new width — leaves the two disagreeing,
+                    // and the aim resolves from the caret's current row column instead.
+                    // Order-independent by construction: it does not matter whether that
+                    // other move happened earlier in this frame or ten frames ago.
                     const std::size_t aim =
-                        item.caret.desiredColumn == core::text::NoDesiredColumn
-                            ? here.column
-                            : item.caret.desiredColumn;
+                        item.rowAimAt == item.caret.offset ? item.rowAim : here.column;
 
                     // A target past the last row resolves to the last row (RowAt clamps),
                     // which is the same standing-still that moving down on the last line
@@ -621,27 +627,6 @@ namespace graphite
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
                     copySelection();
-            }
-
-            // `desiredColumn` is a column within the screen row for the row motions above,
-            // but Core's Move, PlaceAt and every edit fill it with a column within the
-            // *line* — the same number only while nothing wraps. So anything else that
-            // moved the caret this frame (a click, a drag, Ctrl+Right, typing) has its aim
-            // re-read from the row map here. Without it, the first Up or Down after landing
-            // on a continuation row would aim at a column far past that row's right edge
-            // and clamp to its end, every time.
-            //
-            // Only when the caret actually moved, or a caret standing still would lose the
-            // aim a previous frame's Up or Down set. NoDesiredColumn is left alone rather
-            // than resolved: it means "not aiming anywhere yet", which SelectWordAt and
-            // friends set deliberately and vertical motion resolves for itself.
-            if (!aimedByRow && item.caret.offset != caretAtFrameStart
-                && item.caret.desiredColumn != core::text::NoDesiredColumn)
-            {
-                item.caret.desiredColumn =
-                    core::text::CaretToVisual(buffer, item.rows, item.caret.offset,
-                                              core::text::DefaultTabWidth)
-                        .column;
             }
 
             // Scrolling follows the caret only when this frame actually moved it — not
