@@ -178,6 +178,19 @@ TEST_CASE("A column past the end of a row clamps to that row's last position")
     wrappedRows.Rebuild(wrapped, 4, 4);
 
     CHECK(VisualToCaret(wrapped, wrappedRows, VisualPosition{0, 99}, 4) == 3);
+
+    // A space-broken row: "alpha beta gamma" at width 6 breaks at columns 6 and 11, so
+    // row 0 is "alpha " and its last caret position is column 5, just before the space
+    // it broke on.
+    const TextBuffer spaceWrapped{std::string{"alpha beta gamma"}};
+
+    RowMap spaceWrappedRows;
+    spaceWrappedRows.Rebuild(spaceWrapped, 6, 4);
+
+    CHECK(VisualToCaret(spaceWrapped, spaceWrappedRows, VisualPosition{0, 99}, 4) == 5);
+
+    // A middle row, where rowStart is not zero: row 1 spans columns 6 to 10.
+    CHECK(VisualToCaret(spaceWrapped, spaceWrappedRows, VisualPosition{1, 99}, 4) == 10);
 }
 
 TEST_CASE("Both directions compose to the identity for every offset")

@@ -45,9 +45,16 @@ namespace core::text
     [[nodiscard]] VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,
                                                 std::size_t offset, std::size_t tabWidth);
 
-    /// The inverse, clamping rather than failing: a column past the end of a row gives
-    /// that row's last position, the same way a click to the right of a short line already
-    /// puts the caret at its end.
+    /// The inverse, clamping rather than failing: a column past the end of a row gives the
+    /// last offset that still belongs to that row — one column short of where the next
+    /// row starts, never that column itself, because CaretToVisual's own rule reads that
+    /// column as the next row's first cell. Clamping there instead would round-trip to
+    /// the row below, not the one clicked.
+    ///
+    /// Visibly: on a row broken at a space the caret lands just before that space; on a
+    /// row broken hard mid-word it lands one cell short of the row's right edge. Both look
+    /// like an off-by-one until this rule is remembered — they are the same rule as
+    /// CaretToVisual's, read backwards.
     [[nodiscard]] std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows,
                                              VisualPosition position, std::size_t tabWidth);
 }
