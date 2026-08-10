@@ -24,4 +24,30 @@ namespace core::text
     [[nodiscard]] std::vector<std::size_t> WrapColumns(std::string_view line,
                                                        std::size_t columnsPerRow,
                                                        std::size_t tabWidth);
+
+    class TextBuffer;
+    class RowMap;
+
+    /// Where a position in the file sits on screen: an absolute row, as the clipper counts
+    /// them, and a column within that row measured from its left edge.
+    struct VisualPosition
+    {
+        std::size_t row = 0;
+        std::size_t column = 0;
+    };
+
+    /// The screen position of a byte offset.
+    ///
+    /// An offset exactly at a break belongs to the **following** row. Without that rule
+    /// the caret after End and the caret after Home on the next row are the same offset in
+    /// the file but two different places on screen, and the cursor jumps depending on how
+    /// it got there.
+    [[nodiscard]] VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,
+                                                std::size_t offset, std::size_t tabWidth);
+
+    /// The inverse, clamping rather than failing: a column past the end of a row gives
+    /// that row's last position, the same way a click to the right of a short line already
+    /// puts the caret at its end.
+    [[nodiscard]] std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows,
+                                             VisualPosition position, std::size_t tabWidth);
 }

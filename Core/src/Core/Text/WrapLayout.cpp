@@ -3,8 +3,11 @@
 #include "Core/Text/WrapLayout.h"
 
 #include "Core/Text/Columns.h"
+#include "Core/Text/RowMap.h"
+#include "Core/Text/TextBuffer.h"
 
 #include <algorithm>
+#include <string>
 
 namespace core::text
 {
@@ -97,5 +100,80 @@ namespace core::text
         }
 
         return breaks;
+    }
+
+    namespace
+    {
+        /// The line containing `offset`. TextBuffer indexes line starts but exposes no
+        /// reverse lookup, and this is its only caller, so the search lives here rather
+        /// than growing TextBuffer's interface for one use.
+        [[nodiscard]] std::size_t LineOfOffset(const TextBuffer& buffer, std::size_t offset)
+        {
+            std::size_t low = 0;
+            std::size_t high = buffer.LineCount() - 1;
+
+            while (low < high)
+            {
+                const std::size_t middle = low + (high - low + 1) / 2;
+
+                if (buffer.LineStart(middle) <= offset)
+                    low = middle;
+                else
+                    high = middle - 1;
+            }
+
+            return low;
+        }
+    }
+
+    VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,
+                                  std::size_t offset, std::size_t tabWidth)
+    {
+        const std::size_t line = LineOfOffset(buffer, offset);
+        const std::string text = buffer.LineText(line);
+        const std::size_t column = ColumnOfByte(text, offset - buffer.LineStart(line), tabWidth);
+
+        const std::vector<std::size_t>& breaks = rows.BreaksOf(line);
+
+        // The last break at or before this column is the row the offset sits on. "At or
+        // before" rather than "before" is the whole rule: a column equal to a break is the
+        // first cell of the row that break starts.
+        std::size_t subRow = 0;
+        std::size_t rowStart = 0;
+
+        for (std::size_t index = 0; index < breaks.size(); ++index)
+        {
+            if (breaks[index] > column)
+                break;
+
+            subRow = index + 1;
+            rowStart = breaks[index];
+        }
+
+        return VisualPosition{rows.FirstRowOf(line) + subRow, column - rowStart};
+    }
+
+    std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows,
+                               VisualPosition position, std::size_t tabWidth)
+    {
+        const RowRef ref = rows.RowAt(position.row);
+        const std::string text = buffer.LineText(ref.line);
+
+        const std::vector<std::size_t>& breaks = rows.BreaksOf(ref.line);
+
+        const std::size_t rowStart = ref.subRow == 0 ? 0 : breaks[ref.subRow - 1];
+
+        // Where this row ends: the column just before the next row's first cell (a break
+        // is the following row's own first column, never this row's), or the end of the
+        // line for the last row. Using the break itself here — rather than one less than
+        // it — would let the clamp below land exactly on the break, which CaretToVisual
+        // then reads back as the *next* row's start: the row-end clamp has to agree with
+        // the row-start rule above, or the round trip breaks.
+        const std::size_t rowEnd = ref.subRow < breaks.size() ? breaks[ref.subRow] - 1
+                                                               : ColumnCount(text, tabWidth);
+
+        const std::size_t column = std::min(rowStart + position.column, rowEnd);
+
+        return buffer.LineStart(ref.line) + ByteOfColumn(text, column, tabWidth);
     }
 }

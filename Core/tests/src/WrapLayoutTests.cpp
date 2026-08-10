@@ -2,6 +2,8 @@
 
 #include "Core/Text/WrapLayout.h"
 #include "Core/Text/Columns.h"
+#include "Core/Text/RowMap.h"
+#include "Core/Text/TextBuffer.h"
 
 #include <string>
 #include <vector>
@@ -125,4 +127,73 @@ TEST_CASE("A tab wider than the row at the end of a line does not add an empty r
 TEST_CASE("A line of a single tab never breaks")
 {
     CHECK(WrapColumns("\t", 1, 4).empty());
+}
+
+TEST_CASE("An offset on an unwrapped line maps to its own row and column")
+{
+    const TextBuffer buffer{std::string{"abc\ndef"}};
+
+    RowMap rows;
+    rows.Rebuild(buffer, 80, 4);
+
+    const VisualPosition position = CaretToVisual(buffer, rows, 5, 4);
+
+    CHECK(position.row == 1);
+    CHECK(position.column == 1);
+}
+
+TEST_CASE("An offset past a break belongs to the following row")
+{
+    // One line of ten characters, four columns per row: rows start at columns 0, 4, 8.
+    const TextBuffer buffer{std::string{"aaaaaaaaaa"}};
+
+    RowMap rows;
+    rows.Rebuild(buffer, 4, 4);
+
+    // Column 4 is exactly a break: it is the first cell of row 1, never the last of row 0.
+    const VisualPosition position = CaretToVisual(buffer, rows, 4, 4);
+
+    CHECK(position.row == 1);
+    CHECK(position.column == 0);
+}
+
+TEST_CASE("A column past the end of a row clamps to that row's last position")
+{
+    const TextBuffer buffer{std::string{"abc\ndef"}};
+
+    RowMap unwrapped;
+    unwrapped.Rebuild(buffer, 80, 4);
+
+    // Clicking far to the right of a short line puts the caret at its end, which is what
+    // the widget already does when it is not wrapping.
+    CHECK(VisualToCaret(buffer, unwrapped, VisualPosition{0, 99}, 4) == 3);
+
+    // Same idea for a row that is not the last one in its line: clicking past the end of
+    // row 0 must land on its own last character (offset 3), not spill onto row 1's first
+    // cell (offset 4). The row-end clamp has to agree with the break rule above, or a
+    // click at the right edge of a wrapped row jumps to the wrong row.
+    const TextBuffer wrapped{std::string{"aaaaaaaaaa"}};
+
+    RowMap wrappedRows;
+    wrappedRows.Rebuild(wrapped, 4, 4);
+
+    CHECK(VisualToCaret(wrapped, wrappedRows, VisualPosition{0, 99}, 4) == 3);
+}
+
+TEST_CASE("Both directions compose to the identity for every offset")
+{
+    // The property that matters: drawing, hit-testing and caret movement all go through
+    // this pair, so any disagreement between them shows up here first.
+    const TextBuffer buffer{std::string{"alpha beta gamma\n\tindented line\nx\n\nlast"}};
+
+    RowMap rows;
+    rows.Rebuild(buffer, 6, 4);
+
+    for (std::size_t offset = 0; offset <= buffer.Length(); ++offset)
+    {
+        const VisualPosition position = CaretToVisual(buffer, rows, offset, 4);
+
+        CAPTURE(offset);
+        CHECK(VisualToCaret(buffer, rows, position, 4) == offset);
+    }
 }
