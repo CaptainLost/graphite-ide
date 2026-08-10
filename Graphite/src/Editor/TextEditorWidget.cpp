@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -215,7 +216,9 @@ namespace graphite
             // the text — clicks, caret, selection, guides — measures from this rather
             // than recomputing origin.x + gutterWidth a second time.
             const float textOriginX = origin.x + gutterWidth;
-            const std::size_t pageLines = static_cast<std::size_t>(
+            // Rows, not lines: Page Up and Page Down move by what fits on screen, and what
+            // fits on screen is rows once a line can occupy several of them.
+            const std::size_t pageRows = static_cast<std::size_t>(
                 std::max(1.0f, ImGui::GetWindowHeight() / lineHeight));
 
             // Mouse handling rides ImGui's own button latch (see the comment on
@@ -268,28 +271,51 @@ namespace graphite
             // button is ever released.
             const bool dragging = held && ImGui::IsMouseDragging(ImGuiMouseButton_Left);
 
+            // Set by the row motions below, which write the aim themselves. Everything else
+            // that moves the caret this frame has it re-read from the row map afterwards —
+            // see the block below the keyboard handling.
+            bool aimedByRow = false;
+
             if (pressedThisFrame || dragging)
             {
                 const ImVec2 mouse = ImGui::GetMousePos();
+
+                // Both axes are clamped to zero *before* the cast, not after. The
+                // subtractions are float arithmetic and go negative the moment the mouse is
+                // above the text origin or left of it — dragging up out of the window, or
+                // sideways across the gutter — and converting a negative float to
+                // std::size_t gives an enormous number rather than a small one. As a row
+                // that reads as "past the end of the document"; as a column it is worse
+                // still, because VisualToCaret adds the row's own start column to it, which
+                // wraps around and clamps to some arbitrary column mid-row instead of the
+                // row's beginning.
                 const auto row =
                     static_cast<std::size_t>(std::max(0.0f, (mouse.y - origin.y) / lineHeight));
-                const std::size_t line = std::min(row, buffer.LineCount() - 1);
 
+                // The half cell is the rounding this has always used: a click past a cell's
+                // middle belongs to the boundary on its right, not to the one on its left.
                 const float relativeX = std::max(0.0f, mouse.x - textOriginX);
                 const auto column =
                     static_cast<std::size_t>((relativeX + cellWidth * 0.5f) / cellWidth);
 
-                const std::size_t offset =
-                    buffer.LineStart(line)
-                    + core::text::ByteOfColumn(buffer.LineText(line), column,
-                                               core::text::DefaultTabWidth);
+                // `column` is measured from the row's left edge, which on a continuation
+                // row is partway into the line — VisualToCaret is the one place that knows
+                // how to put a row and a column within it back together into an offset, and
+                // it clamps a column past the row's end rather than failing, which is what
+                // makes a click in the empty space right of a short row land on its end.
+                const std::size_t offset = core::text::VisualToCaret(
+                    buffer, item.rows, core::text::VisualPosition{row, column},
+                    core::text::DefaultTabWidth);
 
                 if (pressedThisFrame)
                 {
                     const int clicks = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left);
 
+                    // A triple click selects the whole line, not the row it landed on: a
+                    // row is a consequence of the window's width, and the user asked for
+                    // the line.
                     if (clicks >= 3)
-                        item.caret = core::text::SelectLineAt(buffer, line);
+                        item.caret = core::text::SelectLineAt(buffer, item.rows.RowAt(row).line);
                     else if (clicks == 2)
                         item.caret = core::text::SelectWordAt(buffer, offset);
                     else
@@ -342,17 +368,15 @@ namespace graphite
                     core::text::Motion withControl;
                 };
 
+                // Horizontal motion only. Up, Down, Page Up, Page Down and the plain Home
+                // and End move by screen row instead, below: that is what the user sees,
+                // and Core's Move cannot do it — it knows nothing about the row map, which
+                // only the widget owns. Ctrl+Home and Ctrl+End stay here, since the start
+                // and the end of the document are the same offsets however the text is laid
+                // out.
                 const Binding bindings[] = {
                     {ImGuiKey_LeftArrow, core::text::Motion::Left, core::text::Motion::WordLeft},
                     {ImGuiKey_RightArrow, core::text::Motion::Right, core::text::Motion::WordRight},
-                    {ImGuiKey_UpArrow, core::text::Motion::Up, core::text::Motion::Up},
-                    {ImGuiKey_DownArrow, core::text::Motion::Down, core::text::Motion::Down},
-                    {ImGuiKey_Home, core::text::Motion::LineStart,
-                     core::text::Motion::DocumentStart},
-                    {ImGuiKey_End, core::text::Motion::LineEnd, core::text::Motion::DocumentEnd},
-                    {ImGuiKey_PageUp, core::text::Motion::PageUp, core::text::Motion::PageUp},
-                    {ImGuiKey_PageDown, core::text::Motion::PageDown,
-                     core::text::Motion::PageDown},
                 };
 
                 for (const Binding& binding : bindings)
@@ -363,7 +387,119 @@ namespace graphite
                     item.caret =
                         core::text::Move(buffer, item.caret,
                                          control ? binding.withControl : binding.plain, shift,
-                                         core::text::DefaultTabWidth, pageLines);
+                                         core::text::DefaultTabWidth, pageRows);
+                }
+
+                // Where the caret sits on screen. Computed on demand rather than once per
+                // frame: it copies the caret's line, which on a minified file is the whole
+                // file, and only these motions need it.
+                const auto caretRow = [&]
+                {
+                    return core::text::CaretToVisual(buffer, item.rows, item.caret.offset,
+                                                     core::text::DefaultTabWidth)
+                        .row;
+                };
+
+                // Puts the caret at a column of a row. `aiming` is what separates a
+                // vertical move — which keeps aiming at the column it started from, so a
+                // short row passed on the way does not pull it left for good — from Home
+                // and End, which aim at wherever they land.
+                const auto placeOnRow = [&](std::size_t targetRow, std::size_t column,
+                                            bool aiming)
+                {
+                    const std::size_t offset = core::text::VisualToCaret(
+                        buffer, item.rows, core::text::VisualPosition{targetRow, column},
+                        core::text::DefaultTabWidth);
+
+                    item.caret.offset = offset;
+
+                    // Shift extends, which is the only thing PlaceAt would have done for us
+                    // here; its offset snapping and its column are both wrong for this
+                    // path — VisualToCaret already lands on a character boundary, and the
+                    // column it wants is a column within the line, not within the row.
+                    if (!shift)
+                        item.caret.anchor = offset;
+
+                    item.caret.desiredColumn =
+                        aiming ? column
+                               : core::text::CaretToVisual(buffer, item.rows, offset,
+                                                           core::text::DefaultTabWidth)
+                                     .column;
+
+                    aimedByRow = true;
+                };
+
+                const auto moveByRows = [&](bool down, std::size_t rows)
+                {
+                    const core::text::VisualPosition here = core::text::CaretToVisual(
+                        buffer, item.rows, item.caret.offset, core::text::DefaultTabWidth);
+
+                    // desiredColumn is a column within the screen row here — the ruling for
+                    // wrapping — and resolving the sentinel from the caret's current row
+                    // column is what starts a fresh run of vertical moves off correctly.
+                    const std::size_t aim =
+                        item.caret.desiredColumn == core::text::NoDesiredColumn
+                            ? here.column
+                            : item.caret.desiredColumn;
+
+                    // A target past the last row resolves to the last row (RowAt clamps),
+                    // which is the same standing-still that moving down on the last line
+                    // always did.
+                    const std::size_t target =
+                        down ? here.row + rows : (here.row >= rows ? here.row - rows : 0);
+
+                    placeOnRow(target, aim, true);
+                };
+
+                if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true))
+                    moveByRows(false, 1);
+
+                if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true))
+                    moveByRows(true, 1);
+
+                if (ImGui::IsKeyPressed(ImGuiKey_PageUp, true))
+                    moveByRows(false, pageRows);
+
+                if (ImGui::IsKeyPressed(ImGuiKey_PageDown, true))
+                    moveByRows(true, pageRows);
+
+                if (ImGui::IsKeyPressed(ImGuiKey_Home, true))
+                {
+                    if (control)
+                    {
+                        item.caret = core::text::Move(buffer, item.caret,
+                                                      core::text::Motion::DocumentStart, shift,
+                                                      core::text::DefaultTabWidth, pageRows);
+                    }
+                    else
+                    {
+                        placeOnRow(caretRow(), 0, false);
+                    }
+                }
+
+                if (ImGui::IsKeyPressed(ImGuiKey_End, true))
+                {
+                    if (control)
+                    {
+                        item.caret = core::text::Move(buffer, item.caret,
+                                                      core::text::Motion::DocumentEnd, shift,
+                                                      core::text::DefaultTabWidth, pageRows);
+                    }
+                    else
+                    {
+                        // A column no row can reach, left to VisualToCaret's clamp — which
+                        // is precisely why it clamps rather than failing. On a wrapped row
+                        // that lands one column short of the right edge: the offset at the
+                        // edge is also the offset at the next row's column zero, and the
+                        // rule assigns it to the next row. Deliberate, and recorded as
+                        // debt — reaching the edge needs a caret affinity bit.
+                        //
+                        // Halved rather than the maximum itself: VisualToCaret adds the
+                        // row's own start column to this before clamping, and that sum has
+                        // to stay representable.
+                        placeOnRow(caretRow(), std::numeric_limits<std::size_t>::max() / 2,
+                                   false);
+                    }
                 }
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_A, false))
@@ -485,6 +621,27 @@ namespace graphite
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
                     copySelection();
+            }
+
+            // `desiredColumn` is a column within the screen row for the row motions above,
+            // but Core's Move, PlaceAt and every edit fill it with a column within the
+            // *line* — the same number only while nothing wraps. So anything else that
+            // moved the caret this frame (a click, a drag, Ctrl+Right, typing) has its aim
+            // re-read from the row map here. Without it, the first Up or Down after landing
+            // on a continuation row would aim at a column far past that row's right edge
+            // and clamp to its end, every time.
+            //
+            // Only when the caret actually moved, or a caret standing still would lose the
+            // aim a previous frame's Up or Down set. NoDesiredColumn is left alone rather
+            // than resolved: it means "not aiming anywhere yet", which SelectWordAt and
+            // friends set deliberately and vertical motion resolves for itself.
+            if (!aimedByRow && item.caret.offset != caretAtFrameStart
+                && item.caret.desiredColumn != core::text::NoDesiredColumn)
+            {
+                item.caret.desiredColumn =
+                    core::text::CaretToVisual(buffer, item.rows, item.caret.offset,
+                                              core::text::DefaultTabWidth)
+                        .column;
             }
 
             // Scrolling follows the caret only when this frame actually moved it — not
@@ -713,21 +870,42 @@ namespace graphite
                         const std::size_t toByte =
                             std::min(selectionTo - lineStart, text.size() + 1);
 
-                        const float fromX = textX
-                            + static_cast<float>(core::text::ColumnOfByte(
-                                  text, fromByte, core::text::DefaultTabWidth))
-                                  * cellWidth;
-                        // A selection running past this line's end shows the newline as
-                        // one cell of highlight, which is how every editor draws it.
-                        const float toX = textX
-                            + static_cast<float>(core::text::ColumnOfByte(
-                                  text, std::min(toByte, text.size()),
-                                  core::text::DefaultTabWidth))
-                                  * cellWidth
-                            + (toByte > text.size() ? cellWidth : 0.0f);
+                        // The selection's span within the line, in columns. A selection
+                        // running past this line's end shows the newline as one cell of
+                        // highlight, which is how every editor draws it — that is the
+                        // trailing +1.
+                        const std::size_t selectionFromColumn = core::text::ColumnOfByte(
+                            text, fromByte, core::text::DefaultTabWidth);
+                        const std::size_t selectionToColumn =
+                            core::text::ColumnOfByte(text, std::min(toByte, text.size()),
+                                                     core::text::DefaultTabWidth)
+                            + (toByte > text.size() ? 1 : 0);
 
-                        draw->AddRectFilled(ImVec2(fromX, y), ImVec2(toX, y + lineHeight),
-                                            selectionColour);
+                        // Clipped to this row's own column span, so a selection crossing
+                        // several rows fills each one from its own left edge rather than
+                        // drawing the whole line's span on every row of it. The last row of
+                        // a line has no right bound: the newline cell sits past the line's
+                        // last column, and with wrapping off every row is the whole line.
+                        const std::size_t rowToColumn =
+                            lastRowOfLine ? std::numeric_limits<std::size_t>::max()
+                                          : breaks[ref.subRow];
+                        const std::size_t clippedFrom =
+                            std::clamp(selectionFromColumn, fromColumn, rowToColumn);
+                        const std::size_t clippedTo =
+                            std::clamp(selectionToColumn, fromColumn, rowToColumn);
+
+                        if (clippedTo > clippedFrom)
+                        {
+                            // Measured from this row's first column, not from the line's:
+                            // textX is where this row starts drawing.
+                            const float fromX =
+                                textX + static_cast<float>(clippedFrom - fromColumn) * cellWidth;
+                            const float toX =
+                                textX + static_cast<float>(clippedTo - fromColumn) * cellWidth;
+
+                            draw->AddRectFilled(ImVec2(fromX, y), ImVec2(toX, y + lineHeight),
+                                                selectionColour);
+                        }
                     }
 
                     if (rowFromByte < rowToByte)
