@@ -172,11 +172,15 @@ namespace graphite
             const float scrollX = ImGui::GetScrollX();
             const ImVec2 origin = ImGui::GetCursorScreenPos();
 
-            // What is left for text once the gutter has taken its share, in whole
-            // columns rather than pixels: dragging the window frame crosses a cell
-            // boundary only now and then, so the rebuild below does not run on every
-            // frame of a drag. Never zero — a window narrower than the gutter is a layout
-            // state, not an error, and WrapColumns would stand still on a width of zero.
+            // What is left for text once the gutter has taken its share, in whole columns
+            // rather than pixels. The quantisation is not a bound on rebuilds — a cell is
+            // about eight pixels, so dragging a window edge across a monitor still forces
+            // a couple of hundred full rebuilds — it only takes the rebuild off the frames
+            // where the width moved by less than a cell, which is most of them during a
+            // slow drag. What makes that survivable is that a rebuild is linear in the
+            // document; if it stops being, this is where it is felt. Never zero — a window
+            // narrower than the gutter is a layout state, not an error, and WrapColumns
+            // would stand still on a width of zero.
             const float available = ImGui::GetContentRegionAvail().x;
             const std::size_t columnsPerRow =
                 wordWrap ? static_cast<std::size_t>(
@@ -754,6 +758,14 @@ namespace graphite
             std::size_t cachedLine = 0;
             bool haveCachedLine = false;
 
+            // The selection's span within the cached line, in columns. Cached for the same
+            // reason and at the same moment: both ends are properties of the line, not of
+            // the row, and ColumnOfByte walks the line from byte 0. Computed per row they
+            // cost two walks of the whole line per visible row per frame — on a minified
+            // file, megabytes sixty times over, for a number that does not change.
+            std::size_t selectionFromColumn = 0;
+            std::size_t selectionToColumn = 0;
+
             // The byte the previous row ended at, and the row that follows it. Valid only
             // for that one row: the clipper may jump, and a jump lands somewhere the carry
             // says nothing about.
@@ -780,6 +792,30 @@ namespace graphite
                         cachedLine = line;
                         haveCachedLine = true;
                         haveCarried = false;
+
+                        const std::size_t start = buffer.LineStart(line);
+
+                        selectionFromColumn = 0;
+                        selectionToColumn = 0;
+
+                        if (selectionFrom != selectionTo && selectionTo > start
+                            && selectionFrom <= start + text.size())
+                        {
+                            const std::size_t fromByte =
+                                selectionFrom > start ? selectionFrom - start : 0;
+                            const std::size_t toByte =
+                                std::min(selectionTo - start, text.size() + 1);
+
+                            selectionFromColumn = core::text::ColumnOfByte(
+                                text, fromByte, core::text::DefaultTabWidth);
+                            // A selection running past this line's end shows the newline
+                            // as one cell of highlight, which is how every editor draws
+                            // it — that is the trailing +1.
+                            selectionToColumn =
+                                core::text::ColumnOfByte(text, std::min(toByte, text.size()),
+                                                         core::text::DefaultTabWidth)
+                                + (toByte > text.size() ? 1 : 0);
+                        }
                     }
 
                     const std::size_t lineStart = buffer.LineStart(line);
@@ -788,8 +824,18 @@ namespace graphite
                     // A break column is where the *next* row starts, so it is this row's
                     // end and the following row's beginning. With wrapping off there are
                     // no breaks and every row is the whole line.
+                    //
+                    // Guarded rather than indexed straight: `RowsOf(line) ==
+                    // BreaksOf(line).size() + 1` holds everywhere today, but
+                    // RowMap::SetRowsOf forces a count without touching the breaks and so
+                    // can decouple the two. Folding, in stage 5, is what will call it — a
+                    // line set to zero rows would send this read past the end. Falling
+                    // back to the line's own first column draws the wrong slice rather
+                    // than reading memory that is not there.
                     const std::vector<std::size_t>& breaks = item.rows.BreaksOf(line);
-                    const std::size_t fromColumn = ref.subRow == 0 ? 0 : breaks[ref.subRow - 1];
+                    const std::size_t fromColumn =
+                        ref.subRow == 0 || ref.subRow > breaks.size() ? 0
+                                                                     : breaks[ref.subRow - 1];
                     const bool lastRowOfLine = ref.subRow >= breaks.size();
 
                     // Sliced by converting columns to bytes rather than by indexing the
@@ -828,7 +874,6 @@ namespace graphite
                     const std::size_t depth =
                         line < item.indentDepths.size() ? item.indentDepths[line] : 0;
 
-
                     // Positioned relative to this row's first column, not to the line's:
                     // a continuation row starts partway into the line, and a guide drawn
                     // from the line's own column 0 would sit that far to the right of the
@@ -850,21 +895,8 @@ namespace graphite
                     if (selectionFrom != selectionTo && selectionTo > lineStart
                         && selectionFrom <= lineStart + text.size())
                     {
-                        const std::size_t fromByte =
-                            selectionFrom > lineStart ? selectionFrom - lineStart : 0;
-                        const std::size_t toByte =
-                            std::min(selectionTo - lineStart, text.size() + 1);
-
-                        // The selection's span within the line, in columns. A selection
-                        // running past this line's end shows the newline as one cell of
-                        // highlight, which is how every editor draws it — that is the
-                        // trailing +1.
-                        const std::size_t selectionFromColumn = core::text::ColumnOfByte(
-                            text, fromByte, core::text::DefaultTabWidth);
-                        const std::size_t selectionToColumn =
-                            core::text::ColumnOfByte(text, std::min(toByte, text.size()),
-                                                     core::text::DefaultTabWidth)
-                            + (toByte > text.size() ? 1 : 0);
+                        // selectionFromColumn and selectionToColumn were measured once for
+                        // this line, in the caching block above, under this same condition.
 
                         // Clipped to this row's own column span, so a selection crossing
                         // several rows fills each one from its own left edge rather than

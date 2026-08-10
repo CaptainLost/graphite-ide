@@ -264,6 +264,11 @@ namespace graphite
             item.caret = core::text::PlaceAt(item.document->Buffer(), item.caret,
                                              item.caret.offset, false,
                                              core::text::DefaultTabWidth);
+            // The vertical aim was measured against the text that just went away. Left
+            // standing, the next Up or Down would aim at a column of the old document
+            // from a caret sitting in the new one. Cleared rather than converted, so the
+            // move resolves it from where the caret actually is now.
+            item.rowAimAt = core::text::NoRowAim;
             core::text::RefreshDerived(item);
             SetTransientMessage(fileName + " reloaded (changed on disk)");
         }
