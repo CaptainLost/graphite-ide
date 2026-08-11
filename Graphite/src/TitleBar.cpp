@@ -8,6 +8,7 @@
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
+#include <cmath>
 #include <format>
 
 namespace graphite
@@ -21,10 +22,49 @@ namespace graphite
         /// that goes red under the pointer. Everything else follows the theme.
         constexpr ImVec4 kCloseHovered{0.75f, 0.16f, 0.16f, 1.0f};
 
-        bool CaptionButton(const char* id, const core::CaptionRect& rect)
+        /// A window button drawn rather than themed: an invisible item for the interaction,
+        /// one rectangle on the draw list for the background, and the glyph centred in it.
+        ///
+        /// `systemOwnsPointer` is what an ImGui::Button cannot know. Along the top and the
+        /// right edges the resize border runs straight across all three buttons, and there
+        /// the pointer belongs to Windows: the hit test answers a resize corner, the press
+        /// arrives as non-client input the application never sees, and the native caption
+        /// highlights nothing. A Button would still light up under a cursor it will never
+        /// be clicked by. Disabled is precisely the state wanted for that strip — ImGui
+        /// reports the item neither hovered nor active, refuses it the press, and releases
+        /// the active id if it happened to hold one. The dimming BeginDisabled brings with
+        /// it costs nothing here, because every pixel below is drawn with an explicit
+        /// colour rather than through the style.
+        bool CaptionButton(const char* id, const char* glyph, const core::CaptionRect& rect,
+                           ImU32 hoveredColour, ImU32 heldColour, bool systemOwnsPointer)
         {
             ImGui::SetCursorPos(ImVec2(rect.x, rect.y));
-            return ImGui::Button(id, ImVec2(rect.width, rect.height));
+
+            const ImVec2 min = ImGui::GetCursorScreenPos();
+            const ImVec2 max(min.x + rect.width, min.y + rect.height);
+
+            ImGui::BeginDisabled(systemOwnsPointer);
+            const bool pressed = ImGui::InvisibleButton(id, ImVec2(rect.width, rect.height));
+            const bool held = ImGui::IsItemActive();
+            const bool hovered = ImGui::IsItemHovered();
+            ImGui::EndDisabled();
+
+            ImDrawList* draw = ImGui::GetWindowDrawList();
+
+            if (held || hovered)
+            {
+                draw->AddRectFilled(min, max, held ? heldColour : hoveredColour);
+            }
+
+            // Floored, not rounded: CalcTextSize rounds up, so a centred glyph placed on a
+            // half pixel would be resampled and read blurrier than the menu text beside it.
+            const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
+            const ImVec2 at(std::floor(min.x + (rect.width - glyphSize.x) * 0.5f),
+                            std::floor(min.y + (rect.height - glyphSize.y) * 0.5f));
+
+            draw->AddText(at, ImGui::GetColorU32(ImGuiCol_Text), glyph);
+
+            return pressed;
         }
     }
 
@@ -64,46 +104,16 @@ namespace graphite
             ImGui::TextDisabled("%s", version.c_str());
         }
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-
-        if (CaptionButton(ICON_MDI_WINDOW_MINIMIZE "###CaptionMinimize", layout.minimize))
-        {
-            window.Minimize();
-        }
-
-        const char* middle = window.IsMaximized()
-                                 ? ICON_MDI_WINDOW_RESTORE "###CaptionMaximize"
-                                 : ICON_MDI_WINDOW_MAXIMIZE "###CaptionMaximize";
-
-        if (CaptionButton(middle, layout.maximize))
-        {
-            window.ToggleMaximize();
-        }
-
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, kCloseHovered);
-        ImGui::PushStyleColor(ImGuiCol_ButtonActive, kCloseHovered);
-
-        // Through the window's close flag rather than Application::Close(), for the same
-        // reason the File > Exit item does: it is the only path that asks the layers
-        // whether anything is unsaved.
-        if (CaptionButton(ICON_MDI_CLOSE "###CaptionClose", layout.close))
-        {
-            window.RequestClose();
-        }
-
-        ImGui::PopStyleColor(3);
-        ImGui::PopStyleVar();
-
-        // What is left of the row between the menus and these buttons is what the system
-        // may treat as a title bar — reported as the span itself, not as "the cursor is
-        // over it". The difference is not stylistic: the moment the hit test answers
-        // HTCAPTION the pointer belongs to the non-client area, GLFW gets WM_MOUSELEAVE
-        // and the ImGui backend pushes an invalid mouse position, so any answer computed
-        // from GetMousePos() or IsAnyItemHovered() would collapse the frame after it was
-        // given and flip the hit test back and forth under a cursor that never moved.
+        // What is left of the row between the menus and the window buttons is what the
+        // system may treat as a title bar — reported as the span itself, not as "the
+        // cursor is over it". The difference is not stylistic: the moment the hit test
+        // answers HTCAPTION the pointer belongs to the non-client area, GLFW gets
+        // WM_MOUSELEAVE and the ImGui backend pushes an invalid mouse position, so any
+        // answer computed from GetMousePos() or IsAnyItemHovered() would collapse the
+        // frame after it was given and flip the hit test back and forth under a cursor
+        // that never moved.
         //
-        // These x values are window-local, the same space SetCursorPos above uses, while
+        // These x values are window-local, the same space SetCursorPos below uses, while
         // the hit test asks in client coordinates. They coincide because the dockspace
         // host sits at the main viewport's WorkPos, which the status bar (docked at the
         // bottom) leaves equal to the viewport's Pos, i.e. the client's top-left. A bar
@@ -120,6 +130,54 @@ namespace graphite
         // this says nothing about where the cursor is, so it stays true while the pointer
         // is off in the non-client area.
         metrics.dragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+
+        // The buttons then ask that very same function what the pointer is over, so the
+        // highlight and the hit test cannot disagree: anything Classify does not call
+        // Client is the system's this frame. An invalid mouse position — what the backend
+        // reports while the pointer is away in the non-client area — lands far outside the
+        // client rectangle and reads as an edge, which is the wanted answer anyway: a
+        // pointer the application cannot see hovers nothing.
+        int clientWidth = 0;
+        int clientHeight = 0;
+        window.FramebufferSize(clientWidth, clientHeight);
+
+        const ImVec2 origin = ImGui::GetWindowPos();
+        const ImVec2 pointer = ImGui::GetMousePos();
+
+        const bool systemOwnsPointer =
+            core::Classify(metrics, static_cast<float>(clientWidth),
+                           static_cast<float>(clientHeight), pointer.x - origin.x,
+                           pointer.y - origin.y,
+                           window.IsMaximized()) != core::CaptionHit::Client;
+
+        const ImU32 hovered = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
+        const ImU32 held = ImGui::GetColorU32(ImGuiCol_ButtonActive);
+
+        if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.minimize,
+                          hovered, held, systemOwnsPointer))
+        {
+            window.Minimize();
+        }
+
+        const char* middle =
+            window.IsMaximized() ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE;
+
+        if (CaptionButton("CaptionMaximize", middle, layout.maximize, hovered, held,
+                          systemOwnsPointer))
+        {
+            window.ToggleMaximize();
+        }
+
+        // Through the window's close flag rather than Application::Close(), for the same
+        // reason the File > Exit item does: it is the only path that asks the layers
+        // whether anything is unsaved.
+        const ImU32 closeColour = ImGui::GetColorU32(kCloseHovered);
+
+        if (CaptionButton("CaptionClose", ICON_MDI_CLOSE, layout.close, closeColour,
+                          closeColour, systemOwnsPointer))
+        {
+            window.RequestClose();
+        }
 
         window.SetCaptionMetrics(metrics);
     }
