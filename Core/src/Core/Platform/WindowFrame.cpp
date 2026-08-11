@@ -49,10 +49,12 @@ namespace core
                     return;
                 }
 
-                // The frame goes back to the system's, so the margin that was only there to
-                // give DWM a row to draw a border in goes with it.
-                const MARGINS none{0, 0, 0, 0};
-                DwmExtendFrameIntoClientArea(m_hwnd, &none);
+                // The window is about to have the system's caption back, and that caption
+                // must be framed the way the system frames every other window: this is the
+                // one place DWMWA_COLOR_DEFAULT does something, because it undoes the
+                // colour Install set. A failure is as ignorable here as it is there.
+                const COLORREF none = DWMWA_COLOR_DEFAULT;
+                DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &none, sizeof(none));
 
                 SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_previous));
 
@@ -114,47 +116,28 @@ namespace core
             /// WM_NCCALCSIZE arrives for the maximize itself, which is when it matters most.
             [[nodiscard]] bool Maximized() const { return IsZoomed(m_hwnd) != FALSE; }
 
-            /// Puts back the outline WM_NCCALCSIZE took. Both calls are here because they
-            /// answer for different systems, and neither covers the other:
+            /// Puts back an outline for the window, which reclaiming the caption left it
+            /// without. DWM draws it outside the client area, so it costs no pixel the
+            /// application would otherwise draw in, and it goes away by itself when the
+            /// window is maximized — a maximized window has no border to show.
             ///
-            /// DWMWA_BORDER_COLOR exists from build 22000. DWMWA_COLOR_DEFAULT asks DWM for
-            /// its own border: drawn outside the client area, so it costs no pixel the
-            /// application would otherwise draw in, and it follows the accent colour and
-            /// the light/dark theme by itself — nothing here has to watch for a theme
-            /// change and repaint. Every older system answers with a failure HRESULT, which
-            /// is the expected answer there and no reason to refuse the whole frame.
+            /// The colour mirrors ImGuiCol_Border in Core/Gui/Theme.cpp (0.204, 0.220,
+            /// 0.247), the line every panel is already outlined with, so the window's edge
+            /// and the edges inside it are the same colour. The two are separate literals
+            /// and have to be moved together: this one cannot read the style, because it is
+            /// set before ImGui exists and applies to a window, not to a frame ImGui draws.
+            /// A single explicit colour rather than DWMWA_COLOR_DEFAULT, which only asks
+            /// for the state an untouched window is already in.
             ///
-            /// DwmExtendFrameIntoClientArea is what those older systems have instead. The
-            /// only part of a WS_OVERLAPPEDWINDOW frame Windows 10 actually paints is the
-            /// line along the top edge — left, right and bottom are invisible resize
-            /// handles plus a composited shadow — and that line is exactly what the
-            /// reclaimed caption covers. Extending the frame one pixel back gives DWM a row
-            /// to keep drawing it in; the row stays the application's to draw into, so no
-            /// client area is lost either way.
-            void RestoreBorder()
+            /// DWMWA_BORDER_COLOR exists from build 22000. Every older system answers with
+            /// a failure HRESULT, which is deliberately ignored: the caption is already
+            /// hidden by then and a window with no outline is still a working window, so
+            /// this is no reason to fail Hide and hand the system bar back. What it costs
+            /// there is recorded in ADR 0475 — before build 22000 there is no border.
+            void RestoreBorder() const
             {
-                const COLORREF border = DWMWA_COLOR_DEFAULT;
+                const COLORREF border = RGB(52, 56, 63);
                 DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &border, sizeof(border));
-
-                ExtendFrame();
-            }
-
-            /// A maximized window shows no border — and WM_NCCALCSIZE already insets the
-            /// frame in that case — so the margin is asked for only while the window is
-            /// restored. Cached because WM_SIZE arrives on every step of a drag-resize and
-            /// the margin only ever changes when the maximized state does.
-            void ExtendFrame()
-            {
-                const int top = Maximized() ? 0 : 1;
-                if (top == m_frameTop)
-                {
-                    return;
-                }
-
-                m_frameTop = top;
-
-                const MARGINS margins{0, 0, top, 0};
-                DwmExtendFrameIntoClientArea(m_hwnd, &margins);
             }
 
             LRESULT OnCalcSize(WPARAM wParam, LPARAM lParam)
@@ -267,16 +250,6 @@ namespace core
                     return self->OnCalcSize(wParam, lParam);
                 case WM_NCHITTEST:
                     return self->OnHitTest(lParam);
-                case WM_SIZE:
-                {
-                    // GLFW first — it reads the new size out of this message — and only then
-                    // the margin, which depends on the maximized state this message reports
-                    // a change of.
-                    const LRESULT result =
-                        CallWindowProcW(self->m_previous, hwnd, message, wParam, lParam);
-                    self->ExtendFrame();
-                    return result;
-                }
                 default:
                     break;
                 }
@@ -287,9 +260,6 @@ namespace core
             HWND m_hwnd = nullptr;
             WNDPROC m_previous = nullptr;
             CaptionMetrics m_metrics;
-
-            /// The top margin last handed to DWM, or -1 for "none asked for yet".
-            int m_frameTop = -1;
         };
     }
 #endif
