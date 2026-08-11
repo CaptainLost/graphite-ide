@@ -43,6 +43,7 @@ namespace core
             ICON_MDI_WINDOW_MINIMIZE,
             ICON_MDI_WINDOW_MAXIMIZE,
             ICON_MDI_WINDOW_RESTORE,
+            ICON_MDI_CLOSE,
         };
 
         constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
