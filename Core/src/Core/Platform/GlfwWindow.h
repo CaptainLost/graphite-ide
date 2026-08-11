@@ -24,7 +24,14 @@ namespace core
 
         [[nodiscard]] void* NativeHandle() const override { return m_handle; }
 
+        void Minimize() override;
+        void ToggleMaximize() override;
+        [[nodiscard]] bool IsMaximized() const override;
+        [[nodiscard]] bool HasCustomTitleBar() const override;
+        void SetCaptionMetrics(const CaptionMetrics& metrics) override;
+
     private:
         GLFWwindow* m_handle = nullptr;
+        CaptionMetrics m_caption;
     };
 }

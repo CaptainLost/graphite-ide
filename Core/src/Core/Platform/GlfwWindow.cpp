@@ -68,6 +68,37 @@ namespace core
         glfwSwapInterval(enabled ? 1 : 0);
     }
 
+    void GlfwWindow::Minimize()
+    {
+        glfwIconifyWindow(m_handle);
+    }
+
+    void GlfwWindow::ToggleMaximize()
+    {
+        if (IsMaximized())
+        {
+            glfwRestoreWindow(m_handle);
+            return;
+        }
+
+        glfwMaximizeWindow(m_handle);
+    }
+
+    bool GlfwWindow::IsMaximized() const
+    {
+        return glfwGetWindowAttrib(m_handle, GLFW_MAXIMIZED) == GLFW_TRUE;
+    }
+
+    bool GlfwWindow::HasCustomTitleBar() const
+    {
+        return false;
+    }
+
+    void GlfwWindow::SetCaptionMetrics(const CaptionMetrics& metrics)
+    {
+        m_caption = metrics;
+    }
+
     Result<std::unique_ptr<Window>> Window::Create(const WindowSpec& spec)
     {
         if (s_glfwWindowCount == 0)

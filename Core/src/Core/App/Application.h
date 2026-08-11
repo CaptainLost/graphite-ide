@@ -17,6 +17,9 @@ namespace core
         std::string name = "IDE";
         int width = 1600;
         int height = 900;
+
+        /// Draw the title bar in the application instead of letting the system draw one.
+        bool customTitleBar = false;
     };
 
     /// Owner of the window, the ImGui layer, and the main loop.

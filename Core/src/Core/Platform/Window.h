@@ -2,6 +2,7 @@
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
+#include "Core/Platform/Caption.h"
 
 #include <memory>
 #include <string>
@@ -14,6 +15,11 @@ namespace core
         int width = 1600;
         int height = 900;
         bool vsync = true;
+
+        /// Ask the platform to remove the system title bar so the application can draw
+        /// its own. A platform that cannot honour it leaves the native bar in place —
+        /// see Window::HasCustomTitleBar.
+        bool customTitleBar = false;
     };
 
     /// System window together with the OpenGL context. The application layer doesn't see GLFW.
@@ -39,6 +45,21 @@ namespace core
 
         /// Platform handle — for the ImGui backend. In practice a GLFWwindow*.
         [[nodiscard]] virtual void* NativeHandle() const = 0;
+
+        virtual void Minimize() = 0;
+
+        /// Maximizes a restored window and restores a maximized one — the behaviour the
+        /// middle window button and a double-click on the caption both need.
+        virtual void ToggleMaximize() = 0;
+        [[nodiscard]] virtual bool IsMaximized() const = 0;
+
+        /// Whether the system title bar is actually gone. False means the application
+        /// must not paint its own, or the window ends up with two.
+        [[nodiscard]] virtual bool HasCustomTitleBar() const = 0;
+
+        /// Tells the window where the application-drawn caption is this frame. Ignored
+        /// by a window that still has its system bar.
+        virtual void SetCaptionMetrics(const CaptionMetrics& metrics) = 0;
 
         static Result<std::unique_ptr<Window>> Create(const WindowSpec& spec);
     };

@@ -44,6 +44,7 @@ namespace core
         windowSpec.title = m_spec.name;
         windowSpec.width = m_spec.width;
         windowSpec.height = m_spec.height;
+        windowSpec.customTitleBar = m_spec.customTitleBar;
 
         auto windowResult = Window::Create(windowSpec);
         if (!windowResult)
