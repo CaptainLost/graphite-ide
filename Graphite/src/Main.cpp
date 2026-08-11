@@ -18,7 +18,7 @@ namespace
     public:
         GraphiteApplication(std::shared_ptr<core::RingBufferSink> sink,
                              std::filesystem::path initialFolder)
-            : core::Application(core::ApplicationSpec{"Graphite IDE", 1600, 900}),
+            : core::Application(core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
               m_sink(std::move(sink)),
               m_initialFolder(std::move(initialFolder))
         {

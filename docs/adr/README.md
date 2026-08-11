@@ -506,4 +506,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0474](0474-f-56-avoid-unnecessary-condition-nesting.md) | F.56: Avoid unnecessary condition nesting | proposed | 2026-08-10 |
 | [0475](0475-ask-every-modal-question-through-modalquestion.md) | Ask every modal question through ModalQuestion | proposed | 2026-08-11 |
 | [0476](0476-load-a-tab-whose-file-appears-rather-than-only-clearing-its-missing-mark.md) | Load a tab whose file appears, rather than only clearing its missing mark | proposed | 2026-08-11 |
+| [0477](0477-draw-the-title-bar-in-the-application.md) | Draw the title bar in the application | accepted | 2026-08-11 |
 <!-- /adr-index -->

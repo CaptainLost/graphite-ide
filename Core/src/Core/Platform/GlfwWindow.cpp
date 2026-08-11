@@ -22,6 +22,10 @@ namespace core
 
     GlfwWindow::~GlfwWindow()
     {
+        // Before glfwDestroyWindow, always: the frame restores a window procedure, and a
+        // destroyed window has none left to restore it to.
+        m_frame.reset();
+
         if (m_handle == nullptr)
             return;
 
@@ -68,6 +72,40 @@ namespace core
         glfwSwapInterval(enabled ? 1 : 0);
     }
 
+    void GlfwWindow::Minimize()
+    {
+        glfwIconifyWindow(m_handle);
+    }
+
+    void GlfwWindow::ToggleMaximize()
+    {
+        if (IsMaximized())
+        {
+            glfwRestoreWindow(m_handle);
+            return;
+        }
+
+        glfwMaximizeWindow(m_handle);
+    }
+
+    bool GlfwWindow::IsMaximized() const
+    {
+        return glfwGetWindowAttrib(m_handle, GLFW_MAXIMIZED) == GLFW_TRUE;
+    }
+
+    bool GlfwWindow::HasCustomTitleBar() const
+    {
+        return m_frame != nullptr;
+    }
+
+    void GlfwWindow::SetCaptionMetrics(const CaptionMetrics& metrics)
+    {
+        if (m_frame != nullptr)
+        {
+            m_frame->SetCaptionMetrics(metrics);
+        }
+    }
+
     Result<std::unique_ptr<Window>> Window::Create(const WindowSpec& spec)
     {
         if (s_glfwWindowCount == 0)
@@ -99,6 +137,19 @@ namespace core
         auto window = std::make_unique<GlfwWindow>(handle);
         glfwMakeContextCurrent(handle);
         window->SetVSync(spec.vsync);
+
+        if (spec.customTitleBar)
+        {
+            auto frame = WindowFrame::Hide(*window);
+            if (frame)
+            {
+                window->AdoptFrame(std::move(frame).Value());
+            }
+            else
+            {
+                CORE_WARN("Keeping the system title bar: {}", frame.GetError().message);
+            }
+        }
 
         CORE_INFO("Window created: {}x{} \"{}\"", spec.width, spec.height, spec.title);
         return Result<std::unique_ptr<Window>>{std::move(window)};

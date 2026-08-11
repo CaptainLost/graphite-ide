@@ -39,7 +39,29 @@ namespace core
             ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoDocking |
             ImGuiWindowFlags_MenuBar;
 
+        // A window's menu-bar height is fixed the instant Begin() runs — it reads
+        // FramePadding right there (window->MenuBarHeight in imgui.cpp) — so an override
+        // has to be active across exactly this call and no more. It is popped again
+        // immediately below, before DockSpace(): left pushed any longer it would also be
+        // read by DockNodeCalcTabBarLayout, which sizes every *docked node's* own tab bar
+        // off the same style var, and stretching those to the caption's height would push
+        // every panel's and every document's content down inside its own tab.
+        const bool overrideMenuBarHeight = layout.menuBarHeight > 0.0f;
+        if (overrideMenuBarHeight)
+        {
+            const ImGuiStyle& style = ImGui::GetStyle();
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                                ImVec2(style.FramePadding.x,
+                                       (layout.menuBarHeight - ImGui::GetFontSize()) * 0.5f));
+        }
+
         ImGui::Begin(kHostWindowName, nullptr, hostFlags);
+
+        if (overrideMenuBarHeight)
+        {
+            ImGui::PopStyleVar();
+        }
+
         ImGui::PopStyleVar(3);
 
         const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);

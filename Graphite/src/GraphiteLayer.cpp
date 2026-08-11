@@ -20,6 +20,37 @@
 
 namespace graphite
 {
+    namespace
+    {
+        constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
+
+        /// Opens one of the menu bar's top-level menus and gives its dropdown back the
+        /// padding the theme asks for. The caption row's enlarged FramePadding has to be
+        /// live while BeginMenu runs — it is what sizes the label to the row and what
+        /// puts the dropdown directly beneath the row rather than a few pixels into it —
+        /// but everything the caller submits next belongs to the popup, where rows as
+        /// tall as a title bar would be nonsense. Pushing the theme's value back inside
+        /// the popup rather than popping the outer one is what ImGui allows: it compares
+        /// the style stack at End() with the one at Begin(), so a pop that crosses that
+        /// boundary trips its own check. Pair with EndTopLevelMenu.
+        bool BeginTopLevelMenu(const char* label, const ImVec2& dropdownPadding)
+        {
+            if (!ImGui::BeginMenu(label))
+            {
+                return false;
+            }
+
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, dropdownPadding);
+            return true;
+        }
+
+        void EndTopLevelMenu()
+        {
+            ImGui::PopStyleVar();
+            ImGui::EndMenu();
+        }
+    }
+
     GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
                        std::filesystem::path initialFolder)
         : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder)),
@@ -28,6 +59,23 @@ namespace graphite
         m_layout.left = {"files"};
         m_layout.bottom = {"console"};
         m_layout.center = {};
+
+        // 32 px is what Windows itself uses for a caption, so the drawn window buttons
+        // keep their familiar hit size — see TitleBar.h. DockSpaceHost::Begin is what
+        // actually applies this, at the one moment it can (its own host window's Begin()).
+        //
+        // Only when the caption is actually ours to draw. WindowFrame::Hide is allowed to
+        // refuse — a non-Windows build, a subclass that did not take — and then
+        // TitleBar::Render draws nothing, so the row would be twice the height it needs,
+        // empty on the right, underneath the system title bar it failed to remove: worse
+        // than the menu bar this branch started from. The layer is constructed in
+        // OnInit(), after Window::Create, so the window can already answer.
+        m_customTitleBar = core::Application::Get().GetWindow().HasCustomTitleBar();
+
+        if (m_customTitleBar)
+        {
+            m_layout.menuBarHeight = kCaptionHeight;
+        }
     }
 
     void GraphiteLayer::OnAttach()
@@ -226,10 +274,41 @@ namespace graphite
 
     void GraphiteLayer::RenderMenuBar()
     {
-        if (!ImGui::BeginMenuBar())
-            return;
+        // Read before anything is pushed over it: this is the padding the dropdowns are
+        // entitled to, and BeginTopLevelMenu hands it back to each of them.
+        const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
 
-        if (ImGui::BeginMenu("File"))
+        // m_dockSpace.Begin already fixed the host window's own menu-bar height via
+        // m_layout.menuBarHeight (see DockSpaceHost::Begin) and popped its FramePadding
+        // override before opening the dockspace, so panels dock at their normal tab-bar
+        // height. The bar itself sees plain default padding unless pushed again here —
+        // and it has to match, or the File/View/Help items sit at the wrong height for
+        // the 32 px row, and TitleBar's version label (which relies on the padding-driven
+        // text baseline BeginMenuBar sets up) lands off-centre. Pushed only when the row
+        // is actually 32 px tall, which is the same condition menuBarHeight was set under.
+        if (m_customTitleBar)
+        {
+            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                                ImVec2(dropdownPadding.x,
+                                       (kCaptionHeight - ImGui::GetFontSize()) * 0.5f));
+        }
+
+        // Not an early return on BeginMenuBar: the push above still has to be popped.
+        if (ImGui::BeginMenuBar())
+        {
+            RenderMenus(dropdownPadding);
+            ImGui::EndMenuBar();
+        }
+
+        if (m_customTitleBar)
+        {
+            ImGui::PopStyleVar();
+        }
+    }
+
+    void GraphiteLayer::RenderMenus(const ImVec2& dropdownPadding)
+    {
+        if (BeginTopLevelMenu("File", dropdownPadding))
         {
             if (ImGui::MenuItem("Open Folder..."))
                 OpenFolderInteractively(m_workspace);
@@ -255,10 +334,10 @@ namespace graphite
             if (ImGui::MenuItem("Exit", "Alt+F4"))
                 core::Application::Get().GetWindow().RequestClose();
 
-            ImGui::EndMenu();
+            EndTopLevelMenu();
         }
 
-        if (ImGui::BeginMenu("View"))
+        if (BeginTopLevelMenu("View", dropdownPadding))
         {
             m_panels.RenderViewMenuItems();
             ImGui::Separator();
@@ -334,10 +413,10 @@ namespace graphite
                 CORE_INFO("Layout restored to the default");
             }
 
-            ImGui::EndMenu();
+            EndTopLevelMenu();
         }
 
-        if (ImGui::BeginMenu("Help"))
+        if (BeginTopLevelMenu("Help", dropdownPadding))
         {
             if (ImGui::MenuItem("Log test entries"))
             {
@@ -347,10 +426,10 @@ namespace graphite
                 CORE_ERROR("Sample error");
             }
 
-            ImGui::EndMenu();
+            EndTopLevelMenu();
         }
 
-        ImGui::EndMenuBar();
+        m_titleBar.Render(core::Application::Get().GetWindow());
     }
 
     bool GraphiteLayer::AnyDocumentModified() const

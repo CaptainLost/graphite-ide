@@ -16,6 +16,14 @@ namespace core
 
         float leftRatio = 0.20f;
         float bottomRatio = 0.25f;
+
+        /// Overrides the height of the host window's menu bar row, in pixels — the row
+        /// height ImGui would otherwise pick is fixed the instant the host window's
+        /// Begin() runs, so DockSpaceHost::Begin is the only place that can still apply
+        /// this. Zero leaves ImGui's own FramePadding-derived height alone. Named after
+        /// what it does rather than who wants it, so this header stays free of anything
+        /// that only Graphite would recognise.
+        float menuBarHeight = 0.0f;
     };
 
     /// Invisible window covering the entire viewport surface, in which the dockspace lives.
