@@ -22,16 +22,15 @@ shadow, the snap animations, Aero Snap, edge resizing — is left to Windows,
 because the frame itself is never replaced, only the row painted inside it.
 
 The one part of the frame that reclaiming the caption does take away is the
-border, and that is asked back from DWM rather than drawn: `DWMWA_BORDER_COLOR`
-set to `DWMWA_COLOR_DEFAULT` (build 22000 and later) has DWM draw its own
-border outside the client area, in the accent colour and following the
-light/dark theme with no repainting on this side; `DwmExtendFrameIntoClientArea`
-with a one-pixel top margin covers the systems that predate that attribute,
-where the only painted edge of the frame is the line along the top. The margin
-goes back to zero while the window is maximized, which is also the case
-`WM_NCCALCSIZE` already insets, so `WM_SIZE` is the third and last message the
-frame watches. A failure from `DwmSetWindowAttribute` is expected before build
-22000 and does not fail the install.
+border, and that is asked back from DWM rather than drawn: `Hide` sets
+`DWMWA_BORDER_COLOR` to an explicit colour, the one `ImGuiCol_Border` already
+outlines every panel with, so the window's edge matches the edges inside it and
+DWM keeps drawing it outside the client area at no cost in pixels the
+application draws in. The two literals — this one and the theme's — have to
+move together; the frame cannot read the style, because it runs before ImGui
+exists. The attribute exists from build 22000; older systems answer with a
+failure `HRESULT`, which is ignored, so `Hide` still succeeds and
+`HasCustomTitleBar()` stays true — the window simply has no border there.
 
 `core::Classify` (declared in `Core/Platform/Caption.h`) is the pure function
 behind the hit test: given a point and a `CaptionMetrics` — caption height,
@@ -54,8 +53,10 @@ input the application never receives, and a themed `ImGui::Button` would light
 up under a cursor that will never click it. Each button is therefore an
 `InvisibleButton` with its background and glyph on the draw list, submitted
 inside `BeginDisabled` whenever `Classify` calls the pointer anything but
-`Client` — which is what keeps ImGui from reporting it hovered, from taking the
-press, and from holding an active id in that strip. `WindowFrame::Hide(Window&)` is the seam that does the
+`Client` — which is what keeps ImGui from reporting it hovered, from taking
+the press, and from holding an active id in that strip.
+
+`WindowFrame::Hide(Window&)` is the seam that does the
 subclassing; it lives in Core behind `Core::Platform`, in line with
 [0002](0002-keep-core-free-of-ide-knowledge.md), and returns `Unsupported` on
 any platform, or any failure, where hiding the native bar cannot be done
@@ -82,9 +83,8 @@ because it was never touched.
   window.
 - The platform seam is one function, `WindowFrame::Hide`, so a port to another
   platform writes one branch and nothing else in Core or Graphite changes.
-- The window border is the system's own: it follows the accent colour and the
-  theme without a line of code watching for either, and it costs no pixel of
-  the client area the application draws in.
+- The window border is drawn by DWM, outside the client area, so it costs no
+  pixel of the area the application draws in and no per-frame work.
 
 ### Negative
 
@@ -95,6 +95,12 @@ because it was never touched.
 - Windows 11 Snap Layouts need the window to answer `HTMAXBUTTON` from the hit
   test and are not implemented here, so hovering the maximize button gives no
   flyout the way a native caption button would.
+- Before build 22000 there is no window border at all: `DWMWA_BORDER_COLOR` is
+  the only mechanism used, and the alternative for those systems —
+  `DwmExtendFrameIntoClientArea` with a one-pixel top margin — cannot show
+  through a client area the renderer clears opaque every frame. Windows 10
+  therefore gets a window with no outline against the desktop, which is a real
+  cost accepted rather than a case that was covered.
 - An auto-hidden taskbar cannot be summoned by moving the cursor to the screen
   edge while the window is maximized, because that gesture is wired to the
   native caption's hit-test region, which a maximized custom-drawn window no
@@ -131,10 +137,16 @@ driving the change.
 
 ### Draw the border in the application
 
-One rectangle around the dockspace host, one pixel wide. Rejected because it
-spends an interior pixel on something the system draws outside the window for
-free, and because matching it to the accent colour and to a light/dark switch
-means reading and re-reading system settings that DWM already tracks.
+One rectangle around the dockspace host, one pixel wide, redrawn every frame.
+It would work on every Windows version, including the ones
+`DWMWA_BORDER_COLOR` leaves without a border. Rejected because it spends an
+interior pixel and a per-frame draw on something the system draws outside the
+window for nothing, and because a rectangle in the client area cannot follow
+the rounded corners Windows 11 gives the window — it would cut across them.
+The same objection sinks `DwmExtendFrameIntoClientArea` with a one-pixel top
+margin, which was tried first: the extended row stays the application's, and
+`Core::Gui::ImGuiRenderer` clears the whole client area opaque every frame, so
+nothing DWM draws underneath it can ever be seen.
 
 ## Related
 

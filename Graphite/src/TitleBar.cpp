@@ -32,9 +32,19 @@ namespace graphite
         /// highlights nothing. A Button would still light up under a cursor it will never
         /// be clicked by. Disabled is precisely the state wanted for that strip — ImGui
         /// reports the item neither hovered nor active, refuses it the press, and releases
-        /// the active id if it happened to hold one. The dimming BeginDisabled brings with
-        /// it costs nothing here, because every pixel below is drawn with an explicit
-        /// colour rather than through the style.
+        /// the active id if it happened to hold one.
+        ///
+        /// What that costs is style.Alpha, which BeginDisabled scales down: every colour
+        /// used below has to be resolved outside the disabled scope, or the glyph would
+        /// dim in the strip and give away a state the button is not supposed to have. The
+        /// two background colours arrive already resolved, and GetColorU32(ImGuiCol_Text)
+        /// is called after EndDisabled for exactly that reason — moving it up two lines
+        /// would be the bug.
+        ///
+        /// One deliberate difference from ImGui::Button: InvisibleButton submits the item
+        /// with ImGuiItemFlags_NoNav, so these three are no longer keyboard-reachable.
+        /// Nothing is lost that the menus do not already offer — File > Exit closes the
+        /// window, and the system menu on Alt+Space minimizes and maximizes it.
         bool CaptionButton(const char* id, const char* glyph, const core::CaptionRect& rect,
                            ImU32 hoveredColour, ImU32 heldColour, bool systemOwnsPointer)
         {
@@ -131,12 +141,22 @@ namespace graphite
         // is off in the non-client area.
         metrics.dragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
 
-        // The buttons then ask that very same function what the pointer is over, so the
-        // highlight and the hit test cannot disagree: anything Classify does not call
-        // Client is the system's this frame. An invalid mouse position — what the backend
-        // reports while the pointer is away in the non-client area — lands far outside the
-        // client rectangle and reads as an edge, which is the wanted answer anyway: a
-        // pointer the application cannot see hovers nothing.
+        // The buttons then ask that same function, on that same metrics object, what the
+        // pointer is over: anything Classify does not call Client is the system's this
+        // frame, and the highlight follows the hit test rather than guessing alongside it.
+        //
+        // The remaining arguments are not shared, only equal. The frame takes the client
+        // size from GetClientRect where this takes it from the framebuffer, the point from
+        // ScreenToClient where this takes it from ImGui, and the maximized flag from
+        // IsZoomed where this takes it from GLFW's attribute. They agree because of how
+        // the GLFW backend sits on Win32, not because anything here enforces it: a
+        // framebuffer scaled against the client rectangle would part them, and the
+        // highlight would drift from the hit test by that scale.
+        //
+        // An invalid mouse position — what the backend reports while the pointer is away
+        // in the non-client area — lands far outside the client rectangle and reads as an
+        // edge, which is the wanted answer anyway: a pointer the application cannot see
+        // hovers nothing.
         int clientWidth = 0;
         int clientHeight = 0;
         window.FramebufferSize(clientWidth, clientHeight);
