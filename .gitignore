@@ -38,3 +38,4 @@ docs/superpowers/
 
 # Parallel work trees
 .worktrees/
+.claude/worktrees/
