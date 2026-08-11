@@ -29,16 +29,28 @@ namespace core
         /// Thickness of the strip along each edge that resizes the window instead.
         float resizeBorder = 8.0f;
 
-        /// Whether the cursor currently stands over a part of the caption no widget owns.
-        /// False while a menu or a window button is under it, so those keep their clicks.
-        /// This describes the cursor, and Classify is only ever asked about the cursor.
-        bool cursorOverDragArea = false;
+        /// The half-open span [dragBegin, dragEnd) of the caption that no widget owns —
+        /// between whatever fills the left of the row and the window buttons on its
+        /// right. An empty span (dragEnd <= dragBegin) means no part of the row drags the
+        /// window. Deliberately geometry and not "what is hovered right now": the instant
+        /// this function answers Caption, the system takes the pointer into the
+        /// non-client area, the application stops being told where the cursor is, and an
+        /// answer derived from the cursor would flip straight back.
+        float dragBegin = 0.0f;
+        float dragEnd = 0.0f;
+
+        /// Refuses the drag for as long as the application needs the next click for
+        /// itself — an open menu, which that click should close. Independent of where the
+        /// cursor is, so it survives the pointer leaving the client area.
+        bool dragSuppressed = false;
     };
 
     /// Decides what a point in client coordinates means. Corners win over the two edges
     /// that meet there, and the resize border wins over the caption — a title bar
     /// starting at the very top edge would otherwise leave no way to resize from above.
-    /// A maximized window has no edges to drag, so it reports none.
+    /// A maximized window has no edges to drag, so it reports none. Inside the caption
+    /// only the free span reads as Caption, so the menus and the window buttons keep
+    /// their clicks.
     [[nodiscard]] CaptionHit Classify(const CaptionMetrics& metrics, float clientWidth,
                                       float clientHeight, float x, float y, bool maximized);
 }

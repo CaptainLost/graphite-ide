@@ -57,7 +57,8 @@ namespace core
             }
         }
 
-        if (y < metrics.height && metrics.cursorOverDragArea)
+        if (y < metrics.height && !metrics.dragSuppressed && x >= metrics.dragBegin &&
+            x < metrics.dragEnd)
         {
             return CaptionHit::Caption;
         }

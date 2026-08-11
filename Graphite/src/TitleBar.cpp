@@ -95,36 +95,31 @@ namespace graphite
         ImGui::PopStyleColor(3);
         ImGui::PopStyleVar();
 
-        // What is left of the row after the menus and these buttons is what the system
-        // may treat as a title bar. Asking ImGui whether anything is hovered, or a popup
-        // is open, is what keeps a click on a menu — or on one of the buttons above —
-        // from being swallowed by the drag. Deliberately not IsAnyItemActive(): that is
-        // g.ActiveId != 0 anywhere in the whole application, and ActiveId persists across
-        // frames for a focused InputText — the explorer's two filter boxes and the
-        // rename fields are exactly that. Leaving that check in place would make the
-        // caption undraggable, and double-click-to-maximize dead, for as long as one of
-        // those stayed focused, long after the click that focused it. IsAnyItemHovered()
-        // resets every NewFrame and already covers the moment a click actually lands on a
-        // button or a menu label, which is all this needs.
+        // What is left of the row between the menus and these buttons is what the system
+        // may treat as a title bar — reported as the span itself, not as "the cursor is
+        // over it". The difference is not stylistic: the moment the hit test answers
+        // HTCAPTION the pointer belongs to the non-client area, GLFW gets WM_MOUSELEAVE
+        // and the ImGui backend pushes an invalid mouse position, so any answer computed
+        // from GetMousePos() or IsAnyItemHovered() would collapse the frame after it was
+        // given and flip the hit test back and forth under a cursor that never moved.
         //
-        // GetMousePos() is in screen space (it has to be, viewports can sit anywhere on
-        // the desktop), while kCaptionHeight is a row-local measure, the same space
-        // SetCursorPos above places things in. GetWindowPos() converts between the two:
-        // the dockspace host is positioned at the main viewport's WorkPos with no title
-        // bar and no padding, so its window-space origin *is* the row's top-left. Using
-        // the viewport's own Pos here would be wrong the moment a bottom-docked bar (the
-        // status bar) trims WorkPos away from Pos, or if this ever ran on a monitor whose
-        // origin is not (0, 0) — GetWindowPos() sidesteps both by asking the window that
-        // actually owns this coordinate space rather than assuming it lines up with the
-        // viewport.
-        const float localMouseY = ImGui::GetMousePos().y - ImGui::GetWindowPos().y;
-
+        // These x values are window-local, the same space SetCursorPos above uses, while
+        // the hit test asks in client coordinates. They coincide because the dockspace
+        // host sits at the main viewport's WorkPos, which the status bar (docked at the
+        // bottom) leaves equal to the viewport's Pos, i.e. the client's top-left. A bar
+        // docked along the top or the left would break that — as it would already break
+        // measuring the caption's height from the client top — and both would then need
+        // the offset between GetWindowPos() and the viewport's Pos added here.
         core::CaptionMetrics metrics;
         metrics.height = kCaptionHeight;
-        metrics.cursorOverDragArea =
-            ImGui::IsMousePosValid() && localMouseY < kCaptionHeight &&
-            !ImGui::IsAnyItemHovered() &&
-            !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        metrics.dragBegin = contentLeft;
+        metrics.dragEnd = layout.minimize.x;
+
+        // An open menu is the one thing a free-caption click has to reach the application
+        // for: it should close the menu, and a drag would swallow it. Unlike a hover test
+        // this says nothing about where the cursor is, so it stays true while the pointer
+        // is off in the non-client area.
+        metrics.dragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
 
         window.SetCaptionMetrics(metrics);
     }
