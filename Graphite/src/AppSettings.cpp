@@ -19,7 +19,6 @@ namespace graphite
         /// and renaming it would silently reset that setting for every one of them.
         constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
 
-
         constexpr const char* kEditorFontSizeKey = "editorFontSize";
         constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
         constexpr const char* kIndentWidthKey = "indentWidth";

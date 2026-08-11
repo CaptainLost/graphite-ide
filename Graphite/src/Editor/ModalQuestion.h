@@ -93,6 +93,12 @@ namespace graphite
         }
 
         /// The payload of the question currently on screen, or nullptr when none is.
+        ///
+        /// Answer() destroys what this points at, so a body holding the pointer across its
+        /// buttons is relying on at most one of them being pressed per frame. That holds -
+        /// ImGui activates one widget at a time - but it is ImGui's invariant and not this
+        /// class's, so a body doing anything more than reading the payload before it
+        /// answers should take a copy instead of holding the pointer.
         [[nodiscard]] const Payload* Current() const noexcept
         {
             return m_current ? &*m_current : nullptr;
@@ -105,6 +111,13 @@ namespace graphite
         /// not when it joined: what it was about may have been dealt with some other way
         /// while it waited, and asking then would be asking about nothing. A rejected
         /// question is dropped and the next one considered.
+        ///
+        /// Rejecting is allowed to act, and at both sites here it does. A question is
+        /// raised by a user asking for something - close this tab, exit - and only the
+        /// grounds for *asking* go stale; the request itself does not. So a predicate that
+        /// finds nothing left to ask about typically carries the request out and then
+        /// returns false, rather than leaving the user's click answered by silence. It
+        /// runs while no question is on screen, which is what makes that safe.
         ///
         /// The false path is where a popup that went away without being answered is
         /// noticed and both the gate and the payload released.
@@ -170,10 +183,15 @@ namespace graphite
                     continue;
                 }
 
+                // Asked again even though the loop condition just found the gate free,
+                // because stillWorthAsking runs in between and runs application code: a
+                // predicate that acts on the question having gone stale - closing the tab
+                // it was about, carrying out the close it was asking permission for - can
+                // reach something that opens a question of its own and takes the level.
                 if (!m_gate.TryOpen(m_title))
                 {
-                    // The gate said it was free a moment ago and has refused anyway. Put
-                    // the question back where it was rather than dropping it, and wait.
+                    // It did. Put the question back where it was rather than dropping it,
+                    // and wait for whichever question now holds the level.
                     m_queue.insert(m_queue.begin(), std::move(candidate));
                     return;
                 }

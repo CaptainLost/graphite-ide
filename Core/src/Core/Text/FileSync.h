@@ -60,6 +60,12 @@ namespace core::text
     /// OpenItem&. That difference is deliberate: MarkMissing and MarkPresent are
     /// DocumentSet members that look an item up by path, so reconciling one item against
     /// disk genuinely needs the set it belongs to and not only the item.
+    ///
+    /// `index` must be below `documents.Count()` in every function here. DocumentSet::At
+    /// indexes its vector unchecked, so an index past the end is undefined behaviour
+    /// before any of these functions reaches a guard of its own — including ReloadItem's
+    /// check for an item carrying no document, which cannot be reached without first
+    /// having looked the item up.
 
     /// Reconciles one open item against its file: whether the file is still there, whether
     /// one that had gone has come back, and whether its content has moved on since it was

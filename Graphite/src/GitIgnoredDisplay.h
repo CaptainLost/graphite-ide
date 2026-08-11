@@ -31,10 +31,14 @@ namespace graphite
     [[nodiscard]] constexpr GitIgnoredDisplay GitIgnoredDisplayFromString(std::string_view text)
     {
         if (text == "show")
+        {
             return GitIgnoredDisplay::Show;
+        }
 
         if (text == "hide")
+        {
             return GitIgnoredDisplay::Hide;
+        }
 
         return GitIgnoredDisplay::Dim;
     }

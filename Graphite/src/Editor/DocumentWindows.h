@@ -38,7 +38,7 @@ namespace graphite
         /// first - so they all consult the same gate rather than each knowing about the
         /// others. See ModalGate.
         DocumentWindows(core::text::DocumentSet& documents, ModalGate& modals)
-            : m_documents(documents), m_modals(modals),
+            : m_documents(documents),
               m_sizeQuestion(modals, kSizeQuestionTitle),
               m_reloadConflict(modals, kReloadConflictTitle),
               m_overwriteConfirm(modals, kOverwriteConfirmTitle),
@@ -167,15 +167,15 @@ namespace graphite
             std::filesystem::path path;
             bool permanent = false;
             std::uint64_t size = 0;
+
+            /// What ModalQuestion::Asked needs to tell "this file, again" from a second
+            /// file. Defaulted rather than comparing paths alone: a preview and a
+            /// permanent open of the same file really are two different questions, since
+            /// their answers open two different kinds of tab.
+            [[nodiscard]] bool operator==(const LargeFileQuestion&) const = default;
         };
 
         core::text::DocumentSet& m_documents;
-
-        /// Who currently owns the one modal level every question in this application
-        /// competes for. Consulted by each of the four questions below before it opens,
-        /// and released the moment one is answered - or found to have vanished. Declared
-        /// before them, since each holds a reference to it.
-        ModalGate& m_modals;
 
         /// The dock node the last focused document sits in. A new window goes there, so a
         /// file opened while working in the right-hand split appears in the right-hand

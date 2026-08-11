@@ -494,7 +494,9 @@ namespace graphite
             return;
 
         if (node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Hide)
+        {
             return;
+        }
 
         if (!node.isDirectory)
         {

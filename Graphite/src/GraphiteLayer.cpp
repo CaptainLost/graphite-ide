@@ -211,10 +211,14 @@ namespace graphite
         m_gitIgnoredDisplay = display;
 
         if (auto* files = static_cast<ExplorerPanel*>(m_panels.Find("files")); files != nullptr)
+        {
             files->SetGitIgnoredDisplay(display);
+        }
 
         if (persist)
+        {
             AppSettings::SaveGitIgnoredDisplay(GitIgnoredDisplayToString(display));
+        }
     }
 
     void GraphiteLayer::RenderMenuBar()
@@ -395,6 +399,15 @@ namespace graphite
             return;
         }
 
+        // The same refusal OnCloseRequested makes, and for the same reason: one close
+        // question at a time, whatever raised it. Ask queues rather than replaces, so
+        // without this a second "Close Workspace" from the menu would put a second
+        // question behind the first and close the workspace twice - once per answer.
+        if (m_closeQuestion.IsAsked())
+        {
+            return;
+        }
+
         m_closeQuestion.Ask(purpose);
     }
 
@@ -427,7 +440,30 @@ namespace graphite
         // counts as Cancel for the same reason: left asked, it would make OnCloseRequested
         // refuse every close for the rest of the session and the window could then only be
         // force-quit. Begin does both.
-        if (!m_closeQuestion.Begin())
+        // Worth asking only while something is still unsaved. A question raised over dirty
+        // documents can reach the front of the queue after they have been dealt with one at
+        // a time - a per-tab close question answered with Save, say - and asking then would
+        // put "These files have unsaved changes:" on screen above an empty list. Checked
+        // when it comes off the queue rather than when it joined, since that is exactly the
+        // interval in which the answer changes.
+        //
+        // The close still happens. What went stale is the question, not the request behind
+        // it: the user asked to exit and nothing now stands in the way, which is the case
+        // RequestCloseConfirmation already closes outright when it finds no dirty document
+        // to ask about. Dropping the question alone would leave the application refusing an
+        // exit it has no reason left to refuse.
+        const auto stillWorthAsking = [this](ClosePurpose purpose)
+        {
+            if (AnyDocumentModified())
+            {
+                return true;
+            }
+
+            FinishClose(purpose);
+            return false;
+        };
+
+        if (!m_closeQuestion.Begin(stillWorthAsking))
         {
             return;
         }

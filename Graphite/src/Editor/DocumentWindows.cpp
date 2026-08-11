@@ -106,7 +106,13 @@ namespace graphite
             question.size = probe.Value().size;
         }
 
-        m_sizeQuestion.Ask(std::move(question));
+        // Guarded the way the reload and close questions are: two events naming the same
+        // file the same way - a double dispatch from the tree, an event replayed after a
+        // workspace reload - are one question, not the same one asked twice in a row.
+        if (!m_sizeQuestion.Asked(question))
+        {
+            m_sizeQuestion.Ask(std::move(question));
+        }
     }
 
     void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
@@ -194,22 +200,28 @@ namespace graphite
 
     void DocumentWindows::RespondToSync(std::size_t index, core::text::FileSyncOutcome outcome)
     {
-        const std::filesystem::path path = m_documents.At(index).path;
-
         switch (outcome)
         {
         case core::text::FileSyncOutcome::NeedsDecision:
+        {
             // Ask rather than reload, and let the question queue, so several files
             // changing in the same batch (a git checkout) are asked about one at a time
             // instead of every modal fighting to open this frame. Two sweeps naming the
             // same file - a watcher batch and a focus regain moments later - are one
             // question, not the same one asked twice over.
+            //
+            // Copied here rather than above the switch: every open document is reconciled
+            // on a focus regain and on every "everything" watcher batch, and all but a
+            // handful of those end as Unchanged, which has no use for a path.
+            const std::filesystem::path path = m_documents.At(index).path;
+
             if (!m_reloadConflict.Asked(path))
             {
                 m_reloadConflict.Ask(path);
             }
 
             break;
+        }
 
         case core::text::FileSyncOutcome::SafeToReload:
             // The same function the conflict modal's "Reload from disk" button calls, so
@@ -307,7 +319,11 @@ namespace graphite
                                 + core::fs::ToUtf8(report.stoppedAt->path.filename()) + ": "
                                 + report.stoppedAt->error.message);
 
-            return false;
+            // Every exit here answers "did everything reach disk" with report.Complete()
+            // rather than with a literal. The branches below differ in what they say, not
+            // in what they conclude, and a second failure mode added to SaveAllReport must
+            // not be able to reach Complete() while this wrapper keeps returning true.
+            return report.Complete();
         }
 
         if (report.conflicted.empty())
@@ -318,7 +334,7 @@ namespace graphite
                                     + (report.saved == 1 ? " file." : " files."));
             }
 
-            return true;
+            return report.Complete();
         }
 
         std::vector<std::string> names;
@@ -346,7 +362,7 @@ namespace graphite
 
         SetTransientMessage(message);
 
-        return false;
+        return report.Complete();
     }
 
     void DocumentWindows::SetTransientMessage(std::string text)
@@ -519,12 +535,32 @@ namespace graphite
         // that can happen while it waits. A file merely deleted from disk in the meantime
         // still gets its question: MarkMissing leaves the item and its in-memory content
         // in place, so Save (recreating the file) and Discard both still mean something.
+        //
+        // A tab that is still open and no longer dirty is closed here rather than merely
+        // dropped. The question exists because the user pressed a close button, and that
+        // request outlives the reason to ask about it: a document saved with Ctrl+S while
+        // its question waited has nothing left to ask, but the tab was still asked to
+        // close, and leaving it open would answer the user's click with silence.
         const auto stillModified = [this](const std::filesystem::path& candidate)
         {
             const auto index = m_documents.Find(candidate);
 
-            return index && m_documents.At(*index).document
-                   && m_documents.At(*index).document->IsModified();
+            if (!index)
+            {
+                return false;
+            }
+
+            const core::text::OpenItem& item = m_documents.At(*index);
+
+            if (item.document && item.document->IsModified())
+            {
+                return true;
+            }
+
+            ImGui::ClearWindowSettings(WindowName(m_documents, *index).c_str());
+            m_documents.Close(*index);
+
+            return false;
         };
 
         if (m_closeConfirm.Begin(stillModified))

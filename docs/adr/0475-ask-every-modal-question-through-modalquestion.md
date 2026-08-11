@@ -75,9 +75,18 @@ if (question.Begin())
   question.
 - Nothing is taken off the queue while the gate is busy, and a candidate the
   gate then refuses anyway goes back to the front rather than being discarded.
+  That second test is not the first one repeated: the predicate runs between
+  them and runs application code, so it can reach something that takes the level
+  before the question it was consulted about gets there.
 - `Begin` takes an optional predicate applied when a question comes off the
   queue, for the case where what it was about may have been dealt with while it
-  waited.
+  waited. Every question raised by a user asking for something passes one, and
+  the predicate carries that request out before rejecting the question: only the
+  grounds for asking go stale, never the request behind it. A close question
+  whose document was saved in the meantime closes the tab; the exit question,
+  finding nothing unsaved left, exits. Rejecting without acting would answer the
+  user's click with silence — and for the exit question would leave
+  `OnCloseRequested` refusing a close it has no reason left to refuse.
 - The payload names its subject in a way that survives frames — a path, not an
   index — and is looked up again when the answer arrives.
 - `Answer` releases the gate before `ImGui::CloseCurrentPopup`, so a question
