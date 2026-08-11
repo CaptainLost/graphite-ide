@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
+#include "Core/Base/Color.h"
 #include "Core/Gui/Theme.h"
-#include "Core/Platform/WindowFrame.h"
 
 using core::Color;
 using core::PackBgr;
@@ -36,7 +36,7 @@ TEST_CASE("Channels outside the unit range clamp to the end they passed")
 TEST_CASE("The window border is the theme's border colour, unchanged")
 {
     // 0x3F3834 is the RGB(52, 56, 63) that DWM used to be handed as a literal in
-    // WindowFrame.cpp, back when the theme and the frame each spelled this colour out.
+    // the frame, back when the theme and the frame each spelled this colour out.
     // The frame now packs whatever the theme says, so this is what pins the two together
     // — nothing else in the process can observe the colour a window border was given.
     CHECK(PackBgr(Theme::BorderColor()) == 0x3F3834u);
