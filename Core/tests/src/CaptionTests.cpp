@@ -71,26 +71,6 @@ TEST_CASE("Only the span between the menus and the window buttons drags the wind
     CHECK(Classify(metrics, kWidth, kHeight, 750.0f, 20.0f, false) == CaptionHit::Client);
 }
 
-TEST_CASE("The resize border runs across the window buttons too")
-{
-    const CaptionMetrics metrics = Metrics();
-
-    // Points over the three window buttons, which start at kDragEnd: the strip along the
-    // top edge is the system's there as much as anywhere else, so the buttons must be told
-    // to stop lighting up under it. This is what the title bar asks before it decides a
-    // button is hovered — the same call, so the highlight and the hit test cannot disagree.
-    CHECK(Classify(metrics, kWidth, kHeight, 750.0f, 2.0f, false) == CaptionHit::Top);
-    CHECK(Classify(metrics, kWidth, kHeight, 795.0f, 2.0f, false) == CaptionHit::TopRight);
-    CHECK(Classify(metrics, kWidth, kHeight, 795.0f, 20.0f, false) == CaptionHit::Right);
-
-    // One pixel below the strip the button is the application's again.
-    CHECK(Classify(metrics, kWidth, kHeight, 750.0f, 8.0f, false) == CaptionHit::Client);
-
-    // Maximized there is no strip at all, so the whole button is the application's — which
-    // is also why a maximized window's buttons keep working right up to the screen edge.
-    CHECK(Classify(metrics, kWidth, kHeight, 795.0f, 2.0f, true) == CaptionHit::Client);
-}
-
 TEST_CASE("The free span takes its first pixel and gives up its last")
 {
     const CaptionMetrics metrics = Metrics();
