@@ -47,6 +47,27 @@ TEST_CASE("Classify prefers a corner over the two edges that meet there")
     CHECK(Classify(metrics, kWidth, kHeight, 798.0f, 598.0f, false) == CaptionHit::BottomRight);
 }
 
+TEST_CASE("The border outside the client area resizes like the edge it sits on")
+{
+    // The window keeps one pixel of frame on each edge for the system to draw its border
+    // into, so the hit test is asked about points that are outside the client rectangle
+    // and convert to negative — or past-the-end — client coordinates. They belong to the
+    // edge they lie beyond, which is what the arithmetic already says; these cases are
+    // here so that stays true, because it is now a reachable input and not a curiosity.
+    const CaptionMetrics metrics = Metrics();
+
+    CHECK(Classify(metrics, kWidth, kHeight, 400.0f, -1.0f, false) == CaptionHit::Top);
+    CHECK(Classify(metrics, kWidth, kHeight, 400.0f, kHeight, false) == CaptionHit::Bottom);
+    CHECK(Classify(metrics, kWidth, kHeight, -1.0f, 300.0f, false) == CaptionHit::Left);
+    CHECK(Classify(metrics, kWidth, kHeight, kWidth, 300.0f, false) == CaptionHit::Right);
+
+    CHECK(Classify(metrics, kWidth, kHeight, -1.0f, -1.0f, false) == CaptionHit::TopLeft);
+    CHECK(Classify(metrics, kWidth, kHeight, kWidth, -1.0f, false) == CaptionHit::TopRight);
+    CHECK(Classify(metrics, kWidth, kHeight, -1.0f, kHeight, false) == CaptionHit::BottomLeft);
+    CHECK(Classify(metrics, kWidth, kHeight, kWidth, kHeight, false) ==
+          CaptionHit::BottomRight);
+}
+
 TEST_CASE("A maximized window has no resize edges")
 {
     const CaptionMetrics metrics = Metrics();

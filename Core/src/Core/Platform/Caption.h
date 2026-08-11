@@ -45,7 +45,10 @@ namespace core
         bool dragSuppressed = false;
     };
 
-    /// Decides what a point in client coordinates means. Corners win over the two edges
+    /// Decides what a point in client coordinates means. The point may fall outside the
+    /// client rectangle — the window keeps a border's worth of frame around it, and the
+    /// system asks about points in there too — and such a point reads as the edge it lies
+    /// beyond, which is the answer that strip wants anyway. Corners win over the two edges
     /// that meet there, and the resize border wins over the caption — a title bar
     /// starting at the very top edge would otherwise leave no way to resize from above.
     /// A maximized window has no edges to drag, so it reports none. Inside the caption

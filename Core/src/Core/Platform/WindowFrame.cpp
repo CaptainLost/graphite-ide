@@ -2,6 +2,7 @@
 
 #include "Core/Platform/WindowFrame.h"
 
+#include "Core/Base/Log.h"
 #include "Core/Platform/Window.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -117,9 +118,12 @@ namespace core
             [[nodiscard]] bool Maximized() const { return IsZoomed(m_hwnd) != FALSE; }
 
             /// Puts back an outline for the window, which reclaiming the caption left it
-            /// without. DWM draws it outside the client area, so it costs no pixel the
-            /// application would otherwise draw in, and it goes away by itself when the
-            /// window is maximized — a maximized window has no border to show.
+            /// without. DWM draws it into the frame — the band OnCalcSize leaves between the
+            /// window rectangle and the client rectangle — so this colour only shows where
+            /// that band exists: one pixel on each edge of a restored window, and nothing at
+            /// all on a maximized one, which needs none because every edge it has is off the
+            /// screen. Setting the colour alone is not enough and never was; the two have to
+            /// be read together.
             ///
             /// The colour mirrors ImGuiCol_Border in Core/Gui/Theme.cpp (0.204, 0.220,
             /// 0.247), the line every panel is already outlined with, so the window's edge
@@ -130,14 +134,24 @@ namespace core
             /// for the state an untouched window is already in.
             ///
             /// DWMWA_BORDER_COLOR exists from build 22000. Every older system answers with
-            /// a failure HRESULT, which is deliberately ignored: the caption is already
-            /// hidden by then and a window with no outline is still a working window, so
-            /// this is no reason to fail Hide and hand the system bar back. What it costs
-            /// there is recorded in ADR 0475 — before build 22000 there is no border.
+            /// a failure HRESULT, which is deliberately not fatal: the caption is already
+            /// hidden by then and a window with an uncoloured frame is still a working
+            /// window, so this is no reason to fail Hide and hand the system bar back. It
+            /// is said out loud, though — the border is the one part of this frame with no
+            /// automated coverage and no way to assert it from inside the process, so the
+            /// log line is what turns "there is no outline" from a mystery into a fact.
             void RestoreBorder() const
             {
                 const COLORREF border = RGB(52, 56, 63);
-                DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &border, sizeof(border));
+                const HRESULT set =
+                    DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &border, sizeof(border));
+
+                if (FAILED(set))
+                {
+                    CORE_WARN("The window border keeps the system colour: DWM refused "
+                              "DWMWA_BORDER_COLOR (0x{:08X}), which needs Windows 11.",
+                              static_cast<unsigned>(set));
+                }
             }
 
             LRESULT OnCalcSize(WPARAM wParam, LPARAM lParam)
@@ -153,20 +167,23 @@ namespace core
                 auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
                 RECT& target = params->rgrc[0];
 
+                // The metrics have to be asked for per monitor: GLFW makes the process
+                // per-monitor DPI aware, so the plain GetSystemMetrics would answer for the
+                // primary monitor and be wrong on any other one.
+                UINT dpi = GetDpiForWindow(m_hwnd);
+                if (dpi == 0)
+                {
+                    dpi = USER_DEFAULT_SCREEN_DPI;
+                }
+
                 if (Maximized())
                 {
                     // A maximized window is placed one frame thickness outside the work area
                     // on every side, because the system expects the frame to cover the
                     // overhang. With no frame left to cover it the top of the caption would
                     // fall off the screen, so the client rectangle hands the overhang back.
-                    // The metrics have to be asked for per monitor: GLFW makes the process
-                    // per-monitor DPI aware, so the plain GetSystemMetrics would answer for
-                    // the primary monitor and be wrong on any other one.
-                    UINT dpi = GetDpiForWindow(m_hwnd);
-                    if (dpi == 0)
-                    {
-                        dpi = USER_DEFAULT_SCREEN_DPI;
-                    }
+                    // That inset is also why a maximized window needs no border of its own:
+                    // every edge it has is off the screen already.
 
                     // There is no SM_CYPADDEDBORDER — the one padded border spans both axes.
                     const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
@@ -178,11 +195,34 @@ namespace core
                     target.top += frameY;
                     target.bottom -= frameY;
                 }
+                else
+                {
+                    // DWM draws the window's border into the frame — the band between the
+                    // window rectangle and the client rectangle — and colours it with
+                    // DWMWA_BORDER_COLOR. Handing back the proposed rectangle untouched
+                    // leaves that band zero pixels wide on every edge, and a border zero
+                    // pixels wide is the same thing as no border: the call still succeeds,
+                    // and nothing appears. So the client area stops one border short of the
+                    // window on all four edges, which is the least that can be given up and
+                    // still be seen. It costs one physical pixel of client area per edge.
+                    //
+                    // SM_CXBORDER/SM_CYBORDER is that width by definition, and it is asked
+                    // per monitor like the frame metrics above rather than hard-coded to the
+                    // one pixel it answers at 96 DPI on build 26200 — a hard-coded 1 would
+                    // be right today and silently wrong on a Windows that scaled its border.
+                    const int borderX = GetSystemMetricsForDpi(SM_CXBORDER, dpi);
+                    const int borderY = GetSystemMetricsForDpi(SM_CYBORDER, dpi);
 
-                // Returning the rectangle otherwise unchanged is the whole trick: the client
-                // area now reaches the top edge, so nothing is left for the system to paint a
-                // caption into. Returning 0 says "the client area is rgrc[0], keep none of the
-                // old one", which costs a repaint of the client area on resize and nothing else.
+                    target.left += borderX;
+                    target.right -= borderX;
+                    target.top += borderY;
+                    target.bottom -= borderY;
+                }
+
+                // The caption is gone either way: nothing above is anywhere near the caption's
+                // height, so no room is left for the system to paint one into. Returning 0
+                // says "the client area is rgrc[0], keep none of the old one", which costs a
+                // repaint of the client area on resize and nothing else.
                 return 0;
             }
 
