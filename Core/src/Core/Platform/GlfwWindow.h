@@ -1,6 +1,10 @@
 #pragma once
 
 #include "Core/Platform/Window.h"
+#include "Core/Platform/WindowFrame.h"
+
+#include <memory>
+#include <utility>
 
 struct GLFWwindow;
 
@@ -30,8 +34,15 @@ namespace core
         [[nodiscard]] bool HasCustomTitleBar() const override;
         void SetCaptionMetrics(const CaptionMetrics& metrics) override;
 
+        /// Takes over a frame built for this window. Create does it once the window
+        /// exists, which is the earliest the platform can be asked to drop its caption.
+        void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_frame = std::move(frame); }
+
     private:
         GLFWwindow* m_handle = nullptr;
         CaptionMetrics m_caption;
+
+        /// Null while the window still wears the system title bar.
+        std::unique_ptr<WindowFrame> m_frame;
     };
 }
