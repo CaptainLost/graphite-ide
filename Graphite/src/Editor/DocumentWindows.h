@@ -4,6 +4,7 @@
 #include "Editor/ModalQuestion.h"
 
 #include "Core/Text/Editing.h"
+#include "Core/Text/FileSync.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -76,6 +77,9 @@ namespace graphite
         /// is marked missing, so a tab whose file was removed in Explorer stops claiming
         /// the file is still there.
         ///
+        /// The reconciling itself is core::text::SyncWithFile, one item at a time; this
+        /// decides which items are worth reconciling and what to do about what it found.
+        ///
         /// The check is a stat per open document sitting in one of those directories,
         /// which is why it hangs off a change notification rather than running per frame:
         /// nothing happens on the frames where nothing happened on disk.
@@ -95,21 +99,15 @@ namespace graphite
         /// read by the caller - DocumentWindows knows nothing about GLFW.
         void NotifyWindowFocus(bool focusedNow);
 
-        /// Saves every modified document. A document whose ChangedOnDisk() is true is
-        /// skipped rather than stopping the batch - one stale file among five dirty ones
-        /// is no reason to leave the other four unsaved - and never silently overwritten
-        /// either: asking about each conflict in turn here would be the modal storm the
-        /// queued reload-conflict question exists to avoid, so a conflict only ever gets
-        /// its Overwrite/Cancel question from a deliberate per-document Ctrl+S
-        /// (RequestSave). Every skipped document is named together in one status bar
-        /// message alongside how many saved cleanly, so "saved" never quietly means
-        /// "saved except this one".
+        /// core::text::SaveAllModified plus the one status bar message describing what it
+        /// did. The two rules - a conflicted document is skipped and the batch continues,
+        /// a genuine write failure stops it - live there, where they can be tested; the
+        /// English lives here, where there is a status bar to put it in.
         ///
-        /// A genuine write failure is different: it stops the batch on the spot, since a
-        /// batch that keeps going past a real error is a batch pretending nothing went
-        /// wrong. The failing document stays dirty with its undo history intact and
-        /// SaveOne's own reason - naming that document specifically - is left as the
-        /// status bar message.
+        /// Every skipped document is named together in that one message alongside how many
+        /// saved cleanly, so "saved" never quietly means "saved except this one". A
+        /// stopped batch says instead why the write failed and which document it was, and
+        /// no summary is added over the top of it, which would only bury the reason.
         ///
         /// Returns true only when every dirty document ended up saved - false for either
         /// a stopped batch or one that finished with documents skipped over a conflict.
@@ -124,23 +122,22 @@ namespace graphite
         [[nodiscard]] std::optional<std::string> StatusMessage() const;
 
     private:
-        /// Reconciles one open item against disk: an existence check, exactly as
-        /// HandleFilesChanged always ran, plus (added for saving and reconciliation) the
-        /// present-again case for an item marked Missing, and the changed-on-disk case
-        /// for one that carries a document. A stat error is never treated as an answer -
-        /// see HandleFilesChanged's own comment, which this now shares by delegation
-        /// rather than duplicating.
-        void CheckItem(std::size_t index);
+        /// Turns what core::text::SyncWithFile found about one item into the question or
+        /// the status bar note this application shows for it, and nothing else - the
+        /// reconciling itself already happened. The outcome is passed in rather than
+        /// fetched here so that the two callers keep deciding when to sync, which is the
+        /// only part of this they disagree about.
+        void RespondToSync(std::size_t index, core::text::FileSyncOutcome outcome);
 
-        /// The clean-document half of step 3: reload, clamp the caret to the (possibly
-        /// shorter) new content, rebuild the caches, and leave a status bar trace. On
-        /// failure nothing about the document changes; the trace names the error instead.
-        void ReloadClean(std::size_t index);
+        /// core::text::ReloadItem plus a status bar trace: what was reloaded, or what
+        /// stopped it. On failure nothing about the document changes; the trace names the
+        /// error instead.
+        void ReloadOne(std::size_t index);
 
-        /// Writes the document, stopping neither to ask nor to check ChangedOnDisk -
-        /// that is RequestSave's job. Leaves a status bar trace either way. Returns
-        /// whether it succeeded, which is what lets a caller stop a batch (Ctrl+Shift+S,
-        /// the close-tab question) at the first failure.
+        /// core::text::SaveDocument plus a status bar trace either way. Returns whether it
+        /// succeeded, which is what lets a caller stop at the first failure (the close-tab
+        /// question). Stops neither to ask nor to check ChangedOnDisk - that is
+        /// RequestSave's job.
         bool SaveOne(std::size_t index);
 
         /// Ctrl+S over one document: asks first when ChangedOnDisk() says the write would
@@ -224,10 +221,10 @@ namespace graphite
         /// needless sweep before anything has even been drawn once.
         bool m_wasFocused = true;
 
-        /// Documents whose file changed on disk while the tab was dirty - ChangedOnDisk()
-        /// true on a modified document. CheckItem asks, so several dirty files changing at
-        /// once (a git checkout) are asked about one at a time instead of fighting over
-        /// the same modal.
+        /// Documents whose file changed on disk while the tab was dirty - what
+        /// core::text::SyncWithFile reports as NeedsDecision. RespondToSync asks, so
+        /// several dirty files changing at once (a git checkout) are asked about one at a
+        /// time instead of fighting over the same modal.
         ///
         /// A path rather than an index: the modal can outlive several frames, during which
         /// closing an earlier tab would shift every index after it. Looked up again with

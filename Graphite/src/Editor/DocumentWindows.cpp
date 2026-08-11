@@ -4,10 +4,9 @@
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/Gui/Icons.h"
-#include "Core/Text/Caret.h"
-#include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Core/Text/FileSync.h"
 #include "Core/Text/TextDocument.h"
 
 #include <imgui.h>
@@ -15,7 +14,6 @@
 
 #include <algorithm>
 #include <string>
-#include <system_error>
 #include <utility>
 
 namespace graphite
@@ -165,14 +163,16 @@ namespace graphite
             // The watcher names directories, so an item is worth a stat only when its own
             // directory is one of them. `everything` means the batch could not be narrowed
             // down at all - dropped notifications, or a git state change - and every open
-            // document has to be checked. Items already marked Missing are stated too now
-            // (see CheckItem): the file may have come back.
+            // document has to be checked. Items already marked Missing are stated too
+            // (see core::text::SyncWithFile): the file may have come back.
             if (!everything
                 && std::find(directories.begin(), directories.end(), item.path.parent_path())
                        == directories.end())
+            {
                 continue;
+            }
 
-            CheckItem(index);
+            RespondToSync(index, core::text::SyncWithFile(m_documents, index));
         }
     }
 
@@ -182,80 +182,57 @@ namespace graphite
         m_wasFocused = focusedNow;
 
         if (!regained)
+        {
             return;
+        }
 
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
-            CheckItem(index);
-    }
-
-    void DocumentWindows::CheckItem(std::size_t index)
-    {
-        core::text::OpenItem& item = m_documents.At(index);
-
-        std::error_code error;
-        const bool present = std::filesystem::exists(item.path, error);
-
-        if (item.failure == core::text::OpenFailure::Missing)
         {
-            // An error is not an answer, the same as below: a share that blinked must not
-            // read as "still gone".
-            if (error || !present)
-                return;
-
-            m_documents.MarkPresent(item.path);
-
-            // Deliberately falls through rather than returning. This is the very event
-            // saying the file came back, and so the one moment its content is most worth
-            // comparing: a file deleted and restored with different content - git checkout
-            // after a git rm - would otherwise go on showing the old content until some
-            // unrelated later sweep happened to notice. MarkPresent only clears the
-            // Missing flag; it does not touch the item's document or its stamp, and the
-            // reference above stays valid across it.
-        }
-
-        // An error is not an answer. A share that blinked or a directory that briefly
-        // denied access must not turn every document open on it into a deleted one - the
-        // same reasoning SyncRepository applies before dropping a repository.
-        if (!error && !present)
-        {
-            m_documents.MarkMissing(item.path);
-            return;
-        }
-
-        if (!item.document || !item.document->ChangedOnDisk())
-            return;
-
-        if (!item.document->IsModified())
-        {
-            ReloadClean(index);
-            return;
-        }
-
-        // Dirty: ask rather than reload, and let the question queue, so several files
-        // changing in the same batch (a git checkout) are asked about one at a time
-        // instead of every modal fighting to open this frame. Two sweeps naming the same
-        // file - a watcher batch and a focus regain moments later - are one question, not
-        // the same one asked twice over.
-        if (!m_reloadConflict.Asked(item.path))
-        {
-            m_reloadConflict.Ask(item.path);
+            RespondToSync(index, core::text::SyncWithFile(m_documents, index));
         }
     }
 
-    void DocumentWindows::ReloadClean(std::size_t index)
+    void DocumentWindows::RespondToSync(std::size_t index, core::text::FileSyncOutcome outcome)
     {
-        core::text::OpenItem& item = m_documents.At(index);
-        const std::string fileName = core::fs::ToUtf8(item.path.filename());
+        const std::filesystem::path path = m_documents.At(index).path;
 
-        if (auto result = item.document->ReloadFromDisk())
+        switch (outcome)
         {
-            // The reload can shorten the document past where the caret sat. PlaceAt
-            // clamps to the new length and pulls back to a character boundary, the same
-            // as a click past a line's end does.
-            item.caret = core::text::PlaceAt(item.document->Buffer(), item.caret,
-                                             item.caret.offset, false,
-                                             core::text::DefaultTabWidth);
-            core::text::RefreshDerived(item);
+        case core::text::FileSyncOutcome::NeedsDecision:
+            // Ask rather than reload, and let the question queue, so several files
+            // changing in the same batch (a git checkout) are asked about one at a time
+            // instead of every modal fighting to open this frame. Two sweeps naming the
+            // same file - a watcher batch and a focus regain moments later - are one
+            // question, not the same one asked twice over.
+            if (!m_reloadConflict.Asked(path))
+            {
+                m_reloadConflict.Ask(path);
+            }
+
+            break;
+
+        case core::text::FileSyncOutcome::SafeToReload:
+            // The same function the conflict modal's "Reload from disk" button calls, so
+            // a reload that happened without asking and one the user asked for say the
+            // same thing afterwards - including what stopped it, when something did.
+            ReloadOne(index);
+            break;
+
+        case core::text::FileSyncOutcome::Unchanged:
+        case core::text::FileSyncOutcome::WentMissing:
+        case core::text::FileSyncOutcome::CameBack:
+            // Nothing to say. A file that went away or came back is already said by the
+            // tab's own title, which gains and loses "(deleted)" with the mark.
+            break;
+        }
+    }
+
+    void DocumentWindows::ReloadOne(std::size_t index)
+    {
+        const std::string fileName = core::fs::ToUtf8(m_documents.At(index).path.filename());
+
+        if (const auto result = core::text::ReloadItem(m_documents, index))
+        {
             SetTransientMessage(fileName + " reloaded (changed on disk)");
         }
         else
@@ -266,22 +243,20 @@ namespace graphite
 
     bool DocumentWindows::SaveOne(std::size_t index)
     {
-        core::text::OpenItem& item = m_documents.At(index);
+        const core::text::OpenItem& item = m_documents.At(index);
 
+        // Checked here rather than left to SaveDocument, which succeeds having written
+        // nothing: an item carrying a reason instead of a document has nothing to save,
+        // and "Widget.obj saved" would be a message about a write that never happened.
         if (!item.document)
+        {
             return true;
+        }
 
         const std::string fileName = core::fs::ToUtf8(item.path.filename());
 
-        if (auto result = item.document->Save())
+        if (const auto result = core::text::SaveDocument(m_documents, index))
         {
-            // A document marked Missing whose file this just recreated (Save writes
-            // through WriteFileAtomically, which falls through to MoveFileExW onto a
-            // path that need not already exist) is still there on disk now - the tab
-            // should stop saying "(deleted)". MarkPresent already refuses to touch
-            // Binary, TooLarge and ReadFailed, so it is safe to call unconditionally on
-            // every successful save rather than only when failure was Missing.
-            m_documents.MarkPresent(item.path);
             SetTransientMessage(fileName + " saved");
             return true;
         }
@@ -316,50 +291,42 @@ namespace graphite
 
     bool DocumentWindows::SaveAllModified()
     {
-        std::vector<std::string> conflicted;
-        std::size_t savedCount = 0;
+        // Qualified: this member has the same name, and an unqualified call from inside it
+        // would find itself. The names match on purpose - this is that operation plus the
+        // sentence about it - and the qualification is what keeps them apart.
+        const core::text::SaveAllReport report = core::text::SaveAllModified(m_documents);
 
-        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        // A stopped batch says why, naming the document that stopped it, and gets no
+        // summary over the top: a count of what was saved before the failure would only
+        // bury the one thing the user has to act on. RequestSave (a deliberate
+        // per-document Ctrl+S) is still where a conflicted document gets its
+        // Overwrite/Cancel question, which is why nothing is asked here.
+        if (report.stoppedAt)
         {
-            const core::text::OpenItem& item = m_documents.At(index);
+            SetTransientMessage("Could not save "
+                                + core::fs::ToUtf8(report.stoppedAt->path.filename()) + ": "
+                                + report.stoppedAt->error.message);
 
-            if (!item.document || !item.document->IsModified())
-                continue;
-
-            // The same safety net a single Ctrl+S gets: ChangedOnDisk() true means a
-            // change nobody was told about. But unlike a single Ctrl+S, a batch has no
-            // good way to ask about it mid-flight without turning into a sequence of
-            // modals - so this document is skipped, not asked about and not silently
-            // overwritten, and the batch continues: three other dirty files having
-            // nothing wrong with them is no reason to leave them unsaved over a fourth
-            // that does. RequestSave (a deliberate per-document Ctrl+S) is still where
-            // this document gets its Overwrite/Cancel question.
-            if (item.document->ChangedOnDisk())
-            {
-                conflicted.push_back(core::fs::ToUtf8(item.path.filename()));
-                continue;
-            }
-
-            // A genuine write failure is different from a conflict: it stops the batch
-            // on the spot rather than being collected, since continuing past a real I/O
-            // error would be a batch pretending nothing went wrong. SaveOne has already
-            // put the specific reason - naming this document - in the status bar, and a
-            // summary message here would only bury it.
-            if (!SaveOne(index))
-                return false;
-
-            ++savedCount;
+            return false;
         }
 
-        if (conflicted.empty())
+        if (report.conflicted.empty())
         {
-            if (savedCount > 0)
+            if (report.saved > 0)
             {
-                SetTransientMessage("Saved " + std::to_string(savedCount)
-                                    + (savedCount == 1 ? " file." : " files."));
+                SetTransientMessage("Saved " + std::to_string(report.saved)
+                                    + (report.saved == 1 ? " file." : " files."));
             }
 
             return true;
+        }
+
+        std::vector<std::string> names;
+        names.reserve(report.conflicted.size());
+
+        for (const std::filesystem::path& path : report.conflicted)
+        {
+            names.push_back(core::fs::ToUtf8(path.filename()));
         }
 
         // Named together in one message, not one message per file overwriting the last:
@@ -368,11 +335,14 @@ namespace graphite
         // meant all of them.
         std::string message;
 
-        if (savedCount > 0)
-            message = "Saved " + std::to_string(savedCount) + (savedCount == 1 ? " file. " : " files. ");
+        if (report.saved > 0)
+        {
+            message = "Saved " + std::to_string(report.saved)
+                      + (report.saved == 1 ? " file. " : " files. ");
+        }
 
-        message += std::to_string(conflicted.size()) + " changed on disk and "
-                  + (conflicted.size() == 1 ? "was" : "were") + " not saved: " + Join(conflicted);
+        message += std::to_string(names.size()) + " changed on disk and "
+                   + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
 
         SetTransientMessage(message);
 
@@ -481,7 +451,7 @@ namespace graphite
                 {
                     if (const auto index = m_documents.Find(*path))
                     {
-                        ReloadClean(*index);
+                        ReloadOne(*index);
                     }
                 }
 
