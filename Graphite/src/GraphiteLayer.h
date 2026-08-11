@@ -12,6 +12,8 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Ui/PanelManager.h"
 
+#include <imgui.h>
+
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -36,7 +38,17 @@ namespace graphite
         bool OnCloseRequested() override;
 
     private:
+        /// Opens the host window's menu bar at the caption row's height and closes it
+        /// again. The height is a FramePadding override, which is why the menus
+        /// themselves are a separate function: the override has to be popped on the path
+        /// where the bar does not open either.
         void RenderMenuBar();
+
+        /// The menus and, after them, the title bar's own half of the row.
+        /// `dropdownPadding` is the theme's FramePadding, captured before the row's
+        /// override went on, so each dropdown can be given it back — see
+        /// BeginTopLevelMenu.
+        void RenderMenus(const ImVec2& dropdownPadding);
         void ApplyIgnoredDisplay(IgnoredDisplay display, bool persist);
 
         /// What answering the "Unsaved changes" question should do once it resolves in
@@ -84,6 +96,13 @@ namespace graphite
         /// not a reason to re-read every open directory, and the watcher has been running
         /// the whole time anyway — this is only for the ignore rules it cannot see.
         static constexpr float kReloadAfterSecondsAway = 2.0f;
+
+        /// Whether the window actually gave up its system title bar. Everything the drawn
+        /// caption costs — the 32 px row and the padding that centres its labels — is
+        /// spent only when this is true, because TitleBar::Render draws nothing when it
+        /// is false and the row would then be height paid for nothing, under a system
+        /// title bar that is still there.
+        bool m_customTitleBar = false;
 
         bool m_appForeground = true;
         float m_secondsInBackground = 0.0f;
