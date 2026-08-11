@@ -5,7 +5,7 @@
 namespace graphite
 {
     /// How the file tree presents entries that git ignores.
-    enum class IgnoredDisplay
+    enum class GitIgnoredDisplay
     {
         Show,   ///< Draw them like any other entry.
         Dim,    ///< Draw them in the disabled colour — the default.
@@ -14,13 +14,13 @@ namespace graphite
 
     /// The token written to `graphite.json`. Deliberately not the enumerator name, so the
     /// stored file does not change meaning if the enumerators are ever reordered.
-    [[nodiscard]] constexpr std::string_view IgnoredDisplayToString(IgnoredDisplay display)
+    [[nodiscard]] constexpr std::string_view GitIgnoredDisplayToString(GitIgnoredDisplay display)
     {
         switch (display)
         {
-        case IgnoredDisplay::Show: return "show";
-        case IgnoredDisplay::Hide: return "hide";
-        case IgnoredDisplay::Dim:  break;
+        case GitIgnoredDisplay::Show: return "show";
+        case GitIgnoredDisplay::Hide: return "hide";
+        case GitIgnoredDisplay::Dim:  break;
         }
 
         return "dim";
@@ -28,14 +28,18 @@ namespace graphite
 
     /// Anything unrecognised — including the empty string on first run — falls back to
     /// Dim, the mode that hides nothing while still showing the status.
-    [[nodiscard]] constexpr IgnoredDisplay IgnoredDisplayFromString(std::string_view text)
+    [[nodiscard]] constexpr GitIgnoredDisplay GitIgnoredDisplayFromString(std::string_view text)
     {
         if (text == "show")
-            return IgnoredDisplay::Show;
+        {
+            return GitIgnoredDisplay::Show;
+        }
 
         if (text == "hide")
-            return IgnoredDisplay::Hide;
+        {
+            return GitIgnoredDisplay::Hide;
+        }
 
-        return IgnoredDisplay::Dim;
+        return GitIgnoredDisplay::Dim;
     }
 }

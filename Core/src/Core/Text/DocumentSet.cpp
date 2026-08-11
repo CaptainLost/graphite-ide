@@ -73,6 +73,73 @@ namespace core::text
         return Add(path, permanent, true);
     }
 
+    ItemLoad LoadFromFile(OpenItem& item, bool confirmed)
+    {
+        const auto probe = ProbeFile(item.path);
+
+        if (!probe)
+        {
+            // NotFound is the only code that actually means "gone" — a directory, a
+            // locked file and an unmeasurable one are all still there, so claiming
+            // otherwise would send the user looking for a file sitting right in front
+            // of them. ProbeFile's own message says which one it was.
+            item.failure = probe.GetError().code == core::ErrorCode::NotFound
+                               ? OpenFailure::Missing
+                               : OpenFailure::ReadFailed;
+            item.detail = probe.GetError().message;
+
+            return ItemLoad::Failed;
+        }
+
+        // The probe's encoding is deliberately not kept: the document sniffs its own, and
+        // two fields both meaning "the file's encoding" are two answers waiting to differ.
+        // The status bar reads the document's, which is the one the buffer was decoded
+        // with; size has no such counterpart, since a failed item has no document to ask.
+        item.size = probe.Value().size;
+
+        if (probe.Value().kind == FileKind::LargeText && !confirmed)
+        {
+            // Nothing decided and nothing touched beyond the size the asking needs. An
+            // item that already carries a reason keeps it, so a question answered with
+            // "no" leaves the tab saying exactly what it said before.
+            return ItemLoad::NeedsConfirmation;
+        }
+
+        // Whatever the item last failed with is now out of date: this is a fresh look at
+        // the file, and the switch below either loads it or says why it could not.
+        item.failure = OpenFailure::None;
+        item.detail.clear();
+
+        switch (probe.Value().kind)
+        {
+        case FileKind::Binary:
+            item.failure = OpenFailure::Binary;
+            break;
+        case FileKind::TooLarge:
+            item.failure = OpenFailure::TooLarge;
+            break;
+        case FileKind::Text:
+        case FileKind::LargeText:
+            {
+                auto document = TextDocument::Load(item.path);
+
+                if (document)
+                {
+                    item.document = std::move(document).Value();
+                    RefreshDerived(item);
+                }
+                else
+                {
+                    item.failure = OpenFailure::ReadFailed;
+                    item.detail = document.GetError().message;
+                }
+            }
+            break;
+        }
+
+        return item.document.has_value() ? ItemLoad::Loaded : ItemLoad::Failed;
+    }
+
     OpenOutcome DocumentSet::Add(const std::filesystem::path& path, bool permanent, bool confirmed)
     {
         if (const auto existing = Find(path))
@@ -102,72 +169,21 @@ namespace core::text
         item.path = path;
         item.preview = !permanent;
 
-        const auto probe = ProbeFile(path);
-
-        if (!probe)
-        {
-            // NotFound is the only code that actually means "gone" — a directory, a
-            // locked file and an unmeasurable one are all still there, so claiming
-            // otherwise would send the user looking for a file sitting right in front
-            // of them. ProbeFile's own message says which one it was.
-            item.failure = probe.GetError().code == core::ErrorCode::NotFound
-                               ? OpenFailure::Missing
-                               : OpenFailure::ReadFailed;
-            item.detail = probe.GetError().message;
-
-            evictPreview();
-            m_items.push_back(std::move(item));
-            Activate(m_items.size() - 1);
-
-            return OpenOutcome::Failed;
-        }
-
-        // The probe's encoding is deliberately not kept: the document sniffs its own, and
-        // two fields both meaning "the file's encoding" are two answers waiting to differ.
-        // The status bar reads the document's, which is the one the buffer was decoded
-        // with; size has no such counterpart, since a failed item has no document to ask.
-        item.size = probe.Value().size;
-
         // Asking has to happen before anything is added, so answering "no" leaves no
         // trace of the question — including the preview slot, which stays exactly as it
         // was since evictPreview has not run yet.
-        if (probe.Value().kind == FileKind::LargeText && !confirmed)
-            return OpenOutcome::NeedsConfirmation;
+        const ItemLoad load = LoadFromFile(item, confirmed);
 
-        switch (probe.Value().kind)
+        if (load == ItemLoad::NeedsConfirmation)
         {
-        case FileKind::Binary:
-            item.failure = OpenFailure::Binary;
-            break;
-        case FileKind::TooLarge:
-            item.failure = OpenFailure::TooLarge;
-            break;
-        case FileKind::Text:
-        case FileKind::LargeText:
-            {
-                auto document = TextDocument::Load(path);
-
-                if (document)
-                {
-                    item.document = std::move(document).Value();
-                    RefreshDerived(item);
-                }
-                else
-                {
-                    item.failure = OpenFailure::ReadFailed;
-                    item.detail = document.GetError().message;
-                }
-            }
-            break;
+            return OpenOutcome::NeedsConfirmation;
         }
-
-        const bool failed = !item.document.has_value();
 
         evictPreview();
         m_items.push_back(std::move(item));
         Activate(m_items.size() - 1);
 
-        return failed ? OpenOutcome::Failed : OpenOutcome::Opened;
+        return load == ItemLoad::Loaded ? OpenOutcome::Opened : OpenOutcome::Failed;
     }
 
     void DocumentSet::Close(std::size_t index)

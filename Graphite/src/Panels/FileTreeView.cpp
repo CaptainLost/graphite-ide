@@ -493,15 +493,17 @@ namespace graphite
         if (!PassesFilter(node))
             return;
 
-        if (node.ignored && m_ignoredDisplay == IgnoredDisplay::Hide)
+        if (node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Hide)
+        {
             return;
+        }
 
         if (!node.isDirectory)
         {
             if (RenderRenameEditor(node))
                 return;
 
-            const bool dimmed = node.ignored && m_ignoredDisplay == IgnoredDisplay::Dim;
+            const bool dimmed = node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Dim;
 
             if (dimmed)
                 ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -566,7 +568,7 @@ namespace graphite
             flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
         const bool dimmed =
-            !node.accessible || (node.ignored && m_ignoredDisplay == IgnoredDisplay::Dim);
+            !node.accessible || (node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Dim);
 
         if (dimmed)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));

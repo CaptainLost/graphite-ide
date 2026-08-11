@@ -1,4 +1,4 @@
-#include "Settings.h"
+#include "AppSettings.h"
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
@@ -13,7 +13,12 @@ namespace graphite
     namespace
     {
         constexpr const char* kLastFolderKey = "lastFolder";
+
+        /// Still spelled without "git", unlike the GitIgnoredDisplay it stores: this is
+        /// the key in a file already written on every machine that has run this build,
+        /// and renaming it would silently reset that setting for every one of them.
         constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
+
         constexpr const char* kEditorFontSizeKey = "editorFontSize";
         constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
         constexpr const char* kIndentWidthKey = "indentWidth";
@@ -51,27 +56,27 @@ namespace graphite
         }
     }
 
-    std::filesystem::path Settings::LoadLastFolder()
+    std::filesystem::path AppSettings::LoadLastFolder()
     {
         return core::fs::FromUtf8(core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
     }
 
-    void Settings::SaveLastFolder(const std::filesystem::path& folder)
+    void AppSettings::SaveLastFolder(const std::filesystem::path& folder)
     {
         WriteValue(kLastFolderKey, core::fs::ToUtf8(folder));
     }
 
-    std::string Settings::LoadIgnoredDisplay()
+    std::string AppSettings::LoadGitIgnoredDisplay()
     {
         return core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
     }
 
-    void Settings::SaveIgnoredDisplay(std::string_view mode)
+    void AppSettings::SaveGitIgnoredDisplay(std::string_view mode)
     {
         WriteValue(kIgnoredDisplayKey, std::string{mode});
     }
 
-    float Settings::LoadEditorFontSize()
+    float AppSettings::LoadEditorFontSize()
     {
         const std::string stored = core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
 
@@ -86,12 +91,12 @@ namespace graphite
         return size;
     }
 
-    void Settings::SaveEditorFontSize(float size)
+    void AppSettings::SaveEditorFontSize(float size)
     {
         WriteValue(kEditorFontSizeKey, std::to_string(size));
     }
 
-    bool Settings::LoadIndentWithSpaces()
+    bool AppSettings::LoadIndentWithSpaces()
     {
         // Absent or anything other than an explicit "0" reads as spaces, which is also
         // IndentStyle's own default — a hand-edited file cannot land on a value this
@@ -99,12 +104,12 @@ namespace graphite
         return core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
     }
 
-    void Settings::SaveIndentWithSpaces(bool useSpaces)
+    void AppSettings::SaveIndentWithSpaces(bool useSpaces)
     {
         WriteValue(kIndentWithSpacesKey, useSpaces ? "1" : "0");
     }
 
-    std::size_t Settings::LoadIndentWidth()
+    std::size_t AppSettings::LoadIndentWidth()
     {
         const std::string stored = core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
 
@@ -119,17 +124,17 @@ namespace graphite
         return static_cast<std::size_t>(width);
     }
 
-    void Settings::SaveIndentWidth(std::size_t width)
+    void AppSettings::SaveIndentWidth(std::size_t width)
     {
         WriteValue(kIndentWidthKey, std::to_string(width));
     }
 
-    bool Settings::LoadWordWrap()
+    bool AppSettings::LoadWordWrap()
     {
         return core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
     }
 
-    void Settings::SaveWordWrap(bool wrap)
+    void AppSettings::SaveWordWrap(bool wrap)
     {
         WriteValue(kWordWrapKey, wrap ? "1" : "0");
     }

@@ -5,7 +5,7 @@
 #include <string_view>
 #include <utility>
 
-namespace core::sln::text
+namespace core::sln::edit
 {
     /// Helpers for editing a solution file as text.
     ///
@@ -14,7 +14,7 @@ namespace core::sln::text
     /// find the boundaries a splice needs; they do not parse.
 
     /// The line ending the file already uses. Falls back to "\n" for a file with none.
-    [[nodiscard]] std::string LineEnding(std::string_view text);
+    [[nodiscard]] std::string DetectLineEnding(std::string_view text);
 
     /// The indentation of the first indented line, which is the unit to indent new lines
     /// by. Falls back to two spaces.

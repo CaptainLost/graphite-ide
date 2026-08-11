@@ -1,6 +1,6 @@
 #include "Workspace.h"
 
-#include "Settings.h"
+#include "AppSettings.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
@@ -81,7 +81,7 @@ namespace graphite
         FindSolutions();
         LoadSolution();
 
-        Settings::SaveLastFolder(root);
+        AppSettings::SaveLastFolder(root);
         m_events.Publish(WorkspaceOpenedEvent{root});
 
         CORE_INFO("Workspace opened: '{}'", root.string());
@@ -180,7 +180,7 @@ namespace graphite
 
         // An empty stored value reads back as "nothing remembered", so this is how the
         // closed state survives a restart.
-        Settings::SaveLastFolder({});
+        AppSettings::SaveLastFolder({});
         m_events.Publish(WorkspaceClosedEvent{});
 
         CORE_INFO("Workspace closed: '{}'", closed.string());
@@ -450,7 +450,7 @@ namespace graphite
         FindSolutions();
         LoadSolution();
 
-        Settings::SaveLastFolder(to);
+        AppSettings::SaveLastFolder(to);
         m_events.Publish(WorkspaceRootMovedEvent{from, to});
     }
 

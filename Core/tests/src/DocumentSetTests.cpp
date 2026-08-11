@@ -728,3 +728,70 @@ TEST_CASE("MarkPresent leaves a failure that is not about the file being gone")
 
     CHECK(documents.At(0).failure == OpenFailure::Binary);
 }
+
+TEST_CASE("Loading fills an item that opened before its file existed")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "appears.txt";
+
+    DocumentSet documents;
+    REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
+    REQUIRE_FALSE(documents.At(0).document.has_value());
+
+    WriteBytes(path, "here now\n");
+
+    CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::Loaded);
+    REQUIRE(documents.At(0).document.has_value());
+    CHECK(documents.At(0).document->Buffer().Text() == "here now\n");
+    CHECK(documents.At(0).failure == OpenFailure::None);
+    CHECK(documents.At(0).detail.empty());
+}
+
+TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a document")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "appears.obj";
+
+    DocumentSet documents;
+    REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
+
+    WriteBytes(path, std::string("MZ\0\0binary", 10));
+
+    CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::Failed);
+    CHECK_FALSE(documents.At(0).document.has_value());
+    CHECK(documents.At(0).failure == OpenFailure::Binary);
+}
+
+TEST_CASE("Loading a large file asks before reading it, and reads it once confirmed")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "appears.log";
+
+    DocumentSet documents;
+    REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
+
+    // Same shape as the Open test above: the sample window has to be real text before
+    // the file is grown past it, or the probe reads the zero fill as Binary.
+    WriteBytes(path, std::string(ProbeSampleSize, 'x'));
+
+#ifdef CORE_PLATFORM_WINDOWS
+    if (!MarkSparse(path))
+    {
+        return;
+    }
+#endif
+
+    std::error_code resizeError;
+    std::filesystem::resize_file(path, LargeFileThreshold + 1, resizeError);
+    REQUIRE_FALSE(resizeError);
+
+    // Nothing is read and nothing is decided: the question belongs to whoever has a user
+    // to ask, exactly as OpenOutcome::NeedsConfirmation works when the tab is created.
+    CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::NeedsConfirmation);
+    CHECK_FALSE(documents.At(0).document.has_value());
+    CHECK(documents.At(0).failure == OpenFailure::Missing);
+
+    CHECK(LoadFromFile(documents.At(0), true) == ItemLoad::Loaded);
+    CHECK(documents.At(0).document.has_value());
+    CHECK(documents.At(0).failure == OpenFailure::None);
+}
