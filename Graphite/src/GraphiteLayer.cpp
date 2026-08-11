@@ -32,6 +32,11 @@ namespace graphite
         m_layout.left = {"files"};
         m_layout.bottom = {"console"};
         m_layout.center = {};
+
+        // 32 px is what Windows itself uses for a caption, so the drawn window buttons
+        // keep their familiar hit size — see TitleBar.h. DockSpaceHost::Begin is what
+        // actually applies this, at the one moment it can (its own host window's Begin()).
+        m_layout.menuBarHeight = kCaptionHeight;
     }
 
     void GraphiteLayer::OnAttach()
@@ -143,18 +148,22 @@ namespace graphite
     {
         DrawStatusBar(m_documents, m_workspace.Root(), m_documentWindows.StatusMessage());
 
-        // A menu bar's height is fixed the moment the host window is begun — it comes
-        // from FramePadding at that instant, not at the point BeginMenuBar() runs — so
-        // the push has to wrap Begin() itself, not just RenderMenuBar(). FontSize is the
-        // interface font's size (15 px); the padding above and below it is split evenly
-        // so kCaptionHeight comes out exact rather than merely close.
+        // m_dockSpace.Begin already fixed the host window's own menu-bar height via
+        // m_layout.menuBarHeight (see DockSpaceHost::Begin) and popped its FramePadding
+        // override before opening the dockspace, so panels dock at their normal tab-bar
+        // height. RenderMenuBar below sees plain default padding unless pushed again here
+        // — and it has to match, or the File/View/Help items sit at the wrong height for
+        // the 32 px row, and TitleBar's version label (which relies on the padding-driven
+        // text baseline BeginMenuBar sets up) lands off-centre.
+        m_dockSpace.Begin(m_layout);
+
         const ImGuiStyle& style = ImGui::GetStyle();
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
                             ImVec2(style.FramePadding.x,
                                    (kCaptionHeight - ImGui::GetFontSize()) * 0.5f));
-        m_dockSpace.Begin(m_layout);
         RenderMenuBar();
         ImGui::PopStyleVar();
+
         m_dockSpace.End();
 
         // Never nested inside the dockspace host's Begin/End above, or any other

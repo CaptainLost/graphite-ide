@@ -53,8 +53,14 @@ namespace graphite
 
         if (layout.versionVisible)
         {
-            ImGui::SetCursorPos(ImVec2(layout.version.x,
-                                       (kCaptionHeight - ImGui::GetTextLineHeight()) * 0.5f));
+            // Not a centring formula on y — BeginMenuBar() already called
+            // AlignTextToFramePadding(), and that base offset survives across SetCursorPos
+            // (TextEx draws at CursorPos.y + CurrLineTextBaseOffset, which SetCursorPos
+            // does not touch). It was computed from the same enlarged FramePadding this
+            // row uses, so it already centres a text line in kCaptionHeight; adding a
+            // second centring offset on top of it would double-count and push the label
+            // low.
+            ImGui::SetCursorPos(ImVec2(layout.version.x, 0.0f));
             ImGui::TextDisabled("%s", version.c_str());
         }
 
@@ -90,9 +96,16 @@ namespace graphite
         ImGui::PopStyleVar();
 
         // What is left of the row after the menus and these buttons is what the system
-        // may treat as a title bar. Asking ImGui whether anything is hovered, active or
-        // open as a popup is what keeps a click on a menu — or on one of the buttons
-        // above — from being swallowed by the drag.
+        // may treat as a title bar. Asking ImGui whether anything is hovered, or a popup
+        // is open, is what keeps a click on a menu — or on one of the buttons above —
+        // from being swallowed by the drag. Deliberately not IsAnyItemActive(): that is
+        // g.ActiveId != 0 anywhere in the whole application, and ActiveId persists across
+        // frames for a focused InputText — the explorer's two filter boxes and the
+        // rename fields are exactly that. Leaving that check in place would make the
+        // caption undraggable, and double-click-to-maximize dead, for as long as one of
+        // those stayed focused, long after the click that focused it. IsAnyItemHovered()
+        // resets every NewFrame and already covers the moment a click actually lands on a
+        // button or a menu label, which is all this needs.
         //
         // GetMousePos() is in screen space (it has to be, viewports can sit anywhere on
         // the desktop), while kCaptionHeight is a row-local measure, the same space
@@ -110,7 +123,7 @@ namespace graphite
         metrics.height = kCaptionHeight;
         metrics.cursorOverDragArea =
             ImGui::IsMousePosValid() && localMouseY < kCaptionHeight &&
-            !ImGui::IsAnyItemHovered() && !ImGui::IsAnyItemActive() &&
+            !ImGui::IsAnyItemHovered() &&
             !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
 
         window.SetCaptionMetrics(metrics);
