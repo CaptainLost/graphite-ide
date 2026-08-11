@@ -15,6 +15,19 @@ namespace core
         constexpr ImVec4 kAccent{0.259f, 0.522f, 0.957f, 1.0f};
         constexpr ImVec4 kText{0.839f, 0.859f, 0.886f, 1.0f};
         constexpr ImVec4 kTextDisabled{0.482f, 0.510f, 0.553f, 1.0f};
+
+        /// The one definition of the border colour, in the type that leaves this file.
+        constexpr Color kBorder{0.204f, 0.220f, 0.247f, 1.0f};
+
+        constexpr ImVec4 ToImVec4(const Color& color)
+        {
+            return ImVec4{color.r, color.g, color.b, color.a};
+        }
+    }
+
+    Color Theme::BorderColor()
+    {
+        return kBorder;
     }
 
     void Theme::ApplyDark()
@@ -41,7 +54,7 @@ namespace core
         colors[ImGuiCol_WindowBg] = kBackground;
         colors[ImGuiCol_ChildBg] = kBackground;
         colors[ImGuiCol_PopupBg] = kSurface;
-        colors[ImGuiCol_Border] = ImVec4(0.204f, 0.220f, 0.247f, 1.0f);
+        colors[ImGuiCol_Border] = ToImVec4(kBorder);
         colors[ImGuiCol_Text] = kText;
         colors[ImGuiCol_TextDisabled] = kTextDisabled;
 
@@ -68,7 +81,7 @@ namespace core
         colors[ImGuiCol_TabDimmed] = kSurface;
         colors[ImGuiCol_TabDimmedSelected] = kBackground;
 
-        colors[ImGuiCol_Separator] = ImVec4(0.204f, 0.220f, 0.247f, 1.0f);
+        colors[ImGuiCol_Separator] = ToImVec4(kBorder);
         colors[ImGuiCol_DockingPreview] = ImVec4(kAccent.x, kAccent.y, kAccent.z, 0.45f);
         colors[ImGuiCol_DockingEmptyBg] = kBackground;
         colors[ImGuiCol_CheckMark] = kAccent;
