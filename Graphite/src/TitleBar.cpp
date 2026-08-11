@@ -1,9 +1,10 @@
 #include "TitleBar.h"
 
+#include "Version.h"
+
 #include "Core/Gui/CaptionLayout.h"
 #include "Core/Platform/Caption.h"
 #include "Core/Platform/Window.h"
-#include "Core/Version.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -85,7 +86,7 @@ namespace graphite
             return;
         }
 
-        const std::string version = std::format("Graphite {}", core::Version::String());
+        const std::string version = std::format("Graphite {}", Version::String());
         const float versionWidth = ImGui::CalcTextSize(version.c_str()).x;
 
         // Where the menus stopped: the layout has to know what it may not cover.

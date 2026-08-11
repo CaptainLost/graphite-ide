@@ -1,8 +1,6 @@
-#include "corepch.h"
+#include "Version.h"
 
-#include "Core/Version.h"
-
-namespace core
+namespace graphite
 {
     const char* Version::String() noexcept
     {
