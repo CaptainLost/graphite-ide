@@ -21,16 +21,28 @@ reclaimed area the cursor is over. Everything else about the frame — the drop
 shadow, the snap animations, Aero Snap, edge resizing — is left to Windows,
 because the frame itself is never replaced, only the row painted inside it.
 
-The one part of the frame that reclaiming the caption does take away is the
-border, and that is asked back from DWM rather than drawn: `Hide` sets
-`DWMWA_BORDER_COLOR` to an explicit colour, the one `ImGuiCol_Border` already
-outlines every panel with, so the window's edge matches the edges inside it and
-DWM keeps drawing it outside the client area at no cost in pixels the
-application draws in. The two literals — this one and the theme's — have to
-move together; the frame cannot read the style, because it runs before ImGui
-exists. The attribute exists from build 22000; older systems answer with a
-failure `HRESULT`, which is ignored, so `Hide` still succeeds and
-`HasCustomTitleBar()` stays true — the window simply has no border there.
+The one part of the frame that reclaiming the caption also takes away is the
+border, and that is asked back from DWM rather than drawn — but it takes two
+things, not one, and the first is the one that is easy to miss. DWM draws the
+border *into the frame*: the band between the window rectangle and the client
+rectangle, which is exactly what `WM_NCCALCSIZE` decides the width of. Handing
+the proposed rectangle back untouched leaves that band zero pixels wide on
+every edge, and a border zero pixels wide is indistinguishable from no border
+however it is coloured. So a restored window's client rectangle stops one
+`SM_CXBORDER`/`SM_CYBORDER` short of the window rectangle on all four edges —
+one physical pixel each at 96 DPI on build 26200, asked per monitor rather
+than hard-coded so a Windows that scaled its border would still get one — and
+that is the room the border lives in. A maximized window keeps its existing frame-sized
+inset instead and gets no border: every edge it has is off the screen already.
+
+The colour is then `DWMWA_BORDER_COLOR`, set to the colour `ImGuiCol_Border`
+already outlines every panel with, so the window's edge matches the edges
+inside it. The two literals — this one and the theme's — have to move together;
+the frame cannot read the style, because it runs before ImGui exists. The
+attribute exists from build 22000; older systems answer with a failure
+`HRESULT`, which is warned about and otherwise ignored, so `Hide` still
+succeeds and `HasCustomTitleBar()` stays true — the frame is still there, it
+just keeps whatever colour the system paints an ordinary window's with.
 
 `core::Classify` (declared in `Core/Platform/Caption.h`) is the pure function
 behind the hit test: given a point and a `CaptionMetrics` — caption height,
@@ -83,8 +95,8 @@ because it was never touched.
   window.
 - The platform seam is one function, `WindowFrame::Hide`, so a port to another
   platform writes one branch and nothing else in Core or Graphite changes.
-- The window border is drawn by DWM, outside the client area, so it costs no
-  pixel of the area the application draws in and no per-frame work.
+- The window border is drawn by DWM, outside the client area, so it follows the
+  rounded corners by itself and costs no per-frame work.
 
 ### Negative
 
@@ -95,12 +107,21 @@ because it was never touched.
 - Windows 11 Snap Layouts need the window to answer `HTMAXBUTTON` from the hit
   test and are not implemented here, so hovering the maximize button gives no
   flyout the way a native caption button would.
-- Before build 22000 there is no window border at all: `DWMWA_BORDER_COLOR` is
-  the only mechanism used, and the alternative for those systems —
-  `DwmExtendFrameIntoClientArea` with a one-pixel top margin — cannot show
-  through a client area the renderer clears opaque every frame. Windows 10
-  therefore gets a window with no outline against the desktop, which is a real
-  cost accepted rather than a case that was covered.
+- A restored window gives up one physical pixel of client area on each of its
+  four edges so the border has somewhere to be. Every client coordinate stays
+  measured from the client origin — the caption strip, the button rectangles
+  and the hit test all move together with it — so nothing needed compensating,
+  but a 1600x900 window now has a 1598x898 client area.
+- Before build 22000 the border keeps the system's colour rather than the
+  theme's: `DWMWA_BORDER_COLOR` is refused there, and the alternative that
+  would have themed it — `DwmExtendFrameIntoClientArea` with a one-pixel top
+  margin — cannot show through a client area the renderer clears opaque every
+  frame. The outline itself is there on those systems, because it comes from
+  the frame `WM_NCCALCSIZE` leaves and not from the attribute.
+- The hit test is now asked about points outside the client rectangle, because
+  the border strip belongs to the window and `WM_NCHITTEST` covers it.
+  `Classify` answers them as the edge they lie beyond, so the border resizes
+  like the pixels just inside it.
 - An auto-hidden taskbar cannot be summoned by moving the cursor to the screen
   edge while the window is maximized, because that gesture is wired to the
   native caption's hit-test region, which a maximized custom-drawn window no
@@ -134,6 +155,29 @@ Free — no seam, no hit test, no `Unsupported` fallback to reason about.
 Rejected because it is the status quo this record replaces: it wastes a row
 above the menus and cannot be themed, and both were the actual complaints
 driving the change.
+
+### Colour the border and leave the frame at zero width
+
+What this record said first, and it shipped without an outline. Setting
+`DWMWA_BORDER_COLOR` on a window whose `WM_NCCALCSIZE` returns the proposed
+rectangle unchanged succeeds — `S_OK`, measured — and shows nothing, because
+the frame it colours is zero pixels wide on all four edges. Measured on build
+26200: before the subclass the client sat 8 px inside the window rectangle on
+the left, right and bottom and 31 px below its top, with the visible edge
+7 px inside the window rectangle, so exactly one pixel of that 8 was the
+border. After the subclass all four gaps were 0 and the extended frame bounds
+had collapsed onto the window rectangle. Rejected because it is a mechanism
+the evidence shows cannot work, not a policy that could be tuned.
+
+### Give the whole default frame back on the three non-caption edges
+
+Inset the client rectangle by the full `SM_CXSIZEFRAME + SM_CXPADDEDBORDER` on
+the left, right and bottom, which is what an ordinary window does, and take
+only the caption from the top. Correct, and it restores the invisible resize
+margin as well. Rejected because 7 of those 8 pixels per edge are invisible
+grab area that this window does not need — it answers the resize edges itself
+from `Classify`, over a strip it controls — and spending 8 px of client area
+per edge to gain the same one-pixel line is a worse trade than spending one.
 
 ### Draw the border in the application
 
