@@ -3,7 +3,7 @@
 #include "Editor/StatusBar.h"
 #include "Panels/ConsolePanel.h"
 #include "Panels/ExplorerPanel.h"
-#include "Settings.h"
+#include "AppSettings.h"
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
@@ -55,16 +55,16 @@ namespace graphite
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
-        ApplyIgnoredDisplay(IgnoredDisplayFromString(Settings::LoadIgnoredDisplay()), false);
+        ApplyGitIgnoredDisplay(GitIgnoredDisplayFromString(AppSettings::LoadGitIgnoredDisplay()), false);
 
-        const float storedFontSize = Settings::LoadEditorFontSize();
+        const float storedFontSize = AppSettings::LoadEditorFontSize();
 
         if (storedFontSize >= kMinimumEditorFontSize && storedFontSize <= kMaximumEditorFontSize)
             m_editorFontSize = storedFontSize;
 
-        m_indentWithSpaces = Settings::LoadIndentWithSpaces();
+        m_indentWithSpaces = AppSettings::LoadIndentWithSpaces();
 
-        if (const std::size_t storedIndentWidth = Settings::LoadIndentWidth();
+        if (const std::size_t storedIndentWidth = AppSettings::LoadIndentWidth();
             storedIndentWidth != 0)
         {
             m_indentWidth = storedIndentWidth;
@@ -72,7 +72,7 @@ namespace graphite
 
         std::filesystem::path startFolder = m_initialFolder;
         if (startFolder.empty())
-            startFolder = Settings::LoadLastFolder();
+            startFolder = AppSettings::LoadLastFolder();
 
         if (!startFolder.empty())
             (void)m_workspace.OpenFolder(startFolder);
@@ -203,18 +203,18 @@ namespace graphite
             return;
 
         m_editorFontSize = clamped;
-        Settings::SaveEditorFontSize(m_editorFontSize);
+        AppSettings::SaveEditorFontSize(m_editorFontSize);
     }
 
-    void GraphiteLayer::ApplyIgnoredDisplay(IgnoredDisplay display, bool persist)
+    void GraphiteLayer::ApplyGitIgnoredDisplay(GitIgnoredDisplay display, bool persist)
     {
-        m_ignoredDisplay = display;
+        m_gitIgnoredDisplay = display;
 
         if (auto* files = static_cast<ExplorerPanel*>(m_panels.Find("files")); files != nullptr)
-            files->SetIgnoredDisplay(display);
+            files->SetGitIgnoredDisplay(display);
 
         if (persist)
-            Settings::SaveIgnoredDisplay(IgnoredDisplayToString(display));
+            AppSettings::SaveGitIgnoredDisplay(GitIgnoredDisplayToString(display));
     }
 
     void GraphiteLayer::RenderMenuBar()
@@ -269,21 +269,21 @@ namespace graphite
                 if (ImGui::BeginMenu("Ignored Files"))
                 {
                     if (ImGui::MenuItem("Visible", nullptr,
-                                        m_ignoredDisplay == IgnoredDisplay::Show))
+                                        m_gitIgnoredDisplay == GitIgnoredDisplay::Show))
                     {
-                        ApplyIgnoredDisplay(IgnoredDisplay::Show, true);
+                        ApplyGitIgnoredDisplay(GitIgnoredDisplay::Show, true);
                     }
 
                     if (ImGui::MenuItem("Dimmed", nullptr,
-                                        m_ignoredDisplay == IgnoredDisplay::Dim))
+                                        m_gitIgnoredDisplay == GitIgnoredDisplay::Dim))
                     {
-                        ApplyIgnoredDisplay(IgnoredDisplay::Dim, true);
+                        ApplyGitIgnoredDisplay(GitIgnoredDisplay::Dim, true);
                     }
 
                     if (ImGui::MenuItem("Hidden", nullptr,
-                                        m_ignoredDisplay == IgnoredDisplay::Hide))
+                                        m_gitIgnoredDisplay == GitIgnoredDisplay::Hide))
                     {
-                        ApplyIgnoredDisplay(IgnoredDisplay::Hide, true);
+                        ApplyGitIgnoredDisplay(GitIgnoredDisplay::Hide, true);
                     }
 
                     ImGui::EndMenu();

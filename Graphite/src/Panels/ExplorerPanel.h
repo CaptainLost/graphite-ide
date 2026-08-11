@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IgnoredDisplay.h"
+#include "GitIgnoredDisplay.h"
 #include "Panels/FileTreeView.h"
 #include "Panels/SolutionTreeView.h"
 #include "Workspace.h"
@@ -28,9 +28,9 @@ namespace graphite
 
         void OnUIRender() override;
 
-        void SetIgnoredDisplay(IgnoredDisplay display) noexcept
+        void SetGitIgnoredDisplay(GitIgnoredDisplay display) noexcept
         {
-            m_files.SetIgnoredDisplay(display);
+            m_files.SetGitIgnoredDisplay(display);
         }
 
     private:

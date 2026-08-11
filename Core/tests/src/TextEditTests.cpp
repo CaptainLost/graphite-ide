@@ -4,15 +4,15 @@
 
 #include <string>
 
-using namespace core::sln::text;
+using namespace core::sln::edit;
 
 TEST_CASE("The line ending is taken from the file, not assumed")
 {
-    CHECK(LineEnding("<a>\r\n  <b/>\r\n</a>") == "\r\n");
-    CHECK(LineEnding("<a>\n  <b/>\n</a>") == "\n");
+    CHECK(DetectLineEnding("<a>\r\n  <b/>\r\n</a>") == "\r\n");
+    CHECK(DetectLineEnding("<a>\n  <b/>\n</a>") == "\n");
 
     // A file with no line break at all still has to be written to somehow.
-    CHECK(LineEnding("<a/>") == "\n");
+    CHECK(DetectLineEnding("<a/>") == "\n");
 }
 
 TEST_CASE("The indent unit is taken from the file")

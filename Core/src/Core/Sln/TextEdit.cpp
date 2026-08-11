@@ -2,9 +2,9 @@
 
 #include "Core/Sln/TextEdit.h"
 
-namespace core::sln::text
+namespace core::sln::edit
 {
-    std::string LineEnding(std::string_view text)
+    std::string DetectLineEnding(std::string_view text)
     {
         const std::size_t newline = text.find('\n');
 

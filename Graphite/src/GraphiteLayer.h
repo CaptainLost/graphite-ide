@@ -2,7 +2,7 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Editor/ModalQuestion.h"
-#include "IgnoredDisplay.h"
+#include "GitIgnoredDisplay.h"
 #include "Workspace.h"
 
 #include "Core/App/Layer.h"
@@ -36,7 +36,7 @@ namespace graphite
 
     private:
         void RenderMenuBar();
-        void ApplyIgnoredDisplay(IgnoredDisplay display, bool persist);
+        void ApplyGitIgnoredDisplay(GitIgnoredDisplay display, bool persist);
 
         /// What answering the "Unsaved changes" question should do once it resolves in
         /// favour of closing. The exit path and "Close Workspace" both lose whatever is
@@ -143,6 +143,6 @@ namespace graphite
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;
-        IgnoredDisplay m_ignoredDisplay = IgnoredDisplay::Dim;
+        GitIgnoredDisplay m_gitIgnoredDisplay = GitIgnoredDisplay::Dim;
     };
 }

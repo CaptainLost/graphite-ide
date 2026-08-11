@@ -150,8 +150,8 @@ namespace graphite
         /// Switches to one of the candidates and remembers the choice.
         void SelectSolution(const std::filesystem::path& path);
 
-        /// Settings stored in this folder's .graphite directory. Not named Settings():
-        /// that would shadow the graphite::Settings type throughout this class.
+        /// Settings stored in this folder's .graphite directory, as opposed to the
+        /// application-wide ones in AppSettings.
         [[nodiscard]] WorkspaceSettings& FolderSettings() noexcept { return m_settings; }
 
     private:

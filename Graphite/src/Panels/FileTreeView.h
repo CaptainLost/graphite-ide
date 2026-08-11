@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IgnoredDisplay.h"
+#include "GitIgnoredDisplay.h"
 #include "Workspace.h"
 
 #include "Core/Fs/FileTree.h"
@@ -32,7 +32,7 @@ namespace graphite
 
         void Render();
 
-        void SetIgnoredDisplay(IgnoredDisplay display) noexcept { m_ignoredDisplay = display; }
+        void SetGitIgnoredDisplay(GitIgnoredDisplay display) noexcept { m_gitIgnoredDisplay = display; }
 
     private:
         /// A menu command recorded during the tree walk and executed afterwards. Acting
@@ -93,6 +93,6 @@ namespace graphite
         /// in UTF-8, and a truncated name would be committed to disk by the blur path.
         std::array<char, 1024> m_renameBuffer{};
         bool m_focusRenameField = false;
-        IgnoredDisplay m_ignoredDisplay = IgnoredDisplay::Dim;
+        GitIgnoredDisplay m_gitIgnoredDisplay = GitIgnoredDisplay::Dim;
     };
 }

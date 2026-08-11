@@ -85,13 +85,13 @@ namespace core::sln
         void EraseElement(std::string& text, std::size_t offset, std::string_view name)
         {
             const std::size_t begin = offset - 1;   // back over the '<'
-            const std::size_t end = text::ElementEnd(text, offset, name);
+            const std::size_t end = edit::ElementEnd(text, offset, name);
 
             // Both ends are needed: an element with children spans several lines, and
             // measuring the span from its first line alone erases that one line and leaves
             // the children and the orphaned closing tag behind.
-            const std::size_t lineBegin = text::LineExtent(text, begin).first;
-            const std::size_t lineEnd = text::LineExtent(text, end).second;
+            const std::size_t lineBegin = edit::LineExtent(text, begin).first;
+            const std::size_t lineEnd = edit::LineExtent(text, end).second;
 
             const bool aloneOnItsLines = text.find_first_not_of(" \t", lineBegin) == begin
                                          && text.find_first_not_of(" \t\r\n", end) >= lineEnd;
@@ -171,11 +171,11 @@ namespace core::sln
 
     void SlnxEditor::InsertChild(std::size_t offset, const std::string& element)
     {
-        const std::string ending = text::LineEnding(m_text);
-        const std::string unit = text::IndentUnit(m_text);
+        const std::string ending = edit::DetectLineEnding(m_text);
+        const std::string unit = edit::IndentUnit(m_text);
 
         // Indented one level past the container's own line.
-        const std::size_t lineBegin = text::LineExtent(m_text, offset).first;
+        const std::size_t lineBegin = edit::LineExtent(m_text, offset).first;
         std::string containerIndent;
 
         for (std::size_t i = lineBegin;
@@ -184,7 +184,7 @@ namespace core::sln
             containerIndent += m_text[i];
         }
 
-        const std::size_t tagEnd = text::OpeningTagEnd(m_text, offset);
+        const std::size_t tagEnd = edit::OpeningTagEnd(m_text, offset);
 
         // A container with no children yet is written self-closing, so it has to become an
         // open/close pair before anything can go inside it.
