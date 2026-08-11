@@ -37,9 +37,16 @@ inset instead and gets no border: every edge it has is off the screen already.
 
 The colour is then `DWMWA_BORDER_COLOR`, set to the colour `ImGuiCol_Border`
 already outlines every panel with, so the window's edge matches the edges
-inside it. The two literals — this one and the theme's — have to move together;
-the frame cannot read the style, because it runs before ImGui exists. The
-attribute exists from build 22000; older systems answer with a failure
+inside it. That colour has one definition, `core::Theme::BorderColor()`, which
+`ApplyDark` also paints `ImGuiCol_Border` and `ImGuiCol_Separator` from. The
+frame still cannot read the style — it runs before ImGui exists — so the colour
+is handed to it as a value instead: `Application::Run` asks the theme for it,
+puts it in `WindowSpec::borderColor`, and `Window::Create` passes it to
+`WindowFrame::Hide`. It travels as a `core::Color`, four plain floats in
+`Core/Base`, so `Core::Platform` gains no knowledge of ImGui or of the theme;
+the frame turns it into the packed `COLORREF` DWM wants through
+`core::PackBgr`, a pure function that rounds each channel to nearest and is
+tested headless. The attribute exists from build 22000; older systems answer with a failure
 `HRESULT`, which is warned about and otherwise ignored, so `Hide` still
 succeeds and `HasCustomTitleBar()` stays true — the frame is still there, it
 just keeps whatever colour the system paints an ordinary window's with.
