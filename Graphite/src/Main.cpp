@@ -1,9 +1,10 @@
 #include "GraphiteLayer.h"
 
+#include "Version.h"
+
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
 #include "Core/Base/RingBufferSink.h"
-#include "Core/Version.h"
 
 #include <exception>
 #include <filesystem>
@@ -47,7 +48,7 @@ int main(int argc, char** argv)
 
     try
     {
-        CORE_INFO("Graphite IDE {}", core::Version::String());
+        CORE_INFO("Graphite IDE {}", graphite::Version::String());
 
         std::filesystem::path initialFolder;
         if (argc > 1)
