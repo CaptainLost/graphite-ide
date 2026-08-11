@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Base/Color.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/Platform/Caption.h"
@@ -20,6 +21,14 @@ namespace core
         /// its own. A platform that cannot honour it leaves the native bar in place —
         /// see Window::HasCustomTitleBar.
         bool customTitleBar = false;
+
+        /// The colour the system outlines the window with once the caption is gone. Only
+        /// read when customTitleBar is honoured, and passed in rather than chosen here
+        /// because it belongs to the theme, which lives above this layer: Application
+        /// fills it from Core::Theme::BorderColor so the window's edge matches the edges
+        /// ImGui draws inside it. Left alone it is black, which is the honest answer for
+        /// a caller that never said.
+        Color borderColor;
     };
 
     /// System window together with the OpenGL context. The application layer doesn't see GLFW.

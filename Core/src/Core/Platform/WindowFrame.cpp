@@ -5,6 +5,9 @@
 #include "Core/Base/Log.h"
 #include "Core/Platform/Window.h"
 
+#include <algorithm>
+#include <cmath>
+
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
 
@@ -18,6 +21,22 @@
 
 namespace core
 {
+    namespace
+    {
+        /// One channel of the packed integer. The rounding this does, and why it is
+        /// rounding and not truncation, is documented on PackBgr.
+        [[nodiscard]] std::uint32_t Channel(float value)
+        {
+            const float scaled = std::clamp(value, 0.0f, 1.0f) * 255.0f;
+            return static_cast<std::uint32_t>(std::lround(scaled));
+        }
+    }
+
+    std::uint32_t PackBgr(const Color& color)
+    {
+        return Channel(color.r) | (Channel(color.g) << 8u) | (Channel(color.b) << 16u);
+    }
+
 #ifdef CORE_PLATFORM_WINDOWS
     namespace
     {
@@ -38,7 +57,7 @@ namespace core
         public:
             /// Constructing costs nothing and changes nothing about the window — see Install,
             /// which is where a frame either takes or reports why it did not.
-            explicit Win32Frame(HWND hwnd) : m_hwnd(hwnd) {}
+            Win32Frame(HWND hwnd, COLORREF border) : m_hwnd(hwnd), m_border(border) {}
 
             ~Win32Frame() override
             {
@@ -125,13 +144,13 @@ namespace core
             /// screen. Setting the colour alone is not enough and never was; the two have to
             /// be read together.
             ///
-            /// The colour mirrors ImGuiCol_Border in Core/Gui/Theme.cpp (0.204, 0.220,
-            /// 0.247), the line every panel is already outlined with, so the window's edge
-            /// and the edges inside it are the same colour. The two are separate literals
-            /// and have to be moved together: this one cannot read the style, because it is
-            /// set before ImGui exists and applies to a window, not to a frame ImGui draws.
-            /// A single explicit colour rather than DWMWA_COLOR_DEFAULT, which only asks
-            /// for the state an untouched window is already in.
+            /// The colour is the caller's — Core::Theme::BorderColor, the line every panel
+            /// is already outlined with, carried down through WindowSpec — so the window's
+            /// edge and the edges inside it come from one definition. It arrives as a value
+            /// rather than being looked up because this runs before ImGui exists, and it
+            /// applies to a window rather than to anything ImGui draws. A single explicit
+            /// colour rather than DWMWA_COLOR_DEFAULT, which only asks for the state an
+            /// untouched window is already in.
             ///
             /// DWMWA_BORDER_COLOR exists from build 22000. Every older system answers with
             /// a failure HRESULT, which is deliberately not fatal: the caption is already
@@ -142,9 +161,8 @@ namespace core
             /// log line is what turns "there is no outline" from a mystery into a fact.
             void RestoreBorder() const
             {
-                const COLORREF border = RGB(52, 56, 63);
-                const HRESULT set =
-                    DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &border, sizeof(border));
+                const HRESULT set = DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &m_border,
+                                                          sizeof(m_border));
 
                 if (FAILED(set))
                 {
@@ -298,13 +316,15 @@ namespace core
             }
 
             HWND m_hwnd = nullptr;
+            COLORREF m_border = 0;
             WNDPROC m_previous = nullptr;
             CaptionMetrics m_metrics;
         };
     }
 #endif
 
-    Result<std::unique_ptr<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window)
+    Result<std::unique_ptr<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window,
+                                                           [[maybe_unused]] const Color& border)
     {
 #ifdef CORE_PLATFORM_WINDOWS
         auto* glfwHandle = static_cast<GLFWwindow*>(window.NativeHandle());
@@ -319,7 +339,7 @@ namespace core
             return Error{ErrorCode::Unsupported, "the window is not a Win32 window"};
         }
 
-        auto frame = std::make_unique<Win32Frame>(hwnd);
+        auto frame = std::make_unique<Win32Frame>(hwnd, static_cast<COLORREF>(PackBgr(border)));
 
         const Result<void> installed = frame->Install();
         if (!installed)

@@ -4,6 +4,7 @@
 
 #include "Core/Base/Assert.h"
 #include "Core/Base/Log.h"
+#include "Core/Gui/Theme.h"
 
 #include <GLFW/glfw3.h>
 
@@ -45,6 +46,10 @@ namespace core
         windowSpec.width = m_spec.width;
         windowSpec.height = m_spec.height;
         windowSpec.customTitleBar = m_spec.customTitleBar;
+        // The window is created before the ImGui context exists, so the border colour is
+        // asked of the theme here — the one layer that can see both — and travels down as
+        // a value. Core::Platform never learns that there is a theme.
+        windowSpec.borderColor = Theme::BorderColor();
 
         auto windowResult = Window::Create(windowSpec);
         if (!windowResult)

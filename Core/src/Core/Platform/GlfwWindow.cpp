@@ -140,7 +140,7 @@ namespace core
 
         if (spec.customTitleBar)
         {
-            auto frame = WindowFrame::Hide(*window);
+            auto frame = WindowFrame::Hide(*window, spec.borderColor);
             if (frame)
             {
                 window->AdoptFrame(std::move(frame).Value());
