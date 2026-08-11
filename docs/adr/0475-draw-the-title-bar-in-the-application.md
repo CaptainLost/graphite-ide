@@ -21,6 +21,18 @@ reclaimed area the cursor is over. Everything else about the frame — the drop
 shadow, the snap animations, Aero Snap, edge resizing — is left to Windows,
 because the frame itself is never replaced, only the row painted inside it.
 
+The one part of the frame that reclaiming the caption does take away is the
+border, and that is asked back from DWM rather than drawn: `DWMWA_BORDER_COLOR`
+set to `DWMWA_COLOR_DEFAULT` (build 22000 and later) has DWM draw its own
+border outside the client area, in the accent colour and following the
+light/dark theme with no repainting on this side; `DwmExtendFrameIntoClientArea`
+with a one-pixel top margin covers the systems that predate that attribute,
+where the only painted edge of the frame is the line along the top. The margin
+goes back to zero while the window is maximized, which is also the case
+`WM_NCCALCSIZE` already insets, so `WM_SIZE` is the third and last message the
+frame watches. A failure from `DwmSetWindowAttribute` is expected before build
+22000 and does not fail the install.
+
 `core::Classify` (declared in `Core/Platform/Caption.h`) is the pure function
 behind the hit test: given a point and a `CaptionMetrics` — caption height,
 resize border width, and the horizontal span of the row the application left
@@ -33,7 +45,17 @@ metrics once per frame through `Window::SetCaptionMetrics`, taking the span
 from where the menus ended and where `core::LayOutCaption` (in
 `Core/Gui/CaptionLayout.h`) placed the three window buttons — plus one flag
 that withholds the drag while a menu is open, so the click that closes it
-reaches the application. `WindowFrame::Hide(Window&)` is the seam that does the
+reaches the application.
+
+The three window buttons ask `Classify` the same question about the pointer, so
+the highlight and the hit test cannot disagree. Along the top and right edges
+the resize border runs straight across them: there the press is non-client
+input the application never receives, and a themed `ImGui::Button` would light
+up under a cursor that will never click it. Each button is therefore an
+`InvisibleButton` with its background and glyph on the draw list, submitted
+inside `BeginDisabled` whenever `Classify` calls the pointer anything but
+`Client` — which is what keeps ImGui from reporting it hovered, from taking the
+press, and from holding an active id in that strip. `WindowFrame::Hide(Window&)` is the seam that does the
 subclassing; it lives in Core behind `Core::Platform`, in line with
 [0002](0002-keep-core-free-of-ide-knowledge.md), and returns `Unsupported` on
 any platform, or any failure, where hiding the native bar cannot be done
@@ -60,6 +82,9 @@ because it was never touched.
   window.
 - The platform seam is one function, `WindowFrame::Hide`, so a port to another
   platform writes one branch and nothing else in Core or Graphite changes.
+- The window border is the system's own: it follows the accent colour and the
+  theme without a line of code watching for either, and it costs no pixel of
+  the client area the application draws in.
 
 ### Negative
 
@@ -103,6 +128,13 @@ Free — no seam, no hit test, no `Unsupported` fallback to reason about.
 Rejected because it is the status quo this record replaces: it wastes a row
 above the menus and cannot be themed, and both were the actual complaints
 driving the change.
+
+### Draw the border in the application
+
+One rectangle around the dockspace host, one pixel wide. Rejected because it
+spends an interior pixel on something the system draws outside the window for
+free, and because matching it to the accent colour and to a light/dark switch
+means reading and re-reading system settings that DWM already tracks.
 
 ## Related
 
