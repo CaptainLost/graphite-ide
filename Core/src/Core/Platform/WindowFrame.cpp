@@ -34,36 +34,64 @@ namespace core
         class Win32Frame final : public WindowFrame
         {
         public:
-            explicit Win32Frame(HWND hwnd) : m_hwnd(hwnd)
-            {
-                // The property goes on before the subclass and comes off after it, so the
-                // procedure below can never find itself running without its frame.
-                SetPropW(m_hwnd, kFrameProperty, this);
+            /// Constructing costs nothing and changes nothing about the window — see Install,
+            /// which is where a frame either takes or reports why it did not.
+            explicit Win32Frame(HWND hwnd) : m_hwnd(hwnd) {}
 
+            ~Win32Frame() override
+            {
+                // A non-null m_previous is exactly the record that the subclass took, so it
+                // is also the record of what there is to undo: Install leaves nothing behind
+                // on any path that does not set it.
+                if (m_previous == nullptr)
+                {
+                    return;
+                }
+
+                SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_previous));
+
+                // The caption comes back the way it went away: only on a frame change.
+                SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
+                             SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                                 SWP_NOACTIVATE);
+
+                RemovePropW(m_hwnd, kFrameProperty);
+            }
+
+            /// Takes the caption, or reports why it could not and leaves the window exactly
+            /// as it was found. Half of an install is worse than none of one: the caller
+            /// would go on to draw a title bar over a window that still has the system's.
+            [[nodiscard]] Result<void> Install()
+            {
+                // The property goes on before the subclass, so that the procedure below can
+                // never find itself running without its frame. That ordering is only sound
+                // because the failure is caught here: a property that did not take would
+                // otherwise leave a subclassed window whose every message reached no one.
+                if (SetPropW(m_hwnd, kFrameProperty, this) == 0)
+                {
+                    return Error{ErrorCode::Unsupported,
+                                 "the window would not hold the frame's property"};
+                }
+
+                // A live window's procedure is never null, so a zero here is a failure and
+                // not a previous value worth keeping.
                 m_previous = reinterpret_cast<WNDPROC>(
                     SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Proc)));
+
+                if (m_previous == nullptr)
+                {
+                    RemovePropW(m_hwnd, kFrameProperty);
+                    return Error{ErrorCode::Unsupported,
+                                 "the window procedure could not be subclassed"};
+                }
 
                 // The frame is only recomputed on a frame change, so ask for one: without
                 // it the caption stays on screen until the user first resizes the window.
                 SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
                              SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                                  SWP_NOACTIVATE);
-            }
 
-            ~Win32Frame() override
-            {
-                if (m_previous != nullptr)
-                {
-                    SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC,
-                                      reinterpret_cast<LONG_PTR>(m_previous));
-
-                    // The caption comes back the way it went away: only on a frame change.
-                    SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
-                                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                                     SWP_NOACTIVATE);
-                }
-
-                RemovePropW(m_hwnd, kFrameProperty);
+                return Result<void>::Ok();
             }
 
             void SetCaptionMetrics(const CaptionMetrics& metrics) override
@@ -171,9 +199,12 @@ namespace core
             {
                 auto* self = static_cast<Win32Frame*>(GetPropW(hwnd, kFrameProperty));
 
-                // Unreachable while the subclass is installed. Were the property store ever
-                // to fail there would be no previous procedure to chain to either, so the
-                // default is all that is left to answer with.
+                // Unreachable: Install refuses to subclass unless the property took, and the
+                // destructor restores the original procedure before removing it again, so
+                // this procedure only ever runs between those two points. The branch matters
+                // anyway because of what it would cost — DefWindowProcW skips GLFW's
+                // procedure entirely, and a window whose events never reach GLFW is a deaf
+                // window. That is the failure Install exists to make impossible.
                 if (self == nullptr)
                 {
                     return DefWindowProcW(hwnd, message, wParam, lParam);
@@ -214,7 +245,15 @@ namespace core
             return Error{ErrorCode::Unsupported, "the window is not a Win32 window"};
         }
 
-        return Result<std::unique_ptr<WindowFrame>>{std::make_unique<Win32Frame>(hwnd)};
+        auto frame = std::make_unique<Win32Frame>(hwnd);
+
+        const Result<void> installed = frame->Install();
+        if (!installed)
+        {
+            return installed.GetError();
+        }
+
+        return Result<std::unique_ptr<WindowFrame>>{std::move(frame)};
 #else
         return Error{ErrorCode::Unsupported,
                      "removing the system title bar is only implemented on Windows"};
