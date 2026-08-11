@@ -40,7 +40,6 @@ namespace core
 
     private:
         GLFWwindow* m_handle = nullptr;
-        CaptionMetrics m_caption;
 
         /// Null while the window still wears the system title bar.
         std::unique_ptr<WindowFrame> m_frame;

@@ -100,8 +100,6 @@ namespace core
 
     void GlfwWindow::SetCaptionMetrics(const CaptionMetrics& metrics)
     {
-        m_caption = metrics;
-
         if (m_frame != nullptr)
         {
             m_frame->SetCaptionMetrics(metrics);
