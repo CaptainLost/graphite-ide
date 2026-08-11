@@ -143,8 +143,18 @@ namespace graphite
     {
         DrawStatusBar(m_documents, m_workspace.Root(), m_documentWindows.StatusMessage());
 
+        // A menu bar's height is fixed the moment the host window is begun — it comes
+        // from FramePadding at that instant, not at the point BeginMenuBar() runs — so
+        // the push has to wrap Begin() itself, not just RenderMenuBar(). FontSize is the
+        // interface font's size (15 px); the padding above and below it is split evenly
+        // so kCaptionHeight comes out exact rather than merely close.
+        const ImGuiStyle& style = ImGui::GetStyle();
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+                            ImVec2(style.FramePadding.x,
+                                   (kCaptionHeight - ImGui::GetFontSize()) * 0.5f));
         m_dockSpace.Begin(m_layout);
         RenderMenuBar();
+        ImGui::PopStyleVar();
         m_dockSpace.End();
 
         // Never nested inside the dockspace host's Begin/End above, or any other
@@ -349,6 +359,8 @@ namespace graphite
 
             ImGui::EndMenu();
         }
+
+        m_titleBar.Render(core::Application::Get().GetWindow());
 
         ImGui::EndMenuBar();
     }

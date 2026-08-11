@@ -2,6 +2,7 @@
 
 #include "Editor/DocumentWindows.h"
 #include "IgnoredDisplay.h"
+#include "TitleBar.h"
 #include "Workspace.h"
 
 #include "Core/App/Layer.h"
@@ -143,5 +144,6 @@ namespace graphite
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;
         IgnoredDisplay m_ignoredDisplay = IgnoredDisplay::Dim;
+        TitleBar m_titleBar;
     };
 }
