@@ -20,14 +20,10 @@
 
 namespace graphite
 {
-    namespace
-    {
-        constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
-    }
-
     GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
                        std::filesystem::path initialFolder)
-        : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder))
+        : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder)),
+          m_closeQuestion(m_modals, kUnsavedWorkTitle)
     {
         m_layout.left = {"files"};
         m_layout.bottom = {"console"};
@@ -362,8 +358,8 @@ namespace graphite
             return true;
 
         // Some close question is already up and unresolved - not necessarily this one.
-        // "Close Workspace" reaches here too: it opens the same modal with
-        // m_pendingClosePurpose == CloseWorkspace, and the OS close button / Alt+F4
+        // "Close Workspace" reaches here too: it asks the same question with
+        // CloseWorkspace as its purpose, and the OS close button / Alt+F4
         // reach Window::ShouldClose() regardless of what ImGui thinks has input focus,
         // modal or not. Testing `== ExitApplication` here would fall through on a
         // pending CloseWorkspace question and silently overwrite it below - the user
@@ -371,20 +367,23 @@ namespace graphite
         // will close the workspace, while it would actually exit the application.
         // Refusing until whichever question is already open resolves is the
         // conservative choice; the user can just close again afterwards. This is
-        // deliberately the wider check, not an oversight.
-        if (m_pendingClosePurpose.has_value())
+        // deliberately the wider check, not an oversight - and wider still than "on
+        // screen": a close question waiting its turn behind another is every bit as
+        // unanswered as one the user is looking at.
+        if (m_closeQuestion.IsAsked())
+        {
             return false;
+        }
 
         if (!AnyDocumentModified())
             return true;
 
-        // Raised even when another question - one of DocumentWindows' four - is on
+        // Asked even when another question - one of DocumentWindows' four - is on
         // screen, which Alt+F4 and the OS close button reach past regardless of ImGui
-        // holding input. RenderCloseConfirm asks the gate before opening anything, so
-        // this is a question queued rather than a modal stacked, and m_pendingClosePurpose
-        // being set keeps this refusing until it is answered.
-        m_pendingClosePurpose = ClosePurpose::ExitApplication;
-        m_openCloseConfirmPopup = true;
+        // holding input. ModalQuestion asks the gate before opening anything, so this is
+        // a question queued rather than a modal stacked, and its being asked at all is
+        // what keeps this refusing until it is answered.
+        m_closeQuestion.Ask(ClosePurpose::ExitApplication);
         return false;
     }
 
@@ -396,14 +395,11 @@ namespace graphite
             return;
         }
 
-        m_pendingClosePurpose = purpose;
-        m_openCloseConfirmPopup = true;
+        m_closeQuestion.Ask(purpose);
     }
 
     void GraphiteLayer::FinishClose(ClosePurpose purpose)
     {
-        m_pendingClosePurpose.reset();
-
         switch (purpose)
         {
             case ClosePurpose::ExitApplication:
@@ -423,29 +419,16 @@ namespace graphite
 
     void GraphiteLayer::RenderCloseConfirm()
     {
-        // The flag stays raised for as long as another question holds the gate, so an
-        // exit asked for while a per-tab or reload question is up is put on screen the
-        // moment that one resolves rather than being dropped - and dropping it would
-        // matter twice over, since m_pendingClosePurpose (set by the caller) is what
-        // makes OnCloseRequested refuse, and nothing but this modal ever clears it.
-        if (m_openCloseConfirmPopup && m_modals.TryOpen(kUnsavedWorkTitle))
+        // The question waits for as long as another holds the gate, so an exit asked for
+        // while a per-tab or reload question is up is put on screen the moment that one
+        // resolves rather than being dropped - and dropping it would matter twice over,
+        // since an unanswered question is what makes OnCloseRequested refuse, and nothing
+        // but this modal ever answers it. A popup dismissed with Escape, or destroyed,
+        // counts as Cancel for the same reason: left asked, it would make OnCloseRequested
+        // refuse every close for the rest of the session and the window could then only be
+        // force-quit. Begin does both.
+        if (!m_closeQuestion.Begin())
         {
-            ImGui::OpenPopup(kUnsavedWorkTitle);
-            m_openCloseConfirmPopup = false;
-        }
-
-        if (!ImGui::BeginPopupModal(kUnsavedWorkTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            // Believed on screen and yet not open: dismissed with Escape, or destroyed.
-            // Treated exactly as Cancel, because leaving m_pendingClosePurpose set would
-            // make OnCloseRequested refuse every close for the rest of the session and
-            // the window could then only be force-quit.
-            if (m_modals.HoldsFor(kUnsavedWorkTitle) && !ImGui::IsPopupOpen(kUnsavedWorkTitle))
-            {
-                m_pendingClosePurpose.reset();
-                m_modals.Close(kUnsavedWorkTitle);
-            }
-
             return;
         }
 
@@ -468,11 +451,12 @@ namespace graphite
 
         ImGui::Separator();
 
-        // m_pendingClosePurpose can only be unset here if the popup is somehow drawn
-        // without RequestCloseConfirmation having raised it first, which never happens -
-        // ExitApplication is a reasonable fallback all the same, since it is the more
-        // conservative of the two actions FinishClose can take.
-        const ClosePurpose purpose = m_pendingClosePurpose.value_or(ClosePurpose::ExitApplication);
+        // There can only be no purpose here if the popup is somehow drawn without
+        // RequestCloseConfirmation or OnCloseRequested having asked first, which never
+        // happens - ExitApplication is a reasonable fallback all the same, since it is the
+        // more conservative of the two actions FinishClose can take.
+        const ClosePurpose* asked = m_closeQuestion.Current();
+        const ClosePurpose purpose = asked != nullptr ? *asked : ClosePurpose::ExitApplication;
 
         if (ImGui::Button("Save All"))
         {
@@ -488,8 +472,7 @@ namespace graphite
             if (m_documentWindows.SaveAllModified())
             {
                 FinishClose(purpose);
-                m_modals.Close(kUnsavedWorkTitle);
-                ImGui::CloseCurrentPopup();
+                m_closeQuestion.Answer();
             }
         }
 
@@ -498,19 +481,16 @@ namespace graphite
         if (ImGui::Button("Discard All"))
         {
             FinishClose(purpose);
-            m_modals.Close(kUnsavedWorkTitle);
-            ImGui::CloseCurrentPopup();
+            m_closeQuestion.Answer();
         }
 
         ImGui::SameLine();
 
         if (ImGui::Button("Cancel"))
         {
-            m_pendingClosePurpose.reset();
-            m_modals.Close(kUnsavedWorkTitle);
-            ImGui::CloseCurrentPopup();
+            m_closeQuestion.Answer();
         }
 
-        ImGui::EndPopup();
+        m_closeQuestion.End();
     }
 }

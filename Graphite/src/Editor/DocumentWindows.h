@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/ModalGate.h"
+#include "Editor/ModalQuestion.h"
 
 #include "Core/Text/Editing.h"
 
@@ -36,7 +37,11 @@ namespace graphite
         /// first - so they all consult the same gate rather than each knowing about the
         /// others. See ModalGate.
         DocumentWindows(core::text::DocumentSet& documents, ModalGate& modals)
-            : m_documents(documents), m_modals(modals)
+            : m_documents(documents), m_modals(modals),
+              m_sizeQuestion(modals, kSizeQuestionTitle),
+              m_reloadConflict(modals, kReloadConflictTitle),
+              m_overwriteConfirm(modals, kOverwriteConfirmTitle),
+              m_closeConfirm(modals, kCloseConfirmTitle)
         {
         }
 
@@ -144,11 +149,35 @@ namespace graphite
 
         void SetTransientMessage(std::string text);
 
+        /// The ImGui popup id of each question asked here, which is also what the gate
+        /// records as the owner of the modal level while that question is up. Members of
+        /// the class rather than constants in the .cpp because the questions below bind to
+        /// them where they are constructed, which is in this header.
+        static constexpr const char* kSizeQuestionTitle = "Large file##EditorSizeQuestion";
+        static constexpr const char* kReloadConflictTitle =
+            "File changed on disk##EditorReloadConflict";
+        static constexpr const char* kOverwriteConfirmTitle =
+            "Overwrite unsaved changes on disk?##EditorOverwriteConfirm";
+        static constexpr const char* kCloseConfirmTitle = "Unsaved changes##EditorCloseConfirm";
+
+        /// What one asking of the size question is about: which file, whether the click
+        /// that asked for it was a double click (a permanent tab rather than a preview),
+        /// and the file's size in bytes, measured once when the question was raised. Zero
+        /// means it could not be measured, which the modal says rather than asking about
+        /// "0 MB".
+        struct LargeFileQuestion
+        {
+            std::filesystem::path path;
+            bool permanent = false;
+            std::uint64_t size = 0;
+        };
+
         core::text::DocumentSet& m_documents;
 
         /// Who currently owns the one modal level every question in this application
-        /// competes for. Consulted before each of the four OpenPopup calls below and
-        /// released the moment each question is answered - or found to have vanished.
+        /// competes for. Consulted by each of the four questions below before it opens,
+        /// and released the moment one is answered - or found to have vanished. Declared
+        /// before them, since each holds a reference to it.
         ModalGate& m_modals;
 
         /// The dock node the last focused document sits in. A new window goes there, so a
@@ -157,18 +186,11 @@ namespace graphite
         /// falls back to the node it was given.
         unsigned int m_lastFocusedNode = 0;
 
-        /// The file waiting on the size question, and whether it was a double click.
-        /// m_openSizeQuestion stays true for as long as the gate is held by some other
-        /// question, so a size question raised while one is up is asked afterwards rather
-        /// than dropped.
-        std::filesystem::path m_pendingPath;
-        bool m_pendingPermanent = false;
-        bool m_openSizeQuestion = false;
-
-        /// The size the question is about, in bytes, measured once when the question was
-        /// raised. Zero means it could not be measured, which the modal says rather than
-        /// asking about "0 MB".
-        std::uint64_t m_pendingSize = 0;
+        /// Files big enough that opening one is worth confirming first. A question raised
+        /// while the gate is held by another is asked once that one resolves rather than
+        /// dropped, and a second large file picked while the first question is still up is
+        /// asked about after it rather than replacing it.
+        ModalQuestion<LargeFileQuestion> m_sizeQuestion;
 
         /// The identity (core::fs::ToUtf8 of the path, nothing else) of every window
         /// Render produced last time it ran. A document can disappear between one Render
@@ -202,29 +224,21 @@ namespace graphite
         /// needless sweep before anything has even been drawn once.
         bool m_wasFocused = true;
 
-        /// Documents waiting to be asked about a reload conflict - ChangedOnDisk() true
-        /// on a dirty document - oldest first. CheckItem appends; Render pops the front
-        /// into m_reloadConflictActive as soon as no conflict is on screen, so several
-        /// dirty files changing at once (a git checkout) ask one at a time instead of
-        /// fighting over the same modal.
-        std::vector<std::filesystem::path> m_reloadConflictQueue;
+        /// Documents whose file changed on disk while the tab was dirty - ChangedOnDisk()
+        /// true on a modified document. CheckItem asks, so several dirty files changing at
+        /// once (a git checkout) are asked about one at a time instead of fighting over
+        /// the same modal.
+        ///
+        /// A path rather than an index: the modal can outlive several frames, during which
+        /// closing an earlier tab would shift every index after it. Looked up again with
+        /// DocumentSet::Find when the user answers, and simply dropped - no crash, no
+        /// stale write - if the document is gone by then.
+        ModalQuestion<std::filesystem::path> m_reloadConflict;
 
-        /// The document the reload-conflict modal is currently asking about, or nullopt
-        /// when none is showing. A path rather than an index: the modal can outlive
-        /// several frames, during which closing an earlier tab would shift every index
-        /// after it. Looked up again with DocumentSet::Find when the user answers, and
-        /// simply dropped - no crash, no stale write - if the document is gone by then.
-        /// While the gate is held by another question the front of the queue is left
-        /// where it is rather than popped, so the question waits its turn instead of
-        /// being consumed by a modal that never opens.
-        std::optional<std::filesystem::path> m_reloadConflictActive;
-
-        /// The document RequestSave is asking to confirm an overwrite for - ChangedOnDisk()
-        /// was true right when Ctrl+S was pressed, meaning a notification was dropped and
-        /// this is the last chance to ask. Same "path, not index" reasoning as
-        /// m_reloadConflictActive.
-        std::optional<std::filesystem::path> m_overwriteConfirmPath;
-        bool m_openOverwriteConfirm = false;
+        /// Documents RequestSave has to confirm an overwrite for - ChangedOnDisk() was
+        /// true right when Ctrl+S was pressed, meaning a notification was dropped and this
+        /// is the last chance to ask. Same "path, not index" reasoning as m_reloadConflict.
+        ModalQuestion<std::filesystem::path> m_overwriteConfirm;
 
         /// The document the next Render should bring to the front, or nullopt. Set when
         /// Open() reports Activated - a file the user picked in the tree that was already
@@ -241,17 +255,14 @@ namespace graphite
         /// dropped, rather than lingering to steal focus whenever that path is next opened.
         std::optional<std::filesystem::path> m_focusRequest;
 
-        /// Documents whose own close button was pressed while they were still dirty,
-        /// oldest first - the same queue-of-paths shape as m_reloadConflictQueue and for
-        /// the same reason: a second tab's close button pressed before the first
-        /// question resolves must still get its own question, in order, rather than
-        /// being silently dropped.
-        std::vector<std::filesystem::path> m_pendingCloseQueue;
-
-        /// The document the close-confirm modal is currently asking about, or nullopt
-        /// when none is showing. Same "path, not index" reasoning as
-        /// m_reloadConflictActive.
-        std::optional<std::filesystem::path> m_pendingCloseActive;
+        /// Documents whose own close button was pressed while they were still dirty. A
+        /// second tab's close button pressed before the first question resolves still gets
+        /// its own question, in order, rather than being silently dropped. Same "path, not
+        /// index" reasoning as m_reloadConflict.
+        ///
+        /// This is the one question with something to check at the moment it is taken off
+        /// the queue rather than only when it was raised - see the predicate in Render.
+        ModalQuestion<std::filesystem::path> m_closeConfirm;
 
         /// A short-lived status bar note and when it expires, both on ImGui::GetTime()'s
         /// clock. Read through StatusMessage().

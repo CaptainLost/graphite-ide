@@ -504,4 +504,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0472](0472-f-54-if-you-capture-this-capture-all-variables-explicitly-no-default-capture.md) | F.54: If you capture this, capture all variables explicitly (no default capture) | proposed | 2026-08-10 |
 | [0473](0473-f-55-dont-use-va-arg-arguments.md) | F.55: Don't use va_arg arguments | proposed | 2026-08-10 |
 | [0474](0474-f-56-avoid-unnecessary-condition-nesting.md) | F.56: Avoid unnecessary condition nesting | proposed | 2026-08-10 |
+| [0475](0475-ask-every-modal-question-through-modalquestion.md) | Ask every modal question through ModalQuestion | proposed | 2026-08-11 |
 <!-- /adr-index -->

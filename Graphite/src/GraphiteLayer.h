@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/DocumentWindows.h"
+#include "Editor/ModalQuestion.h"
 #include "IgnoredDisplay.h"
 #include "Workspace.h"
 
@@ -14,7 +15,6 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
-#include <optional>
 
 namespace graphite
 {
@@ -28,9 +28,9 @@ namespace graphite
         void OnUpdate(float deltaSeconds) override;
         void OnUIRender() override;
 
-        /// Nothing dirty closes immediately. Otherwise raises the flag OnUIRender turns
-        /// into the "Unsaved changes" modal and keeps refusing until the user answers -
-        /// see RenderCloseConfirm and FinishClose for how an answer actually reaches the
+        /// Nothing dirty closes immediately. Otherwise asks the "Unsaved changes" question
+        /// OnUIRender puts on screen and keeps refusing until the user answers - see
+        /// RenderCloseConfirm and FinishClose for how an answer actually reaches the
         /// window.
         bool OnCloseRequested() override;
 
@@ -49,7 +49,7 @@ namespace graphite
         };
 
         /// Entry point for both close paths. Performs `purpose` immediately when nothing
-        /// is dirty; otherwise raises the modal RenderCloseConfirm draws and leaves
+        /// is dirty; otherwise asks the question RenderCloseConfirm draws and leaves
         /// `purpose` pending until Save All, Discard All or Cancel resolves it.
         void RequestCloseConfirmation(ClosePurpose purpose);
 
@@ -60,7 +60,7 @@ namespace graphite
         /// permanent, and nothing re-raises it on its own. See Layer::OnCloseRequested.
         void FinishClose(ClosePurpose purpose);
 
-        /// Draws the "Unsaved changes" modal raised by RequestCloseConfirmation, listing
+        /// Draws the "Unsaved changes" modal asked for by RequestCloseConfirmation, listing
         /// every dirty document with Save All / Discard All / Cancel. Called from
         /// OnUIRender at a point that is never nested inside another window's Begin/End,
         /// the same placement DocumentWindows' own modals use and for the same reason:
@@ -105,17 +105,6 @@ namespace graphite
         bool m_indentWithSpaces = true;
         std::size_t m_indentWidth = 4;
 
-        /// Which close is pending while the "Unsaved changes" modal is on screen, or
-        /// nullopt when none is. Cleared the moment the user answers - including
-        /// Cancel - so a later close attempt asks fresh rather than remembering the
-        /// refusal.
-        std::optional<ClosePurpose> m_pendingClosePurpose;
-
-        /// One-shot trigger for the frame RequestCloseConfirmation raises the modal -
-        /// RenderCloseConfirm consumes it the same way DocumentWindows' m_openCloseConfirm
-        /// and friends do, so ImGui::OpenPopup is called exactly once per question.
-        bool m_openCloseConfirmPopup = false;
-
         /// Set once FinishClose(ExitApplication) has re-armed the window's close flag,
         /// so the OnCloseRequested asked again next frame returns true unconditionally
         /// rather than re-checking for dirty documents. That check matters here: Discard
@@ -130,11 +119,27 @@ namespace graphite
         core::text::DocumentSet m_documents;
 
         /// Which of the application's five questions currently owns ImGui's single modal
-        /// popup level. Declared before m_documentWindows, which takes it by reference:
-        /// four of the five are drawn there and the "Unsaved changes" one here, and all
-        /// five would otherwise destroy one another. See ModalGate.
+        /// popup level. Declared before m_documentWindows and m_closeQuestion, both of
+        /// which take it by reference: four of the five are asked there and the "Unsaved
+        /// changes" one here, and all five would otherwise destroy one another. See
+        /// ModalGate.
         ModalGate m_modals;
         DocumentWindows m_documentWindows{m_documents, m_modals};
+
+        /// The ImGui popup id of the question below, which is also what the gate records
+        /// as the owner of the modal level while it is up. A member of the class rather
+        /// than a constant in the .cpp because the question binds to it when this object
+        /// is constructed.
+        static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
+
+        /// The question asked of the user before anything unsaved is lost, carrying which
+        /// close is waiting on the answer. Queued rather than replacing an earlier one,
+        /// like every other question here: an exit asked for while a per-tab or reload
+        /// question is up goes on screen once that one resolves rather than being dropped.
+        /// Cleared the moment the user answers - including Cancel - so a later close
+        /// attempt asks fresh rather than remembering the refusal.
+        ModalQuestion<ClosePurpose> m_closeQuestion;
+
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;

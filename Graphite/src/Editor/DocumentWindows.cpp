@@ -22,12 +22,6 @@ namespace graphite
 {
     namespace
     {
-        constexpr const char* kSizeQuestionTitle = "Large file##EditorSizeQuestion";
-        constexpr const char* kReloadConflictTitle = "File changed on disk##EditorReloadConflict";
-        constexpr const char* kOverwriteConfirmTitle =
-            "Overwrite unsaved changes on disk?##EditorOverwriteConfirm";
-        constexpr const char* kCloseConfirmTitle = "Unsaved changes##EditorCloseConfirm";
-
         /// How long a status bar note stays up once set.
         constexpr double kTransientMessageSeconds = 4.0;
 
@@ -101,10 +95,7 @@ namespace graphite
         if (outcome != core::text::OpenOutcome::NeedsConfirmation)
             return;
 
-        m_pendingPath = path;
-        m_pendingPermanent = permanent;
-        m_openSizeQuestion = true;
-        m_pendingSize = 0;
+        LargeFileQuestion question{path, permanent, 0};
 
         // Probed once, here, rather than every frame the modal is open: a stat plus an
         // 8 KB read per frame is real work when the file sits on a network share, and the
@@ -113,7 +104,11 @@ namespace graphite
         // NeedsConfirmation means - so this second probe is asking a question already
         // answered, and a failure here means the file went away in between.
         if (const auto probe = core::text::ProbeFile(path))
-            m_pendingSize = probe.Value().size;
+        {
+            question.size = probe.Value().size;
+        }
+
+        m_sizeQuestion.Ask(std::move(question));
     }
 
     void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
@@ -236,19 +231,15 @@ namespace graphite
             return;
         }
 
-        // Dirty: queue the question rather than asking immediately, so several files
+        // Dirty: ask rather than reload, and let the question queue, so several files
         // changing in the same batch (a git checkout) are asked about one at a time
-        // instead of every modal fighting to open this frame.
-        const std::filesystem::path& path = item.path;
-
-        if (m_reloadConflictActive == path)
-            return;
-
-        if (std::find(m_reloadConflictQueue.begin(), m_reloadConflictQueue.end(), path)
-            != m_reloadConflictQueue.end())
-            return;
-
-        m_reloadConflictQueue.push_back(path);
+        // instead of every modal fighting to open this frame. Two sweeps naming the same
+        // file - a watcher batch and a focus regain moments later - are one question, not
+        // the same one asked twice over.
+        if (!m_reloadConflict.Asked(item.path))
+        {
+            m_reloadConflict.Ask(item.path);
+        }
     }
 
     void DocumentWindows::ReloadClean(std::size_t index)
@@ -312,10 +303,9 @@ namespace graphite
         {
             // Never noticed: a dropped notification, with no chance to have asked
             // earlier. This is the last safety net, immediately before the write.
-            if (m_overwriteConfirmPath != item.path)
+            if (!m_overwriteConfirm.Asked(item.path))
             {
-                m_overwriteConfirmPath = item.path;
-                m_openOverwriteConfirm = true;
+                m_overwriteConfirm.Ask(item.path);
             }
 
             return;
@@ -423,58 +413,49 @@ namespace graphite
 
         float zoomDelta = 0.0f;
 
-        // Every question below asks the gate before opening, and keeps its request
-        // pending when refused - see ModalGate for why they cannot simply all open. Each
-        // one also clears its own state when BeginPopupModal comes back false for a popup
-        // ImGui does not have open, so a question destroyed by any route this gate did not
-        // foresee cannot leave the mechanism behind it permanently wedged.
-        if (m_openSizeQuestion && m_modals.TryOpen(kSizeQuestionTitle))
+        // Every question below asks the gate before opening and keeps whatever it was
+        // asked about pending when refused - see ModalGate for why they cannot simply all
+        // open. Neither that nor the check for a popup ImGui no longer has open is written
+        // out here: ModalQuestion::Begin does both for every question there is, so no
+        // question drawn from this function can leave the mechanism behind it wedged.
+        if (m_sizeQuestion.Begin())
         {
-            ImGui::OpenPopup(kSizeQuestionTitle);
-            m_openSizeQuestion = false;
-        }
+            const LargeFileQuestion* question = m_sizeQuestion.Current();
+            const std::uint64_t size = question != nullptr ? question->size : 0;
 
-        if (ImGui::BeginPopupModal(kSizeQuestionTitle, nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize))
-        {
             // A size of zero means the probe in RequestOpen failed, which after a
             // successful one moments earlier means the file has gone. Claiming "this file
             // is 0 MB" would be asking permission for a size nobody knows.
-            if (m_pendingSize == 0)
+            if (size == 0)
             {
                 ImGui::TextUnformatted("This file can no longer be read. Load it anyway?");
             }
             else
             {
                 ImGui::Text("This file is %llu MB. Load it anyway?",
-                            static_cast<unsigned long long>(m_pendingSize / (1024 * 1024)));
+                            static_cast<unsigned long long>(size / (1024 * 1024)));
             }
             ImGui::Separator();
 
             if (ImGui::Button("Load"))
             {
-                m_documents.OpenConfirmed(m_pendingPath, m_pendingPermanent);
-                m_modals.Close(kSizeQuestionTitle);
-                ImGui::CloseCurrentPopup();
+                // Before Answer(), which drops the payload this still points into.
+                if (question != nullptr)
+                {
+                    m_documents.OpenConfirmed(question->path, question->permanent);
+                }
+
+                m_sizeQuestion.Answer();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
             {
-                m_modals.Close(kSizeQuestionTitle);
-                ImGui::CloseCurrentPopup();
+                m_sizeQuestion.Answer();
             }
 
-            ImGui::EndPopup();
-        }
-        else if (m_modals.HoldsFor(kSizeQuestionTitle) && !ImGui::IsPopupOpen(kSizeQuestionTitle))
-        {
-            // The popup this gate believes is on screen is not open: it was dismissed with
-            // Escape, or destroyed by something opening over it. Nothing here is a guard
-            // for a later mechanism - the file simply does not open - but the gate must
-            // not stay held on its behalf.
-            m_modals.Close(kSizeQuestionTitle);
+            m_sizeQuestion.End();
         }
 
         // The reload-conflict, overwrite-confirm and close-confirm modals below all live
@@ -482,26 +463,13 @@ namespace graphite
         // above: OpenPopup/BeginPopupModal must not run from inside a Begin/BeginChild
         // pair that may not be current when the popup needs to draw, and this is the one
         // place in Render() that is never nested inside either. The loop below only ever
-        // sets the flags and paths these read; the actual ImGui calls happen here.
+        // asks the questions drawn here; the actual ImGui calls happen here.
 
-        // The queue is only popped once the gate is actually free: a question popped into
-        // m_reloadConflictActive whose modal never opened would be a question asked of
-        // nobody, and m_reloadConflictActive staying set is what would stop every later
-        // reload question, for every document, from ever being asked again.
-        if (!m_reloadConflictActive && !m_reloadConflictQueue.empty()
-            && m_modals.TryOpen(kReloadConflictTitle))
+        if (m_reloadConflict.Begin())
         {
-            m_reloadConflictActive = m_reloadConflictQueue.front();
-            m_reloadConflictQueue.erase(m_reloadConflictQueue.begin());
-            ImGui::OpenPopup(kReloadConflictTitle);
-        }
-
-        if (ImGui::BeginPopupModal(kReloadConflictTitle, nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            const std::string fileName = m_reloadConflictActive
-                                             ? core::fs::ToUtf8(m_reloadConflictActive->filename())
-                                             : std::string{};
+            const std::filesystem::path* path = m_reloadConflict.Current();
+            const std::string fileName =
+                path != nullptr ? core::fs::ToUtf8(path->filename()) : std::string{};
 
             ImGui::Text("%s changed on disk, and this tab has unsaved changes.",
                         fileName.c_str());
@@ -509,15 +477,15 @@ namespace graphite
 
             if (ImGui::Button("Reload from disk (lose my changes)"))
             {
-                if (m_reloadConflictActive)
+                if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*m_reloadConflictActive))
+                    if (const auto index = m_documents.Find(*path))
+                    {
                         ReloadClean(*index);
+                    }
                 }
 
-                m_reloadConflictActive.reset();
-                m_modals.Close(kReloadConflictTitle);
-                ImGui::CloseCurrentPopup();
+                m_reloadConflict.Answer();
             }
 
             ImGui::SameLine();
@@ -526,43 +494,26 @@ namespace graphite
             // known is what stops Ctrl+S, or the next sweep, asking about this file again.
             if (ImGui::Button("Keep my version"))
             {
-                if (m_reloadConflictActive)
+                if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*m_reloadConflictActive);
+                    if (const auto index = m_documents.Find(*path);
                         index && m_documents.At(*index).document)
+                    {
                         m_documents.At(*index).document->AcceptDiskState();
+                    }
                 }
 
-                m_reloadConflictActive.reset();
-                m_modals.Close(kReloadConflictTitle);
-                ImGui::CloseCurrentPopup();
+                m_reloadConflict.Answer();
             }
 
-            ImGui::EndPopup();
-        }
-        else if (m_modals.HoldsFor(kReloadConflictTitle) && !ImGui::IsPopupOpen(kReloadConflictTitle))
-        {
-            // Gone without an answer. m_reloadConflictActive is the guard that lets the
-            // queue be popped again, so leaving it set would silence every later
-            // "changed on disk" question for the rest of the session. The file itself is
-            // not forgotten: ChangedOnDisk() is still true, so the next watcher sweep or
-            // focus regain queues it afresh.
-            m_reloadConflictActive.reset();
-            m_modals.Close(kReloadConflictTitle);
+            m_reloadConflict.End();
         }
 
-        if (m_openOverwriteConfirm && m_modals.TryOpen(kOverwriteConfirmTitle))
+        if (m_overwriteConfirm.Begin())
         {
-            ImGui::OpenPopup(kOverwriteConfirmTitle);
-            m_openOverwriteConfirm = false;
-        }
-
-        if (ImGui::BeginPopupModal(kOverwriteConfirmTitle, nullptr,
-                                   ImGuiWindowFlags_AlwaysAutoResize))
-        {
-            const std::string fileName = m_overwriteConfirmPath
-                                             ? core::fs::ToUtf8(m_overwriteConfirmPath->filename())
-                                             : std::string{};
+            const std::filesystem::path* path = m_overwriteConfirm.Current();
+            const std::string fileName =
+                path != nullptr ? core::fs::ToUtf8(path->filename()) : std::string{};
 
             ImGui::Text("%s changed on disk since it was opened. Overwrite it?",
                         fileName.c_str());
@@ -570,104 +521,85 @@ namespace graphite
 
             if (ImGui::Button("Overwrite"))
             {
-                if (m_overwriteConfirmPath)
+                if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*m_overwriteConfirmPath))
+                    if (const auto index = m_documents.Find(*path))
+                    {
                         SaveOne(*index);
+                    }
                 }
 
-                m_overwriteConfirmPath.reset();
-                m_modals.Close(kOverwriteConfirmTitle);
-                ImGui::CloseCurrentPopup();
+                m_overwriteConfirm.Answer();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
             {
-                m_overwriteConfirmPath.reset();
-                m_modals.Close(kOverwriteConfirmTitle);
-                ImGui::CloseCurrentPopup();
+                m_overwriteConfirm.Answer();
             }
 
-            ImGui::EndPopup();
-        }
-        else if (m_modals.HoldsFor(kOverwriteConfirmTitle)
-                 && !ImGui::IsPopupOpen(kOverwriteConfirmTitle))
-        {
-            // Gone without an answer, and this is the state RequestSave compares against
-            // before raising the question again - left set, Ctrl+S on this document would
-            // do nothing at all, silently, for the rest of the session.
-            m_overwriteConfirmPath.reset();
-            m_modals.Close(kOverwriteConfirmTitle);
+            m_overwriteConfirm.End();
         }
 
-        // Pop the next close question off the queue, skipping any entry whose document
-        // is no longer there to ask about - closed some other way (WorkspaceClosedEvent,
-        // say) while it waited its turn. A file merely deleted from disk in the
-        // meantime is not skipped: MarkMissing leaves the item and its in-memory content
-        // in place, so Save (recreating the file) and Discard both still mean something,
-        // and the question stays worth asking.
-        //
-        // Nothing is popped while the gate is busy - which includes the reload question
-        // just above having taken it this very frame. The tab keeps being submitted with
-        // its dot until its turn comes; the question is delayed, never lost.
-        while (!m_pendingCloseActive && !m_pendingCloseQueue.empty() && !m_modals.IsBusy())
+        // Asked only of a document still there to ask about, and still dirty: one closed
+        // some other way (WorkspaceClosedEvent, say) while its question waited its turn
+        // has nothing left to save, and neither has one saved in the meantime. Checked
+        // when the question comes off the queue rather than when it joined, since all of
+        // that can happen while it waits. A file merely deleted from disk in the meantime
+        // still gets its question: MarkMissing leaves the item and its in-memory content
+        // in place, so Save (recreating the file) and Discard both still mean something.
+        const auto stillModified = [this](const std::filesystem::path& candidate)
         {
-            const std::filesystem::path candidate = m_pendingCloseQueue.front();
-            m_pendingCloseQueue.erase(m_pendingCloseQueue.begin());
+            const auto index = m_documents.Find(candidate);
 
-            if (const auto index = m_documents.Find(candidate);
-                index && m_documents.At(*index).document
-                && m_documents.At(*index).document->IsModified()
-                && m_modals.TryOpen(kCloseConfirmTitle))
-            {
-                m_pendingCloseActive = candidate;
-                ImGui::OpenPopup(kCloseConfirmTitle);
-            }
-        }
+            return index && m_documents.At(*index).document
+                   && m_documents.At(*index).document->IsModified();
+        };
 
-        if (ImGui::BeginPopupModal(kCloseConfirmTitle, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        if (m_closeConfirm.Begin(stillModified))
         {
-            const std::string fileName = m_pendingCloseActive
-                                             ? core::fs::ToUtf8(m_pendingCloseActive->filename())
-                                             : std::string{};
+            const std::filesystem::path* path = m_closeConfirm.Current();
+            const std::string fileName =
+                path != nullptr ? core::fs::ToUtf8(path->filename()) : std::string{};
 
             ImGui::Text("Save changes to %s before closing?", fileName.c_str());
             ImGui::Separator();
 
             // Shared by Save and Discard: finds the tab again by path (it may have moved
             // since the question was asked, though never far in practice) and closes it
-            // the same way the loop below would have.
-            const auto finishClose = [this]
+            // the same way the loop below would have. Called before Answer(), which drops
+            // the payload `path` points into.
+            const auto finishClose = [this, path]
             {
-                if (!m_pendingCloseActive)
+                if (path == nullptr)
+                {
                     return;
+                }
 
-                if (const auto index = m_documents.Find(*m_pendingCloseActive))
+                if (const auto index = m_documents.Find(*path))
                 {
                     ImGui::ClearWindowSettings(WindowName(m_documents, *index).c_str());
                     m_documents.Close(*index);
                 }
-
-                m_pendingCloseActive.reset();
             };
 
             if (ImGui::Button("Save"))
             {
                 bool saved = true;
 
-                if (m_pendingCloseActive)
+                if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*m_pendingCloseActive))
+                    if (const auto index = m_documents.Find(*path))
+                    {
                         saved = SaveOne(*index);
+                    }
                 }
 
                 if (saved)
                 {
                     finishClose();
-                    m_modals.Close(kCloseConfirmTitle);
-                    ImGui::CloseCurrentPopup();
+                    m_closeConfirm.Answer();
                 }
 
                 // A failed save changes nothing: the document stays open and dirty, the
@@ -680,30 +612,17 @@ namespace graphite
             if (ImGui::Button("Discard"))
             {
                 finishClose();
-                m_modals.Close(kCloseConfirmTitle);
-                ImGui::CloseCurrentPopup();
+                m_closeConfirm.Answer();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
             {
-                m_pendingCloseActive.reset();
-                m_modals.Close(kCloseConfirmTitle);
-                ImGui::CloseCurrentPopup();
+                m_closeConfirm.Answer();
             }
 
-            ImGui::EndPopup();
-        }
-        else if (m_modals.HoldsFor(kCloseConfirmTitle) && !ImGui::IsPopupOpen(kCloseConfirmTitle))
-        {
-            // Gone without an answer, which counts as Cancel: the tab stays open and
-            // dirty. Clearing m_pendingCloseActive matters beyond this one tab - it is
-            // what lets the queue behind it move again, and (before this became one
-            // question at a time) what a stuck value would have used to refuse every
-            // close of the window itself, forever.
-            m_pendingCloseActive.reset();
-            m_modals.Close(kCloseConfirmTitle);
+            m_closeConfirm.End();
         }
 
         for (std::size_t index = 0; index < m_documents.Count();)
@@ -860,13 +779,11 @@ namespace graphite
                     // Cancel resolves it. Queued rather than replacing whatever is
                     // already pending, so a second tab's close button pressed before the
                     // first question resolves still gets its own question, in order,
-                    // instead of being silently dropped.
-                    if (m_pendingCloseActive != item.path
-                        && std::find(m_pendingCloseQueue.begin(), m_pendingCloseQueue.end(),
-                                    item.path)
-                               == m_pendingCloseQueue.end())
+                    // instead of being silently dropped - and the tab's close button
+                    // pressed again while its own question waits does not queue it twice.
+                    if (!m_closeConfirm.Asked(item.path))
                     {
-                        m_pendingCloseQueue.push_back(item.path);
+                        m_closeConfirm.Ask(item.path);
                     }
                 }
                 else
