@@ -13,13 +13,10 @@ namespace core
         layout.maximize = CaptionRect{layout.close.x - buttonWidth, 0.0f, buttonWidth, barHeight};
         layout.minimize = CaptionRect{layout.maximize.x - buttonWidth, 0.0f, buttonWidth, barHeight};
 
-        if (layout.minimize.x < 0.0f)
-        {
-            const float shift = -layout.minimize.x;
-            layout.minimize.x += shift;
-            layout.maximize.x += shift;
-            layout.close.x += shift;
-        }
+        // A bar narrower than its own three buttons is left to run off the left edge
+        // rather than being shifted right: measuring from the right edge keeps close
+        // where it always is, and makes minimize — the button whose loss costs least —
+        // the first one to go. Shifting instead would have pushed close off screen.
 
         const float versionX = layout.minimize.x - versionGap - versionWidth;
         layout.version = CaptionRect{versionX, 0.0f, versionWidth, barHeight};

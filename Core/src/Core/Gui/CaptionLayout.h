@@ -22,7 +22,9 @@ namespace core
         CaptionRect version;
 
         /// False when the version label would collide with whatever occupies the left of
-        /// the bar. The buttons are never dropped — a window must stay closable.
+        /// the bar. The buttons are never dropped: a bar too narrow for all three keeps
+        /// close flush against the right edge and lets minimize run off the left, so the
+        /// one that closes the window is the last to become unreachable.
         bool versionVisible = false;
     };
 
