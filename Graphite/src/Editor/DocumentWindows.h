@@ -134,6 +134,16 @@ namespace graphite
         /// error instead.
         void ReloadOne(std::size_t index);
 
+        /// Raises the "Large file" question about `path`, having probed it for the size
+        /// the question quotes. Both askers come through here: a file the user picked and
+        /// one that appeared under a tab already open on it.
+        void AskAboutSize(const std::filesystem::path& path, bool permanent);
+
+        /// What answering that question with "Load" does. Fills an already-open tab that
+        /// carries no document, and opens a new one otherwise - the distinction
+        /// OpenConfirmed cannot make, since it treats an open path as one to activate.
+        void LoadConfirmed(const std::filesystem::path& path, bool permanent);
+
         /// core::text::SaveDocument plus a status bar trace either way. Returns whether it
         /// succeeded, which is what lets a caller stop at the first failure (the close-tab
         /// question). Stops neither to ask nor to check ChangedOnDisk - that is

@@ -29,15 +29,25 @@ namespace core::text
         /// dropping it would be the only way to lose something we still have.
         WentMissing,
 
-        /// A file that was marked missing is there again, and nothing else about it
-        /// needed doing.
+        /// A file that was marked missing is there again, and the item has no content to
+        /// show for it: call LoadFromFile.
         ///
-        /// Only when nothing else happened. SyncWithFile compares the content in the same
-        /// pass that notices the file returning, deliberately, so a file that came back
-        /// *changed* ends as SafeToReload or NeedsDecision instead — this enumerator is
-        /// what is left when the content that came back is the content already open, or
-        /// when the item never carried a document to compare.
-        CameBack,
+        /// This is the tab opened on a file that was not there — a restored session whose
+        /// file had been deleted, or a file removed between the tree listing it and the
+        /// click. Clearing the missing mark is not enough on its own: it would leave a tab
+        /// that no longer says the file is gone, shows nothing, and never loads, since
+        /// every later sync sees an item that is neither missing nor holding a document
+        /// and reports Unchanged.
+        ///
+        /// Named for what is left to do rather than for what happened, like SafeToReload
+        /// and NeedsDecision beside it. Loading is the caller's because a file that came
+        /// back large has to be asked about, and only a caller with a user can ask.
+        ///
+        /// An item that *does* carry a document never ends here: SyncWithFile compares the
+        /// content in the same pass that notices the file returning, deliberately, so a
+        /// file that came back changed ends as SafeToReload or NeedsDecision, and one that
+        /// came back identical as Unchanged.
+        NeedsLoad,
 
         /// The file changed underneath a document with no unsaved edits, so there is
         /// nothing to weigh against the new content: call ReloadItem.

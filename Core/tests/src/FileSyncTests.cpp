@@ -98,7 +98,7 @@ TEST_CASE("A file that comes back changed is noticed in the same pass that finds
     CHECK(documents.At(0).document->Buffer().Text() == "restored from somewhere else\n");
 }
 
-TEST_CASE("A tab opened on a file that was not there reports it appearing")
+TEST_CASE("A tab opened on a file that was not there asks for the file to be loaded")
 {
     TempDirectory directory;
     const auto path = directory.Path() / "not-yet.txt";
@@ -109,13 +109,26 @@ TEST_CASE("A tab opened on a file that was not there reports it appearing")
 
     WriteBytes(path, "here now\n");
 
-    // The one shape in which CameBack survives to be returned: there is no document to
-    // compare the new content against, so clearing the mark is all there was to do.
-    // MarkPresent clears the flag and nothing else, so the item still carries no
-    // document — the tab stops saying "(deleted)" and stays empty.
-    CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::CameBack);
+    // The one shape in which this outcome is returned: the file is there and the item
+    // has no content to compare it against, so there is nothing to reload and everything
+    // still to load. Handed back rather than done, because loading is what asks about a
+    // large file, and only a caller with a user in front of it can ask.
+    CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::NeedsLoad);
     CHECK(documents.At(0).failure == OpenFailure::None);
     CHECK_FALSE(documents.At(0).document.has_value());
+}
+
+TEST_CASE("A file that is still not there is not reported as needing loading")
+{
+    TempDirectory directory;
+    const auto path = directory.Path() / "still-missing.txt";
+
+    DocumentSet documents;
+    REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
+    REQUIRE(documents.At(0).failure == OpenFailure::Missing);
+
+    CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::Unchanged);
+    CHECK(documents.At(0).failure == OpenFailure::Missing);
 }
 
 TEST_CASE("A file changed under a document with unsaved edits is left for the caller to decide")

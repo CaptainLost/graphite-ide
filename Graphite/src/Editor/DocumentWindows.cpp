@@ -93,13 +93,38 @@ namespace graphite
         if (outcome != core::text::OpenOutcome::NeedsConfirmation)
             return;
 
+        AskAboutSize(path, permanent);
+    }
+
+    void DocumentWindows::LoadConfirmed(const std::filesystem::path& path, bool permanent)
+    {
+        const auto existing = m_documents.Find(path);
+
+        // A tab can already be there with nothing in it: one opened on a file that did
+        // not exist, whose file has since appeared and appeared large. OpenConfirmed
+        // would find that tab and only activate it, loading nothing and leaving the
+        // question answered by an empty tab - so the item is filled directly instead.
+        if (existing && !m_documents.At(*existing).document)
+        {
+            // Confirmed, so NeedsConfirmation cannot come back, and Loaded and Failed both
+            // leave the tab saying the right thing: the content, or the reason there is
+            // none. Nothing here to branch on.
+            static_cast<void>(core::text::LoadFromFile(m_documents.At(*existing), true));
+            return;
+        }
+
+        m_documents.OpenConfirmed(path, permanent);
+    }
+
+    void DocumentWindows::AskAboutSize(const std::filesystem::path& path, bool permanent)
+    {
         LargeFileQuestion question{path, permanent, 0};
 
         // Probed once, here, rather than every frame the modal is open: a stat plus an
         // 8 KB read per frame is real work when the file sits on a network share, and the
         // answer cannot change between the question and the reply in any way worth
-        // redrawing for. Open() has just probed the same file successfully - that is what
-        // NeedsConfirmation means - so this second probe is asking a question already
+        // redrawing for. Whoever asks has just probed the same file successfully - that is
+        // what NeedsConfirmation means - so this second probe is asking a question already
         // answered, and a failure here means the file went away in between.
         if (const auto probe = core::text::ProbeFile(path))
         {
@@ -108,7 +133,8 @@ namespace graphite
 
         // Guarded the way the reload and close questions are: two events naming the same
         // file the same way - a double dispatch from the tree, an event replayed after a
-        // workspace reload - are one question, not the same one asked twice in a row.
+        // workspace reload, a watcher batch and a focus regain both finding the same file
+        // waiting to be loaded - are one question, not the same one asked twice in a row.
         if (!m_sizeQuestion.Asked(question))
         {
             m_sizeQuestion.Ask(std::move(question));
@@ -230,11 +256,27 @@ namespace graphite
             ReloadOne(index);
             break;
 
+        case core::text::FileSyncOutcome::NeedsLoad:
+        {
+            // The file a tab was opened on before it existed is here now. Loading it is
+            // what turns the tab from a cleared missing mark into the file's content;
+            // without it the tab would show nothing and no later sync would look again.
+            core::text::OpenItem& item = m_documents.At(index);
+
+            if (core::text::LoadFromFile(item, false) == core::text::ItemLoad::NeedsConfirmation)
+            {
+                // It came back large. The same question a large file gets when it is
+                // opened by hand, and answering it reaches the same loader.
+                AskAboutSize(item.path, !item.preview);
+            }
+
+            break;
+        }
+
         case core::text::FileSyncOutcome::Unchanged:
         case core::text::FileSyncOutcome::WentMissing:
-        case core::text::FileSyncOutcome::CameBack:
-            // Nothing to say. A file that went away or came back is already said by the
-            // tab's own title, which gains and loses "(deleted)" with the mark.
+            // Nothing to say. A file that went away is already said by the tab's own
+            // title, which gains and loses "(deleted)" with the mark.
             break;
         }
     }
@@ -428,7 +470,7 @@ namespace graphite
                 // Before Answer(), which drops the payload this still points into.
                 if (question != nullptr)
                 {
-                    m_documents.OpenConfirmed(question->path, question->permanent);
+                    LoadConfirmed(question->path, question->permanent);
                 }
 
                 m_sizeQuestion.Answer();

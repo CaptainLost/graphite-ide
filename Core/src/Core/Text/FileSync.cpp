@@ -54,7 +54,11 @@ namespace core::text
 
         if (!item.document || !item.document->ChangedOnDisk())
         {
-            return cameBack ? FileSyncOutcome::CameBack : FileSyncOutcome::Unchanged;
+            // Only the item that just came back and has nothing to show asks to be
+            // loaded. An item carrying Binary, TooLarge or ReadFailed also has no
+            // document, and its file appearing is not what it is waiting for - those
+            // mean "not opening this", not "waiting for the file".
+            return cameBack ? FileSyncOutcome::NeedsLoad : FileSyncOutcome::Unchanged;
         }
 
         if (!item.document->IsModified())

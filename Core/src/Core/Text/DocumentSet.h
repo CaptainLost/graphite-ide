@@ -78,6 +78,37 @@ namespace core::text
         std::string detail;
     };
 
+    /// What LoadFromFile did.
+    enum class ItemLoad
+    {
+        /// The item now carries a document holding the file's content.
+        Loaded,
+
+        /// Past LargeFileThreshold and not confirmed. Nothing was read and nothing about
+        /// the item changed but its size, which is the number the asking needs. Ask, then
+        /// call again with `confirmed`.
+        NeedsConfirmation,
+
+        /// Nothing to show, and the item now says why: Binary, TooLarge, Missing or
+        /// ReadFailed, with `detail` carrying the message where there was one.
+        Failed
+    };
+
+    /// Fills an item from the file its path names, deciding as Open does — probe first,
+    /// then load, refuse or ask.
+    ///
+    /// Takes an item rather than a set and an index because it needs nothing else: it is
+    /// the one place a file becomes an item's content, whether the item is being created
+    /// (DocumentSet::Add) or was created without content and its file has since appeared
+    /// (FileSyncOutcome::NeedsLoad). Two loaders would be two answers to "what may be
+    /// opened" waiting to differ.
+    ///
+    /// Whatever the item last failed with is cleared once the file has actually been
+    /// looked at, so an item that opened Missing and now loads stops claiming to be
+    /// missing. The exception is NeedsConfirmation, which decides nothing and so changes
+    /// nothing.
+    [[nodiscard]] ItemLoad LoadFromFile(OpenItem& item, bool confirmed);
+
     enum class OpenOutcome
     {
         /// A new item was added.
