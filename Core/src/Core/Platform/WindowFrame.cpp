@@ -7,6 +7,7 @@
 #ifdef CORE_PLATFORM_WINDOWS
     #include <windows.h>
 
+    #include <dwmapi.h>
     #include <windowsx.h>
 
     #define GLFW_EXPOSE_NATIVE_WIN32
@@ -48,6 +49,11 @@ namespace core
                     return;
                 }
 
+                // The frame goes back to the system's, so the margin that was only there to
+                // give DWM a row to draw a border in goes with it.
+                const MARGINS none{0, 0, 0, 0};
+                DwmExtendFrameIntoClientArea(m_hwnd, &none);
+
                 SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_previous));
 
                 // The caption comes back the way it went away: only on a frame change.
@@ -85,6 +91,8 @@ namespace core
                                  "the window procedure could not be subclassed"};
                 }
 
+                RestoreBorder();
+
                 // The frame is only recomputed on a frame change, so ask for one: without
                 // it the caption stays on screen until the user first resizes the window.
                 SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
@@ -105,6 +113,49 @@ namespace core
             /// were restored. The style bit IsZoomed reads is also already set by the time
             /// WM_NCCALCSIZE arrives for the maximize itself, which is when it matters most.
             [[nodiscard]] bool Maximized() const { return IsZoomed(m_hwnd) != FALSE; }
+
+            /// Puts back the outline WM_NCCALCSIZE took. Both calls are here because they
+            /// answer for different systems, and neither covers the other:
+            ///
+            /// DWMWA_BORDER_COLOR exists from build 22000. DWMWA_COLOR_DEFAULT asks DWM for
+            /// its own border: drawn outside the client area, so it costs no pixel the
+            /// application would otherwise draw in, and it follows the accent colour and
+            /// the light/dark theme by itself — nothing here has to watch for a theme
+            /// change and repaint. Every older system answers with a failure HRESULT, which
+            /// is the expected answer there and no reason to refuse the whole frame.
+            ///
+            /// DwmExtendFrameIntoClientArea is what those older systems have instead. The
+            /// only part of a WS_OVERLAPPEDWINDOW frame Windows 10 actually paints is the
+            /// line along the top edge — left, right and bottom are invisible resize
+            /// handles plus a composited shadow — and that line is exactly what the
+            /// reclaimed caption covers. Extending the frame one pixel back gives DWM a row
+            /// to keep drawing it in; the row stays the application's to draw into, so no
+            /// client area is lost either way.
+            void RestoreBorder()
+            {
+                const COLORREF border = DWMWA_COLOR_DEFAULT;
+                DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &border, sizeof(border));
+
+                ExtendFrame();
+            }
+
+            /// A maximized window shows no border — and WM_NCCALCSIZE already insets the
+            /// frame in that case — so the margin is asked for only while the window is
+            /// restored. Cached because WM_SIZE arrives on every step of a drag-resize and
+            /// the margin only ever changes when the maximized state does.
+            void ExtendFrame()
+            {
+                const int top = Maximized() ? 0 : 1;
+                if (top == m_frameTop)
+                {
+                    return;
+                }
+
+                m_frameTop = top;
+
+                const MARGINS margins{0, 0, top, 0};
+                DwmExtendFrameIntoClientArea(m_hwnd, &margins);
+            }
 
             LRESULT OnCalcSize(WPARAM wParam, LPARAM lParam)
             {
@@ -216,6 +267,16 @@ namespace core
                     return self->OnCalcSize(wParam, lParam);
                 case WM_NCHITTEST:
                     return self->OnHitTest(lParam);
+                case WM_SIZE:
+                {
+                    // GLFW first — it reads the new size out of this message — and only then
+                    // the margin, which depends on the maximized state this message reports
+                    // a change of.
+                    const LRESULT result =
+                        CallWindowProcW(self->m_previous, hwnd, message, wParam, lParam);
+                    self->ExtendFrame();
+                    return result;
+                }
                 default:
                     break;
                 }
@@ -226,6 +287,9 @@ namespace core
             HWND m_hwnd = nullptr;
             WNDPROC m_previous = nullptr;
             CaptionMetrics m_metrics;
+
+            /// The top margin last handed to DWM, or -1 for "none asked for yet".
+            int m_frameTop = -1;
         };
     }
 #endif

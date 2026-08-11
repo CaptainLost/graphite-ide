@@ -37,7 +37,10 @@ project "Graphite"
 
     -- GLFW, ImGui and opengl32 are listed explicitly: the Core static library
     -- does not propagate its own linker inputs to a consumer.
-    links { "Core", "GLFW", "ImGui", "libgit2", "opengl32.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
+    -- dwmapi is Core's own need — WindowFrame asks DWM for the border the reclaimed
+    -- caption took with it — and is listed here for the same reason as opengl32: naming it
+    -- in Core instead would merge a second import library into Core.lib and trip LNK4006.
+    links { "Core", "GLFW", "ImGui", "libgit2", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
 
     filter "system:windows"
         systemversion "latest"
