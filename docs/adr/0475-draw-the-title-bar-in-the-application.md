@@ -21,13 +21,19 @@ reclaimed area the cursor is over. Everything else about the frame — the drop
 shadow, the snap animations, Aero Snap, edge resizing — is left to Windows,
 because the frame itself is never replaced, only the row painted inside it.
 
-`Core::Platform::Caption::Classify` is the pure function behind the hit test:
-given a point and a `CaptionMetrics` (caption height, resize border width,
-whether the cursor is over space the application left free for dragging), it
-returns `Client`, `Caption`, or one of eight resize edges. Graphite reports
-those metrics once per frame through `Window::SetCaptionMetrics`, computed by
-`CaptionLayout::LayOutCaption` from where it placed the three window buttons
-and the version label. `WindowFrame::Hide(Window&)` is the seam that does the
+`core::Classify` (declared in `Core/Platform/Caption.h`) is the pure function
+behind the hit test: given a point and a `CaptionMetrics` — caption height,
+resize border width, and the horizontal span of the row the application left
+free — it returns `Client`, `Caption`, or one of eight resize edges. That span
+is geometry, deliberately not "is the cursor over a widget": answering
+`HTCAPTION` hands the pointer to the non-client area, at which point the
+application is no longer told where the cursor is, so a cursor-derived answer
+would invalidate itself the moment it was given. Graphite reports those
+metrics once per frame through `Window::SetCaptionMetrics`, taking the span
+from where the menus ended and where `core::LayOutCaption` (in
+`Core/Gui/CaptionLayout.h`) placed the three window buttons — plus one flag
+that withholds the drag while a menu is open, so the click that closes it
+reaches the application. `WindowFrame::Hide(Window&)` is the seam that does the
 subclassing; it lives in Core behind `Core::Platform`, in line with
 [0002](0002-keep-core-free-of-ide-knowledge.md), and returns `Unsupported` on
 any platform, or any failure, where hiding the native bar cannot be done
@@ -71,6 +77,10 @@ because it was never touched.
 
 ### Neutral
 
+- Everything the drawn caption costs is conditional on
+  `Window::HasCustomTitleBar()`: where `Hide` refused, the menu bar keeps its
+  ordinary height and its ordinary padding, so the degrade path is the
+  application exactly as it was before this record.
 - `Core::Gui::DockSpaceHost` gained `DockLayout::menuBarHeight` so the extra
   row's height is pushed only around the host window's `Begin`; pushing it any
   wider leaked into the dock nodes' tab bars and offset every docked panel's
@@ -97,5 +107,5 @@ driving the change.
 ## Related
 
 - [0002](0002-keep-core-free-of-ide-knowledge.md) — why `WindowFrame` and
-  `Caption::Classify` live in `Core::Platform` behind `Result<T>` rather than
-  in Graphite.
+  `Classify` live in `Core/Platform` behind `Result<T>` rather than in
+  Graphite.
