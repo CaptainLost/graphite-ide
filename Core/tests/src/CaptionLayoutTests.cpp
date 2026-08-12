@@ -18,13 +18,13 @@ TEST_CASE("The three buttons sit flush to the right edge, in window order")
 	const CaptionLayout layout =
 		LayOutCaption(kBarWidth, kBarHeight, kButtonWidth, kVersionWidth, kVersionGap, 200.0f);
 
-	CHECK(layout.close.x + layout.close.width == doctest::Approx(kBarWidth));
-	CHECK(layout.maximize.x + layout.maximize.width == doctest::Approx(layout.close.x));
-	CHECK(layout.minimize.x + layout.minimize.width == doctest::Approx(layout.maximize.x));
+	CHECK(layout.Close.X + layout.Close.Width == doctest::Approx(kBarWidth));
+	CHECK(layout.Maximize.X + layout.Maximize.Width == doctest::Approx(layout.Close.X));
+	CHECK(layout.Minimize.X + layout.Minimize.Width == doctest::Approx(layout.Maximize.X));
 
-	CHECK(layout.minimize.width == doctest::Approx(kButtonWidth));
-	CHECK(layout.minimize.height == doctest::Approx(kBarHeight));
-	CHECK(layout.minimize.y == doctest::Approx(0.0f));
+	CHECK(layout.Minimize.Width == doctest::Approx(kButtonWidth));
+	CHECK(layout.Minimize.Height == doctest::Approx(kBarHeight));
+	CHECK(layout.Minimize.Y == doctest::Approx(0.0f));
 }
 
 TEST_CASE("The version label sits left of the buttons, one gap away")
@@ -32,10 +32,10 @@ TEST_CASE("The version label sits left of the buttons, one gap away")
 	const CaptionLayout layout =
 		LayOutCaption(kBarWidth, kBarHeight, kButtonWidth, kVersionWidth, kVersionGap, 200.0f);
 
-	CHECK(layout.versionVisible);
-	CHECK(layout.version.width == doctest::Approx(kVersionWidth));
-	CHECK(layout.version.x + layout.version.width + kVersionGap ==
-		  doctest::Approx(layout.minimize.x));
+	CHECK(layout.VersionVisible);
+	CHECK(layout.Version.Width == doctest::Approx(kVersionWidth));
+	CHECK(layout.Version.X + layout.Version.Width + kVersionGap ==
+		  doctest::Approx(layout.Minimize.X));
 }
 
 TEST_CASE("The version label is dropped rather than drawn over the menus")
@@ -44,8 +44,8 @@ TEST_CASE("The version label is dropped rather than drawn over the menus")
 	const CaptionLayout layout =
 		LayOutCaption(kBarWidth, kBarHeight, kButtonWidth, kVersionWidth, kVersionGap, 700.0f);
 
-	CHECK_FALSE(layout.versionVisible);
-	CHECK(layout.close.x + layout.close.width == doctest::Approx(kBarWidth));
+	CHECK_FALSE(layout.VersionVisible);
+	CHECK(layout.Close.X + layout.Close.Width == doctest::Approx(kBarWidth));
 }
 
 TEST_CASE("A bar too narrow for the buttons keeps close flush right and loses minimize first")
@@ -56,10 +56,10 @@ TEST_CASE("A bar too narrow for the buttons keeps close flush right and loses mi
 	// A window narrower than its own buttons cannot show all three, and the one that
 	// closes the window is the one that has to survive — so the row is measured from the
 	// right edge and minimize is what runs off to the left.
-	CHECK(layout.close.x + layout.close.width == doctest::Approx(100.0f));
-	CHECK(layout.maximize.x + layout.maximize.width == doctest::Approx(layout.close.x));
-	CHECK(layout.minimize.x < 0.0f);
-	CHECK_FALSE(layout.versionVisible);
+	CHECK(layout.Close.X + layout.Close.Width == doctest::Approx(100.0f));
+	CHECK(layout.Maximize.X + layout.Maximize.Width == doctest::Approx(layout.Close.X));
+	CHECK(layout.Minimize.X < 0.0f);
+	CHECK_FALSE(layout.VersionVisible);
 }
 
 TEST_CASE("A bar narrower than one button still leaves close reachable at the right edge")
@@ -69,6 +69,6 @@ TEST_CASE("A bar narrower than one button still leaves close reachable at the ri
 
 	// Even here close reaches the right edge: part of it is off screen to the left, but
 	// the part under the corner where it always sits is the part that stays.
-	CHECK(layout.close.x + layout.close.width == doctest::Approx(30.0f));
-	CHECK(layout.close.x < 0.0f);
+	CHECK(layout.Close.X + layout.Close.Width == doctest::Approx(30.0f));
+	CHECK(layout.Close.X < 0.0f);
 }

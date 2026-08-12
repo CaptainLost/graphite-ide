@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 		// rather than as a crash the user has to interpret.
 		if (const auto result = app->Run(); !result)
 		{
-			CORE_ERROR("Application terminated: {}", result.GetError().message);
+			CORE_ERROR("Application terminated: {}", result.GetError().Message);
 			return 1;
 		}
 

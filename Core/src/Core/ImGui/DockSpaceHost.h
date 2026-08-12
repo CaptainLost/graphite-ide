@@ -9,14 +9,14 @@ namespace Core {
 
 	struct DockLayout
 	{
-		std::vector<std::string> left;
-		std::vector<std::string> bottom;
-		std::vector<std::string> center;
+		std::vector<std::string> Left;
+		std::vector<std::string> Bottom;
+		std::vector<std::string> Center;
 
-		float leftRatio = 0.20f;
-		float bottomRatio = 0.25f;
+		float LeftRatio = 0.20f;
+		float BottomRatio = 0.25f;
 
-		float menuBarHeight = 0.0f;
+		float MenuBarHeight = 0.0f;
 	};
 
 	class DockSpaceHost final : NonCopyable

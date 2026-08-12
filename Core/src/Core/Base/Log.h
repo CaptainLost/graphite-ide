@@ -26,8 +26,8 @@ namespace Core {
 
 	struct LogEntry
 	{
-		LogLevel level = LogLevel::Info;
-		std::string message;
+		LogLevel Level = LogLevel::Info;
+		std::string Message;
 	};
 
 	class ILogSink

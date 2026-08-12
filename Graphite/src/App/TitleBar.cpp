@@ -23,13 +23,13 @@ namespace Graphite {
 		bool CaptionButton(const char* id, const char* glyph, const Core::CaptionRect& rect,
 						   ImU32 hoveredColour, ImU32 heldColour, bool systemOwnsPointer)
 		{
-			ImGui::SetCursorPos(ImVec2(rect.x, rect.y));
+			ImGui::SetCursorPos(ImVec2(rect.X, rect.Y));
 
 			const ImVec2 min = ImGui::GetCursorScreenPos();
-			const ImVec2 max(min.x + rect.width, min.y + rect.height);
+			const ImVec2 max(min.x + rect.Width, min.y + rect.Height);
 
 			ImGui::BeginDisabled(systemOwnsPointer);
-			const bool pressed = ImGui::InvisibleButton(id, ImVec2(rect.width, rect.height));
+			const bool pressed = ImGui::InvisibleButton(id, ImVec2(rect.Width, rect.Height));
 			const bool held = ImGui::IsItemActive();
 			const bool hovered = ImGui::IsItemHovered();
 			ImGui::EndDisabled();
@@ -44,8 +44,8 @@ namespace Graphite {
 			// Floored, not rounded: CalcTextSize rounds up, so a centred glyph placed on a
 			// half pixel would be resampled and read blurrier than the menu text beside it.
 			const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
-			const ImVec2 at(std::floor(min.x + (rect.width - glyphSize.x) * 0.5f),
-							std::floor(min.y + (rect.height - glyphSize.y) * 0.5f));
+			const ImVec2 at(std::floor(min.x + (rect.Width - glyphSize.x) * 0.5f),
+							std::floor(min.y + (rect.Height - glyphSize.y) * 0.5f));
 
 			draw->AddText(at, ImGui::GetColorU32(ImGuiCol_Text), glyph);
 
@@ -76,7 +76,7 @@ namespace Graphite {
 		const Core::CaptionLayout layout = Core::LayOutCaption(
 			barWidth, kCaptionHeight, kButtonWidth, versionWidth, kVersionGap, contentLeft);
 
-		if (layout.versionVisible)
+		if (layout.VersionVisible)
 		{
 			// Not a centring formula on y — BeginMenuBar() already called
 			// AlignTextToFramePadding(), and that base offset survives across SetCursorPos
@@ -85,7 +85,7 @@ namespace Graphite {
 			// row uses, so it already centres a text line in kCaptionHeight; adding a
 			// second centring offset on top of it would double-count and push the label
 			// low.
-			ImGui::SetCursorPos(ImVec2(layout.version.x, 0.0f));
+			ImGui::SetCursorPos(ImVec2(layout.Version.X, 0.0f));
 			ImGui::TextDisabled("%s", version.c_str());
 		}
 
@@ -106,15 +106,15 @@ namespace Graphite {
 		// measuring the caption's height from the client top — and both would then need
 		// the offset between GetWindowPos() and the viewport's Pos added here.
 		Core::CaptionMetrics metrics;
-		metrics.height = kCaptionHeight;
-		metrics.dragBegin = contentLeft;
-		metrics.dragEnd = layout.minimize.x;
+		metrics.Height = kCaptionHeight;
+		metrics.DragBegin = contentLeft;
+		metrics.DragEnd = layout.Minimize.X;
 
 		// An open menu is the one thing a free-caption click has to reach the application
 		// for: it should close the menu, and a drag would swallow it. Unlike a hover test
 		// this says nothing about where the cursor is, so it stays true while the pointer
 		// is off in the non-client area.
-		metrics.dragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+		metrics.DragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
 
 		// The buttons then ask that same function, on that same metrics object, what the
 		// pointer is over: anything Classify does not call Client is the system's this
@@ -148,7 +148,7 @@ namespace Graphite {
 		const ImU32 hovered = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
 		const ImU32 held = ImGui::GetColorU32(ImGuiCol_ButtonActive);
 
-		if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.minimize,
+		if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.Minimize,
 						  hovered, held, systemOwnsPointer))
 		{
 			window.Minimize();
@@ -157,7 +157,7 @@ namespace Graphite {
 		const char* middle =
 			window.IsMaximized() ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE;
 
-		if (CaptionButton("CaptionMaximize", middle, layout.maximize, hovered, held,
+		if (CaptionButton("CaptionMaximize", middle, layout.Maximize, hovered, held,
 						  systemOwnsPointer))
 		{
 			window.ToggleMaximize();
@@ -168,7 +168,7 @@ namespace Graphite {
 		// whether anything is unsaved.
 		const ImU32 closeColour = ImGui::GetColorU32(kCloseHovered);
 
-		if (CaptionButton("CaptionClose", ICON_MDI_CLOSE, layout.close, closeColour,
+		if (CaptionButton("CaptionClose", ICON_MDI_CLOSE, layout.Close, closeColour,
 						  closeColour, systemOwnsPointer))
 		{
 			window.RequestClose();

@@ -28,8 +28,8 @@ namespace {
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
-			if (auto changes = watcher.TakeSettled(); !changes.directories.empty())
-				return changes.directories;
+			if (auto changes = watcher.TakeSettled(); !changes.Directories.empty())
+				return changes.Directories;
 
 			std::this_thread::sleep_for(std::chrono::milliseconds{20});
 		}
@@ -286,8 +286,8 @@ namespace {
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
-			if (auto changes = watcher.TakeSettled(); changes.movedTo)
-				return changes.movedTo;
+			if (auto changes = watcher.TakeSettled(); changes.MovedTo)
+				return changes.MovedTo;
 
 			std::this_thread::sleep_for(std::chrono::milliseconds{20});
 		}
@@ -399,7 +399,7 @@ TEST_CASE("A move is noticed even while the directory is busy")
 
 		std::this_thread::sleep_for(std::chrono::milliseconds{100});
 
-		moved = watcher.GetValue()->TakeSettled().movedTo;
+		moved = watcher.GetValue()->TakeSettled().MovedTo;
 	}
 
 	REQUIRE(moved.has_value());

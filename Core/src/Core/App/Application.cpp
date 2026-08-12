@@ -42,19 +42,19 @@ namespace Core {
 	Result<void> Application::Run()
 	{
 		WindowSpec windowSpec;
-		windowSpec.title = m_Spec.name;
-		windowSpec.width = m_Spec.width;
-		windowSpec.height = m_Spec.height;
-		windowSpec.customTitleBar = m_Spec.customTitleBar;
+		windowSpec.Title = m_Spec.Name;
+		windowSpec.Width = m_Spec.Width;
+		windowSpec.Height = m_Spec.Height;
+		windowSpec.CustomTitleBar = m_Spec.CustomTitleBar;
 		// The window is created before the ImGui context exists, so the border colour is
 		// asked of the theme here — the one layer that can see both — and travels down as
 		// a value. Core::Platform never learns that there is a theme.
-		windowSpec.borderColor = Theme::GetBorderColor();
+		windowSpec.BorderColor = Theme::GetBorderColor();
 
 		auto windowResult = Window::Create(windowSpec);
 		if (!windowResult)
 		{
-			CORE_ERROR("Startup aborted: {}", windowResult.GetError().message);
+			CORE_ERROR("Startup aborted: {}", windowResult.GetError().Message);
 			return windowResult.GetError();
 		}
 
@@ -62,7 +62,7 @@ namespace Core {
 
 		if (auto init = m_Gui.Init(*m_Window); !init)
 		{
-			CORE_ERROR("Startup aborted: {}", init.GetError().message);
+			CORE_ERROR("Startup aborted: {}", init.GetError().Message);
 			m_Window.reset();
 			return init.GetError();
 		}

@@ -81,26 +81,26 @@ namespace Core {
 			}
 
 			DirectoryEntry entry;
-			entry.path = iterator->path();
-			entry.name = ToUtf8(iterator->path().filename());
+			entry.Path = iterator->path();
+			entry.Name = ToUtf8(iterator->path().filename());
 
 			std::error_code statusCode;
-			entry.isDirectory = iterator->is_directory(statusCode);
+			entry.IsDirectory = iterator->is_directory(statusCode);
 
 			if (statusCode)
 			{
 				return Error{TranslateError(statusCode),
-							 std::format("cannot classify '{}': {}", ToUtf8(entry.path),
+							 std::format("cannot classify '{}': {}", ToUtf8(entry.Path),
 										 statusCode.message())};
 			}
 
-			entry.isHidden = IsHidden(entry.path);
+			entry.IsHidden = IsHidden(entry.Path);
 
-			if (!entry.isDirectory)
+			if (!entry.IsDirectory)
 			{
 				std::error_code sizeCode;
 				const std::uintmax_t size = iterator->file_size(sizeCode);
-				entry.size = sizeCode ? 0 : static_cast<std::uint64_t>(size);
+				entry.Size = sizeCode ? 0 : static_cast<std::uint64_t>(size);
 			}
 
 			entries.push_back(std::move(entry));

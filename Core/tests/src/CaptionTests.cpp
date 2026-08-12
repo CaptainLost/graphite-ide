@@ -16,10 +16,10 @@ namespace {
 	CaptionMetrics Metrics()
 	{
 		CaptionMetrics metrics;
-		metrics.height = 32.0f;
-		metrics.resizeBorder = 8.0f;
-		metrics.dragBegin = kDragBegin;
-		metrics.dragEnd = kDragEnd;
+		metrics.Height = 32.0f;
+		metrics.ResizeBorder = 8.0f;
+		metrics.DragBegin = kDragBegin;
+		metrics.DragEnd = kDragEnd;
 		return metrics;
 	}
 }
@@ -106,18 +106,18 @@ TEST_CASE("A caption whose free span is empty drags nowhere")
 	// What a window too narrow for its own buttons reports: the buttons have run past the
 	// menus, so there is no free caption left anywhere in the row.
 	CaptionMetrics metrics = Metrics();
-	metrics.dragEnd = metrics.dragBegin;
+	metrics.DragEnd = metrics.DragBegin;
 
 	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Client);
 
-	metrics.dragEnd = -40.0f;
+	metrics.DragEnd = -40.0f;
 	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Client);
 }
 
 TEST_CASE("A suppressed drag leaves the whole caption to the application")
 {
 	CaptionMetrics metrics = Metrics();
-	metrics.dragSuppressed = true;
+	metrics.DragSuppressed = true;
 
 	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Client);
 
@@ -134,7 +134,7 @@ TEST_CASE("Everything below the caption is client area")
 TEST_CASE("A caption shorter than the resize border still resizes from the top")
 {
 	CaptionMetrics metrics = Metrics();
-	metrics.height = 4.0f;
+	metrics.Height = 4.0f;
 
 	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 2.0f, false) == CaptionHit::Top);
 }

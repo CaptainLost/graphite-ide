@@ -13,12 +13,12 @@ namespace Core {
 
 	Command* CommandRegistry::Add(Command command)
 	{
-		if (m_ById.find(command.id) != m_ById.end())
+		if (m_ById.find(command.Id) != m_ById.end())
 		{
 			return nullptr;
 		}
 
-		m_ById.emplace(command.id, m_Commands.size());
+		m_ById.emplace(command.Id, m_Commands.size());
 		m_Commands.push_back(CreateScope<Command>(std::move(command)));
 
 		return m_Commands.back().get();
@@ -43,17 +43,17 @@ namespace Core {
 	{
 		const Command* command = Find(id);
 
-		if (command == nullptr || !command->run)
+		if (command == nullptr || !command->Run)
 		{
 			return false;
 		}
 
-		if (command->enabled && !command->enabled())
+		if (command->Enabled && !command->Enabled())
 		{
 			return false;
 		}
 
-		command->run();
+		command->Run();
 		return true;
 	}
 
@@ -63,7 +63,7 @@ namespace Core {
 
 		for (const auto& command : m_Commands)
 		{
-			if (command->group == group)
+			if (command->Group == group)
 			{
 				members.push_back(command.get());
 			}

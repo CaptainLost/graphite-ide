@@ -57,9 +57,9 @@ namespace Graphite {
 			std::string joined;
 			for (const Core::LogEntry& entry : m_Entries)
 			{
-				joined.append(Core::ToString(entry.level));
+				joined.append(Core::ToString(entry.Level));
 				joined.append(" ");
-				joined.append(entry.message);
+				joined.append(entry.Message);
 				joined.append("\n");
 			}
 
@@ -90,11 +90,11 @@ namespace Graphite {
 
 		for (const Core::LogEntry& entry : m_Entries)
 		{
-			if (!m_Filter.PassFilter(entry.message.c_str()))
+			if (!m_Filter.PassFilter(entry.Message.c_str()))
 				continue;
 
-			ImGui::PushStyleColor(ImGuiCol_Text, ColorFor(entry.level));
-			ImGui::TextUnformatted(entry.message.c_str());
+			ImGui::PushStyleColor(ImGuiCol_Text, ColorFor(entry.Level));
+			ImGui::TextUnformatted(entry.Message.c_str());
 			ImGui::PopStyleColor();
 		}
 

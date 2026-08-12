@@ -49,19 +49,19 @@ namespace Graphite {
 			for (const std::string& part : parts)
 			{
 				const auto match =
-					std::find_if(current->folders.begin(), current->folders.end(),
-								 [&part](const ContentFolder& f) { return f.name == part; });
+					std::find_if(current->Folders.begin(), current->Folders.end(),
+								 [&part](const ContentFolder& f) { return f.Name == part; });
 
-				if (match != current->folders.end())
+				if (match != current->Folders.end())
 				{
 					current = &*match;
 					continue;
 				}
 
 				ContentFolder created;
-				created.name = part;
-				current->folders.push_back(std::move(created));
-				current = &current->folders.back();
+				created.Name = part;
+				current->Folders.push_back(std::move(created));
+				current = &current->Folders.back();
 			}
 
 			return *current;
@@ -101,13 +101,13 @@ namespace Graphite {
 
 		void SortContent(ContentFolder& folder)
 		{
-			std::sort(folder.folders.begin(), folder.folders.end(),
-					  [](const ContentFolder& left, const ContentFolder& right) { return Core::CompareNames(left.name, right.name) < 0; });
+			std::sort(folder.Folders.begin(), folder.Folders.end(),
+					  [](const ContentFolder& left, const ContentFolder& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
-			std::sort(folder.files.begin(), folder.files.end(),
-					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.name, right.name) < 0; });
+			std::sort(folder.Files.begin(), folder.Files.end(),
+					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
-			for (ContentFolder& child : folder.folders)
+			for (ContentFolder& child : folder.Folders)
 				SortContent(child);
 		}
 	}
@@ -164,7 +164,7 @@ namespace Graphite {
 					const std::filesystem::path referenced =
 						Core::FromUtf8(item.attribute("Include").value());
 
-					content.references.push_back(Core::ToUtf8(referenced.stem()));
+					content.References.push_back(Core::ToUtf8(referenced.stem()));
 					continue;
 				}
 
@@ -179,9 +179,9 @@ namespace Graphite {
 					continue;
 
 				ContentFile file;
-				file.path = (directory / Core::FromUtf8(include)).lexically_normal();
-				file.path.make_preferred();
-				file.name = Core::ToUtf8(file.path.filename());
+				file.Path = (directory / Core::FromUtf8(include)).lexically_normal();
+				file.Path.make_preferred();
+				file.Name = Core::ToUtf8(file.Path.filename());
 
 				const auto assignment = assignments.find(include);
 
@@ -189,23 +189,23 @@ namespace Graphite {
 				// file at the project root, which is what Visual Studio shows.
 				if (assignment == assignments.end())
 				{
-					content.root.files.push_back(std::move(file));
+					content.Root.Files.push_back(std::move(file));
 					continue;
 				}
 
 				const std::vector<std::string> parts = SplitFilter(assignment->second);
 
 				if (parts.empty())
-					content.root.files.push_back(std::move(file));
+					content.Root.Files.push_back(std::move(file));
 				else
-					EnsureContentFolder(content.root, parts).files.push_back(std::move(file));
+					EnsureContentFolder(content.Root, parts).Files.push_back(std::move(file));
 			}
 		}
 
-		SortContent(content.root);
+		SortContent(content.Root);
 
 		// References are names too, and Visual Studio lists them sorted.
-		std::sort(content.references.begin(), content.references.end(),
+		std::sort(content.References.begin(), content.References.end(),
 				  [](const std::string& left, const std::string& right) { return Core::CompareNames(left, right) < 0; });
 
 		return content;

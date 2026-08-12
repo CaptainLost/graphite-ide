@@ -54,9 +54,9 @@ namespace Core {
 
 		for (const ModifierName& modifier : kModifiers)
 		{
-			if ((m_Keys & modifier.bit) != 0)
+			if ((m_Keys & modifier.Bit) != 0)
 			{
-				result += modifier.name;
+				result += modifier.Name;
 				result += '+';
 			}
 		}
@@ -106,7 +106,7 @@ namespace Core {
 
 			for (const ModifierName& modifier : kModifiers)
 			{
-				if (Lowered(modifier.name) == head)
+				if (Lowered(modifier.Name) == head)
 				{
 					found = &modifier;
 				}
@@ -118,7 +118,7 @@ namespace Core {
 				break;
 			}
 
-			mods |= found->bit;
+			mods |= found->Bit;
 			remaining = Trimmed(std::string_view(remaining).substr(separator + 1));
 		}
 

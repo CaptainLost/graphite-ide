@@ -64,7 +64,7 @@ namespace Core {
 			// losing it, but say so: a layout that silently moves between launches is
 			// otherwise very hard to explain.
 			CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
-					  directory.GetError().message);
+					  directory.GetError().Message);
 
 			return std::string{"imgui.ini"};
 		}();
@@ -141,7 +141,7 @@ namespace Core {
 		else
 		{
 			CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
-					  executableDirectory.GetError().message);
+					  executableDirectory.GetError().Message);
 		}
 
 		Theme::ApplyDark();

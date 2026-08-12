@@ -67,9 +67,9 @@ TEST_CASE("Opening a text file adds an item holding the document")
 
 	CHECK(documents.Open(path, true) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().Materialize() == "int main() {}\n");
-	CHECK(documents.At(0).failure == OpenFailure::None);
+	REQUIRE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "int main() {}\n");
+	CHECK(documents.At(0).Failure == OpenFailure::None);
 	CHECK(documents.GetActive() == std::optional<std::size_t>{0});
 }
 
@@ -88,7 +88,7 @@ TEST_CASE("The widest line is measured in columns, not bytes")
 
 	CHECK(documents.Open(path, true) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.At(0).widestColumn == 11);
+	CHECK(documents.At(0).WidestColumn == 11);
 }
 
 TEST_CASE("Indent depths are computed once when the document loads")
@@ -101,9 +101,9 @@ TEST_CASE("Indent depths are computed once when the document loads")
 
 	CHECK(documents.Open(path, true) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.At(0).indentDepths.size() == 2);
-	CHECK(documents.At(0).indentDepths[0] == 0);
-	CHECK(documents.At(0).indentDepths[1] == 4);
+	REQUIRE(documents.At(0).IndentDepths.size() == 2);
+	CHECK(documents.At(0).IndentDepths[0] == 0);
+	CHECK(documents.At(0).IndentDepths[1] == 4);
 }
 
 TEST_CASE("Opening the same file twice activates it instead of duplicating it")
@@ -135,8 +135,8 @@ TEST_CASE("A binary file opens as an item with a reason rather than nothing at a
 
 	CHECK(documents.Open(path, true) == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK_FALSE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).failure == OpenFailure::Binary);
+	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Failure == OpenFailure::Binary);
 	CHECK(FailureMessage(documents.At(0)).find("Binary") != std::string::npos);
 }
 
@@ -150,8 +150,8 @@ TEST_CASE("A UTF-16 file now opens as a document rather than a refusal")
 
 	CHECK(documents.Open(path, true) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().Materialize() == "Hello");
+	REQUIRE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "Hello");
 }
 
 TEST_CASE("A damaged UTF-16 file says it is damaged, not that the format is unsupported")
@@ -164,7 +164,7 @@ TEST_CASE("A damaged UTF-16 file says it is damaged, not that the format is unsu
 
 	CHECK(documents.Open(path, true) == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
+	CHECK(documents.At(0).Failure == OpenFailure::ReadFailed);
 	CHECK(FailureMessage(documents.At(0)).find("damaged") != std::string::npos);
 }
 
@@ -176,7 +176,7 @@ TEST_CASE("A file that is not there opens as an item saying so, not as silence")
 
 	CHECK(documents.Open(directory.GetPath() / "absent.txt", true) == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.At(0).failure == OpenFailure::Missing);
+	CHECK(documents.At(0).Failure == OpenFailure::Missing);
 }
 
 TEST_CASE("Opening a directory does not claim it does not exist")
@@ -188,8 +188,8 @@ TEST_CASE("Opening a directory does not claim it does not exist")
 
 	CHECK(documents.Open(sub, true) == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
-	CHECK(documents.At(0).failure != OpenFailure::Missing);
+	CHECK(documents.At(0).Failure == OpenFailure::ReadFailed);
+	CHECK(documents.At(0).Failure != OpenFailure::Missing);
 	CHECK(FailureMessage(documents.At(0)).find("exist") == std::string::npos);
 }
 
@@ -216,8 +216,8 @@ TEST_CASE("Opening a file locked by another handle does not claim it does not ex
 
 	CHECK(outcome == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
-	CHECK(documents.At(0).failure != OpenFailure::Missing);
+	CHECK(documents.At(0).Failure == OpenFailure::ReadFailed);
+	CHECK(documents.At(0).Failure != OpenFailure::Missing);
 	CHECK(FailureMessage(documents.At(0)).find("exist") == std::string::npos);
 }
 #else
@@ -258,14 +258,14 @@ TEST_CASE("A large file asks before it loads, and adds nothing until confirmed")
 
 	CHECK(documents.OpenConfirmed(path, true) == OpenOutcome::Opened);
 	CHECK(documents.GetCount() == 1);
-	CHECK(documents.At(0).document.has_value());
+	CHECK(documents.At(0).Document.has_value());
 }
 
 TEST_CASE("The failure message names the size, so the number is not a mystery")
 {
 	OpenItem item;
-	item.failure = OpenFailure::TooLarge;
-	item.size = 780ull * 1024 * 1024;
+	item.Failure = OpenFailure::TooLarge;
+	item.Size = 780ull * 1024 * 1024;
 
 	CHECK(FailureMessage(item).find("780") != std::string::npos);
 }
@@ -320,7 +320,7 @@ TEST_CASE("Closing an item before the active one keeps the same item active")
 	// "b.txt" was active and still is, at its new index.
 	REQUIRE(documents.GetCount() == 1);
 	CHECK(documents.GetActive() == std::optional<std::size_t>{0});
-	CHECK(documents.At(0).path == second);
+	CHECK(documents.At(0).Path == second);
 }
 
 TEST_CASE("Closing everything empties the set")
@@ -364,13 +364,13 @@ TEST_CASE("Each item carries its own caret, so switching away and back keeps the
 
 	DocumentSet documents;
 	documents.Open(first, true);
-	documents.At(0).caret.offset = 3;
+	documents.At(0).Caret.Offset = 3;
 	documents.Open(second, true);
 
 	documents.Activate(0);
 
-	CHECK(documents.At(0).caret.offset == 3);
-	CHECK(documents.At(1).caret.offset == 0);
+	CHECK(documents.At(0).Caret.Offset == 3);
+	CHECK(documents.At(1).Caret.Offset == 0);
 }
 
 TEST_CASE("A single click opens a preview and the next one replaces it")
@@ -389,7 +389,7 @@ TEST_CASE("A single click opens a preview and the next one replaces it")
 
 	documents.Open(second, false);
 	CHECK(documents.GetCount() == 1);
-	CHECK(documents.At(0).path == second);
+	CHECK(documents.At(0).Path == second);
 	CHECK(documents.GetPreviewIndex() == std::optional<std::size_t>{0});
 }
 
@@ -406,8 +406,8 @@ TEST_CASE("A double click opens something that does not get replaced")
 	documents.Open(second, false);
 
 	CHECK(documents.GetCount() == 2);
-	CHECK_FALSE(documents.At(0).preview);
-	CHECK(documents.At(1).preview);
+	CHECK_FALSE(documents.At(0).Preview);
+	CHECK(documents.At(1).Preview);
 }
 
 TEST_CASE("Promoting a preview frees the slot")
@@ -437,11 +437,11 @@ TEST_CASE("Opening an already-open preview permanently promotes it")
 
 	DocumentSet documents;
 	documents.Open(path, false);
-	REQUIRE(documents.At(0).preview);
+	REQUIRE(documents.At(0).Preview);
 
 	documents.Open(path, true);
 
-	CHECK_FALSE(documents.At(0).preview);
+	CHECK_FALSE(documents.At(0).Preview);
 	CHECK_FALSE(documents.GetPreviewIndex().has_value());
 }
 
@@ -520,7 +520,7 @@ TEST_CASE("Paths follow the workspace root when it moves")
 
 	documents.RewritePaths(directory.GetPath(), "D:/moved");
 
-	CHECK(documents.At(0).path == std::filesystem::path{"D:/moved"} / "a.txt");
+	CHECK(documents.At(0).Path == std::filesystem::path{"D:/moved"} / "a.txt");
 }
 
 TEST_CASE("A path outside the moved root is left alone")
@@ -534,7 +534,7 @@ TEST_CASE("A path outside the moved root is left alone")
 
 	documents.RewritePaths("D:/somewhere-else", "D:/moved");
 
-	CHECK(documents.At(0).path == path);
+	CHECK(documents.At(0).Path == path);
 }
 
 TEST_CASE("A path equal to the moved root is rewritten without a trailing dot")
@@ -551,7 +551,7 @@ TEST_CASE("A path equal to the moved root is rewritten without a trailing dot")
 
 	documents.RewritePaths(directory.GetPath(), "D:/moved");
 
-	CHECK(documents.At(0).path == std::filesystem::path{"D:/moved"});
+	CHECK(documents.At(0).Path == std::filesystem::path{"D:/moved"});
 }
 
 TEST_CASE("A deleted file keeps its window and its content")
@@ -566,9 +566,9 @@ TEST_CASE("A deleted file keeps its window and its content")
 	documents.MarkMissing(path);
 
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.At(0).failure == OpenFailure::Missing);
-	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().Materialize() == "still here");
+	CHECK(documents.At(0).Failure == OpenFailure::Missing);
+	REQUIRE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "still here");
 }
 
 TEST_CASE("Marking a file that is not open does nothing")
@@ -593,13 +593,13 @@ TEST_CASE("Marking a file missing clears any detail an earlier failure left behi
 	documents.Open(path, true);
 
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.At(0).failure == OpenFailure::ReadFailed);
-	REQUIRE_FALSE(documents.At(0).detail.empty());
+	REQUIRE(documents.At(0).Failure == OpenFailure::ReadFailed);
+	REQUIRE_FALSE(documents.At(0).Detail.empty());
 
 	documents.MarkMissing(path);
 
-	CHECK(documents.At(0).failure == OpenFailure::Missing);
-	CHECK(documents.At(0).detail.empty());
+	CHECK(documents.At(0).Failure == OpenFailure::Missing);
+	CHECK(documents.At(0).Detail.empty());
 	CHECK(FailureMessage(documents.At(0)).find("exist") != std::string::npos);
 }
 
@@ -634,7 +634,7 @@ TEST_CASE("A single click that needs confirmation does not evict the preview")
 	CHECK(documents.Open(big, false) == OpenOutcome::NeedsConfirmation);
 
 	CHECK(documents.GetCount() == 1);
-	CHECK(documents.At(0).path == path);
+	CHECK(documents.At(0).Path == path);
 	CHECK(documents.GetPreviewIndex() == std::optional<std::size_t>{0});
 }
 
@@ -646,14 +646,14 @@ TEST_CASE("The document's own path follows the workspace root when it moves")
 
 	DocumentSet documents;
 	documents.Open(path, true);
-	REQUIRE(documents.At(0).document.has_value());
+	REQUIRE(documents.At(0).Document.has_value());
 
 	documents.RewritePaths(directory.GetPath(), "D:/moved");
 
 	// Two places hold this path and a save reads the document's own — so the two must
 	// never be allowed to disagree.
-	CHECK(documents.At(0).document->GetPath() == documents.At(0).path);
-	CHECK(documents.At(0).document->GetPath() == std::filesystem::path{"D:/moved"} / "a.txt");
+	CHECK(documents.At(0).Document->GetPath() == documents.At(0).Path);
+	CHECK(documents.At(0).Document->GetPath() == std::filesystem::path{"D:/moved"} / "a.txt");
 }
 
 TEST_CASE("A deleted file says so in its tab title")
@@ -703,11 +703,11 @@ TEST_CASE("A missing file that comes back stops being marked deleted")
 	documents.Open(path, true);
 
 	documents.MarkMissing(path);
-	REQUIRE(documents.At(0).failure == OpenFailure::Missing);
+	REQUIRE(documents.At(0).Failure == OpenFailure::Missing);
 
 	documents.MarkPresent(path);
 
-	CHECK(documents.At(0).failure == OpenFailure::None);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
 	CHECK(documents.DisplayTitle(0).find("(deleted)") == std::string::npos);
 }
 
@@ -720,11 +720,11 @@ TEST_CASE("MarkPresent leaves a failure that is not about the file being gone")
 	DocumentSet documents;
 	documents.Open(path, true);
 
-	REQUIRE(documents.At(0).failure == OpenFailure::Binary);
+	REQUIRE(documents.At(0).Failure == OpenFailure::Binary);
 
 	documents.MarkPresent(path);
 
-	CHECK(documents.At(0).failure == OpenFailure::Binary);
+	CHECK(documents.At(0).Failure == OpenFailure::Binary);
 }
 
 TEST_CASE("Loading fills an item that opened before its file existed")
@@ -734,15 +734,15 @@ TEST_CASE("Loading fills an item that opened before its file existed")
 
 	DocumentSet documents;
 	REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
-	REQUIRE_FALSE(documents.At(0).document.has_value());
+	REQUIRE_FALSE(documents.At(0).Document.has_value());
 
 	WriteBytes(path, "here now\n");
 
 	CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::Loaded);
-	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().Materialize() == "here now\n");
-	CHECK(documents.At(0).failure == OpenFailure::None);
-	CHECK(documents.At(0).detail.empty());
+	REQUIRE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "here now\n");
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+	CHECK(documents.At(0).Detail.empty());
 }
 
 TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a document")
@@ -756,8 +756,8 @@ TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a 
 	WriteBytes(path, std::string("MZ\0\0binary", 10));
 
 	CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::Failed);
-	CHECK_FALSE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).failure == OpenFailure::Binary);
+	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Failure == OpenFailure::Binary);
 }
 
 TEST_CASE("Loading a large file asks before reading it, and reads it once confirmed")
@@ -786,10 +786,10 @@ TEST_CASE("Loading a large file asks before reading it, and reads it once confir
 	// Nothing is read and nothing is decided: the question belongs to whoever has a user
 	// to ask, exactly as OpenOutcome::NeedsConfirmation works when the tab is created.
 	CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::NeedsConfirmation);
-	CHECK_FALSE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).failure == OpenFailure::Missing);
+	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Failure == OpenFailure::Missing);
 
 	CHECK(LoadFromFile(documents.At(0), true) == ItemLoad::Loaded);
-	CHECK(documents.At(0).document.has_value());
-	CHECK(documents.At(0).failure == OpenFailure::None);
+	CHECK(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Failure == OpenFailure::None);
 }

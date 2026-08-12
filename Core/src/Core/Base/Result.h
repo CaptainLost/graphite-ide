@@ -21,8 +21,8 @@ namespace Core {
 
 	struct Error
 	{
-		ErrorCode code = ErrorCode::None;
-		std::string message;
+		ErrorCode Code = ErrorCode::None;
+		std::string Message;
 	};
 
 	template<typename T>

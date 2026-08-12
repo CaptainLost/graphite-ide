@@ -224,10 +224,10 @@ namespace Core {
 
 	std::size_t TextBuffer::ToOffset(Position position) const
 	{
-		if (position.line >= m_LineStarts.size())
+		if (position.Line >= m_LineStarts.size())
 			return m_Length;
 
-		return m_LineStarts[position.line] + std::min(position.column, LineLength(position.line));
+		return m_LineStarts[position.Line] + std::min(position.Column, LineLength(position.Line));
 	}
 
 	Position TextBuffer::ToPosition(std::size_t offset) const

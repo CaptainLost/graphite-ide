@@ -106,9 +106,9 @@ TEST_CASE("RegisterCommands gives every panel a visibility toggle in the panels 
 	const std::vector<const Core::Command*> members = commands.InGroup("panels");
 
 	REQUIRE(members.size() == 2);
-	CHECK(members[0]->id == "panel.files");
-	CHECK(members[0]->label == "Explorer");
-	CHECK(members[1]->id == "panel.console");
+	CHECK(members[0]->Id == "panel.files");
+	CHECK(members[0]->Label == "Explorer");
+	CHECK(members[1]->Id == "panel.console");
 }
 
 TEST_CASE("A panel's command toggles it and reports its state")
@@ -119,12 +119,12 @@ TEST_CASE("A panel's command toggles it and reports its state")
 	panels.RegisterCommands(commands);
 
 	REQUIRE(files->IsVisible());
-	REQUIRE(commands.Find("panel.files")->checked());
+	REQUIRE(commands.Find("panel.files")->Checked());
 
 	commands.Run("panel.files");
 
 	CHECK_FALSE(files->IsVisible());
-	CHECK_FALSE(commands.Find("panel.files")->checked());
+	CHECK_FALSE(commands.Find("panel.files")->Checked());
 }
 
 TEST_CASE("A panel added after RegisterCommands still gets its command")

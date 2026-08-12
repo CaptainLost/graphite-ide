@@ -14,7 +14,7 @@ namespace Core {
 	namespace {
 		bool Editable(const OpenItem& item)
 		{
-			return item.document && !item.document->IsReadOnly();
+			return item.Document && !item.Document->IsReadOnly();
 		}
 
 		std::string NormaliseNewlines(std::string_view text)
@@ -42,9 +42,9 @@ namespace Core {
 
 		void UpdateIndentDepths(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
 		{
-			const TextBuffer& buffer = item.document->GetBuffer();
+			const TextBuffer& buffer = item.Document->GetBuffer();
 
-			const std::size_t previousCount = item.indentDepths.size();
+			const std::size_t previousCount = item.IndentDepths.size();
 			const std::size_t currentCount = buffer.GetLineCount();
 
 			// The vector is indexed by line, so lines added or removed at the edit site
@@ -60,8 +60,8 @@ namespace Core {
 
 			if (currentCount > previousCount)
 			{
-				item.indentDepths.insert(
-					item.indentDepths.begin() + static_cast<std::ptrdiff_t>(at),
+				item.IndentDepths.insert(
+					item.IndentDepths.begin() + static_cast<std::ptrdiff_t>(at),
 					currentCount - previousCount, 0);
 			}
 			else if (currentCount < previousCount)
@@ -74,9 +74,9 @@ namespace Core {
 				// erase short of the vector's end rather than past it.
 				const std::size_t end = std::min(at + removed, previousCount);
 
-				item.indentDepths.erase(
-					item.indentDepths.begin() + static_cast<std::ptrdiff_t>(at),
-					item.indentDepths.begin() + static_cast<std::ptrdiff_t>(end));
+				item.IndentDepths.erase(
+					item.IndentDepths.begin() + static_cast<std::ptrdiff_t>(at),
+					item.IndentDepths.begin() + static_cast<std::ptrdiff_t>(end));
 			}
 
 			const auto blank = [&buffer](std::size_t line) {
@@ -100,14 +100,14 @@ namespace Core {
 			const std::vector<std::size_t> depths = IndentDepths(buffer, DefaultTabWidth, from, to);
 
 			for (std::size_t line = from; line <= to; ++line)
-				item.indentDepths[line] = depths[line - from];
+				item.IndentDepths[line] = depths[line - from];
 		}
 
 		void UpdateDerived(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
 		{
-			const TextBuffer& buffer = item.document->GetBuffer();
+			const TextBuffer& buffer = item.Document->GetBuffer();
 
-			if (item.widestLine >= buffer.GetLineCount() || item.widestLine >= firstLine)
+			if (item.WidestLine >= buffer.GetLineCount() || item.WidestLine >= firstLine)
 			{
 				RefreshDerived(item);
 				return;
@@ -118,10 +118,10 @@ namespace Core {
 			{
 				const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
 
-				if (width > item.widestColumn)
+				if (width > item.WidestColumn)
 				{
-					item.widestColumn = width;
-					item.widestLine = line;
+					item.WidestColumn = width;
+					item.WidestLine = line;
 				}
 			}
 
@@ -136,17 +136,17 @@ namespace Core {
 			//
 			// The map still holds the pre-edit line count at this point — nothing has
 			// touched it yet — so it is what says how many lines came or went.
-			const std::size_t previousLines = item.rows.GetLineCount();
+			const std::size_t previousLines = item.Rows.GetLineCount();
 			const std::size_t currentLines = buffer.GetLineCount();
 			const std::size_t at = std::min(firstLine, previousLines);
 
 			if (currentLines > previousLines)
-				item.rows.InsertLines(buffer, at, currentLines - previousLines);
+				item.Rows.InsertLines(buffer, at, currentLines - previousLines);
 			else if (currentLines < previousLines)
-				item.rows.RemoveLines(at, previousLines - currentLines);
+				item.Rows.RemoveLines(at, previousLines - currentLines);
 
 			for (std::size_t line = firstLine; line <= lastLine && line < currentLines; ++line)
-				item.rows.UpdateLine(buffer, line);
+				item.Rows.UpdateLine(buffer, line);
 		}
 
 		std::pair<std::size_t, std::size_t> BlockLines(const TextBuffer& buffer,
@@ -154,8 +154,8 @@ namespace Core {
 		{
 			const auto [from, to] = SelectionRange(caret);
 
-			const std::size_t firstLine = buffer.ToPosition(from).line;
-			std::size_t lastLine = buffer.ToPosition(to).line;
+			const std::size_t firstLine = buffer.ToPosition(from).Line;
+			std::size_t lastLine = buffer.ToPosition(to).Line;
 
 			if (lastLine > firstLine && to == buffer.LineStart(lastLine))
 				--lastLine;
@@ -168,31 +168,31 @@ namespace Core {
 			if (!Editable(item))
 				return false;
 
-			TextBuffer& buffer = item.document->GetBuffer();
+			TextBuffer& buffer = item.Document->GetBuffer();
 
 			// Move rather than NextCharacter/PreviousCharacter: those take a
 			// string_view and would need the surrounding bytes cut out and the offsets
 			// translated back, while Move already does exactly this over a buffer and
 			// its rules — whole UTF-8 characters, whole words — are the ones CaretTests
 			// already covers.
-			Caret target = HasSelection(item.caret)
-							   ? item.caret
-							   : Move(buffer, item.caret, motion, true, DefaultTabWidth, 0);
+			Caret target = HasSelection(item.Caret)
+							   ? item.Caret
+							   : Move(buffer, item.Caret, motion, true, DefaultTabWidth, 0);
 
 			const auto [from, to] = SelectionRange(target);
 
 			if (from == to)
 				return false;
 
-			const std::size_t firstLine = buffer.ToPosition(from).line;
+			const std::size_t firstLine = buffer.ToPosition(from).Line;
 
 			buffer.BeginTransaction();
 			buffer.Erase(from, to);
 			buffer.EndTransaction();
 
-			item.caret.offset = from;
-			item.caret.anchor = from;
-			item.caret.desiredColumn = NoDesiredColumn;
+			item.Caret.Offset = from;
+			item.Caret.Anchor = from;
+			item.Caret.DesiredColumn = NoDesiredColumn;
 
 			UpdateDerived(item, firstLine, firstLine);
 
@@ -202,20 +202,20 @@ namespace Core {
 
 	void RefreshDerived(OpenItem& item)
 	{
-		const TextBuffer& buffer = item.document->GetBuffer();
+		const TextBuffer& buffer = item.Document->GetBuffer();
 
-		item.indentDepths = IndentDepths(buffer, DefaultTabWidth);
-		item.widestColumn = 0;
-		item.widestLine = 0;
+		item.IndentDepths = IndentDepths(buffer, DefaultTabWidth);
+		item.WidestColumn = 0;
+		item.WidestLine = 0;
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
 			const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
 
-			if (width > item.widestColumn)
+			if (width > item.WidestColumn)
 			{
-				item.widestColumn = width;
-				item.widestLine = line;
+				item.WidestColumn = width;
+				item.WidestLine = line;
 			}
 		}
 
@@ -225,7 +225,7 @@ namespace Core {
 		// here would unwrap the document under the user until the next time the window was
 		// resized. A map that has never been built reports kNoWrap, which is exactly the
 		// unwrapped editor a freshly loaded document should start as.
-		item.rows.Rebuild(buffer, item.rows.GetColumnsPerRow(), DefaultTabWidth);
+		item.Rows.Rebuild(buffer, item.Rows.GetColumnsPerRow(), DefaultTabWidth);
 	}
 
 	bool InsertText(OpenItem& item, std::string_view utf8)
@@ -234,10 +234,10 @@ namespace Core {
 			return false;
 
 		const std::string text = NormaliseNewlines(utf8);
-		TextBuffer& buffer = item.document->GetBuffer();
-		const auto [from, to] = SelectionRange(item.caret);
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const auto [from, to] = SelectionRange(item.Caret);
 
-		const std::size_t firstLine = buffer.ToPosition(from).line;
+		const std::size_t firstLine = buffer.ToPosition(from).Line;
 
 		buffer.BeginTransaction();
 
@@ -247,11 +247,11 @@ namespace Core {
 		buffer.Insert(from, text);
 		buffer.EndTransaction();
 
-		item.caret.offset = from + text.size();
-		item.caret.anchor = item.caret.offset;
-		item.caret.desiredColumn = NoDesiredColumn;
+		item.Caret.Offset = from + text.size();
+		item.Caret.Anchor = item.Caret.Offset;
+		item.Caret.DesiredColumn = NoDesiredColumn;
 
-		UpdateDerived(item, firstLine, buffer.ToPosition(item.caret.offset).line);
+		UpdateDerived(item, firstLine, buffer.ToPosition(item.Caret.Offset).Line);
 
 		return true;
 	}
@@ -289,15 +289,15 @@ namespace Core {
 		// clean UTF-8 file rewritten by another tool as Latin-1 reloads silently, which
 		// the design justifies precisely by the reload being undoable; the previous text
 		// would otherwise sit on the undo stack unreachable.
-		if (!item.document || !item.document->GetBuffer().Undo())
+		if (!item.Document || !item.Document->GetBuffer().Undo())
 			return false;
 
-		TextBuffer& buffer = item.document->GetBuffer();
+		TextBuffer& buffer = item.Document->GetBuffer();
 
 		buffer.BreakUndoGroup();
-		item.caret.offset = std::min(item.caret.offset, buffer.GetLength());
-		item.caret.anchor = item.caret.offset;
-		item.caret.desiredColumn = NoDesiredColumn;
+		item.Caret.Offset = std::min(item.Caret.Offset, buffer.GetLength());
+		item.Caret.Anchor = item.Caret.Offset;
+		item.Caret.DesiredColumn = NoDesiredColumn;
 
 		RefreshDerived(item);
 
@@ -308,15 +308,15 @@ namespace Core {
 	{
 		// Ungated for the same reason as Undo above: it only ever restores a state the
 		// buffer already held.
-		if (!item.document || !item.document->GetBuffer().Redo())
+		if (!item.Document || !item.Document->GetBuffer().Redo())
 			return false;
 
-		TextBuffer& buffer = item.document->GetBuffer();
+		TextBuffer& buffer = item.Document->GetBuffer();
 
 		buffer.BreakUndoGroup();
-		item.caret.offset = std::min(item.caret.offset, buffer.GetLength());
-		item.caret.anchor = item.caret.offset;
-		item.caret.desiredColumn = NoDesiredColumn;
+		item.Caret.Offset = std::min(item.Caret.Offset, buffer.GetLength());
+		item.Caret.Anchor = item.Caret.Offset;
+		item.Caret.DesiredColumn = NoDesiredColumn;
 
 		RefreshDerived(item);
 
@@ -328,9 +328,9 @@ namespace Core {
 		if (!Editable(item))
 			return false;
 
-		TextBuffer& buffer = item.document->GetBuffer();
-		const auto [from, to] = SelectionRange(item.caret);
-		const std::size_t line = buffer.ToPosition(from).line;
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const auto [from, to] = SelectionRange(item.Caret);
+		const std::size_t line = buffer.ToPosition(from).Line;
 
 		// Copied verbatim from the current line rather than synthesised from `style`: a
 		// tab-indented file should stay tab-indented for the line below it even under a
@@ -350,11 +350,11 @@ namespace Core {
 		buffer.Insert(from, insertion);
 		buffer.EndTransaction();
 
-		item.caret.offset = from + insertion.size();
-		item.caret.anchor = item.caret.offset;
-		item.caret.desiredColumn = NoDesiredColumn;
+		item.Caret.Offset = from + insertion.size();
+		item.Caret.Anchor = item.Caret.Offset;
+		item.Caret.DesiredColumn = NoDesiredColumn;
 
-		UpdateDerived(item, line, buffer.ToPosition(item.caret.offset).line);
+		UpdateDerived(item, line, buffer.ToPosition(item.Caret.Offset).Line);
 
 		return true;
 	}
@@ -365,11 +365,11 @@ namespace Core {
 			return false;
 
 		const std::string indent =
-			style.useSpaces ? std::string(style.width, ' ') : std::string{"\t"};
+			style.UseSpaces ? std::string(style.Width, ' ') : std::string{"\t"};
 
-		TextBuffer& buffer = item.document->GetBuffer();
+		TextBuffer& buffer = item.Document->GetBuffer();
 
-		if (!HasSelection(item.caret))
+		if (!HasSelection(item.Caret))
 		{
 			// A width of zero would make this insert nothing; InsertText would say so by
 			// returning false, but only after the group had already been broken for an
@@ -388,7 +388,7 @@ namespace Core {
 			return changed;
 		}
 
-		const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
+		const auto [firstLine, lastLine] = BlockLines(buffer, item.Caret);
 
 		buffer.BreakUndoGroup();
 		buffer.BeginTransaction();
@@ -401,9 +401,9 @@ namespace Core {
 
 		// The block stays selected, so Tab pressed again indents the same lines rather
 		// than replacing them with a tab character.
-		item.caret.anchor = buffer.LineStart(firstLine);
-		item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
-		item.caret.desiredColumn = NoDesiredColumn;
+		item.Caret.Anchor = buffer.LineStart(firstLine);
+		item.Caret.Offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
+		item.Caret.DesiredColumn = NoDesiredColumn;
 
 		UpdateDerived(item, firstLine, lastLine);
 
@@ -415,8 +415,8 @@ namespace Core {
 		if (!Editable(item))
 			return false;
 
-		TextBuffer& buffer = item.document->GetBuffer();
-		const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const auto [firstLine, lastLine] = BlockLines(buffer, item.Caret);
 
 		// Measured before the buffer is touched at all, so that having nothing to remove
 		// costs no transaction and — the part that was actually wrong — no
@@ -439,7 +439,7 @@ namespace Core {
 			}
 			else
 			{
-				while (remove < style.width && remove < text.size() && text[remove] == ' ')
+				while (remove < style.Width && remove < text.size() && text[remove] == ' ')
 					++remove;
 			}
 
@@ -461,9 +461,9 @@ namespace Core {
 		buffer.EndTransaction();
 		buffer.BreakUndoGroup();
 
-		item.caret.anchor = buffer.LineStart(firstLine);
-		item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
-		item.caret.desiredColumn = NoDesiredColumn;
+		item.Caret.Anchor = buffer.LineStart(firstLine);
+		item.Caret.Offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
+		item.Caret.DesiredColumn = NoDesiredColumn;
 
 		UpdateDerived(item, firstLine, lastLine);
 

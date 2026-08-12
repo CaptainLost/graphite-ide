@@ -98,7 +98,7 @@ TEST_CASE("An odd number of bytes is a truncated file, not a character")
 	const auto decoded = Decode(std::string("H\0i", 3), Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
-	CHECK(decoded.GetError().message.find("odd") != std::string::npos);
+	CHECK(decoded.GetError().Message.find("odd") != std::string::npos);
 }
 
 TEST_CASE("A high surrogate without a low one fails")
@@ -109,7 +109,7 @@ TEST_CASE("A high surrogate without a low one fails")
 	const auto decoded = Decode(bytes, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
-	CHECK(decoded.GetError().message.find("surrogate") != std::string::npos);
+	CHECK(decoded.GetError().Message.find("surrogate") != std::string::npos);
 }
 
 TEST_CASE("A high surrogate at the very end fails")
@@ -118,7 +118,7 @@ TEST_CASE("A high surrogate at the very end fails")
 	const auto decoded = Decode(bytes, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
-	CHECK(decoded.GetError().message.find("surrogate") != std::string::npos);
+	CHECK(decoded.GetError().Message.find("surrogate") != std::string::npos);
 }
 
 TEST_CASE("A low surrogate with nothing before it fails")
@@ -127,7 +127,7 @@ TEST_CASE("A low surrogate with nothing before it fails")
 	const auto decoded = Decode(bytes, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
-	CHECK(decoded.GetError().message.find("surrogate") != std::string::npos);
+	CHECK(decoded.GetError().Message.find("surrogate") != std::string::npos);
 }
 
 TEST_CASE("The error names where it happened, so a damaged file can be looked at")
@@ -138,7 +138,7 @@ TEST_CASE("The error names where it happened, so a damaged file can be looked at
 	const auto decoded = Decode(bytes, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
-	CHECK(decoded.GetError().message.find("4") != std::string::npos);
+	CHECK(decoded.GetError().Message.find("4") != std::string::npos);
 }
 
 TEST_CASE("Encoding passes UTF-8, its BOM variant and Unknown through unchanged")

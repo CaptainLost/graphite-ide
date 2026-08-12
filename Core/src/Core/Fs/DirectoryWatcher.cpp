@@ -495,9 +495,9 @@ namespace Core {
 		std::scoped_lock lock{m_Mutex};
 
 		Changes changes;
-		changes.directories = m_Collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
-		changes.overflowed = m_Collector.HasOverflowed();
-		changes.movedTo = std::exchange(m_MovedTo, std::nullopt);
+		changes.Directories = m_Collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
+		changes.Overflowed = m_Collector.HasOverflowed();
+		changes.MovedTo = std::exchange(m_MovedTo, std::nullopt);
 
 		return changes;
 	}

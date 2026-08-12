@@ -48,21 +48,21 @@ namespace Core {
 			// ImGui's text renderer handles only '\n' and '\r', so a tab draws as the
 			// fallback glyph in one left-aligned run instead of reaching the right-aligned
 			// shortcut column MenuItem keeps for exactly this.
-			const std::size_t tab = command->label.find('\t');
-			const std::string text = command->label.substr(0, tab);
+			const std::size_t tab = command->Label.find('\t');
+			const std::string text = command->Label.substr(0, tab);
 
 			const Binding* binding = keys.For(id);
-			std::string shortcut = binding != nullptr ? binding->primary.ToString() : std::string();
+			std::string shortcut = binding != nullptr ? binding->Primary.ToString() : std::string();
 
 			// A binding wins over the hint: a command must never show two shortcut texts,
 			// and the one that can actually be rebound is the truthful one.
 			if (shortcut.empty() && tab != std::string::npos)
 			{
-				shortcut = command->label.substr(tab + 1);
+				shortcut = command->Label.substr(tab + 1);
 			}
 
-			const bool enabled = !command->enabled || command->enabled();
-			const bool checked = command->checked && command->checked();
+			const bool enabled = !command->Enabled || command->Enabled();
+			const bool checked = command->Checked && command->Checked();
 
 			// "###id" fixes the item's identity to the command, so a label that changes
 			// with state does not make ImGui treat it as a different item.
@@ -96,7 +96,7 @@ namespace Core {
 				// mid-iteration.
 				for (const Command* member : commands.InGroup(item.GetText()))
 				{
-					RenderCommand(commands, keys, member->id);
+					RenderCommand(commands, keys, member->Id);
 				}
 				break;
 

@@ -25,7 +25,7 @@ namespace Graphite {
 
 	struct WorkspaceOpenedEvent
 	{
-		std::filesystem::path root;
+		std::filesystem::path Root;
 	};
 
 	struct WorkspaceClosedEvent
@@ -34,25 +34,25 @@ namespace Graphite {
 
 	struct FileSelectedEvent
 	{
-		std::filesystem::path path;
+		std::filesystem::path Path;
 	};
 
 	struct OpenFileRequested
 	{
-		std::filesystem::path path;
-		bool permanent = false;
+		std::filesystem::path Path;
+		bool Permanent = false;
 	};
 
 	struct WorkspaceRootMovedEvent
 	{
-		std::filesystem::path from;
-		std::filesystem::path to;
+		std::filesystem::path From;
+		std::filesystem::path To;
 	};
 
 	struct WorkspaceFilesChangedEvent
 	{
-		std::vector<std::filesystem::path> directories;
-		bool everything = false;
+		std::vector<std::filesystem::path> Directories;
+		bool Everything = false;
 	};
 
 	class Workspace final

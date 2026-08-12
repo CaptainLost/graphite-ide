@@ -45,13 +45,13 @@ namespace Core {
 		// read by DockNodeCalcTabBarLayout, which sizes every *docked node's* own tab bar
 		// off the same style var, and stretching those to the caption's height would push
 		// every panel's and every document's content down inside its own tab.
-		const bool overrideMenuBarHeight = layout.menuBarHeight > 0.0f;
+		const bool overrideMenuBarHeight = layout.MenuBarHeight > 0.0f;
 		if (overrideMenuBarHeight)
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
 			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
 								ImVec2(style.FramePadding.x,
-									   (layout.menuBarHeight - ImGui::GetFontSize()) * 0.5f));
+									   (layout.MenuBarHeight - ImGui::GetFontSize()) * 0.5f));
 		}
 
 		ImGui::Begin(kHostWindowName, nullptr, hostFlags);
@@ -91,13 +91,13 @@ namespace Core {
 
 		ImGuiID centerId = dockSpaceId;
 		const ImGuiID leftId =
-			ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, layout.leftRatio, nullptr, &centerId);
+			ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, layout.LeftRatio, nullptr, &centerId);
 		const ImGuiID bottomId = ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down,
-															 layout.bottomRatio, nullptr, &centerId);
+															 layout.BottomRatio, nullptr, &centerId);
 
-		DockPanels(leftId, layout.left);
-		DockPanels(bottomId, layout.bottom);
-		DockPanels(centerId, layout.center);
+		DockPanels(leftId, layout.Left);
+		DockPanels(bottomId, layout.Bottom);
+		DockPanels(centerId, layout.Center);
 
 		// Flagged so GetCenterNodeId() can find it later without recomputing the split tree,
 		// and so a caller with nothing else to go on - such as a document window opened

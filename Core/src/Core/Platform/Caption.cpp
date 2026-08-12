@@ -45,10 +45,10 @@ namespace Core {
 	{
 		if (!maximized)
 		{
-			const bool top = y < metrics.resizeBorder;
-			const bool bottom = y >= clientHeight - metrics.resizeBorder;
-			const bool left = x < metrics.resizeBorder;
-			const bool right = x >= clientWidth - metrics.resizeBorder;
+			const bool top = y < metrics.ResizeBorder;
+			const bool bottom = y >= clientHeight - metrics.ResizeBorder;
+			const bool left = x < metrics.ResizeBorder;
+			const bool right = x >= clientWidth - metrics.ResizeBorder;
 
 			if (top || bottom || left || right)
 			{
@@ -56,8 +56,8 @@ namespace Core {
 			}
 		}
 
-		if (y < metrics.height && !metrics.dragSuppressed && x >= metrics.dragBegin &&
-			x < metrics.dragEnd)
+		if (y < metrics.Height && !metrics.DragSuppressed && x >= metrics.DragBegin &&
+			x < metrics.DragEnd)
 		{
 			return CaptionHit::Caption;
 		}

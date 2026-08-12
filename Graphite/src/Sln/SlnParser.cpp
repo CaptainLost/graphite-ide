@@ -24,11 +24,11 @@ namespace Graphite {
 
 		struct Entry
 		{
-			std::string typeId;
-			std::string name;
-			std::string location; // a relative path for a project, the name for a folder
-			std::string id;
-			bool isFolder = false;
+			std::string TypeId;
+			std::string Name;
+			std::string Location; // a relative path for a project, the name for a folder
+			std::string Id;
+			bool IsFolder = false;
 		};
 
 		std::string_view Trim(std::string_view text)
@@ -75,11 +75,11 @@ namespace Graphite {
 			if (fields.size() < 4)
 				return false;
 
-			entry.typeId = fields[0];
-			entry.name = fields[1];
-			entry.location = fields[2];
-			entry.id = fields[3];
-			entry.isFolder = entry.typeId == kFolderType;
+			entry.TypeId = fields[0];
+			entry.Name = fields[1];
+			entry.Location = fields[2];
+			entry.Id = fields[3];
+			entry.IsFolder = entry.TypeId == kFolderType;
 
 			return true;
 		}
@@ -170,8 +170,8 @@ namespace Graphite {
 		}
 
 		Solution solution;
-		solution.path = path;
-		solution.name = Core::ToUtf8(path.stem());
+		solution.Path = path;
+		solution.Name = Core::ToUtf8(path.stem());
 
 		const std::filesystem::path directory = path.parent_path();
 
@@ -186,7 +186,7 @@ namespace Graphite {
 		std::unordered_map<std::string, std::size_t> indexById;
 
 		for (std::size_t i = 0; i < entries.size(); ++i)
-			indexById.emplace(entries[i].id, i);
+			indexById.emplace(entries[i].Id, i);
 
 		const std::size_t count = entries.size();
 		std::vector<std::vector<std::size_t>> childrenOf(count);
@@ -195,7 +195,7 @@ namespace Graphite {
 
 		for (std::size_t i = 0; i < count; ++i)
 		{
-			const auto link = parentOf.find(entries[i].id);
+			const auto link = parentOf.find(entries[i].Id);
 
 			if (link == parentOf.end())
 				continue;
@@ -204,7 +204,7 @@ namespace Graphite {
 
 			// A parent that is not a folder, is not declared, or is the entry itself,
 			// means the entry belongs at the solution root.
-			if (parent == indexById.end() || parent->second == i || !entries[parent->second].isFolder)
+			if (parent == indexById.end() || parent->second == i || !entries[parent->second].IsFolder)
 				continue;
 
 			parentOfIndex[i] = parent->second;
@@ -246,13 +246,13 @@ namespace Graphite {
 
 		const auto makeProject = [&](const Entry& entry) {
 			Project project;
-			project.displayName = entry.name;
-			project.typeId = entry.typeId;
-			project.path = (directory / Core::FromUtf8(entry.location)).lexically_normal();
-			project.path.make_preferred();
+			project.DisplayName = entry.Name;
+			project.TypeId = entry.TypeId;
+			project.Path = (directory / Core::FromUtf8(entry.Location)).lexically_normal();
+			project.Path.make_preferred();
 
 			std::error_code exists;
-			project.exists = std::filesystem::is_regular_file(project.path, exists);
+			project.Exists = std::filesystem::is_regular_file(project.Path, exists);
 
 			return project;
 		};
@@ -261,14 +261,14 @@ namespace Graphite {
 		// across an append.
 		const auto build = [&](std::size_t index, auto&& self) -> Folder {
 			Folder folder;
-			folder.name = entries[index].name;
+			folder.Name = entries[index].Name;
 
 			for (const std::size_t child : childrenOf[index])
 			{
-				if (entries[child].isFolder)
-					folder.folders.push_back(self(child, self));
+				if (entries[child].IsFolder)
+					folder.Folders.push_back(self(child, self));
 				else
-					folder.projects.push_back(makeProject(entries[child]));
+					folder.Projects.push_back(makeProject(entries[child]));
 			}
 
 			return folder;
@@ -276,24 +276,24 @@ namespace Graphite {
 
 		for (const std::size_t index : roots)
 		{
-			if (entries[index].isFolder)
-				solution.root.folders.push_back(build(index, build));
+			if (entries[index].IsFolder)
+				solution.Root.Folders.push_back(build(index, build));
 			else
-				solution.root.projects.push_back(makeProject(entries[index]));
+				solution.Root.Projects.push_back(makeProject(entries[index]));
 		}
 
 		// Counted from the model rather than while parsing, so an entry dropped for any
 		// reason cannot leave the count disagreeing with the tree.
 		const auto countProjects = [](const Folder& folder, auto&& self) -> std::size_t {
-			std::size_t total = folder.projects.size();
+			std::size_t total = folder.Projects.size();
 
-			for (const Folder& child : folder.folders)
+			for (const Folder& child : folder.Folders)
 				total += self(child, self);
 
 			return total;
 		};
 
-		solution.projectCount = countProjects(solution.root, countProjects);
+		solution.ProjectCount = countProjects(solution.Root, countProjects);
 
 		return solution;
 	}

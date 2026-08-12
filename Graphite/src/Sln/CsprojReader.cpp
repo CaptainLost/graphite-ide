@@ -33,41 +33,41 @@ namespace Graphite {
 
 			for (const Core::DirectoryEntry& entry : entries.GetValue())
 			{
-				if (entry.isDirectory)
+				if (entry.IsDirectory)
 				{
-					if (IsExcluded(entry.name))
+					if (IsExcluded(entry.Name))
 						continue;
 
 					ContentFolder child;
-					child.name = entry.name;
+					child.Name = entry.Name;
 
-					ReadDirectoryInto(entry.path, projectFile, child);
-					folder.folders.push_back(std::move(child));
+					ReadDirectoryInto(entry.Path, projectFile, child);
+					folder.Folders.push_back(std::move(child));
 					continue;
 				}
 
 				// Visual Studio shows the project as the node, not as a file inside
 				// itself.
-				if (entry.path == projectFile)
+				if (entry.Path == projectFile)
 					continue;
 
 				ContentFile file;
-				file.name = entry.name;
-				file.path = entry.path;
+				file.Name = entry.Name;
+				file.Path = entry.Path;
 
-				folder.files.push_back(std::move(file));
+				folder.Files.push_back(std::move(file));
 			}
 		}
 
 		void SortContent(ContentFolder& folder)
 		{
-			std::sort(folder.folders.begin(), folder.folders.end(),
-					  [](const ContentFolder& left, const ContentFolder& right) { return Core::CompareNames(left.name, right.name) < 0; });
+			std::sort(folder.Folders.begin(), folder.Folders.end(),
+					  [](const ContentFolder& left, const ContentFolder& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
-			std::sort(folder.files.begin(), folder.files.end(),
-					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.name, right.name) < 0; });
+			std::sort(folder.Files.begin(), folder.Files.end(),
+					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
-			for (ContentFolder& child : folder.folders)
+			for (ContentFolder& child : folder.Folders)
 				SortContent(child);
 		}
 	}
@@ -106,15 +106,15 @@ namespace Graphite {
 						Core::FromUtf8(item.attribute("Include").value());
 
 					if (!referenced.empty())
-						content.references.push_back(Core::ToUtf8(referenced.stem()));
+						content.References.push_back(Core::ToUtf8(referenced.stem()));
 				}
 			}
 		}
 
-		ReadDirectoryInto(project.parent_path(), project, content.root);
-		SortContent(content.root);
+		ReadDirectoryInto(project.parent_path(), project, content.Root);
+		SortContent(content.Root);
 
-		std::sort(content.references.begin(), content.references.end(),
+		std::sort(content.References.begin(), content.References.end(),
 				  [](const std::string& left, const std::string& right) { return Core::CompareNames(left, right) < 0; });
 
 		return content;

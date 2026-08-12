@@ -13,24 +13,24 @@ using Core::Trigger;
 
 TEST_CASE("A binding of one chord is written as that chord alone")
 {
-	const Binding binding{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)};
+	const Binding binding{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)};
 
 	CHECK(Core::ToString(binding) == "Ctrl+S");
 }
 
 TEST_CASE("Alternates follow the primary, separated from it")
 {
-	const Binding binding{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
-						  .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd)}};
+	const Binding binding{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
+						  .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd)}};
 
 	CHECK(Core::ToString(binding) == "Ctrl+=|Ctrl+Num+");
 
 	const std::optional<Binding> parsed = ParseBinding("Ctrl+=|Ctrl+Num+");
 
 	REQUIRE(parsed.has_value());
-	CHECK(parsed->primary == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal));
-	REQUIRE(parsed->alternates.size() == 1);
-	CHECK(parsed->alternates[0] == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd));
+	CHECK(parsed->Primary == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal));
+	REQUIRE(parsed->Alternates.size() == 1);
+	CHECK(parsed->Alternates[0] == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd));
 }
 
 TEST_CASE("A binding that reaches nothing round-trips through its own token")
@@ -45,8 +45,8 @@ TEST_CASE("A binding that reaches nothing round-trips through its own token")
 	const std::optional<Binding> parsed = ParseBinding("None");
 
 	REQUIRE(parsed.has_value());
-	CHECK(parsed->primary.IsEmpty());
-	CHECK(parsed->alternates.empty());
+	CHECK(parsed->Primary.IsEmpty());
+	CHECK(parsed->Alternates.empty());
 }
 
 TEST_CASE("The unbound token is read the way a hand-editor would write it")
@@ -58,7 +58,7 @@ TEST_CASE("The unbound token is read the way a hand-editor would write it")
 		const std::optional<Binding> parsed = ParseBinding(text);
 
 		REQUIRE(parsed.has_value());
-		CHECK(parsed->primary.IsEmpty());
+		CHECK(parsed->Primary.IsEmpty());
 	}
 }
 
@@ -77,15 +77,15 @@ TEST_CASE("Every kind of chord in a binding survives a round trip through text")
 	// The one place where a typo in the format silently eats a user's binding at the
 	// next start, so the wheel gesture is carried through it too.
 	const Binding binding{
-		.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
-		.alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
+		.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
+		.Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
 					   Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp, Scope::HoveredEditor)}};
 
 	const std::optional<Binding> parsed = ParseBinding(Core::ToString(binding));
 
 	REQUIRE(parsed.has_value());
-	CHECK(parsed->primary == binding.primary);
-	REQUIRE(parsed->alternates.size() == binding.alternates.size());
-	CHECK(parsed->alternates[0] == binding.alternates[0]);
-	CHECK(parsed->alternates[1] == binding.alternates[1]);
+	CHECK(parsed->Primary == binding.Primary);
+	REQUIRE(parsed->Alternates.size() == binding.Alternates.size());
+	CHECK(parsed->Alternates[0] == binding.Alternates[0]);
+	CHECK(parsed->Alternates[1] == binding.Alternates[1]);
 }

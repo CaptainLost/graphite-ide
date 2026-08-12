@@ -13,14 +13,14 @@ namespace Core {
 
 	struct FileNode
 	{
-		std::filesystem::path path;
-		std::string name;
-		bool isDirectory = false;
-		bool expanded = false;
-		bool loaded = false;	// children have been read from disk
-		bool accessible = true; // false when the directory could not be read
-		bool ignored = false;	// the ignore query said to treat this as excluded
-		std::vector<FileNode> children;
+		std::filesystem::path Path;
+		std::string Name;
+		bool IsDirectory = false;
+		bool Expanded = false;
+		bool Loaded = false;	// children have been read from disk
+		bool Accessible = true; // false when the directory could not be read
+		bool Ignored = false;	// the ignore query said to treat this as excluded
+		std::vector<FileNode> Children;
 	};
 
 	using IgnoreQuery = std::function<bool(const std::filesystem::path& path, bool isDirectory)>;

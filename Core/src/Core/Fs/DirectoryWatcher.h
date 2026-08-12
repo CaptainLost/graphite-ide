@@ -34,11 +34,11 @@ namespace Core {
 
 		struct Changes
 		{
-			std::vector<std::filesystem::path> directories;
+			std::vector<std::filesystem::path> Directories;
 
-			bool overflowed = false;
+			bool Overflowed = false;
 
-			std::optional<std::filesystem::path> movedTo;
+			std::optional<std::filesystem::path> MovedTo;
 		};
 
 		Changes TakeSettled();

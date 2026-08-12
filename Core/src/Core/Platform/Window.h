@@ -14,14 +14,14 @@ namespace Core {
 
 	struct WindowSpec
 	{
-		std::string title = "IDE";
-		int width = 1600;
-		int height = 900;
-		bool vsync = true;
+		std::string Title = "IDE";
+		int Width = 1600;
+		int Height = 900;
+		bool VSync = true;
 
-		bool customTitleBar = false;
+		bool CustomTitleBar = false;
 
-		Color borderColor;
+		Color BorderColor;
 	};
 
 	class Window : NonCopyable

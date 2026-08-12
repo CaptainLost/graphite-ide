@@ -19,8 +19,8 @@ TEST_CASE("RingBufferSink remembers entries in order")
 
 	const auto entries = sink.TakeSnapshot();
 	REQUIRE(entries.size() == 2);
-	CHECK(entries[0].message == "first");
-	CHECK(entries[1].level == LogLevel::Warn);
+	CHECK(entries[0].Message == "first");
+	CHECK(entries[1].Level == LogLevel::Warn);
 }
 
 TEST_CASE("RingBufferSink drops the oldest entries on overflow")
@@ -32,9 +32,9 @@ TEST_CASE("RingBufferSink drops the oldest entries on overflow")
 
 	const auto entries = sink.TakeSnapshot();
 	REQUIRE(entries.size() == 3);
-	CHECK(entries[0].message == "3");
-	CHECK(entries[1].message == "4");
-	CHECK(entries[2].message == "5");
+	CHECK(entries[0].Message == "3");
+	CHECK(entries[1].Message == "4");
+	CHECK(entries[2].Message == "5");
 }
 
 TEST_CASE("Clear empties the buffer")
@@ -59,8 +59,8 @@ TEST_CASE("Logger dispatches entries to attached sinks")
 
 	const auto entries = sink->TakeSnapshot();
 	REQUIRE(entries.size() == 1);
-	CHECK(entries[0].level == LogLevel::Error);
-	CHECK(entries[0].message == "failure");
+	CHECK(entries[0].Level == LogLevel::Error);
+	CHECK(entries[0].Message == "failure");
 
 	Logger::Get().ClearSinks();
 }
@@ -78,7 +78,7 @@ TEST_CASE("Logger filters out entries below the configured level")
 
 	const auto entries = sink->TakeSnapshot();
 	REQUIRE(entries.size() == 1);
-	CHECK(entries[0].message == "passed through");
+	CHECK(entries[0].Message == "passed through");
 
 	Logger::Get().ClearSinks();
 	Logger::Get().SetLevel(LogLevel::Trace);
@@ -96,7 +96,7 @@ TEST_CASE("The CORE_INFO macro formats arguments")
 
 	const auto entries = sink->TakeSnapshot();
 	REQUIRE(entries.size() == 1);
-	CHECK(entries[0].message == "file main.cpp has 12 lines");
+	CHECK(entries[0].Message == "file main.cpp has 12 lines");
 
 	Logger::Get().ClearSinks();
 }

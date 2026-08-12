@@ -8,8 +8,8 @@ namespace Core {
 
 	struct Conflict
 	{
-		Chord chord;
-		std::string first;
-		std::string second;
+		Chord Chord;
+		std::string First;
+		std::string Second;
 	};
 }

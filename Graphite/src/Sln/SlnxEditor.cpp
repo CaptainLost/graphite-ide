@@ -241,7 +241,7 @@ namespace Graphite {
 		// A folder the caller names but the solution does not have yet is created rather
 		// than refused: the folder is scaffolding for the project, not a thing the caller
 		// has to build first.
-		if (!container && container.GetError().code == Core::ErrorCode::NotFound)
+		if (!container && container.GetError().Code == Core::ErrorCode::NotFound)
 		{
 			const auto created = AddFolder(folder);
 
@@ -555,7 +555,7 @@ namespace Graphite {
 		{
 			return Core::Error{Core::ErrorCode::IoFailure,
 							   std::format("the edited solution could not be read back: {}",
-										   verified.GetError().message)};
+										   verified.GetError().Message)};
 		}
 
 		return Core::WriteFileAtomically(m_Path, m_Text);

@@ -30,24 +30,24 @@ namespace {
 
 TEST_CASE("An ordinary text file is text")
 {
-	CHECK(ClassifySample("int main() {}", 13).kind == FileKind::Text);
-	CHECK(ClassifySample("cz\xC4\x99\xC5\x9B\xC4\x87", 8).kind == FileKind::Text);
+	CHECK(ClassifySample("int main() {}", 13).Kind == FileKind::Text);
+	CHECK(ClassifySample("cz\xC4\x99\xC5\x9B\xC4\x87", 8).Kind == FileKind::Text);
 }
 
 TEST_CASE("An empty file is text")
 {
 	const FileProbe probe = ClassifySample("", 0);
 
-	CHECK(probe.kind == FileKind::Text);
-	CHECK(probe.encoding == Encoding::Utf8);
-	CHECK(probe.size == 0);
+	CHECK(probe.Kind == FileKind::Text);
+	CHECK(probe.FileEncoding == Encoding::Utf8);
+	CHECK(probe.Size == 0);
 }
 
 TEST_CASE("A NUL byte inside the sample means binary")
 {
 	const std::string sample = SampleWithNul(8192, 5000);
 
-	CHECK(ClassifySample(sample, 8192).kind == FileKind::Binary);
+	CHECK(ClassifySample(sample, 8192).Kind == FileKind::Binary);
 }
 
 TEST_CASE("A NUL byte past the sample goes unseen, which is the documented trade-off")
@@ -55,7 +55,7 @@ TEST_CASE("A NUL byte past the sample goes unseen, which is the documented trade
 	// The file is 40 KB with a NUL at 20 000, but only the first 8 KB were read.
 	const std::string sample = SampleWithNul(8192, 20000);
 
-	CHECK(ClassifySample(sample, 40000).kind == FileKind::Text);
+	CHECK(ClassifySample(sample, 40000).Kind == FileKind::Text);
 }
 
 TEST_CASE("A UTF-16 file is judged by its mark, not by the NUL bytes it is made of")
@@ -67,30 +67,30 @@ TEST_CASE("A UTF-16 file is judged by its mark, not by the NUL bytes it is made 
 
 	const FileProbe probe = ClassifySample(sample, sample.size());
 
-	CHECK(probe.kind == FileKind::Text);
-	CHECK(probe.encoding == Encoding::Utf16Le);
+	CHECK(probe.Kind == FileKind::Text);
+	CHECK(probe.FileEncoding == Encoding::Utf16Le);
 }
 
 TEST_CASE("A UTF-8 byte order mark is reported so the document can put it back")
 {
-	CHECK(ClassifySample("\xEF\xBB\xBFint main() {}", 16).encoding == Encoding::Utf8Bom);
+	CHECK(ClassifySample("\xEF\xBB\xBFint main() {}", 16).FileEncoding == Encoding::Utf8Bom);
 }
 
 TEST_CASE("The size thresholds are checked from both sides")
 {
-	CHECK(ClassifySample("a", LargeFileThreshold).kind == FileKind::Text);
-	CHECK(ClassifySample("a", LargeFileThreshold + 1).kind == FileKind::LargeText);
+	CHECK(ClassifySample("a", LargeFileThreshold).Kind == FileKind::Text);
+	CHECK(ClassifySample("a", LargeFileThreshold + 1).Kind == FileKind::LargeText);
 
-	CHECK(ClassifySample("a", MaximumFileSize).kind == FileKind::LargeText);
-	CHECK(ClassifySample("a", MaximumFileSize + 1).kind == FileKind::TooLarge);
+	CHECK(ClassifySample("a", MaximumFileSize).Kind == FileKind::LargeText);
+	CHECK(ClassifySample("a", MaximumFileSize + 1).Kind == FileKind::TooLarge);
 }
 
 TEST_CASE("A file too large to load is still reported with its size")
 {
 	const FileProbe probe = ClassifySample("a", MaximumFileSize + 1);
 
-	CHECK(probe.kind == FileKind::TooLarge);
-	CHECK(probe.size == MaximumFileSize + 1);
+	CHECK(probe.Kind == FileKind::TooLarge);
+	CHECK(probe.Size == MaximumFileSize + 1);
 }
 
 TEST_CASE("Probing reads the file from disk")
@@ -102,8 +102,8 @@ TEST_CASE("Probing reads the file from disk")
 	const auto probe = ProbeFile(path);
 
 	REQUIRE(probe);
-	CHECK(probe.GetValue().kind == FileKind::Text);
-	CHECK(probe.GetValue().size == 13);
+	CHECK(probe.GetValue().Kind == FileKind::Text);
+	CHECK(probe.GetValue().Size == 13);
 }
 
 TEST_CASE("Probing a file that is not there fails rather than guessing")
@@ -113,7 +113,7 @@ TEST_CASE("Probing a file that is not there fails rather than guessing")
 	const auto probe = ProbeFile(directory.GetPath() / "absent.txt");
 
 	REQUIRE_FALSE(probe);
-	CHECK(probe.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(probe.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Probing a directory fails")
@@ -133,22 +133,22 @@ TEST_CASE("UTF-16 without a mark is text, not binary")
 	const FileProbe leProbe = ClassifySample(le, le.size());
 	const FileProbe beProbe = ClassifySample(be, be.size());
 
-	CHECK(leProbe.kind == FileKind::Text);
-	CHECK(leProbe.encoding == Encoding::Utf16Le);
-	CHECK(beProbe.kind == FileKind::Text);
-	CHECK(beProbe.encoding == Encoding::Utf16Be);
+	CHECK(leProbe.Kind == FileKind::Text);
+	CHECK(leProbe.FileEncoding == Encoding::Utf16Le);
+	CHECK(beProbe.Kind == FileKind::Text);
+	CHECK(beProbe.FileEncoding == Encoding::Utf16Be);
 }
 
 TEST_CASE("Binary data is still binary even when its NUL bytes line up")
 {
 	const std::string bytes = std::string("\x01\0\x02\0\x03\0\x04\0", 8);
 
-	CHECK(ClassifySample(bytes, bytes.size()).kind == FileKind::Binary);
+	CHECK(ClassifySample(bytes, bytes.size()).Kind == FileKind::Binary);
 }
 
 TEST_CASE("A large UTF-16 file is judged by its size like any other text")
 {
 	const std::string bytes = std::string("H\0i\0", 4);
 
-	CHECK(ClassifySample(bytes, LargeFileThreshold + 1).kind == FileKind::LargeText);
+	CHECK(ClassifySample(bytes, LargeFileThreshold + 1).Kind == FileKind::LargeText);
 }

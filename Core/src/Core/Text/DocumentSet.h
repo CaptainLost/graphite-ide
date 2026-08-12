@@ -26,27 +26,27 @@ namespace Core {
 
 	struct OpenItem
 	{
-		std::filesystem::path path;
-		std::optional<TextDocument> document;
-		OpenFailure failure = OpenFailure::None;
-		std::uint64_t size = 0;
-		Caret caret;
-		bool preview = false;
+		std::filesystem::path Path;
+		std::optional<TextDocument> Document;
+		OpenFailure Failure = OpenFailure::None;
+		std::uint64_t Size = 0;
+		Caret Caret;
+		bool Preview = false;
 
-		std::size_t widestColumn = 0;
+		std::size_t WidestColumn = 0;
 
-		std::size_t widestLine = 0;
+		std::size_t WidestLine = 0;
 
-		RowMap rows;
+		RowMap Rows;
 
-		std::size_t wrappedTo = 0;
+		std::size_t WrappedTo = 0;
 
-		std::size_t rowAim = 0;
-		std::size_t rowAimAt = NoRowAim;
+		std::size_t RowAim = 0;
+		std::size_t RowAimAt = NoRowAim;
 
-		std::vector<std::size_t> indentDepths;
+		std::vector<std::size_t> IndentDepths;
 
-		std::string detail;
+		std::string Detail;
 	};
 
 	enum class ItemLoad

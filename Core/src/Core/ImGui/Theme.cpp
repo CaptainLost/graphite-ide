@@ -19,7 +19,7 @@ namespace Core {
 
 		constexpr ImVec4 ToImVec4(const Color& color)
 		{
-			return ImVec4{color.r, color.g, color.b, color.a};
+			return ImVec4{color.R, color.G, color.B, color.A};
 		}
 	}
 

@@ -148,9 +148,9 @@ namespace Core {
 								 std::size_t offset, std::size_t tabWidth)
 	{
 		const Position position = buffer.ToPosition(offset);
-		const std::size_t line = position.line;
+		const std::size_t line = position.Line;
 		const std::string text = buffer.LineText(line);
-		const std::size_t column = ColumnOfByte(text, position.column, tabWidth);
+		const std::size_t column = ColumnOfByte(text, position.Column, tabWidth);
 
 		const std::vector<std::size_t>& breaks = rows.BreaksOf(line);
 
@@ -175,10 +175,10 @@ namespace Core {
 	std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows,
 							  VisualPosition position, std::size_t tabWidth)
 	{
-		const RowRef ref = rows.RowAt(position.row);
-		const std::string text = buffer.LineText(ref.line);
+		const RowRef ref = rows.RowAt(position.Row);
+		const std::string text = buffer.LineText(ref.Line);
 
-		const std::vector<std::size_t>& breaks = rows.BreaksOf(ref.line);
+		const std::vector<std::size_t>& breaks = rows.BreaksOf(ref.Line);
 
 		// Guarded against a subRow the break list cannot account for, rather than indexed
 		// straight: `rowsPerLine[line] == breaks[line].size() + 1` holds everywhere today,
@@ -187,7 +187,7 @@ namespace Core {
 		// to zero rows would send this read past the end of the vector. Degrading to the
 		// line's own start keeps that a wrong caret rather than a crash.
 		const std::size_t rowStart =
-			ref.subRow == 0 || ref.subRow > breaks.size() ? 0 : breaks[ref.subRow - 1];
+			ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0 : breaks[ref.SubRow - 1];
 
 		// Where this row ends: the column just before the next row's first cell (a break
 		// is the following row's own first column, never this row's), or the end of the
@@ -195,11 +195,11 @@ namespace Core {
 		// it — would let the clamp below land exactly on the break, which CaretToVisual
 		// then reads back as the *next* row's start: the row-end clamp has to agree with
 		// the row-start rule above, or the round trip breaks.
-		const std::size_t rowEnd = ref.subRow < breaks.size() ? breaks[ref.subRow] - 1
+		const std::size_t rowEnd = ref.SubRow < breaks.size() ? breaks[ref.SubRow] - 1
 															  : ColumnCount(text, tabWidth);
 
-		const std::size_t column = std::min(rowStart + position.column, rowEnd);
+		const std::size_t column = std::min(rowStart + position.Column, rowEnd);
 
-		return buffer.LineStart(ref.line) + ByteOfColumn(text, column, tabWidth);
+		return buffer.LineStart(ref.Line) + ByteOfColumn(text, column, tabWidth);
 	}
 }

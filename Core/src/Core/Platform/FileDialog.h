@@ -13,8 +13,8 @@ namespace Core {
 	public:
 		struct Filter
 		{
-			std::string label;
-			std::string pattern;
+			std::string Label;
+			std::string Pattern;
 		};
 
 		static Result<std::filesystem::path> PickFolder(const std::string& title);

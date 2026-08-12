@@ -9,8 +9,8 @@ namespace Core {
 
 	struct RowRef
 	{
-		std::size_t line = 0;
-		std::size_t subRow = 0;
+		std::size_t Line = 0;
+		std::size_t SubRow = 0;
 	};
 
 	class RowMap

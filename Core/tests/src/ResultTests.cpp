@@ -26,8 +26,8 @@ TEST_CASE("Result stores an error")
 
 	CHECK_FALSE(result.HasValue());
 	CHECK_FALSE(static_cast<bool>(result));
-	CHECK(result.GetError().code == ErrorCode::NotFound);
-	CHECK(result.GetError().message == "no such file");
+	CHECK(result.GetError().Code == ErrorCode::NotFound);
+	CHECK(result.GetError().Message == "no such file");
 }
 
 TEST_CASE("ValueOr returns the fallback value on error")
@@ -57,7 +57,7 @@ TEST_CASE("Result<void> distinguishes success from error")
 
 	CHECK(ok.HasValue());
 	CHECK_FALSE(failed.HasValue());
-	CHECK(failed.GetError().code == ErrorCode::AccessDenied);
+	CHECK(failed.GetError().Code == ErrorCode::AccessDenied);
 }
 
 TEST_CASE("A type inheriting from NonCopyable remains movable")

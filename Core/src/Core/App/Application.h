@@ -27,11 +27,11 @@ namespace Core {
 
 	struct ApplicationSpec
 	{
-		std::string name = "IDE";
-		int width = 1600;
-		int height = 900;
+		std::string Name = "IDE";
+		int Width = 1600;
+		int Height = 900;
 
-		bool customTitleBar = false;
+		bool CustomTitleBar = false;
 	};
 
 	class Application : NonCopyable

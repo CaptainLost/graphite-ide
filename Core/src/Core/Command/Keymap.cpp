@@ -9,12 +9,12 @@ namespace Core {
 	namespace {
 		bool Holds(const Binding& binding, const Chord& chord)
 		{
-			if (binding.primary == chord)
+			if (binding.Primary == chord)
 			{
 				return true;
 			}
 
-			for (const Chord& alternate : binding.alternates)
+			for (const Chord& alternate : binding.Alternates)
 			{
 				if (alternate == chord)
 				{
@@ -110,7 +110,7 @@ namespace Core {
 						// as an alternate of one command reaches one command either way.
 						if (known == chord && owner != id)
 						{
-							conflicts.push_back({.chord = chord, .first = owner, .second = id});
+							conflicts.push_back({.Chord = chord, .First = owner, .Second = id});
 							return;
 						}
 					}
@@ -118,9 +118,9 @@ namespace Core {
 					seen.emplace_back(chord, id);
 				};
 
-				note(binding.primary);
+				note(binding.Primary);
 
-				for (const Chord& alternate : binding.alternates)
+				for (const Chord& alternate : binding.Alternates)
 				{
 					note(alternate);
 				}

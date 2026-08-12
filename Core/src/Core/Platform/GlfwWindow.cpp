@@ -129,7 +129,7 @@ namespace Core {
 		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
 		GLFWwindow* handle =
-			glfwCreateWindow(spec.width, spec.height, spec.title.c_str(), nullptr, nullptr);
+			glfwCreateWindow(spec.Width, spec.Height, spec.Title.c_str(), nullptr, nullptr);
 
 		if (handle == nullptr)
 		{
@@ -143,22 +143,22 @@ namespace Core {
 
 		auto window = CreateScope<GlfwWindow>(handle);
 		glfwMakeContextCurrent(handle);
-		window->SetVSync(spec.vsync);
+		window->SetVSync(spec.VSync);
 
-		if (spec.customTitleBar)
+		if (spec.CustomTitleBar)
 		{
-			auto frame = WindowFrame::Hide(*window, spec.borderColor);
+			auto frame = WindowFrame::Hide(*window, spec.BorderColor);
 			if (frame)
 			{
 				window->AdoptFrame(std::move(frame).GetValue());
 			}
 			else
 			{
-				CORE_WARN("Keeping the system title bar: {}", frame.GetError().message);
+				CORE_WARN("Keeping the system title bar: {}", frame.GetError().Message);
 			}
 		}
 
-		CORE_INFO("Window created: {}x{} \"{}\"", spec.width, spec.height, spec.title);
+		CORE_INFO("Window created: {}x{} \"{}\"", spec.Width, spec.Height, spec.Title);
 		return Result<Scope<Window>>{std::move(window)};
 	}
 }

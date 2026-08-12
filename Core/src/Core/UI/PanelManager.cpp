@@ -22,11 +22,11 @@ namespace Core {
 	namespace {
 		void RegisterPanelCommand(CommandRegistry& commands, Panel& panel)
 		{
-			commands.Add({.id = "panel." + panel.GetId(),
-						  .label = panel.GetTitle(),
-						  .group = "panels",
-						  .run = [&panel] { panel.SetVisible(!panel.IsVisible()); },
-						  .checked = [&panel] { return panel.IsVisible(); }});
+			commands.Add({.Id = "panel." + panel.GetId(),
+						  .Label = panel.GetTitle(),
+						  .Group = "panels",
+						  .Run = [&panel] { panel.SetVisible(!panel.IsVisible()); },
+						  .Checked = [&panel] { return panel.IsVisible(); }});
 		}
 	}
 

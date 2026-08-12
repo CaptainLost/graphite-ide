@@ -18,7 +18,7 @@ namespace {
 	const DirectoryEntry* FindEntry(const std::vector<DirectoryEntry>& entries, const std::string& name)
 	{
 		const auto it = std::find_if(entries.begin(), entries.end(),
-									 [&name](const DirectoryEntry& entry) { return entry.name == name; });
+									 [&name](const DirectoryEntry& entry) { return entry.Name == name; });
 		return it == entries.end() ? nullptr : &*it;
 	}
 }
@@ -37,12 +37,12 @@ TEST_CASE("ReadDirectory lists files and directories")
 
 	const DirectoryEntry* file = FindEntry(entries, "alpha.txt");
 	REQUIRE(file != nullptr);
-	CHECK_FALSE(file->isDirectory);
-	CHECK(file->size == 5);
+	CHECK_FALSE(file->IsDirectory);
+	CHECK(file->Size == 5);
 
 	const DirectoryEntry* directory = FindEntry(entries, "beta");
 	REQUIRE(directory != nullptr);
-	CHECK(directory->isDirectory);
+	CHECK(directory->IsDirectory);
 }
 
 TEST_CASE("ReadDirectory reports a missing directory as NotFound")
@@ -52,7 +52,7 @@ TEST_CASE("ReadDirectory reports a missing directory as NotFound")
 	auto result = ReadDirectory(temp.GetPath() / "does-not-exist");
 
 	REQUIRE_FALSE(result.HasValue());
-	CHECK(result.GetError().code == ErrorCode::NotFound);
+	CHECK(result.GetError().Code == ErrorCode::NotFound);
 }
 
 TEST_CASE("ReadDirectory returns an empty list for an empty directory")
@@ -74,7 +74,7 @@ TEST_CASE("ReadDirectory fills the full path of every entry")
 
 	REQUIRE(result.HasValue());
 	REQUIRE(result.GetValue().size() == 1);
-	CHECK(result.GetValue()[0].path == expected);
+	CHECK(result.GetValue()[0].Path == expected);
 }
 
 TEST_CASE("ReadDirectory reports a file path as an error, not an empty listing")
@@ -85,7 +85,7 @@ TEST_CASE("ReadDirectory reports a file path as an error, not an empty listing")
 	auto result = ReadDirectory(file);
 
 	REQUIRE_FALSE(result.HasValue());
-	CHECK(result.GetError().code != ErrorCode::None);
+	CHECK(result.GetError().Code != ErrorCode::None);
 }
 
 TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
@@ -102,8 +102,8 @@ TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
 
 	REQUIRE(result.HasValue());
 	REQUIRE(result.GetValue().size() == 1);
-	CHECK(result.GetValue()[0].name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
-	CHECK(Core::ToUtf8(result.GetValue()[0].path.filename()) ==
+	CHECK(result.GetValue()[0].Name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+	CHECK(Core::ToUtf8(result.GetValue()[0].Path.filename()) ==
 		  "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 }
 

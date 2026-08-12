@@ -318,7 +318,7 @@ TEST_CASE("Loading a file that is not there fails rather than giving an empty do
 	const auto document = TextDocument::Load(directory.GetPath() / "absent.cpp");
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(document.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("A file whose name is not ASCII loads")
@@ -343,7 +343,7 @@ TEST_CASE("Loading a directory fails with InvalidArgument rather than NotFound")
 	const auto document = TextDocument::Load(directory.GetPath());
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(document.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -370,8 +370,8 @@ TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
 	const auto document = TextDocument::Load(path);
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().code == Core::ErrorCode::InvalidArgument);
-	CHECK(document.GetError().message.find(std::to_string(MaximumFileSize + 1)) != std::string::npos);
+	CHECK(document.GetError().Code == Core::ErrorCode::InvalidArgument);
+	CHECK(document.GetError().Message.find(std::to_string(MaximumFileSize + 1)) != std::string::npos);
 }
 #else
 TEST_CASE("Load refuses a file larger than the maximum size, before reading it" * doctest::skip())
@@ -400,7 +400,7 @@ TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot o
 	::CloseHandle(handle);
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().code == Core::ErrorCode::AccessDenied);
+	CHECK(document.GetError().Code == Core::ErrorCode::AccessDenied);
 }
 #else
 TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot open" * doctest::skip())
@@ -488,8 +488,8 @@ TEST_CASE("A damaged UTF-16 file is refused with a message naming the damage")
 		std::string("\xFF\xFE\x42\xDE", 4), "C:/tmp/damaged.txt");
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().message.find("damaged") != std::string::npos);
-	CHECK(document.GetError().message.find("surrogate") != std::string::npos);
+	CHECK(document.GetError().Message.find("damaged") != std::string::npos);
+	CHECK(document.GetError().Message.find("surrogate") != std::string::npos);
 }
 
 TEST_CASE("An odd byte count is refused as damage rather than opened short")
@@ -498,7 +498,7 @@ TEST_CASE("An odd byte count is refused as damage rather than opened short")
 		std::string("\xFF\xFEH\0i", 5), "C:/tmp/odd.txt");
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().message.find("odd") != std::string::npos);
+	CHECK(document.GetError().Message.find("odd") != std::string::npos);
 }
 
 TEST_CASE("The probe and the document agree about a file that changes shape past the sample")
@@ -525,8 +525,8 @@ TEST_CASE("The probe and the document agree about a file that changes shape past
 	const auto probe = ProbeFile(path);
 
 	REQUIRE(probe);
-	CHECK(probe.GetValue().encoding == Encoding::Utf16Le);
-	CHECK(probe.GetValue().kind == FileKind::Text);
+	CHECK(probe.GetValue().FileEncoding == Encoding::Utf16Le);
+	CHECK(probe.GetValue().Kind == FileKind::Text);
 
 	// The document now reads the same prefix and reaches the same verdict, so the file it
 	// loads is the file the probe cleared. The strict rule then judges the whole decoded
@@ -535,7 +535,7 @@ TEST_CASE("The probe and the document agree about a file that changes shape past
 	const auto document = TextDocument::Load(path);
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().message.find("UTF-16 LE") != std::string::npos);
+	CHECK(document.GetError().Message.find("UTF-16 LE") != std::string::npos);
 }
 
 TEST_CASE("A marked UTF-16 file keeps its control characters instead of being refused")
@@ -557,8 +557,8 @@ TEST_CASE("A marked UTF-16 file keeps its control characters instead of being re
 	CHECK(document.GetValue().GetFileEncoding() == Encoding::Utf16Le);
 	CHECK_FALSE(document.GetValue().IsReadOnly());
 	CHECK(document.GetValue().GetBuffer().Materialize() == std::string("a\x0C"
-																   "b\xC2\x85",
-																   5));
+																	   "b\xC2\x85",
+																	   5));
 	CHECK(document.GetValue().EncodeToBytes() == original);
 }
 
@@ -574,7 +574,7 @@ TEST_CASE("A UTF-32 file is refused rather than opened as UTF-16")
 								  "C:/tmp/utf32.txt");
 
 	REQUIRE_FALSE(document);
-	CHECK(document.GetError().message.find("UTF-16 LE") != std::string::npos);
+	CHECK(document.GetError().Message.find("UTF-16 LE") != std::string::npos);
 }
 
 TEST_CASE("Saving round trips every encoding byte for byte")

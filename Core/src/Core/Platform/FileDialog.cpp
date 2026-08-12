@@ -163,8 +163,8 @@ namespace Core {
 
 		for (const Filter& filter : filters)
 		{
-			storage.push_back(Widen(filter.label));
-			storage.push_back(Widen(filter.pattern));
+			storage.push_back(Widen(filter.Label));
+			storage.push_back(Widen(filter.Pattern));
 
 			specs.push_back(COMDLG_FILTERSPEC{storage[storage.size() - 2].c_str(),
 											  storage.back().c_str()});

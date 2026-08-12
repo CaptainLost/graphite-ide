@@ -45,9 +45,9 @@ namespace Core {
 
 		keys.ForEachBinding(
 			[&fired](const std::string& id, const Binding& binding) {
-				bool hit = Fired(binding.primary);
+				bool hit = Fired(binding.Primary);
 
-				for (const Chord& alternate : binding.alternates)
+				for (const Chord& alternate : binding.Alternates)
 				{
 					hit = Fired(alternate) || hit;
 				}
@@ -89,13 +89,13 @@ namespace Core {
 					return chord.GetTrigger() == direction && chord.GetScope() == scope && chord.GetKeys() == mods;
 				};
 
-				if (matches(binding.primary))
+				if (matches(binding.Primary))
 				{
 					fired.push_back(id);
 					return;
 				}
 
-				for (const Chord& alternate : binding.alternates)
+				for (const Chord& alternate : binding.Alternates)
 				{
 					if (matches(alternate))
 					{

@@ -39,7 +39,7 @@ namespace Graphite {
 				// Falling back to the working directory keeps settings working rather
 				// than losing them, which is the better failure for a preferences file.
 				CORE_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
-						  directory.GetError().message);
+						  directory.GetError().Message);
 
 				return std::filesystem::path{"graphite.json"};
 			}();

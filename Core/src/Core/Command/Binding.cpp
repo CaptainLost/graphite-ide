@@ -14,14 +14,14 @@ namespace Core {
 
 	std::string ToString(const Binding& binding)
 	{
-		if (binding.primary.IsEmpty() && binding.alternates.empty())
+		if (binding.Primary.IsEmpty() && binding.Alternates.empty())
 		{
 			return std::string{kUnboundText};
 		}
 
-		std::string text = binding.primary.ToString();
+		std::string text = binding.Primary.ToString();
 
-		for (const Chord& alternate : binding.alternates)
+		for (const Chord& alternate : binding.Alternates)
 		{
 			text += kChordSeparator;
 			text += alternate.ToString();
@@ -63,12 +63,12 @@ namespace Core {
 
 			if (first)
 			{
-				binding.primary = *chord;
+				binding.Primary = *chord;
 				first = false;
 			}
 			else
 			{
-				binding.alternates.push_back(*chord);
+				binding.Alternates.push_back(*chord);
 			}
 
 			if (separator == std::string_view::npos)

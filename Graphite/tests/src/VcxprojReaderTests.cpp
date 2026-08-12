@@ -43,16 +43,16 @@ namespace {
 	const ContentFolder* FindFolder(const ContentFolder& parent, std::string_view name)
 	{
 		const auto match =
-			std::find_if(parent.folders.begin(), parent.folders.end(),
-						 [name](const ContentFolder& f) { return f.name == name; });
+			std::find_if(parent.Folders.begin(), parent.Folders.end(),
+						 [name](const ContentFolder& f) { return f.Name == name; });
 
-		return match == parent.folders.end() ? nullptr : &*match;
+		return match == parent.Folders.end() ? nullptr : &*match;
 	}
 
 	bool HasFile(const ContentFolder& folder, std::string_view name)
 	{
-		return std::any_of(folder.files.begin(), folder.files.end(),
-						   [name](const Graphite::ContentFile& f) { return f.name == name; });
+		return std::any_of(folder.Files.begin(), folder.Files.end(),
+						   [name](const Graphite::ContentFile& f) { return f.Name == name; });
 	}
 }
 
@@ -74,16 +74,16 @@ TEST_CASE("Every item kind is read, and paths are made absolute")
 	REQUIRE(content.HasValue());
 
 	// ClInclude, ClCompile and None all appear; a file's path is relative to the project.
-	CHECK(HasFile(content.GetValue().root, "App.h"));
-	CHECK(HasFile(content.GetValue().root, "App.cpp"));
-	CHECK(HasFile(content.GetValue().root, "notes.txt"));
+	CHECK(HasFile(content.GetValue().Root, "App.h"));
+	CHECK(HasFile(content.GetValue().Root, "App.cpp"));
+	CHECK(HasFile(content.GetValue().Root, "notes.txt"));
 
-	const auto& files = content.GetValue().root.files;
+	const auto& files = content.GetValue().Root.Files;
 	const auto match = std::find_if(files.begin(), files.end(),
-									[](const Graphite::ContentFile& f) { return f.name == "App.cpp"; });
+									[](const Graphite::ContentFile& f) { return f.Name == "App.cpp"; });
 
 	REQUIRE(match != files.end());
-	CHECK(match->path == temp.GetPath() / "App" / "src" / "App.cpp");
+	CHECK(match->Path == temp.GetPath() / "App" / "src" / "App.cpp");
 }
 
 TEST_CASE("Without a filters file every file sits at the project root")
@@ -96,8 +96,8 @@ TEST_CASE("Without a filters file every file sits at the project root")
 
 	// What Visual Studio does with a project whose .filters is missing: the folder
 	// structure is in that file, so without it there is none.
-	CHECK(content.GetValue().root.folders.empty());
-	CHECK(content.GetValue().root.files.size() == 4);
+	CHECK(content.GetValue().Root.Folders.empty());
+	CHECK(content.GetValue().Root.Files.size() == 4);
 }
 
 TEST_CASE("Filters become folders and claim their files")
@@ -109,13 +109,13 @@ TEST_CASE("Filters become folders and claim their files")
 	const auto content = VcxprojReader{}.Read(project);
 	REQUIRE(content.HasValue());
 
-	const ContentFolder* panels = FindFolder(content.GetValue().root, "Panels");
+	const ContentFolder* panels = FindFolder(content.GetValue().Root, "Panels");
 	REQUIRE(panels != nullptr);
 	CHECK(HasFile(*panels, "Console.cpp"));
 
 	// The other three have no filter entry, so they stay at the root.
-	CHECK(content.GetValue().root.files.size() == 3);
-	CHECK_FALSE(HasFile(content.GetValue().root, "Console.cpp"));
+	CHECK(content.GetValue().Root.Files.size() == 3);
+	CHECK_FALSE(HasFile(content.GetValue().Root, "Console.cpp"));
 }
 
 TEST_CASE("A nested filter becomes nested folders")
@@ -133,7 +133,7 @@ TEST_CASE("A nested filter becomes nested folders")
 	REQUIRE(content.HasValue());
 
 	// Filters spell their nesting with backslashes inside one element.
-	const ContentFolder* ui = FindFolder(content.GetValue().root, "Ui");
+	const ContentFolder* ui = FindFolder(content.GetValue().Root, "Ui");
 	REQUIRE(ui != nullptr);
 
 	const ContentFolder* panels = FindFolder(*ui, "Panels");
@@ -149,11 +149,11 @@ TEST_CASE("Project references are read separately from files")
 	const auto content = VcxprojReader{}.Read(project);
 	REQUIRE(content.HasValue());
 
-	REQUIRE(content.GetValue().references.size() == 1);
-	CHECK(content.GetValue().references[0] == "Core");
+	REQUIRE(content.GetValue().References.size() == 1);
+	CHECK(content.GetValue().References[0] == "Core");
 
 	// A reference is not a file — it must not turn up in the tree as one.
-	CHECK_FALSE(HasFile(content.GetValue().root, "Core.vcxproj"));
+	CHECK_FALSE(HasFile(content.GetValue().Root, "Core.vcxproj"));
 }
 
 TEST_CASE("A missing project file fails rather than reading as empty")
@@ -163,7 +163,7 @@ TEST_CASE("A missing project file fails rather than reading as empty")
 	const auto content = VcxprojReader{}.Read(temp.GetPath() / "Nothing.vcxproj");
 
 	REQUIRE_FALSE(content.HasValue());
-	CHECK(content.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(content.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("ReadSolution fills the contents of C++ projects it can find")
@@ -175,10 +175,10 @@ TEST_CASE("ReadSolution fills the contents of C++ projects it can find")
 
 	const auto read = Graphite::ReadSolution(solution);
 	REQUIRE(read.HasValue());
-	REQUIRE(read.GetValue().root.projects.size() == 1);
+	REQUIRE(read.GetValue().Root.Projects.size() == 1);
 
-	CHECK(read.GetValue().root.projects[0].contentRead);
-	CHECK(HasFile(read.GetValue().root.projects[0].content.root, "App.cpp"));
+	CHECK(read.GetValue().Root.Projects[0].ContentRead);
+	CHECK(HasFile(read.GetValue().Root.Projects[0].Content.Root, "App.cpp"));
 }
 
 TEST_CASE("A project of an unknown type stays unread without failing the solution")
@@ -192,9 +192,9 @@ TEST_CASE("A project of an unknown type stays unread without failing the solutio
 
 	// The structure of the solution is still complete — only the inside is unknown.
 	REQUIRE(read.HasValue());
-	REQUIRE(read.GetValue().root.projects.size() == 1);
-	CHECK_FALSE(read.GetValue().root.projects[0].contentRead);
-	CHECK(read.GetValue().root.projects[0].displayName == "App");
+	REQUIRE(read.GetValue().Root.Projects.size() == 1);
+	CHECK_FALSE(read.GetValue().Root.Projects[0].ContentRead);
+	CHECK(read.GetValue().Root.Projects[0].DisplayName == "App");
 }
 
 TEST_CASE("A project file the solution names but disk does not have leaves the rest intact")
@@ -207,8 +207,8 @@ TEST_CASE("A project file the solution names but disk does not have leaves the r
 
 	// Exactly the sort of problem this view exists to reveal, so it must not be fatal.
 	REQUIRE(read.HasValue());
-	REQUIRE(read.GetValue().root.projects.size() == 1);
-	CHECK_FALSE(read.GetValue().root.projects[0].contentRead);
+	REQUIRE(read.GetValue().Root.Projects.size() == 1);
+	CHECK_FALSE(read.GetValue().Root.Projects[0].ContentRead);
 }
 
 TEST_CASE("An uppercase project extension is still claimed")
@@ -240,14 +240,14 @@ TEST_CASE("Files come back sorted, mixing headers and sources")
 	const auto content = VcxprojReader{}.Read(project);
 	REQUIRE(content.HasValue());
 
-	const auto& files = content.GetValue().root.files;
+	const auto& files = content.GetValue().Root.Files;
 	REQUIRE(files.size() == 4);
 
 	// A .vcxproj keeps every ClInclude in one group and every ClCompile in another, so
 	// preserving the file's order would list all the headers above all the sources.
 	// Visual Studio interleaves them by name and so must this.
-	CHECK(files[0].name == "IdeLayer.cpp");
-	CHECK(files[1].name == "IdeLayer.h");
-	CHECK(files[2].name == "Main.cpp");
-	CHECK(files[3].name == "Workspace.h");
+	CHECK(files[0].Name == "IdeLayer.cpp");
+	CHECK(files[1].Name == "IdeLayer.h");
+	CHECK(files[2].Name == "Main.cpp");
+	CHECK(files[3].Name == "Workspace.h");
 }

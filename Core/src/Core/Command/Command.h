@@ -7,15 +7,15 @@ namespace Core {
 
 	struct Command
 	{
-		std::string id;
-		std::string label;
+		std::string Id;
+		std::string Label;
 
-		std::string group;
+		std::string Group;
 
-		std::function<void()> run;
+		std::function<void()> Run;
 
-		std::function<bool()> enabled;
+		std::function<bool()> Enabled;
 
-		std::function<bool()> checked;
+		std::function<bool()> Checked;
 	};
 }

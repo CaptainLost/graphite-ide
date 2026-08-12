@@ -18,16 +18,16 @@ namespace Graphite {
 
 	struct CommandContext
 	{
-		Core::CommandRegistry* commands = nullptr;
-		Core::Keymap* keys = nullptr;
-		Core::ShortcutRouter* router = nullptr;
+		Core::CommandRegistry* Commands = nullptr;
+		Core::Keymap* Keys = nullptr;
+		Core::ShortcutRouter* Router = nullptr;
 	};
 
 	struct EditorFrameResult
 	{
-		bool edited = false;
+		bool Edited = false;
 
-		bool saveRequested = false;
+		bool SaveRequested = false;
 	};
 
 	EditorFrameResult DrawEditor(const CommandContext& context,

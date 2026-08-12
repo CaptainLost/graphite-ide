@@ -31,18 +31,18 @@ namespace {
 
 	const Folder* FindFolder(const Folder& parent, std::string_view name)
 	{
-		const auto match = std::find_if(parent.folders.begin(), parent.folders.end(),
-										[name](const Folder& f) { return f.name == name; });
+		const auto match = std::find_if(parent.Folders.begin(), parent.Folders.end(),
+										[name](const Folder& f) { return f.Name == name; });
 
-		return match == parent.folders.end() ? nullptr : &*match;
+		return match == parent.Folders.end() ? nullptr : &*match;
 	}
 
 	const Project* FindProject(const Folder& parent, std::string_view name)
 	{
-		const auto match = std::find_if(parent.projects.begin(), parent.projects.end(),
-										[name](const Project& p) { return p.displayName == name; });
+		const auto match = std::find_if(parent.Projects.begin(), parent.Projects.end(),
+										[name](const Project& p) { return p.DisplayName == name; });
 
-		return match == parent.projects.end() ? nullptr : &*match;
+		return match == parent.Projects.end() ? nullptr : &*match;
 	}
 }
 
@@ -56,8 +56,8 @@ TEST_CASE("A .sln is read through the same entry point as a .slnx")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().name == "Legacy");
-	CHECK(solution.GetValue().projectCount == 2);
+	CHECK(solution.GetValue().Name == "Legacy");
+	CHECK(solution.GetValue().ProjectCount == 2);
 }
 
 TEST_CASE("A folder type GUID makes a folder, not a project")
@@ -70,8 +70,8 @@ TEST_CASE("A folder type GUID makes a folder, not a project")
 
 	// "App" is a Project entry in the file and a folder in the model — the type GUID is
 	// the only thing that says so.
-	CHECK(FindFolder(solution.GetValue().root, "App") != nullptr);
-	CHECK(FindProject(solution.GetValue().root, "App") == nullptr);
+	CHECK(FindFolder(solution.GetValue().Root, "App") != nullptr);
+	CHECK(FindProject(solution.GetValue().Root, "App") == nullptr);
 }
 
 TEST_CASE("NestedProjects decides where a project lands")
@@ -82,13 +82,13 @@ TEST_CASE("NestedProjects decides where a project lands")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Folder* app = FindFolder(solution.GetValue().root, "App");
+	const Folder* app = FindFolder(solution.GetValue().Root, "App");
 	REQUIRE(app != nullptr);
 
 	// Graphite is nested under App by the GUID pair; Core has no pair and stays at the
 	// solution root.
 	CHECK(FindProject(*app, "Graphite") != nullptr);
-	CHECK(FindProject(solution.GetValue().root, "Core") != nullptr);
+	CHECK(FindProject(solution.GetValue().Root, "Core") != nullptr);
 }
 
 TEST_CASE("A parent declared after its child still adopts it")
@@ -112,7 +112,7 @@ TEST_CASE("A parent declared after its child still adopts it")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Folder* parent = FindFolder(solution.GetValue().root, "Parent");
+	const Folder* parent = FindFolder(solution.GetValue().Root, "Parent");
 	REQUIRE(parent != nullptr);
 	CHECK(FindProject(*parent, "Child") != nullptr);
 }
@@ -135,7 +135,7 @@ TEST_CASE("A folder nested inside another folder is nested in the model")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Folder* outer = FindFolder(solution.GetValue().root, "Outer");
+	const Folder* outer = FindFolder(solution.GetValue().Root, "Outer");
 	REQUIRE(outer != nullptr);
 	CHECK(FindFolder(*outer, "Inner") != nullptr);
 }
@@ -148,13 +148,13 @@ TEST_CASE("A project path is made absolute against the solution")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Project* core = FindProject(solution.GetValue().root, "Core");
+	const Project* core = FindProject(solution.GetValue().Root, "Core");
 	REQUIRE(core != nullptr);
 
 	// Spelled relative and with backslashes in the file; absolute in the model, as the
 	// .slnx reader already guarantees.
-	CHECK(core->path == temp.GetPath() / "Core" / "Core.vcxproj");
-	CHECK(core->path.is_absolute());
+	CHECK(core->Path == temp.GetPath() / "Core" / "Core.vcxproj");
+	CHECK(core->Path.is_absolute());
 }
 
 TEST_CASE("The project type GUID is kept")
@@ -165,12 +165,12 @@ TEST_CASE("The project type GUID is kept")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Project* core = FindProject(solution.GetValue().root, "Core");
+	const Project* core = FindProject(solution.GetValue().Root, "Core");
 	REQUIRE(core != nullptr);
 
 	// Not displayed today, but it is what a writer will need to put the entry back, and
 	// discarding it here would mean re-deriving it from the extension later.
-	CHECK(core->typeId == "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}");
+	CHECK(core->TypeId == "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}");
 }
 
 TEST_CASE("An empty .sln reads as empty rather than failing")
@@ -182,8 +182,8 @@ TEST_CASE("An empty .sln reads as empty rather than failing")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 0);
-	CHECK(solution.GetValue().root.folders.empty());
+	CHECK(solution.GetValue().ProjectCount == 0);
+	CHECK(solution.GetValue().Root.Folders.empty());
 }
 
 TEST_CASE("A file that is not a solution at all is rejected")
@@ -196,7 +196,7 @@ TEST_CASE("A file that is not a solution at all is rejected")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE_FALSE(solution.HasValue());
-	CHECK(solution.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(solution.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("A malformed entry line is skipped rather than failing the solution")
@@ -214,8 +214,8 @@ TEST_CASE("A malformed entry line is skipped rather than failing the solution")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 1);
-	CHECK(FindProject(solution.GetValue().root, "Good") != nullptr);
+	CHECK(solution.GetValue().ProjectCount == 1);
+	CHECK(FindProject(solution.GetValue().Root, "Good") != nullptr);
 }
 
 TEST_CASE("Contents of C++ projects are filled in for a .sln too")
@@ -233,14 +233,14 @@ TEST_CASE("Contents of C++ projects are filled in for a .sln too")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Project* good = FindProject(solution.GetValue().root, "Good");
+	const Project* good = FindProject(solution.GetValue().Root, "Good");
 	REQUIRE(good != nullptr);
 
 	// The reader registry and the sorting run after either parser, so both formats get
 	// the same treatment from here on.
-	CHECK(good->contentRead);
-	REQUIRE(good->content.root.files.size() == 1);
-	CHECK(good->content.root.files[0].name == "Main.cpp");
+	CHECK(good->ContentRead);
+	REQUIRE(good->Content.Root.Files.size() == 1);
+	CHECK(good->Content.Root.Files[0].Name == "Main.cpp");
 }
 
 TEST_CASE("Two folders at the same level both keep their projects")
@@ -272,10 +272,10 @@ TEST_CASE("Two folders at the same level both keep their projects")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 2);
+	CHECK(solution.GetValue().ProjectCount == 2);
 
-	const Folder* a = FindFolder(solution.GetValue().root, "A");
-	const Folder* c = FindFolder(solution.GetValue().root, "C");
+	const Folder* a = FindFolder(solution.GetValue().Root, "A");
+	const Folder* c = FindFolder(solution.GetValue().Root, "C");
 
 	REQUIRE(a != nullptr);
 	REQUIRE(c != nullptr);
@@ -305,8 +305,8 @@ TEST_CASE("Two folders naming each other as parent do not hang")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(FindFolder(solution.GetValue().root, "A") != nullptr);
-	CHECK(FindFolder(solution.GetValue().root, "B") != nullptr);
+	CHECK(FindFolder(solution.GetValue().Root, "A") != nullptr);
+	CHECK(FindFolder(solution.GetValue().Root, "B") != nullptr);
 }
 
 TEST_CASE("A file written by Visual Studio is read despite its byte-order mark")
@@ -326,5 +326,5 @@ TEST_CASE("A file written by Visual Studio is read despite its byte-order mark")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 1);
+	CHECK(solution.GetValue().ProjectCount == 1);
 }

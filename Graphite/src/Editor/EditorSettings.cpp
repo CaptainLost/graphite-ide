@@ -51,17 +51,17 @@ namespace Graphite {
 
 	void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)
 	{
-		commands.Add({.id = "editor.zoomIn",
-					  .label = "Zoom In",
-					  .run = [this] { SetFontSize(m_FontSize + kFontSizeStep); }});
+		commands.Add({.Id = "editor.zoomIn",
+					  .Label = "Zoom In",
+					  .Run = [this] { SetFontSize(m_FontSize + kFontSizeStep); }});
 
-		commands.Add({.id = "editor.zoomOut",
-					  .label = "Zoom Out",
-					  .run = [this] { SetFontSize(m_FontSize - kFontSizeStep); }});
+		commands.Add({.Id = "editor.zoomOut",
+					  .Label = "Zoom Out",
+					  .Run = [this] { SetFontSize(m_FontSize - kFontSizeStep); }});
 
-		commands.Add({.id = "editor.resetZoom",
-					  .label = "Reset Zoom",
-					  .run = [this] { SetFontSize(kDefaultFontSize); }});
+		commands.Add({.Id = "editor.resetZoom",
+					  .Label = "Reset Zoom",
+					  .Run = [this] { SetFontSize(kDefaultFontSize); }});
 
 		// Deliberately no default binding. Ctrl+Z-style obviousness would suggest Alt+Z,
 		// and it is a trap here: AltGr on Windows reports as Ctrl+Alt, and AltGr+Z is 'z'
@@ -69,10 +69,10 @@ namespace Graphite {
 		// a Polish word is typed. Anyone binding this from the shortcuts screen should
 		// know the same, which is why it is recorded on the command rather than in the
 		// menu it used to sit in.
-		commands.Add({.id = "editor.toggleWordWrap",
-					  .label = "Word Wrap",
-					  .run = [this] { SetWordWrap(!m_WordWrap); },
-					  .checked = [this] { return m_WordWrap; }});
+		commands.Add({.Id = "editor.toggleWordWrap",
+					  .Label = "Word Wrap",
+					  .Run = [this] { SetWordWrap(!m_WordWrap); },
+					  .Checked = [this] { return m_WordWrap; }});
 
 		// Both the main row and the keypad, and Ctrl+wheel over an editor. A shortcut
 		// nobody can discover is not a shortcut, so all three reach the same command and
@@ -82,19 +82,19 @@ namespace Graphite {
 		using Scope = Core::Chord::Scope;
 
 		keys.SetDefault("editor.zoomIn",
-						{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
-						 .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
+						{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
+						 .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
 										Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp,
 													 Chord::Scope::HoveredEditor)}});
 
 		keys.SetDefault("editor.zoomOut",
-						{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Minus),
-						 .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract),
+						{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Minus),
+						 .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract),
 										Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelDown,
 													 Chord::Scope::HoveredEditor)}});
 
 		keys.SetDefault("editor.resetZoom",
-						{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_0),
-						 .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Keypad0)}});
+						{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_0),
+						 .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Keypad0)}});
 	}
 }

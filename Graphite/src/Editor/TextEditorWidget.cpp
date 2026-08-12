@@ -79,7 +79,7 @@ namespace Graphite {
 	{
 		EditorFrameResult result;
 
-		if (!item.document)
+		if (!item.Document)
 		{
 			DrawFailure(item);
 			return result;
@@ -87,11 +87,11 @@ namespace Graphite {
 
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), fontSize);
 
-		const Core::TextBuffer& buffer = item.document->GetBuffer();
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		// Read before anything in this function can move the caret — the mouse below
 		// moves it as readily as the keyboard does, and the blink has to restart for
 		// both.
-		const std::size_t caretAtFrameStart = item.caret.offset;
+		const std::size_t caretAtFrameStart = item.Caret.Offset;
 		const float lineHeight = ImGui::GetTextLineHeight();
 		// Every glyph in a monospaced face advances the same, so one glyph's advance is
 		// the width of every cell.
@@ -166,16 +166,16 @@ namespace Graphite {
 			// map current through every edit, but a document could reach here without ever
 			// having passed through RefreshDerived, and a map with more lines than the
 			// buffer would send RowAt off the end of it.
-			if (columnsPerRow != item.wrappedTo || item.rows.GetLineCount() != buffer.GetLineCount())
+			if (columnsPerRow != item.WrappedTo || item.Rows.GetLineCount() != buffer.GetLineCount())
 			{
-				item.rows.Rebuild(buffer, columnsPerRow, Core::DefaultTabWidth);
-				item.wrappedTo = columnsPerRow;
+				item.Rows.Rebuild(buffer, columnsPerRow, Core::DefaultTabWidth);
+				item.WrappedTo = columnsPerRow;
 
 				// The aim was a column of the geometry that just went away: after a resize
 				// or a toggle of wrapping, the caret sits at a different row column than
 				// the one it was aiming at. Cleared rather than converted, so the next
 				// vertical move resolves it from where the caret actually is now.
-				item.rowAimAt = Core::NoRowAim;
+				item.RowAimAt = Core::NoRowAim;
 			}
 
 			// Computed once when the document loaded (OpenItem::widestColumn), not walked
@@ -186,7 +186,7 @@ namespace Graphite {
 			// own width is the extent and widestColumn says nothing about it.
 			const float contentWidth =
 				wordWrap ? available
-						 : gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
+						 : gutterWidth + static_cast<float>(item.WidestColumn + 1) * cellWidth;
 
 			// Pre-edit: this frame's mouse and keyboard handling, further down, can
 			// still grow or shrink the document before the frame is over. Kept under
@@ -194,7 +194,7 @@ namespace Graphite {
 			// hit-test against a size one frame stale — the reservation the scrollbars
 			// and the clipper actually read is computed fresh, after that handling runs,
 			// immediately before the clipper starts (see currentDocumentHeight below).
-			const float documentHeight = static_cast<float>(item.rows.TotalRows()) * lineHeight;
+			const float documentHeight = static_cast<float>(item.Rows.TotalRows()) * lineHeight;
 
 			// The one text origin in the file: everything below that positions against
 			// the text — clicks, caret, selection, guides — measures from this rather
@@ -283,7 +283,7 @@ namespace Graphite {
 				// it clamps a column past the row's end rather than failing, which is what
 				// makes a click in the empty space right of a short row land on its end.
 				const std::size_t offset = Core::VisualToCaret(
-					buffer, item.rows, Core::VisualPosition{row, column},
+					buffer, item.Rows, Core::VisualPosition{row, column},
 					Core::DefaultTabWidth);
 
 				if (pressedThisFrame)
@@ -294,18 +294,18 @@ namespace Graphite {
 					// row is a consequence of the window's width, and the user asked for
 					// the line.
 					if (clicks >= 3)
-						item.caret = Core::SelectLineAt(buffer, item.rows.RowAt(row).line);
+						item.Caret = Core::SelectLineAt(buffer, item.Rows.RowAt(row).Line);
 					else if (clicks == 2)
-						item.caret = Core::SelectWordAt(buffer, offset);
+						item.Caret = Core::SelectWordAt(buffer, offset);
 					else
-						item.caret = Core::PlaceAt(buffer, item.caret, offset,
+						item.Caret = Core::PlaceAt(buffer, item.Caret, offset,
 												   ImGui::GetIO().KeyShift,
 												   Core::DefaultTabWidth);
 				}
 				else
 				{
 					// Dragging always extends, whichever way it goes.
-					item.caret = Core::PlaceAt(buffer, item.caret, offset, true,
+					item.Caret = Core::PlaceAt(buffer, item.Caret, offset, true,
 											   Core::DefaultTabWidth);
 				}
 			}
@@ -321,11 +321,11 @@ namespace Graphite {
 			// reads as "this may arrive incomplete" while crashing if it does is worse
 			// than no guard at all.
 			const bool routable =
-				context.router != nullptr && context.commands != nullptr && context.keys != nullptr;
+				context.Router != nullptr && context.Commands != nullptr && context.Keys != nullptr;
 
 			if (ImGui::IsWindowHovered() && routable)
 			{
-				context.router->DispatchWheel(*context.commands, *context.keys,
+				context.Router->DispatchWheel(*context.Commands, *context.Keys,
 											  Core::Chord::Scope::HoveredEditor,
 											  ImGui::GetIO().MouseWheel);
 			}
@@ -377,8 +377,8 @@ namespace Graphite {
 					if (!ImGui::IsKeyPressed(binding.key, true))
 						continue;
 
-					item.caret =
-						Core::Move(buffer, item.caret,
+					item.Caret =
+						Core::Move(buffer, item.Caret,
 								   control ? binding.withControl : binding.plain, shift,
 								   Core::DefaultTabWidth, pageRows);
 				}
@@ -387,9 +387,9 @@ namespace Graphite {
 				// frame: it copies the caret's line, which on a minified file is the whole
 				// file, and only these motions need it.
 				const auto caretRow = [&] {
-					return Core::CaretToVisual(buffer, item.rows, item.caret.offset,
+					return Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset,
 											   Core::DefaultTabWidth)
-						.row;
+						.Row;
 				};
 
 				// Puts the caret at a column of a row, and is the only writer of the aim.
@@ -401,32 +401,32 @@ namespace Graphite {
 				const auto placeOnRow = [&](std::size_t targetRow, std::size_t column,
 											bool aiming) {
 					const std::size_t offset = Core::VisualToCaret(
-						buffer, item.rows, Core::VisualPosition{targetRow, column},
+						buffer, item.Rows, Core::VisualPosition{targetRow, column},
 						Core::DefaultTabWidth);
 
-					item.caret.offset = offset;
+					item.Caret.Offset = offset;
 
 					// Shift extends, which is the only thing PlaceAt would have done for us
 					// here; its offset snapping and its column are both wrong for this
 					// path — VisualToCaret already lands on a character boundary, and the
 					// column it writes is a column within the line, not within the row.
 					if (!shift)
-						item.caret.anchor = offset;
+						item.Caret.Anchor = offset;
 
 					if (aiming)
 					{
-						item.rowAim = column;
-						item.rowAimAt = offset;
+						item.RowAim = column;
+						item.RowAimAt = offset;
 					}
 					else
 					{
-						item.rowAimAt = Core::NoRowAim;
+						item.RowAimAt = Core::NoRowAim;
 					}
 				};
 
 				const auto moveByRows = [&](bool down, std::size_t rows) {
 					const Core::VisualPosition here = Core::CaretToVisual(
-						buffer, item.rows, item.caret.offset, Core::DefaultTabWidth);
+						buffer, item.Rows, item.Caret.Offset, Core::DefaultTabWidth);
 
 					// The aim is trusted only while the caret is still where it was
 					// computed for. Anything else that moved the caret — a click, an arrow
@@ -435,13 +435,13 @@ namespace Graphite {
 					// Order-independent by construction: it does not matter whether that
 					// other move happened earlier in this frame or ten frames ago.
 					const std::size_t aim =
-						item.rowAimAt == item.caret.offset ? item.rowAim : here.column;
+						item.RowAimAt == item.Caret.Offset ? item.RowAim : here.Column;
 
 					// A target past the last row resolves to the last row (RowAt clamps),
 					// which is the same standing-still that moving down on the last line
 					// always did.
 					const std::size_t target =
-						down ? here.row + rows : (here.row >= rows ? here.row - rows : 0);
+						down ? here.Row + rows : (here.Row >= rows ? here.Row - rows : 0);
 
 					placeOnRow(target, aim, true);
 				};
@@ -462,7 +462,7 @@ namespace Graphite {
 				{
 					if (control)
 					{
-						item.caret = Core::Move(buffer, item.caret,
+						item.Caret = Core::Move(buffer, item.Caret,
 												Core::Motion::DocumentStart, shift,
 												Core::DefaultTabWidth, pageRows);
 					}
@@ -476,7 +476,7 @@ namespace Graphite {
 				{
 					if (control)
 					{
-						item.caret = Core::Move(buffer, item.caret,
+						item.Caret = Core::Move(buffer, item.Caret,
 												Core::Motion::DocumentEnd, shift,
 												Core::DefaultTabWidth, pageRows);
 					}
@@ -498,7 +498,7 @@ namespace Graphite {
 				}
 
 				if (control && ImGui::IsKeyPressed(ImGuiKey_A, false))
-					item.caret = Core::SelectAll(buffer);
+					item.Caret = Core::SelectAll(buffer);
 
 				// Whatever moved the caret above — a motion key or Ctrl+A, and the mouse
 				// click or drag earlier in this function, since caretAtFrameStart was
@@ -506,13 +506,13 @@ namespace Graphite {
 				// follows. Breaking the group here, before any of the edits below,
 				// means moving the caret and then typing costs a fresh undo step instead
 				// of merging with whatever was typed before the caret moved.
-				if (item.caret.offset != caretAtFrameStart)
-					item.document->GetBuffer().BreakUndoGroup();
+				if (item.Caret.Offset != caretAtFrameStart)
+					item.Document->GetBuffer().BreakUndoGroup();
 
 				// Cutting and copying share this: cutting is copying followed by
 				// removing the selection, not a separate way of reading the clipboard.
 				const auto copySelection = [&] {
-					const auto [from, to] = Core::SelectionRange(item.caret);
+					const auto [from, to] = Core::SelectionRange(item.Caret);
 
 					// Substring hands back the buffer's own LF-only text, and the Windows
 					// clipboard is CRLF — pasted into Excel or any Win32 EDIT control,
@@ -546,25 +546,25 @@ namespace Graphite {
 
 					if (length > 0)
 					{
-						result.edited |= Core::InsertText(
+						result.Edited |= Core::InsertText(
 							item, std::string_view(utf8, static_cast<std::size_t>(length)));
 					}
 				}
 
 				if (ImGui::IsKeyPressed(ImGuiKey_Enter, true) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, true))
 				{
-					result.edited |= Core::InsertNewline(item, indentStyle);
+					result.Edited |= Core::InsertNewline(item, indentStyle);
 				}
 
 				if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
 				{
-					result.edited |= control ? Core::DeleteWordBackward(item)
+					result.Edited |= control ? Core::DeleteWordBackward(item)
 											 : Core::DeleteBackward(item);
 				}
 
 				if (ImGui::IsKeyPressed(ImGuiKey_Delete, true))
 				{
-					result.edited |= control ? Core::DeleteWordForward(item)
+					result.Edited |= control ? Core::DeleteWordForward(item)
 											 : Core::DeleteForward(item);
 				}
 
@@ -574,7 +574,7 @@ namespace Graphite {
 				// listening for Tab.
 				if (ImGui::IsKeyPressed(ImGuiKey_Tab, true))
 				{
-					result.edited |= shift ? Core::Outdent(item, indentStyle)
+					result.Edited |= shift ? Core::Outdent(item, indentStyle)
 										   : Core::Indent(item, indentStyle);
 				}
 
@@ -583,21 +583,21 @@ namespace Graphite {
 					// An empty clipboard, or one holding something that is not text,
 					// hands back a null pointer rather than an empty string.
 					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
-						result.edited |= Core::InsertText(item, clipboard);
+						result.Edited |= Core::InsertText(item, clipboard);
 				}
 
 				if (control && ImGui::IsKeyPressed(ImGuiKey_X, false))
 				{
 					copySelection();
-					result.edited |= Core::DeleteBackward(item);
+					result.Edited |= Core::DeleteBackward(item);
 				}
 
 				if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))
-					result.edited |= Core::Undo(item);
+					result.Edited |= Core::Undo(item);
 
 				if (control && (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))))
 				{
-					result.edited |= Core::Redo(item);
+					result.Edited |= Core::Redo(item);
 				}
 
 				// Saving is not this widget's decision: a stale document on disk needs
@@ -608,7 +608,7 @@ namespace Graphite {
 				// for "save every dirty document" and writing this one twice from a
 				// single keypress.
 				if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_S, false))
-					result.saveRequested = true;
+					result.SaveRequested = true;
 
 				if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
 					copySelection();
@@ -620,18 +620,18 @@ namespace Graphite {
 			// offset against caretAtFrameStart, read before the mouse and keyboard above
 			// touched anything, is the honest signal: true exactly when a click, a drag,
 			// a motion key or an edit changed where the caret sits.
-			if (item.caret.offset != caretAtFrameStart)
+			if (item.Caret.Offset != caretAtFrameStart)
 			{
-				const Core::Position where = buffer.ToPosition(item.caret.offset);
+				const Core::Position where = buffer.ToPosition(item.Caret.Offset);
 				// The row the caret is on, which is its line only while nothing wraps.
 				// Scrolling to the line number in a wrapped document would land wherever
 				// that many rows happen to reach, which is short of the caret by however
 				// much the text above it wrapped.
 				const float caretY =
-					static_cast<float>(Core::CaretToVisual(buffer, item.rows,
-														   item.caret.offset,
+					static_cast<float>(Core::CaretToVisual(buffer, item.Rows,
+														   item.Caret.Offset,
 														   Core::DefaultTabWidth)
-										   .row) *
+										   .Row) *
 					lineHeight;
 
 				if (caretY < ImGui::GetScrollY())
@@ -654,7 +654,7 @@ namespace Graphite {
 				{
 					const float caretX =
 						gutterWidth + static_cast<float>(Core::ColumnOfByte(
-										  buffer.LineText(where.line), where.column,
+										  buffer.LineText(where.Line), where.Column,
 										  Core::DefaultTabWidth)) *
 										  cellWidth;
 
@@ -667,17 +667,17 @@ namespace Graphite {
 
 			// Whatever moved it — a key above, a click or a drag earlier in this
 			// function — the blink starts over, so the caret is lit the moment it lands.
-			if (item.caret.offset != caretAtFrameStart)
+			if (item.Caret.Offset != caretAtFrameStart)
 				s_CaretMovedAt = ImGui::GetTime();
 
 			const Core::Position caretPosition =
-				buffer.ToPosition(item.caret.offset);
+				buffer.ToPosition(item.Caret.Offset);
 			// Where the caret is on screen, which is (line, column) only while nothing
 			// wraps. Read once here rather than per row: the loop below only compares
 			// against it, and CaretToVisual walks the caret line's break list.
 			const Core::VisualPosition caretVisual = Core::CaretToVisual(
-				buffer, item.rows, item.caret.offset, Core::DefaultTabWidth);
-			const auto [selectionFrom, selectionTo] = Core::SelectionRange(item.caret);
+				buffer, item.Rows, item.Caret.Offset, Core::DefaultTabWidth);
+			const auto [selectionFrom, selectionTo] = Core::SelectionRange(item.Caret);
 
 			const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 			const ImU32 gutterColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
@@ -717,16 +717,16 @@ namespace Graphite {
 			// and with wrapping off the map gives one row per line, so this is the same
 			// number it always was.
 			const float currentDocumentHeight =
-				static_cast<float>(item.rows.TotalRows()) * lineHeight;
+				static_cast<float>(item.Rows.TotalRows()) * lineHeight;
 			const float currentContentWidth =
 				wordWrap ? available
-						 : gutterWidth + static_cast<float>(item.widestColumn + 1) * cellWidth;
+						 : gutterWidth + static_cast<float>(item.WidestColumn + 1) * cellWidth;
 
 			ImGui::Dummy(ImVec2(currentContentWidth, currentDocumentHeight));
 			ImGui::SetCursorScreenPos(origin);
 
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(item.rows.TotalRows()), lineHeight);
+			clipper.Begin(static_cast<int>(item.Rows.TotalRows()), lineHeight);
 
 			// A wrapped line owns a run of consecutive rows, and the clipper walks rows in
 			// ascending order, so the line's text and its tab expansion are fetched once
@@ -758,8 +758,8 @@ namespace Graphite {
 				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 				{
 					const std::size_t rowIndex = static_cast<std::size_t>(row);
-					const Core::RowRef ref = item.rows.RowAt(rowIndex);
-					const std::size_t line = ref.line;
+					const Core::RowRef ref = item.Rows.RowAt(rowIndex);
+					const std::size_t line = ref.Line;
 					const float y = origin.y + static_cast<float>(row) * lineHeight;
 					const float textX = textOriginX;
 
@@ -811,11 +811,11 @@ namespace Graphite {
 					// line set to zero rows would send this read past the end. Falling
 					// back to the line's own first column draws the wrong slice rather
 					// than reading memory that is not there.
-					const std::vector<std::size_t>& breaks = item.rows.BreaksOf(line);
+					const std::vector<std::size_t>& breaks = item.Rows.BreaksOf(line);
 					const std::size_t fromColumn =
-						ref.subRow == 0 || ref.subRow > breaks.size() ? 0
-																	  : breaks[ref.subRow - 1];
-					const bool lastRowOfLine = ref.subRow >= breaks.size();
+						ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0
+																	  : breaks[ref.SubRow - 1];
+					const bool lastRowOfLine = ref.SubRow >= breaks.size();
 
 					// Sliced by converting columns to bytes rather than by indexing the
 					// expanded string with columns: the expansion makes one column one
@@ -827,13 +827,13 @@ namespace Graphite {
 					const std::size_t rowToByte =
 						lastRowOfLine ? expanded.size()
 									  : AdvanceColumns(expanded, rowFromByte,
-													   breaks[ref.subRow] - fromColumn);
+													   breaks[ref.SubRow] - fromColumn);
 
 					carriedByte = rowToByte;
 					carriedRow = rowIndex + 1;
 					haveCarried = true;
 
-					if (line == caretPosition.line)
+					if (line == caretPosition.Line)
 					{
 						// currentContentWidth, not contentWidth: this highlight is drawn
 						// from the same post-edit state the clipper itself is walking,
@@ -851,7 +851,7 @@ namespace Graphite {
 					// exists on rows whose depth demands it, and a column's guide can stop
 					// and restart down the file.
 					const std::size_t depth =
-						line < item.indentDepths.size() ? item.indentDepths[line] : 0;
+						line < item.IndentDepths.size() ? item.IndentDepths[line] : 0;
 
 					// Positioned relative to this row's first column, not to the line's:
 					// a continuation row starts partway into the line, and a guide drawn
@@ -883,7 +883,7 @@ namespace Graphite {
 						// last column, and with wrapping off every row is the whole line.
 						const std::size_t rowToColumn =
 							lastRowOfLine ? std::numeric_limits<std::size_t>::max()
-										  : breaks[ref.subRow];
+										  : breaks[ref.SubRow];
 						const std::size_t clippedFrom =
 							std::clamp(selectionFromColumn, fromColumn, rowToColumn);
 						const std::size_t clippedTo =
@@ -930,13 +930,13 @@ namespace Graphite {
 										ImVec2(origin.x + scrollX + gutterWidth, y + lineHeight),
 										ImGui::GetColorU32(ImGuiCol_WindowBg));
 
-					if (ref.subRow == 0)
+					if (ref.SubRow == 0)
 					{
 						const std::string number = std::to_string(line + 1);
 						const float numberX = numberColumnX1 - kGutterPaddingX - static_cast<float>(number.size()) * cellWidth;
 
 						draw->AddText(ImVec2(numberX, y),
-									  line == caretPosition.line ? textColour : gutterColour,
+									  line == caretPosition.Line ? textColour : gutterColour,
 									  number.c_str());
 					}
 
@@ -947,13 +947,13 @@ namespace Graphite {
 					//
 					// Tested against the caret's *row*, not its line: a wrapped line
 					// occupies several rows and the caret is on exactly one of them, so
-					// comparing lines would draw it once per row. caretVisual.column is
+					// comparing lines would draw it once per row. caretVisual.Column is
 					// already measured from this row's left edge, which is what makes this
 					// the same arithmetic whether the line wrapped or not.
-					if (focused && rowIndex == caretVisual.row)
+					if (focused && rowIndex == caretVisual.Row)
 					{
 						const float caretX =
-							textX + static_cast<float>(caretVisual.column) * cellWidth;
+							textX + static_cast<float>(caretVisual.Column) * cellWidth;
 
 						// Measured from the last movement rather than from zero, which is
 						// what keeps the caret from being invisible under a held arrow

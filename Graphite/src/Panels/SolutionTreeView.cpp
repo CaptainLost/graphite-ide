@@ -19,9 +19,9 @@ namespace Graphite {
 		void CollectFolderPaths(const Folder& folder, const std::string& path,
 								std::vector<std::string>& out)
 		{
-			for (const Folder& child : folder.folders)
+			for (const Folder& child : folder.Folders)
 			{
-				const std::string childPath = path.empty() ? child.name : path + "/" + child.name;
+				const std::string childPath = path.empty() ? child.Name : path + "/" + child.Name;
 				out.push_back(childPath);
 				CollectFolderPaths(child, childPath, out);
 			}
@@ -56,17 +56,17 @@ namespace Graphite {
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
 			const std::string label =
-				solution.name + " (" + std::to_string(solution.projectCount) + " projects)";
+				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
 
 			const bool rootOpen = ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
 
 			// Attached right after the item, regardless of whether it is expanded — a
 			// right click on a collapsed root must still open the menu.
-			RenderContextMenu(solution.root, "");
+			RenderContextMenu(solution.Root, "");
 
 			if (rootOpen)
 			{
-				RenderFolder(solution.root, "");
+				RenderFolder(solution.Root, "");
 				ImGui::TreePop();
 			}
 		}
@@ -81,14 +81,14 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderFolder(const Folder& folder, const std::string& path)
 	{
-		for (const Folder& child : folder.folders)
+		for (const Folder& child : folder.Folders)
 		{
-			const std::string childPath = path.empty() ? child.name : path + "/" + child.name;
+			const std::string childPath = path.empty() ? child.Name : path + "/" + child.Name;
 
 			if (RenderFolderRenameEditor(child, childPath))
 				continue;
 
-			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.name;
+			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
 			const bool open =
 				ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
@@ -102,7 +102,7 @@ namespace Graphite {
 			}
 		}
 
-		for (const Project& project : folder.projects)
+		for (const Project& project : folder.Projects)
 			RenderProject(project, path);
 	}
 
@@ -112,21 +112,21 @@ namespace Graphite {
 		// A project nobody could read is a leaf rather than an empty expandable node: the
 		// arrow would promise contents that are not merely absent but unknown.
 		const ImGuiTreeNodeFlags flags =
-			project.contentRead ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_Leaf;
+			project.ContentRead ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_Leaf;
 
 		// Said in the label rather than only in a colour: this is the one state in the
 		// view the user has to act on, and it is why the solution is worth looking at.
 		const std::string icon =
-			Core::IconForExtension(Core::ToUtf8(project.path.extension()));
+			Core::IconForExtension(Core::ToUtf8(project.Path.extension()));
 		const std::string label =
-			icon + "  " + (project.exists ? project.displayName : project.displayName + "  (missing)");
+			icon + "  " + (project.Exists ? project.DisplayName : project.DisplayName + "  (missing)");
 
-		if (!project.exists)
+		if (!project.Exists)
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
 		const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
 
-		if (!project.exists)
+		if (!project.Exists)
 			ImGui::PopStyleColor();
 
 		// Attached right after the item, regardless of whether it is expanded.
@@ -135,17 +135,17 @@ namespace Graphite {
 		if (!open)
 			return;
 
-		if (project.contentRead)
+		if (project.ContentRead)
 		{
-			if (!project.content.references.empty() && ImGui::TreeNodeEx("References"))
+			if (!project.Content.References.empty() && ImGui::TreeNodeEx("References"))
 			{
-				for (const std::string& reference : project.content.references)
+				for (const std::string& reference : project.Content.References)
 					ImGui::BulletText("%s", reference.c_str());
 
 				ImGui::TreePop();
 			}
 
-			RenderContentFolder(project.content.root);
+			RenderContentFolder(project.Content.Root);
 		}
 
 		ImGui::TreePop();
@@ -153,9 +153,9 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderContentFolder(const ContentFolder& folder)
 	{
-		for (const ContentFolder& child : folder.folders)
+		for (const ContentFolder& child : folder.Folders)
 		{
-			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.name;
+			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
 			if (ImGui::TreeNodeEx(label.c_str()))
 			{
@@ -164,23 +164,23 @@ namespace Graphite {
 			}
 		}
 
-		for (const ContentFile& file : folder.files)
+		for (const ContentFile& file : folder.Files)
 		{
-			if (!m_Filter.PassFilter(file.name.c_str()))
+			if (!m_Filter.PassFilter(file.Name.c_str()))
 				continue;
 
-			const bool selected = m_Workspace.GetSelectedFile() == file.path;
+			const bool selected = m_Workspace.GetSelectedFile() == file.Path;
 
 			const std::string label =
-				std::string{Core::IconForExtension(Core::ToUtf8(file.path.extension()))} +
-				"  " + file.name;
+				std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} +
+				"  " + file.Name;
 
 			// Keyed by the full path: two projects can hold files of the same name, and
 			// ImGui would treat same-labelled siblings as one node.
-			ImGui::PushID(Core::ToUtf8(file.path).c_str());
+			ImGui::PushID(Core::ToUtf8(file.Path).c_str());
 
 			if (ImGui::Selectable(label.c_str(), selected))
-				m_Workspace.SelectFile(file.path);
+				m_Workspace.SelectFile(file.Path);
 
 			ImGui::PopID();
 		}
@@ -246,8 +246,8 @@ namespace Graphite {
 
 				std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
 
-				if (folder.name.size() < m_RenameBuffer.size())
-					std::copy_n(folder.name.begin(), folder.name.size(), m_RenameBuffer.begin());
+				if (folder.Name.size() < m_RenameBuffer.size())
+					std::copy_n(folder.Name.begin(), folder.Name.size(), m_RenameBuffer.begin());
 			}
 
 			if (ImGui::MenuItem("Remove"))
@@ -260,7 +260,7 @@ namespace Graphite {
 	void SolutionTreeView::RenderContextMenu(const Project& project,
 											 const std::string& folder)
 	{
-		const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.path);
+		const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.Path);
 
 		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
 			ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
@@ -273,8 +273,8 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("Remove from Solution"))
 		{
-			m_RemoveCandidate = project.path;
-			m_RemoveCandidateName = project.displayName;
+			m_RemoveCandidate = project.Path;
+			m_RemoveCandidateName = project.DisplayName;
 			m_OpenRemoveConfirmation = true;
 		}
 
@@ -294,7 +294,7 @@ namespace Graphite {
 			return;
 
 		std::vector<std::string> folders{""};
-		CollectFolderPaths(m_Workspace.LoadedSolution()->root, "", folders);
+		CollectFolderPaths(m_Workspace.LoadedSolution()->Root, "", folders);
 
 		for (const std::string& path : folders)
 		{
@@ -305,7 +305,7 @@ namespace Graphite {
 			const std::string label = path.empty() ? "(Solution Root)" : path;
 
 			if (ImGui::MenuItem(label.c_str()))
-				m_Pending = PendingAction{PendingAction::Kind::MoveProject, project.path, path, {}};
+				m_Pending = PendingAction{PendingAction::Kind::MoveProject, project.Path, path, {}};
 		}
 	}
 
@@ -341,7 +341,7 @@ namespace Graphite {
 		{
 			const std::string typed = m_RenameBuffer.data();
 
-			if (!typed.empty() && typed != folder.name)
+			if (!typed.empty() && typed != folder.Name)
 				m_Pending = PendingAction{PendingAction::Kind::RenameFolder, {}, path, typed};
 
 			m_RenamingFolder.clear();
@@ -373,7 +373,7 @@ namespace Graphite {
 			const PendingAction action{PendingAction::Kind::RemoveProject, m_RemoveCandidate, {}, {}};
 
 			if (const auto applied = Apply(action); !applied)
-				CORE_ERROR("{}", applied.GetError().message);
+				CORE_ERROR("{}", applied.GetError().Message);
 
 			m_RemoveCandidate.clear();
 			m_RemoveCandidateName.clear();
@@ -413,7 +413,7 @@ namespace Graphite {
 
 			if (!picked)
 			{
-				CORE_ERROR("Cannot open the file picker: {}", picked.GetError().message);
+				CORE_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
 				return;
 			}
 
@@ -429,7 +429,7 @@ namespace Graphite {
 		// would give the view two ways to update, and one of them would eventually be
 		// wrong.
 		if (const auto applied = Apply(action); !applied)
-			CORE_ERROR("{}", applied.GetError().message);
+			CORE_ERROR("{}", applied.GetError().Message);
 	}
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
@@ -437,7 +437,7 @@ namespace Graphite {
 		if (!m_Workspace.LoadedSolution())
 			return Core::Error{Core::ErrorCode::NotFound, "no solution is open"};
 
-		auto editor = SolutionEditor::Open(m_Workspace.LoadedSolution()->path);
+		auto editor = SolutionEditor::Open(m_Workspace.LoadedSolution()->Path);
 
 		if (!editor)
 			return editor.GetError();

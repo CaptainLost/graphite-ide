@@ -18,11 +18,11 @@ namespace Core {
 		OpenItem& item = documents.At(index);
 
 		std::error_code error;
-		const bool present = std::filesystem::exists(item.path, error);
+		const bool present = std::filesystem::exists(item.Path, error);
 
 		bool cameBack = false;
 
-		if (item.failure == OpenFailure::Missing)
+		if (item.Failure == OpenFailure::Missing)
 		{
 			// An error is not an answer, the same as below: a share that blinked must not
 			// read as "still gone".
@@ -31,7 +31,7 @@ namespace Core {
 				return FileSyncOutcome::Unchanged;
 			}
 
-			documents.MarkPresent(item.path);
+			documents.MarkPresent(item.Path);
 			cameBack = true;
 
 			// Deliberately falls through rather than returning. This is the very event
@@ -48,11 +48,11 @@ namespace Core {
 		// same reasoning SyncRepository applies before dropping a repository.
 		if (!error && !present)
 		{
-			documents.MarkMissing(item.path);
+			documents.MarkMissing(item.Path);
 			return FileSyncOutcome::WentMissing;
 		}
 
-		if (!item.document || !item.document->CheckChangedOnDisk())
+		if (!item.Document || !item.Document->CheckChangedOnDisk())
 		{
 			// Only the item that just came back and has nothing to show asks to be
 			// loaded. An item carrying Binary, TooLarge or ReadFailed also has no
@@ -61,7 +61,7 @@ namespace Core {
 			return cameBack ? FileSyncOutcome::NeedsLoad : FileSyncOutcome::Unchanged;
 		}
 
-		if (!item.document->IsModified())
+		if (!item.Document->IsModified())
 		{
 			// Not reloaded here — see SafeToReload on why the caller does it.
 			return FileSyncOutcome::SafeToReload;
@@ -79,13 +79,13 @@ namespace Core {
 		// Nothing to reload into. Unreachable from SyncWithFile, which checks first, but
 		// this is public API and dereferencing an empty optional is a poor way to find
 		// that out.
-		if (!item.document)
+		if (!item.Document)
 		{
 			return Error{ErrorCode::InvalidArgument,
-						 "No document to reload: " + ToUtf8(item.path)};
+						 "No document to reload: " + ToUtf8(item.Path)};
 		}
 
-		if (auto result = item.document->ReloadFromDisk(); !result)
+		if (auto result = item.Document->ReloadFromDisk(); !result)
 		{
 			return result.GetError();
 		}
@@ -93,14 +93,14 @@ namespace Core {
 		// The reload can shorten the document past where the caret sat. PlaceAt clamps to
 		// the new length and pulls back to a character boundary, the same as a click past
 		// a line's end does.
-		item.caret =
-			PlaceAt(item.document->GetBuffer(), item.caret, item.caret.offset, false, DefaultTabWidth);
+		item.Caret =
+			PlaceAt(item.Document->GetBuffer(), item.Caret, item.Caret.Offset, false, DefaultTabWidth);
 
 		// The vertical aim was measured against the text that just went away. Left
 		// standing, the next Up or Down would aim at a column of the old document from a
 		// caret sitting in the new one. Cleared rather than converted, so the move
 		// resolves it from where the caret actually is now.
-		item.rowAimAt = NoRowAim;
+		item.RowAimAt = NoRowAim;
 
 		RefreshDerived(item);
 
@@ -111,12 +111,12 @@ namespace Core {
 	{
 		OpenItem& item = documents.At(index);
 
-		if (!item.document)
+		if (!item.Document)
 		{
 			return {};
 		}
 
-		if (auto result = item.document->Save(); !result)
+		if (auto result = item.Document->Save(); !result)
 		{
 			return result.GetError();
 		}
@@ -127,7 +127,7 @@ namespace Core {
 		// "(deleted)". MarkPresent already refuses to touch Binary, TooLarge and
 		// ReadFailed, so it is safe to call unconditionally on every successful save
 		// rather than only when the failure was Missing.
-		documents.MarkPresent(item.path);
+		documents.MarkPresent(item.Path);
 
 		return {};
 	}
@@ -140,7 +140,7 @@ namespace Core {
 		{
 			const OpenItem& item = documents.At(index);
 
-			if (!item.document || !item.document->IsModified())
+			if (!item.Document || !item.Document->IsModified())
 			{
 				continue;
 			}
@@ -151,9 +151,9 @@ namespace Core {
 			// modals — so this document is skipped, not asked about and not silently
 			// overwritten, and the batch continues: three other dirty files having nothing
 			// wrong with them is no reason to leave them unsaved over a fourth that does.
-			if (item.document->CheckChangedOnDisk())
+			if (item.Document->CheckChangedOnDisk())
 			{
-				report.conflicted.push_back(item.path);
+				report.Conflicted.push_back(item.Path);
 				continue;
 			}
 
@@ -162,11 +162,11 @@ namespace Core {
 			// would be a batch pretending nothing went wrong.
 			if (auto result = SaveDocument(documents, index); !result)
 			{
-				report.stoppedAt = SaveAllReport::Failure{item.path, result.GetError()};
+				report.StoppedAt = SaveAllReport::Failure{item.Path, result.GetError()};
 				return report;
 			}
 
-			++report.saved;
+			++report.Saved;
 		}
 
 		return report;

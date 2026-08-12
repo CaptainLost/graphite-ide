@@ -20,11 +20,11 @@ TEST_CASE("SetRoot creates a collapsed, unloaded root node")
 
 	REQUIRE(result.HasValue());
 	CHECK(tree.HasRoot());
-	CHECK(tree.GetRoot().isDirectory);
-	CHECK(tree.GetRoot().path == temp.GetPath());
-	CHECK_FALSE(tree.GetRoot().expanded);
-	CHECK_FALSE(tree.GetRoot().loaded);
-	CHECK(tree.GetRoot().children.empty());
+	CHECK(tree.GetRoot().IsDirectory);
+	CHECK(tree.GetRoot().Path == temp.GetPath());
+	CHECK_FALSE(tree.GetRoot().Expanded);
+	CHECK_FALSE(tree.GetRoot().Loaded);
+	CHECK(tree.GetRoot().Children.empty());
 }
 
 TEST_CASE("SetRoot rejects a path that is not a directory")
@@ -36,7 +36,7 @@ TEST_CASE("SetRoot rejects a path that is not a directory")
 	const auto result = tree.SetRoot(file);
 
 	REQUIRE_FALSE(result.HasValue());
-	CHECK(result.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(result.GetError().Code == Core::ErrorCode::InvalidArgument);
 	CHECK_FALSE(tree.HasRoot());
 }
 
@@ -52,9 +52,9 @@ TEST_CASE("Expand loads children on first use and marks the node loaded")
 	const auto result = tree.Expand(tree.GetRoot());
 
 	REQUIRE(result.HasValue());
-	CHECK(tree.GetRoot().expanded);
-	CHECK(tree.GetRoot().loaded);
-	CHECK(tree.GetRoot().children.size() == 2);
+	CHECK(tree.GetRoot().Expanded);
+	CHECK(tree.GetRoot().Loaded);
+	CHECK(tree.GetRoot().Children.size() == 2);
 }
 
 TEST_CASE("Expand sorts directories before files, case-insensitively within each group")
@@ -69,12 +69,12 @@ TEST_CASE("Expand sorts directories before files, case-insensitively within each
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
 
-	const auto& children = tree.GetRoot().children;
+	const auto& children = tree.GetRoot().Children;
 	REQUIRE(children.size() == 4);
-	CHECK(children[0].name == "bravo");
-	CHECK(children[1].name == "Yankee");
-	CHECK(children[2].name == "apple.txt");
-	CHECK(children[3].name == "Zebra.txt");
+	CHECK(children[0].Name == "bravo");
+	CHECK(children[1].Name == "Yankee");
+	CHECK(children[2].Name == "apple.txt");
+	CHECK(children[3].Name == "Zebra.txt");
 }
 
 TEST_CASE("Expand on an already loaded node does not re-read the disk")
@@ -91,7 +91,7 @@ TEST_CASE("Expand on an already loaded node does not re-read the disk")
 	tree.Collapse(tree.GetRoot());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
 
-	CHECK(tree.GetRoot().children.size() == 1);
+	CHECK(tree.GetRoot().Children.size() == 1);
 }
 
 TEST_CASE("Collapse clears the expanded flag but keeps loaded children")
@@ -105,9 +105,9 @@ TEST_CASE("Collapse clears the expanded flag but keeps loaded children")
 
 	tree.Collapse(tree.GetRoot());
 
-	CHECK_FALSE(tree.GetRoot().expanded);
-	CHECK(tree.GetRoot().loaded);
-	CHECK(tree.GetRoot().children.size() == 1);
+	CHECK_FALSE(tree.GetRoot().Expanded);
+	CHECK(tree.GetRoot().Loaded);
+	CHECK(tree.GetRoot().Children.size() == 1);
 }
 
 TEST_CASE("Expanding an unreadable directory marks it inaccessible instead of failing")
@@ -121,16 +121,16 @@ TEST_CASE("Expanding an unreadable directory marks it inaccessible instead of fa
 
 	// Fabricate a node pointing at a directory that does not exist.
 	FileNode ghost;
-	ghost.path = missing;
-	ghost.name = "vanished";
-	ghost.isDirectory = true;
+	ghost.Path = missing;
+	ghost.Name = "vanished";
+	ghost.IsDirectory = true;
 
 	const auto result = tree.Expand(ghost);
 
 	REQUIRE(result.HasValue());
-	CHECK_FALSE(ghost.accessible);
-	CHECK(ghost.loaded);
-	CHECK(ghost.children.empty());
+	CHECK_FALSE(ghost.Accessible);
+	CHECK(ghost.Loaded);
+	CHECK(ghost.Children.empty());
 }
 
 TEST_CASE("Refresh picks up a file created after the first expansion")
@@ -141,12 +141,12 @@ TEST_CASE("Refresh picks up a file created after the first expansion")
 	FileTree tree;
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
-	REQUIRE(tree.GetRoot().children.size() == 1);
+	REQUIRE(tree.GetRoot().Children.size() == 1);
 
 	temp.MakeFile("b.txt", "x");
 	tree.Refresh(tree.GetRoot());
 
-	CHECK(tree.GetRoot().children.size() == 2);
+	CHECK(tree.GetRoot().Children.size() == 2);
 }
 
 TEST_CASE("Refresh drops nodes that disappeared from disk")
@@ -163,8 +163,8 @@ TEST_CASE("Refresh drops nodes that disappeared from disk")
 	std::filesystem::remove(doomed, code);
 	tree.Refresh(tree.GetRoot());
 
-	REQUIRE(tree.GetRoot().children.size() == 1);
-	CHECK(tree.GetRoot().children[0].name == "stays.txt");
+	REQUIRE(tree.GetRoot().Children.size() == 1);
+	CHECK(tree.GetRoot().Children[0].Name == "stays.txt");
 }
 
 TEST_CASE("Refresh keeps an expanded subdirectory expanded and loaded")
@@ -175,20 +175,20 @@ TEST_CASE("Refresh keeps an expanded subdirectory expanded and loaded")
 	FileTree tree;
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
-	REQUIRE(tree.GetRoot().children.size() == 1);
-	REQUIRE(tree.Expand(tree.GetRoot().children[0]).HasValue());
-	REQUIRE(tree.GetRoot().children[0].children.size() == 1);
+	REQUIRE(tree.GetRoot().Children.size() == 1);
+	REQUIRE(tree.Expand(tree.GetRoot().Children[0]).HasValue());
+	REQUIRE(tree.GetRoot().Children[0].Children.size() == 1);
 
 	temp.MakeFile("second.txt", "x");
 	tree.Refresh(tree.GetRoot());
 
-	REQUIRE(tree.GetRoot().children.size() == 2);
-	const FileNode& sub = tree.GetRoot().children[0];
-	CHECK(sub.name == "sub");
-	CHECK(sub.expanded);
-	CHECK(sub.loaded);
-	REQUIRE(sub.children.size() == 1);
-	CHECK(sub.children[0].name == "inner.txt");
+	REQUIRE(tree.GetRoot().Children.size() == 2);
+	const FileNode& sub = tree.GetRoot().Children[0];
+	CHECK(sub.Name == "sub");
+	CHECK(sub.Expanded);
+	CHECK(sub.Loaded);
+	REQUIRE(sub.Children.size() == 1);
+	CHECK(sub.Children[0].Name == "inner.txt");
 }
 
 TEST_CASE("Refresh re-reads an expanded subdirectory so its own changes appear")
@@ -199,12 +199,12 @@ TEST_CASE("Refresh re-reads an expanded subdirectory so its own changes appear")
 	FileTree tree;
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
-	REQUIRE(tree.Expand(tree.GetRoot().children[0]).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot().Children[0]).HasValue());
 
 	temp.MakeFile("sub/two.txt", "x");
 	tree.Refresh(tree.GetRoot());
 
-	CHECK(tree.GetRoot().children[0].children.size() == 2);
+	CHECK(tree.GetRoot().Children[0].Children.size() == 2);
 }
 
 TEST_CASE("Refresh leaves a collapsed, never-opened subdirectory unloaded")
@@ -217,10 +217,10 @@ TEST_CASE("Refresh leaves a collapsed, never-opened subdirectory unloaded")
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
 	tree.Refresh(tree.GetRoot());
 
-	const FileNode& sub = tree.GetRoot().children[0];
-	CHECK_FALSE(sub.expanded);
-	CHECK_FALSE(sub.loaded);
-	CHECK(sub.children.empty());
+	const FileNode& sub = tree.GetRoot().Children[0];
+	CHECK_FALSE(sub.Expanded);
+	CHECK_FALSE(sub.Loaded);
+	CHECK(sub.Children.empty());
 }
 
 TEST_CASE("Refresh on a node that was never loaded does nothing")
@@ -233,8 +233,8 @@ TEST_CASE("Refresh on a node that was never loaded does nothing")
 
 	tree.Refresh(tree.GetRoot());
 
-	CHECK_FALSE(tree.GetRoot().loaded);
-	CHECK(tree.GetRoot().children.empty());
+	CHECK_FALSE(tree.GetRoot().Loaded);
+	CHECK(tree.GetRoot().Children.empty());
 }
 
 TEST_CASE("Without a query nothing is ignored")
@@ -246,8 +246,8 @@ TEST_CASE("Without a query nothing is ignored")
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
 
-	REQUIRE(tree.GetRoot().children.size() == 1);
-	CHECK_FALSE(tree.GetRoot().children[0].ignored);
+	REQUIRE(tree.GetRoot().Children.size() == 1);
+	CHECK_FALSE(tree.GetRoot().Children[0].Ignored);
 }
 
 TEST_CASE("Expand marks the children the query rejects")
@@ -262,12 +262,12 @@ TEST_CASE("Expand marks the children the query rejects")
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
 
-	for (const FileNode& child : tree.GetRoot().children)
+	for (const FileNode& child : tree.GetRoot().Children)
 	{
-		if (child.name == "drop.txt")
-			CHECK(child.ignored);
+		if (child.Name == "drop.txt")
+			CHECK(child.Ignored);
 		else
-			CHECK_FALSE(child.ignored);
+			CHECK_FALSE(child.Ignored);
 	}
 }
 
@@ -312,16 +312,16 @@ TEST_CASE("Refresh re-asks the query so a changed verdict takes effect")
 
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
-	REQUIRE(tree.GetRoot().children.size() == 1);
-	REQUIRE_FALSE(tree.GetRoot().children[0].ignored);
+	REQUIRE(tree.GetRoot().Children.size() == 1);
+	REQUIRE_FALSE(tree.GetRoot().Children[0].Ignored);
 
 	// The rules file could have changed on disk between loads, so a carried-over node
 	// must have its verdict refreshed rather than kept.
 	ignoreEverything = true;
 	tree.Refresh(tree.GetRoot());
 
-	REQUIRE(tree.GetRoot().children.size() == 1);
-	CHECK(tree.GetRoot().children[0].ignored);
+	REQUIRE(tree.GetRoot().Children.size() == 1);
+	CHECK(tree.GetRoot().Children[0].Ignored);
 }
 
 TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
@@ -363,9 +363,9 @@ TEST_CASE("Rebase rewrites the root and every loaded descendant")
 
 	FileNode* sub = nullptr;
 
-	for (FileNode& child : tree.GetRoot().children)
+	for (FileNode& child : tree.GetRoot().Children)
 	{
-		if (child.name == "sub")
+		if (child.Name == "sub")
 			sub = &child;
 	}
 
@@ -375,16 +375,16 @@ TEST_CASE("Rebase rewrites the root and every loaded descendant")
 	const std::filesystem::path moved = temp.GetPath().parent_path() / "moved-elsewhere";
 	tree.Rebase(moved);
 
-	CHECK(tree.GetRoot().path == moved);
+	CHECK(tree.GetRoot().Path == moved);
 
-	for (const FileNode& child : tree.GetRoot().children)
+	for (const FileNode& child : tree.GetRoot().Children)
 	{
-		CHECK(child.path.parent_path() == moved);
+		CHECK(child.Path.parent_path() == moved);
 
 		// The rewrite has to reach the whole subtree, not just the immediate children —
 		// a half-rewritten tree would refresh some nodes and silently skip others.
-		for (const FileNode& grandChild : child.children)
-			CHECK(grandChild.path.parent_path() == moved / child.name);
+		for (const FileNode& grandChild : child.Children)
+			CHECK(grandChild.Path.parent_path() == moved / child.Name);
 	}
 }
 
@@ -400,32 +400,32 @@ TEST_CASE("Rebase leaves everything except the paths alone")
 
 	FileNode* sub = nullptr;
 
-	for (FileNode& child : tree.GetRoot().children)
+	for (FileNode& child : tree.GetRoot().Children)
 	{
-		if (child.name == "sub")
+		if (child.Name == "sub")
 			sub = &child;
 	}
 
 	REQUIRE(sub != nullptr);
 	REQUIRE(tree.Expand(*sub).HasValue());
-	sub->expanded = true;
+	sub->Expanded = true;
 
-	const std::size_t childCount = tree.GetRoot().children.size();
+	const std::size_t childCount = tree.GetRoot().Children.size();
 
 	tree.Rebase(temp.GetPath().parent_path() / "moved-elsewhere");
 
 	// The point of rebasing rather than reopening: the user's expansion state survives.
-	REQUIRE(tree.GetRoot().children.size() == childCount);
+	REQUIRE(tree.GetRoot().Children.size() == childCount);
 
-	for (const FileNode& child : tree.GetRoot().children)
+	for (const FileNode& child : tree.GetRoot().Children)
 	{
-		if (child.name != "sub")
+		if (child.Name != "sub")
 			continue;
 
-		CHECK(child.name == "sub");
-		CHECK(child.isDirectory);
-		CHECK(child.expanded);
-		CHECK(child.loaded);
+		CHECK(child.Name == "sub");
+		CHECK(child.IsDirectory);
+		CHECK(child.Expanded);
+		CHECK(child.Loaded);
 	}
 }
 
@@ -440,7 +440,7 @@ TEST_CASE("Rebase on a tree with no root does nothing")
 	// Asserting on HasRoot alone would pass with the guard deleted, because nothing in
 	// the rewrite touches that flag — it would just quietly write a path into a root
 	// node that does not exist. The path is what proves the guard ran.
-	CHECK(tree.GetRoot().path.empty());
+	CHECK(tree.GetRoot().Path.empty());
 }
 
 TEST_CASE("Replacing the query does not disturb already loaded nodes")
@@ -453,13 +453,13 @@ TEST_CASE("Replacing the query does not disturb already loaded nodes")
 
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
-	REQUIRE(tree.GetRoot().children[0].ignored);
+	REQUIRE(tree.GetRoot().Children[0].Ignored);
 
 	// The flag is cached, so swapping the query alone changes nothing until something
 	// reloads. That is deliberate: the caller decides when to pay the cost.
 	tree.SetIgnoreQuery([](const std::filesystem::path&, bool) { return false; });
 
-	CHECK(tree.GetRoot().children[0].ignored);
+	CHECK(tree.GetRoot().Children[0].Ignored);
 }
 
 TEST_CASE("Rebase renames the root node to match its new location")
@@ -469,15 +469,15 @@ TEST_CASE("Rebase renames the root node to match its new location")
 
 	FileTree tree;
 	REQUIRE(tree.SetRoot(before).HasValue());
-	REQUIRE(tree.GetRoot().name == "before");
+	REQUIRE(tree.GetRoot().Name == "before");
 
 	tree.Rebase(temp.GetPath() / "after");
 
 	// The root is the one node a rename can rename. Checking only the path would let the
 	// tree go on displaying the old folder name beside a perfectly correct path — which
 	// is what the panel actually shows the user.
-	CHECK(tree.GetRoot().name == "after");
-	CHECK(tree.GetRoot().path == temp.GetPath() / "after");
+	CHECK(tree.GetRoot().Name == "after");
+	CHECK(tree.GetRoot().Path == temp.GetPath() / "after");
 }
 
 TEST_CASE("Rebase onto a drive root leaves the node with a usable name")
@@ -491,5 +491,5 @@ TEST_CASE("Rebase onto a drive root leaves the node with a usable name")
 
 	// A drive root has no filename component, so the plain answer would be an empty
 	// label rendering as a blank row.
-	CHECK_FALSE(tree.GetRoot().name.empty());
+	CHECK_FALSE(tree.GetRoot().Name.empty());
 }

@@ -59,9 +59,9 @@ namespace Graphite {
 		: Core::Layer("Ide"), m_Sink(std::move(sink)), m_InitialFolder(std::move(initialFolder)),
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle)
 	{
-		m_Layout.left = {"files"};
-		m_Layout.bottom = {"console"};
-		m_Layout.center = {"keybindings"};
+		m_Layout.Left = {"files"};
+		m_Layout.Bottom = {"console"};
+		m_Layout.Center = {"keybindings"};
 
 		// 32 px is what Windows itself uses for a caption, so the drawn window buttons
 		// keep their familiar hit size — see TitleBar.h. DockSpaceHost::Begin is what
@@ -77,7 +77,7 @@ namespace Graphite {
 
 		if (m_CustomTitleBar)
 		{
-			m_Layout.menuBarHeight = kCaptionHeight;
+			m_Layout.MenuBarHeight = kCaptionHeight;
 		}
 	}
 
@@ -97,10 +97,10 @@ namespace Graphite {
 		// "Workspace" rather than "Folder": closing drops the solution and the selection
 		// along with the folder, and the menu offers two ways to open one. Naming only
 		// the folder would leave the other two looking like they survive.
-		m_Commands.Add({.id = "workspace.close",
-						.label = "Close Workspace",
-						.run = [this] { RequestCloseConfirmation(ClosePurpose::CloseWorkspace); },
-						.enabled = [this] { return m_Workspace.IsOpen(); }});
+		m_Commands.Add({.Id = "workspace.close",
+						.Label = "Close Workspace",
+						.Run = [this] { RequestCloseConfirmation(ClosePurpose::CloseWorkspace); },
+						.Enabled = [this] { return m_Workspace.IsOpen(); }});
 
 		// Through the window's close flag, not Application::Close() directly:
 		// Application's main loop only asks a layer's OnCloseRequested when
@@ -110,21 +110,21 @@ namespace Graphite {
 		//
 		// "Alt+F4" is in the label rather than in the keymap: it is Windows' shortcut, not
 		// ours, and a binding for it would advertise something that cannot be rebound.
-		m_Commands.Add({.id = "app.exit",
-						.label = "Exit\tAlt+F4",
-						.run = [] { Core::Application::Get().GetWindow().RequestClose(); }});
+		m_Commands.Add({.Id = "app.exit",
+						.Label = "Exit\tAlt+F4",
+						.Run = [] { Core::Application::Get().GetWindow().RequestClose(); }});
 
-		m_Commands.Add({.id = "view.resetLayout",
-						.label = "Reset Layout",
-						.run = [this] {
+		m_Commands.Add({.Id = "view.resetLayout",
+						.Label = "Reset Layout",
+						.Run = [this] {
 							m_Panels.ResetVisibility();
 							m_DockSpace.RequestLayoutReset();
 							CORE_INFO("Layout restored to the default");
 						}});
 
-		m_Commands.Add({.id = "help.logTestEntries",
-						.label = "Log test entries",
-						.run = [] {
+		m_Commands.Add({.Id = "help.logTestEntries",
+						.Label = "Log test entries",
+						.Run = [] {
 							CORE_TRACE("Diagnostic entry");
 							CORE_INFO("Informational entry");
 							CORE_WARN("Warning entry");
@@ -148,22 +148,22 @@ namespace Graphite {
 		// mistake worth shouting about, not a reason to refuse to start.
 		for (const Core::Conflict& conflict : m_Keys.FindConflicts())
 		{
-			CORE_ERROR("'{}' and '{}' are both bound to {}", conflict.first, conflict.second,
-					   conflict.chord.ToString());
+			CORE_ERROR("'{}' and '{}' are both bound to {}", conflict.First, conflict.Second,
+					   conflict.Chord.ToString());
 		}
 
 		m_Events.Subscribe<OpenFileRequested>(
 			[this](const OpenFileRequested& event) {
-				m_DocumentWindows.RequestOpen(event.path, event.permanent);
+				m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
 			});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { m_Documents.CloseAll(); });
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>(
-			[this](const WorkspaceRootMovedEvent& event) { m_DocumentWindows.HandleRootMoved(event.from, event.to); });
+			[this](const WorkspaceRootMovedEvent& event) { m_DocumentWindows.HandleRootMoved(event.From, event.To); });
 
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
-			[this](const WorkspaceFilesChangedEvent& event) { m_DocumentWindows.HandleFilesChanged(event.directories, event.everything); });
+			[this](const WorkspaceFilesChangedEvent& event) { m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything); });
 
 		CORE_INFO("Registered panels: {}", m_Panels.GetCount());
 
@@ -243,7 +243,7 @@ namespace Graphite {
 		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), m_DocumentWindows.GetStatusMessage());
 
 		m_DockSpace.Begin(m_Layout);
-		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.menuBarHeight,
+		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
 						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		m_DockSpace.End();
 
@@ -418,8 +418,8 @@ namespace Graphite {
 		{
 			const Core::OpenItem& item = m_Documents.At(index);
 
-			if (item.document && item.document->IsModified())
-				ImGui::BulletText("%s", Core::ToUtf8(item.path.filename()).c_str());
+			if (item.Document && item.Document->IsModified())
+				ImGui::BulletText("%s", Core::ToUtf8(item.Path.filename()).c_str());
 		}
 
 		ImGui::Separator();

@@ -24,14 +24,14 @@ namespace Core {
 
 		std::string LabelOf(const Command& command)
 		{
-			const std::size_t tab = command.label.find('\t');
+			const std::size_t tab = command.Label.find('\t');
 
 			if (tab == std::string::npos)
 			{
-				return command.label;
+				return command.Label;
 			}
 
-			return command.label.substr(0, tab);
+			return command.Label.substr(0, tab);
 		}
 
 		std::string TextOf(const Binding* binding, std::size_t slot)
@@ -43,12 +43,12 @@ namespace Core {
 
 			if (slot == 0)
 			{
-				return binding->primary.ToString();
+				return binding->Primary.ToString();
 			}
 
-			if (slot - 1 < binding->alternates.size())
+			if (slot - 1 < binding->Alternates.size())
 			{
-				return binding->alternates[slot - 1].ToString();
+				return binding->Alternates[slot - 1].ToString();
 			}
 
 			return {};
@@ -61,9 +61,9 @@ namespace Core {
 				return {};
 			}
 
-			std::string text = binding->primary.ToString();
+			std::string text = binding->Primary.ToString();
 
-			for (const Chord& alternate : binding->alternates)
+			for (const Chord& alternate : binding->Alternates)
 			{
 				text.append(" ");
 				text.append(alternate.ToString());
@@ -83,9 +83,9 @@ namespace Core {
 
 			for (const ModifierName& modifier : kModifiers)
 			{
-				if ((mods & modifier.bit) != 0)
+				if ((mods & modifier.Bit) != 0)
 				{
-					text += modifier.name;
+					text += modifier.Name;
 					text += '+';
 				}
 			}
@@ -103,9 +103,9 @@ namespace Core {
 			}
 
 			std::vector<Chord> chords;
-			chords.reserve(binding->alternates.size() + 1);
-			chords.push_back(binding->primary);
-			chords.insert(chords.end(), binding->alternates.begin(), binding->alternates.end());
+			chords.reserve(binding->Alternates.size() + 1);
+			chords.push_back(binding->Primary);
+			chords.insert(chords.end(), binding->Alternates.begin(), binding->Alternates.end());
 
 			return chords;
 		}
@@ -121,8 +121,8 @@ namespace Core {
 				return binding;
 			}
 
-			binding.primary = chords.front();
-			binding.alternates.assign(chords.begin() + 1, chords.end());
+			binding.Primary = chords.front();
+			binding.Alternates.assign(chords.begin() + 1, chords.end());
 
 			return binding;
 		}
@@ -181,48 +181,48 @@ namespace Core {
 			return true;
 		}
 
-		if (Lowered(command.label).find(needle) != std::string::npos)
+		if (Lowered(command.Label).find(needle) != std::string::npos)
 		{
 			return true;
 		}
 
-		return Lowered(AllChordText(m_Keys.For(command.id))).find(needle) !=
+		return Lowered(AllChordText(m_Keys.For(command.Id))).find(needle) !=
 			   std::string::npos;
 	}
 
 	void KeyBindingsPanel::RenderRow(const Command& command)
 	{
-		const Binding* binding = m_Keys.For(command.id);
+		const Binding* binding = m_Keys.For(command.Id);
 
-		ImGui::PushID(command.id.c_str());
+		ImGui::PushID(command.Id.c_str());
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
 		ImGui::TextUnformatted(LabelOf(command).c_str());
 
 		ImGui::TableNextColumn();
-		RenderSlot(command.id, 0, TextOf(binding, 0));
+		RenderSlot(command.Id, 0, TextOf(binding, 0));
 
 		ImGui::TableNextColumn();
-		const std::size_t alternates = binding != nullptr ? binding->alternates.size() : 0;
+		const std::size_t alternates = binding != nullptr ? binding->Alternates.size() : 0;
 
 		for (std::size_t index = 0; index < alternates; ++index)
 		{
-			RenderSlot(command.id, index + 1, TextOf(binding, index + 1));
+			RenderSlot(command.Id, index + 1, TextOf(binding, index + 1));
 		}
 
 		// One slot past the end appends, so a command can gain a second way of being
 		// reached without any other gesture for it.
-		RenderSlot(command.id, alternates + 1, {});
+		RenderSlot(command.Id, alternates + 1, {});
 
 		ImGui::TableNextColumn();
 
-		const bool overridden = m_Keys.IsOverridden(command.id);
+		const bool overridden = m_Keys.IsOverridden(command.Id);
 		ImGui::BeginDisabled(!overridden);
 
 		if (ImGui::SmallButton("Default"))
 		{
-			m_Keys.Override(command.id, std::nullopt);
+			m_Keys.Override(command.Id, std::nullopt);
 			m_OnChanged();
 		}
 

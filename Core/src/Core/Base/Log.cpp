@@ -31,9 +31,9 @@ namespace Core {
 
 	void ConsoleSink::Write(const LogEntry& entry)
 	{
-		const std::string_view level = ToString(entry.level);
-		std::fprintf(entry.level >= LogLevel::Warn ? stderr : stdout, "[%.*s] %s\n",
-					 static_cast<int>(level.size()), level.data(), entry.message.c_str());
+		const std::string_view level = ToString(entry.Level);
+		std::fprintf(entry.Level >= LogLevel::Warn ? stderr : stdout, "[%.*s] %s\n",
+					 static_cast<int>(level.size()), level.data(), entry.Message.c_str());
 	}
 
 	Logger& Logger::Get()

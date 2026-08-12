@@ -21,9 +21,9 @@ namespace Graphite {
 		// "Ignored Files: Dimmed".
 		struct DisplayMode
 		{
-			const char* id;
-			const char* label;
-			GitIgnoredDisplay display;
+			const char* Id;
+			const char* Label;
+			GitIgnoredDisplay Display;
 		};
 
 		constexpr DisplayMode kDisplayModes[] = {
@@ -105,7 +105,7 @@ namespace Graphite {
 		// below is a temporary, and binding a const reference to it here would leave
 		// `loaded` dangling for the rest of the function.
 		const std::filesystem::path loaded =
-			m_Workspace.LoadedSolution() ? m_Workspace.LoadedSolution()->path : std::filesystem::path{};
+			m_Workspace.LoadedSolution() ? m_Workspace.LoadedSolution()->Path : std::filesystem::path{};
 
 		ImGui::SetNextItemWidth(-1.0f);
 
@@ -132,10 +132,10 @@ namespace Graphite {
 	{
 		for (const DisplayMode& mode : kDisplayModes)
 		{
-			commands.Add({.id = mode.id,
-						  .label = mode.label,
-						  .run = [this, mode] { Apply(mode.display, true); },
-						  .checked = [this, mode] { return m_Display == mode.display; }});
+			commands.Add({.Id = mode.Id,
+						  .Label = mode.Label,
+						  .Run = [this, mode] { Apply(mode.Display, true); },
+						  .Checked = [this, mode] { return m_Display == mode.Display; }});
 		}
 	}
 

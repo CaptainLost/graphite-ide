@@ -9,8 +9,8 @@ namespace Core {
 
 	struct IndentStyle
 	{
-		bool useSpaces = true;
-		std::size_t width = 4;
+		bool UseSpaces = true;
+		std::size_t Width = 4;
 	};
 
 	bool InsertText(OpenItem& item, std::string_view utf8);

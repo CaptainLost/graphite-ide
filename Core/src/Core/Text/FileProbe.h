@@ -26,9 +26,9 @@ namespace Core {
 
 	struct FileProbe
 	{
-		FileKind kind = FileKind::Text;
-		Encoding encoding = Encoding::Utf8;
-		std::uint64_t size = 0;
+		FileKind Kind = FileKind::Text;
+		Encoding FileEncoding = Encoding::Utf8;
+		std::uint64_t Size = 0;
 	};
 
 	FileProbe ClassifySample(std::string_view sample, std::uint64_t size);

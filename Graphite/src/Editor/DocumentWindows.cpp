@@ -51,14 +51,14 @@ namespace Graphite {
 			// The same IconForExtension the explorer rows use, so one file reads the same
 			// in the tree and on its tab. Drawn from the regular mono face, which is the
 			// only one carrying the MDI glyphs - nothing here may push another.
-			const std::filesystem::path& path = documents.At(index).path;
+			const std::filesystem::path& path = documents.At(index).Path;
 
 			return std::string{Core::IconForExtension(Core::ToUtf8(path.extension()))} + "  " + documents.DisplayTitle(index) + "###" + Core::ToUtf8(path);
 		}
 
 		std::string Identity(const Core::DocumentSet& documents, std::size_t index)
 		{
-			return Core::ToUtf8(documents.At(index).path);
+			return Core::ToUtf8(documents.At(index).Path);
 		}
 
 		std::vector<std::string> CurrentIdentities(const Core::DocumentSet& documents)
@@ -97,7 +97,7 @@ namespace Graphite {
 		// not exist, whose file has since appeared and appeared large. OpenConfirmed
 		// would find that tab and only activate it, loading nothing and leaving the
 		// question answered by an empty tab - so the item is filled directly instead.
-		if (existing && !m_Documents.At(*existing).document)
+		if (existing && !m_Documents.At(*existing).Document)
 		{
 			// Confirmed, so NeedsConfirmation cannot come back, and Loaded and Failed both
 			// leave the tab saying the right thing: the content, or the reason there is
@@ -121,7 +121,7 @@ namespace Graphite {
 		// answered, and a failure here means the file went away in between.
 		if (const auto probe = Core::ProbeFile(path))
 		{
-			question.size = probe.GetValue().size;
+			question.size = probe.GetValue().Size;
 		}
 
 		// Guarded the way the reload and close questions are: two events naming the same
@@ -190,7 +190,7 @@ namespace Graphite {
 			// down at all - dropped notifications, or a git state change - and every open
 			// document has to be checked. Items already marked Missing are stated too
 			// (see Core::SyncWithFile): the file may have come back.
-			if (!everything && std::find(directories.begin(), directories.end(), item.path.parent_path()) == directories.end())
+			if (!everything && std::find(directories.begin(), directories.end(), item.Path.parent_path()) == directories.end())
 			{
 				continue;
 			}
@@ -230,7 +230,7 @@ namespace Graphite {
 			// Copied here rather than above the switch: every open document is reconciled
 			// on a focus regain and on every "everything" watcher batch, and all but a
 			// handful of those end as Unchanged, which has no use for a path.
-			const std::filesystem::path path = m_Documents.At(index).path;
+			const std::filesystem::path path = m_Documents.At(index).Path;
 
 			if (!m_ReloadConflict.Asked(path))
 			{
@@ -258,7 +258,7 @@ namespace Graphite {
 			{
 				// It came back large. The same question a large file gets when it is
 				// opened by hand, and answering it reaches the same loader.
-				AskAboutSize(item.path, !item.preview);
+				AskAboutSize(item.Path, !item.Preview);
 			}
 
 			break;
@@ -274,7 +274,7 @@ namespace Graphite {
 
 	void DocumentWindows::ReloadOne(std::size_t index)
 	{
-		const std::string fileName = Core::ToUtf8(m_Documents.At(index).path.filename());
+		const std::string fileName = Core::ToUtf8(m_Documents.At(index).Path.filename());
 
 		if (const auto result = Core::ReloadItem(m_Documents, index))
 		{
@@ -282,7 +282,7 @@ namespace Graphite {
 		}
 		else
 		{
-			SetTransientMessage("Could not reload " + fileName + ": " + result.GetError().message);
+			SetTransientMessage("Could not reload " + fileName + ": " + result.GetError().Message);
 		}
 	}
 
@@ -293,12 +293,12 @@ namespace Graphite {
 		// Checked here rather than left to SaveDocument, which succeeds having written
 		// nothing: an item carrying a reason instead of a document has nothing to save,
 		// and "Widget.obj saved" would be a message about a write that never happened.
-		if (!item.document)
+		if (!item.Document)
 		{
 			return true;
 		}
 
-		const std::string fileName = Core::ToUtf8(item.path.filename());
+		const std::string fileName = Core::ToUtf8(item.Path.filename());
 
 		if (const auto result = Core::SaveDocument(m_Documents, index))
 		{
@@ -307,7 +307,7 @@ namespace Graphite {
 		}
 		else
 		{
-			SetTransientMessage("Could not save " + fileName + ": " + result.GetError().message);
+			SetTransientMessage("Could not save " + fileName + ": " + result.GetError().Message);
 			return false;
 		}
 	}
@@ -316,16 +316,16 @@ namespace Graphite {
 	{
 		Core::OpenItem& item = m_Documents.At(index);
 
-		if (!item.document)
+		if (!item.Document)
 			return;
 
-		if (item.document->CheckChangedOnDisk())
+		if (item.Document->CheckChangedOnDisk())
 		{
 			// Never noticed: a dropped notification, with no chance to have asked
 			// earlier. This is the last safety net, immediately before the write.
-			if (!m_OverwriteConfirm.Asked(item.path))
+			if (!m_OverwriteConfirm.Asked(item.Path))
 			{
-				m_OverwriteConfirm.Ask(item.path);
+				m_OverwriteConfirm.Ask(item.Path);
 			}
 
 			return;
@@ -346,9 +346,9 @@ namespace Graphite {
 		// bury the one thing the user has to act on. RequestSave (a deliberate
 		// per-document Ctrl+S) is still where a conflicted document gets its
 		// Overwrite/Cancel question, which is why nothing is asked here.
-		if (report.stoppedAt)
+		if (report.StoppedAt)
 		{
-			SetTransientMessage("Could not save " + Core::ToUtf8(report.stoppedAt->path.filename()) + ": " + report.stoppedAt->error.message);
+			SetTransientMessage("Could not save " + Core::ToUtf8(report.StoppedAt->Path.filename()) + ": " + report.StoppedAt->Error.Message);
 
 			// Every exit here answers "did everything reach disk" with report.IsComplete()
 			// rather than with a literal. The branches below differ in what they say, not
@@ -357,20 +357,20 @@ namespace Graphite {
 			return report.IsComplete();
 		}
 
-		if (report.conflicted.empty())
+		if (report.Conflicted.empty())
 		{
-			if (report.saved > 0)
+			if (report.Saved > 0)
 			{
-				SetTransientMessage("Saved " + std::to_string(report.saved) + (report.saved == 1 ? " file." : " files."));
+				SetTransientMessage("Saved " + std::to_string(report.Saved) + (report.Saved == 1 ? " file." : " files."));
 			}
 
 			return report.IsComplete();
 		}
 
 		std::vector<std::string> names;
-		names.reserve(report.conflicted.size());
+		names.reserve(report.Conflicted.size());
 
-		for (const std::filesystem::path& path : report.conflicted)
+		for (const std::filesystem::path& path : report.Conflicted)
 		{
 			names.push_back(Core::ToUtf8(path.filename()));
 		}
@@ -381,9 +381,9 @@ namespace Graphite {
 		// meant all of them.
 		std::string message;
 
-		if (report.saved > 0)
+		if (report.Saved > 0)
 		{
-			message = "Saved " + std::to_string(report.saved) + (report.saved == 1 ? " file. " : " files. ");
+			message = "Saved " + std::to_string(report.Saved) + (report.Saved == 1 ? " file. " : " files. ");
 		}
 
 		message += std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
@@ -399,7 +399,7 @@ namespace Graphite {
 		{
 			const Core::OpenItem& item = m_Documents.At(index);
 
-			if (item.document && item.document->IsModified())
+			if (item.Document && item.Document->IsModified())
 			{
 				return true;
 			}
@@ -410,13 +410,13 @@ namespace Graphite {
 
 	void DocumentWindows::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)
 	{
-		commands.Add({.id = "document.saveAll",
-					  .label = "Save All",
-					  .run = [this] { (void)SaveAllModified(); },
-					  .enabled = [this] { return HasModifiedDocuments(); }});
+		commands.Add({.Id = "document.saveAll",
+					  .Label = "Save All",
+					  .Run = [this] { (void)SaveAllModified(); },
+					  .Enabled = [this] { return HasModifiedDocuments(); }});
 
 		keys.SetDefault("document.saveAll",
-						{.primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
+						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 	}
 
 	void DocumentWindows::SetTransientMessage(std::string text)
@@ -536,9 +536,9 @@ namespace Graphite {
 				if (path != nullptr)
 				{
 					if (const auto index = m_Documents.Find(*path);
-						index && m_Documents.At(*index).document)
+						index && m_Documents.At(*index).Document)
 					{
-						m_Documents.At(*index).document->AcceptDiskState();
+						m_Documents.At(*index).Document->AcceptDiskState();
 					}
 				}
 
@@ -604,7 +604,7 @@ namespace Graphite {
 
 			const Core::OpenItem& item = m_Documents.At(*index);
 
-			if (item.document && item.document->IsModified())
+			if (item.Document && item.Document->IsModified())
 			{
 				return true;
 			}
@@ -729,7 +729,7 @@ namespace Graphite {
 					ImGui::DockBuilderDockWindow(name.c_str(), targetNode);
 			}
 
-			const bool preview = item.preview;
+			const bool preview = item.Preview;
 
 			// A preview is marked by colour alone. Italic was tried and removed:
 			// it could only ever reach this window's own title bar, drawn inside Begin()
@@ -775,7 +775,7 @@ namespace Graphite {
 			// assuming the X means "close now": the window keeps being torn down from the
 			// dock's bookkeeping only if Render stops resubmitting it, which is exactly
 			// what the dirty-close branch below refuses to do until the question resolves.
-			const bool modified = item.document && item.document->IsModified();
+			const bool modified = item.Document && item.Document->IsModified();
 			const ImGuiWindowFlags windowFlags =
 				modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
 
@@ -783,7 +783,7 @@ namespace Graphite {
 			// selected tab on a docked window, which is why it is set here rather than
 			// ImGui::SetWindowFocus being called from RequestOpen against a window that
 			// may not have been submitted yet this frame.
-			if (focusRequest == item.path)
+			if (focusRequest == item.Path)
 				ImGui::SetNextWindowFocus();
 
 			bool open = true;
@@ -816,10 +816,10 @@ namespace Graphite {
 				// The first edit promotes a preview tab exactly as a double click does:
 				// once the user has typed into it, it is no longer something they were
 				// just glancing at.
-				if (editorResult.edited && preview)
+				if (editorResult.Edited && preview)
 					m_Documents.Promote(index);
 
-				if (editorResult.saveRequested)
+				if (editorResult.SaveRequested)
 					RequestSave(index);
 			}
 
@@ -837,9 +837,9 @@ namespace Graphite {
 					// first question resolves still gets its own question, in order,
 					// instead of being silently dropped - and the tab's close button
 					// pressed again while its own question waits does not queue it twice.
-					if (!m_CloseConfirm.Asked(item.path))
+					if (!m_CloseConfirm.Asked(item.Path))
 					{
-						m_CloseConfirm.Ask(item.path);
+						m_CloseConfirm.Ask(item.Path);
 					}
 				}
 				else

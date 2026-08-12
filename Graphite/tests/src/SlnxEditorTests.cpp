@@ -88,7 +88,7 @@ TEST_CASE("Opening a format this build cannot write fails")
 	const auto editor = Graphite::SolutionEditor::Open(file);
 
 	REQUIRE_FALSE(editor.HasValue());
-	CHECK(editor.GetError().code == Core::ErrorCode::Unsupported);
+	CHECK(editor.GetError().Code == Core::ErrorCode::Unsupported);
 }
 
 TEST_CASE("Nothing is written until Save is called")
@@ -116,7 +116,7 @@ TEST_CASE("Adding a project puts it in the solution and changes nothing else")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 2);
+	CHECK(solution.GetValue().ProjectCount == 2);
 
 	const std::string written = Read(file);
 
@@ -153,8 +153,8 @@ TEST_CASE("A project added to a folder lands in that folder")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	REQUIRE(solution.GetValue().root.folders.size() == 1);
-	CHECK(solution.GetValue().root.folders[0].projects.size() == 2);
+	REQUIRE(solution.GetValue().Root.Folders.size() == 1);
+	CHECK(solution.GetValue().Root.Folders[0].Projects.size() == 2);
 }
 
 TEST_CASE("The project path is written relative to the solution")
@@ -185,7 +185,7 @@ TEST_CASE("Adding a project that is already a member is refused")
 	const auto added = editor.GetValue()->AddProject(temp.GetPath() / "app" / "App.vcxproj", "");
 
 	REQUIRE_FALSE(added.HasValue());
-	CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(added.GetError().Code == Core::ErrorCode::InvalidArgument);
 	CHECK(Read(file) == kSolution);
 }
 
@@ -200,7 +200,7 @@ TEST_CASE("Adding a project file that does not exist is refused")
 	const auto added = editor.GetValue()->AddProject(temp.GetPath() / "gone" / "Gone.vcxproj", "");
 
 	REQUIRE_FALSE(added.HasValue());
-	CHECK(added.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(added.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Removing a project takes it out and leaves the rest alone")
@@ -215,7 +215,7 @@ TEST_CASE("Removing a project takes it out and leaves the rest alone")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 0);
+	CHECK(solution.GetValue().ProjectCount == 0);
 
 	// The folder it was in stays, its line goes whole rather than leaving a blank one, and
 	// every other byte is untouched.
@@ -243,7 +243,7 @@ TEST_CASE("Removing a project that is not a member is refused")
 	const auto removed = editor.GetValue()->RemoveProject(temp.GetPath() / "lib" / "Lib.vcxproj");
 
 	REQUIRE_FALSE(removed.HasValue());
-	CHECK(removed.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(removed.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("A project file on disk is never touched by removal")
@@ -273,7 +273,7 @@ TEST_CASE("Two operations are written as one change")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 1);
+	CHECK(solution.GetValue().ProjectCount == 1);
 }
 
 TEST_CASE("No temporary file is left beside the solution")
@@ -402,7 +402,7 @@ TEST_CASE("A project under a different root is refused")
 	const auto added = editor.GetValue()->AddProject(elsewhere, "");
 
 	REQUIRE_FALSE(added.HasValue());
-	CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(added.GetError().Code == Core::ErrorCode::InvalidArgument);
 	CHECK(Read(file) == kSolution);
 }
 
@@ -453,7 +453,7 @@ TEST_CASE("Adding a folder that already exists is refused")
 	const auto added = editor.GetValue()->AddFolder("App");
 
 	REQUIRE_FALSE(added.HasValue());
-	CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(added.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("Adding a project to a folder that does not exist creates it")
@@ -468,7 +468,7 @@ TEST_CASE("Adding a project to a folder that does not exist creates it")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	REQUIRE(solution.GetValue().root.folders.size() == 2);
+	REQUIRE(solution.GetValue().Root.Folders.size() == 2);
 }
 
 TEST_CASE("An empty folder can be removed")
@@ -498,7 +498,7 @@ TEST_CASE("A folder holding a project cannot be removed")
 	const auto removed = editor.GetValue()->RemoveFolder("App");
 
 	REQUIRE_FALSE(removed.HasValue());
-	CHECK(removed.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(removed.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("A folder holding another folder cannot be removed")
@@ -513,7 +513,7 @@ TEST_CASE("A folder holding another folder cannot be removed")
 	const auto removed = editor.GetValue()->RemoveFolder("Engine");
 
 	REQUIRE_FALSE(removed.HasValue());
-	CHECK(removed.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(removed.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("Renaming a folder renames its descendants too")
@@ -548,9 +548,9 @@ TEST_CASE("Renaming a folder leaves its projects where they are")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	REQUIRE(solution.GetValue().root.folders.size() == 1);
-	CHECK(solution.GetValue().root.folders[0].name == "Application");
-	CHECK(solution.GetValue().root.folders[0].projects.size() == 1);
+	REQUIRE(solution.GetValue().Root.Folders.size() == 1);
+	CHECK(solution.GetValue().Root.Folders[0].Name == "Application");
+	CHECK(solution.GetValue().Root.Folders[0].Projects.size() == 1);
 }
 
 TEST_CASE("A project moves between folders")
@@ -569,12 +569,12 @@ TEST_CASE("A project moves between folders")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	for (const Graphite::Folder& folder : solution.GetValue().root.folders)
+	for (const Graphite::Folder& folder : solution.GetValue().Root.Folders)
 	{
-		if (folder.name == "Engine")
-			CHECK(folder.projects.size() == 1);
+		if (folder.Name == "Engine")
+			CHECK(folder.Projects.size() == 1);
 		else
-			CHECK(folder.projects.empty());
+			CHECK(folder.Projects.empty());
 	}
 }
 
@@ -590,8 +590,8 @@ TEST_CASE("A project moves out of a folder to the solution root")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().root.projects.size() == 1);
-	CHECK(solution.GetValue().root.folders[0].projects.empty());
+	CHECK(solution.GetValue().Root.Projects.size() == 1);
+	CHECK(solution.GetValue().Root.Folders[0].Projects.empty());
 }
 
 TEST_CASE("Moving a project keeps its identifier")

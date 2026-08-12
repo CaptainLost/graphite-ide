@@ -33,7 +33,7 @@ TEST_CASE("Opening a directory that is not a repository fails")
 	auto opened = Repository::Open(temp.GetPath());
 
 	REQUIRE_FALSE(opened.HasValue());
-	CHECK(opened.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(opened.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Opening succeeds from the repository root")

@@ -13,11 +13,11 @@ namespace Core {
 
 	struct DirectoryEntry
 	{
-		std::filesystem::path path;
-		std::string name;
-		bool isDirectory = false;
-		bool isHidden = false;
-		std::uint64_t size = 0;
+		std::filesystem::path Path;
+		std::string Name;
+		bool IsDirectory = false;
+		bool IsHidden = false;
+		std::uint64_t Size = 0;
 	};
 
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path);

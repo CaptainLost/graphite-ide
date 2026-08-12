@@ -29,10 +29,10 @@ namespace {
 
 	const Folder* FindFolder(const Folder& parent, std::string_view name)
 	{
-		const auto match = std::find_if(parent.folders.begin(), parent.folders.end(),
-										[name](const Folder& f) { return f.name == name; });
+		const auto match = std::find_if(parent.Folders.begin(), parent.Folders.end(),
+										[name](const Folder& f) { return f.Name == name; });
 
-		return match == parent.folders.end() ? nullptr : &*match;
+		return match == parent.Folders.end() ? nullptr : &*match;
 	}
 }
 
@@ -43,7 +43,7 @@ TEST_CASE("Reading a solution that does not exist fails with NotFound")
 	const auto solution = Graphite::ReadSolution(temp.GetPath() / "missing.slnx");
 
 	REQUIRE_FALSE(solution.HasValue());
-	CHECK(solution.GetError().code == Core::ErrorCode::NotFound);
+	CHECK(solution.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Reading a file with an unknown extension is unsupported")
@@ -54,7 +54,7 @@ TEST_CASE("Reading a file with an unknown extension is unsupported")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE_FALSE(solution.HasValue());
-	CHECK(solution.GetError().code == Core::ErrorCode::Unsupported);
+	CHECK(solution.GetError().Code == Core::ErrorCode::Unsupported);
 }
 
 TEST_CASE("Malformed XML reports an error rather than a partial solution")
@@ -65,7 +65,7 @@ TEST_CASE("Malformed XML reports an error rather than a partial solution")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE_FALSE(solution.HasValue());
-	CHECK(solution.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(solution.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("The solution takes its name from the file")
@@ -76,8 +76,8 @@ TEST_CASE("The solution takes its name from the file")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().name == "MyApp");
-	CHECK(solution.GetValue().path == file);
+	CHECK(solution.GetValue().Name == "MyApp");
+	CHECK(solution.GetValue().Path == file);
 }
 
 TEST_CASE("Solution folders become tree folders with the slashes stripped")
@@ -88,8 +88,8 @@ TEST_CASE("Solution folders become tree folders with the slashes stripped")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Folder& root = solution.GetValue().root;
-	REQUIRE(root.folders.size() == 2);
+	const Folder& root = solution.GetValue().Root;
+	REQUIRE(root.Folders.size() == 2);
 
 	// "/App/" in the file, "App" in the model — the slashes carry nesting, not the name.
 	CHECK(FindFolder(root, "App") != nullptr);
@@ -104,16 +104,16 @@ TEST_CASE("Projects land in their folder with an absolute path")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Folder* engine = FindFolder(solution.GetValue().root, "Engine");
+	const Folder* engine = FindFolder(solution.GetValue().Root, "Engine");
 	REQUIRE(engine != nullptr);
-	REQUIRE(engine->projects.size() == 2);
+	REQUIRE(engine->Projects.size() == 2);
 
 	// The file spells paths relative to the solution and with backslashes; the model
 	// holds absolute paths, because everything downstream opens them.
-	const Project& core = engine->projects[0];
-	CHECK(core.displayName == "Core");
-	CHECK(core.path == temp.GetPath() / "Core" / "Core.vcxproj");
-	CHECK(core.path.is_absolute());
+	const Project& core = engine->Projects[0];
+	CHECK(core.DisplayName == "Core");
+	CHECK(core.Path == temp.GetPath() / "Core" / "Core.vcxproj");
+	CHECK(core.Path.is_absolute());
 }
 
 TEST_CASE("Nested solution folders are nested in the model")
@@ -134,11 +134,11 @@ TEST_CASE("Nested solution folders are nested in the model")
 
 	// Nesting is expressed by the folder's path, not by element nesting — the two Folder
 	// elements are siblings in the file.
-	const Folder* group = FindFolder(solution.GetValue().root, "Group");
+	const Folder* group = FindFolder(solution.GetValue().Root, "Group");
 	REQUIRE(group != nullptr);
-	REQUIRE(group->folders.size() == 1);
-	CHECK(group->folders[0].name == "Inner");
-	CHECK(group->folders[0].projects.size() == 1);
+	REQUIRE(group->Folders.size() == 1);
+	CHECK(group->Folders[0].Name == "Inner");
+	CHECK(group->Folders[0].Projects.size() == 1);
 }
 
 TEST_CASE("A project outside any folder sits at the solution root")
@@ -150,9 +150,9 @@ TEST_CASE("A project outside any folder sits at the solution root")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	CHECK(solution.GetValue().root.folders.empty());
-	REQUIRE(solution.GetValue().root.projects.size() == 1);
-	CHECK(solution.GetValue().root.projects[0].displayName == "A");
+	CHECK(solution.GetValue().Root.Folders.empty());
+	REQUIRE(solution.GetValue().Root.Projects.size() == 1);
+	CHECK(solution.GetValue().Root.Projects[0].DisplayName == "A");
 }
 
 TEST_CASE("An empty solution reads as empty rather than failing")
@@ -163,9 +163,9 @@ TEST_CASE("An empty solution reads as empty rather than failing")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 0);
-	CHECK(solution.GetValue().root.folders.empty());
-	CHECK(solution.GetValue().root.projects.empty());
+	CHECK(solution.GetValue().ProjectCount == 0);
+	CHECK(solution.GetValue().Root.Folders.empty());
+	CHECK(solution.GetValue().Root.Projects.empty());
 }
 
 TEST_CASE("The project count covers every folder")
@@ -176,7 +176,7 @@ TEST_CASE("The project count covers every folder")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE(solution.HasValue());
-	CHECK(solution.GetValue().projectCount == 3);
+	CHECK(solution.GetValue().ProjectCount == 3);
 }
 
 TEST_CASE("A project whose file is missing is marked rather than dropped")
@@ -191,23 +191,23 @@ TEST_CASE("A project whose file is missing is marked rather than dropped")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	REQUIRE(solution.GetValue().root.projects.size() == 2);
+	REQUIRE(solution.GetValue().Root.Projects.size() == 2);
 
 	// Looked up by name rather than by position: the model is sorted, so declaration
 	// order in the file says nothing about where a project lands.
-	const auto& projects = solution.GetValue().root.projects;
+	const auto& projects = solution.GetValue().Root.Projects;
 
 	const auto real = std::find_if(projects.begin(), projects.end(),
-								   [](const Project& p) { return p.displayName == "Real"; });
+								   [](const Project& p) { return p.DisplayName == "Real"; });
 	const auto gone = std::find_if(projects.begin(), projects.end(),
-								   [](const Project& p) { return p.displayName == "Gone"; });
+								   [](const Project& p) { return p.DisplayName == "Gone"; });
 
 	REQUIRE(real != projects.end());
 	REQUIRE(gone != projects.end());
 
 	// Both are listed — the solution says so, and that is the fact being reported.
-	CHECK(real->exists);
-	CHECK_FALSE(gone->exists);
+	CHECK(real->Exists);
+	CHECK_FALSE(gone->Exists);
 }
 
 TEST_CASE("Project contents are read by the solution reader")
@@ -231,15 +231,15 @@ TEST_CASE("Project contents are read by the solution reader")
 
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
-	REQUIRE(solution.GetValue().root.projects.size() == 1);
+	REQUIRE(solution.GetValue().Root.Projects.size() == 1);
 
-	const Project& project = solution.GetValue().root.projects[0];
+	const Project& project = solution.GetValue().Root.Projects[0];
 
-	REQUIRE(project.exists);
-	CHECK(project.contentRead);
-	CHECK_FALSE(project.content.root.files.empty());
-	CHECK(project.content.root.folders.empty());
-	CHECK_FALSE(project.content.references.empty());
+	REQUIRE(project.Exists);
+	CHECK(project.ContentRead);
+	CHECK_FALSE(project.Content.Root.Files.empty());
+	CHECK(project.Content.Root.Folders.empty());
+	CHECK_FALSE(project.Content.References.empty());
 }
 
 TEST_CASE("An uppercase extension is still a solution")
@@ -263,7 +263,7 @@ TEST_CASE("Valid XML that is not a solution is rejected")
 	const auto solution = Graphite::ReadSolution(file);
 
 	REQUIRE_FALSE(solution.HasValue());
-	CHECK(solution.GetError().code == Core::ErrorCode::InvalidArgument);
+	CHECK(solution.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("Folders and projects come back sorted, not in declaration order")
@@ -280,17 +280,17 @@ TEST_CASE("Folders and projects come back sorted, not in declaration order")
 	const auto solution = Graphite::ReadSolution(file);
 	REQUIRE(solution.HasValue());
 
-	const Folder& root = solution.GetValue().root;
+	const Folder& root = solution.GetValue().Root;
 
 	// Case-insensitive, so "apple" sits before "Zebra" rather than after it — the rule
 	// the file tree already uses, and the one Visual Studio displays.
-	REQUIRE(root.folders.size() == 2);
-	CHECK(root.folders[0].name == "apple");
-	CHECK(root.folders[1].name == "Zebra");
+	REQUIRE(root.Folders.size() == 2);
+	CHECK(root.Folders[0].Name == "apple");
+	CHECK(root.Folders[1].Name == "Zebra");
 
-	REQUIRE(root.projects.size() == 2);
-	CHECK(root.projects[0].displayName == "alpha");
-	CHECK(root.projects[1].displayName == "Zulu");
+	REQUIRE(root.Projects.size() == 2);
+	CHECK(root.Projects[0].DisplayName == "alpha");
+	CHECK(root.Projects[1].DisplayName == "Zulu");
 }
 
 TEST_CASE("IsSolutionFile recognises both formats and nothing else")

@@ -50,48 +50,48 @@ TEST_CASE("Left and right move by a character, not a byte")
 
 	Caret caret = At(0);
 	caret = Step(buffer, caret, Motion::Right);
-	CHECK(caret.offset == 1);
+	CHECK(caret.Offset == 1);
 	caret = Step(buffer, caret, Motion::Right);
-	CHECK(caret.offset == 3);
+	CHECK(caret.Offset == 3);
 	caret = Step(buffer, caret, Motion::Right);
-	CHECK(caret.offset == 7);
+	CHECK(caret.Offset == 7);
 
 	caret = Step(buffer, caret, Motion::Left);
-	CHECK(caret.offset == 3);
+	CHECK(caret.Offset == 3);
 	caret = Step(buffer, caret, Motion::Left);
-	CHECK(caret.offset == 1);
+	CHECK(caret.Offset == 1);
 }
 
 TEST_CASE("Movement stops at the ends of the document")
 {
 	const TextBuffer buffer{"ab"};
 
-	CHECK(Step(buffer, At(0), Motion::Left).offset == 0);
-	CHECK(Step(buffer, At(2), Motion::Right).offset == 2);
+	CHECK(Step(buffer, At(0), Motion::Left).Offset == 0);
+	CHECK(Step(buffer, At(2), Motion::Right).Offset == 2);
 }
 
 TEST_CASE("Left and right cross line boundaries")
 {
 	const TextBuffer buffer{"ab\ncd"};
 
-	CHECK(Step(buffer, At(2), Motion::Right).offset == 3);
-	CHECK(Step(buffer, At(3), Motion::Left).offset == 2);
+	CHECK(Step(buffer, At(2), Motion::Right).Offset == 3);
+	CHECK(Step(buffer, At(3), Motion::Left).Offset == 2);
 }
 
 TEST_CASE("Home and End go to the ends of the line, not the document")
 {
 	const TextBuffer buffer{"first\nsecond\nthird"};
 
-	CHECK(Step(buffer, At(9), Motion::LineStart).offset == 6);
-	CHECK(Step(buffer, At(9), Motion::LineEnd).offset == 12);
+	CHECK(Step(buffer, At(9), Motion::LineStart).Offset == 6);
+	CHECK(Step(buffer, At(9), Motion::LineEnd).Offset == 12);
 }
 
 TEST_CASE("Ctrl+Home and Ctrl+End go to the ends of the document")
 {
 	const TextBuffer buffer{"first\nsecond"};
 
-	CHECK(Step(buffer, At(8), Motion::DocumentStart).offset == 0);
-	CHECK(Step(buffer, At(2), Motion::DocumentEnd).offset == buffer.GetLength());
+	CHECK(Step(buffer, At(8), Motion::DocumentStart).Offset == 0);
+	CHECK(Step(buffer, At(2), Motion::DocumentEnd).Offset == buffer.GetLength());
 }
 
 TEST_CASE("Down keeps the column across a shorter line")
@@ -102,10 +102,10 @@ TEST_CASE("Down keeps the column across a shorter line")
 
 	Caret caret = At(5);
 	caret = Step(buffer, caret, Motion::Down);
-	CHECK(caret.offset == 11); // end of "bb"
+	CHECK(caret.Offset == 11); // end of "bb"
 
 	caret = Step(buffer, caret, Motion::Down);
-	CHECK(caret.offset == 12 + 5); // column 5 of "cccccccc"
+	CHECK(caret.Offset == 12 + 5); // column 5 of "cccccccc"
 }
 
 TEST_CASE("A stored column smaller than the actual one still wins")
@@ -117,7 +117,7 @@ TEST_CASE("A stored column smaller than the actual one still wins")
 	const TextBuffer buffer{"aaaaaaaa\nbb\ncccccccc"};
 
 	const Caret caret{5, 5, 1};
-	CHECK(Step(buffer, caret, Motion::Down).offset == 10);
+	CHECK(Step(buffer, caret, Motion::Down).Offset == 10);
 }
 
 TEST_CASE("A horizontal move resets the column the caret aims for")
@@ -129,7 +129,7 @@ TEST_CASE("A horizontal move resets the column the caret aims for")
 	caret = Step(buffer, caret, Motion::Left); // now deliberately at column 1
 	caret = Step(buffer, caret, Motion::Down);
 
-	CHECK(caret.offset == 12 + 1);
+	CHECK(caret.Offset == 12 + 1);
 }
 
 TEST_CASE("Up and down respect tab stops rather than byte counts")
@@ -141,15 +141,15 @@ TEST_CASE("Up and down respect tab stops rather than byte counts")
 	Caret caret = At(1); // on 'x', column 4
 	caret = Step(buffer, caret, Motion::Down);
 
-	CHECK(caret.offset == 3 + 4);
+	CHECK(caret.Offset == 3 + 4);
 }
 
 TEST_CASE("Up on the first line and down on the last stay put")
 {
 	const TextBuffer buffer{"one\ntwo"};
 
-	CHECK(Step(buffer, At(1), Motion::Up).offset == 1);
-	CHECK(Step(buffer, At(5), Motion::Down).offset == 5);
+	CHECK(Step(buffer, At(1), Motion::Up).Offset == 1);
+	CHECK(Step(buffer, At(5), Motion::Down).Offset == 5);
 }
 
 TEST_CASE("Page movement covers a screen and clamps at the ends")
@@ -162,33 +162,33 @@ TEST_CASE("Page movement covers a screen and clamps at the ends")
 	const TextBuffer buffer{content};
 
 	const Caret start = At(buffer.LineStart(20));
-	CHECK(Move(buffer, start, Motion::PageDown, false, 4, 10).offset == buffer.LineStart(30));
-	CHECK(Move(buffer, start, Motion::PageUp, false, 4, 10).offset == buffer.LineStart(10));
+	CHECK(Move(buffer, start, Motion::PageDown, false, 4, 10).Offset == buffer.LineStart(30));
+	CHECK(Move(buffer, start, Motion::PageUp, false, 4, 10).Offset == buffer.LineStart(10));
 
-	CHECK(Move(buffer, At(0), Motion::PageUp, false, 4, 10).offset == 0);
+	CHECK(Move(buffer, At(0), Motion::PageUp, false, 4, 10).Offset == 0);
 
 	const Caret last = At(buffer.LineStart(buffer.GetLineCount() - 1));
-	CHECK(Move(buffer, last, Motion::PageDown, false, 4, 10).offset == last.offset);
+	CHECK(Move(buffer, last, Motion::PageDown, false, 4, 10).Offset == last.Offset);
 }
 
 TEST_CASE("Word movement crosses runs of like characters")
 {
 	const TextBuffer buffer{"int value_2 = other;"};
 
-	CHECK(Step(buffer, At(0), Motion::WordRight).offset == 3);	// end of "int"
-	CHECK(Step(buffer, At(3), Motion::WordRight).offset == 4);	// over the space
-	CHECK(Step(buffer, At(4), Motion::WordRight).offset == 11); // end of "value_2"
+	CHECK(Step(buffer, At(0), Motion::WordRight).Offset == 3);	// end of "int"
+	CHECK(Step(buffer, At(3), Motion::WordRight).Offset == 4);	// over the space
+	CHECK(Step(buffer, At(4), Motion::WordRight).Offset == 11); // end of "value_2"
 
-	CHECK(Step(buffer, At(11), Motion::WordLeft).offset == 4);
-	CHECK(Step(buffer, At(4), Motion::WordLeft).offset == 3);
+	CHECK(Step(buffer, At(11), Motion::WordLeft).Offset == 4);
+	CHECK(Step(buffer, At(4), Motion::WordLeft).Offset == 3);
 }
 
 TEST_CASE("Word movement stops at the ends of the document")
 {
 	const TextBuffer buffer{"word"};
 
-	CHECK(Step(buffer, At(0), Motion::WordLeft).offset == 0);
-	CHECK(Step(buffer, At(4), Motion::WordRight).offset == 4);
+	CHECK(Step(buffer, At(0), Motion::WordLeft).Offset == 0);
+	CHECK(Step(buffer, At(4), Motion::WordRight).Offset == 4);
 }
 
 TEST_CASE("Shift keeps the anchor, so movement extends the selection")
@@ -199,8 +199,8 @@ TEST_CASE("Shift keeps the anchor, so movement extends the selection")
 	caret = Step(buffer, caret, Motion::Right, true);
 	caret = Step(buffer, caret, Motion::Right, true);
 
-	CHECK(caret.anchor == 2);
-	CHECK(caret.offset == 4);
+	CHECK(caret.Anchor == 2);
+	CHECK(caret.Offset == 4);
 	CHECK(SelectionRange(caret) == std::pair<std::size_t, std::size_t>{2, 4});
 }
 
@@ -212,7 +212,7 @@ TEST_CASE("Movement without Shift collapses the selection")
 	const Caret moved = Step(buffer, selected, Motion::Right);
 
 	CHECK_FALSE(HasSelection(moved));
-	CHECK(moved.anchor == moved.offset);
+	CHECK(moved.Anchor == moved.Offset);
 }
 
 TEST_CASE("A click lands on a character boundary and never inside one")
@@ -221,8 +221,8 @@ TEST_CASE("A click lands on a character boundary and never inside one")
 							"b"};
 
 	// Byte 2 is the middle of 'ą'.
-	CHECK(PlaceAt(buffer, Caret{}, 2, false, 4).offset == 1);
-	CHECK(PlaceAt(buffer, Caret{}, 99, false, 4).offset == buffer.GetLength());
+	CHECK(PlaceAt(buffer, Caret{}, 2, false, 4).Offset == 1);
+	CHECK(PlaceAt(buffer, Caret{}, 99, false, 4).Offset == buffer.GetLength());
 }
 
 TEST_CASE("A click with Shift extends from the existing anchor")
@@ -231,8 +231,8 @@ TEST_CASE("A click with Shift extends from the existing anchor")
 
 	const Caret placed = PlaceAt(buffer, Caret{2, 2, 0}, 5, true, 4);
 
-	CHECK(placed.anchor == 2);
-	CHECK(placed.offset == 5);
+	CHECK(placed.Anchor == 2);
+	CHECK(placed.Offset == 5);
 }
 
 TEST_CASE("Double click selects the word under the caret")
@@ -248,7 +248,7 @@ TEST_CASE("Double click on whitespace selects the run of whitespace")
 {
 	const TextBuffer buffer{"a    b"};
 
-	CHECK(SelectWordAt(buffer, 2).offset == 5);
+	CHECK(SelectWordAt(buffer, 2).Offset == 5);
 	CHECK(SelectionRange(SelectWordAt(buffer, 2)) == std::pair<std::size_t, std::size_t>{1, 5});
 }
 
@@ -297,11 +297,11 @@ TEST_CASE("Every motion leaves the caret on a character boundary")
 		{
 			const Caret result = Move(buffer, At(start), motion, false, 4, 3);
 
-			REQUIRE(result.offset <= buffer.GetLength());
+			REQUIRE(result.Offset <= buffer.GetLength());
 
 			// A boundary is any offset that is not a UTF-8 continuation byte.
-			if (result.offset < buffer.GetLength())
-				REQUIRE((static_cast<unsigned char>(buffer.CharAt(result.offset)) & 0xC0) != 0x80);
+			if (result.Offset < buffer.GetLength())
+				REQUIRE((static_cast<unsigned char>(buffer.CharAt(result.Offset)) & 0xC0) != 0x80);
 		}
 	}
 }
@@ -319,22 +319,22 @@ TEST_CASE("Left and right step characters across piece boundaries")
 	buffer.Insert(1, "\xC4\x85");
 
 	REQUIRE(buffer.Materialize() == "a\xC4\x85\xC4\x99"
-								"b");
+									"b");
 
 	Caret caret = At(0);
 
 	caret = Step(buffer, caret, Motion::Right);
-	CHECK(caret.offset == 1);
+	CHECK(caret.Offset == 1);
 
 	caret = Step(buffer, caret, Motion::Right);
-	CHECK(caret.offset == 3);
+	CHECK(caret.Offset == 3);
 
 	caret = Step(buffer, caret, Motion::Right);
-	CHECK(caret.offset == 5);
+	CHECK(caret.Offset == 5);
 
 	caret = Step(buffer, caret, Motion::Left);
-	CHECK(caret.offset == 3);
+	CHECK(caret.Offset == 3);
 
 	caret = Step(buffer, caret, Motion::Left);
-	CHECK(caret.offset == 1);
+	CHECK(caret.Offset == 1);
 }

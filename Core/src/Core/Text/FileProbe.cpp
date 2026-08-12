@@ -14,11 +14,11 @@ namespace Core {
 	FileProbe ClassifySample(std::string_view sample, std::uint64_t size)
 	{
 		FileProbe probe;
-		probe.size = size;
-		probe.encoding = SniffEncoding(sample);
+		probe.Size = size;
+		probe.FileEncoding = SniffEncoding(sample);
 
 		const bool isUtf16 =
-			probe.encoding == Encoding::Utf16Le || probe.encoding == Encoding::Utf16Be;
+			probe.FileEncoding == Encoding::Utf16Le || probe.FileEncoding == Encoding::Utf16Be;
 
 		// UTF-16 text is half NUL bytes, so it has to be recognised before this check or
 		// every UTF-16 file would be called binary. SniffEncoding is deliberately hard to
@@ -26,16 +26,16 @@ namespace Core {
 		// not end up opened as editable text.
 		if (!isUtf16 && sample.find('\0') != std::string_view::npos)
 		{
-			probe.kind = FileKind::Binary;
+			probe.Kind = FileKind::Binary;
 			return probe;
 		}
 
 		if (size > MaximumFileSize)
-			probe.kind = FileKind::TooLarge;
+			probe.Kind = FileKind::TooLarge;
 		else if (size > LargeFileThreshold)
-			probe.kind = FileKind::LargeText;
+			probe.Kind = FileKind::LargeText;
 		else
-			probe.kind = FileKind::Text;
+			probe.Kind = FileKind::Text;
 
 		return probe;
 	}

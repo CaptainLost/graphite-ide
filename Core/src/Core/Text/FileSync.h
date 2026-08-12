@@ -32,21 +32,21 @@ namespace Core {
 
 	struct SaveAllReport
 	{
-		std::size_t saved = 0;
+		std::size_t Saved = 0;
 
-		std::vector<std::filesystem::path> conflicted;
+		std::vector<std::filesystem::path> Conflicted;
 
 		struct Failure
 		{
-			std::filesystem::path path;
-			Error error;
+			std::filesystem::path Path;
+			Error Error;
 		};
 
-		std::optional<Failure> stoppedAt;
+		std::optional<Failure> StoppedAt;
 
 		bool IsComplete() const
 		{
-			return !stoppedAt.has_value() && conflicted.empty();
+			return !StoppedAt.has_value() && Conflicted.empty();
 		}
 	};
 

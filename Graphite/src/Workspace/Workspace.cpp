@@ -17,10 +17,10 @@ namespace Graphite {
 		template<typename Visitor>
 		void ForEachProject(const Folder& folder, Visitor&& visit)
 		{
-			for (const Project& project : folder.projects)
+			for (const Project& project : folder.Projects)
 				visit(project);
 
-			for (const Folder& child : folder.folders)
+			for (const Folder& child : folder.Folders)
 				ForEachProject(child, visit);
 		}
 	}
@@ -39,13 +39,13 @@ namespace Graphite {
 		// Build the new tree first: a failed open must leave the current one untouched.
 		if (const auto rooted = candidate.SetRoot(root); !rooted)
 		{
-			CORE_ERROR("Cannot open folder '{}': {}", root.string(), rooted.GetError().message);
+			CORE_ERROR("Cannot open folder '{}': {}", root.string(), rooted.GetError().Message);
 			return rooted;
 		}
 
 		if (const auto expanded = candidate.Expand(candidate.GetRoot()); !expanded)
 		{
-			CORE_ERROR("Cannot read folder '{}': {}", root.string(), expanded.GetError().message);
+			CORE_ERROR("Cannot read folder '{}': {}", root.string(), expanded.GetError().Message);
 			return expanded;
 		}
 
@@ -67,7 +67,7 @@ namespace Graphite {
 		else
 		{
 			// Not fatal: the tree still works, it just will not notice outside changes.
-			CORE_WARN("Cannot watch '{}': {}", root.string(), watcher.GetError().message);
+			CORE_WARN("Cannot watch '{}': {}", root.string(), watcher.GetError().Message);
 			m_Watcher.reset();
 		}
 
@@ -207,15 +207,15 @@ namespace Graphite {
 
 		const Core::DirectoryWatcher::Changes changed = m_Watcher->TakeSettled();
 
-		if (changed.movedTo)
+		if (changed.MovedTo)
 		{
 			// Handled to the exclusion of everything else in this batch: the directories
 			// it carries are spelled under the old root and match nothing any more.
-			HandleRootMoved(*changed.movedTo);
+			HandleRootMoved(*changed.MovedTo);
 			return;
 		}
 
-		if (changed.directories.empty() && !changed.overflowed)
+		if (changed.Directories.empty() && !changed.Overflowed)
 			return;
 
 		// Settled before the directories are refreshed, not after. Installing or dropping
@@ -224,12 +224,12 @@ namespace Graphite {
 		// came along.
 		const bool repositoryChanged = SyncRepository();
 
-		if (repositoryChanged || changed.overflowed)
+		if (repositoryChanged || changed.Overflowed)
 		{
 			// Either every verdict in the tree just became stale, or individual paths
 			// were lost. Both mean nothing narrower than the whole tree is trustworthy —
 			// which also covers whatever paths this batch did carry.
-			if (changed.overflowed)
+			if (changed.Overflowed)
 				CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 
 			m_Tree.Refresh(m_Tree.GetRoot());
@@ -243,19 +243,19 @@ namespace Graphite {
 		// FindNode runs afresh inside RefreshChanged on every iteration, and it has to:
 		// Refresh rebuilds the children vector, so any FileNode* collected up front would
 		// dangle by the second entry.
-		for (const std::filesystem::path& directory : changed.directories)
+		for (const std::filesystem::path& directory : changed.Directories)
 			RefreshChanged(directory);
 
 		// Only when the change could plausibly be a solution or project file. Reloading on
 		// every batch means a build writing into bin/ re-parses the whole solution, which
 		// showed up immediately in practice: opening this repository moments after a build
 		// read it four times over.
-		if (TouchesSolution(changed.directories))
+		if (TouchesSolution(changed.Directories))
 			LoadSolution();
 
 		// Published after the tree has caught up, so a subscriber that looks at both sees
 		// one consistent picture rather than a tree still describing the previous frame.
-		m_Events.Publish(WorkspaceFilesChangedEvent{changed.directories, false});
+		m_Events.Publish(WorkspaceFilesChangedEvent{changed.Directories, false});
 	}
 
 	bool Workspace::TouchesSolution(const std::vector<std::filesystem::path>& directories) const
@@ -278,9 +278,9 @@ namespace Graphite {
 			// .filters sibling lives in the same directory, so one comparison covers both.
 			bool matched = false;
 
-			ForEachProject(m_Solution->root,
+			ForEachProject(m_Solution->Root,
 						   [&directory, &matched](const Project& project) {
-							   if (project.path.parent_path() == directory)
+							   if (project.Path.parent_path() == directory)
 								   matched = true;
 						   });
 
@@ -374,7 +374,7 @@ namespace Graphite {
 			// the workspace. The tree stays as it is rather than being closed: a stale
 			// view the user can act on beats one that vanishes without being asked.
 			CORE_WARN("Cannot resume watching '{}': {}", m_Root.string(),
-					  watcher.GetError().message);
+					  watcher.GetError().Message);
 			return;
 		}
 
@@ -424,7 +424,7 @@ namespace Graphite {
 		else
 		{
 			CORE_WARN("Cannot watch '{}' after the move: {}", to.string(),
-					  watcher.GetError().message);
+					  watcher.GetError().Message);
 		}
 
 		// libgit2 bakes the path into the handle, so the repository has to be opened
@@ -456,7 +456,7 @@ namespace Graphite {
 
 		// Not found means the directory was never expanded, so there is nothing loaded to
 		// correct — it will read the current state whenever the user opens it.
-		if (node != nullptr && node->isDirectory && node->loaded)
+		if (node != nullptr && node->IsDirectory && node->Loaded)
 			m_Tree.Refresh(*node);
 	}
 
@@ -474,12 +474,12 @@ namespace Graphite {
 			Core::FileNode* node = pending.back();
 			pending.pop_back();
 
-			if (node->path == path)
+			if (node->Path == path)
 				return node;
 
-			for (Core::FileNode& child : node->children)
+			for (Core::FileNode& child : node->Children)
 			{
-				if (child.isDirectory)
+				if (child.IsDirectory)
 					pending.push_back(&child);
 			}
 		}
@@ -497,7 +497,7 @@ namespace Graphite {
 		if (!repository)
 		{
 			CORE_TRACE("'{}' is not inside a git repository: {}", m_Root.string(),
-					   repository.GetError().message);
+					   repository.GetError().Message);
 			return;
 		}
 
@@ -522,13 +522,13 @@ namespace Graphite {
 
 		for (const Core::DirectoryEntry& entry : entries.GetValue())
 		{
-			if (entry.isDirectory)
+			if (entry.IsDirectory)
 				continue;
 
-			if (entry.path.extension() == ".slnx")
-				m_SolutionCandidates.push_back(entry.path);
-			else if (entry.path.extension() == ".sln")
-				legacy.push_back(entry.path);
+			if (entry.Path.extension() == ".slnx")
+				m_SolutionCandidates.push_back(entry.Path);
+			else if (entry.Path.extension() == ".sln")
+				legacy.push_back(entry.Path);
 		}
 
 		// A .sln beside a .slnx of the same name is the same solution in the older
@@ -610,7 +610,7 @@ namespace Graphite {
 		if (!solution)
 		{
 			CORE_WARN("Cannot read '{}': {}", m_SelectedSolution.string(),
-					  solution.GetError().message);
+					  solution.GetError().Message);
 			return;
 		}
 
@@ -624,8 +624,8 @@ namespace Graphite {
 		// start, surfacing at whatever first touched the workspace.
 		m_SolutionStamp = ComputeSolutionStamp();
 
-		CORE_INFO("Solution '{}' loaded with {} projects", m_Solution->name,
-				  m_Solution->projectCount);
+		CORE_INFO("Solution '{}' loaded with {} projects", m_Solution->Name,
+				  m_Solution->ProjectCount);
 	}
 
 	std::filesystem::file_time_type Workspace::ComputeSolutionStamp() const
@@ -639,12 +639,12 @@ namespace Graphite {
 		if (!m_Solution)
 			return newest;
 
-		ForEachProject(m_Solution->root,
+		ForEachProject(m_Solution->Root,
 					   [&newest](const Project& project) {
 						   std::error_code projectCode;
 
 						   const auto projectStamp =
-							   std::filesystem::last_write_time(project.path, projectCode);
+							   std::filesystem::last_write_time(project.Path, projectCode);
 
 						   if (!projectCode && projectStamp > newest)
 							   newest = projectStamp;
@@ -652,7 +652,7 @@ namespace Graphite {
 						   // The .filters sibling is half of what the reader used to build
 						   // this project's folders, so a change to it counts as a change
 						   // to the project.
-						   std::filesystem::path filters = project.path;
+						   std::filesystem::path filters = project.Path;
 						   filters += ".filters";
 
 						   const auto filtersStamp =
@@ -692,13 +692,13 @@ namespace Graphite {
 
 	void Workspace::RegisterCommands(Core::CommandRegistry& commands)
 	{
-		commands.Add({.id = "workspace.openFolder",
-					  .label = "Open Folder...",
-					  .run = [this] { OpenFolderInteractively(*this); }});
+		commands.Add({.Id = "workspace.openFolder",
+					  .Label = "Open Folder...",
+					  .Run = [this] { OpenFolderInteractively(*this); }});
 
-		commands.Add({.id = "workspace.openSolution",
-					  .label = "Open Solution...",
-					  .run = [this] { OpenSolutionInteractively(*this); }});
+		commands.Add({.Id = "workspace.openSolution",
+					  .Label = "Open Solution...",
+					  .Run = [this] { OpenSolutionInteractively(*this); }});
 	}
 
 	void OpenFolderInteractively(Workspace& workspace)
@@ -706,7 +706,7 @@ namespace Graphite {
 		auto picked = Core::FileDialog::PickFolder("Open Folder");
 		if (!picked)
 		{
-			CORE_ERROR("Folder dialog failed: {}", picked.GetError().message);
+			CORE_ERROR("Folder dialog failed: {}", picked.GetError().Message);
 			return;
 		}
 
@@ -727,7 +727,7 @@ namespace Graphite {
 
 		if (!picked)
 		{
-			CORE_ERROR("Cannot open the file picker: {}", picked.GetError().message);
+			CORE_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
 			return;
 		}
 
@@ -736,6 +736,6 @@ namespace Graphite {
 			return;
 
 		if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
-			CORE_ERROR("Cannot open the solution: {}", opened.GetError().message);
+			CORE_ERROR("Cannot open the solution: {}", opened.GetError().Message);
 	}
 }

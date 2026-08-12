@@ -140,8 +140,8 @@ TEST_CASE("An offset on an unwrapped line maps to its own row and column")
 
 	const VisualPosition position = CaretToVisual(buffer, rows, 5, 4);
 
-	CHECK(position.row == 1);
-	CHECK(position.column == 1);
+	CHECK(position.Row == 1);
+	CHECK(position.Column == 1);
 }
 
 TEST_CASE("An offset past a break belongs to the following row")
@@ -155,8 +155,8 @@ TEST_CASE("An offset past a break belongs to the following row")
 	// Column 4 is exactly a break: it is the first cell of row 1, never the last of row 0.
 	const VisualPosition position = CaretToVisual(buffer, rows, 4, 4);
 
-	CHECK(position.row == 1);
-	CHECK(position.column == 0);
+	CHECK(position.Row == 1);
+	CHECK(position.Column == 0);
 }
 
 TEST_CASE("A column past the end of a row clamps to that row's last position")

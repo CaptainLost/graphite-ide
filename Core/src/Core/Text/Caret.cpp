@@ -39,7 +39,7 @@ namespace Core {
 		{
 			const Position position = buffer.ToPosition(offset);
 
-			return ColumnOfByte(buffer.LineText(position.line), position.column, tabWidth);
+			return ColumnOfByte(buffer.LineText(position.Line), position.Column, tabWidth);
 		}
 
 		std::size_t OffsetOfColumn(const TextBuffer& buffer, std::size_t line,
@@ -51,20 +51,20 @@ namespace Core {
 		std::size_t DesiredColumnFor(const TextBuffer& buffer, const Caret& caret,
 									 std::size_t tabWidth)
 		{
-			return caret.desiredColumn == NoDesiredColumn
-					   ? ColumnAt(buffer, caret.offset, tabWidth)
-					   : caret.desiredColumn;
+			return caret.DesiredColumn == NoDesiredColumn
+					   ? ColumnAt(buffer, caret.Offset, tabWidth)
+					   : caret.DesiredColumn;
 		}
 
 		std::size_t VerticalTarget(const TextBuffer& buffer, const Caret& caret,
 								   std::size_t lines, bool up, std::size_t tabWidth,
 								   std::size_t column)
 		{
-			const Position position = buffer.ToPosition(caret.offset);
+			const Position position = buffer.ToPosition(caret.Offset);
 
 			const std::size_t line =
-				up ? (position.line > lines ? position.line - lines : 0)
-				   : std::min(position.line + lines, buffer.GetLineCount() - 1);
+				up ? (position.Line > lines ? position.Line - lines : 0)
+				   : std::min(position.Line + lines, buffer.GetLineCount() - 1);
 
 			return OffsetOfColumn(buffer, line, column, tabWidth);
 		}
@@ -140,10 +140,10 @@ namespace Core {
 
 		Caret Settle(Caret caret, std::size_t offset, bool extend)
 		{
-			caret.offset = offset;
+			caret.Offset = offset;
 
 			if (!extend)
-				caret.anchor = offset;
+				caret.Anchor = offset;
 
 			return caret;
 		}
@@ -151,31 +151,31 @@ namespace Core {
 
 	bool HasSelection(const Caret& caret)
 	{
-		return caret.offset != caret.anchor;
+		return caret.Offset != caret.Anchor;
 	}
 
 	std::pair<std::size_t, std::size_t> SelectionRange(const Caret& caret)
 	{
-		return caret.offset < caret.anchor ? std::pair{caret.offset, caret.anchor}
-										   : std::pair{caret.anchor, caret.offset};
+		return caret.Offset < caret.Anchor ? std::pair{caret.Offset, caret.Anchor}
+										   : std::pair{caret.Anchor, caret.Offset};
 	}
 
 	Caret Move(const TextBuffer& buffer, Caret caret, Motion motion, bool extend,
 			   std::size_t tabWidth, std::size_t pageLines)
 	{
-		const Position position = buffer.ToPosition(caret.offset);
+		const Position position = buffer.ToPosition(caret.Offset);
 
-		std::size_t target = caret.offset;
+		std::size_t target = caret.Offset;
 		bool vertical = false;
 		std::size_t verticalColumn = 0;
 
 		switch (motion)
 		{
 		case Motion::Left:
-			target = PreviousCharacterIn(buffer, caret.offset);
+			target = PreviousCharacterIn(buffer, caret.Offset);
 			break;
 		case Motion::Right:
-			target = NextCharacterIn(buffer, caret.offset);
+			target = NextCharacterIn(buffer, caret.Offset);
 			break;
 		case Motion::Up:
 			verticalColumn = DesiredColumnFor(buffer, caret, tabWidth);
@@ -198,10 +198,10 @@ namespace Core {
 			vertical = true;
 			break;
 		case Motion::LineStart:
-			target = buffer.LineStart(position.line);
+			target = buffer.LineStart(position.Line);
 			break;
 		case Motion::LineEnd:
-			target = buffer.LineStart(position.line) + buffer.LineLength(position.line);
+			target = buffer.LineStart(position.Line) + buffer.LineLength(position.Line);
 			break;
 		case Motion::DocumentStart:
 			target = 0;
@@ -210,10 +210,10 @@ namespace Core {
 			target = buffer.GetLength();
 			break;
 		case Motion::WordLeft:
-			target = WordBoundaryBackward(buffer, caret.offset);
+			target = WordBoundaryBackward(buffer, caret.Offset);
 			break;
 		case Motion::WordRight:
-			target = WordBoundaryForward(buffer, caret.offset);
+			target = WordBoundaryForward(buffer, caret.Offset);
 			break;
 		}
 
@@ -223,7 +223,7 @@ namespace Core {
 		// line is too short to reach it — so it carries the resolved column forward
 		// rather than the (possibly shorter) column it actually landed on. Every other
 		// motion redefines where the caret is aiming from the position it now sits at.
-		result.desiredColumn = vertical ? verticalColumn : ColumnAt(buffer, result.offset, tabWidth);
+		result.DesiredColumn = vertical ? verticalColumn : ColumnAt(buffer, result.Offset, tabWidth);
 
 		return result;
 	}
@@ -232,7 +232,7 @@ namespace Core {
 				  std::size_t tabWidth)
 	{
 		Caret result = Settle(caret, SnapToBoundary(buffer, offset), extend);
-		result.desiredColumn = ColumnAt(buffer, result.offset, tabWidth);
+		result.DesiredColumn = ColumnAt(buffer, result.Offset, tabWidth);
 
 		return result;
 	}
@@ -242,9 +242,9 @@ namespace Core {
 		const std::size_t at = SnapToBoundary(buffer, offset);
 
 		Caret caret;
-		caret.anchor = WordBoundaryBackward(buffer, at == buffer.GetLength() ? at : at + 1);
-		caret.offset = WordBoundaryForward(buffer, at);
-		caret.desiredColumn = NoDesiredColumn;
+		caret.Anchor = WordBoundaryBackward(buffer, at == buffer.GetLength() ? at : at + 1);
+		caret.Offset = WordBoundaryForward(buffer, at);
+		caret.DesiredColumn = NoDesiredColumn;
 
 		return caret;
 	}
@@ -252,10 +252,10 @@ namespace Core {
 	Caret SelectLineAt(const TextBuffer& buffer, std::size_t line)
 	{
 		Caret caret;
-		caret.anchor = buffer.LineStart(line);
-		caret.offset = line + 1 < buffer.GetLineCount() ? buffer.LineStart(line + 1)
+		caret.Anchor = buffer.LineStart(line);
+		caret.Offset = line + 1 < buffer.GetLineCount() ? buffer.LineStart(line + 1)
 														: buffer.GetLength();
-		caret.desiredColumn = NoDesiredColumn;
+		caret.DesiredColumn = NoDesiredColumn;
 
 		return caret;
 	}
@@ -263,9 +263,9 @@ namespace Core {
 	Caret SelectAll(const TextBuffer& buffer)
 	{
 		Caret caret;
-		caret.anchor = 0;
-		caret.offset = buffer.GetLength();
-		caret.desiredColumn = NoDesiredColumn;
+		caret.Anchor = 0;
+		caret.Offset = buffer.GetLength();
+		caret.DesiredColumn = NoDesiredColumn;
 
 		return caret;
 	}

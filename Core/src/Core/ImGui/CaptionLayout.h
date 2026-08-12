@@ -4,20 +4,20 @@ namespace Core {
 
 	struct CaptionRect
 	{
-		float x = 0.0f;
-		float y = 0.0f;
-		float width = 0.0f;
-		float height = 0.0f;
+		float X = 0.0f;
+		float Y = 0.0f;
+		float Width = 0.0f;
+		float Height = 0.0f;
 	};
 
 	struct CaptionLayout
 	{
-		CaptionRect minimize;
-		CaptionRect maximize;
-		CaptionRect close;
-		CaptionRect version;
+		CaptionRect Minimize;
+		CaptionRect Maximize;
+		CaptionRect Close;
+		CaptionRect Version;
 
-		bool versionVisible = false;
+		bool VersionVisible = false;
 	};
 
 	CaptionLayout LayOutCaption(float barWidth, float barHeight,

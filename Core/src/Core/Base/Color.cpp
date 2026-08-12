@@ -17,6 +17,6 @@ namespace Core {
 
 	std::uint32_t PackBgr(const Color& color)
 	{
-		return Channel(color.r) | (Channel(color.g) << 8u) | (Channel(color.b) << 16u);
+		return Channel(color.R) | (Channel(color.G) << 8u) | (Channel(color.B) << 16u);
 	}
 }

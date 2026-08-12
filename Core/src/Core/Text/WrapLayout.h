@@ -15,8 +15,8 @@ namespace Core {
 
 	struct VisualPosition
 	{
-		std::size_t row = 0;
-		std::size_t column = 0;
+		std::size_t Row = 0;
+		std::size_t Column = 0;
 	};
 
 	VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,

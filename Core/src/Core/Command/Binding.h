@@ -11,8 +11,8 @@ namespace Core {
 
 	struct Binding
 	{
-		Chord primary;
-		std::vector<Chord> alternates;
+		Chord Primary;
+		std::vector<Chord> Alternates;
 	};
 
 	std::string ToString(const Binding& binding);

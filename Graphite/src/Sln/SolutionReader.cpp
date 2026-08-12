@@ -61,19 +61,19 @@ namespace Graphite {
 
 			for (const std::string& part : parts)
 			{
-				const auto match = std::find_if(current->folders.begin(), current->folders.end(),
-												[&part](const Folder& f) { return f.name == part; });
+				const auto match = std::find_if(current->Folders.begin(), current->Folders.end(),
+												[&part](const Folder& f) { return f.Name == part; });
 
-				if (match != current->folders.end())
+				if (match != current->Folders.end())
 				{
 					current = &*match;
 					continue;
 				}
 
 				Folder created;
-				created.name = part;
-				current->folders.push_back(std::move(created));
-				current = &current->folders.back();
+				created.Name = part;
+				current->Folders.push_back(std::move(created));
+				current = &current->Folders.back();
 			}
 
 			return *current;
@@ -94,19 +94,19 @@ namespace Graphite {
 				// Declared relative to the solution and usually with backslashes, which
 				// std::filesystem accepts on Windows. Made absolute here, once, because
 				// everything downstream opens the file rather than displaying the path.
-				project.path = (solutionDirectory / Core::FromUtf8(declared)).lexically_normal();
-				project.path.make_preferred();
+				project.Path = (solutionDirectory / Core::FromUtf8(declared)).lexically_normal();
+				project.Path.make_preferred();
 
-				project.displayName = Core::ToUtf8(project.path.stem());
-				project.typeId = node.attribute("Type").value();
+				project.DisplayName = Core::ToUtf8(project.Path.stem());
+				project.TypeId = node.attribute("Type").value();
 
 				// One stat per project, and worth it: a solution naming a file that is
 				// not there is a real and common problem, and the view is meant to show
 				// it rather than to quietly render an ordinary-looking node.
 				std::error_code exists;
-				project.exists = std::filesystem::is_regular_file(project.path, exists);
+				project.Exists = std::filesystem::is_regular_file(project.Path, exists);
 
-				folder.projects.push_back(std::move(project));
+				folder.Projects.push_back(std::move(project));
 				++count;
 			}
 		}
@@ -117,43 +117,43 @@ namespace Graphite {
 			static const CsprojReader kCsproj;
 			static const ProjectContentReader* const kReaders[] = {&kVcxproj, &kCsproj};
 
-			for (Project& project : folder.projects)
+			for (Project& project : folder.Projects)
 			{
 				for (const ProjectContentReader* reader : kReaders)
 				{
-					if (!reader->Handles(project.path))
+					if (!reader->Handles(project.Path))
 						continue;
 
-					auto content = reader->Read(project.path);
+					auto content = reader->Read(project.Path);
 
 					// A project that cannot be read does not sink the solution: the
 					// structure around it is still true and still useful.
 					if (!content)
 					{
-						CORE_TRACE("Cannot read '{}': {}", project.path.string(),
-								   content.GetError().message);
+						CORE_TRACE("Cannot read '{}': {}", project.Path.string(),
+								   content.GetError().Message);
 						break;
 					}
 
-					project.content = std::move(content).GetValue();
-					project.contentRead = true;
+					project.Content = std::move(content).GetValue();
+					project.ContentRead = true;
 					break;
 				}
 			}
 
-			for (Folder& child : folder.folders)
+			for (Folder& child : folder.Folders)
 				FillContent(child);
 		}
 
 		void SortSolution(Folder& folder)
 		{
-			std::sort(folder.folders.begin(), folder.folders.end(),
-					  [](const Folder& left, const Folder& right) { return Core::CompareNames(left.name, right.name) < 0; });
+			std::sort(folder.Folders.begin(), folder.Folders.end(),
+					  [](const Folder& left, const Folder& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
-			std::sort(folder.projects.begin(), folder.projects.end(),
-					  [](const Project& left, const Project& right) { return Core::CompareNames(left.displayName, right.displayName) < 0; });
+			std::sort(folder.Projects.begin(), folder.Projects.end(),
+					  [](const Project& left, const Project& right) { return Core::CompareNames(left.DisplayName, right.DisplayName) < 0; });
 
-			for (Folder& child : folder.folders)
+			for (Folder& child : folder.Folders)
 				SortSolution(child);
 		}
 
@@ -178,13 +178,13 @@ namespace Graphite {
 			}
 
 			Solution solution;
-			solution.path = path;
-			solution.name = Core::ToUtf8(path.stem());
+			solution.Path = path;
+			solution.Name = Core::ToUtf8(path.stem());
 
 			const std::filesystem::path directory = path.parent_path();
 
 			// Projects declared outside any Folder belong to the solution itself.
-			ReadProjects(root, solution.root, directory, solution.projectCount);
+			ReadProjects(root, solution.Root, directory, solution.ProjectCount);
 
 			for (const pugi::xml_node& node : root.children("Folder"))
 			{
@@ -193,8 +193,8 @@ namespace Graphite {
 				if (parts.empty())
 					continue;
 
-				Folder& folder = EnsureFolder(solution.root, parts);
-				ReadProjects(node, folder, directory, solution.projectCount);
+				Folder& folder = EnsureFolder(solution.Root, parts);
+				ReadProjects(node, folder, directory, solution.ProjectCount);
 			}
 
 			return solution;
@@ -260,8 +260,8 @@ namespace Graphite {
 
 		// Run after either parser, so the two formats cannot drift apart in what they
 		// hand back.
-		FillContent(solution.root);
-		SortSolution(solution.root);
+		FillContent(solution.Root);
+		SortSolution(solution.Root);
 
 		return solution;
 	}

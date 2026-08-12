@@ -9,51 +9,51 @@ namespace Graphite {
 
 	struct ContentFile
 	{
-		std::string name;
-		std::filesystem::path path;
+		std::string Name;
+		std::filesystem::path Path;
 	};
 
 	struct ContentFolder
 	{
-		std::string name;
-		std::vector<ContentFolder> folders;
-		std::vector<ContentFile> files;
+		std::string Name;
+		std::vector<ContentFolder> Folders;
+		std::vector<ContentFile> Files;
 	};
 
 	struct ProjectContent
 	{
-		ContentFolder root;
+		ContentFolder Root;
 
-		std::vector<std::string> references;
+		std::vector<std::string> References;
 	};
 
 	struct Project
 	{
-		std::string displayName;
-		std::filesystem::path path;
-		std::string typeId;
+		std::string DisplayName;
+		std::filesystem::path Path;
+		std::string TypeId;
 
-		std::vector<std::string> dependencies;
+		std::vector<std::string> Dependencies;
 
-		ProjectContent content;
+		ProjectContent Content;
 
-		bool contentRead = false;
+		bool ContentRead = false;
 
-		bool exists = true;
+		bool Exists = true;
 	};
 
 	struct Folder
 	{
-		std::string name;
-		std::vector<Folder> folders;
-		std::vector<Project> projects;
+		std::string Name;
+		std::vector<Folder> Folders;
+		std::vector<Project> Projects;
 	};
 
 	struct Solution
 	{
-		std::filesystem::path path;
-		std::string name;
-		Folder root;
-		std::size_t projectCount = 0;
+		std::filesystem::path Path;
+		std::string Name;
+		Folder Root;
+		std::size_t ProjectCount = 0;
 	};
 }

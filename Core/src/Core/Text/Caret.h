@@ -12,11 +12,11 @@ namespace Core {
 
 	struct Caret
 	{
-		std::size_t offset = 0;
+		std::size_t Offset = 0;
 
-		std::size_t anchor = 0;
+		std::size_t Anchor = 0;
 
-		std::size_t desiredColumn = NoDesiredColumn;
+		std::size_t DesiredColumn = NoDesiredColumn;
 
 		friend bool operator==(const Caret&, const Caret&) = default;
 	};

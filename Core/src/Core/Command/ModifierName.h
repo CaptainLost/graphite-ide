@@ -6,8 +6,8 @@ namespace Core {
 
 	struct ModifierName
 	{
-		ImGuiKeyChord bit;
-		const char* name;
+		ImGuiKeyChord Bit;
+		const char* Name;
 	};
 
 	constexpr ModifierName kModifiers[] = {

@@ -25,8 +25,8 @@ TEST_CASE("Without wrapping every line is one row")
 	CHECK(rows.TotalRows() == 3);
 	CHECK(rows.FirstRowOf(0) == 0);
 	CHECK(rows.FirstRowOf(2) == 2);
-	CHECK(rows.RowAt(1).line == 1);
-	CHECK(rows.RowAt(1).subRow == 0);
+	CHECK(rows.RowAt(1).Line == 1);
+	CHECK(rows.RowAt(1).SubRow == 0);
 }
 
 TEST_CASE("A wrapped line occupies as many rows as it has breaks plus one")
@@ -49,12 +49,12 @@ TEST_CASE("A row resolves to its line and its position within it")
 	RowMap rows;
 	rows.Rebuild(buffer, 4, 4);
 
-	CHECK(rows.RowAt(0).line == 0);
-	CHECK(rows.RowAt(0).subRow == 0);
-	CHECK(rows.RowAt(2).line == 0);
-	CHECK(rows.RowAt(2).subRow == 2);
-	CHECK(rows.RowAt(3).line == 1);
-	CHECK(rows.RowAt(3).subRow == 0);
+	CHECK(rows.RowAt(0).Line == 0);
+	CHECK(rows.RowAt(0).SubRow == 0);
+	CHECK(rows.RowAt(2).Line == 0);
+	CHECK(rows.RowAt(2).SubRow == 2);
+	CHECK(rows.RowAt(3).Line == 1);
+	CHECK(rows.RowAt(3).SubRow == 0);
 }
 
 TEST_CASE("FirstRowOf and RowAt agree in both directions")
@@ -68,8 +68,8 @@ TEST_CASE("FirstRowOf and RowAt agree in both directions")
 	{
 		const std::size_t row = rows.FirstRowOf(line);
 
-		CHECK(rows.RowAt(row).line == line);
-		CHECK(rows.RowAt(row).subRow == 0);
+		CHECK(rows.RowAt(row).Line == line);
+		CHECK(rows.RowAt(row).SubRow == 0);
 	}
 }
 
@@ -117,8 +117,8 @@ TEST_CASE("A line of zero rows is skipped, which is what folding will need")
 	rows.SetRowsOf(1, 0);
 
 	CHECK(rows.TotalRows() == 2);
-	CHECK(rows.RowAt(0).line == 0);
-	CHECK(rows.RowAt(1).line == 2);
+	CHECK(rows.RowAt(0).Line == 0);
+	CHECK(rows.RowAt(1).Line == 2);
 }
 
 TEST_CASE("Two adjacent zero-row lines are both skipped")
@@ -133,8 +133,8 @@ TEST_CASE("Two adjacent zero-row lines are both skipped")
 	rows.SetRowsOf(2, 0);
 
 	CHECK(rows.TotalRows() == 2);
-	CHECK(rows.RowAt(0).line == 0);
-	CHECK(rows.RowAt(1).line == 3);
+	CHECK(rows.RowAt(0).Line == 0);
+	CHECK(rows.RowAt(1).Line == 3);
 	CHECK(rows.FirstRowOf(3) == 1);
 }
 
@@ -149,8 +149,8 @@ TEST_CASE("A zero-row first line does not claim row zero")
 	rows.SetRowsOf(0, 0);
 
 	CHECK(rows.TotalRows() == 1);
-	CHECK(rows.RowAt(0).line == 1);
-	CHECK(rows.RowAt(0).subRow == 0);
+	CHECK(rows.RowAt(0).Line == 1);
+	CHECK(rows.RowAt(0).SubRow == 0);
 	CHECK(rows.FirstRowOf(1) == 0);
 }
 
@@ -171,13 +171,13 @@ TEST_CASE("A caret on a visible line maps correctly around a zero-row line")
 	// Line 0 keeps row 0; line 2 (offsets 6 and 7) moves up to row 1.
 	const VisualPosition before = CaretToVisual(buffer, rows, 1, 4);
 
-	CHECK(before.row == 0);
-	CHECK(before.column == 1);
+	CHECK(before.Row == 0);
+	CHECK(before.Column == 1);
 
 	const VisualPosition after = CaretToVisual(buffer, rows, 7, 4);
 
-	CHECK(after.row == 1);
-	CHECK(after.column == 1);
+	CHECK(after.Row == 1);
+	CHECK(after.Column == 1);
 
 	CHECK(VisualToCaret(buffer, rows, before, 4) == 1);
 	CHECK(VisualToCaret(buffer, rows, after, 4) == 7);

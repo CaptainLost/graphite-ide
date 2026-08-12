@@ -48,7 +48,7 @@ namespace Graphite {
 		{
 			if (const auto made = Core::MakeDirectory(directory); !made)
 			{
-				CORE_WARN("Cannot create '{}': {}", directory.string(), made.GetError().message);
+				CORE_WARN("Cannot create '{}': {}", directory.string(), made.GetError().Message);
 				return;
 			}
 		}
