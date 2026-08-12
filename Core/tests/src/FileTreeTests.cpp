@@ -333,9 +333,12 @@ TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
 	int calls = 0;
 
 	FileTree tree;
-	tree.SetIgnoreQuery([&calls](const std::filesystem::path&, bool) {
-                            ++calls;
-                            return false; });
+	tree.SetIgnoreQuery(
+		[&calls](const std::filesystem::path&, bool)
+		{
+			++calls;
+			return false;
+		});
 
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
 	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
