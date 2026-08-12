@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Core/Event/EventBus.h"
+#include "Core/Events/EventBus.h"
 
 #include <string>
 #include <vector>

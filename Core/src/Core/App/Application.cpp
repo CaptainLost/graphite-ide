@@ -4,7 +4,7 @@
 
 #include "Core/Base/Assert.h"
 #include "Core/Base/Log.h"
-#include "Core/Gui/Theme.h"
+#include "Core/ImGui/Theme.h"
 
 #include <GLFW/glfw3.h>
 
@@ -125,7 +125,7 @@ namespace Core {
 				m_Gui.BeginFrame();
 
 				for (Layer* layer : m_FrameLayers)
-					layer->OnUIRender();
+					layer->OnImGuiRender();
 
 				m_Gui.EndFrame(*m_Window);
 			}

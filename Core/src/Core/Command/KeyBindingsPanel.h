@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Command/Chord.h"
-#include "Core/Ui/Panel.h"
+#include "Core/UI/Panel.h"
 
 #include <array>
 #include <cstddef>
@@ -20,7 +20,7 @@ namespace Core {
 	public:
 		KeyBindingsPanel(CommandRegistry& commands, Keymap& keys, std::function<void()> onChanged);
 
-		void OnUIRender() override;
+		void OnImGuiRender() override;
 
 		void OnNotDrawn() override;
 

@@ -1,6 +1,6 @@
 #include "corepch.h"
 
-#include "Core/Gui/DockSpaceHost.h"
+#include "Core/ImGui/DockSpaceHost.h"
 
 #include "Core/Base/Log.h"
 

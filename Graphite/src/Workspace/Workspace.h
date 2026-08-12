@@ -4,7 +4,7 @@
 
 #include "Settings/WorkspaceSettings.h"
 
-#include "Core/Event/EventBus.h"
+#include "Core/Events/EventBus.h"
 #include "Core/Fs/DirectoryWatcher.h"
 #include "Core/Fs/FileTree.h"
 #include "Core/Git/Repository.h"

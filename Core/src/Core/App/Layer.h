@@ -11,13 +11,13 @@ namespace Core {
 	class Layer : NonCopyable
 	{
 	public:
-		explicit Layer(std::string name) : m_Name(std::move(name)) {}
+		explicit Layer(std::string name) : m_DebugName(std::move(name)) {}
 		virtual ~Layer() = default;
 
 		virtual void OnAttach() {}
 		virtual void OnDetach() {}
 		virtual void OnUpdate(Timestep ts) { (void)ts; }
-		virtual void OnUIRender() {}
+		virtual void OnImGuiRender() {}
 
 		// Returning true does not by itself close the window: refusing already cleared the
 		// flag the loop tests, so a layer that has finished asking must call
@@ -25,9 +25,9 @@ namespace Core {
 		// which is what lets a modal draw at all.
 		virtual bool OnCloseRequested() { return true; }
 
-		const std::string& GetName() const { return m_Name; }
+		const std::string& GetName() const { return m_DebugName; }
 
-	private:
-		std::string m_Name;
+	protected:
+		std::string m_DebugName;
 	};
 }

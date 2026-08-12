@@ -14,10 +14,10 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuBar.h"
 #include "Core/Command/ShortcutRouter.h"
-#include "Core/Event/EventBus.h"
-#include "Core/Gui/DockSpaceHost.h"
+#include "Core/Events/EventBus.h"
+#include "Core/ImGui/DockSpaceHost.h"
 #include "Core/Text/DocumentSet.h"
-#include "Core/Ui/PanelManager.h"
+#include "Core/UI/PanelManager.h"
 
 #include <filesystem>
 #include <memory>
@@ -32,7 +32,7 @@ namespace Graphite {
 
 		void OnAttach() override;
 		void OnUpdate(Core::Timestep ts) override;
-		void OnUIRender() override;
+		void OnImGuiRender() override;
 
 		bool OnCloseRequested() override;
 

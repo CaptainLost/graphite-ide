@@ -39,7 +39,7 @@ namespace Graphite {
 	{
 	}
 
-	void ExplorerPanel::OnUIRender()
+	void ExplorerPanel::OnImGuiRender()
 	{
 		SyncModeWithWorkspace();
 		RenderHeader();

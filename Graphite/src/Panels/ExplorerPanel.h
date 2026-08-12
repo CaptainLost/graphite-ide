@@ -5,7 +5,7 @@
 #include "Panels/SolutionTreeView.h"
 #include "Workspace/Workspace.h"
 
-#include "Core/Ui/Panel.h"
+#include "Core/UI/Panel.h"
 
 namespace Core {
 
@@ -26,7 +26,7 @@ namespace Graphite {
 	public:
 		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents);
 
-		void OnUIRender() override;
+		void OnImGuiRender() override;
 
 		void LoadSettings();
 

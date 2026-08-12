@@ -35,7 +35,7 @@
 #include "Core/Command/ShortcutRouter.h"
 // -----------------------------------
 
-#include "Core/Event/EventBus.h"
+#include "Core/Events/EventBus.h"
 
 // ---Files---------------------------
 #include "Core/Fs/AtomicWrite.h"
@@ -49,11 +49,11 @@
 #include "Core/Git/Repository.h"
 
 // ---ImGui---------------------------
-#include "Core/Gui/CaptionLayout.h"
-#include "Core/Gui/DockSpaceHost.h"
-#include "Core/Gui/Icons.h"
-#include "Core/Gui/ImGuiRenderer.h"
-#include "Core/Gui/Theme.h"
+#include "Core/ImGui/CaptionLayout.h"
+#include "Core/ImGui/DockSpaceHost.h"
+#include "Core/ImGui/Icons.h"
+#include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/Theme.h"
 // -----------------------------------
 
 // ---Platform------------------------
@@ -82,5 +82,5 @@
 #include "Core/Text/WrapLayout.h"
 // -----------------------------------
 
-#include "Core/Ui/Panel.h"
-#include "Core/Ui/PanelManager.h"
+#include "Core/UI/Panel.h"
+#include "Core/UI/PanelManager.h"

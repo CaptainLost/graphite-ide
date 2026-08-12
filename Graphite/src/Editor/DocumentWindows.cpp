@@ -6,7 +6,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Gui/Icons.h"
+#include "Core/ImGui/Icons.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
 #include "Core/Text/FileSync.h"
@@ -442,7 +442,7 @@ namespace Graphite {
 	{
 		// Identities as they stand at the start of this frame - after RequestOpen,
 		// CloseAll or HandleRootMoved, all of which run earlier in the same
-		// OnUpdate/OnUIRender pass and never inside this function.
+		// OnUpdate/OnImGuiRender pass and never inside this function.
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
 		// Taken and cleared in one step: whatever asked for this focus did so earlier in

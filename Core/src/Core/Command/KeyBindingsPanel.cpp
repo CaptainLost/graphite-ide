@@ -135,7 +135,7 @@ namespace Core {
 	{
 	}
 
-	void KeyBindingsPanel::OnUIRender()
+	void KeyBindingsPanel::OnImGuiRender()
 	{
 		ImGui::SetNextItemWidth(-1.0f);
 		ImGui::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut",

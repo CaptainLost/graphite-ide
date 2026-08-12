@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/Ui/Panel.h"
+#include "Core/UI/Panel.h"
 
 #include <imgui.h>
 
@@ -17,7 +17,7 @@ namespace Graphite {
 		{
 		}
 
-		void OnUIRender() override
+		void OnImGuiRender() override
 		{
 			ImGui::TextDisabled("%s", m_Message.c_str());
 		}

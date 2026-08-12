@@ -2,7 +2,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Gui/Icons.h"
+#include "Core/ImGui/Icons.h"
 #include "Core/Platform/FileDialog.h"
 #include "Sln/SolutionEditor.h"
 

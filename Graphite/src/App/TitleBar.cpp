@@ -2,7 +2,7 @@
 
 #include "App/Version.h"
 
-#include "Core/Gui/CaptionLayout.h"
+#include "Core/ImGui/CaptionLayout.h"
 #include "Core/Platform/Caption.h"
 #include "Core/Platform/Window.h"
 

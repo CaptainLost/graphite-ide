@@ -3,7 +3,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Gui/Icons.h"
+#include "Core/ImGui/Icons.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 

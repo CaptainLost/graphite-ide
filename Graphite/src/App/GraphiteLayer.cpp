@@ -238,7 +238,7 @@ namespace Graphite {
 		}
 	}
 
-	void GraphiteLayer::OnUIRender()
+	void GraphiteLayer::OnImGuiRender()
 	{
 		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), m_DocumentWindows.GetStatusMessage());
 
@@ -254,7 +254,7 @@ namespace Graphite {
 
 		// Panels render outside the host window — inside it they would dock as ordinary
 		// child windows instead of landing in the dockspace nodes.
-		m_Panels.OnUIRender();
+		m_Panels.OnImGuiRender();
 
 		// The context rather than three arguments: the widget that observes a Ctrl+wheel
 		// gesture is the one place that knows the gesture happened over an editor, and it

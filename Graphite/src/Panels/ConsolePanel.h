@@ -4,7 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Base/RingBufferSink.h"
-#include "Core/Ui/Panel.h"
+#include "Core/UI/Panel.h"
 
 #include <imgui.h>
 
@@ -18,7 +18,7 @@ namespace Graphite {
 	public:
 		explicit ConsolePanel(Core::Ref<Core::RingBufferSink> sink);
 
-		void OnUIRender() override;
+		void OnImGuiRender() override;
 
 	private:
 		void RenderToolbar();

@@ -1,6 +1,6 @@
 #include "corepch.h"
 
-#include "Core/Gui/Theme.h"
+#include "Core/ImGui/Theme.h"
 
 #include <imgui.h>
 

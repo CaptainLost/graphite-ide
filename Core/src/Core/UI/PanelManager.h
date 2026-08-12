@@ -4,7 +4,7 @@
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
-#include "Core/Ui/Panel.h"
+#include "Core/UI/Panel.h"
 
 #include <cstddef>
 #include <memory>
@@ -28,7 +28,7 @@ namespace Core {
 		bool SetVisible(std::string_view id, bool visible);
 
 		void OnUpdate(Timestep ts);
-		void OnUIRender();
+		void OnImGuiRender();
 
 		void RegisterCommands(CommandRegistry& commands);
 

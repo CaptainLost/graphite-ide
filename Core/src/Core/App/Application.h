@@ -4,7 +4,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
-#include "Core/Gui/ImGuiRenderer.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/Platform/Window.h"
 
 #include <memory>

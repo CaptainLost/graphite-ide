@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Core/Gui/Icons.h"
+#include "Core/ImGui/Icons.h"
 
 #include <IconsMaterialDesignIcons.h>
 

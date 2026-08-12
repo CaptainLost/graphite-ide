@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Base/Color.h"
-#include "Core/Gui/Theme.h"
+#include "Core/ImGui/Theme.h"
 
 using Core::Color;
 using Core::PackBgr;

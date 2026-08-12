@@ -1,11 +1,11 @@
 #include "corepch.h"
 
-#include "Core/Gui/ImGuiRenderer.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Gui/Icons.h"
-#include "Core/Gui/Theme.h"
+#include "Core/ImGui/Icons.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Window.h"
 

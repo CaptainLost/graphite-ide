@@ -1,6 +1,6 @@
 #include "corepch.h"
 
-#include "Core/Gui/CaptionLayout.h"
+#include "Core/ImGui/CaptionLayout.h"
 
 namespace Core {
 

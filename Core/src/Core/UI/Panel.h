@@ -20,7 +20,7 @@ namespace Core {
 		virtual ~Panel() = default;
 
 		virtual void OnUpdate(Timestep ts) { (void)ts; }
-		virtual void OnUIRender() {}
+		virtual void OnImGuiRender() {}
 
 		virtual void OnNotDrawn() {}
 

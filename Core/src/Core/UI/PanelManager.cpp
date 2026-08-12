@@ -4,7 +4,7 @@
 
 #include "Core/Base/Base.h"
 
-#include "Core/Ui/PanelManager.h"
+#include "Core/UI/PanelManager.h"
 
 #include "Core/Base/Base.h"
 
@@ -93,7 +93,7 @@ namespace Core {
 			panel->OnUpdate(ts);
 	}
 
-	void PanelManager::OnUIRender()
+	void PanelManager::OnImGuiRender()
 	{
 		for (auto& panel : m_Panels)
 		{
@@ -108,7 +108,7 @@ namespace Core {
 
 			if (ImGui::Begin(label.c_str(), &open))
 			{
-				panel->OnUIRender();
+				panel->OnImGuiRender();
 			}
 			else
 			{

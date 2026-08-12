@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Command/CommandRegistry.h"
-#include "Core/Ui/PanelManager.h"
+#include "Core/UI/PanelManager.h"
 
 #include <memory>
 #include <string>
@@ -181,7 +181,7 @@ TEST_CASE("A hidden panel is told it was not drawn")
 
 	REQUIRE_FALSE(hidden->IsVisible());
 
-	panels.OnUIRender();
+	panels.OnImGuiRender();
 
 	CHECK(hidden->notDrawn == 1);
 }

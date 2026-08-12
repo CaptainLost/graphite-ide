@@ -1,7 +1,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Core/Command/ShortcutRouter.h"
-#include "Core/Gui/ImGuiRenderer.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"

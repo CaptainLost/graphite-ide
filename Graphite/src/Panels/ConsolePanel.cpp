@@ -32,7 +32,7 @@ namespace Graphite {
 	{
 	}
 
-	void ConsolePanel::OnUIRender()
+	void ConsolePanel::OnImGuiRender()
 	{
 		m_Entries = m_Sink->TakeSnapshot();
 
