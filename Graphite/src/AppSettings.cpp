@@ -1,10 +1,8 @@
 #include "AppSettings.h"
 
-#include "Core/Base/Ascii.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/Command/Binding.h"
-#include "Core/Command/Chord.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
@@ -37,17 +35,6 @@ namespace graphite
         /// this file is meant to be.
         constexpr std::string_view kKeyBindingPrefix = "key.";
 
-        /// Primary first, alternates after, '|' between. The separator cannot occur in a
-        /// chord's own text, which is made of modifier and key names joined by '+'.
-        constexpr char kChordSeparator = '|';
-
-        /// What a command the user took every chord away from is written as. The empty
-        /// string cannot carry it — Deserialise refuses empty text, so an unbound override
-        /// would be dropped on the next start and the factory chord would come back,
-        /// silently undoing the very conflict the rebinding screen resolved. No key is
-        /// named "None", so this cannot collide with a chord's own text.
-        constexpr std::string_view kUnboundText = "None";
-
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
         const std::filesystem::path& SettingsPath()
@@ -77,79 +64,6 @@ namespace graphite
 
             if (!file.Save(SettingsPath()))
                 CORE_WARN("Cannot write '{}'", SettingsPath().string());
-        }
-
-        [[nodiscard]] std::string Serialise(const core::Binding& binding)
-        {
-            if (binding.primary.IsEmpty() && binding.alternates.empty())
-            {
-                return std::string{kUnboundText};
-            }
-
-            std::string text = binding.primary.ToString();
-
-            for (const core::Chord& alternate : binding.alternates)
-            {
-                text += kChordSeparator;
-                text += alternate.ToString();
-            }
-
-            return text;
-        }
-
-        /// Empty when any part of the text names a chord this build does not know, so a
-        /// half-understood binding is refused whole rather than applied in part. An empty
-        /// text is a malformed entry too, not a binding of nothing.
-        [[nodiscard]] std::optional<core::Binding> Deserialise(std::string_view text)
-        {
-            core::Binding binding;
-            bool first = true;
-            std::size_t start = 0;
-
-            // An override that binds nothing, which is a different thing from a missing
-            // override: the latter restores the factory chord.
-            // Case-insensitively, like Chord::Parse reads every other name in this file:
-            // a hand-written "none" must not be refused and silently restore the factory
-            // chord, which is the one failure this token exists to prevent.
-            if (core::ascii::Lowered(core::ascii::Trimmed(text)) == core::ascii::Lowered(kUnboundText))
-            {
-                return binding;
-            }
-
-            for (;;)
-            {
-                const std::size_t separator = text.find(kChordSeparator, start);
-                const std::string_view part =
-                    text.substr(start, separator == std::string_view::npos
-                                           ? std::string_view::npos
-                                           : separator - start);
-
-                const std::optional<core::Chord> chord = core::Chord::Parse(part);
-
-                if (!chord.has_value())
-                {
-                    return std::nullopt;
-                }
-
-                if (first)
-                {
-                    binding.primary = *chord;
-                    first = false;
-                }
-                else
-                {
-                    binding.alternates.push_back(*chord);
-                }
-
-                if (separator == std::string_view::npos)
-                {
-                    break;
-                }
-
-                start = separator + 1;
-            }
-
-            return binding;
         }
     }
 
@@ -248,7 +162,7 @@ namespace graphite
             }
 
             const std::string id = key.substr(kKeyBindingPrefix.size());
-            const std::optional<core::Binding> binding = Deserialise(file.Get(key));
+            const std::optional<core::Binding> binding = core::ParseBinding(file.Get(key));
 
             // Skipped rather than fatal, and named so it can be found: one hand-edited
             // line should cost the one binding it describes, not every shortcut in the
@@ -291,8 +205,9 @@ namespace graphite
             file.Remove(key);
         }
 
-        keys.ForEachOverride([&file](const std::string& id, const core::Binding& binding)
-                             { file.Set(std::string{kKeyBindingPrefix} + id, Serialise(binding)); });
+        keys.ForEachOverride(
+            [&file](const std::string& id, const core::Binding& binding)
+            { file.Set(std::string{kKeyBindingPrefix} + id, core::ToString(binding)); });
 
         if (!file.Save(SettingsPath()))
         {
