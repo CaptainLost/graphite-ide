@@ -1,6 +1,6 @@
 #pragma once
 
-#include "WorkspaceSettings.h"
+#include "Settings/WorkspaceSettings.h"
 
 #include "Core/Event/EventBus.h"
 #include "Core/Fs/DirectoryWatcher.h"

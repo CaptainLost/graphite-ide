@@ -1,10 +1,10 @@
-#include "GraphiteLayer.h"
+#include "App/GraphiteLayer.h"
 
 #include "Editor/StatusBar.h"
 #include "Panels/ConsolePanel.h"
 #include "Panels/ExplorerPanel.h"
-#include "AppSettings.h"
-#include "GraphiteMenu.h"
+#include "Settings/AppSettings.h"
+#include "App/GraphiteMenu.h"
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"

@@ -1,6 +1,6 @@
 #include "Panels/ExplorerPanel.h"
 
-#include "AppSettings.h"
+#include "Settings/AppSettings.h"
 
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Fs/FileSystem.h"

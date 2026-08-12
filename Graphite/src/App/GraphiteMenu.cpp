@@ -1,4 +1,4 @@
-#include "GraphiteMenu.h"
+#include "App/GraphiteMenu.h"
 
 namespace Graphite
 {

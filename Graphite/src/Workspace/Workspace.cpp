@@ -1,6 +1,6 @@
-#include "Workspace.h"
+#include "Workspace/Workspace.h"
 
-#include "AppSettings.h"
+#include "Settings/AppSettings.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Command/CommandRegistry.h"

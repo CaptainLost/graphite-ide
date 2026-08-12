@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Workspace.h"
+#include "Workspace/Workspace.h"
 
 #include "Core/Base/Result.h"
 #include "Sln/SolutionModel.h"

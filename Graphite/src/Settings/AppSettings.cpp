@@ -1,4 +1,4 @@
-#include "AppSettings.h"
+#include "Settings/AppSettings.h"
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"

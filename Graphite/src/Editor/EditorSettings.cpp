@@ -1,6 +1,6 @@
 #include "Editor/EditorSettings.h"
 
-#include "AppSettings.h"
+#include "Settings/AppSettings.h"
 
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"

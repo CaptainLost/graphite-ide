@@ -1,4 +1,4 @@
-#include "Version.h"
+#include "App/Version.h"
 
 namespace Graphite
 {

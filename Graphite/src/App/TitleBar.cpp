@@ -1,6 +1,6 @@
-#include "TitleBar.h"
+#include "App/TitleBar.h"
 
-#include "Version.h"
+#include "App/Version.h"
 
 #include "Core/Gui/CaptionLayout.h"
 #include "Core/Platform/Caption.h"

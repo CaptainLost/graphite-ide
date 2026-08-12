@@ -3,8 +3,8 @@
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
-#include "TitleBar.h"
-#include "Workspace.h"
+#include "App/TitleBar.h"
+#include "Workspace/Workspace.h"
 
 #include "Core/App/Layer.h"
 #include "Core/Base/RingBufferSink.h"

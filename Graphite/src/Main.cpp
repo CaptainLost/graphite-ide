@@ -1,6 +1,6 @@
-#include "GraphiteLayer.h"
+#include "App/GraphiteLayer.h"
 
-#include "Version.h"
+#include "App/Version.h"
 
 #include "Core.h"
 #include "Core/App/EntryPoint.h"

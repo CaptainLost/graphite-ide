@@ -1,9 +1,9 @@
 #pragma once
 
-#include "GitIgnoredDisplay.h"
+#include "Workspace/GitIgnoredDisplay.h"
 #include "Panels/FileTreeView.h"
 #include "Panels/SolutionTreeView.h"
-#include "Workspace.h"
+#include "Workspace/Workspace.h"
 
 #include "Core/Ui/Panel.h"
 

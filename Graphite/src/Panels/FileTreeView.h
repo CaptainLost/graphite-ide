@@ -1,7 +1,7 @@
 #pragma once
 
-#include "GitIgnoredDisplay.h"
-#include "Workspace.h"
+#include "Workspace/GitIgnoredDisplay.h"
+#include "Workspace/Workspace.h"
 
 #include "Core/Fs/FileTree.h"
 
