@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace core
+namespace Core
 {
     [[nodiscard]] std::string NameOfKey(ImGuiKey key);
 

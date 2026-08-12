@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace core::text
+namespace Core
 {
     /// Why an open item carries no document.
     enum class OpenFailure

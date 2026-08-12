@@ -4,7 +4,7 @@
 
 #include "Core/Base/Ascii.h"
 
-namespace core
+namespace Core
 {
     namespace
     {
@@ -49,7 +49,7 @@ namespace core
         // Case-insensitively, like Chord::Parse reads every other name in the file this
         // comes from: a hand-written "none" must not be refused and silently restore the
         // factory chord, which is the one failure this token exists to prevent.
-        if (ascii::Lowered(ascii::Trimmed(text)) == ascii::Lowered(kUnboundText))
+        if (Lowered(Trimmed(text)) == Lowered(kUnboundText))
         {
             return binding;
         }

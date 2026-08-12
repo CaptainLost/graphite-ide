@@ -4,7 +4,7 @@
 
 #include "Core/Base/Assert.h"
 
-namespace core
+namespace Core
 {
     LayerStack::~LayerStack()
     {

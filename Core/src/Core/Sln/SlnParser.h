@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <string>
 
-namespace core::sln
+namespace Core
 {
     /// Parses the legacy text solution format. `path` is used to resolve project paths
     /// and to name the solution; `text` is the whole file.

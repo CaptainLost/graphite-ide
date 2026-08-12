@@ -2,7 +2,7 @@
 
 #include "Core/Sln/ProjectContentReader.h"
 
-namespace core::sln
+namespace Core
 {
     /// Reads a Visual C++ project: the file list from the .vcxproj, and the folder
     /// structure from the sibling .vcxproj.filters, which is where Visual Studio keeps it.

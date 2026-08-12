@@ -13,7 +13,7 @@
 #include <system_error>
 #include <vector>
 
-namespace core::sln
+namespace Core
 {
     namespace
     {
@@ -44,7 +44,7 @@ namespace core::sln
         std::string RelativeProjectPath(const std::filesystem::path& solution,
                                         const std::filesystem::path& project)
         {
-            std::string text = fs::ToUtf8(project.lexically_relative(solution.parent_path()));
+            std::string text = ToUtf8(project.lexically_relative(solution.parent_path()));
 
             for (char& character : text)
             {
@@ -85,13 +85,13 @@ namespace core::sln
         void EraseElement(std::string& text, std::size_t offset, std::string_view name)
         {
             const std::size_t begin = offset - 1;   // back over the '<'
-            const std::size_t end = edit::ElementEnd(text, offset, name);
+            const std::size_t end = ElementEnd(text, offset, name);
 
             // Both ends are needed: an element with children spans several lines, and
             // measuring the span from its first line alone erases that one line and leaves
             // the children and the orphaned closing tag behind.
-            const std::size_t lineBegin = edit::LineExtent(text, begin).first;
-            const std::size_t lineEnd = edit::LineExtent(text, end).second;
+            const std::size_t lineBegin = LineExtent(text, begin).first;
+            const std::size_t lineEnd = LineExtent(text, end).second;
 
             const bool aloneOnItsLines = text.find_first_not_of(" \t", lineBegin) == begin
                                          && text.find_first_not_of(" \t\r\n", end) >= lineEnd;
@@ -130,7 +130,7 @@ namespace core::sln
                 continue;
 
             std::filesystem::path candidate =
-                (directory / fs::FromUtf8(declared)).lexically_normal();
+                (directory / FromUtf8(declared)).lexically_normal();
             candidate.make_preferred();
 
             if (candidate == wanted)
@@ -171,11 +171,11 @@ namespace core::sln
 
     void SlnxEditor::InsertChild(std::size_t offset, const std::string& element)
     {
-        const std::string ending = edit::DetectLineEnding(m_text);
-        const std::string unit = edit::IndentUnit(m_text);
+        const std::string ending = DetectLineEnding(m_text);
+        const std::string unit = IndentUnit(m_text);
 
         // Indented one level past the container's own line.
-        const std::size_t lineBegin = edit::LineExtent(m_text, offset).first;
+        const std::size_t lineBegin = LineExtent(m_text, offset).first;
         std::string containerIndent;
 
         for (std::size_t i = lineBegin;
@@ -184,7 +184,7 @@ namespace core::sln
             containerIndent += m_text[i];
         }
 
-        const std::size_t tagEnd = edit::OpeningTagEnd(m_text, offset);
+        const std::size_t tagEnd = OpeningTagEnd(m_text, offset);
 
         // A container with no children yet is written self-closing, so it has to become an
         // open/close pair before anything can go inside it.
@@ -519,7 +519,7 @@ namespace core::sln
         stem.replace_extension();
         const std::filesystem::path extension = m_path.extension();
 
-        const Result<std::filesystem::path> picked = fs::PickAvailablePath(
+        const Result<std::filesystem::path> picked = PickAvailablePath(
             [&stem, &extension](int attempt)
             {
                 std::filesystem::path candidate = stem;
@@ -537,7 +537,7 @@ namespace core::sln
             std::ofstream stream{scratch, std::ios::binary | std::ios::trunc};
 
             if (!stream.is_open())
-                return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", fs::ToUtf8(scratch))};
+                return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", ToUtf8(scratch))};
 
             stream << m_text;
 
@@ -549,7 +549,7 @@ namespace core::sln
                 std::filesystem::remove(scratch, ignored);
 
                 return Error{ErrorCode::IoFailure,
-                             std::format("cannot write '{}'", fs::ToUtf8(scratch))};
+                             std::format("cannot write '{}'", ToUtf8(scratch))};
             }
         }
 
@@ -570,6 +570,6 @@ namespace core::sln
                                      verified.GetError().message)};
         }
 
-        return fs::WriteFileAtomically(m_path, m_text);
+        return WriteFileAtomically(m_path, m_text);
     }
 }

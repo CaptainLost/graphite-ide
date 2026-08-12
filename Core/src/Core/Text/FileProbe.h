@@ -8,7 +8,7 @@
 #include <filesystem>
 #include <string_view>
 
-namespace core::text
+namespace Core
 {
     /// What may be done with a file, decided before any of it is loaded.
     enum class FileKind

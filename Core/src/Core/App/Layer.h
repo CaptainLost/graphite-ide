@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-namespace core
+namespace Core
 {
     /// Unit of application lifetime: receives updates and draws its own UI.
     class Layer : NonCopyable

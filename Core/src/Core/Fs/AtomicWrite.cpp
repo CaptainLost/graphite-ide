@@ -11,7 +11,7 @@
     #include <windows.h>
 #endif
 
-namespace core::fs
+namespace Core
 {
     Result<std::filesystem::path> PickAvailablePath(
         const std::function<std::filesystem::path(int)>& candidateFor)

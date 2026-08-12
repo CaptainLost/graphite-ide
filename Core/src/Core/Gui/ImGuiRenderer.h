@@ -5,7 +5,7 @@
 
 struct ImFont;
 
-namespace core
+namespace Core
 {
     class Window;
 

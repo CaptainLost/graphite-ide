@@ -2,7 +2,7 @@
 
 #include "Core/Base/Color.h"
 
-namespace core
+namespace Core
 {
     class Theme
     {

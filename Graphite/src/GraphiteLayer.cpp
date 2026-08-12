@@ -18,16 +18,16 @@
 #include <cstddef>
 #include <utility>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
         constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
     }
 
-    GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
+    GraphiteLayer::GraphiteLayer(std::shared_ptr<Core::RingBufferSink> sink,
                        std::filesystem::path initialFolder)
-        : core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder)),
+        : Core::Layer("Ide"), m_sink(std::move(sink)), m_initialFolder(std::move(initialFolder)),
           m_closeQuestion(m_modals, kUnsavedWorkTitle)
     {
         m_layout.left = {"files"};
@@ -44,7 +44,7 @@ namespace graphite
         // empty on the right, underneath the system title bar it failed to remove: worse
         // than the menu bar this branch started from. The layer is constructed in
         // OnInit(), after Window::Create, so the window can already answer.
-        m_customTitleBar = core::Application::Get().GetWindow().HasCustomTitleBar();
+        m_customTitleBar = Core::Application::Get().GetWindow().HasCustomTitleBar();
 
         if (m_customTitleBar)
         {
@@ -83,7 +83,7 @@ namespace graphite
         // ours, and a binding for it would advertise something that cannot be rebound.
         m_commands.Add({.id = "app.exit",
                         .label = "Exit\tAlt+F4",
-                        .run = [] { core::Application::Get().GetWindow().RequestClose(); }});
+                        .run = [] { Core::Application::Get().GetWindow().RequestClose(); }});
 
         m_commands.Add({.id = "view.resetLayout",
                         .label = "Reset Layout",
@@ -112,14 +112,14 @@ namespace graphite
         // After the load, so the screen opens onto the bindings actually in force. The
         // callback is what keeps Core clear of AppSettings: the panel knows a binding
         // moved, this layer knows where bindings are kept.
-        m_panels.Add(std::make_unique<core::KeyBindingsPanel>(
+        m_panels.Add(std::make_unique<Core::KeyBindingsPanel>(
             m_commands, m_keys, [this] { AppSettings::SaveKeyBindings(m_keys); }));
 
         // The defaults are assembled across five files, each of which believes it is
         // claiming a free chord, and nothing but this notices when two of them claim the
         // same one. An error rather than an assertion: a duplicate binding is a wiring
         // mistake worth shouting about, not a reason to refuse to start.
-        for (const core::Conflict& conflict : m_keys.FindConflicts())
+        for (const Core::Conflict& conflict : m_keys.FindConflicts())
         {
             CORE_ERROR("'{}' and '{}' are both bound to {}", conflict.first, conflict.second,
                        conflict.chord.ToString());
@@ -172,14 +172,14 @@ namespace graphite
 
         // Watchers drop events — buffer overflow, or a tool touching many files at once —
         // and returning from another application is exactly when that matters. Reading
-        // the OS-level flag directly (rather than reusing core::platform::IsForeground(),
+        // the OS-level flag directly (rather than reusing Core::IsForeground(),
         // which UpdateFocusReload above already does) is deliberate: that one answers for
         // the whole process, true for a panel dragged into its own viewport just as much
         // as for the main window, where a stale-content sweep only makes sense for the
         // window whose editors are actually on screen. ImGuiIO::AppFocusLost is not this:
         // it is a one-frame flag the backend sets on focus *loss*, so it would fire the
         // sweep as the user leaves rather than as they return.
-        auto* handle = static_cast<GLFWwindow*>(core::Application::Get().GetWindow().NativeHandle());
+        auto* handle = static_cast<GLFWwindow*>(Core::Application::Get().GetWindow().NativeHandle());
         m_documentWindows.NotifyWindowFocus(glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0);
     }
 
@@ -189,7 +189,7 @@ namespace graphite
         // a separate OS window, and working in one used to read as having left the
         // application — so coming back to the main window announced a return from an
         // absence that never happened.
-        if (!core::platform::IsForeground())
+        if (!Core::IsForeground())
         {
             m_secondsInBackground += deltaSeconds;
             m_appForeground = false;
@@ -221,7 +221,7 @@ namespace graphite
 
         m_dockSpace.Begin(m_layout);
         m_menuBar.Render(m_commands, m_keys, m_menuTree, m_layout.menuBarHeight,
-                         [this] { m_titleBar.Render(core::Application::Get().GetWindow()); });
+                         [this] { m_titleBar.Render(Core::Application::Get().GetWindow()); });
         m_dockSpace.End();
 
         // Never nested inside the dockspace host's Begin/End above, or any other
@@ -336,7 +336,7 @@ namespace graphite
                 // is what lets the main loop ask again next frame and actually break out
                 // of it this time. See Window::CancelClose and Layer::OnCloseRequested.
                 m_closeApproved = true;
-                core::Application::Get().GetWindow().RequestClose();
+                Core::Application::Get().GetWindow().RequestClose();
                 break;
 
             case ClosePurpose::CloseWorkspace:
@@ -394,10 +394,10 @@ namespace graphite
         // go stale the way a snapshot taken once at open time could.
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
         {
-            const core::text::OpenItem& item = m_documents.At(index);
+            const Core::OpenItem& item = m_documents.At(index);
 
             if (item.document && item.document->IsModified())
-                ImGui::BulletText("%s", core::fs::ToUtf8(item.path.filename()).c_str());
+                ImGui::BulletText("%s", Core::ToUtf8(item.path.filename()).c_str());
         }
 
         ImGui::Separator();

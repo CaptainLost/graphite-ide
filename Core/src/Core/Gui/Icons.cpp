@@ -6,7 +6,7 @@
 
 #include <cctype>
 
-namespace core
+namespace Core
 {
     namespace
     {

@@ -2,7 +2,7 @@
 
 #include "Core/Fs/ChangeCollector.h"
 
-namespace core
+namespace Core
 {
     void ChangeCollector::Add(const std::filesystem::path& directory, Clock::time_point now)
     {

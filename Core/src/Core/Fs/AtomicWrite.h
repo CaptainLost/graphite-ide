@@ -6,7 +6,7 @@
 #include <functional>
 #include <string_view>
 
-namespace core::fs
+namespace Core
 {
     /// Finds a name that nothing on disk currently occupies, so a temporary or scratch file
     /// never clobbers one left over from an earlier run — a crashed save, another process, a

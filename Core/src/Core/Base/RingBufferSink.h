@@ -7,7 +7,7 @@
 #include <mutex>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Sink that holds the last N entries. Data source for the console panel in the IDE.
     class RingBufferSink final : public ILogSink

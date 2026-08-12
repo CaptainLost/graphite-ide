@@ -9,7 +9,7 @@
 #include <string>
 #include <string_view>
 
-namespace core
+namespace Core
 {
     /// One trigger with its modifiers: what a binding is made of, and the only thing in
     /// this design that is written to disk verbatim. Regular (ADR 0049) — copied,

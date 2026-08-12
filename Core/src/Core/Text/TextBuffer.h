@@ -5,7 +5,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core::text
+namespace Core
 {
     /// A place in the document as the editor thinks of it. Both are zero-based, and the
     /// column counts bytes rather than characters — unambiguous, and no arithmetic

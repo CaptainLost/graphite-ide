@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <string_view>
 
-namespace core::fs
+namespace Core
 {
     /// Creates an empty file. Fails when anything already occupies the path — silently
     /// overwriting someone's work is never the right default.

@@ -5,12 +5,12 @@
 #include <string>
 #include <string_view>
 
-namespace core
+namespace Core
 {
     class Keymap;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// Typed access to the values that outlive a session, stored in `graphite.json` next to
     /// `imgui.ini`. Every setter reads the file, changes one key and writes it back, so
@@ -53,10 +53,10 @@ namespace graphite
         /// Applies every stored override to `keys`. Unreadable entries are logged and
         /// skipped: a hand-edited file must not be able to crash the IDE, and one bad
         /// line should cost one binding rather than all of them.
-        static void LoadKeyBindings(core::Keymap& keys);
+        static void LoadKeyBindings(Core::Keymap& keys);
 
         /// Writes the overrides and removes stored entries the user has since reset, so
         /// the file holds exactly what differs from the factory table.
-        static void SaveKeyBindings(const core::Keymap& keys);
+        static void SaveKeyBindings(const Core::Keymap& keys);
     };
 }

@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using core::JsonFile;
+using Core::JsonFile;
 
 TEST_CASE("Loading a missing file yields an empty set of values")
 {

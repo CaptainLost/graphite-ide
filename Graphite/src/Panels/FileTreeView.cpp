@@ -14,9 +14,9 @@
 #include <utility>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
-    FileTreeView::FileTreeView(Workspace& workspace, const core::text::DocumentSet& documents)
+    FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents)
         : m_workspace(workspace), m_documents(documents)
     {
     }
@@ -51,7 +51,7 @@ namespace graphite
         if (ImGui::Button(ICON_MDI_REFRESH))
         {
             m_workspace.Reload();
-            core::FileNode& root = m_workspace.Tree().Root();
+            Core::FileNode& root = m_workspace.Tree().Root();
 
             if (root.accessible)
                 CORE_INFO("File tree refreshed");
@@ -96,7 +96,7 @@ namespace graphite
             OpenFolderInteractively(m_workspace);
     }
 
-    bool FileTreeView::PassesFilter(const core::FileNode& node) const
+    bool FileTreeView::PassesFilter(const Core::FileNode& node) const
     {
         if (!m_filter.IsActive())
             return true;
@@ -106,7 +106,7 @@ namespace graphite
 
         // A directory stays visible when anything below it matches, otherwise the
         // filter would hide the path leading to the hit.
-        for (const core::FileNode& child : node.children)
+        for (const Core::FileNode& child : node.children)
         {
             if (PassesFilter(child))
                 return true;
@@ -115,14 +115,14 @@ namespace graphite
         return false;
     }
 
-    void FileTreeView::RenderContextMenu(const core::FileNode& node)
+    void FileTreeView::RenderContextMenu(const Core::FileNode& node)
     {
         // BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
         // the menu be dragged anywhere by its body — a popup has no title bar, so its
         // whole surface counts as draggable background. ConfigWindowsMoveFromTitleBarOnly
         // does not help: its cancel path is skipped for windows that have no title bar.
         // So open the popup by hand and use BeginPopup, which does take window flags.
-        const std::string popupId = "##ctx" + core::fs::ToUtf8(node.path);
+        const std::string popupId = "##ctx" + Core::ToUtf8(node.path);
 
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
             ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
@@ -139,14 +139,14 @@ namespace graphite
 
         if (ImGui::MenuItem("Show in Explorer"))
         {
-            if (const auto revealed = core::Shell::RevealInFileBrowser(node.path); !revealed)
+            if (const auto revealed = Core::Shell::RevealInFileBrowser(node.path); !revealed)
                 CORE_ERROR("{}", revealed.GetError().message);
         }
 
         ImGui::Separator();
 
         if (ImGui::MenuItem("Copy Path"))
-            ImGui::SetClipboardText(core::fs::ToUtf8(node.path).c_str());
+            ImGui::SetClipboardText(Core::ToUtf8(node.path).c_str());
 
         if (ImGui::MenuItem("Copy Relative Path"))
         {
@@ -155,7 +155,7 @@ namespace graphite
                 std::filesystem::relative(node.path, m_workspace.Root(), code);
 
             // No common prefix means relative() fails; the absolute path is still useful.
-            ImGui::SetClipboardText(core::fs::ToUtf8(code ? node.path : relative).c_str());
+            ImGui::SetClipboardText(Core::ToUtf8(code ? node.path : relative).c_str());
         }
 
         if (!isRoot)
@@ -188,7 +188,7 @@ namespace graphite
 
             if (ImGui::MenuItem("Rename"))
             {
-                const std::string current = core::fs::ToUtf8(node.path.filename());
+                const std::string current = Core::ToUtf8(node.path.filename());
 
                 if (current.size() >= m_renameBuffer.size())
                 {
@@ -219,24 +219,24 @@ namespace graphite
         ImGui::EndPopup();
     }
 
-    core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
+    Core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
     {
         if (!m_workspace.IsOpen())
             return nullptr;
 
         // Depth-first over an explicit stack: the tree is only as deep as the user has
         // expanded it, and this avoids a recursive helper for a two-line job.
-        std::vector<core::FileNode*> stack{&m_workspace.Tree().Root()};
+        std::vector<Core::FileNode*> stack{&m_workspace.Tree().Root()};
 
         while (!stack.empty())
         {
-            core::FileNode* node = stack.back();
+            Core::FileNode* node = stack.back();
             stack.pop_back();
 
             if (node->path == path)
                 return node;
 
-            for (core::FileNode& child : node->children)
+            for (Core::FileNode& child : node->children)
                 stack.push_back(&child);
         }
 
@@ -245,7 +245,7 @@ namespace graphite
 
     void FileTreeView::RefreshParentOf(const std::filesystem::path& path)
     {
-        core::FileNode* parent = FindNode(path.parent_path());
+        Core::FileNode* parent = FindNode(path.parent_path());
 
         // Outside the tree, or the parent was never loaded: nothing on screen to update.
         if (parent != nullptr)
@@ -298,25 +298,25 @@ namespace graphite
 
     void FileTreeView::HandleRefresh(const PendingAction& action)
     {
-        if (core::FileNode* node = FindNode(action.target); node != nullptr)
+        if (Core::FileNode* node = FindNode(action.target); node != nullptr)
             m_workspace.Tree().Refresh(*node);
     }
 
     void FileTreeView::HandleRename(const PendingAction& action)
     {
-        if (!core::fs::IsValidFileName(action.name))
+        if (!Core::IsValidFileName(action.name))
         {
             CORE_ERROR("'{}' is not a valid file name", action.name);
             return;
         }
 
         const std::filesystem::path target =
-            action.target.parent_path() / core::fs::FromUtf8(action.name);
+            action.target.parent_path() / Core::FromUtf8(action.name);
 
         if (target == action.target)
             return;
 
-        if (const auto renamed = core::fs::Rename(action.target, target); !renamed)
+        if (const auto renamed = Core::Rename(action.target, target); !renamed)
         {
             CORE_ERROR("{}", renamed.GetError().message);
             return;
@@ -327,7 +327,7 @@ namespace graphite
 
     void FileTreeView::HandleDuplicate(const PendingAction& action)
     {
-        const auto copied = core::fs::Duplicate(action.target);
+        const auto copied = Core::Duplicate(action.target);
 
         if (!copied)
         {
@@ -340,7 +340,7 @@ namespace graphite
 
     void FileTreeView::HandleCreate(const PendingAction& action)
     {
-        if (!core::fs::IsValidFileName(action.name))
+        if (!Core::IsValidFileName(action.name))
         {
             CORE_ERROR("'{}' is not a valid file name", action.name);
             return;
@@ -348,11 +348,11 @@ namespace graphite
 
         // MakeUniquePath keeps repeated clicks from failing on the default name.
         const std::filesystem::path target =
-            core::fs::MakeUniquePath(action.target / core::fs::FromUtf8(action.name));
+            Core::MakeUniquePath(action.target / Core::FromUtf8(action.name));
 
         const auto created = action.kind == PendingAction::Kind::CreateFile
-                                 ? core::fs::CreateEmptyFile(target)
-                                 : core::fs::MakeDirectory(target);
+                                 ? Core::CreateEmptyFile(target)
+                                 : Core::MakeDirectory(target);
 
         if (!created)
         {
@@ -360,7 +360,7 @@ namespace graphite
             return;
         }
 
-        if (core::FileNode* parent = FindNode(action.target); parent != nullptr)
+        if (Core::FileNode* parent = FindNode(action.target); parent != nullptr)
         {
             // Load the folder if it was never opened, otherwise re-read it. Doing both
             // would read the same directory from disk twice.
@@ -373,7 +373,7 @@ namespace graphite
             m_forceOpenPath = action.target;
         }
 
-        CORE_INFO("Created '{}'", core::fs::ToUtf8(target));
+        CORE_INFO("Created '{}'", Core::ToUtf8(target));
     }
 
     void FileTreeView::RenderDeleteConfirmation()
@@ -391,12 +391,12 @@ namespace graphite
         }
 
         ImGui::Text("Move \"%s\" to the Recycle Bin?",
-                    core::fs::ToUtf8(m_deleteCandidate.filename()).c_str());
+                    Core::ToUtf8(m_deleteCandidate.filename()).c_str());
         ImGui::Spacing();
 
         if (ImGui::Button("Move"))
         {
-            if (const auto removed = core::fs::MoveToRecycleBin(m_deleteCandidate); !removed)
+            if (const auto removed = Core::MoveToRecycleBin(m_deleteCandidate); !removed)
                 CORE_ERROR("{}", removed.GetError().message);
             else
                 RefreshParentOf(m_deleteCandidate);
@@ -416,7 +416,7 @@ namespace graphite
         ImGui::EndPopup();
     }
 
-    bool FileTreeView::RenderRenameEditor(const core::FileNode& node)
+    bool FileTreeView::RenderRenameEditor(const Core::FileNode& node)
     {
         if (m_renamingPath != node.path)
             return false;
@@ -488,7 +488,7 @@ namespace graphite
     // node.children by reference. Context menu commands therefore record a
     // PendingAction instead of acting immediately; ExecutePendingAction runs the
     // recorded action after the walk finishes, once it is safe to mutate.
-    void FileTreeView::RenderNode(core::FileNode& node)
+    void FileTreeView::RenderNode(Core::FileNode& node)
     {
         if (!PassesFilter(node))
             return;
@@ -531,7 +531,7 @@ namespace graphite
             }
 
             const std::string label =
-                std::string{core::IconForExtension(core::fs::ToUtf8(node.path.extension()))} +
+                std::string{Core::IconForExtension(Core::ToUtf8(node.path.extension()))} +
                 "  " + node.name;
 
             const bool clicked = ImGui::Selectable(label.c_str(), isActive || faded,
@@ -574,7 +574,7 @@ namespace graphite
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 
         const bool open =
-            ImGui::TreeNodeEx(core::fs::ToUtf8(node.path).c_str(), flags, "%s  %s",
+            ImGui::TreeNodeEx(Core::ToUtf8(node.path).c_str(), flags, "%s  %s",
                                node.expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER,
                                node.name.c_str());
 
@@ -593,7 +593,7 @@ namespace graphite
             if (!node.expanded)
                 (void)m_workspace.Tree().Expand(node);
 
-            for (core::FileNode& child : node.children)
+            for (Core::FileNode& child : node.children)
                 RenderNode(child);
 
             ImGui::TreePop();

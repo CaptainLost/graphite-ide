@@ -7,36 +7,36 @@
 
 #include "Core/Ui/Panel.h"
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
 }
 
-namespace core::text
+namespace Core
 {
     class DocumentSet;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// The left-hand panel. Owns the two ways of looking at a workspace and switches
     /// between them, drawing nothing itself beyond that choice.
     ///
     /// Registered under the id "files", unchanged from when it was the file tree, so
     /// docking layouts saved in imgui.ini keep working.
-    class ExplorerPanel final : public core::Panel
+    class ExplorerPanel final : public Core::Panel
     {
     public:
         /// `documents` is passed straight through to the file tree, which marks the open
         /// files and the one on screen. Read there, never modified.
-        ExplorerPanel(Workspace& workspace, const core::text::DocumentSet& documents);
+        ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents);
 
         void OnUIRender() override;
 
         /// Reads the stored display mode, keeping the default when nothing was stored.
         void LoadSettings();
 
-        void RegisterCommands(core::CommandRegistry& commands);
+        void RegisterCommands(Core::CommandRegistry& commands);
 
     private:
         enum class Mode

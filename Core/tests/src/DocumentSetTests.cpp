@@ -15,7 +15,7 @@
     #include <winioctl.h>
 #endif
 
-using namespace core::text;
+using namespace Core;
 
 namespace
 {

@@ -20,7 +20,7 @@ namespace
 
 TEST_CASE("Publish reaches every handler subscribed to that event type")
 {
-    core::EventBus bus;
+    Core::EventBus bus;
     std::vector<std::string> seen;
 
     bus.Subscribe<Opened>([&seen](const Opened& event) { seen.push_back("a:" + event.path); });
@@ -35,7 +35,7 @@ TEST_CASE("Publish reaches every handler subscribed to that event type")
 
 TEST_CASE("Handlers of one event type never see another")
 {
-    core::EventBus bus;
+    Core::EventBus bus;
     int openedCalls = 0;
     int closedCalls = 0;
 
@@ -50,7 +50,7 @@ TEST_CASE("Handlers of one event type never see another")
 
 TEST_CASE("Publishing an event nobody listens for is a no-op")
 {
-    core::EventBus bus;
+    Core::EventBus bus;
 
     bus.Publish(Opened{"unused"});
 
@@ -59,7 +59,7 @@ TEST_CASE("Publishing an event nobody listens for is a no-op")
 
 TEST_CASE("Subscribing from inside a handler does not disturb the running dispatch")
 {
-    core::EventBus bus;
+    Core::EventBus bus;
     int firstCalls = 0;
     int secondCalls = 0;
     int lateCalls = 0;

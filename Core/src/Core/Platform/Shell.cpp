@@ -10,7 +10,7 @@
     #include <shellapi.h>
 #endif
 
-namespace core
+namespace Core
 {
     Result<void> Shell::RevealInFileBrowser(const std::filesystem::path& path)
     {
@@ -18,7 +18,7 @@ namespace core
         if (!std::filesystem::exists(path, code))
         {
             return Error{ErrorCode::NotFound,
-                         std::format("'{}' no longer exists", fs::ToUtf8(path))};
+                         std::format("'{}' no longer exists", ToUtf8(path))};
         }
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -48,7 +48,7 @@ namespace core
         if (reinterpret_cast<INT_PTR>(result) <= 32)
         {
             return Error{ErrorCode::IoFailure,
-                         std::format("cannot open the file browser for '{}'", fs::ToUtf8(path))};
+                         std::format("cannot open the file browser for '{}'", ToUtf8(path))};
         }
 
         return Result<void>::Ok();
@@ -56,7 +56,7 @@ namespace core
         return Error{ErrorCode::Unsupported,
                      std::format("opening a file browser for '{}' is not implemented on "
                                  "this platform",
-                                 fs::ToUtf8(path))};
+                                 ToUtf8(path))};
 #endif
     }
 }

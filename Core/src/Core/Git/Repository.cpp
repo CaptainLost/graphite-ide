@@ -9,7 +9,7 @@
 
 #include <utility>
 
-namespace core::git
+namespace Core
 {
     namespace
     {
@@ -31,7 +31,7 @@ namespace core::git
         EnsureInitialised();
 
         git_repository* handle = nullptr;
-        const std::string path = fs::ToUtf8(anyPathInside);
+        const std::string path = ToUtf8(anyPathInside);
 
         // ceiling_dirs is null so the search walks up to the filesystem root, matching
         // what the git command line does from a subdirectory.
@@ -60,7 +60,7 @@ namespace core::git
         repository.m_handle = handle;
 
         if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
-            repository.m_workingDirectory = fs::FromUtf8(workdir);
+            repository.m_workingDirectory = FromUtf8(workdir);
 
         return repository;
     }
@@ -111,7 +111,7 @@ namespace core::git
 
         // git speaks forward slashes on every platform; the relative path may carry
         // native separators, so they are translated explicitly below.
-        std::string text = fs::ToUtf8(relative);
+        std::string text = ToUtf8(relative);
 
         for (char& character : text)
         {

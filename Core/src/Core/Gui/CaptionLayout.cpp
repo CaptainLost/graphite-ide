@@ -2,7 +2,7 @@
 
 #include "Core/Gui/CaptionLayout.h"
 
-namespace core
+namespace Core
 {
     CaptionLayout LayOutCaption(float barWidth, float barHeight, float buttonWidth,
                                 float versionWidth, float versionGap, float contentLeft)

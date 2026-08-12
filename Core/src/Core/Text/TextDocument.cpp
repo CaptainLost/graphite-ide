@@ -15,7 +15,7 @@
 #include <system_error>
 #include <utility>
 
-namespace core::text
+namespace Core
 {
     namespace
     {
@@ -79,14 +79,14 @@ namespace core::text
                          "UTF-32 LE mark FF FE 00 00 begins with the UTF-16 LE mark, so "
                          "the two cannot be told apart from the first two bytes alone. "
                          "Re-save it as UTF-8 or UTF-16 to open it here: "
-                       + fs::ToUtf8(path);
+                       + ToUtf8(path);
             }
 
             return "This file carries no byte order mark, so it was taken for " + name
                    + " from the shape of its first " + std::to_string(ProbeSampleSize)
                    + " bytes; decoding all of it gives control characters, so it is not "
                      "text in that encoding after all: "
-                   + fs::ToUtf8(path);
+                   + ToUtf8(path);
         }
     }
 
@@ -217,16 +217,16 @@ namespace core::text
         const auto status = std::filesystem::status(path, statusError);
 
         if (statusError || !std::filesystem::exists(status))
-            return Error{ErrorCode::NotFound, "No such file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::NotFound, "No such file: " + ToUtf8(path)};
 
         if (!std::filesystem::is_regular_file(status))
-            return Error{ErrorCode::InvalidArgument, "Not a file (it is a directory): " + fs::ToUtf8(path)};
+            return Error{ErrorCode::InvalidArgument, "Not a file (it is a directory): " + ToUtf8(path)};
 
         std::error_code sizeError;
         const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
 
         if (sizeError)
-            return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::IoFailure, "Cannot read file: " + ToUtf8(path)};
 
         // Refused before anything is allocated: a lying or enormous size (a multi-GB
         // file, or one crafted to report one) must not be able to force a multi-GB
@@ -235,7 +235,7 @@ namespace core::text
         {
             return Error{ErrorCode::InvalidArgument, "File is too large to open ("
                                                           + std::to_string(size)
-                                                          + " bytes): " + fs::ToUtf8(path)};
+                                                          + " bytes): " + ToUtf8(path)};
         }
 
         // Read before the content, not after: see m_diskTime's comment in the header for
@@ -248,7 +248,7 @@ namespace core::text
         std::ifstream stream{path, std::ios::binary};
 
         if (!stream.is_open())
-            return Error{ErrorCode::AccessDenied, "Cannot open file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::AccessDenied, "Cannot open file: " + ToUtf8(path)};
 
         // Read to the stream's actual end rather than trusting `size`: on Windows the
         // realistic way for the two to disagree is a file another process is still
@@ -278,12 +278,12 @@ namespace core::text
                 return Error{ErrorCode::InvalidArgument,
                              "File is too large to open (grew past "
                                  + std::to_string(MaximumFileSize) + " bytes while being read): "
-                                 + fs::ToUtf8(path)};
+                                 + ToUtf8(path)};
             }
         }
 
         if (stream.bad())
-            return Error{ErrorCode::IoFailure, "Cannot read file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::IoFailure, "Cannot read file: " + ToUtf8(path)};
 
         auto document = FromContent(std::move(content), path);
 
@@ -356,7 +356,7 @@ namespace core::text
 
     Result<void> TextDocument::Save()
     {
-        auto written = fs::WriteFileAtomically(m_path, Bytes());
+        auto written = WriteFileAtomically(m_path, Bytes());
 
         if (!written)
             return written.GetError();

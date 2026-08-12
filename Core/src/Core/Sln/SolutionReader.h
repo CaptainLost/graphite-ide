@@ -5,7 +5,7 @@
 
 #include <filesystem>
 
-namespace core::sln
+namespace Core
 {
     /// Reads a solution file into the model, choosing a parser by extension.
     ///

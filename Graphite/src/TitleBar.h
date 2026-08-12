@@ -1,11 +1,11 @@
 #pragma once
 
-namespace core
+namespace Core
 {
     class Window;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// Height of the row that carries the menus, the version and the window buttons.
     /// 32 px is what Windows itself uses, so the buttons keep their familiar hit size.
@@ -17,6 +17,6 @@ namespace graphite
     class TitleBar
     {
     public:
-        void Render(core::Window& window);
+        void Render(Core::Window& window);
     };
 }

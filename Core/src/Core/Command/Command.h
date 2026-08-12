@@ -3,7 +3,7 @@
 #include <functional>
 #include <string>
 
-namespace core
+namespace Core
 {
     /// Something the application can be asked to do, named once and reachable from
     /// everywhere that can ask: a menu item, a key binding, a button. The id is the name

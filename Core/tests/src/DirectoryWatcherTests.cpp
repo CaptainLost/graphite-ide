@@ -18,7 +18,7 @@
 #include <thread>
 #include <vector>
 
-using namespace core;
+using namespace Core;
 
 namespace
 {

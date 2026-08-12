@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-namespace core::sln
+namespace Core
 {
     namespace
     {
@@ -23,7 +23,7 @@ namespace core::sln
         {
             return std::any_of(std::begin(kExcludedDirectories), std::end(kExcludedDirectories),
                                [&name](std::string_view excluded)
-                               { return fs::CompareNames(name, excluded) == 0; });
+                               { return CompareNames(name, excluded) == 0; });
         }
 
         /// Mirrors one directory into the content tree, skipping build output and the
@@ -31,12 +31,12 @@ namespace core::sln
         void ReadDirectoryInto(const std::filesystem::path& directory,
                                const std::filesystem::path& projectFile, ContentFolder& folder)
         {
-            const auto entries = fs::ReadDirectory(directory);
+            const auto entries = ReadDirectory(directory);
 
             if (!entries)
                 return;
 
-            for (const fs::DirectoryEntry& entry : entries.Value())
+            for (const DirectoryEntry& entry : entries.Value())
             {
                 if (entry.isDirectory)
                 {
@@ -68,11 +68,11 @@ namespace core::sln
         {
             std::sort(folder.folders.begin(), folder.folders.end(),
                       [](const ContentFolder& left, const ContentFolder& right)
-                      { return fs::CompareNames(left.name, right.name) < 0; });
+                      { return CompareNames(left.name, right.name) < 0; });
 
             std::sort(folder.files.begin(), folder.files.end(),
                       [](const ContentFile& left, const ContentFile& right)
-                      { return fs::CompareNames(left.name, right.name) < 0; });
+                      { return CompareNames(left.name, right.name) < 0; });
 
             for (ContentFolder& child : folder.folders)
                 SortContent(child);
@@ -81,7 +81,7 @@ namespace core::sln
 
     bool CsprojReader::Handles(const std::filesystem::path& project) const
     {
-        std::string extension = fs::ToUtf8(project.extension());
+        std::string extension = ToUtf8(project.extension());
         std::transform(extension.begin(), extension.end(), extension.begin(),
                        [](unsigned char character)
                        { return static_cast<char>(std::tolower(character)); });
@@ -111,10 +111,10 @@ namespace core::sln
                 for (const pugi::xml_node& item : group.children("ProjectReference"))
                 {
                     const std::filesystem::path referenced =
-                        fs::FromUtf8(item.attribute("Include").value());
+                        FromUtf8(item.attribute("Include").value());
 
                     if (!referenced.empty())
-                        content.references.push_back(fs::ToUtf8(referenced.stem()));
+                        content.references.push_back(ToUtf8(referenced.stem()));
                 }
             }
         }
@@ -124,7 +124,7 @@ namespace core::sln
 
         std::sort(content.references.begin(), content.references.end(),
                   [](const std::string& left, const std::string& right)
-                  { return fs::CompareNames(left, right) < 0; });
+                  { return CompareNames(left, right) < 0; });
 
         return content;
     }

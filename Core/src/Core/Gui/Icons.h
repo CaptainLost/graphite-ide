@@ -4,7 +4,7 @@
 
 #include <string_view>
 
-namespace core
+namespace Core
 {
     /// Maps a file extension — with or without the leading dot, any case, e.g. ".cpp",
     /// "CPP", or "cpp" — to the Material Design Icons glyph to draw before the file's name.

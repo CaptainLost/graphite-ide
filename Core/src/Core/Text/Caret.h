@@ -4,7 +4,7 @@
 #include <limits>
 #include <utility>
 
-namespace core::text
+namespace Core
 {
     class TextBuffer;
 

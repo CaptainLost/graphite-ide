@@ -13,7 +13,7 @@
 #include <string_view>
 #include <system_error>
 
-using namespace core::text;
+using namespace Core;
 
 namespace
 {

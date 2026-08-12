@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace core::text
+namespace Core
 {
     /// Turns bytes from disk into the UTF-8 the rest of the editor works in.
     ///

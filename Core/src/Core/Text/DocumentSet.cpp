@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace core::text
+namespace Core
 {
     namespace
     {
@@ -83,7 +83,7 @@ namespace core::text
             // locked file and an unmeasurable one are all still there, so claiming
             // otherwise would send the user looking for a file sitting right in front
             // of them. ProbeFile's own message says which one it was.
-            item.failure = probe.GetError().code == core::ErrorCode::NotFound
+            item.failure = probe.GetError().code == Core::ErrorCode::NotFound
                                ? OpenFailure::Missing
                                : OpenFailure::ReadFailed;
             item.detail = probe.GetError().message;
@@ -239,7 +239,7 @@ namespace core::text
             return {};
 
         const std::filesystem::path& path = m_items[index].path;
-        const std::string name = fs::ToUtf8(path.filename());
+        const std::string name = ToUtf8(path.filename());
 
         // A file deleted while it was open keeps its window and its content, so nothing
         // else on screen would say the file is gone — the tab has to. Appended after any
@@ -252,12 +252,12 @@ namespace core::text
             if (other == index)
                 continue;
 
-            if (fs::ToUtf8(m_items[other].path.filename()) != name)
+            if (ToUtf8(m_items[other].path.filename()) != name)
                 continue;
 
             // Forward slash regardless of platform: this is a label, not a path anyone
             // will open.
-            return fs::ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
+            return ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
         }
 
         return name + suffix;
@@ -268,7 +268,7 @@ namespace core::text
     {
         for (OpenItem& item : m_items)
         {
-            const auto relative = fs::RelativeTo(item.path, from);
+            const auto relative = RelativeTo(item.path, from);
 
             if (!relative)
                 continue;

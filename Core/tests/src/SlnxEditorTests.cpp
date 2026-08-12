@@ -97,10 +97,10 @@ TEST_CASE("Opening a format this build cannot write fails")
     TempDirectory temp;
     const auto file = temp.MakeFile("notes.txt", "x");
 
-    const auto editor = core::sln::SolutionEditor::Open(file);
+    const auto editor = Core::SolutionEditor::Open(file);
 
     REQUIRE_FALSE(editor.HasValue());
-    CHECK(editor.GetError().code == core::ErrorCode::Unsupported);
+    CHECK(editor.GetError().code == Core::ErrorCode::Unsupported);
 }
 
 TEST_CASE("Nothing is written until Save is called")
@@ -108,7 +108,7 @@ TEST_CASE("Nothing is written until Save is called")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
 
@@ -121,12 +121,12 @@ TEST_CASE("Adding a project puts it in the solution and changes nothing else")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.Value().projectCount == 2);
 
@@ -159,12 +159,12 @@ TEST_CASE("A project added to a folder lands in that folder")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "App").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.Value().root.folders.size() == 1);
     CHECK(solution.Value().root.folders[0].projects.size() == 2);
@@ -175,7 +175,7 @@ TEST_CASE("The project path is written relative to the solution")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -184,7 +184,7 @@ TEST_CASE("The project path is written relative to the solution")
     const std::string written = Read(file);
 
     CHECK(written.find("lib\\Lib.vcxproj") != std::string::npos);
-    CHECK(written.find(core::fs::ToUtf8(temp.Path())) == std::string::npos);
+    CHECK(written.find(Core::ToUtf8(temp.Path())) == std::string::npos);
 }
 
 TEST_CASE("Adding a project that is already a member is refused")
@@ -192,13 +192,13 @@ TEST_CASE("Adding a project that is already a member is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.Value()->AddProject(temp.Path() / "app" / "App.vcxproj", "");
 
     REQUIRE_FALSE(added.HasValue());
-    CHECK(added.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
     CHECK(Read(file) == kSolution);
 }
 
@@ -207,13 +207,13 @@ TEST_CASE("Adding a project file that does not exist is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.Value()->AddProject(temp.Path() / "gone" / "Gone.vcxproj", "");
 
     REQUIRE_FALSE(added.HasValue());
-    CHECK(added.GetError().code == core::ErrorCode::NotFound);
+    CHECK(added.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Removing a project takes it out and leaves the rest alone")
@@ -221,12 +221,12 @@ TEST_CASE("Removing a project takes it out and leaves the rest alone")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.Value().projectCount == 0);
 
@@ -250,13 +250,13 @@ TEST_CASE("Removing a project that is not a member is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto removed = editor.Value()->RemoveProject(temp.Path() / "lib" / "Lib.vcxproj");
 
     REQUIRE_FALSE(removed.HasValue());
-    CHECK(removed.GetError().code == core::ErrorCode::NotFound);
+    CHECK(removed.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("A project file on disk is never touched by removal")
@@ -264,7 +264,7 @@ TEST_CASE("A project file on disk is never touched by removal")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -278,13 +278,13 @@ TEST_CASE("Two operations are written as one change")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.Value().projectCount == 1);
 }
@@ -297,11 +297,11 @@ TEST_CASE("No temporary file is left beside the solution")
     std::vector<std::string> before;
 
     for (const auto& entry : std::filesystem::directory_iterator{temp.Path()})
-        before.push_back(core::fs::ToUtf8(entry.path().filename()));
+        before.push_back(Core::ToUtf8(entry.path().filename()));
 
     std::sort(before.begin(), before.end());
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -309,7 +309,7 @@ TEST_CASE("No temporary file is left beside the solution")
     std::vector<std::string> after;
 
     for (const auto& entry : std::filesystem::directory_iterator{temp.Path()})
-        after.push_back(core::fs::ToUtf8(entry.path().filename()));
+        after.push_back(Core::ToUtf8(entry.path().filename()));
 
     std::sort(after.begin(), after.end());
 
@@ -327,7 +327,7 @@ TEST_CASE("Removing a project that spans several lines removes all of it")
     temp.MakeFile("lib/Lib.vcxproj", "<Project />");
     const auto file = temp.MakeFile("Sample.slnx", kNestedSolution);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -349,7 +349,7 @@ TEST_CASE("A project added to an empty folder expands its self-closing tag")
     temp.MakeFile("lib/Lib.vcxproj", "<Project />");
     const auto file = temp.MakeFile("Sample.slnx", kEmptyFolderSolution);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Lib").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -377,7 +377,7 @@ TEST_CASE("A container whose attributes wrap is still named correctly")
     temp.MakeFile("lib/Lib.vcxproj", "<Project />");
     const auto file = temp.MakeFile("Sample.slnx", kWrappedFolderSolution);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Lib").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -407,17 +407,17 @@ TEST_CASE("A project under a different root is refused")
     // A solution names its projects relatively, and there is no relative path across roots.
     // Left unchecked this writes Path="", which the reader skips — so the read-back after
     // the save passes and the garbage entry survives.
-    const std::string root = core::fs::ToUtf8(temp.Path().root_name());
+    const std::string root = Core::ToUtf8(temp.Path().root_name());
     const std::filesystem::path elsewhere =
-        core::fs::FromUtf8(root == "Z:" ? "Y:\\far\\Far.vcxproj" : "Z:\\far\\Far.vcxproj");
+        Core::FromUtf8(root == "Z:" ? "Y:\\far\\Far.vcxproj" : "Z:\\far\\Far.vcxproj");
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.Value()->AddProject(elsewhere, "");
 
     REQUIRE_FALSE(added.HasValue());
-    CHECK(added.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
     CHECK(Read(file) == kSolution);
 }
 
@@ -426,7 +426,7 @@ TEST_CASE("Adding a folder puts it in the solution")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
@@ -443,12 +443,12 @@ TEST_CASE("A nested folder creates the ancestors it needs")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     // Nesting is expressed by the name, so both elements have to exist.
@@ -462,13 +462,13 @@ TEST_CASE("Adding a folder that already exists is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.Value()->AddFolder("App");
 
     REQUIRE_FALSE(added.HasValue());
-    CHECK(added.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("Adding a project to a folder that does not exist creates it")
@@ -476,12 +476,12 @@ TEST_CASE("Adding a project to a folder that does not exist creates it")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Engine").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.Value().root.folders.size() == 2);
 }
@@ -491,7 +491,7 @@ TEST_CASE("An empty folder can be removed")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
     REQUIRE(editor.Value()->RemoveFolder("Engine").HasValue());
@@ -505,7 +505,7 @@ TEST_CASE("A folder holding a project cannot be removed")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     // Refused rather than deleting a subtree by implication: the user asked to remove one
@@ -513,7 +513,7 @@ TEST_CASE("A folder holding a project cannot be removed")
     const auto removed = editor.Value()->RemoveFolder("App");
 
     REQUIRE_FALSE(removed.HasValue());
-    CHECK(removed.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(removed.GetError().code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("A folder holding another folder cannot be removed")
@@ -521,14 +521,14 @@ TEST_CASE("A folder holding another folder cannot be removed")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
 
     const auto removed = editor.Value()->RemoveFolder("Engine");
 
     REQUIRE_FALSE(removed.HasValue());
-    CHECK(removed.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(removed.GetError().code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("Renaming a folder renames its descendants too")
@@ -536,7 +536,7 @@ TEST_CASE("Renaming a folder renames its descendants too")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
     REQUIRE(editor.Value()->RenameFolder("Engine", "Core").HasValue());
@@ -556,12 +556,12 @@ TEST_CASE("Renaming a folder leaves its projects where they are")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->RenameFolder("App", "Application").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.Value().root.folders.size() == 1);
     CHECK(solution.Value().root.folders[0].name == "Application");
@@ -573,7 +573,7 @@ TEST_CASE("A project moves between folders")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
     REQUIRE(editor.Value()
@@ -581,10 +581,10 @@ TEST_CASE("A project moves between folders")
                 .HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    for (const core::sln::Folder& folder : solution.Value().root.folders)
+    for (const Core::Folder& folder : solution.Value().root.folders)
     {
         if (folder.name == "Engine")
             CHECK(folder.projects.size() == 1);
@@ -598,12 +598,12 @@ TEST_CASE("A project moves out of a folder to the solution root")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->MoveProject(temp.Path() / "app" / "App.vcxproj", "").HasValue());
     REQUIRE(editor.Value()->Save().HasValue());
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.Value().root.projects.size() == 1);
     CHECK(solution.Value().root.folders[0].projects.empty());
@@ -614,7 +614,7 @@ TEST_CASE("Moving a project keeps its identifier")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = core::sln::SolutionEditor::Open(file);
+    auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
     REQUIRE(editor.Value()

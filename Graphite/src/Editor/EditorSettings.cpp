@@ -8,7 +8,7 @@
 
 #include <algorithm>
 
-namespace graphite
+namespace Graphite
 {
     void EditorSettings::Load()
     {
@@ -49,7 +49,7 @@ namespace graphite
         AppSettings::SaveWordWrap(m_wordWrap);
     }
 
-    void EditorSettings::RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys)
+    void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)
     {
         commands.Add({.id = "editor.zoomIn",
                       .label = "Zoom In",
@@ -77,9 +77,9 @@ namespace graphite
         // Both the main row and the keypad, and Ctrl+wheel over an editor. A shortcut
         // nobody can discover is not a shortcut, so all three reach the same command and
         // the menu shows the first of them.
-        using core::Chord;
-        using core::Scope;
-        using core::Trigger;
+        using Core::Chord;
+        using Core::Scope;
+        using Core::Trigger;
 
         keys.SetDefault("editor.zoomIn",
                         {.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),

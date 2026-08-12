@@ -7,7 +7,7 @@
 #include <ostream>
 #include <string>
 
-using namespace core::text;
+using namespace Core;
 
 TEST_CASE("In plain ASCII a column is a byte")
 {
@@ -146,7 +146,7 @@ TEST_CASE("Every byte boundary round-trips through a column")
     while (byte <= line.size())
     {
         REQUIRE(ByteOfColumn(line, ColumnOfByte(line, byte, 4), 4) == byte);
-        byte = byte < line.size() ? core::text::NextCharacter(line, byte) : byte + 1;
+        byte = byte < line.size() ? Core::NextCharacter(line, byte) : byte + 1;
     }
 }
 

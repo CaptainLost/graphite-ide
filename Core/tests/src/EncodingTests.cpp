@@ -5,7 +5,7 @@
 #include <ostream>
 #include <string>
 
-using namespace core::text;
+using namespace Core;
 
 TEST_CASE("A byte order mark names the encoding")
 {

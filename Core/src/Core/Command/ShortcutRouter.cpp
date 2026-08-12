@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace core
+namespace Core
 {
     namespace
     {

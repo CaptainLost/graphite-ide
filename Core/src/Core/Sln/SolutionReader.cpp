@@ -19,7 +19,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core::sln
+namespace Core
 {
     namespace
     {
@@ -27,7 +27,7 @@ namespace core::sln
         /// MyApp.SLNX as an unknown format would be a lie about an ordinary file.
         std::string LowercaseExtension(const std::filesystem::path& path)
         {
-            std::string extension = fs::ToUtf8(path.extension());
+            std::string extension = ToUtf8(path.extension());
 
             std::transform(extension.begin(), extension.end(), extension.begin(),
                            [](unsigned char character)
@@ -101,10 +101,10 @@ namespace core::sln
                 // Declared relative to the solution and usually with backslashes, which
                 // std::filesystem accepts on Windows. Made absolute here, once, because
                 // everything downstream opens the file rather than displaying the path.
-                project.path = (solutionDirectory / fs::FromUtf8(declared)).lexically_normal();
+                project.path = (solutionDirectory / FromUtf8(declared)).lexically_normal();
                 project.path.make_preferred();
 
-                project.displayName = fs::ToUtf8(project.path.stem());
+                project.displayName = ToUtf8(project.path.stem());
                 project.typeId = node.attribute("Type").value();
 
                 // One stat per project, and worth it: a solution naming a file that is
@@ -163,11 +163,11 @@ namespace core::sln
         {
             std::sort(folder.folders.begin(), folder.folders.end(),
                       [](const Folder& left, const Folder& right)
-                      { return fs::CompareNames(left.name, right.name) < 0; });
+                      { return CompareNames(left.name, right.name) < 0; });
 
             std::sort(folder.projects.begin(), folder.projects.end(),
                       [](const Project& left, const Project& right)
-                      { return fs::CompareNames(left.displayName, right.displayName) < 0; });
+                      { return CompareNames(left.displayName, right.displayName) < 0; });
 
             for (Folder& child : folder.folders)
                 SortSolution(child);
@@ -195,7 +195,7 @@ namespace core::sln
 
             Solution solution;
             solution.path = path;
-            solution.name = fs::ToUtf8(path.stem());
+            solution.name = ToUtf8(path.stem());
 
             const std::filesystem::path directory = path.parent_path();
 

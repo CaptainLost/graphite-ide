@@ -2,8 +2,8 @@
 
 #include "Core/Gui/CaptionLayout.h"
 
-using core::CaptionLayout;
-using core::LayOutCaption;
+using Core::CaptionLayout;
+using Core::LayOutCaption;
 
 namespace
 {

@@ -4,12 +4,12 @@
 #include <string>
 #include <string_view>
 
-namespace graphite
+namespace Graphite
 {
     /// Settings that belong to a folder rather than to the user, kept in
     /// `<workspace>/.graphite/workspace.json`.
     ///
-    /// The split is by what the setting is about. `graphite::Settings` beside the executable
+    /// The split is by what the setting is about. `Graphite::Settings` beside the executable
     /// holds what is true of the user — the last folder opened, how ignored files are
     /// drawn. This holds what is true of one project: which solution is selected, which
     /// mode the explorer is in. A global file could only hold one of those at a time,

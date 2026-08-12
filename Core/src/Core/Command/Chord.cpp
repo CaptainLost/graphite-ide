@@ -6,7 +6,7 @@
 #include "Core/Command/KeyName.h"
 #include "Core/Command/ModifierName.h"
 
-namespace core
+namespace Core
 {
     namespace
     {
@@ -83,7 +83,7 @@ namespace core
     std::optional<Chord> Chord::Parse(std::string_view text)
     {
         ImGuiKeyChord mods = 0;
-        std::string remaining = ascii::Trimmed(text);
+        std::string remaining = Trimmed(text);
 
         if (remaining.empty())
         {
@@ -102,12 +102,12 @@ namespace core
                 break;
             }
 
-            const std::string head = ascii::Lowered(ascii::Trimmed(std::string_view(remaining).substr(0, separator)));
+            const std::string head = Lowered(Trimmed(std::string_view(remaining).substr(0, separator)));
             const ModifierName* found = nullptr;
 
             for (const ModifierName& modifier : kModifiers)
             {
-                if (ascii::Lowered(modifier.name) == head)
+                if (Lowered(modifier.name) == head)
                 {
                     found = &modifier;
                 }
@@ -120,22 +120,22 @@ namespace core
             }
 
             mods |= found->bit;
-            remaining = ascii::Trimmed(std::string_view(remaining).substr(separator + 1));
+            remaining = Trimmed(std::string_view(remaining).substr(separator + 1));
         }
 
-        const std::string trigger = ascii::Trimmed(remaining);
+        const std::string trigger = Trimmed(remaining);
 
         if (trigger.empty())
         {
             return std::nullopt;
         }
 
-        if (ascii::Lowered(trigger) == ascii::Lowered(kWheelUpName))
+        if (Lowered(trigger) == Lowered(kWheelUpName))
         {
             return Chord::Wheel(mods, Trigger::WheelUp, Scope::HoveredEditor);
         }
 
-        if (ascii::Lowered(trigger) == ascii::Lowered(kWheelDownName))
+        if (Lowered(trigger) == Lowered(kWheelDownName))
         {
             return Chord::Wheel(mods, Trigger::WheelDown, Scope::HoveredEditor);
         }

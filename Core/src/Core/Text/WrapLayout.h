@@ -4,7 +4,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core::text
+namespace Core
 {
     /// The columns at which `line` breaks when rows are `columnsPerRow` wide, ascending,
     /// empty when the line fits in one row. A break column is where the *next* row

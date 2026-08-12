@@ -3,7 +3,7 @@
 
 #include <utility>
 
-namespace core
+namespace Core
 {
     Command* CommandRegistry::Add(Command command)
     {

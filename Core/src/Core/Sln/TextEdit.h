@@ -5,7 +5,7 @@
 #include <string_view>
 #include <utility>
 
-namespace core::sln::edit
+namespace Core
 {
     /// Helpers for editing a solution file as text.
     ///

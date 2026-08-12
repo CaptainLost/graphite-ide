@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace core
+namespace Core
 {
     /// A colour as four straight-alpha channels in [0, 1] — the same numbers ImGui's
     /// ImVec4 carries, in a type the layers below Core::Gui can hold. It lives in

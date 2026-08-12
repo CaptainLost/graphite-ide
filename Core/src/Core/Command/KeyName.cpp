@@ -4,7 +4,7 @@
 
 #include "Core/Base/Ascii.h"
 
-namespace core
+namespace Core
 {
     namespace
     {
@@ -73,13 +73,13 @@ namespace core
 
     ImGuiKey KeyNamed(std::string_view name)
     {
-        const std::string wanted = ascii::Lowered(name);
+        const std::string wanted = Lowered(name);
 
         for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index)
         {
             const auto key = static_cast<ImGuiKey>(index);
 
-            if (ascii::Lowered(NameOfKey(key)) == wanted)
+            if (Lowered(NameOfKey(key)) == wanted)
             {
                 return key;
             }

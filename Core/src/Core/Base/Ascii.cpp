@@ -4,7 +4,7 @@
 
 #include <cctype>
 
-namespace core::ascii
+namespace Core
 {
     std::string Lowered(std::string_view text)
     {

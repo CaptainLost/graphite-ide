@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <string>
 
-namespace core::sln
+namespace Core
 {
     /// Edits a .slnx by splicing its text. pugixml locates the elements; nothing is ever
     /// re-serialised, because saving a parsed document rewrites every self-closing tag —

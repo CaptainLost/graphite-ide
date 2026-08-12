@@ -3,9 +3,9 @@
 #include "Core/Base/Color.h"
 #include "Core/Gui/Theme.h"
 
-using core::Color;
-using core::PackBgr;
-using core::Theme;
+using Core::Color;
+using Core::PackBgr;
+using Core::Theme;
 
 TEST_CASE("The channels land in the order the system reads them, blue highest")
 {

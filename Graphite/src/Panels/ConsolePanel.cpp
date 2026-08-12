@@ -2,26 +2,26 @@
 
 #include <utility>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
-        ImVec4 ColorFor(core::LogLevel level)
+        ImVec4 ColorFor(Core::LogLevel level)
         {
             switch (level)
             {
-            case core::LogLevel::Trace: return ImVec4(0.55f, 0.58f, 0.62f, 1.0f);
-            case core::LogLevel::Info:  return ImVec4(0.84f, 0.86f, 0.89f, 1.0f);
-            case core::LogLevel::Warn:  return ImVec4(0.95f, 0.75f, 0.30f, 1.0f);
-            case core::LogLevel::Error: return ImVec4(0.94f, 0.42f, 0.42f, 1.0f);
+            case Core::LogLevel::Trace: return ImVec4(0.55f, 0.58f, 0.62f, 1.0f);
+            case Core::LogLevel::Info:  return ImVec4(0.84f, 0.86f, 0.89f, 1.0f);
+            case Core::LogLevel::Warn:  return ImVec4(0.95f, 0.75f, 0.30f, 1.0f);
+            case Core::LogLevel::Error: return ImVec4(0.94f, 0.42f, 0.42f, 1.0f);
             }
 
             return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
         }
     }
 
-    ConsolePanel::ConsolePanel(std::shared_ptr<core::RingBufferSink> sink)
-        : core::Panel("console", "Console"), m_sink(std::move(sink))
+    ConsolePanel::ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink)
+        : Core::Panel("console", "Console"), m_sink(std::move(sink))
     {
     }
 
@@ -48,9 +48,9 @@ namespace graphite
         if (ImGui::Button("Copy all"))
         {
             std::string joined;
-            for (const core::LogEntry& entry : m_entries)
+            for (const Core::LogEntry& entry : m_entries)
             {
-                joined.append(core::ToString(entry.level));
+                joined.append(Core::ToString(entry.level));
                 joined.append(" ");
                 joined.append(entry.message);
                 joined.append("\n");
@@ -81,7 +81,7 @@ namespace graphite
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
 
-        for (const core::LogEntry& entry : m_entries)
+        for (const Core::LogEntry& entry : m_entries)
         {
             if (!m_filter.PassFilter(entry.message.c_str()))
                 continue;

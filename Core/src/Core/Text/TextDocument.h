@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace core::text
+namespace Core
 {
     enum class LineEnding
     {
@@ -72,7 +72,7 @@ namespace core::text
         void SetPath(std::filesystem::path path) { m_path = std::move(path); }
 
         /// Not named Encoding(): a member of that name would shadow the type
-        /// core::text::Encoding everywhere inside this class.
+        /// Core::Encoding everywhere inside this class.
         [[nodiscard]] Encoding FileEncoding() const noexcept { return m_encoding; }
 
         /// Likewise not named LineEnding().
@@ -112,7 +112,7 @@ namespace core::text
         /// difference out of that would be reporting an edit nobody made.
         [[nodiscard]] bool ChangedOnDisk() const;
 
-        /// Writes Bytes() through core::fs::WriteFileAtomically, then marks the content
+        /// Writes Bytes() through Core::WriteFileAtomically, then marks the content
         /// saved and records the new stamp. Does not check ChangedOnDisk() itself: whether
         /// a stale save should be refused or confirmed is the caller's decision, because
         /// only the caller can ask.

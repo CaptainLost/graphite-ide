@@ -6,9 +6,9 @@
 #include <memory>
 #include <string>
 
-namespace core::sln
+namespace Core
 {
-    /// A core::Uuid in the braced uppercase form both solution formats use. The braces
+    /// A Core::Uuid in the braced uppercase form both solution formats use. The braces
     /// are the formats' decoration, not part of the identifier.
     [[nodiscard]] std::string NewGuid();
 

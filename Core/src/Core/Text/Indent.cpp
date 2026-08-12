@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <optional>
 
-namespace core::text
+namespace Core
 {
     namespace
     {

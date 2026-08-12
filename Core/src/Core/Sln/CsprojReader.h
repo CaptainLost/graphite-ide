@@ -2,7 +2,7 @@
 
 #include "Core/Sln/ProjectContentReader.h"
 
-namespace core::sln
+namespace Core
 {
     /// Reads a C# project. Unlike a .vcxproj, a modern SDK-style .csproj lists no files
     /// at all — it declares an SDK and the SDK globs the project's own directory. So this

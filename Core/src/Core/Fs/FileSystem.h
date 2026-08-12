@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core::fs
+namespace Core
 {
     /// One entry of a directory listing, as read from disk.
     struct DirectoryEntry

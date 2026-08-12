@@ -2,9 +2,9 @@
 
 #include "Core/Platform/Caption.h"
 
-using core::CaptionHit;
-using core::CaptionMetrics;
-using core::Classify;
+using Core::CaptionHit;
+using Core::CaptionMetrics;
+using Core::Classify;
 
 namespace
 {

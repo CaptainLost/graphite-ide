@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-namespace core
+namespace Core
 {
     /// Dockable application window. The implementation draws only the interior —
     /// PanelManager is responsible for Begin/End.

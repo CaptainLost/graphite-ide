@@ -23,7 +23,7 @@ TEST_CASE("pugixml parses a document and reads attributes")
 
 TEST_CASE("pugixml reports a parse failure instead of throwing")
 {
-    // The whole module returns core::Result rather than throwing, which relies on this.
+    // The whole module returns Core::Result rather than throwing, which relies on this.
     pugi::xml_document document;
     const pugi::xml_parse_result result = document.load_string("<Solution><unclosed>");
 

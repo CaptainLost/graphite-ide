@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// One entry in a menu tree. Entries name commands by id rather than carrying
     /// behaviour, so a menu is data — which is what lets the shortcut text beside an

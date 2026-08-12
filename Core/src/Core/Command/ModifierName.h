@@ -2,7 +2,7 @@
 
 #include <imgui.h>
 
-namespace core
+namespace Core
 {
     struct ModifierName
     {

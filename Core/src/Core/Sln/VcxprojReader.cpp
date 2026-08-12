@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core::sln
+namespace Core
 {
     namespace
     {
@@ -112,11 +112,11 @@ namespace core::sln
         {
             std::sort(folder.folders.begin(), folder.folders.end(),
                       [](const ContentFolder& left, const ContentFolder& right)
-                      { return fs::CompareNames(left.name, right.name) < 0; });
+                      { return CompareNames(left.name, right.name) < 0; });
 
             std::sort(folder.files.begin(), folder.files.end(),
                       [](const ContentFile& left, const ContentFile& right)
-                      { return fs::CompareNames(left.name, right.name) < 0; });
+                      { return CompareNames(left.name, right.name) < 0; });
 
             for (ContentFolder& child : folder.folders)
                 SortContent(child);
@@ -127,7 +127,7 @@ namespace core::sln
     {
         // Compared case-insensitively, as ReadSolution does for the solution itself: the
         // filesystem does not care, so App.VCXPROJ must not silently render as a leaf.
-        std::string extension = fs::ToUtf8(project.extension());
+        std::string extension = ToUtf8(project.extension());
         std::transform(extension.begin(), extension.end(), extension.begin(),
                        [](unsigned char character)
                        { return static_cast<char>(std::tolower(character)); });
@@ -174,9 +174,9 @@ namespace core::sln
                 if (name == "ProjectReference")
                 {
                     const std::filesystem::path referenced =
-                        fs::FromUtf8(item.attribute("Include").value());
+                        FromUtf8(item.attribute("Include").value());
 
-                    content.references.push_back(fs::ToUtf8(referenced.stem()));
+                    content.references.push_back(ToUtf8(referenced.stem()));
                     continue;
                 }
 
@@ -192,9 +192,9 @@ namespace core::sln
                     continue;
 
                 ContentFile file;
-                file.path = (directory / fs::FromUtf8(include)).lexically_normal();
+                file.path = (directory / FromUtf8(include)).lexically_normal();
                 file.path.make_preferred();
-                file.name = fs::ToUtf8(file.path.filename());
+                file.name = ToUtf8(file.path.filename());
 
                 const auto assignment = assignments.find(include);
 
@@ -220,7 +220,7 @@ namespace core::sln
         // References are names too, and Visual Studio lists them sorted.
         std::sort(content.references.begin(), content.references.end(),
                   [](const std::string& left, const std::string& right)
-                  { return fs::CompareNames(left, right) < 0; });
+                  { return CompareNames(left, right) < 0; });
 
         return content;
     }

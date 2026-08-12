@@ -9,7 +9,7 @@
 #include <optional>
 #include <string>
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
     class Keymap;

@@ -11,13 +11,13 @@
 #include <filesystem>
 #include <string>
 
-namespace graphite
+namespace Graphite
 {
     /// Draws the solution the workspace has loaded: solution folders, projects, and — once
     /// a project reader fills them in — the folders and files inside each project.
     ///
     /// The tree is read-only, but its context menu edits the solution file through
-    /// core::sln::SolutionEditor: adding and removing projects, and organising solution
+    /// Core::SolutionEditor: adding and removing projects, and organising solution
     /// folders. Nothing here reads or writes a project file.
     class SolutionTreeView final
     {
@@ -49,20 +49,20 @@ namespace graphite
             std::string name;
         };
 
-        void RenderFolder(const core::sln::Folder& folder, const std::string& path);
-        void RenderProject(const core::sln::Project& project, const std::string& folder);
-        void RenderContentFolder(const core::sln::ContentFolder& folder);
+        void RenderFolder(const Core::Folder& folder, const std::string& path);
+        void RenderProject(const Core::Project& project, const std::string& folder);
+        void RenderContentFolder(const Core::ContentFolder& folder);
         void RenderEmptyState();
 
-        void RenderContextMenu(const core::sln::Folder& folder, const std::string& path);
-        void RenderContextMenu(const core::sln::Project& project, const std::string& folder);
-        [[nodiscard]] bool RenderFolderRenameEditor(const core::sln::Folder& folder,
+        void RenderContextMenu(const Core::Folder& folder, const std::string& path);
+        void RenderContextMenu(const Core::Project& project, const std::string& folder);
+        [[nodiscard]] bool RenderFolderRenameEditor(const Core::Folder& folder,
                                                     const std::string& path);
-        void RenderMoveToFolderMenu(const core::sln::Project& project,
+        void RenderMoveToFolderMenu(const Core::Project& project,
                                     const std::string& currentFolder);
         void RenderRemoveConfirmation();
         void ExecutePendingAction();
-        [[nodiscard]] core::Result<void> Apply(const PendingAction& action);
+        [[nodiscard]] Core::Result<void> Apply(const PendingAction& action);
 
         Workspace& m_workspace;
         ImGuiTextFilter m_filter;

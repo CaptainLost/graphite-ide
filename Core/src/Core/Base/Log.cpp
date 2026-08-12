@@ -4,7 +4,7 @@
 
 #include <cstdio>
 
-namespace core
+namespace Core
 {
     std::string_view ToString(LogLevel level) noexcept
     {

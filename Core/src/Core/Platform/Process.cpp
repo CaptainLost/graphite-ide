@@ -6,7 +6,7 @@
     #include <windows.h>
 #endif
 
-namespace core::platform
+namespace Core
 {
     Result<std::filesystem::path> ExecutableDirectory()
     {

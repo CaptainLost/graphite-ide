@@ -2,7 +2,7 @@
 
 #include "Core/Platform/Caption.h"
 
-namespace core
+namespace Core
 {
     namespace
     {

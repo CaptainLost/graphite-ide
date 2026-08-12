@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace core::text
+namespace Core
 {
     class TextBuffer;
 

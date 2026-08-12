@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Watches a directory subtree and reports which directories changed. Runs a thread
     /// that does nothing but record paths; the consumer collects them from its own

@@ -9,11 +9,11 @@
 
 namespace
 {
-    class CountingPanel final : public core::Panel
+    class CountingPanel final : public Core::Panel
     {
     public:
         CountingPanel(std::string id, std::string title, bool visible = true)
-            : core::Panel(std::move(id), std::move(title), visible)
+            : Core::Panel(std::move(id), std::move(title), visible)
         {
         }
 
@@ -27,11 +27,11 @@ namespace
     /// Stands in for the key bindings screen, which cannot be driven without a frame: what
     /// matters here is what the manager does with the answer, not how the screen arrives
     /// at it.
-    class CapturingPanel final : public core::Panel
+    class CapturingPanel final : public Core::Panel
     {
     public:
         CapturingPanel(std::string id, bool capturing)
-            : core::Panel(std::move(id), "Panel"), m_capturing(capturing)
+            : Core::Panel(std::move(id), "Panel"), m_capturing(capturing)
         {
         }
 
@@ -44,9 +44,9 @@ namespace
 
 TEST_CASE("Add registers a panel and allows finding it by identifier")
 {
-    core::PanelManager panels;
+    Core::PanelManager panels;
 
-    core::Panel* added = panels.Add(std::make_unique<CountingPanel>("console", "Console"));
+    Core::Panel* added = panels.Add(std::make_unique<CountingPanel>("console", "Console"));
 
     REQUIRE(added != nullptr);
     CHECK(panels.Count() == 1);
@@ -57,10 +57,10 @@ TEST_CASE("Add registers a panel and allows finding it by identifier")
 
 TEST_CASE("Add rejects a duplicate identifier")
 {
-    core::PanelManager panels;
+    Core::PanelManager panels;
     panels.Add(std::make_unique<CountingPanel>("console", "Console"));
 
-    core::Panel* duplicate = panels.Add(std::make_unique<CountingPanel>("console", "Other"));
+    Core::Panel* duplicate = panels.Add(std::make_unique<CountingPanel>("console", "Other"));
 
     CHECK(duplicate == nullptr);
     CHECK(panels.Count() == 1);
@@ -68,15 +68,15 @@ TEST_CASE("Add rejects a duplicate identifier")
 
 TEST_CASE("Find returns nullptr for an unknown identifier")
 {
-    core::PanelManager panels;
+    Core::PanelManager panels;
 
     CHECK(panels.Find("missing") == nullptr);
 }
 
 TEST_CASE("SetVisible changes visibility and signals an unknown identifier")
 {
-    core::PanelManager panels;
-    core::Panel* panel = panels.Add(std::make_unique<CountingPanel>("files", "Files"));
+    Core::PanelManager panels;
+    Core::Panel* panel = panels.Add(std::make_unique<CountingPanel>("files", "Files"));
 
     CHECK(panels.SetVisible("files", false));
     CHECK_FALSE(panel->IsVisible());
@@ -85,7 +85,7 @@ TEST_CASE("SetVisible changes visibility and signals an unknown identifier")
 
 TEST_CASE("OnUpdate reaches all panels, including hidden ones")
 {
-    core::PanelManager panels;
+    Core::PanelManager panels;
     auto* visible = static_cast<CountingPanel*>(
         panels.Add(std::make_unique<CountingPanel>("a", "A")));
     auto* hidden = static_cast<CountingPanel*>(
@@ -100,14 +100,14 @@ TEST_CASE("OnUpdate reaches all panels, including hidden ones")
 
 TEST_CASE("RegisterCommands gives every panel a visibility toggle in the panels group")
 {
-    core::PanelManager panels;
-    core::CommandRegistry commands;
+    Core::PanelManager panels;
+    Core::CommandRegistry commands;
     panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
     panels.Add(std::make_unique<CountingPanel>("console", "Console"));
 
     panels.RegisterCommands(commands);
 
-    const std::vector<const core::Command*> members = commands.InGroup("panels");
+    const std::vector<const Core::Command*> members = commands.InGroup("panels");
 
     REQUIRE(members.size() == 2);
     CHECK(members[0]->id == "panel.files");
@@ -117,9 +117,9 @@ TEST_CASE("RegisterCommands gives every panel a visibility toggle in the panels 
 
 TEST_CASE("A panel's command toggles it and reports its state")
 {
-    core::PanelManager panels;
-    core::CommandRegistry commands;
-    core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+    Core::PanelManager panels;
+    Core::CommandRegistry commands;
+    Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
     panels.RegisterCommands(commands);
 
     REQUIRE(files->IsVisible());
@@ -135,8 +135,8 @@ TEST_CASE("A panel added after RegisterCommands still gets its command")
 {
     // Panels are added in OnAttach and commands are registered there too; the order of
     // those two calls should not be a trap for whoever edits OnAttach next.
-    core::PanelManager panels;
-    core::CommandRegistry commands;
+    Core::PanelManager panels;
+    Core::CommandRegistry commands;
     panels.RegisterCommands(commands);
 
     panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
@@ -149,7 +149,7 @@ TEST_CASE("IsCapturingInput answers for any panel reading raw keys")
     // What the application asks before routing shortcuts: a chord being recorded for a
     // rebinding must not also run the command it is being taken from. A panel that
     // captures nothing is the default, so the ordinary case has to stay false.
-    core::PanelManager panels;
+    Core::PanelManager panels;
     panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
 
     CHECK_FALSE(panels.IsCapturingInput());
@@ -164,8 +164,8 @@ TEST_CASE("IsCapturingInput ignores a hidden panel")
     // A hidden panel draws nothing and so can be reading nothing, whatever it left behind
     // in its own state. Were it believed, closing the screen mid-capture would leave every
     // shortcut in the application dead with nothing on screen to explain it.
-    core::PanelManager panels;
-    core::Panel* keys = panels.Add(std::make_unique<CapturingPanel>("keybindings", true));
+    Core::PanelManager panels;
+    Core::Panel* keys = panels.Add(std::make_unique<CapturingPanel>("keybindings", true));
     keys->SetVisible(false);
 
     CHECK_FALSE(panels.IsCapturingInput());
@@ -177,7 +177,7 @@ TEST_CASE("A hidden panel is told it was not drawn")
     // capture waiting for a key — must be told the frame it never got, or it waits
     // invisibly with nothing on screen able to end it. The hidden branch reaches this
     // before any ImGui call, so it needs no context or frame to be checked here.
-    core::PanelManager panels;
+    Core::PanelManager panels;
     auto* hidden =
         static_cast<CountingPanel*>(panels.Add(std::make_unique<CountingPanel>("keybindings",
                                                                               "Keyboard Shortcuts",
@@ -194,9 +194,9 @@ TEST_CASE("ResetVisibility restores each panel's own default, not everything vis
 {
     // A panel that starts hidden — a settings screen — must not be revealed by Reset
     // Layout, which nobody asked to open it.
-    core::PanelManager panels;
-    core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
-    core::Panel* keys = panels.Add(std::make_unique<CountingPanel>("keybindings", "Keyboard Shortcuts", false));
+    Core::PanelManager panels;
+    Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+    Core::Panel* keys = panels.Add(std::make_unique<CountingPanel>("keybindings", "Keyboard Shortcuts", false));
 
     REQUIRE(files->IsVisible());
     REQUIRE_FALSE(keys->IsVisible());

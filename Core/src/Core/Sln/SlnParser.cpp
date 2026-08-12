@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core::sln
+namespace Core
 {
     namespace
     {
@@ -186,7 +186,7 @@ namespace core::sln
 
         Solution solution;
         solution.path = path;
-        solution.name = fs::ToUtf8(path.stem());
+        solution.name = ToUtf8(path.stem());
 
         const std::filesystem::path directory = path.parent_path();
 
@@ -264,7 +264,7 @@ namespace core::sln
             Project project;
             project.displayName = entry.name;
             project.typeId = entry.typeId;
-            project.path = (directory / fs::FromUtf8(entry.location)).lexically_normal();
+            project.path = (directory / FromUtf8(entry.location)).lexically_normal();
             project.path.make_preferred();
 
             std::error_code exists;

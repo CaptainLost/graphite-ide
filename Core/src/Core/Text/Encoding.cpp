@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace core::text
+namespace Core
 {
     namespace
     {

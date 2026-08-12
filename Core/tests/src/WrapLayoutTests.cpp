@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace core::text;
+using namespace Core;
 
 TEST_CASE("A line that fits does not break")
 {

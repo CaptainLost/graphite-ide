@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Every command the application knows, addressed by id.
     class CommandRegistry final : NonCopyable

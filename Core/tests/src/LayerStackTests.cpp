@@ -8,11 +8,11 @@
 
 namespace
 {
-    class RecordingLayer final : public core::Layer
+    class RecordingLayer final : public Core::Layer
     {
     public:
         RecordingLayer(std::string name, std::vector<std::string>& journal)
-            : core::Layer(std::move(name)), m_journal(journal)
+            : Core::Layer(std::move(name)), m_journal(journal)
         {
         }
 
@@ -29,9 +29,9 @@ namespace
 TEST_CASE("Push calls OnAttach and returns a reference to the layer")
 {
     std::vector<std::string> journal;
-    core::LayerStack stack;
+    Core::LayerStack stack;
 
-    core::Layer& layer = stack.Push(std::make_unique<RecordingLayer>("first", journal));
+    Core::Layer& layer = stack.Push(std::make_unique<RecordingLayer>("first", journal));
 
     CHECK(stack.Size() == 1);
     CHECK(layer.Name() == "first");
@@ -42,7 +42,7 @@ TEST_CASE("Push calls OnAttach and returns a reference to the layer")
 TEST_CASE("Iteration preserves insertion order")
 {
     std::vector<std::string> journal;
-    core::LayerStack stack;
+    Core::LayerStack stack;
 
     stack.Push(std::make_unique<RecordingLayer>("a", journal));
     stack.Push(std::make_unique<RecordingLayer>("b", journal));
@@ -59,7 +59,7 @@ TEST_CASE("Iteration preserves insertion order")
 TEST_CASE("Clear detaches layers in reverse order of addition")
 {
     std::vector<std::string> journal;
-    core::LayerStack stack;
+    Core::LayerStack stack;
 
     stack.Push(std::make_unique<RecordingLayer>("a", journal));
     stack.Push(std::make_unique<RecordingLayer>("b", journal));
@@ -76,17 +76,17 @@ TEST_CASE("Clear detaches layers in reverse order of addition")
 TEST_CASE("Adding a layer during iteration over the copy does not invalidate the pass")
 {
     std::vector<std::string> journal;
-    core::LayerStack stack;
+    Core::LayerStack stack;
 
     stack.Push(std::make_unique<RecordingLayer>("a", journal));
     stack.Push(std::make_unique<RecordingLayer>("b", journal));
     journal.clear();
 
-    std::vector<core::Layer*> snapshot;
+    std::vector<Core::Layer*> snapshot;
     for (auto& layer : stack)
         snapshot.push_back(layer.get());
 
-    for (core::Layer* layer : snapshot)
+    for (Core::Layer* layer : snapshot)
     {
         layer->OnUpdate(0.016f);
         stack.Push(std::make_unique<RecordingLayer>("added", journal));

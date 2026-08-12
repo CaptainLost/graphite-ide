@@ -11,33 +11,33 @@
 #include <format>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
         /// Walks every project in the tree. Solution folders nest, so a plain loop over
         /// one level would miss most of them.
         template <typename Visitor>
-        void ForEachProject(const core::sln::Folder& folder, Visitor&& visit)
+        void ForEachProject(const Core::Folder& folder, Visitor&& visit)
         {
-            for (const core::sln::Project& project : folder.projects)
+            for (const Core::Project& project : folder.projects)
                 visit(project);
 
-            for (const core::sln::Folder& child : folder.folders)
+            for (const Core::Folder& child : folder.folders)
                 ForEachProject(child, visit);
         }
     }
 
-    core::Result<void> Workspace::OpenFolder(const std::filesystem::path& folderPath)
+    Core::Result<void> Workspace::OpenFolder(const std::filesystem::path& folderPath)
     {
         // Normalise once, here, where a path enters the workspace. A command-line
         // argument or a settings file can carry forward slashes or a trailing separator,
         // and every path in the tree is derived from this one — so a single conversion
         // keeps the whole app on one spelling, including the system file browser and the
         // change notifications the watcher matches against tree nodes.
-        const std::filesystem::path root = core::fs::NormalizeDirectory(folderPath);
+        const std::filesystem::path root = Core::NormalizeDirectory(folderPath);
 
-        core::FileTree candidate;
+        Core::FileTree candidate;
 
         // Build the new tree first: a failed open must leave the current one untouched.
         if (const auto rooted = candidate.SetRoot(root); !rooted)
@@ -63,7 +63,7 @@ namespace graphite
         // nothing about this one.
         m_watcherResumed = false;
 
-        if (auto watcher = core::DirectoryWatcher::Start(root); watcher)
+        if (auto watcher = Core::DirectoryWatcher::Start(root); watcher)
         {
             m_watcher = std::move(watcher).Value();
         }
@@ -77,7 +77,7 @@ namespace graphite
         // Rebuilt for the new root before anything reads it: the store is per folder, so
         // the previous workspace's file must not be consulted for this one.
         m_settings = WorkspaceSettings{root};
-        m_selectedSolution = core::fs::FromUtf8(m_settings.Get("selectedSolution"));
+        m_selectedSolution = Core::FromUtf8(m_settings.Get("selectedSolution"));
 
         FindSolutions();
         LoadSolution();
@@ -86,16 +86,16 @@ namespace graphite
         m_events.Publish(WorkspaceOpenedEvent{root});
 
         CORE_INFO("Workspace opened: '{}'", root.string());
-        return core::Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    core::Result<void> Workspace::OpenSolution(const std::filesystem::path& solutionPath)
+    Core::Result<void> Workspace::OpenSolution(const std::filesystem::path& solutionPath)
     {
         std::error_code code;
 
         if (!std::filesystem::is_regular_file(solutionPath, code))
         {
-            return core::Error{core::ErrorCode::NotFound,
+            return Core::Error{Core::ErrorCode::NotFound,
                                std::format("no solution file at '{}'", solutionPath.string())};
         }
 
@@ -103,9 +103,9 @@ namespace graphite
         // would be too late: by then the workspace has been re-rooted, the file recorded
         // as a candidate, and the choice written to .graphite — where it would come back
         // as a candidate on every later open.
-        if (!core::sln::IsSolutionFile(solutionPath))
+        if (!Core::IsSolutionFile(solutionPath))
         {
-            return core::Error{core::ErrorCode::Unsupported,
+            return Core::Error{Core::ErrorCode::Unsupported,
                                std::format("'{}' is not a solution file", solutionPath.string())};
         }
 
@@ -147,11 +147,11 @@ namespace graphite
 
         if (!m_solution)
         {
-            return core::Error{core::ErrorCode::InvalidArgument,
+            return Core::Error{Core::ErrorCode::InvalidArgument,
                                std::format("cannot read '{}'", chosen.string())};
         }
 
-        return core::Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
     void Workspace::Close()
@@ -168,7 +168,7 @@ namespace graphite
         // statements the tree would hold a query pointing at an empty optional.
         m_tree.SetIgnoreQuery({});
         m_repository.reset();
-        m_tree = core::FileTree{};
+        m_tree = Core::FileTree{};
         m_root.clear();
         m_selectedFile.clear();
 
@@ -209,7 +209,7 @@ namespace graphite
             return;
         }
 
-        const core::DirectoryWatcher::Changes changed = m_watcher->TakeSettled();
+        const Core::DirectoryWatcher::Changes changed = m_watcher->TakeSettled();
 
         if (changed.movedTo)
         {
@@ -283,7 +283,7 @@ namespace graphite
             bool matched = false;
 
             ForEachProject(m_solution->root,
-                           [&directory, &matched](const core::sln::Project& project)
+                           [&directory, &matched](const Core::Project& project)
                            {
                                if (project.path.parent_path() == directory)
                                    matched = true;
@@ -371,7 +371,7 @@ namespace graphite
 
         m_watcherResumed = true;
 
-        auto watcher = core::DirectoryWatcher::Start(m_root);
+        auto watcher = Core::DirectoryWatcher::Start(m_root);
 
         if (!watcher)
         {
@@ -399,7 +399,7 @@ namespace graphite
     void Workspace::HandleRootMoved(const std::filesystem::path& destination)
     {
         const std::filesystem::path from = m_root;
-        const std::filesystem::path to = core::fs::NormalizeDirectory(destination);
+        const std::filesystem::path to = Core::NormalizeDirectory(destination);
 
         CORE_INFO("Workspace moved from '{}' to '{}'", from.string(), to.string());
 
@@ -422,7 +422,7 @@ namespace graphite
         m_watcherResumed = false;
         m_watcher.reset();
 
-        if (auto watcher = core::DirectoryWatcher::Start(to); watcher)
+        if (auto watcher = Core::DirectoryWatcher::Start(to); watcher)
         {
             m_watcher = std::move(watcher).Value();
         }
@@ -446,7 +446,7 @@ namespace graphite
         // and every solution path would name a file that no longer exists there.
         m_settings = WorkspaceSettings{to};
         ResetSolutionState();
-        m_selectedSolution = core::fs::FromUtf8(m_settings.Get("selectedSolution"));
+        m_selectedSolution = Core::FromUtf8(m_settings.Get("selectedSolution"));
 
         FindSolutions();
         LoadSolution();
@@ -457,7 +457,7 @@ namespace graphite
 
     void Workspace::RefreshChanged(const std::filesystem::path& directory)
     {
-        core::FileNode* node = FindNode(directory);
+        Core::FileNode* node = FindNode(directory);
 
         // Not found means the directory was never expanded, so there is nothing loaded to
         // correct — it will read the current state whenever the user opens it.
@@ -465,24 +465,24 @@ namespace graphite
             m_tree.Refresh(*node);
     }
 
-    core::FileNode* Workspace::FindNode(const std::filesystem::path& path)
+    Core::FileNode* Workspace::FindNode(const std::filesystem::path& path)
     {
         if (!m_tree.HasRoot())
             return nullptr;
 
         // An explicit stack rather than recursion: a deep tree is user-supplied input and
         // this runs every frame that something changed.
-        std::vector<core::FileNode*> pending{&m_tree.Root()};
+        std::vector<Core::FileNode*> pending{&m_tree.Root()};
 
         while (!pending.empty())
         {
-            core::FileNode* node = pending.back();
+            Core::FileNode* node = pending.back();
             pending.pop_back();
 
             if (node->path == path)
                 return node;
 
-            for (core::FileNode& child : node->children)
+            for (Core::FileNode& child : node->children)
             {
                 if (child.isDirectory)
                     pending.push_back(&child);
@@ -497,7 +497,7 @@ namespace graphite
         m_tree.SetIgnoreQuery({});
         m_repository.reset();
 
-        auto repository = core::git::Repository::Open(m_root);
+        auto repository = Core::Repository::Open(m_root);
 
         if (!repository)
         {
@@ -519,14 +519,14 @@ namespace graphite
     {
         m_solutionCandidates.clear();
 
-        const auto entries = core::fs::ReadDirectory(m_root);
+        const auto entries = Core::ReadDirectory(m_root);
 
         if (!entries)
             return;
 
         std::vector<std::filesystem::path> legacy;
 
-        for (const core::fs::DirectoryEntry& entry : entries.Value())
+        for (const Core::DirectoryEntry& entry : entries.Value())
         {
             if (entry.isDirectory)
                 continue;
@@ -615,7 +615,7 @@ namespace graphite
         m_solutionStamp = stamp;
         m_solution.reset();
 
-        auto solution = core::sln::ReadSolution(m_selectedSolution);
+        auto solution = Core::ReadSolution(m_selectedSolution);
 
         if (!solution)
         {
@@ -651,7 +651,7 @@ namespace graphite
             return newest;
 
         ForEachProject(m_solution->root,
-                       [&newest](const core::sln::Project& project)
+                       [&newest](const Core::Project& project)
                        {
                            std::error_code projectCode;
 
@@ -695,14 +695,14 @@ namespace graphite
     void Workspace::SelectSolution(const std::filesystem::path& path)
     {
         m_selectedSolution = path;
-        m_settings.Set("selectedSolution", core::fs::ToUtf8(path));
+        m_settings.Set("selectedSolution", Core::ToUtf8(path));
 
         // The guard keys on which solution was attempted, so switching to another is
         // never mistaken for a repeat of the last one.
         LoadSolution();
     }
 
-    void Workspace::RegisterCommands(core::CommandRegistry& commands)
+    void Workspace::RegisterCommands(Core::CommandRegistry& commands)
     {
         commands.Add({.id = "workspace.openFolder",
                       .label = "Open Folder...",
@@ -715,7 +715,7 @@ namespace graphite
 
     void OpenFolderInteractively(Workspace& workspace)
     {
-        auto picked = core::FileDialog::PickFolder("Open Folder");
+        auto picked = Core::FileDialog::PickFolder("Open Folder");
         if (!picked)
         {
             CORE_ERROR("Folder dialog failed: {}", picked.GetError().message);
@@ -731,11 +731,11 @@ namespace graphite
 
     void OpenSolutionInteractively(Workspace& workspace)
     {
-        const std::vector<core::FileDialog::Filter> filters = {
+        const std::vector<Core::FileDialog::Filter> filters = {
             {"Visual Studio solutions", "*.sln;*.slnx"},
             {"All files", "*.*"}};
 
-        auto picked = core::FileDialog::PickFile("Open Solution", filters);
+        auto picked = Core::FileDialog::PickFile("Open Solution", filters);
 
         if (!picked)
         {

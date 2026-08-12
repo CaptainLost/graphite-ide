@@ -1,6 +1,6 @@
 #pragma once
 
-namespace graphite
+namespace Graphite
 {
     /// The version of the IDE itself. It lives here and not in Core because Core is a
     /// library that knows nothing about the product built on top of it; were Core ever

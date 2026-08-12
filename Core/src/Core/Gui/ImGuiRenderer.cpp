@@ -27,7 +27,7 @@
 
 #include <GLFW/glfw3.h>
 
-namespace core
+namespace Core
 {
     namespace
     {
@@ -57,10 +57,10 @@ namespace core
         // to outlive the context — a local would dangle at the next save.
         static std::string iniPath = []
         {
-            const auto directory = platform::ExecutableDirectory();
+            const auto directory = ExecutableDirectory();
 
             if (directory)
-                return fs::ToUtf8(directory.Value() / "imgui.ini");
+                return ToUtf8(directory.Value() / "imgui.ini");
 
             // Falling back to the working directory keeps the layout working rather than
             // losing it, but say so: a layout that silently moves between launches is
@@ -87,13 +87,13 @@ namespace core
         // returns nullptr, which crashes a Debug build instead of letting the warning run.
         textConfig.Flags |= ImFontFlags_NoLoadError;
 
-        const auto executableDirectory = platform::ExecutableDirectory();
+        const auto executableDirectory = ExecutableDirectory();
 
         if (executableDirectory)
         {
             const auto regular = executableDirectory.Value() / "JetBrainsMono-Regular.ttf";
 
-            g_monoFont = io.Fonts->AddFontFromFileTTF(fs::ToUtf8(regular).c_str(), kBaseFontSize,
+            g_monoFont = io.Fonts->AddFontFromFileTTF(ToUtf8(regular).c_str(), kBaseFontSize,
                                                        &textConfig);
         }
 
@@ -133,11 +133,11 @@ namespace core
             const auto fontPath =
                 executableDirectory.Value() / "materialdesignicons-webfont.ttf";
 
-            if (io.Fonts->AddFontFromFileTTF(fs::ToUtf8(fontPath).c_str(), kBaseFontSize,
+            if (io.Fonts->AddFontFromFileTTF(ToUtf8(fontPath).c_str(), kBaseFontSize,
                                               &iconConfig, UsedGlyphRanges()) == nullptr)
             {
                 CORE_WARN("Could not load the icon font, the UI will show text only: {}",
-                          fs::ToUtf8(fontPath));
+                          ToUtf8(fontPath));
             }
         }
         else

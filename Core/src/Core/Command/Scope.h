@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace core
+namespace Core
 {
     /// Where a chord counts. Global chords are routed once per frame after every window
     /// has closed; a scoped chord is fired by whoever owns the scope, from inside the

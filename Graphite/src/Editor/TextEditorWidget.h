@@ -2,27 +2,27 @@
 
 #include "Core/Text/Editing.h"
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
     class Keymap;
     class ShortcutRouter;
 }
 
-namespace core::text
+namespace Core
 {
     struct OpenItem;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// What the editor needs in order to turn a gesture into a command. Passed rather
     /// than stored: the widget is redrawn from a call that already holds all three.
     struct CommandContext
     {
-        core::CommandRegistry* commands = nullptr;
-        core::Keymap* keys = nullptr;
-        core::ShortcutRouter* router = nullptr;
+        Core::CommandRegistry* commands = nullptr;
+        Core::Keymap* keys = nullptr;
+        Core::ShortcutRouter* router = nullptr;
     };
 
     /// What one call to DrawEditor produced, for the caller to act on.
@@ -63,10 +63,10 @@ namespace graphite
     /// down the same code path, rather than a second renderer to keep in step.
     ///
     /// `context` is what the Ctrl+wheel gesture is fired through: this window is what
-    /// defines core::Scope::HoveredEditor, so the command runs here rather than being
+    /// defines Core::Scope::HoveredEditor, so the command runs here rather than being
     /// reported upwards for someone else to act on.
     [[nodiscard]] EditorFrameResult DrawEditor(const CommandContext& context,
-                                               core::text::OpenItem& item, float fontSize,
-                                               core::text::IndentStyle indentStyle,
+                                               Core::OpenItem& item, float fontSize,
+                                               Core::IndentStyle indentStyle,
                                                bool wordWrap);
 }

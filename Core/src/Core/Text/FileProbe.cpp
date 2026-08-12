@@ -9,7 +9,7 @@
 #include <string>
 #include <system_error>
 
-namespace core::text
+namespace Core
 {
     FileProbe ClassifySample(std::string_view sample, std::uint64_t size)
     {
@@ -46,20 +46,20 @@ namespace core::text
         const auto status = std::filesystem::status(path, code);
 
         if (code || !std::filesystem::exists(status))
-            return Error{ErrorCode::NotFound, "No such file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::NotFound, "No such file: " + ToUtf8(path)};
 
         if (!std::filesystem::is_regular_file(status))
-            return Error{ErrorCode::InvalidArgument, "Not a file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::InvalidArgument, "Not a file: " + ToUtf8(path)};
 
         const std::uintmax_t size = std::filesystem::file_size(path, code);
 
         if (code)
-            return Error{ErrorCode::IoFailure, "Cannot measure file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::IoFailure, "Cannot measure file: " + ToUtf8(path)};
 
         std::ifstream stream{path, std::ios::binary};
 
         if (!stream.is_open())
-            return Error{ErrorCode::AccessDenied, "Cannot open file: " + fs::ToUtf8(path)};
+            return Error{ErrorCode::AccessDenied, "Cannot open file: " + ToUtf8(path)};
 
         std::string sample(ProbeSampleSize, '\0');
         stream.read(sample.data(), static_cast<std::streamsize>(sample.size()));

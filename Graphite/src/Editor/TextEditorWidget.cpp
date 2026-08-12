@@ -22,7 +22,7 @@
 #include <string_view>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
@@ -83,14 +83,14 @@ namespace graphite
             std::size_t at = std::min(byte, expanded.size());
 
             for (std::size_t taken = 0; taken < columns && at < expanded.size(); ++taken)
-                at = core::text::NextCharacter(expanded, at);
+                at = Core::NextCharacter(expanded, at);
 
             return at;
         }
 
-        void DrawFailure(const core::text::OpenItem& item)
+        void DrawFailure(const Core::OpenItem& item)
         {
-            const std::string message = core::text::FailureMessage(item);
+            const std::string message = Core::FailureMessage(item);
             const ImVec2 size = ImGui::CalcTextSize(message.c_str());
             const ImVec2 available = ImGui::GetContentRegionAvail();
 
@@ -100,8 +100,8 @@ namespace graphite
         }
     }
 
-    EditorFrameResult DrawEditor(const CommandContext& context, core::text::OpenItem& item,
-                                 float fontSize, core::text::IndentStyle indentStyle,
+    EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
+                                 float fontSize, Core::IndentStyle indentStyle,
                                  bool wordWrap)
     {
         EditorFrameResult result;
@@ -112,9 +112,9 @@ namespace graphite
             return result;
         }
 
-        ImGui::PushFont(core::ImGuiRenderer::MonoFont(), fontSize);
+        ImGui::PushFont(Core::ImGuiRenderer::MonoFont(), fontSize);
 
-        const core::text::TextBuffer& buffer = item.document->Buffer();
+        const Core::TextBuffer& buffer = item.document->Buffer();
         // Read before anything in this function can move the caret — the mouse below
         // moves it as readily as the keyboard does, and the blink has to restart for
         // both.
@@ -187,7 +187,7 @@ namespace graphite
             const std::size_t columnsPerRow =
                 wordWrap ? static_cast<std::size_t>(
                                std::max(1.0f, (available - gutterWidth) / cellWidth))
-                         : core::text::RowMap::kNoWrap;
+                         : Core::RowMap::kNoWrap;
 
             // The line-count test is not redundant with the width test: Editing keeps the
             // map current through every edit, but a document could reach here without ever
@@ -196,14 +196,14 @@ namespace graphite
             if (columnsPerRow != item.wrappedTo
                 || item.rows.LineCount() != buffer.LineCount())
             {
-                item.rows.Rebuild(buffer, columnsPerRow, core::text::DefaultTabWidth);
+                item.rows.Rebuild(buffer, columnsPerRow, Core::DefaultTabWidth);
                 item.wrappedTo = columnsPerRow;
 
                 // The aim was a column of the geometry that just went away: after a resize
                 // or a toggle of wrapping, the caret sits at a different row column than
                 // the one it was aiming at. Cleared rather than converted, so the next
                 // vertical move resolves it from where the caret actually is now.
-                item.rowAimAt = core::text::NoRowAim;
+                item.rowAimAt = Core::NoRowAim;
             }
 
             // Computed once when the document loaded (OpenItem::widestColumn), not walked
@@ -310,9 +310,9 @@ namespace graphite
                 // how to put a row and a column within it back together into an offset, and
                 // it clamps a column past the row's end rather than failing, which is what
                 // makes a click in the empty space right of a short row land on its end.
-                const std::size_t offset = core::text::VisualToCaret(
-                    buffer, item.rows, core::text::VisualPosition{row, column},
-                    core::text::DefaultTabWidth);
+                const std::size_t offset = Core::VisualToCaret(
+                    buffer, item.rows, Core::VisualPosition{row, column},
+                    Core::DefaultTabWidth);
 
                 if (pressedThisFrame)
                 {
@@ -322,19 +322,19 @@ namespace graphite
                     // row is a consequence of the window's width, and the user asked for
                     // the line.
                     if (clicks >= 3)
-                        item.caret = core::text::SelectLineAt(buffer, item.rows.RowAt(row).line);
+                        item.caret = Core::SelectLineAt(buffer, item.rows.RowAt(row).line);
                     else if (clicks == 2)
-                        item.caret = core::text::SelectWordAt(buffer, offset);
+                        item.caret = Core::SelectWordAt(buffer, offset);
                     else
-                        item.caret = core::text::PlaceAt(buffer, item.caret, offset,
+                        item.caret = Core::PlaceAt(buffer, item.caret, offset,
                                                          ImGui::GetIO().KeyShift,
-                                                         core::text::DefaultTabWidth);
+                                                         Core::DefaultTabWidth);
                 }
                 else
                 {
                     // Dragging always extends, whichever way it goes.
-                    item.caret = core::text::PlaceAt(buffer, item.caret, offset, true,
-                                                     core::text::DefaultTabWidth);
+                    item.caret = Core::PlaceAt(buffer, item.caret, offset, true,
+                                                     Core::DefaultTabWidth);
                 }
             }
 
@@ -354,7 +354,7 @@ namespace graphite
             if (ImGui::IsWindowHovered() && routable)
             {
                 context.router->DispatchWheel(*context.commands, *context.keys,
-                                              core::Scope::HoveredEditor,
+                                              Core::Scope::HoveredEditor,
                                               ImGui::GetIO().MouseWheel);
             }
 
@@ -385,8 +385,8 @@ namespace graphite
                 struct Binding
                 {
                     ImGuiKey key;
-                    core::text::Motion plain;
-                    core::text::Motion withControl;
+                    Core::Motion plain;
+                    Core::Motion withControl;
                 };
 
                 // Horizontal motion only. Up, Down, Page Up, Page Down and the plain Home
@@ -396,8 +396,8 @@ namespace graphite
                 // and the end of the document are the same offsets however the text is laid
                 // out.
                 const Binding bindings[] = {
-                    {ImGuiKey_LeftArrow, core::text::Motion::Left, core::text::Motion::WordLeft},
-                    {ImGuiKey_RightArrow, core::text::Motion::Right, core::text::Motion::WordRight},
+                    {ImGuiKey_LeftArrow, Core::Motion::Left, Core::Motion::WordLeft},
+                    {ImGuiKey_RightArrow, Core::Motion::Right, Core::Motion::WordRight},
                 };
 
                 for (const Binding& binding : bindings)
@@ -406,9 +406,9 @@ namespace graphite
                         continue;
 
                     item.caret =
-                        core::text::Move(buffer, item.caret,
+                        Core::Move(buffer, item.caret,
                                          control ? binding.withControl : binding.plain, shift,
-                                         core::text::DefaultTabWidth, pageRows);
+                                         Core::DefaultTabWidth, pageRows);
                 }
 
                 // Where the caret sits on screen. Computed on demand rather than once per
@@ -416,8 +416,8 @@ namespace graphite
                 // file, and only these motions need it.
                 const auto caretRow = [&]
                 {
-                    return core::text::CaretToVisual(buffer, item.rows, item.caret.offset,
-                                                     core::text::DefaultTabWidth)
+                    return Core::CaretToVisual(buffer, item.rows, item.caret.offset,
+                                                     Core::DefaultTabWidth)
                         .row;
                 };
 
@@ -430,9 +430,9 @@ namespace graphite
                 const auto placeOnRow = [&](std::size_t targetRow, std::size_t column,
                                             bool aiming)
                 {
-                    const std::size_t offset = core::text::VisualToCaret(
-                        buffer, item.rows, core::text::VisualPosition{targetRow, column},
-                        core::text::DefaultTabWidth);
+                    const std::size_t offset = Core::VisualToCaret(
+                        buffer, item.rows, Core::VisualPosition{targetRow, column},
+                        Core::DefaultTabWidth);
 
                     item.caret.offset = offset;
 
@@ -450,14 +450,14 @@ namespace graphite
                     }
                     else
                     {
-                        item.rowAimAt = core::text::NoRowAim;
+                        item.rowAimAt = Core::NoRowAim;
                     }
                 };
 
                 const auto moveByRows = [&](bool down, std::size_t rows)
                 {
-                    const core::text::VisualPosition here = core::text::CaretToVisual(
-                        buffer, item.rows, item.caret.offset, core::text::DefaultTabWidth);
+                    const Core::VisualPosition here = Core::CaretToVisual(
+                        buffer, item.rows, item.caret.offset, Core::DefaultTabWidth);
 
                     // The aim is trusted only while the caret is still where it was
                     // computed for. Anything else that moved the caret — a click, an arrow
@@ -493,9 +493,9 @@ namespace graphite
                 {
                     if (control)
                     {
-                        item.caret = core::text::Move(buffer, item.caret,
-                                                      core::text::Motion::DocumentStart, shift,
-                                                      core::text::DefaultTabWidth, pageRows);
+                        item.caret = Core::Move(buffer, item.caret,
+                                                      Core::Motion::DocumentStart, shift,
+                                                      Core::DefaultTabWidth, pageRows);
                     }
                     else
                     {
@@ -507,9 +507,9 @@ namespace graphite
                 {
                     if (control)
                     {
-                        item.caret = core::text::Move(buffer, item.caret,
-                                                      core::text::Motion::DocumentEnd, shift,
-                                                      core::text::DefaultTabWidth, pageRows);
+                        item.caret = Core::Move(buffer, item.caret,
+                                                      Core::Motion::DocumentEnd, shift,
+                                                      Core::DefaultTabWidth, pageRows);
                     }
                     else
                     {
@@ -529,7 +529,7 @@ namespace graphite
                 }
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_A, false))
-                    item.caret = core::text::SelectAll(buffer);
+                    item.caret = Core::SelectAll(buffer);
 
                 // Whatever moved the caret above — a motion key or Ctrl+A, and the mouse
                 // click or drag earlier in this function, since caretAtFrameStart was
@@ -544,15 +544,15 @@ namespace graphite
                 // removing the selection, not a separate way of reading the clipboard.
                 const auto copySelection = [&]
                 {
-                    const auto [from, to] = core::text::SelectionRange(item.caret);
+                    const auto [from, to] = Core::SelectionRange(item.caret);
 
                     // Substring hands back the buffer's own LF-only text, and the Windows
                     // clipboard is CRLF — pasted into Excel or any Win32 EDIT control,
                     // LF-only text arrives as a single line.
                     if (from != to)
                     {
-                        const std::string clipboard = core::text::WithLineEnding(
-                            buffer.Substring(from, to), core::text::LineEnding::Crlf);
+                        const std::string clipboard = Core::WithLineEnding(
+                            buffer.Substring(from, to), Core::LineEnding::Crlf);
 
                         ImGui::SetClipboardText(clipboard.c_str());
                     }
@@ -578,7 +578,7 @@ namespace graphite
 
                     if (length > 0)
                     {
-                        result.edited |= core::text::InsertText(
+                        result.edited |= Core::InsertText(
                             item, std::string_view(utf8, static_cast<std::size_t>(length)));
                     }
                 }
@@ -586,19 +586,19 @@ namespace graphite
                 if (ImGui::IsKeyPressed(ImGuiKey_Enter, true)
                     || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, true))
                 {
-                    result.edited |= core::text::InsertNewline(item, indentStyle);
+                    result.edited |= Core::InsertNewline(item, indentStyle);
                 }
 
                 if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
                 {
-                    result.edited |= control ? core::text::DeleteWordBackward(item)
-                                             : core::text::DeleteBackward(item);
+                    result.edited |= control ? Core::DeleteWordBackward(item)
+                                             : Core::DeleteBackward(item);
                 }
 
                 if (ImGui::IsKeyPressed(ImGuiKey_Delete, true))
                 {
-                    result.edited |= control ? core::text::DeleteWordForward(item)
-                                             : core::text::DeleteForward(item);
+                    result.edited |= control ? Core::DeleteWordForward(item)
+                                             : Core::DeleteForward(item);
                 }
 
                 // Consumed here rather than left for ImGui's own focus navigation, which
@@ -607,8 +607,8 @@ namespace graphite
                 // listening for Tab.
                 if (ImGui::IsKeyPressed(ImGuiKey_Tab, true))
                 {
-                    result.edited |= shift ? core::text::Outdent(item, indentStyle)
-                                           : core::text::Indent(item, indentStyle);
+                    result.edited |= shift ? Core::Outdent(item, indentStyle)
+                                           : Core::Indent(item, indentStyle);
                 }
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_V, false))
@@ -616,23 +616,23 @@ namespace graphite
                     // An empty clipboard, or one holding something that is not text,
                     // hands back a null pointer rather than an empty string.
                     if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
-                        result.edited |= core::text::InsertText(item, clipboard);
+                        result.edited |= Core::InsertText(item, clipboard);
                 }
 
                 if (control && ImGui::IsKeyPressed(ImGuiKey_X, false))
                 {
                     copySelection();
-                    result.edited |= core::text::DeleteBackward(item);
+                    result.edited |= Core::DeleteBackward(item);
                 }
 
                 if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))
-                    result.edited |= core::text::Undo(item);
+                    result.edited |= Core::Undo(item);
 
                 if (control
                     && (ImGui::IsKeyPressed(ImGuiKey_Y, false)
                         || (shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))))
                 {
-                    result.edited |= core::text::Redo(item);
+                    result.edited |= Core::Redo(item);
                 }
 
                 // Saving is not this widget's decision: a stale document on disk needs
@@ -657,15 +657,15 @@ namespace graphite
             // a motion key or an edit changed where the caret sits.
             if (item.caret.offset != caretAtFrameStart)
             {
-                const core::text::Position where = buffer.ToPosition(item.caret.offset);
+                const Core::Position where = buffer.ToPosition(item.caret.offset);
                 // The row the caret is on, which is its line only while nothing wraps.
                 // Scrolling to the line number in a wrapped document would land wherever
                 // that many rows happen to reach, which is short of the caret by however
                 // much the text above it wrapped.
                 const float caretY =
-                    static_cast<float>(core::text::CaretToVisual(buffer, item.rows,
+                    static_cast<float>(Core::CaretToVisual(buffer, item.rows,
                                                                  item.caret.offset,
-                                                                 core::text::DefaultTabWidth)
+                                                                 Core::DefaultTabWidth)
                                            .row)
                     * lineHeight;
 
@@ -689,9 +689,9 @@ namespace graphite
                 {
                     const float caretX =
                         gutterWidth
-                        + static_cast<float>(core::text::ColumnOfByte(
+                        + static_cast<float>(Core::ColumnOfByte(
                               buffer.LineText(where.line), where.column,
-                              core::text::DefaultTabWidth))
+                              Core::DefaultTabWidth))
                               * cellWidth;
 
                     if (caretX - gutterWidth < ImGui::GetScrollX())
@@ -706,14 +706,14 @@ namespace graphite
             if (item.caret.offset != caretAtFrameStart)
                 s_caretMovedAt = ImGui::GetTime();
 
-            const core::text::Position caretPosition =
+            const Core::Position caretPosition =
                 buffer.ToPosition(item.caret.offset);
             // Where the caret is on screen, which is (line, column) only while nothing
             // wraps. Read once here rather than per row: the loop below only compares
             // against it, and CaretToVisual walks the caret line's break list.
-            const core::text::VisualPosition caretVisual = core::text::CaretToVisual(
-                buffer, item.rows, item.caret.offset, core::text::DefaultTabWidth);
-            const auto [selectionFrom, selectionTo] = core::text::SelectionRange(item.caret);
+            const Core::VisualPosition caretVisual = Core::CaretToVisual(
+                buffer, item.rows, item.caret.offset, Core::DefaultTabWidth);
+            const auto [selectionFrom, selectionTo] = Core::SelectionRange(item.caret);
 
             const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
             const ImU32 gutterColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
@@ -794,7 +794,7 @@ namespace graphite
                 for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
                 {
                     const std::size_t rowIndex = static_cast<std::size_t>(row);
-                    const core::text::RowRef ref = item.rows.RowAt(rowIndex);
+                    const Core::RowRef ref = item.rows.RowAt(rowIndex);
                     const std::size_t line = ref.line;
                     const float y = origin.y + static_cast<float>(row) * lineHeight;
                     const float textX = textOriginX;
@@ -804,7 +804,7 @@ namespace graphite
                         text = buffer.LineText(line);
                         // Tabs are advances, not glyphs; expanding them into spaces first
                         // keeps a row one AddText call instead of one run per tab.
-                        expanded = core::text::ExpandTabs(text, core::text::DefaultTabWidth);
+                        expanded = Core::ExpandTabs(text, Core::DefaultTabWidth);
                         cachedLine = line;
                         haveCachedLine = true;
                         haveCarried = false;
@@ -822,14 +822,14 @@ namespace graphite
                             const std::size_t toByte =
                                 std::min(selectionTo - start, text.size() + 1);
 
-                            selectionFromColumn = core::text::ColumnOfByte(
-                                text, fromByte, core::text::DefaultTabWidth);
+                            selectionFromColumn = Core::ColumnOfByte(
+                                text, fromByte, Core::DefaultTabWidth);
                             // A selection running past this line's end shows the newline
                             // as one cell of highlight, which is how every editor draws
                             // it — that is the trailing +1.
                             selectionToColumn =
-                                core::text::ColumnOfByte(text, std::min(toByte, text.size()),
-                                                         core::text::DefaultTabWidth)
+                                Core::ColumnOfByte(text, std::min(toByte, text.size()),
+                                                         Core::DefaultTabWidth)
                                 + (toByte > text.size() ? 1 : 0);
                         }
                     }
@@ -896,7 +896,7 @@ namespace graphite
                     // character it belongs under. A guide whose column is behind this
                     // row's start belongs to a row above and is not drawn again here.
                     for (std::size_t column = 0; column < depth;
-                         column += core::text::DefaultTabWidth)
+                         column += Core::DefaultTabWidth)
                     {
                         if (column < fromColumn)
                             continue;

@@ -14,12 +14,12 @@ namespace
 {
     constexpr std::size_t kConsoleCapacity = 4096;
 
-    class GraphiteApplication final : public core::Application
+    class GraphiteApplication final : public Core::Application
     {
     public:
-        GraphiteApplication(std::shared_ptr<core::RingBufferSink> sink,
+        GraphiteApplication(std::shared_ptr<Core::RingBufferSink> sink,
                              std::filesystem::path initialFolder)
-            : core::Application(core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
+            : Core::Application(Core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
               m_sink(std::move(sink)),
               m_initialFolder(std::move(initialFolder))
         {
@@ -28,27 +28,27 @@ namespace
     protected:
         void OnInit() override
         {
-            PushLayer(std::make_unique<graphite::GraphiteLayer>(m_sink, m_initialFolder));
+            PushLayer(std::make_unique<Graphite::GraphiteLayer>(m_sink, m_initialFolder));
         }
 
     private:
-        std::shared_ptr<core::RingBufferSink> m_sink;
+        std::shared_ptr<Core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;
     };
 }
 
 int main(int argc, char** argv)
 {
-    auto consoleSink = std::make_shared<core::RingBufferSink>(kConsoleCapacity);
+    auto consoleSink = std::make_shared<Core::RingBufferSink>(kConsoleCapacity);
 
 #ifndef CORE_DIST
-    core::Logger::Get().AddSink(std::make_shared<core::ConsoleSink>());
+    Core::Logger::Get().AddSink(std::make_shared<Core::ConsoleSink>());
 #endif
-    core::Logger::Get().AddSink(consoleSink);
+    Core::Logger::Get().AddSink(consoleSink);
 
     try
     {
-        CORE_INFO("Graphite IDE {}", graphite::Version::String());
+        CORE_INFO("Graphite IDE {}", Graphite::Version::String());
 
         std::filesystem::path initialFolder;
         if (argc > 1)

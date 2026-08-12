@@ -10,7 +10,7 @@
     #include <windows.h>
 #endif
 
-namespace core::fs
+namespace Core
 {
     namespace
     {

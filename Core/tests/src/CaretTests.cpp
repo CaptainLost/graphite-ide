@@ -7,7 +7,7 @@
 #include <ostream>
 #include <string>
 
-using namespace core::text;
+using namespace Core;
 
 namespace
 {

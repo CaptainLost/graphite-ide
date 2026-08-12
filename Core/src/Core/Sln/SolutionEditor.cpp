@@ -10,14 +10,14 @@
 #include <fstream>
 #include <sstream>
 
-namespace core::sln
+namespace Core
 {
     namespace
     {
         /// Compared case-insensitively, because the filesystem this runs on is.
         std::string LowercaseExtension(const std::filesystem::path& path)
         {
-            std::string extension = fs::ToUtf8(path.extension());
+            std::string extension = ToUtf8(path.extension());
 
             std::transform(extension.begin(), extension.end(), extension.begin(),
                            [](unsigned char character)
@@ -31,7 +31,7 @@ namespace core::sln
     {
         // Both solution formats wrap a GUID in braces and write it uppercase. That is the
         // whole of this function: the identifier itself is a plain version 4 UUID, and
-        // core::Uuid is where it is made and where the RFC is answered to.
+        // Core::Uuid is where it is made and where the RFC is answered to.
         return std::format("{{{}}}", Uuid::Generate().ToString());
     }
 

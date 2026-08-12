@@ -7,7 +7,7 @@
 
 #include <memory>
 
-namespace core
+namespace Core
 {
     class Window;
 

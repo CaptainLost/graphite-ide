@@ -18,7 +18,7 @@
 #include <utility>
 #include <vector>
 
-namespace core
+namespace Core
 {
     namespace
     {
@@ -194,19 +194,19 @@ namespace core
 
     bool KeyBindingsPanel::Matches(const Command& command) const
     {
-        const std::string needle = ascii::Lowered(m_filter.data());
+        const std::string needle = Lowered(m_filter.data());
 
         if (needle.empty())
         {
             return true;
         }
 
-        if (ascii::Lowered(command.label).find(needle) != std::string::npos)
+        if (Lowered(command.label).find(needle) != std::string::npos)
         {
             return true;
         }
 
-        return ascii::Lowered(AllChordText(m_keys.For(command.id))).find(needle) !=
+        return Lowered(AllChordText(m_keys.For(command.id))).find(needle) !=
                std::string::npos;
     }
 

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace core::sln
+namespace Core
 {
     /// Names deliberately mirror microsoft/vs-solutionpersistence — SolutionModel,
     /// SolutionProjectModel, SolutionFolderModel — so the two can be read side by side.

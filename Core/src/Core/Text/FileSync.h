@@ -7,7 +7,7 @@
 #include <optional>
 #include <vector>
 
-namespace core::text
+namespace Core
 {
     class DocumentSet;
 

@@ -5,7 +5,7 @@
 
 #include <filesystem>
 
-namespace core::sln
+namespace Core
 {
     /// Reads what is inside one project file.
     ///

@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace core
+namespace Core
 {
     class Shell
     {

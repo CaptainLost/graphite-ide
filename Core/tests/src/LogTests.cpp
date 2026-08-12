@@ -5,10 +5,10 @@
 
 #include <memory>
 
-using core::LogEntry;
-using core::Logger;
-using core::LogLevel;
-using core::RingBufferSink;
+using Core::LogEntry;
+using Core::Logger;
+using Core::LogLevel;
+using Core::RingBufferSink;
 
 TEST_CASE("RingBufferSink remembers entries in order")
 {

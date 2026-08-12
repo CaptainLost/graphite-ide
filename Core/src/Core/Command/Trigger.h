@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace core
+namespace Core
 {
     /// What produces a chord. The wheel is here rather than in a separate type because
     /// Ctrl+wheel is already one of the ways the editor zooms, and a binding that could

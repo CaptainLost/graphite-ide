@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <string>
 
-namespace core::text
+namespace Core
 {
     std::vector<std::size_t> WrapColumns(std::string_view line, std::size_t columnsPerRow,
                                           std::size_t tabWidth)

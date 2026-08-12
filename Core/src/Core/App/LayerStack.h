@@ -7,7 +7,7 @@
 #include <memory>
 #include <vector>
 
-namespace core
+namespace Core
 {
     class LayerStack final : NonCopyable
     {

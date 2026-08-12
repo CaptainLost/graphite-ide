@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace core
+namespace Core
 {
     enum class LogLevel
     {
@@ -65,9 +65,9 @@ namespace core
     };
 }
 
-#define CORE_LOG(level, ...) ::core::Logger::Get().Write((level), std::format(__VA_ARGS__))
+#define CORE_LOG(level, ...) ::Core::Logger::Get().Write((level), std::format(__VA_ARGS__))
 
-#define CORE_TRACE(...) CORE_LOG(::core::LogLevel::Trace, __VA_ARGS__)
-#define CORE_INFO(...)  CORE_LOG(::core::LogLevel::Info, __VA_ARGS__)
-#define CORE_WARN(...)  CORE_LOG(::core::LogLevel::Warn, __VA_ARGS__)
-#define CORE_ERROR(...) CORE_LOG(::core::LogLevel::Error, __VA_ARGS__)
+#define CORE_TRACE(...) CORE_LOG(::Core::LogLevel::Trace, __VA_ARGS__)
+#define CORE_INFO(...)  CORE_LOG(::Core::LogLevel::Info, __VA_ARGS__)
+#define CORE_WARN(...)  CORE_LOG(::Core::LogLevel::Warn, __VA_ARGS__)
+#define CORE_ERROR(...) CORE_LOG(::Core::LogLevel::Error, __VA_ARGS__)

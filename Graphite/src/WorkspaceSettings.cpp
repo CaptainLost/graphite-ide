@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
@@ -31,7 +31,7 @@ namespace graphite
         if (m_root.empty())
             return {};
 
-        return core::JsonFile::Load(FilePath()).Get(key);
+        return Core::JsonFile::Load(FilePath()).Get(key);
     }
 
     void WorkspaceSettings::Set(std::string_view key, std::string value)
@@ -49,14 +49,14 @@ namespace graphite
         std::error_code code;
         if (!std::filesystem::exists(directory, code))
         {
-            if (const auto made = core::fs::MakeDirectory(directory); !made)
+            if (const auto made = Core::MakeDirectory(directory); !made)
             {
                 CORE_WARN("Cannot create '{}': {}", directory.string(), made.GetError().message);
                 return;
             }
         }
 
-        core::JsonFile file = core::JsonFile::Load(FilePath());
+        Core::JsonFile file = Core::JsonFile::Load(FilePath());
         file.Set(key, std::move(value));
 
         if (!file.Save(FilePath()))

@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-using core::Binding;
-using core::Chord;
-using core::Keymap;
-using core::Scope;
-using core::Trigger;
+using Core::Binding;
+using Core::Chord;
+using Core::Keymap;
+using Core::Scope;
+using Core::Trigger;
 
 namespace
 {
@@ -106,7 +106,7 @@ TEST_CASE("FindConflicts names both sides of a chord bound twice")
     keys.SetDefault("workspace.close", Binding{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)});
     keys.SetDefault("editor.zoomIn", ZoomIn());
 
-    const std::vector<core::Conflict> conflicts = keys.FindConflicts();
+    const std::vector<Core::Conflict> conflicts = keys.FindConflicts();
 
     REQUIRE(conflicts.size() == 1);
     CHECK(conflicts[0].chord == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S));

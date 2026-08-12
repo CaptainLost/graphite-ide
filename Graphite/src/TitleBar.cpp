@@ -12,7 +12,7 @@
 #include <cmath>
 #include <format>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
@@ -46,7 +46,7 @@ namespace graphite
         /// with ImGuiItemFlags_NoNav, so these three are no longer keyboard-reachable.
         /// Nothing is lost that the menus do not already offer — File > Exit closes the
         /// window, and the system menu on Alt+Space minimizes and maximizes it.
-        bool CaptionButton(const char* id, const char* glyph, const core::CaptionRect& rect,
+        bool CaptionButton(const char* id, const char* glyph, const Core::CaptionRect& rect,
                            ImU32 hoveredColour, ImU32 heldColour, bool systemOwnsPointer)
         {
             ImGui::SetCursorPos(ImVec2(rect.x, rect.y));
@@ -79,7 +79,7 @@ namespace graphite
         }
     }
 
-    void TitleBar::Render(core::Window& window)
+    void TitleBar::Render(Core::Window& window)
     {
         if (!window.HasCustomTitleBar())
         {
@@ -99,7 +99,7 @@ namespace graphite
         // spans, so it is what the button layout needs.
         const float barWidth = ImGui::GetWindowWidth();
 
-        const core::CaptionLayout layout = core::LayOutCaption(
+        const Core::CaptionLayout layout = Core::LayOutCaption(
             barWidth, kCaptionHeight, kButtonWidth, versionWidth, kVersionGap, contentLeft);
 
         if (layout.versionVisible)
@@ -131,7 +131,7 @@ namespace graphite
         // docked along the top or the left would break that — as it would already break
         // measuring the caption's height from the client top — and both would then need
         // the offset between GetWindowPos() and the viewport's Pos added here.
-        core::CaptionMetrics metrics;
+        Core::CaptionMetrics metrics;
         metrics.height = kCaptionHeight;
         metrics.dragBegin = contentLeft;
         metrics.dragEnd = layout.minimize.x;
@@ -166,10 +166,10 @@ namespace graphite
         const ImVec2 pointer = ImGui::GetMousePos();
 
         const bool systemOwnsPointer =
-            core::Classify(metrics, static_cast<float>(clientWidth),
+            Core::Classify(metrics, static_cast<float>(clientWidth),
                            static_cast<float>(clientHeight), pointer.x - origin.x,
                            pointer.y - origin.y,
-                           window.IsMaximized()) != core::CaptionHit::Client;
+                           window.IsMaximized()) != Core::CaptionHit::Client;
 
         const ImU32 hovered = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
         const ImU32 held = ImGui::GetColorU32(ImGuiCol_ButtonActive);

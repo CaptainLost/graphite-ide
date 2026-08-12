@@ -8,7 +8,7 @@
 #include <ostream>
 #include <string>
 
-using namespace core::text;
+using namespace Core;
 
 namespace
 {
@@ -115,7 +115,7 @@ TEST_CASE("Probing a file that is not there fails rather than guessing")
     const auto probe = ProbeFile(directory.Path() / "absent.txt");
 
     REQUIRE_FALSE(probe);
-    CHECK(probe.GetError().code == core::ErrorCode::NotFound);
+    CHECK(probe.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Probing a directory fails")

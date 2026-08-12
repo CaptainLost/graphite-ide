@@ -7,9 +7,9 @@
 #include <string>
 #include <type_traits>
 
-using core::Error;
-using core::ErrorCode;
-using core::Result;
+using Core::Error;
+using Core::ErrorCode;
+using Core::Result;
 
 TEST_CASE("Result stores a value")
 {
@@ -62,7 +62,7 @@ TEST_CASE("Result<void> distinguishes success from error")
 
 TEST_CASE("A type inheriting from NonCopyable remains movable")
 {
-    struct Movable : core::NonCopyable
+    struct Movable : Core::NonCopyable
     {
         explicit Movable(int v) : value(v) {}
         Movable(Movable&&) = default;

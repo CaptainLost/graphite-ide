@@ -6,7 +6,7 @@
 
 #include <algorithm>
 
-namespace core::text
+namespace Core
 {
     TextBuffer::TextBuffer(std::string original) : m_original(std::move(original))
     {

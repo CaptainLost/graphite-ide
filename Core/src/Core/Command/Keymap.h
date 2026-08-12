@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Which chords reach which commands, in two layers: a factory table and whatever
     /// the user changed on top of it. Separate layers are what make "restore the

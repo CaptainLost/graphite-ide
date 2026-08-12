@@ -1,15 +1,15 @@
 ---
 Language: Cpp
 BasedOnStyle: Microsoft
-ColumnLimit: 110
+ColumnLimit: 0
 IndentWidth: 4
 TabWidth: 4
-UseTab: Never
+UseTab: Always
 AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
 BreakBeforeBraces: Allman
-NamespaceIndentation: None
+NamespaceIndentation: All
 PointerAlignment: Left
-SortIncludes: CaseInsensitive
+SortIncludes: false
 SpaceAfterTemplateKeyword: false

@@ -2,7 +2,7 @@
 
 #include "Core/Sln/TextEdit.h"
 
-namespace core::sln::edit
+namespace Core
 {
     std::string DetectLineEnding(std::string_view text)
     {

@@ -10,7 +10,7 @@
 #include <sstream>
 #include <utility>
 
-namespace core
+namespace Core
 {
     struct JsonFile::Document
     {
@@ -104,6 +104,6 @@ namespace core
         const std::string text =
             m_document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
 
-        return static_cast<bool>(fs::WriteFileAtomically(path, text));
+        return static_cast<bool>(WriteFileAtomically(path, text));
     }
 }

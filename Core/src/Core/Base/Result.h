@@ -7,7 +7,7 @@
 #include <utility>
 #include <variant>
 
-namespace core
+namespace Core
 {
     enum class ErrorCode
     {

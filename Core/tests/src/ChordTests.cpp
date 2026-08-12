@@ -5,9 +5,9 @@
 #include <optional>
 #include <string>
 
-using core::Chord;
-using core::Scope;
-using core::Trigger;
+using Core::Chord;
+using Core::Scope;
+using Core::Trigger;
 
 TEST_CASE("A key chord prints its modifiers and its key")
 {

@@ -11,12 +11,12 @@
 #include <filesystem>
 #include <string>
 
-namespace core::text
+namespace Core
 {
     class DocumentSet;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// Browses the open workspace folder. Holds no state of its own beyond the filter —
     /// the tree lives in the Workspace.
@@ -28,7 +28,7 @@ namespace graphite
         /// `documents` is read, never touched: the tree marks which files are open and
         /// which one is on screen, and asks the set rather than keeping its own idea of
         /// either.
-        FileTreeView(Workspace& workspace, const core::text::DocumentSet& documents);
+        FileTreeView(Workspace& workspace, const Core::DocumentSet& documents);
 
         void Render();
 
@@ -58,10 +58,10 @@ namespace graphite
 
         void RenderToolbar();
         void RenderEmptyState();
-        void RenderNode(core::FileNode& node);
-        void RenderContextMenu(const core::FileNode& node);
+        void RenderNode(Core::FileNode& node);
+        void RenderContextMenu(const Core::FileNode& node);
         void RenderDeleteConfirmation();
-        [[nodiscard]] bool RenderRenameEditor(const core::FileNode& node);
+        [[nodiscard]] bool RenderRenameEditor(const Core::FileNode& node);
         void RecordAction(PendingAction action);
         void ExecutePendingAction();
         void HandleDelete(const PendingAction& action);
@@ -69,12 +69,12 @@ namespace graphite
         void HandleRename(const PendingAction& action);
         void HandleDuplicate(const PendingAction& action);
         void HandleCreate(const PendingAction& action);
-        [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);
+        [[nodiscard]] Core::FileNode* FindNode(const std::filesystem::path& path);
         void RefreshParentOf(const std::filesystem::path& path);
-        [[nodiscard]] bool PassesFilter(const core::FileNode& node) const;
+        [[nodiscard]] bool PassesFilter(const Core::FileNode& node) const;
 
         Workspace& m_workspace;
-        const core::text::DocumentSet& m_documents;
+        const Core::DocumentSet& m_documents;
         ImGuiTextFilter m_filter;
         PendingAction m_pending;
         std::filesystem::path m_deleteCandidate;

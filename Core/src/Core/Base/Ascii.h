@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-namespace core::ascii
+namespace Core
 {
     /// Deliberately ASCII-only string operations — the byte a settings file hands back
     /// is not guaranteed to be anything more than that, and these helpers exist to be

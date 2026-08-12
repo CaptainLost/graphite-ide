@@ -14,22 +14,22 @@
 #include <unordered_map>
 #include <vector>
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
     class Keymap;
 }
 
-namespace core::text
+namespace Core
 {
     class DocumentSet;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// One ImGui window per open document, docked into the workspace.
     ///
-    /// Deliberately not a core::Panel: PanelManager runs Begin/End for each panel and
+    /// Deliberately not a Core::Panel: PanelManager runs Begin/End for each panel and
     /// lists them in the View menu, and a View menu holding thirty open files would be
     /// useless. Rendered from GraphiteLayer immediately after the panels.
     ///
@@ -44,7 +44,7 @@ namespace graphite
         /// them opens at ImGui's popup level 0, where a second OpenPopup destroys the
         /// first - so they all consult the same gate rather than each knowing about the
         /// others. See ModalGate.
-        DocumentWindows(core::text::DocumentSet& documents, ModalGate& modals)
+        DocumentWindows(Core::DocumentSet& documents, ModalGate& modals)
             : m_documents(documents),
               m_sizeQuestion(modals, kSizeQuestionTitle),
               m_reloadConflict(modals, kReloadConflictTitle),
@@ -55,7 +55,7 @@ namespace graphite
 
         /// `fallbackDockNode` is where a document goes when no document has been focused
         /// yet this session - typically the workspace's centre node, from
-        /// core::DockSpaceHost::CenterNodeId(). Passed in rather than held, since
+        /// Core::DockSpaceHost::CenterNodeId(). Passed in rather than held, since
         /// DocumentWindows knows nothing about DockSpaceHost and GraphiteLayer, which owns
         /// both, is a cheap place to connect them.
         ///
@@ -69,7 +69,7 @@ namespace graphite
         /// `context` is passed straight through to each editor, which fires the Ctrl+wheel
         /// gesture itself: nothing about it is read here.
         void Render(const CommandContext& context, float fontSize,
-                    core::text::IndentStyle indentStyle, unsigned int fallbackDockNode,
+                    Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
                     bool wordWrap);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
@@ -88,7 +88,7 @@ namespace graphite
         /// is marked missing, so a tab whose file was removed in Explorer stops claiming
         /// the file is still there.
         ///
-        /// The reconciling itself is core::text::SyncWithFile, one item at a time; this
+        /// The reconciling itself is Core::SyncWithFile, one item at a time; this
         /// decides which items are worth reconciling and what to do about what it found.
         ///
         /// The check is a stat per open document sitting in one of those directories,
@@ -110,7 +110,7 @@ namespace graphite
         /// read by the caller - DocumentWindows knows nothing about GLFW.
         void NotifyWindowFocus(bool focusedNow);
 
-        /// core::text::SaveAllModified plus the one status bar message describing what it
+        /// Core::SaveAllModified plus the one status bar message describing what it
         /// did. The two rules - a conflicted document is skipped and the batch continues,
         /// a genuine write failure stops it - live there, where they can be tested; the
         /// English lives here, where there is a status bar to put it in.
@@ -133,7 +133,7 @@ namespace graphite
 
         /// Registers "Save All" and its Ctrl+Shift+S default. Here rather than in the
         /// layer because this is the object that already owns saving.
-        void RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys);
+        void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
         /// A short-lived note for the status bar - what a reload or a failed save just
         /// did - or nothing once it has expired. GraphiteLayer reads this every frame to
@@ -141,14 +141,14 @@ namespace graphite
         [[nodiscard]] std::optional<std::string> StatusMessage() const;
 
     private:
-        /// Turns what core::text::SyncWithFile found about one item into the question or
+        /// Turns what Core::SyncWithFile found about one item into the question or
         /// the status bar note this application shows for it, and nothing else - the
         /// reconciling itself already happened. The outcome is passed in rather than
         /// fetched here so that the two callers keep deciding when to sync, which is the
         /// only part of this they disagree about.
-        void RespondToSync(std::size_t index, core::text::FileSyncOutcome outcome);
+        void RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
 
-        /// core::text::ReloadItem plus a status bar trace: what was reloaded, or what
+        /// Core::ReloadItem plus a status bar trace: what was reloaded, or what
         /// stopped it. On failure nothing about the document changes; the trace names the
         /// error instead.
         void ReloadOne(std::size_t index);
@@ -163,7 +163,7 @@ namespace graphite
         /// OpenConfirmed cannot make, since it treats an open path as one to activate.
         void LoadConfirmed(const std::filesystem::path& path, bool permanent);
 
-        /// core::text::SaveDocument plus a status bar trace either way. Returns whether it
+        /// Core::SaveDocument plus a status bar trace either way. Returns whether it
         /// succeeded, which is what lets a caller stop at the first failure (the close-tab
         /// question). Stops neither to ask nor to check ChangedOnDisk - that is
         /// RequestSave's job.
@@ -204,7 +204,7 @@ namespace graphite
             [[nodiscard]] bool operator==(const LargeFileQuestion&) const = default;
         };
 
-        core::text::DocumentSet& m_documents;
+        Core::DocumentSet& m_documents;
 
         /// The dock node the last focused document sits in. A new window goes there, so a
         /// file opened while working in the right-hand split appears in the right-hand
@@ -218,7 +218,7 @@ namespace graphite
         /// asked about after it rather than replacing it.
         ModalQuestion<LargeFileQuestion> m_sizeQuestion;
 
-        /// The identity (core::fs::ToUtf8 of the path, nothing else) of every window
+        /// The identity (Core::ToUtf8 of the path, nothing else) of every window
         /// Render produced last time it ran. A document can disappear between one Render
         /// call and the next without going through this window's own close button - a
         /// single click replacing a preview, or a workspace closing and taking every
@@ -237,7 +237,7 @@ namespace graphite
         std::vector<std::string> m_previousIdentities;
 
         /// Where a renamed window should be re-docked on the first frame under its new
-        /// identity, keyed by that new identity (the same core::fs::ToUtf8 path used in
+        /// identity, keyed by that new identity (the same Core::ToUtf8 path used in
         /// m_previousIdentities, not the rendered name - the same reasoning applies: the
         /// display title either side of a rename need not match what was true when the
         /// rename happened). Populated by HandleRootMoved from the old window's dock node,
@@ -251,7 +251,7 @@ namespace graphite
         bool m_wasFocused = true;
 
         /// Documents whose file changed on disk while the tab was dirty - what
-        /// core::text::SyncWithFile reports as NeedsDecision. RespondToSync asks, so
+        /// Core::SyncWithFile reports as NeedsDecision. RespondToSync asks, so
         /// several dirty files changing at once (a git checkout) are asked about one at a
         /// time instead of fighting over the same modal.
         ///

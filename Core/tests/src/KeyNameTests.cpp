@@ -6,7 +6,7 @@
 
 #include <string>
 
-using core::IsModifierKey;
+using Core::IsModifierKey;
 
 TEST_CASE("IsModifierKey answers for the eight modifier keys a keyboard has")
 {
@@ -44,35 +44,35 @@ TEST_CASE("IsKeyboardKey holds at both ends of the keyboard block")
 {
     // Tab opens the named range and Oem102 closes the keyboard part of it, so these two
     // are what a submodule bump would move first.
-    CHECK(core::IsKeyboardKey(ImGuiKey_Tab));
-    CHECK(core::IsKeyboardKey(ImGuiKey_Oem102));
-    CHECK(core::IsKeyboardKey(ImGuiKey_S));
-    CHECK(core::IsKeyboardKey(ImGuiKey_F12));
-    CHECK(core::IsKeyboardKey(ImGuiKey_KeypadAdd));
-    CHECK(core::IsKeyboardKey(ImGuiKey_Escape));
-    CHECK(core::IsKeyboardKey(ImGuiKey_LeftCtrl));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_Tab));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_Oem102));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_S));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_F12));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_KeypadAdd));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_Escape));
+    CHECK(Core::IsKeyboardKey(ImGuiKey_LeftCtrl));
 }
 
 TEST_CASE("IsKeyboardKey refuses the mouse aliases")
 {
     // The seven that cost a user their left click: arming a capture is itself a left
     // click, so a scan that accepted these answered its own question.
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseLeft));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseRight));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseMiddle));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseX1));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseX2));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseWheelX));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseWheelY));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseLeft));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseRight));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseMiddle));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseX1));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseX2));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseWheelX));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseWheelY));
 }
 
 TEST_CASE("IsKeyboardKey refuses the gamepad buttons and the reserved mod slots")
 {
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_GamepadStart));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_GamepadFaceDown));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_GamepadRStickDown));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_ReservedForModCtrl));
-    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_ReservedForModSuper));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_GamepadStart));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_GamepadFaceDown));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_GamepadRStickDown));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_ReservedForModCtrl));
+    CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_ReservedForModSuper));
 }
 
 TEST_CASE("No key a capture can return names a modifier")
@@ -86,12 +86,12 @@ TEST_CASE("No key a capture can return names a modifier")
     {
         const auto key = static_cast<ImGuiKey>(index);
 
-        if (!core::IsKeyboardKey(key) || IsModifierKey(key))
+        if (!Core::IsKeyboardKey(key) || IsModifierKey(key))
         {
             continue;
         }
 
-        const std::string name = core::NameOfKey(key);
+        const std::string name = Core::NameOfKey(key);
 
         CHECK(name.find("Mod") == std::string::npos);
         CHECK(name.find("Ctrl") == std::string::npos);

@@ -20,7 +20,7 @@
 #include <string>
 #include <utility>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
@@ -44,7 +44,7 @@ namespace graphite
             return joined;
         }
 
-        [[nodiscard]] std::string WindowName(const core::text::DocumentSet& documents,
+        [[nodiscard]] std::string WindowName(const Core::DocumentSet& documents,
                                              std::size_t index)
         {
             // ImGui shows what precedes ### and identifies by what follows, so the path -
@@ -57,8 +57,8 @@ namespace graphite
             // only one carrying the MDI glyphs - nothing here may push another.
             const std::filesystem::path& path = documents.At(index).path;
 
-            return std::string{core::IconForExtension(core::fs::ToUtf8(path.extension()))} + "  "
-                   + documents.DisplayTitle(index) + "###" + core::fs::ToUtf8(path);
+            return std::string{Core::IconForExtension(Core::ToUtf8(path.extension()))} + "  "
+                   + documents.DisplayTitle(index) + "###" + Core::ToUtf8(path);
         }
 
         /// The part of WindowName that is actually the window's identity as far as ImGui
@@ -67,12 +67,12 @@ namespace graphite
         /// that has to survive a display title changing underneath it - two open items
         /// starting or stopping sharing a file name changes DisplayTitle for both, without
         /// either one closing - has to be keyed on this, not on WindowName's result.
-        [[nodiscard]] std::string Identity(const core::text::DocumentSet& documents, std::size_t index)
+        [[nodiscard]] std::string Identity(const Core::DocumentSet& documents, std::size_t index)
         {
-            return core::fs::ToUtf8(documents.At(index).path);
+            return Core::ToUtf8(documents.At(index).path);
         }
 
-        [[nodiscard]] std::vector<std::string> CurrentIdentities(const core::text::DocumentSet& documents)
+        [[nodiscard]] std::vector<std::string> CurrentIdentities(const Core::DocumentSet& documents)
         {
             std::vector<std::string> identities;
             identities.reserve(documents.Count());
@@ -86,15 +86,15 @@ namespace graphite
 
     void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
     {
-        const core::text::OpenOutcome outcome = m_documents.Open(path, permanent);
+        const Core::OpenOutcome outcome = m_documents.Open(path, permanent);
 
         // Already open: the set has activated it, but nothing about that reaches ImGui,
         // which goes on showing whichever tab it last focused - so ask Render to bring
         // this one forward. See m_focusRequest.
-        if (outcome == core::text::OpenOutcome::Activated)
+        if (outcome == Core::OpenOutcome::Activated)
             m_focusRequest = path;
 
-        if (outcome != core::text::OpenOutcome::NeedsConfirmation)
+        if (outcome != Core::OpenOutcome::NeedsConfirmation)
             return;
 
         AskAboutSize(path, permanent);
@@ -113,7 +113,7 @@ namespace graphite
             // Confirmed, so NeedsConfirmation cannot come back, and Loaded and Failed both
             // leave the tab saying the right thing: the content, or the reason there is
             // none. Nothing here to branch on.
-            static_cast<void>(core::text::LoadFromFile(m_documents.At(*existing), true));
+            static_cast<void>(Core::LoadFromFile(m_documents.At(*existing), true));
             return;
         }
 
@@ -130,7 +130,7 @@ namespace graphite
         // redrawing for. Whoever asks has just probed the same file successfully - that is
         // what NeedsConfirmation means - so this second probe is asking a question already
         // answered, and a failure here means the file went away in between.
-        if (const auto probe = core::text::ProbeFile(path))
+        if (const auto probe = Core::ProbeFile(path))
         {
             question.size = probe.Value().size;
         }
@@ -194,13 +194,13 @@ namespace graphite
     {
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
         {
-            const core::text::OpenItem& item = m_documents.At(index);
+            const Core::OpenItem& item = m_documents.At(index);
 
             // The watcher names directories, so an item is worth a stat only when its own
             // directory is one of them. `everything` means the batch could not be narrowed
             // down at all - dropped notifications, or a git state change - and every open
             // document has to be checked. Items already marked Missing are stated too
-            // (see core::text::SyncWithFile): the file may have come back.
+            // (see Core::SyncWithFile): the file may have come back.
             if (!everything
                 && std::find(directories.begin(), directories.end(), item.path.parent_path())
                        == directories.end())
@@ -208,7 +208,7 @@ namespace graphite
                 continue;
             }
 
-            RespondToSync(index, core::text::SyncWithFile(m_documents, index));
+            RespondToSync(index, Core::SyncWithFile(m_documents, index));
         }
     }
 
@@ -224,15 +224,15 @@ namespace graphite
 
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
         {
-            RespondToSync(index, core::text::SyncWithFile(m_documents, index));
+            RespondToSync(index, Core::SyncWithFile(m_documents, index));
         }
     }
 
-    void DocumentWindows::RespondToSync(std::size_t index, core::text::FileSyncOutcome outcome)
+    void DocumentWindows::RespondToSync(std::size_t index, Core::FileSyncOutcome outcome)
     {
         switch (outcome)
         {
-        case core::text::FileSyncOutcome::NeedsDecision:
+        case Core::FileSyncOutcome::NeedsDecision:
         {
             // Ask rather than reload, and let the question queue, so several files
             // changing in the same batch (a git checkout) are asked about one at a time
@@ -253,21 +253,21 @@ namespace graphite
             break;
         }
 
-        case core::text::FileSyncOutcome::SafeToReload:
+        case Core::FileSyncOutcome::SafeToReload:
             // The same function the conflict modal's "Reload from disk" button calls, so
             // a reload that happened without asking and one the user asked for say the
             // same thing afterwards - including what stopped it, when something did.
             ReloadOne(index);
             break;
 
-        case core::text::FileSyncOutcome::NeedsLoad:
+        case Core::FileSyncOutcome::NeedsLoad:
         {
             // The file a tab was opened on before it existed is here now. Loading it is
             // what turns the tab from a cleared missing mark into the file's content;
             // without it the tab would show nothing and no later sync would look again.
-            core::text::OpenItem& item = m_documents.At(index);
+            Core::OpenItem& item = m_documents.At(index);
 
-            if (core::text::LoadFromFile(item, false) == core::text::ItemLoad::NeedsConfirmation)
+            if (Core::LoadFromFile(item, false) == Core::ItemLoad::NeedsConfirmation)
             {
                 // It came back large. The same question a large file gets when it is
                 // opened by hand, and answering it reaches the same loader.
@@ -277,8 +277,8 @@ namespace graphite
             break;
         }
 
-        case core::text::FileSyncOutcome::Unchanged:
-        case core::text::FileSyncOutcome::WentMissing:
+        case Core::FileSyncOutcome::Unchanged:
+        case Core::FileSyncOutcome::WentMissing:
             // Nothing to say. A file that went away is already said by the tab's own
             // title, which gains and loses "(deleted)" with the mark.
             break;
@@ -287,9 +287,9 @@ namespace graphite
 
     void DocumentWindows::ReloadOne(std::size_t index)
     {
-        const std::string fileName = core::fs::ToUtf8(m_documents.At(index).path.filename());
+        const std::string fileName = Core::ToUtf8(m_documents.At(index).path.filename());
 
-        if (const auto result = core::text::ReloadItem(m_documents, index))
+        if (const auto result = Core::ReloadItem(m_documents, index))
         {
             SetTransientMessage(fileName + " reloaded (changed on disk)");
         }
@@ -301,7 +301,7 @@ namespace graphite
 
     bool DocumentWindows::SaveOne(std::size_t index)
     {
-        const core::text::OpenItem& item = m_documents.At(index);
+        const Core::OpenItem& item = m_documents.At(index);
 
         // Checked here rather than left to SaveDocument, which succeeds having written
         // nothing: an item carrying a reason instead of a document has nothing to save,
@@ -311,9 +311,9 @@ namespace graphite
             return true;
         }
 
-        const std::string fileName = core::fs::ToUtf8(item.path.filename());
+        const std::string fileName = Core::ToUtf8(item.path.filename());
 
-        if (const auto result = core::text::SaveDocument(m_documents, index))
+        if (const auto result = Core::SaveDocument(m_documents, index))
         {
             SetTransientMessage(fileName + " saved");
             return true;
@@ -327,7 +327,7 @@ namespace graphite
 
     void DocumentWindows::RequestSave(std::size_t index)
     {
-        core::text::OpenItem& item = m_documents.At(index);
+        Core::OpenItem& item = m_documents.At(index);
 
         if (!item.document)
             return;
@@ -352,7 +352,7 @@ namespace graphite
         // Qualified: this member has the same name, and an unqualified call from inside it
         // would find itself. The names match on purpose - this is that operation plus the
         // sentence about it - and the qualification is what keeps them apart.
-        const core::text::SaveAllReport report = core::text::SaveAllModified(m_documents);
+        const Core::SaveAllReport report = Core::SaveAllModified(m_documents);
 
         // A stopped batch says why, naming the document that stopped it, and gets no
         // summary over the top: a count of what was saved before the failure would only
@@ -362,7 +362,7 @@ namespace graphite
         if (report.stoppedAt)
         {
             SetTransientMessage("Could not save "
-                                + core::fs::ToUtf8(report.stoppedAt->path.filename()) + ": "
+                                + Core::ToUtf8(report.stoppedAt->path.filename()) + ": "
                                 + report.stoppedAt->error.message);
 
             // Every exit here answers "did everything reach disk" with report.Complete()
@@ -388,7 +388,7 @@ namespace graphite
 
         for (const std::filesystem::path& path : report.conflicted)
         {
-            names.push_back(core::fs::ToUtf8(path.filename()));
+            names.push_back(Core::ToUtf8(path.filename()));
         }
 
         // Named together in one message, not one message per file overwriting the last:
@@ -415,7 +415,7 @@ namespace graphite
     {
         for (std::size_t index = 0; index < m_documents.Count(); ++index)
         {
-            const core::text::OpenItem& item = m_documents.At(index);
+            const Core::OpenItem& item = m_documents.At(index);
 
             if (item.document && item.document->IsModified())
             {
@@ -426,7 +426,7 @@ namespace graphite
         return false;
     }
 
-    void DocumentWindows::RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys)
+    void DocumentWindows::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)
     {
         commands.Add({.id = "document.saveAll",
                       .label = "Save All",
@@ -434,7 +434,7 @@ namespace graphite
                       .enabled = [this] { return AnyModified(); }});
 
         keys.SetDefault("document.saveAll",
-                        {.primary = core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
+                        {.primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
     }
 
     void DocumentWindows::SetTransientMessage(std::string text)
@@ -455,7 +455,7 @@ namespace graphite
     }
 
     void DocumentWindows::Render(const CommandContext& context, float fontSize,
-                                 core::text::IndentStyle indentStyle,
+                                 Core::IndentStyle indentStyle,
                                  unsigned int fallbackDockNode, bool wordWrap)
     {
         // Identities as they stand at the start of this frame - after RequestOpen,
@@ -526,7 +526,7 @@ namespace graphite
         {
             const std::filesystem::path* path = m_reloadConflict.Current();
             const std::string fileName =
-                path != nullptr ? core::fs::ToUtf8(path->filename()) : std::string{};
+                path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
             ImGui::Text("%s changed on disk, and this tab has unsaved changes.",
                         fileName.c_str());
@@ -570,7 +570,7 @@ namespace graphite
         {
             const std::filesystem::path* path = m_overwriteConfirm.Current();
             const std::string fileName =
-                path != nullptr ? core::fs::ToUtf8(path->filename()) : std::string{};
+                path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
             ImGui::Text("%s changed on disk since it was opened. Overwrite it?",
                         fileName.c_str());
@@ -621,7 +621,7 @@ namespace graphite
                 return false;
             }
 
-            const core::text::OpenItem& item = m_documents.At(*index);
+            const Core::OpenItem& item = m_documents.At(*index);
 
             if (item.document && item.document->IsModified())
             {
@@ -638,7 +638,7 @@ namespace graphite
         {
             const std::filesystem::path* path = m_closeConfirm.Current();
             const std::string fileName =
-                path != nullptr ? core::fs::ToUtf8(path->filename()) : std::string{};
+                path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
             ImGui::Text("Save changes to %s before closing?", fileName.c_str());
             ImGui::Separator();
@@ -704,7 +704,7 @@ namespace graphite
 
         for (std::size_t index = 0; index < m_documents.Count();)
         {
-            core::text::OpenItem& item = m_documents.At(index);
+            Core::OpenItem& item = m_documents.At(index);
             const std::string identity = Identity(m_documents, index);
             const std::string name = WindowName(m_documents, index);
 

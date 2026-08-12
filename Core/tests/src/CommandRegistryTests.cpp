@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-using core::Command;
-using core::CommandRegistry;
+using Core::Command;
+using Core::CommandRegistry;
 
 TEST_CASE("Add registers a command and allows finding it by id")
 {

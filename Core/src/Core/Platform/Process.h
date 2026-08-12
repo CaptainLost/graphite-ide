@@ -4,7 +4,7 @@
 
 #include <filesystem>
 
-namespace core::platform
+namespace Core
 {
     /// The directory holding the running executable. Use it to resolve files that belong
     /// to the installation — settings, layouts — because the working directory is

@@ -4,12 +4,12 @@
 #include <optional>
 #include <string>
 
-namespace core::text
+namespace Core
 {
     class DocumentSet;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// The strip along the bottom of the window: the active document's path (with a
     /// dirty marker and, when it applies, the read-only reason) on the left, its caret
@@ -24,7 +24,7 @@ namespace graphite
     /// lines would be a lie. `transientMessage` is DocumentWindows::StatusMessage() -
     /// nullopt once it has expired - passed in rather than looked up here, since this
     /// function otherwise knows nothing about DocumentWindows.
-    void DrawStatusBar(const core::text::DocumentSet& documents,
+    void DrawStatusBar(const Core::DocumentSet& documents,
                        const std::filesystem::path& root,
                        const std::optional<std::string>& transientMessage);
 }

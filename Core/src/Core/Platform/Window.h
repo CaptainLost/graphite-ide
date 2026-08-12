@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 
-namespace core
+namespace Core
 {
     struct WindowSpec
     {

@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-using core::git::Repository;
+using Core::Repository;
 
 namespace
 {
@@ -22,7 +22,7 @@ namespace
         git_libgit2_init();
 
         git_repository* repository = nullptr;
-        const int result = git_repository_init(&repository, core::fs::ToUtf8(path).c_str(), 0);
+        const int result = git_repository_init(&repository, Core::ToUtf8(path).c_str(), 0);
 
         REQUIRE(result == 0);
         git_repository_free(repository);
@@ -36,7 +36,7 @@ TEST_CASE("Opening a directory that is not a repository fails")
     auto opened = Repository::Open(temp.Path());
 
     REQUIRE_FALSE(opened.HasValue());
-    CHECK(opened.GetError().code == core::ErrorCode::NotFound);
+    CHECK(opened.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Opening succeeds from the repository root")
@@ -242,11 +242,11 @@ TEST_CASE("An open repository keeps answering after its .git directory is delete
     // libgit2 goes on reading it through the handle it already holds. So the verdict
     // survives the repository that justified it.
     //
-    // Callers therefore cannot wait to be told. graphite::Workspace::SyncRepository watches
+    // Callers therefore cannot wait to be told. Graphite::Workspace::SyncRepository watches
     // for .git disappearing and drops the repository itself; without that, a folder that
     // stopped being a repository would keep dimming entries for the rest of the session.
     INFO("If this fails, libgit2 changed and now invalidates the handle itself — "
-         "re-evaluate whether graphite::Workspace::SyncRepository is still needed.");
+         "re-evaluate whether Graphite::Workspace::SyncRepository is still needed.");
     CHECK(repository.IsIgnored(temp.Path() / "build.log"));
 }
 
@@ -258,7 +258,7 @@ namespace
     void SetExcludesFile(const std::filesystem::path& repository,
                          const std::filesystem::path& excludes)
     {
-        std::string text = core::fs::ToUtf8(excludes);
+        std::string text = Core::ToUtf8(excludes);
 
         for (char& character : text)
         {

@@ -6,13 +6,13 @@
 
 #include <fstream>
 
-using core::fs::CreateEmptyFile;
-using core::fs::Duplicate;
-using core::fs::IsValidFileName;
-using core::fs::MakeDirectory;
-using core::fs::MakeUniquePath;
-using core::fs::MoveToRecycleBin;
-using core::fs::Rename;
+using Core::CreateEmptyFile;
+using Core::Duplicate;
+using Core::IsValidFileName;
+using Core::MakeDirectory;
+using Core::MakeUniquePath;
+using Core::MoveToRecycleBin;
+using Core::Rename;
 
 TEST_CASE("MakeUniquePath returns the original path when nothing collides")
 {
@@ -123,7 +123,7 @@ TEST_CASE("CreateEmptyFile creates a file and refuses to overwrite one")
 
     const auto again = CreateEmptyFile(target);
     REQUIRE_FALSE(again.HasValue());
-    CHECK(again.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(again.GetError().code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("MakeDirectory creates a directory and refuses an occupied name")
@@ -136,7 +136,7 @@ TEST_CASE("MakeDirectory creates a directory and refuses an occupied name")
 
     const auto again = MakeDirectory(target);
     REQUIRE_FALSE(again.HasValue());
-    CHECK(again.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(again.GetError().code == Core::ErrorCode::InvalidArgument);
 }
 
 TEST_CASE("Rename moves a file to the new name")
@@ -160,7 +160,7 @@ TEST_CASE("Rename refuses to clobber an existing target")
     const auto renamed = Rename(from, to);
 
     REQUIRE_FALSE(renamed.HasValue());
-    CHECK(renamed.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(renamed.GetError().code == Core::ErrorCode::InvalidArgument);
     CHECK(std::filesystem::exists(from));
 }
 
@@ -171,7 +171,7 @@ TEST_CASE("Rename reports a missing source")
     const auto renamed = Rename(temp.Path() / "ghost.txt", temp.Path() / "any.txt");
 
     REQUIRE_FALSE(renamed.HasValue());
-    CHECK(renamed.GetError().code == core::ErrorCode::NotFound);
+    CHECK(renamed.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Rename reports a missing source through the OS error")
@@ -181,7 +181,7 @@ TEST_CASE("Rename reports a missing source through the OS error")
     const auto renamed = Rename(temp.Path() / "ghost.txt", temp.Path() / "target.txt");
 
     REQUIRE_FALSE(renamed.HasValue());
-    CHECK(renamed.GetError().code == core::ErrorCode::NotFound);
+    CHECK(renamed.GetError().code == Core::ErrorCode::NotFound);
     CHECK_FALSE(std::filesystem::exists(temp.Path() / "target.txt"));
 }
 
@@ -221,7 +221,7 @@ TEST_CASE("Duplicate reports a missing source")
     const auto copied = Duplicate(temp.Path() / "ghost.txt");
 
     REQUIRE_FALSE(copied.HasValue());
-    CHECK(copied.GetError().code == core::ErrorCode::NotFound);
+    CHECK(copied.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("MoveToRecycleBin removes a file from its path")
@@ -242,5 +242,5 @@ TEST_CASE("MoveToRecycleBin reports a missing path")
     const auto removed = MoveToRecycleBin(temp.Path() / "ghost.txt");
 
     REQUIRE_FALSE(removed.HasValue());
-    CHECK(removed.GetError().code == core::ErrorCode::NotFound);
+    CHECK(removed.GetError().code == Core::ErrorCode::NotFound);
 }

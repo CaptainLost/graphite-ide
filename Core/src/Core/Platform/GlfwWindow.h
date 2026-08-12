@@ -8,7 +8,7 @@
 
 struct GLFWwindow;
 
-namespace core
+namespace Core
 {
     class GlfwWindow final : public Window
     {

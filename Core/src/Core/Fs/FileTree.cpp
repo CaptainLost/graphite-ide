@@ -8,14 +8,14 @@
 #include <algorithm>
 #include <cctype>
 
-namespace core
+namespace Core
 {
     bool FileNodeLess(const FileNode& left, const FileNode& right)
     {
         if (left.isDirectory != right.isDirectory)
             return left.isDirectory;
 
-        return fs::CompareNames(left.name, right.name) < 0;
+        return CompareNames(left.name, right.name) < 0;
     }
 
     Result<void> FileTree::SetRoot(const std::filesystem::path& root)
@@ -29,10 +29,10 @@ namespace core
 
         m_root = FileNode{};
         m_root.path = root;
-        m_root.name = fs::ToUtf8(root.filename());
+        m_root.name = ToUtf8(root.filename());
 
         if (m_root.name.empty())
-            m_root.name = fs::ToUtf8(root);
+            m_root.name = ToUtf8(root);
 
         m_root.isDirectory = true;
         m_hasRoot = true;
@@ -58,7 +58,7 @@ namespace core
         if (node.loaded)
             return Result<void>::Ok();
 
-        auto entries = fs::ReadDirectory(node.path);
+        auto entries = ReadDirectory(node.path);
         node.loaded = true;
 
         if (!entries)
@@ -74,7 +74,7 @@ namespace core
         node.children.clear();
         node.children.reserve(entries.Value().size());
 
-        for (const fs::DirectoryEntry& entry : entries.Value())
+        for (const DirectoryEntry& entry : entries.Value())
         {
             FileNode child;
             child.path = entry.path;
@@ -98,7 +98,7 @@ namespace core
         if (!node.isDirectory || !node.loaded)
             return;
 
-        auto entries = fs::ReadDirectory(node.path);
+        auto entries = ReadDirectory(node.path);
 
         if (!entries)
         {
@@ -114,7 +114,7 @@ namespace core
         node.children.clear();
         node.children.reserve(entries.Value().size());
 
-        for (const fs::DirectoryEntry& entry : entries.Value())
+        for (const DirectoryEntry& entry : entries.Value())
         {
             const auto match = std::find_if(previous.begin(), previous.end(),
                                             [&entry](const FileNode& candidate)
@@ -152,7 +152,7 @@ namespace core
         if (!m_hasRoot)
             return;
 
-        const std::filesystem::path normalized = fs::NormalizeDirectory(newRoot);
+        const std::filesystem::path normalized = NormalizeDirectory(newRoot);
 
         RebaseNode(m_root, normalized);
 
@@ -162,10 +162,10 @@ namespace core
         //
         // The fallback mirrors SetRoot: a drive root has no filename component, and an
         // empty label would render as a blank row.
-        m_root.name = fs::ToUtf8(normalized.filename());
+        m_root.name = ToUtf8(normalized.filename());
 
         if (m_root.name.empty())
-            m_root.name = fs::ToUtf8(normalized);
+            m_root.name = ToUtf8(normalized);
     }
 
     void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)

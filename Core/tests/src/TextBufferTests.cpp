@@ -6,7 +6,7 @@
 #include <random>
 #include <string>
 
-using namespace core::text;
+using namespace Core;
 
 TEST_CASE("A buffer starts out holding what it was given")
 {
@@ -756,7 +756,7 @@ TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
 
 TEST_CASE("Edits inside a transaction undo as one")
 {
-    core::text::TextBuffer buffer{"one two three"};
+    Core::TextBuffer buffer{"one two three"};
 
     buffer.BeginTransaction();
     buffer.Erase(4, 7);
@@ -771,7 +771,7 @@ TEST_CASE("Edits inside a transaction undo as one")
 
 TEST_CASE("Redo reapplies a whole transaction in the original order")
 {
-    core::text::TextBuffer buffer{"one two three"};
+    Core::TextBuffer buffer{"one two three"};
 
     buffer.BeginTransaction();
     buffer.Erase(4, 7);
@@ -786,7 +786,7 @@ TEST_CASE("Redo reapplies a whole transaction in the original order")
 
 TEST_CASE("Nested transactions close only at the outermost end")
 {
-    core::text::TextBuffer buffer{"ab"};
+    Core::TextBuffer buffer{"ab"};
 
     buffer.BeginTransaction();
     buffer.Insert(1, "X");
@@ -804,7 +804,7 @@ TEST_CASE("Nested transactions close only at the outermost end")
 
 TEST_CASE("Consecutive typing undoes as one word")
 {
-    core::text::TextBuffer buffer;
+    Core::TextBuffer buffer;
 
     for (std::size_t index = 0; index < 5; ++index)
     {
@@ -820,7 +820,7 @@ TEST_CASE("Consecutive typing undoes as one word")
 
 TEST_CASE("BreakUndoGroup splits typing into two steps")
 {
-    core::text::TextBuffer buffer;
+    Core::TextBuffer buffer;
 
     buffer.BeginTransaction();
     buffer.Insert(0, "ab");
@@ -840,7 +840,7 @@ TEST_CASE("BreakUndoGroup splits typing into two steps")
 
 TEST_CASE("Typing that is not contiguous starts a new group")
 {
-    core::text::TextBuffer buffer{"xy"};
+    Core::TextBuffer buffer{"xy"};
 
     buffer.BeginTransaction();
     buffer.Insert(0, "a");
@@ -857,7 +857,7 @@ TEST_CASE("Typing that is not contiguous starts a new group")
 
 TEST_CASE("A newline ends the group it lands in")
 {
-    core::text::TextBuffer buffer;
+    Core::TextBuffer buffer;
 
     buffer.BeginTransaction();
     buffer.Insert(0, "a\n");
@@ -874,7 +874,7 @@ TEST_CASE("A newline ends the group it lands in")
 
 TEST_CASE("Backspaces coalesce and so do forward deletes")
 {
-    core::text::TextBuffer backspaces{"abcd"};
+    Core::TextBuffer backspaces{"abcd"};
 
     for (std::size_t offset = 4; offset > 1; --offset)
     {
@@ -887,7 +887,7 @@ TEST_CASE("Backspaces coalesce and so do forward deletes")
     CHECK(backspaces.Undo());
     CHECK(backspaces.Text() == "abcd");
 
-    core::text::TextBuffer forwards{"abcd"};
+    Core::TextBuffer forwards{"abcd"};
 
     for (int count = 0; count < 3; ++count)
     {
@@ -903,7 +903,7 @@ TEST_CASE("Backspaces coalesce and so do forward deletes")
 
 TEST_CASE("Deleting after typing does not join the typed group")
 {
-    core::text::TextBuffer buffer;
+    Core::TextBuffer buffer;
 
     buffer.BeginTransaction();
     buffer.Insert(0, "ab");
@@ -920,7 +920,7 @@ TEST_CASE("Deleting after typing does not join the typed group")
 
 TEST_CASE("Coalescing does not grow the append buffer")
 {
-    core::text::TextBuffer buffer;
+    Core::TextBuffer buffer;
 
     for (std::size_t index = 0; index < 4; ++index)
     {
@@ -942,7 +942,7 @@ TEST_CASE("Coalescing does not grow the append buffer")
 
 TEST_CASE("A newline landing on a transaction's later edit still closes the group")
 {
-    core::text::TextBuffer buffer;
+    Core::TextBuffer buffer;
 
     buffer.BeginTransaction();
     buffer.Insert(0, "a");
@@ -960,7 +960,7 @@ TEST_CASE("A newline landing on a transaction's later edit still closes the grou
 
 TEST_CASE("Typing after an erase-then-insert transaction coalesces with the insert")
 {
-    core::text::TextBuffer buffer{"one two three"};
+    Core::TextBuffer buffer{"one two three"};
 
     buffer.BeginTransaction();
     buffer.Erase(4, 7);

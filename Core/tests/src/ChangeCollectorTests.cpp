@@ -4,7 +4,7 @@
 
 #include <doctest/doctest.h>
 
-using namespace core;
+using namespace Core;
 
 namespace
 {

@@ -5,7 +5,7 @@
 #include <cstring>
 #include <random>
 
-namespace core
+namespace Core
 {
     Uuid Uuid::Generate()
     {

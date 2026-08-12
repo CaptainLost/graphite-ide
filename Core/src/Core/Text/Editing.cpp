@@ -9,7 +9,7 @@
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
-namespace core::text
+namespace Core
 {
     namespace
     {

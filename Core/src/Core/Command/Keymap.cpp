@@ -4,7 +4,7 @@
 
 #include <utility>
 
-namespace core
+namespace Core
 {
     namespace
     {

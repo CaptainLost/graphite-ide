@@ -4,7 +4,7 @@
 
 #include "Core/Base/Assert.h"
 
-namespace core
+namespace Core
 {
     RingBufferSink::RingBufferSink(std::size_t capacity) : m_capacity(capacity)
     {

@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <string_view>
 
-namespace core::text
+namespace Core
 {
     struct OpenItem;
 

@@ -6,11 +6,11 @@
 
 #include <filesystem>
 
-using namespace core;
+using namespace Core;
 
 TEST_CASE("The executable directory exists and holds the running test binary")
 {
-    const auto directory = platform::ExecutableDirectory();
+    const auto directory = ExecutableDirectory();
 
     REQUIRE(directory.HasValue());
     CHECK(std::filesystem::is_directory(directory.Value()));
@@ -23,7 +23,7 @@ TEST_CASE("The executable directory exists and holds the running test binary")
 
 TEST_CASE("The executable directory is absolute")
 {
-    const auto directory = platform::ExecutableDirectory();
+    const auto directory = ExecutableDirectory();
 
     REQUIRE(directory.HasValue());
     CHECK(directory.Value().is_absolute());

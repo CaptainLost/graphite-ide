@@ -8,11 +8,11 @@
 #include <fstream>
 #include <string>
 
-using core::ErrorCode;
-using core::fs::DirectoryEntry;
-using core::fs::NormalizeDirectory;
-using core::fs::RelativeTo;
-using core::fs::ReadDirectory;
+using Core::ErrorCode;
+using Core::DirectoryEntry;
+using Core::NormalizeDirectory;
+using Core::RelativeTo;
+using Core::ReadDirectory;
 
 namespace
 {
@@ -93,7 +93,7 @@ TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
 {
     TempDirectory temp;
     const std::filesystem::path expected =
-        temp.Path() / core::fs::FromUtf8("\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+        temp.Path() / Core::FromUtf8("\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 
     std::ofstream stream{expected, std::ios::binary | std::ios::trunc};
     stream << "x";
@@ -104,7 +104,7 @@ TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
     REQUIRE(result.HasValue());
     REQUIRE(result.Value().size() == 1);
     CHECK(result.Value()[0].name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
-    CHECK(core::fs::ToUtf8(result.Value()[0].path.filename()) ==
+    CHECK(Core::ToUtf8(result.Value()[0].path.filename()) ==
           "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 }
 

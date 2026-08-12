@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Description of the default panel arrangement. Identifiers must match Panel::Id().
     struct DockLayout

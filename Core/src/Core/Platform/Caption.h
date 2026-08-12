@@ -1,6 +1,6 @@
 #pragma once
 
-namespace core
+namespace Core
 {
     /// What the window should do with a point the system is asking about.
     enum class CaptionHit

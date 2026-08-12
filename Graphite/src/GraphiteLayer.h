@@ -21,13 +21,13 @@
 #include <memory>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
     /// The layer that assembles the application: panel registry, dockspace, and menu bar.
-    class GraphiteLayer final : public core::Layer
+    class GraphiteLayer final : public Core::Layer
     {
     public:
-        GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink, std::filesystem::path initialFolder);
+        GraphiteLayer(std::shared_ptr<Core::RingBufferSink> sink, std::filesystem::path initialFolder);
 
         void OnAttach() override;
         void OnUpdate(float deltaSeconds) override;
@@ -96,11 +96,11 @@ namespace graphite
         /// document FinishClose was told to discard is still modified when this fires.
         bool m_closeApproved = false;
 
-        std::shared_ptr<core::RingBufferSink> m_sink;
+        std::shared_ptr<Core::RingBufferSink> m_sink;
         std::filesystem::path m_initialFolder;
-        core::EventBus m_events;
+        Core::EventBus m_events;
         Workspace m_workspace{m_events};
-        core::text::DocumentSet m_documents;
+        Core::DocumentSet m_documents;
 
         /// Which of the application's five questions currently owns ImGui's single modal
         /// popup level. Declared before m_documentWindows and m_closeQuestion, both of
@@ -124,20 +124,20 @@ namespace graphite
         /// attempt asks fresh rather than remembering the refusal.
         ModalQuestion<ClosePurpose> m_closeQuestion;
 
-        core::PanelManager m_panels;
-        core::DockSpaceHost m_dockSpace;
-        core::DockLayout m_layout;
+        Core::PanelManager m_panels;
+        Core::DockSpaceHost m_dockSpace;
+        Core::DockLayout m_layout;
         TitleBar m_titleBar;
 
-        core::CommandRegistry m_commands;
-        core::Keymap m_keys;
-        core::ShortcutRouter m_router;
-        core::MenuBar m_menuBar;
+        Core::CommandRegistry m_commands;
+        Core::Keymap m_keys;
+        Core::ShortcutRouter m_router;
+        Core::MenuBar m_menuBar;
 
         /// Built once in OnAttach, after every command is registered — the tree names
         /// ids, and a tree built before them would draw a bar full of unregistered
         /// entries.
-        std::vector<core::MenuItem> m_menuTree;
+        std::vector<Core::MenuItem> m_menuTree;
 
         EditorSettings m_editorSettings;
     };

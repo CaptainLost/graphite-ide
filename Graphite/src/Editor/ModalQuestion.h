@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
     /// One question the application asks through a modal popup, from the request to the
     /// answer: what still has to be asked, what is on screen now, and the whole of the

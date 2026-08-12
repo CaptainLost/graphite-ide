@@ -13,16 +13,16 @@
 #include <utility>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
         /// Every logical folder path under `folder`, `path` deep so far. The root itself
         /// is not included — callers that want it add the empty string themselves.
-        void CollectFolderPaths(const core::sln::Folder& folder, const std::string& path,
+        void CollectFolderPaths(const Core::Folder& folder, const std::string& path,
                                 std::vector<std::string>& out)
         {
-            for (const core::sln::Folder& child : folder.folders)
+            for (const Core::Folder& child : folder.folders)
             {
                 const std::string childPath = path.empty() ? child.name : path + "/" + child.name;
                 out.push_back(childPath);
@@ -53,7 +53,7 @@ namespace graphite
 
         ImGui::Separator();
 
-        const core::sln::Solution& solution = *m_workspace.LoadedSolution();
+        const Core::Solution& solution = *m_workspace.LoadedSolution();
 
         if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar))
@@ -82,9 +82,9 @@ namespace graphite
         RenderRemoveConfirmation();
     }
 
-    void SolutionTreeView::RenderFolder(const core::sln::Folder& folder, const std::string& path)
+    void SolutionTreeView::RenderFolder(const Core::Folder& folder, const std::string& path)
     {
-        for (const core::sln::Folder& child : folder.folders)
+        for (const Core::Folder& child : folder.folders)
         {
             const std::string childPath = path.empty() ? child.name : path + "/" + child.name;
 
@@ -105,11 +105,11 @@ namespace graphite
             }
         }
 
-        for (const core::sln::Project& project : folder.projects)
+        for (const Core::Project& project : folder.projects)
             RenderProject(project, path);
     }
 
-    void SolutionTreeView::RenderProject(const core::sln::Project& project,
+    void SolutionTreeView::RenderProject(const Core::Project& project,
                                          const std::string& folder)
     {
         // A project nobody could read is a leaf rather than an empty expandable node: the
@@ -120,7 +120,7 @@ namespace graphite
         // Said in the label rather than only in a colour: this is the one state in the
         // view the user has to act on, and it is why the solution is worth looking at.
         const std::string icon =
-            core::IconForExtension(core::fs::ToUtf8(project.path.extension()));
+            Core::IconForExtension(Core::ToUtf8(project.path.extension()));
         const std::string label =
             icon + "  " + (project.exists ? project.displayName
                                            : project.displayName + "  (missing)");
@@ -155,9 +155,9 @@ namespace graphite
         ImGui::TreePop();
     }
 
-    void SolutionTreeView::RenderContentFolder(const core::sln::ContentFolder& folder)
+    void SolutionTreeView::RenderContentFolder(const Core::ContentFolder& folder)
     {
-        for (const core::sln::ContentFolder& child : folder.folders)
+        for (const Core::ContentFolder& child : folder.folders)
         {
             const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.name;
 
@@ -168,7 +168,7 @@ namespace graphite
             }
         }
 
-        for (const core::sln::ContentFile& file : folder.files)
+        for (const Core::ContentFile& file : folder.files)
         {
             if (!m_filter.PassFilter(file.name.c_str()))
                 continue;
@@ -176,12 +176,12 @@ namespace graphite
             const bool selected = m_workspace.SelectedFile() == file.path;
 
             const std::string label =
-                std::string{core::IconForExtension(core::fs::ToUtf8(file.path.extension()))} +
+                std::string{Core::IconForExtension(Core::ToUtf8(file.path.extension()))} +
                 "  " + file.name;
 
             // Keyed by the full path: two projects can hold files of the same name, and
             // ImGui would treat same-labelled siblings as one node.
-            ImGui::PushID(core::fs::ToUtf8(file.path).c_str());
+            ImGui::PushID(Core::ToUtf8(file.path).c_str());
 
             if (ImGui::Selectable(label.c_str(), selected))
                 m_workspace.SelectFile(file.path);
@@ -209,7 +209,7 @@ namespace graphite
         ImGui::TextUnformatted("This Visual Studio solution could not be read. See the console.");
     }
 
-    void SolutionTreeView::RenderContextMenu(const core::sln::Folder& folder,
+    void SolutionTreeView::RenderContextMenu(const Core::Folder& folder,
                                              const std::string& path)
     {
         // BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
@@ -261,10 +261,10 @@ namespace graphite
         ImGui::EndPopup();
     }
 
-    void SolutionTreeView::RenderContextMenu(const core::sln::Project& project,
+    void SolutionTreeView::RenderContextMenu(const Core::Project& project,
                                              const std::string& folder)
     {
-        const std::string popupId = "##ctxSlnProject" + core::fs::ToUtf8(project.path);
+        const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.path);
 
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
             ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
@@ -291,7 +291,7 @@ namespace graphite
         ImGui::EndPopup();
     }
 
-    void SolutionTreeView::RenderMoveToFolderMenu(const core::sln::Project& project,
+    void SolutionTreeView::RenderMoveToFolderMenu(const Core::Project& project,
                                                   const std::string& currentFolder)
     {
         if (!m_workspace.LoadedSolution())
@@ -313,7 +313,7 @@ namespace graphite
         }
     }
 
-    bool SolutionTreeView::RenderFolderRenameEditor(const core::sln::Folder& folder,
+    bool SolutionTreeView::RenderFolderRenameEditor(const Core::Folder& folder,
                                                     const std::string& path)
     {
         if (m_renamingFolder != path)
@@ -410,10 +410,10 @@ namespace graphite
         // this action is about to invalidate.
         if (action.kind == PendingAction::Kind::AddProject)
         {
-            const std::vector<core::FileDialog::Filter> filters = {
+            const std::vector<Core::FileDialog::Filter> filters = {
                 {"Visual Studio projects", "*.vcxproj"}, {"All files", "*.*"}};
 
-            auto picked = core::FileDialog::PickFile("Add Existing Project", filters);
+            auto picked = Core::FileDialog::PickFile("Add Existing Project", filters);
 
             if (!picked)
             {
@@ -436,17 +436,17 @@ namespace graphite
             CORE_ERROR("{}", applied.GetError().message);
     }
 
-    core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
+    Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
     {
         if (!m_workspace.LoadedSolution())
-            return core::Error{core::ErrorCode::NotFound, "no solution is open"};
+            return Core::Error{Core::ErrorCode::NotFound, "no solution is open"};
 
-        auto editor = core::sln::SolutionEditor::Open(m_workspace.LoadedSolution()->path);
+        auto editor = Core::SolutionEditor::Open(m_workspace.LoadedSolution()->path);
 
         if (!editor)
             return editor.GetError();
 
-        core::Result<void> applied = core::Result<void>::Ok();
+        Core::Result<void> applied = Core::Result<void>::Ok();
 
         switch (action.kind)
         {
@@ -475,7 +475,7 @@ namespace graphite
             break;
 
         case PendingAction::Kind::None:
-            return core::Result<void>::Ok();
+            return Core::Result<void>::Ok();
         }
 
         if (!applied)

@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace graphite
+namespace Graphite
 {
     /// How the file tree presents entries that git ignores.
     enum class GitIgnoredDisplay

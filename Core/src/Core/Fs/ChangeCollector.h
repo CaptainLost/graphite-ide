@@ -5,7 +5,7 @@
 #include <set>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Collects directories reported as changed and holds them back until the disk has
     /// been quiet for a while. Without that delay a build would trigger thousands of

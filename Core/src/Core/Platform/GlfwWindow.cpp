@@ -6,7 +6,7 @@
 
 #include <GLFW/glfw3.h>
 
-namespace core
+namespace Core
 {
     namespace
     {

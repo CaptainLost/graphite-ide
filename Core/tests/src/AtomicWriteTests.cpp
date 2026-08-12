@@ -15,7 +15,7 @@
     #include <windows.h>
 #endif
 
-using core::fs::WriteFileAtomically;
+using Core::WriteFileAtomically;
 
 TEST_CASE("Writing over an existing file leaves the new content")
 {
@@ -104,7 +104,7 @@ TEST_CASE("A failed write leaves an existing target and its content untouched")
     std::vector<std::string> names;
 
     for (const auto& entry : std::filesystem::directory_iterator{temp.Path(), code})
-        names.push_back(core::fs::ToUtf8(entry.path().filename()));
+        names.push_back(Core::ToUtf8(entry.path().filename()));
 
     CHECK_FALSE(code);
     CHECK(names == std::vector<std::string>{"target.txt"});

@@ -9,7 +9,7 @@
 
 TEST_CASE("A generated identifier has the shape both solution formats expect")
 {
-    const std::string guid = core::sln::NewGuid();
+    const std::string guid = Core::NewGuid();
 
     REQUIRE(guid.size() == 38);
     CHECK(guid.front() == '{');
@@ -26,5 +26,5 @@ TEST_CASE("An identifier is never empty")
     // available, which made every caller carry a check for a case it could not handle —
     // and made adding a project impossible on any other system, for no reason to do with
     // adding projects.
-    CHECK_FALSE(core::sln::NewGuid().empty());
+    CHECK_FALSE(Core::NewGuid().empty());
 }

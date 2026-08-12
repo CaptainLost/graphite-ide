@@ -8,8 +8,8 @@
 #include <algorithm>
 #include <string>
 
-using core::sln::ContentFolder;
-using core::sln::CsprojReader;
+using Core::ContentFolder;
+using Core::CsprojReader;
 
 namespace
 {
@@ -35,7 +35,7 @@ namespace
     bool HasFile(const ContentFolder& folder, std::string_view name)
     {
         return std::any_of(folder.files.begin(), folder.files.end(),
-                           [name](const core::sln::ContentFile& f) { return f.name == name; });
+                           [name](const Core::ContentFile& f) { return f.name == name; });
     }
 }
 
@@ -129,7 +129,7 @@ TEST_CASE("A missing project file fails rather than reading as empty")
     const auto content = CsprojReader{}.Read(temp.Path() / "Nothing.csproj");
 
     REQUIRE_FALSE(content.HasValue());
-    CHECK(content.GetError().code == core::ErrorCode::NotFound);
+    CHECK(content.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Contents come back sorted")
@@ -160,7 +160,7 @@ TEST_CASE("A solution containing a C# project fills it in")
     const auto file = temp.MakeFile("Mixed.slnx",
                                     R"(<Solution><Project Path="App\App.csproj" /></Solution>)");
 
-    const auto solution = core::sln::ReadSolution(file);
+    const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.Value().root.projects.size() == 1);
 

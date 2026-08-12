@@ -1,6 +1,6 @@
 #pragma once
 
-namespace core
+namespace Core
 {
     /// A rectangle in the caption's own coordinates: x grows right, y down, origin at the
     /// bar's top-left. Not ImVec2-based, so this header stays usable without ImGui — the

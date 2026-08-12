@@ -6,7 +6,7 @@
 #include <functional>
 #include <vector>
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
     class Keymap;

@@ -7,13 +7,13 @@
 #include <string>
 #include <utility>
 
-namespace graphite
+namespace Graphite
 {
-    class PlaceholderPanel final : public core::Panel
+    class PlaceholderPanel final : public Core::Panel
     {
     public:
         PlaceholderPanel(std::string id, std::string title, std::string message)
-            : core::Panel(std::move(id), std::move(title)), m_message(std::move(message))
+            : Core::Panel(std::move(id), std::move(title)), m_message(std::move(message))
         {
         }
 

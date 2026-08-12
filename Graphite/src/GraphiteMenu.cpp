@@ -1,10 +1,10 @@
 #include "GraphiteMenu.h"
 
-namespace graphite
+namespace Graphite
 {
-    std::vector<core::MenuItem> BuildMenuTree()
+    std::vector<Core::MenuItem> BuildMenuTree()
     {
-        using core::MenuItem;
+        using Core::MenuItem;
 
         return {
             MenuItem::Submenu("File",

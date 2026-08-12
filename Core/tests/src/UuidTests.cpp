@@ -7,7 +7,7 @@
 
 TEST_CASE("A generated identifier has the canonical undecorated shape")
 {
-    const std::string text = core::Uuid::Generate().ToString();
+    const std::string text = Core::Uuid::Generate().ToString();
 
     REQUIRE(text.size() == 36);
     CHECK(text[8] == '-');
@@ -23,7 +23,7 @@ TEST_CASE("A generated identifier has the canonical undecorated shape")
 
 TEST_CASE("Every character is an uppercase hexadecimal digit or a separator")
 {
-    const std::string text = core::Uuid::Generate().ToString();
+    const std::string text = Core::Uuid::Generate().ToString();
 
     for (const char character : text)
     {
@@ -41,7 +41,7 @@ TEST_CASE("Every character is an uppercase hexadecimal digit or a separator")
 
 TEST_CASE("The version and variant bits say what kind of identifier this is")
 {
-    const auto& bytes = core::Uuid::Generate().Bytes();
+    const auto& bytes = Core::Uuid::Generate().Bytes();
 
     // Checked on the bytes rather than on the text, because the bytes are where RFC 4122
     // puts these fields — byte 6's top nibble and byte 8's top two bits.
@@ -51,7 +51,7 @@ TEST_CASE("The version and variant bits say what kind of identifier this is")
 
 TEST_CASE("The text says the same thing the bytes do")
 {
-    const core::Uuid uuid = core::Uuid::Generate();
+    const Core::Uuid uuid = Core::Uuid::Generate();
     const std::string text = uuid.ToString();
 
     // The version nibble is the first digit of the third group, the variant the first of
@@ -68,7 +68,7 @@ TEST_CASE("A thousand identifiers in a row are all different")
     std::set<std::string> seen;
 
     for (int i = 0; i < 1000; ++i)
-        seen.insert(core::Uuid::Generate().ToString());
+        seen.insert(Core::Uuid::Generate().ToString());
 
     // Far below where a collision would be expected, and far above where a fixed seed or
     // one taken per call from a low-resolution clock would repeat itself.

@@ -10,7 +10,7 @@
 #include <filesystem>
 #include <string>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
@@ -34,8 +34,8 @@ namespace graphite
         };
     }
 
-    ExplorerPanel::ExplorerPanel(Workspace& workspace, const core::text::DocumentSet& documents)
-        : core::Panel("files", "Explorer"), m_workspace(workspace),
+    ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents)
+        : Core::Panel("files", "Explorer"), m_workspace(workspace),
           m_files(workspace, documents), m_solution(workspace)
     {
     }
@@ -110,12 +110,12 @@ namespace graphite
 
         ImGui::SetNextItemWidth(-1.0f);
 
-        if (!ImGui::BeginCombo("##solutionChoice", core::fs::ToUtf8(loaded.filename()).c_str()))
+        if (!ImGui::BeginCombo("##solutionChoice", Core::ToUtf8(loaded.filename()).c_str()))
             return;
 
         for (const std::filesystem::path& candidate : m_workspace.SolutionCandidates())
         {
-            const std::string name = core::fs::ToUtf8(candidate.filename());
+            const std::string name = Core::ToUtf8(candidate.filename());
 
             if (ImGui::Selectable(name.c_str(), candidate == loaded))
                 m_workspace.SelectSolution(candidate);
@@ -129,7 +129,7 @@ namespace graphite
         Apply(GitIgnoredDisplayFromString(AppSettings::LoadGitIgnoredDisplay()), false);
     }
 
-    void ExplorerPanel::RegisterCommands(core::CommandRegistry& commands)
+    void ExplorerPanel::RegisterCommands(Core::CommandRegistry& commands)
     {
         for (const DisplayMode& mode : kDisplayModes)
         {

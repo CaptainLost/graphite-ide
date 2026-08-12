@@ -10,13 +10,13 @@
 
 #include <string>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
-        [[nodiscard]] const char* LineEndingName(core::text::LineEnding ending, bool mixed)
+        [[nodiscard]] const char* LineEndingName(Core::LineEnding ending, bool mixed)
         {
-            if (ending == core::text::LineEnding::Crlf)
+            if (ending == Core::LineEnding::Crlf)
                 return mixed ? "CRLF (mixed)" : "CRLF";
 
             return mixed ? "LF (mixed)" : "LF";
@@ -27,13 +27,13 @@ namespace graphite
         [[nodiscard]] std::string RelativePath(const std::filesystem::path& path,
                                                const std::filesystem::path& root)
         {
-            const auto relative = core::fs::RelativeTo(path, root);
+            const auto relative = Core::RelativeTo(path, root);
 
-            return core::fs::ToUtf8(relative ? *relative : path);
+            return Core::ToUtf8(relative ? *relative : path);
         }
     }
 
-    void DrawStatusBar(const core::text::DocumentSet& documents,
+    void DrawStatusBar(const Core::DocumentSet& documents,
                        const std::filesystem::path& root,
                        const std::optional<std::string>& transientMessage)
     {
@@ -53,8 +53,8 @@ namespace graphite
 
         if (active && documents.At(*active).document)
         {
-            const core::text::OpenItem& item = documents.At(*active);
-            const core::text::TextBuffer& buffer = item.document->Buffer();
+            const Core::OpenItem& item = documents.At(*active);
+            const Core::TextBuffer& buffer = item.document->Buffer();
 
             // The strip is exactly one frame tall: height == FontSize + 2 * FramePadding.y
             // (that is what GetFrameHeight() above returns), and a line of text is
@@ -84,20 +84,20 @@ namespace graphite
 
             ImGui::TextUnformatted(left.c_str());
 
-            const core::text::Position where = buffer.ToPosition(item.caret.offset);
-            const std::size_t column = core::text::ColumnOfByte(
-                buffer.LineText(where.line), where.column, core::text::DefaultTabWidth);
+            const Core::Position where = buffer.ToPosition(item.caret.offset);
+            const std::size_t column = Core::ColumnOfByte(
+                buffer.LineText(where.line), where.column, Core::DefaultTabWidth);
 
             // One-based, because that is how people and every compiler count.
             std::string position = "Ln " + std::to_string(where.line + 1) + ", Col "
                                    + std::to_string(column + 1);
 
-            const auto [from, to] = core::text::SelectionRange(item.caret);
+            const auto [from, to] = Core::SelectionRange(item.caret);
 
             if (from != to)
                 position += " (" + std::to_string(to - from) + " selected)";
 
-            const std::string encoding{core::text::EncodingName(item.document->FileEncoding())};
+            const std::string encoding{Core::EncodingName(item.document->FileEncoding())};
             const std::string ending =
                 LineEndingName(item.document->DocumentLineEnding(), item.document->WasMixed());
 

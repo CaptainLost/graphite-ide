@@ -6,8 +6,8 @@
 
 #include <cstring>
 
-using core::IconForExtension;
-using core::UsedGlyphRanges;
+using Core::IconForExtension;
+using Core::UsedGlyphRanges;
 
 TEST_CASE("IconForExtension recognizes known source extensions")
 {

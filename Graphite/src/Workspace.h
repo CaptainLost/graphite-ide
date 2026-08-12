@@ -13,12 +13,12 @@
 #include <optional>
 #include <vector>
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// Published after a folder becomes the workspace root.
     struct WorkspaceOpenedEvent
@@ -79,7 +79,7 @@ namespace graphite
     class Workspace final
     {
     public:
-        explicit Workspace(core::EventBus& events) : m_events(events) {}
+        explicit Workspace(Core::EventBus& events) : m_events(events) {}
 
         /// Neither copyable nor movable: the tree holds a query that captures `this`, so
         /// a moved-from workspace would leave that query pointing at the old object.
@@ -87,7 +87,7 @@ namespace graphite
         Workspace& operator=(Workspace&&) = delete;
 
         /// Opens a folder as the workspace root. On failure the previous root stays.
-        core::Result<void> OpenFolder(const std::filesystem::path& folderPath);
+        Core::Result<void> OpenFolder(const std::filesystem::path& folderPath);
 
         /// Opens a solution file directly.
         ///
@@ -96,7 +96,7 @@ namespace graphite
         /// solution's own directory becomes the workspace root — the file tree, the
         /// watcher and git detection all key off a root, so a solution cannot be opened
         /// without one.
-        core::Result<void> OpenSolution(const std::filesystem::path& solutionPath);
+        Core::Result<void> OpenSolution(const std::filesystem::path& solutionPath);
 
         /// Drops the open folder, its tree and the selection, and forgets the remembered
         /// folder so the next launch starts empty. Closing is an explicit decision, so it
@@ -129,7 +129,7 @@ namespace graphite
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
         [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_root; }
-        [[nodiscard]] core::FileTree& Tree() noexcept { return m_tree; }
+        [[nodiscard]] Core::FileTree& Tree() noexcept { return m_tree; }
         [[nodiscard]] const std::filesystem::path& SelectedFile() const noexcept
         {
             return m_selectedFile;
@@ -138,8 +138,8 @@ namespace graphite
         /// The solution being shown, when one was found and parsed.
         ///
         /// Not named Solution(): a member function of that name would shadow the type
-        /// core::sln::Solution everywhere inside this class.
-        [[nodiscard]] const std::optional<core::sln::Solution>& LoadedSolution() const noexcept
+        /// Core::Solution everywhere inside this class.
+        [[nodiscard]] const std::optional<Core::Solution>& LoadedSolution() const noexcept
         {
             return m_solution;
         }
@@ -162,10 +162,10 @@ namespace graphite
         /// Registers the two ways of opening a workspace. Closing one is the layer's,
         /// not registered here: it goes through the unsaved-work question, which is the
         /// layer's machinery.
-        void RegisterCommands(core::CommandRegistry& commands);
+        void RegisterCommands(Core::CommandRegistry& commands);
 
     private:
-        [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);
+        [[nodiscard]] Core::FileNode* FindNode(const std::filesystem::path& path);
         void RefreshChanged(const std::filesystem::path& directory);
         void TryOpenRepository();
 
@@ -196,15 +196,15 @@ namespace graphite
         void ForgetSolutionAttempt();
         void ResetSolutionState();
 
-        core::EventBus& m_events;
+        Core::EventBus& m_events;
         /// Declared before m_tree on purpose: the tree holds a query that reads this
         /// repository, and members are destroyed in reverse declaration order, so the
         /// tree must go first.
-        std::optional<core::git::Repository> m_repository;
-        core::FileTree m_tree;
+        std::optional<Core::Repository> m_repository;
+        Core::FileTree m_tree;
         /// Declared after m_tree so it is destroyed first: its thread must be stopped
         /// before the tree it reports into goes away.
-        std::unique_ptr<core::DirectoryWatcher> m_watcher;
+        std::unique_ptr<Core::DirectoryWatcher> m_watcher;
 
         /// One resume attempt per open folder. A watcher that dies twice is failing for a
         /// reason retrying will not fix, and restarting a thread every frame would be far
@@ -213,7 +213,7 @@ namespace graphite
         std::filesystem::path m_root;
         std::filesystem::path m_selectedFile;
 
-        std::optional<core::sln::Solution> m_solution;
+        std::optional<Core::Solution> m_solution;
         std::vector<std::filesystem::path> m_solutionCandidates;
         std::filesystem::path m_selectedSolution;
 

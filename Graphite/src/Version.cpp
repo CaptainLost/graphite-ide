@@ -1,6 +1,6 @@
 #include "Version.h"
 
-namespace graphite
+namespace Graphite
 {
     const char* Version::String() noexcept
     {

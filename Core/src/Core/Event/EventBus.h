@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// Typed publish/subscribe, so panels can react to each other without knowing
     /// each other. Handlers cannot be removed: subscribers live exactly as long as

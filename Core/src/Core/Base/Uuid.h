@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-namespace core
+namespace Core
 {
     /// A version 4 UUID: a hundred and twenty-two random bits in the layout RFC 4122
     /// describes, plus the four version bits and two variant bits that say so.

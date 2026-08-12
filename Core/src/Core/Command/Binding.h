@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// One command's triggers: the chord the menu shows, plus every other way of
     /// reaching it. Zoom In is Ctrl+= with Ctrl+Num+ and Ctrl+wheel behind it.

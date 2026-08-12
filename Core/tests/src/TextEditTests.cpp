@@ -4,7 +4,7 @@
 
 #include <string>
 
-using namespace core::sln::edit;
+using namespace Core;
 
 TEST_CASE("The line ending is taken from the file, not assumed")
 {

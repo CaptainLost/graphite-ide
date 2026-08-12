@@ -6,7 +6,7 @@
 
 struct git_repository;
 
-namespace core::git
+namespace Core
 {
     /// A libgit2 repository handle with a C++ lifetime. Move-only: two owners would free
     /// the same handle twice.

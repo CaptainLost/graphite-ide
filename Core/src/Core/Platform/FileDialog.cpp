@@ -8,7 +8,7 @@
     #include <shobjidl.h>
 #endif
 
-namespace core
+namespace Core
 {
 #ifdef CORE_PLATFORM_WINDOWS
     namespace

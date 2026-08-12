@@ -8,9 +8,9 @@
 #include <algorithm>
 #include <string>
 
-using core::sln::ContentFolder;
-using core::sln::ProjectContent;
-using core::sln::VcxprojReader;
+using Core::ContentFolder;
+using Core::ProjectContent;
+using Core::VcxprojReader;
 
 namespace
 {
@@ -53,7 +53,7 @@ namespace
     bool HasFile(const ContentFolder& folder, std::string_view name)
     {
         return std::any_of(folder.files.begin(), folder.files.end(),
-                           [name](const core::sln::ContentFile& f) { return f.name == name; });
+                           [name](const Core::ContentFile& f) { return f.name == name; });
     }
 }
 
@@ -81,7 +81,7 @@ TEST_CASE("Every item kind is read, and paths are made absolute")
 
     const auto& files = content.Value().root.files;
     const auto match = std::find_if(files.begin(), files.end(),
-                                    [](const core::sln::ContentFile& f)
+                                    [](const Core::ContentFile& f)
                                     { return f.name == "App.cpp"; });
 
     REQUIRE(match != files.end());
@@ -165,7 +165,7 @@ TEST_CASE("A missing project file fails rather than reading as empty")
     const auto content = VcxprojReader{}.Read(temp.Path() / "Nothing.vcxproj");
 
     REQUIRE_FALSE(content.HasValue());
-    CHECK(content.GetError().code == core::ErrorCode::NotFound);
+    CHECK(content.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("ReadSolution fills the contents of C++ projects it can find")
@@ -175,7 +175,7 @@ TEST_CASE("ReadSolution fills the contents of C++ projects it can find")
     const auto solution = temp.MakeFile("Sample.slnx",
                                         R"(<Solution><Project Path="App\App.vcxproj" /></Solution>)");
 
-    const auto read = core::sln::ReadSolution(solution);
+    const auto read = Core::ReadSolution(solution);
     REQUIRE(read.HasValue());
     REQUIRE(read.Value().root.projects.size() == 1);
 
@@ -190,7 +190,7 @@ TEST_CASE("A project of an unknown type stays unread without failing the solutio
     const auto solution = temp.MakeFile("Sample.slnx",
                                         R"(<Solution><Project Path="App\App.fsproj" /></Solution>)");
 
-    const auto read = core::sln::ReadSolution(solution);
+    const auto read = Core::ReadSolution(solution);
 
     // The structure of the solution is still complete — only the inside is unknown.
     REQUIRE(read.HasValue());
@@ -205,7 +205,7 @@ TEST_CASE("A project file the solution names but disk does not have leaves the r
     const auto solution = temp.MakeFile("Sample.slnx",
                                         R"(<Solution><Project Path="Gone\Gone.vcxproj" /></Solution>)");
 
-    const auto read = core::sln::ReadSolution(solution);
+    const auto read = Core::ReadSolution(solution);
 
     // Exactly the sort of problem this view exists to reveal, so it must not be fatal.
     REQUIRE(read.HasValue());

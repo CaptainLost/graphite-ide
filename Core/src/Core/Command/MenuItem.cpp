@@ -3,7 +3,7 @@
 
 #include <utility>
 
-namespace core
+namespace Core
 {
     MenuItem MenuItem::Command(std::string id)
     {

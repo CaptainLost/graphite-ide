@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// A settings file: string values under string keys, stored as JSON. Loading,
     /// changing one key and saving preserves every other key — writing a single key over

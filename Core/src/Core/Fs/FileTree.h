@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace core
+namespace Core
 {
     /// One node of the browsed directory tree. Children are read from disk only when
     /// the node is expanded for the first time.

@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace graphite
+namespace Graphite
 {
     /// Which question, if any, currently owns ImGui's single modal popup level.
     ///

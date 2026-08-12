@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <string_view>
 
-namespace core::text
+namespace Core
 {
     /// How a file's bytes encode its characters.
     ///

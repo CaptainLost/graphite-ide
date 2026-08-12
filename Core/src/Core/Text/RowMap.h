@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace core::text
+namespace Core
 {
     class TextBuffer;
 

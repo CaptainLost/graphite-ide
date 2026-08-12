@@ -11,7 +11,7 @@
 
 #include <system_error>
 
-namespace core::text
+namespace Core
 {
     FileSyncOutcome SyncWithFile(DocumentSet& documents, std::size_t index)
     {
@@ -82,7 +82,7 @@ namespace core::text
         if (!item.document)
         {
             return Error{ErrorCode::InvalidArgument,
-                         "No document to reload: " + fs::ToUtf8(item.path)};
+                         "No document to reload: " + ToUtf8(item.path)};
         }
 
         if (auto result = item.document->ReloadFromDisk(); !result)

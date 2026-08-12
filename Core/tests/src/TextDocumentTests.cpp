@@ -21,7 +21,7 @@
     #include <winioctl.h>
 #endif
 
-using namespace core::text;
+using namespace Core;
 
 namespace
 {
@@ -320,15 +320,15 @@ TEST_CASE("Loading a file that is not there fails rather than giving an empty do
     const auto document = TextDocument::Load(directory.Path() / "absent.cpp");
 
     REQUIRE_FALSE(document);
-    CHECK(document.GetError().code == core::ErrorCode::NotFound);
+    CHECK(document.GetError().code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("A file whose name is not ASCII loads")
 {
     // Paths go through the wide-character API, so a name outside the active codepage
-    // has to work — this is what core::fs::ToUtf8 exists for.
+    // has to work — this is what Core::ToUtf8 exists for.
     TempDirectory directory;
-    const auto path = directory.Path() / core::fs::FromUtf8("\xC4\x87wiczenie.txt");
+    const auto path = directory.Path() / Core::FromUtf8("\xC4\x87wiczenie.txt");
     WriteAllBytes(path, "content");
 
     const auto document = TextDocument::Load(path);
@@ -345,7 +345,7 @@ TEST_CASE("Loading a directory fails with InvalidArgument rather than NotFound")
     const auto document = TextDocument::Load(directory.Path());
 
     REQUIRE_FALSE(document);
-    CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(document.GetError().code == Core::ErrorCode::InvalidArgument);
 }
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -372,7 +372,7 @@ TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
     const auto document = TextDocument::Load(path);
 
     REQUIRE_FALSE(document);
-    CHECK(document.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(document.GetError().code == Core::ErrorCode::InvalidArgument);
     CHECK(document.GetError().message.find(std::to_string(MaximumFileSize + 1)) != std::string::npos);
 }
 #else
@@ -402,7 +402,7 @@ TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot o
     ::CloseHandle(handle);
 
     REQUIRE_FALSE(document);
-    CHECK(document.GetError().code == core::ErrorCode::AccessDenied);
+    CHECK(document.GetError().code == Core::ErrorCode::AccessDenied);
 }
 #else
 TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot open"
@@ -592,7 +592,7 @@ TEST_CASE("Saving round trips every encoding byte for byte")
     {
         const std::filesystem::path path = MakeTempFile(original);
 
-        auto document = core::text::TextDocument::Load(path);
+        auto document = Core::TextDocument::Load(path);
         REQUIRE(document);
         REQUIRE(document.Value().Save());
 
@@ -604,9 +604,9 @@ TEST_CASE("A save clears the modified flag and refreshes the stamp")
 {
     const std::filesystem::path path = MakeTempFile("original\n");
 
-    auto loaded = core::text::TextDocument::Load(path);
+    auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    core::text::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).Value();
 
     CHECK_FALSE(document.IsModified());
     CHECK_FALSE(document.ChangedOnDisk());
@@ -626,11 +626,11 @@ TEST_CASE("A save breaks the undo group, so typing after it is a step of its own
 {
     const std::filesystem::path path = MakeTempFile("");
 
-    auto loaded = core::text::TextDocument::Load(path);
+    auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    core::text::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).Value();
 
-    core::text::TextBuffer& buffer = document.Buffer();
+    Core::TextBuffer& buffer = document.Buffer();
 
     buffer.BeginTransaction();
     buffer.Insert(0, "a");
@@ -666,7 +666,7 @@ TEST_CASE("A document that never took a stamp reports no change on disk")
     // question on every sweep.
     const std::filesystem::path path = MakeTempFile("on disk\n");
 
-    auto document = core::text::TextDocument::FromContent("in memory\n", path);
+    auto document = Core::TextDocument::FromContent("in memory\n", path);
     REQUIRE(document);
 
     CHECK_FALSE(document.Value().ChangedOnDisk());
@@ -676,9 +676,9 @@ TEST_CASE("A file rewritten by other means is noticed")
 {
     const std::filesystem::path path = MakeTempFile("original\n");
 
-    auto loaded = core::text::TextDocument::Load(path);
+    auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    core::text::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).Value();
 
     // A different length as well as different content. The check compares size and
     // modification time, and two writes in quick succession can share a timestamp — a
@@ -692,9 +692,9 @@ TEST_CASE("Reloading is one undo step")
 {
     const std::filesystem::path path = MakeTempFile("original\n");
 
-    auto loaded = core::text::TextDocument::Load(path);
+    auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    core::text::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).Value();
 
     WriteAllBytes(path, "replaced from elsewhere\n");
     REQUIRE(document.ReloadFromDisk());
@@ -714,9 +714,9 @@ TEST_CASE("A reload that cannot decode leaves the document untouched")
 {
     const std::filesystem::path path = MakeTempFile("original\n");
 
-    auto loaded = core::text::TextDocument::Load(path);
+    auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    core::text::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).Value();
 
     // A lone high surrogate behind a UTF-16 LE mark: recognised as UTF-16, impossible to
     // decode.
@@ -731,9 +731,9 @@ TEST_CASE("AcceptDiskState silences a change without reading it")
 {
     const std::filesystem::path path = MakeTempFile("original\n");
 
-    auto loaded = core::text::TextDocument::Load(path);
+    auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    core::text::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).Value();
 
     WriteAllBytes(path, "replaced from elsewhere\n");
     REQUIRE(document.ChangedOnDisk());

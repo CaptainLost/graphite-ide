@@ -7,7 +7,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-namespace core
+namespace Core
 {
     namespace
     {

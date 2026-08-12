@@ -2,7 +2,7 @@
 
 #include "Core/Command/Chord.h"
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
     class Keymap;

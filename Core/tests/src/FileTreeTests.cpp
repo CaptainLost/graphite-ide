@@ -7,8 +7,8 @@
 #include <utility>
 #include <vector>
 
-using core::FileNode;
-using core::FileTree;
+using Core::FileNode;
+using Core::FileTree;
 
 TEST_CASE("SetRoot creates a collapsed, unloaded root node")
 {
@@ -36,7 +36,7 @@ TEST_CASE("SetRoot rejects a path that is not a directory")
     const auto result = tree.SetRoot(file);
 
     REQUIRE_FALSE(result.HasValue());
-    CHECK(result.GetError().code == core::ErrorCode::InvalidArgument);
+    CHECK(result.GetError().code == Core::ErrorCode::InvalidArgument);
     CHECK_FALSE(tree.HasRoot());
 }
 

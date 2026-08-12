@@ -4,13 +4,13 @@
 
 #include <cstddef>
 
-namespace core
+namespace Core
 {
     class CommandRegistry;
     class Keymap;
 }
 
-namespace graphite
+namespace Graphite
 {
     /// The editor's shared settings: one answer for every document, loaded once and
     /// written back when it changes. They live here rather than in the layer because the
@@ -24,7 +24,7 @@ namespace graphite
         /// where a stored value is out of range.
         void Load();
 
-        void RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys);
+        void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
         [[nodiscard]] float FontSize() const noexcept { return m_fontSize; }
 
@@ -33,7 +33,7 @@ namespace graphite
         /// "zoom in" or "reset" means.
         void SetFontSize(float size);
 
-        [[nodiscard]] core::text::IndentStyle IndentStyle() const noexcept
+        [[nodiscard]] Core::IndentStyle IndentStyle() const noexcept
         {
             return {m_indentWithSpaces, m_indentWidth};
         }

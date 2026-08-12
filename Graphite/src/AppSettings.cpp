@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace graphite
+namespace Graphite
 {
     namespace
     {
@@ -41,7 +41,7 @@ namespace graphite
         {
             static const std::filesystem::path path = []
             {
-                const auto directory = core::platform::ExecutableDirectory();
+                const auto directory = Core::ExecutableDirectory();
 
                 if (directory)
                     return directory.Value() / "graphite.json";
@@ -59,7 +59,7 @@ namespace graphite
 
         void WriteValue(const char* key, std::string value)
         {
-            core::JsonFile file = core::JsonFile::Load(SettingsPath());
+            Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
             file.Set(key, std::move(value));
 
             if (!file.Save(SettingsPath()))
@@ -69,17 +69,17 @@ namespace graphite
 
     std::filesystem::path AppSettings::LoadLastFolder()
     {
-        return core::fs::FromUtf8(core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
+        return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
     }
 
     void AppSettings::SaveLastFolder(const std::filesystem::path& folder)
     {
-        WriteValue(kLastFolderKey, core::fs::ToUtf8(folder));
+        WriteValue(kLastFolderKey, Core::ToUtf8(folder));
     }
 
     std::string AppSettings::LoadGitIgnoredDisplay()
     {
-        return core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
+        return Core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
     }
 
     void AppSettings::SaveGitIgnoredDisplay(std::string_view mode)
@@ -89,7 +89,7 @@ namespace graphite
 
     float AppSettings::LoadEditorFontSize()
     {
-        const std::string stored = core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
+        const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
 
         char* end = nullptr;
         const float size = std::strtof(stored.c_str(), &end);
@@ -112,7 +112,7 @@ namespace graphite
         // Absent or anything other than an explicit "0" reads as spaces, which is also
         // IndentStyle's own default — a hand-edited file cannot land on a value this
         // does not recognise.
-        return core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
+        return Core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
     }
 
     void AppSettings::SaveIndentWithSpaces(bool useSpaces)
@@ -122,7 +122,7 @@ namespace graphite
 
     std::size_t AppSettings::LoadIndentWidth()
     {
-        const std::string stored = core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
+        const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
 
         char* end = nullptr;
         const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
@@ -142,7 +142,7 @@ namespace graphite
 
     bool AppSettings::LoadWordWrap()
     {
-        return core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
+        return Core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
     }
 
     void AppSettings::SaveWordWrap(bool wrap)
@@ -150,9 +150,9 @@ namespace graphite
         WriteValue(kWordWrapKey, wrap ? "1" : "0");
     }
 
-    void AppSettings::LoadKeyBindings(core::Keymap& keys)
+    void AppSettings::LoadKeyBindings(Core::Keymap& keys)
     {
-        const core::JsonFile file = core::JsonFile::Load(SettingsPath());
+        const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 
         for (const std::string& key : file.Keys())
         {
@@ -162,7 +162,7 @@ namespace graphite
             }
 
             const std::string id = key.substr(kKeyBindingPrefix.size());
-            const std::optional<core::Binding> binding = core::ParseBinding(file.Get(key));
+            const std::optional<Core::Binding> binding = Core::ParseBinding(file.Get(key));
 
             // Skipped rather than fatal, and named so it can be found: one hand-edited
             // line should cost the one binding it describes, not every shortcut in the
@@ -177,9 +177,9 @@ namespace graphite
         }
     }
 
-    void AppSettings::SaveKeyBindings(const core::Keymap& keys)
+    void AppSettings::SaveKeyBindings(const Core::Keymap& keys)
     {
-        core::JsonFile file = core::JsonFile::Load(SettingsPath());
+        Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 
         // Written in one pass rather than through WriteValue per command: that helper
         // loads and saves the whole file each time, which over a table of bindings would
@@ -206,8 +206,8 @@ namespace graphite
         }
 
         keys.ForEachOverride(
-            [&file](const std::string& id, const core::Binding& binding)
-            { file.Set(std::string{kKeyBindingPrefix} + id, core::ToString(binding)); });
+            [&file](const std::string& id, const Core::Binding& binding)
+            { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });
 
         if (!file.Save(SettingsPath()))
         {

@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace core
+namespace Core
 {
     /// One chord two commands both answer to. Which of them a press actually reaches is
     /// then a question about iteration order, which is no answer at all.

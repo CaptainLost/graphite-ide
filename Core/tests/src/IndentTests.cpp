@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-using namespace core::text;
+using namespace Core;
 
 TEST_CASE("IndentDepth reports the column of the first non-whitespace character")
 {

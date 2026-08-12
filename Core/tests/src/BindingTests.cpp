@@ -5,17 +5,17 @@
 #include <optional>
 #include <string>
 
-using core::Binding;
-using core::Chord;
-using core::ParseBinding;
-using core::Scope;
-using core::Trigger;
+using Core::Binding;
+using Core::Chord;
+using Core::ParseBinding;
+using Core::Scope;
+using Core::Trigger;
 
 TEST_CASE("A binding of one chord is written as that chord alone")
 {
     const Binding binding{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)};
 
-    CHECK(core::ToString(binding) == "Ctrl+S");
+    CHECK(Core::ToString(binding) == "Ctrl+S");
 }
 
 TEST_CASE("Alternates follow the primary, separated from it")
@@ -23,7 +23,7 @@ TEST_CASE("Alternates follow the primary, separated from it")
     const Binding binding{.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
                           .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd)}};
 
-    CHECK(core::ToString(binding) == "Ctrl+=|Ctrl+Num+");
+    CHECK(Core::ToString(binding) == "Ctrl+=|Ctrl+Num+");
 
     const std::optional<Binding> parsed = ParseBinding("Ctrl+=|Ctrl+Num+");
 
@@ -40,7 +40,7 @@ TEST_CASE("A binding that reaches nothing round-trips through its own token")
     // factory chord would silently come back.
     const Binding unbound;
 
-    CHECK(core::ToString(unbound) == "None");
+    CHECK(Core::ToString(unbound) == "None");
 
     const std::optional<Binding> parsed = ParseBinding("None");
 
@@ -81,7 +81,7 @@ TEST_CASE("Every kind of chord in a binding survives a round trip through text")
         .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
                        Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp, Scope::HoveredEditor)}};
 
-    const std::optional<Binding> parsed = ParseBinding(core::ToString(binding));
+    const std::optional<Binding> parsed = ParseBinding(Core::ToString(binding));
 
     REQUIRE(parsed.has_value());
     CHECK(parsed->primary == binding.primary);

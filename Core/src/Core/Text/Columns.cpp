@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace core::text
+namespace Core
 {
     std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth)
     {

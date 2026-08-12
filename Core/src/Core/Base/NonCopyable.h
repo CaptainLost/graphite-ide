@@ -1,6 +1,6 @@
 #pragma once
 
-namespace core
+namespace Core
 {
     /// Blocks copying while leaving move semantics available to derived classes.
     class NonCopyable
