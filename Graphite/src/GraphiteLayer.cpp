@@ -79,12 +79,14 @@ namespace graphite
 
     void GraphiteLayer::OnAttach()
     {
-        m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace, m_documents));
+        m_explorer = static_cast<ExplorerPanel*>(
+            m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace, m_documents)));
 
         m_panels.Add(std::make_unique<ConsolePanel>(m_sink));
 
         m_panels.RegisterCommands(m_commands);
         m_editorSettings.RegisterCommands(m_commands, m_keys);
+        m_explorer->RegisterCommands(m_commands);
 
         m_events.Subscribe<OpenFileRequested>(
             [this](const OpenFileRequested& event)
@@ -105,7 +107,7 @@ namespace graphite
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
-        ApplyGitIgnoredDisplay(GitIgnoredDisplayFromString(AppSettings::LoadGitIgnoredDisplay()), false);
+        m_explorer->LoadSettings();
 
         m_editorSettings.Load();
 
@@ -239,21 +241,6 @@ namespace graphite
             m_commands.Run("editor.zoomOut");
     }
 
-    void GraphiteLayer::ApplyGitIgnoredDisplay(GitIgnoredDisplay display, bool persist)
-    {
-        m_gitIgnoredDisplay = display;
-
-        if (auto* files = static_cast<ExplorerPanel*>(m_panels.Find("files")); files != nullptr)
-        {
-            files->SetGitIgnoredDisplay(display);
-        }
-
-        if (persist)
-        {
-            AppSettings::SaveGitIgnoredDisplay(GitIgnoredDisplayToString(display));
-        }
-    }
-
     void GraphiteLayer::RenderMenuBar()
     {
         // Read before anything is pushed over it: this is the padding the dropdowns are
@@ -359,21 +346,21 @@ namespace graphite
                 if (ImGui::BeginMenu("Ignored Files"))
                 {
                     if (ImGui::MenuItem("Visible", nullptr,
-                                        m_gitIgnoredDisplay == GitIgnoredDisplay::Show))
+                                        m_commands.Find("git.ignored.show")->checked()))
                     {
-                        ApplyGitIgnoredDisplay(GitIgnoredDisplay::Show, true);
+                        m_commands.Run("git.ignored.show");
                     }
 
                     if (ImGui::MenuItem("Dimmed", nullptr,
-                                        m_gitIgnoredDisplay == GitIgnoredDisplay::Dim))
+                                        m_commands.Find("git.ignored.dim")->checked()))
                     {
-                        ApplyGitIgnoredDisplay(GitIgnoredDisplay::Dim, true);
+                        m_commands.Run("git.ignored.dim");
                     }
 
                     if (ImGui::MenuItem("Hidden", nullptr,
-                                        m_gitIgnoredDisplay == GitIgnoredDisplay::Hide))
+                                        m_commands.Find("git.ignored.hide")->checked()))
                     {
-                        ApplyGitIgnoredDisplay(GitIgnoredDisplay::Hide, true);
+                        m_commands.Run("git.ignored.hide");
                     }
 
                     ImGui::EndMenu();

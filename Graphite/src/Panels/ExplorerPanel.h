@@ -7,6 +7,11 @@
 
 #include "Core/Ui/Panel.h"
 
+namespace core
+{
+    class CommandRegistry;
+}
+
 namespace core::text
 {
     class DocumentSet;
@@ -28,10 +33,10 @@ namespace graphite
 
         void OnUIRender() override;
 
-        void SetGitIgnoredDisplay(GitIgnoredDisplay display) noexcept
-        {
-            m_files.SetGitIgnoredDisplay(display);
-        }
+        /// Reads the stored display mode, keeping the default when nothing was stored.
+        void LoadSettings();
+
+        void RegisterCommands(core::CommandRegistry& commands);
 
     private:
         enum class Mode
@@ -48,6 +53,10 @@ namespace graphite
         /// opening, closing and the folder being moved on disk with one comparison.
         void SyncModeWithWorkspace();
 
+        /// The single path all three modes go through. `persist` is false only for the
+        /// load at startup, which would otherwise write back what it just read.
+        void Apply(GitIgnoredDisplay display, bool persist);
+
         Workspace& m_workspace;
         FileTreeView m_files;
         SolutionTreeView m_solution;
@@ -55,5 +64,7 @@ namespace graphite
 
         /// The root the current mode was loaded for. Empty until the first load.
         std::filesystem::path m_modeLoadedFor;
+
+        GitIgnoredDisplay m_display = GitIgnoredDisplay::Dim;
     };
 }

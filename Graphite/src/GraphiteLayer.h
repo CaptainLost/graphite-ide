@@ -3,7 +3,6 @@
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
-#include "GitIgnoredDisplay.h"
 #include "TitleBar.h"
 #include "Workspace.h"
 
@@ -23,6 +22,8 @@
 
 namespace graphite
 {
+    class ExplorerPanel;
+
     /// The layer that assembles the application: panel registry, dockspace, and menu bar.
     class GraphiteLayer final : public core::Layer
     {
@@ -51,7 +52,6 @@ namespace graphite
         /// override went on, so each dropdown can be given it back — see
         /// BeginTopLevelMenu.
         void RenderMenus(const ImVec2& dropdownPadding);
-        void ApplyGitIgnoredDisplay(GitIgnoredDisplay display, bool persist);
 
         /// What answering the "Unsaved changes" question should do once it resolves in
         /// favour of closing. The exit path and "Close Workspace" both lose whatever is
@@ -142,8 +142,12 @@ namespace graphite
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;
-        GitIgnoredDisplay m_gitIgnoredDisplay = GitIgnoredDisplay::Dim;
         TitleBar m_titleBar;
+
+        /// Kept from the pointer PanelManager::Add returns, so the View menu's Ignored
+        /// Files items can still reach the panel that owns the setting. Task 10 deletes
+        /// this along with the inline menu.
+        ExplorerPanel* m_explorer = nullptr;
 
         core::CommandRegistry m_commands;
         core::Keymap m_keys;
