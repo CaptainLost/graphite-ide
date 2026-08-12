@@ -43,7 +43,7 @@ namespace Core {
 
 		bool IsReadOnly() const { return m_ReadOnly; }
 
-		std::string GetBytes() const;
+		std::string EncodeToBytes() const;
 
 		bool IsModified() const
 		{
@@ -52,7 +52,7 @@ namespace Core {
 
 		void MarkSaved() { m_SavedRevision = m_Buffer.GetRevision(); }
 
-		bool HasChangedOnDisk() const;
+		bool CheckChangedOnDisk() const;
 
 		Result<void> Save();
 

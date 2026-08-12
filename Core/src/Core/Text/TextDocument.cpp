@@ -178,7 +178,7 @@ namespace Core {
 		document.m_Encoding = declared;
 		document.m_HadBom = bomLength > 0;
 		// Assigned whether or not a mark was there, because m_HadBom already says which it
-		// was and GetBytes() reads this only when that is true. Captured separately from
+		// was and EncodeToBytes() reads this only when that is true. Captured separately from
 		// m_Encoding: invalid UTF-8 behind a real mark demotes m_Encoding to Unknown for
 		// read-only handling, but the mark that was actually there still has to go back.
 		document.m_BomEncoding = declared;
@@ -231,7 +231,7 @@ namespace Core {
 
 		// Read before the content, not after: see m_DiskTime's comment in the header for
 		// why the order matters. A failure here is not fatal to the load — it only means
-		// HasChangedOnDisk() cannot see this file changing from its very first comparison,
+		// CheckChangedOnDisk() cannot see this file changing from its very first comparison,
 		// which is no worse than a share blinking at any other moment.
 		std::error_code timeError;
 		const auto diskTime = std::filesystem::last_write_time(path, timeError);
@@ -278,7 +278,7 @@ namespace Core {
 
 		// All of the stamp or none of it. A failed last_write_time used to leave both
 		// halves default-constructed, which is not "no stamp" but "a stamp from the epoch
-		// of a zero-byte file" — unequal to every real file, so HasChangedOnDisk() answered
+		// of a zero-byte file" — unequal to every real file, so CheckChangedOnDisk() answered
 		// true forever after.
 		if (document && !timeError)
 			document.GetValue().m_DiskStamp = DiskStamp{diskTime, size};
@@ -305,7 +305,7 @@ namespace Core {
 		return result;
 	}
 
-	std::string TextDocument::GetBytes() const
+	std::string TextDocument::EncodeToBytes() const
 	{
 		std::string result;
 
@@ -315,12 +315,12 @@ namespace Core {
 		if (m_HadBom)
 			result += BomBytes(m_BomEncoding);
 
-		result += Encode(WithLineEnding(m_Buffer.GetText(), m_LineEnding), m_Encoding);
+		result += Encode(WithLineEnding(m_Buffer.Materialize(), m_LineEnding), m_Encoding);
 
 		return result;
 	}
 
-	bool TextDocument::HasChangedOnDisk() const
+	bool TextDocument::CheckChangedOnDisk() const
 	{
 		// Nothing was ever recorded to compare against — see m_DiskStamp. Answering
 		// "changed" here would be answering from ignorance, and every caller treats that
@@ -345,7 +345,7 @@ namespace Core {
 
 	Result<void> TextDocument::Save()
 	{
-		auto written = WriteFileAtomically(m_Path, GetBytes());
+		auto written = WriteFileAtomically(m_Path, EncodeToBytes());
 
 		if (!written)
 			return written.GetError();
@@ -365,7 +365,7 @@ namespace Core {
 			return fresh.GetError();
 
 		TextDocument freshDocument = std::move(fresh).GetValue();
-		const std::string freshText = freshDocument.m_Buffer.GetText();
+		const std::string freshText = freshDocument.m_Buffer.Materialize();
 
 		// Bracketed by BreakUndoGroup on both sides so the reload never merges with the
 		// typing that came before it or the typing that comes after: one Ctrl+Z reverses

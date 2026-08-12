@@ -91,7 +91,7 @@ namespace Core {
 
 		void Promote(std::size_t index);
 
-		std::optional<std::size_t> GetPreview() const;
+		std::optional<std::size_t> GetPreviewIndex() const;
 
 		std::string DisplayTitle(std::size_t index) const;
 

@@ -319,7 +319,7 @@ namespace Graphite {
 		if (!item.document)
 			return;
 
-		if (item.document->HasChangedOnDisk())
+		if (item.document->CheckChangedOnDisk())
 		{
 			// Never noticed: a dropped notification, with no chance to have asked
 			// earlier. This is the last safety net, immediately before the write.
@@ -393,7 +393,7 @@ namespace Graphite {
 		return report.IsComplete();
 	}
 
-	bool DocumentWindows::HasAnyModified() const
+	bool DocumentWindows::HasModifiedDocuments() const
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
@@ -413,7 +413,7 @@ namespace Graphite {
 		commands.Add({.id = "document.saveAll",
 					  .label = "Save All",
 					  .run = [this] { (void)SaveAllModified(); },
-					  .enabled = [this] { return HasAnyModified(); }});
+					  .enabled = [this] { return HasModifiedDocuments(); }});
 
 		keys.SetDefault("document.saveAll",
 						{.primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});

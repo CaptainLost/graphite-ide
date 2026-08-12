@@ -590,7 +590,7 @@ namespace Graphite {
 		// Recorded even when the parse fails. Otherwise an unreadable solution re-parses
 		// and re-warns on every focus change, which is the same noise the guard removes
 		// from the success path.
-		const std::filesystem::file_time_type stamp = GetSolutionStamp();
+		const std::filesystem::file_time_type stamp = ComputeSolutionStamp();
 
 		if (m_SolutionAttempted && m_AttemptedSolution == m_SelectedSolution && stamp == m_SolutionStamp)
 		{
@@ -622,13 +622,13 @@ namespace Graphite {
 		// file alone. Keeping it would make the very next call see a different stamp and
 		// parse again, which is exactly what happened: one wasted reload after every
 		// start, surfacing at whatever first touched the workspace.
-		m_SolutionStamp = GetSolutionStamp();
+		m_SolutionStamp = ComputeSolutionStamp();
 
 		CORE_INFO("Solution '{}' loaded with {} projects", m_Solution->name,
 				  m_Solution->projectCount);
 	}
 
-	std::filesystem::file_time_type Workspace::GetSolutionStamp() const
+	std::filesystem::file_time_type Workspace::ComputeSolutionStamp() const
 	{
 		std::error_code code;
 		auto newest = std::filesystem::last_write_time(m_SelectedSolution, code);

@@ -68,7 +68,7 @@ TEST_CASE("Opening a text file adds an item holding the document")
 	CHECK(documents.Open(path, true) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
 	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "int main() {}\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "int main() {}\n");
 	CHECK(documents.At(0).failure == OpenFailure::None);
 	CHECK(documents.GetActive() == std::optional<std::size_t>{0});
 }
@@ -151,7 +151,7 @@ TEST_CASE("A UTF-16 file now opens as a document rather than a refusal")
 	CHECK(documents.Open(path, true) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
 	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "Hello");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "Hello");
 }
 
 TEST_CASE("A damaged UTF-16 file says it is damaged, not that the format is unsupported")
@@ -385,12 +385,12 @@ TEST_CASE("A single click opens a preview and the next one replaces it")
 
 	documents.Open(first, false);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK(documents.GetPreview() == std::optional<std::size_t>{0});
+	CHECK(documents.GetPreviewIndex() == std::optional<std::size_t>{0});
 
 	documents.Open(second, false);
 	CHECK(documents.GetCount() == 1);
 	CHECK(documents.At(0).path == second);
-	CHECK(documents.GetPreview() == std::optional<std::size_t>{0});
+	CHECK(documents.GetPreviewIndex() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("A double click opens something that does not get replaced")
@@ -422,7 +422,7 @@ TEST_CASE("Promoting a preview frees the slot")
 	documents.Open(first, false);
 	documents.Promote(0);
 
-	CHECK_FALSE(documents.GetPreview().has_value());
+	CHECK_FALSE(documents.GetPreviewIndex().has_value());
 
 	documents.Open(second, false);
 
@@ -442,7 +442,7 @@ TEST_CASE("Opening an already-open preview permanently promotes it")
 	documents.Open(path, true);
 
 	CHECK_FALSE(documents.At(0).preview);
-	CHECK_FALSE(documents.GetPreview().has_value());
+	CHECK_FALSE(documents.GetPreviewIndex().has_value());
 }
 
 TEST_CASE("Closing the preview clears the slot")
@@ -455,7 +455,7 @@ TEST_CASE("Closing the preview clears the slot")
 	documents.Open(path, false);
 	documents.Close(0);
 
-	CHECK_FALSE(documents.GetPreview().has_value());
+	CHECK_FALSE(documents.GetPreviewIndex().has_value());
 }
 
 TEST_CASE("A title is the file name when nothing collides with it")
@@ -568,7 +568,7 @@ TEST_CASE("A deleted file keeps its window and its content")
 	REQUIRE(documents.GetCount() == 1);
 	CHECK(documents.At(0).failure == OpenFailure::Missing);
 	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "still here");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "still here");
 }
 
 TEST_CASE("Marking a file that is not open does nothing")
@@ -629,13 +629,13 @@ TEST_CASE("A single click that needs confirmation does not evict the preview")
 	DocumentSet documents;
 	documents.Open(path, false);
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.GetPreview() == std::optional<std::size_t>{0});
+	REQUIRE(documents.GetPreviewIndex() == std::optional<std::size_t>{0});
 
 	CHECK(documents.Open(big, false) == OpenOutcome::NeedsConfirmation);
 
 	CHECK(documents.GetCount() == 1);
 	CHECK(documents.At(0).path == path);
-	CHECK(documents.GetPreview() == std::optional<std::size_t>{0});
+	CHECK(documents.GetPreviewIndex() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("The document's own path follows the workspace root when it moves")
@@ -740,7 +740,7 @@ TEST_CASE("Loading fills an item that opened before its file existed")
 
 	CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::Loaded);
 	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "here now\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "here now\n");
 	CHECK(documents.At(0).failure == OpenFailure::None);
 	CHECK(documents.At(0).detail.empty());
 }

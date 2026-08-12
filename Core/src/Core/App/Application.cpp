@@ -49,7 +49,7 @@ namespace Core {
 		// The window is created before the ImGui context exists, so the border colour is
 		// asked of the theme here — the one layer that can see both — and travels down as
 		// a value. Core::Platform never learns that there is a theme.
-		windowSpec.borderColor = Theme::BorderColor();
+		windowSpec.borderColor = Theme::GetBorderColor();
 
 		auto windowResult = Window::Create(windowSpec);
 		if (!windowResult)

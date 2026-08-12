@@ -23,7 +23,7 @@ namespace Core {
 		}
 	}
 
-	Color Theme::BorderColor()
+	Color Theme::GetBorderColor()
 	{
 		return kBorder;
 	}

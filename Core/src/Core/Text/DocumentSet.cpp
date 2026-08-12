@@ -158,7 +158,7 @@ namespace Core {
 		const auto evictPreview = [this, permanent] {
 			if (!permanent)
 			{
-				if (const auto preview = GetPreview())
+				if (const auto preview = GetPreviewIndex())
 					Close(*preview);
 			}
 		};
@@ -214,7 +214,7 @@ namespace Core {
 		m_Active.reset();
 	}
 
-	std::optional<std::size_t> DocumentSet::GetPreview() const
+	std::optional<std::size_t> DocumentSet::GetPreviewIndex() const
 	{
 		for (std::size_t index = 0; index < m_Items.size(); ++index)
 		{

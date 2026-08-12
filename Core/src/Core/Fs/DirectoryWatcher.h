@@ -44,7 +44,7 @@ namespace Core {
 
 		void Run();
 
-		std::filesystem::path GetQueryHandlePath() const;
+		std::filesystem::path QueryHandlePath() const;
 
 		void CheckForMove();
 

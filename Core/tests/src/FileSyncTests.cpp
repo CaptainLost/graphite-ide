@@ -59,7 +59,7 @@ TEST_CASE("A file deleted while it is open is marked missing and keeps its conte
 	// The whole reason the item stays: closing it would be the only way to lose content
 	// we still have.
 	REQUIRE(documents.At(0).document.has_value());
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "still here\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "still here\n");
 }
 
 TEST_CASE("A file that comes back changed is noticed in the same pass that finds it back")
@@ -88,10 +88,10 @@ TEST_CASE("A file that comes back changed is noticed in the same pass that finds
 
 	// Still the old content: SyncWithFile says a reload is due and leaves the reload to
 	// the caller, which is the whole of what SafeToReload means.
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "original\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "original\n");
 
 	REQUIRE(ReloadItem(documents, 0));
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "restored from somewhere else\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "restored from somewhere else\n");
 }
 
 TEST_CASE("A tab opened on a file that was not there asks for the file to be loaded")
@@ -146,7 +146,7 @@ TEST_CASE("A file changed under a document with unsaved edits is left for the ca
 	// content is untouched, and which one survives is a question only a caller with a
 	// user in front of it can ask.
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::NeedsDecision);
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "mine original\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "mine original\n");
 	CHECK(documents.At(0).document->IsModified());
 }
 
@@ -261,14 +261,14 @@ TEST_CASE("Reloading a file that got shorter pulls the caret back into it")
 	REQUIRE(documents.At(0).widestLine == 1);
 
 	// At the very end of the old content, which the new content does not reach.
-	documents.At(0).caret.offset = documents.At(0).document->GetBuffer().GetText().size();
+	documents.At(0).caret.offset = documents.At(0).document->GetBuffer().Materialize().size();
 	REQUIRE(documents.At(0).caret.offset == 32);
 
 	WriteBytes(path, "ab\n");
 
 	REQUIRE(ReloadItem(documents, 0));
 
-	CHECK(documents.At(0).document->GetBuffer().GetText() == "ab\n");
+	CHECK(documents.At(0).document->GetBuffer().Materialize() == "ab\n");
 
 	// Clamped to the new length rather than left pointing past it.
 	CHECK(documents.At(0).caret.offset == 3);

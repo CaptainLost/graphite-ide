@@ -228,7 +228,7 @@ TEST_CASE("Both directions compose to the identity across characters outside ASC
 	RowMap rows;
 	rows.Rebuild(buffer, 6, 4);
 
-	const std::string text = buffer.GetText();
+	const std::string text = buffer.Materialize();
 	std::size_t offset = 0;
 
 	while (true)

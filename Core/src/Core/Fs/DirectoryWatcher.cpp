@@ -88,7 +88,7 @@ namespace Core {
 
 		// Taken before the thread starts, so the worker never sees an empty baseline and
 		// mistakes it for a move.
-		watcher->m_WatchedPath = watcher->GetQueryHandlePath();
+		watcher->m_WatchedPath = watcher->QueryHandlePath();
 		watcher->m_LastMoveCheck = ChangeCollector::Clock::now();
 
 		// Taken before the thread exists, so there is no race over who reaches the shared
@@ -333,7 +333,7 @@ namespace Core {
 #endif
 	}
 
-	std::filesystem::path DirectoryWatcher::GetQueryHandlePath() const
+	std::filesystem::path DirectoryWatcher::QueryHandlePath() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		// Asked for twice: once for the length, once for the content. The two calls do
@@ -383,7 +383,7 @@ namespace Core {
 	void DirectoryWatcher::CheckForMove()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		const std::filesystem::path current = GetQueryHandlePath();
+		const std::filesystem::path current = QueryHandlePath();
 
 		// An unanswerable handle is not a move. It happens while the directory is being
 		// deleted, and that path ends the loop by itself through the failing read.

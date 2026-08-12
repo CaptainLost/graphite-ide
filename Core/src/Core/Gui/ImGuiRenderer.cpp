@@ -33,7 +33,7 @@ namespace Core {
 		ImFont* g_monoFont = nullptr;
 	}
 
-	ImFont* ImGuiRenderer::MonoFont()
+	ImFont* ImGuiRenderer::GetMonoFont()
 	{
 		return g_monoFont;
 	}

@@ -178,7 +178,7 @@ namespace Core {
 	std::vector<std::size_t> TextBuffer::BuildLineIndex() const
 	{
 		std::vector<std::size_t> starts{0};
-		const std::string content = GetText();
+		const std::string content = Materialize();
 
 		for (std::size_t offset = 0; offset < content.size(); ++offset)
 		{

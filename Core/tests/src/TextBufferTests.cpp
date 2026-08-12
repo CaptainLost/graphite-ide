@@ -13,7 +13,7 @@ TEST_CASE("A buffer starts out holding what it was given")
 	const TextBuffer buffer{"hello"};
 
 	CHECK(buffer.GetLength() == 5);
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 	CHECK_FALSE(buffer.IsEmpty());
 }
 
@@ -22,7 +22,7 @@ TEST_CASE("An empty buffer is empty")
 	const TextBuffer buffer;
 
 	CHECK(buffer.GetLength() == 0);
-	CHECK(buffer.GetText() == "");
+	CHECK(buffer.Materialize() == "");
 	CHECK(buffer.IsEmpty());
 }
 
@@ -33,7 +33,7 @@ TEST_CASE("Text can be inserted at the start, in the middle and at the end")
 		TextBuffer buffer{"world"};
 		buffer.Insert(0, "hello ");
 
-		CHECK(buffer.GetText() == "hello world");
+		CHECK(buffer.Materialize() == "hello world");
 		CHECK(buffer.GetLength() == 11);
 	}
 
@@ -42,7 +42,7 @@ TEST_CASE("Text can be inserted at the start, in the middle and at the end")
 		TextBuffer buffer{"held"};
 		buffer.Insert(3, "lo wor");
 
-		CHECK(buffer.GetText() == "hello word");
+		CHECK(buffer.Materialize() == "hello word");
 	}
 
 	SUBCASE("at the end")
@@ -50,7 +50,7 @@ TEST_CASE("Text can be inserted at the start, in the middle and at the end")
 		TextBuffer buffer{"hello"};
 		buffer.Insert(5, " world");
 
-		CHECK(buffer.GetText() == "hello world");
+		CHECK(buffer.Materialize() == "hello world");
 	}
 }
 
@@ -59,7 +59,7 @@ TEST_CASE("Inserting into an empty buffer works")
 	TextBuffer buffer;
 	buffer.Insert(0, "first");
 
-	CHECK(buffer.GetText() == "first");
+	CHECK(buffer.Materialize() == "first");
 }
 
 TEST_CASE("Inserting nothing changes nothing")
@@ -67,7 +67,7 @@ TEST_CASE("Inserting nothing changes nothing")
 	TextBuffer buffer{"hello"};
 	buffer.Insert(2, "");
 
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 	CHECK(buffer.GetLength() == 5);
 }
 
@@ -79,7 +79,7 @@ TEST_CASE("Repeated insertion at the same point reads back in order")
 	for (std::size_t index = 0; index < 6; ++index)
 		buffer.Insert(index, std::string(1, static_cast<char>('a' + index)));
 
-	CHECK(buffer.GetText() == "abcdef");
+	CHECK(buffer.Materialize() == "abcdef");
 }
 
 TEST_CASE("Erasing takes out exactly the range asked for")
@@ -89,7 +89,7 @@ TEST_CASE("Erasing takes out exactly the range asked for")
 		TextBuffer buffer{"hello world"};
 		buffer.Erase(5, 11);
 
-		CHECK(buffer.GetText() == "hello");
+		CHECK(buffer.Materialize() == "hello");
 	}
 
 	SUBCASE("from the start")
@@ -97,7 +97,7 @@ TEST_CASE("Erasing takes out exactly the range asked for")
 		TextBuffer buffer{"hello world"};
 		buffer.Erase(0, 6);
 
-		CHECK(buffer.GetText() == "world");
+		CHECK(buffer.Materialize() == "world");
 	}
 
 	SUBCASE("everything")
@@ -105,7 +105,7 @@ TEST_CASE("Erasing takes out exactly the range asked for")
 		TextBuffer buffer{"hello"};
 		buffer.Erase(0, 5);
 
-		CHECK(buffer.GetText() == "");
+		CHECK(buffer.Materialize() == "");
 		CHECK(buffer.IsEmpty());
 	}
 }
@@ -116,7 +116,7 @@ TEST_CASE("Erasing across a piece boundary joins what is left on either side")
 	buffer.Insert(5, " world"); // two pieces: "hello" and " world"
 	buffer.Erase(3, 8);			// spans the boundary
 
-	CHECK(buffer.GetText() == "helrld");
+	CHECK(buffer.Materialize() == "helrld");
 }
 
 TEST_CASE("Erasing whole pieces out of the middle drops them")
@@ -125,11 +125,11 @@ TEST_CASE("Erasing whole pieces out of the middle drops them")
 	buffer.Insert(1, "B");
 	buffer.Insert(2, "C");
 	buffer.Insert(3, "D");
-	REQUIRE(buffer.GetText() == "ABCDZ");
+	REQUIRE(buffer.Materialize() == "ABCDZ");
 
 	buffer.Erase(1, 4);
 
-	CHECK(buffer.GetText() == "AZ");
+	CHECK(buffer.Materialize() == "AZ");
 }
 
 TEST_CASE("Erasing an empty or reversed range changes nothing")
@@ -137,10 +137,10 @@ TEST_CASE("Erasing an empty or reversed range changes nothing")
 	TextBuffer buffer{"hello"};
 
 	buffer.Erase(2, 2);
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 
 	buffer.Erase(4, 1);
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 }
 
 TEST_CASE("Erasing past the end stops at the end instead of reading off it")
@@ -148,7 +148,7 @@ TEST_CASE("Erasing past the end stops at the end instead of reading off it")
 	TextBuffer buffer{"hello"};
 	buffer.Erase(3, 99);
 
-	CHECK(buffer.GetText() == "hel");
+	CHECK(buffer.Materialize() == "hel");
 }
 
 TEST_CASE("A substring spans pieces without a seam")
@@ -198,7 +198,7 @@ TEST_CASE("Many edits still read back correctly")
 		expected.insert(at, fragment);
 	}
 
-	CHECK(buffer.GetText() == expected);
+	CHECK(buffer.Materialize() == expected);
 	CHECK(buffer.GetLength() == expected.size());
 }
 
@@ -426,7 +426,7 @@ TEST_CASE("A fresh buffer has nothing to undo or redo")
 	CHECK_FALSE(buffer.CanRedo());
 	CHECK_FALSE(buffer.Undo());
 	CHECK_FALSE(buffer.Redo());
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 }
 
 TEST_CASE("Undo reverses an insertion")
@@ -436,7 +436,7 @@ TEST_CASE("Undo reverses an insertion")
 
 	REQUIRE(buffer.CanUndo());
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -444,10 +444,10 @@ TEST_CASE("Undo reverses an erasure")
 {
 	TextBuffer buffer{"hello world"};
 	buffer.Erase(5, 11);
-	REQUIRE(buffer.GetText() == "hello");
+	REQUIRE(buffer.Materialize() == "hello");
 
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "hello world");
+	CHECK(buffer.Materialize() == "hello world");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -459,7 +459,7 @@ TEST_CASE("Redo reapplies what undo took away")
 
 	REQUIRE(buffer.CanRedo());
 	CHECK(buffer.Redo());
-	CHECK(buffer.GetText() == "hello world");
+	CHECK(buffer.Materialize() == "hello world");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -471,21 +471,21 @@ TEST_CASE("A run of edits undoes and redoes in order")
 	buffer.Insert(3, " two");
 	buffer.BreakUndoGroup();
 	buffer.Insert(7, " three");
-	REQUIRE(buffer.GetText() == "one two three");
+	REQUIRE(buffer.Materialize() == "one two three");
 
 	buffer.Undo();
-	CHECK(buffer.GetText() == "one two");
+	CHECK(buffer.Materialize() == "one two");
 	buffer.Undo();
-	CHECK(buffer.GetText() == "one");
+	CHECK(buffer.Materialize() == "one");
 	buffer.Undo();
-	CHECK(buffer.GetText() == "");
+	CHECK(buffer.Materialize() == "");
 	CHECK_FALSE(buffer.CanUndo());
 
 	buffer.Redo();
-	CHECK(buffer.GetText() == "one");
+	CHECK(buffer.Materialize() == "one");
 	buffer.Redo();
 	buffer.Redo();
-	CHECK(buffer.GetText() == "one two three");
+	CHECK(buffer.Materialize() == "one two three");
 	CHECK_FALSE(buffer.CanRedo());
 }
 
@@ -514,7 +514,7 @@ TEST_CASE("A new edit throws away what could have been redone")
 	buffer.Insert(5, "!");
 
 	CHECK_FALSE(buffer.CanRedo());
-	CHECK(buffer.GetText() == "hello!");
+	CHECK(buffer.Materialize() == "hello!");
 }
 
 TEST_CASE("The revision tells apart two edits that leave the stack the same depth")
@@ -593,7 +593,7 @@ TEST_CASE("Random edits keep the line index correct and undo all the way back")
 			oracle.erase(from, to - from);
 		}
 
-		REQUIRE(buffer.GetText() == oracle);
+		REQUIRE(buffer.Materialize() == oracle);
 		REQUIRE(buffer.GetLength() == oracle.size());
 		REQUIRE(buffer.LineIndexMatchesRebuild());
 	}
@@ -601,7 +601,7 @@ TEST_CASE("Random edits keep the line index correct and undo all the way back")
 	while (buffer.CanUndo())
 		buffer.Undo();
 
-	CHECK(buffer.GetText() == initial);
+	CHECK(buffer.Materialize() == initial);
 	CHECK(buffer.LineIndexMatchesRebuild());
 	CHECK(buffer.GetRevision() == 0);
 }
@@ -690,7 +690,7 @@ TEST_CASE("Random edits interleaved with undo and redo match a string oracle at 
 			buffer.BreakUndoGroup();
 		}
 
-		REQUIRE(buffer.GetText() == oracle);
+		REQUIRE(buffer.Materialize() == oracle);
 		REQUIRE(buffer.GetLength() == oracle.size());
 		REQUIRE(buffer.LineIndexMatchesRebuild());
 	}
@@ -731,14 +731,14 @@ TEST_CASE("Toggling undo/redo on an insertion does not grow the append buffer")
 	}
 
 	CHECK(buffer.GetAppendBufferSize() == afterFirstCycle);
-	CHECK(buffer.GetText() == "hello" + std::string(1000, 'x'));
+	CHECK(buffer.Materialize() == "hello" + std::string(1000, 'x'));
 }
 
 TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
 {
 	TextBuffer buffer{"hello" + std::string(1000, 'x') + "world"};
 	buffer.Erase(5, 1005);
-	REQUIRE(buffer.GetText() == "helloworld");
+	REQUIRE(buffer.Materialize() == "helloworld");
 
 	buffer.Undo();
 	buffer.Redo();
@@ -751,7 +751,7 @@ TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
 	}
 
 	CHECK(buffer.GetAppendBufferSize() == afterFirstCycle);
-	CHECK(buffer.GetText() == "helloworld");
+	CHECK(buffer.Materialize() == "helloworld");
 }
 
 TEST_CASE("Edits inside a transaction undo as one")
@@ -763,9 +763,9 @@ TEST_CASE("Edits inside a transaction undo as one")
 	buffer.Insert(4, "TWO");
 	buffer.EndTransaction();
 
-	CHECK(buffer.GetText() == "one TWO three");
+	CHECK(buffer.Materialize() == "one TWO three");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "one two three");
+	CHECK(buffer.Materialize() == "one two three");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -780,7 +780,7 @@ TEST_CASE("Redo reapplies a whole transaction in the original order")
 
 	CHECK(buffer.Undo());
 	CHECK(buffer.Redo());
-	CHECK(buffer.GetText() == "one TWO three");
+	CHECK(buffer.Materialize() == "one TWO three");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -796,9 +796,9 @@ TEST_CASE("Nested transactions close only at the outermost end")
 	buffer.Insert(3, "Z");
 	buffer.EndTransaction();
 
-	CHECK(buffer.GetText() == "aXYZb");
+	CHECK(buffer.Materialize() == "aXYZb");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "ab");
+	CHECK(buffer.Materialize() == "ab");
 	CHECK_FALSE(buffer.CanUndo());
 }
 
@@ -813,9 +813,9 @@ TEST_CASE("Consecutive typing undoes as one word")
 		buffer.EndTransaction();
 	}
 
-	CHECK(buffer.GetText() == "hello");
+	CHECK(buffer.Materialize() == "hello");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText().empty());
+	CHECK(buffer.Materialize().empty());
 }
 
 TEST_CASE("BreakUndoGroup splits typing into two steps")
@@ -833,9 +833,9 @@ TEST_CASE("BreakUndoGroup splits typing into two steps")
 	buffer.EndTransaction();
 
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "ab");
+	CHECK(buffer.Materialize() == "ab");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText().empty());
+	CHECK(buffer.Materialize().empty());
 }
 
 TEST_CASE("Typing that is not contiguous starts a new group")
@@ -850,9 +850,9 @@ TEST_CASE("Typing that is not contiguous starts a new group")
 	buffer.Insert(3, "b");
 	buffer.EndTransaction();
 
-	CHECK(buffer.GetText() == "axyb");
+	CHECK(buffer.Materialize() == "axyb");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "axy");
+	CHECK(buffer.Materialize() == "axy");
 }
 
 TEST_CASE("A newline ends the group it lands in")
@@ -868,7 +868,7 @@ TEST_CASE("A newline ends the group it lands in")
 	buffer.EndTransaction();
 
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "a\n");
+	CHECK(buffer.Materialize() == "a\n");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -883,9 +883,9 @@ TEST_CASE("Backspaces coalesce and so do forward deletes")
 		backspaces.EndTransaction();
 	}
 
-	CHECK(backspaces.GetText() == "a");
+	CHECK(backspaces.Materialize() == "a");
 	CHECK(backspaces.Undo());
-	CHECK(backspaces.GetText() == "abcd");
+	CHECK(backspaces.Materialize() == "abcd");
 
 	Core::TextBuffer forwards{"abcd"};
 
@@ -896,9 +896,9 @@ TEST_CASE("Backspaces coalesce and so do forward deletes")
 		forwards.EndTransaction();
 	}
 
-	CHECK(forwards.GetText() == "a");
+	CHECK(forwards.Materialize() == "a");
 	CHECK(forwards.Undo());
-	CHECK(forwards.GetText() == "abcd");
+	CHECK(forwards.Materialize() == "abcd");
 }
 
 TEST_CASE("Deleting after typing does not join the typed group")
@@ -913,9 +913,9 @@ TEST_CASE("Deleting after typing does not join the typed group")
 	buffer.Erase(1, 2);
 	buffer.EndTransaction();
 
-	CHECK(buffer.GetText() == "a");
+	CHECK(buffer.Materialize() == "a");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "ab");
+	CHECK(buffer.Materialize() == "ab");
 }
 
 TEST_CASE("Coalescing does not grow the append buffer")
@@ -954,7 +954,7 @@ TEST_CASE("A newline landing on a transaction's later edit still closes the grou
 	buffer.EndTransaction();
 
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "a\n");
+	CHECK(buffer.Materialize() == "a\n");
 	CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -971,7 +971,7 @@ TEST_CASE("Typing after an erase-then-insert transaction coalesces with the inse
 	buffer.Insert(7, "!");
 	buffer.EndTransaction();
 
-	CHECK(buffer.GetText() == "one TWO! three");
+	CHECK(buffer.Materialize() == "one TWO! three");
 	CHECK(buffer.Undo());
-	CHECK(buffer.GetText() == "one two three");
+	CHECK(buffer.Materialize() == "one two three");
 }

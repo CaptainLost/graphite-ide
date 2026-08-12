@@ -39,5 +39,5 @@ TEST_CASE("The window border is the theme's border colour, unchanged")
 	// the frame, back when the theme and the frame each spelled this colour out.
 	// The frame now packs whatever the theme says, so this is what pins the two together
 	// — nothing else in the process can observe the colour a window border was given.
-	CHECK(PackBgr(Theme::BorderColor()) == 0x3F3834u);
+	CHECK(PackBgr(Theme::GetBorderColor()) == 0x3F3834u);
 }

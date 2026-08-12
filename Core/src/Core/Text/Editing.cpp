@@ -282,7 +282,7 @@ namespace Core {
 		// being inserted among bytes in some other encoding, and reversing an edit the
 		// buffer already recorded introduces no new bytes: every state in the history is
 		// one the buffer legitimately held - a whole content from a load or a reload, or
-		// the result of edits made while the document was editable - so GetBytes() round
+		// the result of edits made while the document was editable - so EncodeToBytes() round
 		// trips from any of them.
 		//
 		// Without this, a reload that turns the document read-only cannot be undone. A

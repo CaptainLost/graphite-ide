@@ -285,7 +285,7 @@ namespace Graphite {
 			return false;
 		}
 
-		if (!m_DocumentWindows.HasAnyModified())
+		if (!m_DocumentWindows.HasModifiedDocuments())
 		{
 			return true;
 		}
@@ -301,7 +301,7 @@ namespace Graphite {
 
 	void GraphiteLayer::RequestCloseConfirmation(ClosePurpose purpose)
 	{
-		if (!m_DocumentWindows.HasAnyModified())
+		if (!m_DocumentWindows.HasModifiedDocuments())
 		{
 			FinishClose(purpose);
 			return;
@@ -361,7 +361,7 @@ namespace Graphite {
 		// to ask about. Dropping the question alone would leave the application refusing an
 		// exit it has no reason left to refuse.
 		const auto stillWorthAsking = [this](ClosePurpose purpose) {
-			if (m_DocumentWindows.HasAnyModified())
+			if (m_DocumentWindows.HasModifiedDocuments())
 			{
 				return true;
 			}

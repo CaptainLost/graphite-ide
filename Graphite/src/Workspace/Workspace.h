@@ -116,7 +116,7 @@ namespace Graphite {
 		bool TouchesSolution(
 			const std::vector<std::filesystem::path>& directories) const;
 
-		std::filesystem::file_time_type GetSolutionStamp() const;
+		std::filesystem::file_time_type ComputeSolutionStamp() const;
 
 		void ForgetSolutionAttempt();
 		void ResetSolutionState();

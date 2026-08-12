@@ -52,7 +52,7 @@ namespace Core {
 			return FileSyncOutcome::WentMissing;
 		}
 
-		if (!item.document || !item.document->HasChangedOnDisk())
+		if (!item.document || !item.document->CheckChangedOnDisk())
 		{
 			// Only the item that just came back and has nothing to show asks to be
 			// loaded. An item carrying Binary, TooLarge or ReadFailed also has no
@@ -145,13 +145,13 @@ namespace Core {
 				continue;
 			}
 
-			// The same safety net a single deliberate save gets: HasChangedOnDisk() true
+			// The same safety net a single deliberate save gets: CheckChangedOnDisk() true
 			// means a change nobody was told about. But unlike a single save, a batch has
 			// no good way to ask about it mid-flight without turning into a sequence of
 			// modals — so this document is skipped, not asked about and not silently
 			// overwritten, and the batch continues: three other dirty files having nothing
 			// wrong with them is no reason to leave them unsaved over a fourth that does.
-			if (item.document->HasChangedOnDisk())
+			if (item.document->CheckChangedOnDisk())
 			{
 				report.conflicted.push_back(item.path);
 				continue;

@@ -9,6 +9,6 @@ namespace Core {
 	public:
 		static void ApplyDark();
 
-		static Color BorderColor();
+		static Color GetBorderColor();
 	};
 }

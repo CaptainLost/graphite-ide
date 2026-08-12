@@ -85,7 +85,7 @@ namespace Graphite {
 			return result;
 		}
 
-		ImGui::PushFont(Core::ImGuiRenderer::MonoFont(), fontSize);
+		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), fontSize);
 
 		const Core::TextBuffer& buffer = item.document->GetBuffer();
 		// Read before anything in this function can move the caret — the mouse below

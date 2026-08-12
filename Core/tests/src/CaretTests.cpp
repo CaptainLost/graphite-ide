@@ -318,7 +318,7 @@ TEST_CASE("Left and right step characters across piece boundaries")
 	buffer.Insert(1, "\xC4\x99");
 	buffer.Insert(1, "\xC4\x85");
 
-	REQUIRE(buffer.GetText() == "a\xC4\x85\xC4\x99"
+	REQUIRE(buffer.Materialize() == "a\xC4\x85\xC4\x99"
 								"b");
 
 	Caret caret = At(0);

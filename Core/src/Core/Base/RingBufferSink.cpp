@@ -20,7 +20,7 @@ namespace Core {
 			m_Entries.pop_front();
 	}
 
-	std::vector<LogEntry> RingBufferSink::GetSnapshot() const
+	std::vector<LogEntry> RingBufferSink::TakeSnapshot() const
 	{
 		const std::scoped_lock lock{m_Mutex};
 		return {m_Entries.begin(), m_Entries.end()};

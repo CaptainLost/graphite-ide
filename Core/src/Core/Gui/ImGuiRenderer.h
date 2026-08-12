@@ -21,7 +21,7 @@ namespace Core {
 		void BeginFrame();
 		void EndFrame(Window& window);
 
-		static ImFont* MonoFont();
+		static ImFont* GetMonoFont();
 
 	private:
 		bool m_Initialized = false;

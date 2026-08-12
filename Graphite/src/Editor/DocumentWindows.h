@@ -54,7 +54,7 @@ namespace Graphite {
 
 		bool SaveAllModified();
 
-		bool HasAnyModified() const;
+		bool HasModifiedDocuments() const;
 
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 

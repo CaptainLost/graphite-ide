@@ -16,7 +16,7 @@ namespace Core {
 
 		void Write(const LogEntry& entry) override;
 
-		std::vector<LogEntry> GetSnapshot() const;
+		std::vector<LogEntry> TakeSnapshot() const;
 		std::size_t GetCount() const;
 		std::size_t GetCapacity() const { return m_Capacity; }
 

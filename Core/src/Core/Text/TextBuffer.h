@@ -42,7 +42,7 @@ namespace Core {
 		bool IsEmpty() const { return m_Length == 0; }
 
 		std::string Substring(std::size_t from, std::size_t to) const;
-		std::string GetText() const { return Substring(0, m_Length); }
+		std::string Materialize() const { return Substring(0, m_Length); }
 
 		char CharAt(std::size_t offset) const;
 
