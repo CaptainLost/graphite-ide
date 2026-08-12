@@ -13,6 +13,11 @@
 #include <optional>
 #include <vector>
 
+namespace core
+{
+    class CommandRegistry;
+}
+
 namespace graphite
 {
     /// Published after a folder becomes the workspace root.
@@ -153,6 +158,11 @@ namespace graphite
         /// Settings stored in this folder's .graphite directory, as opposed to the
         /// application-wide ones in AppSettings.
         [[nodiscard]] WorkspaceSettings& FolderSettings() noexcept { return m_settings; }
+
+        /// Registers the two ways of opening a workspace. Closing one is the layer's,
+        /// not registered here: it goes through the unsaved-work question, which is the
+        /// layer's machinery.
+        void RegisterCommands(core::CommandRegistry& commands);
 
     private:
         [[nodiscard]] core::FileNode* FindNode(const std::filesystem::path& path);

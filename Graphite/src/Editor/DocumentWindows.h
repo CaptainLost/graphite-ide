@@ -13,6 +13,12 @@
 #include <unordered_map>
 #include <vector>
 
+namespace core
+{
+    class CommandRegistry;
+    class Keymap;
+}
+
 namespace core::text
 {
     class DocumentSet;
@@ -119,6 +125,14 @@ namespace graphite
         /// which is why this is public rather than folded into Render() - one save-all
         /// recipe, not two.
         bool SaveAllModified();
+
+        /// Whether any open document has unsaved changes. What "Save All" is enabled by,
+        /// and what the exit question is asked over.
+        [[nodiscard]] bool AnyModified() const;
+
+        /// Registers "Save All" and its Ctrl+Shift+S default. Here rather than in the
+        /// layer because this is the object that already owns saving.
+        void RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys);
 
         /// A short-lived note for the status bar - what a reload or a failed save just
         /// did - or nothing once it has expired. GraphiteLayer reads this every frame to

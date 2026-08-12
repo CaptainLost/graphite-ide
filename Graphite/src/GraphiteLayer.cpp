@@ -4,6 +4,7 @@
 #include "Panels/ConsolePanel.h"
 #include "Panels/ExplorerPanel.h"
 #include "AppSettings.h"
+#include "GraphiteMenu.h"
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
@@ -22,32 +23,6 @@ namespace graphite
     namespace
     {
         constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
-
-        /// Opens one of the menu bar's top-level menus and gives its dropdown back the
-        /// padding the theme asks for. The caption row's enlarged FramePadding has to be
-        /// live while BeginMenu runs — it is what sizes the label to the row and what
-        /// puts the dropdown directly beneath the row rather than a few pixels into it —
-        /// but everything the caller submits next belongs to the popup, where rows as
-        /// tall as a title bar would be nonsense. Pushing the theme's value back inside
-        /// the popup rather than popping the outer one is what ImGui allows: it compares
-        /// the style stack at End() with the one at Begin(), so a pop that crosses that
-        /// boundary trips its own check. Pair with EndTopLevelMenu.
-        bool BeginTopLevelMenu(const char* label, const ImVec2& dropdownPadding)
-        {
-            if (!ImGui::BeginMenu(label))
-            {
-                return false;
-            }
-
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, dropdownPadding);
-            return true;
-        }
-
-        void EndTopLevelMenu()
-        {
-            ImGui::PopStyleVar();
-            ImGui::EndMenu();
-        }
     }
 
     GraphiteLayer::GraphiteLayer(std::shared_ptr<core::RingBufferSink> sink,
@@ -79,14 +54,65 @@ namespace graphite
 
     void GraphiteLayer::OnAttach()
     {
-        m_explorer = static_cast<ExplorerPanel*>(
+        auto* explorer = static_cast<ExplorerPanel*>(
             m_panels.Add(std::make_unique<ExplorerPanel>(m_workspace, m_documents)));
 
         m_panels.Add(std::make_unique<ConsolePanel>(m_sink));
 
-        m_panels.RegisterCommands(m_commands);
+        m_workspace.RegisterCommands(m_commands);
+        m_documentWindows.RegisterCommands(m_commands, m_keys);
         m_editorSettings.RegisterCommands(m_commands, m_keys);
-        m_explorer->RegisterCommands(m_commands);
+        explorer->RegisterCommands(m_commands);
+        m_panels.RegisterCommands(m_commands);
+
+        // "Workspace" rather than "Folder": closing drops the solution and the selection
+        // along with the folder, and the menu offers two ways to open one. Naming only
+        // the folder would leave the other two looking like they survive.
+        m_commands.Add({.id = "workspace.close",
+                        .label = "Close Workspace",
+                        .run = [this] { RequestCloseConfirmation(ClosePurpose::CloseWorkspace); },
+                        .enabled = [this] { return m_workspace.IsOpen(); }});
+
+        // Through the window's close flag, not Application::Close() directly:
+        // Application's main loop only asks a layer's OnCloseRequested when
+        // Window::ShouldClose() is true, and Close() alone never sets it. Routing through
+        // RequestClose() puts Exit through the exact same question as the OS close button
+        // and Alt+F4.
+        //
+        // "Alt+F4" is in the label rather than in the keymap: it is Windows' shortcut, not
+        // ours, and a binding for it would advertise something that cannot be rebound.
+        m_commands.Add({.id = "app.exit",
+                        .label = "Exit\tAlt+F4",
+                        .run = [] { core::Application::Get().GetWindow().RequestClose(); }});
+
+        m_commands.Add({.id = "view.resetLayout",
+                        .label = "Reset Layout",
+                        .run = [this]
+                        {
+                            m_panels.ResetVisibility();
+                            m_dockSpace.RequestLayoutReset();
+                            CORE_INFO("Layout restored to the default");
+                        }});
+
+        m_commands.Add({.id = "help.logTestEntries",
+                        .label = "Log test entries",
+                        .run = []
+                        {
+                            CORE_TRACE("Diagnostic entry");
+                            CORE_INFO("Informational entry");
+                            CORE_WARN("Warning entry");
+                            CORE_ERROR("Sample error");
+                        }});
+
+        // The defaults are assembled across five files, each of which believes it is
+        // claiming a free chord, and nothing but this notices when two of them claim the
+        // same one. An error rather than an assertion: a duplicate binding is a wiring
+        // mistake worth shouting about, not a reason to refuse to start.
+        for (const core::Conflict& conflict : m_keys.FindConflicts())
+        {
+            CORE_ERROR("'{}' and '{}' are both bound to {}", conflict.first, conflict.second,
+                       conflict.chord.ToString());
+        }
 
         m_events.Subscribe<OpenFileRequested>(
             [this](const OpenFileRequested& event)
@@ -107,7 +133,7 @@ namespace graphite
 
         CORE_INFO("Registered panels: {}", m_panels.Count());
 
-        m_explorer->LoadSettings();
+        explorer->LoadSettings();
 
         m_editorSettings.Load();
 
@@ -117,6 +143,10 @@ namespace graphite
 
         if (!startFolder.empty())
             (void)m_workspace.OpenFolder(startFolder);
+
+        // Last, after every RegisterCommands above: the tree names ids, so one built
+        // earlier would draw a bar of disabled entries showing raw ids.
+        m_menuTree = BuildMenuTree();
     }
 
     void GraphiteLayer::OnUpdate(float deltaSeconds)
@@ -179,7 +209,8 @@ namespace graphite
         DrawStatusBar(m_documents, m_workspace.Root(), m_documentWindows.StatusMessage());
 
         m_dockSpace.Begin(m_layout);
-        RenderMenuBar();
+        m_menuBar.Render(m_commands, m_keys, m_menuTree, m_layout.menuBarHeight,
+                         [this] { m_titleBar.Render(core::Application::Get().GetWindow()); });
         m_dockSpace.End();
 
         // Never nested inside the dockspace host's Begin/End above, or any other
@@ -241,190 +272,6 @@ namespace graphite
             m_commands.Run("editor.zoomOut");
     }
 
-    void GraphiteLayer::RenderMenuBar()
-    {
-        // Read before anything is pushed over it: this is the padding the dropdowns are
-        // entitled to, and BeginTopLevelMenu hands it back to each of them.
-        const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
-
-        // m_dockSpace.Begin already fixed the host window's own menu-bar height via
-        // m_layout.menuBarHeight (see DockSpaceHost::Begin) and popped its FramePadding
-        // override before opening the dockspace, so panels dock at their normal tab-bar
-        // height. The bar itself sees plain default padding unless pushed again here —
-        // and it has to match, or the File/View/Help items sit at the wrong height for
-        // the 32 px row, and TitleBar's version label (which relies on the padding-driven
-        // text baseline BeginMenuBar sets up) lands off-centre. Pushed only when the row
-        // is actually 32 px tall, which is the same condition menuBarHeight was set under.
-        if (m_customTitleBar)
-        {
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                                ImVec2(dropdownPadding.x,
-                                       (kCaptionHeight - ImGui::GetFontSize()) * 0.5f));
-        }
-
-        // Not an early return on BeginMenuBar: the push above still has to be popped.
-        if (ImGui::BeginMenuBar())
-        {
-            RenderMenus(dropdownPadding);
-            ImGui::EndMenuBar();
-        }
-
-        if (m_customTitleBar)
-        {
-            ImGui::PopStyleVar();
-        }
-    }
-
-    void GraphiteLayer::RenderMenus(const ImVec2& dropdownPadding)
-    {
-        if (BeginTopLevelMenu("File", dropdownPadding))
-        {
-            if (ImGui::MenuItem("Open Folder..."))
-                OpenFolderInteractively(m_workspace);
-
-            if (ImGui::MenuItem("Open Solution..."))
-                OpenSolutionInteractively(m_workspace);
-
-            ImGui::Separator();
-
-            // "Workspace" rather than "Folder": closing drops the solution and the
-            // selection along with the folder, and the menu offers two ways to open one.
-            // Naming only the folder would leave the other two looking like they survive.
-            if (ImGui::MenuItem("Close Workspace", nullptr, false, m_workspace.IsOpen()))
-                RequestCloseConfirmation(ClosePurpose::CloseWorkspace);
-
-            ImGui::Separator();
-
-            // Through the window's close flag, not Application::Close() directly:
-            // Application's main loop only asks a layer's OnCloseRequested when
-            // Window::ShouldClose() is true, and Close() alone never sets it. Routing
-            // through RequestClose() puts Exit through the exact same question as the
-            // OS close button and Alt+F4.
-            if (ImGui::MenuItem("Exit", "Alt+F4"))
-                core::Application::Get().GetWindow().RequestClose();
-
-            EndTopLevelMenu();
-        }
-
-        if (BeginTopLevelMenu("View", dropdownPadding))
-        {
-            // Temporary: Task 10 replaces this whole function with core::MenuBar, which draws
-            // groups itself. Until then this is what keeps the panel toggles in the View menu.
-            for (const core::Command* panel : m_commands.InGroup("panels"))
-            {
-                bool visible = panel->checked();
-
-                if (ImGui::MenuItem((panel->label + "###" + panel->id).c_str(), nullptr, &visible))
-                {
-                    m_commands.Run(panel->id);
-                }
-            }
-
-            ImGui::Separator();
-
-            // Deliberately no keyboard shortcut. Alt+Z is the obvious one, and it is a
-            // trap here: AltGr on Windows reports as Ctrl+Alt, and AltGr+Z is 'z' with a
-            // dot above, so a shortcut testing KeyAlt alone would toggle wrapping every
-            // time a Polish word is typed. If one is ever added, its condition has to be
-            // KeyAlt && !KeyCtrl. Recorded again on editor.toggleWordWrap itself, which
-            // is why that command gets no default binding either.
-            if (ImGui::MenuItem("Word Wrap", nullptr, m_editorSettings.WordWrap()))
-            {
-                m_commands.Run("editor.toggleWordWrap");
-            }
-
-            // Nested under Git so it is obvious whose rules decide what is ignored — the
-            // answer comes from .gitignore, .git/info/exclude and the user's global
-            // configuration, and nothing in "Ignored Files" alone said so. The submenu
-            // is also where a branch indicator and file status belong when they arrive.
-            if (ImGui::BeginMenu("Git"))
-            {
-                // Adjectives, not verbs: the tick beside one of them makes these a state
-                // rather than a command, and four levels deep "Dim" alone no longer says
-                // what it would dim. The submenu names the subject and these name the
-                // treatment, so it reads as "Ignored Files: Dimmed".
-                if (ImGui::BeginMenu("Ignored Files"))
-                {
-                    if (ImGui::MenuItem("Visible", nullptr,
-                                        m_commands.Find("git.ignored.show")->checked()))
-                    {
-                        m_commands.Run("git.ignored.show");
-                    }
-
-                    if (ImGui::MenuItem("Dimmed", nullptr,
-                                        m_commands.Find("git.ignored.dim")->checked()))
-                    {
-                        m_commands.Run("git.ignored.dim");
-                    }
-
-                    if (ImGui::MenuItem("Hidden", nullptr,
-                                        m_commands.Find("git.ignored.hide")->checked()))
-                    {
-                        m_commands.Run("git.ignored.hide");
-                    }
-
-                    ImGui::EndMenu();
-                }
-
-                ImGui::EndMenu();
-            }
-
-            ImGui::Separator();
-
-            // A shortcut nobody can discover is not a shortcut, so Ctrl+Scroll and
-            // Ctrl+0 both get a menu entry — all three run the same commands the
-            // keyboard shortcuts in OnUIRender run, so the menu and the keys cannot
-            // disagree about what these do.
-            if (ImGui::MenuItem("Zoom In", "Ctrl+="))
-                m_commands.Run("editor.zoomIn");
-
-            if (ImGui::MenuItem("Zoom Out", "Ctrl+-"))
-                m_commands.Run("editor.zoomOut");
-
-            if (ImGui::MenuItem("Reset Zoom", "Ctrl+0"))
-                m_commands.Run("editor.resetZoom");
-
-            ImGui::Separator();
-
-            if (ImGui::MenuItem("Reset Layout"))
-            {
-                m_panels.ForEach([](core::Panel& panel) { panel.SetVisible(true); });
-                m_dockSpace.RequestLayoutReset();
-                CORE_INFO("Layout restored to the default");
-            }
-
-            EndTopLevelMenu();
-        }
-
-        if (BeginTopLevelMenu("Help", dropdownPadding))
-        {
-            if (ImGui::MenuItem("Log test entries"))
-            {
-                CORE_TRACE("Diagnostic entry");
-                CORE_INFO("Informational entry");
-                CORE_WARN("Warning entry");
-                CORE_ERROR("Sample error");
-            }
-
-            EndTopLevelMenu();
-        }
-
-        m_titleBar.Render(core::Application::Get().GetWindow());
-    }
-
-    bool GraphiteLayer::AnyDocumentModified() const
-    {
-        for (std::size_t index = 0; index < m_documents.Count(); ++index)
-        {
-            const core::text::OpenItem& item = m_documents.At(index);
-
-            if (item.document && item.document->IsModified())
-                return true;
-        }
-
-        return false;
-    }
-
     bool GraphiteLayer::OnCloseRequested()
     {
         // Save All having succeeded, or Discard All having been chosen, already
@@ -452,7 +299,7 @@ namespace graphite
             return false;
         }
 
-        if (!AnyDocumentModified())
+        if (!m_documentWindows.AnyModified())
             return true;
 
         // Asked even when another question - one of DocumentWindows' four - is on
@@ -466,7 +313,7 @@ namespace graphite
 
     void GraphiteLayer::RequestCloseConfirmation(ClosePurpose purpose)
     {
-        if (!AnyDocumentModified())
+        if (!m_documentWindows.AnyModified())
         {
             FinishClose(purpose);
             return;
@@ -527,7 +374,7 @@ namespace graphite
         // exit it has no reason left to refuse.
         const auto stillWorthAsking = [this](ClosePurpose purpose)
         {
-            if (AnyDocumentModified())
+            if (m_documentWindows.AnyModified())
             {
                 return true;
             }
