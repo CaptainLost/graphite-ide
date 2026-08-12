@@ -25,7 +25,8 @@ namespace Core {
 		return std::make_shared<T>(std::forward<Args>(args)...);
 	}
 }
-// Included last, as Hazel's Base.h does: the assertion and logging macros are part of
-// what including Base.h is expected to bring in, and neither header needs anything above.
+// Included last, and it has to be: Log.h uses Ref, so the alias must already be declared
+// when it arrives. Both are included at all because the assertion and logging macros are
+// part of what including this header is expected to bring in.
 #include "Core/Base/Assert.h"
 #include "Core/Base/Log.h"
