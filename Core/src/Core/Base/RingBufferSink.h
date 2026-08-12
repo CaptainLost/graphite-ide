@@ -19,13 +19,13 @@ namespace Core
 
         [[nodiscard]] std::vector<LogEntry> Snapshot() const;
         [[nodiscard]] std::size_t Count() const;
-        [[nodiscard]] std::size_t Capacity() const noexcept { return m_capacity; }
+        [[nodiscard]] std::size_t Capacity() const noexcept { return m_Capacity; }
 
         void Clear();
 
     private:
-        mutable std::mutex m_mutex;
-        std::deque<LogEntry> m_entries;
-        std::size_t m_capacity;
+        mutable std::mutex m_Mutex;
+        std::deque<LogEntry> m_Entries;
+        std::size_t m_Capacity;
     };
 }

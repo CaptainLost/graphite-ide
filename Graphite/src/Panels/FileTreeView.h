@@ -32,7 +32,7 @@ namespace Graphite
 
         void Render();
 
-        void SetGitIgnoredDisplay(GitIgnoredDisplay display) noexcept { m_gitIgnoredDisplay = display; }
+        void SetGitIgnoredDisplay(GitIgnoredDisplay display) noexcept { m_GitIgnoredDisplay = display; }
 
     private:
         /// A menu command recorded during the tree walk and executed afterwards. Acting
@@ -73,26 +73,26 @@ namespace Graphite
         void RefreshParentOf(const std::filesystem::path& path);
         [[nodiscard]] bool PassesFilter(const Core::FileNode& node) const;
 
-        Workspace& m_workspace;
-        const Core::DocumentSet& m_documents;
-        ImGuiTextFilter m_filter;
-        PendingAction m_pending;
-        std::filesystem::path m_deleteCandidate;
-        bool m_openDeleteConfirmation = false;
+        Workspace& m_Workspace;
+        const Core::DocumentSet& m_Documents;
+        ImGuiTextFilter m_Filter;
+        PendingAction m_Pending;
+        std::filesystem::path m_DeleteCandidate;
+        bool m_OpenDeleteConfirmation = false;
 
         /// Set by an operation that creates something inside a folder, so the next frame
         /// can force that folder open. node.expanded alone cannot do it: it reaches ImGui
         /// as DefaultOpen, which ImGui ignores once the node has storage.
-        std::filesystem::path m_forceOpenPath;
+        std::filesystem::path m_ForceOpenPath;
 
         /// Keyed by path rather than by a pointer to the node: a refresh can drop the
         /// node being edited, and a stale pointer would be written through.
-        std::filesystem::path m_renamingPath;
+        std::filesystem::path m_RenamingPath;
 
         /// 1024 bytes, not MAX_PATH: a 255-character name can reach roughly 1020 bytes
         /// in UTF-8, and a truncated name would be committed to disk by the blur path.
-        std::array<char, 1024> m_renameBuffer{};
-        bool m_focusRenameField = false;
-        GitIgnoredDisplay m_gitIgnoredDisplay = GitIgnoredDisplay::Dim;
+        std::array<char, 1024> m_RenameBuffer{};
+        bool m_FocusRenameField = false;
+        GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
     };
 }

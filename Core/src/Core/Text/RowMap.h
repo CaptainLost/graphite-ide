@@ -67,8 +67,8 @@ namespace Core
         /// folds with; nothing in wrapping calls it.
         void SetRowsOf(std::size_t line, std::size_t rows);
 
-        [[nodiscard]] std::size_t TotalRows() const noexcept { return m_totalRows; }
-        [[nodiscard]] std::size_t LineCount() const noexcept { return m_rowsPerLine.size(); }
+        [[nodiscard]] std::size_t TotalRows() const noexcept { return m_TotalRows; }
+        [[nodiscard]] std::size_t LineCount() const noexcept { return m_RowsPerLine.size(); }
 
         /// The width the map was last built for, kNoWrap when it is not wrapping.
         ///
@@ -76,7 +76,7 @@ namespace Core
         /// added or removed lines, an undo — can be made at the width already in force.
         /// Only the widget knows that width, and it is not on screen when the edit
         /// happens, so without this the map would silently fall back to unwrapped.
-        [[nodiscard]] std::size_t ColumnsPerRow() const noexcept { return m_columnsPerRow; }
+        [[nodiscard]] std::size_t ColumnsPerRow() const noexcept { return m_ColumnsPerRow; }
 
         /// The line at `row`, and which of its rows that is. A row past the end resolves
         /// to the last line, the same way the widget already clamps a click below the
@@ -95,20 +95,20 @@ namespace Core
 
     private:
         void SetCount(std::size_t line, std::size_t rows);
-        /// Rebuilds the Fenwick tree and the total from m_rowsPerLine, which the splices
+        /// Rebuilds the Fenwick tree and the total from m_RowsPerLine, which the splices
         /// above shift wholesale — every node past the splice point covers a different set
         /// of lines afterwards, so there is nothing to patch incrementally.
         void RebuildTree();
         [[nodiscard]] std::size_t PrefixSum(std::size_t line) const;
 
-        std::vector<std::size_t> m_rowsPerLine;
-        std::vector<std::vector<std::size_t>> m_breaks;
-        std::vector<std::size_t> m_tree;   // Fenwick, one-based internally
-        std::size_t m_totalRows = 0;
+        std::vector<std::size_t> m_RowsPerLine;
+        std::vector<std::vector<std::size_t>> m_Breaks;
+        std::vector<std::size_t> m_Tree;   // Fenwick, one-based internally
+        std::size_t m_TotalRows = 0;
         /// kNoWrap rather than zero, so a map that has never been built reads as "not
         /// wrapping" — zero means one column, which would wrap every character onto its
         /// own row the moment anything rebuilt at the stored width.
-        std::size_t m_columnsPerRow = kNoWrap;
-        std::size_t m_tabWidth = 0;
+        std::size_t m_ColumnsPerRow = kNoWrap;
+        std::size_t m_TabWidth = 0;
     };
 }

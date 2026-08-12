@@ -57,14 +57,14 @@ namespace Graphite
         /// load at startup, which would otherwise write back what it just read.
         void Apply(GitIgnoredDisplay display, bool persist);
 
-        Workspace& m_workspace;
-        FileTreeView m_files;
-        SolutionTreeView m_solution;
-        Mode m_mode = Mode::Files;
+        Workspace& m_Workspace;
+        FileTreeView m_Files;
+        SolutionTreeView m_Solution;
+        Mode m_Mode = Mode::Files;
 
         /// The root the current mode was loaded for. Empty until the first load.
-        std::filesystem::path m_modeLoadedFor;
+        std::filesystem::path m_ModeLoadedFor;
 
-        GitIgnoredDisplay m_display = GitIgnoredDisplay::Dim;
+        GitIgnoredDisplay m_Display = GitIgnoredDisplay::Dim;
     };
 }

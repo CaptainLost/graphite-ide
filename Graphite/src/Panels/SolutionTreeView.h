@@ -64,15 +64,15 @@ namespace Graphite
         void ExecutePendingAction();
         [[nodiscard]] Core::Result<void> Apply(const PendingAction& action);
 
-        Workspace& m_workspace;
-        ImGuiTextFilter m_filter;
+        Workspace& m_Workspace;
+        ImGuiTextFilter m_Filter;
 
-        PendingAction m_pending;
-        std::filesystem::path m_removeCandidate;
-        std::string m_removeCandidateName;
-        bool m_openRemoveConfirmation = false;
-        std::array<char, 256> m_renameBuffer{};
-        std::string m_renamingFolder;
-        bool m_focusRenameField = false;
+        PendingAction m_Pending;
+        std::filesystem::path m_RemoveCandidate;
+        std::string m_RemoveCandidateName;
+        bool m_OpenRemoveConfirmation = false;
+        std::array<char, 256> m_RenameBuffer{};
+        std::string m_RenamingFolder;
+        bool m_FocusRenameField = false;
     };
 }

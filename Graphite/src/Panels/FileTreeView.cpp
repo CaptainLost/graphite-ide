@@ -17,13 +17,13 @@
 namespace Graphite
 {
     FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents)
-        : m_workspace(workspace), m_documents(documents)
+        : m_Workspace(workspace), m_Documents(documents)
     {
     }
 
     void FileTreeView::Render()
     {
-        if (!m_workspace.IsOpen())
+        if (!m_Workspace.IsOpen())
         {
             RenderEmptyState();
             return;
@@ -35,7 +35,7 @@ namespace Graphite
         if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar))
         {
-            RenderNode(m_workspace.Tree().Root());
+            RenderNode(m_Workspace.Tree().Root());
         }
 
         ImGui::EndChild();
@@ -50,8 +50,8 @@ namespace Graphite
     {
         if (ImGui::Button(ICON_MDI_REFRESH))
         {
-            m_workspace.Reload();
-            Core::FileNode& root = m_workspace.Tree().Root();
+            m_Workspace.Reload();
+            Core::FileNode& root = m_Workspace.Tree().Root();
 
             if (root.accessible)
                 CORE_INFO("File tree refreshed");
@@ -66,9 +66,9 @@ namespace Graphite
         ImGui::SetNextItemWidth(-1.0f);
 
         if (ImGui::InputTextWithHint("##fileFilter", ICON_MDI_MAGNIFY "  Filter files",
-                                     m_filter.InputBuf, IM_ARRAYSIZE(m_filter.InputBuf)))
+                                     m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf)))
         {
-            m_filter.Build();
+            m_Filter.Build();
         }
     }
 
@@ -93,15 +93,15 @@ namespace Graphite
             ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (available - buttonSize.x) * 0.5f);
 
         if (ImGui::Button("Open Folder", buttonSize))
-            OpenFolderInteractively(m_workspace);
+            OpenFolderInteractively(m_Workspace);
     }
 
     bool FileTreeView::PassesFilter(const Core::FileNode& node) const
     {
-        if (!m_filter.IsActive())
+        if (!m_Filter.IsActive())
             return true;
 
-        if (m_filter.PassFilter(node.name.c_str()))
+        if (m_Filter.PassFilter(node.name.c_str()))
             return true;
 
         // A directory stays visible when anything below it matches, otherwise the
@@ -135,7 +135,7 @@ namespace Graphite
 
         // The workspace root has no parent inside the tree, so renaming, deleting or
         // duplicating it would leave the panel pointing at a path that no longer exists.
-        const bool isRoot = m_workspace.IsOpen() && node.path == m_workspace.Root();
+        const bool isRoot = m_Workspace.IsOpen() && node.path == m_Workspace.Root();
 
         if (ImGui::MenuItem("Show in Explorer"))
         {
@@ -152,7 +152,7 @@ namespace Graphite
         {
             std::error_code code;
             const std::filesystem::path relative =
-                std::filesystem::relative(node.path, m_workspace.Root(), code);
+                std::filesystem::relative(node.path, m_Workspace.Root(), code);
 
             // No common prefix means relative() fails; the absolute path is still useful.
             ImGui::SetClipboardText(Core::ToUtf8(code ? node.path : relative).c_str());
@@ -190,17 +190,17 @@ namespace Graphite
             {
                 const std::string current = Core::ToUtf8(node.path.filename());
 
-                if (current.size() >= m_renameBuffer.size())
+                if (current.size() >= m_RenameBuffer.size())
                 {
                     CORE_ERROR("Cannot rename '{}': the name is too long to edit", current);
                 }
                 else
                 {
-                    m_renamingPath = node.path;
-                    m_focusRenameField = true;
+                    m_RenamingPath = node.path;
+                    m_FocusRenameField = true;
 
-                    std::fill(m_renameBuffer.begin(), m_renameBuffer.end(), '\0');
-                    std::copy_n(current.begin(), current.size(), m_renameBuffer.begin());
+                    std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
+                    std::copy_n(current.begin(), current.size(), m_RenameBuffer.begin());
                 }
             }
 
@@ -221,12 +221,12 @@ namespace Graphite
 
     Core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
     {
-        if (!m_workspace.IsOpen())
+        if (!m_Workspace.IsOpen())
             return nullptr;
 
         // Depth-first over an explicit stack: the tree is only as deep as the user has
         // expanded it, and this avoids a recursive helper for a two-line job.
-        std::vector<Core::FileNode*> stack{&m_workspace.Tree().Root()};
+        std::vector<Core::FileNode*> stack{&m_Workspace.Tree().Root()};
 
         while (!stack.empty())
         {
@@ -249,7 +249,7 @@ namespace Graphite
 
         // Outside the tree, or the parent was never loaded: nothing on screen to update.
         if (parent != nullptr)
-            m_workspace.Tree().Refresh(*parent);
+            m_Workspace.Tree().Refresh(*parent);
     }
 
     void FileTreeView::RecordAction(PendingAction action)
@@ -258,18 +258,18 @@ namespace Graphite
         // in the same frame. Assigning the whole struct keeps stale fields from leaking
         // between kinds, and the warning makes a dropped request visible instead of
         // silent.
-        if (m_pending.kind != PendingAction::Kind::None)
+        if (m_Pending.kind != PendingAction::Kind::None)
         {
             CORE_WARN("Discarding a pending file action that was replaced before it ran");
         }
 
-        m_pending = std::move(action);
+        m_Pending = std::move(action);
     }
 
     void FileTreeView::ExecutePendingAction()
     {
-        const PendingAction action = m_pending;
-        m_pending = PendingAction{};
+        const PendingAction action = m_Pending;
+        m_Pending = PendingAction{};
 
         switch (action.kind)
         {
@@ -291,15 +291,15 @@ namespace Graphite
     {
         // Deletion is the one irreversible-looking action, so it goes through a
         // confirmation rather than straight to the filesystem.
-        m_renamingPath.clear();
-        m_deleteCandidate = action.target;
-        m_openDeleteConfirmation = true;
+        m_RenamingPath.clear();
+        m_DeleteCandidate = action.target;
+        m_OpenDeleteConfirmation = true;
     }
 
     void FileTreeView::HandleRefresh(const PendingAction& action)
     {
         if (Core::FileNode* node = FindNode(action.target); node != nullptr)
-            m_workspace.Tree().Refresh(*node);
+            m_Workspace.Tree().Refresh(*node);
     }
 
     void FileTreeView::HandleRename(const PendingAction& action)
@@ -365,12 +365,12 @@ namespace Graphite
             // Load the folder if it was never opened, otherwise re-read it. Doing both
             // would read the same directory from disk twice.
             if (!parent->loaded)
-                (void)m_workspace.Tree().Expand(*parent);
+                (void)m_Workspace.Tree().Expand(*parent);
             else
-                m_workspace.Tree().Refresh(*parent);
+                m_Workspace.Tree().Refresh(*parent);
 
             parent->expanded = true;
-            m_forceOpenPath = action.target;
+            m_ForceOpenPath = action.target;
         }
 
         CORE_INFO("Created '{}'", Core::ToUtf8(target));
@@ -378,10 +378,10 @@ namespace Graphite
 
     void FileTreeView::RenderDeleteConfirmation()
     {
-        if (m_openDeleteConfirmation)
+        if (m_OpenDeleteConfirmation)
         {
             ImGui::OpenPopup("Delete##fileTreeDelete");
-            m_openDeleteConfirmation = false;
+            m_OpenDeleteConfirmation = false;
         }
 
         if (!ImGui::BeginPopupModal("Delete##fileTreeDelete", nullptr,
@@ -391,17 +391,17 @@ namespace Graphite
         }
 
         ImGui::Text("Move \"%s\" to the Recycle Bin?",
-                    Core::ToUtf8(m_deleteCandidate.filename()).c_str());
+                    Core::ToUtf8(m_DeleteCandidate.filename()).c_str());
         ImGui::Spacing();
 
         if (ImGui::Button("Move"))
         {
-            if (const auto removed = Core::MoveToRecycleBin(m_deleteCandidate); !removed)
+            if (const auto removed = Core::MoveToRecycleBin(m_DeleteCandidate); !removed)
                 CORE_ERROR("{}", removed.GetError().message);
             else
-                RefreshParentOf(m_deleteCandidate);
+                RefreshParentOf(m_DeleteCandidate);
 
-            m_deleteCandidate.clear();
+            m_DeleteCandidate.clear();
             ImGui::CloseCurrentPopup();
         }
 
@@ -409,7 +409,7 @@ namespace Graphite
 
         if (ImGui::Button("Cancel"))
         {
-            m_deleteCandidate.clear();
+            m_DeleteCandidate.clear();
             ImGui::CloseCurrentPopup();
         }
 
@@ -418,13 +418,13 @@ namespace Graphite
 
     bool FileTreeView::RenderRenameEditor(const Core::FileNode& node)
     {
-        if (m_renamingPath != node.path)
+        if (m_RenamingPath != node.path)
             return false;
 
-        if (m_focusRenameField)
+        if (m_FocusRenameField)
         {
             ImGui::SetKeyboardFocusHere();
-            m_focusRenameField = false;
+            m_FocusRenameField = false;
         }
 
         // A directory's label sits to the right of its arrow, so shift the field by the
@@ -445,14 +445,14 @@ namespace Graphite
         // name reads as a dialog dropped into the tree. One character of slack leaves
         // room for the caret, and it grows as the user types.
         constexpr float kMinFieldWidth = 90.0f;
-        const float textWidth = ImGui::CalcTextSize(m_renameBuffer.data()).x;
+        const float textWidth = ImGui::CalcTextSize(m_RenameBuffer.data()).x;
         const float fitted = textWidth + kFieldPaddingX * 2.0f + ImGui::GetFontSize();
         const float available = ImGui::GetContentRegionAvail().x;
 
         ImGui::SetNextItemWidth(std::clamp(fitted, kMinFieldWidth, available));
 
         const bool committed =
-            ImGui::InputText("##renameField", m_renameBuffer.data(), m_renameBuffer.size(),
+            ImGui::InputText("##renameField", m_RenameBuffer.data(), m_RenameBuffer.size(),
                              ImGuiInputTextFlags_EnterReturnsTrue |
                                  ImGuiInputTextFlags_AutoSelectAll);
 
@@ -473,12 +473,12 @@ namespace Graphite
 
         if (cancelled)
         {
-            m_renamingPath.clear();
+            m_RenamingPath.clear();
         }
         else if (committed || deactivated)
         {
-            RecordAction(PendingAction{PendingAction::Kind::Rename, node.path, m_renameBuffer.data()});
-            m_renamingPath.clear();
+            RecordAction(PendingAction{PendingAction::Kind::Rename, node.path, m_RenameBuffer.data()});
+            m_RenamingPath.clear();
         }
 
         return true;
@@ -493,7 +493,7 @@ namespace Graphite
         if (!PassesFilter(node))
             return;
 
-        if (node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Hide)
+        if (node.ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Hide)
         {
             return;
         }
@@ -503,7 +503,7 @@ namespace Graphite
             if (RenderRenameEditor(node))
                 return;
 
-            const bool dimmed = node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Dim;
+            const bool dimmed = node.ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim;
 
             if (dimmed)
                 ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -512,9 +512,9 @@ namespace Graphite
             // DocumentSet owns - so they are read from it rather than from
             // Workspace::SelectedFile, which only ever moves when a row here is clicked and
             // so stayed put whenever the user switched tabs in the editor instead.
-            const auto active = m_documents.Active();
-            const bool isActive = active.has_value() && m_documents.At(*active).path == node.path;
-            const bool isOpen = m_documents.Find(node.path).has_value();
+            const auto active = m_Documents.Active();
+            const bool isActive = active.has_value() && m_Documents.At(*active).path == node.path;
+            const bool isOpen = m_Documents.Find(node.path).has_value();
 
             // An open document that is not the active one gets the same highlight at a
             // fraction of its opacity: enough to pick the open files out of a long folder,
@@ -542,8 +542,8 @@ namespace Graphite
 
             if (clicked)
             {
-                m_workspace.SelectFile(node.path);
-                m_workspace.RequestOpenFile(node.path, ImGui::IsMouseDoubleClicked(0));
+                m_Workspace.SelectFile(node.path);
+                m_Workspace.RequestOpenFile(node.path, ImGui::IsMouseDoubleClicked(0));
             }
 
             if (dimmed)
@@ -557,10 +557,10 @@ namespace Graphite
         if (RenderRenameEditor(node))
             return;
 
-        if (!m_forceOpenPath.empty() && m_forceOpenPath == node.path)
+        if (!m_ForceOpenPath.empty() && m_ForceOpenPath == node.path)
         {
             ImGui::SetNextItemOpen(true);
-            m_forceOpenPath.clear();
+            m_ForceOpenPath.clear();
         }
 
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -568,7 +568,7 @@ namespace Graphite
             flags |= ImGuiTreeNodeFlags_DefaultOpen;
 
         const bool dimmed =
-            !node.accessible || (node.ignored && m_gitIgnoredDisplay == GitIgnoredDisplay::Dim);
+            !node.accessible || (node.ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim);
 
         if (dimmed)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -591,7 +591,7 @@ namespace Graphite
         if (open)
         {
             if (!node.expanded)
-                (void)m_workspace.Tree().Expand(node);
+                (void)m_Workspace.Tree().Expand(node);
 
             for (Core::FileNode& child : node.children)
                 RenderNode(child);
@@ -600,7 +600,7 @@ namespace Graphite
         }
         else if (node.expanded)
         {
-            m_workspace.Tree().Collapse(node);
+            m_Workspace.Tree().Collapse(node);
         }
     }
 }

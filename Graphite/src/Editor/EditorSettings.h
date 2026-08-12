@@ -26,7 +26,7 @@ namespace Graphite
 
         void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
-        [[nodiscard]] float FontSize() const noexcept { return m_fontSize; }
+        [[nodiscard]] float FontSize() const noexcept { return m_FontSize; }
 
         /// Clamps into range, applies and persists — the single path the wheel gesture
         /// and the zoom commands both go through, so they cannot drift apart on what
@@ -35,10 +35,10 @@ namespace Graphite
 
         [[nodiscard]] Core::IndentStyle IndentStyle() const noexcept
         {
-            return {m_indentWithSpaces, m_indentWidth};
+            return {m_IndentWithSpaces, m_IndentWidth};
         }
 
-        [[nodiscard]] bool WordWrap() const noexcept { return m_wordWrap; }
+        [[nodiscard]] bool WordWrap() const noexcept { return m_WordWrap; }
 
     private:
         void SetWordWrap(bool wrap);
@@ -52,14 +52,14 @@ namespace Graphite
         static constexpr float kFontSizeStep = 1.0f;
 
         /// Separate from the interface size, so zooming the code leaves the menus alone.
-        float m_fontSize = kDefaultFontSize;
+        float m_FontSize = kDefaultFontSize;
 
         /// What Tab, Enter's auto-indent and the newline splitter insert. No command
         /// edits these yet; they exist so the editor has a real IndentStyle to work with
         /// and so the choice, once something sets it, persists as the font size does.
-        bool m_indentWithSpaces = true;
-        std::size_t m_indentWidth = 4;
+        bool m_IndentWithSpaces = true;
+        std::size_t m_IndentWidth = 4;
 
-        bool m_wordWrap = false;
+        bool m_WordWrap = false;
     };
 }

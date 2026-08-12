@@ -20,14 +20,14 @@ namespace Core
         Layer& Push(std::unique_ptr<Layer> layer);
         void Clear();
 
-        [[nodiscard]] std::size_t Size() const noexcept { return m_layers.size(); }
+        [[nodiscard]] std::size_t Size() const noexcept { return m_Layers.size(); }
 
-        Container::iterator begin() noexcept { return m_layers.begin(); }
-        Container::iterator end() noexcept { return m_layers.end(); }
-        Container::const_iterator begin() const noexcept { return m_layers.begin(); }
-        Container::const_iterator end() const noexcept { return m_layers.end(); }
+        Container::iterator begin() noexcept { return m_Layers.begin(); }
+        Container::iterator end() noexcept { return m_Layers.end(); }
+        Container::const_iterator begin() const noexcept { return m_Layers.begin(); }
+        Container::const_iterator end() const noexcept { return m_Layers.end(); }
 
     private:
-        Container m_layers;
+        Container m_Layers;
     };
 }

@@ -31,14 +31,14 @@ namespace
     {
     public:
         CapturingPanel(std::string id, bool capturing)
-            : Core::Panel(std::move(id), "Panel"), m_capturing(capturing)
+            : Core::Panel(std::move(id), "Panel"), m_Capturing(capturing)
         {
         }
 
-        [[nodiscard]] bool IsCapturingInput() const override { return m_capturing; }
+        [[nodiscard]] bool IsCapturingInput() const override { return m_Capturing; }
 
     private:
-        bool m_capturing = false;
+        bool m_Capturing = false;
     };
 }
 

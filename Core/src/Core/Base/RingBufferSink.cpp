@@ -6,35 +6,35 @@
 
 namespace Core
 {
-    RingBufferSink::RingBufferSink(std::size_t capacity) : m_capacity(capacity)
+    RingBufferSink::RingBufferSink(std::size_t capacity) : m_Capacity(capacity)
     {
         CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
     }
 
     void RingBufferSink::Write(const LogEntry& entry)
     {
-        const std::scoped_lock lock{m_mutex};
+        const std::scoped_lock lock{m_Mutex};
 
-        m_entries.push_back(entry);
-        while (m_entries.size() > m_capacity)
-            m_entries.pop_front();
+        m_Entries.push_back(entry);
+        while (m_Entries.size() > m_Capacity)
+            m_Entries.pop_front();
     }
 
     std::vector<LogEntry> RingBufferSink::Snapshot() const
     {
-        const std::scoped_lock lock{m_mutex};
-        return {m_entries.begin(), m_entries.end()};
+        const std::scoped_lock lock{m_Mutex};
+        return {m_Entries.begin(), m_Entries.end()};
     }
 
     std::size_t RingBufferSink::Count() const
     {
-        const std::scoped_lock lock{m_mutex};
-        return m_entries.size();
+        const std::scoped_lock lock{m_Mutex};
+        return m_Entries.size();
     }
 
     void RingBufferSink::Clear()
     {
-        const std::scoped_lock lock{m_mutex};
-        m_entries.clear();
+        const std::scoped_lock lock{m_Mutex};
+        m_Entries.clear();
     }
 }

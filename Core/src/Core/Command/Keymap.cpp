@@ -29,26 +29,26 @@ namespace Core
 
     void Keymap::SetDefault(std::string id, Binding binding)
     {
-        m_defaults[std::move(id)] = std::move(binding);
+        m_Defaults[std::move(id)] = std::move(binding);
     }
 
     void Keymap::Override(std::string_view id, std::optional<Binding> binding)
     {
         if (!binding.has_value())
         {
-            if (const auto found = m_overrides.find(id); found != m_overrides.end())
+            if (const auto found = m_Overrides.find(id); found != m_Overrides.end())
             {
-                m_overrides.erase(found);
+                m_Overrides.erase(found);
             }
             return;
         }
 
-        m_overrides[std::string(id)] = std::move(*binding);
+        m_Overrides[std::string(id)] = std::move(*binding);
     }
 
     const Binding* Keymap::For(std::string_view id) const
     {
-        if (const auto override = m_overrides.find(id); override != m_overrides.end())
+        if (const auto override = m_Overrides.find(id); override != m_Overrides.end())
         {
             return &override->second;
         }
@@ -58,9 +58,9 @@ namespace Core
 
     const Binding* Keymap::DefaultFor(std::string_view id) const
     {
-        const auto found = m_defaults.find(id);
+        const auto found = m_Defaults.find(id);
 
-        if (found == m_defaults.end())
+        if (found == m_Defaults.end())
         {
             return nullptr;
         }
@@ -70,7 +70,7 @@ namespace Core
 
     bool Keymap::IsOverridden(std::string_view id) const
     {
-        return m_overrides.find(id) != m_overrides.end();
+        return m_Overrides.find(id) != m_Overrides.end();
     }
 
     std::string_view Keymap::BoundTo(const Chord& chord) const
@@ -136,7 +136,7 @@ namespace Core
     void Keymap::ForEachOverride(
         const std::function<void(const std::string&, const Binding&)>& action) const
     {
-        for (const auto& [id, binding] : m_overrides)
+        for (const auto& [id, binding] : m_Overrides)
         {
             action(id, binding);
         }
@@ -145,18 +145,18 @@ namespace Core
     void Keymap::ForEachBinding(
         const std::function<void(const std::string&, const Binding&)>& action) const
     {
-        for (const auto& [id, binding] : m_defaults)
+        for (const auto& [id, binding] : m_Defaults)
         {
-            const auto override = m_overrides.find(id);
+            const auto override = m_Overrides.find(id);
 
-            action(id, override != m_overrides.end() ? override->second : binding);
+            action(id, override != m_Overrides.end() ? override->second : binding);
         }
 
         // Overrides on ids with no default at all — a command that shipped without a
         // shortcut and was given one.
-        for (const auto& [id, binding] : m_overrides)
+        for (const auto& [id, binding] : m_Overrides)
         {
-            if (m_defaults.find(id) == m_defaults.end())
+            if (m_Defaults.find(id) == m_Defaults.end())
             {
                 action(id, binding);
             }

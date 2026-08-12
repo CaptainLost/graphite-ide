@@ -6,16 +6,16 @@ namespace Core
 {
     void ChangeCollector::Add(const std::filesystem::path& directory, Clock::time_point now)
     {
-        m_pending.insert(directory);
-        m_lastChange = now;
-        m_hasPending = true;
+        m_Pending.insert(directory);
+        m_LastChange = now;
+        m_HasPending = true;
     }
 
     void ChangeCollector::AddOverflow(Clock::time_point now)
     {
-        m_pendingOverflow = true;
-        m_lastChange = now;
-        m_hasPending = true;
+        m_PendingOverflow = true;
+        m_LastChange = now;
+        m_HasPending = true;
     }
 
     std::vector<std::filesystem::path> ChangeCollector::TakeSettled(
@@ -23,17 +23,17 @@ namespace Core
     {
         // Cleared on every call, so a consumer that acted on an overflow once is not
         // told again on the next frame.
-        m_overflowed = false;
+        m_Overflowed = false;
 
-        if (!m_hasPending || now - m_lastChange < quietPeriod)
+        if (!m_HasPending || now - m_LastChange < quietPeriod)
             return {};
 
-        std::vector<std::filesystem::path> settled(m_pending.begin(), m_pending.end());
+        std::vector<std::filesystem::path> settled(m_Pending.begin(), m_Pending.end());
 
-        m_pending.clear();
-        m_hasPending = false;
-        m_overflowed = m_pendingOverflow;
-        m_pendingOverflow = false;
+        m_Pending.clear();
+        m_HasPending = false;
+        m_Overflowed = m_PendingOverflow;
+        m_PendingOverflow = false;
 
         return settled;
     }

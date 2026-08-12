@@ -171,20 +171,20 @@ namespace Core
             return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
         }
 
-        m_initialized = true;
+        m_Initialized = true;
         CORE_INFO("ImGui initialized (docking + viewports)");
         return Result<void>::Ok();
     }
 
     void ImGuiRenderer::Shutdown()
     {
-        if (!m_initialized)
+        if (!m_Initialized)
             return;
 
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
-        m_initialized = false;
+        m_Initialized = false;
     }
 
     void ImGuiRenderer::BeginFrame()

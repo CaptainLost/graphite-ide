@@ -52,38 +52,38 @@ namespace Graphite
             return expanded;
         }
 
-        m_tree = std::move(candidate);
-        m_root = root;
-        m_selectedFile.clear();
+        m_Tree = std::move(candidate);
+        m_Root = root;
+        m_SelectedFile.clear();
 
         TryOpenRepository();
-        m_tree.Refresh(m_tree.Root());
+        m_Tree.Refresh(m_Tree.Root());
 
         // A new folder gets a fresh resume budget: the previous one having failed says
         // nothing about this one.
-        m_watcherResumed = false;
+        m_WatcherResumed = false;
 
         if (auto watcher = Core::DirectoryWatcher::Start(root); watcher)
         {
-            m_watcher = std::move(watcher).Value();
+            m_Watcher = std::move(watcher).Value();
         }
         else
         {
             // Not fatal: the tree still works, it just will not notice outside changes.
             CORE_WARN("Cannot watch '{}': {}", root.string(), watcher.GetError().message);
-            m_watcher.reset();
+            m_Watcher.reset();
         }
 
         // Rebuilt for the new root before anything reads it: the store is per folder, so
         // the previous workspace's file must not be consulted for this one.
-        m_settings = WorkspaceSettings{root};
-        m_selectedSolution = Core::FromUtf8(m_settings.Get("selectedSolution"));
+        m_Settings = WorkspaceSettings{root};
+        m_SelectedSolution = Core::FromUtf8(m_Settings.Get("selectedSolution"));
 
         FindSolutions();
         LoadSolution();
 
         AppSettings::SaveLastFolder(root);
-        m_events.Publish(WorkspaceOpenedEvent{root});
+        m_Events.Publish(WorkspaceOpenedEvent{root});
 
         CORE_INFO("Workspace opened: '{}'", root.string());
         return Core::Result<void>::Ok();
@@ -121,7 +121,7 @@ namespace Graphite
         // the selection changes. This is the common case: an open repository and a
         // solution somewhere within it.
         const std::filesystem::path relative =
-            IsOpen() ? chosen.lexically_relative(m_root) : std::filesystem::path{};
+            IsOpen() ? chosen.lexically_relative(m_Root) : std::filesystem::path{};
 
         // Compared by path component, not by string prefix: a sibling directory whose
         // name merely begins with the root's — C:\work beside C:\workshop — would fool a
@@ -136,16 +136,16 @@ namespace Graphite
 
         // Added by hand rather than waiting for discovery: the file may sit somewhere
         // FindSolutions would never look, and the user has just said they want it.
-        if (std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(), chosen)
-            == m_solutionCandidates.end())
+        if (std::find(m_SolutionCandidates.begin(), m_SolutionCandidates.end(), chosen)
+            == m_SolutionCandidates.end())
         {
-            m_solutionCandidates.push_back(chosen);
-            std::sort(m_solutionCandidates.begin(), m_solutionCandidates.end());
+            m_SolutionCandidates.push_back(chosen);
+            std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end());
         }
 
         SelectSolution(chosen);
 
-        if (!m_solution)
+        if (!m_Solution)
         {
             return Core::Error{Core::ErrorCode::InvalidArgument,
                                std::format("cannot read '{}'", chosen.string())};
@@ -159,57 +159,57 @@ namespace Graphite
         if (!IsOpen())
             return;
 
-        const std::filesystem::path closed = m_root;
+        const std::filesystem::path closed = m_Root;
 
         // Stopped first: the thread reports into the tree that the next lines replace.
-        m_watcher.reset();
+        m_Watcher.reset();
 
         // Drop the query before the repository it reads, not after: between those two
         // statements the tree would hold a query pointing at an empty optional.
-        m_tree.SetIgnoreQuery({});
-        m_repository.reset();
-        m_tree = Core::FileTree{};
-        m_root.clear();
-        m_selectedFile.clear();
+        m_Tree.SetIgnoreQuery({});
+        m_Repository.reset();
+        m_Tree = Core::FileTree{};
+        m_Root.clear();
+        m_SelectedFile.clear();
 
         ResetSolutionState();
 
         // Dropped with the folder it belongs to. Left pointing at the closed folder, the
         // explorer's mode dropdown — which still draws with nothing open — would write
         // into a workspace the user has just walked away from.
-        m_settings = WorkspaceSettings{std::filesystem::path{}};
+        m_Settings = WorkspaceSettings{std::filesystem::path{}};
 
         // An empty stored value reads back as "nothing remembered", so this is how the
         // closed state survives a restart.
         AppSettings::SaveLastFolder({});
-        m_events.Publish(WorkspaceClosedEvent{});
+        m_Events.Publish(WorkspaceClosedEvent{});
 
         CORE_INFO("Workspace closed: '{}'", closed.string());
     }
 
     void Workspace::SelectFile(const std::filesystem::path& path)
     {
-        m_selectedFile = path;
-        m_events.Publish(FileSelectedEvent{path});
+        m_SelectedFile = path;
+        m_Events.Publish(FileSelectedEvent{path});
     }
 
     void Workspace::RequestOpenFile(const std::filesystem::path& path, bool permanent)
     {
-        m_events.Publish(OpenFileRequested{path, permanent});
+        m_Events.Publish(OpenFileRequested{path, permanent});
     }
 
     void Workspace::Update()
     {
-        if (!m_watcher)
+        if (!m_Watcher)
             return;
 
-        if (!m_watcher->IsRunning())
+        if (!m_Watcher->IsRunning())
         {
             HandleDeadWatcher();
             return;
         }
 
-        const Core::DirectoryWatcher::Changes changed = m_watcher->TakeSettled();
+        const Core::DirectoryWatcher::Changes changed = m_Watcher->TakeSettled();
 
         if (changed.movedTo)
         {
@@ -236,11 +236,11 @@ namespace Graphite
             if (changed.overflowed)
                 CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 
-            m_tree.Refresh(m_tree.Root());
+            m_Tree.Refresh(m_Tree.Root());
 
             FindSolutions();
             LoadSolution();
-            m_events.Publish(WorkspaceFilesChangedEvent{{}, true});
+            m_Events.Publish(WorkspaceFilesChangedEvent{{}, true});
             return;
         }
 
@@ -259,15 +259,15 @@ namespace Graphite
 
         // Published after the tree has caught up, so a subscriber that looks at both sees
         // one consistent picture rather than a tree still describing the previous frame.
-        m_events.Publish(WorkspaceFilesChangedEvent{changed.directories, false});
+        m_Events.Publish(WorkspaceFilesChangedEvent{changed.directories, false});
     }
 
     bool Workspace::TouchesSolution(const std::vector<std::filesystem::path>& directories) const
     {
-        if (m_selectedSolution.empty())
+        if (m_SelectedSolution.empty())
             return false;
 
-        const std::filesystem::path solutionDirectory = m_selectedSolution.parent_path();
+        const std::filesystem::path solutionDirectory = m_SelectedSolution.parent_path();
 
         for (const std::filesystem::path& directory : directories)
         {
@@ -275,14 +275,14 @@ namespace Graphite
             if (directory == solutionDirectory)
                 return true;
 
-            if (!m_solution)
+            if (!m_Solution)
                 continue;
 
             // A project file changing means the project's contents may have changed. Its
             // .filters sibling lives in the same directory, so one comparison covers both.
             bool matched = false;
 
-            ForEachProject(m_solution->root,
+            ForEachProject(m_Solution->root,
                            [&directory, &matched](const Core::Project& project)
                            {
                                if (project.path.parent_path() == directory)
@@ -298,7 +298,7 @@ namespace Graphite
 
     void Workspace::Reload()
     {
-        if (!m_tree.HasRoot())
+        if (!m_Tree.HasRoot())
             return;
 
         // Settled before the tree is re-read, not after: installing or dropping the
@@ -306,7 +306,7 @@ namespace Graphite
         // would bake in the previous answer.
         (void)SyncRepository();
 
-        m_tree.Refresh(m_tree.Root());
+        m_Tree.Refresh(m_Tree.Root());
 
         FindSolutions();
         LoadSolution();
@@ -314,25 +314,25 @@ namespace Graphite
 
     bool Workspace::SyncRepository()
     {
-        if (!m_repository)
+        if (!m_Repository)
         {
             // A `git init` in a terminal. Attempted only while there is none, so the
             // ordinary case costs one optional test.
             TryOpenRepository();
-            return m_repository.has_value();
+            return m_Repository.has_value();
         }
 
         // A bare repository has no working directory at all, so there is no .git beside
         // it to look for and the probe below would test a relative path against whatever
         // the process's working directory happens to be.
-        if (m_repository->WorkingDirectory().empty())
+        if (m_Repository->WorkingDirectory().empty())
             return false;
 
-        // Checked against the repository's own working directory rather than m_root: the
-        // workspace can be a subdirectory of the repository, where m_root/.git never
+        // Checked against the repository's own working directory rather than m_Root: the
+        // workspace can be a subdirectory of the repository, where m_Root/.git never
         // existed in the first place.
         std::error_code code;
-        const bool present = std::filesystem::exists(m_repository->WorkingDirectory() / ".git",
+        const bool present = std::filesystem::exists(m_Repository->WorkingDirectory() / ".git",
                                                      code);
 
         // `code` being set means the question could not be answered — a denied parent, a
@@ -347,10 +347,10 @@ namespace Graphite
         // tree — so entries would stay dimmed for a folder that is no longer a
         // repository. Pinned by a test in GitRepositoryTests.cpp.
         CORE_INFO("The git repository at '{}' is gone",
-                  m_repository->WorkingDirectory().string());
+                  m_Repository->WorkingDirectory().string());
 
-        m_tree.SetIgnoreQuery({});
-        m_repository.reset();
+        m_Tree.SetIgnoreQuery({});
+        m_Repository.reset();
 
         return true;
     }
@@ -360,30 +360,30 @@ namespace Graphite
         // Dropped rather than kept: with its thread gone the object reports nothing for
         // the rest of the session, and clearing it makes the next frame return early
         // instead of arriving back here.
-        m_watcher.reset();
+        m_Watcher.reset();
 
-        if (m_watcherResumed)
+        if (m_WatcherResumed)
         {
             CORE_WARN("Giving up watching '{}' for changes: it failed twice",
-                      m_root.string());
+                      m_Root.string());
             return;
         }
 
-        m_watcherResumed = true;
+        m_WatcherResumed = true;
 
-        auto watcher = Core::DirectoryWatcher::Start(m_root);
+        auto watcher = Core::DirectoryWatcher::Start(m_Root);
 
         if (!watcher)
         {
             // The usual reason is that the folder was deleted or renamed out from under
             // the workspace. The tree stays as it is rather than being closed: a stale
             // view the user can act on beats one that vanishes without being asked.
-            CORE_WARN("Cannot resume watching '{}': {}", m_root.string(),
+            CORE_WARN("Cannot resume watching '{}': {}", m_Root.string(),
                       watcher.GetError().message);
             return;
         }
 
-        m_watcher = std::move(watcher).Value();
+        m_Watcher = std::move(watcher).Value();
 
         // Whatever happened while nothing was watching is simply gone, so the tree is
         // re-read wholesale rather than trusted — and the repository is settled first,
@@ -391,40 +391,40 @@ namespace Graphite
         // before that would re-ask a repository that is no longer there and bake the
         // stale answer back in.
         (void)SyncRepository();
-        m_tree.Refresh(m_tree.Root());
+        m_Tree.Refresh(m_Tree.Root());
 
-        CORE_INFO("Resumed watching '{}' after a failure", m_root.string());
+        CORE_INFO("Resumed watching '{}' after a failure", m_Root.string());
     }
 
     void Workspace::HandleRootMoved(const std::filesystem::path& destination)
     {
-        const std::filesystem::path from = m_root;
+        const std::filesystem::path from = m_Root;
         const std::filesystem::path to = Core::NormalizeDirectory(destination);
 
         CORE_INFO("Workspace moved from '{}' to '{}'", from.string(), to.string());
 
-        m_root = to;
-        m_tree.Rebase(to);
+        m_Root = to;
+        m_Tree.Rebase(to);
 
         // Rewritten rather than cleared: the same file is still selected, it just lives
         // somewhere else now.
-        if (!m_selectedFile.empty())
+        if (!m_SelectedFile.empty())
         {
-            const std::filesystem::path relative = m_selectedFile.lexically_relative(from);
+            const std::filesystem::path relative = m_SelectedFile.lexically_relative(from);
 
-            m_selectedFile = relative.empty() ? std::filesystem::path{} : to / relative;
+            m_SelectedFile = relative.empty() ? std::filesystem::path{} : to / relative;
         }
 
         // The watcher's handle still works — it followed the directory, which is how the
         // move was noticed at all — but the copy of the root inside its thread is stale,
         // and that copy is what every reported path is built from. Restarting is the only
         // way to correct it without reaching into a running thread.
-        m_watcherResumed = false;
-        m_watcher.reset();
+        m_WatcherResumed = false;
+        m_Watcher.reset();
 
         if (auto watcher = Core::DirectoryWatcher::Start(to); watcher)
         {
-            m_watcher = std::move(watcher).Value();
+            m_Watcher = std::move(watcher).Value();
         }
         else
         {
@@ -438,21 +438,21 @@ namespace Graphite
 
         // Nothing was read from disk during the rebase, so this is the first look at the
         // new location — and the ignore query may have just changed too.
-        m_tree.Refresh(m_tree.Root());
+        m_Tree.Refresh(m_Tree.Root());
 
         // Both hold absolute paths under the old root, so both are rebuilt rather than
         // rewritten. Left alone, the settings store would keep writing into the folder's
         // former location — recreating .graphite under a name the user has abandoned —
         // and every solution path would name a file that no longer exists there.
-        m_settings = WorkspaceSettings{to};
+        m_Settings = WorkspaceSettings{to};
         ResetSolutionState();
-        m_selectedSolution = Core::FromUtf8(m_settings.Get("selectedSolution"));
+        m_SelectedSolution = Core::FromUtf8(m_Settings.Get("selectedSolution"));
 
         FindSolutions();
         LoadSolution();
 
         AppSettings::SaveLastFolder(to);
-        m_events.Publish(WorkspaceRootMovedEvent{from, to});
+        m_Events.Publish(WorkspaceRootMovedEvent{from, to});
     }
 
     void Workspace::RefreshChanged(const std::filesystem::path& directory)
@@ -462,17 +462,17 @@ namespace Graphite
         // Not found means the directory was never expanded, so there is nothing loaded to
         // correct — it will read the current state whenever the user opens it.
         if (node != nullptr && node->isDirectory && node->loaded)
-            m_tree.Refresh(*node);
+            m_Tree.Refresh(*node);
     }
 
     Core::FileNode* Workspace::FindNode(const std::filesystem::path& path)
     {
-        if (!m_tree.HasRoot())
+        if (!m_Tree.HasRoot())
             return nullptr;
 
         // An explicit stack rather than recursion: a deep tree is user-supplied input and
         // this runs every frame that something changed.
-        std::vector<Core::FileNode*> pending{&m_tree.Root()};
+        std::vector<Core::FileNode*> pending{&m_Tree.Root()};
 
         while (!pending.empty())
         {
@@ -494,32 +494,32 @@ namespace Graphite
 
     void Workspace::TryOpenRepository()
     {
-        m_tree.SetIgnoreQuery({});
-        m_repository.reset();
+        m_Tree.SetIgnoreQuery({});
+        m_Repository.reset();
 
-        auto repository = Core::Repository::Open(m_root);
+        auto repository = Core::Repository::Open(m_Root);
 
         if (!repository)
         {
-            CORE_TRACE("'{}' is not inside a git repository: {}", m_root.string(),
+            CORE_TRACE("'{}' is not inside a git repository: {}", m_Root.string(),
                        repository.GetError().message);
             return;
         }
 
-        m_repository.emplace(std::move(repository).Value());
+        m_Repository.emplace(std::move(repository).Value());
 
-        m_tree.SetIgnoreQuery(
+        m_Tree.SetIgnoreQuery(
             [this](const std::filesystem::path& path, bool) -> bool
-            { return m_repository && m_repository->IsIgnored(path); });
+            { return m_Repository && m_Repository->IsIgnored(path); });
 
-        CORE_INFO("Git repository detected at '{}'", m_repository->WorkingDirectory().string());
+        CORE_INFO("Git repository detected at '{}'", m_Repository->WorkingDirectory().string());
     }
 
     void Workspace::FindSolutions()
     {
-        m_solutionCandidates.clear();
+        m_SolutionCandidates.clear();
 
-        const auto entries = Core::ReadDirectory(m_root);
+        const auto entries = Core::ReadDirectory(m_Root);
 
         if (!entries)
             return;
@@ -532,7 +532,7 @@ namespace Graphite
                 continue;
 
             if (entry.path.extension() == ".slnx")
-                m_solutionCandidates.push_back(entry.path);
+                m_SolutionCandidates.push_back(entry.path);
             else if (entry.path.extension() == ".sln")
                 legacy.push_back(entry.path);
         }
@@ -543,37 +543,37 @@ namespace Graphite
         for (const std::filesystem::path& candidate : legacy)
         {
             const bool supersededByXml =
-                std::any_of(m_solutionCandidates.begin(), m_solutionCandidates.end(),
+                std::any_of(m_SolutionCandidates.begin(), m_SolutionCandidates.end(),
                             [&candidate](const std::filesystem::path& xml)
                             { return xml.stem() == candidate.stem(); });
 
             if (!supersededByXml)
-                m_solutionCandidates.push_back(candidate);
+                m_SolutionCandidates.push_back(candidate);
         }
 
         // A solution the user picked by hand may live outside the root, where nothing
         // above would find it. Dropping it on the next filesystem change would make the
         // chooser lose an entry for no reason the user could see.
-        if (!m_selectedSolution.empty()
-            && std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(),
-                         m_selectedSolution)
-                   == m_solutionCandidates.end())
+        if (!m_SelectedSolution.empty()
+            && std::find(m_SolutionCandidates.begin(), m_SolutionCandidates.end(),
+                         m_SelectedSolution)
+                   == m_SolutionCandidates.end())
         {
             std::error_code exists;
 
-            if (std::filesystem::is_regular_file(m_selectedSolution, exists))
-                m_solutionCandidates.push_back(m_selectedSolution);
+            if (std::filesystem::is_regular_file(m_SelectedSolution, exists))
+                m_SolutionCandidates.push_back(m_SelectedSolution);
         }
 
-        std::sort(m_solutionCandidates.begin(), m_solutionCandidates.end());
+        std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end());
     }
 
     void Workspace::LoadSolution()
     {
-        if (m_solutionCandidates.empty())
+        if (m_SolutionCandidates.empty())
         {
-            m_solution.reset();
-            m_selectedSolution.clear();
+            m_Solution.reset();
+            m_SelectedSolution.clear();
             ForgetSolutionAttempt();
             return;
         }
@@ -581,11 +581,11 @@ namespace Graphite
         // A remembered choice that is no longer on disk falls back to the first, rather
         // than leaving the view empty for a reason the user cannot see.
         const bool remembered =
-            std::find(m_solutionCandidates.begin(), m_solutionCandidates.end(),
-                      m_selectedSolution) != m_solutionCandidates.end();
+            std::find(m_SolutionCandidates.begin(), m_SolutionCandidates.end(),
+                      m_SelectedSolution) != m_SolutionCandidates.end();
 
         if (!remembered)
-            m_selectedSolution = m_solutionCandidates.front();
+            m_SelectedSolution = m_SolutionCandidates.front();
 
         // Guarded here rather than at each caller. There are five — window focus, the
         // watcher, the toolbar, opening a folder, choosing a solution — and gating only
@@ -601,56 +601,56 @@ namespace Graphite
         // from the success path.
         const std::filesystem::file_time_type stamp = SolutionStamp();
 
-        if (m_solutionAttempted && m_attemptedSolution == m_selectedSolution
-            && stamp == m_solutionStamp)
+        if (m_SolutionAttempted && m_AttemptedSolution == m_SelectedSolution
+            && stamp == m_SolutionStamp)
         {
             return;
         }
 
-        m_solutionAttempted = true;
-        m_attemptedSolution = m_selectedSolution;
+        m_SolutionAttempted = true;
+        m_AttemptedSolution = m_SelectedSolution;
 
         // Recorded now so a failed parse is not retried at the same stamp; replaced below
         // once a successful one has told us which projects there are.
-        m_solutionStamp = stamp;
-        m_solution.reset();
+        m_SolutionStamp = stamp;
+        m_Solution.reset();
 
-        auto solution = Core::ReadSolution(m_selectedSolution);
+        auto solution = Core::ReadSolution(m_SelectedSolution);
 
         if (!solution)
         {
-            CORE_WARN("Cannot read '{}': {}", m_selectedSolution.string(),
+            CORE_WARN("Cannot read '{}': {}", m_SelectedSolution.string(),
                       solution.GetError().message);
             return;
         }
 
-        m_solution.emplace(std::move(solution).Value());
+        m_Solution.emplace(std::move(solution).Value());
 
         // Recomputed against the model that was just read. The stamp spans the project
-        // files as well as the solution, and SolutionStamp finds those through m_solution
+        // files as well as the solution, and SolutionStamp finds those through m_Solution
         // — which was empty a moment ago, so the value compared above was the solution
         // file alone. Keeping it would make the very next call see a different stamp and
         // parse again, which is exactly what happened: one wasted reload after every
         // start, surfacing at whatever first touched the workspace.
-        m_solutionStamp = SolutionStamp();
+        m_SolutionStamp = SolutionStamp();
 
-        CORE_INFO("Solution '{}' loaded with {} projects", m_solution->name,
-                  m_solution->projectCount);
+        CORE_INFO("Solution '{}' loaded with {} projects", m_Solution->name,
+                  m_Solution->projectCount);
     }
 
 
     std::filesystem::file_time_type Workspace::SolutionStamp() const
     {
         std::error_code code;
-        auto newest = std::filesystem::last_write_time(m_selectedSolution, code);
+        auto newest = std::filesystem::last_write_time(m_SelectedSolution, code);
 
         if (code)
             newest = {};
 
-        if (!m_solution)
+        if (!m_Solution)
             return newest;
 
-        ForEachProject(m_solution->root,
+        ForEachProject(m_Solution->root,
                        [&newest](const Core::Project& project)
                        {
                            std::error_code projectCode;
@@ -679,23 +679,23 @@ namespace Graphite
 
     void Workspace::ForgetSolutionAttempt()
     {
-        m_solutionAttempted = false;
-        m_attemptedSolution.clear();
-        m_solutionStamp = {};
+        m_SolutionAttempted = false;
+        m_AttemptedSolution.clear();
+        m_SolutionStamp = {};
     }
 
     void Workspace::ResetSolutionState()
     {
-        m_solution.reset();
-        m_solutionCandidates.clear();
-        m_selectedSolution.clear();
+        m_Solution.reset();
+        m_SolutionCandidates.clear();
+        m_SelectedSolution.clear();
         ForgetSolutionAttempt();
     }
 
     void Workspace::SelectSolution(const std::filesystem::path& path)
     {
-        m_selectedSolution = path;
-        m_settings.Set("selectedSolution", Core::ToUtf8(path));
+        m_SelectedSolution = path;
+        m_Settings.Set("selectedSolution", Core::ToUtf8(path));
 
         // The guard keys on which solution was attempted, so switching to another is
         // never mistaken for a repeat of the last one.

@@ -10,42 +10,42 @@
 
 namespace Core
 {
-    Application* Application::s_instance = nullptr;
+    Application* Application::s_Instance = nullptr;
 
-    Application::Application(ApplicationSpec spec) : m_spec(std::move(spec))
+    Application::Application(ApplicationSpec spec) : m_Spec(std::move(spec))
     {
-        CORE_ASSERT(s_instance == nullptr, "Application already exists");
-        s_instance = this;
+        CORE_ASSERT(s_Instance == nullptr, "Application already exists");
+        s_Instance = this;
     }
 
     Application::~Application()
     {
-        s_instance = nullptr;
+        s_Instance = nullptr;
     }
 
     Application& Application::Get()
     {
-        CORE_ASSERT(s_instance != nullptr, "Application::Get called before the application was created");
-        return *s_instance;
+        CORE_ASSERT(s_Instance != nullptr, "Application::Get called before the application was created");
+        return *s_Instance;
     }
 
     Layer& Application::PushLayer(std::unique_ptr<Layer> layer)
     {
-        return m_layers.Push(std::move(layer));
+        return m_Layers.Push(std::move(layer));
     }
 
     void Application::Close()
     {
-        m_running = false;
+        m_Running = false;
     }
 
     Result<void> Application::Run()
     {
         WindowSpec windowSpec;
-        windowSpec.title = m_spec.name;
-        windowSpec.width = m_spec.width;
-        windowSpec.height = m_spec.height;
-        windowSpec.customTitleBar = m_spec.customTitleBar;
+        windowSpec.title = m_Spec.name;
+        windowSpec.width = m_Spec.width;
+        windowSpec.height = m_Spec.height;
+        windowSpec.customTitleBar = m_Spec.customTitleBar;
         // The window is created before the ImGui context exists, so the border colour is
         // asked of the theme here — the one layer that can see both — and travels down as
         // a value. Core::Platform never learns that there is a theme.
@@ -58,42 +58,42 @@ namespace Core
             return windowResult.GetError();
         }
 
-        m_window = std::move(windowResult).Value();
+        m_Window = std::move(windowResult).Value();
 
-        if (auto init = m_gui.Init(*m_window); !init)
+        if (auto init = m_Gui.Init(*m_Window); !init)
         {
             CORE_ERROR("Startup aborted: {}", init.GetError().message);
-            m_window.reset();
+            m_Window.reset();
             return init.GetError();
         }
 
         OnInit();
 
-        m_running = true;
-        m_lastFrameTime = glfwGetTime();
+        m_Running = true;
+        m_LastFrameTime = glfwGetTime();
 
-        while (m_running)
+        while (m_Running)
         {
             const double now = glfwGetTime();
-            const auto delta = static_cast<float>(now - m_lastFrameTime);
-            m_lastFrameTime = now;
+            const auto delta = static_cast<float>(now - m_LastFrameTime);
+            m_LastFrameTime = now;
 
-            m_window->PollEvents();
+            m_Window->PollEvents();
 
             // We iterate over a copy of the pointers: a layer may push another layer during
             // the frame, and a reallocated vector would invalidate the iterator. The copy guards
             // against insertion — if layer removal is ever introduced, this will need rethinking.
-            m_frameLayers.clear();
-            for (auto& layer : m_layers)
-                m_frameLayers.push_back(layer.get());
+            m_FrameLayers.clear();
+            for (auto& layer : m_Layers)
+                m_FrameLayers.push_back(layer.get());
 
-            if (m_window->ShouldClose())
+            if (m_Window->ShouldClose())
             {
                 // Every layer is asked, not just up to the first refusal: a layer that
                 // refuses usually does so by opening a question, and one that never gets
                 // asked never opens its own.
                 bool mayClose = true;
-                for (Layer* layer : m_frameLayers)
+                for (Layer* layer : m_FrameLayers)
                 {
                     if (!layer->OnCloseRequested())
                         mayClose = false;
@@ -102,26 +102,26 @@ namespace Core
                 if (mayClose)
                     break;
 
-                m_window->CancelClose();
+                m_Window->CancelClose();
             }
 
-            for (Layer* layer : m_frameLayers)
+            for (Layer* layer : m_FrameLayers)
                 layer->OnUpdate(delta);
 
-            m_gui.BeginFrame();
+            m_Gui.BeginFrame();
 
-            for (Layer* layer : m_frameLayers)
+            for (Layer* layer : m_FrameLayers)
                 layer->OnUIRender();
 
-            m_gui.EndFrame(*m_window);
-            m_window->SwapBuffers();
+            m_Gui.EndFrame(*m_Window);
+            m_Window->SwapBuffers();
         }
 
         OnShutdown();
 
-        m_layers.Clear();
-        m_gui.Shutdown();
-        m_window.reset();
+        m_Layers.Clear();
+        m_Gui.Shutdown();
+        m_Window.reset();
 
         return Result<void>::Ok();
     }

@@ -17,13 +17,13 @@ namespace Core
     void RowMap::Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow,
                           std::size_t tabWidth)
     {
-        m_columnsPerRow = columnsPerRow;
-        m_tabWidth = tabWidth;
+        m_ColumnsPerRow = columnsPerRow;
+        m_TabWidth = tabWidth;
 
         const std::size_t lines = buffer.LineCount();
 
-        m_rowsPerLine.assign(lines, 0);
-        m_breaks.assign(lines, {});
+        m_RowsPerLine.assign(lines, 0);
+        m_Breaks.assign(lines, {});
 
         // The counts are filled in directly and the tree built once from them, the same
         // way the splices below do it. Doing this by repeated SetCount would be a
@@ -32,9 +32,9 @@ namespace Core
         for (std::size_t line = 0; line < lines; ++line)
         {
             if (columnsPerRow != kNoWrap)
-                m_breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
+                m_Breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
 
-            m_rowsPerLine[line] = m_breaks[line].size() + 1;
+            m_RowsPerLine[line] = m_Breaks[line].size() + 1;
         }
 
         RebuildTree();
@@ -42,15 +42,15 @@ namespace Core
 
     void RowMap::UpdateLine(const TextBuffer& buffer, std::size_t line)
     {
-        if (line >= m_rowsPerLine.size())
+        if (line >= m_RowsPerLine.size())
             return;
 
-        m_breaks[line].clear();
+        m_Breaks[line].clear();
 
-        if (m_columnsPerRow != kNoWrap)
-            m_breaks[line] = WrapColumns(buffer.LineText(line), m_columnsPerRow, m_tabWidth);
+        if (m_ColumnsPerRow != kNoWrap)
+            m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 
-        SetCount(line, m_breaks[line].size() + 1);
+        SetCount(line, m_Breaks[line].size() + 1);
     }
 
     void RowMap::InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count)
@@ -58,18 +58,18 @@ namespace Core
         if (count == 0)
             return;
 
-        const std::size_t where = std::min(at, m_rowsPerLine.size());
+        const std::size_t where = std::min(at, m_RowsPerLine.size());
         const auto offset = static_cast<std::ptrdiff_t>(where);
 
-        m_rowsPerLine.insert(m_rowsPerLine.begin() + offset, count, 0);
-        m_breaks.insert(m_breaks.begin() + offset, count, std::vector<std::size_t>{});
+        m_RowsPerLine.insert(m_RowsPerLine.begin() + offset, count, 0);
+        m_Breaks.insert(m_Breaks.begin() + offset, count, std::vector<std::size_t>{});
 
         for (std::size_t line = where; line < where + count; ++line)
         {
-            if (m_columnsPerRow != kNoWrap && line < buffer.LineCount())
-                m_breaks[line] = WrapColumns(buffer.LineText(line), m_columnsPerRow, m_tabWidth);
+            if (m_ColumnsPerRow != kNoWrap && line < buffer.LineCount())
+                m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 
-            m_rowsPerLine[line] = m_breaks[line].size() + 1;
+            m_RowsPerLine[line] = m_Breaks[line].size() + 1;
         }
 
         RebuildTree();
@@ -77,56 +77,56 @@ namespace Core
 
     void RowMap::RemoveLines(std::size_t at, std::size_t count)
     {
-        if (count == 0 || at >= m_rowsPerLine.size())
+        if (count == 0 || at >= m_RowsPerLine.size())
             return;
 
-        const std::size_t end = std::min(at + count, m_rowsPerLine.size());
+        const std::size_t end = std::min(at + count, m_RowsPerLine.size());
         const auto first = static_cast<std::ptrdiff_t>(at);
         const auto last = static_cast<std::ptrdiff_t>(end);
 
-        m_rowsPerLine.erase(m_rowsPerLine.begin() + first, m_rowsPerLine.begin() + last);
-        m_breaks.erase(m_breaks.begin() + first, m_breaks.begin() + last);
+        m_RowsPerLine.erase(m_RowsPerLine.begin() + first, m_RowsPerLine.begin() + last);
+        m_Breaks.erase(m_Breaks.begin() + first, m_Breaks.begin() + last);
 
         RebuildTree();
     }
 
     void RowMap::RebuildTree()
     {
-        const std::size_t lines = m_rowsPerLine.size();
+        const std::size_t lines = m_RowsPerLine.size();
 
-        m_tree.assign(lines + 1, 0);
-        m_totalRows = 0;
+        m_Tree.assign(lines + 1, 0);
+        m_TotalRows = 0;
 
         // Linear Fenwick construction: each node takes its own line's count and then hands
         // its subtotal to its parent, so the whole tree is one pass rather than one
         // logarithmic update per line.
         for (std::size_t index = 1; index <= lines; ++index)
         {
-            m_tree[index] += m_rowsPerLine[index - 1];
-            m_totalRows += m_rowsPerLine[index - 1];
+            m_Tree[index] += m_RowsPerLine[index - 1];
+            m_TotalRows += m_RowsPerLine[index - 1];
 
             const std::size_t parent = index + (index & (~index + 1));
 
             if (parent <= lines)
-                m_tree[parent] += m_tree[index];
+                m_Tree[parent] += m_Tree[index];
         }
     }
 
     void RowMap::SetRowsOf(std::size_t line, std::size_t rows)
     {
-        if (line < m_rowsPerLine.size())
+        if (line < m_RowsPerLine.size())
             SetCount(line, rows);
     }
 
     void RowMap::SetCount(std::size_t line, std::size_t rows)
     {
-        const std::size_t previous = m_rowsPerLine[line];
+        const std::size_t previous = m_RowsPerLine[line];
 
         if (rows == previous)
             return;
 
-        m_rowsPerLine[line] = rows;
-        m_totalRows = m_totalRows - previous + rows;
+        m_RowsPerLine[line] = rows;
+        m_TotalRows = m_TotalRows - previous + rows;
 
         // Fenwick update. The delta is computed as an unsigned difference in the direction
         // that keeps it positive, with `grew` recording which way it went, rather than
@@ -136,12 +136,12 @@ namespace Core
         const bool grew = rows > previous;
         const std::size_t delta = grew ? rows - previous : previous - rows;
 
-        for (std::size_t index = line + 1; index < m_tree.size(); index += index & (~index + 1))
+        for (std::size_t index = line + 1; index < m_Tree.size(); index += index & (~index + 1))
         {
             if (grew)
-                m_tree[index] += delta;
+                m_Tree[index] += delta;
             else
-                m_tree[index] -= delta;
+                m_Tree[index] -= delta;
         }
     }
 
@@ -150,37 +150,37 @@ namespace Core
         std::size_t sum = 0;
 
         for (std::size_t index = line; index > 0; index -= index & (~index + 1))
-            sum += m_tree[index];
+            sum += m_Tree[index];
 
         return sum;
     }
 
     std::size_t RowMap::FirstRowOf(std::size_t line) const
     {
-        return PrefixSum(std::min(line, m_rowsPerLine.size()));
+        return PrefixSum(std::min(line, m_RowsPerLine.size()));
     }
 
     std::size_t RowMap::RowsOf(std::size_t line) const
     {
-        return line < m_rowsPerLine.size() ? m_rowsPerLine[line] : 0;
+        return line < m_RowsPerLine.size() ? m_RowsPerLine[line] : 0;
     }
 
     const std::vector<std::size_t>& RowMap::BreaksOf(std::size_t line) const
     {
-        return line < m_breaks.size() ? m_breaks[line] : kNoBreaks;
+        return line < m_Breaks.size() ? m_Breaks[line] : kNoBreaks;
     }
 
     RowRef RowMap::RowAt(std::size_t row) const
     {
-        if (m_rowsPerLine.empty())
+        if (m_RowsPerLine.empty())
             return RowRef{};
 
         // A row past the end resolves to the last line's last row, matching how the widget
         // already clamps a click below the document rather than treating it as an error.
-        if (row >= m_totalRows)
+        if (row >= m_TotalRows)
         {
-            const std::size_t last = m_rowsPerLine.size() - 1;
-            const std::size_t rows = m_rowsPerLine[last];
+            const std::size_t last = m_RowsPerLine.size() - 1;
+            const std::size_t rows = m_RowsPerLine[last];
 
             return RowRef{last, rows > 0 ? rows - 1 : 0};
         }
@@ -193,17 +193,17 @@ namespace Core
         std::size_t remaining = row;
         std::size_t step = 1;
 
-        while (step * 2 <= m_tree.size() - 1)
+        while (step * 2 <= m_Tree.size() - 1)
             step *= 2;
 
         for (; step > 0; step /= 2)
         {
             const std::size_t next = index + step;
 
-            if (next < m_tree.size() && m_tree[next] <= remaining)
+            if (next < m_Tree.size() && m_Tree[next] <= remaining)
             {
                 index = next;
-                remaining -= m_tree[next];
+                remaining -= m_Tree[next];
             }
         }
 

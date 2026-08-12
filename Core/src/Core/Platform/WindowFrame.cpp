@@ -38,14 +38,14 @@ namespace Core
         public:
             /// Constructing costs nothing and changes nothing about the window — see Install,
             /// which is where a frame either takes or reports why it did not.
-            Win32Frame(HWND hwnd, COLORREF border) : m_hwnd(hwnd), m_border(border) {}
+            Win32Frame(HWND hwnd, COLORREF border) : m_Hwnd(hwnd), m_Border(border) {}
 
             ~Win32Frame() override
             {
-                // A non-null m_previous is exactly the record that the subclass took, so it
+                // A non-null m_Previous is exactly the record that the subclass took, so it
                 // is also the record of what there is to undo: Install leaves nothing behind
                 // on any path that does not set it.
-                if (m_previous == nullptr)
+                if (m_Previous == nullptr)
                 {
                     return;
                 }
@@ -55,16 +55,16 @@ namespace Core
                 // one place DWMWA_COLOR_DEFAULT does something, because it undoes the
                 // colour Install set. A failure is as ignorable here as it is there.
                 const COLORREF none = DWMWA_COLOR_DEFAULT;
-                DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &none, sizeof(none));
+                DwmSetWindowAttribute(m_Hwnd, DWMWA_BORDER_COLOR, &none, sizeof(none));
 
-                SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_previous));
+                SetWindowLongPtrW(m_Hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_Previous));
 
                 // The caption comes back the way it went away: only on a frame change.
-                SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
+                SetWindowPos(m_Hwnd, nullptr, 0, 0, 0, 0,
                              SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                                  SWP_NOACTIVATE);
 
-                RemovePropW(m_hwnd, kFrameProperty);
+                RemovePropW(m_Hwnd, kFrameProperty);
             }
 
             /// Takes the caption, or reports why it could not and leaves the window exactly
@@ -76,7 +76,7 @@ namespace Core
                 // never find itself running without its frame. That ordering is only sound
                 // because the failure is caught here: a property that did not take would
                 // otherwise leave a subclassed window whose every message reached no one.
-                if (SetPropW(m_hwnd, kFrameProperty, this) == 0)
+                if (SetPropW(m_Hwnd, kFrameProperty, this) == 0)
                 {
                     return Error{ErrorCode::Unsupported,
                                  "the window would not hold the frame's property"};
@@ -84,12 +84,12 @@ namespace Core
 
                 // A live window's procedure is never null, so a zero here is a failure and
                 // not a previous value worth keeping.
-                m_previous = reinterpret_cast<WNDPROC>(
-                    SetWindowLongPtrW(m_hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Proc)));
+                m_Previous = reinterpret_cast<WNDPROC>(
+                    SetWindowLongPtrW(m_Hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Proc)));
 
-                if (m_previous == nullptr)
+                if (m_Previous == nullptr)
                 {
-                    RemovePropW(m_hwnd, kFrameProperty);
+                    RemovePropW(m_Hwnd, kFrameProperty);
                     return Error{ErrorCode::Unsupported,
                                  "the window procedure could not be subclassed"};
                 }
@@ -98,7 +98,7 @@ namespace Core
 
                 // The frame is only recomputed on a frame change, so ask for one: without
                 // it the caption stays on screen until the user first resizes the window.
-                SetWindowPos(m_hwnd, nullptr, 0, 0, 0, 0,
+                SetWindowPos(m_Hwnd, nullptr, 0, 0, 0, 0,
                              SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                                  SWP_NOACTIVATE);
 
@@ -107,7 +107,7 @@ namespace Core
 
             void SetCaptionMetrics(const CaptionMetrics& metrics) override
             {
-                m_metrics = metrics;
+                m_Metrics = metrics;
             }
 
         private:
@@ -115,7 +115,7 @@ namespace Core
             /// reports SW_SHOWMINIMIZED there, and the frame would then measure it as if it
             /// were restored. The style bit IsZoomed reads is also already set by the time
             /// WM_NCCALCSIZE arrives for the maximize itself, which is when it matters most.
-            [[nodiscard]] bool Maximized() const { return IsZoomed(m_hwnd) != FALSE; }
+            [[nodiscard]] bool Maximized() const { return IsZoomed(m_Hwnd) != FALSE; }
 
             /// Puts back an outline for the window, which reclaiming the caption left it
             /// without. DWM draws it into the frame — the band OnCalcSize leaves between the
@@ -142,8 +142,8 @@ namespace Core
             /// log line is what turns "there is no outline" from a mystery into a fact.
             void RestoreBorder() const
             {
-                const HRESULT set = DwmSetWindowAttribute(m_hwnd, DWMWA_BORDER_COLOR, &m_border,
-                                                          sizeof(m_border));
+                const HRESULT set = DwmSetWindowAttribute(m_Hwnd, DWMWA_BORDER_COLOR, &m_Border,
+                                                          sizeof(m_Border));
 
                 if (FAILED(set))
                 {
@@ -160,7 +160,7 @@ namespace Core
                 // bookkeeping attached. Nothing to correct there.
                 if (wParam == 0u)
                 {
-                    return CallWindowProcW(m_previous, m_hwnd, WM_NCCALCSIZE, wParam, lParam);
+                    return CallWindowProcW(m_Previous, m_Hwnd, WM_NCCALCSIZE, wParam, lParam);
                 }
 
                 auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
@@ -169,7 +169,7 @@ namespace Core
                 // The metrics have to be asked for per monitor: GLFW makes the process
                 // per-monitor DPI aware, so the plain GetSystemMetrics would answer for the
                 // primary monitor and be wrong on any other one.
-                UINT dpi = GetDpiForWindow(m_hwnd);
+                UINT dpi = GetDpiForWindow(m_Hwnd);
                 if (dpi == 0)
                 {
                     dpi = USER_DEFAULT_SCREEN_DPI;
@@ -230,13 +230,13 @@ namespace Core
                 // WM_NCHITTEST asks about a point in screen coordinates — it has to, since the
                 // point it asks about may lie outside the client area.
                 POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-                ScreenToClient(m_hwnd, &point);
+                ScreenToClient(m_Hwnd, &point);
 
                 RECT client{};
-                GetClientRect(m_hwnd, &client);
+                GetClientRect(m_Hwnd, &client);
 
                 const CaptionHit hit =
-                    Classify(m_metrics, static_cast<float>(client.right - client.left),
+                    Classify(m_Metrics, static_cast<float>(client.right - client.left),
                              static_cast<float>(client.bottom - client.top),
                              static_cast<float>(point.x), static_cast<float>(point.y),
                              Maximized());
@@ -293,13 +293,13 @@ namespace Core
                     break;
                 }
 
-                return CallWindowProcW(self->m_previous, hwnd, message, wParam, lParam);
+                return CallWindowProcW(self->m_Previous, hwnd, message, wParam, lParam);
             }
 
-            HWND m_hwnd = nullptr;
-            COLORREF m_border = 0;
-            WNDPROC m_previous = nullptr;
-            CaptionMetrics m_metrics;
+            HWND m_Hwnd = nullptr;
+            COLORREF m_Border = 0;
+            WNDPROC m_Previous = nullptr;
+            CaptionMetrics m_Metrics;
         };
     }
 #endif

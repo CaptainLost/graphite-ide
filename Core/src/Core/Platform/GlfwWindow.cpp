@@ -10,7 +10,7 @@ namespace Core
 {
     namespace
     {
-        int s_glfwWindowCount = 0;
+        int s_GlfwWindowCount = 0;
 
         void OnGlfwError(int code, const char* description)
         {
@@ -18,21 +18,21 @@ namespace Core
         }
     }
 
-    GlfwWindow::GlfwWindow(GLFWwindow* handle) : m_handle(handle) {}
+    GlfwWindow::GlfwWindow(GLFWwindow* handle) : m_Handle(handle) {}
 
     GlfwWindow::~GlfwWindow()
     {
         // Before glfwDestroyWindow, always: the frame restores a window procedure, and a
         // destroyed window has none left to restore it to.
-        m_frame.reset();
+        m_Frame.reset();
 
-        if (m_handle == nullptr)
+        if (m_Handle == nullptr)
             return;
 
-        glfwDestroyWindow(m_handle);
-        m_handle = nullptr;
+        glfwDestroyWindow(m_Handle);
+        m_Handle = nullptr;
 
-        if (--s_glfwWindowCount == 0)
+        if (--s_GlfwWindowCount == 0)
             glfwTerminate();
     }
 
@@ -43,72 +43,72 @@ namespace Core
 
     void GlfwWindow::SwapBuffers()
     {
-        glfwSwapBuffers(m_handle);
+        glfwSwapBuffers(m_Handle);
     }
 
     bool GlfwWindow::ShouldClose() const
     {
-        return glfwWindowShouldClose(m_handle) != 0;
+        return glfwWindowShouldClose(m_Handle) != 0;
     }
 
     void GlfwWindow::RequestClose()
     {
-        glfwSetWindowShouldClose(m_handle, GLFW_TRUE);
+        glfwSetWindowShouldClose(m_Handle, GLFW_TRUE);
     }
 
     void GlfwWindow::CancelClose()
     {
-        glfwSetWindowShouldClose(m_handle, GLFW_FALSE);
+        glfwSetWindowShouldClose(m_Handle, GLFW_FALSE);
     }
 
     void GlfwWindow::FramebufferSize(int& width, int& height) const
     {
-        glfwGetFramebufferSize(m_handle, &width, &height);
+        glfwGetFramebufferSize(m_Handle, &width, &height);
     }
 
     void GlfwWindow::SetVSync(bool enabled)
     {
-        glfwMakeContextCurrent(m_handle);
+        glfwMakeContextCurrent(m_Handle);
         glfwSwapInterval(enabled ? 1 : 0);
     }
 
     void GlfwWindow::Minimize()
     {
-        glfwIconifyWindow(m_handle);
+        glfwIconifyWindow(m_Handle);
     }
 
     void GlfwWindow::ToggleMaximize()
     {
         if (IsMaximized())
         {
-            glfwRestoreWindow(m_handle);
+            glfwRestoreWindow(m_Handle);
             return;
         }
 
-        glfwMaximizeWindow(m_handle);
+        glfwMaximizeWindow(m_Handle);
     }
 
     bool GlfwWindow::IsMaximized() const
     {
-        return glfwGetWindowAttrib(m_handle, GLFW_MAXIMIZED) == GLFW_TRUE;
+        return glfwGetWindowAttrib(m_Handle, GLFW_MAXIMIZED) == GLFW_TRUE;
     }
 
     bool GlfwWindow::HasCustomTitleBar() const
     {
-        return m_frame != nullptr;
+        return m_Frame != nullptr;
     }
 
     void GlfwWindow::SetCaptionMetrics(const CaptionMetrics& metrics)
     {
-        if (m_frame != nullptr)
+        if (m_Frame != nullptr)
         {
-            m_frame->SetCaptionMetrics(metrics);
+            m_Frame->SetCaptionMetrics(metrics);
         }
     }
 
     Result<std::unique_ptr<Window>> Window::Create(const WindowSpec& spec)
     {
-        if (s_glfwWindowCount == 0)
+        if (s_GlfwWindowCount == 0)
         {
             glfwSetErrorCallback(&OnGlfwError);
 
@@ -126,13 +126,13 @@ namespace Core
 
         if (handle == nullptr)
         {
-            if (s_glfwWindowCount == 0)
+            if (s_GlfwWindowCount == 0)
                 glfwTerminate();
 
             return Error{ErrorCode::Unsupported, "failed to create an OpenGL 3.3 window"};
         }
 
-        ++s_glfwWindowCount;
+        ++s_GlfwWindowCount;
 
         auto window = std::make_unique<GlfwWindow>(handle);
         glfwMakeContextCurrent(handle);

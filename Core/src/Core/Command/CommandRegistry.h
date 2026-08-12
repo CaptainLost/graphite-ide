@@ -38,7 +38,7 @@ namespace Core
     private:
         /// unique_ptr rather than Command by value: Add hands out a pointer the caller
         /// keeps, and a reallocating vector would leave it dangling on the next Add.
-        std::vector<std::unique_ptr<Command>> m_commands;
-        std::unordered_map<std::string, std::size_t> m_byId;
+        std::vector<std::unique_ptr<Command>> m_Commands;
+        std::unordered_map<std::string, std::size_t> m_ById;
     };
 }

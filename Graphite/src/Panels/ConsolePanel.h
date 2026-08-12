@@ -23,10 +23,10 @@ namespace Graphite
         void RenderToolbar();
         void RenderEntries();
 
-        std::shared_ptr<Core::RingBufferSink> m_sink;
-        std::vector<Core::LogEntry> m_entries;
-        ImGuiTextFilter m_filter;
-        bool m_autoScroll = true;
-        std::size_t m_lastCount = 0;
+        std::shared_ptr<Core::RingBufferSink> m_Sink;
+        std::vector<Core::LogEntry> m_Entries;
+        ImGuiTextFilter m_Filter;
+        bool m_AutoScroll = true;
+        std::size_t m_LastCount = 0;
     };
 }

@@ -29,10 +29,10 @@ namespace Core
 
         [[nodiscard]] const std::array<std::uint8_t, kByteCount>& Bytes() const noexcept
         {
-            return m_bytes;
+            return m_Bytes;
         }
 
     private:
-        std::array<std::uint8_t, kByteCount> m_bytes{};
+        std::array<std::uint8_t, kByteCount> m_Bytes{};
     };
 }

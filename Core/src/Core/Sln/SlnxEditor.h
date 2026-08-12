@@ -41,7 +41,7 @@ namespace Core
         /// self-closing container into an open/close pair when it has no children yet.
         void InsertChild(std::size_t offset, const std::string& element);
 
-        std::filesystem::path m_path;
-        std::string m_text;
+        std::filesystem::path m_Path;
+        std::string m_Text;
     };
 }

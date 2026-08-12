@@ -149,8 +149,8 @@ namespace Core
 
     KeyBindingsPanel::KeyBindingsPanel(CommandRegistry& commands, Keymap& keys,
                                        std::function<void()> onChanged)
-        : Panel("keybindings", "Keyboard Shortcuts", false), m_commands(commands), m_keys(keys),
-          m_onChanged(std::move(onChanged))
+        : Panel("keybindings", "Keyboard Shortcuts", false), m_Commands(commands), m_Keys(keys),
+          m_OnChanged(std::move(onChanged))
     {
     }
 
@@ -158,7 +158,7 @@ namespace Core
     {
         ImGui::SetNextItemWidth(-1.0f);
         ImGui::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut",
-                                 m_filter.data(), m_filter.size());
+                                 m_Filter.data(), m_Filter.size());
 
         constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                           ImGuiTableFlags_SizingStretchProp;
@@ -172,7 +172,7 @@ namespace Core
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
 
-            m_commands.ForEach(
+            m_Commands.ForEach(
                 [this](const Command& command)
                 {
                     if (Matches(command))
@@ -194,7 +194,7 @@ namespace Core
 
     bool KeyBindingsPanel::Matches(const Command& command) const
     {
-        const std::string needle = Lowered(m_filter.data());
+        const std::string needle = Lowered(m_Filter.data());
 
         if (needle.empty())
         {
@@ -206,13 +206,13 @@ namespace Core
             return true;
         }
 
-        return Lowered(AllChordText(m_keys.For(command.id))).find(needle) !=
+        return Lowered(AllChordText(m_Keys.For(command.id))).find(needle) !=
                std::string::npos;
     }
 
     void KeyBindingsPanel::RenderRow(const Command& command)
     {
-        const Binding* binding = m_keys.For(command.id);
+        const Binding* binding = m_Keys.For(command.id);
 
         ImGui::PushID(command.id.c_str());
         ImGui::TableNextRow();
@@ -237,13 +237,13 @@ namespace Core
 
         ImGui::TableNextColumn();
 
-        const bool overridden = m_keys.IsOverridden(command.id);
+        const bool overridden = m_Keys.IsOverridden(command.id);
         ImGui::BeginDisabled(!overridden);
 
         if (ImGui::SmallButton("Default"))
         {
-            m_keys.Override(command.id, std::nullopt);
-            m_onChanged();
+            m_Keys.Override(command.id, std::nullopt);
+            m_OnChanged();
         }
 
         ImGui::EndDisabled();
@@ -255,7 +255,7 @@ namespace Core
     {
         ImGui::PushID(static_cast<int>(slot));
 
-        const bool capturing = m_capturing == id && m_capturingSlot == slot;
+        const bool capturing = m_Capturing == id && m_CapturingSlot == slot;
         std::string label = capturing ? CaptureLabel(ImGui::GetIO().KeyMods) : text;
 
         if (label.empty())
@@ -267,8 +267,8 @@ namespace Core
 
         if (ImGui::Selectable(label.c_str(), capturing))
         {
-            m_capturing = id;
-            m_capturingSlot = slot;
+            m_Capturing = id;
+            m_CapturingSlot = slot;
         }
 
         const bool hovered = ImGui::IsItemHovered();
@@ -280,7 +280,7 @@ namespace Core
 
         // Not while the conflict question is up: the keys that answer it would otherwise
         // read as a fresh capture.
-        if (capturing && !m_conflict.has_value())
+        if (capturing && !m_Conflict.has_value())
         {
             // Capture reads raw key state, which no widget owns, so it has to be fenced by
             // hand: without this, typing into the filter box — or into any other window —
@@ -292,7 +292,7 @@ namespace Core
 
             if (!focused || !ownsKeyboard)
             {
-                m_capturing.clear();
+                m_Capturing.clear();
             }
             else if (const std::optional<Chord> chord = CaptureChord(hovered); chord.has_value())
             {
@@ -312,7 +312,7 @@ namespace Core
         // trade: nothing here is worth reaching by Escape.
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
         {
-            m_capturing.clear();
+            m_Capturing.clear();
             return std::nullopt;
         }
 
@@ -363,7 +363,7 @@ namespace Core
 
     void KeyBindingsPanel::Offer(const std::string& id, std::size_t slot, const Chord& chord)
     {
-        const std::string_view owner = m_keys.BoundTo(chord);
+        const std::string_view owner = m_Keys.BoundTo(chord);
 
         if (owner.empty() || owner == id)
         {
@@ -373,14 +373,14 @@ namespace Core
 
         // Held rather than applied: a user who lost Ctrl+S without being told would
         // discover it at the moment they wanted to save.
-        m_conflict = chord;
-        m_conflictOwner = std::string(owner);
-        m_conflictAsked = false;
+        m_Conflict = chord;
+        m_ConflictOwner = std::string(owner);
+        m_ConflictAsked = false;
     }
 
     void KeyBindingsPanel::Apply(const std::string& id, std::size_t slot, const Chord& chord)
     {
-        std::vector<Chord> chords = Flatten(m_keys.For(id));
+        std::vector<Chord> chords = Flatten(m_Keys.For(id));
 
         if (slot < chords.size())
         {
@@ -408,14 +408,14 @@ namespace Core
             }
         }
 
-        m_keys.Override(id, Rebuild(std::move(chords)));
-        m_capturing.clear();
-        m_onChanged();
+        m_Keys.Override(id, Rebuild(std::move(chords)));
+        m_Capturing.clear();
+        m_OnChanged();
     }
 
     void KeyBindingsPanel::RenderConflictPopup()
     {
-        if (!m_conflict.has_value())
+        if (!m_Conflict.has_value())
         {
             return;
         }
@@ -423,10 +423,10 @@ namespace Core
         // Opened here rather than where the conflict was noticed: a popup's identifier is
         // relative to the ID stack it is opened under, and that one is inside the table's
         // per-row and per-cell PushIDs.
-        if (!m_conflictAsked)
+        if (!m_ConflictAsked)
         {
             ImGui::OpenPopup(kConflictPopup);
-            m_conflictAsked = true;
+            m_ConflictAsked = true;
         }
         else if (!ImGui::IsPopupOpen(kConflictPopup))
         {
@@ -442,19 +442,19 @@ namespace Core
             return;
         }
 
-        const Command* owner = m_commands.Find(m_conflictOwner);
-        const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : m_conflictOwner;
+        const Command* owner = m_Commands.Find(m_ConflictOwner);
+        const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : m_ConflictOwner;
 
-        ImGui::Text("%s is already bound to %s.", m_conflict->ToString().c_str(),
+        ImGui::Text("%s is already bound to %s.", m_Conflict->ToString().c_str(),
                     ownerLabel.c_str());
 
         if (ImGui::Button("Take it"))
         {
-            const std::string id = m_capturing;
-            const std::size_t slot = m_capturingSlot;
-            const Chord chord = *m_conflict;
+            const std::string id = m_Capturing;
+            const std::size_t slot = m_CapturingSlot;
+            const Chord chord = *m_Conflict;
 
-            if (const Binding* current = m_keys.For(m_conflictOwner); current != nullptr)
+            if (const Binding* current = m_Keys.For(m_ConflictOwner); current != nullptr)
             {
                 std::vector<Chord> chords = Flatten(current);
                 std::erase(chords, chord);
@@ -462,10 +462,10 @@ namespace Core
                 // Stored even when nothing is left, as an override that binds nothing.
                 // Clearing the override instead would hand the previous owner its factory
                 // chord straight back, which is the conflict again with no one told.
-                m_keys.Override(m_conflictOwner, Rebuild(std::move(chords)));
+                m_Keys.Override(m_ConflictOwner, Rebuild(std::move(chords)));
             }
 
-            const std::string ownerId = m_conflictOwner;
+            const std::string ownerId = m_ConflictOwner;
 
             ForgetConflict();
             Apply(id, slot, chord);
@@ -487,9 +487,9 @@ namespace Core
 
     void KeyBindingsPanel::ForgetConflict()
     {
-        m_conflict.reset();
-        m_conflictOwner.clear();
-        m_conflictAsked = false;
-        m_capturing.clear();
+        m_Conflict.reset();
+        m_ConflictOwner.clear();
+        m_ConflictAsked = false;
+        m_Capturing.clear();
     }
 }

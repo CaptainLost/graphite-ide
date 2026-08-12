@@ -34,15 +34,15 @@ namespace Core
 
         /// True when the last TakeSettled call released a lost-changes marker. Reading it
         /// does not clear it; the next TakeSettled does.
-        [[nodiscard]] bool Overflowed() const noexcept { return m_overflowed; }
+        [[nodiscard]] bool Overflowed() const noexcept { return m_Overflowed; }
 
     private:
         /// A set, not a vector: a single build touches one directory thousands of times
         /// and the consumer refreshes each one once.
-        std::set<std::filesystem::path> m_pending;
-        Clock::time_point m_lastChange;
-        bool m_pendingOverflow = false;
-        bool m_overflowed = false;
-        bool m_hasPending = false;
+        std::set<std::filesystem::path> m_Pending;
+        Clock::time_point m_LastChange;
+        bool m_PendingOverflow = false;
+        bool m_Overflowed = false;
+        bool m_HasPending = false;
     };
 }

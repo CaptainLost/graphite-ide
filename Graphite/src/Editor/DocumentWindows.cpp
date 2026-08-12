@@ -86,13 +86,13 @@ namespace Graphite
 
     void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
     {
-        const Core::OpenOutcome outcome = m_documents.Open(path, permanent);
+        const Core::OpenOutcome outcome = m_Documents.Open(path, permanent);
 
         // Already open: the set has activated it, but nothing about that reaches ImGui,
         // which goes on showing whichever tab it last focused - so ask Render to bring
-        // this one forward. See m_focusRequest.
+        // this one forward. See m_FocusRequest.
         if (outcome == Core::OpenOutcome::Activated)
-            m_focusRequest = path;
+            m_FocusRequest = path;
 
         if (outcome != Core::OpenOutcome::NeedsConfirmation)
             return;
@@ -102,22 +102,22 @@ namespace Graphite
 
     void DocumentWindows::LoadConfirmed(const std::filesystem::path& path, bool permanent)
     {
-        const auto existing = m_documents.Find(path);
+        const auto existing = m_Documents.Find(path);
 
         // A tab can already be there with nothing in it: one opened on a file that did
         // not exist, whose file has since appeared and appeared large. OpenConfirmed
         // would find that tab and only activate it, loading nothing and leaving the
         // question answered by an empty tab - so the item is filled directly instead.
-        if (existing && !m_documents.At(*existing).document)
+        if (existing && !m_Documents.At(*existing).document)
         {
             // Confirmed, so NeedsConfirmation cannot come back, and Loaded and Failed both
             // leave the tab saying the right thing: the content, or the reason there is
             // none. Nothing here to branch on.
-            static_cast<void>(Core::LoadFromFile(m_documents.At(*existing), true));
+            static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), true));
             return;
         }
 
-        m_documents.OpenConfirmed(path, permanent);
+        m_Documents.OpenConfirmed(path, permanent);
     }
 
     void DocumentWindows::AskAboutSize(const std::filesystem::path& path, bool permanent)
@@ -139,20 +139,20 @@ namespace Graphite
         // file the same way - a double dispatch from the tree, an event replayed after a
         // workspace reload, a watcher batch and a focus regain both finding the same file
         // waiting to be loaded - are one question, not the same one asked twice in a row.
-        if (!m_sizeQuestion.Asked(question))
+        if (!m_SizeQuestion.Asked(question))
         {
-            m_sizeQuestion.Ask(std::move(question));
+            m_SizeQuestion.Ask(std::move(question));
         }
     }
 
     void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
                                           const std::filesystem::path& to)
     {
-        const std::vector<std::string> oldIdentities = CurrentIdentities(m_documents);
+        const std::vector<std::string> oldIdentities = CurrentIdentities(m_Documents);
 
-        m_documents.RewritePaths(from, to);
+        m_Documents.RewritePaths(from, to);
 
-        const std::vector<std::string> newIdentities = CurrentIdentities(m_documents);
+        const std::vector<std::string> newIdentities = CurrentIdentities(m_Documents);
 
         // RewritePaths only ever changes paths in place, never the count or the order, so
         // the two snapshots line up index for index.
@@ -173,8 +173,8 @@ namespace Graphite
             {
                 target = oldWindow->DockNode->ID;
             }
-            else if (const auto pending = m_pendingDockTargets.find(oldIdentity);
-                     pending != m_pendingDockTargets.end())
+            else if (const auto pending = m_PendingDockTargets.find(oldIdentity);
+                     pending != m_PendingDockTargets.end())
             {
                 // The root moved again before a Render ever consumed the previous move's
                 // target - chain it forward instead of leaving a dead entry keyed on an
@@ -182,19 +182,19 @@ namespace Graphite
                 target = pending->second;
             }
 
-            m_pendingDockTargets.erase(oldIdentity);
+            m_PendingDockTargets.erase(oldIdentity);
 
             if (target != 0)
-                m_pendingDockTargets[newIdentity] = target;
+                m_PendingDockTargets[newIdentity] = target;
         }
     }
 
     void DocumentWindows::HandleFilesChanged(
         const std::vector<std::filesystem::path>& directories, bool everything)
     {
-        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
         {
-            const Core::OpenItem& item = m_documents.At(index);
+            const Core::OpenItem& item = m_Documents.At(index);
 
             // The watcher names directories, so an item is worth a stat only when its own
             // directory is one of them. `everything` means the batch could not be narrowed
@@ -208,23 +208,23 @@ namespace Graphite
                 continue;
             }
 
-            RespondToSync(index, Core::SyncWithFile(m_documents, index));
+            RespondToSync(index, Core::SyncWithFile(m_Documents, index));
         }
     }
 
     void DocumentWindows::NotifyWindowFocus(bool focusedNow)
     {
-        const bool regained = focusedNow && !m_wasFocused;
-        m_wasFocused = focusedNow;
+        const bool regained = focusedNow && !m_WasFocused;
+        m_WasFocused = focusedNow;
 
         if (!regained)
         {
             return;
         }
 
-        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
         {
-            RespondToSync(index, Core::SyncWithFile(m_documents, index));
+            RespondToSync(index, Core::SyncWithFile(m_Documents, index));
         }
     }
 
@@ -243,11 +243,11 @@ namespace Graphite
             // Copied here rather than above the switch: every open document is reconciled
             // on a focus regain and on every "everything" watcher batch, and all but a
             // handful of those end as Unchanged, which has no use for a path.
-            const std::filesystem::path path = m_documents.At(index).path;
+            const std::filesystem::path path = m_Documents.At(index).path;
 
-            if (!m_reloadConflict.Asked(path))
+            if (!m_ReloadConflict.Asked(path))
             {
-                m_reloadConflict.Ask(path);
+                m_ReloadConflict.Ask(path);
             }
 
             break;
@@ -265,7 +265,7 @@ namespace Graphite
             // The file a tab was opened on before it existed is here now. Loading it is
             // what turns the tab from a cleared missing mark into the file's content;
             // without it the tab would show nothing and no later sync would look again.
-            Core::OpenItem& item = m_documents.At(index);
+            Core::OpenItem& item = m_Documents.At(index);
 
             if (Core::LoadFromFile(item, false) == Core::ItemLoad::NeedsConfirmation)
             {
@@ -287,9 +287,9 @@ namespace Graphite
 
     void DocumentWindows::ReloadOne(std::size_t index)
     {
-        const std::string fileName = Core::ToUtf8(m_documents.At(index).path.filename());
+        const std::string fileName = Core::ToUtf8(m_Documents.At(index).path.filename());
 
-        if (const auto result = Core::ReloadItem(m_documents, index))
+        if (const auto result = Core::ReloadItem(m_Documents, index))
         {
             SetTransientMessage(fileName + " reloaded (changed on disk)");
         }
@@ -301,7 +301,7 @@ namespace Graphite
 
     bool DocumentWindows::SaveOne(std::size_t index)
     {
-        const Core::OpenItem& item = m_documents.At(index);
+        const Core::OpenItem& item = m_Documents.At(index);
 
         // Checked here rather than left to SaveDocument, which succeeds having written
         // nothing: an item carrying a reason instead of a document has nothing to save,
@@ -313,7 +313,7 @@ namespace Graphite
 
         const std::string fileName = Core::ToUtf8(item.path.filename());
 
-        if (const auto result = Core::SaveDocument(m_documents, index))
+        if (const auto result = Core::SaveDocument(m_Documents, index))
         {
             SetTransientMessage(fileName + " saved");
             return true;
@@ -327,7 +327,7 @@ namespace Graphite
 
     void DocumentWindows::RequestSave(std::size_t index)
     {
-        Core::OpenItem& item = m_documents.At(index);
+        Core::OpenItem& item = m_Documents.At(index);
 
         if (!item.document)
             return;
@@ -336,9 +336,9 @@ namespace Graphite
         {
             // Never noticed: a dropped notification, with no chance to have asked
             // earlier. This is the last safety net, immediately before the write.
-            if (!m_overwriteConfirm.Asked(item.path))
+            if (!m_OverwriteConfirm.Asked(item.path))
             {
-                m_overwriteConfirm.Ask(item.path);
+                m_OverwriteConfirm.Ask(item.path);
             }
 
             return;
@@ -352,7 +352,7 @@ namespace Graphite
         // Qualified: this member has the same name, and an unqualified call from inside it
         // would find itself. The names match on purpose - this is that operation plus the
         // sentence about it - and the qualification is what keeps them apart.
-        const Core::SaveAllReport report = Core::SaveAllModified(m_documents);
+        const Core::SaveAllReport report = Core::SaveAllModified(m_Documents);
 
         // A stopped batch says why, naming the document that stopped it, and gets no
         // summary over the top: a count of what was saved before the failure would only
@@ -413,9 +413,9 @@ namespace Graphite
 
     bool DocumentWindows::AnyModified() const
     {
-        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
         {
-            const Core::OpenItem& item = m_documents.At(index);
+            const Core::OpenItem& item = m_Documents.At(index);
 
             if (item.document && item.document->IsModified())
             {
@@ -439,19 +439,19 @@ namespace Graphite
 
     void DocumentWindows::SetTransientMessage(std::string text)
     {
-        m_transientMessage =
+        m_TransientMessage =
             TransientMessage{std::move(text), ImGui::GetTime() + kTransientMessageSeconds};
     }
 
     std::optional<std::string> DocumentWindows::StatusMessage() const
     {
-        if (!m_transientMessage)
+        if (!m_TransientMessage)
             return std::nullopt;
 
-        if (ImGui::GetTime() >= m_transientMessage->expiresAt)
+        if (ImGui::GetTime() >= m_TransientMessage->expiresAt)
             return std::nullopt;
 
-        return m_transientMessage->text;
+        return m_TransientMessage->text;
     }
 
     void DocumentWindows::Render(const CommandContext& context, float fontSize,
@@ -461,23 +461,23 @@ namespace Graphite
         // Identities as they stand at the start of this frame - after RequestOpen,
         // CloseAll or HandleRootMoved, all of which run earlier in the same
         // OnUpdate/OnUIRender pass and never inside this function.
-        const std::vector<std::string> startingIdentities = CurrentIdentities(m_documents);
+        const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
         // Taken and cleared in one step: whatever asked for this focus did so earlier in
         // this same pass, so a request that matches no document this frame never will, and
         // leaving it set would hand a stolen focus to whichever document next claims that
         // path.
         const std::optional<std::filesystem::path> focusRequest =
-            std::exchange(m_focusRequest, std::nullopt);
+            std::exchange(m_FocusRequest, std::nullopt);
 
         // Every question below asks the gate before opening and keeps whatever it was
         // asked about pending when refused - see ModalGate for why they cannot simply all
         // open. Neither that nor the check for a popup ImGui no longer has open is written
         // out here: ModalQuestion::Begin does both for every question there is, so no
         // question drawn from this function can leave the mechanism behind it wedged.
-        if (m_sizeQuestion.Begin())
+        if (m_SizeQuestion.Begin())
         {
-            const LargeFileQuestion* question = m_sizeQuestion.Current();
+            const LargeFileQuestion* question = m_SizeQuestion.Current();
             const std::uint64_t size = question != nullptr ? question->size : 0;
 
             // A size of zero means the probe in RequestOpen failed, which after a
@@ -502,17 +502,17 @@ namespace Graphite
                     LoadConfirmed(question->path, question->permanent);
                 }
 
-                m_sizeQuestion.Answer();
+                m_SizeQuestion.Answer();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
             {
-                m_sizeQuestion.Answer();
+                m_SizeQuestion.Answer();
             }
 
-            m_sizeQuestion.End();
+            m_SizeQuestion.End();
         }
 
         // The reload-conflict, overwrite-confirm and close-confirm modals below all live
@@ -522,9 +522,9 @@ namespace Graphite
         // place in Render() that is never nested inside either. The loop below only ever
         // asks the questions drawn here; the actual ImGui calls happen here.
 
-        if (m_reloadConflict.Begin())
+        if (m_ReloadConflict.Begin())
         {
-            const std::filesystem::path* path = m_reloadConflict.Current();
+            const std::filesystem::path* path = m_ReloadConflict.Current();
             const std::string fileName =
                 path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
@@ -536,13 +536,13 @@ namespace Graphite
             {
                 if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*path))
+                    if (const auto index = m_Documents.Find(*path))
                     {
                         ReloadOne(*index);
                     }
                 }
 
-                m_reloadConflict.Answer();
+                m_ReloadConflict.Answer();
             }
 
             ImGui::SameLine();
@@ -553,22 +553,22 @@ namespace Graphite
             {
                 if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*path);
-                        index && m_documents.At(*index).document)
+                    if (const auto index = m_Documents.Find(*path);
+                        index && m_Documents.At(*index).document)
                     {
-                        m_documents.At(*index).document->AcceptDiskState();
+                        m_Documents.At(*index).document->AcceptDiskState();
                     }
                 }
 
-                m_reloadConflict.Answer();
+                m_ReloadConflict.Answer();
             }
 
-            m_reloadConflict.End();
+            m_ReloadConflict.End();
         }
 
-        if (m_overwriteConfirm.Begin())
+        if (m_OverwriteConfirm.Begin())
         {
-            const std::filesystem::path* path = m_overwriteConfirm.Current();
+            const std::filesystem::path* path = m_OverwriteConfirm.Current();
             const std::string fileName =
                 path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
@@ -580,23 +580,23 @@ namespace Graphite
             {
                 if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*path))
+                    if (const auto index = m_Documents.Find(*path))
                     {
                         SaveOne(*index);
                     }
                 }
 
-                m_overwriteConfirm.Answer();
+                m_OverwriteConfirm.Answer();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
             {
-                m_overwriteConfirm.Answer();
+                m_OverwriteConfirm.Answer();
             }
 
-            m_overwriteConfirm.End();
+            m_OverwriteConfirm.End();
         }
 
         // Asked only of a document still there to ask about, and still dirty: one closed
@@ -614,29 +614,29 @@ namespace Graphite
         // close, and leaving it open would answer the user's click with silence.
         const auto stillModified = [this](const std::filesystem::path& candidate)
         {
-            const auto index = m_documents.Find(candidate);
+            const auto index = m_Documents.Find(candidate);
 
             if (!index)
             {
                 return false;
             }
 
-            const Core::OpenItem& item = m_documents.At(*index);
+            const Core::OpenItem& item = m_Documents.At(*index);
 
             if (item.document && item.document->IsModified())
             {
                 return true;
             }
 
-            ImGui::ClearWindowSettings(WindowName(m_documents, *index).c_str());
-            m_documents.Close(*index);
+            ImGui::ClearWindowSettings(WindowName(m_Documents, *index).c_str());
+            m_Documents.Close(*index);
 
             return false;
         };
 
-        if (m_closeConfirm.Begin(stillModified))
+        if (m_CloseConfirm.Begin(stillModified))
         {
-            const std::filesystem::path* path = m_closeConfirm.Current();
+            const std::filesystem::path* path = m_CloseConfirm.Current();
             const std::string fileName =
                 path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
@@ -654,10 +654,10 @@ namespace Graphite
                     return;
                 }
 
-                if (const auto index = m_documents.Find(*path))
+                if (const auto index = m_Documents.Find(*path))
                 {
-                    ImGui::ClearWindowSettings(WindowName(m_documents, *index).c_str());
-                    m_documents.Close(*index);
+                    ImGui::ClearWindowSettings(WindowName(m_Documents, *index).c_str());
+                    m_Documents.Close(*index);
                 }
             };
 
@@ -667,7 +667,7 @@ namespace Graphite
 
                 if (path != nullptr)
                 {
-                    if (const auto index = m_documents.Find(*path))
+                    if (const auto index = m_Documents.Find(*path))
                     {
                         saved = SaveOne(*index);
                     }
@@ -676,7 +676,7 @@ namespace Graphite
                 if (saved)
                 {
                     finishClose();
-                    m_closeConfirm.Answer();
+                    m_CloseConfirm.Answer();
                 }
 
                 // A failed save changes nothing: the document stays open and dirty, the
@@ -689,24 +689,24 @@ namespace Graphite
             if (ImGui::Button("Discard"))
             {
                 finishClose();
-                m_closeConfirm.Answer();
+                m_CloseConfirm.Answer();
             }
 
             ImGui::SameLine();
 
             if (ImGui::Button("Cancel"))
             {
-                m_closeConfirm.Answer();
+                m_CloseConfirm.Answer();
             }
 
-            m_closeConfirm.End();
+            m_CloseConfirm.End();
         }
 
-        for (std::size_t index = 0; index < m_documents.Count();)
+        for (std::size_t index = 0; index < m_Documents.Count();)
         {
-            Core::OpenItem& item = m_documents.At(index);
-            const std::string identity = Identity(m_documents, index);
-            const std::string name = WindowName(m_documents, index);
+            Core::OpenItem& item = m_Documents.At(index);
+            const std::string identity = Identity(m_Documents, index);
+            const std::string name = WindowName(m_Documents, index);
 
             // Whether ImGui has ever heard of this window is the wrong question:
             // ClearWindowSettings (below, and in the purge at the end of this function)
@@ -717,9 +717,9 @@ namespace Graphite
             // been open continuously, which is what stops a user's drag from being
             // fought every frame, and true both the first time a document is ever seen
             // and every time it reappears after being closed.
-            const bool justOpened = std::find(m_previousIdentities.begin(),
-                                              m_previousIdentities.end(), identity)
-                                     == m_previousIdentities.end();
+            const bool justOpened = std::find(m_PreviousIdentities.begin(),
+                                              m_PreviousIdentities.end(), identity)
+                                     == m_PreviousIdentities.end();
 
             if (justOpened)
             {
@@ -729,21 +729,21 @@ namespace Graphite
                 // fail - DockBuilderDockWindow creates a fresh node under no parent - so
                 // the window floats free instead of landing in the centre.
                 const bool lastFocusedAlive =
-                    m_lastFocusedNode != 0 && ImGui::DockBuilderGetNode(m_lastFocusedNode) != nullptr;
+                    m_LastFocusedNode != 0 && ImGui::DockBuilderGetNode(m_LastFocusedNode) != nullptr;
 
                 if (!lastFocusedAlive)
-                    m_lastFocusedNode = 0;
+                    m_LastFocusedNode = 0;
 
-                unsigned int targetNode = lastFocusedAlive ? m_lastFocusedNode : fallbackDockNode;
+                unsigned int targetNode = lastFocusedAlive ? m_LastFocusedNode : fallbackDockNode;
 
                 // A window carrying over a dock position from before its path was
                 // rewritten takes priority over both: it is more specific than "wherever
                 // was last focused", and right even when nothing has been focused yet.
-                if (const auto pending = m_pendingDockTargets.find(identity);
-                    pending != m_pendingDockTargets.end())
+                if (const auto pending = m_PendingDockTargets.find(identity);
+                    pending != m_PendingDockTargets.end())
                 {
                     targetNode = pending->second;
-                    m_pendingDockTargets.erase(pending);
+                    m_PendingDockTargets.erase(pending);
                 }
 
                 if (targetNode != 0)
@@ -819,17 +819,17 @@ namespace Graphite
             {
                 if (ImGui::IsWindowFocused())
                 {
-                    m_documents.Activate(index);
+                    m_Documents.Activate(index);
 
                     if (ImGuiWindow* window = ImGui::GetCurrentWindow();
                         window != nullptr && window->DockNode != nullptr)
-                        m_lastFocusedNode = window->DockNode->ID;
+                        m_LastFocusedNode = window->DockNode->ID;
                 }
 
                 // A double click on the tab promotes a preview, the same as one in the
                 // tree does.
                 if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
-                    m_documents.Promote(index);
+                    m_Documents.Promote(index);
 
                 const EditorFrameResult editorResult =
                     DrawEditor(context, item, fontSize, indentStyle, wordWrap);
@@ -838,7 +838,7 @@ namespace Graphite
                 // once the user has typed into it, it is no longer something they were
                 // just glancing at.
                 if (editorResult.edited && preview)
-                    m_documents.Promote(index);
+                    m_Documents.Promote(index);
 
                 if (editorResult.saveRequested)
                     RequestSave(index);
@@ -858,9 +858,9 @@ namespace Graphite
                     // first question resolves still gets its own question, in order,
                     // instead of being silently dropped - and the tab's close button
                     // pressed again while its own question waits does not queue it twice.
-                    if (!m_closeConfirm.Asked(item.path))
+                    if (!m_CloseConfirm.Asked(item.path))
                     {
-                        m_closeConfirm.Ask(item.path);
+                        m_CloseConfirm.Ask(item.path);
                     }
                 }
                 else
@@ -870,7 +870,7 @@ namespace Graphite
                     // is working rather than where it was months ago - and imgui.ini
                     // stops collecting a dead section per file ever opened.
                     ImGui::ClearWindowSettings(name.c_str());
-                    m_documents.Close(index);
+                    m_Documents.Close(index);
                     continue;
                 }
             }
@@ -879,20 +879,20 @@ namespace Graphite
         }
 
         // Purges whatever left the document set since the last time this ran without
-        // going through this loop's own close button above - see m_previousIdentities.
+        // going through this loop's own close button above - see m_PreviousIdentities.
         // Deliberately runs after the loop: a renamed document's pending dock target has
         // to be consumed by Begin() - inside the loop above - before its old identity's
         // dock node can safely be undocked and possibly deleted here. Purging first would
         // let ClearWindowSettings tear down a shared node before DockBuilderDockWindow's
         // deferred settings entry for the new identity ever gets to bind to it, stranding
         // the renamed document in a fresh orphan node instead of its old spot.
-        for (const std::string& previousIdentity : m_previousIdentities)
+        for (const std::string& previousIdentity : m_PreviousIdentities)
         {
             if (std::find(startingIdentities.begin(), startingIdentities.end(), previousIdentity)
                 == startingIdentities.end())
                 ImGui::ClearWindowSettings(previousIdentity.c_str());
         }
 
-        m_previousIdentities = CurrentIdentities(m_documents);
+        m_PreviousIdentities = CurrentIdentities(m_Documents);
     }
 }

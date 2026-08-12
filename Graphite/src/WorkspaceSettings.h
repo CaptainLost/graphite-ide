@@ -32,6 +32,6 @@ namespace Graphite
     private:
         [[nodiscard]] std::filesystem::path FilePath() const;
 
-        std::filesystem::path m_root;
+        std::filesystem::path m_Root;
     };
 }

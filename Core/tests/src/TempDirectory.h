@@ -17,35 +17,35 @@ public:
         static std::atomic<int> counter{0};
         const int id = counter.fetch_add(1);
 
-        m_path = std::filesystem::temp_directory_path() /
+        m_Path = std::filesystem::temp_directory_path() /
                  ("core-tests-" + std::to_string(id) + "-" + std::to_string(::_getpid()));
 
         std::error_code ec;
-        std::filesystem::remove_all(m_path, ec);
-        std::filesystem::create_directories(m_path, ec);
+        std::filesystem::remove_all(m_Path, ec);
+        std::filesystem::create_directories(m_Path, ec);
 
         // Resolved once the directory exists, so tests can compare this against a path
         // the OS reported back to them. TEMP may be spelled with a short 8.3 name or in
         // a different case than the filesystem stores, and either would make an
         // otherwise correct comparison fail on someone else's machine.
-        if (auto resolved = std::filesystem::canonical(m_path, ec); !ec)
-            m_path = std::move(resolved);
+        if (auto resolved = std::filesystem::canonical(m_Path, ec); !ec)
+            m_Path = std::move(resolved);
     }
 
     ~TempDirectory()
     {
         std::error_code ec;
-        std::filesystem::remove_all(m_path, ec);
+        std::filesystem::remove_all(m_Path, ec);
     }
 
     TempDirectory(const TempDirectory&) = delete;
     TempDirectory& operator=(const TempDirectory&) = delete;
 
-    [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_path; }
+    [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_Path; }
 
     std::filesystem::path MakeDir(const std::string& relative)
     {
-        const std::filesystem::path full = m_path / relative;
+        const std::filesystem::path full = m_Path / relative;
         std::error_code ec;
         std::filesystem::create_directories(full, ec);
         return full;
@@ -53,7 +53,7 @@ public:
 
     std::filesystem::path MakeFile(const std::string& relative, const std::string& contents = "")
     {
-        const std::filesystem::path full = m_path / relative;
+        const std::filesystem::path full = m_Path / relative;
         std::error_code ec;
         std::filesystem::create_directories(full.parent_path(), ec);
 
@@ -63,5 +63,5 @@ public:
     }
 
 private:
-    std::filesystem::path m_path;
+    std::filesystem::path m_Path;
 };

@@ -73,7 +73,7 @@ namespace Core
         /// the OS refused a notification. From that point TakeSettled reports nothing
         /// ever again, which is indistinguishable from a quiet disk, so a consumer that
         /// cares has to ask.
-        [[nodiscard]] bool IsRunning() const noexcept { return m_running.load(); }
+        [[nodiscard]] bool IsRunning() const noexcept { return m_Running.load(); }
 
     private:
         DirectoryWatcher() = default;
@@ -91,21 +91,21 @@ namespace Core
         void CheckForMoveIfDue();
         void RecordChange(const std::filesystem::path& path);
 
-        std::filesystem::path m_root;
-        std::thread m_thread;
-        std::mutex m_mutex;              // guards m_collector and m_movedTo
-        ChangeCollector m_collector;
+        std::filesystem::path m_Root;
+        std::thread m_Thread;
+        std::mutex m_Mutex;              // guards m_Collector and m_MovedTo
+        ChangeCollector m_Collector;
 
         /// Atomic rather than under the mutex: the reader is a UI frame asking a yes/no
         /// question, and making it queue behind the worker's writes would be paying for
         /// a guarantee it does not need.
-        std::atomic<bool> m_running{true};
+        std::atomic<bool> m_Running{true};
 
         /// Satisfied by the worker exactly once: with success as soon as the first read
         /// has been issued, and with an error on every path that leaves the worker before
         /// that. Start waits on it, so the error is what the caller gets back instead of a
         /// live-looking watcher whose thread has already died.
-        std::promise<Result<void>> m_armed;
+        std::promise<Result<void>> m_Armed;
 
         /// How often the worker asks its handle where it now lives. A rename produces no
         /// notification of any kind, so this poll is the only way to find out — but the
@@ -114,20 +114,20 @@ namespace Core
         static constexpr std::chrono::milliseconds kMoveCheckInterval{2000};
 
         /// The path the handle reported at startup, which is the baseline a later reading
-        /// is compared against. Deliberately not m_root: the filesystem stores its own
+        /// is compared against. Deliberately not m_Root: the filesystem stores its own
         /// spelling of the name, so `d:\work` opened by the user comes back as `D:\Work`
         /// and every session would begin by declaring a move.
-        std::filesystem::path m_watchedPath;
+        std::filesystem::path m_WatchedPath;
 
-        /// When the handle was last asked. Worker-only, like m_watchedPath.
-        ChangeCollector::Clock::time_point m_lastMoveCheck;
+        /// When the handle was last asked. Worker-only, like m_WatchedPath.
+        ChangeCollector::Clock::time_point m_LastMoveCheck;
 
-        /// Guarded by m_mutex alongside the collector.
-        std::optional<std::filesystem::path> m_movedTo;
+        /// Guarded by m_Mutex alongside the collector.
+        std::optional<std::filesystem::path> m_MovedTo;
 
         /// Opaque on purpose: these are Win32 HANDLEs, and the header must not drag
         /// windows.h into every translation unit that watches a directory.
-        void* m_directory = nullptr;
-        void* m_stopEvent = nullptr;
+        void* m_Directory = nullptr;
+        void* m_StopEvent = nullptr;
     };
 }

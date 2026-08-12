@@ -60,49 +60,49 @@ namespace Core
         /// Reads the file and hands it to FromContent.
         [[nodiscard]] static Result<TextDocument> Load(const std::filesystem::path& path);
 
-        [[nodiscard]] TextBuffer& Buffer() noexcept { return m_buffer; }
-        [[nodiscard]] const TextBuffer& Buffer() const noexcept { return m_buffer; }
+        [[nodiscard]] TextBuffer& Buffer() noexcept { return m_Buffer; }
+        [[nodiscard]] const TextBuffer& Buffer() const noexcept { return m_Buffer; }
 
-        [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_path; }
+        [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_Path; }
 
         /// Follows the file to where it now lives, after the folder above it was renamed
         /// or moved on disk. The content is untouched — this only changes where saving
         /// will write, which is the whole reason it exists: two places holding one path
         /// is how a save silently lands at the old location.
-        void SetPath(std::filesystem::path path) { m_path = std::move(path); }
+        void SetPath(std::filesystem::path path) { m_Path = std::move(path); }
 
         /// Not named Encoding(): a member of that name would shadow the type
         /// Core::Encoding everywhere inside this class.
-        [[nodiscard]] Encoding FileEncoding() const noexcept { return m_encoding; }
+        [[nodiscard]] Encoding FileEncoding() const noexcept { return m_Encoding; }
 
         /// Likewise not named LineEnding().
-        [[nodiscard]] LineEnding DocumentLineEnding() const noexcept { return m_lineEnding; }
+        [[nodiscard]] LineEnding DocumentLineEnding() const noexcept { return m_LineEnding; }
 
         /// Whether the file carried both styles. The status bar says so, because saving
         /// unifies them and that should not be a surprise.
-        [[nodiscard]] bool WasMixed() const noexcept { return m_wasMixed; }
+        [[nodiscard]] bool WasMixed() const noexcept { return m_WasMixed; }
 
         /// True when the content is not valid UTF-8. Typing into such a file would put
         /// UTF-8 bytes among bytes in some other encoding and quietly ruin it, so stage 3
         /// refuses to. The bytes are kept as they came except for line-ending
         /// normalisation, which runs regardless of validity — a mixed-ending read-only
         /// file still comes back with its endings unified, not byte-identical.
-        [[nodiscard]] bool IsReadOnly() const noexcept { return m_readOnly; }
+        [[nodiscard]] bool IsReadOnly() const noexcept { return m_ReadOnly; }
 
         /// The content exactly as it should reach disk: the BOM back at the front if
-        /// there was one, the content re-encoded to m_encoding, and the remembered line
+        /// there was one, the content re-encoded to m_Encoding, and the remembered line
         /// ending throughout.
         [[nodiscard]] std::string Bytes() const;
 
         /// Whether the content differs from what was last saved.
         [[nodiscard]] bool IsModified() const noexcept
         {
-            return m_buffer.Revision() != m_savedRevision;
+            return m_Buffer.Revision() != m_SavedRevision;
         }
 
         /// Records the current state as the saved one. Called after a successful write,
         /// which stage 3 adds.
-        void MarkSaved() noexcept { m_savedRevision = m_buffer.Revision(); }
+        void MarkSaved() noexcept { m_SavedRevision = m_Buffer.Revision(); }
 
         /// Whether the file differs from what was last read or written from here.
         /// False when the file cannot be examined at all — a share that blinked must not
@@ -132,26 +132,26 @@ namespace Core
         void AcceptDiskState();
 
     private:
-        TextBuffer m_buffer;
-        std::filesystem::path m_path;
-        Encoding m_encoding = Encoding::Utf8;
-        LineEnding m_lineEnding = LineEnding::Lf;
-        bool m_wasMixed = false;
-        bool m_readOnly = false;
+        TextBuffer m_Buffer;
+        std::filesystem::path m_Path;
+        Encoding m_Encoding = Encoding::Utf8;
+        LineEnding m_LineEnding = LineEnding::Lf;
+        bool m_WasMixed = false;
+        bool m_ReadOnly = false;
         /// Whether a byte order mark was stripped from the front of the loaded bytes.
-        /// Tracked independently of m_encoding: invalid UTF-8 following a mark still
-        /// demotes m_encoding to Unknown, but the mark itself was still there and Bytes()
+        /// Tracked independently of m_Encoding: invalid UTF-8 following a mark still
+        /// demotes m_Encoding to Unknown, but the mark itself was still there and Bytes()
         /// must still put it back, or a read-only file's bytes would not round-trip.
-        bool m_hadBom = false;
-        /// Which mark Bytes() writes back, and meaningful only where m_hadBom says there
+        bool m_HadBom = false;
+        /// Which mark Bytes() writes back, and meaningful only where m_HadBom says there
         /// was one to write. It holds the sniffed encoding, not a mark that was found:
         /// SniffEncoding names a UTF-16 file from the shape of its bytes alone, so an
         /// unmarked one leaves this reading Utf16Le with no mark anywhere in the file —
-        /// harmless, because m_hadBom is false and Bytes() never asks. Kept apart from
-        /// m_encoding because invalid UTF-8 behind a real mark demotes m_encoding to
+        /// harmless, because m_HadBom is false and Bytes() never asks. Kept apart from
+        /// m_Encoding because invalid UTF-8 behind a real mark demotes m_Encoding to
         /// Unknown for read-only handling while the mark still has to go back.
-        Encoding m_bomEncoding = Encoding::Utf8;
-        std::size_t m_savedRevision = 0;
+        Encoding m_BomEncoding = Encoding::Utf8;
+        std::size_t m_SavedRevision = 0;
 
         /// The file's modification time and size as they were when its content was last
         /// read or written, held together and as one optional because half a stamp is not
@@ -178,6 +178,6 @@ namespace Core
         /// eventually arrives finds nothing to do. No "ignore the next event" flag and no
         /// timeout — notifications coalesce and arrive late, and both of those tricks
         /// assume they do not.
-        std::optional<DiskStamp> m_diskStamp;
+        std::optional<DiskStamp> m_DiskStamp;
     };
 }

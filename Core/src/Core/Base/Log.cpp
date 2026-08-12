@@ -37,26 +37,26 @@ namespace Core
         if (!sink)
             return;
 
-        const std::scoped_lock lock{m_mutex};
-        m_sinks.push_back(std::move(sink));
+        const std::scoped_lock lock{m_Mutex};
+        m_Sinks.push_back(std::move(sink));
     }
 
     void Logger::ClearSinks()
     {
-        const std::scoped_lock lock{m_mutex};
-        m_sinks.clear();
+        const std::scoped_lock lock{m_Mutex};
+        m_Sinks.clear();
     }
 
     void Logger::SetLevel(LogLevel level)
     {
-        const std::scoped_lock lock{m_mutex};
-        m_level = level;
+        const std::scoped_lock lock{m_Mutex};
+        m_Level = level;
     }
 
     LogLevel Logger::GetLevel() const
     {
-        const std::scoped_lock lock{m_mutex};
-        return m_level;
+        const std::scoped_lock lock{m_Mutex};
+        return m_Level;
     }
 
     void Logger::Write(LogLevel level, std::string message)
@@ -64,11 +64,11 @@ namespace Core
         std::vector<std::shared_ptr<ILogSink>> sinks;
 
         {
-            const std::scoped_lock lock{m_mutex};
-            if (level < m_level)
+            const std::scoped_lock lock{m_Mutex};
+            if (level < m_Level)
                 return;
 
-            sinks = m_sinks;
+            sinks = m_Sinks;
         }
 
         const LogEntry entry{level, std::move(message)};

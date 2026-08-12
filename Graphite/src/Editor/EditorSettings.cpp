@@ -16,48 +16,48 @@ namespace Graphite
 
         if (storedFontSize >= kMinimumFontSize && storedFontSize <= kMaximumFontSize)
         {
-            m_fontSize = storedFontSize;
+            m_FontSize = storedFontSize;
         }
 
-        m_indentWithSpaces = AppSettings::LoadIndentWithSpaces();
+        m_IndentWithSpaces = AppSettings::LoadIndentWithSpaces();
 
         if (const std::size_t storedIndentWidth = AppSettings::LoadIndentWidth();
             storedIndentWidth != 0)
         {
-            m_indentWidth = storedIndentWidth;
+            m_IndentWidth = storedIndentWidth;
         }
 
-        m_wordWrap = AppSettings::LoadWordWrap();
+        m_WordWrap = AppSettings::LoadWordWrap();
     }
 
     void EditorSettings::SetFontSize(float size)
     {
         const float clamped = std::clamp(size, kMinimumFontSize, kMaximumFontSize);
 
-        if (clamped == m_fontSize)
+        if (clamped == m_FontSize)
         {
             return;
         }
 
-        m_fontSize = clamped;
-        AppSettings::SaveEditorFontSize(m_fontSize);
+        m_FontSize = clamped;
+        AppSettings::SaveEditorFontSize(m_FontSize);
     }
 
     void EditorSettings::SetWordWrap(bool wrap)
     {
-        m_wordWrap = wrap;
-        AppSettings::SaveWordWrap(m_wordWrap);
+        m_WordWrap = wrap;
+        AppSettings::SaveWordWrap(m_WordWrap);
     }
 
     void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)
     {
         commands.Add({.id = "editor.zoomIn",
                       .label = "Zoom In",
-                      .run = [this] { SetFontSize(m_fontSize + kFontSizeStep); }});
+                      .run = [this] { SetFontSize(m_FontSize + kFontSizeStep); }});
 
         commands.Add({.id = "editor.zoomOut",
                       .label = "Zoom Out",
-                      .run = [this] { SetFontSize(m_fontSize - kFontSizeStep); }});
+                      .run = [this] { SetFontSize(m_FontSize - kFontSizeStep); }});
 
         commands.Add({.id = "editor.resetZoom",
                       .label = "Reset Zoom",
@@ -71,8 +71,8 @@ namespace Graphite
         // menu it used to sit in.
         commands.Add({.id = "editor.toggleWordWrap",
                       .label = "Word Wrap",
-                      .run = [this] { SetWordWrap(!m_wordWrap); },
-                      .checked = [this] { return m_wordWrap; }});
+                      .run = [this] { SetWordWrap(!m_WordWrap); },
+                      .checked = [this] { return m_WordWrap; }});
 
         // Both the main row and the keypad, and Ctrl+wheel over an editor. A shortcut
         // nobody can discover is not a shortcut, so all three reach the same command and

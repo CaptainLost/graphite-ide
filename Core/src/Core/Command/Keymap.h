@@ -52,7 +52,7 @@ namespace Core
     private:
         /// std::map, not unordered: iteration order is what the settings file is written
         /// in, and a stable order keeps a diff of that file readable.
-        std::map<std::string, Binding, std::less<>> m_defaults;
-        std::map<std::string, Binding, std::less<>> m_overrides;
+        std::map<std::string, Binding, std::less<>> m_Defaults;
+        std::map<std::string, Binding, std::less<>> m_Overrides;
     };
 }

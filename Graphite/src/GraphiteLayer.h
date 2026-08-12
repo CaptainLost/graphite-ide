@@ -84,31 +84,31 @@ namespace Graphite
         /// spent only when this is true, because TitleBar::Render draws nothing when it
         /// is false and the row would then be height paid for nothing, under a system
         /// title bar that is still there.
-        bool m_customTitleBar = false;
+        bool m_CustomTitleBar = false;
 
-        bool m_appForeground = true;
-        float m_secondsInBackground = 0.0f;
+        bool m_AppForeground = true;
+        float m_SecondsInBackground = 0.0f;
 
         /// Set once FinishClose(ExitApplication) has re-armed the window's close flag,
         /// so the OnCloseRequested asked again next frame returns true unconditionally
         /// rather than re-checking for dirty documents. That check matters here: Discard
         /// All does not touch document content, only bypasses asking about it, so every
         /// document FinishClose was told to discard is still modified when this fires.
-        bool m_closeApproved = false;
+        bool m_CloseApproved = false;
 
-        std::shared_ptr<Core::RingBufferSink> m_sink;
-        std::filesystem::path m_initialFolder;
-        Core::EventBus m_events;
-        Workspace m_workspace{m_events};
-        Core::DocumentSet m_documents;
+        std::shared_ptr<Core::RingBufferSink> m_Sink;
+        std::filesystem::path m_InitialFolder;
+        Core::EventBus m_Events;
+        Workspace m_Workspace{m_Events};
+        Core::DocumentSet m_Documents;
 
         /// Which of the application's five questions currently owns ImGui's single modal
-        /// popup level. Declared before m_documentWindows and m_closeQuestion, both of
+        /// popup level. Declared before m_DocumentWindows and m_CloseQuestion, both of
         /// which take it by reference: four of the five are asked there and the "Unsaved
         /// changes" one here, and all five would otherwise destroy one another. See
         /// ModalGate.
-        ModalGate m_modals;
-        DocumentWindows m_documentWindows{m_documents, m_modals};
+        ModalGate m_Modals;
+        DocumentWindows m_DocumentWindows{m_Documents, m_Modals};
 
         /// The ImGui popup id of the question below, which is also what the gate records
         /// as the owner of the modal level while it is up. A member of the class rather
@@ -122,23 +122,23 @@ namespace Graphite
         /// question is up goes on screen once that one resolves rather than being dropped.
         /// Cleared the moment the user answers - including Cancel - so a later close
         /// attempt asks fresh rather than remembering the refusal.
-        ModalQuestion<ClosePurpose> m_closeQuestion;
+        ModalQuestion<ClosePurpose> m_CloseQuestion;
 
-        Core::PanelManager m_panels;
-        Core::DockSpaceHost m_dockSpace;
-        Core::DockLayout m_layout;
-        TitleBar m_titleBar;
+        Core::PanelManager m_Panels;
+        Core::DockSpaceHost m_DockSpace;
+        Core::DockLayout m_Layout;
+        TitleBar m_TitleBar;
 
-        Core::CommandRegistry m_commands;
-        Core::Keymap m_keys;
-        Core::ShortcutRouter m_router;
-        Core::MenuBar m_menuBar;
+        Core::CommandRegistry m_Commands;
+        Core::Keymap m_Keys;
+        Core::ShortcutRouter m_Router;
+        Core::MenuBar m_MenuBar;
 
         /// Built once in OnAttach, after every command is registered — the tree names
         /// ids, and a tree built before them would draw a bar full of unregistered
         /// entries.
-        std::vector<Core::MenuItem> m_menuTree;
+        std::vector<Core::MenuItem> m_MenuTree;
 
-        EditorSettings m_editorSettings;
+        EditorSettings m_EditorSettings;
     };
 }

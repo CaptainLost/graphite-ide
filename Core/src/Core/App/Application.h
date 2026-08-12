@@ -36,8 +36,8 @@ namespace Core
 
         Layer& PushLayer(std::unique_ptr<Layer> layer);
 
-        [[nodiscard]] Window& GetWindow() { return *m_window; }
-        [[nodiscard]] const ApplicationSpec& Spec() const noexcept { return m_spec; }
+        [[nodiscard]] Window& GetWindow() { return *m_Window; }
+        [[nodiscard]] const ApplicationSpec& Spec() const noexcept { return m_Spec; }
 
         static Application& Get();
 
@@ -47,14 +47,14 @@ namespace Core
         virtual void OnShutdown() {}
 
     private:
-        ApplicationSpec m_spec;
-        std::unique_ptr<Window> m_window;
-        ImGuiRenderer m_gui;
-        LayerStack m_layers;
-        std::vector<Layer*> m_frameLayers;
-        bool m_running = false;
-        double m_lastFrameTime = 0.0;
+        ApplicationSpec m_Spec;
+        std::unique_ptr<Window> m_Window;
+        ImGuiRenderer m_Gui;
+        LayerStack m_Layers;
+        std::vector<Layer*> m_FrameLayers;
+        bool m_Running = false;
+        double m_LastFrameTime = 0.0;
 
-        static Application* s_instance;
+        static Application* s_Instance;
     };
 }

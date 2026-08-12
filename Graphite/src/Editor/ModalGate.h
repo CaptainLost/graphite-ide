@@ -33,10 +33,10 @@ namespace Graphite
         /// the caller must keep its request pending rather than discarding it.
         [[nodiscard]] bool TryOpen(std::string_view title) noexcept
         {
-            if (!m_owner.empty())
+            if (!m_Owner.empty())
                 return false;
 
-            m_owner = title;
+            m_Owner = title;
             return true;
         }
 
@@ -46,23 +46,23 @@ namespace Graphite
         /// away without an answer.
         void Close(std::string_view title) noexcept
         {
-            if (m_owner == title)
-                m_owner = {};
+            if (m_Owner == title)
+                m_Owner = {};
         }
 
         /// Whether any question is on screen or has been opened this frame.
-        [[nodiscard]] bool IsBusy() const noexcept { return !m_owner.empty(); }
+        [[nodiscard]] bool IsBusy() const noexcept { return !m_Owner.empty(); }
 
         /// Whether `title` is the question this gate believes is on screen. The guard on
         /// the dead-state check: only the owner may conclude from a false BeginPopupModal
         /// that its own popup was destroyed.
         [[nodiscard]] bool HoldsFor(std::string_view title) const noexcept
         {
-            return m_owner == title;
+            return m_Owner == title;
         }
 
     private:
         /// A view, not a copy: every title is a constexpr literal that outlives the gate.
-        std::string_view m_owner;
+        std::string_view m_Owner;
     };
 }

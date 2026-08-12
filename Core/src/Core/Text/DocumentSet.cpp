@@ -48,9 +48,9 @@ namespace Core
 
     std::optional<std::size_t> DocumentSet::Find(const std::filesystem::path& path) const
     {
-        for (std::size_t index = 0; index < m_items.size(); ++index)
+        for (std::size_t index = 0; index < m_Items.size(); ++index)
         {
-            if (m_items[index].path == path)
+            if (m_Items[index].path == path)
                 return index;
         }
 
@@ -59,8 +59,8 @@ namespace Core
 
     void DocumentSet::Activate(std::size_t index)
     {
-        if (index < m_items.size())
-            m_active = index;
+        if (index < m_Items.size())
+            m_Active = index;
     }
 
     OpenOutcome DocumentSet::Open(const std::filesystem::path& path, bool permanent)
@@ -147,7 +147,7 @@ namespace Core
             Activate(*existing);
 
             if (permanent)
-                m_items[*existing].preview = false;
+                m_Items[*existing].preview = false;
 
             return OpenOutcome::Activated;
         }
@@ -180,47 +180,47 @@ namespace Core
         }
 
         evictPreview();
-        m_items.push_back(std::move(item));
-        Activate(m_items.size() - 1);
+        m_Items.push_back(std::move(item));
+        Activate(m_Items.size() - 1);
 
         return load == ItemLoad::Loaded ? OpenOutcome::Opened : OpenOutcome::Failed;
     }
 
     void DocumentSet::Close(std::size_t index)
     {
-        if (index >= m_items.size())
+        if (index >= m_Items.size())
             return;
 
-        m_items.erase(m_items.begin() + static_cast<std::ptrdiff_t>(index));
+        m_Items.erase(m_Items.begin() + static_cast<std::ptrdiff_t>(index));
 
-        if (m_items.empty())
+        if (m_Items.empty())
         {
-            m_active.reset();
+            m_Active.reset();
             return;
         }
 
-        if (!m_active.has_value())
+        if (!m_Active.has_value())
             return;
 
         // An item before the active one shifts it down; closing the active one falls back
         // to whatever now occupies that slot, or the last item when it was the last.
-        if (*m_active > index)
-            m_active = *m_active - 1;
-        else if (*m_active == index)
-            m_active = std::min(index, m_items.size() - 1);
+        if (*m_Active > index)
+            m_Active = *m_Active - 1;
+        else if (*m_Active == index)
+            m_Active = std::min(index, m_Items.size() - 1);
     }
 
     void DocumentSet::CloseAll()
     {
-        m_items.clear();
-        m_active.reset();
+        m_Items.clear();
+        m_Active.reset();
     }
 
     std::optional<std::size_t> DocumentSet::Preview() const
     {
-        for (std::size_t index = 0; index < m_items.size(); ++index)
+        for (std::size_t index = 0; index < m_Items.size(); ++index)
         {
-            if (m_items[index].preview)
+            if (m_Items[index].preview)
                 return index;
         }
 
@@ -229,30 +229,30 @@ namespace Core
 
     void DocumentSet::Promote(std::size_t index)
     {
-        if (index < m_items.size())
-            m_items[index].preview = false;
+        if (index < m_Items.size())
+            m_Items[index].preview = false;
     }
 
     std::string DocumentSet::DisplayTitle(std::size_t index) const
     {
-        if (index >= m_items.size())
+        if (index >= m_Items.size())
             return {};
 
-        const std::filesystem::path& path = m_items[index].path;
+        const std::filesystem::path& path = m_Items[index].path;
         const std::string name = ToUtf8(path.filename());
 
         // A file deleted while it was open keeps its window and its content, so nothing
         // else on screen would say the file is gone — the tab has to. Appended after any
         // disambiguating directory below, so the suffix always reads last.
         const std::string suffix =
-            m_items[index].failure == OpenFailure::Missing ? " (deleted)" : "";
+            m_Items[index].failure == OpenFailure::Missing ? " (deleted)" : "";
 
-        for (std::size_t other = 0; other < m_items.size(); ++other)
+        for (std::size_t other = 0; other < m_Items.size(); ++other)
         {
             if (other == index)
                 continue;
 
-            if (ToUtf8(m_items[other].path.filename()) != name)
+            if (ToUtf8(m_Items[other].path.filename()) != name)
                 continue;
 
             // Forward slash regardless of platform: this is a label, not a path anyone
@@ -266,7 +266,7 @@ namespace Core
     void DocumentSet::RewritePaths(const std::filesystem::path& from,
                                    const std::filesystem::path& to)
     {
-        for (OpenItem& item : m_items)
+        for (OpenItem& item : m_Items)
         {
             const auto relative = RelativeTo(item.path, from);
 
@@ -295,12 +295,12 @@ namespace Core
         if (!index)
             return;
 
-        m_items[*index].failure = OpenFailure::Missing;
+        m_Items[*index].failure = OpenFailure::Missing;
 
         // Whatever detail the previous failure carried — a sharing violation, an
         // unreadable directory — no longer describes what is wrong. Left in place,
         // FailureMessage would keep preferring it over "This file no longer exists".
-        m_items[*index].detail.clear();
+        m_Items[*index].detail.clear();
     }
 
     void DocumentSet::MarkPresent(const std::filesystem::path& path)
@@ -313,10 +313,10 @@ namespace Core
         // Only clear the Missing failure. Binary, TooLarge, and ReadFailed carry no
         // document at all — clearing one would claim a tab holds content that was never
         // loaded, and everything downstream would then dereference an empty optional.
-        if (m_items[*index].failure == OpenFailure::Missing)
+        if (m_Items[*index].failure == OpenFailure::Missing)
         {
-            m_items[*index].failure = OpenFailure::None;
-            m_items[*index].detail.clear();
+            m_Items[*index].failure = OpenFailure::None;
+            m_Items[*index].detail.clear();
         }
     }
 }

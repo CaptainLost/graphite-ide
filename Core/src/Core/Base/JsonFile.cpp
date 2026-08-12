@@ -17,7 +17,7 @@ namespace Core
         nlohmann::json root = nlohmann::json::object();
     };
 
-    JsonFile::JsonFile() : m_document(std::make_unique<Document>())
+    JsonFile::JsonFile() : m_Document(std::make_unique<Document>())
     {
     }
 
@@ -46,13 +46,13 @@ namespace Core
         if (parsed.is_discarded() || !parsed.is_object())
             return file;
 
-        file.m_document->root = std::move(parsed);
+        file.m_Document->root = std::move(parsed);
         return file;
     }
 
     std::string JsonFile::Get(std::string_view key) const
     {
-        const nlohmann::json& root = m_document->root;
+        const nlohmann::json& root = m_Document->root;
 
         const auto entry = root.find(std::string{key});
         if (entry == root.end() || !entry->is_string())
@@ -63,17 +63,17 @@ namespace Core
 
     void JsonFile::Set(std::string_view key, std::string value)
     {
-        m_document->root[std::string{key}] = std::move(value);
+        m_Document->root[std::string{key}] = std::move(value);
     }
 
     void JsonFile::Remove(std::string_view key)
     {
-        m_document->root.erase(std::string{key});
+        m_Document->root.erase(std::string{key});
     }
 
     std::vector<std::string> JsonFile::Keys() const
     {
-        const nlohmann::json& root = m_document->root;
+        const nlohmann::json& root = m_Document->root;
 
         std::vector<std::string> keys;
         keys.reserve(root.size());
@@ -88,7 +88,7 @@ namespace Core
 
     std::size_t JsonFile::Count() const noexcept
     {
-        return m_document->root.size();
+        return m_Document->root.size();
     }
 
     bool JsonFile::Save(const std::filesystem::path& path) const
@@ -102,7 +102,7 @@ namespace Core
         // settings value is not worth an exception crossing out of Core, and a visibly
         // mangled string is a better outcome than a lost file.
         const std::string text =
-            m_document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+            m_Document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
 
         return static_cast<bool>(WriteFileAtomically(path, text));
     }

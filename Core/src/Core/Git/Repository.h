@@ -39,13 +39,13 @@ namespace Core
 
         [[nodiscard]] const std::filesystem::path& WorkingDirectory() const noexcept
         {
-            return m_workingDirectory;
+            return m_WorkingDirectory;
         }
 
     private:
         Repository() = default;
 
-        git_repository* m_handle = nullptr;
-        std::filesystem::path m_workingDirectory;
+        git_repository* m_Handle = nullptr;
+        std::filesystem::path m_WorkingDirectory;
     };
 }

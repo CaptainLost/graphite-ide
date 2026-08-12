@@ -45,11 +45,11 @@ namespace Graphite
         /// first - so they all consult the same gate rather than each knowing about the
         /// others. See ModalGate.
         DocumentWindows(Core::DocumentSet& documents, ModalGate& modals)
-            : m_documents(documents),
-              m_sizeQuestion(modals, kSizeQuestionTitle),
-              m_reloadConflict(modals, kReloadConflictTitle),
-              m_overwriteConfirm(modals, kOverwriteConfirmTitle),
-              m_closeConfirm(modals, kCloseConfirmTitle)
+            : m_Documents(documents),
+              m_SizeQuestion(modals, kSizeQuestionTitle),
+              m_ReloadConflict(modals, kReloadConflictTitle),
+              m_OverwriteConfirm(modals, kOverwriteConfirmTitle),
+              m_CloseConfirm(modals, kCloseConfirmTitle)
         {
         }
 
@@ -80,7 +80,7 @@ namespace Graphite
         /// window ImGui has never seen - this is the point where that identity change is
         /// handled deliberately, rather than left to happen: the old dock position is
         /// carried over to the new id where possible, and Render's own bookkeeping (see
-        /// m_previousIdentities) purges the abandoned imgui.ini entry.
+        /// m_PreviousIdentities) purges the abandoned imgui.ini entry.
         void HandleRootMoved(const std::filesystem::path& from, const std::filesystem::path& to);
 
         /// Files changed under one or more directories - or, with `everything`, somewhere
@@ -204,19 +204,19 @@ namespace Graphite
             [[nodiscard]] bool operator==(const LargeFileQuestion&) const = default;
         };
 
-        Core::DocumentSet& m_documents;
+        Core::DocumentSet& m_Documents;
 
         /// The dock node the last focused document sits in. A new window goes there, so a
         /// file opened while working in the right-hand split appears in the right-hand
         /// split. Zero means "no document has been focused yet", in which case Render
         /// falls back to the node it was given.
-        unsigned int m_lastFocusedNode = 0;
+        unsigned int m_LastFocusedNode = 0;
 
         /// Files big enough that opening one is worth confirming first. A question raised
         /// while the gate is held by another is asked once that one resolves rather than
         /// dropped, and a second large file picked while the first question is still up is
         /// asked about after it rather than replacing it.
-        ModalQuestion<LargeFileQuestion> m_sizeQuestion;
+        ModalQuestion<LargeFileQuestion> m_SizeQuestion;
 
         /// The identity (Core::ToUtf8 of the path, nothing else) of every window
         /// Render produced last time it ran. A document can disappear between one Render
@@ -234,21 +234,21 @@ namespace Graphite
         /// "gone" to a name-based diff - and ImGui::ClearWindowSettings would then find
         /// and undock the still-open window it renamed *into*, because ImHashStr resets
         /// at "###" and hashes only what follows it, same as ImGui's own window identity.
-        std::vector<std::string> m_previousIdentities;
+        std::vector<std::string> m_PreviousIdentities;
 
         /// Where a renamed window should be re-docked on the first frame under its new
         /// identity, keyed by that new identity (the same Core::ToUtf8 path used in
-        /// m_previousIdentities, not the rendered name - the same reasoning applies: the
+        /// m_PreviousIdentities, not the rendered name - the same reasoning applies: the
         /// display title either side of a rename need not match what was true when the
         /// rename happened). Populated by HandleRootMoved from the old window's dock node,
         /// and consumed - erased - the first time that identity is seen in Render.
-        std::unordered_map<std::string, unsigned int> m_pendingDockTargets;
+        std::unordered_map<std::string, unsigned int> m_PendingDockTargets;
 
         /// Whether the OS window had focus as of the last NotifyWindowFocus call. Starts
         /// true: the application is assumed foreground from its first frame, the same
-        /// assumption GraphiteLayer::m_appForeground makes, and false here would fire a
+        /// assumption GraphiteLayer::m_AppForeground makes, and false here would fire a
         /// needless sweep before anything has even been drawn once.
-        bool m_wasFocused = true;
+        bool m_WasFocused = true;
 
         /// Documents whose file changed on disk while the tab was dirty - what
         /// Core::SyncWithFile reports as NeedsDecision. RespondToSync asks, so
@@ -259,17 +259,17 @@ namespace Graphite
         /// closing an earlier tab would shift every index after it. Looked up again with
         /// DocumentSet::Find when the user answers, and simply dropped - no crash, no
         /// stale write - if the document is gone by then.
-        ModalQuestion<std::filesystem::path> m_reloadConflict;
+        ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
         /// Documents RequestSave has to confirm an overwrite for - ChangedOnDisk() was
         /// true right when Ctrl+S was pressed, meaning a notification was dropped and this
-        /// is the last chance to ask. Same "path, not index" reasoning as m_reloadConflict.
-        ModalQuestion<std::filesystem::path> m_overwriteConfirm;
+        /// is the last chance to ask. Same "path, not index" reasoning as m_ReloadConflict.
+        ModalQuestion<std::filesystem::path> m_OverwriteConfirm;
 
         /// The document the next Render should bring to the front, or nullopt. Set when
         /// Open() reports Activated - a file the user picked in the tree that was already
         /// open - because that path changes nothing ImGui can see: DocumentSet::Activate
-        /// moves m_active, and focus otherwise only ever flows the other way, from
+        /// moves m_Active, and focus otherwise only ever flows the other way, from
         /// ImGui::IsWindowFocused into the set. A file that was *not* already open needs
         /// nothing here, since a window ImGui has just seen for the first time takes focus
         /// by itself; that is why the gap only ever showed on reopening.
@@ -279,16 +279,16 @@ namespace Graphite
         /// before its loop and cleared in the same breath, so it lives exactly one frame -
         /// a request naming a document that has since gone simply matches nothing and is
         /// dropped, rather than lingering to steal focus whenever that path is next opened.
-        std::optional<std::filesystem::path> m_focusRequest;
+        std::optional<std::filesystem::path> m_FocusRequest;
 
         /// Documents whose own close button was pressed while they were still dirty. A
         /// second tab's close button pressed before the first question resolves still gets
         /// its own question, in order, rather than being silently dropped. Same "path, not
-        /// index" reasoning as m_reloadConflict.
+        /// index" reasoning as m_ReloadConflict.
         ///
         /// This is the one question with something to check at the moment it is taken off
         /// the queue rather than only when it was raised - see the predicate in Render.
-        ModalQuestion<std::filesystem::path> m_closeConfirm;
+        ModalQuestion<std::filesystem::path> m_CloseConfirm;
 
         /// A short-lived status bar note and when it expires, both on ImGui::GetTime()'s
         /// clock. Read through StatusMessage().
@@ -298,6 +298,6 @@ namespace Graphite
             double expiresAt = 0.0;
         };
 
-        std::optional<TransientMessage> m_transientMessage;
+        std::optional<TransientMessage> m_TransientMessage;
     };
 }

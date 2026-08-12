@@ -181,14 +181,14 @@ namespace Core
         }
 
         TextDocument document;
-        document.m_path = std::move(path);
-        document.m_encoding = declared;
-        document.m_hadBom = bomLength > 0;
-        // Assigned whether or not a mark was there, because m_hadBom already says which it
+        document.m_Path = std::move(path);
+        document.m_Encoding = declared;
+        document.m_HadBom = bomLength > 0;
+        // Assigned whether or not a mark was there, because m_HadBom already says which it
         // was and Bytes() reads this only when that is true. Captured separately from
-        // m_encoding: invalid UTF-8 behind a real mark demotes m_encoding to Unknown for
+        // m_Encoding: invalid UTF-8 behind a real mark demotes m_Encoding to Unknown for
         // read-only handling, but the mark that was actually there still has to go back.
-        document.m_bomEncoding = declared;
+        document.m_BomEncoding = declared;
 
         // Only content that was not decoded can fail validation: Decode returns valid
         // UTF-8 by construction, or an error. Validating it here would suggest otherwise.
@@ -196,14 +196,14 @@ namespace Core
         // switch actually decode something, so this stays correct as more of them do.
         if (!TransformsContent(declared) && !IsValidUtf8(content))
         {
-            document.m_encoding = Encoding::Unknown;
-            document.m_readOnly = true;
+            document.m_Encoding = Encoding::Unknown;
+            document.m_ReadOnly = true;
         }
 
         Normalised normalised = NormaliseLineEndings(content);
-        document.m_lineEnding = normalised.lineEnding;
-        document.m_wasMixed = normalised.mixed;
-        document.m_buffer = TextBuffer{std::move(normalised.content)};
+        document.m_LineEnding = normalised.lineEnding;
+        document.m_WasMixed = normalised.mixed;
+        document.m_Buffer = TextBuffer{std::move(normalised.content)};
 
         return document;
     }
@@ -238,7 +238,7 @@ namespace Core
                                                           + " bytes): " + ToUtf8(path)};
         }
 
-        // Read before the content, not after: see m_diskTime's comment in the header for
+        // Read before the content, not after: see m_DiskTime's comment in the header for
         // why the order matters. A failure here is not fatal to the load — it only means
         // ChangedOnDisk() cannot see this file changing from its very first comparison,
         // which is no worse than a share blinking at any other moment.
@@ -292,7 +292,7 @@ namespace Core
         // of a zero-byte file" — unequal to every real file, so ChangedOnDisk() answered
         // true forever after.
         if (document && !timeError)
-            document.Value().m_diskStamp = DiskStamp{diskTime, size};
+            document.Value().m_DiskStamp = DiskStamp{diskTime, size};
 
         return document;
     }
@@ -320,49 +320,49 @@ namespace Core
     {
         std::string result;
 
-        // Keyed off m_hadBom rather than m_encoding == Utf8Bom: invalid UTF-8 following a
-        // mark demotes m_encoding to Unknown, but the mark itself still arrived and still
+        // Keyed off m_HadBom rather than m_Encoding == Utf8Bom: invalid UTF-8 following a
+        // mark demotes m_Encoding to Unknown, but the mark itself still arrived and still
         // has to go back, or a read-only file's bytes would not round-trip.
-        if (m_hadBom)
-            result += BomBytes(m_bomEncoding);
+        if (m_HadBom)
+            result += BomBytes(m_BomEncoding);
 
-        result += Encode(WithLineEnding(m_buffer.Text(), m_lineEnding), m_encoding);
+        result += Encode(WithLineEnding(m_Buffer.Text(), m_LineEnding), m_Encoding);
 
         return result;
     }
 
     bool TextDocument::ChangedOnDisk() const
     {
-        // Nothing was ever recorded to compare against — see m_diskStamp. Answering
+        // Nothing was ever recorded to compare against — see m_DiskStamp. Answering
         // "changed" here would be answering from ignorance, and every caller treats that
         // answer as a fact about the file.
-        if (!m_diskStamp)
+        if (!m_DiskStamp)
             return false;
 
         std::error_code timeError;
-        const auto time = std::filesystem::last_write_time(m_path, timeError);
+        const auto time = std::filesystem::last_write_time(m_Path, timeError);
 
         if (timeError)
             return false;
 
         std::error_code sizeError;
-        const std::uintmax_t size = std::filesystem::file_size(m_path, sizeError);
+        const std::uintmax_t size = std::filesystem::file_size(m_Path, sizeError);
 
         if (sizeError)
             return false;
 
-        return time != m_diskStamp->time || size != m_diskStamp->size;
+        return time != m_DiskStamp->time || size != m_DiskStamp->size;
     }
 
     Result<void> TextDocument::Save()
     {
-        auto written = WriteFileAtomically(m_path, Bytes());
+        auto written = WriteFileAtomically(m_Path, Bytes());
 
         if (!written)
             return written.GetError();
 
         MarkSaved();
-        m_buffer.BreakUndoGroup();
+        m_Buffer.BreakUndoGroup();
         AcceptDiskState();
 
         return {};
@@ -370,30 +370,30 @@ namespace Core
 
     Result<void> TextDocument::ReloadFromDisk()
     {
-        auto fresh = Load(m_path);
+        auto fresh = Load(m_Path);
 
         if (!fresh)
             return fresh.GetError();
 
         TextDocument freshDocument = std::move(fresh).Value();
-        const std::string freshText = freshDocument.m_buffer.Text();
+        const std::string freshText = freshDocument.m_Buffer.Text();
 
         // Bracketed by BreakUndoGroup on both sides so the reload never merges with the
         // typing that came before it or the typing that comes after: one Ctrl+Z reverses
         // exactly the reload, nothing more and nothing less.
-        m_buffer.BreakUndoGroup();
-        m_buffer.BeginTransaction();
-        m_buffer.Erase(0, m_buffer.Length());
-        m_buffer.Insert(0, freshText);
-        m_buffer.EndTransaction();
-        m_buffer.BreakUndoGroup();
+        m_Buffer.BreakUndoGroup();
+        m_Buffer.BeginTransaction();
+        m_Buffer.Erase(0, m_Buffer.Length());
+        m_Buffer.Insert(0, freshText);
+        m_Buffer.EndTransaction();
+        m_Buffer.BreakUndoGroup();
 
-        m_encoding = freshDocument.m_encoding;
-        m_lineEnding = freshDocument.m_lineEnding;
-        m_wasMixed = freshDocument.m_wasMixed;
-        m_readOnly = freshDocument.m_readOnly;
-        m_hadBom = freshDocument.m_hadBom;
-        m_bomEncoding = freshDocument.m_bomEncoding;
+        m_Encoding = freshDocument.m_Encoding;
+        m_LineEnding = freshDocument.m_LineEnding;
+        m_WasMixed = freshDocument.m_WasMixed;
+        m_ReadOnly = freshDocument.m_ReadOnly;
+        m_HadBom = freshDocument.m_HadBom;
+        m_BomEncoding = freshDocument.m_BomEncoding;
 
         MarkSaved();
 
@@ -401,7 +401,7 @@ namespace Core
         // so keeping the stamp it was read under - even when that is "no stamp" - is what
         // keeps the two describing the same thing. Holding on to the previous stamp
         // instead would describe a file this document no longer contains.
-        m_diskStamp = freshDocument.m_diskStamp;
+        m_DiskStamp = freshDocument.m_DiskStamp;
 
         return {};
     }
@@ -409,10 +409,10 @@ namespace Core
     void TextDocument::AcceptDiskState()
     {
         std::error_code timeError;
-        const auto time = std::filesystem::last_write_time(m_path, timeError);
+        const auto time = std::filesystem::last_write_time(m_Path, timeError);
 
         std::error_code sizeError;
-        const std::uintmax_t size = std::filesystem::file_size(m_path, sizeError);
+        const std::uintmax_t size = std::filesystem::file_size(m_Path, sizeError);
 
         // Both or neither, never one: a new time beside an old size is a stamp describing
         // a file that never existed. Failing to read either leaves the previous stamp
@@ -422,6 +422,6 @@ namespace Core
         if (timeError || sizeError)
             return;
 
-        m_diskStamp = DiskStamp{time, size};
+        m_DiskStamp = DiskStamp{time, size};
     }
 }

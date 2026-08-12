@@ -63,20 +63,20 @@ namespace Graphite
         /// the modal level, so it must be one unchanging string - a literal outliving this
         /// object, never anything built per frame.
         ModalQuestion(ModalGate& gate, const char* title) noexcept
-            : m_gate(gate), m_title(title)
+            : m_Gate(gate), m_Title(title)
         {
         }
 
         /// Queues a question. Several may wait; they are asked one at a time, in order,
         /// and never dropped.
-        void Ask(Payload payload) { m_queue.push_back(std::move(payload)); }
+        void Ask(Payload payload) { m_Queue.push_back(std::move(payload)); }
 
         /// Whether this question is on screen or waiting for its turn. What a caller
         /// refusing to act until the user has answered tests - waiting counts, because a
         /// question still queued is every bit as unanswered as one the user is looking at.
         [[nodiscard]] bool IsAsked() const noexcept
         {
-            return m_current.has_value() || !m_queue.empty();
+            return m_Current.has_value() || !m_Queue.empty();
         }
 
         /// Whether this exact question is already asked or waiting - the test a site makes
@@ -84,12 +84,12 @@ namespace Graphite
         /// than two identical ones in a row.
         [[nodiscard]] bool Asked(const Payload& payload) const
         {
-            if (m_current && *m_current == payload)
+            if (m_Current && *m_Current == payload)
             {
                 return true;
             }
 
-            return std::find(m_queue.begin(), m_queue.end(), payload) != m_queue.end();
+            return std::find(m_Queue.begin(), m_Queue.end(), payload) != m_Queue.end();
         }
 
         /// The payload of the question currently on screen, or nullptr when none is.
@@ -101,7 +101,7 @@ namespace Graphite
         /// answers should take a copy instead of holding the pointer.
         [[nodiscard]] const Payload* Current() const noexcept
         {
-            return m_current ? &*m_current : nullptr;
+            return m_Current ? &*m_Current : nullptr;
         }
 
         /// Opens the next question when the gate is free and `stillWorthAsking` accepts it,
@@ -126,7 +126,7 @@ namespace Graphite
         {
             OpenNext(stillWorthAsking);
 
-            if (ImGui::BeginPopupModal(m_title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+            if (ImGui::BeginPopupModal(m_Title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
             {
                 return true;
             }
@@ -134,10 +134,10 @@ namespace Graphite
             // Believed on screen by the gate and yet not open: dismissed with Escape, or
             // destroyed by something opening over it. Treated as no answer at all - what
             // the question was about is untouched, and the site is free to ask again.
-            if (m_gate.HoldsFor(m_title) && !ImGui::IsPopupOpen(m_title))
+            if (m_Gate.HoldsFor(m_Title) && !ImGui::IsPopupOpen(m_Title))
             {
-                m_current.reset();
-                m_gate.Close(m_title);
+                m_Current.reset();
+                m_Gate.Close(m_Title);
             }
 
             return false;
@@ -154,8 +154,8 @@ namespace Graphite
         /// open in this same frame rather than a frame later. See ModalGate::Close.
         void Answer()
         {
-            m_current.reset();
-            m_gate.Close(m_title);
+            m_Current.reset();
+            m_Gate.Close(m_Title);
             ImGui::CloseCurrentPopup();
         }
 
@@ -173,10 +173,10 @@ namespace Graphite
         template <std::predicate<const Payload&> Predicate>
         void OpenNext(Predicate& stillWorthAsking)
         {
-            while (!m_current && !m_queue.empty() && !m_gate.IsBusy())
+            while (!m_Current && !m_Queue.empty() && !m_Gate.IsBusy())
             {
-                Payload candidate = std::move(m_queue.front());
-                m_queue.erase(m_queue.begin());
+                Payload candidate = std::move(m_Queue.front());
+                m_Queue.erase(m_Queue.begin());
 
                 if (!stillWorthAsking(std::as_const(candidate)))
                 {
@@ -188,28 +188,28 @@ namespace Graphite
                 // predicate that acts on the question having gone stale - closing the tab
                 // it was about, carrying out the close it was asking permission for - can
                 // reach something that opens a question of its own and takes the level.
-                if (!m_gate.TryOpen(m_title))
+                if (!m_Gate.TryOpen(m_Title))
                 {
                     // It did. Put the question back where it was rather than dropping it,
                     // and wait for whichever question now holds the level.
-                    m_queue.insert(m_queue.begin(), std::move(candidate));
+                    m_Queue.insert(m_Queue.begin(), std::move(candidate));
                     return;
                 }
 
-                m_current = std::move(candidate);
-                ImGui::OpenPopup(m_title);
+                m_Current = std::move(candidate);
+                ImGui::OpenPopup(m_Title);
             }
         }
 
-        ModalGate& m_gate;
+        ModalGate& m_Gate;
 
         /// A pointer, not a copy: every title is a constexpr literal that outlives this.
-        const char* m_title;
+        const char* m_Title;
 
         /// Questions waiting their turn, oldest first.
-        std::vector<Payload> m_queue;
+        std::vector<Payload> m_Queue;
 
         /// The payload of the question on screen, or nullopt when none is.
-        std::optional<Payload> m_current;
+        std::optional<Payload> m_Current;
     };
 }

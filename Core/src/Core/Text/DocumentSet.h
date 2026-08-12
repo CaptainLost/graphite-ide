@@ -184,13 +184,13 @@ namespace Core
         void CloseAll();
 
         [[nodiscard]] std::optional<std::size_t> Find(const std::filesystem::path& path) const;
-        [[nodiscard]] std::size_t Count() const noexcept { return m_items.size(); }
+        [[nodiscard]] std::size_t Count() const noexcept { return m_Items.size(); }
 
-        [[nodiscard]] OpenItem& At(std::size_t index) { return m_items[index]; }
-        [[nodiscard]] const OpenItem& At(std::size_t index) const { return m_items[index]; }
+        [[nodiscard]] OpenItem& At(std::size_t index) { return m_Items[index]; }
+        [[nodiscard]] const OpenItem& At(std::size_t index) const { return m_Items[index]; }
 
         void Activate(std::size_t index);
-        [[nodiscard]] std::optional<std::size_t> Active() const noexcept { return m_active; }
+        [[nodiscard]] std::optional<std::size_t> Active() const noexcept { return m_Active; }
 
         /// Turns a preview into a permanent item, freeing the preview slot. A double
         /// click does this, and in stage 3 so will the first edit.
@@ -226,7 +226,7 @@ namespace Core
     private:
         OpenOutcome Add(const std::filesystem::path& path, bool permanent, bool confirmed);
 
-        std::vector<OpenItem> m_items;
-        std::optional<std::size_t> m_active;
+        std::vector<OpenItem> m_Items;
+        std::optional<std::size_t> m_Active;
     };
 }

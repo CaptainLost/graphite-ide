@@ -17,9 +17,9 @@ namespace Core
     Chord Chord::Key(ImGuiKeyChord keys)
     {
         Chord chord;
-        chord.m_keys = keys;
-        chord.m_trigger = Trigger::Key;
-        chord.m_scope = Scope::Global;
+        chord.m_Keys = keys;
+        chord.m_Trigger = Trigger::Key;
+        chord.m_Scope = Scope::Global;
 
         return chord;
     }
@@ -27,21 +27,21 @@ namespace Core
     Chord Chord::Wheel(ImGuiKeyChord mods, Trigger direction, Scope scope)
     {
         Chord chord;
-        chord.m_keys = mods & ImGuiMod_Mask_;
-        chord.m_trigger = direction;
-        chord.m_scope = scope;
+        chord.m_Keys = mods & ImGuiMod_Mask_;
+        chord.m_Trigger = direction;
+        chord.m_Scope = scope;
 
         return chord;
     }
 
     bool Chord::IsEmpty() const noexcept
     {
-        if (m_trigger != Trigger::Key)
+        if (m_Trigger != Trigger::Key)
         {
             return false;
         }
 
-        return (m_keys & ~ImGuiMod_Mask_) == ImGuiKey_None;
+        return (m_Keys & ~ImGuiMod_Mask_) == ImGuiKey_None;
     }
 
     std::string Chord::ToString() const
@@ -55,14 +55,14 @@ namespace Core
 
         for (const ModifierName& modifier : kModifiers)
         {
-            if ((m_keys & modifier.bit) != 0)
+            if ((m_Keys & modifier.bit) != 0)
             {
                 result += modifier.name;
                 result += '+';
             }
         }
 
-        switch (m_trigger)
+        switch (m_Trigger)
         {
             case Trigger::WheelUp:
                 result += kWheelUpName;
@@ -73,7 +73,7 @@ namespace Core
                 break;
 
             case Trigger::Key:
-                result += NameOfKey(static_cast<ImGuiKey>(m_keys & ~ImGuiMod_Mask_));
+                result += NameOfKey(static_cast<ImGuiKey>(m_Keys & ~ImGuiMod_Mask_));
                 break;
         }
 

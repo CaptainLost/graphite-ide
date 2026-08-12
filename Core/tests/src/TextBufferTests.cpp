@@ -715,7 +715,7 @@ TEST_CASE("Every offset still round-trips through a position after random edits"
 TEST_CASE("Toggling undo/redo on an insertion does not grow the append buffer")
 {
     // Regression for a leak: replaying an edit used to re-append its text every time,
-    // so oscillating undo/redo over a large paste grew m_append without bound even
+    // so oscillating undo/redo over a large paste grew m_Append without bound even
     // though the document's content never changed net of the toggle.
     TextBuffer buffer{"hello"};
     buffer.Insert(5, std::string(1000, 'x'));

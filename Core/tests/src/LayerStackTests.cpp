@@ -12,17 +12,17 @@ namespace
     {
     public:
         RecordingLayer(std::string name, std::vector<std::string>& journal)
-            : Core::Layer(std::move(name)), m_journal(journal)
+            : Core::Layer(std::move(name)), m_Journal(journal)
         {
         }
 
-        void OnAttach() override { m_journal.push_back(Name() + ":attach"); }
-        void OnDetach() override { m_journal.push_back(Name() + ":detach"); }
-        void OnUpdate(float) override { m_journal.push_back(Name() + ":update"); }
-        void OnUIRender() override { m_journal.push_back(Name() + ":ui"); }
+        void OnAttach() override { m_Journal.push_back(Name() + ":attach"); }
+        void OnDetach() override { m_Journal.push_back(Name() + ":detach"); }
+        void OnUpdate(float) override { m_Journal.push_back(Name() + ":update"); }
+        void OnUIRender() override { m_Journal.push_back(Name() + ":ui"); }
 
     private:
-        std::vector<std::string>& m_journal;
+        std::vector<std::string>& m_Journal;
     };
 }
 

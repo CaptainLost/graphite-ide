@@ -49,7 +49,7 @@ namespace Core
         /// Installs the query used from the next load onwards. Nodes already loaded keep
         /// the verdict they were given — refresh them to re-ask. An unset query means
         /// nothing is ignored.
-        void SetIgnoreQuery(IgnoreQuery query) { m_ignoreQuery = std::move(query); }
+        void SetIgnoreQuery(IgnoreQuery query) { m_IgnoreQuery = std::move(query); }
 
         /// Re-reads the node from disk, preserving the expansion state of the subtree:
         /// nodes that still exist keep their expanded/loaded flags and their loaded
@@ -69,18 +69,18 @@ namespace Core
         /// Does nothing when there is no root.
         void Rebase(const std::filesystem::path& newRoot);
 
-        [[nodiscard]] bool HasRoot() const noexcept { return m_hasRoot; }
-        [[nodiscard]] FileNode& Root() noexcept { return m_root; }
-        [[nodiscard]] const FileNode& Root() const noexcept { return m_root; }
+        [[nodiscard]] bool HasRoot() const noexcept { return m_HasRoot; }
+        [[nodiscard]] FileNode& Root() noexcept { return m_Root; }
+        [[nodiscard]] const FileNode& Root() const noexcept { return m_Root; }
 
     private:
         [[nodiscard]] bool AskIgnored(const std::filesystem::path& path, bool isDirectory) const;
 
         static void RebaseNode(FileNode& node, const std::filesystem::path& newPath);
 
-        FileNode m_root;
-        bool m_hasRoot = false;
-        IgnoreQuery m_ignoreQuery;
+        FileNode m_Root;
+        bool m_HasRoot = false;
+        IgnoreQuery m_IgnoreQuery;
     };
 
     /// Ordering used inside every directory: directories first, then files, each group

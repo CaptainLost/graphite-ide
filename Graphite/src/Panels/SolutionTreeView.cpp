@@ -31,13 +31,13 @@ namespace Graphite
         }
     }
 
-    SolutionTreeView::SolutionTreeView(Workspace& workspace) : m_workspace(workspace)
+    SolutionTreeView::SolutionTreeView(Workspace& workspace) : m_Workspace(workspace)
     {
     }
 
     void SolutionTreeView::Render()
     {
-        if (!m_workspace.IsOpen() || !m_workspace.LoadedSolution())
+        if (!m_Workspace.IsOpen() || !m_Workspace.LoadedSolution())
         {
             RenderEmptyState();
             return;
@@ -46,14 +46,14 @@ namespace Graphite
         ImGui::SetNextItemWidth(-1.0f);
 
         if (ImGui::InputTextWithHint("##solutionFilter", ICON_MDI_MAGNIFY "  Filter files",
-                                     m_filter.InputBuf, IM_ARRAYSIZE(m_filter.InputBuf)))
+                                     m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf)))
         {
-            m_filter.Build();
+            m_Filter.Build();
         }
 
         ImGui::Separator();
 
-        const Core::Solution& solution = *m_workspace.LoadedSolution();
+        const Core::Solution& solution = *m_Workspace.LoadedSolution();
 
         if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar))
@@ -170,10 +170,10 @@ namespace Graphite
 
         for (const Core::ContentFile& file : folder.files)
         {
-            if (!m_filter.PassFilter(file.name.c_str()))
+            if (!m_Filter.PassFilter(file.name.c_str()))
                 continue;
 
-            const bool selected = m_workspace.SelectedFile() == file.path;
+            const bool selected = m_Workspace.SelectedFile() == file.path;
 
             const std::string label =
                 std::string{Core::IconForExtension(Core::ToUtf8(file.path.extension()))} +
@@ -184,7 +184,7 @@ namespace Graphite
             ImGui::PushID(Core::ToUtf8(file.path).c_str());
 
             if (ImGui::Selectable(label.c_str(), selected))
-                m_workspace.SelectFile(file.path);
+                m_Workspace.SelectFile(file.path);
 
             ImGui::PopID();
         }
@@ -192,13 +192,13 @@ namespace Graphite
 
     void SolutionTreeView::RenderEmptyState()
     {
-        if (!m_workspace.IsOpen())
+        if (!m_Workspace.IsOpen())
         {
             ImGui::TextUnformatted("Open a folder to see its Visual Studio solution.");
             return;
         }
 
-        if (m_workspace.SolutionCandidates().empty())
+        if (m_Workspace.SolutionCandidates().empty())
         {
             ImGui::TextUnformatted("No Visual Studio solution in this folder.");
             return;
@@ -231,12 +231,12 @@ namespace Graphite
         const bool isRoot = path.empty();
 
         if (ImGui::MenuItem("Add Existing Project..."))
-            m_pending = PendingAction{PendingAction::Kind::AddProject, {}, path, {}};
+            m_Pending = PendingAction{PendingAction::Kind::AddProject, {}, path, {}};
 
         if (ImGui::MenuItem("New Folder"))
         {
             const std::string childPath = path.empty() ? "New Folder" : path + "/New Folder";
-            m_pending = PendingAction{PendingAction::Kind::AddFolder, {}, childPath, {}};
+            m_Pending = PendingAction{PendingAction::Kind::AddFolder, {}, childPath, {}};
         }
 
         if (!isRoot)
@@ -245,17 +245,17 @@ namespace Graphite
 
             if (ImGui::MenuItem("Rename"))
             {
-                m_renamingFolder = path;
-                m_focusRenameField = true;
+                m_RenamingFolder = path;
+                m_FocusRenameField = true;
 
-                std::fill(m_renameBuffer.begin(), m_renameBuffer.end(), '\0');
+                std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
 
-                if (folder.name.size() < m_renameBuffer.size())
-                    std::copy_n(folder.name.begin(), folder.name.size(), m_renameBuffer.begin());
+                if (folder.name.size() < m_RenameBuffer.size())
+                    std::copy_n(folder.name.begin(), folder.name.size(), m_RenameBuffer.begin());
             }
 
             if (ImGui::MenuItem("Remove"))
-                m_pending = PendingAction{PendingAction::Kind::RemoveFolder, {}, path, {}};
+                m_Pending = PendingAction{PendingAction::Kind::RemoveFolder, {}, path, {}};
         }
 
         ImGui::EndPopup();
@@ -277,9 +277,9 @@ namespace Graphite
 
         if (ImGui::MenuItem("Remove from Solution"))
         {
-            m_removeCandidate = project.path;
-            m_removeCandidateName = project.displayName;
-            m_openRemoveConfirmation = true;
+            m_RemoveCandidate = project.path;
+            m_RemoveCandidateName = project.displayName;
+            m_OpenRemoveConfirmation = true;
         }
 
         if (ImGui::BeginMenu("Move to Folder"))
@@ -294,11 +294,11 @@ namespace Graphite
     void SolutionTreeView::RenderMoveToFolderMenu(const Core::Project& project,
                                                   const std::string& currentFolder)
     {
-        if (!m_workspace.LoadedSolution())
+        if (!m_Workspace.LoadedSolution())
             return;
 
         std::vector<std::string> folders{""};
-        CollectFolderPaths(m_workspace.LoadedSolution()->root, "", folders);
+        CollectFolderPaths(m_Workspace.LoadedSolution()->root, "", folders);
 
         for (const std::string& path : folders)
         {
@@ -309,26 +309,26 @@ namespace Graphite
             const std::string label = path.empty() ? "(Solution Root)" : path;
 
             if (ImGui::MenuItem(label.c_str()))
-                m_pending = PendingAction{PendingAction::Kind::MoveProject, project.path, path, {}};
+                m_Pending = PendingAction{PendingAction::Kind::MoveProject, project.path, path, {}};
         }
     }
 
     bool SolutionTreeView::RenderFolderRenameEditor(const Core::Folder& folder,
                                                     const std::string& path)
     {
-        if (m_renamingFolder != path)
+        if (m_RenamingFolder != path)
             return false;
 
-        if (m_focusRenameField)
+        if (m_FocusRenameField)
         {
             ImGui::SetKeyboardFocusHere();
-            m_focusRenameField = false;
+            m_FocusRenameField = false;
         }
 
         ImGui::SetNextItemWidth(200.0f);
 
         const bool committed =
-            ImGui::InputText("##renameSlnFolder", m_renameBuffer.data(), m_renameBuffer.size(),
+            ImGui::InputText("##renameSlnFolder", m_RenameBuffer.data(), m_RenameBuffer.size(),
                              ImGuiInputTextFlags_EnterReturnsTrue |
                                  ImGuiInputTextFlags_AutoSelectAll);
 
@@ -339,16 +339,16 @@ namespace Graphite
 
         if (cancelled)
         {
-            m_renamingFolder.clear();
+            m_RenamingFolder.clear();
         }
         else if (committed || deactivated)
         {
-            const std::string typed = m_renameBuffer.data();
+            const std::string typed = m_RenameBuffer.data();
 
             if (!typed.empty() && typed != folder.name)
-                m_pending = PendingAction{PendingAction::Kind::RenameFolder, {}, path, typed};
+                m_Pending = PendingAction{PendingAction::Kind::RenameFolder, {}, path, typed};
 
-            m_renamingFolder.clear();
+            m_RenamingFolder.clear();
         }
 
         return true;
@@ -356,10 +356,10 @@ namespace Graphite
 
     void SolutionTreeView::RenderRemoveConfirmation()
     {
-        if (m_openRemoveConfirmation)
+        if (m_OpenRemoveConfirmation)
         {
             ImGui::OpenPopup("Remove from Solution##solutionTreeRemove");
-            m_openRemoveConfirmation = false;
+            m_OpenRemoveConfirmation = false;
         }
 
         if (!ImGui::BeginPopupModal("Remove from Solution##solutionTreeRemove", nullptr,
@@ -368,19 +368,19 @@ namespace Graphite
             return;
         }
 
-        ImGui::Text("Remove \"%s\" from the solution?", m_removeCandidateName.c_str());
+        ImGui::Text("Remove \"%s\" from the solution?", m_RemoveCandidateName.c_str());
         ImGui::TextDisabled("Its files stay on disk — only the solution's reference is removed.");
         ImGui::Spacing();
 
         if (ImGui::Button("Remove", ImVec2(90.0f, 0.0f)))
         {
-            const PendingAction action{PendingAction::Kind::RemoveProject, m_removeCandidate, {}, {}};
+            const PendingAction action{PendingAction::Kind::RemoveProject, m_RemoveCandidate, {}, {}};
 
             if (const auto applied = Apply(action); !applied)
                 CORE_ERROR("{}", applied.GetError().message);
 
-            m_removeCandidate.clear();
-            m_removeCandidateName.clear();
+            m_RemoveCandidate.clear();
+            m_RemoveCandidateName.clear();
             ImGui::CloseCurrentPopup();
         }
 
@@ -388,8 +388,8 @@ namespace Graphite
 
         if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f)))
         {
-            m_removeCandidate.clear();
-            m_removeCandidateName.clear();
+            m_RemoveCandidate.clear();
+            m_RemoveCandidateName.clear();
             ImGui::CloseCurrentPopup();
         }
 
@@ -398,11 +398,11 @@ namespace Graphite
 
     void SolutionTreeView::ExecutePendingAction()
     {
-        if (m_pending.kind == PendingAction::Kind::None)
+        if (m_Pending.kind == PendingAction::Kind::None)
             return;
 
-        PendingAction action = std::move(m_pending);
-        m_pending = PendingAction{};
+        PendingAction action = std::move(m_Pending);
+        m_Pending = PendingAction{};
 
         // The picker is shown here rather than from the menu that recorded the action: a
         // system dialog opened from inside the tree walk would be modal over a window
@@ -438,10 +438,10 @@ namespace Graphite
 
     Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
     {
-        if (!m_workspace.LoadedSolution())
+        if (!m_Workspace.LoadedSolution())
             return Core::Error{Core::ErrorCode::NotFound, "no solution is open"};
 
-        auto editor = Core::SolutionEditor::Open(m_workspace.LoadedSolution()->path);
+        auto editor = Core::SolutionEditor::Open(m_Workspace.LoadedSolution()->path);
 
         if (!editor)
             return editor.GetError();

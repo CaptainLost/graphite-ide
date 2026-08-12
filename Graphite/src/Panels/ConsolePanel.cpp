@@ -21,13 +21,13 @@ namespace Graphite
     }
 
     ConsolePanel::ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink)
-        : Core::Panel("console", "Console"), m_sink(std::move(sink))
+        : Core::Panel("console", "Console"), m_Sink(std::move(sink))
     {
     }
 
     void ConsolePanel::OnUIRender()
     {
-        m_entries = m_sink->Snapshot();
+        m_Entries = m_Sink->Snapshot();
 
         RenderToolbar();
         ImGui::Separator();
@@ -38,9 +38,9 @@ namespace Graphite
     {
         if (ImGui::Button("Clear"))
         {
-            m_sink->Clear();
-            m_entries.clear();
-            m_lastCount = 0;
+            m_Sink->Clear();
+            m_Entries.clear();
+            m_LastCount = 0;
         }
 
         ImGui::SameLine();
@@ -48,7 +48,7 @@ namespace Graphite
         if (ImGui::Button("Copy all"))
         {
             std::string joined;
-            for (const Core::LogEntry& entry : m_entries)
+            for (const Core::LogEntry& entry : m_Entries)
             {
                 joined.append(Core::ToString(entry.level));
                 joined.append(" ");
@@ -60,14 +60,14 @@ namespace Graphite
         }
 
         ImGui::SameLine();
-        ImGui::Checkbox("Auto-scroll", &m_autoScroll);
+        ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
 
         ImGui::SameLine();
         ImGui::SetNextItemWidth(240.0f);
-        m_filter.Draw("##consoleFilter");
+        m_Filter.Draw("##consoleFilter");
 
         ImGui::SameLine();
-        ImGui::TextDisabled("%d entries", static_cast<int>(m_entries.size()));
+        ImGui::TextDisabled("%d entries", static_cast<int>(m_Entries.size()));
     }
 
     void ConsolePanel::RenderEntries()
@@ -81,9 +81,9 @@ namespace Graphite
 
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
 
-        for (const Core::LogEntry& entry : m_entries)
+        for (const Core::LogEntry& entry : m_Entries)
         {
-            if (!m_filter.PassFilter(entry.message.c_str()))
+            if (!m_Filter.PassFilter(entry.message.c_str()))
                 continue;
 
             ImGui::PushStyleColor(ImGuiCol_Text, ColorFor(entry.level));
@@ -95,10 +95,10 @@ namespace Graphite
 
         // We only scroll after a new entry is written, so we don't block
         // manual scrolling upward.
-        if (m_autoScroll && m_entries.size() != m_lastCount)
+        if (m_AutoScroll && m_Entries.size() != m_LastCount)
             ImGui::SetScrollHereY(1.0f);
 
-        m_lastCount = m_entries.size();
+        m_LastCount = m_Entries.size();
 
         ImGui::EndChild();
     }

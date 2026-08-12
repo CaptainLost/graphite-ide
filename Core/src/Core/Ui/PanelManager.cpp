@@ -29,14 +29,14 @@ namespace Core
             return nullptr;
 
         Panel* reference = panel.get();
-        m_panels.push_back(std::move(panel));
+        m_Panels.push_back(std::move(panel));
 
         // A panel added after RegisterCommands registers as it arrives, so OnAttach can call
         // the two in either order. The lambdas capture the panel by reference, which is safe
         // because PanelManager owns it for as long as it owns the registry pointer.
-        if (m_commands != nullptr)
+        if (m_Commands != nullptr)
         {
-            RegisterPanelCommand(*m_commands, *m_panels.back());
+            RegisterPanelCommand(*m_Commands, *m_Panels.back());
         }
 
         return reference;
@@ -44,7 +44,7 @@ namespace Core
 
     Panel* PanelManager::Find(std::string_view id)
     {
-        for (auto& panel : m_panels)
+        for (auto& panel : m_Panels)
         {
             if (panel->Id() == id)
                 return panel.get();
@@ -55,7 +55,7 @@ namespace Core
 
     bool PanelManager::IsCapturingInput() const
     {
-        for (const auto& panel : m_panels)
+        for (const auto& panel : m_Panels)
         {
             // A hidden panel draws nothing and so can be reading nothing, whatever it
             // last left behind in its own state.
@@ -80,13 +80,13 @@ namespace Core
 
     void PanelManager::OnUpdate(float deltaSeconds)
     {
-        for (auto& panel : m_panels)
+        for (auto& panel : m_Panels)
             panel->OnUpdate(deltaSeconds);
     }
 
     void PanelManager::OnUIRender()
     {
-        for (auto& panel : m_panels)
+        for (auto& panel : m_Panels)
         {
             if (!panel->IsVisible())
             {
@@ -119,9 +119,9 @@ namespace Core
 
     void PanelManager::RegisterCommands(CommandRegistry& commands)
     {
-        m_commands = &commands;
+        m_Commands = &commands;
 
-        for (auto& panel : m_panels)
+        for (auto& panel : m_Panels)
         {
             RegisterPanelCommand(commands, *panel);
         }
@@ -129,7 +129,7 @@ namespace Core
 
     void PanelManager::ResetVisibility()
     {
-        for (auto& panel : m_panels)
+        for (auto& panel : m_Panels)
         {
             panel->SetVisible(panel->DefaultVisible());
         }

@@ -38,7 +38,7 @@ namespace Core
         /// True from the click on a cell until the capture ends, so the application can
         /// stop routing shortcuts: the chord being recorded must not also run the command
         /// it is being taken from.
-        [[nodiscard]] bool IsCapturingInput() const override { return !m_capturing.empty(); }
+        [[nodiscard]] bool IsCapturingInput() const override { return !m_Capturing.empty(); }
 
     private:
         /// Reads whatever chord the user produces this frame, or nothing. Escape cancels
@@ -57,7 +57,7 @@ namespace Core
         void RenderSlot(const std::string& id, std::size_t slot, const std::string& text);
 
         /// Answers whether the chord is free, and when it is not, parks it in
-        /// m_conflict for the question the user has to answer first.
+        /// m_Conflict for the question the user has to answer first.
         void Offer(const std::string& id, std::size_t slot, const Chord& chord);
 
         void Apply(const std::string& id, std::size_t slot, const Chord& chord);
@@ -69,28 +69,28 @@ namespace Core
 
         [[nodiscard]] bool Matches(const Command& command) const;
 
-        CommandRegistry& m_commands;
-        Keymap& m_keys;
-        std::function<void()> m_onChanged;
+        CommandRegistry& m_Commands;
+        Keymap& m_Keys;
+        std::function<void()> m_OnChanged;
 
         /// The command id whose binding is being captured, and which slot of it — 0 is
         /// the primary, 1..n the alternates, and one past the end appends a new one.
-        std::string m_capturing;
-        std::size_t m_capturingSlot = 0;
+        std::string m_Capturing;
+        std::size_t m_CapturingSlot = 0;
 
         /// A chord the user chose that is already taken, held while they answer whether
         /// to take it away from its current owner. Never applied silently: the user would
         /// discover the loss of Ctrl+S at the moment they wanted to save.
-        std::optional<Chord> m_conflict;
-        std::string m_conflictOwner;
+        std::optional<Chord> m_Conflict;
+        std::string m_ConflictOwner;
 
         /// Whether the modal has been opened for the conflict now held. It is what tells
         /// "not asked yet" apart from "asked, and dismissed with Escape or a click away",
         /// which look the same to ImGui::IsPopupOpen.
-        bool m_conflictAsked = false;
+        bool m_ConflictAsked = false;
 
         /// A char buffer rather than std::string because ImGui's std::string overloads
         /// live in misc/cpp, which this build does not compile.
-        std::array<char, 128> m_filter{};
+        std::array<char, 128> m_Filter{};
     };
 }

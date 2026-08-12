@@ -20,20 +20,20 @@ namespace
         GraphiteApplication(std::shared_ptr<Core::RingBufferSink> sink,
                              std::filesystem::path initialFolder)
             : Core::Application(Core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
-              m_sink(std::move(sink)),
-              m_initialFolder(std::move(initialFolder))
+              m_Sink(std::move(sink)),
+              m_InitialFolder(std::move(initialFolder))
         {
         }
 
     protected:
         void OnInit() override
         {
-            PushLayer(std::make_unique<Graphite::GraphiteLayer>(m_sink, m_initialFolder));
+            PushLayer(std::make_unique<Graphite::GraphiteLayer>(m_Sink, m_InitialFolder));
         }
 
     private:
-        std::shared_ptr<Core::RingBufferSink> m_sink;
-        std::filesystem::path m_initialFolder;
+        std::shared_ptr<Core::RingBufferSink> m_Sink;
+        std::filesystem::path m_InitialFolder;
     };
 }
 

@@ -25,14 +25,14 @@ namespace Core
         static_assert(sizeof(halves) == kByteCount, "two 64-bit draws are one UUID");
 
         Uuid uuid;
-        std::memcpy(uuid.m_bytes.data(), halves, kByteCount);
+        std::memcpy(uuid.m_Bytes.data(), halves, kByteCount);
 
         // RFC 4122 section 4.4: version in the top nibble of byte 6, variant in the top
         // two bits of byte 8. That leaves the other hundred and twenty-two bits random.
         // Neither solution format checks either field, but a value calling itself a UUID
         // should say which kind it is.
-        uuid.m_bytes[6] = static_cast<std::uint8_t>((uuid.m_bytes[6] & 0x0F) | 0x40);
-        uuid.m_bytes[8] = static_cast<std::uint8_t>((uuid.m_bytes[8] & 0x3F) | 0x80);
+        uuid.m_Bytes[6] = static_cast<std::uint8_t>((uuid.m_Bytes[6] & 0x0F) | 0x40);
+        uuid.m_Bytes[8] = static_cast<std::uint8_t>((uuid.m_Bytes[8] & 0x3F) | 0x80);
 
         return uuid;
     }
@@ -54,7 +54,7 @@ namespace Core
                 text += '-';
 
             for (std::size_t i = 0; i < size; ++i, ++byte)
-                text += std::format("{:02X}", m_bytes[byte]);
+                text += std::format("{:02X}", m_Bytes[byte]);
         }
 
         return text;

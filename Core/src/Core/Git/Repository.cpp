@@ -57,23 +57,23 @@ namespace Core
         }
 
         Repository repository;
-        repository.m_handle = handle;
+        repository.m_Handle = handle;
 
         if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
-            repository.m_workingDirectory = FromUtf8(workdir);
+            repository.m_WorkingDirectory = FromUtf8(workdir);
 
         return repository;
     }
 
     Repository::~Repository()
     {
-        if (m_handle != nullptr)
-            git_repository_free(m_handle);
+        if (m_Handle != nullptr)
+            git_repository_free(m_Handle);
     }
 
     Repository::Repository(Repository&& other) noexcept
-        : m_handle(std::exchange(other.m_handle, nullptr)),
-          m_workingDirectory(std::move(other.m_workingDirectory))
+        : m_Handle(std::exchange(other.m_Handle, nullptr)),
+          m_WorkingDirectory(std::move(other.m_WorkingDirectory))
     {
     }
 
@@ -82,22 +82,22 @@ namespace Core
         if (this == &other)
             return *this;
 
-        if (m_handle != nullptr)
-            git_repository_free(m_handle);
+        if (m_Handle != nullptr)
+            git_repository_free(m_Handle);
 
-        m_handle = std::exchange(other.m_handle, nullptr);
-        m_workingDirectory = std::move(other.m_workingDirectory);
+        m_Handle = std::exchange(other.m_Handle, nullptr);
+        m_WorkingDirectory = std::move(other.m_WorkingDirectory);
         return *this;
     }
 
     bool Repository::IsIgnored(const std::filesystem::path& path) const
     {
-        if (m_handle == nullptr)
+        if (m_Handle == nullptr)
             return false;
 
         std::error_code code;
         const std::filesystem::path relative =
-            std::filesystem::relative(path, m_workingDirectory, code);
+            std::filesystem::relative(path, m_WorkingDirectory, code);
 
         // A leading ".." component means the path sits outside the working tree, and
         // there is nothing for git to have an opinion about. Comparing components rather
@@ -120,7 +120,7 @@ namespace Core
         }
 
         int ignored = 0;
-        if (git_ignore_path_is_ignored(&ignored, m_handle, text.c_str()) != 0)
+        if (git_ignore_path_is_ignored(&ignored, m_Handle, text.c_str()) != 0)
         {
             CORE_TRACE("Cannot determine ignore status for '{}'", text);
             return false;

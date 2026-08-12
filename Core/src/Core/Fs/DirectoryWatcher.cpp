@@ -60,17 +60,17 @@ namespace Core
     DirectoryWatcher::~DirectoryWatcher()
     {
 #ifdef CORE_PLATFORM_WINDOWS
-        if (m_stopEvent != nullptr)
-            ::SetEvent(static_cast<HANDLE>(m_stopEvent));
+        if (m_StopEvent != nullptr)
+            ::SetEvent(static_cast<HANDLE>(m_StopEvent));
 
-        if (m_thread.joinable())
-            m_thread.join();
+        if (m_Thread.joinable())
+            m_Thread.join();
 
-        if (m_stopEvent != nullptr)
-            ::CloseHandle(static_cast<HANDLE>(m_stopEvent));
+        if (m_StopEvent != nullptr)
+            ::CloseHandle(static_cast<HANDLE>(m_StopEvent));
 
-        if (m_directory != nullptr)
-            ::CloseHandle(static_cast<HANDLE>(m_directory));
+        if (m_Directory != nullptr)
+            ::CloseHandle(static_cast<HANDLE>(m_Directory));
 #endif
     }
 
@@ -102,21 +102,21 @@ namespace Core
         // Not make_unique: the constructor is private, and this is the only creator.
         std::unique_ptr<DirectoryWatcher> watcher{new DirectoryWatcher};
 
-        watcher->m_root = root;
-        watcher->m_directory = directory;
-        watcher->m_stopEvent = stopEvent;
+        watcher->m_Root = root;
+        watcher->m_Directory = directory;
+        watcher->m_StopEvent = stopEvent;
 
         // Taken before the thread starts, so the worker never sees an empty baseline and
         // mistakes it for a move.
-        watcher->m_watchedPath = watcher->QueryHandlePath();
-        watcher->m_lastMoveCheck = ChangeCollector::Clock::now();
+        watcher->m_WatchedPath = watcher->QueryHandlePath();
+        watcher->m_LastMoveCheck = ChangeCollector::Clock::now();
 
         // Taken before the thread exists, so there is no race over who reaches the shared
         // state of the promise first.
-        std::future<Result<void>> armed = watcher->m_armed.get_future();
+        std::future<Result<void>> armed = watcher->m_Armed.get_future();
 
         // Started last: the thread reads the members above, so they must all be set.
-        watcher->m_thread = std::thread{[raw = watcher.get()] { raw->Run(); }};
+        watcher->m_Thread = std::thread{[raw = watcher.get()] { raw->Run(); }};
 
         // The handle alone records nothing. Windows begins buffering changes for a
         // directory only once a ReadDirectoryChangesW has been issued against it, and that
@@ -155,7 +155,7 @@ namespace Core
         {
             std::atomic<bool>& flag;
             ~RunningFlag() { flag.store(false); }
-        } runningFlag{m_running};
+        } runningFlag{m_Running};
 
         // Start is blocked until this is answered, so every way out of this function
         // before the watch is armed has to answer it — including ones added later.
@@ -187,7 +187,7 @@ namespace Core
             }
 
             ~ArmSignal() { Report(std::move(unarmed)); }
-        } armSignal{m_armed};
+        } armSignal{m_Armed};
 
 #ifdef CORE_PLATFORM_WINDOWS
         // DWORD-aligned as ReadDirectoryChangesW requires; a vector<char> would not be.
@@ -213,7 +213,7 @@ namespace Core
 
             DWORD ignored = 0;
 
-            if (!::ReadDirectoryChangesW(static_cast<HANDLE>(m_directory), buffer.data(),
+            if (!::ReadDirectoryChangesW(static_cast<HANDLE>(m_Directory), buffer.data(),
                                          kBufferBytes, TRUE, kFilter, &ignored, &overlapped,
                                          nullptr))
             {
@@ -223,13 +223,13 @@ namespace Core
                 if (armSignal.answered)
                 {
                     CORE_WARN("Stopped watching '{}': the directory is no longer readable",
-                              m_root.string());
+                              m_Root.string());
                 }
 
                 armSignal.Report(Error{
                     ErrorCode::IoFailure,
                     std::format("cannot watch '{}': the directory is not readable",
-                                m_root.string())});
+                                m_Root.string())});
 
                 break;
             }
@@ -239,7 +239,7 @@ namespace Core
             // iteration, but only the first one is the one that opened the window.
             armSignal.Report(Result<void>::Ok());
 
-            const HANDLE waited[] = {ioEvent, static_cast<HANDLE>(m_stopEvent)};
+            const HANDLE waited[] = {ioEvent, static_cast<HANDLE>(m_StopEvent)};
             DWORD signalled = WAIT_TIMEOUT;
 
             while (true)
@@ -272,23 +272,23 @@ namespace Core
                 if (signalled == WAIT_FAILED)
                 {
                     CORE_WARN("Stopped watching '{}': the change wait failed",
-                              m_root.string());
+                              m_Root.string());
                 }
 
                 // Cancel the outstanding read and wait for
                 // the kernel to finish with the buffer before it goes out of scope —
                 // skipping this is a use-after-free that fires only under load.
-                ::CancelIoEx(static_cast<HANDLE>(m_directory), &overlapped);
+                ::CancelIoEx(static_cast<HANDLE>(m_Directory), &overlapped);
 
                 DWORD discarded = 0;
-                ::GetOverlappedResult(static_cast<HANDLE>(m_directory), &overlapped, &discarded,
+                ::GetOverlappedResult(static_cast<HANDLE>(m_Directory), &overlapped, &discarded,
                                       TRUE);
                 break;
             }
 
             DWORD bytes = 0;
 
-            if (!::GetOverlappedResult(static_cast<HANDLE>(m_directory), &overlapped, &bytes,
+            if (!::GetOverlappedResult(static_cast<HANDLE>(m_Directory), &overlapped, &bytes,
                                        FALSE))
             {
                 // An overflow is reported here on some paths and as a zero byte count on
@@ -298,8 +298,8 @@ namespace Core
                 // exactly when the disk is busiest.
                 if (::GetLastError() == ERROR_NOTIFY_ENUM_DIR)
                 {
-                    std::scoped_lock lock{m_mutex};
-                    m_collector.AddOverflow(ChangeCollector::Clock::now());
+                    std::scoped_lock lock{m_Mutex};
+                    m_Collector.AddOverflow(ChangeCollector::Clock::now());
                     continue;
                 }
 
@@ -307,7 +307,7 @@ namespace Core
                 // dead and the consumer just sees nothing ever change again, which is
                 // very hard to guess at.
                 CORE_WARN("Stopped watching '{}': the change notification failed",
-                          m_root.string());
+                          m_Root.string());
                 break;
             }
 
@@ -316,8 +316,8 @@ namespace Core
                 // The other spelling of the same overflow: the kernel could not keep up
                 // and discarded the individual records, so the consumer has to assume
                 // everything it holds is stale.
-                std::scoped_lock lock{m_mutex};
-                m_collector.AddOverflow(ChangeCollector::Clock::now());
+                std::scoped_lock lock{m_Mutex};
+                m_Collector.AddOverflow(ChangeCollector::Clock::now());
                 continue;
             }
 
@@ -337,14 +337,14 @@ namespace Core
                 if (offset + headerBytes + record->FileNameLength > bytes)
                 {
                     CORE_WARN("Discarding a truncated change record while watching '{}'",
-                              m_root.string());
+                              m_Root.string());
                     break;
                 }
 
                 const std::wstring name(record->FileName,
                                         record->FileNameLength / sizeof(wchar_t));
 
-                RecordChange(m_root / name);
+                RecordChange(m_Root / name);
 
                 // Zero terminates the chain; anything that does not move forward would
                 // spin here forever, so both end the walk.
@@ -369,7 +369,7 @@ namespace Core
         // call reporting `written >= length` means the path grew between the two calls
         // rather than that it just fit. Do not "simplify" either of those.
         const DWORD length =
-            ::GetFinalPathNameByHandleW(static_cast<HANDLE>(m_directory), nullptr, 0,
+            ::GetFinalPathNameByHandleW(static_cast<HANDLE>(m_Directory), nullptr, 0,
                                         FILE_NAME_NORMALIZED);
 
         if (length == 0)
@@ -378,7 +378,7 @@ namespace Core
         std::wstring buffer(length, L'\0');
 
         const DWORD written = ::GetFinalPathNameByHandleW(
-            static_cast<HANDLE>(m_directory), buffer.data(), length, FILE_NAME_NORMALIZED);
+            static_cast<HANDLE>(m_Directory), buffer.data(), length, FILE_NAME_NORMALIZED);
 
         if (written == 0 || written >= length)
             return {};
@@ -420,36 +420,36 @@ namespace Core
         // directory was somewhere else. Adopt the first answer instead of announcing a
         // move to where we already are, which would cost the workspace a pointless
         // watcher restart and repository reopen.
-        if (m_watchedPath.empty())
+        if (m_WatchedPath.empty())
         {
-            m_watchedPath = current;
-            m_root = current;
+            m_WatchedPath = current;
+            m_Root = current;
             return;
         }
 
-        if (current == m_watchedPath)
+        if (current == m_WatchedPath)
             return;
 
-        CORE_INFO("The watched directory moved from '{}' to '{}'", m_watchedPath.string(),
+        CORE_INFO("The watched directory moved from '{}' to '{}'", m_WatchedPath.string(),
                   current.string());
 
         // The baseline advances, so the move is reported once rather than on every poll
         // from here on.
-        m_watchedPath = current;
+        m_WatchedPath = current;
 
         // So does the root every reported path is built from. Both are touched only by
         // this thread after Start returns, so neither needs the lock.
-        m_root = current;
+        m_Root = current;
 
-        std::scoped_lock lock{m_mutex};
+        std::scoped_lock lock{m_Mutex};
 
         // Whatever was already collected is spelled under the old location and matches
         // nothing any more. Dropping it here rather than leaving it to the consumer
         // matters: only the batch carrying `movedTo` is documented as suspect, so
         // anything still inside the quiet period would surface in the *next* batch
         // looking perfectly current.
-        m_collector = ChangeCollector{};
-        m_movedTo = current;
+        m_Collector = ChangeCollector{};
+        m_MovedTo = current;
 #endif
     }
 
@@ -457,17 +457,17 @@ namespace Core
     {
         const auto now = ChangeCollector::Clock::now();
 
-        if (now - m_lastMoveCheck < kMoveCheckInterval)
+        if (now - m_LastMoveCheck < kMoveCheckInterval)
             return;
 
-        m_lastMoveCheck = now;
+        m_LastMoveCheck = now;
         CheckForMove();
     }
 
     void DirectoryWatcher::RecordChange(const std::filesystem::path& path)
     {
 #ifdef CORE_PLATFORM_WINDOWS
-        const std::filesystem::path relative = path.lexically_relative(m_root);
+        const std::filesystem::path relative = path.lexically_relative(m_Root);
 
         // git keeps a second set of ignore rules here, private to this clone and not
         // committed. It is the one thing under .git worth hearing about, so it is
@@ -483,8 +483,8 @@ namespace Core
         // see it change.
         if (relative == std::filesystem::path{".git"} / "info" / "exclude")
         {
-            std::scoped_lock lock{m_mutex};
-            m_collector.Add(m_root, ChangeCollector::Clock::now());
+            std::scoped_lock lock{m_Mutex};
+            m_Collector.Add(m_Root, ChangeCollector::Clock::now());
             return;
         }
 
@@ -495,8 +495,8 @@ namespace Core
         std::filesystem::path directory = path.parent_path();
         directory.make_preferred();
 
-        std::scoped_lock lock{m_mutex};
-        m_collector.Add(directory, ChangeCollector::Clock::now());
+        std::scoped_lock lock{m_Mutex};
+        m_Collector.Add(directory, ChangeCollector::Clock::now());
 #else
         (void)path;
 #endif
@@ -506,12 +506,12 @@ namespace Core
     {
         // One lock for all three: they describe the same batch, and separate calls would
         // let another take run in between and consume half of it.
-        std::scoped_lock lock{m_mutex};
+        std::scoped_lock lock{m_Mutex};
 
         Changes changes;
-        changes.directories = m_collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
-        changes.overflowed = m_collector.Overflowed();
-        changes.movedTo = std::exchange(m_movedTo, std::nullopt);
+        changes.directories = m_Collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
+        changes.overflowed = m_Collector.Overflowed();
+        changes.movedTo = std::exchange(m_MovedTo, std::nullopt);
 
         return changes;
     }

@@ -79,7 +79,7 @@ namespace Graphite
     class Workspace final
     {
     public:
-        explicit Workspace(Core::EventBus& events) : m_events(events) {}
+        explicit Workspace(Core::EventBus& events) : m_Events(events) {}
 
         /// Neither copyable nor movable: the tree holds a query that captures `this`, so
         /// a moved-from workspace would leave that query pointing at the old object.
@@ -127,12 +127,12 @@ namespace Graphite
         /// FileSelectedEvent.
         void RequestOpenFile(const std::filesystem::path& path, bool permanent);
 
-        [[nodiscard]] bool IsOpen() const noexcept { return m_tree.HasRoot(); }
-        [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_root; }
-        [[nodiscard]] Core::FileTree& Tree() noexcept { return m_tree; }
+        [[nodiscard]] bool IsOpen() const noexcept { return m_Tree.HasRoot(); }
+        [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_Root; }
+        [[nodiscard]] Core::FileTree& Tree() noexcept { return m_Tree; }
         [[nodiscard]] const std::filesystem::path& SelectedFile() const noexcept
         {
-            return m_selectedFile;
+            return m_SelectedFile;
         }
 
         /// The solution being shown, when one was found and parsed.
@@ -141,7 +141,7 @@ namespace Graphite
         /// Core::Solution everywhere inside this class.
         [[nodiscard]] const std::optional<Core::Solution>& LoadedSolution() const noexcept
         {
-            return m_solution;
+            return m_Solution;
         }
 
         /// The solutions on offer: those found in the workspace root, plus any the user
@@ -149,7 +149,7 @@ namespace Graphite
         /// panel header.
         [[nodiscard]] const std::vector<std::filesystem::path>& SolutionCandidates() const noexcept
         {
-            return m_solutionCandidates;
+            return m_SolutionCandidates;
         }
 
         /// Switches to one of the candidates and remembers the choice.
@@ -157,7 +157,7 @@ namespace Graphite
 
         /// Settings stored in this folder's .graphite directory, as opposed to the
         /// application-wide ones in AppSettings.
-        [[nodiscard]] WorkspaceSettings& FolderSettings() noexcept { return m_settings; }
+        [[nodiscard]] WorkspaceSettings& FolderSettings() noexcept { return m_Settings; }
 
         /// Registers the two ways of opening a workspace. Closing one is the layer's,
         /// not registered here: it goes through the unsaved-work question, which is the
@@ -196,42 +196,42 @@ namespace Graphite
         void ForgetSolutionAttempt();
         void ResetSolutionState();
 
-        Core::EventBus& m_events;
-        /// Declared before m_tree on purpose: the tree holds a query that reads this
+        Core::EventBus& m_Events;
+        /// Declared before m_Tree on purpose: the tree holds a query that reads this
         /// repository, and members are destroyed in reverse declaration order, so the
         /// tree must go first.
-        std::optional<Core::Repository> m_repository;
-        Core::FileTree m_tree;
-        /// Declared after m_tree so it is destroyed first: its thread must be stopped
+        std::optional<Core::Repository> m_Repository;
+        Core::FileTree m_Tree;
+        /// Declared after m_Tree so it is destroyed first: its thread must be stopped
         /// before the tree it reports into goes away.
-        std::unique_ptr<Core::DirectoryWatcher> m_watcher;
+        std::unique_ptr<Core::DirectoryWatcher> m_Watcher;
 
         /// One resume attempt per open folder. A watcher that dies twice is failing for a
         /// reason retrying will not fix, and restarting a thread every frame would be far
         /// worse than not watching at all.
-        bool m_watcherResumed = false;
-        std::filesystem::path m_root;
-        std::filesystem::path m_selectedFile;
+        bool m_WatcherResumed = false;
+        std::filesystem::path m_Root;
+        std::filesystem::path m_SelectedFile;
 
-        std::optional<Core::Solution> m_solution;
-        std::vector<std::filesystem::path> m_solutionCandidates;
-        std::filesystem::path m_selectedSolution;
+        std::optional<Core::Solution> m_Solution;
+        std::vector<std::filesystem::path> m_SolutionCandidates;
+        std::filesystem::path m_SelectedSolution;
 
         /// Newest write time across the solution file and every project file it named,
         /// as of the last attempt. Reloading is asked for from five directions, and this
         /// is what makes the ones with nothing to do cost a handful of stats.
-        std::filesystem::file_time_type m_solutionStamp;
+        std::filesystem::file_time_type m_SolutionStamp;
 
         /// Which solution the stamp belongs to, and whether an attempt was made at all.
         /// Recorded on failure as well as success, so an unreadable solution is not
         /// re-parsed and re-reported every time the window regains focus.
-        std::filesystem::path m_attemptedSolution;
-        bool m_solutionAttempted = false;
+        std::filesystem::path m_AttemptedSolution;
+        bool m_SolutionAttempted = false;
 
         /// Rebuilt by Open for each root, so it always points at the folder in front of
         /// the user. Default-constructed with an empty root, where reads give nothing and
         /// writes do nothing.
-        WorkspaceSettings m_settings{std::filesystem::path{}};
+        WorkspaceSettings m_Settings{std::filesystem::path{}};
     };
 
     /// Shows the system folder picker and opens the chosen folder. Cancelling does

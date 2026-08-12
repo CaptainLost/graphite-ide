@@ -38,8 +38,8 @@ namespace Core
         /// (including one loaded from imgui.ini or modified manually by the user).
         void RequestLayoutReset()
         {
-            m_layoutBuilt = false;
-            m_forceRebuild = true;
+            m_LayoutBuilt = false;
+            m_ForceRebuild = true;
         }
 
         /// The id of the node occupying the centre of the layout, for callers that dock
@@ -52,14 +52,14 @@ namespace Core
         [[nodiscard]] unsigned int CenterNodeId() const;
 
     private:
-        bool m_layoutBuilt = false;
-        bool m_forceRebuild = false;
+        bool m_LayoutBuilt = false;
+        bool m_ForceRebuild = false;
 
         /// The dockspace's own id, recorded every Begin so CenterNodeId() can look up its
         /// central node without recomputing an ImGui ID outside the window scope it was
         /// hashed against - GetID(name) depends on the current ID stack, and by the time a
         /// caller asks for the centre node, Begin/End for the host window has long since
         /// closed.
-        unsigned int m_dockSpaceId = 0;
+        unsigned int m_DockSpaceId = 0;
     };
 }

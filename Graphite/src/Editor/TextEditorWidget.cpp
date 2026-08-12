@@ -54,7 +54,7 @@ namespace Graphite
         /// One value for the whole application, not one per document: only the focused
         /// editor draws a caret at all (see the IsWindowFocused test below), and exactly
         /// one editor is focused at a time.
-        double s_caretMovedAt = 0.0;
+        double s_CaretMovedAt = 0.0;
 
         [[nodiscard]] int DigitCount(std::size_t value)
         {
@@ -704,7 +704,7 @@ namespace Graphite
             // Whatever moved it — a key above, a click or a drag earlier in this
             // function — the blink starts over, so the caret is lit the moment it lands.
             if (item.caret.offset != caretAtFrameStart)
-                s_caretMovedAt = ImGui::GetTime();
+                s_CaretMovedAt = ImGui::GetTime();
 
             const Core::Position caretPosition =
                 buffer.ToPosition(item.caret.offset);
@@ -998,7 +998,7 @@ namespace Graphite
                         // what keeps the caret from being invisible under a held arrow
                         // key: every move restarts the cycle at its lit half.
                         const double phase =
-                            std::fmod(ImGui::GetTime() - s_caretMovedAt, kCaretBlinkPeriod);
+                            std::fmod(ImGui::GetTime() - s_CaretMovedAt, kCaretBlinkPeriod);
 
                         if (phase < kCaretBlinkPeriod * 0.5)
                         {

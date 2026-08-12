@@ -68,6 +68,6 @@ namespace Core
         /// An allocation per settings file is not a cost worth weighing: these are read
         /// when a menu is clicked.
         struct Document;
-        std::unique_ptr<Document> m_document;
+        std::unique_ptr<Document> m_Document;
     };
 }

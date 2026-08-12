@@ -27,15 +27,15 @@ namespace Core
                          std::format("'{}' is not a directory", root.string())};
         }
 
-        m_root = FileNode{};
-        m_root.path = root;
-        m_root.name = ToUtf8(root.filename());
+        m_Root = FileNode{};
+        m_Root.path = root;
+        m_Root.name = ToUtf8(root.filename());
 
-        if (m_root.name.empty())
-            m_root.name = ToUtf8(root);
+        if (m_Root.name.empty())
+            m_Root.name = ToUtf8(root);
 
-        m_root.isDirectory = true;
-        m_hasRoot = true;
+        m_Root.isDirectory = true;
+        m_HasRoot = true;
 
         CORE_INFO("Workspace root set to '{}'", root.string());
         return Result<void>::Ok();
@@ -45,7 +45,7 @@ namespace Core
     {
         // No query means no opinion, which is the right answer for a folder that is not
         // a repository at all.
-        return m_ignoreQuery ? m_ignoreQuery(path, isDirectory) : false;
+        return m_IgnoreQuery ? m_IgnoreQuery(path, isDirectory) : false;
     }
 
     Result<void> FileTree::Expand(FileNode& node)
@@ -149,12 +149,12 @@ namespace Core
 
     void FileTree::Rebase(const std::filesystem::path& newRoot)
     {
-        if (!m_hasRoot)
+        if (!m_HasRoot)
             return;
 
         const std::filesystem::path normalized = NormalizeDirectory(newRoot);
 
-        RebaseNode(m_root, normalized);
+        RebaseNode(m_Root, normalized);
 
         // The root is the one node whose name a move can change — a child keeps its name
         // and only moves underneath. Without this the tree would go on displaying the
@@ -162,10 +162,10 @@ namespace Core
         //
         // The fallback mirrors SetRoot: a drive root has no filename component, and an
         // empty label would render as a blank row.
-        m_root.name = ToUtf8(normalized.filename());
+        m_Root.name = ToUtf8(normalized.filename());
 
-        if (m_root.name.empty())
-            m_root.name = ToUtf8(normalized);
+        if (m_Root.name.empty())
+            m_Root.name = ToUtf8(normalized);
     }
 
     void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)

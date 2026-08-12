@@ -7,15 +7,15 @@ namespace Core
 {
     Command* CommandRegistry::Add(Command command)
     {
-        if (m_byId.find(command.id) != m_byId.end())
+        if (m_ById.find(command.id) != m_ById.end())
         {
             return nullptr;
         }
 
-        m_byId.emplace(command.id, m_commands.size());
-        m_commands.push_back(std::make_unique<Command>(std::move(command)));
+        m_ById.emplace(command.id, m_Commands.size());
+        m_Commands.push_back(std::make_unique<Command>(std::move(command)));
 
-        return m_commands.back().get();
+        return m_Commands.back().get();
     }
 
     const Command* CommandRegistry::Find(std::string_view id) const
@@ -23,14 +23,14 @@ namespace Core
         // Constructing a std::string to look up a std::string_view is the price of an
         // unordered_map keyed by string until this codebase has a heterogeneous hash.
         // These lookups happen when a menu is drawn, not in a loop over text.
-        const auto found = m_byId.find(std::string(id));
+        const auto found = m_ById.find(std::string(id));
 
-        if (found == m_byId.end())
+        if (found == m_ById.end())
         {
             return nullptr;
         }
 
-        return m_commands[found->second].get();
+        return m_Commands[found->second].get();
     }
 
     bool CommandRegistry::Run(std::string_view id)
@@ -55,7 +55,7 @@ namespace Core
     {
         std::vector<const Command*> members;
 
-        for (const auto& command : m_commands)
+        for (const auto& command : m_Commands)
         {
             if (command->group == group)
             {
@@ -68,7 +68,7 @@ namespace Core
 
     void CommandRegistry::ForEach(const std::function<void(const Command&)>& action) const
     {
-        for (const auto& command : m_commands)
+        for (const auto& command : m_Commands)
         {
             action(*command);
         }

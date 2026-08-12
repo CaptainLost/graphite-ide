@@ -59,9 +59,9 @@ namespace Core
     private:
         Logger() = default;
 
-        mutable std::mutex m_mutex;
-        std::vector<std::shared_ptr<ILogSink>> m_sinks;
-        LogLevel m_level = LogLevel::Trace;
+        mutable std::mutex m_Mutex;
+        std::vector<std::shared_ptr<ILogSink>> m_Sinks;
+        LogLevel m_Level = LogLevel::Trace;
     };
 }
 

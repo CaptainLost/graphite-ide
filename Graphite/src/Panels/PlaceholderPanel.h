@@ -13,18 +13,18 @@ namespace Graphite
     {
     public:
         PlaceholderPanel(std::string id, std::string title, std::string message)
-            : Core::Panel(std::move(id), std::move(title)), m_message(std::move(message))
+            : Core::Panel(std::move(id), std::move(title)), m_Message(std::move(message))
         {
         }
 
         void OnUIRender() override
         {
-            ImGui::TextDisabled("%s", m_message.c_str());
+            ImGui::TextDisabled("%s", m_Message.c_str());
         }
 
-        void SetMessage(std::string message) { m_message = std::move(message); }
+        void SetMessage(std::string message) { m_Message = std::move(message); }
 
     private:
-        std::string m_message;
+        std::string m_Message;
     };
 }

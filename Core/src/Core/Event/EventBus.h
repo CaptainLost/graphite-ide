@@ -21,7 +21,7 @@ namespace Core
         template<typename E>
         void Subscribe(std::function<void(const E&)> handler)
         {
-            m_handlers[std::type_index(typeid(E))].push_back(
+            m_Handlers[std::type_index(typeid(E))].push_back(
                 [handler = std::move(handler)](const void* payload)
                 { handler(*static_cast<const E*>(payload)); });
         }
@@ -29,8 +29,8 @@ namespace Core
         template<typename E>
         void Publish(const E& event)
         {
-            const auto entry = m_handlers.find(std::type_index(typeid(E)));
-            if (entry == m_handlers.end())
+            const auto entry = m_Handlers.find(std::type_index(typeid(E)));
+            if (entry == m_Handlers.end())
                 return;
 
             // Dispatch over a copy: a handler may subscribe while we are iterating,
@@ -47,13 +47,13 @@ namespace Core
         template<typename E>
         [[nodiscard]] std::size_t HandlerCount() const
         {
-            const auto entry = m_handlers.find(std::type_index(typeid(E)));
-            return entry == m_handlers.end() ? 0 : entry->second.size();
+            const auto entry = m_Handlers.find(std::type_index(typeid(E)));
+            return entry == m_Handlers.end() ? 0 : entry->second.size();
         }
 
     private:
         using Handler = std::function<void(const void*)>;
 
-        std::unordered_map<std::type_index, std::vector<Handler>> m_handlers;
+        std::unordered_map<std::type_index, std::vector<Handler>> m_Handlers;
     };
 }

@@ -65,19 +65,19 @@ namespace Core
         ImGui::PopStyleVar(3);
 
         const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);
-        m_dockSpaceId = dockSpaceId;
+        m_DockSpaceId = dockSpaceId;
         ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
-        if (m_layoutBuilt)
+        if (m_LayoutBuilt)
             return;
 
-        m_layoutBuilt = true;
+        m_LayoutBuilt = true;
 
         // The layout saved in imgui.ini takes precedence at startup — we only build an
         // empty node. An explicit reset bypasses this guard, because that's exactly when we
         // want to overwrite what the user currently has on screen.
-        const bool forced = m_forceRebuild;
-        m_forceRebuild = false;
+        const bool forced = m_ForceRebuild;
+        m_ForceRebuild = false;
 
         if (!forced)
         {
@@ -119,10 +119,10 @@ namespace Core
 
     unsigned int DockSpaceHost::CenterNodeId() const
     {
-        if (m_dockSpaceId == 0)
+        if (m_DockSpaceId == 0)
             return 0;
 
-        const ImGuiDockNode* centerNode = ImGui::DockBuilderGetCentralNode(m_dockSpaceId);
+        const ImGuiDockNode* centerNode = ImGui::DockBuilderGetCentralNode(m_DockSpaceId);
         return centerNode != nullptr ? centerNode->ID : 0;
     }
 }

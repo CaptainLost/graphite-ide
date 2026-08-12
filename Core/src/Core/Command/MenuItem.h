@@ -28,17 +28,17 @@ namespace Core
         /// arrive as panels are added.
         [[nodiscard]] static MenuItem Group(std::string group);
 
-        [[nodiscard]] Kind GetKind() const noexcept { return m_kind; }
-        [[nodiscard]] const std::string& Text() const noexcept { return m_text; }
-        [[nodiscard]] const std::vector<MenuItem>& Children() const noexcept { return m_children; }
+        [[nodiscard]] Kind GetKind() const noexcept { return m_Kind; }
+        [[nodiscard]] const std::string& Text() const noexcept { return m_Text; }
+        [[nodiscard]] const std::vector<MenuItem>& Children() const noexcept { return m_Children; }
 
     private:
         MenuItem() = default;
 
-        Kind m_kind = Kind::Separator;
+        Kind m_Kind = Kind::Separator;
 
         /// A command id, a group name, or a submenu label, depending on the kind.
-        std::string m_text;
-        std::vector<MenuItem> m_children;
+        std::string m_Text;
+        std::vector<MenuItem> m_Children;
     };
 }

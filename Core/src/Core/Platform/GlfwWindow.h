@@ -26,7 +26,7 @@ namespace Core
         void FramebufferSize(int& width, int& height) const override;
         void SetVSync(bool enabled) override;
 
-        [[nodiscard]] void* NativeHandle() const override { return m_handle; }
+        [[nodiscard]] void* NativeHandle() const override { return m_Handle; }
 
         void Minimize() override;
         void ToggleMaximize() override;
@@ -36,12 +36,12 @@ namespace Core
 
         /// Takes over a frame built for this window. Create does it once the window
         /// exists, which is the earliest the platform can be asked to drop its caption.
-        void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_frame = std::move(frame); }
+        void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_Frame = std::move(frame); }
 
     private:
-        GLFWwindow* m_handle = nullptr;
+        GLFWwindow* m_Handle = nullptr;
 
         /// Null while the window still wears the system title bar.
-        std::unique_ptr<WindowFrame> m_frame;
+        std::unique_ptr<WindowFrame> m_Frame;
     };
 }

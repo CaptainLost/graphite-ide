@@ -17,18 +17,18 @@ namespace Graphite
         constexpr const char* kFile = "workspace.json";
     }
 
-    WorkspaceSettings::WorkspaceSettings(std::filesystem::path root) : m_root(std::move(root))
+    WorkspaceSettings::WorkspaceSettings(std::filesystem::path root) : m_Root(std::move(root))
     {
     }
 
     std::filesystem::path WorkspaceSettings::FilePath() const
     {
-        return m_root / kDirectory / kFile;
+        return m_Root / kDirectory / kFile;
     }
 
     std::string WorkspaceSettings::Get(std::string_view key) const
     {
-        if (m_root.empty())
+        if (m_Root.empty())
             return {};
 
         return Core::JsonFile::Load(FilePath()).Get(key);
@@ -36,12 +36,12 @@ namespace Graphite
 
     void WorkspaceSettings::Set(std::string_view key, std::string value)
     {
-        if (m_root.empty())
+        if (m_Root.empty())
             return;
 
         // Created on the first write rather than when the folder opens, so browsing a
         // folder read-only never leaves anything behind in it.
-        const std::filesystem::path directory = m_root / kDirectory;
+        const std::filesystem::path directory = m_Root / kDirectory;
 
         // MakeDirectory reports an error when the directory already exists, so the
         // ordinary case — every write after the first — has to be guarded here rather

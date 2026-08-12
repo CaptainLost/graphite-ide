@@ -104,13 +104,13 @@ namespace Core
     }
 
     SlnxEditor::SlnxEditor(std::filesystem::path path, std::string text)
-        : m_path(std::move(path)), m_text(std::move(text))
+        : m_Path(std::move(path)), m_Text(std::move(text))
     {
     }
 
     Result<std::size_t> SlnxEditor::FindProject(const std::filesystem::path& project) const
     {
-        Parsed parsed{m_text};
+        Parsed parsed{m_Text};
 
         if (!parsed.ok)
             return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
@@ -118,7 +118,7 @@ namespace Core
         std::filesystem::path wanted = project.lexically_normal();
         wanted.make_preferred();
 
-        const std::filesystem::path directory = m_path.parent_path();
+        const std::filesystem::path directory = m_Path.parent_path();
 
         // Every Project element, wherever it sits: the format allows them at the root and
         // inside any Folder, and a caller naming a file should not have to say which.
@@ -143,7 +143,7 @@ namespace Core
 
     Result<std::size_t> SlnxEditor::FindContainer(const std::string& folder) const
     {
-        Parsed parsed{m_text};
+        Parsed parsed{m_Text};
 
         if (!parsed.ok)
             return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
@@ -171,24 +171,24 @@ namespace Core
 
     void SlnxEditor::InsertChild(std::size_t offset, const std::string& element)
     {
-        const std::string ending = DetectLineEnding(m_text);
-        const std::string unit = IndentUnit(m_text);
+        const std::string ending = DetectLineEnding(m_Text);
+        const std::string unit = IndentUnit(m_Text);
 
         // Indented one level past the container's own line.
-        const std::size_t lineBegin = LineExtent(m_text, offset).first;
+        const std::size_t lineBegin = LineExtent(m_Text, offset).first;
         std::string containerIndent;
 
         for (std::size_t i = lineBegin;
-             i < m_text.size() && (m_text[i] == ' ' || m_text[i] == '\t'); ++i)
+             i < m_Text.size() && (m_Text[i] == ' ' || m_Text[i] == '\t'); ++i)
         {
-            containerIndent += m_text[i];
+            containerIndent += m_Text[i];
         }
 
-        const std::size_t tagEnd = OpeningTagEnd(m_text, offset);
+        const std::size_t tagEnd = OpeningTagEnd(m_Text, offset);
 
         // A container with no children yet is written self-closing, so it has to become an
         // open/close pair before anything can go inside it.
-        if (tagEnd >= 2 && m_text[tagEnd - 2] == '/')
+        if (tagEnd >= 2 && m_Text[tagEnd - 2] == '/')
         {
             // Name it from the text rather than guessing: this is used for both Solution
             // and Folder.
@@ -196,25 +196,25 @@ namespace Core
 
             // A container written with its attributes on the next line ends its name at the
             // line break, so both terminators belong here too.
-            while (nameEnd < m_text.size() && m_text[nameEnd] != ' ' && m_text[nameEnd] != '\t'
-                   && m_text[nameEnd] != '\r' && m_text[nameEnd] != '\n' && m_text[nameEnd] != '>'
-                   && m_text[nameEnd] != '/')
+            while (nameEnd < m_Text.size() && m_Text[nameEnd] != ' ' && m_Text[nameEnd] != '\t'
+                   && m_Text[nameEnd] != '\r' && m_Text[nameEnd] != '\n' && m_Text[nameEnd] != '>'
+                   && m_Text[nameEnd] != '/')
             {
                 ++nameEnd;
             }
 
-            const std::string name = m_text.substr(offset, nameEnd - offset);
+            const std::string name = m_Text.substr(offset, nameEnd - offset);
 
             std::string replacement = ">";
             replacement += ending + containerIndent + unit + element;
             replacement += ending + containerIndent + "</" + name + ">";
 
             // Replaces the "/>" that ended the empty element.
-            m_text.replace(tagEnd - 2, 2, replacement);
+            m_Text.replace(tagEnd - 2, 2, replacement);
             return;
         }
 
-        m_text.insert(tagEnd, ending + containerIndent + unit + element);
+        m_Text.insert(tagEnd, ending + containerIndent + unit + element);
     }
 
     Result<void> SlnxEditor::AddProject(const std::filesystem::path& project,
@@ -224,7 +224,7 @@ namespace Core
         // drive to another: lexically_relative gives back nothing at all. Writing that
         // empty string produces a Path="" entry the reader then skips, so the garbage
         // survives every check that follows.
-        const std::string relative = RelativeProjectPath(m_path, project);
+        const std::string relative = RelativeProjectPath(m_Path, project);
 
         if (relative.empty())
         {
@@ -284,7 +284,7 @@ namespace Core
         if (!found)
             return found.GetError();
 
-        EraseElement(m_text, found.Value(), "Project");
+        EraseElement(m_Text, found.Value(), "Project");
 
         return Result<void>::Ok();
     }
@@ -342,7 +342,7 @@ namespace Core
             return found.GetError();
 
         {
-            Parsed parsed{m_text};
+            Parsed parsed{m_Text};
 
             if (!parsed.ok)
                 return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
@@ -379,7 +379,7 @@ namespace Core
             }
         }
 
-        EraseElement(m_text, found.Value(), "Folder");
+        EraseElement(m_Text, found.Value(), "Folder");
 
         return Result<void>::Ok();
     }
@@ -401,7 +401,7 @@ namespace Core
             lastSlash == std::string::npos ? std::string{} : folder.substr(0, lastSlash + 1);
         const std::string newPath = "/" + parent + name + "/";
 
-        Parsed parsed{m_text};
+        Parsed parsed{m_Text};
 
         if (!parsed.ok)
             return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
@@ -420,7 +420,7 @@ namespace Core
             // The attribute's value is not given an offset of its own, so it is found in
             // the element's own text — the first occurrence after the element start.
             const auto elementBegin = static_cast<std::size_t>(node.offset_debug());
-            const std::size_t valueBegin = m_text.find(current, elementBegin);
+            const std::size_t valueBegin = m_Text.find(current, elementBegin);
 
             if (valueBegin == std::string::npos)
                 continue;
@@ -438,7 +438,7 @@ namespace Core
         for (std::size_t i = edits.size(); i > 0; --i)
         {
             const auto& [begin, length] = edits[i - 1];
-            m_text.replace(begin, length, replacements[i - 1]);
+            m_Text.replace(begin, length, replacements[i - 1]);
         }
 
         return Result<void>::Ok();
@@ -456,7 +456,7 @@ namespace Core
         std::string id;
 
         {
-            Parsed parsed{m_text};
+            Parsed parsed{m_Text};
 
             if (!parsed.ok)
                 return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
@@ -473,7 +473,7 @@ namespace Core
         }
 
         if (declared.empty())
-            declared = RelativeProjectPath(m_path, project);
+            declared = RelativeProjectPath(m_Path, project);
 
         // The identifier is carried over rather than regenerated: a new one would make the
         // moved project look like a different project to anything keying off it.
@@ -515,9 +515,9 @@ namespace Core
         // read. Collision avoidance goes through the same helper WriteFileAtomically uses
         // for its own temporary, rather than a second hand-rolled version of that check —
         // a leftover scratch file from a crashed earlier save must not be clobbered.
-        std::filesystem::path stem = m_path;
+        std::filesystem::path stem = m_Path;
         stem.replace_extension();
-        const std::filesystem::path extension = m_path.extension();
+        const std::filesystem::path extension = m_Path.extension();
 
         const Result<std::filesystem::path> picked = PickAvailablePath(
             [&stem, &extension](int attempt)
@@ -539,7 +539,7 @@ namespace Core
             if (!stream.is_open())
                 return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", ToUtf8(scratch))};
 
-            stream << m_text;
+            stream << m_Text;
 
             if (!stream.good())
             {
@@ -570,6 +570,6 @@ namespace Core
                                      verified.GetError().message)};
         }
 
-        return WriteFileAtomically(m_path, m_text);
+        return WriteFileAtomically(m_Path, m_Text);
     }
 }

@@ -11,7 +11,7 @@ namespace Core
     class Layer : NonCopyable
     {
     public:
-        explicit Layer(std::string name) : m_name(std::move(name)) {}
+        explicit Layer(std::string name) : m_Name(std::move(name)) {}
         virtual ~Layer() = default;
 
         virtual void OnAttach() {}
@@ -28,9 +28,9 @@ namespace Core
         /// Window::RequestClose() itself to re-arm it.
         virtual bool OnCloseRequested() { return true; }
 
-        [[nodiscard]] const std::string& Name() const noexcept { return m_name; }
+        [[nodiscard]] const std::string& Name() const noexcept { return m_Name; }
 
     private:
-        std::string m_name;
+        std::string m_Name;
     };
 }

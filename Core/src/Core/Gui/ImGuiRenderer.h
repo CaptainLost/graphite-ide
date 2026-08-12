@@ -29,6 +29,6 @@ namespace Core
         [[nodiscard]] static ImFont* MonoFont() noexcept;
 
     private:
-        bool m_initialized = false;
+        bool m_Initialized = false;
     };
 }

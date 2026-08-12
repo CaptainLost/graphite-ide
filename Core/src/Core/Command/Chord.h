@@ -26,11 +26,11 @@ namespace Core
         /// `mods` carries modifier bits only; the direction is the trigger.
         [[nodiscard]] static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Scope scope);
 
-        [[nodiscard]] Trigger GetTrigger() const noexcept { return m_trigger; }
-        [[nodiscard]] Scope GetScope() const noexcept { return m_scope; }
+        [[nodiscard]] Trigger GetTrigger() const noexcept { return m_Trigger; }
+        [[nodiscard]] Scope GetScope() const noexcept { return m_Scope; }
 
         /// Modifiers ORed with the key for Trigger::Key; modifiers alone otherwise.
-        [[nodiscard]] ImGuiKeyChord Keys() const noexcept { return m_keys; }
+        [[nodiscard]] ImGuiKeyChord Keys() const noexcept { return m_Keys; }
 
         [[nodiscard]] bool IsEmpty() const noexcept;
 
@@ -46,8 +46,8 @@ namespace Core
         [[nodiscard]] friend bool operator==(const Chord&, const Chord&) noexcept = default;
 
     private:
-        ImGuiKeyChord m_keys = 0;
-        Trigger m_trigger = Trigger::Key;
-        Scope m_scope = Scope::Global;
+        ImGuiKeyChord m_Keys = 0;
+        Trigger m_Trigger = Trigger::Key;
+        Scope m_Scope = Scope::Global;
     };
 }

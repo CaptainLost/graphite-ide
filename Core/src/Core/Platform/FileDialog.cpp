@@ -22,24 +22,24 @@ namespace Core
             {
                 const HRESULT result = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED |
                                                                      COINIT_DISABLE_OLE1DDE);
-                m_owned = SUCCEEDED(result);
-                m_ok = m_owned || result == RPC_E_CHANGED_MODE;
+                m_Owned = SUCCEEDED(result);
+                m_Ok = m_Owned || result == RPC_E_CHANGED_MODE;
             }
 
             ~ComGuard()
             {
-                if (m_owned)
+                if (m_Owned)
                     ::CoUninitialize();
             }
 
             ComGuard(const ComGuard&) = delete;
             ComGuard& operator=(const ComGuard&) = delete;
 
-            [[nodiscard]] bool Ok() const noexcept { return m_ok; }
+            [[nodiscard]] bool Ok() const noexcept { return m_Ok; }
 
         private:
-            bool m_owned = false;
-            bool m_ok = false;
+            bool m_Owned = false;
+            bool m_Ok = false;
         };
 
         std::wstring Widen(const std::string& text)

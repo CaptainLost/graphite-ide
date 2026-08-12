@@ -101,7 +101,7 @@ namespace
             if (::GetProcessAffinityMask(::GetCurrentProcess(), &processMask, &systemMask) &&
                 processMask != 0)
             {
-                m_previousMask = processMask;
+                m_PreviousMask = processMask;
 
                 // The lowest CPU already permitted. Written as ~x + 1 rather than -x
                 // because a unary minus on an unsigned type is its own compiler warning,
@@ -116,11 +116,11 @@ namespace
             // watcher's worker still gets scheduled — it is competing for slices, not
             // locked out. Everything it has to do before the watch is armed is
             // microseconds of work against the test's five-second budget.
-            m_spinner = std::thread{[this]
+            m_Spinner = std::thread{[this]
                                     {
                                         // Read through an atomic so the compiler cannot
                                         // decide the loop has no effect and delete it.
-                                        while (!m_stop.load(std::memory_order_relaxed))
+                                        while (!m_Stop.load(std::memory_order_relaxed))
                                         {
                                         }
                                     }};
@@ -128,13 +128,13 @@ namespace
 
         ~SingleCpuContention()
         {
-            m_stop.store(true, std::memory_order_relaxed);
-            m_spinner.join();
+            m_Stop.store(true, std::memory_order_relaxed);
+            m_Spinner.join();
 
 #ifdef CORE_PLATFORM_WINDOWS
             // Restored, or every later test in this process would run on one core.
-            if (m_previousMask != 0)
-                ::SetProcessAffinityMask(::GetCurrentProcess(), m_previousMask);
+            if (m_PreviousMask != 0)
+                ::SetProcessAffinityMask(::GetCurrentProcess(), m_PreviousMask);
 #endif
         }
 
@@ -142,11 +142,11 @@ namespace
         SingleCpuContention& operator=(const SingleCpuContention&) = delete;
 
     private:
-        std::atomic<bool> m_stop{false};
-        std::thread m_spinner;
+        std::atomic<bool> m_Stop{false};
+        std::thread m_Spinner;
 
 #ifdef CORE_PLATFORM_WINDOWS
-        DWORD_PTR m_previousMask = 0;
+        DWORD_PTR m_PreviousMask = 0;
 #endif
     };
 }
