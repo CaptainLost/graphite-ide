@@ -2,11 +2,18 @@
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
+#include "Core/Command/Binding.h"
+#include "Core/Command/Chord.h"
+#include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace graphite
 {
@@ -23,6 +30,15 @@ namespace graphite
         constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
         constexpr const char* kIndentWidthKey = "indentWidth";
         constexpr const char* kWordWrapKey = "wordWrap";
+
+        /// One key per overridden command, `key.` plus the command id. Flat, like every
+        /// other setting here: a blob under a single key would not be hand-editable, and
+        /// this file is meant to be.
+        constexpr std::string_view kKeyBindingPrefix = "key.";
+
+        /// Primary first, alternates after, '|' between. The separator cannot occur in a
+        /// chord's own text, which is made of modifier and key names joined by '+'.
+        constexpr char kChordSeparator = '|';
 
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
@@ -53,6 +69,64 @@ namespace graphite
 
             if (!file.Save(SettingsPath()))
                 CORE_WARN("Cannot write '{}'", SettingsPath().string());
+        }
+
+        [[nodiscard]] std::string Serialise(const core::Binding& binding)
+        {
+            std::string text = binding.primary.ToString();
+
+            for (const core::Chord& alternate : binding.alternates)
+            {
+                text += kChordSeparator;
+                text += alternate.ToString();
+            }
+
+            return text;
+        }
+
+        /// Empty when any part of the text names a chord this build does not know, so a
+        /// half-understood binding is refused whole rather than applied in part. An empty
+        /// text is a malformed entry too, not a binding of nothing.
+        [[nodiscard]] std::optional<core::Binding> Deserialise(std::string_view text)
+        {
+            core::Binding binding;
+            bool first = true;
+            std::size_t start = 0;
+
+            for (;;)
+            {
+                const std::size_t separator = text.find(kChordSeparator, start);
+                const std::string_view part =
+                    text.substr(start, separator == std::string_view::npos
+                                           ? std::string_view::npos
+                                           : separator - start);
+
+                const std::optional<core::Chord> chord = core::Chord::Parse(part);
+
+                if (!chord.has_value())
+                {
+                    return std::nullopt;
+                }
+
+                if (first)
+                {
+                    binding.primary = *chord;
+                    first = false;
+                }
+                else
+                {
+                    binding.alternates.push_back(*chord);
+                }
+
+                if (separator == std::string_view::npos)
+                {
+                    break;
+                }
+
+                start = separator + 1;
+            }
+
+            return binding;
         }
     }
 
@@ -137,5 +211,69 @@ namespace graphite
     void AppSettings::SaveWordWrap(bool wrap)
     {
         WriteValue(kWordWrapKey, wrap ? "1" : "0");
+    }
+
+    void AppSettings::LoadKeyBindings(core::Keymap& keys)
+    {
+        const core::JsonFile file = core::JsonFile::Load(SettingsPath());
+
+        for (const std::string& key : file.Keys())
+        {
+            if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
+            {
+                continue;
+            }
+
+            const std::string id = key.substr(kKeyBindingPrefix.size());
+            const std::optional<core::Binding> binding = Deserialise(file.Get(key));
+
+            // Skipped rather than fatal, and named so it can be found: one hand-edited
+            // line should cost the one binding it describes, not every shortcut in the
+            // IDE.
+            if (!binding.has_value())
+            {
+                CORE_WARN("Ignoring the unreadable key binding stored for '{}'", id);
+                continue;
+            }
+
+            keys.Override(id, *binding);
+        }
+    }
+
+    void AppSettings::SaveKeyBindings(const core::Keymap& keys)
+    {
+        core::JsonFile file = core::JsonFile::Load(SettingsPath());
+
+        // Written in one pass rather than through WriteValue per command: that helper
+        // loads and saves the whole file each time, which over a table of bindings would
+        // rewrite the file once per entry.
+        //
+        // Collected before removing, because removing while iterating the keys would
+        // invalidate what is being walked.
+        std::vector<std::string> stale;
+
+        for (const std::string& key : file.Keys())
+        {
+            if (std::string_view{key}.starts_with(kKeyBindingPrefix))
+            {
+                stale.push_back(key);
+            }
+        }
+
+        // Removed, not blanked: a binding the user has reset must leave the file rather
+        // than sit there as an empty value that LoadKeyBindings would warn about on every
+        // start.
+        for (const std::string& key : stale)
+        {
+            file.Remove(key);
+        }
+
+        keys.ForEachOverride([&file](const std::string& id, const core::Binding& binding)
+                             { file.Set(std::string{kKeyBindingPrefix} + id, Serialise(binding)); });
+
+        if (!file.Save(SettingsPath()))
+        {
+            CORE_WARN("Cannot write '{}'", SettingsPath().string());
+        }
     }
 }

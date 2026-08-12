@@ -104,6 +104,11 @@ namespace graphite
                             CORE_ERROR("Sample error");
                         }});
 
+        // After the defaults are registered and before the menu is built: overrides
+        // shadow defaults, and the menu reads the binding in force when it draws each
+        // item's shortcut.
+        AppSettings::LoadKeyBindings(m_keys);
+
         // The defaults are assembled across five files, each of which believes it is
         // claiming a free chord, and nothing but this notices when two of them claim the
         // same one. An error rather than an assertion: a duplicate binding is a wiring

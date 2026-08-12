@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace core
 {
@@ -40,12 +41,22 @@ namespace core
 
         void Set(std::string_view key, std::string value);
 
+        /// Takes the key out of the file entirely. Distinct from setting it empty: a
+        /// blanked key survives the round trip, and every reader afterwards has to decide
+        /// what an empty value means.
+        void Remove(std::string_view key);
+
         /// Writes to a `.tmp` beside the target and renames into place, so a failed
         /// write cannot destroy the existing settings, and leaves no debris if the
         /// rename fails.
         [[nodiscard]] bool Save(const std::filesystem::path& path) const;
 
         [[nodiscard]] std::size_t Count() const noexcept;
+
+        /// Every key the document holds, in whatever order it holds them. Lets a caller
+        /// find the keys it owns by prefix without the file having to know they are
+        /// related — which is what keeps this class ignorant of what is stored in it.
+        [[nodiscard]] std::vector<std::string> Keys() const;
 
     private:
         /// The JSON document lives behind a pointer so that <nlohmann/json.hpp> — some
