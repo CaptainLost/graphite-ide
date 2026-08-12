@@ -11,6 +11,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuBar.h"
+#include "Core/Command/ShortcutRouter.h"
 #include "Core/Event/EventBus.h"
 #include "Core/Gui/DockSpaceHost.h"
 #include "Core/Text/DocumentSet.h"
@@ -132,6 +133,7 @@ namespace graphite
 
         core::CommandRegistry m_commands;
         core::Keymap m_keys;
+        core::ShortcutRouter m_router;
         core::MenuBar m_menuBar;
 
         /// Built once in OnAttach, after every command is registered — the tree names

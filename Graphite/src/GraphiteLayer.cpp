@@ -222,54 +222,22 @@ namespace graphite
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
 
-        const float zoom = m_documentWindows.Render(m_editorSettings.FontSize(),
-                                                    m_editorSettings.IndentStyle(),
-                                                    m_dockSpace.CenterNodeId(),
-                                                    m_editorSettings.WordWrap());
+        // The context rather than three arguments: the widget that observes a Ctrl+wheel
+        // gesture is the one place that knows the gesture happened over an editor, and it
+        // is drawn from here, so what it needs to turn that into a command is passed down
+        // rather than stored anywhere on the way.
+        const CommandContext commandContext{&m_commands, &m_keys, &m_router};
 
-        if (zoom != 0.0f)
-        {
-            m_editorSettings.SetFontSize(m_editorSettings.FontSize() + zoom);
-        }
+        m_documentWindows.Render(commandContext, m_editorSettings.FontSize(),
+                                 m_editorSettings.IndentStyle(), m_dockSpace.CenterNodeId(),
+                                 m_editorSettings.WordWrap());
 
-        // ImGui::Shortcut, not a raw IsKeyPressed(..., false) plus a manual KeyCtrl
-        // check: Shortcut() matches the modifier set exactly (so Ctrl+Alt+= no longer
-        // also zooms) and routes through the same key-ownership machinery InputText
-        // uses to claim the keyboard, so these do not fire while the file/folder rename
-        // field (FileTreeView, SolutionTreeView) is active. RouteGlobal is needed
-        // because this runs after every window this frame has already Begin/End'd, so
-        // there is no "current" window whose focus a RouteFocused check could compare
-        // against. Each pair (main key, keypad key) is evaluated unconditionally so
-        // routing is registered for both even when the other already fired this frame -
-        // a short-circuited `||` would skip registering the second on any frame the
-        // first was pressed, corrupting its routing for the next frame.
-        //
-        // The View menu's Zoom In/Out/Reset items show these same combinations as their
-        // shortcut text, and both routes end at the same commands, so a key press and a
-        // menu click always agree on what "zoom in", "zoom out" and "reset" mean. Run by
-        // id rather than calling EditorSettings::SetFontSize directly: the step and the
-        // default are EditorSettings' own, registered once with the command in
-        // RegisterCommands, not duplicated here.
-        const bool resetZoom = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_0, ImGuiInputFlags_RouteGlobal);
-        const bool resetZoomKeypad =
-            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Keypad0, ImGuiInputFlags_RouteGlobal);
-
-        if (resetZoom || resetZoomKeypad)
-            m_commands.Run("editor.resetZoom");
-
-        const bool zoomIn = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Equal, ImGuiInputFlags_RouteGlobal);
-        const bool zoomInKeypad =
-            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd, ImGuiInputFlags_RouteGlobal);
-
-        if (zoomIn || zoomInKeypad)
-            m_commands.Run("editor.zoomIn");
-
-        const bool zoomOut = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Minus, ImGuiInputFlags_RouteGlobal);
-        const bool zoomOutKeypad =
-            ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract, ImGuiInputFlags_RouteGlobal);
-
-        if (zoomOut || zoomOutKeypad)
-            m_commands.Run("editor.zoomOut");
+        // After every window this frame has Begin/End'd, which is what
+        // ImGuiInputFlags_RouteGlobal expects — there is no "current" window whose focus a
+        // RouteFocused check could compare against at this point. The chords themselves
+        // are the keymap's, registered alongside the commands they run, so a key press and
+        // the menu item showing the same combination cannot drift apart.
+        m_router.Dispatch(m_commands, m_keys);
     }
 
     bool GraphiteLayer::OnCloseRequested()

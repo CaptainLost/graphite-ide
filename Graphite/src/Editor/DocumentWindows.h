@@ -2,6 +2,7 @@
 
 #include "Editor/ModalGate.h"
 #include "Editor/ModalQuestion.h"
+#include "Editor/TextEditorWidget.h"
 
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
@@ -65,11 +66,11 @@ namespace graphite
         /// document rather than held here: like the font size and the indent style, it
         /// belongs to whoever persists it.
         ///
-        /// Returns the total Ctrl+wheel zoom delta applied across every visible document
-        /// this frame - only one can be hovered at a time, so in practice at most one
-        /// contributes, but summing costs nothing and needs no assumption about that.
-        float Render(float fontSize, core::text::IndentStyle indentStyle,
-                    unsigned int fallbackDockNode, bool wordWrap);
+        /// `context` is passed straight through to each editor, which fires the Ctrl+wheel
+        /// gesture itself: nothing about it is read here.
+        void Render(const CommandContext& context, float fontSize,
+                    core::text::IndentStyle indentStyle, unsigned int fallbackDockNode,
+                    bool wordWrap);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
         void RequestOpen(const std::filesystem::path& path, bool permanent);

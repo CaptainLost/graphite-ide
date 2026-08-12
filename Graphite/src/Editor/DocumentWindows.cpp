@@ -454,8 +454,9 @@ namespace graphite
         return m_transientMessage->text;
     }
 
-    float DocumentWindows::Render(float fontSize, core::text::IndentStyle indentStyle,
-                                  unsigned int fallbackDockNode, bool wordWrap)
+    void DocumentWindows::Render(const CommandContext& context, float fontSize,
+                                 core::text::IndentStyle indentStyle,
+                                 unsigned int fallbackDockNode, bool wordWrap)
     {
         // Identities as they stand at the start of this frame - after RequestOpen,
         // CloseAll or HandleRootMoved, all of which run earlier in the same
@@ -468,8 +469,6 @@ namespace graphite
         // path.
         const std::optional<std::filesystem::path> focusRequest =
             std::exchange(m_focusRequest, std::nullopt);
-
-        float zoomDelta = 0.0f;
 
         // Every question below asks the gate before opening and keeps whatever it was
         // asked about pending when refused - see ModalGate for why they cannot simply all
@@ -833,8 +832,7 @@ namespace graphite
                     m_documents.Promote(index);
 
                 const EditorFrameResult editorResult =
-                    DrawEditor(item, fontSize, indentStyle, wordWrap);
-                zoomDelta += editorResult.zoomDelta;
+                    DrawEditor(context, item, fontSize, indentStyle, wordWrap);
 
                 // The first edit promotes a preview tab exactly as a double click does:
                 // once the user has typed into it, it is no longer something they were
@@ -896,7 +894,5 @@ namespace graphite
         }
 
         m_previousIdentities = CurrentIdentities(m_documents);
-
-        return zoomDelta;
     }
 }
