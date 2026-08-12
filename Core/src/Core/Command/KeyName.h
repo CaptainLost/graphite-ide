@@ -28,15 +28,20 @@ namespace core
     /// Whether `key` is a keyboard key rather than a gamepad button, a mouse alias or one
     /// of ImGui's internal mod slots.
     ///
-    /// The named range is not the keyboard — that is the fact two separate bugs on this
-    /// screen turned on. ImGuiKey_NamedKey_BEGIN..END covers four blocks in a row: the
-    /// keyboard, ImGuiKey_Tab through ImGuiKey_Oem102 (imgui.h:1657-1712); the gamepad,
-    /// ImGuiKey_GamepadStart through ImGuiKey_GamepadRStickDown (imgui.h:1717-1731); the
-    /// mouse aliases, ImGuiKey_MouseLeft through ImGuiKey_MouseWheelY (imgui.h:1735); and
-    /// the reserved mod slots (imgui.h:1738). Anything reading "a key the user pressed"
-    /// out of that range gets mouse buttons too — and arming a capture is itself a left
-    /// click, so the capture used to answer itself before the user could press anything.
-    /// Stated as what a keyboard key is, rather than as a list of what to skip: the list
-    /// is what went stale twice.
+    /// ImGuiKey's named range is not the keyboard. It is the keyboard, then the gamepad,
+    /// then the mouse aliases, then ImGui's internal mod slots — four blocks in a row, and
+    /// that fact is the whole reason this predicate and IsModifierKey exist.
+    ///
+    /// In the vendored header: the keyboard runs ImGuiKey_Tab through ImGuiKey_Oem102
+    /// (imgui.h:1647-1700, Tab being ImGuiKey_NamedKey_BEGIN itself at 1645); the gamepad
+    /// runs ImGuiKey_GamepadStart through ImGuiKey_GamepadRStickDown (imgui.h:1706-1729);
+    /// the mouse aliases ImGuiKey_MouseLeft through ImGuiKey_MouseWheelY are one line,
+    /// imgui.h:1733; and the reserved mod slots are imgui.h:1736, the same four
+    /// IsModifierKey names above.
+    ///
+    /// So anything reading "a key the user pressed" out of that range gets mouse buttons
+    /// too — and arming a capture is itself a left click, so the capture used to answer
+    /// itself before the user could press anything. Stated as what a keyboard key is,
+    /// rather than as a list of what to skip: the list is what went stale twice.
     [[nodiscard]] bool IsKeyboardKey(ImGuiKey key) noexcept;
 }

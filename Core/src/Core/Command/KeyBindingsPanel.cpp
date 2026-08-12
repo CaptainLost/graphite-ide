@@ -89,7 +89,7 @@ namespace core
         {
             if (mods == ImGuiMod_None)
             {
-                return "Press a key...  (Esc cancels)";
+                return "Press a key... (Esc cancels)";
             }
 
             std::string text;
