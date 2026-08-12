@@ -14,7 +14,6 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
-#include <algorithm>
 #include <cstddef>
 #include <utility>
 
@@ -84,6 +83,9 @@ namespace graphite
 
         m_panels.Add(std::make_unique<ConsolePanel>(m_sink));
 
+        m_panels.RegisterCommands(m_commands);
+        m_editorSettings.RegisterCommands(m_commands, m_keys);
+
         m_events.Subscribe<OpenFileRequested>(
             [this](const OpenFileRequested& event)
             {
@@ -105,20 +107,7 @@ namespace graphite
 
         ApplyGitIgnoredDisplay(GitIgnoredDisplayFromString(AppSettings::LoadGitIgnoredDisplay()), false);
 
-        const float storedFontSize = AppSettings::LoadEditorFontSize();
-
-        if (storedFontSize >= kMinimumEditorFontSize && storedFontSize <= kMaximumEditorFontSize)
-            m_editorFontSize = storedFontSize;
-
-        m_indentWithSpaces = AppSettings::LoadIndentWithSpaces();
-
-        if (const std::size_t storedIndentWidth = AppSettings::LoadIndentWidth();
-            storedIndentWidth != 0)
-        {
-            m_indentWidth = storedIndentWidth;
-        }
-
-        m_wordWrap = AppSettings::LoadWordWrap();
+        m_editorSettings.Load();
 
         std::filesystem::path startFolder = m_initialFolder;
         if (startFolder.empty())
@@ -200,13 +189,15 @@ namespace graphite
         // child windows instead of landing in the dockspace nodes.
         m_panels.OnUIRender();
 
-        const core::text::IndentStyle indentStyle{m_indentWithSpaces, m_indentWidth};
-        const float zoom =
-            m_documentWindows.Render(m_editorFontSize, indentStyle, m_dockSpace.CenterNodeId(),
-                                     m_wordWrap);
+        const float zoom = m_documentWindows.Render(m_editorSettings.FontSize(),
+                                                    m_editorSettings.IndentStyle(),
+                                                    m_dockSpace.CenterNodeId(),
+                                                    m_editorSettings.WordWrap());
 
         if (zoom != 0.0f)
-            SetEditorFontSize(m_editorFontSize + zoom);
+        {
+            m_editorSettings.SetFontSize(m_editorSettings.FontSize() + zoom);
+        }
 
         // ImGui::Shortcut, not a raw IsKeyPressed(..., false) plus a manual KeyCtrl
         // check: Shortcut() matches the modifier set exactly (so Ctrl+Alt+= no longer
@@ -221,40 +212,31 @@ namespace graphite
         // first was pressed, corrupting its routing for the next frame.
         //
         // The View menu's Zoom In/Out/Reset items show these same combinations as their
-        // shortcut text, and both routes end at SetEditorFontSize, so a key press and a
-        // menu click always agree on what "zoom in", "zoom out" and "reset" mean.
+        // shortcut text, and both routes end at the same commands, so a key press and a
+        // menu click always agree on what "zoom in", "zoom out" and "reset" mean. Run by
+        // id rather than calling EditorSettings::SetFontSize directly: the step and the
+        // default are EditorSettings' own, registered once with the command in
+        // RegisterCommands, not duplicated here.
         const bool resetZoom = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_0, ImGuiInputFlags_RouteGlobal);
         const bool resetZoomKeypad =
             ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Keypad0, ImGuiInputFlags_RouteGlobal);
 
         if (resetZoom || resetZoomKeypad)
-            SetEditorFontSize(kDefaultEditorFontSize);
+            m_commands.Run("editor.resetZoom");
 
         const bool zoomIn = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Equal, ImGuiInputFlags_RouteGlobal);
         const bool zoomInKeypad =
             ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd, ImGuiInputFlags_RouteGlobal);
 
         if (zoomIn || zoomInKeypad)
-            SetEditorFontSize(m_editorFontSize + kEditorFontSizeStep);
+            m_commands.Run("editor.zoomIn");
 
         const bool zoomOut = ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_Minus, ImGuiInputFlags_RouteGlobal);
         const bool zoomOutKeypad =
             ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract, ImGuiInputFlags_RouteGlobal);
 
         if (zoomOut || zoomOutKeypad)
-            SetEditorFontSize(m_editorFontSize - kEditorFontSizeStep);
-    }
-
-    void GraphiteLayer::SetEditorFontSize(float newSize)
-    {
-        const float clamped =
-            std::clamp(newSize, kMinimumEditorFontSize, kMaximumEditorFontSize);
-
-        if (clamped == m_editorFontSize)
-            return;
-
-        m_editorFontSize = clamped;
-        AppSettings::SaveEditorFontSize(m_editorFontSize);
+            m_commands.Run("editor.zoomOut");
     }
 
     void GraphiteLayer::ApplyGitIgnoredDisplay(GitIgnoredDisplay display, bool persist)
@@ -339,18 +321,29 @@ namespace graphite
 
         if (BeginTopLevelMenu("View", dropdownPadding))
         {
-            m_panels.RenderViewMenuItems();
+            // Temporary: Task 10 replaces this whole function with core::MenuBar, which draws
+            // groups itself. Until then this is what keeps the panel toggles in the View menu.
+            for (const core::Command* panel : m_commands.InGroup("panels"))
+            {
+                bool visible = panel->checked();
+
+                if (ImGui::MenuItem((panel->label + "###" + panel->id).c_str(), nullptr, &visible))
+                {
+                    m_commands.Run(panel->id);
+                }
+            }
+
             ImGui::Separator();
 
             // Deliberately no keyboard shortcut. Alt+Z is the obvious one, and it is a
             // trap here: AltGr on Windows reports as Ctrl+Alt, and AltGr+Z is 'z' with a
             // dot above, so a shortcut testing KeyAlt alone would toggle wrapping every
             // time a Polish word is typed. If one is ever added, its condition has to be
-            // KeyAlt && !KeyCtrl.
-            if (ImGui::MenuItem("Word Wrap", nullptr, m_wordWrap))
+            // KeyAlt && !KeyCtrl. Recorded again on editor.toggleWordWrap itself, which
+            // is why that command gets no default binding either.
+            if (ImGui::MenuItem("Word Wrap", nullptr, m_editorSettings.WordWrap()))
             {
-                m_wordWrap = !m_wordWrap;
-                AppSettings::SaveWordWrap(m_wordWrap);
+                m_commands.Run("editor.toggleWordWrap");
             }
 
             // Nested under Git so it is obvious whose rules decide what is ignored — the
@@ -392,17 +385,17 @@ namespace graphite
             ImGui::Separator();
 
             // A shortcut nobody can discover is not a shortcut, so Ctrl+Scroll and
-            // Ctrl+0 both get a menu entry — all three feed SetEditorFontSize, the same
-            // function the keyboard shortcuts in OnUIRender call, so the menu and the
-            // keys cannot disagree about what these do.
+            // Ctrl+0 both get a menu entry — all three run the same commands the
+            // keyboard shortcuts in OnUIRender run, so the menu and the keys cannot
+            // disagree about what these do.
             if (ImGui::MenuItem("Zoom In", "Ctrl+="))
-                SetEditorFontSize(m_editorFontSize + kEditorFontSizeStep);
+                m_commands.Run("editor.zoomIn");
 
             if (ImGui::MenuItem("Zoom Out", "Ctrl+-"))
-                SetEditorFontSize(m_editorFontSize - kEditorFontSizeStep);
+                m_commands.Run("editor.zoomOut");
 
             if (ImGui::MenuItem("Reset Zoom", "Ctrl+0"))
-                SetEditorFontSize(kDefaultEditorFontSize);
+                m_commands.Run("editor.resetZoom");
 
             ImGui::Separator();
 
