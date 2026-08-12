@@ -1,6 +1,8 @@
 #pragma once
 
+#include "Core/Command/Binding.h"
 #include "Core/Command/Chord.h"
+#include "Core/Command/Conflict.h"
 
 #include <functional>
 #include <map>
@@ -11,23 +13,6 @@
 
 namespace core
 {
-    /// One command's triggers: the chord the menu shows, plus every other way of
-    /// reaching it. Zoom In is Ctrl+= with Ctrl+Num+ and Ctrl+wheel behind it.
-    struct Binding
-    {
-        Chord primary;
-        std::vector<Chord> alternates;
-    };
-
-    /// One chord two commands both answer to. Which of them a press actually reaches is
-    /// then a question about iteration order, which is no answer at all.
-    struct Conflict
-    {
-        Chord chord;
-        std::string first;
-        std::string second;
-    };
-
     /// Which chords reach which commands, in two layers: a factory table and whatever
     /// the user changed on top of it. Separate layers are what make "restore the
     /// default" a deletion, and what keep the settings file to the handful of bindings
