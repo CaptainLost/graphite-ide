@@ -1,5 +1,6 @@
 #include "AppSettings.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/Command/Binding.h"
@@ -40,6 +41,13 @@ namespace graphite
         /// chord's own text, which is made of modifier and key names joined by '+'.
         constexpr char kChordSeparator = '|';
 
+        /// What a command the user took every chord away from is written as. The empty
+        /// string cannot carry it — Deserialise refuses empty text, so an unbound override
+        /// would be dropped on the next start and the factory chord would come back,
+        /// silently undoing the very conflict the rebinding screen resolved. No key is
+        /// named "None", so this cannot collide with a chord's own text.
+        constexpr std::string_view kUnboundText = "None";
+
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
         const std::filesystem::path& SettingsPath()
@@ -73,6 +81,11 @@ namespace graphite
 
         [[nodiscard]] std::string Serialise(const core::Binding& binding)
         {
+            if (binding.primary.IsEmpty() && binding.alternates.empty())
+            {
+                return std::string{kUnboundText};
+            }
+
             std::string text = binding.primary.ToString();
 
             for (const core::Chord& alternate : binding.alternates)
@@ -92,6 +105,13 @@ namespace graphite
             core::Binding binding;
             bool first = true;
             std::size_t start = 0;
+
+            // An override that binds nothing, which is a different thing from a missing
+            // override: the latter restores the factory chord.
+            if (core::ascii::Trimmed(text) == kUnboundText)
+            {
+                return binding;
+            }
 
             for (;;)
             {

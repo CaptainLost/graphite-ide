@@ -29,12 +29,19 @@ namespace core
 
         void OnUIRender() override;
 
+        /// True from the click on a cell until the capture ends, so the application can
+        /// stop routing shortcuts: the chord being recorded must not also run the command
+        /// it is being taken from.
+        [[nodiscard]] bool IsCapturingInput() const override { return !m_capturing.empty(); }
+
     private:
         /// Reads whatever chord the user produces this frame, or nothing. Escape cancels
         /// — which is why Escape cannot be bound, and the alternative is a cell nobody
         /// can leave. A modifier alone is never an answer: every capture would otherwise
-        /// end on the first Shift.
-        [[nodiscard]] std::optional<Chord> CaptureChord();
+        /// end on the first Shift. `pointerOverCell` is what allows the wheel: it is a
+        /// gesture the user aims, and reading it from anywhere would turn scrolling the
+        /// list into a rebinding.
+        [[nodiscard]] std::optional<Chord> CaptureChord(bool pointerOverCell);
 
         void RenderRow(const Command& command);
 
@@ -52,6 +59,8 @@ namespace core
         /// The question that stands between a taken chord and its new owner.
         void RenderConflictPopup();
 
+        void ForgetConflict();
+
         [[nodiscard]] bool Matches(const Command& command) const;
 
         CommandRegistry& m_commands;
@@ -68,6 +77,11 @@ namespace core
         /// discover the loss of Ctrl+S at the moment they wanted to save.
         std::optional<Chord> m_conflict;
         std::string m_conflictOwner;
+
+        /// Whether the modal has been opened for the conflict now held. It is what tells
+        /// "not asked yet" apart from "asked, and dismissed with Escape or a click away",
+        /// which look the same to ImGui::IsPopupOpen.
+        bool m_conflictAsked = false;
 
         /// A char buffer rather than std::string because ImGui's std::string overloads
         /// live in misc/cpp, which this build does not compile.

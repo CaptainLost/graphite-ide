@@ -22,6 +22,10 @@ namespace core
         [[nodiscard]] Panel* Find(std::string_view id);
         [[nodiscard]] std::size_t Count() const noexcept { return m_panels.size(); }
 
+        /// Whether any panel is reading raw key presses this frame. The caller routes
+        /// shortcuts and must not do so while one is: see Panel::IsCapturingInput.
+        [[nodiscard]] bool IsCapturingInput() const;
+
         /// Returns false if no panel with the given identifier exists.
         bool SetVisible(std::string_view id, bool visible);
 

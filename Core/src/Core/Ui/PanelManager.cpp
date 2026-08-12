@@ -53,6 +53,21 @@ namespace core
         return nullptr;
     }
 
+    bool PanelManager::IsCapturingInput() const
+    {
+        for (const auto& panel : m_panels)
+        {
+            // A hidden panel draws nothing and so can be reading nothing, whatever it
+            // last left behind in its own state.
+            if (panel->IsVisible() && panel->IsCapturingInput())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool PanelManager::SetVisible(std::string_view id, bool visible)
     {
         Panel* panel = Find(id);

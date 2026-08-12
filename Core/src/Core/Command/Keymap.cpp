@@ -101,6 +101,13 @@ namespace core
             {
                 const auto note = [&seen, &conflicts, &id](const Chord& chord)
                 {
+                    // Two commands the user unbound both hold an empty primary, and they
+                    // are not in conflict: neither can be reached at all.
+                    if (chord.IsEmpty())
+                    {
+                        return;
+                    }
+
                     for (const auto& [known, owner] : seen)
                     {
                         // Same command twice is harmless: a chord listed as primary and

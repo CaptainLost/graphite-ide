@@ -3,6 +3,7 @@
 #include "Core/Command/KeyBindingsPanel.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Log.h"
 #include "Core/Command/Binding.h"
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
@@ -13,6 +14,7 @@
 #include <imgui.h>
 
 #include <utility>
+#include <vector>
 
 namespace core
 {
@@ -74,32 +76,42 @@ namespace core
             return text;
         }
 
-        void Erase(Binding& binding, const Chord& chord)
+        /// A binding as one list, primary first: the slot numbering the screen uses is an
+        /// index into exactly this, so every edit is a list edit and the primary/alternate
+        /// split is put back once, in Rebuild.
+        [[nodiscard]] std::vector<Chord> Flatten(const Binding* binding)
         {
-            for (std::size_t index = binding.alternates.size(); index > 0; --index)
+            if (binding == nullptr)
             {
-                if (binding.alternates[index - 1] == chord)
-                {
-                    binding.alternates.erase(binding.alternates.begin() +
-                                             static_cast<std::ptrdiff_t>(index - 1));
-                }
+                return {};
             }
 
-            if (binding.primary == chord)
+            std::vector<Chord> chords;
+            chords.reserve(binding->alternates.size() + 1);
+            chords.push_back(binding->primary);
+            chords.insert(chords.end(), binding->alternates.begin(), binding->alternates.end());
+
+            return chords;
+        }
+
+        /// Empty chords are dropped, so whatever is left first becomes the primary. That
+        /// is what promotes an alternate when the primary is taken away: the menu shows
+        /// the primary, and a command that still answers to a chord must not look unbound.
+        [[nodiscard]] Binding Rebuild(std::vector<Chord> chords)
+        {
+            std::erase_if(chords, [](const Chord& chord) { return chord.IsEmpty(); });
+
+            Binding binding;
+
+            if (chords.empty())
             {
-                // An alternate is promoted rather than leaving an empty primary with live
-                // alternates behind it: the menu shows the primary, and a command that
-                // still answers to a chord should not look unbound.
-                if (binding.alternates.empty())
-                {
-                    binding.primary = Chord{};
-                }
-                else
-                {
-                    binding.primary = binding.alternates.front();
-                    binding.alternates.erase(binding.alternates.begin());
-                }
+                return binding;
             }
+
+            binding.primary = chords.front();
+            binding.alternates.assign(chords.begin() + 1, chords.end());
+
+            return binding;
         }
     }
 
@@ -222,11 +234,30 @@ namespace core
             m_capturingSlot = slot;
         }
 
+        const bool hovered = ImGui::IsItemHovered();
+
+        // Both about the Selectable just drawn, so they have to be read before anything
+        // else becomes "the last item".
+        const bool selfActive = ImGui::IsItemActive();
+        const bool anyActive = ImGui::IsAnyItemActive();
+
         // Not while the conflict question is up: the keys that answer it would otherwise
         // read as a fresh capture.
         if (capturing && !m_conflict.has_value())
         {
-            if (const std::optional<Chord> chord = CaptureChord(); chord.has_value())
+            // Capture reads raw key state, which no widget owns, so it has to be fenced by
+            // hand: without this, typing into the filter box — or into any other window —
+            // while a cell waits would bind whatever was typed. Anything else taking the
+            // keyboard ends the capture rather than merely pausing it, because the user
+            // who clicked elsewhere has plainly stopped answering the question.
+            const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+            const bool ownsKeyboard = !anyActive || selfActive;
+
+            if (!focused || !ownsKeyboard)
+            {
+                m_capturing.clear();
+            }
+            else if (const std::optional<Chord> chord = CaptureChord(hovered); chord.has_value())
             {
                 Offer(id, slot, *chord);
             }
@@ -235,7 +266,7 @@ namespace core
         ImGui::PopID();
     }
 
-    std::optional<Chord> KeyBindingsPanel::CaptureChord()
+    std::optional<Chord> KeyBindingsPanel::CaptureChord(bool pointerOverCell)
     {
         const ImGuiIO& io = ImGui::GetIO();
 
@@ -249,8 +280,10 @@ namespace core
         }
 
         // Without it the screen would show Ctrl+WheelUp beside Zoom In and have no way to
-        // set it. Checked before the keys because a wheel gesture carries modifiers too.
-        if (io.MouseWheel != 0.0f)
+        // set it. Checked before the keys because a wheel gesture carries modifiers too,
+        // and only over the cell itself: the table scrolls, and a scroll aimed at the list
+        // must not overwrite whatever row happens to be waiting.
+        if (pointerOverCell && io.MouseWheel != 0.0f)
         {
             return Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown,
                                 Scope::HoveredEditor);
@@ -290,31 +323,40 @@ namespace core
         // discover it at the moment they wanted to save.
         m_conflict = chord;
         m_conflictOwner = std::string(owner);
+        m_conflictAsked = false;
     }
 
     void KeyBindingsPanel::Apply(const std::string& id, std::size_t slot, const Chord& chord)
     {
-        Binding binding;
+        std::vector<Chord> chords = Flatten(m_keys.For(id));
 
-        if (const Binding* current = m_keys.For(id); current != nullptr)
+        if (slot < chords.size())
         {
-            binding = *current;
-        }
-
-        if (slot == 0)
-        {
-            binding.primary = chord;
-        }
-        else if (slot - 1 < binding.alternates.size())
-        {
-            binding.alternates[slot - 1] = chord;
+            chords[slot] = chord;
         }
         else
         {
-            binding.alternates.push_back(chord);
+            chords.push_back(chord);
+            slot = chords.size() - 1;
         }
 
-        m_keys.Override(id, binding);
+        // The same chord twice in one command reaches it no more often than once, and it
+        // would sit there looking like a second way in. Moving it is what the user asked
+        // for: they put it in this slot, so it leaves the one it was in.
+        for (std::size_t index = chords.size(); index > 0; --index)
+        {
+            if (index - 1 != slot && chords[index - 1] == chord)
+            {
+                chords.erase(chords.begin() + static_cast<std::ptrdiff_t>(index - 1));
+
+                if (index - 1 < slot)
+                {
+                    --slot;
+                }
+            }
+        }
+
+        m_keys.Override(id, Rebuild(std::move(chords)));
         m_capturing.clear();
         m_onChanged();
     }
@@ -329,9 +371,18 @@ namespace core
         // Opened here rather than where the conflict was noticed: a popup's identifier is
         // relative to the ID stack it is opened under, and that one is inside the table's
         // per-row and per-cell PushIDs.
-        if (!ImGui::IsPopupOpen(kConflictPopup))
+        if (!m_conflictAsked)
         {
             ImGui::OpenPopup(kConflictPopup);
+            m_conflictAsked = true;
+        }
+        else if (!ImGui::IsPopupOpen(kConflictPopup))
+        {
+            // Asked and then closed by something other than the two buttons — Escape, or
+            // the panel having been hidden and shown again. A dismissed question is a
+            // "no": the chord stays with the command that already had it.
+            ForgetConflict();
+            return;
         }
 
         if (!ImGui::BeginPopupModal(kConflictPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -353,27 +404,40 @@ namespace core
 
             if (const Binding* current = m_keys.For(m_conflictOwner); current != nullptr)
             {
-                Binding stripped = *current;
-                Erase(stripped, chord);
-                m_keys.Override(m_conflictOwner, stripped);
+                std::vector<Chord> chords = Flatten(current);
+                std::erase(chords, chord);
+
+                // Stored even when nothing is left, as an override that binds nothing.
+                // Clearing the override instead would hand the previous owner its factory
+                // chord straight back, which is the conflict again with no one told.
+                m_keys.Override(m_conflictOwner, Rebuild(std::move(chords)));
             }
 
-            m_conflict.reset();
-            m_conflictOwner.clear();
+            const std::string ownerId = m_conflictOwner;
+
+            ForgetConflict();
             Apply(id, slot, chord);
             ImGui::CloseCurrentPopup();
+
+            CORE_INFO("'{}' took {} from '{}'", id, chord.ToString(), ownerId);
         }
 
         ImGui::SameLine();
 
         if (ImGui::Button("Cancel"))
         {
-            m_conflict.reset();
-            m_conflictOwner.clear();
-            m_capturing.clear();
+            ForgetConflict();
             ImGui::CloseCurrentPopup();
         }
 
         ImGui::EndPopup();
+    }
+
+    void KeyBindingsPanel::ForgetConflict()
+    {
+        m_conflict.reset();
+        m_conflictOwner.clear();
+        m_conflictAsked = false;
+        m_capturing.clear();
     }
 }

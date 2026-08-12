@@ -28,6 +28,14 @@ namespace core
                 return false;
             }
 
+            // A command the user took every chord away from holds an empty primary, and
+            // an empty chord names no key: offering it to ImGui::Shortcut would ask about
+            // a chord of modifiers alone, which is not what "unbound" means.
+            if (chord.IsEmpty())
+            {
+                return false;
+            }
+
             return ImGui::Shortcut(chord.Keys(), ImGuiInputFlags_RouteGlobal);
         }
     }

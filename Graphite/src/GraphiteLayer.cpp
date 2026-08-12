@@ -249,7 +249,15 @@ namespace graphite
         // RouteFocused check could compare against at this point. The chords themselves
         // are the keymap's, registered alongside the commands they run, so a key press and
         // the menu item showing the same combination cannot drift apart.
-        m_router.Dispatch(m_commands, m_keys);
+        //
+        // Not while a panel is reading raw keys: a chord pressed to record it would be
+        // bound and run in the same frame, so capturing Ctrl+Shift+S would also save
+        // everything. Asked of the panels as a whole, so this knows nothing about which
+        // one captures.
+        if (!m_panels.IsCapturingInput())
+        {
+            m_router.Dispatch(m_commands, m_keys);
+        }
     }
 
     bool GraphiteLayer::OnCloseRequested()

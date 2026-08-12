@@ -23,6 +23,13 @@ namespace core
         virtual void OnUpdate(float deltaSeconds) { (void)deltaSeconds; }
         virtual void OnUIRender() {}
 
+        /// Whether this panel is reading raw key presses this frame — a shortcut being
+        /// rebound, say. Whoever routes shortcuts has to ask, or the chord the user is
+        /// pressing to record it also runs the command it is being taken from. Asked of
+        /// every panel rather than of one, so neither the router's caller nor this base
+        /// class has to know which panel captures.
+        [[nodiscard]] virtual bool IsCapturingInput() const { return false; }
+
         [[nodiscard]] const std::string& Id() const noexcept { return m_id; }
         [[nodiscard]] const std::string& Title() const noexcept { return m_title; }
 
