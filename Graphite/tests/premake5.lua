@@ -40,7 +40,8 @@ project "GraphiteTests"
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.pugixml}",
         "%{IncludeDir.ImGui}",
-        "%{IncludeDir.MdiIcons}"
+        "%{IncludeDir.MdiIcons}",
+        "%{IncludeDir.spdlog}"
     }
 
     externalwarnings "Off"

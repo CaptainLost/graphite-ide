@@ -11,6 +11,10 @@ extern Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationC
 
 int main(int argc, char** argv)
 {
+	// First, before anything the client does: until the sinks are attached a message has
+	// nowhere to go, and the startup path is where the messages worth keeping are.
+	Core::Log::Init(Core::CreateLogSpec());
+
 	try
 	{
 		Core::Scope<Core::Application> app = Core::CreateApplication({argc, argv});

@@ -34,7 +34,8 @@ project "Core"
     {
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.json}",
-        "%{IncludeDir.MdiIcons}"
+        "%{IncludeDir.MdiIcons}",
+        "%{IncludeDir.spdlog}"
     }
     externalwarnings "Off"
 

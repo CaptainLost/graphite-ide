@@ -37,7 +37,8 @@ project "Graphite"
 
     externalincludedirs
     {
-        "%{IncludeDir.pugixml}"
+        "%{IncludeDir.pugixml}",
+        "%{IncludeDir.spdlog}"
     }
     externalwarnings "Off"
 

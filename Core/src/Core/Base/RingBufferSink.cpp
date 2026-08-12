@@ -4,20 +4,39 @@
 
 #include "Core/Base/Assert.h"
 
+#include <string_view>
+
 namespace Core {
+
+	namespace {
+		LogSource SourceOf(const spdlog::details::log_msg& msg)
+		{
+			const std::string_view name{msg.logger_name.data(), msg.logger_name.size()};
+			return name == ToString(LogSource::Application) ? LogSource::Application
+															: LogSource::Engine;
+		}
+	}
 
 	RingBufferSink::RingBufferSink(std::size_t capacity) : m_Capacity(capacity)
 	{
 		CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
 	}
 
-	void RingBufferSink::Write(const LogEntry& entry)
+	void RingBufferSink::sink_it_(const spdlog::details::log_msg& msg)
 	{
+		LogEntry entry{FromBackendLevel(msg.level), SourceOf(msg),
+					   std::string{msg.payload.data(), msg.payload.size()}};
+
 		const std::scoped_lock lock{m_Mutex};
 
-		m_Entries.push_back(entry);
+		m_Entries.push_back(std::move(entry));
 		while (m_Entries.size() > m_Capacity)
 			m_Entries.pop_front();
+	}
+
+	void RingBufferSink::flush_()
+	{
+		// Nothing is buffered on the way in, so there is nothing to push out.
 	}
 
 	std::vector<LogEntry> RingBufferSink::TakeSnapshot() const

@@ -2,15 +2,12 @@
 
 #include "Core/Base/Base.h"
 
-#include "Core/Base/NonCopyable.h"
+#include <spdlog/spdlog.h>
 
-#include <format>
-#include <memory>
-#include <mutex>
+#include <cstddef>
+#include <filesystem>
 #include <string>
 #include <string_view>
-#include <utility>
-#include <vector>
 
 namespace Core {
 
@@ -23,9 +20,10 @@ namespace Core {
 		Critical
 	};
 
-	// Which half of the program spoke. The engine and the application share one logger and
-	// one set of sinks, because a reader wants them interleaved in the order they happened;
-	// this is what lets a sink still tell them apart when it renders or filters.
+	// Which half of the program spoke. The engine and the application write through two
+	// named loggers that share one set of sinks, because a reader wants them interleaved in
+	// the order they happened; the name is what lets a sink still tell them apart when it
+	// renders or filters.
 	enum class LogSource
 	{
 		Engine,
@@ -35,6 +33,9 @@ namespace Core {
 	std::string_view ToString(LogLevel level);
 	std::string_view ToString(LogSource source);
 
+	spdlog::level::level_enum ToBackendLevel(LogLevel level);
+	LogLevel FromBackendLevel(spdlog::level::level_enum level);
+
 	struct LogEntry
 	{
 		LogLevel Level = LogLevel::Info;
@@ -42,56 +43,50 @@ namespace Core {
 		std::string Message;
 	};
 
-	class ILogSink
+	class RingBufferSink;
+
+	// Everything the engine cannot decide for itself. An empty FilePath means no file is
+	// written at all, which is what a test run wants; a caller that wants one names it,
+	// because only the caller knows where this program is allowed to write.
+	struct LogSpec
 	{
-	public:
-		virtual ~ILogSink() = default;
-		virtual void Write(const LogEntry& entry) = 0;
+		std::filesystem::path FilePath;
+		std::size_t MaxFileSize = 5u * 1024u * 1024u;
+		std::size_t MaxFiles = 3;
+		std::size_t ConsoleCapacity = 4096;
+		LogLevel Level = LogLevel::Trace;
 	};
 
-	class ConsoleSink final : public ILogSink
+	class Log final
 	{
 	public:
-		void Write(const LogEntry& entry) override;
+		// Both loggers exist from the first message written through them, so anything
+		// logged before Init still reaches the process console and the in-memory buffer.
+		// Init replaces the sink set: it is what adds the file, and the only point at
+		// which the buffer's capacity and the level can still be chosen.
+		static void Init(const LogSpec& spec = LogSpec{});
+
+		static const Ref<spdlog::logger>& GetEngineLogger();
+		static const Ref<spdlog::logger>& GetApplicationLogger();
+		static const Ref<RingBufferSink>& GetConsoleSink();
 	};
 
-	class Logger final : NonCopyable
-	{
-	public:
-		static Logger& Get();
-
-		void AddSink(Ref<ILogSink> sink);
-		void ClearSinks();
-
-		void SetLevel(LogLevel level);
-		LogLevel GetLevel() const;
-
-		void Write(LogSource source, LogLevel level, std::string message);
-
-	private:
-		Logger() = default;
-
-		mutable std::mutex m_Mutex;
-		std::vector<Ref<ILogSink>> m_Sinks;
-		LogLevel m_Level = LogLevel::Trace;
-	};
+	// Defined by the client, next to CreateApplication and for the same reason: the entry
+	// point runs before the application exists, and the path of the log file is not the
+	// engine's to choose.
+	LogSpec CreateLogSpec();
 }
-#define CORE_LOG(source, level, ...) \
-	::Core::Logger::Get().Write((source), (level), std::format(__VA_ARGS__))
-
 // The engine logs through CORE_*, the application through APP_*. Anything below the
 // engine boundary that used APP_* would be reporting itself as the application, which is
 // the one thing this split exists to prevent.
-#define CORE_TRACE(...) CORE_LOG(::Core::LogSource::Engine, ::Core::LogLevel::Trace, __VA_ARGS__)
-#define CORE_INFO(...) CORE_LOG(::Core::LogSource::Engine, ::Core::LogLevel::Info, __VA_ARGS__)
-#define CORE_WARN(...) CORE_LOG(::Core::LogSource::Engine, ::Core::LogLevel::Warn, __VA_ARGS__)
-#define CORE_ERROR(...) CORE_LOG(::Core::LogSource::Engine, ::Core::LogLevel::Error, __VA_ARGS__)
-#define CORE_CRITICAL(...) \
-	CORE_LOG(::Core::LogSource::Engine, ::Core::LogLevel::Critical, __VA_ARGS__)
+#define CORE_TRACE(...) ::Core::Log::GetEngineLogger()->trace(__VA_ARGS__)
+#define CORE_INFO(...) ::Core::Log::GetEngineLogger()->info(__VA_ARGS__)
+#define CORE_WARN(...) ::Core::Log::GetEngineLogger()->warn(__VA_ARGS__)
+#define CORE_ERROR(...) ::Core::Log::GetEngineLogger()->error(__VA_ARGS__)
+#define CORE_CRITICAL(...) ::Core::Log::GetEngineLogger()->critical(__VA_ARGS__)
 
-#define APP_TRACE(...) CORE_LOG(::Core::LogSource::Application, ::Core::LogLevel::Trace, __VA_ARGS__)
-#define APP_INFO(...) CORE_LOG(::Core::LogSource::Application, ::Core::LogLevel::Info, __VA_ARGS__)
-#define APP_WARN(...) CORE_LOG(::Core::LogSource::Application, ::Core::LogLevel::Warn, __VA_ARGS__)
-#define APP_ERROR(...) CORE_LOG(::Core::LogSource::Application, ::Core::LogLevel::Error, __VA_ARGS__)
-#define APP_CRITICAL(...) \
-	CORE_LOG(::Core::LogSource::Application, ::Core::LogLevel::Critical, __VA_ARGS__)
+#define APP_TRACE(...) ::Core::Log::GetApplicationLogger()->trace(__VA_ARGS__)
+#define APP_INFO(...) ::Core::Log::GetApplicationLogger()->info(__VA_ARGS__)
+#define APP_WARN(...) ::Core::Log::GetApplicationLogger()->warn(__VA_ARGS__)
+#define APP_ERROR(...) ::Core::Log::GetApplicationLogger()->error(__VA_ARGS__)
+#define APP_CRITICAL(...) ::Core::Log::GetApplicationLogger()->critical(__VA_ARGS__)
