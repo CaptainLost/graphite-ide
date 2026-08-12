@@ -21,6 +21,23 @@ namespace
 
         int updates = 0;
     };
+
+    /// Stands in for the key bindings screen, which cannot be driven without a frame: what
+    /// matters here is what the manager does with the answer, not how the screen arrives
+    /// at it.
+    class CapturingPanel final : public core::Panel
+    {
+    public:
+        CapturingPanel(std::string id, bool capturing)
+            : core::Panel(std::move(id), "Panel"), m_capturing(capturing)
+        {
+        }
+
+        [[nodiscard]] bool IsCapturingInput() const override { return m_capturing; }
+
+    private:
+        bool m_capturing = false;
+    };
 }
 
 TEST_CASE("Add registers a panel and allows finding it by identifier")
@@ -123,6 +140,33 @@ TEST_CASE("A panel added after RegisterCommands still gets its command")
     panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
 
     REQUIRE(commands.Find("panel.files") != nullptr);
+}
+
+TEST_CASE("IsCapturingInput answers for any panel reading raw keys")
+{
+    // What the application asks before routing shortcuts: a chord being recorded for a
+    // rebinding must not also run the command it is being taken from. A panel that
+    // captures nothing is the default, so the ordinary case has to stay false.
+    core::PanelManager panels;
+    panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+
+    CHECK_FALSE(panels.IsCapturingInput());
+
+    panels.Add(std::make_unique<CapturingPanel>("keybindings", true));
+
+    CHECK(panels.IsCapturingInput());
+}
+
+TEST_CASE("IsCapturingInput ignores a hidden panel")
+{
+    // A hidden panel draws nothing and so can be reading nothing, whatever it left behind
+    // in its own state. Were it believed, closing the screen mid-capture would leave every
+    // shortcut in the application dead with nothing on screen to explain it.
+    core::PanelManager panels;
+    core::Panel* keys = panels.Add(std::make_unique<CapturingPanel>("keybindings", true));
+    keys->SetVisible(false);
+
+    CHECK_FALSE(panels.IsCapturingInput());
 }
 
 TEST_CASE("ResetVisibility restores each panel's own default, not everything visible")

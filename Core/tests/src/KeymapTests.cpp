@@ -135,6 +135,19 @@ TEST_CASE("FindConflicts ignores a chord a command binds twice within itself")
     CHECK(keys.FindConflicts().empty());
 }
 
+TEST_CASE("FindConflicts ignores commands that are bound to nothing")
+{
+    // An override that binds nothing is how the rebinding screen records a command whose
+    // last chord was taken away. Two of those share an empty primary and are not in
+    // conflict — neither can be reached at all — and reporting it would put an error in
+    // the log at every start.
+    Keymap keys;
+    keys.SetDefault("editor.zoomIn", Binding{});
+    keys.SetDefault("document.saveAll", Binding{});
+
+    CHECK(keys.FindConflicts().empty());
+}
+
 TEST_CASE("ForEachOverride visits only what the user changed")
 {
     Keymap keys;

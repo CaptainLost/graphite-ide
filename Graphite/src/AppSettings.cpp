@@ -108,7 +108,10 @@ namespace graphite
 
             // An override that binds nothing, which is a different thing from a missing
             // override: the latter restores the factory chord.
-            if (core::ascii::Trimmed(text) == kUnboundText)
+            // Case-insensitively, like Chord::Parse reads every other name in this file:
+            // a hand-written "none" must not be refused and silently restore the factory
+            // chord, which is the one failure this token exists to prevent.
+            if (core::ascii::Lowered(core::ascii::Trimmed(text)) == core::ascii::Lowered(kUnboundText))
             {
                 return binding;
             }

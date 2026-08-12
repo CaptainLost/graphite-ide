@@ -254,6 +254,12 @@ namespace graphite
         // bound and run in the same frame, so capturing Ctrl+Shift+S would also save
         // everything. Asked of the panels as a whole, so this knows nothing about which
         // one captures.
+        //
+        // Known and accepted: skipping the call also skips the routing registrations
+        // Dispatch's own comment describes, so the first frame after a capture ends can
+        // miss a chord. It costs one keypress in a situation the user just created on
+        // purpose, and the alternative is a router that can be told to observe without
+        // running — more machinery than the fault is worth.
         if (!m_panels.IsCapturingInput())
         {
             m_router.Dispatch(m_commands, m_keys);

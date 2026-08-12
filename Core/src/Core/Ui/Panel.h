@@ -23,6 +23,13 @@ namespace core
         virtual void OnUpdate(float deltaSeconds) { (void)deltaSeconds; }
         virtual void OnUIRender() {}
 
+        /// Called instead of OnUIRender on a frame where the body did not run — hidden,
+        /// collapsed, or not the selected tab of its dock node. Anything a panel can only
+        /// finish while drawing has to end here, or it outlives the frame with nothing on
+        /// screen to explain it: a shortcut capture left waiting behind a document tab
+        /// would go on swallowing every shortcut in the application.
+        virtual void OnNotDrawn() {}
+
         /// Whether this panel is reading raw key presses this frame — a shortcut being
         /// rebound, say. Whoever routes shortcuts has to ask, or the chord the user is
         /// pressing to record it also runs the command it is being taken from. Asked of

@@ -89,13 +89,26 @@ namespace core
         for (auto& panel : m_panels)
         {
             if (!panel->IsVisible())
+            {
+                panel->OnNotDrawn();
                 continue;
+            }
 
             bool open = true;
             const std::string label = panel->Title() + "###" + panel->Id();
 
             if (ImGui::Begin(label.c_str(), &open))
+            {
                 panel->OnUIRender();
+            }
+            else
+            {
+                // Collapsed, or another tab of the same dock node is the selected one.
+                // The panel is still visible and still gets its turn, but its body never
+                // ran, so whatever that body was in the middle of has to be ended rather
+                // than left waiting invisibly.
+                panel->OnNotDrawn();
+            }
 
             ImGui::End();
 

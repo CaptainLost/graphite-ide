@@ -155,6 +155,11 @@ namespace core
         RenderConflictPopup();
     }
 
+    void KeyBindingsPanel::OnNotDrawn()
+    {
+        ForgetConflict();
+    }
+
     bool KeyBindingsPanel::Matches(const Command& command) const
     {
         const std::string needle = ascii::Lowered(m_filter.data());

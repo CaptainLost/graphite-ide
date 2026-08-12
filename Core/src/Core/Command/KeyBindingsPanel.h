@@ -29,6 +29,12 @@ namespace core
 
         void OnUIRender() override;
 
+        /// A capture is only ever answered from a drawn cell, so a frame this screen did
+        /// not draw is a frame the user cannot have answered in — and it is one click away
+        /// (a document tab in the same node) from every frame after it. Ending the capture
+        /// here is what makes it impossible to leave stuck.
+        void OnNotDrawn() override;
+
         /// True from the click on a cell until the capture ends, so the application can
         /// stop routing shortcuts: the chord being recorded must not also run the command
         /// it is being taken from.
