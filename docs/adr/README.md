@@ -508,4 +508,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0476](0476-load-a-tab-whose-file-appears-rather-than-only-clearing-its-missing-mark.md) | Load a tab whose file appears, rather than only clearing its missing mark | proposed | 2026-08-11 |
 | [0477](0477-draw-the-title-bar-in-the-application.md) | Draw the title bar in the application | accepted | 2026-08-11 |
 | [0478](0478-route-menu-items-and-shortcuts-through-commands.md) | Route menu items and shortcuts through commands | proposed | 2026-08-12 |
+| [0479](0479-follow-hazel-s-code-style-and-structure.md) | Follow Hazel's code style and structure | accepted | 2026-08-12 |
 <!-- /adr-index -->
