@@ -11,7 +11,6 @@
 #include "Core/Command/KeyBindingsPanel.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
-#include "Core/Text/Editing.h"
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -294,7 +293,9 @@ namespace graphite
         }
 
         if (!m_documentWindows.AnyModified())
+        {
             return true;
+        }
 
         // Asked even when another question - one of DocumentWindows' four - is on
         // screen, which Alt+F4 and the OS close button reach past regardless of ImGui

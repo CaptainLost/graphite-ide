@@ -17,8 +17,6 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Ui/PanelManager.h"
 
-#include <imgui.h>
-
 #include <filesystem>
 #include <memory>
 #include <vector>

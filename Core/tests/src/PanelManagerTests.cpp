@@ -18,8 +18,10 @@ namespace
         }
 
         void OnUpdate(float) override { ++updates; }
+        void OnNotDrawn() override { ++notDrawn; }
 
         int updates = 0;
+        int notDrawn = 0;
     };
 
     /// Stands in for the key bindings screen, which cannot be driven without a frame: what
@@ -167,6 +169,25 @@ TEST_CASE("IsCapturingInput ignores a hidden panel")
     keys->SetVisible(false);
 
     CHECK_FALSE(panels.IsCapturingInput());
+}
+
+TEST_CASE("A hidden panel is told it was not drawn")
+{
+    // The whole point of OnNotDrawn: a screen in the middle of something — a shortcut
+    // capture waiting for a key — must be told the frame it never got, or it waits
+    // invisibly with nothing on screen able to end it. The hidden branch reaches this
+    // before any ImGui call, so it needs no context or frame to be checked here.
+    core::PanelManager panels;
+    auto* hidden =
+        static_cast<CountingPanel*>(panels.Add(std::make_unique<CountingPanel>("keybindings",
+                                                                              "Keyboard Shortcuts",
+                                                                              false)));
+
+    REQUIRE_FALSE(hidden->IsVisible());
+
+    panels.OnUIRender();
+
+    CHECK(hidden->notDrawn == 1);
 }
 
 TEST_CASE("ResetVisibility restores each panel's own default, not everything visible")

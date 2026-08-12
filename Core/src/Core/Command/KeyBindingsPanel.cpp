@@ -288,7 +288,14 @@ namespace core
         // set it. Checked before the keys because a wheel gesture carries modifiers too,
         // and only over the cell itself: the table scrolls, and a scroll aimed at the list
         // must not overwrite whatever row happens to be waiting.
-        if (pointerOverCell && io.MouseWheel != 0.0f)
+        //
+        // A modifier is required as well, because the cell the pointer is over is normally
+        // the very one just clicked to arm the capture: scrolling the table to find another
+        // row would otherwise bind a bare WheelUp, after which every scroll in an editor
+        // runs that command once per notch. The modifiers are also what distinguish the
+        // gesture from ordinary scrolling, so a bare wheel is not a shortcut anyone means
+        // to set.
+        if (pointerOverCell && io.MouseWheel != 0.0f && io.KeyMods != ImGuiMod_None)
         {
             return Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown,
                                 Scope::HoveredEditor);

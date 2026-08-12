@@ -344,7 +344,14 @@ namespace graphite
             // it. Which modifiers count and how a fast spin's several notches turn into
             // several steps are the router's and the keymap's business now, so neither
             // KeyCtrl nor the wheel value is inspected here.
-            if (ImGui::IsWindowHovered() && context.router != nullptr)
+            // All three checked, not just the router: the struct's members each default to
+            // nullptr, so a partly filled one is a thing the type admits, and a guard that
+            // reads as "this may arrive incomplete" while crashing if it does is worse
+            // than no guard at all.
+            const bool routable =
+                context.router != nullptr && context.commands != nullptr && context.keys != nullptr;
+
+            if (ImGui::IsWindowHovered() && routable)
             {
                 context.router->DispatchWheel(*context.commands, *context.keys,
                                               core::Scope::HoveredEditor,

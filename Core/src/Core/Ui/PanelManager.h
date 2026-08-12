@@ -4,7 +4,6 @@
 #include "Core/Ui/Panel.h"
 
 #include <cstddef>
-#include <functional>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -39,8 +38,6 @@ namespace core
 
         /// Returns every panel to the visibility it was constructed with.
         void ResetVisibility();
-
-        void ForEach(const std::function<void(Panel&)>& action);
 
     private:
         std::vector<std::unique_ptr<Panel>> m_panels;

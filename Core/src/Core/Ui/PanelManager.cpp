@@ -134,10 +134,4 @@ namespace core
             panel->SetVisible(panel->DefaultVisible());
         }
     }
-
-    void PanelManager::ForEach(const std::function<void(Panel&)>& action)
-    {
-        for (auto& panel : m_panels)
-            action(*panel);
-    }
 }
