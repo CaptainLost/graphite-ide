@@ -30,7 +30,7 @@ namespace Graphite
         GraphiteLayer(std::shared_ptr<Core::RingBufferSink> sink, std::filesystem::path initialFolder);
 
         void OnAttach() override;
-        void OnUpdate(float deltaSeconds) override;
+        void OnUpdate(Core::Timestep ts) override;
         void OnUIRender() override;
 
         /// Nothing dirty closes immediately. Otherwise asks the "Unsaved changes" question
@@ -71,7 +71,7 @@ namespace Graphite
 
         /// Reloads the workspace when the window comes back after a pause. Separated
         /// from OnUpdate so its early return governs only itself.
-        void UpdateFocusReload(float deltaSeconds);
+        void UpdateFocusReload(Core::Timestep ts);
 
         /// How long the application has to have been in the background before coming
         /// back triggers a reload. Alt-tabbing to glance at something and returning is

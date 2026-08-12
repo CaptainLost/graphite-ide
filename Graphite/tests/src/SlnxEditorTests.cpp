@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
 #include "Core/Fs/FileSystem.h"
-#include "Core/Sln/SolutionEditor.h"
-#include "Core/Sln/SolutionReader.h"
+#include "Sln/SolutionEditor.h"
+#include "Sln/SolutionReader.h"
 
 #include "TempDirectory.h"
 
@@ -97,7 +97,7 @@ TEST_CASE("Opening a format this build cannot write fails")
     TempDirectory temp;
     const auto file = temp.MakeFile("notes.txt", "x");
 
-    const auto editor = Core::SolutionEditor::Open(file);
+    const auto editor = Graphite::SolutionEditor::Open(file);
 
     REQUIRE_FALSE(editor.HasValue());
     CHECK(editor.GetError().code == Core::ErrorCode::Unsupported);
@@ -108,7 +108,7 @@ TEST_CASE("Nothing is written until Save is called")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
 
@@ -121,12 +121,12 @@ TEST_CASE("Adding a project puts it in the solution and changes nothing else")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 2);
 
@@ -159,12 +159,12 @@ TEST_CASE("A project added to a folder lands in that folder")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "App").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.GetValue().root.folders.size() == 1);
     CHECK(solution.GetValue().root.folders[0].projects.size() == 2);
@@ -175,7 +175,7 @@ TEST_CASE("The project path is written relative to the solution")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -192,7 +192,7 @@ TEST_CASE("Adding a project that is already a member is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.GetValue()->AddProject(temp.GetPath() / "app" / "App.vcxproj", "");
@@ -207,7 +207,7 @@ TEST_CASE("Adding a project file that does not exist is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.GetValue()->AddProject(temp.GetPath() / "gone" / "Gone.vcxproj", "");
@@ -221,12 +221,12 @@ TEST_CASE("Removing a project takes it out and leaves the rest alone")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 0);
 
@@ -250,7 +250,7 @@ TEST_CASE("Removing a project that is not a member is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto removed = editor.GetValue()->RemoveProject(temp.GetPath() / "lib" / "Lib.vcxproj");
@@ -264,7 +264,7 @@ TEST_CASE("A project file on disk is never touched by removal")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -278,13 +278,13 @@ TEST_CASE("Two operations are written as one change")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 1);
 }
@@ -301,7 +301,7 @@ TEST_CASE("No temporary file is left beside the solution")
 
     std::sort(before.begin(), before.end());
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -327,7 +327,7 @@ TEST_CASE("Removing a project that spans several lines removes all of it")
     temp.MakeFile("lib/Lib.vcxproj", "<Project />");
     const auto file = temp.MakeFile("Sample.slnx", kNestedSolution);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -349,7 +349,7 @@ TEST_CASE("A project added to an empty folder expands its self-closing tag")
     temp.MakeFile("lib/Lib.vcxproj", "<Project />");
     const auto file = temp.MakeFile("Sample.slnx", kEmptyFolderSolution);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "Lib").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -377,7 +377,7 @@ TEST_CASE("A container whose attributes wrap is still named correctly")
     temp.MakeFile("lib/Lib.vcxproj", "<Project />");
     const auto file = temp.MakeFile("Sample.slnx", kWrappedFolderSolution);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "Lib").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -411,7 +411,7 @@ TEST_CASE("A project under a different root is refused")
     const std::filesystem::path elsewhere =
         Core::FromUtf8(root == "Z:" ? "Y:\\far\\Far.vcxproj" : "Z:\\far\\Far.vcxproj");
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.GetValue()->AddProject(elsewhere, "");
@@ -426,7 +426,7 @@ TEST_CASE("Adding a folder puts it in the solution")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
@@ -443,12 +443,12 @@ TEST_CASE("A nested folder creates the ancestors it needs")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine/Tests").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     // Nesting is expressed by the name, so both elements have to exist.
@@ -462,7 +462,7 @@ TEST_CASE("Adding a folder that already exists is refused")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     const auto added = editor.GetValue()->AddFolder("App");
@@ -476,12 +476,12 @@ TEST_CASE("Adding a project to a folder that does not exist creates it")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "Engine").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.GetValue().root.folders.size() == 2);
 }
@@ -491,7 +491,7 @@ TEST_CASE("An empty folder can be removed")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
     REQUIRE(editor.GetValue()->RemoveFolder("Engine").HasValue());
@@ -505,7 +505,7 @@ TEST_CASE("A folder holding a project cannot be removed")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
     // Refused rather than deleting a subtree by implication: the user asked to remove one
@@ -521,7 +521,7 @@ TEST_CASE("A folder holding another folder cannot be removed")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine/Tests").HasValue());
 
@@ -536,7 +536,7 @@ TEST_CASE("Renaming a folder renames its descendants too")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine/Tests").HasValue());
     REQUIRE(editor.GetValue()->RenameFolder("Engine", "Core").HasValue());
@@ -556,12 +556,12 @@ TEST_CASE("Renaming a folder leaves its projects where they are")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->RenameFolder("App", "Application").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.GetValue().root.folders.size() == 1);
     CHECK(solution.GetValue().root.folders[0].name == "Application");
@@ -573,7 +573,7 @@ TEST_CASE("A project moves between folders")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
     REQUIRE(editor.GetValue()
@@ -581,10 +581,10 @@ TEST_CASE("A project moves between folders")
                 .HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    for (const Core::Folder& folder : solution.GetValue().root.folders)
+    for (const Graphite::Folder& folder : solution.GetValue().root.folders)
     {
         if (folder.name == "Engine")
             CHECK(folder.projects.size() == 1);
@@ -598,12 +598,12 @@ TEST_CASE("A project moves out of a folder to the solution root")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->MoveProject(temp.GetPath() / "app" / "App.vcxproj", "").HasValue());
     REQUIRE(editor.GetValue()->Save().HasValue());
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().root.projects.size() == 1);
     CHECK(solution.GetValue().root.folders[0].projects.empty());
@@ -614,7 +614,7 @@ TEST_CASE("Moving a project keeps its identifier")
     TempDirectory temp;
     const auto file = MakeFixture(temp);
 
-    auto editor = Core::SolutionEditor::Open(file);
+    auto editor = Graphite::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
     REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
     REQUIRE(editor.GetValue()

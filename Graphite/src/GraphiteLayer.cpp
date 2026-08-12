@@ -160,15 +160,15 @@ namespace Graphite
         m_MenuTree = BuildMenuTree();
     }
 
-    void GraphiteLayer::OnUpdate(float deltaSeconds)
+    void GraphiteLayer::OnUpdate(Core::Timestep ts)
     {
         m_Workspace.Update();
-        m_Panels.OnUpdate(deltaSeconds);
+        m_Panels.OnUpdate(ts);
 
         // In its own function so its early return cannot swallow the calls above. An
         // earlier revision had this logic inlined here and dropped the panel update
         // silently — nothing failed, because no panel overrides it yet.
-        UpdateFocusReload(deltaSeconds);
+        UpdateFocusReload(ts);
 
         // Watchers drop events — buffer overflow, or a tool touching many files at once —
         // and returning from another application is exactly when that matters. Reading
@@ -183,7 +183,7 @@ namespace Graphite
         m_DocumentWindows.NotifyWindowFocus(glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0);
     }
 
-    void GraphiteLayer::UpdateFocusReload(float deltaSeconds)
+    void GraphiteLayer::UpdateFocusReload(Core::Timestep ts)
     {
         // The process, not the main window: a panel dragged out into its own viewport is
         // a separate OS window, and working in one used to read as having left the
@@ -191,7 +191,7 @@ namespace Graphite
         // absence that never happened.
         if (!Core::IsForeground())
         {
-            m_SecondsInBackground += deltaSeconds;
+            m_SecondsInBackground += ts.GetSeconds();
             m_AppForeground = false;
             return;
         }

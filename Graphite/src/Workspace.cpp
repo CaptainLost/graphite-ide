@@ -18,12 +18,12 @@ namespace Graphite
         /// Walks every project in the tree. Solution folders nest, so a plain loop over
         /// one level would miss most of them.
         template <typename Visitor>
-        void ForEachProject(const Core::Folder& folder, Visitor&& visit)
+        void ForEachProject(const Folder& folder, Visitor&& visit)
         {
-            for (const Core::Project& project : folder.projects)
+            for (const Project& project : folder.projects)
                 visit(project);
 
-            for (const Core::Folder& child : folder.folders)
+            for (const Folder& child : folder.folders)
                 ForEachProject(child, visit);
         }
     }
@@ -103,7 +103,7 @@ namespace Graphite
         // would be too late: by then the workspace has been re-rooted, the file recorded
         // as a candidate, and the choice written to .graphite — where it would come back
         // as a candidate on every later open.
-        if (!Core::IsSolutionFile(solutionPath))
+        if (!IsSolutionFile(solutionPath))
         {
             return Core::Error{Core::ErrorCode::Unsupported,
                                std::format("'{}' is not a solution file", solutionPath.string())};
@@ -283,7 +283,7 @@ namespace Graphite
             bool matched = false;
 
             ForEachProject(m_Solution->root,
-                           [&directory, &matched](const Core::Project& project)
+                           [&directory, &matched](const Project& project)
                            {
                                if (project.path.parent_path() == directory)
                                    matched = true;
@@ -615,7 +615,7 @@ namespace Graphite
         m_SolutionStamp = stamp;
         m_Solution.reset();
 
-        auto solution = Core::ReadSolution(m_SelectedSolution);
+        auto solution = ReadSolution(m_SelectedSolution);
 
         if (!solution)
         {
@@ -651,7 +651,7 @@ namespace Graphite
             return newest;
 
         ForEachProject(m_Solution->root,
-                       [&newest](const Core::Project& project)
+                       [&newest](const Project& project)
                        {
                            std::error_code projectCode;
 

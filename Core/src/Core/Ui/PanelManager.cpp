@@ -78,10 +78,10 @@ namespace Core
         return true;
     }
 
-    void PanelManager::OnUpdate(float deltaSeconds)
+    void PanelManager::OnUpdate(Timestep ts)
     {
         for (auto& panel : m_Panels)
-            panel->OnUpdate(deltaSeconds);
+            panel->OnUpdate(ts);
     }
 
     void PanelManager::OnUIRender()

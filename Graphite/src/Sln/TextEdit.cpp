@@ -1,8 +1,6 @@
-#include "corepch.h"
+#include "Sln/TextEdit.h"
 
-#include "Core/Sln/TextEdit.h"
-
-namespace Core
+namespace Graphite
 {
     std::string DetectLineEnding(std::string_view text)
     {

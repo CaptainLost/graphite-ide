@@ -10,7 +10,7 @@
 using Core::Binding;
 using Core::Chord;
 using Core::Keymap;
-using Core::Scope;
+using Scope = Core::Chord::Scope;
 using Core::Trigger;
 
 namespace

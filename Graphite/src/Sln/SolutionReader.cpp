@@ -1,25 +1,26 @@
-#include "corepch.h"
-
-#include "Core/Sln/SolutionReader.h"
+#include "Sln/SolutionReader.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Sln/CsprojReader.h"
-#include "Core/Sln/ProjectContentReader.h"
-#include "Core/Sln/SlnParser.h"
-#include "Core/Sln/VcxprojReader.h"
+#include "Sln/CsprojReader.h"
+#include "Sln/ProjectContentReader.h"
+#include "Sln/SlnParser.h"
+#include "Sln/VcxprojReader.h"
 
 #include <pugixml.hpp>
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
-namespace Core
+namespace Graphite
 {
     namespace
     {
@@ -27,7 +28,7 @@ namespace Core
         /// MyApp.SLNX as an unknown format would be a lie about an ordinary file.
         std::string LowercaseExtension(const std::filesystem::path& path)
         {
-            std::string extension = ToUtf8(path.extension());
+            std::string extension = Core::ToUtf8(path.extension());
 
             std::transform(extension.begin(), extension.end(), extension.begin(),
                            [](unsigned char character)
@@ -101,10 +102,10 @@ namespace Core
                 // Declared relative to the solution and usually with backslashes, which
                 // std::filesystem accepts on Windows. Made absolute here, once, because
                 // everything downstream opens the file rather than displaying the path.
-                project.path = (solutionDirectory / FromUtf8(declared)).lexically_normal();
+                project.path = (solutionDirectory / Core::FromUtf8(declared)).lexically_normal();
                 project.path.make_preferred();
 
-                project.displayName = ToUtf8(project.path.stem());
+                project.displayName = Core::ToUtf8(project.path.stem());
                 project.typeId = node.attribute("Type").value();
 
                 // One stat per project, and worth it: a solution naming a file that is
@@ -163,39 +164,39 @@ namespace Core
         {
             std::sort(folder.folders.begin(), folder.folders.end(),
                       [](const Folder& left, const Folder& right)
-                      { return CompareNames(left.name, right.name) < 0; });
+                      { return Core::CompareNames(left.name, right.name) < 0; });
 
             std::sort(folder.projects.begin(), folder.projects.end(),
                       [](const Project& left, const Project& right)
-                      { return CompareNames(left.displayName, right.displayName) < 0; });
+                      { return Core::CompareNames(left.displayName, right.displayName) < 0; });
 
             for (Folder& child : folder.folders)
                 SortSolution(child);
         }
 
-        Result<Solution> ReadSlnx(const std::filesystem::path& path)
+        Core::Result<Solution> ReadSlnx(const std::filesystem::path& path)
         {
             pugi::xml_document document;
             const pugi::xml_parse_result parsed = document.load_file(path.c_str());
 
             if (!parsed)
             {
-                return Error{ErrorCode::InvalidArgument,
-                             std::format("cannot parse '{}': {}", path.string(),
-                                         parsed.description())};
+                return Core::Error{Core::ErrorCode::InvalidArgument,
+                                   std::format("cannot parse '{}': {}", path.string(),
+                                               parsed.description())};
             }
 
             const pugi::xml_node root = document.child("Solution");
 
             if (!root)
             {
-                return Error{ErrorCode::InvalidArgument,
-                             std::format("'{}' has no Solution element", path.string())};
+                return Core::Error{Core::ErrorCode::InvalidArgument,
+                                   std::format("'{}' has no Solution element", path.string())};
             }
 
             Solution solution;
             solution.path = path;
-            solution.name = ToUtf8(path.stem());
+            solution.name = Core::ToUtf8(path.stem());
 
             const std::filesystem::path directory = path.parent_path();
 
@@ -216,14 +217,14 @@ namespace Core
             return solution;
         }
 
-        Result<Solution> ReadSlnText(const std::filesystem::path& path)
+        Core::Result<Solution> ReadSlnText(const std::filesystem::path& path)
         {
             std::ifstream stream{path, std::ios::binary};
 
             if (!stream.is_open())
             {
-                return Error{ErrorCode::IoFailure,
-                             std::format("cannot open '{}'", path.string())};
+                return Core::Error{Core::ErrorCode::IoFailure,
+                                   std::format("cannot open '{}'", path.string())};
             }
 
             std::ostringstream buffer;
@@ -240,14 +241,14 @@ namespace Core
         return extension == ".slnx" || extension == ".sln";
     }
 
-    Result<Solution> ReadSolution(const std::filesystem::path& requested)
+    Core::Result<Solution> ReadSolution(const std::filesystem::path& requested)
     {
         std::error_code code;
 
         if (!std::filesystem::is_regular_file(requested, code))
         {
-            return Error{ErrorCode::NotFound,
-                         std::format("no solution file at '{}'", requested.string())};
+            return Core::Error{Core::ErrorCode::NotFound,
+                               std::format("no solution file at '{}'", requested.string())};
         }
 
         // Resolved once, here, rather than trusting the caller. Every project path is
@@ -261,12 +262,12 @@ namespace Core
 
         if (!IsSolutionFile(path))
         {
-            return Error{ErrorCode::Unsupported,
-                         std::format("'{}' is not a solution format this build can read",
-                                     path.string())};
+            return Core::Error{Core::ErrorCode::Unsupported,
+                               std::format("'{}' is not a solution format this build can read",
+                                           path.string())};
         }
 
-        Result<Solution> parsed =
+        Core::Result<Solution> parsed =
             LowercaseExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
 
         if (!parsed)

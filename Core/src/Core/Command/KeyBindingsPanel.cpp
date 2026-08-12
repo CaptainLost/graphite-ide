@@ -10,7 +10,6 @@
 #include "Core/Command/KeyName.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/ModifierName.h"
-#include "Core/Command/Scope.h"
 #include "Core/Command/Trigger.h"
 
 #include <imgui.h>
@@ -330,7 +329,7 @@ namespace Core
         if (pointerOverCell && io.MouseWheel != 0.0f && io.KeyMods != ImGuiMod_None)
         {
             return Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown,
-                                Scope::HoveredEditor);
+                                Chord::Scope::HoveredEditor);
         }
 
         for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index)

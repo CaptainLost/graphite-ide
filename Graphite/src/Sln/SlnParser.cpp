@@ -1,6 +1,4 @@
-#include "corepch.h"
-
-#include "Core/Sln/SlnParser.h"
+#include "Sln/SlnParser.h"
 
 #include "Core/Fs/FileSystem.h"
 
@@ -8,10 +6,12 @@
 #include <format>
 #include <sstream>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-namespace Core
+namespace Graphite
 {
     namespace
     {
@@ -100,7 +100,7 @@ namespace Core
         }
     }
 
-    Result<Solution> ParseSln(const std::filesystem::path& path, const std::string& text)
+    Core::Result<Solution> ParseSln(const std::filesystem::path& path, const std::string& text)
     {
         std::istringstream stream{text};
         std::string rawLine;
@@ -132,9 +132,9 @@ namespace Core
 
         if (!headerSeen)
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' does not begin like a solution file",
-                                     path.string())};
+            return Core::Error{Core::ErrorCode::InvalidArgument,
+                               std::format("'{}' does not begin like a solution file",
+                                           path.string())};
         }
 
         std::vector<Entry> entries;
@@ -186,7 +186,7 @@ namespace Core
 
         Solution solution;
         solution.path = path;
-        solution.name = ToUtf8(path.stem());
+        solution.name = Core::ToUtf8(path.stem());
 
         const std::filesystem::path directory = path.parent_path();
 
@@ -264,7 +264,7 @@ namespace Core
             Project project;
             project.displayName = entry.name;
             project.typeId = entry.typeId;
-            project.path = (directory / FromUtf8(entry.location)).lexically_normal();
+            project.path = (directory / Core::FromUtf8(entry.location)).lexically_normal();
             project.path.make_preferred();
 
             std::error_code exists;

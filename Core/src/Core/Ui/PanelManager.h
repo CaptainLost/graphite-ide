@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/NonCopyable.h"
+#include "Core/Base/Timestep.h"
 #include "Core/Ui/Panel.h"
 
 #include <cstddef>
@@ -28,7 +29,7 @@ namespace Core
         /// Returns false if no panel with the given identifier exists.
         bool SetVisible(std::string_view id, bool visible);
 
-        void OnUpdate(float deltaSeconds);
+        void OnUpdate(Timestep ts);
         void OnUIRender();
 
         /// Registers a visibility toggle per panel, in the group "panels", so a menu can

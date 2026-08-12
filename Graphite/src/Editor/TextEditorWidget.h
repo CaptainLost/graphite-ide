@@ -63,7 +63,7 @@ namespace Graphite
     /// down the same code path, rather than a second renderer to keep in step.
     ///
     /// `context` is what the Ctrl+wheel gesture is fired through: this window is what
-    /// defines Core::Scope::HoveredEditor, so the command runs here rather than being
+    /// defines Core::Chord::Scope::HoveredEditor, so the command runs here rather than being
     /// reported upwards for someone else to act on.
     [[nodiscard]] EditorFrameResult DrawEditor(const CommandContext& context,
                                                Core::OpenItem& item, float fontSize,

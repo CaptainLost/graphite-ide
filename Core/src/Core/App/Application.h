@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/App/LayerStack.h"
+#include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/Gui/ImGuiRenderer.h"
@@ -12,6 +13,20 @@
 
 namespace Core
 {
+    /// argc/argv as the client sees them. Handed to CreateApplication by EntryPoint.h,
+    /// so nothing below main has to reach for globals to read what it was launched with.
+    struct ApplicationCommandLineArgs
+    {
+        int Count = 0;
+        char** Args = nullptr;
+
+        const char* operator[](int index) const
+        {
+            CORE_ASSERT(index < Count, "Command line argument index out of range");
+            return Args[index];
+        }
+    };
+
     struct ApplicationSpec
     {
         std::string name = "IDE";
@@ -34,7 +49,7 @@ namespace Core
         Result<void> Run();
         void Close();
 
-        Layer& PushLayer(std::unique_ptr<Layer> layer);
+        Layer& PushLayer(Scope<Layer> layer);
 
         [[nodiscard]] Window& GetWindow() { return *m_Window; }
         [[nodiscard]] const ApplicationSpec& GetSpec() const noexcept { return m_Spec; }
@@ -48,7 +63,7 @@ namespace Core
 
     private:
         ApplicationSpec m_Spec;
-        std::unique_ptr<Window> m_Window;
+        Scope<Window> m_Window;
         ImGuiRenderer m_Gui;
         LayerStack m_Layers;
         std::vector<Layer*> m_FrameLayers;
@@ -57,4 +72,8 @@ namespace Core
 
         static Application* s_Instance;
     };
+
+    /// To be defined by the client. EntryPoint.h owns main and asks for the application
+    /// here, so the executable never spells out a startup sequence of its own.
+    Scope<Application> CreateApplication(ApplicationCommandLineArgs args);
 }

@@ -17,7 +17,7 @@ namespace
         {
         }
 
-        void OnUpdate(float) override { ++updates; }
+        void OnUpdate(Core::Timestep) override { ++updates; }
         void OnNotDrawn() override { ++notDrawn; }
 
         int updates = 0;

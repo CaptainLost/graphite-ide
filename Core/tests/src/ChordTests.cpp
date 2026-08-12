@@ -6,7 +6,7 @@
 #include <string>
 
 using Core::Chord;
-using Core::Scope;
+using Scope = Core::Chord::Scope;
 using Core::Trigger;
 
 TEST_CASE("A key chord prints its modifiers and its key")

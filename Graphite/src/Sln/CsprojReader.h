@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Core/Sln/ProjectContentReader.h"
+#include "Sln/ProjectContentReader.h"
 
-namespace Core
+namespace Graphite
 {
     /// Reads a C# project. Unlike a .vcxproj, a modern SDK-style .csproj lists no files
     /// at all — it declares an SDK and the SDK globs the project's own directory. So this
@@ -18,7 +18,7 @@ namespace Core
     {
     public:
         [[nodiscard]] bool Handles(const std::filesystem::path& project) const override;
-        [[nodiscard]] Result<ProjectContent> Read(
+        [[nodiscard]] Core::Result<ProjectContent> Read(
             const std::filesystem::path& project) const override;
     };
 }

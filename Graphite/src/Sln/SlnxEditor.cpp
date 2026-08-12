@@ -1,19 +1,19 @@
-#include "corepch.h"
-
-#include "Core/Sln/SlnxEditor.h"
+#include "Sln/SlnxEditor.h"
 
 #include "Core/Fs/AtomicWrite.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Sln/SolutionReader.h"
-#include "Core/Sln/TextEdit.h"
+#include "Sln/SolutionReader.h"
+#include "Sln/TextEdit.h"
 
 #include <pugixml.hpp>
 
+#include <format>
 #include <fstream>
 #include <system_error>
+#include <utility>
 #include <vector>
 
-namespace Core
+namespace Graphite
 {
     namespace
     {
@@ -44,7 +44,7 @@ namespace Core
         std::string RelativeProjectPath(const std::filesystem::path& solution,
                                         const std::filesystem::path& project)
         {
-            std::string text = ToUtf8(project.lexically_relative(solution.parent_path()));
+            std::string text = Core::ToUtf8(project.lexically_relative(solution.parent_path()));
 
             for (char& character : text)
             {
@@ -108,12 +108,12 @@ namespace Core
     {
     }
 
-    Result<std::size_t> SlnxEditor::FindProject(const std::filesystem::path& project) const
+    Core::Result<std::size_t> SlnxEditor::FindProject(const std::filesystem::path& project) const
     {
         Parsed parsed{m_Text};
 
         if (!parsed.ok)
-            return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+            return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
         std::filesystem::path wanted = project.lexically_normal();
         wanted.make_preferred();
@@ -130,28 +130,28 @@ namespace Core
                 continue;
 
             std::filesystem::path candidate =
-                (directory / FromUtf8(declared)).lexically_normal();
+                (directory / Core::FromUtf8(declared)).lexically_normal();
             candidate.make_preferred();
 
             if (candidate == wanted)
                 return static_cast<std::size_t>(node.node().offset_debug());
         }
 
-        return Error{ErrorCode::NotFound,
-                     std::format("'{}' is not in the solution", project.string())};
+        return Core::Error{Core::ErrorCode::NotFound,
+                           std::format("'{}' is not in the solution", project.string())};
     }
 
-    Result<std::size_t> SlnxEditor::FindContainer(const std::string& folder) const
+    Core::Result<std::size_t> SlnxEditor::FindContainer(const std::string& folder) const
     {
         Parsed parsed{m_Text};
 
         if (!parsed.ok)
-            return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+            return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
         const pugi::xml_node root = parsed.document.child("Solution");
 
         if (!root)
-            return Error{ErrorCode::InvalidArgument, "the file has no Solution element"};
+            return Core::Error{Core::ErrorCode::InvalidArgument, "the file has no Solution element"};
 
         if (folder.empty())
             return static_cast<std::size_t>(root.offset_debug());
@@ -166,7 +166,8 @@ namespace Core
                 return static_cast<std::size_t>(node.offset_debug());
         }
 
-        return Error{ErrorCode::NotFound, std::format("the solution has no folder '{}'", folder)};
+        return Core::Error{Core::ErrorCode::NotFound,
+                           std::format("the solution has no folder '{}'", folder)};
     }
 
     void SlnxEditor::InsertChild(std::size_t offset, const std::string& element)
@@ -217,8 +218,8 @@ namespace Core
         m_Text.insert(tagEnd, ending + containerIndent + unit + element);
     }
 
-    Result<void> SlnxEditor::AddProject(const std::filesystem::path& project,
-                                        const std::string& folder)
+    Core::Result<void> SlnxEditor::AddProject(const std::filesystem::path& project,
+                                              const std::string& folder)
     {
         // A solution names its projects relatively, and there is no relative path from one
         // drive to another: lexically_relative gives back nothing at all. Writing that
@@ -228,25 +229,25 @@ namespace Core
 
         if (relative.empty())
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' is not under the same root as the solution, so the "
-                                     "solution cannot name it",
-                                     project.string())};
+            return Core::Error{Core::ErrorCode::InvalidArgument,
+                               std::format("'{}' is not under the same root as the solution, so the "
+                                           "solution cannot name it",
+                                           project.string())};
         }
 
         std::error_code code;
 
         if (!std::filesystem::is_regular_file(project, code))
         {
-            return Error{ErrorCode::NotFound,
-                         std::format("no project file at '{}'", project.string())};
+            return Core::Error{Core::ErrorCode::NotFound,
+                               std::format("no project file at '{}'", project.string())};
         }
 
         // Checked before anything is spliced, so a refusal leaves the text untouched.
         if (FindProject(project).HasValue())
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' is already in the solution", project.string())};
+            return Core::Error{Core::ErrorCode::InvalidArgument,
+                               std::format("'{}' is already in the solution", project.string())};
         }
 
         const std::string id = NewGuid();
@@ -256,7 +257,7 @@ namespace Core
         // A folder the caller names but the solution does not have yet is created rather
         // than refused: the folder is scaffolding for the project, not a thing the caller
         // has to build first.
-        if (!container && container.GetError().code == ErrorCode::NotFound)
+        if (!container && container.GetError().code == Core::ErrorCode::NotFound)
         {
             const auto created = AddFolder(folder);
 
@@ -274,10 +275,10 @@ namespace Core
 
         InsertChild(container.GetValue(), element);
 
-        return Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    Result<void> SlnxEditor::RemoveProject(const std::filesystem::path& project)
+    Core::Result<void> SlnxEditor::RemoveProject(const std::filesystem::path& project)
     {
         const auto found = FindProject(project);
 
@@ -286,21 +287,21 @@ namespace Core
 
         EraseElement(m_Text, found.GetValue(), "Project");
 
-        return Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    Result<void> SlnxEditor::AddFolder(const std::string& folder)
+    Core::Result<void> SlnxEditor::AddFolder(const std::string& folder)
     {
         const std::vector<std::string> parts = SplitLogicalPath(folder);
 
         if (parts.empty())
-            return Error{ErrorCode::InvalidArgument, "a solution folder needs a name"};
+            return Core::Error{Core::ErrorCode::InvalidArgument, "a solution folder needs a name"};
 
         // Checked before anything is spliced, so a refusal leaves the text untouched.
         if (FindContainer(folder).HasValue())
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("the solution already has a folder '{}'", folder)};
+            return Core::Error{Core::ErrorCode::InvalidArgument,
+                               std::format("the solution already has a folder '{}'", folder)};
         }
 
         // Every ancestor that is missing has to be written too: nesting lives in the name,
@@ -328,13 +329,13 @@ namespace Core
             InsertChild(root.GetValue(), std::format(R"(<Folder Name="/{}/" />)", missing[i - 1]));
         }
 
-        return Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    Result<void> SlnxEditor::RemoveFolder(const std::string& folder)
+    Core::Result<void> SlnxEditor::RemoveFolder(const std::string& folder)
     {
         if (folder.empty())
-            return Error{ErrorCode::InvalidArgument, "the solution root is not a folder"};
+            return Core::Error{Core::ErrorCode::InvalidArgument, "the solution root is not a folder"};
 
         const auto found = FindContainer(folder);
 
@@ -345,7 +346,8 @@ namespace Core
             Parsed parsed{m_Text};
 
             if (!parsed.ok)
-                return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+                return Core::Error{Core::ErrorCode::InvalidArgument,
+                                   "the solution is not well-formed XML"};
 
             const std::string wanted = "/" + folder + "/";
 
@@ -362,9 +364,9 @@ namespace Core
 
                     if (child)
                     {
-                        return Error{ErrorCode::InvalidArgument,
-                                     std::format("the folder '{}' still holds the project '{}'",
-                                                 folder, child.attribute("Path").value())};
+                        return Core::Error{Core::ErrorCode::InvalidArgument,
+                                           std::format("the folder '{}' still holds the project '{}'",
+                                                       folder, child.attribute("Path").value())};
                     }
 
                     continue;
@@ -372,24 +374,24 @@ namespace Core
 
                 if (current.rfind(wanted, 0) == 0)
                 {
-                    return Error{ErrorCode::InvalidArgument,
-                                 std::format("the folder '{}' still holds the folder '{}'", folder,
-                                             current)};
+                    return Core::Error{Core::ErrorCode::InvalidArgument,
+                                       std::format("the folder '{}' still holds the folder '{}'", folder,
+                                                   current)};
                 }
             }
         }
 
         EraseElement(m_Text, found.GetValue(), "Folder");
 
-        return Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    Result<void> SlnxEditor::RenameFolder(const std::string& folder, const std::string& name)
+    Core::Result<void> SlnxEditor::RenameFolder(const std::string& folder, const std::string& name)
     {
         if (name.empty() || name.find('/') != std::string::npos)
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' is not a usable folder name", name)};
+            return Core::Error{Core::ErrorCode::InvalidArgument,
+                               std::format("'{}' is not a usable folder name", name)};
         }
 
         const std::string oldPath = "/" + folder + "/";
@@ -404,7 +406,7 @@ namespace Core
         Parsed parsed{m_Text};
 
         if (!parsed.ok)
-            return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+            return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
         // Offset of the Name attribute's value, and how long it is.
         std::vector<std::pair<std::size_t, std::size_t>> edits;
@@ -430,7 +432,8 @@ namespace Core
         }
 
         if (edits.empty())
-            return Error{ErrorCode::NotFound, std::format("the solution has no folder '{}'", folder)};
+            return Core::Error{Core::ErrorCode::NotFound,
+                               std::format("the solution has no folder '{}'", folder)};
 
         // Applied from the last to the first: replacing a shorter name with a longer one
         // shifts every offset after it, and applying them forwards would corrupt the file
@@ -441,11 +444,11 @@ namespace Core
             m_Text.replace(begin, length, replacements[i - 1]);
         }
 
-        return Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    Result<void> SlnxEditor::MoveProject(const std::filesystem::path& project,
-                                         const std::string& folder)
+    Core::Result<void> SlnxEditor::MoveProject(const std::filesystem::path& project,
+                                               const std::string& folder)
     {
         const auto found = FindProject(project);
 
@@ -459,7 +462,8 @@ namespace Core
             Parsed parsed{m_Text};
 
             if (!parsed.ok)
-                return Error{ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+                return Core::Error{Core::ErrorCode::InvalidArgument,
+                                   "the solution is not well-formed XML"};
 
             for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
             {
@@ -503,23 +507,23 @@ namespace Core
 
         InsertChild(container.GetValue(), std::format(R"(<Project Path="{}" Id="{}" />)", declared, id));
 
-        return Result<void>::Ok();
+        return Core::Result<void>::Ok();
     }
 
-    Result<void> SlnxEditor::Save()
+    Core::Result<void> SlnxEditor::Save()
     {
         // A scratch file to read back before anything touches the target — not the
-        // temporary WriteFileAtomically itself uses below. It keeps the solution's own
+        // temporary Core::WriteFileAtomically itself uses below. It keeps the solution's own
         // extension, "Sample.tmp.slnx", because ReadSolution picks its parser by
         // extension and a plain ".tmp" would be refused as a format this build cannot
-        // read. Collision avoidance goes through the same helper WriteFileAtomically uses
+        // read. Collision avoidance goes through the same helper Core::WriteFileAtomically uses
         // for its own temporary, rather than a second hand-rolled version of that check —
         // a leftover scratch file from a crashed earlier save must not be clobbered.
         std::filesystem::path stem = m_Path;
         stem.replace_extension();
         const std::filesystem::path extension = m_Path.extension();
 
-        const Result<std::filesystem::path> picked = PickAvailablePath(
+        const Core::Result<std::filesystem::path> picked = Core::PickAvailablePath(
             [&stem, &extension](int attempt)
             {
                 std::filesystem::path candidate = stem;
@@ -537,7 +541,8 @@ namespace Core
             std::ofstream stream{scratch, std::ios::binary | std::ios::trunc};
 
             if (!stream.is_open())
-                return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", ToUtf8(scratch))};
+                return Core::Error{Core::ErrorCode::IoFailure,
+                                   std::format("cannot write '{}'", Core::ToUtf8(scratch))};
 
             stream << m_Text;
 
@@ -548,8 +553,8 @@ namespace Core
                 std::error_code ignored;
                 std::filesystem::remove(scratch, ignored);
 
-                return Error{ErrorCode::IoFailure,
-                             std::format("cannot write '{}'", ToUtf8(scratch))};
+                return Core::Error{Core::ErrorCode::IoFailure,
+                                   std::format("cannot write '{}'", Core::ToUtf8(scratch))};
             }
         }
 
@@ -565,11 +570,11 @@ namespace Core
 
         if (!verified)
         {
-            return Error{ErrorCode::IoFailure,
-                         std::format("the edited solution could not be read back: {}",
-                                     verified.GetError().message)};
+            return Core::Error{Core::ErrorCode::IoFailure,
+                               std::format("the edited solution could not be read back: {}",
+                                           verified.GetError().message)};
         }
 
-        return WriteFileAtomically(m_Path, m_Text);
+        return Core::WriteFileAtomically(m_Path, m_Text);
     }
 }

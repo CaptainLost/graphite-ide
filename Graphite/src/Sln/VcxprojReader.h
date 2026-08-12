@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Core/Sln/ProjectContentReader.h"
+#include "Sln/ProjectContentReader.h"
 
-namespace Core
+namespace Graphite
 {
     /// Reads a Visual C++ project: the file list from the .vcxproj, and the folder
     /// structure from the sibling .vcxproj.filters, which is where Visual Studio keeps it.
@@ -11,7 +11,7 @@ namespace Core
     {
     public:
         [[nodiscard]] bool Handles(const std::filesystem::path& project) const override;
-        [[nodiscard]] Result<ProjectContent> Read(
+        [[nodiscard]] Core::Result<ProjectContent> Read(
             const std::filesystem::path& project) const override;
     };
 }

@@ -23,7 +23,7 @@ namespace Core
         /// field is active.
         [[nodiscard]] bool Fired(const Chord& chord)
         {
-            if (chord.GetTrigger() != Trigger::Key || chord.GetScope() != Scope::Global)
+            if (chord.GetTrigger() != Trigger::Key || chord.GetScope() != Chord::Scope::Global)
             {
                 return false;
             }
@@ -71,7 +71,7 @@ namespace Core
         }
     }
 
-    void ShortcutRouter::DispatchWheel(CommandRegistry& commands, const Keymap& keys, Scope scope,
+    void ShortcutRouter::DispatchWheel(CommandRegistry& commands, const Keymap& keys, Chord::Scope scope,
                                        float wheel)
     {
         if (wheel == 0.0f)

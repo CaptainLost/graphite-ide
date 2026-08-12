@@ -2,23 +2,25 @@
 
 #include "Version.h"
 
-#include "Core/App/Application.h"
-#include "Core/Base/Log.h"
-#include "Core/Base/RingBufferSink.h"
+#include "Core.h"
+#include "Core/App/EntryPoint.h"
 
-#include <exception>
+#include <cstddef>
 #include <filesystem>
-#include <memory>
+#include <utility>
 
-namespace
+namespace Graphite
 {
-    constexpr std::size_t kConsoleCapacity = 4096;
+    namespace
+    {
+        constexpr std::size_t kConsoleCapacity = 4096;
+    }
 
     class GraphiteApplication final : public Core::Application
     {
     public:
-        GraphiteApplication(std::shared_ptr<Core::RingBufferSink> sink,
-                             std::filesystem::path initialFolder)
+        GraphiteApplication(Core::Ref<Core::RingBufferSink> sink,
+                            std::filesystem::path initialFolder)
             : Core::Application(Core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
               m_Sink(std::move(sink)),
               m_InitialFolder(std::move(initialFolder))
@@ -28,50 +30,37 @@ namespace
     protected:
         void OnInit() override
         {
-            PushLayer(std::make_unique<Graphite::GraphiteLayer>(m_Sink, m_InitialFolder));
+            PushLayer(Core::CreateScope<GraphiteLayer>(m_Sink, m_InitialFolder));
+        }
+
+        void OnShutdown() override
+        {
+            CORE_INFO("Graphite IDE closed");
         }
 
     private:
-        std::shared_ptr<Core::RingBufferSink> m_Sink;
+        Core::Ref<Core::RingBufferSink> m_Sink;
         std::filesystem::path m_InitialFolder;
     };
 }
 
-int main(int argc, char** argv)
+/// Defined here because EntryPoint.h owns main: everything specific to this executable —
+/// which sinks the log writes to, what the window is called, which folder it opens —
+/// belongs to the client, and the engine only asks for the application it should run.
+Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationCommandLineArgs args)
 {
-    auto consoleSink = std::make_shared<Core::RingBufferSink>(kConsoleCapacity);
+    auto consoleSink = Core::CreateRef<Core::RingBufferSink>(Graphite::kConsoleCapacity);
 
 #ifndef CORE_DIST
-    Core::Logger::Get().AddSink(std::make_shared<Core::ConsoleSink>());
+    Core::Logger::Get().AddSink(Core::CreateRef<Core::ConsoleSink>());
 #endif
     Core::Logger::Get().AddSink(consoleSink);
 
-    try
-    {
-        CORE_INFO("Graphite IDE {}", Graphite::Version::String());
+    CORE_INFO("Graphite IDE {}", Graphite::Version::String());
 
-        std::filesystem::path initialFolder;
-        if (argc > 1)
-            initialFolder = argv[1];
+    std::filesystem::path initialFolder;
+    if (args.Count > 1)
+        initialFolder = args[1];
 
-        GraphiteApplication app{consoleSink, initialFolder};
-        if (const auto result = app.Run(); !result)
-        {
-            CORE_ERROR("IDE terminated: {}", result.GetError().message);
-            return 1;
-        }
-
-        CORE_INFO("Graphite IDE closed");
-        return 0;
-    }
-    catch (const std::exception& e)
-    {
-        CORE_ERROR("Unhandled exception: {}", e.what());
-        return 1;
-    }
-    catch (...)
-    {
-        CORE_ERROR("Unhandled unknown exception");
-        return 1;
-    }
+    return Core::CreateScope<Graphite::GraphiteApplication>(consoleSink, std::move(initialFolder));
 }

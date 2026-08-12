@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace Core
+namespace Graphite
 {
     /// Names deliberately mirror microsoft/vs-solutionpersistence — SolutionModel,
     /// SolutionProjectModel, SolutionFolderModel — so the two can be read side by side.

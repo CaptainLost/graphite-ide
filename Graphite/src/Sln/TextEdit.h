@@ -5,7 +5,7 @@
 #include <string_view>
 #include <utility>
 
-namespace Core
+namespace Graphite
 {
     /// Helpers for editing a solution file as text.
     ///

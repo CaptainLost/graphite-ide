@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/NonCopyable.h"
+#include "Core/Base/Timestep.h"
 
 #include <string>
 #include <utility>
@@ -20,7 +21,7 @@ namespace Core
 
         virtual ~Panel() = default;
 
-        virtual void OnUpdate(float deltaSeconds) { (void)deltaSeconds; }
+        virtual void OnUpdate(Timestep ts) { (void)ts; }
         virtual void OnUIRender() {}
 
         /// Called instead of OnUIRender on a frame where the body did not run — hidden,

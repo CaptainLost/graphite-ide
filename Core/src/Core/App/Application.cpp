@@ -29,7 +29,7 @@ namespace Core
         return *s_Instance;
     }
 
-    Layer& Application::PushLayer(std::unique_ptr<Layer> layer)
+    Layer& Application::PushLayer(Scope<Layer> layer)
     {
         return m_Layers.Push(std::move(layer));
     }
@@ -74,8 +74,11 @@ namespace Core
 
         while (m_Running)
         {
+            // glfwGetTime is a double because it counts from process start; the step
+            // between two frames is small enough that a float loses nothing, so the
+            // subtraction happens in double and only the result narrows.
             const double now = glfwGetTime();
-            const auto delta = static_cast<float>(now - m_LastFrameTime);
+            const Timestep ts = static_cast<float>(now - m_LastFrameTime);
             m_LastFrameTime = now;
 
             m_Window->PollEvents();
@@ -106,7 +109,7 @@ namespace Core
             }
 
             for (Layer* layer : m_FrameLayers)
-                layer->OnUpdate(delta);
+                layer->OnUpdate(ts);
 
             m_Gui.BeginFrame();
 

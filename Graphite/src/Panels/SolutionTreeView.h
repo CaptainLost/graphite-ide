@@ -3,7 +3,7 @@
 #include "Workspace.h"
 
 #include "Core/Base/Result.h"
-#include "Core/Sln/SolutionModel.h"
+#include "Sln/SolutionModel.h"
 
 #include <imgui.h>
 
@@ -17,7 +17,7 @@ namespace Graphite
     /// a project reader fills them in — the folders and files inside each project.
     ///
     /// The tree is read-only, but its context menu edits the solution file through
-    /// Core::SolutionEditor: adding and removing projects, and organising solution
+    /// SolutionEditor: adding and removing projects, and organising solution
     /// folders. Nothing here reads or writes a project file.
     class SolutionTreeView final
     {
@@ -49,16 +49,16 @@ namespace Graphite
             std::string name;
         };
 
-        void RenderFolder(const Core::Folder& folder, const std::string& path);
-        void RenderProject(const Core::Project& project, const std::string& folder);
-        void RenderContentFolder(const Core::ContentFolder& folder);
+        void RenderFolder(const Folder& folder, const std::string& path);
+        void RenderProject(const Project& project, const std::string& folder);
+        void RenderContentFolder(const ContentFolder& folder);
         void RenderEmptyState();
 
-        void RenderContextMenu(const Core::Folder& folder, const std::string& path);
-        void RenderContextMenu(const Core::Project& project, const std::string& folder);
-        [[nodiscard]] bool RenderFolderRenameEditor(const Core::Folder& folder,
+        void RenderContextMenu(const Folder& folder, const std::string& path);
+        void RenderContextMenu(const Project& project, const std::string& folder);
+        [[nodiscard]] bool RenderFolderRenameEditor(const Folder& folder,
                                                     const std::string& path);
-        void RenderMoveToFolderMenu(const Core::Project& project,
+        void RenderMoveToFolderMenu(const Project& project,
                                     const std::string& currentFolder);
         void RenderRemoveConfirmation();
         void ExecutePendingAction();

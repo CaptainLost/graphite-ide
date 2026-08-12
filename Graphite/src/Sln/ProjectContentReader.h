@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Core/Base/Result.h"
-#include "Core/Sln/SolutionModel.h"
+#include "Sln/SolutionModel.h"
 
 #include <filesystem>
 
-namespace Core
+namespace Graphite
 {
     /// Reads what is inside one project file.
     ///
@@ -23,7 +23,7 @@ namespace Core
         ProjectContentReader& operator=(const ProjectContentReader&) = delete;
 
         [[nodiscard]] virtual bool Handles(const std::filesystem::path& project) const = 0;
-        [[nodiscard]] virtual Result<ProjectContent> Read(
+        [[nodiscard]] virtual Core::Result<ProjectContent> Read(
             const std::filesystem::path& project) const = 0;
 
     protected:

@@ -18,7 +18,7 @@ namespace
 
         void OnAttach() override { m_Journal.push_back(GetName() + ":attach"); }
         void OnDetach() override { m_Journal.push_back(GetName() + ":detach"); }
-        void OnUpdate(float) override { m_Journal.push_back(GetName() + ":update"); }
+        void OnUpdate(Core::Timestep) override { m_Journal.push_back(GetName() + ":update"); }
         void OnUIRender() override { m_Journal.push_back(GetName() + ":ui"); }
 
     private:

@@ -78,20 +78,20 @@ namespace Graphite
         // nobody can discover is not a shortcut, so all three reach the same command and
         // the menu shows the first of them.
         using Core::Chord;
-        using Core::Scope;
         using Core::Trigger;
+        using Scope = Core::Chord::Scope;
 
         keys.SetDefault("editor.zoomIn",
                         {.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
                          .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
                                         Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp,
-                                                     Scope::HoveredEditor)}});
+                                                     Chord::Scope::HoveredEditor)}});
 
         keys.SetDefault("editor.zoomOut",
                         {.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Minus),
                          .alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract),
                                         Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelDown,
-                                                     Scope::HoveredEditor)}});
+                                                     Chord::Scope::HoveredEditor)}});
 
         keys.SetDefault("editor.resetZoom",
                         {.primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_0),

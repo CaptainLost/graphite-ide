@@ -1,15 +1,15 @@
 #include <doctest/doctest.h>
 
-#include "Core/Sln/CsprojReader.h"
-#include "Core/Sln/SolutionReader.h"
+#include "Sln/CsprojReader.h"
+#include "Sln/SolutionReader.h"
 
 #include "TempDirectory.h"
 
 #include <algorithm>
 #include <string>
 
-using Core::ContentFolder;
-using Core::CsprojReader;
+using Graphite::ContentFolder;
+using Graphite::CsprojReader;
 
 namespace
 {
@@ -35,7 +35,7 @@ namespace
     bool HasFile(const ContentFolder& folder, std::string_view name)
     {
         return std::any_of(folder.files.begin(), folder.files.end(),
-                           [name](const Core::ContentFile& f) { return f.name == name; });
+                           [name](const Graphite::ContentFile& f) { return f.name == name; });
     }
 }
 
@@ -160,7 +160,7 @@ TEST_CASE("A solution containing a C# project fills it in")
     const auto file = temp.MakeFile("Mixed.slnx",
                                     R"(<Solution><Project Path="App\App.csproj" /></Solution>)");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.GetValue().root.projects.size() == 1);
 

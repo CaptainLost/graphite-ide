@@ -19,12 +19,12 @@ namespace Core
         Chord chord;
         chord.m_Keys = keys;
         chord.m_Trigger = Trigger::Key;
-        chord.m_Scope = Scope::Global;
+        chord.m_Scope = Chord::Scope::Global;
 
         return chord;
     }
 
-    Chord Chord::Wheel(ImGuiKeyChord mods, Trigger direction, Scope scope)
+    Chord Chord::Wheel(ImGuiKeyChord mods, Trigger direction, Chord::Scope scope)
     {
         Chord chord;
         chord.m_Keys = mods & ImGuiMod_Mask_;
@@ -132,12 +132,12 @@ namespace Core
 
         if (Lowered(trigger) == Lowered(kWheelUpName))
         {
-            return Chord::Wheel(mods, Trigger::WheelUp, Scope::HoveredEditor);
+            return Chord::Wheel(mods, Trigger::WheelUp, Chord::Scope::HoveredEditor);
         }
 
         if (Lowered(trigger) == Lowered(kWheelDownName))
         {
-            return Chord::Wheel(mods, Trigger::WheelDown, Scope::HoveredEditor);
+            return Chord::Wheel(mods, Trigger::WheelDown, Chord::Scope::HoveredEditor);
         }
 
         const ImGuiKey key = KeyNamed(trigger);

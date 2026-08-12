@@ -1,12 +1,12 @@
 #pragma once
 
-#include "Core/Sln/SolutionEditor.h"
+#include "Sln/SolutionEditor.h"
 
 #include <cstddef>
 #include <filesystem>
 #include <string>
 
-namespace Core
+namespace Graphite
 {
     /// Edits a .slnx by splicing its text. pugixml locates the elements; nothing is ever
     /// re-serialised, because saving a parsed document rewrites every self-closing tag —
@@ -16,26 +16,26 @@ namespace Core
     public:
         SlnxEditor(std::filesystem::path path, std::string text);
 
-        [[nodiscard]] Result<void> AddProject(const std::filesystem::path& project,
-                                              const std::string& folder) override;
-        [[nodiscard]] Result<void> RemoveProject(const std::filesystem::path& project) override;
-        [[nodiscard]] Result<void> AddFolder(const std::string& folder) override;
-        [[nodiscard]] Result<void> RemoveFolder(const std::string& folder) override;
-        [[nodiscard]] Result<void> RenameFolder(const std::string& folder,
-                                                const std::string& name) override;
-        [[nodiscard]] Result<void> MoveProject(const std::filesystem::path& project,
-                                               const std::string& folder) override;
-        [[nodiscard]] Result<void> Save() override;
+        [[nodiscard]] Core::Result<void> AddProject(const std::filesystem::path& project,
+                                                    const std::string& folder) override;
+        [[nodiscard]] Core::Result<void> RemoveProject(const std::filesystem::path& project) override;
+        [[nodiscard]] Core::Result<void> AddFolder(const std::string& folder) override;
+        [[nodiscard]] Core::Result<void> RemoveFolder(const std::string& folder) override;
+        [[nodiscard]] Core::Result<void> RenameFolder(const std::string& folder,
+                                                      const std::string& name) override;
+        [[nodiscard]] Core::Result<void> MoveProject(const std::filesystem::path& project,
+                                                     const std::string& folder) override;
+        [[nodiscard]] Core::Result<void> Save() override;
 
     private:
         /// Offset of the `<Solution>` or `<Folder>` element the logical path names — pugixml's,
         /// one past the '<'. Empty `folder` means the solution element. A folder the solution
         /// does not have is an error here; creating it is the caller's decision.
-        [[nodiscard]] Result<std::size_t> FindContainer(const std::string& folder) const;
+        [[nodiscard]] Core::Result<std::size_t> FindContainer(const std::string& folder) const;
 
         /// Offset of the `<Project>` element naming this file, or an error when the
         /// solution does not have it.
-        [[nodiscard]] Result<std::size_t> FindProject(const std::filesystem::path& project) const;
+        [[nodiscard]] Core::Result<std::size_t> FindProject(const std::filesystem::path& project) const;
 
         /// Inserts `element` as the first child of the container at `offset`, expanding a
         /// self-closing container into an open/close pair when it has no children yet.

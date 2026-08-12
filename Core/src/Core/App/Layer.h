@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/NonCopyable.h"
+#include "Core/Base/Timestep.h"
 
 #include <string>
 #include <utility>
@@ -16,7 +17,7 @@ namespace Core
 
         virtual void OnAttach() {}
         virtual void OnDetach() {}
-        virtual void OnUpdate(float deltaSeconds) { (void)deltaSeconds; }
+        virtual void OnUpdate(Timestep ts) { (void)ts; }
         virtual void OnUIRender() {}
 
         /// Whether the application may close now. A layer returning false is expected to

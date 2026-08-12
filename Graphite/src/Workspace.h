@@ -6,7 +6,7 @@
 #include "Core/Fs/DirectoryWatcher.h"
 #include "Core/Fs/FileTree.h"
 #include "Core/Git/Repository.h"
-#include "Core/Sln/SolutionReader.h"
+#include "Sln/SolutionReader.h"
 
 #include <filesystem>
 #include <memory>
@@ -138,8 +138,8 @@ namespace Graphite
         /// The solution being shown, when one was found and parsed.
         ///
         /// Not named Solution(): a member function of that name would shadow the type
-        /// Core::Solution everywhere inside this class.
-        [[nodiscard]] const std::optional<Core::Solution>& LoadedSolution() const noexcept
+        /// Solution everywhere inside this class.
+        [[nodiscard]] const std::optional<Solution>& LoadedSolution() const noexcept
         {
             return m_Solution;
         }
@@ -213,7 +213,7 @@ namespace Graphite
         std::filesystem::path m_Root;
         std::filesystem::path m_SelectedFile;
 
-        std::optional<Core::Solution> m_Solution;
+        std::optional<Solution> m_Solution;
         std::vector<std::filesystem::path> m_SolutionCandidates;
         std::filesystem::path m_SelectedSolution;
 

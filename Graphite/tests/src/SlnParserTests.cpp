@@ -1,14 +1,14 @@
 #include <doctest/doctest.h>
 
-#include "Core/Sln/SolutionReader.h"
+#include "Sln/SolutionReader.h"
 
 #include "TempDirectory.h"
 
 #include <algorithm>
 #include <string>
 
-using Core::Folder;
-using Core::Project;
+using Graphite::Folder;
+using Graphite::Project;
 
 namespace
 {
@@ -56,7 +56,7 @@ TEST_CASE("A .sln is read through the same entry point as a .slnx")
 
     // The whole point of putting the parser behind ReadSolution: a caller offering both
     // formats writes one call.
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().name == "Legacy");
@@ -68,7 +68,7 @@ TEST_CASE("A folder type GUID makes a folder, not a project")
     TempDirectory temp;
     const auto file = temp.MakeFile("Legacy.sln", kSample);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     // "App" is a Project entry in the file and a folder in the model — the type GUID is
@@ -82,7 +82,7 @@ TEST_CASE("NestedProjects decides where a project lands")
     TempDirectory temp;
     const auto file = temp.MakeFile("Legacy.sln", kSample);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Folder* app = FindFolder(solution.GetValue().root, "App");
@@ -112,7 +112,7 @@ TEST_CASE("A parent declared after its child still adopts it")
         "\tEndGlobalSection\n"
         "EndGlobal\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Folder* parent = FindFolder(solution.GetValue().root, "Parent");
@@ -135,7 +135,7 @@ TEST_CASE("A folder nested inside another folder is nested in the model")
         "\tEndGlobalSection\n"
         "EndGlobal\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Folder* outer = FindFolder(solution.GetValue().root, "Outer");
@@ -148,7 +148,7 @@ TEST_CASE("A project path is made absolute against the solution")
     TempDirectory temp;
     const auto file = temp.MakeFile("Legacy.sln", kSample);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Project* core = FindProject(solution.GetValue().root, "Core");
@@ -165,7 +165,7 @@ TEST_CASE("The project type GUID is kept")
     TempDirectory temp;
     const auto file = temp.MakeFile("Legacy.sln", kSample);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Project* core = FindProject(solution.GetValue().root, "Core");
@@ -182,7 +182,7 @@ TEST_CASE("An empty .sln reads as empty rather than failing")
     const auto file = temp.MakeFile("Bare.sln",
                                     "Microsoft Visual Studio Solution File, Format Version 12.00\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 0);
@@ -196,7 +196,7 @@ TEST_CASE("A file that is not a solution at all is rejected")
 
     // Recognised by its header line. Without that check any text file with the right
     // extension would read as an empty solution, which is a worse answer than an error.
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -214,7 +214,7 @@ TEST_CASE("A malformed entry line is skipped rather than failing the solution")
 
     // Hand-edited and merge-conflicted solutions exist. One bad line should cost that
     // line, not the whole view.
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 1);
@@ -233,7 +233,7 @@ TEST_CASE("Contents of C++ projects are filled in for a .sln too")
         "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"Good\", \"g\\Good.vcxproj\", \"{BBBB0001-0000-0000-0000-000000000000}\"\n"
         "EndProject\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Project* good = FindProject(solution.GetValue().root, "Good");
@@ -273,7 +273,7 @@ TEST_CASE("Two folders at the same level both keep their projects")
         "\tEndGlobalSection\n"
         "EndGlobal\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 2);
 
@@ -305,7 +305,7 @@ TEST_CASE("Two folders naming each other as parent do not hang")
         "\tEndGlobalSection\n"
         "EndGlobal\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(FindFolder(solution.GetValue().root, "A") != nullptr);
@@ -326,7 +326,7 @@ TEST_CASE("A file written by Visual Studio is read despite its byte-order mark")
         "Project(\"{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}\") = \"Only\", \"o\\Only.vcxproj\", \"{BBBB0001-0000-0000-0000-000000000000}\"\n"
         "EndProject\n");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 1);

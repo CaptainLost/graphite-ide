@@ -30,4 +30,5 @@ group ""
 
 group "App"
     include "Graphite"
+    include "Graphite/tests"
 group ""

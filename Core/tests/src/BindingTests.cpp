@@ -8,7 +8,7 @@
 using Core::Binding;
 using Core::Chord;
 using Core::ParseBinding;
-using Core::Scope;
+using Scope = Core::Chord::Scope;
 using Core::Trigger;
 
 TEST_CASE("A binding of one chord is written as that chord alone")

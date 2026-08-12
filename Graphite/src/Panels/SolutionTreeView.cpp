@@ -4,7 +4,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Gui/Icons.h"
 #include "Core/Platform/FileDialog.h"
-#include "Core/Sln/SolutionEditor.h"
+#include "Sln/SolutionEditor.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -19,10 +19,10 @@ namespace Graphite
     {
         /// Every logical folder path under `folder`, `path` deep so far. The root itself
         /// is not included — callers that want it add the empty string themselves.
-        void CollectFolderPaths(const Core::Folder& folder, const std::string& path,
+        void CollectFolderPaths(const Folder& folder, const std::string& path,
                                 std::vector<std::string>& out)
         {
-            for (const Core::Folder& child : folder.folders)
+            for (const Folder& child : folder.folders)
             {
                 const std::string childPath = path.empty() ? child.name : path + "/" + child.name;
                 out.push_back(childPath);
@@ -53,7 +53,7 @@ namespace Graphite
 
         ImGui::Separator();
 
-        const Core::Solution& solution = *m_Workspace.LoadedSolution();
+        const Solution& solution = *m_Workspace.LoadedSolution();
 
         if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar))
@@ -82,9 +82,9 @@ namespace Graphite
         RenderRemoveConfirmation();
     }
 
-    void SolutionTreeView::RenderFolder(const Core::Folder& folder, const std::string& path)
+    void SolutionTreeView::RenderFolder(const Folder& folder, const std::string& path)
     {
-        for (const Core::Folder& child : folder.folders)
+        for (const Folder& child : folder.folders)
         {
             const std::string childPath = path.empty() ? child.name : path + "/" + child.name;
 
@@ -105,11 +105,11 @@ namespace Graphite
             }
         }
 
-        for (const Core::Project& project : folder.projects)
+        for (const Project& project : folder.projects)
             RenderProject(project, path);
     }
 
-    void SolutionTreeView::RenderProject(const Core::Project& project,
+    void SolutionTreeView::RenderProject(const Project& project,
                                          const std::string& folder)
     {
         // A project nobody could read is a leaf rather than an empty expandable node: the
@@ -155,9 +155,9 @@ namespace Graphite
         ImGui::TreePop();
     }
 
-    void SolutionTreeView::RenderContentFolder(const Core::ContentFolder& folder)
+    void SolutionTreeView::RenderContentFolder(const ContentFolder& folder)
     {
-        for (const Core::ContentFolder& child : folder.folders)
+        for (const ContentFolder& child : folder.folders)
         {
             const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.name;
 
@@ -168,7 +168,7 @@ namespace Graphite
             }
         }
 
-        for (const Core::ContentFile& file : folder.files)
+        for (const ContentFile& file : folder.files)
         {
             if (!m_Filter.PassFilter(file.name.c_str()))
                 continue;
@@ -209,7 +209,7 @@ namespace Graphite
         ImGui::TextUnformatted("This Visual Studio solution could not be read. See the console.");
     }
 
-    void SolutionTreeView::RenderContextMenu(const Core::Folder& folder,
+    void SolutionTreeView::RenderContextMenu(const Folder& folder,
                                              const std::string& path)
     {
         // BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
@@ -261,7 +261,7 @@ namespace Graphite
         ImGui::EndPopup();
     }
 
-    void SolutionTreeView::RenderContextMenu(const Core::Project& project,
+    void SolutionTreeView::RenderContextMenu(const Project& project,
                                              const std::string& folder)
     {
         const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.path);
@@ -291,7 +291,7 @@ namespace Graphite
         ImGui::EndPopup();
     }
 
-    void SolutionTreeView::RenderMoveToFolderMenu(const Core::Project& project,
+    void SolutionTreeView::RenderMoveToFolderMenu(const Project& project,
                                                   const std::string& currentFolder)
     {
         if (!m_Workspace.LoadedSolution())
@@ -313,7 +313,7 @@ namespace Graphite
         }
     }
 
-    bool SolutionTreeView::RenderFolderRenameEditor(const Core::Folder& folder,
+    bool SolutionTreeView::RenderFolderRenameEditor(const Folder& folder,
                                                     const std::string& path)
     {
         if (m_RenamingFolder != path)
@@ -441,7 +441,7 @@ namespace Graphite
         if (!m_Workspace.LoadedSolution())
             return Core::Error{Core::ErrorCode::NotFound, "no solution is open"};
 
-        auto editor = Core::SolutionEditor::Open(m_Workspace.LoadedSolution()->path);
+        auto editor = SolutionEditor::Open(m_Workspace.LoadedSolution()->path);
 
         if (!editor)
             return editor.GetError();

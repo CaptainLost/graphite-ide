@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Core/Command/Scope.h"
 #include "Core/Command/Trigger.h"
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -17,6 +17,17 @@ namespace Core
     class Chord
     {
     public:
+        /// Where a chord counts. Global chords are routed once per frame after every
+        /// window has closed; a scoped chord is fired by whoever owns the scope, from
+        /// inside the window that defines it. Ctrl+wheel counts only over a hovered
+        /// editor — zooming the code from over the file tree would be a change of
+        /// behaviour, not a refactor.
+        enum class Scope : std::uint8_t
+        {
+            Global,
+            HoveredEditor
+        };
+
         Chord() = default;
 
         /// Key chords are always global: that is what every one of them is today, and a
@@ -24,10 +35,10 @@ namespace Core
         [[nodiscard]] static Chord Key(ImGuiKeyChord keys);
 
         /// `mods` carries modifier bits only; the direction is the trigger.
-        [[nodiscard]] static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Scope scope);
+        [[nodiscard]] static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Chord::Scope scope);
 
         [[nodiscard]] Trigger GetTrigger() const noexcept { return m_Trigger; }
-        [[nodiscard]] Scope GetScope() const noexcept { return m_Scope; }
+        [[nodiscard]] Chord::Scope GetScope() const noexcept { return m_Scope; }
 
         /// Modifiers ORed with the key for Trigger::Key; modifiers alone otherwise.
         [[nodiscard]] ImGuiKeyChord GetKeys() const noexcept { return m_Keys; }
@@ -48,6 +59,6 @@ namespace Core
     private:
         ImGuiKeyChord m_Keys = 0;
         Trigger m_Trigger = Trigger::Key;
-        Scope m_Scope = Scope::Global;
+        Chord::Scope m_Scope = Chord::Scope::Global;
     };
 }

@@ -1,6 +1,4 @@
-#include "corepch.h"
-
-#include "Core/Sln/VcxprojReader.h"
+#include "Sln/VcxprojReader.h"
 
 #include "Core/Fs/FileSystem.h"
 
@@ -8,12 +6,15 @@
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
-namespace Core
+namespace Graphite
 {
     namespace
     {
@@ -112,11 +113,11 @@ namespace Core
         {
             std::sort(folder.folders.begin(), folder.folders.end(),
                       [](const ContentFolder& left, const ContentFolder& right)
-                      { return CompareNames(left.name, right.name) < 0; });
+                      { return Core::CompareNames(left.name, right.name) < 0; });
 
             std::sort(folder.files.begin(), folder.files.end(),
                       [](const ContentFile& left, const ContentFile& right)
-                      { return CompareNames(left.name, right.name) < 0; });
+                      { return Core::CompareNames(left.name, right.name) < 0; });
 
             for (ContentFolder& child : folder.folders)
                 SortContent(child);
@@ -127,7 +128,7 @@ namespace Core
     {
         // Compared case-insensitively, as ReadSolution does for the solution itself: the
         // filesystem does not care, so App.VCXPROJ must not silently render as a leaf.
-        std::string extension = ToUtf8(project.extension());
+        std::string extension = Core::ToUtf8(project.extension());
         std::transform(extension.begin(), extension.end(), extension.begin(),
                        [](unsigned char character)
                        { return static_cast<char>(std::tolower(character)); });
@@ -135,14 +136,14 @@ namespace Core
         return extension == ".vcxproj";
     }
 
-    Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const
+    Core::Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const
     {
         std::error_code code;
 
         if (!std::filesystem::is_regular_file(project, code))
         {
-            return Error{ErrorCode::NotFound,
-                         std::format("no project file at '{}'", project.string())};
+            return Core::Error{Core::ErrorCode::NotFound,
+                               std::format("no project file at '{}'", project.string())};
         }
 
         pugi::xml_document document;
@@ -150,9 +151,9 @@ namespace Core
 
         if (!parsed)
         {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("cannot parse '{}': {}", project.string(),
-                                     parsed.description())};
+            return Core::Error{Core::ErrorCode::InvalidArgument,
+                               std::format("cannot parse '{}': {}", project.string(),
+                                           parsed.description())};
         }
 
         // The .filters file sits beside the project with the extension appended, so
@@ -174,9 +175,9 @@ namespace Core
                 if (name == "ProjectReference")
                 {
                     const std::filesystem::path referenced =
-                        FromUtf8(item.attribute("Include").value());
+                        Core::FromUtf8(item.attribute("Include").value());
 
-                    content.references.push_back(ToUtf8(referenced.stem()));
+                    content.references.push_back(Core::ToUtf8(referenced.stem()));
                     continue;
                 }
 
@@ -192,9 +193,9 @@ namespace Core
                     continue;
 
                 ContentFile file;
-                file.path = (directory / FromUtf8(include)).lexically_normal();
+                file.path = (directory / Core::FromUtf8(include)).lexically_normal();
                 file.path.make_preferred();
-                file.name = ToUtf8(file.path.filename());
+                file.name = Core::ToUtf8(file.path.filename());
 
                 const auto assignment = assignments.find(include);
 
@@ -220,7 +221,7 @@ namespace Core
         // References are names too, and Visual Studio lists them sorted.
         std::sort(content.references.begin(), content.references.end(),
                   [](const std::string& left, const std::string& right)
-                  { return CompareNames(left, right) < 0; });
+                  { return Core::CompareNames(left, right) < 0; });
 
         return content;
     }

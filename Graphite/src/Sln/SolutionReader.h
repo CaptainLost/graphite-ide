@@ -1,16 +1,16 @@
 #pragma once
 
 #include "Core/Base/Result.h"
-#include "Core/Sln/SolutionModel.h"
+#include "Sln/SolutionModel.h"
 
 #include <filesystem>
 
-namespace Core
+namespace Graphite
 {
     /// Reads a solution file into the model, choosing a parser by extension.
     ///
     /// Both `.slnx` and the legacy `.sln` text format are understood; any other extension
-    /// reports ErrorCode::Unsupported.
+    /// reports Core::ErrorCode::Unsupported.
     ///
     /// Reads the solution only. What is inside each project is a separate layer, so every
     /// Project comes back with contentRead == false.
@@ -22,5 +22,5 @@ namespace Core
     /// rearranged itself around the choice has nothing useful to do with the answer.
     [[nodiscard]] bool IsSolutionFile(const std::filesystem::path& path);
 
-    [[nodiscard]] Result<Solution> ReadSolution(const std::filesystem::path& path);
+    [[nodiscard]] Core::Result<Solution> ReadSolution(const std::filesystem::path& path);
 }

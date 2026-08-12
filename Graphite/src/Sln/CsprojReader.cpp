@@ -1,6 +1,4 @@
-#include "corepch.h"
-
-#include "Core/Sln/CsprojReader.h"
+#include "Sln/CsprojReader.h"
 
 #include "Core/Fs/FileSystem.h"
 
@@ -8,10 +6,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <format>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <utility>
 
-namespace Core
+namespace Graphite
 {
     namespace
     {
@@ -23,7 +24,7 @@ namespace Core
         {
             return std::any_of(std::begin(kExcludedDirectories), std::end(kExcludedDirectories),
                                [&name](std::string_view excluded)
-                               { return CompareNames(name, excluded) == 0; });
+                               { return Core::CompareNames(name, excluded) == 0; });
         }
 
         /// Mirrors one directory into the content tree, skipping build output and the
@@ -31,12 +32,12 @@ namespace Core
         void ReadDirectoryInto(const std::filesystem::path& directory,
                                const std::filesystem::path& projectFile, ContentFolder& folder)
         {
-            const auto entries = ReadDirectory(directory);
+            const auto entries = Core::ReadDirectory(directory);
 
             if (!entries)
                 return;
 
-            for (const DirectoryEntry& entry : entries.GetValue())
+            for (const Core::DirectoryEntry& entry : entries.GetValue())
             {
                 if (entry.isDirectory)
                 {
@@ -68,11 +69,11 @@ namespace Core
         {
             std::sort(folder.folders.begin(), folder.folders.end(),
                       [](const ContentFolder& left, const ContentFolder& right)
-                      { return CompareNames(left.name, right.name) < 0; });
+                      { return Core::CompareNames(left.name, right.name) < 0; });
 
             std::sort(folder.files.begin(), folder.files.end(),
                       [](const ContentFile& left, const ContentFile& right)
-                      { return CompareNames(left.name, right.name) < 0; });
+                      { return Core::CompareNames(left.name, right.name) < 0; });
 
             for (ContentFolder& child : folder.folders)
                 SortContent(child);
@@ -81,7 +82,7 @@ namespace Core
 
     bool CsprojReader::Handles(const std::filesystem::path& project) const
     {
-        std::string extension = ToUtf8(project.extension());
+        std::string extension = Core::ToUtf8(project.extension());
         std::transform(extension.begin(), extension.end(), extension.begin(),
                        [](unsigned char character)
                        { return static_cast<char>(std::tolower(character)); });
@@ -89,14 +90,14 @@ namespace Core
         return extension == ".csproj";
     }
 
-    Result<ProjectContent> CsprojReader::Read(const std::filesystem::path& project) const
+    Core::Result<ProjectContent> CsprojReader::Read(const std::filesystem::path& project) const
     {
         std::error_code code;
 
         if (!std::filesystem::is_regular_file(project, code))
         {
-            return Error{ErrorCode::NotFound,
-                         std::format("no project file at '{}'", project.string())};
+            return Core::Error{Core::ErrorCode::NotFound,
+                               std::format("no project file at '{}'", project.string())};
         }
 
         ProjectContent content;
@@ -111,10 +112,10 @@ namespace Core
                 for (const pugi::xml_node& item : group.children("ProjectReference"))
                 {
                     const std::filesystem::path referenced =
-                        FromUtf8(item.attribute("Include").value());
+                        Core::FromUtf8(item.attribute("Include").value());
 
                     if (!referenced.empty())
-                        content.references.push_back(ToUtf8(referenced.stem()));
+                        content.references.push_back(Core::ToUtf8(referenced.stem()));
                 }
             }
         }
@@ -124,7 +125,7 @@ namespace Core
 
         std::sort(content.references.begin(), content.references.end(),
                   [](const std::string& left, const std::string& right)
-                  { return CompareNames(left, right) < 0; });
+                  { return Core::CompareNames(left, right) < 0; });
 
         return content;
     }

@@ -1,12 +1,12 @@
 #pragma once
 
 #include "Core/Base/Result.h"
-#include "Core/Sln/SolutionModel.h"
+#include "Sln/SolutionModel.h"
 
 #include <filesystem>
 #include <string>
 
-namespace Core
+namespace Graphite
 {
     /// Parses the legacy text solution format. `path` is used to resolve project paths
     /// and to name the solution; `text` is the whole file.
@@ -17,6 +17,6 @@ namespace Core
     ///
     /// Fills no project contents and does no sorting: ReadSolution does both, after
     /// either parser, so the two formats cannot drift apart.
-    [[nodiscard]] Result<Solution> ParseSln(const std::filesystem::path& path,
-                                            const std::string& text);
+    [[nodiscard]] Core::Result<Solution> ParseSln(const std::filesystem::path& path,
+                                                  const std::string& text);
 }

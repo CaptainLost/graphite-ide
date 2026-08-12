@@ -1,15 +1,15 @@
 #include <doctest/doctest.h>
 
-#include "Core/Sln/SolutionReader.h"
+#include "Sln/SolutionReader.h"
 
 #include "TempDirectory.h"
 
 #include <algorithm>
 #include <string>
 
-using Core::Folder;
-using Core::Project;
-using Core::Solution;
+using Graphite::Folder;
+using Graphite::Project;
+using Graphite::Solution;
 
 namespace
 {
@@ -43,7 +43,7 @@ TEST_CASE("Reading a solution that does not exist fails with NotFound")
 {
     TempDirectory temp;
 
-    const auto solution = Core::ReadSolution(temp.GetPath() / "missing.slnx");
+    const auto solution = Graphite::ReadSolution(temp.GetPath() / "missing.slnx");
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == Core::ErrorCode::NotFound);
@@ -54,7 +54,7 @@ TEST_CASE("Reading a file with an unknown extension is unsupported")
     TempDirectory temp;
     const auto file = temp.MakeFile("thing.cmake", "x");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == Core::ErrorCode::Unsupported);
@@ -65,7 +65,7 @@ TEST_CASE("Malformed XML reports an error rather than a partial solution")
     TempDirectory temp;
     const auto file = temp.MakeFile("Broken.slnx", "<Solution><Folder Name=");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -76,7 +76,7 @@ TEST_CASE("The solution takes its name from the file")
     TempDirectory temp;
     const auto file = temp.MakeFile("MyApp.slnx", kSampleSlnx);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().name == "MyApp");
@@ -88,7 +88,7 @@ TEST_CASE("Solution folders become tree folders with the slashes stripped")
     TempDirectory temp;
     const auto file = temp.MakeFile("MyApp.slnx", kSampleSlnx);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Folder& root = solution.GetValue().root;
@@ -104,7 +104,7 @@ TEST_CASE("Projects land in their folder with an absolute path")
     TempDirectory temp;
     const auto file = temp.MakeFile("MyApp.slnx", kSampleSlnx);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Folder* engine = FindFolder(solution.GetValue().root, "Engine");
@@ -132,7 +132,7 @@ TEST_CASE("Nested solution folders are nested in the model")
 </Solution>
 )");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     // Nesting is expressed by the folder's path, not by element nesting — the two Folder
@@ -150,7 +150,7 @@ TEST_CASE("A project outside any folder sits at the solution root")
     const auto file = temp.MakeFile("Flat.slnx",
                                     R"(<Solution><Project Path="a\A.vcxproj" /></Solution>)");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     CHECK(solution.GetValue().root.folders.empty());
@@ -163,7 +163,7 @@ TEST_CASE("An empty solution reads as empty rather than failing")
     TempDirectory temp;
     const auto file = temp.MakeFile("Empty.slnx", "<Solution />");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 0);
@@ -176,7 +176,7 @@ TEST_CASE("The project count covers every folder")
     TempDirectory temp;
     const auto file = temp.MakeFile("MyApp.slnx", kSampleSlnx);
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
     CHECK(solution.GetValue().projectCount == 3);
@@ -192,7 +192,7 @@ TEST_CASE("A project whose file is missing is marked rather than dropped")
 </Solution>
 )");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.GetValue().root.projects.size() == 2);
 
@@ -232,7 +232,7 @@ TEST_CASE("Project contents are read by the solution reader")
     const auto file = temp.MakeFile("Real.slnx",
                                     R"(<Solution><Project Path="App\App.vcxproj" /></Solution>)");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
     REQUIRE(solution.GetValue().root.projects.size() == 1);
 
@@ -251,7 +251,7 @@ TEST_CASE("An uppercase extension is still a solution")
     const auto file = temp.MakeFile("Shouty.SLNX", "<Solution />");
 
     // The filesystem does not care about the case, so neither may this.
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     CHECK(solution.HasValue());
 }
@@ -263,7 +263,7 @@ TEST_CASE("Valid XML that is not a solution is rejected")
 
     // Parses perfectly well and means nothing here — worth its own branch, because the
     // failure otherwise looks like a corrupt file rather than the wrong one.
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -280,7 +280,7 @@ TEST_CASE("Folders and projects come back sorted, not in declaration order")
 </Solution>
 )");
 
-    const auto solution = Core::ReadSolution(file);
+    const auto solution = Graphite::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
     const Folder& root = solution.GetValue().root;
@@ -301,12 +301,12 @@ TEST_CASE("IsSolutionFile recognises both formats and nothing else")
     // Exposed so a caller can refuse a file before rearranging itself around it. An
     // earlier version validated only inside ReadSolution, by which point the workspace
     // had already been re-rooted and the choice written to disk.
-    CHECK(Core::IsSolutionFile("C:/work/App.slnx"));
-    CHECK(Core::IsSolutionFile("C:/work/App.sln"));
-    CHECK(Core::IsSolutionFile("C:/work/App.SLNX"));
-    CHECK(Core::IsSolutionFile("C:/work/App.Sln"));
+    CHECK(Graphite::IsSolutionFile("C:/work/App.slnx"));
+    CHECK(Graphite::IsSolutionFile("C:/work/App.sln"));
+    CHECK(Graphite::IsSolutionFile("C:/work/App.SLNX"));
+    CHECK(Graphite::IsSolutionFile("C:/work/App.Sln"));
 
-    CHECK_FALSE(Core::IsSolutionFile("C:/work/notes.txt"));
-    CHECK_FALSE(Core::IsSolutionFile("C:/work/App.vcxproj"));
-    CHECK_FALSE(Core::IsSolutionFile("C:/work/App"));
+    CHECK_FALSE(Graphite::IsSolutionFile("C:/work/notes.txt"));
+    CHECK_FALSE(Graphite::IsSolutionFile("C:/work/App.vcxproj"));
+    CHECK_FALSE(Graphite::IsSolutionFile("C:/work/App"));
 }

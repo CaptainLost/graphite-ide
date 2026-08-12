@@ -354,7 +354,7 @@ namespace Graphite
             if (ImGui::IsWindowHovered() && routable)
             {
                 context.router->DispatchWheel(*context.commands, *context.keys,
-                                              Core::Scope::HoveredEditor,
+                                              Core::Chord::Scope::HoveredEditor,
                                               ImGui::GetIO().MouseWheel);
             }
 

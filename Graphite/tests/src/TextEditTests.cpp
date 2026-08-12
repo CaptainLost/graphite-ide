@@ -1,10 +1,10 @@
 #include <doctest/doctest.h>
 
-#include "Core/Sln/TextEdit.h"
+#include "Sln/TextEdit.h"
 
 #include <string>
 
-using namespace Core;
+using namespace Graphite;
 
 TEST_CASE("The line ending is taken from the file, not assumed")
 {

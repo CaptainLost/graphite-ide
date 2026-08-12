@@ -21,6 +21,6 @@ namespace Core
         /// Chords scoped to `scope`, fired by whoever owns that scope from inside the
         /// window defining it. `wheel` is ImGuiIO::MouseWheel: its sign picks the
         /// direction and its magnitude is how many notches arrived this frame.
-        void DispatchWheel(CommandRegistry& commands, const Keymap& keys, Scope scope, float wheel);
+        void DispatchWheel(CommandRegistry& commands, const Keymap& keys, Chord::Scope scope, float wheel);
     };
 }
