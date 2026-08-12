@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Settings/WorkspaceSettings.h"
 
 #include "Core/Event/EventBus.h"
@@ -124,7 +126,7 @@ namespace Graphite {
 		Core::EventBus& m_Events;
 		std::optional<Core::Repository> m_Repository;
 		Core::FileTree m_Tree;
-		std::unique_ptr<Core::DirectoryWatcher> m_Watcher;
+		Core::Scope<Core::DirectoryWatcher> m_Watcher;
 
 		bool m_WatcherResumed = false;
 		std::filesystem::path m_Root;

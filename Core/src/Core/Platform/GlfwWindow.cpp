@@ -1,8 +1,16 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Platform/GlfwWindow.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Log.h"
+
+#include "Core/Base/Base.h"
 
 #include <GLFW/glfw3.h>
 
@@ -105,7 +113,7 @@ namespace Core {
 		}
 	}
 
-	Result<std::unique_ptr<Window>> Window::Create(const WindowSpec& spec)
+	Result<Scope<Window>> Window::Create(const WindowSpec& spec)
 	{
 		if (s_GlfwWindowCount == 0)
 		{
@@ -133,7 +141,7 @@ namespace Core {
 
 		++s_GlfwWindowCount;
 
-		auto window = std::make_unique<GlfwWindow>(handle);
+		auto window = CreateScope<GlfwWindow>(handle);
 		glfwMakeContextCurrent(handle);
 		window->SetVSync(spec.vsync);
 
@@ -151,6 +159,6 @@ namespace Core {
 		}
 
 		CORE_INFO("Window created: {}x{} \"{}\"", spec.width, spec.height, spec.title);
-		return Result<std::unique_ptr<Window>>{std::move(window)};
+		return Result<Scope<Window>>{std::move(window)};
 	}
 }

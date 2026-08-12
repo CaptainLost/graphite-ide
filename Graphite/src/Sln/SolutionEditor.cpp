@@ -1,14 +1,34 @@
+#include "Core/Base/Base.h"
+
 #include "Sln/SolutionEditor.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Uuid.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/FileSystem.h"
+#include "Core/Base/Base.h"
+
 #include "Sln/SlnxEditor.h"
 
+#include "Core/Base/Base.h"
+
 #include <algorithm>
+#include "Core/Base/Base.h"
+
 #include <cctype>
+#include "Core/Base/Base.h"
+
 #include <format>
+#include "Core/Base/Base.h"
+
 #include <fstream>
+#include "Core/Base/Base.h"
+
 #include <sstream>
+#include "Core/Base/Base.h"
+
 #include <system_error>
 
 namespace Graphite {
@@ -33,7 +53,7 @@ namespace Graphite {
 		return std::format("{{{}}}", Core::Uuid::Generate().ToString());
 	}
 
-	Core::Result<std::unique_ptr<SolutionEditor>> SolutionEditor::Open(
+	Core::Result<Core::Scope<SolutionEditor>> SolutionEditor::Open(
 		const std::filesystem::path& solution)
 	{
 		std::error_code code;
@@ -63,8 +83,8 @@ namespace Graphite {
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();
 
-		std::unique_ptr<SolutionEditor> editor =
-			std::make_unique<SlnxEditor>(solution, buffer.str());
+		Core::Scope<SolutionEditor> editor =
+			Core::CreateScope<SlnxEditor>(solution, buffer.str());
 
 		return editor;
 	}

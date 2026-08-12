@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Log.h"
 #include "Core/Base/RingBufferSink.h"
 #include "Core/Ui/Panel.h"
@@ -14,7 +16,7 @@ namespace Graphite {
 	class ConsolePanel final : public Core::Panel
 	{
 	public:
-		explicit ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink);
+		explicit ConsolePanel(Core::Ref<Core::RingBufferSink> sink);
 
 		void OnUIRender() override;
 
@@ -22,7 +24,7 @@ namespace Graphite {
 		void RenderToolbar();
 		void RenderEntries();
 
-		std::shared_ptr<Core::RingBufferSink> m_Sink;
+		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::vector<Core::LogEntry> m_Entries;
 		ImGuiTextFilter m_Filter;
 		bool m_AutoScroll = true;

@@ -1,13 +1,27 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/JsonFile.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/AtomicWrite.h"
+
+#include "Core/Base/Base.h"
 
 #include <nlohmann/json.hpp>
 
+#include "Core/Base/Base.h"
+
 #include <fstream>
+#include "Core/Base/Base.h"
+
 #include <sstream>
+#include "Core/Base/Base.h"
+
 #include <utility>
 
 namespace Core {
@@ -17,7 +31,7 @@ namespace Core {
 		nlohmann::json root = nlohmann::json::object();
 	};
 
-	JsonFile::JsonFile() : m_Document(std::make_unique<Document>())
+	JsonFile::JsonFile() : m_Document(CreateScope<Document>())
 	{
 	}
 

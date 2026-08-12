@@ -1,21 +1,51 @@
+#include "Core/Base/Base.h"
+
 #include "App/GraphiteLayer.h"
 
+#include "Core/Base/Base.h"
+
 #include "Editor/StatusBar.h"
+#include "Core/Base/Base.h"
+
 #include "Panels/ConsolePanel.h"
+#include "Core/Base/Base.h"
+
 #include "Panels/ExplorerPanel.h"
+#include "Core/Base/Base.h"
+
 #include "Settings/AppSettings.h"
+#include "Core/Base/Base.h"
+
 #include "App/GraphiteMenu.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/Application.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Log.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Command/KeyBindingsPanel.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/FileSystem.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Platform/Process.h"
 
+#include "Core/Base/Base.h"
+
 #include <GLFW/glfw3.h>
+#include "Core/Base/Base.h"
+
 #include <imgui.h>
 
+#include "Core/Base/Base.h"
+
 #include <cstddef>
+#include "Core/Base/Base.h"
+
 #include <utility>
 
 namespace Graphite {
@@ -24,7 +54,7 @@ namespace Graphite {
 		constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 	}
 
-	GraphiteLayer::GraphiteLayer(std::shared_ptr<Core::RingBufferSink> sink,
+	GraphiteLayer::GraphiteLayer(Core::Ref<Core::RingBufferSink> sink,
 								 std::filesystem::path initialFolder)
 		: Core::Layer("Ide"), m_Sink(std::move(sink)), m_InitialFolder(std::move(initialFolder)),
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle)
@@ -54,9 +84,9 @@ namespace Graphite {
 	void GraphiteLayer::OnAttach()
 	{
 		auto* explorer = static_cast<ExplorerPanel*>(
-			m_Panels.Add(std::make_unique<ExplorerPanel>(m_Workspace, m_Documents)));
+			m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents)));
 
-		m_Panels.Add(std::make_unique<ConsolePanel>(m_Sink));
+		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
@@ -109,7 +139,7 @@ namespace Graphite {
 		// After the load, so the screen opens onto the bindings actually in force. The
 		// callback is what keeps Core clear of AppSettings: the panel knows a binding
 		// moved, this layer knows where bindings are kept.
-		m_Panels.Add(std::make_unique<Core::KeyBindingsPanel>(
+		m_Panels.Add(Core::CreateScope<Core::KeyBindingsPanel>(
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
 
 		// The defaults are assembled across five files, each of which believes it is

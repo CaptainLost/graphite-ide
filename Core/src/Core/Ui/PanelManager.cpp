@@ -1,9 +1,19 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Ui/PanelManager.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Assert.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Command/CommandRegistry.h"
+
+#include "Core/Base/Base.h"
 
 #include <imgui.h>
 
@@ -20,7 +30,7 @@ namespace Core {
 		}
 	}
 
-	Panel* PanelManager::Add(std::unique_ptr<Panel> panel)
+	Panel* PanelManager::Add(Scope<Panel> panel)
 	{
 		CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
 

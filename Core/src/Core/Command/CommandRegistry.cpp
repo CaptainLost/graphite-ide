@@ -1,5 +1,11 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Command/CommandRegistry.h"
+
+#include "Core/Base/Base.h"
 
 #include <utility>
 
@@ -13,7 +19,7 @@ namespace Core {
 		}
 
 		m_ById.emplace(command.id, m_Commands.size());
-		m_Commands.push_back(std::make_unique<Command>(std::move(command)));
+		m_Commands.push_back(CreateScope<Command>(std::move(command)));
 
 		return m_Commands.back().get();
 	}

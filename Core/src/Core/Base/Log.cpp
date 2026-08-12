@@ -1,6 +1,12 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Log.h"
+
+#include "Core/Base/Base.h"
 
 #include <cstdio>
 
@@ -36,7 +42,7 @@ namespace Core {
 		return instance;
 	}
 
-	void Logger::AddSink(std::shared_ptr<ILogSink> sink)
+	void Logger::AddSink(Ref<ILogSink> sink)
 	{
 		if (!sink)
 			return;
@@ -65,7 +71,7 @@ namespace Core {
 
 	void Logger::Write(LogLevel level, std::string message)
 	{
-		std::vector<std::shared_ptr<ILogSink>> sinks;
+		std::vector<Ref<ILogSink>> sinks;
 
 		{
 			const std::scoped_lock lock{m_Mutex};

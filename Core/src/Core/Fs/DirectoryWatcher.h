@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/Fs/ChangeCollector.h"
@@ -27,7 +29,7 @@ namespace Core {
 		// directory handle until a read has been issued against it, and that read happens on
 		// the worker thread - returning as soon as the handle existed dropped every change
 		// made before the worker was first scheduled. This is why m_Armed exists.
-		static Result<std::unique_ptr<DirectoryWatcher>> Start(
+		static Result<Scope<DirectoryWatcher>> Start(
 			const std::filesystem::path& root);
 
 		struct Changes

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/NonCopyable.h"
 #include "Core/Command/Command.h"
 
@@ -27,7 +29,7 @@ namespace Core {
 		void ForEach(const std::function<void(const Command&)>& action) const;
 
 	private:
-		std::vector<std::unique_ptr<Command>> m_Commands;
+		std::vector<Scope<Command>> m_Commands;
 		std::unordered_map<std::string, std::size_t> m_ById;
 	};
 }

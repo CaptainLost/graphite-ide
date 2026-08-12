@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
@@ -26,7 +28,7 @@ namespace Graphite {
 	class GraphiteLayer final : public Core::Layer
 	{
 	public:
-		GraphiteLayer(std::shared_ptr<Core::RingBufferSink> sink, std::filesystem::path initialFolder);
+		GraphiteLayer(Core::Ref<Core::RingBufferSink> sink, std::filesystem::path initialFolder);
 
 		void OnAttach() override;
 		void OnUpdate(Core::Timestep ts) override;
@@ -58,7 +60,7 @@ namespace Graphite {
 
 		bool m_CloseApproved = false;
 
-		std::shared_ptr<Core::RingBufferSink> m_Sink;
+		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::filesystem::path m_InitialFolder;
 		Core::EventBus m_Events;
 		Workspace m_Workspace{m_Events};

@@ -1,18 +1,36 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Platform/WindowFrame.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Log.h"
+#include "Core/Base/Base.h"
+
 #include "Core/Platform/Window.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
+#include "Core/Base/Base.h"
+
 #include <windows.h>
 
+#include "Core/Base/Base.h"
+
 #include <dwmapi.h>
+#include "Core/Base/Base.h"
+
 #include <windowsx.h>
 
 #define GLFW_EXPOSE_NATIVE_WIN32
+#include "Core/Base/Base.h"
+
 #include <GLFW/glfw3.h>
+#include "Core/Base/Base.h"
+
 #include <GLFW/glfw3native.h>
 #endif
 
@@ -261,7 +279,7 @@ namespace Core {
 	}
 #endif
 
-	Result<std::unique_ptr<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window,
+	Result<Scope<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window,
 														   [[maybe_unused]] const Color& border)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
@@ -277,7 +295,7 @@ namespace Core {
 			return Error{ErrorCode::Unsupported, "the window is not a Win32 window"};
 		}
 
-		auto frame = std::make_unique<Win32Frame>(hwnd, static_cast<COLORREF>(PackBgr(border)));
+		auto frame = CreateScope<Win32Frame>(hwnd, static_cast<COLORREF>(PackBgr(border)));
 
 		const Result<void> installed = frame->Install();
 		if (!installed)
@@ -285,7 +303,7 @@ namespace Core {
 			return installed.GetError();
 		}
 
-		return Result<std::unique_ptr<WindowFrame>>{std::move(frame)};
+		return Result<Scope<WindowFrame>>{std::move(frame)};
 #else
 		return Error{ErrorCode::Unsupported,
 					 "removing the system title bar is only implemented on Windows"};

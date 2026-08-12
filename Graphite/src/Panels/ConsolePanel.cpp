@@ -1,4 +1,8 @@
+#include "Core/Base/Base.h"
+
 #include "Panels/ConsolePanel.h"
+
+#include "Core/Base/Base.h"
 
 #include <utility>
 
@@ -23,7 +27,7 @@ namespace Graphite {
 		}
 	}
 
-	ConsolePanel::ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink)
+	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink)
 		: Core::Panel("console", "Console"), m_Sink(std::move(sink))
 	{
 	}

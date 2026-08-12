@@ -1,10 +1,18 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/DirectoryWatcher.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/Log.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
+#include "Core/Base/Base.h"
+
 #include <windows.h>
 #endif
 
@@ -58,7 +66,7 @@ namespace Core {
 #endif
 	}
 
-	Result<std::unique_ptr<DirectoryWatcher>> DirectoryWatcher::Start(
+	Result<Scope<DirectoryWatcher>> DirectoryWatcher::Start(
 		const std::filesystem::path& root)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
@@ -84,7 +92,7 @@ namespace Core {
 		}
 
 		// Not make_unique: the constructor is private, and this is the only creator.
-		std::unique_ptr<DirectoryWatcher> watcher{new DirectoryWatcher};
+		Scope<DirectoryWatcher> watcher{new DirectoryWatcher};
 
 		watcher->m_Root = root;
 		watcher->m_Directory = directory;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/NonCopyable.h"
 
 #include <format>
@@ -46,7 +48,7 @@ namespace Core {
 	public:
 		static Logger& Get();
 
-		void AddSink(std::shared_ptr<ILogSink> sink);
+		void AddSink(Ref<ILogSink> sink);
 		void ClearSinks();
 
 		void SetLevel(LogLevel level);
@@ -58,7 +60,7 @@ namespace Core {
 		Logger() = default;
 
 		mutable std::mutex m_Mutex;
-		std::vector<std::shared_ptr<ILogSink>> m_Sinks;
+		std::vector<Ref<ILogSink>> m_Sinks;
 		LogLevel m_Level = LogLevel::Trace;
 	};
 }

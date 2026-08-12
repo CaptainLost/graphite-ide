@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Platform/Window.h"
 #include "Core/Platform/WindowFrame.h"
 
@@ -34,11 +36,11 @@ namespace Core {
 		bool HasCustomTitleBar() const override;
 		void SetCaptionMetrics(const CaptionMetrics& metrics) override;
 
-		void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_Frame = std::move(frame); }
+		void AdoptFrame(Scope<WindowFrame> frame) { m_Frame = std::move(frame); }
 
 	private:
 		GLFWwindow* m_Handle = nullptr;
 
-		std::unique_ptr<WindowFrame> m_Frame;
+		Scope<WindowFrame> m_Frame;
 	};
 }

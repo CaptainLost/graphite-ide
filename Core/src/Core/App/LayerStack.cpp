@@ -1,6 +1,12 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/LayerStack.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/Assert.h"
 
@@ -11,7 +17,7 @@ namespace Core {
 		Clear();
 	}
 
-	Layer& LayerStack::Push(std::unique_ptr<Layer> layer)
+	Layer& LayerStack::Push(Scope<Layer> layer)
 	{
 		CORE_ASSERT(layer != nullptr, "LayerStack::Push received a null pointer");
 

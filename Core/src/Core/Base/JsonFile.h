@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -37,6 +39,6 @@ namespace Core {
 
 	private:
 		struct Document;
-		std::unique_ptr<Document> m_Document;
+		Scope<Document> m_Document;
 	};
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Result.h"
 
 #include <filesystem>
@@ -18,7 +20,7 @@ namespace Graphite {
 		SolutionEditor(const SolutionEditor&) = delete;
 		SolutionEditor& operator=(const SolutionEditor&) = delete;
 
-		static Core::Result<std::unique_ptr<SolutionEditor>> Open(
+		static Core::Result<Core::Scope<SolutionEditor>> Open(
 			const std::filesystem::path& solution);
 
 		virtual Core::Result<void> AddProject(const std::filesystem::path& project,

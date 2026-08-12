@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/Ui/Panel.h"
@@ -16,7 +18,7 @@ namespace Core {
 	class PanelManager final : NonCopyable
 	{
 	public:
-		Panel* Add(std::unique_ptr<Panel> panel);
+		Panel* Add(Scope<Panel> panel);
 
 		Panel* Find(std::string_view id);
 		std::size_t GetCount() const { return m_Panels.size(); }
@@ -33,7 +35,7 @@ namespace Core {
 		void ResetVisibility();
 
 	private:
-		std::vector<std::unique_ptr<Panel>> m_Panels;
+		std::vector<Scope<Panel>> m_Panels;
 		CommandRegistry* m_Commands = nullptr;
 	};
 }
