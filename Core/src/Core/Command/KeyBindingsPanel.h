@@ -1,0 +1,76 @@
+#pragma once
+
+#include "Core/Command/Chord.h"
+#include "Core/Ui/Panel.h"
+
+#include <array>
+#include <cstddef>
+#include <functional>
+#include <optional>
+#include <string>
+
+namespace core
+{
+    class CommandRegistry;
+    class Keymap;
+    struct Command;
+
+    /// The screen for rebinding shortcuts. Docks where documents open, so it can sit
+    /// beside the code rather than over it, and starts hidden — it is opened from the
+    /// View menu like any other panel.
+    ///
+    /// `onChanged` is called after every change that sticks. It is how this stays free
+    /// of any particular settings file: the panel knows when a binding moved, and the
+    /// application knows where bindings are kept.
+    class KeyBindingsPanel final : public Panel
+    {
+    public:
+        KeyBindingsPanel(CommandRegistry& commands, Keymap& keys, std::function<void()> onChanged);
+
+        void OnUIRender() override;
+
+    private:
+        /// Reads whatever chord the user produces this frame, or nothing. Escape cancels
+        /// — which is why Escape cannot be bound, and the alternative is a cell nobody
+        /// can leave. A modifier alone is never an answer: every capture would otherwise
+        /// end on the first Shift.
+        [[nodiscard]] std::optional<Chord> CaptureChord();
+
+        void RenderRow(const Command& command);
+
+        /// Draws one capturable cell and, when it is the one being captured, runs the
+        /// capture. `slot` is the index into the binding: 0 is the primary, 1..n the
+        /// alternates, one past the end appends.
+        void RenderSlot(const std::string& id, std::size_t slot, const std::string& text);
+
+        /// Answers whether the chord is free, and when it is not, parks it in
+        /// m_conflict for the question the user has to answer first.
+        void Offer(const std::string& id, std::size_t slot, const Chord& chord);
+
+        void Apply(const std::string& id, std::size_t slot, const Chord& chord);
+
+        /// The question that stands between a taken chord and its new owner.
+        void RenderConflictPopup();
+
+        [[nodiscard]] bool Matches(const Command& command) const;
+
+        CommandRegistry& m_commands;
+        Keymap& m_keys;
+        std::function<void()> m_onChanged;
+
+        /// The command id whose binding is being captured, and which slot of it — 0 is
+        /// the primary, 1..n the alternates, and one past the end appends a new one.
+        std::string m_capturing;
+        std::size_t m_capturingSlot = 0;
+
+        /// A chord the user chose that is already taken, held while they answer whether
+        /// to take it away from its current owner. Never applied silently: the user would
+        /// discover the loss of Ctrl+S at the moment they wanted to save.
+        std::optional<Chord> m_conflict;
+        std::string m_conflictOwner;
+
+        /// A char buffer rather than std::string because ImGui's std::string overloads
+        /// live in misc/cpp, which this build does not compile.
+        std::array<char, 128> m_filter{};
+    };
+}

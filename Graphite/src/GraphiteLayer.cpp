@@ -8,6 +8,7 @@
 
 #include "Core/App/Application.h"
 #include "Core/Base/Log.h"
+#include "Core/Command/KeyBindingsPanel.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 #include "Core/Text/Editing.h"
@@ -32,7 +33,7 @@ namespace graphite
     {
         m_layout.left = {"files"};
         m_layout.bottom = {"console"};
-        m_layout.center = {};
+        m_layout.center = {"keybindings"};
 
         // 32 px is what Windows itself uses for a caption, so the drawn window buttons
         // keep their familiar hit size — see TitleBar.h. DockSpaceHost::Begin is what
@@ -108,6 +109,12 @@ namespace graphite
         // shadow defaults, and the menu reads the binding in force when it draws each
         // item's shortcut.
         AppSettings::LoadKeyBindings(m_keys);
+
+        // After the load, so the screen opens onto the bindings actually in force. The
+        // callback is what keeps Core clear of AppSettings: the panel knows a binding
+        // moved, this layer knows where bindings are kept.
+        m_panels.Add(std::make_unique<core::KeyBindingsPanel>(
+            m_commands, m_keys, [this] { AppSettings::SaveKeyBindings(m_keys); }));
 
         // The defaults are assembled across five files, each of which believes it is
         // claiming a free chord, and nothing but this notices when two of them claim the
