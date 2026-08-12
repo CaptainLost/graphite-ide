@@ -61,6 +61,7 @@ namespace Core {
 		LayerStack m_Layers;
 		std::vector<Layer*> m_FrameLayers;
 		bool m_Running = false;
+		bool m_Minimized = false;
 		double m_LastFrameTime = 0.0;
 
 		static Application* s_Instance;

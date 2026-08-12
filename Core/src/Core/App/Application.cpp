@@ -108,15 +108,28 @@ namespace Core {
 				m_Window->CancelClose();
 			}
 
-			for (Layer* layer : m_FrameLayers)
-				layer->OnUpdate(ts);
+			// A minimized window has a zero-sized framebuffer. Neither updating nor
+			// drawing into it accomplishes anything, and the GUI layer would be building
+			// a frame for a surface with no pixels, so the whole body is skipped. Close
+			// requests above are not: the window can still be closed from the taskbar.
+			int width = 0;
+			int height = 0;
+			m_Window->FramebufferSize(width, height);
+			m_Minimized = width == 0 || height == 0;
 
-			m_Gui.BeginFrame();
+			if (!m_Minimized)
+			{
+				for (Layer* layer : m_FrameLayers)
+					layer->OnUpdate(ts);
 
-			for (Layer* layer : m_FrameLayers)
-				layer->OnUIRender();
+				m_Gui.BeginFrame();
 
-			m_Gui.EndFrame(*m_Window);
+				for (Layer* layer : m_FrameLayers)
+					layer->OnUIRender();
+
+				m_Gui.EndFrame(*m_Window);
+			}
+
 			m_Window->SwapBuffers();
 		}
 
