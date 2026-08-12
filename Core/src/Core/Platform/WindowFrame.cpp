@@ -2,34 +2,23 @@
 
 #include "corepch.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Platform/WindowFrame.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Base/Log.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Platform/Window.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
-#include "Core/Base/Base.h"
 
 #include <windows.h>
 
-#include "Core/Base/Base.h"
-
 #include <dwmapi.h>
-#include "Core/Base/Base.h"
 
 #include <windowsx.h>
 
 #define GLFW_EXPOSE_NATIVE_WIN32
-#include "Core/Base/Base.h"
 
 #include <GLFW/glfw3.h>
-#include "Core/Base/Base.h"
 
 #include <GLFW/glfw3native.h>
 #endif
@@ -280,7 +269,7 @@ namespace Core {
 #endif
 
 	Result<Scope<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window,
-														   [[maybe_unused]] const Color& border)
+												 [[maybe_unused]] const Color& border)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		auto* glfwHandle = static_cast<GLFWwindow*>(window.GetNativeHandle());

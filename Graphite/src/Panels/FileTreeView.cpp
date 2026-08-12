@@ -54,9 +54,9 @@ namespace Graphite {
 			Core::FileNode& root = m_Workspace.Tree().GetRoot();
 
 			if (root.Accessible)
-				CORE_INFO("File tree refreshed");
+				APP_INFO("File tree refreshed");
 			else
-				CORE_WARN("File tree refresh failed: the workspace folder is unreadable");
+				APP_WARN("File tree refresh failed: the workspace folder is unreadable");
 		}
 
 		if (ImGui::IsItemHovered())
@@ -140,7 +140,7 @@ namespace Graphite {
 		if (ImGui::MenuItem("Show in Explorer"))
 		{
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(node.Path); !revealed)
-				CORE_ERROR("{}", revealed.GetError().Message);
+				APP_ERROR("{}", revealed.GetError().Message);
 		}
 
 		ImGui::Separator();
@@ -192,7 +192,7 @@ namespace Graphite {
 
 				if (current.size() >= m_RenameBuffer.size())
 				{
-					CORE_ERROR("Cannot rename '{}': the name is too long to edit", current);
+					APP_ERROR("Cannot rename '{}': the name is too long to edit", current);
 				}
 				else
 				{
@@ -260,7 +260,7 @@ namespace Graphite {
 		// silent.
 		if (m_Pending.kind != PendingAction::Kind::None)
 		{
-			CORE_WARN("Discarding a pending file action that was replaced before it ran");
+			APP_WARN("Discarding a pending file action that was replaced before it ran");
 		}
 
 		m_Pending = std::move(action);
@@ -315,7 +315,7 @@ namespace Graphite {
 	{
 		if (!Core::IsValidFileName(action.name))
 		{
-			CORE_ERROR("'{}' is not a valid file name", action.name);
+			APP_ERROR("'{}' is not a valid file name", action.name);
 			return;
 		}
 
@@ -327,7 +327,7 @@ namespace Graphite {
 
 		if (const auto renamed = Core::Rename(action.target, target); !renamed)
 		{
-			CORE_ERROR("{}", renamed.GetError().Message);
+			APP_ERROR("{}", renamed.GetError().Message);
 			return;
 		}
 
@@ -340,7 +340,7 @@ namespace Graphite {
 
 		if (!copied)
 		{
-			CORE_ERROR("{}", copied.GetError().Message);
+			APP_ERROR("{}", copied.GetError().Message);
 			return;
 		}
 
@@ -351,7 +351,7 @@ namespace Graphite {
 	{
 		if (!Core::IsValidFileName(action.name))
 		{
-			CORE_ERROR("'{}' is not a valid file name", action.name);
+			APP_ERROR("'{}' is not a valid file name", action.name);
 			return;
 		}
 
@@ -365,7 +365,7 @@ namespace Graphite {
 
 		if (!created)
 		{
-			CORE_ERROR("{}", created.GetError().Message);
+			APP_ERROR("{}", created.GetError().Message);
 			return;
 		}
 
@@ -382,7 +382,7 @@ namespace Graphite {
 			m_ForceOpenPath = action.target;
 		}
 
-		CORE_INFO("Created '{}'", Core::ToUtf8(target));
+		APP_INFO("Created '{}'", Core::ToUtf8(target));
 	}
 
 	void FileTreeView::RenderDeleteConfirmation()
@@ -406,7 +406,7 @@ namespace Graphite {
 		if (ImGui::Button("Move"))
 		{
 			if (const auto removed = Core::MoveToRecycleBin(m_DeleteCandidate); !removed)
-				CORE_ERROR("{}", removed.GetError().Message);
+				APP_ERROR("{}", removed.GetError().Message);
 			else
 				RefreshParentOf(m_DeleteCandidate);
 

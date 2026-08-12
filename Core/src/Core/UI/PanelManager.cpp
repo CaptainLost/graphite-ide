@@ -2,18 +2,11 @@
 
 #include "corepch.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/UI/PanelManager.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Base/Assert.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Command/CommandRegistry.h"
-
-#include "Core/Base/Base.h"
 
 #include <imgui.h>
 

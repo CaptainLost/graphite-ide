@@ -2,15 +2,9 @@
 
 #include "corepch.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Platform/GlfwWindow.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Base/Log.h"
-
-#include "Core/Base/Base.h"
 
 #include <GLFW/glfw3.h>
 

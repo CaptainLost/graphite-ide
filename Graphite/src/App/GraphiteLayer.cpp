@@ -2,49 +2,31 @@
 
 #include "App/GraphiteLayer.h"
 
-#include "Core/Base/Base.h"
-
 #include "Editor/StatusBar.h"
-#include "Core/Base/Base.h"
 
 #include "Panels/ConsolePanel.h"
-#include "Core/Base/Base.h"
 
 #include "Panels/ExplorerPanel.h"
-#include "Core/Base/Base.h"
 
 #include "Settings/AppSettings.h"
-#include "Core/Base/Base.h"
 
 #include "App/GraphiteMenu.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/App/Application.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Command/KeyBindingsPanel.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Fs/FileSystem.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Platform/Process.h"
 
-#include "Core/Base/Base.h"
-
 #include <GLFW/glfw3.h>
-#include "Core/Base/Base.h"
 
 #include <imgui.h>
 
-#include "Core/Base/Base.h"
-
 #include <cstddef>
-#include "Core/Base/Base.h"
 
 #include <utility>
 
@@ -119,16 +101,16 @@ namespace Graphite {
 						.Run = [this] {
 							m_Panels.ResetVisibility();
 							m_DockSpace.RequestLayoutReset();
-							CORE_INFO("Layout restored to the default");
+							APP_INFO("Layout restored to the default");
 						}});
 
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
 						.Run = [] {
-							CORE_TRACE("Diagnostic entry");
-							CORE_INFO("Informational entry");
-							CORE_WARN("Warning entry");
-							CORE_ERROR("Sample error");
+							APP_TRACE("Diagnostic entry");
+							APP_INFO("Informational entry");
+							APP_WARN("Warning entry");
+							APP_ERROR("Sample error");
 						}});
 
 		// After the defaults are registered and before the menu is built: overrides
@@ -148,8 +130,8 @@ namespace Graphite {
 		// mistake worth shouting about, not a reason to refuse to start.
 		for (const Core::Conflict& conflict : m_Keys.FindConflicts())
 		{
-			CORE_ERROR("'{}' and '{}' are both bound to {}", conflict.First, conflict.Second,
-					   conflict.Chord.ToString());
+			APP_ERROR("'{}' and '{}' are both bound to {}", conflict.First, conflict.Second,
+					  conflict.Chord.ToString());
 		}
 
 		m_Events.Subscribe<OpenFileRequested>(
@@ -165,7 +147,7 @@ namespace Graphite {
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& event) { m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything); });
 
-		CORE_INFO("Registered panels: {}", m_Panels.GetCount());
+		APP_INFO("Registered panels: {}", m_Panels.GetCount());
 
 		explorer->LoadSettings();
 
@@ -230,7 +212,7 @@ namespace Graphite {
 			// an afternoon believing.
 			if (m_SecondsInBackground >= kReloadAfterSecondsAway && m_Workspace.IsOpen())
 			{
-				CORE_TRACE("Reloading the workspace after {:.1f}s away", m_SecondsInBackground);
+				APP_TRACE("Reloading the workspace after {:.1f}s away", m_SecondsInBackground);
 				m_Workspace.Reload();
 			}
 

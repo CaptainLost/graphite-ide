@@ -2,32 +2,21 @@
 
 #include "Sln/SolutionEditor.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Base/Uuid.h"
-#include "Core/Base/Base.h"
 
 #include "Core/Fs/FileSystem.h"
-#include "Core/Base/Base.h"
 
 #include "Sln/SlnxEditor.h"
 
-#include "Core/Base/Base.h"
-
 #include <algorithm>
-#include "Core/Base/Base.h"
 
 #include <cctype>
-#include "Core/Base/Base.h"
 
 #include <format>
-#include "Core/Base/Base.h"
 
 #include <fstream>
-#include "Core/Base/Base.h"
 
 #include <sstream>
-#include "Core/Base/Base.h"
 
 #include <system_error>
 

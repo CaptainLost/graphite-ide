@@ -2,16 +2,11 @@
 
 #include "corepch.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Fs/DirectoryWatcher.h"
-
-#include "Core/Base/Base.h"
 
 #include "Core/Base/Log.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
-#include "Core/Base/Base.h"
 
 #include <windows.h>
 #endif

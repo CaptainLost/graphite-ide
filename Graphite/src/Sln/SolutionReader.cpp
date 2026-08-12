@@ -130,8 +130,8 @@ namespace Graphite {
 					// structure around it is still true and still useful.
 					if (!content)
 					{
-						CORE_TRACE("Cannot read '{}': {}", project.Path.string(),
-								   content.GetError().Message);
+						APP_TRACE("Cannot read '{}': {}", project.Path.string(),
+								  content.GetError().Message);
 						break;
 					}
 

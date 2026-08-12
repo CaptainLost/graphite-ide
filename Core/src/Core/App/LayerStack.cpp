@@ -2,11 +2,7 @@
 
 #include "corepch.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/App/LayerStack.h"
-
-#include "Core/Base/Base.h"
 
 #include "Core/Base/Assert.h"
 

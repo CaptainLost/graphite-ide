@@ -38,8 +38,8 @@ namespace Graphite {
 
 				// Falling back to the working directory keeps settings working rather
 				// than losing them, which is the better failure for a preferences file.
-				CORE_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
-						  directory.GetError().Message);
+				APP_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
+						 directory.GetError().Message);
 
 				return std::filesystem::path{"graphite.json"};
 			}();
@@ -53,7 +53,7 @@ namespace Graphite {
 			file.Set(key, std::move(value));
 
 			if (!file.Save(SettingsPath()))
-				CORE_WARN("Cannot write '{}'", SettingsPath().string());
+				APP_WARN("Cannot write '{}'", SettingsPath().string());
 		}
 	}
 
@@ -159,7 +159,7 @@ namespace Graphite {
 			// IDE.
 			if (!binding.has_value())
 			{
-				CORE_WARN("Ignoring the unreadable key binding stored for '{}'", id);
+				APP_WARN("Ignoring the unreadable key binding stored for '{}'", id);
 				continue;
 			}
 
@@ -200,7 +200,7 @@ namespace Graphite {
 
 		if (!file.Save(SettingsPath()))
 		{
-			CORE_WARN("Cannot write '{}'", SettingsPath().string());
+			APP_WARN("Cannot write '{}'", SettingsPath().string());
 		}
 	}
 }

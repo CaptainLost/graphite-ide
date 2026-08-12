@@ -48,7 +48,7 @@ namespace Graphite {
 		{
 			if (const auto made = Core::MakeDirectory(directory); !made)
 			{
-				CORE_WARN("Cannot create '{}': {}", directory.string(), made.GetError().Message);
+				APP_WARN("Cannot create '{}': {}", directory.string(), made.GetError().Message);
 				return;
 			}
 		}
@@ -57,6 +57,6 @@ namespace Graphite {
 		file.Set(key, std::move(value));
 
 		if (!file.Save(GetFilePath()))
-			CORE_WARN("Cannot write '{}'", GetFilePath().string());
+			APP_WARN("Cannot write '{}'", GetFilePath().string());
 	}
 }

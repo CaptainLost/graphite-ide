@@ -373,7 +373,7 @@ namespace Graphite {
 			const PendingAction action{PendingAction::Kind::RemoveProject, m_RemoveCandidate, {}, {}};
 
 			if (const auto applied = Apply(action); !applied)
-				CORE_ERROR("{}", applied.GetError().Message);
+				APP_ERROR("{}", applied.GetError().Message);
 
 			m_RemoveCandidate.clear();
 			m_RemoveCandidateName.clear();
@@ -413,7 +413,7 @@ namespace Graphite {
 
 			if (!picked)
 			{
-				CORE_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+				APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
 				return;
 			}
 
@@ -429,7 +429,7 @@ namespace Graphite {
 		// would give the view two ways to update, and one of them would eventually be
 		// wrong.
 		if (const auto applied = Apply(action); !applied)
-			CORE_ERROR("{}", applied.GetError().Message);
+			APP_ERROR("{}", applied.GetError().Message);
 	}
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)

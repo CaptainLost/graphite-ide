@@ -21,6 +21,6 @@ namespace Core {
 		virtual void SetCaptionMetrics(const CaptionMetrics& metrics) = 0;
 
 		static Result<Scope<WindowFrame>> Hide(Window& window,
-														 const Color& border);
+											   const Color& border);
 	};
 }

@@ -2,8 +2,6 @@
 
 #include "Panels/ConsolePanel.h"
 
-#include "Core/Base/Base.h"
-
 #include <utility>
 
 namespace Graphite {

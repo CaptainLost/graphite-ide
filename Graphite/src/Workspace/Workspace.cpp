@@ -39,13 +39,13 @@ namespace Graphite {
 		// Build the new tree first: a failed open must leave the current one untouched.
 		if (const auto rooted = candidate.SetRoot(root); !rooted)
 		{
-			CORE_ERROR("Cannot open folder '{}': {}", root.string(), rooted.GetError().Message);
+			APP_ERROR("Cannot open folder '{}': {}", root.string(), rooted.GetError().Message);
 			return rooted;
 		}
 
 		if (const auto expanded = candidate.Expand(candidate.GetRoot()); !expanded)
 		{
-			CORE_ERROR("Cannot read folder '{}': {}", root.string(), expanded.GetError().Message);
+			APP_ERROR("Cannot read folder '{}': {}", root.string(), expanded.GetError().Message);
 			return expanded;
 		}
 
@@ -67,7 +67,7 @@ namespace Graphite {
 		else
 		{
 			// Not fatal: the tree still works, it just will not notice outside changes.
-			CORE_WARN("Cannot watch '{}': {}", root.string(), watcher.GetError().Message);
+			APP_WARN("Cannot watch '{}': {}", root.string(), watcher.GetError().Message);
 			m_Watcher.reset();
 		}
 
@@ -82,7 +82,7 @@ namespace Graphite {
 		AppSettings::SaveLastFolder(root);
 		m_Events.Publish(WorkspaceOpenedEvent{root});
 
-		CORE_INFO("Workspace opened: '{}'", root.string());
+		APP_INFO("Workspace opened: '{}'", root.string());
 		return Core::Result<void>::Ok();
 	}
 
@@ -180,7 +180,7 @@ namespace Graphite {
 		AppSettings::SaveLastFolder({});
 		m_Events.Publish(WorkspaceClosedEvent{});
 
-		CORE_INFO("Workspace closed: '{}'", closed.string());
+		APP_INFO("Workspace closed: '{}'", closed.string());
 	}
 
 	void Workspace::SelectFile(const std::filesystem::path& path)
@@ -230,7 +230,7 @@ namespace Graphite {
 			// were lost. Both mean nothing narrower than the whole tree is trustworthy —
 			// which also covers whatever paths this batch did carry.
 			if (changed.Overflowed)
-				CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
+				APP_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 
 			m_Tree.Refresh(m_Tree.GetRoot());
 
@@ -341,8 +341,8 @@ namespace Graphite {
 		// the handle it already holds, reading .gitignore straight out of the working
 		// tree — so entries would stay dimmed for a folder that is no longer a
 		// repository. Pinned by a test in GitRepositoryTests.cpp.
-		CORE_INFO("The git repository at '{}' is gone",
-				  m_Repository->GetWorkingDirectory().string());
+		APP_INFO("The git repository at '{}' is gone",
+				 m_Repository->GetWorkingDirectory().string());
 
 		m_Tree.SetIgnoreQuery({});
 		m_Repository.reset();
@@ -359,8 +359,8 @@ namespace Graphite {
 
 		if (m_WatcherResumed)
 		{
-			CORE_WARN("Giving up watching '{}' for changes: it failed twice",
-					  m_Root.string());
+			APP_WARN("Giving up watching '{}' for changes: it failed twice",
+					 m_Root.string());
 			return;
 		}
 
@@ -373,8 +373,8 @@ namespace Graphite {
 			// The usual reason is that the folder was deleted or renamed out from under
 			// the workspace. The tree stays as it is rather than being closed: a stale
 			// view the user can act on beats one that vanishes without being asked.
-			CORE_WARN("Cannot resume watching '{}': {}", m_Root.string(),
-					  watcher.GetError().Message);
+			APP_WARN("Cannot resume watching '{}': {}", m_Root.string(),
+					 watcher.GetError().Message);
 			return;
 		}
 
@@ -388,7 +388,7 @@ namespace Graphite {
 		(void)SyncRepository();
 		m_Tree.Refresh(m_Tree.GetRoot());
 
-		CORE_INFO("Resumed watching '{}' after a failure", m_Root.string());
+		APP_INFO("Resumed watching '{}' after a failure", m_Root.string());
 	}
 
 	void Workspace::HandleRootMoved(const std::filesystem::path& destination)
@@ -396,7 +396,7 @@ namespace Graphite {
 		const std::filesystem::path from = m_Root;
 		const std::filesystem::path to = Core::NormalizeDirectory(destination);
 
-		CORE_INFO("Workspace moved from '{}' to '{}'", from.string(), to.string());
+		APP_INFO("Workspace moved from '{}' to '{}'", from.string(), to.string());
 
 		m_Root = to;
 		m_Tree.Rebase(to);
@@ -423,8 +423,8 @@ namespace Graphite {
 		}
 		else
 		{
-			CORE_WARN("Cannot watch '{}' after the move: {}", to.string(),
-					  watcher.GetError().Message);
+			APP_WARN("Cannot watch '{}' after the move: {}", to.string(),
+					 watcher.GetError().Message);
 		}
 
 		// libgit2 bakes the path into the handle, so the repository has to be opened
@@ -496,8 +496,8 @@ namespace Graphite {
 
 		if (!repository)
 		{
-			CORE_TRACE("'{}' is not inside a git repository: {}", m_Root.string(),
-					   repository.GetError().Message);
+			APP_TRACE("'{}' is not inside a git repository: {}", m_Root.string(),
+					  repository.GetError().Message);
 			return;
 		}
 
@@ -506,7 +506,7 @@ namespace Graphite {
 		m_Tree.SetIgnoreQuery(
 			[this](const std::filesystem::path& path, bool) -> bool { return m_Repository && m_Repository->IsIgnored(path); });
 
-		CORE_INFO("Git repository detected at '{}'", m_Repository->GetWorkingDirectory().string());
+		APP_INFO("Git repository detected at '{}'", m_Repository->GetWorkingDirectory().string());
 	}
 
 	void Workspace::FindSolutions()
@@ -609,8 +609,8 @@ namespace Graphite {
 
 		if (!solution)
 		{
-			CORE_WARN("Cannot read '{}': {}", m_SelectedSolution.string(),
-					  solution.GetError().Message);
+			APP_WARN("Cannot read '{}': {}", m_SelectedSolution.string(),
+					 solution.GetError().Message);
 			return;
 		}
 
@@ -624,8 +624,8 @@ namespace Graphite {
 		// start, surfacing at whatever first touched the workspace.
 		m_SolutionStamp = ComputeSolutionStamp();
 
-		CORE_INFO("Solution '{}' loaded with {} projects", m_Solution->Name,
-				  m_Solution->ProjectCount);
+		APP_INFO("Solution '{}' loaded with {} projects", m_Solution->Name,
+				 m_Solution->ProjectCount);
 	}
 
 	std::filesystem::file_time_type Workspace::ComputeSolutionStamp() const
@@ -706,7 +706,7 @@ namespace Graphite {
 		auto picked = Core::FileDialog::PickFolder("Open Folder");
 		if (!picked)
 		{
-			CORE_ERROR("Folder dialog failed: {}", picked.GetError().Message);
+			APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
 			return;
 		}
 
@@ -727,7 +727,7 @@ namespace Graphite {
 
 		if (!picked)
 		{
-			CORE_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+			APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
 			return;
 		}
 
@@ -736,6 +736,6 @@ namespace Graphite {
 			return;
 
 		if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
-			CORE_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+			APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
 	}
 }

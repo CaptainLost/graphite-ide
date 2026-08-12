@@ -14,8 +14,8 @@ TEST_CASE("RingBufferSink remembers entries in order")
 {
 	RingBufferSink sink{4};
 
-	sink.Write(LogEntry{LogLevel::Info, "first"});
-	sink.Write(LogEntry{LogLevel::Warn, "second"});
+	sink.Write(LogEntry{LogLevel::Info, Core::LogSource::Engine, "first"});
+	sink.Write(LogEntry{LogLevel::Warn, Core::LogSource::Engine, "second"});
 
 	const auto entries = sink.TakeSnapshot();
 	REQUIRE(entries.size() == 2);
@@ -28,7 +28,7 @@ TEST_CASE("RingBufferSink drops the oldest entries on overflow")
 	RingBufferSink sink{3};
 
 	for (int i = 1; i <= 5; ++i)
-		sink.Write(LogEntry{LogLevel::Info, std::to_string(i)});
+		sink.Write(LogEntry{LogLevel::Info, Core::LogSource::Engine, std::to_string(i)});
 
 	const auto entries = sink.TakeSnapshot();
 	REQUIRE(entries.size() == 3);
@@ -40,7 +40,7 @@ TEST_CASE("RingBufferSink drops the oldest entries on overflow")
 TEST_CASE("Clear empties the buffer")
 {
 	RingBufferSink sink{4};
-	sink.Write(LogEntry{LogLevel::Info, "whatever"});
+	sink.Write(LogEntry{LogLevel::Info, Core::LogSource::Engine, "whatever"});
 
 	sink.Clear();
 
@@ -55,7 +55,7 @@ TEST_CASE("Logger dispatches entries to attached sinks")
 	Logger::Get().ClearSinks();
 	Logger::Get().SetLevel(LogLevel::Trace);
 	Logger::Get().AddSink(sink);
-	Logger::Get().Write(LogLevel::Error, "failure");
+	Logger::Get().Write(Core::LogSource::Engine, LogLevel::Error, "failure");
 
 	const auto entries = sink->TakeSnapshot();
 	REQUIRE(entries.size() == 1);
@@ -73,8 +73,8 @@ TEST_CASE("Logger filters out entries below the configured level")
 	Logger::Get().AddSink(sink);
 	Logger::Get().SetLevel(LogLevel::Warn);
 
-	Logger::Get().Write(LogLevel::Info, "skipped");
-	Logger::Get().Write(LogLevel::Error, "passed through");
+	Logger::Get().Write(Core::LogSource::Engine, LogLevel::Info, "skipped");
+	Logger::Get().Write(Core::LogSource::Engine, LogLevel::Error, "passed through");
 
 	const auto entries = sink->TakeSnapshot();
 	REQUIRE(entries.size() == 1);

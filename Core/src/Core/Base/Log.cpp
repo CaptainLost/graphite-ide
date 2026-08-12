@@ -2,11 +2,7 @@
 
 #include "corepch.h"
 
-#include "Core/Base/Base.h"
-
 #include "Core/Base/Log.h"
-
-#include "Core/Base/Base.h"
 
 #include <cstdio>
 
@@ -24,6 +20,21 @@ namespace Core {
 			return "WARN";
 		case LogLevel::Error:
 			return "ERROR";
+		case LogLevel::Critical:
+			return "CRITICAL";
+		}
+
+		return "?";
+	}
+
+	std::string_view ToString(LogSource source)
+	{
+		switch (source)
+		{
+		case LogSource::Engine:
+			return "CORE";
+		case LogSource::Application:
+			return "APP";
 		}
 
 		return "?";
@@ -31,9 +42,11 @@ namespace Core {
 
 	void ConsoleSink::Write(const LogEntry& entry)
 	{
+		const std::string_view source = ToString(entry.Source);
 		const std::string_view level = ToString(entry.Level);
-		std::fprintf(entry.Level >= LogLevel::Warn ? stderr : stdout, "[%.*s] %s\n",
-					 static_cast<int>(level.size()), level.data(), entry.Message.c_str());
+		std::fprintf(entry.Level >= LogLevel::Warn ? stderr : stdout, "[%.*s] [%.*s] %s\n",
+					 static_cast<int>(source.size()), source.data(), static_cast<int>(level.size()),
+					 level.data(), entry.Message.c_str());
 	}
 
 	Logger& Logger::Get()
@@ -69,7 +82,7 @@ namespace Core {
 		return m_Level;
 	}
 
-	void Logger::Write(LogLevel level, std::string message)
+	void Logger::Write(LogSource source, LogLevel level, std::string message)
 	{
 		std::vector<Ref<ILogSink>> sinks;
 
@@ -81,7 +94,7 @@ namespace Core {
 			sinks = m_Sinks;
 		}
 
-		const LogEntry entry{level, std::move(message)};
+		const LogEntry entry{level, source, std::move(message)};
 		for (const auto& sink : sinks)
 			sink->Write(entry);
 	}

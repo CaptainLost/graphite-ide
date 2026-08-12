@@ -34,7 +34,7 @@ namespace Graphite {
 
 		void OnShutdown() override
 		{
-			CORE_INFO("Graphite IDE closed");
+			APP_INFO("Graphite IDE closed");
 		}
 
 	private:
@@ -51,7 +51,7 @@ Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationCommandL
 #endif
 	Core::Logger::Get().AddSink(consoleSink);
 
-	CORE_INFO("Graphite IDE {}", Graphite::Version::String());
+	APP_INFO("Graphite IDE {}", Graphite::Version::String());
 
 	std::filesystem::path initialFolder;
 	if (args.Count > 1)
