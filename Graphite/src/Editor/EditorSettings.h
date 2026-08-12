@@ -26,19 +26,19 @@ namespace Graphite
 
         void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
-        [[nodiscard]] float FontSize() const noexcept { return m_FontSize; }
+        [[nodiscard]] float GetFontSize() const noexcept { return m_FontSize; }
 
         /// Clamps into range, applies and persists — the single path the wheel gesture
         /// and the zoom commands both go through, so they cannot drift apart on what
         /// "zoom in" or "reset" means.
         void SetFontSize(float size);
 
-        [[nodiscard]] Core::IndentStyle IndentStyle() const noexcept
+        [[nodiscard]] Core::IndentStyle GetIndentStyle() const noexcept
         {
             return {m_IndentWithSpaces, m_IndentWidth};
         }
 
-        [[nodiscard]] bool WordWrap() const noexcept { return m_WordWrap; }
+        [[nodiscard]] bool IsWordWrap() const noexcept { return m_WordWrap; }
 
     private:
         void SetWordWrap(bool wrap);

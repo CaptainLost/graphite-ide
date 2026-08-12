@@ -37,7 +37,7 @@ namespace Core
         /// calling from a render loop.
         [[nodiscard]] bool IsIgnored(const std::filesystem::path& path) const;
 
-        [[nodiscard]] const std::filesystem::path& WorkingDirectory() const noexcept
+        [[nodiscard]] const std::filesystem::path& GetWorkingDirectory() const noexcept
         {
             return m_WorkingDirectory;
         }

@@ -60,7 +60,7 @@ namespace Core
             const auto directory = ExecutableDirectory();
 
             if (directory)
-                return ToUtf8(directory.Value() / "imgui.ini");
+                return ToUtf8(directory.GetValue() / "imgui.ini");
 
             // Falling back to the working directory keeps the layout working rather than
             // losing it, but say so: a layout that silently moves between launches is
@@ -91,7 +91,7 @@ namespace Core
 
         if (executableDirectory)
         {
-            const auto regular = executableDirectory.Value() / "JetBrainsMono-Regular.ttf";
+            const auto regular = executableDirectory.GetValue() / "JetBrainsMono-Regular.ttf";
 
             g_monoFont = io.Fonts->AddFontFromFileTTF(ToUtf8(regular).c_str(), kBaseFontSize,
                                                        &textConfig);
@@ -131,7 +131,7 @@ namespace Core
         if (executableDirectory)
         {
             const auto fontPath =
-                executableDirectory.Value() / "materialdesignicons-webfont.ttf";
+                executableDirectory.GetValue() / "materialdesignicons-webfont.ttf";
 
             if (io.Fonts->AddFontFromFileTTF(ToUtf8(fontPath).c_str(), kBaseFontSize,
                                               &iconConfig, UsedGlyphRanges()) == nullptr)
@@ -157,7 +157,7 @@ namespace Core
             style.Colors[ImGuiCol_WindowBg].w = 1.0f;
         }
 
-        auto* handle = static_cast<GLFWwindow*>(window.NativeHandle());
+        auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
         if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
         {
             ImGui::DestroyContext();

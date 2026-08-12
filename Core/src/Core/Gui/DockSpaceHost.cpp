@@ -100,7 +100,7 @@ namespace Core
         DockPanels(bottomId, layout.bottom);
         DockPanels(centerId, layout.center);
 
-        // Flagged so CenterNodeId() can find it later without recomputing the split tree,
+        // Flagged so GetCenterNodeId() can find it later without recomputing the split tree,
         // and so a caller with nothing else to go on - such as a document window opened
         // before anything has been focused - has somewhere to land. The flag is part of
         // what imgui.ini saves, so it survives into sessions that only restore the layout
@@ -117,7 +117,7 @@ namespace Core
         ImGui::End();
     }
 
-    unsigned int DockSpaceHost::CenterNodeId() const
+    unsigned int DockSpaceHost::GetCenterNodeId() const
     {
         if (m_DockSpaceId == 0)
             return 0;

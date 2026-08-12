@@ -37,7 +37,7 @@ namespace Core
         Layer& PushLayer(std::unique_ptr<Layer> layer);
 
         [[nodiscard]] Window& GetWindow() { return *m_Window; }
-        [[nodiscard]] const ApplicationSpec& Spec() const noexcept { return m_Spec; }
+        [[nodiscard]] const ApplicationSpec& GetSpec() const noexcept { return m_Spec; }
 
         static Application& Get();
 

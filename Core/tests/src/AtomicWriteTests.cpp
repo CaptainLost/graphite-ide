@@ -33,7 +33,7 @@ TEST_CASE("Writing over an existing file leaves the new content")
 TEST_CASE("Writing a file that does not exist yet creates it")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "target.txt";
+    const auto path = temp.GetPath() / "target.txt";
 
     REQUIRE(WriteFileAtomically(path, "content"));
 
@@ -66,11 +66,11 @@ TEST_CASE("An occupied .tmp name is stepped over rather than clobbered")
 TEST_CASE("A write to a missing directory fails and leaves nothing behind")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "missing-directory" / "target.txt";
+    const auto path = temp.GetPath() / "missing-directory" / "target.txt";
 
     CHECK_FALSE(WriteFileAtomically(path, "content"));
     CHECK_FALSE(std::filesystem::exists(path));
-    CHECK_FALSE(std::filesystem::exists(temp.Path() / "missing-directory"));
+    CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "missing-directory"));
 }
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -103,7 +103,7 @@ TEST_CASE("A failed write leaves an existing target and its content untouched")
     std::error_code code;
     std::vector<std::string> names;
 
-    for (const auto& entry : std::filesystem::directory_iterator{temp.Path(), code})
+    for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath(), code})
         names.push_back(Core::ToUtf8(entry.path().filename()));
 
     CHECK_FALSE(code);
@@ -113,7 +113,7 @@ TEST_CASE("A failed write leaves an existing target and its content untouched")
 TEST_CASE("An alternate data stream survives an atomic write")
 {
     TempDirectory temp;
-    const std::filesystem::path target = temp.Path() / "target.txt";
+    const std::filesystem::path target = temp.GetPath() / "target.txt";
 
     {
         std::ofstream content{target, std::ios::binary};

@@ -26,7 +26,7 @@ namespace
         auto document = Core::TextDocument::FromContent(std::move(content), "test.txt");
         REQUIRE(document);
 
-        item.document = std::move(document).Value();
+        item.document = std::move(document).GetValue();
         Core::RefreshDerived(item);
 
         return item;
@@ -40,7 +40,7 @@ namespace
     /// prove the two were built differently.
     void CheckDerivedCachesAreCorrect(const Core::OpenItem& item)
     {
-        const Core::TextBuffer& buffer = item.document->Buffer();
+        const Core::TextBuffer& buffer = item.document->GetBuffer();
 
         CHECK(item.widestColumn
               == Core::WidestColumn(buffer, Core::DefaultTabWidth));
@@ -48,13 +48,13 @@ namespace
               == Core::IndentDepths(buffer, Core::DefaultTabWidth));
 
         Core::RowMap fresh;
-        fresh.Rebuild(buffer, item.rows.ColumnsPerRow(), Core::DefaultTabWidth);
+        fresh.Rebuild(buffer, item.rows.GetColumnsPerRow(), Core::DefaultTabWidth);
 
-        REQUIRE(item.rows.LineCount() == buffer.LineCount());
-        CHECK(item.rows.LineCount() == fresh.LineCount());
+        REQUIRE(item.rows.GetLineCount() == buffer.GetLineCount());
+        CHECK(item.rows.GetLineCount() == fresh.GetLineCount());
         CHECK(item.rows.TotalRows() == fresh.TotalRows());
 
-        for (std::size_t line = 0; line < buffer.LineCount(); ++line)
+        for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
         {
             CAPTURE(line);
             CHECK(item.rows.RowsOf(line) == fresh.RowsOf(line));
@@ -71,7 +71,7 @@ TEST_CASE("Typing inserts at the caret")
     item.caret.anchor = 1;
 
     CHECK(Core::InsertText(item, "b"));
-    CHECK(item.document->Buffer().Text() == "abc");
+    CHECK(item.document->GetBuffer().GetText() == "abc");
     CHECK(item.caret.offset == 2);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -83,11 +83,11 @@ TEST_CASE("Typing replaces the selection")
     item.caret.offset = 7;
 
     CHECK(Core::InsertText(item, "X"));
-    CHECK(item.document->Buffer().Text() == "one X three");
+    CHECK(item.document->GetBuffer().GetText() == "one X three");
     CHECK(item.caret.offset == 5);
     CHECK(item.caret.anchor == 5);
-    CHECK(item.document->Buffer().Undo());
-    CHECK(item.document->Buffer().Text() == "one two three");
+    CHECK(item.document->GetBuffer().Undo());
+    CHECK(item.document->GetBuffer().GetText() == "one two three");
 }
 
 TEST_CASE("Pasted CRLF is normalised before it reaches the buffer")
@@ -95,8 +95,8 @@ TEST_CASE("Pasted CRLF is normalised before it reaches the buffer")
     Core::OpenItem item = ItemWith("");
 
     CHECK(Core::InsertText(item, "a\r\nb\rc"));
-    CHECK(item.document->Buffer().Text() == "a\nb\nc");
-    CHECK(item.document->Buffer().LineCount() == 3);
+    CHECK(item.document->GetBuffer().GetText() == "a\nb\nc");
+    CHECK(item.document->GetBuffer().GetLineCount() == 3);
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -107,7 +107,7 @@ TEST_CASE("Backspace removes the character before the caret")
     item.caret.anchor = 2;
 
     CHECK(Core::DeleteBackward(item));
-    CHECK(item.document->Buffer().Text() == "ac");
+    CHECK(item.document->GetBuffer().GetText() == "ac");
     CHECK(item.caret.offset == 1);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -120,7 +120,7 @@ TEST_CASE("Backspace removes a whole UTF-8 character")
     item.caret.anchor = 4;
 
     CHECK(Core::DeleteBackward(item));
-    CHECK(item.document->Buffer().Text() == "\xc4\x85");
+    CHECK(item.document->GetBuffer().GetText() == "\xc4\x85");
 }
 
 TEST_CASE("Backspace joins two lines and the caches follow")
@@ -130,8 +130,8 @@ TEST_CASE("Backspace joins two lines and the caches follow")
     item.caret.anchor = 8;
 
     CHECK(Core::DeleteBackward(item));
-    CHECK(item.document->Buffer().Text() == "    one    two");
-    CHECK(item.document->Buffer().LineCount() == 1);
+    CHECK(item.document->GetBuffer().GetText() == "    one    two");
+    CHECK(item.document->GetBuffer().GetLineCount() == 1);
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -142,7 +142,7 @@ TEST_CASE("Backspace with a selection removes the selection")
     item.caret.offset = 8;
 
     CHECK(Core::DeleteBackward(item));
-    CHECK(item.document->Buffer().Text() == "one three");
+    CHECK(item.document->GetBuffer().GetText() == "one three");
     CHECK(item.caret.offset == 4);
 }
 
@@ -153,7 +153,7 @@ TEST_CASE("Delete removes the character after the caret")
     item.caret.anchor = 1;
 
     CHECK(Core::DeleteForward(item));
-    CHECK(item.document->Buffer().Text() == "ac");
+    CHECK(item.document->GetBuffer().GetText() == "ac");
     CHECK(item.caret.offset == 1);
 }
 
@@ -167,27 +167,27 @@ TEST_CASE("Word deletion works in both directions")
     // A single WordLeft hop covers only the run of letters, not the space beyond it —
     // CaretTests documents that motion as one class-run at a time — so backspacing off
     // the end of "two" removes exactly "two" and leaves both its neighbouring spaces.
-    CHECK(backward.document->Buffer().Text() == "one  three");
+    CHECK(backward.document->GetBuffer().GetText() == "one  three");
 
     Core::OpenItem forward = ItemWith("one two three");
     forward.caret.offset = 4;
     forward.caret.anchor = 4;
 
     CHECK(Core::DeleteWordForward(forward));
-    CHECK(forward.document->Buffer().Text() == "one  three");
+    CHECK(forward.document->GetBuffer().GetText() == "one  three");
 }
 
 TEST_CASE("Deleting at the ends of the document changes nothing")
 {
     Core::OpenItem start = ItemWith("abc");
     CHECK_FALSE(Core::DeleteBackward(start));
-    CHECK(start.document->Buffer().Text() == "abc");
+    CHECK(start.document->GetBuffer().GetText() == "abc");
 
     Core::OpenItem end = ItemWith("abc");
     end.caret.offset = 3;
     end.caret.anchor = 3;
     CHECK_FALSE(Core::DeleteForward(end));
-    CHECK(end.document->Buffer().Text() == "abc");
+    CHECK(end.document->GetBuffer().GetText() == "abc");
 }
 
 TEST_CASE("Deleting the widest line shrinks widestColumn back down")
@@ -211,7 +211,7 @@ TEST_CASE("A read-only document refuses every edit")
     CHECK_FALSE(Core::InsertText(item, "z"));
     CHECK_FALSE(Core::DeleteBackward(item));
     CHECK_FALSE(Core::DeleteForward(item));
-    CHECK(item.document->Buffer().Text() == "ab\x80xy");
+    CHECK(item.document->GetBuffer().GetText() == "ab\x80xy");
 }
 
 TEST_CASE("A reload that turns the document read-only can still be undone and redone")
@@ -227,7 +227,7 @@ TEST_CASE("A reload that turns the document read-only can still be undone and re
     REQUIRE(loaded);
 
     Core::OpenItem item;
-    item.document = std::move(loaded).Value();
+    item.document = std::move(loaded).GetValue();
     Core::RefreshDerived(item);
     REQUIRE_FALSE(item.document->IsReadOnly());
 
@@ -241,20 +241,20 @@ TEST_CASE("A reload that turns the document read-only can still be undone and re
 
     REQUIRE(item.document->ReloadFromDisk());
     REQUIRE(item.document->IsReadOnly());
-    REQUIRE(item.document->Buffer().Text() == "ab\x80xy\n");
+    REQUIRE(item.document->GetBuffer().GetText() == "ab\x80xy\n");
 
     CHECK(Core::Undo(item));
-    CHECK(item.document->Buffer().Text() == "hello\n");
+    CHECK(item.document->GetBuffer().GetText() == "hello\n");
     CheckDerivedCachesAreCorrect(item);
 
     // And what comes back is writable bytes, not a mixture: undo restores a whole content
     // the buffer already held rather than inserting anything into the one on screen,
     // which is why the read-only flag has no business stopping it.
-    CHECK(item.document->Bytes() == "hello\n");
+    CHECK(item.document->GetBytes() == "hello\n");
 
     CHECK(Core::Redo(item));
-    CHECK(item.document->Buffer().Text() == "ab\x80xy\n");
-    CHECK(item.document->Bytes() == "ab\x80xy\n");
+    CHECK(item.document->GetBuffer().GetText() == "ab\x80xy\n");
+    CHECK(item.document->GetBytes() == "ab\x80xy\n");
 
     // Read-only still means read-only for everything that creates new content.
     CHECK_FALSE(Core::InsertText(item, "z"));
@@ -276,7 +276,7 @@ TEST_CASE("A line inserted above unrelated content keeps that content's indent d
     item.caret.anchor = 15;
 
     CHECK(Core::InsertText(item, "\n"));
-    CHECK(item.document->Buffer().Text() == "if xxxxxxxxxx:\n\n    body1\n    body2");
+    CHECK(item.document->GetBuffer().GetText() == "if xxxxxxxxxx:\n\n    body1\n    body2");
 
     // With the bug, resize() pads the new line onto the tail instead of at line 1,
     // and "    body2" — below the widened repair range — is left holding that pad
@@ -301,7 +301,7 @@ TEST_CASE("A line-joining backspace keeps the indent depth of content below it")
     item.caret.anchor = 23;
 
     CHECK(Core::DeleteBackward(item));
-    CHECK(item.document->Buffer().Text() == "if xxxxxxxxxx:\n    one\n        two");
+    CHECK(item.document->GetBuffer().GetText() == "if xxxxxxxxxx:\n    one\n        two");
 
     CHECK(item.indentDepths == std::vector<std::size_t>{0, 4, 8});
     CHECK(item.widestLine == 0);
@@ -318,7 +318,7 @@ TEST_CASE("Undo through Editing restores the caret and the caches")
     const std::size_t widened = item.widestColumn;
 
     CHECK(Core::Undo(item));
-    CHECK(item.document->Buffer().Text() == "short\nlonger line here");
+    CHECK(item.document->GetBuffer().GetText() == "short\nlonger line here");
     CHECK(item.widestColumn < widened);
     CheckDerivedCachesAreCorrect(item);
 
@@ -334,7 +334,7 @@ TEST_CASE("Enter carries the previous line's indentation")
     item.caret.anchor = 10;
 
     CHECK(Core::InsertNewline(item, {}));
-    CHECK(item.document->Buffer().Text() == "    if (x)\n    ");
+    CHECK(item.document->GetBuffer().GetText() == "    if (x)\n    ");
     CHECK(item.caret.offset == 15);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -346,7 +346,7 @@ TEST_CASE("Enter in the middle of a line splits it and still indents")
     item.caret.anchor = 3;
 
     CHECK(Core::InsertNewline(item, {}));
-    CHECK(item.document->Buffer().Text() == "  a\n  b");
+    CHECK(item.document->GetBuffer().GetText() == "  a\n  b");
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -355,7 +355,7 @@ TEST_CASE("Enter on a blank line adds no indentation of its own")
     Core::OpenItem item = ItemWith("");
 
     CHECK(Core::InsertNewline(item, {}));
-    CHECK(item.document->Buffer().Text() == "\n");
+    CHECK(item.document->GetBuffer().GetText() == "\n");
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -366,12 +366,12 @@ TEST_CASE("Tab without a selection inserts one indent")
     spaces.caret.anchor = 0;
 
     CHECK(Core::Indent(spaces, {}));
-    CHECK(spaces.document->Buffer().Text() == "    ab");
+    CHECK(spaces.document->GetBuffer().GetText() == "    ab");
     CheckDerivedCachesAreCorrect(spaces);
 
     Core::OpenItem tabs = ItemWith("ab");
     CHECK(Core::Indent(tabs, Core::IndentStyle{false, 4}));
-    CHECK(tabs.document->Buffer().Text() == "\tab");
+    CHECK(tabs.document->GetBuffer().GetText() == "\tab");
     CheckDerivedCachesAreCorrect(tabs);
 }
 
@@ -388,11 +388,11 @@ TEST_CASE("Tab indents every line the selection touches, as one undo step")
     item.caret.offset = 6;
 
     CHECK(Core::Indent(item, {}));
-    CHECK(item.document->Buffer().Text() == "    one\n    two\nthree");
+    CHECK(item.document->GetBuffer().GetText() == "    one\n    two\nthree");
     CheckDerivedCachesAreCorrect(item);
 
-    CHECK(item.document->Buffer().Undo());
-    CHECK(item.document->Buffer().Text() == "one\ntwo\nthree");
+    CHECK(item.document->GetBuffer().Undo());
+    CHECK(item.document->GetBuffer().GetText() == "one\ntwo\nthree");
 }
 
 TEST_CASE("A selection ending at the start of a line does not indent that line")
@@ -402,7 +402,7 @@ TEST_CASE("A selection ending at the start of a line does not indent that line")
     item.caret.offset = 8;
 
     CHECK(Core::Indent(item, {}));
-    CHECK(item.document->Buffer().Text() == "    one\n    two\nthree");
+    CHECK(item.document->GetBuffer().GetText() == "    one\n    two\nthree");
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -410,10 +410,10 @@ TEST_CASE("Shift+Tab removes one indent and never more than exists")
 {
     Core::OpenItem item = ItemWith("        deep\n  shallow\nnone");
     item.caret.anchor = 0;
-    item.caret.offset = item.document->Buffer().Length();
+    item.caret.offset = item.document->GetBuffer().GetLength();
 
     CHECK(Core::Outdent(item, {}));
-    CHECK(item.document->Buffer().Text() == "    deep\nshallow\nnone");
+    CHECK(item.document->GetBuffer().GetText() == "    deep\nshallow\nnone");
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -421,7 +421,7 @@ TEST_CASE("Shift+Tab with nothing to remove changes nothing")
 {
     Core::OpenItem item = ItemWith("none");
     CHECK_FALSE(Core::Outdent(item, {}));
-    CHECK(item.document->Buffer().Text() == "none");
+    CHECK(item.document->GetBuffer().GetText() == "none");
 }
 
 TEST_CASE("Shift+Tab with no selection removes the indent of just the caret's line")
@@ -430,7 +430,7 @@ TEST_CASE("Shift+Tab with no selection removes the indent of just the caret's li
     // Default caret: offset 0, anchor 0 — no selection, so BlockLines collapses to the
     // single line the caret sits on.
     CHECK(Core::Outdent(item, {}));
-    CHECK(item.document->Buffer().Text() == "ab");
+    CHECK(item.document->GetBuffer().GetText() == "ab");
     CheckDerivedCachesAreCorrect(item);
 }
 
@@ -440,13 +440,13 @@ TEST_CASE("Tab with no selection is its own undo step, as the block form is")
 
     CHECK(Core::InsertText(item, "ab"));
     CHECK(Core::Indent(item, {}));
-    CHECK(item.document->Buffer().Text() == "ab    ");
+    CHECK(item.document->GetBuffer().GetText() == "ab    ");
 
     // Left to coalesce with the typing before it, one Ctrl+Z would take the "ab" with
     // it — and Shift+Tab, which has always broken the group, would answer the same
     // gesture differently.
     CHECK(Core::Undo(item));
-    CHECK(item.document->Buffer().Text() == "ab");
+    CHECK(item.document->GetBuffer().GetText() == "ab");
 }
 
 TEST_CASE("Shift+Tab with nothing to remove does not break the undo group")
@@ -456,12 +456,12 @@ TEST_CASE("Shift+Tab with nothing to remove does not break the undo group")
     CHECK(Core::InsertText(item, "ab"));
     CHECK_FALSE(Core::Outdent(item, {}));
     CHECK(Core::InsertText(item, "cd"));
-    CHECK(item.document->Buffer().Text() == "abcd");
+    CHECK(item.document->GetBuffer().GetText() == "abcd");
 
     // One run of typing is one undo step. The refused Outdent made no edit, so it had no
     // business splitting it in two.
     CHECK(Core::Undo(item));
-    CHECK(item.document->Buffer().Text() == "");
+    CHECK(item.document->GetBuffer().GetText() == "");
 }
 
 TEST_CASE("A read-only document refuses newline and indentation")
@@ -497,10 +497,10 @@ TEST_CASE("InsertNewline below the widest line splices indentDepths instead of "
     // UpdateIndentDepths rather than the resize bug it was written to prevent.
     item.caret.offset = 14;
     item.caret.anchor = 14;
-    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 2);
+    REQUIRE(item.document->GetBuffer().ToPosition(item.caret.offset).line == 2);
 
     CHECK(Core::InsertNewline(item, {}));
-    CHECK(item.document->Buffer().Text() == "aaaaaaaaaa\nb\nc\nd");
+    CHECK(item.document->GetBuffer().GetText() == "aaaaaaaaaa\nb\nc\nd");
     CHECK(item.widestLine == 0);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -517,10 +517,10 @@ TEST_CASE("InsertNewline reaches past a run of blank lines to find the real anch
 
     item.caret.offset = 23; // end of "    if", the start of the run this test is about
     item.caret.anchor = 23;
-    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 1);
+    REQUIRE(item.document->GetBuffer().ToPosition(item.caret.offset).line == 1);
 
     CHECK(Core::InsertNewline(item, {}));
-    CHECK(item.document->Buffer().Text()
+    CHECK(item.document->GetBuffer().GetText()
           == "xxxxxxxxxxxxxxxx\n    if\n    \n\n\n        end");
     CHECK(item.widestLine == 0);
     CheckDerivedCachesAreCorrect(item);
@@ -534,10 +534,10 @@ TEST_CASE("Indent on a block below the widest line takes the incremental path")
     // Selects lines 1 and 2, both strictly below the widest line.
     item.caret.anchor = 17;
     item.caret.offset = 24;
-    REQUIRE(item.document->Buffer().ToPosition(item.caret.anchor).line == 1);
+    REQUIRE(item.document->GetBuffer().ToPosition(item.caret.anchor).line == 1);
 
     CHECK(Core::Indent(item, {}));
-    CHECK(item.document->Buffer().Text() == "xxxxxxxxxxxxxxxx\n    one\n    two");
+    CHECK(item.document->GetBuffer().GetText() == "xxxxxxxxxxxxxxxx\n    one\n    two");
     CHECK(item.widestLine == 0);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -549,10 +549,10 @@ TEST_CASE("Outdent on a block below the widest line takes the incremental path")
 
     item.caret.anchor = 17;
     item.caret.offset = 32;
-    REQUIRE(item.document->Buffer().ToPosition(item.caret.anchor).line == 1);
+    REQUIRE(item.document->GetBuffer().ToPosition(item.caret.anchor).line == 1);
 
     CHECK(Core::Outdent(item, {}));
-    CHECK(item.document->Buffer().Text() == "xxxxxxxxxxxxxxxx\none\ntwo");
+    CHECK(item.document->GetBuffer().GetText() == "xxxxxxxxxxxxxxxx\none\ntwo");
     CHECK(item.widestLine == 0);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -573,7 +573,7 @@ namespace
     {
         Core::OpenItem item = ItemWith(std::move(content));
 
-        item.rows.Rebuild(item.document->Buffer(), columnsPerRow, Core::DefaultTabWidth);
+        item.rows.Rebuild(item.document->GetBuffer(), columnsPerRow, Core::DefaultTabWidth);
 
         return item;
     }
@@ -593,7 +593,7 @@ TEST_CASE("InsertNewline below the widest line splices the row map into line")
 {
     Core::OpenItem item = WrappedItemWith(kWrapFixture, 10);
     REQUIRE(item.widestLine == 0);
-    REQUIRE(item.rows.LineCount() == 3);
+    REQUIRE(item.rows.GetLineCount() == 3);
     REQUIRE(item.rows.RowsOf(0) == 3);
     REQUIRE(item.rows.RowsOf(1) == 2);
     REQUIRE(item.rows.RowsOf(2) == 1);
@@ -602,16 +602,16 @@ TEST_CASE("InsertNewline below the widest line splices the row map into line")
 
     item.caret.offset = 47; // between the two f's on the last line
     item.caret.anchor = 47;
-    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 2);
+    REQUIRE(item.document->GetBuffer().ToPosition(item.caret.offset).line == 2);
 
     CHECK(Core::InsertNewline(item, {}));
-    CHECK(item.document->Buffer().Text()
+    CHECK(item.document->GetBuffer().GetText()
           == "aaaaaaaaaaaaaaaaaaaaaaaaa\nbbbb cccc dddd eeee\nf\nf");
 
     // The width survives the edit: a rebuild at kNoWrap here would unwrap the document
     // under the user, and nothing else would notice.
-    CHECK(item.rows.ColumnsPerRow() == 10);
-    CHECK(item.rows.LineCount() == item.document->Buffer().LineCount());
+    CHECK(item.rows.GetColumnsPerRow() == 10);
+    CHECK(item.rows.GetLineCount() == item.document->GetBuffer().GetLineCount());
     CHECK(item.rows.TotalRows() == rowsBefore + 1);
     CheckDerivedCachesAreCorrect(item);
 }
@@ -620,7 +620,7 @@ TEST_CASE("Deleting a line break below the widest line splices the row map out a
 {
     Core::OpenItem item = WrappedItemWith(kWrapFixture, 10);
     REQUIRE(item.widestLine == 0);
-    REQUIRE(item.rows.LineCount() == 3);
+    REQUIRE(item.rows.GetLineCount() == 3);
 
     // At the very start of the last line, so Backspace joins it to the one above. The
     // merged line is 21 columns and takes three rows where its two halves took three
@@ -628,13 +628,13 @@ TEST_CASE("Deleting a line break below the widest line splices the row map out a
     // per-line comparison in CheckDerivedCachesAreCorrect is what does.
     item.caret.offset = 46;
     item.caret.anchor = 46;
-    REQUIRE(item.document->Buffer().ToPosition(item.caret.offset).line == 2);
+    REQUIRE(item.document->GetBuffer().ToPosition(item.caret.offset).line == 2);
 
     CHECK(Core::DeleteBackward(item));
-    CHECK(item.document->Buffer().Text()
+    CHECK(item.document->GetBuffer().GetText()
           == "aaaaaaaaaaaaaaaaaaaaaaaaa\nbbbb cccc dddd eeeeff");
-    CHECK(item.rows.ColumnsPerRow() == 10);
-    CHECK(item.rows.LineCount() == 2);
+    CHECK(item.rows.GetColumnsPerRow() == 10);
+    CHECK(item.rows.GetLineCount() == 2);
     CHECK(item.rows.RowsOf(0) == 3);
     CHECK(item.rows.RowsOf(1) == 3);
     CheckDerivedCachesAreCorrect(item);
@@ -655,8 +655,8 @@ TEST_CASE("Undo keeps the map wrapping to the width it was built for")
     CHECK(item.rows.TotalRows() == rowsBefore + 1);
 
     CHECK(Core::Undo(item));
-    CHECK(item.document->Buffer().Text() == kWrapFixture);
-    CHECK(item.rows.ColumnsPerRow() == 10);
+    CHECK(item.document->GetBuffer().GetText() == kWrapFixture);
+    CHECK(item.rows.GetColumnsPerRow() == 10);
     CHECK(item.rows.TotalRows() == rowsBefore);
     CheckDerivedCachesAreCorrect(item);
 }

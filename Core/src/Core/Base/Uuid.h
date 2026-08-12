@@ -27,7 +27,7 @@ namespace Core
         /// The canonical 8-4-4-4-12 form, uppercase and undecorated.
         [[nodiscard]] std::string ToString() const;
 
-        [[nodiscard]] const std::array<std::uint8_t, kByteCount>& Bytes() const noexcept
+        [[nodiscard]] const std::array<std::uint8_t, kByteCount>& GetBytes() const noexcept
         {
             return m_Bytes;
         }

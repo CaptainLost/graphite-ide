@@ -12,18 +12,18 @@ TEST_CASE("A buffer starts out holding what it was given")
 {
     const TextBuffer buffer{"hello"};
 
-    CHECK(buffer.Length() == 5);
-    CHECK(buffer.Text() == "hello");
-    CHECK_FALSE(buffer.Empty());
+    CHECK(buffer.GetLength() == 5);
+    CHECK(buffer.GetText() == "hello");
+    CHECK_FALSE(buffer.IsEmpty());
 }
 
 TEST_CASE("An empty buffer is empty")
 {
     const TextBuffer buffer;
 
-    CHECK(buffer.Length() == 0);
-    CHECK(buffer.Text() == "");
-    CHECK(buffer.Empty());
+    CHECK(buffer.GetLength() == 0);
+    CHECK(buffer.GetText() == "");
+    CHECK(buffer.IsEmpty());
 }
 
 TEST_CASE("Text can be inserted at the start, in the middle and at the end")
@@ -33,8 +33,8 @@ TEST_CASE("Text can be inserted at the start, in the middle and at the end")
         TextBuffer buffer{"world"};
         buffer.Insert(0, "hello ");
 
-        CHECK(buffer.Text() == "hello world");
-        CHECK(buffer.Length() == 11);
+        CHECK(buffer.GetText() == "hello world");
+        CHECK(buffer.GetLength() == 11);
     }
 
     SUBCASE("in the middle")
@@ -42,7 +42,7 @@ TEST_CASE("Text can be inserted at the start, in the middle and at the end")
         TextBuffer buffer{"held"};
         buffer.Insert(3, "lo wor");
 
-        CHECK(buffer.Text() == "hello word");
+        CHECK(buffer.GetText() == "hello word");
     }
 
     SUBCASE("at the end")
@@ -50,7 +50,7 @@ TEST_CASE("Text can be inserted at the start, in the middle and at the end")
         TextBuffer buffer{"hello"};
         buffer.Insert(5, " world");
 
-        CHECK(buffer.Text() == "hello world");
+        CHECK(buffer.GetText() == "hello world");
     }
 }
 
@@ -59,7 +59,7 @@ TEST_CASE("Inserting into an empty buffer works")
     TextBuffer buffer;
     buffer.Insert(0, "first");
 
-    CHECK(buffer.Text() == "first");
+    CHECK(buffer.GetText() == "first");
 }
 
 TEST_CASE("Inserting nothing changes nothing")
@@ -67,8 +67,8 @@ TEST_CASE("Inserting nothing changes nothing")
     TextBuffer buffer{"hello"};
     buffer.Insert(2, "");
 
-    CHECK(buffer.Text() == "hello");
-    CHECK(buffer.Length() == 5);
+    CHECK(buffer.GetText() == "hello");
+    CHECK(buffer.GetLength() == 5);
 }
 
 TEST_CASE("Repeated insertion at the same point reads back in order")
@@ -79,7 +79,7 @@ TEST_CASE("Repeated insertion at the same point reads back in order")
     for (std::size_t index = 0; index < 6; ++index)
         buffer.Insert(index, std::string(1, static_cast<char>('a' + index)));
 
-    CHECK(buffer.Text() == "abcdef");
+    CHECK(buffer.GetText() == "abcdef");
 }
 
 TEST_CASE("Erasing takes out exactly the range asked for")
@@ -89,7 +89,7 @@ TEST_CASE("Erasing takes out exactly the range asked for")
         TextBuffer buffer{"hello world"};
         buffer.Erase(5, 11);
 
-        CHECK(buffer.Text() == "hello");
+        CHECK(buffer.GetText() == "hello");
     }
 
     SUBCASE("from the start")
@@ -97,7 +97,7 @@ TEST_CASE("Erasing takes out exactly the range asked for")
         TextBuffer buffer{"hello world"};
         buffer.Erase(0, 6);
 
-        CHECK(buffer.Text() == "world");
+        CHECK(buffer.GetText() == "world");
     }
 
     SUBCASE("everything")
@@ -105,8 +105,8 @@ TEST_CASE("Erasing takes out exactly the range asked for")
         TextBuffer buffer{"hello"};
         buffer.Erase(0, 5);
 
-        CHECK(buffer.Text() == "");
-        CHECK(buffer.Empty());
+        CHECK(buffer.GetText() == "");
+        CHECK(buffer.IsEmpty());
     }
 }
 
@@ -116,7 +116,7 @@ TEST_CASE("Erasing across a piece boundary joins what is left on either side")
     buffer.Insert(5, " world");     // two pieces: "hello" and " world"
     buffer.Erase(3, 8);             // spans the boundary
 
-    CHECK(buffer.Text() == "helrld");
+    CHECK(buffer.GetText() == "helrld");
 }
 
 TEST_CASE("Erasing whole pieces out of the middle drops them")
@@ -125,11 +125,11 @@ TEST_CASE("Erasing whole pieces out of the middle drops them")
     buffer.Insert(1, "B");
     buffer.Insert(2, "C");
     buffer.Insert(3, "D");
-    REQUIRE(buffer.Text() == "ABCDZ");
+    REQUIRE(buffer.GetText() == "ABCDZ");
 
     buffer.Erase(1, 4);
 
-    CHECK(buffer.Text() == "AZ");
+    CHECK(buffer.GetText() == "AZ");
 }
 
 TEST_CASE("Erasing an empty or reversed range changes nothing")
@@ -137,10 +137,10 @@ TEST_CASE("Erasing an empty or reversed range changes nothing")
     TextBuffer buffer{"hello"};
 
     buffer.Erase(2, 2);
-    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.GetText() == "hello");
 
     buffer.Erase(4, 1);
-    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.GetText() == "hello");
 }
 
 TEST_CASE("Erasing past the end stops at the end instead of reading off it")
@@ -148,7 +148,7 @@ TEST_CASE("Erasing past the end stops at the end instead of reading off it")
     TextBuffer buffer{"hello"};
     buffer.Erase(3, 99);
 
-    CHECK(buffer.Text() == "hel");
+    CHECK(buffer.GetText() == "hel");
 }
 
 TEST_CASE("A substring spans pieces without a seam")
@@ -157,7 +157,7 @@ TEST_CASE("A substring spans pieces without a seam")
     buffer.Insert(5, " world");
 
     CHECK(buffer.Substring(3, 8) == "lo wo");
-    CHECK(buffer.Substring(0, buffer.Length()) == "hello world");
+    CHECK(buffer.Substring(0, buffer.GetLength()) == "hello world");
 }
 
 TEST_CASE("A substring outside the content comes back empty rather than reading off the end")
@@ -198,15 +198,15 @@ TEST_CASE("Many edits still read back correctly")
         expected.insert(at, fragment);
     }
 
-    CHECK(buffer.Text() == expected);
-    CHECK(buffer.Length() == expected.size());
+    CHECK(buffer.GetText() == expected);
+    CHECK(buffer.GetLength() == expected.size());
 }
 
 TEST_CASE("An empty document is one empty line")
 {
     const TextBuffer buffer;
 
-    CHECK(buffer.LineCount() == 1);
+    CHECK(buffer.GetLineCount() == 1);
     CHECK(buffer.LineText(0) == "");
     CHECK(buffer.LineStart(0) == 0);
     CHECK(buffer.LineLength(0) == 0);
@@ -216,7 +216,7 @@ TEST_CASE("A trailing newline opens a line rather than closing the file")
 {
     const TextBuffer buffer{"a\nb\n"};
 
-    CHECK(buffer.LineCount() == 3);
+    CHECK(buffer.GetLineCount() == 3);
     CHECK(buffer.LineStart(0) == 0);
     CHECK(buffer.LineStart(1) == 2);
     CHECK(buffer.LineStart(2) == 4);
@@ -227,7 +227,7 @@ TEST_CASE("A file with no trailing newline has no empty line at the end")
 {
     const TextBuffer buffer{"a\nb"};
 
-    CHECK(buffer.LineCount() == 2);
+    CHECK(buffer.GetLineCount() == 2);
     CHECK(buffer.LineText(1) == "b");
 }
 
@@ -245,7 +245,7 @@ TEST_CASE("Consecutive newlines make empty lines")
 {
     const TextBuffer buffer{"\n\n\n"};
 
-    CHECK(buffer.LineCount() == 4);
+    CHECK(buffer.GetLineCount() == 4);
 
     for (std::size_t line = 0; line < 4; ++line)
         CHECK(buffer.LineText(line) == "");
@@ -255,7 +255,7 @@ TEST_CASE("Asking about a line that is not there gives the end rather than readi
 {
     const TextBuffer buffer{"a\nb"};
 
-    CHECK(buffer.LineStart(99) == buffer.Length());
+    CHECK(buffer.LineStart(99) == buffer.GetLength());
     CHECK(buffer.LineLength(99) == 0);
     CHECK(buffer.LineText(99) == "");
 }
@@ -281,14 +281,14 @@ TEST_CASE("A position past the end of a line is pulled back to the line's end")
 
     CHECK(buffer.ToOffset(Position{0, 99}) == 2);
     CHECK(buffer.ToOffset(Position{1, 99}) == 7);
-    CHECK(buffer.ToOffset(Position{99, 0}) == buffer.Length());
+    CHECK(buffer.ToOffset(Position{99, 0}) == buffer.GetLength());
 }
 
 TEST_CASE("Every offset round-trips through a position")
 {
     const TextBuffer buffer{"first\n\nthird line\nfourth"};
 
-    for (std::size_t offset = 0; offset <= buffer.Length(); ++offset)
+    for (std::size_t offset = 0; offset <= buffer.GetLength(); ++offset)
         CHECK(buffer.ToOffset(buffer.ToPosition(offset)) == offset);
 }
 
@@ -300,7 +300,7 @@ TEST_CASE("The line index survives insertion")
         buffer.Insert(2, "XX");
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 2);
+        CHECK(buffer.GetLineCount() == 2);
         CHECK(buffer.LineText(0) == "fiXXrst");
         CHECK(buffer.LineStart(1) == 8);
     }
@@ -311,7 +311,7 @@ TEST_CASE("The line index survives insertion")
         buffer.Insert(2, "\n");
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 2);
+        CHECK(buffer.GetLineCount() == 2);
         CHECK(buffer.LineText(0) == "ab");
         CHECK(buffer.LineText(1) == "cd");
     }
@@ -322,7 +322,7 @@ TEST_CASE("The line index survives insertion")
         buffer.Insert(6, "one\ntwo\nthree\n");
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 5);
+        CHECK(buffer.GetLineCount() == 5);
         CHECK(buffer.LineText(1) == "one");
         CHECK(buffer.LineText(3) == "three");
         CHECK(buffer.LineText(4) == "end");
@@ -343,7 +343,7 @@ TEST_CASE("The line index survives insertion")
         buffer.Insert(3, "\nc");
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 3);
+        CHECK(buffer.GetLineCount() == 3);
         CHECK(buffer.LineText(2) == "c");
     }
 }
@@ -366,7 +366,7 @@ TEST_CASE("The line index survives erasure")
         buffer.Erase(2, 3);
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 1);
+        CHECK(buffer.GetLineCount() == 1);
         CHECK(buffer.LineText(0) == "abcd");
     }
 
@@ -376,7 +376,7 @@ TEST_CASE("The line index survives erasure")
         buffer.Erase(2, 12);
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 2);
+        CHECK(buffer.GetLineCount() == 2);
         CHECK(buffer.LineText(0) == "one");
         CHECK(buffer.LineText(1) == "four");
     }
@@ -384,10 +384,10 @@ TEST_CASE("The line index survives erasure")
     SUBCASE("of everything")
     {
         TextBuffer buffer{"one\ntwo\n"};
-        buffer.Erase(0, buffer.Length());
+        buffer.Erase(0, buffer.GetLength());
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 1);
+        CHECK(buffer.GetLineCount() == 1);
         CHECK(buffer.LineText(0) == "");
     }
 
@@ -397,7 +397,7 @@ TEST_CASE("The line index survives erasure")
         buffer.Erase(3, 4);
 
         CHECK(buffer.LineIndexMatchesRebuild());
-        CHECK(buffer.LineCount() == 1);
+        CHECK(buffer.GetLineCount() == 1);
     }
 }
 
@@ -415,7 +415,7 @@ TEST_CASE("An edit far down the document leaves the lines above it alone")
 
     CHECK(buffer.LineIndexMatchesRebuild());
     CHECK(buffer.LineStart(100) == before);
-    CHECK(buffer.LineCount() == 502);
+    CHECK(buffer.GetLineCount() == 502);
 }
 
 TEST_CASE("A fresh buffer has nothing to undo or redo")
@@ -426,7 +426,7 @@ TEST_CASE("A fresh buffer has nothing to undo or redo")
     CHECK_FALSE(buffer.CanRedo());
     CHECK_FALSE(buffer.Undo());
     CHECK_FALSE(buffer.Redo());
-    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.GetText() == "hello");
 }
 
 TEST_CASE("Undo reverses an insertion")
@@ -436,7 +436,7 @@ TEST_CASE("Undo reverses an insertion")
 
     REQUIRE(buffer.CanUndo());
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.GetText() == "hello");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -444,10 +444,10 @@ TEST_CASE("Undo reverses an erasure")
 {
     TextBuffer buffer{"hello world"};
     buffer.Erase(5, 11);
-    REQUIRE(buffer.Text() == "hello");
+    REQUIRE(buffer.GetText() == "hello");
 
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "hello world");
+    CHECK(buffer.GetText() == "hello world");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -459,7 +459,7 @@ TEST_CASE("Redo reapplies what undo took away")
 
     REQUIRE(buffer.CanRedo());
     CHECK(buffer.Redo());
-    CHECK(buffer.Text() == "hello world");
+    CHECK(buffer.GetText() == "hello world");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -471,21 +471,21 @@ TEST_CASE("A run of edits undoes and redoes in order")
     buffer.Insert(3, " two");
     buffer.BreakUndoGroup();
     buffer.Insert(7, " three");
-    REQUIRE(buffer.Text() == "one two three");
+    REQUIRE(buffer.GetText() == "one two three");
 
     buffer.Undo();
-    CHECK(buffer.Text() == "one two");
+    CHECK(buffer.GetText() == "one two");
     buffer.Undo();
-    CHECK(buffer.Text() == "one");
+    CHECK(buffer.GetText() == "one");
     buffer.Undo();
-    CHECK(buffer.Text() == "");
+    CHECK(buffer.GetText() == "");
     CHECK_FALSE(buffer.CanUndo());
 
     buffer.Redo();
-    CHECK(buffer.Text() == "one");
+    CHECK(buffer.GetText() == "one");
     buffer.Redo();
     buffer.Redo();
-    CHECK(buffer.Text() == "one two three");
+    CHECK(buffer.GetText() == "one two three");
     CHECK_FALSE(buffer.CanRedo());
 }
 
@@ -495,11 +495,11 @@ TEST_CASE("Undo restores the line index, not just the content")
     buffer.Erase(3, 8);
     // Erase(3, 8) removes "\ntwo\n" (indices 3..7), leaving "one" + "three" fused into a
     // single line "onethree" with no newline left.
-    REQUIRE(buffer.LineCount() == 1);
+    REQUIRE(buffer.GetLineCount() == 1);
 
     buffer.Undo();
 
-    CHECK(buffer.LineCount() == 3);
+    CHECK(buffer.GetLineCount() == 3);
     CHECK(buffer.LineText(1) == "two");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
@@ -514,7 +514,7 @@ TEST_CASE("A new edit throws away what could have been redone")
     buffer.Insert(5, "!");
 
     CHECK_FALSE(buffer.CanRedo());
-    CHECK(buffer.Text() == "hello!");
+    CHECK(buffer.GetText() == "hello!");
 }
 
 TEST_CASE("The revision tells apart two edits that leave the stack the same depth")
@@ -524,17 +524,17 @@ TEST_CASE("The revision tells apart two edits that leave the stack the same dept
     TextBuffer buffer{"hello"};
     buffer.Insert(5, " world");
 
-    const std::size_t saved = buffer.Revision();
+    const std::size_t saved = buffer.GetRevision();
 
     buffer.Undo();
-    CHECK(buffer.Revision() != saved);
+    CHECK(buffer.GetRevision() != saved);
 
     buffer.Insert(5, "!");
-    CHECK(buffer.Revision() != saved);
+    CHECK(buffer.GetRevision() != saved);
 
     buffer.Undo();
     buffer.Redo();
-    CHECK(buffer.Revision() != saved);
+    CHECK(buffer.GetRevision() != saved);
 }
 
 TEST_CASE("Undoing back to a remembered revision reports that revision again")
@@ -542,21 +542,21 @@ TEST_CASE("Undoing back to a remembered revision reports that revision again")
     TextBuffer buffer{"hello"};
     buffer.Insert(5, "!");
 
-    const std::size_t saved = buffer.Revision();
+    const std::size_t saved = buffer.GetRevision();
 
     buffer.BreakUndoGroup();
     buffer.Insert(6, "?");
-    REQUIRE(buffer.Revision() != saved);
+    REQUIRE(buffer.GetRevision() != saved);
 
     buffer.Undo();
-    CHECK(buffer.Revision() == saved);
+    CHECK(buffer.GetRevision() == saved);
 }
 
 TEST_CASE("An empty buffer's revision is zero")
 {
     const TextBuffer buffer{"hello"};
 
-    CHECK(buffer.Revision() == 0);
+    CHECK(buffer.GetRevision() == 0);
 }
 
 TEST_CASE("Random edits keep the line index correct and undo all the way back")
@@ -593,17 +593,17 @@ TEST_CASE("Random edits keep the line index correct and undo all the way back")
             oracle.erase(from, to - from);
         }
 
-        REQUIRE(buffer.Text() == oracle);
-        REQUIRE(buffer.Length() == oracle.size());
+        REQUIRE(buffer.GetText() == oracle);
+        REQUIRE(buffer.GetLength() == oracle.size());
         REQUIRE(buffer.LineIndexMatchesRebuild());
     }
 
     while (buffer.CanUndo())
         buffer.Undo();
 
-    CHECK(buffer.Text() == initial);
+    CHECK(buffer.GetText() == initial);
     CHECK(buffer.LineIndexMatchesRebuild());
-    CHECK(buffer.Revision() == 0);
+    CHECK(buffer.GetRevision() == 0);
 }
 
 TEST_CASE("Random edits interleaved with undo and redo match a string oracle at every step")
@@ -690,8 +690,8 @@ TEST_CASE("Random edits interleaved with undo and redo match a string oracle at 
             buffer.BreakUndoGroup();
         }
 
-        REQUIRE(buffer.Text() == oracle);
-        REQUIRE(buffer.Length() == oracle.size());
+        REQUIRE(buffer.GetText() == oracle);
+        REQUIRE(buffer.GetLength() == oracle.size());
         REQUIRE(buffer.LineIndexMatchesRebuild());
     }
 }
@@ -704,11 +704,11 @@ TEST_CASE("Every offset still round-trips through a position after random edits"
 
     for (std::size_t step = 0; step < 100; ++step)
     {
-        const std::size_t at = random() % (buffer.Length() + 1);
+        const std::size_t at = random() % (buffer.GetLength() + 1);
         buffer.Insert(at, (random() % 3) == 0 ? "\n" : "z");
     }
 
-    for (std::size_t offset = 0; offset <= buffer.Length(); ++offset)
+    for (std::size_t offset = 0; offset <= buffer.GetLength(); ++offset)
         REQUIRE(buffer.ToOffset(buffer.ToPosition(offset)) == offset);
 }
 
@@ -722,7 +722,7 @@ TEST_CASE("Toggling undo/redo on an insertion does not grow the append buffer")
 
     buffer.Undo();
     buffer.Redo();
-    const std::size_t afterFirstCycle = buffer.AppendBufferSize();
+    const std::size_t afterFirstCycle = buffer.GetAppendBufferSize();
 
     for (int i = 0; i < 200; ++i)
     {
@@ -730,19 +730,19 @@ TEST_CASE("Toggling undo/redo on an insertion does not grow the append buffer")
         buffer.Redo();
     }
 
-    CHECK(buffer.AppendBufferSize() == afterFirstCycle);
-    CHECK(buffer.Text() == "hello" + std::string(1000, 'x'));
+    CHECK(buffer.GetAppendBufferSize() == afterFirstCycle);
+    CHECK(buffer.GetText() == "hello" + std::string(1000, 'x'));
 }
 
 TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
 {
     TextBuffer buffer{"hello" + std::string(1000, 'x') + "world"};
     buffer.Erase(5, 1005);
-    REQUIRE(buffer.Text() == "helloworld");
+    REQUIRE(buffer.GetText() == "helloworld");
 
     buffer.Undo();
     buffer.Redo();
-    const std::size_t afterFirstCycle = buffer.AppendBufferSize();
+    const std::size_t afterFirstCycle = buffer.GetAppendBufferSize();
 
     for (int i = 0; i < 200; ++i)
     {
@@ -750,8 +750,8 @@ TEST_CASE("Toggling undo/redo on an erasure does not grow the append buffer")
         buffer.Redo();
     }
 
-    CHECK(buffer.AppendBufferSize() == afterFirstCycle);
-    CHECK(buffer.Text() == "helloworld");
+    CHECK(buffer.GetAppendBufferSize() == afterFirstCycle);
+    CHECK(buffer.GetText() == "helloworld");
 }
 
 TEST_CASE("Edits inside a transaction undo as one")
@@ -763,9 +763,9 @@ TEST_CASE("Edits inside a transaction undo as one")
     buffer.Insert(4, "TWO");
     buffer.EndTransaction();
 
-    CHECK(buffer.Text() == "one TWO three");
+    CHECK(buffer.GetText() == "one TWO three");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "one two three");
+    CHECK(buffer.GetText() == "one two three");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -780,7 +780,7 @@ TEST_CASE("Redo reapplies a whole transaction in the original order")
 
     CHECK(buffer.Undo());
     CHECK(buffer.Redo());
-    CHECK(buffer.Text() == "one TWO three");
+    CHECK(buffer.GetText() == "one TWO three");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -796,9 +796,9 @@ TEST_CASE("Nested transactions close only at the outermost end")
     buffer.Insert(3, "Z");
     buffer.EndTransaction();
 
-    CHECK(buffer.Text() == "aXYZb");
+    CHECK(buffer.GetText() == "aXYZb");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "ab");
+    CHECK(buffer.GetText() == "ab");
     CHECK_FALSE(buffer.CanUndo());
 }
 
@@ -813,9 +813,9 @@ TEST_CASE("Consecutive typing undoes as one word")
         buffer.EndTransaction();
     }
 
-    CHECK(buffer.Text() == "hello");
+    CHECK(buffer.GetText() == "hello");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text().empty());
+    CHECK(buffer.GetText().empty());
 }
 
 TEST_CASE("BreakUndoGroup splits typing into two steps")
@@ -833,9 +833,9 @@ TEST_CASE("BreakUndoGroup splits typing into two steps")
     buffer.EndTransaction();
 
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "ab");
+    CHECK(buffer.GetText() == "ab");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text().empty());
+    CHECK(buffer.GetText().empty());
 }
 
 TEST_CASE("Typing that is not contiguous starts a new group")
@@ -850,9 +850,9 @@ TEST_CASE("Typing that is not contiguous starts a new group")
     buffer.Insert(3, "b");
     buffer.EndTransaction();
 
-    CHECK(buffer.Text() == "axyb");
+    CHECK(buffer.GetText() == "axyb");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "axy");
+    CHECK(buffer.GetText() == "axy");
 }
 
 TEST_CASE("A newline ends the group it lands in")
@@ -868,7 +868,7 @@ TEST_CASE("A newline ends the group it lands in")
     buffer.EndTransaction();
 
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "a\n");
+    CHECK(buffer.GetText() == "a\n");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -883,9 +883,9 @@ TEST_CASE("Backspaces coalesce and so do forward deletes")
         backspaces.EndTransaction();
     }
 
-    CHECK(backspaces.Text() == "a");
+    CHECK(backspaces.GetText() == "a");
     CHECK(backspaces.Undo());
-    CHECK(backspaces.Text() == "abcd");
+    CHECK(backspaces.GetText() == "abcd");
 
     Core::TextBuffer forwards{"abcd"};
 
@@ -896,9 +896,9 @@ TEST_CASE("Backspaces coalesce and so do forward deletes")
         forwards.EndTransaction();
     }
 
-    CHECK(forwards.Text() == "a");
+    CHECK(forwards.GetText() == "a");
     CHECK(forwards.Undo());
-    CHECK(forwards.Text() == "abcd");
+    CHECK(forwards.GetText() == "abcd");
 }
 
 TEST_CASE("Deleting after typing does not join the typed group")
@@ -913,9 +913,9 @@ TEST_CASE("Deleting after typing does not join the typed group")
     buffer.Erase(1, 2);
     buffer.EndTransaction();
 
-    CHECK(buffer.Text() == "a");
+    CHECK(buffer.GetText() == "a");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "ab");
+    CHECK(buffer.GetText() == "ab");
 }
 
 TEST_CASE("Coalescing does not grow the append buffer")
@@ -929,7 +929,7 @@ TEST_CASE("Coalescing does not grow the append buffer")
         buffer.EndTransaction();
     }
 
-    const std::size_t appended = buffer.AppendBufferSize();
+    const std::size_t appended = buffer.GetAppendBufferSize();
 
     for (int round = 0; round < 3; ++round)
     {
@@ -937,7 +937,7 @@ TEST_CASE("Coalescing does not grow the append buffer")
         CHECK(buffer.Redo());
     }
 
-    CHECK(buffer.AppendBufferSize() == appended);
+    CHECK(buffer.GetAppendBufferSize() == appended);
 }
 
 TEST_CASE("A newline landing on a transaction's later edit still closes the group")
@@ -954,7 +954,7 @@ TEST_CASE("A newline landing on a transaction's later edit still closes the grou
     buffer.EndTransaction();
 
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "a\n");
+    CHECK(buffer.GetText() == "a\n");
     CHECK(buffer.LineIndexMatchesRebuild());
 }
 
@@ -971,7 +971,7 @@ TEST_CASE("Typing after an erase-then-insert transaction coalesces with the inse
     buffer.Insert(7, "!");
     buffer.EndTransaction();
 
-    CHECK(buffer.Text() == "one TWO! three");
+    CHECK(buffer.GetText() == "one TWO! three");
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "one two three");
+    CHECK(buffer.GetText() == "one two three");
 }

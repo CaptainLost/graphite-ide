@@ -7,7 +7,7 @@
 
 namespace Core
 {
-    /// Description of the default panel arrangement. Identifiers must match Panel::Id().
+    /// Description of the default panel arrangement. Identifiers must match Panel::GetId().
     struct DockLayout
     {
         std::vector<std::string> left;
@@ -49,13 +49,13 @@ namespace Core
         /// Looked up fresh each call rather than cached from the frame the layout was
         /// built: the node the flag lives on is exactly as valid on a frame where Begin
         /// only restored a layout already in imgui.ini as on the frame that built it.
-        [[nodiscard]] unsigned int CenterNodeId() const;
+        [[nodiscard]] unsigned int GetCenterNodeId() const;
 
     private:
         bool m_LayoutBuilt = false;
         bool m_ForceRebuild = false;
 
-        /// The dockspace's own id, recorded every Begin so CenterNodeId() can look up its
+        /// The dockspace's own id, recorded every Begin so GetCenterNodeId() can look up its
         /// central node without recomputing an ImGui ID outside the window scope it was
         /// hashed against - GetID(name) depends on the current ID stack, and by the time a
         /// caller asks for the centre node, Begin/End for the host window has long since

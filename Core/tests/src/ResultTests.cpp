@@ -17,7 +17,7 @@ TEST_CASE("Result stores a value")
 
     CHECK(result.HasValue());
     CHECK(static_cast<bool>(result));
-    CHECK(result.Value() == 42);
+    CHECK(result.GetValue() == 42);
 }
 
 TEST_CASE("Result stores an error")
@@ -44,7 +44,7 @@ TEST_CASE("Result works with a move-only type")
     Result<std::unique_ptr<std::string>> result{std::make_unique<std::string>("content")};
 
     REQUIRE(result.HasValue());
-    std::unique_ptr<std::string> taken = std::move(result).Value();
+    std::unique_ptr<std::string> taken = std::move(result).GetValue();
 
     REQUIRE(taken != nullptr);
     CHECK(*taken == "content");

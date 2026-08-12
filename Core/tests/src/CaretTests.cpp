@@ -91,7 +91,7 @@ TEST_CASE("Ctrl+Home and Ctrl+End go to the ends of the document")
     const TextBuffer buffer{"first\nsecond"};
 
     CHECK(Step(buffer, At(8), Motion::DocumentStart).offset == 0);
-    CHECK(Step(buffer, At(2), Motion::DocumentEnd).offset == buffer.Length());
+    CHECK(Step(buffer, At(2), Motion::DocumentEnd).offset == buffer.GetLength());
 }
 
 TEST_CASE("Down keeps the column across a shorter line")
@@ -167,7 +167,7 @@ TEST_CASE("Page movement covers a screen and clamps at the ends")
 
     CHECK(Move(buffer, At(0), Motion::PageUp, false, 4, 10).offset == 0);
 
-    const Caret last = At(buffer.LineStart(buffer.LineCount() - 1));
+    const Caret last = At(buffer.LineStart(buffer.GetLineCount() - 1));
     CHECK(Move(buffer, last, Motion::PageDown, false, 4, 10).offset == last.offset);
 }
 
@@ -221,7 +221,7 @@ TEST_CASE("A click lands on a character boundary and never inside one")
 
     // Byte 2 is the middle of 'ą'.
     CHECK(PlaceAt(buffer, Caret{}, 2, false, 4).offset == 1);
-    CHECK(PlaceAt(buffer, Caret{}, 99, false, 4).offset == buffer.Length());
+    CHECK(PlaceAt(buffer, Caret{}, 99, false, 4).offset == buffer.GetLength());
 }
 
 TEST_CASE("A click with Shift extends from the existing anchor")
@@ -270,7 +270,7 @@ TEST_CASE("The last line has no ending to include")
     const TextBuffer buffer{"one\ntwo"};
 
     CHECK(SelectionRange(SelectLineAt(buffer, 1))
-          == std::pair<std::size_t, std::size_t>{4, buffer.Length()});
+          == std::pair<std::size_t, std::size_t>{4, buffer.GetLength()});
 }
 
 TEST_CASE("Select all covers the document")
@@ -279,7 +279,7 @@ TEST_CASE("Select all covers the document")
 
     const Caret all = SelectAll(buffer);
 
-    CHECK(SelectionRange(all) == std::pair<std::size_t, std::size_t>{0, buffer.Length()});
+    CHECK(SelectionRange(all) == std::pair<std::size_t, std::size_t>{0, buffer.GetLength()});
 }
 
 TEST_CASE("Every motion leaves the caret on a character boundary")
@@ -293,14 +293,14 @@ TEST_CASE("Every motion leaves the caret on a character boundary")
 
     for (const Motion motion : motions)
     {
-        for (std::size_t start = 0; start <= buffer.Length(); ++start)
+        for (std::size_t start = 0; start <= buffer.GetLength(); ++start)
         {
             const Caret result = Move(buffer, At(start), motion, false, 4, 3);
 
-            REQUIRE(result.offset <= buffer.Length());
+            REQUIRE(result.offset <= buffer.GetLength());
 
             // A boundary is any offset that is not a UTF-8 continuation byte.
-            if (result.offset < buffer.Length())
+            if (result.offset < buffer.GetLength())
                 REQUIRE((static_cast<unsigned char>(buffer.CharAt(result.offset)) & 0xC0) != 0x80);
         }
     }
@@ -318,7 +318,7 @@ TEST_CASE("Left and right step characters across piece boundaries")
     buffer.Insert(1, "\xC4\x99");
     buffer.Insert(1, "\xC4\x85");
 
-    REQUIRE(buffer.Text() == "a\xC4\x85\xC4\x99" "b");
+    REQUIRE(buffer.GetText() == "a\xC4\x85\xC4\x99" "b");
 
     Caret caret = At(0);
 

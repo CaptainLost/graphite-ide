@@ -20,7 +20,7 @@ namespace Core
         m_ColumnsPerRow = columnsPerRow;
         m_TabWidth = tabWidth;
 
-        const std::size_t lines = buffer.LineCount();
+        const std::size_t lines = buffer.GetLineCount();
 
         m_RowsPerLine.assign(lines, 0);
         m_Breaks.assign(lines, {});
@@ -66,7 +66,7 @@ namespace Core
 
         for (std::size_t line = where; line < where + count; ++line)
         {
-            if (m_ColumnsPerRow != kNoWrap && line < buffer.LineCount())
+            if (m_ColumnsPerRow != kNoWrap && line < buffer.GetLineCount())
                 m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 
             m_RowsPerLine[line] = m_Breaks[line].size() + 1;

@@ -49,7 +49,7 @@ namespace
 TEST_CASE("A file deleted while it is open is marked missing and keeps its content")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "still here\n");
 
     DocumentSet documents;
@@ -63,13 +63,13 @@ TEST_CASE("A file deleted while it is open is marked missing and keeps its conte
     // The whole reason the item stays: closing it would be the only way to lose content
     // we still have.
     REQUIRE(documents.At(0).document.has_value());
-    CHECK(documents.At(0).document->Buffer().Text() == "still here\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "still here\n");
 }
 
 TEST_CASE("A file that comes back changed is noticed in the same pass that finds it back")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "original\n");
 
     DocumentSet documents;
@@ -92,16 +92,16 @@ TEST_CASE("A file that comes back changed is noticed in the same pass that finds
 
     // Still the old content: SyncWithFile says a reload is due and leaves the reload to
     // the caller, which is the whole of what SafeToReload means.
-    CHECK(documents.At(0).document->Buffer().Text() == "original\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "original\n");
 
     REQUIRE(ReloadItem(documents, 0));
-    CHECK(documents.At(0).document->Buffer().Text() == "restored from somewhere else\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "restored from somewhere else\n");
 }
 
 TEST_CASE("A tab opened on a file that was not there asks for the file to be loaded")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "not-yet.txt";
+    const auto path = directory.GetPath() / "not-yet.txt";
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
@@ -121,7 +121,7 @@ TEST_CASE("A tab opened on a file that was not there asks for the file to be loa
 TEST_CASE("A file that is still not there is not reported as needing loading")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "still-missing.txt";
+    const auto path = directory.GetPath() / "still-missing.txt";
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
@@ -134,14 +134,14 @@ TEST_CASE("A file that is still not there is not reported as needing loading")
 TEST_CASE("A file changed under a document with unsaved edits is left for the caller to decide")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "original\n");
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Opened);
     REQUIRE(documents.At(0).document.has_value());
 
-    documents.At(0).document->Buffer().Insert(0, "mine ");
+    documents.At(0).document->GetBuffer().Insert(0, "mine ");
     REQUIRE(documents.At(0).document->IsModified());
 
     WriteBytes(path, "somebody else's version\n");
@@ -150,20 +150,20 @@ TEST_CASE("A file changed under a document with unsaved edits is left for the ca
     // content is untouched, and which one survives is a question only a caller with a
     // user in front of it can ask.
     CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::NeedsDecision);
-    CHECK(documents.At(0).document->Buffer().Text() == "mine original\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "mine original\n");
     CHECK(documents.At(0).document->IsModified());
 }
 
 TEST_CASE("Saving a document whose file was deleted puts the file back and clears the mark")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "original\n");
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Opened);
 
-    documents.At(0).document->Buffer().Insert(0, "edited ");
+    documents.At(0).document->GetBuffer().Insert(0, "edited ");
 
     Remove(path);
     REQUIRE(SyncWithFile(documents, 0) == FileSyncOutcome::WentMissing);
@@ -179,8 +179,8 @@ TEST_CASE("Saving a document whose file was deleted puts the file back and clear
 TEST_CASE("Save all skips a document that changed on disk and keeps saving the rest")
 {
     TempDirectory directory;
-    const auto stale = directory.Path() / "stale.txt";
-    const auto clean = directory.Path() / "clean.txt";
+    const auto stale = directory.GetPath() / "stale.txt";
+    const auto clean = directory.GetPath() / "clean.txt";
     WriteBytes(stale, "original\n");
     WriteBytes(clean, "original\n");
 
@@ -188,8 +188,8 @@ TEST_CASE("Save all skips a document that changed on disk and keeps saving the r
     REQUIRE(documents.Open(stale, true) == OpenOutcome::Opened);
     REQUIRE(documents.Open(clean, true) == OpenOutcome::Opened);
 
-    documents.At(0).document->Buffer().Insert(0, "edited ");
-    documents.At(1).document->Buffer().Insert(0, "edited ");
+    documents.At(0).document->GetBuffer().Insert(0, "edited ");
+    documents.At(1).document->GetBuffer().Insert(0, "edited ");
 
     WriteBytes(stale, "changed by somebody else\n");
 
@@ -201,7 +201,7 @@ TEST_CASE("Save all skips a document that changed on disk and keeps saving the r
     CHECK_FALSE(report.stoppedAt.has_value());
     REQUIRE(report.conflicted.size() == 1);
     CHECK(report.conflicted[0] == stale);
-    CHECK_FALSE(report.Complete());
+    CHECK_FALSE(report.IsComplete());
 
     CHECK(documents.At(0).document->IsModified());
     CHECK(ReadBytes(stale) == "changed by somebody else\n");
@@ -215,7 +215,7 @@ TEST_CASE("Save all stops at a write that fails rather than carrying on past it"
     TempDirectory directory;
     const auto folder = directory.MakeDir("folder");
     const auto doomed = folder / "doomed.txt";
-    const auto after = directory.Path() / "after.txt";
+    const auto after = directory.GetPath() / "after.txt";
     WriteBytes(doomed, "original\n");
     WriteBytes(after, "original\n");
 
@@ -223,8 +223,8 @@ TEST_CASE("Save all stops at a write that fails rather than carrying on past it"
     REQUIRE(documents.Open(doomed, true) == OpenOutcome::Opened);
     REQUIRE(documents.Open(after, true) == OpenOutcome::Opened);
 
-    documents.At(0).document->Buffer().Insert(0, "edited ");
-    documents.At(1).document->Buffer().Insert(0, "edited ");
+    documents.At(0).document->GetBuffer().Insert(0, "edited ");
+    documents.At(1).document->GetBuffer().Insert(0, "edited ");
 
     // The directory holding the first document goes away, so its write has nowhere to
     // land: a real I/O failure arranged the same way AtomicWriteTests arranges one, with
@@ -244,7 +244,7 @@ TEST_CASE("Save all stops at a write that fails rather than carrying on past it"
     REQUIRE(report.stoppedAt.has_value());
     CHECK(report.stoppedAt->path == doomed);
     CHECK_FALSE(report.stoppedAt->error.message.empty());
-    CHECK_FALSE(report.Complete());
+    CHECK_FALSE(report.IsComplete());
 
     // Stopped, not merely reported: the second document is still dirty and its file still
     // holds what it held.
@@ -255,7 +255,7 @@ TEST_CASE("Save all stops at a write that fails rather than carrying on past it"
 TEST_CASE("Reloading a file that got shorter pulls the caret back into it")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "aaaaaaaaaa\nbbbbbbbbbbbbbbbbbbbb\n");
 
     DocumentSet documents;
@@ -265,14 +265,14 @@ TEST_CASE("Reloading a file that got shorter pulls the caret back into it")
     REQUIRE(documents.At(0).widestLine == 1);
 
     // At the very end of the old content, which the new content does not reach.
-    documents.At(0).caret.offset = documents.At(0).document->Buffer().Text().size();
+    documents.At(0).caret.offset = documents.At(0).document->GetBuffer().GetText().size();
     REQUIRE(documents.At(0).caret.offset == 32);
 
     WriteBytes(path, "ab\n");
 
     REQUIRE(ReloadItem(documents, 0));
 
-    CHECK(documents.At(0).document->Buffer().Text() == "ab\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "ab\n");
 
     // Clamped to the new length rather than left pointing past it.
     CHECK(documents.At(0).caret.offset == 3);
@@ -282,7 +282,7 @@ TEST_CASE("Reloading a file that got shorter pulls the caret back into it")
     // horizontal scroll range with nothing in it.
     CHECK(documents.At(0).widestColumn == 2);
     CHECK(documents.At(0).widestLine == 0);
-    CHECK(documents.At(0).indentDepths.size() == documents.At(0).document->Buffer().LineCount());
+    CHECK(documents.At(0).indentDepths.size() == documents.At(0).document->GetBuffer().GetLineCount());
 }
 
 // Not covered here, and deliberately so.

@@ -18,16 +18,16 @@ TEST_CASE("Loading a missing file yields an empty set of values")
 {
     TempDirectory temp;
 
-    const JsonFile file = JsonFile::Load(temp.Path() / "absent.json");
+    const JsonFile file = JsonFile::Load(temp.GetPath() / "absent.json");
 
-    CHECK(file.Count() == 0);
+    CHECK(file.GetCount() == 0);
     CHECK(file.Get("anything").empty());
 }
 
 TEST_CASE("A value survives a save and load round trip")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile written;
     written.Set("lastFolder", "D:\\Repos\\IDE");
@@ -35,14 +35,14 @@ TEST_CASE("A value survives a save and load round trip")
 
     const JsonFile read = JsonFile::Load(path);
 
-    CHECK(read.Count() == 1);
+    CHECK(read.GetCount() == 1);
     CHECK(read.Get("lastFolder") == "D:\\Repos\\IDE");
 }
 
 TEST_CASE("Writing one key preserves the others")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile first;
     first.Set("lastFolder", "D:\\Repos\\IDE");
@@ -65,14 +65,14 @@ TEST_CASE("Setting an existing key replaces it rather than duplicating it")
     file.Set("mode", "dim");
     file.Set("mode", "hide");
 
-    CHECK(file.Count() == 1);
+    CHECK(file.GetCount() == 1);
     CHECK(file.Get("mode") == "hide");
 }
 
 TEST_CASE("An empty value is stored and reads back empty")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile written;
     written.Set("lastFolder", "");
@@ -80,14 +80,14 @@ TEST_CASE("An empty value is stored and reads back empty")
 
     const JsonFile read = JsonFile::Load(path);
 
-    CHECK(read.Count() == 1);
+    CHECK(read.GetCount() == 1);
     CHECK(read.Get("lastFolder").empty());
 }
 
 TEST_CASE("A value containing a newline survives intact")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile written;
     written.Set("expression", "a\nb");
@@ -101,7 +101,7 @@ TEST_CASE("A value containing a newline survives intact")
 TEST_CASE("A value containing an equals sign survives intact")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile written;
     written.Set("expression", "a=b=c");
@@ -117,7 +117,7 @@ TEST_CASE("A malformed file loads as empty rather than throwing")
 
     const JsonFile read = JsonFile::Load(path);
 
-    CHECK(read.Count() == 0);
+    CHECK(read.GetCount() == 0);
     CHECK(read.Get("anything").empty());
 }
 
@@ -138,7 +138,7 @@ TEST_CASE("A non-string value reads back as empty rather than throwing")
 TEST_CASE("Saving is human-readable, not a single-line blob")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile written;
     written.Set("lastFolder", "D:\\Repos\\IDE");
@@ -153,7 +153,7 @@ TEST_CASE("Saving is human-readable, not a single-line blob")
 TEST_CASE("A failed save leaves the previous file intact")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile original;
     original.Set("lastFolder", "D:\\Repos\\IDE");
@@ -161,17 +161,17 @@ TEST_CASE("A failed save leaves the previous file intact")
 
     JsonFile doomed;
     doomed.Set("lastFolder", "D:\\Elsewhere");
-    CHECK_FALSE(doomed.Save(temp.Path() / "missing-directory" / "settings.json"));
+    CHECK_FALSE(doomed.Save(temp.GetPath() / "missing-directory" / "settings.json"));
 
     // The unrelated file must be untouched, and no stray temporary left behind.
     CHECK(JsonFile::Load(path).Get("lastFolder") == "D:\\Repos\\IDE");
-    CHECK_FALSE(std::filesystem::exists(temp.Path() / "settings.json.tmp"));
+    CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "settings.json.tmp"));
 }
 
 TEST_CASE("A value that is not valid UTF-8 is saved instead of throwing")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile written;
 
@@ -184,7 +184,7 @@ TEST_CASE("A value that is not valid UTF-8 is saved instead of throwing")
 
     REQUIRE(written.Save(path));
     CHECK(std::filesystem::exists(path));
-    CHECK_FALSE(std::filesystem::exists(temp.Path() / "settings.json.tmp"));
+    CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "settings.json.tmp"));
 
     // Readable afterwards: the mangled characters became replacement characters rather
     // than corrupting the document.
@@ -195,7 +195,7 @@ TEST_CASE("A value that is not valid UTF-8 is saved instead of throwing")
 TEST_CASE("A moved-from file leaves the source usable enough to destroy")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile original;
     original.Set("lastFolder", "D:\\Repos\\IDE");
@@ -212,7 +212,7 @@ TEST_CASE("A moved-from file leaves the source usable enough to destroy")
 TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile file;
     file.Set("key.editor.zoomIn", "Ctrl+U");
@@ -220,7 +220,7 @@ TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
     REQUIRE(file.Save(path));
 
     const JsonFile loaded = JsonFile::Load(path);
-    std::vector<std::string> keys = loaded.Keys();
+    std::vector<std::string> keys = loaded.GetKeys();
     std::sort(keys.begin(), keys.end());
 
     REQUIRE(keys.size() == 2);
@@ -230,27 +230,27 @@ TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
 
 TEST_CASE("Keys on an empty file is empty")
 {
-    CHECK(JsonFile{}.Keys().empty());
+    CHECK(JsonFile{}.GetKeys().empty());
 }
 
 TEST_CASE("Remove takes the key out rather than leaving it holding an empty value")
 {
     TempDirectory temp;
-    const auto path = temp.Path() / "settings.json";
+    const auto path = temp.GetPath() / "settings.json";
 
     JsonFile file;
     file.Set("key.editor.zoomIn", "Ctrl+U");
     file.Set("wordWrap", "true");
     file.Remove("key.editor.zoomIn");
 
-    CHECK(file.Count() == 1);
+    CHECK(file.GetCount() == 1);
     CHECK(file.Get("key.editor.zoomIn").empty());
     REQUIRE(file.Save(path));
 
     // Proven through the file too: a key merely blanked would survive the round trip and
     // every reader would have to keep apologising for it.
     const JsonFile read = JsonFile::Load(path);
-    CHECK(read.Keys() == std::vector<std::string>{"wordWrap"});
+    CHECK(read.GetKeys() == std::vector<std::string>{"wordWrap"});
 }
 
 TEST_CASE("Removing a key that is not there changes nothing")
@@ -259,6 +259,6 @@ TEST_CASE("Removing a key that is not there changes nothing")
     file.Set("wordWrap", "true");
     file.Remove("absent");
 
-    CHECK(file.Count() == 1);
+    CHECK(file.GetCount() == 1);
     CHECK(file.Get("wordWrap") == "true");
 }

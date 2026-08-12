@@ -81,7 +81,7 @@ namespace Core
         void Run();
 
         /// Asks the open handle where it currently lives. Empty when it cannot be asked.
-        [[nodiscard]] std::filesystem::path QueryHandlePath() const;
+        [[nodiscard]] std::filesystem::path GetQueryHandlePath() const;
 
         void CheckForMove();
 

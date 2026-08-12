@@ -37,15 +37,15 @@ namespace Core
         /// class has to know which panel captures.
         [[nodiscard]] virtual bool IsCapturingInput() const { return false; }
 
-        [[nodiscard]] const std::string& Id() const noexcept { return m_Id; }
-        [[nodiscard]] const std::string& Title() const noexcept { return m_Title; }
+        [[nodiscard]] const std::string& GetId() const noexcept { return m_Id; }
+        [[nodiscard]] const std::string& GetTitle() const noexcept { return m_Title; }
 
         [[nodiscard]] bool IsVisible() const noexcept { return m_Visible; }
         void SetVisible(bool visible) noexcept { m_Visible = visible; }
 
         /// What this panel's visibility returns to when the layout is reset. A panel that
         /// starts hidden stays hidden through a reset: nobody asked to open it.
-        [[nodiscard]] bool DefaultVisible() const noexcept { return m_DefaultVisible; }
+        [[nodiscard]] bool IsDefaultVisible() const noexcept { return m_DefaultVisible; }
 
     private:
         std::string m_Id;

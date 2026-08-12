@@ -70,8 +70,8 @@ namespace Core
         void Rebase(const std::filesystem::path& newRoot);
 
         [[nodiscard]] bool HasRoot() const noexcept { return m_HasRoot; }
-        [[nodiscard]] FileNode& Root() noexcept { return m_Root; }
-        [[nodiscard]] const FileNode& Root() const noexcept { return m_Root; }
+        [[nodiscard]] FileNode& GetRoot() noexcept { return m_Root; }
+        [[nodiscard]] const FileNode& GetRoot() const noexcept { return m_Root; }
 
     private:
         [[nodiscard]] bool AskIgnored(const std::filesystem::path& path, bool isDirectory) const;

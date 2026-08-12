@@ -65,7 +65,7 @@ TEST_CASE("FirstRowOf and RowAt agree in both directions")
     RowMap rows;
     rows.Rebuild(buffer, 4, 4);
 
-    for (std::size_t line = 0; line < buffer.LineCount(); ++line)
+    for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
     {
         const std::size_t row = rows.FirstRowOf(line);
 

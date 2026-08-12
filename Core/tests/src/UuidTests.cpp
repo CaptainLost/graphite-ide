@@ -41,7 +41,7 @@ TEST_CASE("Every character is an uppercase hexadecimal digit or a separator")
 
 TEST_CASE("The version and variant bits say what kind of identifier this is")
 {
-    const auto& bytes = Core::Uuid::Generate().Bytes();
+    const auto& bytes = Core::Uuid::Generate().GetBytes();
 
     // Checked on the bytes rather than on the text, because the bytes are where RFC 4122
     // puts these fields — byte 6's top nibble and byte 8's top two bits.

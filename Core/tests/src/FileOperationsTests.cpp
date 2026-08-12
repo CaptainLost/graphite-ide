@@ -17,7 +17,7 @@ using Core::Rename;
 TEST_CASE("MakeUniquePath returns the original path when nothing collides")
 {
     TempDirectory temp;
-    const auto free = temp.Path() / "main.cpp";
+    const auto free = temp.GetPath() / "main.cpp";
 
     CHECK(MakeUniquePath(free) == free);
 }
@@ -27,7 +27,7 @@ TEST_CASE("MakeUniquePath appends copy on the first collision")
     TempDirectory temp;
     temp.MakeFile("main.cpp", "x");
 
-    CHECK(MakeUniquePath(temp.Path() / "main.cpp") == temp.Path() / "main copy.cpp");
+    CHECK(MakeUniquePath(temp.GetPath() / "main.cpp") == temp.GetPath() / "main copy.cpp");
 }
 
 TEST_CASE("MakeUniquePath numbers further collisions")
@@ -37,7 +37,7 @@ TEST_CASE("MakeUniquePath numbers further collisions")
     temp.MakeFile("main copy.cpp", "x");
     temp.MakeFile("main copy 2.cpp", "x");
 
-    CHECK(MakeUniquePath(temp.Path() / "main.cpp") == temp.Path() / "main copy 3.cpp");
+    CHECK(MakeUniquePath(temp.GetPath() / "main.cpp") == temp.GetPath() / "main copy 3.cpp");
 }
 
 TEST_CASE("MakeUniquePath handles a name without an extension")
@@ -45,7 +45,7 @@ TEST_CASE("MakeUniquePath handles a name without an extension")
     TempDirectory temp;
     temp.MakeDir("build");
 
-    CHECK(MakeUniquePath(temp.Path() / "build") == temp.Path() / "build copy");
+    CHECK(MakeUniquePath(temp.GetPath() / "build") == temp.GetPath() / "build copy");
 }
 
 TEST_CASE("MakeUniquePath treats a dotfile as a name, not an extension")
@@ -53,7 +53,7 @@ TEST_CASE("MakeUniquePath treats a dotfile as a name, not an extension")
     TempDirectory temp;
     temp.MakeFile(".gitignore", "x");
 
-    CHECK(MakeUniquePath(temp.Path() / ".gitignore") == temp.Path() / ".gitignore copy");
+    CHECK(MakeUniquePath(temp.GetPath() / ".gitignore") == temp.GetPath() / ".gitignore copy");
 }
 
 TEST_CASE("MakeUniquePath splits a compound extension the way std::filesystem does")
@@ -63,7 +63,7 @@ TEST_CASE("MakeUniquePath splits a compound extension the way std::filesystem do
 
     // stem() is "archive.tar", extension() is ".gz" — consistency with the standard
     // library beats intuition about double extensions.
-    CHECK(MakeUniquePath(temp.Path() / "archive.tar.gz") == temp.Path() / "archive.tar copy.gz");
+    CHECK(MakeUniquePath(temp.GetPath() / "archive.tar.gz") == temp.GetPath() / "archive.tar copy.gz");
 }
 
 TEST_CASE("IsValidFileName accepts ordinary names")
@@ -116,7 +116,7 @@ TEST_CASE("IsValidFileName rejects reserved device names, with or without an ext
 TEST_CASE("CreateEmptyFile creates a file and refuses to overwrite one")
 {
     TempDirectory temp;
-    const auto target = temp.Path() / "fresh.txt";
+    const auto target = temp.GetPath() / "fresh.txt";
 
     REQUIRE(CreateEmptyFile(target).HasValue());
     CHECK(std::filesystem::exists(target));
@@ -129,7 +129,7 @@ TEST_CASE("CreateEmptyFile creates a file and refuses to overwrite one")
 TEST_CASE("MakeDirectory creates a directory and refuses an occupied name")
 {
     TempDirectory temp;
-    const auto target = temp.Path() / "sub";
+    const auto target = temp.GetPath() / "sub";
 
     REQUIRE(MakeDirectory(target).HasValue());
     CHECK(std::filesystem::is_directory(target));
@@ -143,7 +143,7 @@ TEST_CASE("Rename moves a file to the new name")
 {
     TempDirectory temp;
     const auto from = temp.MakeFile("before.txt", "payload");
-    const auto to = temp.Path() / "after.txt";
+    const auto to = temp.GetPath() / "after.txt";
 
     REQUIRE(Rename(from, to).HasValue());
 
@@ -168,7 +168,7 @@ TEST_CASE("Rename reports a missing source")
 {
     TempDirectory temp;
 
-    const auto renamed = Rename(temp.Path() / "ghost.txt", temp.Path() / "any.txt");
+    const auto renamed = Rename(temp.GetPath() / "ghost.txt", temp.GetPath() / "any.txt");
 
     REQUIRE_FALSE(renamed.HasValue());
     CHECK(renamed.GetError().code == Core::ErrorCode::NotFound);
@@ -178,11 +178,11 @@ TEST_CASE("Rename reports a missing source through the OS error")
 {
     TempDirectory temp;
 
-    const auto renamed = Rename(temp.Path() / "ghost.txt", temp.Path() / "target.txt");
+    const auto renamed = Rename(temp.GetPath() / "ghost.txt", temp.GetPath() / "target.txt");
 
     REQUIRE_FALSE(renamed.HasValue());
     CHECK(renamed.GetError().code == Core::ErrorCode::NotFound);
-    CHECK_FALSE(std::filesystem::exists(temp.Path() / "target.txt"));
+    CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "target.txt"));
 }
 
 TEST_CASE("Duplicate copies a file beside the original and returns the new path")
@@ -193,10 +193,10 @@ TEST_CASE("Duplicate copies a file beside the original and returns the new path"
     const auto copied = Duplicate(original);
 
     REQUIRE(copied.HasValue());
-    CHECK(copied.Value() == temp.Path() / "main copy.cpp");
-    REQUIRE(std::filesystem::exists(copied.Value()));
+    CHECK(copied.GetValue() == temp.GetPath() / "main copy.cpp");
+    REQUIRE(std::filesystem::exists(copied.GetValue()));
 
-    std::ifstream stream{copied.Value(), std::ios::binary};
+    std::ifstream stream{copied.GetValue(), std::ios::binary};
     const std::string contents{std::istreambuf_iterator<char>{stream},
                                std::istreambuf_iterator<char>{}};
     CHECK(contents == "content");
@@ -207,18 +207,18 @@ TEST_CASE("Duplicate copies a directory recursively")
     TempDirectory temp;
     temp.MakeFile("sub/inner.txt", "x");
 
-    const auto copied = Duplicate(temp.Path() / "sub");
+    const auto copied = Duplicate(temp.GetPath() / "sub");
 
     REQUIRE(copied.HasValue());
-    CHECK(copied.Value() == temp.Path() / "sub copy");
-    CHECK(std::filesystem::exists(copied.Value() / "inner.txt"));
+    CHECK(copied.GetValue() == temp.GetPath() / "sub copy");
+    CHECK(std::filesystem::exists(copied.GetValue() / "inner.txt"));
 }
 
 TEST_CASE("Duplicate reports a missing source")
 {
     TempDirectory temp;
 
-    const auto copied = Duplicate(temp.Path() / "ghost.txt");
+    const auto copied = Duplicate(temp.GetPath() / "ghost.txt");
 
     REQUIRE_FALSE(copied.HasValue());
     CHECK(copied.GetError().code == Core::ErrorCode::NotFound);
@@ -239,7 +239,7 @@ TEST_CASE("MoveToRecycleBin reports a missing path")
 {
     TempDirectory temp;
 
-    const auto removed = MoveToRecycleBin(temp.Path() / "ghost.txt");
+    const auto removed = MoveToRecycleBin(temp.GetPath() / "ghost.txt");
 
     REQUIRE_FALSE(removed.HasValue());
     CHECK(removed.GetError().code == Core::ErrorCode::NotFound);

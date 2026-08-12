@@ -49,12 +49,12 @@ namespace Graphite
             return;
         }
 
-        const auto active = documents.Active();
+        const auto active = documents.GetActive();
 
         if (active && documents.At(*active).document)
         {
             const Core::OpenItem& item = documents.At(*active);
-            const Core::TextBuffer& buffer = item.document->Buffer();
+            const Core::TextBuffer& buffer = item.document->GetBuffer();
 
             // The strip is exactly one frame tall: height == FontSize + 2 * FramePadding.y
             // (that is what GetFrameHeight() above returns), and a line of text is
@@ -97,9 +97,9 @@ namespace Graphite
             if (from != to)
                 position += " (" + std::to_string(to - from) + " selected)";
 
-            const std::string encoding{Core::EncodingName(item.document->FileEncoding())};
+            const std::string encoding{Core::EncodingName(item.document->GetFileEncoding())};
             const std::string ending =
-                LineEndingName(item.document->DocumentLineEnding(), item.document->WasMixed());
+                LineEndingName(item.document->GetDocumentLineEnding(), item.document->WasMixed());
 
             const std::string right = position + "    " + encoding + "    " + ending;
             const float width = ImGui::CalcTextSize(right.c_str()).x;

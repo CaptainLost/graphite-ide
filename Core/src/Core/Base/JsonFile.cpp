@@ -71,7 +71,7 @@ namespace Core
         m_Document->root.erase(std::string{key});
     }
 
-    std::vector<std::string> JsonFile::Keys() const
+    std::vector<std::string> JsonFile::GetKeys() const
     {
         const nlohmann::json& root = m_Document->root;
 
@@ -86,7 +86,7 @@ namespace Core
         return keys;
     }
 
-    std::size_t JsonFile::Count() const noexcept
+    std::size_t JsonFile::GetCount() const noexcept
     {
         return m_Document->root.size();
     }

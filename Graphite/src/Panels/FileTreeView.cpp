@@ -35,7 +35,7 @@ namespace Graphite
         if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
                               ImGuiWindowFlags_HorizontalScrollbar))
         {
-            RenderNode(m_Workspace.Tree().Root());
+            RenderNode(m_Workspace.Tree().GetRoot());
         }
 
         ImGui::EndChild();
@@ -51,7 +51,7 @@ namespace Graphite
         if (ImGui::Button(ICON_MDI_REFRESH))
         {
             m_Workspace.Reload();
-            Core::FileNode& root = m_Workspace.Tree().Root();
+            Core::FileNode& root = m_Workspace.Tree().GetRoot();
 
             if (root.accessible)
                 CORE_INFO("File tree refreshed");
@@ -135,7 +135,7 @@ namespace Graphite
 
         // The workspace root has no parent inside the tree, so renaming, deleting or
         // duplicating it would leave the panel pointing at a path that no longer exists.
-        const bool isRoot = m_Workspace.IsOpen() && node.path == m_Workspace.Root();
+        const bool isRoot = m_Workspace.IsOpen() && node.path == m_Workspace.GetRoot();
 
         if (ImGui::MenuItem("Show in Explorer"))
         {
@@ -152,7 +152,7 @@ namespace Graphite
         {
             std::error_code code;
             const std::filesystem::path relative =
-                std::filesystem::relative(node.path, m_Workspace.Root(), code);
+                std::filesystem::relative(node.path, m_Workspace.GetRoot(), code);
 
             // No common prefix means relative() fails; the absolute path is still useful.
             ImGui::SetClipboardText(Core::ToUtf8(code ? node.path : relative).c_str());
@@ -226,7 +226,7 @@ namespace Graphite
 
         // Depth-first over an explicit stack: the tree is only as deep as the user has
         // expanded it, and this avoids a recursive helper for a two-line job.
-        std::vector<Core::FileNode*> stack{&m_Workspace.Tree().Root()};
+        std::vector<Core::FileNode*> stack{&m_Workspace.Tree().GetRoot()};
 
         while (!stack.empty())
         {
@@ -512,7 +512,7 @@ namespace Graphite
             // DocumentSet owns - so they are read from it rather than from
             // Workspace::SelectedFile, which only ever moves when a row here is clicked and
             // so stayed put whenever the user switched tabs in the editor instead.
-            const auto active = m_Documents.Active();
+            const auto active = m_Documents.GetActive();
             const bool isActive = active.has_value() && m_Documents.At(*active).path == node.path;
             const bool isOpen = m_Documents.Find(node.path).has_value();
 

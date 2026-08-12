@@ -36,21 +36,21 @@ namespace Core
         [[nodiscard]] bool HasValue() const noexcept { return m_Data.index() == 0; }
         explicit operator bool() const noexcept { return HasValue(); }
 
-        T& Value() &
+        T& GetValue() &
         {
-            CORE_ASSERT(HasValue(), "Result::Value() called on an error result");
+            CORE_ASSERT(HasValue(), "Result::GetValue() called on an error result");
             return std::get<0>(m_Data);
         }
 
-        const T& Value() const&
+        const T& GetValue() const&
         {
-            CORE_ASSERT(HasValue(), "Result::Value() called on an error result");
+            CORE_ASSERT(HasValue(), "Result::GetValue() called on an error result");
             return std::get<0>(m_Data);
         }
 
-        T&& Value() &&
+        T&& GetValue() &&
         {
-            CORE_ASSERT(HasValue(), "Result::Value() called on an error result");
+            CORE_ASSERT(HasValue(), "Result::GetValue() called on an error result");
             return std::get<0>(std::move(m_Data));
         }
 

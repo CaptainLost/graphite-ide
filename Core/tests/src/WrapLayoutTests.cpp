@@ -204,7 +204,7 @@ TEST_CASE("Both directions compose to the identity for every offset")
     RowMap rows;
     rows.Rebuild(buffer, 6, 4);
 
-    for (std::size_t offset = 0; offset <= buffer.Length(); ++offset)
+    for (std::size_t offset = 0; offset <= buffer.GetLength(); ++offset)
     {
         const VisualPosition position = CaretToVisual(buffer, rows, offset, 4);
 
@@ -228,7 +228,7 @@ TEST_CASE("Both directions compose to the identity across characters outside ASC
     RowMap rows;
     rows.Rebuild(buffer, 6, 4);
 
-    const std::string text = buffer.Text();
+    const std::string text = buffer.GetText();
     std::size_t offset = 0;
 
     while (true)

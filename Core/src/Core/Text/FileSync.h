@@ -71,7 +71,7 @@ namespace Core
     /// DocumentSet members that look an item up by path, so reconciling one item against
     /// disk genuinely needs the set it belongs to and not only the item.
     ///
-    /// `index` must be below `documents.Count()` in every function here. DocumentSet::At
+    /// `index` must be below `documents.GetCount()` in every function here. DocumentSet::At
     /// indexes its vector unchecked, so an index past the end is undefined behaviour
     /// before any of these functions reaches a guard of its own — including ReloadItem's
     /// check for an item carrying no document, which cannot be reached without first
@@ -131,7 +131,7 @@ namespace Core
         /// false for one that ran to the end with documents skipped over a conflict: both
         /// mean some dirty document is not actually saved, which is the only thing a
         /// caller about to close something needs to know.
-        [[nodiscard]] bool Complete() const noexcept
+        [[nodiscard]] bool IsComplete() const noexcept
         {
             return !stoppedAt.has_value() && conflicted.empty();
         }
@@ -139,7 +139,7 @@ namespace Core
 
     /// Saves every modified document, under two rules that differ on purpose.
     ///
-    /// A document whose ChangedOnDisk() is true is skipped and collected, and the batch
+    /// A document whose HasChangedOnDisk() is true is skipped and collected, and the batch
     /// continues: one stale file among five dirty ones is no reason to leave the other
     /// four unsaved. It is not overwritten silently either — asking about each conflict in
     /// turn is the modal storm a queued question exists to avoid, so a conflict gets its

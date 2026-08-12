@@ -78,14 +78,14 @@ TEST_CASE("Overflow is reported once and then cleared")
     ChangeCollector collector;
     collector.AddOverflow(At(0));
 
-    CHECK_FALSE(collector.Overflowed());   // not until it settles
+    CHECK_FALSE(collector.HasOverflowed());   // not until it settles
 
     REQUIRE(collector.TakeSettled(At(500), kQuiet).empty());
-    CHECK(collector.Overflowed());
+    CHECK(collector.HasOverflowed());
 
     // The consumer has acted on it; a second read must not make it act again.
     REQUIRE(collector.TakeSettled(At(1000), kQuiet).empty());
-    CHECK_FALSE(collector.Overflowed());
+    CHECK_FALSE(collector.HasOverflowed());
 }
 
 TEST_CASE("Overflow settles alongside ordinary changes")
@@ -99,5 +99,5 @@ TEST_CASE("Overflow settles alongside ordinary changes")
     const auto settled = collector.TakeSettled(At(400), kQuiet);
 
     CHECK(settled.size() == 1);
-    CHECK(collector.Overflowed());
+    CHECK(collector.HasOverflowed());
 }

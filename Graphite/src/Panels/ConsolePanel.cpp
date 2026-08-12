@@ -27,7 +27,7 @@ namespace Graphite
 
     void ConsolePanel::OnUIRender()
     {
-        m_Entries = m_Sink->Snapshot();
+        m_Entries = m_Sink->GetSnapshot();
 
         RenderToolbar();
         ImGui::Separator();

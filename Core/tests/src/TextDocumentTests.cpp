@@ -30,7 +30,7 @@ namespace
         auto document = TextDocument::FromContent(std::move(bytes), "C:/tmp/sample.txt");
         REQUIRE(document);
 
-        return std::move(document).Value();
+        return std::move(document).GetValue();
     }
 
     void WriteAllBytes(const std::filesystem::path& path, std::string_view contents)
@@ -86,10 +86,10 @@ TEST_CASE("A plain LF file loads as it is")
 {
     const TextDocument document = Make("one\ntwo\n");
 
-    CHECK(document.Buffer().Text() == "one\ntwo\n");
-    CHECK(document.DocumentLineEnding() == LineEnding::Lf);
+    CHECK(document.GetBuffer().GetText() == "one\ntwo\n");
+    CHECK(document.GetDocumentLineEnding() == LineEnding::Lf);
     CHECK_FALSE(document.WasMixed());
-    CHECK(document.FileEncoding() == Encoding::Utf8);
+    CHECK(document.GetFileEncoding() == Encoding::Utf8);
     CHECK_FALSE(document.IsReadOnly());
 }
 
@@ -98,41 +98,41 @@ TEST_CASE("CRLF is normalised away inside the buffer")
     const TextDocument document = Make("one\r\ntwo\r\n");
 
     // The buffer never holds a '\r', so nothing downstream has to know CRLF exists.
-    CHECK(document.Buffer().Text() == "one\ntwo\n");
-    CHECK(document.Buffer().LineCount() == 3);
-    CHECK(document.DocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.GetBuffer().GetText() == "one\ntwo\n");
+    CHECK(document.GetBuffer().GetLineCount() == 3);
+    CHECK(document.GetDocumentLineEnding() == LineEnding::Crlf);
 }
 
 TEST_CASE("A CRLF file is written back as CRLF")
 {
     const TextDocument document = Make("one\r\ntwo\r\n");
 
-    CHECK(document.Bytes() == "one\r\ntwo\r\n");
+    CHECK(document.GetBytes() == "one\r\ntwo\r\n");
 }
 
 TEST_CASE("An untouched file comes back byte for byte")
 {
     const std::string original = "int main()\r\n{\r\n    return 0;\r\n}\r\n";
 
-    CHECK(Make(original).Bytes() == original);
+    CHECK(Make(original).GetBytes() == original);
 }
 
 TEST_CASE("A file with both styles takes the majority and says it was mixed")
 {
     const TextDocument document = Make("a\r\nb\r\nc\r\nd\ne\r\n");
 
-    CHECK(document.DocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.GetDocumentLineEnding() == LineEnding::Crlf);
     CHECK(document.WasMixed());
 
     // Saving unifies, which is why the status bar has to show it beforehand.
-    CHECK(document.Bytes() == "a\r\nb\r\nc\r\nd\r\ne\r\n");
+    CHECK(document.GetBytes() == "a\r\nb\r\nc\r\nd\r\ne\r\n");
 }
 
 TEST_CASE("A mostly-LF file with one CRLF takes LF")
 {
     const TextDocument document = Make("a\nb\nc\r\nd\n");
 
-    CHECK(document.DocumentLineEnding() == LineEnding::Lf);
+    CHECK(document.GetDocumentLineEnding() == LineEnding::Lf);
     CHECK(document.WasMixed());
 }
 
@@ -140,32 +140,32 @@ TEST_CASE("A file with no line break at all is LF")
 {
     const TextDocument document = Make("no newline here");
 
-    CHECK(document.DocumentLineEnding() == LineEnding::Lf);
+    CHECK(document.GetDocumentLineEnding() == LineEnding::Lf);
     CHECK_FALSE(document.WasMixed());
-    CHECK(document.Bytes() == "no newline here");
+    CHECK(document.GetBytes() == "no newline here");
 }
 
 TEST_CASE("An empty file loads as one empty line")
 {
     const TextDocument document = Make("");
 
-    CHECK(document.Buffer().LineCount() == 1);
-    CHECK(document.Bytes() == "");
+    CHECK(document.GetBuffer().GetLineCount() == 1);
+    CHECK(document.GetBytes() == "");
 }
 
 TEST_CASE("A file of nothing but newlines keeps every one of them")
 {
     const TextDocument document = Make("\n\n\n");
 
-    CHECK(document.Buffer().LineCount() == 4);
-    CHECK(document.Bytes() == "\n\n\n");
+    CHECK(document.GetBuffer().GetLineCount() == 4);
+    CHECK(document.GetBytes() == "\n\n\n");
 }
 
 TEST_CASE("A lone carriage return next to a real CRLF round-trips untouched")
 {
     // NormaliseLineEndings only ever folds a "\r\n" pair; a '\r' with no '\n' right
     // after it is not one of those and must survive exactly as it was.
-    CHECK(Make("a\r\r\nb").Bytes() == "a\r\r\nb");
+    CHECK(Make("a\r\r\nb").GetBytes() == "a\r\r\nb");
 }
 
 TEST_CASE("A UTF-8 byte order mark is stripped from the content and put back on save")
@@ -174,16 +174,16 @@ TEST_CASE("A UTF-8 byte order mark is stripped from the content and put back on 
 
     // Left in the content it would be an invisible character in line 1, throwing off
     // every column and showing the file as changed in git the moment it was saved.
-    CHECK(document.Buffer().Text() == "int main() {}");
-    CHECK(document.FileEncoding() == Encoding::Utf8Bom);
-    CHECK(document.Bytes() == "\xEF\xBB\xBFint main() {}");
+    CHECK(document.GetBuffer().GetText() == "int main() {}");
+    CHECK(document.GetFileEncoding() == Encoding::Utf8Bom);
+    CHECK(document.GetBytes() == "\xEF\xBB\xBFint main() {}");
 }
 
 TEST_CASE("A Visual Studio file with a mark and CRLF round-trips exactly")
 {
     const std::string original = "\xEF\xBB\xBF<Project>\r\n</Project>\r\n";
 
-    CHECK(Make(original).Bytes() == original);
+    CHECK(Make(original).GetBytes() == original);
 }
 
 TEST_CASE("Content that is not valid UTF-8 loads read-only with its bytes untouched")
@@ -193,15 +193,15 @@ TEST_CASE("Content that is not valid UTF-8 loads read-only with its bytes untouc
     const TextDocument document = Make(original);
 
     CHECK(document.IsReadOnly());
-    CHECK(document.FileEncoding() == Encoding::Unknown);
-    CHECK(document.Bytes() == original);
+    CHECK(document.GetFileEncoding() == Encoding::Unknown);
+    CHECK(document.GetBytes() == original);
 }
 
 TEST_CASE("The document remembers where it came from")
 {
     const TextDocument document = Make("hello");
 
-    CHECK(document.Path() == std::filesystem::path{"C:/tmp/sample.txt"});
+    CHECK(document.GetPath() == std::filesystem::path{"C:/tmp/sample.txt"});
 }
 
 TEST_CASE("A freshly loaded document is not modified")
@@ -215,10 +215,10 @@ TEST_CASE("Editing modifies, and undoing all the way back clears it again")
 {
     TextDocument document = Make("hello");
 
-    document.Buffer().Insert(5, " world");
+    document.GetBuffer().Insert(5, " world");
     CHECK(document.IsModified());
 
-    document.Buffer().Undo();
+    document.GetBuffer().Undo();
     CHECK_FALSE(document.IsModified());
 }
 
@@ -226,14 +226,14 @@ TEST_CASE("Marking saved moves the point that modification is measured from")
 {
     TextDocument document = Make("hello");
 
-    document.Buffer().Insert(5, "!");
+    document.GetBuffer().Insert(5, "!");
     document.MarkSaved();
     CHECK_FALSE(document.IsModified());
 
-    document.Buffer().Undo();
+    document.GetBuffer().Undo();
     CHECK(document.IsModified());
 
-    document.Buffer().Redo();
+    document.GetBuffer().Redo();
     CHECK_FALSE(document.IsModified());
 }
 
@@ -241,22 +241,22 @@ TEST_CASE("Edits made after saving are written back with the file's own line end
 {
     TextDocument document = Make("one\r\ntwo\r\n");
 
-    document.Buffer().Insert(document.Buffer().Length(), "three\n");
+    document.GetBuffer().Insert(document.GetBuffer().GetLength(), "three\n");
 
-    CHECK(document.Bytes() == "one\r\ntwo\r\nthree\r\n");
+    CHECK(document.GetBytes() == "one\r\ntwo\r\nthree\r\n");
 }
 
 TEST_CASE("A byte order mark followed by invalid UTF-8 still round-trips through Bytes")
 {
     // The mark is real; what follows it is not valid UTF-8 ("część" as Windows-1250
     // writes it). The mark must still come back — losing it would shrink the file by
-    // three bytes the moment a read-only document's Bytes() is written to disk.
+    // three bytes the moment a read-only document's GetBytes() is written to disk.
     const std::string original = "\xEF\xBB\xBF" "cz\xEA\x9C\xE6\r\nnext line\r\n";
     const TextDocument document = Make(original);
 
     CHECK(document.IsReadOnly());
-    CHECK(document.FileEncoding() == Encoding::Unknown);
-    CHECK(document.Bytes() == original);
+    CHECK(document.GetFileEncoding() == Encoding::Unknown);
+    CHECK(document.GetBytes() == original);
 }
 
 TEST_CASE("Load reads an ordinary file from disk")
@@ -267,8 +267,8 @@ TEST_CASE("Load reads an ordinary file from disk")
     const auto document = TextDocument::Load(path);
     REQUIRE(document);
 
-    CHECK(document.Value().Buffer().Text() == "one\ntwo\n");
-    CHECK(document.Value().DocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.GetValue().GetBuffer().GetText() == "one\ntwo\n");
+    CHECK(document.GetValue().GetDocumentLineEnding() == LineEnding::Crlf);
 }
 
 TEST_CASE("Load succeeds on a legitimately empty file")
@@ -282,42 +282,42 @@ TEST_CASE("Load succeeds on a legitimately empty file")
     const auto document = TextDocument::Load(path);
     REQUIRE(document);
 
-    CHECK(document.Value().Buffer().Text() == "");
-    CHECK(document.Value().Buffer().LineCount() == 1);
+    CHECK(document.GetValue().GetBuffer().GetText() == "");
+    CHECK(document.GetValue().GetBuffer().GetLineCount() == 1);
 }
 
 TEST_CASE("A file on disk loads with its path and content")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "main.cpp";
+    const auto path = directory.GetPath() / "main.cpp";
     WriteAllBytes(path, "int main()\r\n{\r\n}\r\n");
 
     const auto document = TextDocument::Load(path);
 
     REQUIRE(document);
-    CHECK(document.Value().Buffer().Text() == "int main()\n{\n}\n");
-    CHECK(document.Value().DocumentLineEnding() == LineEnding::Crlf);
-    CHECK(document.Value().Path() == path);
+    CHECK(document.GetValue().GetBuffer().GetText() == "int main()\n{\n}\n");
+    CHECK(document.GetValue().GetDocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.GetValue().GetPath() == path);
 }
 
 TEST_CASE("A file read from disk is written back byte for byte")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "project.xml";
+    const auto path = directory.GetPath() / "project.xml";
     const std::string original = "\xEF\xBB\xBF<Project>\r\n</Project>\r\n";
     WriteAllBytes(path, original);
 
     const auto document = TextDocument::Load(path);
 
     REQUIRE(document);
-    CHECK(document.Value().Bytes() == original);
+    CHECK(document.GetValue().GetBytes() == original);
 }
 
 TEST_CASE("Loading a file that is not there fails rather than giving an empty document")
 {
     TempDirectory directory;
 
-    const auto document = TextDocument::Load(directory.Path() / "absent.cpp");
+    const auto document = TextDocument::Load(directory.GetPath() / "absent.cpp");
 
     REQUIRE_FALSE(document);
     CHECK(document.GetError().code == Core::ErrorCode::NotFound);
@@ -328,21 +328,21 @@ TEST_CASE("A file whose name is not ASCII loads")
     // Paths go through the wide-character API, so a name outside the active codepage
     // has to work — this is what Core::ToUtf8 exists for.
     TempDirectory directory;
-    const auto path = directory.Path() / Core::FromUtf8("\xC4\x87wiczenie.txt");
+    const auto path = directory.GetPath() / Core::FromUtf8("\xC4\x87wiczenie.txt");
     WriteAllBytes(path, "content");
 
     const auto document = TextDocument::Load(path);
 
     REQUIRE(document);
-    CHECK(document.Value().Buffer().Text() == "content");
-    CHECK(document.Value().Path() == path);
+    CHECK(document.GetValue().GetBuffer().GetText() == "content");
+    CHECK(document.GetValue().GetPath() == path);
 }
 
 TEST_CASE("Loading a directory fails with InvalidArgument rather than NotFound")
 {
     TempDirectory directory;
 
-    const auto document = TextDocument::Load(directory.Path());
+    const auto document = TextDocument::Load(directory.GetPath());
 
     REQUIRE_FALSE(document);
     CHECK(document.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -352,7 +352,7 @@ TEST_CASE("Loading a directory fails with InvalidArgument rather than NotFound")
 TEST_CASE("Load refuses a file larger than the maximum size, before reading it")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "huge.bin";
+    const auto path = directory.GetPath() / "huge.bin";
     WriteAllBytes(path, "");
 
     // Marking the file sparse first means growing it reserves no real disk clusters,
@@ -388,7 +388,7 @@ TEST_CASE("Load reports AccessDenied rather than NotFound for a file it cannot o
     // requiring no second process: opening with dwShareMode 0 denies every other
     // handle, including the ifstream Load opens next.
     TempDirectory directory;
-    const auto path = directory.Path() / "locked.txt";
+    const auto path = directory.GetPath() / "locked.txt";
     WriteAllBytes(path, "content");
 
     const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, /*dwShareMode=*/0, nullptr,
@@ -443,9 +443,9 @@ TEST_CASE("A UTF-16 file with a mark opens and reports its encoding")
         std::string("\xFF\xFEH\0i\0", 6), "C:/tmp/utf16.txt");
 
     REQUIRE(document);
-    CHECK(document.Value().Buffer().Text() == "Hi");
-    CHECK(document.Value().FileEncoding() == Encoding::Utf16Le);
-    CHECK_FALSE(document.Value().IsReadOnly());
+    CHECK(document.GetValue().GetBuffer().GetText() == "Hi");
+    CHECK(document.GetValue().GetFileEncoding() == Encoding::Utf16Le);
+    CHECK_FALSE(document.GetValue().IsReadOnly());
 }
 
 TEST_CASE("A UTF-16 file without a mark opens too")
@@ -454,8 +454,8 @@ TEST_CASE("A UTF-16 file without a mark opens too")
         std::string("H\0e\0l\0l\0o\0", 10), "C:/tmp/nobom.txt");
 
     REQUIRE(document);
-    CHECK(document.Value().Buffer().Text() == "Hello");
-    CHECK(document.Value().FileEncoding() == Encoding::Utf16Le);
+    CHECK(document.GetValue().GetBuffer().GetText() == "Hello");
+    CHECK(document.GetValue().GetFileEncoding() == Encoding::Utf16Le);
 }
 
 TEST_CASE("A UTF-16 file comes back byte for byte, with and without its mark")
@@ -469,7 +469,7 @@ TEST_CASE("A UTF-16 file comes back byte for byte, with and without its mark")
         const auto document = TextDocument::FromContent(original, "C:/tmp/round.txt");
 
         REQUIRE(document);
-        CHECK(document.Value().Bytes() == original);
+        CHECK(document.GetValue().GetBytes() == original);
     }
 }
 
@@ -479,9 +479,9 @@ TEST_CASE("CRLF in a UTF-16 file is normalised and restored like any other file"
     const auto document = TextDocument::FromContent(original, "C:/tmp/crlf.txt");
 
     REQUIRE(document);
-    CHECK(document.Value().Buffer().Text() == "a\nb");
-    CHECK(document.Value().DocumentLineEnding() == LineEnding::Crlf);
-    CHECK(document.Value().Bytes() == original);
+    CHECK(document.GetValue().GetBuffer().GetText() == "a\nb");
+    CHECK(document.GetValue().GetDocumentLineEnding() == LineEnding::Crlf);
+    CHECK(document.GetValue().GetBytes() == original);
 }
 
 TEST_CASE("A damaged UTF-16 file is refused with a message naming the damage")
@@ -522,14 +522,14 @@ TEST_CASE("The probe and the document agree about a file that changes shape past
     bytes += std::string("b\0", 2);
 
     TempDirectory directory;
-    const auto path = directory.Path() / "tail.txt";
+    const auto path = directory.GetPath() / "tail.txt";
     WriteAllBytes(path, bytes);
 
     const auto probe = ProbeFile(path);
 
     REQUIRE(probe);
-    CHECK(probe.Value().encoding == Encoding::Utf16Le);
-    CHECK(probe.Value().kind == FileKind::Text);
+    CHECK(probe.GetValue().encoding == Encoding::Utf16Le);
+    CHECK(probe.GetValue().kind == FileKind::Text);
 
     // The document now reads the same prefix and reaches the same verdict, so the file it
     // loads is the file the probe cleared. The strict rule then judges the whole decoded
@@ -555,10 +555,10 @@ TEST_CASE("A marked UTF-16 file keeps its control characters instead of being re
     const auto document = TextDocument::FromContent(original, "C:/tmp/pagebreak.c");
 
     REQUIRE(document);
-    CHECK(document.Value().FileEncoding() == Encoding::Utf16Le);
-    CHECK_FALSE(document.Value().IsReadOnly());
-    CHECK(document.Value().Buffer().Text() == std::string("a\x0C" "b\xC2\x85", 5));
-    CHECK(document.Value().Bytes() == original);
+    CHECK(document.GetValue().GetFileEncoding() == Encoding::Utf16Le);
+    CHECK_FALSE(document.GetValue().IsReadOnly());
+    CHECK(document.GetValue().GetBuffer().GetText() == std::string("a\x0C" "b\xC2\x85", 5));
+    CHECK(document.GetValue().GetBytes() == original);
 }
 
 TEST_CASE("A UTF-32 file is refused rather than opened as UTF-16")
@@ -594,7 +594,7 @@ TEST_CASE("Saving round trips every encoding byte for byte")
 
         auto document = Core::TextDocument::Load(path);
         REQUIRE(document);
-        REQUIRE(document.Value().Save());
+        REQUIRE(document.GetValue().Save());
 
         CHECK(ReadAllBytes(path) == original);
     }
@@ -606,12 +606,12 @@ TEST_CASE("A save clears the modified flag and refreshes the stamp")
 
     auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    Core::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).GetValue();
 
     CHECK_FALSE(document.IsModified());
-    CHECK_FALSE(document.ChangedOnDisk());
+    CHECK_FALSE(document.HasChangedOnDisk());
 
-    document.Buffer().Insert(0, "more ");
+    document.GetBuffer().Insert(0, "more ");
     CHECK(document.IsModified());
 
     REQUIRE(document.Save());
@@ -619,7 +619,7 @@ TEST_CASE("A save clears the modified flag and refreshes the stamp")
 
     // The stamp now describes the file we just wrote, which is what stops our own save
     // from arriving later as somebody else's change.
-    CHECK_FALSE(document.ChangedOnDisk());
+    CHECK_FALSE(document.HasChangedOnDisk());
 }
 
 TEST_CASE("A save breaks the undo group, so typing after it is a step of its own")
@@ -628,9 +628,9 @@ TEST_CASE("A save breaks the undo group, so typing after it is a step of its own
 
     auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    Core::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).GetValue();
 
-    Core::TextBuffer& buffer = document.Buffer();
+    Core::TextBuffer& buffer = document.GetBuffer();
 
     buffer.BeginTransaction();
     buffer.Insert(0, "a");
@@ -646,13 +646,13 @@ TEST_CASE("A save breaks the undo group, so typing after it is a step of its own
     buffer.Insert(1, "b");
     buffer.EndTransaction();
 
-    REQUIRE(buffer.Text() == "ab");
+    REQUIRE(buffer.GetText() == "ab");
 
     CHECK(buffer.Undo());
-    CHECK(buffer.Text() == "a");
+    CHECK(buffer.GetText() == "a");
 
     CHECK(buffer.Undo());
-    CHECK(buffer.Text().empty());
+    CHECK(buffer.GetText().empty());
 }
 
 TEST_CASE("A document that never took a stamp reports no change on disk")
@@ -669,7 +669,7 @@ TEST_CASE("A document that never took a stamp reports no change on disk")
     auto document = Core::TextDocument::FromContent("in memory\n", path);
     REQUIRE(document);
 
-    CHECK_FALSE(document.Value().ChangedOnDisk());
+    CHECK_FALSE(document.GetValue().HasChangedOnDisk());
 }
 
 TEST_CASE("A file rewritten by other means is noticed")
@@ -678,14 +678,14 @@ TEST_CASE("A file rewritten by other means is noticed")
 
     auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    Core::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).GetValue();
 
     // A different length as well as different content. The check compares size and
     // modification time, and two writes in quick succession can share a timestamp — a
     // test relying on the timestamp alone is a test that eventually flickers.
     WriteAllBytes(path, "replaced from elsewhere\n");
 
-    CHECK(document.ChangedOnDisk());
+    CHECK(document.HasChangedOnDisk());
 }
 
 TEST_CASE("Reloading is one undo step")
@@ -694,16 +694,16 @@ TEST_CASE("Reloading is one undo step")
 
     auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    Core::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).GetValue();
 
     WriteAllBytes(path, "replaced from elsewhere\n");
     REQUIRE(document.ReloadFromDisk());
 
-    CHECK(document.Buffer().Text() == "replaced from elsewhere\n");
+    CHECK(document.GetBuffer().GetText() == "replaced from elsewhere\n");
     CHECK_FALSE(document.IsModified());
 
-    CHECK(document.Buffer().Undo());
-    CHECK(document.Buffer().Text() == "original\n");
+    CHECK(document.GetBuffer().Undo());
+    CHECK(document.GetBuffer().GetText() == "original\n");
 
     // Undoing a reload puts the document out of step with the file again, which is
     // exactly what modified means.
@@ -716,14 +716,14 @@ TEST_CASE("A reload that cannot decode leaves the document untouched")
 
     auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    Core::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).GetValue();
 
     // A lone high surrogate behind a UTF-16 LE mark: recognised as UTF-16, impossible to
     // decode.
     WriteAllBytes(path, std::string{"\xff\xfe\x3d\xd8", 4});
 
     CHECK_FALSE(document.ReloadFromDisk());
-    CHECK(document.Buffer().Text() == "original\n");
+    CHECK(document.GetBuffer().GetText() == "original\n");
     CHECK_FALSE(document.IsModified());
 }
 
@@ -733,13 +733,13 @@ TEST_CASE("AcceptDiskState silences a change without reading it")
 
     auto loaded = Core::TextDocument::Load(path);
     REQUIRE(loaded);
-    Core::TextDocument document = std::move(loaded).Value();
+    Core::TextDocument document = std::move(loaded).GetValue();
 
     WriteAllBytes(path, "replaced from elsewhere\n");
-    REQUIRE(document.ChangedOnDisk());
+    REQUIRE(document.HasChangedOnDisk());
 
     document.AcceptDiskState();
 
-    CHECK_FALSE(document.ChangedOnDisk());
-    CHECK(document.Buffer().Text() == "original\n");
+    CHECK_FALSE(document.HasChangedOnDisk());
+    CHECK(document.GetBuffer().GetText() == "original\n");
 }

@@ -34,7 +34,7 @@ namespace Core
 
         /// True when the last TakeSettled call released a lost-changes marker. Reading it
         /// does not clear it; the next TakeSettled does.
-        [[nodiscard]] bool Overflowed() const noexcept { return m_Overflowed; }
+        [[nodiscard]] bool HasOverflowed() const noexcept { return m_Overflowed; }
 
     private:
         /// A set, not a vector: a single build touches one directory thousands of times

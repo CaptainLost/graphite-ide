@@ -44,7 +44,7 @@ namespace Graphite
                 const auto directory = Core::ExecutableDirectory();
 
                 if (directory)
-                    return directory.Value() / "graphite.json";
+                    return directory.GetValue() / "graphite.json";
 
                 // Falling back to the working directory keeps settings working rather
                 // than losing them, which is the better failure for a preferences file.
@@ -154,7 +154,7 @@ namespace Graphite
     {
         const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 
-        for (const std::string& key : file.Keys())
+        for (const std::string& key : file.GetKeys())
         {
             if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
             {
@@ -189,7 +189,7 @@ namespace Graphite
         // invalidate what is being walked.
         std::vector<std::string> stale;
 
-        for (const std::string& key : file.Keys())
+        for (const std::string& key : file.GetKeys())
         {
             if (std::string_view{key}.starts_with(kKeyBindingPrefix))
             {

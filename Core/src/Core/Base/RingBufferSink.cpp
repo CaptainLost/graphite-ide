@@ -20,13 +20,13 @@ namespace Core
             m_Entries.pop_front();
     }
 
-    std::vector<LogEntry> RingBufferSink::Snapshot() const
+    std::vector<LogEntry> RingBufferSink::GetSnapshot() const
     {
         const std::scoped_lock lock{m_Mutex};
         return {m_Entries.begin(), m_Entries.end()};
     }
 
-    std::size_t RingBufferSink::Count() const
+    std::size_t RingBufferSink::GetCount() const
     {
         const std::scoped_lock lock{m_Mutex};
         return m_Entries.size();

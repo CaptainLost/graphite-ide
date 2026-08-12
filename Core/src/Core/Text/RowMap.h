@@ -68,7 +68,7 @@ namespace Core
         void SetRowsOf(std::size_t line, std::size_t rows);
 
         [[nodiscard]] std::size_t TotalRows() const noexcept { return m_TotalRows; }
-        [[nodiscard]] std::size_t LineCount() const noexcept { return m_RowsPerLine.size(); }
+        [[nodiscard]] std::size_t GetLineCount() const noexcept { return m_RowsPerLine.size(); }
 
         /// The width the map was last built for, kNoWrap when it is not wrapping.
         ///
@@ -76,7 +76,7 @@ namespace Core
         /// added or removed lines, an undo — can be made at the width already in force.
         /// Only the widget knows that width, and it is not on screen when the edit
         /// happens, so without this the map would silently fall back to unwrapped.
-        [[nodiscard]] std::size_t ColumnsPerRow() const noexcept { return m_ColumnsPerRow; }
+        [[nodiscard]] std::size_t GetColumnsPerRow() const noexcept { return m_ColumnsPerRow; }
 
         /// The line at `row`, and which of its rows that is. A row past the end resolves
         /// to the last line, the same way the widget already clamps a click below the

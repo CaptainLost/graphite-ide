@@ -54,10 +54,10 @@ namespace Graphite
 
     void ExplorerPanel::SyncModeWithWorkspace()
     {
-        if (m_Workspace.Root() == m_ModeLoadedFor)
+        if (m_Workspace.GetRoot() == m_ModeLoadedFor)
             return;
 
-        m_ModeLoadedFor = m_Workspace.Root();
+        m_ModeLoadedFor = m_Workspace.GetRoot();
 
         // Anything unrecognised — including the empty string of a folder opened for the
         // first time — reads as Files, which is the mode that works in every folder.
@@ -99,7 +99,7 @@ namespace Graphite
 
         // Only worth the row when there is a choice to make. One solution needs no
         // chooser, and none needs it even less.
-        if (m_Mode != Mode::Solution || m_Workspace.SolutionCandidates().size() < 2)
+        if (m_Mode != Mode::Solution || m_Workspace.GetSolutionCandidates().size() < 2)
             return;
 
         // A value rather than a reference: the false branch of the conditional expression
@@ -113,7 +113,7 @@ namespace Graphite
         if (!ImGui::BeginCombo("##solutionChoice", Core::ToUtf8(loaded.filename()).c_str()))
             return;
 
-        for (const std::filesystem::path& candidate : m_Workspace.SolutionCandidates())
+        for (const std::filesystem::path& candidate : m_Workspace.GetSolutionCandidates())
         {
             const std::string name = Core::ToUtf8(candidate.filename());
 

@@ -16,10 +16,10 @@ namespace
         {
         }
 
-        void OnAttach() override { m_Journal.push_back(Name() + ":attach"); }
-        void OnDetach() override { m_Journal.push_back(Name() + ":detach"); }
-        void OnUpdate(float) override { m_Journal.push_back(Name() + ":update"); }
-        void OnUIRender() override { m_Journal.push_back(Name() + ":ui"); }
+        void OnAttach() override { m_Journal.push_back(GetName() + ":attach"); }
+        void OnDetach() override { m_Journal.push_back(GetName() + ":detach"); }
+        void OnUpdate(float) override { m_Journal.push_back(GetName() + ":update"); }
+        void OnUIRender() override { m_Journal.push_back(GetName() + ":ui"); }
 
     private:
         std::vector<std::string>& m_Journal;
@@ -33,8 +33,8 @@ TEST_CASE("Push calls OnAttach and returns a reference to the layer")
 
     Core::Layer& layer = stack.Push(std::make_unique<RecordingLayer>("first", journal));
 
-    CHECK(stack.Size() == 1);
-    CHECK(layer.Name() == "first");
+    CHECK(stack.GetSize() == 1);
+    CHECK(layer.GetName() == "first");
     REQUIRE(journal.size() == 1);
     CHECK(journal[0] == "first:attach");
 }
@@ -70,7 +70,7 @@ TEST_CASE("Clear detaches layers in reverse order of addition")
     REQUIRE(journal.size() == 2);
     CHECK(journal[0] == "b:detach");
     CHECK(journal[1] == "a:detach");
-    CHECK(stack.Size() == 0);
+    CHECK(stack.GetSize() == 0);
 }
 
 TEST_CASE("Adding a layer during iteration over the copy does not invalidate the pass")
@@ -92,7 +92,7 @@ TEST_CASE("Adding a layer during iteration over the copy does not invalidate the
         stack.Push(std::make_unique<RecordingLayer>("added", journal));
     }
 
-    CHECK(stack.Size() == 4);
+    CHECK(stack.GetSize() == 4);
     CHECK(journal[0] == "a:update");
     CHECK(journal[2] == "b:update");
 }

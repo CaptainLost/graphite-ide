@@ -17,9 +17,9 @@ namespace Core
 
         void Write(const LogEntry& entry) override;
 
-        [[nodiscard]] std::vector<LogEntry> Snapshot() const;
-        [[nodiscard]] std::size_t Count() const;
-        [[nodiscard]] std::size_t Capacity() const noexcept { return m_Capacity; }
+        [[nodiscard]] std::vector<LogEntry> GetSnapshot() const;
+        [[nodiscard]] std::size_t GetCount() const;
+        [[nodiscard]] std::size_t GetCapacity() const noexcept { return m_Capacity; }
 
         void Clear();
 

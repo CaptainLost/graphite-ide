@@ -97,23 +97,23 @@ namespace Core
                     break;
 
                 case MenuItem::Kind::Command:
-                    RenderCommand(commands, keys, item.Text());
+                    RenderCommand(commands, keys, item.GetText());
                     break;
 
                 case MenuItem::Kind::Group:
                     // Copied out before drawing: RenderCommand runs commands, and one of
                     // them registering a command would otherwise resize the registry
                     // mid-iteration.
-                    for (const Command* member : commands.InGroup(item.Text()))
+                    for (const Command* member : commands.InGroup(item.GetText()))
                     {
                         RenderCommand(commands, keys, member->id);
                     }
                     break;
 
                 case MenuItem::Kind::Submenu:
-                    if (ImGui::BeginMenu(item.Text().c_str()))
+                    if (ImGui::BeginMenu(item.GetText().c_str()))
                     {
-                        RenderItems(commands, keys, item.Children());
+                        RenderItems(commands, keys, item.GetChildren());
                         ImGui::EndMenu();
                     }
                     break;
@@ -166,9 +166,9 @@ namespace Core
                     continue;
                 }
 
-                if (BeginTopLevelMenu(item.Text().c_str(), dropdownPadding))
+                if (BeginTopLevelMenu(item.GetText().c_str(), dropdownPadding))
                 {
-                    RenderItems(commands, keys, item.Children());
+                    RenderItems(commands, keys, item.GetChildren());
                     EndTopLevelMenu();
                 }
             }

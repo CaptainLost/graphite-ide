@@ -102,7 +102,7 @@ namespace Core
     {
         std::size_t widest = 0;
 
-        for (std::size_t line = 0; line < buffer.LineCount(); ++line)
+        for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
             widest = std::max(widest, ColumnCount(buffer.LineText(line), tabWidth));
 
         return widest;

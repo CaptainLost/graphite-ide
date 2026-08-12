@@ -173,7 +173,7 @@ namespace Graphite
             if (!m_Filter.PassFilter(file.name.c_str()))
                 continue;
 
-            const bool selected = m_Workspace.SelectedFile() == file.path;
+            const bool selected = m_Workspace.GetSelectedFile() == file.path;
 
             const std::string label =
                 std::string{Core::IconForExtension(Core::ToUtf8(file.path.extension()))} +
@@ -198,7 +198,7 @@ namespace Graphite
             return;
         }
 
-        if (m_Workspace.SolutionCandidates().empty())
+        if (m_Workspace.GetSolutionCandidates().empty())
         {
             ImGui::TextUnformatted("No Visual Studio solution in this folder.");
             return;
@@ -422,10 +422,10 @@ namespace Graphite
             }
 
             // An empty path is the user cancelling, which is not worth a log line.
-            if (picked.Value().empty())
+            if (picked.GetValue().empty())
                 return;
 
-            action.project = picked.Value();
+            action.project = picked.GetValue();
         }
 
         // No reload here: writing the file changes something the directory watcher is
@@ -451,27 +451,27 @@ namespace Graphite
         switch (action.kind)
         {
         case PendingAction::Kind::AddProject:
-            applied = editor.Value()->AddProject(action.project, action.folder);
+            applied = editor.GetValue()->AddProject(action.project, action.folder);
             break;
 
         case PendingAction::Kind::RemoveProject:
-            applied = editor.Value()->RemoveProject(action.project);
+            applied = editor.GetValue()->RemoveProject(action.project);
             break;
 
         case PendingAction::Kind::AddFolder:
-            applied = editor.Value()->AddFolder(action.folder);
+            applied = editor.GetValue()->AddFolder(action.folder);
             break;
 
         case PendingAction::Kind::RemoveFolder:
-            applied = editor.Value()->RemoveFolder(action.folder);
+            applied = editor.GetValue()->RemoveFolder(action.folder);
             break;
 
         case PendingAction::Kind::RenameFolder:
-            applied = editor.Value()->RenameFolder(action.folder, action.name);
+            applied = editor.GetValue()->RenameFolder(action.folder, action.name);
             break;
 
         case PendingAction::Kind::MoveProject:
-            applied = editor.Value()->MoveProject(action.project, action.folder);
+            applied = editor.GetValue()->MoveProject(action.project, action.folder);
             break;
 
         case PendingAction::Kind::None:
@@ -481,6 +481,6 @@ namespace Graphite
         if (!applied)
             return applied;
 
-        return editor.Value()->Save();
+        return editor.GetValue()->Save();
     }
 }

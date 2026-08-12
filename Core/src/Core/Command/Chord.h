@@ -30,7 +30,7 @@ namespace Core
         [[nodiscard]] Scope GetScope() const noexcept { return m_Scope; }
 
         /// Modifiers ORed with the key for Trigger::Key; modifiers alone otherwise.
-        [[nodiscard]] ImGuiKeyChord Keys() const noexcept { return m_Keys; }
+        [[nodiscard]] ImGuiKeyChord GetKeys() const noexcept { return m_Keys; }
 
         [[nodiscard]] bool IsEmpty() const noexcept;
 

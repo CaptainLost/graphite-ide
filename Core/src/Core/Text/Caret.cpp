@@ -73,20 +73,20 @@ namespace Core
 
             const std::size_t line =
                 up ? (position.line > lines ? position.line - lines : 0)
-                   : std::min(position.line + lines, buffer.LineCount() - 1);
+                   : std::min(position.line + lines, buffer.GetLineCount() - 1);
 
             return OffsetOfColumn(buffer, line, column, tabWidth);
         }
 
         [[nodiscard]] std::size_t WordBoundaryForward(const TextBuffer& buffer, std::size_t offset)
         {
-            if (offset >= buffer.Length())
-                return buffer.Length();
+            if (offset >= buffer.GetLength())
+                return buffer.GetLength();
 
             const CharacterClass start = ClassOf(buffer.CharAt(offset));
             std::size_t at = offset;
 
-            while (at < buffer.Length() && ClassOf(buffer.CharAt(at)) == start)
+            while (at < buffer.GetLength() && ClassOf(buffer.CharAt(at)) == start)
                 ++at;
 
             return at;
@@ -114,17 +114,17 @@ namespace Core
         /// Encoding.h's NextCharacter/PreviousCharacter, asked of the buffer directly.
         ///
         /// The string_view versions would need the whole document materialised first, and
-        /// buffer.Text() is a full copy of the piece table — 300 MB per arrow key on a
+        /// buffer.GetText() is a full copy of the piece table — 300 MB per arrow key on a
         /// file the confirmation modal exists to let the user open. Both of these read a
         /// handful of bytes around one offset instead, through CharAt's binary search.
         [[nodiscard]] std::size_t NextCharacterIn(const TextBuffer& buffer, std::size_t offset)
         {
-            if (offset >= buffer.Length())
-                return buffer.Length();
+            if (offset >= buffer.GetLength())
+                return buffer.GetLength();
 
             std::size_t next = offset + 1;
 
-            while (next < buffer.Length() && IsContinuation(buffer, next))
+            while (next < buffer.GetLength() && IsContinuation(buffer, next))
                 ++next;
 
             return next;
@@ -132,10 +132,10 @@ namespace Core
 
         [[nodiscard]] std::size_t PreviousCharacterIn(const TextBuffer& buffer, std::size_t offset)
         {
-            if (offset == 0 || buffer.Empty())
+            if (offset == 0 || buffer.IsEmpty())
                 return 0;
 
-            std::size_t previous = std::min(offset, buffer.Length()) - 1;
+            std::size_t previous = std::min(offset, buffer.GetLength()) - 1;
 
             while (previous > 0 && IsContinuation(buffer, previous))
                 --previous;
@@ -146,9 +146,9 @@ namespace Core
         /// Pulls an arbitrary offset back onto a character boundary.
         [[nodiscard]] std::size_t SnapToBoundary(const TextBuffer& buffer, std::size_t offset)
         {
-            std::size_t at = std::min(offset, buffer.Length());
+            std::size_t at = std::min(offset, buffer.GetLength());
 
-            while (at > 0 && at < buffer.Length() && IsContinuation(buffer, at))
+            while (at > 0 && at < buffer.GetLength() && IsContinuation(buffer, at))
                 --at;
 
             return at;
@@ -223,7 +223,7 @@ namespace Core
             target = 0;
             break;
         case Motion::DocumentEnd:
-            target = buffer.Length();
+            target = buffer.GetLength();
             break;
         case Motion::WordLeft:
             target = WordBoundaryBackward(buffer, caret.offset);
@@ -258,7 +258,7 @@ namespace Core
         const std::size_t at = SnapToBoundary(buffer, offset);
 
         Caret caret;
-        caret.anchor = WordBoundaryBackward(buffer, at == buffer.Length() ? at : at + 1);
+        caret.anchor = WordBoundaryBackward(buffer, at == buffer.GetLength() ? at : at + 1);
         caret.offset = WordBoundaryForward(buffer, at);
         caret.desiredColumn = NoDesiredColumn;
 
@@ -269,8 +269,8 @@ namespace Core
     {
         Caret caret;
         caret.anchor = buffer.LineStart(line);
-        caret.offset = line + 1 < buffer.LineCount() ? buffer.LineStart(line + 1)
-                                                     : buffer.Length();
+        caret.offset = line + 1 < buffer.GetLineCount() ? buffer.LineStart(line + 1)
+                                                     : buffer.GetLength();
         caret.desiredColumn = NoDesiredColumn;
 
         return caret;
@@ -280,7 +280,7 @@ namespace Core
     {
         Caret caret;
         caret.anchor = 0;
-        caret.offset = buffer.Length();
+        caret.offset = buffer.GetLength();
         caret.desiredColumn = NoDesiredColumn;
 
         return caret;

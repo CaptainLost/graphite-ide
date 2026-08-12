@@ -21,7 +21,7 @@ namespace Graphite
     /// would leave the strip under the dockspace.
     ///
     /// With no active document the strip is empty: "Ln 1, Col 1" for something with no
-    /// lines would be a lie. `transientMessage` is DocumentWindows::StatusMessage() -
+    /// lines would be a lie. `transientMessage` is DocumentWindows::GetStatusMessage() -
     /// nullopt once it has expired - passed in rather than looked up here, since this
     /// function otherwise knows nothing about DocumentWindows.
     void DrawStatusBar(const Core::DocumentSet& documents,

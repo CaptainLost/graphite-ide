@@ -44,14 +44,14 @@ namespace Core
 
     std::vector<std::size_t> IndentDepths(const TextBuffer& buffer, std::size_t tabWidth)
     {
-        const std::size_t lineCount = buffer.LineCount();
+        const std::size_t lineCount = buffer.GetLineCount();
         return IndentDepths(buffer, tabWidth, 0, lineCount - 1);
     }
 
     std::vector<std::size_t> IndentDepths(const TextBuffer& buffer, std::size_t tabWidth,
                                            std::size_t firstLine, std::size_t lastLine)
     {
-        const std::size_t lineCount = buffer.LineCount();
+        const std::size_t lineCount = buffer.GetLineCount();
         firstLine = std::min(firstLine, lineCount - 1);
         lastLine = std::min(lastLine, lineCount - 1);
 

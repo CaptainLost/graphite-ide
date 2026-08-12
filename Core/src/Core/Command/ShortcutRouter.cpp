@@ -36,7 +36,7 @@ namespace Core
                 return false;
             }
 
-            return ImGui::Shortcut(chord.Keys(), ImGuiInputFlags_RouteGlobal);
+            return ImGui::Shortcut(chord.GetKeys(), ImGuiInputFlags_RouteGlobal);
         }
     }
 
@@ -96,7 +96,7 @@ namespace Core
                 const auto matches = [&](const Chord& chord)
                 {
                     return chord.GetTrigger() == direction && chord.GetScope() == scope
-                           && chord.Keys() == mods;
+                           && chord.GetKeys() == mods;
                 };
 
                 if (matches(binding.primary))

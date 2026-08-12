@@ -98,21 +98,21 @@ TEST_CASE("A file too large to load is still reported with its size")
 TEST_CASE("Probing reads the file from disk")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "hello.txt";
+    const auto path = directory.GetPath() / "hello.txt";
     WriteFile(path, "int main() {}");
 
     const auto probe = ProbeFile(path);
 
     REQUIRE(probe);
-    CHECK(probe.Value().kind == FileKind::Text);
-    CHECK(probe.Value().size == 13);
+    CHECK(probe.GetValue().kind == FileKind::Text);
+    CHECK(probe.GetValue().size == 13);
 }
 
 TEST_CASE("Probing a file that is not there fails rather than guessing")
 {
     TempDirectory directory;
 
-    const auto probe = ProbeFile(directory.Path() / "absent.txt");
+    const auto probe = ProbeFile(directory.GetPath() / "absent.txt");
 
     REQUIRE_FALSE(probe);
     CHECK(probe.GetError().code == Core::ErrorCode::NotFound);
@@ -122,7 +122,7 @@ TEST_CASE("Probing a directory fails")
 {
     TempDirectory directory;
 
-    const auto probe = ProbeFile(directory.Path());
+    const auto probe = ProbeFile(directory.GetPath());
 
     REQUIRE_FALSE(probe);
 }

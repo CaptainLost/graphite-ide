@@ -45,7 +45,7 @@ namespace Core
         }
 
         template<typename E>
-        [[nodiscard]] std::size_t HandlerCount() const
+        [[nodiscard]] std::size_t GetHandlerCount() const
         {
             const auto entry = m_Handlers.find(std::type_index(typeid(E)));
             return entry == m_Handlers.end() ? 0 : entry->second.size();

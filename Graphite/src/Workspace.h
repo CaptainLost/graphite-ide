@@ -128,9 +128,9 @@ namespace Graphite
         void RequestOpenFile(const std::filesystem::path& path, bool permanent);
 
         [[nodiscard]] bool IsOpen() const noexcept { return m_Tree.HasRoot(); }
-        [[nodiscard]] const std::filesystem::path& Root() const noexcept { return m_Root; }
+        [[nodiscard]] const std::filesystem::path& GetRoot() const noexcept { return m_Root; }
         [[nodiscard]] Core::FileTree& Tree() noexcept { return m_Tree; }
-        [[nodiscard]] const std::filesystem::path& SelectedFile() const noexcept
+        [[nodiscard]] const std::filesystem::path& GetSelectedFile() const noexcept
         {
             return m_SelectedFile;
         }
@@ -147,7 +147,7 @@ namespace Graphite
         /// The solutions on offer: those found in the workspace root, plus any the user
         /// opened by name, which may live anywhere. More than one puts a chooser in the
         /// panel header.
-        [[nodiscard]] const std::vector<std::filesystem::path>& SolutionCandidates() const noexcept
+        [[nodiscard]] const std::vector<std::filesystem::path>& GetSolutionCandidates() const noexcept
         {
             return m_SolutionCandidates;
         }
@@ -191,7 +191,7 @@ namespace Graphite
         /// Newest write time across the solution and the project files it named. Covers
         /// the project files because editing one changes what the tree should show while
         /// leaving the solution file untouched.
-        [[nodiscard]] std::filesystem::file_time_type SolutionStamp() const;
+        [[nodiscard]] std::filesystem::file_time_type GetSolutionStamp() const;
 
         void ForgetSolutionAttempt();
         void ResetSolutionState();

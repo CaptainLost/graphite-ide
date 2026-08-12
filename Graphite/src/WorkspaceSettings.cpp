@@ -21,7 +21,7 @@ namespace Graphite
     {
     }
 
-    std::filesystem::path WorkspaceSettings::FilePath() const
+    std::filesystem::path WorkspaceSettings::GetFilePath() const
     {
         return m_Root / kDirectory / kFile;
     }
@@ -31,7 +31,7 @@ namespace Graphite
         if (m_Root.empty())
             return {};
 
-        return Core::JsonFile::Load(FilePath()).Get(key);
+        return Core::JsonFile::Load(GetFilePath()).Get(key);
     }
 
     void WorkspaceSettings::Set(std::string_view key, std::string value)
@@ -56,10 +56,10 @@ namespace Graphite
             }
         }
 
-        Core::JsonFile file = Core::JsonFile::Load(FilePath());
+        Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
         file.Set(key, std::move(value));
 
-        if (!file.Save(FilePath()))
-            CORE_WARN("Cannot write '{}'", FilePath().string());
+        if (!file.Save(GetFilePath()))
+            CORE_WARN("Cannot write '{}'", GetFilePath().string());
     }
 }

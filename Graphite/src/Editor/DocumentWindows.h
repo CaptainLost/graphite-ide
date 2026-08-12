@@ -55,7 +55,7 @@ namespace Graphite
 
         /// `fallbackDockNode` is where a document goes when no document has been focused
         /// yet this session - typically the workspace's centre node, from
-        /// Core::DockSpaceHost::CenterNodeId(). Passed in rather than held, since
+        /// Core::DockSpaceHost::GetCenterNodeId(). Passed in rather than held, since
         /// DocumentWindows knows nothing about DockSpaceHost and GraphiteLayer, which owns
         /// both, is a cheap place to connect them.
         ///
@@ -129,7 +129,7 @@ namespace Graphite
 
         /// Whether any open document has unsaved changes. What "Save All" is enabled by,
         /// and what the exit question is asked over.
-        [[nodiscard]] bool AnyModified() const;
+        [[nodiscard]] bool HasAnyModified() const;
 
         /// Registers "Save All" and its Ctrl+Shift+S default. Here rather than in the
         /// layer because this is the object that already owns saving.
@@ -138,7 +138,7 @@ namespace Graphite
         /// A short-lived note for the status bar - what a reload or a failed save just
         /// did - or nothing once it has expired. GraphiteLayer reads this every frame to
         /// feed DrawStatusBar.
-        [[nodiscard]] std::optional<std::string> StatusMessage() const;
+        [[nodiscard]] std::optional<std::string> GetStatusMessage() const;
 
     private:
         /// Turns what Core::SyncWithFile found about one item into the question or
@@ -169,7 +169,7 @@ namespace Graphite
         /// RequestSave's job.
         bool SaveOne(std::size_t index);
 
-        /// Ctrl+S over one document: asks first when ChangedOnDisk() says the write would
+        /// Ctrl+S over one document: asks first when HasChangedOnDisk() says the write would
         /// clobber a change nobody was told about, otherwise saves immediately.
         void RequestSave(std::size_t index);
 
@@ -261,7 +261,7 @@ namespace Graphite
         /// stale write - if the document is gone by then.
         ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
-        /// Documents RequestSave has to confirm an overwrite for - ChangedOnDisk() was
+        /// Documents RequestSave has to confirm an overwrite for - HasChangedOnDisk() was
         /// true right when Ctrl+S was pressed, meaning a notification was dropped and this
         /// is the last chance to ask. Same "path, not index" reasoning as m_ReloadConflict.
         ModalQuestion<std::filesystem::path> m_OverwriteConfirm;
@@ -291,7 +291,7 @@ namespace Graphite
         ModalQuestion<std::filesystem::path> m_CloseConfirm;
 
         /// A short-lived status bar note and when it expires, both on ImGui::GetTime()'s
-        /// clock. Read through StatusMessage().
+        /// clock. Read through GetStatusMessage().
         struct TransientMessage
         {
             std::string text;

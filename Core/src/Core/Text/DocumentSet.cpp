@@ -95,9 +95,9 @@ namespace Core
         // two fields both meaning "the file's encoding" are two answers waiting to differ.
         // The status bar reads the document's, which is the one the buffer was decoded
         // with; size has no such counterpart, since a failed item has no document to ask.
-        item.size = probe.Value().size;
+        item.size = probe.GetValue().size;
 
-        if (probe.Value().kind == FileKind::LargeText && !confirmed)
+        if (probe.GetValue().kind == FileKind::LargeText && !confirmed)
         {
             // Nothing decided and nothing touched beyond the size the asking needs. An
             // item that already carries a reason keeps it, so a question answered with
@@ -110,7 +110,7 @@ namespace Core
         item.failure = OpenFailure::None;
         item.detail.clear();
 
-        switch (probe.Value().kind)
+        switch (probe.GetValue().kind)
         {
         case FileKind::Binary:
             item.failure = OpenFailure::Binary;
@@ -125,7 +125,7 @@ namespace Core
 
                 if (document)
                 {
-                    item.document = std::move(document).Value();
+                    item.document = std::move(document).GetValue();
                     RefreshDerived(item);
                 }
                 else
@@ -160,7 +160,7 @@ namespace Core
         {
             if (!permanent)
             {
-                if (const auto preview = Preview())
+                if (const auto preview = GetPreview())
                     Close(*preview);
             }
         };
@@ -216,7 +216,7 @@ namespace Core
         m_Active.reset();
     }
 
-    std::optional<std::size_t> DocumentSet::Preview() const
+    std::optional<std::size_t> DocumentSet::GetPreview() const
     {
         for (std::size_t index = 0; index < m_Items.size(); ++index)
         {

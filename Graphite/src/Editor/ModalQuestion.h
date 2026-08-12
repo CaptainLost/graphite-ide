@@ -99,7 +99,7 @@ namespace Graphite
         /// ImGui activates one widget at a time - but it is ImGui's invariant and not this
         /// class's, so a body doing anything more than reading the payload before it
         /// answers should take a copy instead of holding the pointer.
-        [[nodiscard]] const Payload* Current() const noexcept
+        [[nodiscard]] const Payload* GetCurrent() const noexcept
         {
             return m_Current ? &*m_Current : nullptr;
         }

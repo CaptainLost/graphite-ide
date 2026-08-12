@@ -143,7 +143,7 @@ namespace Core
             auto frame = WindowFrame::Hide(*window, spec.borderColor);
             if (frame)
             {
-                window->AdoptFrame(std::move(frame).Value());
+                window->AdoptFrame(std::move(frame).GetValue());
             }
             else
             {

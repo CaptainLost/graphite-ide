@@ -178,7 +178,7 @@ namespace Core
     std::vector<std::size_t> TextBuffer::BuildLineIndex() const
     {
         std::vector<std::size_t> starts{0};
-        const std::string content = Text();
+        const std::string content = GetText();
 
         for (std::size_t offset = 0; offset < content.size(); ++offset)
         {
@@ -434,7 +434,7 @@ namespace Core
         return true;
     }
 
-    std::size_t TextBuffer::Revision() const noexcept
+    std::size_t TextBuffer::GetRevision() const noexcept
     {
         return m_Undo.empty() ? 0 : m_Undo.back().id;
     }

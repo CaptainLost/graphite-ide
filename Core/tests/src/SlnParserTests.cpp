@@ -59,8 +59,8 @@ TEST_CASE("A .sln is read through the same entry point as a .slnx")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().name == "Legacy");
-    CHECK(solution.Value().projectCount == 2);
+    CHECK(solution.GetValue().name == "Legacy");
+    CHECK(solution.GetValue().projectCount == 2);
 }
 
 TEST_CASE("A folder type GUID makes a folder, not a project")
@@ -73,8 +73,8 @@ TEST_CASE("A folder type GUID makes a folder, not a project")
 
     // "App" is a Project entry in the file and a folder in the model — the type GUID is
     // the only thing that says so.
-    CHECK(FindFolder(solution.Value().root, "App") != nullptr);
-    CHECK(FindProject(solution.Value().root, "App") == nullptr);
+    CHECK(FindFolder(solution.GetValue().root, "App") != nullptr);
+    CHECK(FindProject(solution.GetValue().root, "App") == nullptr);
 }
 
 TEST_CASE("NestedProjects decides where a project lands")
@@ -85,13 +85,13 @@ TEST_CASE("NestedProjects decides where a project lands")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Folder* app = FindFolder(solution.Value().root, "App");
+    const Folder* app = FindFolder(solution.GetValue().root, "App");
     REQUIRE(app != nullptr);
 
     // Graphite is nested under App by the GUID pair; Core has no pair and stays at the
     // solution root.
     CHECK(FindProject(*app, "Graphite") != nullptr);
-    CHECK(FindProject(solution.Value().root, "Core") != nullptr);
+    CHECK(FindProject(solution.GetValue().root, "Core") != nullptr);
 }
 
 TEST_CASE("A parent declared after its child still adopts it")
@@ -115,7 +115,7 @@ TEST_CASE("A parent declared after its child still adopts it")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Folder* parent = FindFolder(solution.Value().root, "Parent");
+    const Folder* parent = FindFolder(solution.GetValue().root, "Parent");
     REQUIRE(parent != nullptr);
     CHECK(FindProject(*parent, "Child") != nullptr);
 }
@@ -138,7 +138,7 @@ TEST_CASE("A folder nested inside another folder is nested in the model")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Folder* outer = FindFolder(solution.Value().root, "Outer");
+    const Folder* outer = FindFolder(solution.GetValue().root, "Outer");
     REQUIRE(outer != nullptr);
     CHECK(FindFolder(*outer, "Inner") != nullptr);
 }
@@ -151,12 +151,12 @@ TEST_CASE("A project path is made absolute against the solution")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Project* core = FindProject(solution.Value().root, "Core");
+    const Project* core = FindProject(solution.GetValue().root, "Core");
     REQUIRE(core != nullptr);
 
     // Spelled relative and with backslashes in the file; absolute in the model, as the
     // .slnx reader already guarantees.
-    CHECK(core->path == temp.Path() / "Core" / "Core.vcxproj");
+    CHECK(core->path == temp.GetPath() / "Core" / "Core.vcxproj");
     CHECK(core->path.is_absolute());
 }
 
@@ -168,7 +168,7 @@ TEST_CASE("The project type GUID is kept")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Project* core = FindProject(solution.Value().root, "Core");
+    const Project* core = FindProject(solution.GetValue().root, "Core");
     REQUIRE(core != nullptr);
 
     // Not displayed today, but it is what a writer will need to put the entry back, and
@@ -185,8 +185,8 @@ TEST_CASE("An empty .sln reads as empty rather than failing")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 0);
-    CHECK(solution.Value().root.folders.empty());
+    CHECK(solution.GetValue().projectCount == 0);
+    CHECK(solution.GetValue().root.folders.empty());
 }
 
 TEST_CASE("A file that is not a solution at all is rejected")
@@ -217,8 +217,8 @@ TEST_CASE("A malformed entry line is skipped rather than failing the solution")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 1);
-    CHECK(FindProject(solution.Value().root, "Good") != nullptr);
+    CHECK(solution.GetValue().projectCount == 1);
+    CHECK(FindProject(solution.GetValue().root, "Good") != nullptr);
 }
 
 TEST_CASE("Contents of C++ projects are filled in for a .sln too")
@@ -236,7 +236,7 @@ TEST_CASE("Contents of C++ projects are filled in for a .sln too")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Project* good = FindProject(solution.Value().root, "Good");
+    const Project* good = FindProject(solution.GetValue().root, "Good");
     REQUIRE(good != nullptr);
 
     // The reader registry and the sorting run after either parser, so both formats get
@@ -275,10 +275,10 @@ TEST_CASE("Two folders at the same level both keep their projects")
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 2);
+    CHECK(solution.GetValue().projectCount == 2);
 
-    const Folder* a = FindFolder(solution.Value().root, "A");
-    const Folder* c = FindFolder(solution.Value().root, "C");
+    const Folder* a = FindFolder(solution.GetValue().root, "A");
+    const Folder* c = FindFolder(solution.GetValue().root, "C");
 
     REQUIRE(a != nullptr);
     REQUIRE(c != nullptr);
@@ -308,8 +308,8 @@ TEST_CASE("Two folders naming each other as parent do not hang")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(FindFolder(solution.Value().root, "A") != nullptr);
-    CHECK(FindFolder(solution.Value().root, "B") != nullptr);
+    CHECK(FindFolder(solution.GetValue().root, "A") != nullptr);
+    CHECK(FindFolder(solution.GetValue().root, "B") != nullptr);
 }
 
 TEST_CASE("A file written by Visual Studio is read despite its byte-order mark")
@@ -329,5 +329,5 @@ TEST_CASE("A file written by Visual Studio is read despite its byte-order mark")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 1);
+    CHECK(solution.GetValue().projectCount == 1);
 }

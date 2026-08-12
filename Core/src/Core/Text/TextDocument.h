@@ -60,10 +60,10 @@ namespace Core
         /// Reads the file and hands it to FromContent.
         [[nodiscard]] static Result<TextDocument> Load(const std::filesystem::path& path);
 
-        [[nodiscard]] TextBuffer& Buffer() noexcept { return m_Buffer; }
-        [[nodiscard]] const TextBuffer& Buffer() const noexcept { return m_Buffer; }
+        [[nodiscard]] TextBuffer& GetBuffer() noexcept { return m_Buffer; }
+        [[nodiscard]] const TextBuffer& GetBuffer() const noexcept { return m_Buffer; }
 
-        [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_Path; }
+        [[nodiscard]] const std::filesystem::path& GetPath() const noexcept { return m_Path; }
 
         /// Follows the file to where it now lives, after the folder above it was renamed
         /// or moved on disk. The content is untouched — this only changes where saving
@@ -73,10 +73,10 @@ namespace Core
 
         /// Not named Encoding(): a member of that name would shadow the type
         /// Core::Encoding everywhere inside this class.
-        [[nodiscard]] Encoding FileEncoding() const noexcept { return m_Encoding; }
+        [[nodiscard]] Encoding GetFileEncoding() const noexcept { return m_Encoding; }
 
         /// Likewise not named LineEnding().
-        [[nodiscard]] LineEnding DocumentLineEnding() const noexcept { return m_LineEnding; }
+        [[nodiscard]] LineEnding GetDocumentLineEnding() const noexcept { return m_LineEnding; }
 
         /// Whether the file carried both styles. The status bar says so, because saving
         /// unifies them and that should not be a surprise.
@@ -92,17 +92,17 @@ namespace Core
         /// The content exactly as it should reach disk: the BOM back at the front if
         /// there was one, the content re-encoded to m_Encoding, and the remembered line
         /// ending throughout.
-        [[nodiscard]] std::string Bytes() const;
+        [[nodiscard]] std::string GetBytes() const;
 
         /// Whether the content differs from what was last saved.
         [[nodiscard]] bool IsModified() const noexcept
         {
-            return m_Buffer.Revision() != m_SavedRevision;
+            return m_Buffer.GetRevision() != m_SavedRevision;
         }
 
         /// Records the current state as the saved one. Called after a successful write,
         /// which stage 3 adds.
-        void MarkSaved() noexcept { m_SavedRevision = m_Buffer.Revision(); }
+        void MarkSaved() noexcept { m_SavedRevision = m_Buffer.GetRevision(); }
 
         /// Whether the file differs from what was last read or written from here.
         /// False when the file cannot be examined at all — a share that blinked must not
@@ -110,10 +110,10 @@ namespace Core
         /// taken: a document built by FromContent, or one whose last_write_time could not
         /// be read when it was loaded, has nothing to compare against, and inventing a
         /// difference out of that would be reporting an edit nobody made.
-        [[nodiscard]] bool ChangedOnDisk() const;
+        [[nodiscard]] bool HasChangedOnDisk() const;
 
-        /// Writes Bytes() through Core::WriteFileAtomically, then marks the content
-        /// saved and records the new stamp. Does not check ChangedOnDisk() itself: whether
+        /// Writes GetBytes() through Core::WriteFileAtomically, then marks the content
+        /// saved and records the new stamp. Does not check HasChangedOnDisk() itself: whether
         /// a stale save should be refused or confirmed is the caller's decision, because
         /// only the caller can ask.
         [[nodiscard]] Result<void> Save();
@@ -140,14 +140,14 @@ namespace Core
         bool m_ReadOnly = false;
         /// Whether a byte order mark was stripped from the front of the loaded bytes.
         /// Tracked independently of m_Encoding: invalid UTF-8 following a mark still
-        /// demotes m_Encoding to Unknown, but the mark itself was still there and Bytes()
+        /// demotes m_Encoding to Unknown, but the mark itself was still there and GetBytes()
         /// must still put it back, or a read-only file's bytes would not round-trip.
         bool m_HadBom = false;
-        /// Which mark Bytes() writes back, and meaningful only where m_HadBom says there
+        /// Which mark GetBytes() writes back, and meaningful only where m_HadBom says there
         /// was one to write. It holds the sniffed encoding, not a mark that was found:
         /// SniffEncoding names a UTF-16 file from the shape of its bytes alone, so an
         /// unmarked one leaves this reading Utf16Le with no mark anywhere in the file —
-        /// harmless, because m_HadBom is false and Bytes() never asks. Kept apart from
+        /// harmless, because m_HadBom is false and GetBytes() never asks. Kept apart from
         /// m_Encoding because invalid UTF-8 behind a real mark demotes m_Encoding to
         /// Unknown for read-only handling while the mark still has to go back.
         Encoding m_BomEncoding = Encoding::Utf8;
@@ -156,7 +156,7 @@ namespace Core
         /// The file's modification time and size as they were when its content was last
         /// read or written, held together and as one optional because half a stamp is not
         /// a stamp: a default-constructed time compares unequal to every real file's, so a
-        /// stamp that was never actually taken would make ChangedOnDisk() permanently
+        /// stamp that was never actually taken would make HasChangedOnDisk() permanently
         /// true — a clean document reloading on every watcher event and every focus
         /// regain, each reload pushing another transaction onto the undo stack, and a
         /// dirty one re-queuing its conflict question on every sweep. Nullopt says the

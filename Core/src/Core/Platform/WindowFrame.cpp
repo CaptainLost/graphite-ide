@@ -308,7 +308,7 @@ namespace Core
                                                            [[maybe_unused]] const Color& border)
     {
 #ifdef CORE_PLATFORM_WINDOWS
-        auto* glfwHandle = static_cast<GLFWwindow*>(window.NativeHandle());
+        auto* glfwHandle = static_cast<GLFWwindow*>(window.GetNativeHandle());
         if (glfwHandle == nullptr)
         {
             return Error{ErrorCode::Unsupported, "the window has no native handle"};

@@ -13,8 +13,8 @@ namespace Core
     {
         void RegisterPanelCommand(CommandRegistry& commands, Panel& panel)
         {
-            commands.Add({.id = "panel." + panel.Id(),
-                          .label = panel.Title(),
+            commands.Add({.id = "panel." + panel.GetId(),
+                          .label = panel.GetTitle(),
                           .group = "panels",
                           .run = [&panel] { panel.SetVisible(!panel.IsVisible()); },
                           .checked = [&panel] { return panel.IsVisible(); }});
@@ -25,7 +25,7 @@ namespace Core
     {
         CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
 
-        if (Find(panel->Id()) != nullptr)
+        if (Find(panel->GetId()) != nullptr)
             return nullptr;
 
         Panel* reference = panel.get();
@@ -46,7 +46,7 @@ namespace Core
     {
         for (auto& panel : m_Panels)
         {
-            if (panel->Id() == id)
+            if (panel->GetId() == id)
                 return panel.get();
         }
 
@@ -95,7 +95,7 @@ namespace Core
             }
 
             bool open = true;
-            const std::string label = panel->Title() + "###" + panel->Id();
+            const std::string label = panel->GetTitle() + "###" + panel->GetId();
 
             if (ImGui::Begin(label.c_str(), &open))
             {
@@ -131,7 +131,7 @@ namespace Core
     {
         for (auto& panel : m_Panels)
         {
-            panel->SetVisible(panel->DefaultVisible());
+            panel->SetVisible(panel->IsDefaultVisible());
         }
     }
 }

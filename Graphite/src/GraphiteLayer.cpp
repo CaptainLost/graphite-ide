@@ -142,7 +142,7 @@ namespace Graphite
             [this](const WorkspaceFilesChangedEvent& event)
             { m_DocumentWindows.HandleFilesChanged(event.directories, event.everything); });
 
-        CORE_INFO("Registered panels: {}", m_Panels.Count());
+        CORE_INFO("Registered panels: {}", m_Panels.GetCount());
 
         explorer->LoadSettings();
 
@@ -179,7 +179,7 @@ namespace Graphite
         // window whose editors are actually on screen. ImGuiIO::AppFocusLost is not this:
         // it is a one-frame flag the backend sets on focus *loss*, so it would fire the
         // sweep as the user leaves rather than as they return.
-        auto* handle = static_cast<GLFWwindow*>(Core::Application::Get().GetWindow().NativeHandle());
+        auto* handle = static_cast<GLFWwindow*>(Core::Application::Get().GetWindow().GetNativeHandle());
         m_DocumentWindows.NotifyWindowFocus(glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0);
     }
 
@@ -217,7 +217,7 @@ namespace Graphite
 
     void GraphiteLayer::OnUIRender()
     {
-        DrawStatusBar(m_Documents, m_Workspace.Root(), m_DocumentWindows.StatusMessage());
+        DrawStatusBar(m_Documents, m_Workspace.GetRoot(), m_DocumentWindows.GetStatusMessage());
 
         m_DockSpace.Begin(m_Layout);
         m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.menuBarHeight,
@@ -239,9 +239,9 @@ namespace Graphite
         // rather than stored anywhere on the way.
         const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router};
 
-        m_DocumentWindows.Render(commandContext, m_EditorSettings.FontSize(),
-                                 m_EditorSettings.IndentStyle(), m_DockSpace.CenterNodeId(),
-                                 m_EditorSettings.WordWrap());
+        m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
+                                 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
+                                 m_EditorSettings.IsWordWrap());
 
         // After every window this frame has Begin/End'd, which is what
         // ImGuiInputFlags_RouteGlobal expects — there is no "current" window whose focus a
@@ -292,7 +292,7 @@ namespace Graphite
             return false;
         }
 
-        if (!m_DocumentWindows.AnyModified())
+        if (!m_DocumentWindows.HasAnyModified())
         {
             return true;
         }
@@ -308,7 +308,7 @@ namespace Graphite
 
     void GraphiteLayer::RequestCloseConfirmation(ClosePurpose purpose)
     {
-        if (!m_DocumentWindows.AnyModified())
+        if (!m_DocumentWindows.HasAnyModified())
         {
             FinishClose(purpose);
             return;
@@ -369,7 +369,7 @@ namespace Graphite
         // exit it has no reason left to refuse.
         const auto stillWorthAsking = [this](ClosePurpose purpose)
         {
-            if (m_DocumentWindows.AnyModified())
+            if (m_DocumentWindows.HasAnyModified())
             {
                 return true;
             }
@@ -392,7 +392,7 @@ namespace Graphite
         // reflect that partial progress if the user looks again or retries, rather than
         // continuing to name a file that already saved cleanly. Recomputing also cannot
         // go stale the way a snapshot taken once at open time could.
-        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
         {
             const Core::OpenItem& item = m_Documents.At(index);
 
@@ -406,7 +406,7 @@ namespace Graphite
         // RequestCloseConfirmation or OnCloseRequested having asked first, which never
         // happens - ExitApplication is a reasonable fallback all the same, since it is the
         // more conservative of the two actions FinishClose can take.
-        const ClosePurpose* asked = m_CloseQuestion.Current();
+        const ClosePurpose* asked = m_CloseQuestion.GetCurrent();
         const ClosePurpose purpose = asked != nullptr ? *asked : ClosePurpose::ExitApplication;
 
         if (ImGui::Button("Save All"))

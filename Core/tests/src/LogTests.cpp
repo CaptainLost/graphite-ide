@@ -17,7 +17,7 @@ TEST_CASE("RingBufferSink remembers entries in order")
     sink.Write(LogEntry{LogLevel::Info, "first"});
     sink.Write(LogEntry{LogLevel::Warn, "second"});
 
-    const auto entries = sink.Snapshot();
+    const auto entries = sink.GetSnapshot();
     REQUIRE(entries.size() == 2);
     CHECK(entries[0].message == "first");
     CHECK(entries[1].level == LogLevel::Warn);
@@ -30,7 +30,7 @@ TEST_CASE("RingBufferSink drops the oldest entries on overflow")
     for (int i = 1; i <= 5; ++i)
         sink.Write(LogEntry{LogLevel::Info, std::to_string(i)});
 
-    const auto entries = sink.Snapshot();
+    const auto entries = sink.GetSnapshot();
     REQUIRE(entries.size() == 3);
     CHECK(entries[0].message == "3");
     CHECK(entries[1].message == "4");
@@ -44,8 +44,8 @@ TEST_CASE("Clear empties the buffer")
 
     sink.Clear();
 
-    CHECK(sink.Count() == 0);
-    CHECK(sink.Snapshot().empty());
+    CHECK(sink.GetCount() == 0);
+    CHECK(sink.GetSnapshot().empty());
 }
 
 TEST_CASE("Logger dispatches entries to attached sinks")
@@ -57,7 +57,7 @@ TEST_CASE("Logger dispatches entries to attached sinks")
     Logger::Get().AddSink(sink);
     Logger::Get().Write(LogLevel::Error, "failure");
 
-    const auto entries = sink->Snapshot();
+    const auto entries = sink->GetSnapshot();
     REQUIRE(entries.size() == 1);
     CHECK(entries[0].level == LogLevel::Error);
     CHECK(entries[0].message == "failure");
@@ -76,7 +76,7 @@ TEST_CASE("Logger filters out entries below the configured level")
     Logger::Get().Write(LogLevel::Info, "skipped");
     Logger::Get().Write(LogLevel::Error, "passed through");
 
-    const auto entries = sink->Snapshot();
+    const auto entries = sink->GetSnapshot();
     REQUIRE(entries.size() == 1);
     CHECK(entries[0].message == "passed through");
 
@@ -94,7 +94,7 @@ TEST_CASE("The CORE_INFO macro formats arguments")
 
     CORE_INFO("file {} has {} lines", "main.cpp", 12);
 
-    const auto entries = sink->Snapshot();
+    const auto entries = sink->GetSnapshot();
     REQUIRE(entries.size() == 1);
     CHECK(entries[0].message == "file main.cpp has 12 lines");
 

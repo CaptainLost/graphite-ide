@@ -49,9 +49,9 @@ TEST_CASE("Add registers a panel and allows finding it by identifier")
     Core::Panel* added = panels.Add(std::make_unique<CountingPanel>("console", "Console"));
 
     REQUIRE(added != nullptr);
-    CHECK(panels.Count() == 1);
+    CHECK(panels.GetCount() == 1);
     CHECK(panels.Find("console") == added);
-    CHECK(added->Title() == "Console");
+    CHECK(added->GetTitle() == "Console");
     CHECK(added->IsVisible());
 }
 
@@ -63,7 +63,7 @@ TEST_CASE("Add rejects a duplicate identifier")
     Core::Panel* duplicate = panels.Add(std::make_unique<CountingPanel>("console", "Other"));
 
     CHECK(duplicate == nullptr);
-    CHECK(panels.Count() == 1);
+    CHECK(panels.GetCount() == 1);
 }
 
 TEST_CASE("Find returns nullptr for an unknown identifier")

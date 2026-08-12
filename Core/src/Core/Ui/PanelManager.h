@@ -19,7 +19,7 @@ namespace Core
         Panel* Add(std::unique_ptr<Panel> panel);
 
         [[nodiscard]] Panel* Find(std::string_view id);
-        [[nodiscard]] std::size_t Count() const noexcept { return m_Panels.size(); }
+        [[nodiscard]] std::size_t GetCount() const noexcept { return m_Panels.size(); }
 
         /// Whether any panel is reading raw key presses this frame. The caller routes
         /// shortcuts and must not do so while one is: see Panel::IsCapturingInput.

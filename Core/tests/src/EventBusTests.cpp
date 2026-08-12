@@ -54,7 +54,7 @@ TEST_CASE("Publishing an event nobody listens for is a no-op")
 
     bus.Publish(Opened{"unused"});
 
-    CHECK(bus.HandlerCount<Opened>() == 0);
+    CHECK(bus.GetHandlerCount<Opened>() == 0);
 }
 
 TEST_CASE("Subscribing from inside a handler does not disturb the running dispatch")
@@ -81,12 +81,12 @@ TEST_CASE("Subscribing from inside a handler does not disturb the running dispat
     CHECK(firstCalls == 1);
     CHECK(secondCalls == 1);     // reached even though the vector grew mid-dispatch
     CHECK(lateCalls == 0);       // the new handler starts from the next publish
-    CHECK(bus.HandlerCount<Opened>() == 3);
+    CHECK(bus.GetHandlerCount<Opened>() == 3);
 
     bus.Publish(Opened{"two"});
 
     CHECK(firstCalls == 2);
     CHECK(secondCalls == 2);
     CHECK(lateCalls == 1);
-    CHECK(bus.HandlerCount<Opened>() == 4);
+    CHECK(bus.GetHandlerCount<Opened>() == 4);
 }

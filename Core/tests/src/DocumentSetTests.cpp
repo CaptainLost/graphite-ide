@@ -54,30 +54,30 @@ TEST_CASE("A new set is empty")
 {
     const DocumentSet documents;
 
-    CHECK(documents.Count() == 0);
-    CHECK_FALSE(documents.Active().has_value());
+    CHECK(documents.GetCount() == 0);
+    CHECK_FALSE(documents.GetActive().has_value());
 }
 
 TEST_CASE("Opening a text file adds an item holding the document")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "main.cpp";
+    const auto path = directory.GetPath() / "main.cpp";
     WriteBytes(path, "int main() {}\n");
 
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Opened);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     REQUIRE(documents.At(0).document.has_value());
-    CHECK(documents.At(0).document->Buffer().Text() == "int main() {}\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "int main() {}\n");
     CHECK(documents.At(0).failure == OpenFailure::None);
-    CHECK(documents.Active() == std::optional<std::size_t>{0});
+    CHECK(documents.GetActive() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("The widest line is measured in columns, not bytes")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "widths.txt";
+    const auto path = directory.GetPath() / "widths.txt";
     // The Polish line is longer in bytes (9 two-byte characters, 18 bytes) than the
     // ASCII line (11 one-byte characters, 11 bytes), but narrower in columns: 9 against
     // 11. A widestColumn computed from byte lengths would pick the Polish line; the
@@ -88,20 +88,20 @@ TEST_CASE("The widest line is measured in columns, not bytes")
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Opened);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     CHECK(documents.At(0).widestColumn == 11);
 }
 
 TEST_CASE("Indent depths are computed once when the document loads")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "indent.cpp";
+    const auto path = directory.GetPath() / "indent.cpp";
     WriteBytes(path, "if (x)\n    return;");
 
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Opened);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     REQUIRE(documents.At(0).indentDepths.size() == 2);
     CHECK(documents.At(0).indentDepths[0] == 0);
     CHECK(documents.At(0).indentDepths[1] == 4);
@@ -110,32 +110,32 @@ TEST_CASE("Indent depths are computed once when the document loads")
 TEST_CASE("Opening the same file twice activates it instead of duplicating it")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
     DocumentSet documents;
     documents.Open(first, true);
     documents.Open(second, true);
-    REQUIRE(documents.Count() == 2);
-    REQUIRE(documents.Active() == std::optional<std::size_t>{1});
+    REQUIRE(documents.GetCount() == 2);
+    REQUIRE(documents.GetActive() == std::optional<std::size_t>{1});
 
     CHECK(documents.Open(first, true) == OpenOutcome::Activated);
-    CHECK(documents.Count() == 2);
-    CHECK(documents.Active() == std::optional<std::size_t>{0});
+    CHECK(documents.GetCount() == 2);
+    CHECK(documents.GetActive() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("A binary file opens as an item with a reason rather than nothing at all")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "object.obj";
+    const auto path = directory.GetPath() / "object.obj";
     WriteBytes(path, std::string("MZ\0\0binary", 10));
 
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Failed);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     CHECK_FALSE(documents.At(0).document.has_value());
     CHECK(documents.At(0).failure == OpenFailure::Binary);
     CHECK(FailureMessage(documents.At(0)).find("Binary") != std::string::npos);
@@ -144,27 +144,27 @@ TEST_CASE("A binary file opens as an item with a reason rather than nothing at a
 TEST_CASE("A UTF-16 file now opens as a document rather than a refusal")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "utf16.txt";
+    const auto path = directory.GetPath() / "utf16.txt";
     WriteBytes(path, std::string("\xFF\xFEH\0e\0l\0l\0o\0", 12));
 
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Opened);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     REQUIRE(documents.At(0).document.has_value());
-    CHECK(documents.At(0).document->Buffer().Text() == "Hello");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "Hello");
 }
 
 TEST_CASE("A damaged UTF-16 file says it is damaged, not that the format is unsupported")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "damaged.txt";
+    const auto path = directory.GetPath() / "damaged.txt";
     WriteBytes(path, std::string("\xFF\xFE\x42\xDE", 4));
 
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::Failed);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
     CHECK(FailureMessage(documents.At(0)).find("damaged") != std::string::npos);
 }
@@ -175,8 +175,8 @@ TEST_CASE("A file that is not there opens as an item saying so, not as silence")
 
     DocumentSet documents;
 
-    CHECK(documents.Open(directory.Path() / "absent.txt", true) == OpenOutcome::Failed);
-    REQUIRE(documents.Count() == 1);
+    CHECK(documents.Open(directory.GetPath() / "absent.txt", true) == OpenOutcome::Failed);
+    REQUIRE(documents.GetCount() == 1);
     CHECK(documents.At(0).failure == OpenFailure::Missing);
 }
 
@@ -188,7 +188,7 @@ TEST_CASE("Opening a directory does not claim it does not exist")
     DocumentSet documents;
 
     CHECK(documents.Open(sub, true) == OpenOutcome::Failed);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
     CHECK(documents.At(0).failure != OpenFailure::Missing);
     CHECK(FailureMessage(documents.At(0)).find("exist") == std::string::npos);
@@ -201,7 +201,7 @@ TEST_CASE("Opening a file locked by another handle does not claim it does not ex
     // requiring no second process: opening with dwShareMode 0 denies every other
     // handle, including the ifstream ProbeFile opens next.
     TempDirectory directory;
-    const auto path = directory.Path() / "locked.txt";
+    const auto path = directory.GetPath() / "locked.txt";
     WriteBytes(path, "content");
 
     const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, /*dwShareMode=*/0, nullptr,
@@ -216,7 +216,7 @@ TEST_CASE("Opening a file locked by another handle does not claim it does not ex
     ::CloseHandle(handle);
 
     CHECK(outcome == OpenOutcome::Failed);
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     CHECK(documents.At(0).failure == OpenFailure::ReadFailed);
     CHECK(documents.At(0).failure != OpenFailure::Missing);
     CHECK(FailureMessage(documents.At(0)).find("exist") == std::string::npos);
@@ -231,7 +231,7 @@ TEST_CASE("Opening a file locked by another handle does not claim it does not ex
 TEST_CASE("A large file asks before it loads, and adds nothing until confirmed")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "big.log";
+    const auto path = directory.GetPath() / "big.log";
 
     // The probe classifies from the first ProbeSampleSize bytes only, so those bytes
     // have to be real text. Growing the file with resize_file zero-fills the new range,
@@ -256,10 +256,10 @@ TEST_CASE("A large file asks before it loads, and adds nothing until confirmed")
     DocumentSet documents;
 
     CHECK(documents.Open(path, true) == OpenOutcome::NeedsConfirmation);
-    CHECK(documents.Count() == 0);
+    CHECK(documents.GetCount() == 0);
 
     CHECK(documents.OpenConfirmed(path, true) == OpenOutcome::Opened);
-    CHECK(documents.Count() == 1);
+    CHECK(documents.GetCount() == 1);
     CHECK(documents.At(0).document.has_value());
 }
 
@@ -275,8 +275,8 @@ TEST_CASE("The failure message names the size, so the number is not a mystery")
 TEST_CASE("Closing removes the item and moves the active one")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
@@ -286,50 +286,50 @@ TEST_CASE("Closing removes the item and moves the active one")
 
     documents.Close(1);
 
-    CHECK(documents.Count() == 1);
-    CHECK(documents.Active() == std::optional<std::size_t>{0});
+    CHECK(documents.GetCount() == 1);
+    CHECK(documents.GetActive() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("Closing the last item leaves nothing active")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
     documents.Open(path, true);
     documents.Close(0);
 
-    CHECK(documents.Count() == 0);
-    CHECK_FALSE(documents.Active().has_value());
+    CHECK(documents.GetCount() == 0);
+    CHECK_FALSE(documents.GetActive().has_value());
 }
 
 TEST_CASE("Closing an item before the active one keeps the same item active")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
     DocumentSet documents;
     documents.Open(first, true);
     documents.Open(second, true);
-    REQUIRE(documents.Active() == std::optional<std::size_t>{1});
+    REQUIRE(documents.GetActive() == std::optional<std::size_t>{1});
 
     documents.Close(0);
 
     // "b.txt" was active and still is, at its new index.
-    REQUIRE(documents.Count() == 1);
-    CHECK(documents.Active() == std::optional<std::size_t>{0});
+    REQUIRE(documents.GetCount() == 1);
+    CHECK(documents.GetActive() == std::optional<std::size_t>{0});
     CHECK(documents.At(0).path == second);
 }
 
 TEST_CASE("Closing everything empties the set")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
@@ -339,28 +339,28 @@ TEST_CASE("Closing everything empties the set")
 
     documents.CloseAll();
 
-    CHECK(documents.Count() == 0);
-    CHECK_FALSE(documents.Active().has_value());
+    CHECK(documents.GetCount() == 0);
+    CHECK_FALSE(documents.GetActive().has_value());
 }
 
 TEST_CASE("A file can be found by path")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
     documents.Open(path, true);
 
     CHECK(documents.Find(path) == std::optional<std::size_t>{0});
-    CHECK_FALSE(documents.Find(directory.Path() / "other.txt").has_value());
+    CHECK_FALSE(documents.Find(directory.GetPath() / "other.txt").has_value());
 }
 
 TEST_CASE("Each item carries its own caret, so switching away and back keeps the place")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "hello");
     WriteBytes(second, "world");
 
@@ -378,28 +378,28 @@ TEST_CASE("Each item carries its own caret, so switching away and back keeps the
 TEST_CASE("A single click opens a preview and the next one replaces it")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
     DocumentSet documents;
 
     documents.Open(first, false);
-    REQUIRE(documents.Count() == 1);
-    CHECK(documents.Preview() == std::optional<std::size_t>{0});
+    REQUIRE(documents.GetCount() == 1);
+    CHECK(documents.GetPreview() == std::optional<std::size_t>{0});
 
     documents.Open(second, false);
-    CHECK(documents.Count() == 1);
+    CHECK(documents.GetCount() == 1);
     CHECK(documents.At(0).path == second);
-    CHECK(documents.Preview() == std::optional<std::size_t>{0});
+    CHECK(documents.GetPreview() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("A double click opens something that does not get replaced")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
@@ -407,7 +407,7 @@ TEST_CASE("A double click opens something that does not get replaced")
     documents.Open(first, true);
     documents.Open(second, false);
 
-    CHECK(documents.Count() == 2);
+    CHECK(documents.GetCount() == 2);
     CHECK_FALSE(documents.At(0).preview);
     CHECK(documents.At(1).preview);
 }
@@ -415,8 +415,8 @@ TEST_CASE("A double click opens something that does not get replaced")
 TEST_CASE("Promoting a preview frees the slot")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "a.txt";
-    const auto second = directory.Path() / "b.txt";
+    const auto first = directory.GetPath() / "a.txt";
+    const auto second = directory.GetPath() / "b.txt";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
@@ -424,17 +424,17 @@ TEST_CASE("Promoting a preview frees the slot")
     documents.Open(first, false);
     documents.Promote(0);
 
-    CHECK_FALSE(documents.Preview().has_value());
+    CHECK_FALSE(documents.GetPreview().has_value());
 
     documents.Open(second, false);
 
-    CHECK(documents.Count() == 2);
+    CHECK(documents.GetCount() == 2);
 }
 
 TEST_CASE("Opening an already-open preview permanently promotes it")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
@@ -444,26 +444,26 @@ TEST_CASE("Opening an already-open preview permanently promotes it")
     documents.Open(path, true);
 
     CHECK_FALSE(documents.At(0).preview);
-    CHECK_FALSE(documents.Preview().has_value());
+    CHECK_FALSE(documents.GetPreview().has_value());
 }
 
 TEST_CASE("Closing the preview clears the slot")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
     documents.Open(path, false);
     documents.Close(0);
 
-    CHECK_FALSE(documents.Preview().has_value());
+    CHECK_FALSE(documents.GetPreview().has_value());
 }
 
 TEST_CASE("A title is the file name when nothing collides with it")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "main.cpp";
+    const auto path = directory.GetPath() / "main.cpp";
     WriteBytes(path, "a");
 
     DocumentSet documents;
@@ -475,11 +475,11 @@ TEST_CASE("A title is the file name when nothing collides with it")
 TEST_CASE("Two files of the same name both gain their parent directory")
 {
     TempDirectory directory;
-    std::filesystem::create_directories(directory.Path() / "Core");
-    std::filesystem::create_directories(directory.Path() / "Graphite");
+    std::filesystem::create_directories(directory.GetPath() / "Core");
+    std::filesystem::create_directories(directory.GetPath() / "Graphite");
 
-    const auto first = directory.Path() / "Core" / "main.cpp";
-    const auto second = directory.Path() / "Graphite" / "main.cpp";
+    const auto first = directory.GetPath() / "Core" / "main.cpp";
+    const auto second = directory.GetPath() / "Graphite" / "main.cpp";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
 
@@ -494,11 +494,11 @@ TEST_CASE("Two files of the same name both gain their parent directory")
 TEST_CASE("A third file with a different name is not dragged into the disambiguation")
 {
     TempDirectory directory;
-    std::filesystem::create_directories(directory.Path() / "Core");
+    std::filesystem::create_directories(directory.GetPath() / "Core");
 
-    const auto first = directory.Path() / "Core" / "main.cpp";
-    const auto second = directory.Path() / "main.cpp";
-    const auto third = directory.Path() / "other.cpp";
+    const auto first = directory.GetPath() / "Core" / "main.cpp";
+    const auto second = directory.GetPath() / "main.cpp";
+    const auto third = directory.GetPath() / "other.cpp";
     WriteBytes(first, "a");
     WriteBytes(second, "b");
     WriteBytes(third, "c");
@@ -514,13 +514,13 @@ TEST_CASE("A third file with a different name is not dragged into the disambigua
 TEST_CASE("Paths follow the workspace root when it moves")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
     documents.Open(path, true);
 
-    documents.RewritePaths(directory.Path(), "D:/moved");
+    documents.RewritePaths(directory.GetPath(), "D:/moved");
 
     CHECK(documents.At(0).path == std::filesystem::path{"D:/moved"} / "a.txt");
 }
@@ -528,7 +528,7 @@ TEST_CASE("Paths follow the workspace root when it moves")
 TEST_CASE("A path outside the moved root is left alone")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
@@ -548,10 +548,10 @@ TEST_CASE("A path equal to the moved root is rewritten without a trailing dot")
     // A directory path is a legitimate OpenItem::path: opening a directory produces a
     // ReadFailed item at exactly that path, and the workspace root itself can be that
     // path when the item under test is the root.
-    documents.Open(directory.Path(), true);
-    REQUIRE(documents.Count() == 1);
+    documents.Open(directory.GetPath(), true);
+    REQUIRE(documents.GetCount() == 1);
 
-    documents.RewritePaths(directory.Path(), "D:/moved");
+    documents.RewritePaths(directory.GetPath(), "D:/moved");
 
     CHECK(documents.At(0).path == std::filesystem::path{"D:/moved"});
 }
@@ -559,7 +559,7 @@ TEST_CASE("A path equal to the moved root is rewritten without a trailing dot")
 TEST_CASE("A deleted file keeps its window and its content")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "still here");
 
     DocumentSet documents;
@@ -567,10 +567,10 @@ TEST_CASE("A deleted file keeps its window and its content")
 
     documents.MarkMissing(path);
 
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     CHECK(documents.At(0).failure == OpenFailure::Missing);
     REQUIRE(documents.At(0).document.has_value());
-    CHECK(documents.At(0).document->Buffer().Text() == "still here");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "still here");
 }
 
 TEST_CASE("Marking a file that is not open does nothing")
@@ -579,13 +579,13 @@ TEST_CASE("Marking a file that is not open does nothing")
 
     documents.MarkMissing("D:/never-opened.txt");
 
-    CHECK(documents.Count() == 0);
+    CHECK(documents.GetCount() == 0);
 }
 
 TEST_CASE("Marking a file missing clears any detail an earlier failure left behind")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "sub";
+    const auto path = directory.GetPath() / "sub";
     std::filesystem::create_directories(path);
 
     DocumentSet documents;
@@ -594,7 +594,7 @@ TEST_CASE("Marking a file missing clears any detail an earlier failure left behi
     // generic Missing message.
     documents.Open(path, true);
 
-    REQUIRE(documents.Count() == 1);
+    REQUIRE(documents.GetCount() == 1);
     REQUIRE(documents.At(0).failure == OpenFailure::ReadFailed);
     REQUIRE_FALSE(documents.At(0).detail.empty());
 
@@ -608,10 +608,10 @@ TEST_CASE("Marking a file missing clears any detail an earlier failure left behi
 TEST_CASE("A single click that needs confirmation does not evict the preview")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
-    const auto big = directory.Path() / "big.log";
+    const auto big = directory.GetPath() / "big.log";
 
     // See "A large file asks before it loads, and adds nothing until confirmed" for why
     // the sample window has to be filled with non-NUL bytes before growing the file.
@@ -630,38 +630,38 @@ TEST_CASE("A single click that needs confirmation does not evict the preview")
 
     DocumentSet documents;
     documents.Open(path, false);
-    REQUIRE(documents.Count() == 1);
-    REQUIRE(documents.Preview() == std::optional<std::size_t>{0});
+    REQUIRE(documents.GetCount() == 1);
+    REQUIRE(documents.GetPreview() == std::optional<std::size_t>{0});
 
     CHECK(documents.Open(big, false) == OpenOutcome::NeedsConfirmation);
 
-    CHECK(documents.Count() == 1);
+    CHECK(documents.GetCount() == 1);
     CHECK(documents.At(0).path == path);
-    CHECK(documents.Preview() == std::optional<std::size_t>{0});
+    CHECK(documents.GetPreview() == std::optional<std::size_t>{0});
 }
 
 TEST_CASE("The document's own path follows the workspace root when it moves")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "a");
 
     DocumentSet documents;
     documents.Open(path, true);
     REQUIRE(documents.At(0).document.has_value());
 
-    documents.RewritePaths(directory.Path(), "D:/moved");
+    documents.RewritePaths(directory.GetPath(), "D:/moved");
 
     // Two places hold this path and a save reads the document's own — so the two must
     // never be allowed to disagree.
-    CHECK(documents.At(0).document->Path() == documents.At(0).path);
-    CHECK(documents.At(0).document->Path() == std::filesystem::path{"D:/moved"} / "a.txt");
+    CHECK(documents.At(0).document->GetPath() == documents.At(0).path);
+    CHECK(documents.At(0).document->GetPath() == std::filesystem::path{"D:/moved"} / "a.txt");
 }
 
 TEST_CASE("A deleted file says so in its tab title")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "still here");
 
     DocumentSet documents;
@@ -677,8 +677,8 @@ TEST_CASE("A deleted file says so in its tab title")
 TEST_CASE("A deleted file that shares its name keeps the disambiguating directory too")
 {
     TempDirectory directory;
-    const auto first = directory.Path() / "one";
-    const auto second = directory.Path() / "two";
+    const auto first = directory.GetPath() / "one";
+    const auto second = directory.GetPath() / "two";
     std::filesystem::create_directories(first);
     std::filesystem::create_directories(second);
 
@@ -698,7 +698,7 @@ TEST_CASE("A deleted file that shares its name keeps the disambiguating director
 TEST_CASE("A missing file that comes back stops being marked deleted")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "a.txt";
+    const auto path = directory.GetPath() / "a.txt";
     WriteBytes(path, "still here");
 
     DocumentSet documents;
@@ -716,7 +716,7 @@ TEST_CASE("A missing file that comes back stops being marked deleted")
 TEST_CASE("MarkPresent leaves a failure that is not about the file being gone")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "binary.obj";
+    const auto path = directory.GetPath() / "binary.obj";
     WriteBytes(path, std::string("MZ\0\0binary", 10));
 
     DocumentSet documents;
@@ -732,7 +732,7 @@ TEST_CASE("MarkPresent leaves a failure that is not about the file being gone")
 TEST_CASE("Loading fills an item that opened before its file existed")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "appears.txt";
+    const auto path = directory.GetPath() / "appears.txt";
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
@@ -742,7 +742,7 @@ TEST_CASE("Loading fills an item that opened before its file existed")
 
     CHECK(LoadFromFile(documents.At(0), false) == ItemLoad::Loaded);
     REQUIRE(documents.At(0).document.has_value());
-    CHECK(documents.At(0).document->Buffer().Text() == "here now\n");
+    CHECK(documents.At(0).document->GetBuffer().GetText() == "here now\n");
     CHECK(documents.At(0).failure == OpenFailure::None);
     CHECK(documents.At(0).detail.empty());
 }
@@ -750,7 +750,7 @@ TEST_CASE("Loading fills an item that opened before its file existed")
 TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a document")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "appears.obj";
+    const auto path = directory.GetPath() / "appears.obj";
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);
@@ -765,7 +765,7 @@ TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a 
 TEST_CASE("Loading a large file asks before reading it, and reads it once confirmed")
 {
     TempDirectory directory;
-    const auto path = directory.Path() / "appears.log";
+    const auto path = directory.GetPath() / "appears.log";
 
     DocumentSet documents;
     REQUIRE(documents.Open(path, true) == OpenOutcome::Failed);

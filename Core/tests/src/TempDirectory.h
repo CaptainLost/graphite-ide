@@ -41,7 +41,7 @@ public:
     TempDirectory(const TempDirectory&) = delete;
     TempDirectory& operator=(const TempDirectory&) = delete;
 
-    [[nodiscard]] const std::filesystem::path& Path() const noexcept { return m_Path; }
+    [[nodiscard]] const std::filesystem::path& GetPath() const noexcept { return m_Path; }
 
     std::filesystem::path MakeDir(const std::string& relative)
     {

@@ -272,7 +272,7 @@ namespace Core
         const std::string element =
             std::format(R"(<Project Path="{}" Id="{}" />)", relative, id);
 
-        InsertChild(container.Value(), element);
+        InsertChild(container.GetValue(), element);
 
         return Result<void>::Ok();
     }
@@ -284,7 +284,7 @@ namespace Core
         if (!found)
             return found.GetError();
 
-        EraseElement(m_Text, found.Value(), "Project");
+        EraseElement(m_Text, found.GetValue(), "Project");
 
         return Result<void>::Ok();
     }
@@ -325,7 +325,7 @@ namespace Core
             if (!root)
                 return root.GetError();
 
-            InsertChild(root.Value(), std::format(R"(<Folder Name="/{}/" />)", missing[i - 1]));
+            InsertChild(root.GetValue(), std::format(R"(<Folder Name="/{}/" />)", missing[i - 1]));
         }
 
         return Result<void>::Ok();
@@ -379,7 +379,7 @@ namespace Core
             }
         }
 
-        EraseElement(m_Text, found.Value(), "Folder");
+        EraseElement(m_Text, found.GetValue(), "Folder");
 
         return Result<void>::Ok();
     }
@@ -463,7 +463,7 @@ namespace Core
 
             for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
             {
-                if (static_cast<std::size_t>(node.node().offset_debug()) != found.Value())
+                if (static_cast<std::size_t>(node.node().offset_debug()) != found.GetValue())
                     continue;
 
                 declared = node.node().attribute("Path").value();
@@ -501,7 +501,7 @@ namespace Core
         if (!container)
             return container.GetError();
 
-        InsertChild(container.Value(), std::format(R"(<Project Path="{}" Id="{}" />)", declared, id));
+        InsertChild(container.GetValue(), std::format(R"(<Project Path="{}" Id="{}" />)", declared, id));
 
         return Result<void>::Ok();
     }
@@ -531,7 +531,7 @@ namespace Core
         if (!picked)
             return picked.GetError();
 
-        const std::filesystem::path& scratch = picked.Value();
+        const std::filesystem::path& scratch = picked.GetValue();
 
         {
             std::ofstream stream{scratch, std::ios::binary | std::ios::trunc};

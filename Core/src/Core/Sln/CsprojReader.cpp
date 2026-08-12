@@ -36,7 +36,7 @@ namespace Core
             if (!entries)
                 return;
 
-            for (const DirectoryEntry& entry : entries.Value())
+            for (const DirectoryEntry& entry : entries.GetValue())
             {
                 if (entry.isDirectory)
                 {

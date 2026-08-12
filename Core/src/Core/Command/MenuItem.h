@@ -29,8 +29,8 @@ namespace Core
         [[nodiscard]] static MenuItem Group(std::string group);
 
         [[nodiscard]] Kind GetKind() const noexcept { return m_Kind; }
-        [[nodiscard]] const std::string& Text() const noexcept { return m_Text; }
-        [[nodiscard]] const std::vector<MenuItem>& Children() const noexcept { return m_Children; }
+        [[nodiscard]] const std::string& GetText() const noexcept { return m_Text; }
+        [[nodiscard]] const std::vector<MenuItem>& GetChildren() const noexcept { return m_Children; }
 
     private:
         MenuItem() = default;

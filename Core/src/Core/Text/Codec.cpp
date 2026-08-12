@@ -321,6 +321,6 @@ namespace Core
         if (!decoded)
             return Encoding::Utf8;
 
-        return LooksLikeText(decoded.Value()) ? candidate : Encoding::Utf8;
+        return LooksLikeText(decoded.GetValue()) ? candidate : Encoding::Utf8;
     }
 }

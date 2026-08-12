@@ -30,10 +30,10 @@ TEST_CASE("ReadDirectory lists files and directories")
     temp.MakeFile("alpha.txt", "hello");
     temp.MakeDir("beta");
 
-    auto result = ReadDirectory(temp.Path());
+    auto result = ReadDirectory(temp.GetPath());
 
     REQUIRE(result.HasValue());
-    const auto& entries = result.Value();
+    const auto& entries = result.GetValue();
     CHECK(entries.size() == 2);
 
     const DirectoryEntry* file = FindEntry(entries, "alpha.txt");
@@ -50,7 +50,7 @@ TEST_CASE("ReadDirectory reports a missing directory as NotFound")
 {
     TempDirectory temp;
 
-    auto result = ReadDirectory(temp.Path() / "does-not-exist");
+    auto result = ReadDirectory(temp.GetPath() / "does-not-exist");
 
     REQUIRE_FALSE(result.HasValue());
     CHECK(result.GetError().code == ErrorCode::NotFound);
@@ -60,10 +60,10 @@ TEST_CASE("ReadDirectory returns an empty list for an empty directory")
 {
     TempDirectory temp;
 
-    auto result = ReadDirectory(temp.Path());
+    auto result = ReadDirectory(temp.GetPath());
 
     REQUIRE(result.HasValue());
-    CHECK(result.Value().empty());
+    CHECK(result.GetValue().empty());
 }
 
 TEST_CASE("ReadDirectory fills the full path of every entry")
@@ -71,11 +71,11 @@ TEST_CASE("ReadDirectory fills the full path of every entry")
     TempDirectory temp;
     const auto expected = temp.MakeFile("nested/inner.txt", "x");
 
-    auto result = ReadDirectory(temp.Path() / "nested");
+    auto result = ReadDirectory(temp.GetPath() / "nested");
 
     REQUIRE(result.HasValue());
-    REQUIRE(result.Value().size() == 1);
-    CHECK(result.Value()[0].path == expected);
+    REQUIRE(result.GetValue().size() == 1);
+    CHECK(result.GetValue()[0].path == expected);
 }
 
 TEST_CASE("ReadDirectory reports a file path as an error, not an empty listing")
@@ -93,18 +93,18 @@ TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
 {
     TempDirectory temp;
     const std::filesystem::path expected =
-        temp.Path() / Core::FromUtf8("\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+        temp.GetPath() / Core::FromUtf8("\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 
     std::ofstream stream{expected, std::ios::binary | std::ios::trunc};
     stream << "x";
     stream.close();
 
-    auto result = ReadDirectory(temp.Path());
+    auto result = ReadDirectory(temp.GetPath());
 
     REQUIRE(result.HasValue());
-    REQUIRE(result.Value().size() == 1);
-    CHECK(result.Value()[0].name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
-    CHECK(Core::ToUtf8(result.Value()[0].path.filename()) ==
+    REQUIRE(result.GetValue().size() == 1);
+    CHECK(result.GetValue()[0].name == "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
+    CHECK(Core::ToUtf8(result.GetValue()[0].path.filename()) ==
           "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 }
 

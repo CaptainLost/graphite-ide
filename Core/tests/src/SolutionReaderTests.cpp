@@ -43,7 +43,7 @@ TEST_CASE("Reading a solution that does not exist fails with NotFound")
 {
     TempDirectory temp;
 
-    const auto solution = Core::ReadSolution(temp.Path() / "missing.slnx");
+    const auto solution = Core::ReadSolution(temp.GetPath() / "missing.slnx");
 
     REQUIRE_FALSE(solution.HasValue());
     CHECK(solution.GetError().code == Core::ErrorCode::NotFound);
@@ -79,8 +79,8 @@ TEST_CASE("The solution takes its name from the file")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().name == "MyApp");
-    CHECK(solution.Value().path == file);
+    CHECK(solution.GetValue().name == "MyApp");
+    CHECK(solution.GetValue().path == file);
 }
 
 TEST_CASE("Solution folders become tree folders with the slashes stripped")
@@ -91,7 +91,7 @@ TEST_CASE("Solution folders become tree folders with the slashes stripped")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Folder& root = solution.Value().root;
+    const Folder& root = solution.GetValue().root;
     REQUIRE(root.folders.size() == 2);
 
     // "/App/" in the file, "App" in the model — the slashes carry nesting, not the name.
@@ -107,7 +107,7 @@ TEST_CASE("Projects land in their folder with an absolute path")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Folder* engine = FindFolder(solution.Value().root, "Engine");
+    const Folder* engine = FindFolder(solution.GetValue().root, "Engine");
     REQUIRE(engine != nullptr);
     REQUIRE(engine->projects.size() == 2);
 
@@ -115,7 +115,7 @@ TEST_CASE("Projects land in their folder with an absolute path")
     // holds absolute paths, because everything downstream opens them.
     const Project& core = engine->projects[0];
     CHECK(core.displayName == "Core");
-    CHECK(core.path == temp.Path() / "Core" / "Core.vcxproj");
+    CHECK(core.path == temp.GetPath() / "Core" / "Core.vcxproj");
     CHECK(core.path.is_absolute());
 }
 
@@ -137,7 +137,7 @@ TEST_CASE("Nested solution folders are nested in the model")
 
     // Nesting is expressed by the folder's path, not by element nesting — the two Folder
     // elements are siblings in the file.
-    const Folder* group = FindFolder(solution.Value().root, "Group");
+    const Folder* group = FindFolder(solution.GetValue().root, "Group");
     REQUIRE(group != nullptr);
     REQUIRE(group->folders.size() == 1);
     CHECK(group->folders[0].name == "Inner");
@@ -153,9 +153,9 @@ TEST_CASE("A project outside any folder sits at the solution root")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    CHECK(solution.Value().root.folders.empty());
-    REQUIRE(solution.Value().root.projects.size() == 1);
-    CHECK(solution.Value().root.projects[0].displayName == "A");
+    CHECK(solution.GetValue().root.folders.empty());
+    REQUIRE(solution.GetValue().root.projects.size() == 1);
+    CHECK(solution.GetValue().root.projects[0].displayName == "A");
 }
 
 TEST_CASE("An empty solution reads as empty rather than failing")
@@ -166,9 +166,9 @@ TEST_CASE("An empty solution reads as empty rather than failing")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 0);
-    CHECK(solution.Value().root.folders.empty());
-    CHECK(solution.Value().root.projects.empty());
+    CHECK(solution.GetValue().projectCount == 0);
+    CHECK(solution.GetValue().root.folders.empty());
+    CHECK(solution.GetValue().root.projects.empty());
 }
 
 TEST_CASE("The project count covers every folder")
@@ -179,7 +179,7 @@ TEST_CASE("The project count covers every folder")
     const auto solution = Core::ReadSolution(file);
 
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 3);
+    CHECK(solution.GetValue().projectCount == 3);
 }
 
 TEST_CASE("A project whose file is missing is marked rather than dropped")
@@ -194,11 +194,11 @@ TEST_CASE("A project whose file is missing is marked rather than dropped")
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    REQUIRE(solution.Value().root.projects.size() == 2);
+    REQUIRE(solution.GetValue().root.projects.size() == 2);
 
     // Looked up by name rather than by position: the model is sorted, so declaration
     // order in the file says nothing about where a project lands.
-    const auto& projects = solution.Value().root.projects;
+    const auto& projects = solution.GetValue().root.projects;
 
     const auto real = std::find_if(projects.begin(), projects.end(),
                                    [](const Project& p) { return p.displayName == "Real"; });
@@ -234,9 +234,9 @@ TEST_CASE("Project contents are read by the solution reader")
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    REQUIRE(solution.Value().root.projects.size() == 1);
+    REQUIRE(solution.GetValue().root.projects.size() == 1);
 
-    const Project& project = solution.Value().root.projects[0];
+    const Project& project = solution.GetValue().root.projects[0];
 
     REQUIRE(project.exists);
     CHECK(project.contentRead);
@@ -283,7 +283,7 @@ TEST_CASE("Folders and projects come back sorted, not in declaration order")
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    const Folder& root = solution.Value().root;
+    const Folder& root = solution.GetValue().root;
 
     // Case-insensitive, so "apple" sits before "Zebra" rather than after it — the rule
     // the file tree already uses, and the one Visual Studio displays.

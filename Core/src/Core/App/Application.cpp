@@ -58,7 +58,7 @@ namespace Core
             return windowResult.GetError();
         }
 
-        m_Window = std::move(windowResult).Value();
+        m_Window = std::move(windowResult).GetValue();
 
         if (auto init = m_Gui.Init(*m_Window); !init)
         {

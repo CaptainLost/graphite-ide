@@ -30,7 +30,7 @@ namespace Graphite
         void Set(std::string_view key, std::string value);
 
     private:
-        [[nodiscard]] std::filesystem::path FilePath() const;
+        [[nodiscard]] std::filesystem::path GetFilePath() const;
 
         std::filesystem::path m_Root;
     };

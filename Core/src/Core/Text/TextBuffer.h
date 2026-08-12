@@ -45,7 +45,7 @@ namespace Core
         /// reaches this class. A caller inserting text from an external source (stage 3's
         /// paste from the Windows clipboard, which is always CRLF) must normalise it
         /// first, or a stray '\r' ends up sitting in the buffer as an empty glyph at the
-        /// end of a line and Bytes() emits "\r\r\n" for it.
+        /// end of a line and GetBytes() emits "\r\r\n" for it.
         void Insert(std::size_t offset, std::string_view text);
         void Erase(std::size_t from, std::size_t to);
 
@@ -75,21 +75,21 @@ namespace Core
         /// document is modified. An identity rather than a depth: undoing one edit and
         /// making a different one returns the stack to the same depth while the content
         /// differs, and a depth would call that saved.
-        [[nodiscard]] std::size_t Revision() const noexcept;
+        [[nodiscard]] std::size_t GetRevision() const noexcept;
 
-        [[nodiscard]] std::size_t Length() const noexcept { return m_Length; }
-        [[nodiscard]] bool Empty() const noexcept { return m_Length == 0; }
+        [[nodiscard]] std::size_t GetLength() const noexcept { return m_Length; }
+        [[nodiscard]] bool IsEmpty() const noexcept { return m_Length == 0; }
 
         /// The content between two offsets. `to` is clamped to the end and a reversed
         /// range gives an empty string, so a caller cannot read out of bounds.
         [[nodiscard]] std::string Substring(std::size_t from, std::size_t to) const;
-        [[nodiscard]] std::string Text() const { return Substring(0, m_Length); }
+        [[nodiscard]] std::string GetText() const { return Substring(0, m_Length); }
 
         /// The byte at `offset`, or '\0' past the end.
         [[nodiscard]] char CharAt(std::size_t offset) const;
 
         /// Never zero: an empty document is one empty line.
-        [[nodiscard]] std::size_t LineCount() const noexcept { return m_LineStarts.size(); }
+        [[nodiscard]] std::size_t GetLineCount() const noexcept { return m_LineStarts.size(); }
 
         /// Offset the line begins at. Past the last line, the end of the document.
         [[nodiscard]] std::size_t LineStart(std::size_t line) const;
@@ -112,7 +112,7 @@ namespace Core
         /// Bytes held in the append-only buffer that inserted text lands in. Exists for
         /// diagnostics and so tests can confirm that toggling undo/redo does not grow it
         /// — an edit's text is appended once and every replay reuses that range.
-        [[nodiscard]] std::size_t AppendBufferSize() const noexcept { return m_Append.size(); }
+        [[nodiscard]] std::size_t GetAppendBufferSize() const noexcept { return m_Append.size(); }
 
     private:
         enum class Source

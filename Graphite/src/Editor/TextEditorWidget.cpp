@@ -114,7 +114,7 @@ namespace Graphite
 
         ImGui::PushFont(Core::ImGuiRenderer::MonoFont(), fontSize);
 
-        const Core::TextBuffer& buffer = item.document->Buffer();
+        const Core::TextBuffer& buffer = item.document->GetBuffer();
         // Read before anything in this function can move the caret — the mouse below
         // moves it as readily as the keyboard does, and the blink has to restart for
         // both.
@@ -144,7 +144,7 @@ namespace Graphite
         const float cellWidth =
             baked->GetCharAdvance('0') * (ImGui::GetFontSize() / baked->Size);
 
-        const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.LineCount()));
+        const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.GetLineCount()));
         const float breakpointColumnWidth = kBreakpointColumnCells * cellWidth;
         const float foldColumnWidth = kFoldColumnCells * cellWidth;
         const float numberColumnWidth =
@@ -194,7 +194,7 @@ namespace Graphite
             // having passed through RefreshDerived, and a map with more lines than the
             // buffer would send RowAt off the end of it.
             if (columnsPerRow != item.wrappedTo
-                || item.rows.LineCount() != buffer.LineCount())
+                || item.rows.GetLineCount() != buffer.GetLineCount())
             {
                 item.rows.Rebuild(buffer, columnsPerRow, Core::DefaultTabWidth);
                 item.wrappedTo = columnsPerRow;
@@ -538,7 +538,7 @@ namespace Graphite
                 // means moving the caret and then typing costs a fresh undo step instead
                 // of merging with whatever was typed before the caret moved.
                 if (item.caret.offset != caretAtFrameStart)
-                    item.document->Buffer().BreakUndoGroup();
+                    item.document->GetBuffer().BreakUndoGroup();
 
                 // Cutting and copying share this: cutting is copying followed by
                 // removing the selection, not a separate way of reading the clipboard.

@@ -51,12 +51,12 @@ namespace Core
         /// rename fails.
         [[nodiscard]] bool Save(const std::filesystem::path& path) const;
 
-        [[nodiscard]] std::size_t Count() const noexcept;
+        [[nodiscard]] std::size_t GetCount() const noexcept;
 
         /// Every key the document holds, in whatever order it holds them. Lets a caller
         /// find the keys it owns by prefix without the file having to know they are
         /// related — which is what keeps this class ignorant of what is stored in it.
-        [[nodiscard]] std::vector<std::string> Keys() const;
+        [[nodiscard]] std::vector<std::string> GetKeys() const;
 
     private:
         /// The JSON document lives behind a pointer so that <nlohmann/json.hpp> — some

@@ -110,7 +110,7 @@ TEST_CASE("Nothing is written until Save is called")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
 
     // The editor is destroyed without saving; the file must be untouched.
     CHECK(Read(file) == kSolution);
@@ -123,12 +123,12 @@ TEST_CASE("Adding a project puts it in the solution and changes nothing else")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 2);
+    CHECK(solution.GetValue().projectCount == 2);
 
     const std::string written = Read(file);
 
@@ -161,13 +161,13 @@ TEST_CASE("A project added to a folder lands in that folder")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "App").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "App").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    REQUIRE(solution.Value().root.folders.size() == 1);
-    CHECK(solution.Value().root.folders[0].projects.size() == 2);
+    REQUIRE(solution.GetValue().root.folders.size() == 1);
+    CHECK(solution.GetValue().root.folders[0].projects.size() == 2);
 }
 
 TEST_CASE("The project path is written relative to the solution")
@@ -177,14 +177,14 @@ TEST_CASE("The project path is written relative to the solution")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     // Absolute paths in a solution break the moment the repository is cloned elsewhere.
     const std::string written = Read(file);
 
     CHECK(written.find("lib\\Lib.vcxproj") != std::string::npos);
-    CHECK(written.find(Core::ToUtf8(temp.Path())) == std::string::npos);
+    CHECK(written.find(Core::ToUtf8(temp.GetPath())) == std::string::npos);
 }
 
 TEST_CASE("Adding a project that is already a member is refused")
@@ -195,7 +195,7 @@ TEST_CASE("Adding a project that is already a member is refused")
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
-    const auto added = editor.Value()->AddProject(temp.Path() / "app" / "App.vcxproj", "");
+    const auto added = editor.GetValue()->AddProject(temp.GetPath() / "app" / "App.vcxproj", "");
 
     REQUIRE_FALSE(added.HasValue());
     CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -210,7 +210,7 @@ TEST_CASE("Adding a project file that does not exist is refused")
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
-    const auto added = editor.Value()->AddProject(temp.Path() / "gone" / "Gone.vcxproj", "");
+    const auto added = editor.GetValue()->AddProject(temp.GetPath() / "gone" / "Gone.vcxproj", "");
 
     REQUIRE_FALSE(added.HasValue());
     CHECK(added.GetError().code == Core::ErrorCode::NotFound);
@@ -223,12 +223,12 @@ TEST_CASE("Removing a project takes it out and leaves the rest alone")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 0);
+    CHECK(solution.GetValue().projectCount == 0);
 
     // The folder it was in stays, its line goes whole rather than leaving a blank one, and
     // every other byte is untouched.
@@ -253,7 +253,7 @@ TEST_CASE("Removing a project that is not a member is refused")
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
-    const auto removed = editor.Value()->RemoveProject(temp.Path() / "lib" / "Lib.vcxproj");
+    const auto removed = editor.GetValue()->RemoveProject(temp.GetPath() / "lib" / "Lib.vcxproj");
 
     REQUIRE_FALSE(removed.HasValue());
     CHECK(removed.GetError().code == Core::ErrorCode::NotFound);
@@ -266,11 +266,11 @@ TEST_CASE("A project file on disk is never touched by removal")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     // Removing from a solution is not deleting. Getting this wrong destroys work.
-    CHECK(std::filesystem::exists(temp.Path() / "app" / "App.vcxproj"));
+    CHECK(std::filesystem::exists(temp.GetPath() / "app" / "App.vcxproj"));
 }
 
 TEST_CASE("Two operations are written as one change")
@@ -280,13 +280,13 @@ TEST_CASE("Two operations are written as one change")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
-    REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
+    REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().projectCount == 1);
+    CHECK(solution.GetValue().projectCount == 1);
 }
 
 TEST_CASE("No temporary file is left beside the solution")
@@ -296,19 +296,19 @@ TEST_CASE("No temporary file is left beside the solution")
 
     std::vector<std::string> before;
 
-    for (const auto& entry : std::filesystem::directory_iterator{temp.Path()})
+    for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath()})
         before.push_back(Core::ToUtf8(entry.path().filename()));
 
     std::sort(before.begin(), before.end());
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     std::vector<std::string> after;
 
-    for (const auto& entry : std::filesystem::directory_iterator{temp.Path()})
+    for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath()})
         after.push_back(Core::ToUtf8(entry.path().filename()));
 
     std::sort(after.begin(), after.end());
@@ -329,8 +329,8 @@ TEST_CASE("Removing a project that spans several lines removes all of it")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->RemoveProject(temp.Path() / "app" / "App.vcxproj").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->RemoveProject(temp.GetPath() / "app" / "App.vcxproj").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     // Measuring the span from the element's first line alone takes that line and leaves the
     // children and an orphaned "</Project>" behind — and still reports success.
@@ -351,8 +351,8 @@ TEST_CASE("A project added to an empty folder expands its self-closing tag")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Lib").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "Lib").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const std::string written = Read(file);
 
@@ -379,8 +379,8 @@ TEST_CASE("A container whose attributes wrap is still named correctly")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Lib").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "Lib").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const std::string written = Read(file);
 
@@ -407,14 +407,14 @@ TEST_CASE("A project under a different root is refused")
     // A solution names its projects relatively, and there is no relative path across roots.
     // Left unchecked this writes Path="", which the reader skips — so the read-back after
     // the save passes and the garbage entry survives.
-    const std::string root = Core::ToUtf8(temp.Path().root_name());
+    const std::string root = Core::ToUtf8(temp.GetPath().root_name());
     const std::filesystem::path elsewhere =
         Core::FromUtf8(root == "Z:" ? "Y:\\far\\Far.vcxproj" : "Z:\\far\\Far.vcxproj");
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
-    const auto added = editor.Value()->AddProject(elsewhere, "");
+    const auto added = editor.GetValue()->AddProject(elsewhere, "");
 
     REQUIRE_FALSE(added.HasValue());
     CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -428,8 +428,8 @@ TEST_CASE("Adding a folder puts it in the solution")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const std::string written = Read(file);
     CHECK(written.find("<Folder Name=\"/Engine/\"") != std::string::npos);
@@ -445,8 +445,8 @@ TEST_CASE("A nested folder creates the ancestors it needs")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddFolder("Engine/Tests").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
@@ -465,7 +465,7 @@ TEST_CASE("Adding a folder that already exists is refused")
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
 
-    const auto added = editor.Value()->AddFolder("App");
+    const auto added = editor.GetValue()->AddFolder("App");
 
     REQUIRE_FALSE(added.HasValue());
     CHECK(added.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -478,12 +478,12 @@ TEST_CASE("Adding a project to a folder that does not exist creates it")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddProject(temp.Path() / "lib" / "Lib.vcxproj", "Engine").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddProject(temp.GetPath() / "lib" / "Lib.vcxproj", "Engine").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    REQUIRE(solution.Value().root.folders.size() == 2);
+    REQUIRE(solution.GetValue().root.folders.size() == 2);
 }
 
 TEST_CASE("An empty folder can be removed")
@@ -493,9 +493,9 @@ TEST_CASE("An empty folder can be removed")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
-    REQUIRE(editor.Value()->RemoveFolder("Engine").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.GetValue()->RemoveFolder("Engine").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     CHECK(Read(file).find("/Engine/") == std::string::npos);
 }
@@ -510,7 +510,7 @@ TEST_CASE("A folder holding a project cannot be removed")
 
     // Refused rather than deleting a subtree by implication: the user asked to remove one
     // folder, not to unlist everything inside it.
-    const auto removed = editor.Value()->RemoveFolder("App");
+    const auto removed = editor.GetValue()->RemoveFolder("App");
 
     REQUIRE_FALSE(removed.HasValue());
     CHECK(removed.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -523,9 +523,9 @@ TEST_CASE("A folder holding another folder cannot be removed")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
+    REQUIRE(editor.GetValue()->AddFolder("Engine/Tests").HasValue());
 
-    const auto removed = editor.Value()->RemoveFolder("Engine");
+    const auto removed = editor.GetValue()->RemoveFolder("Engine");
 
     REQUIRE_FALSE(removed.HasValue());
     CHECK(removed.GetError().code == Core::ErrorCode::InvalidArgument);
@@ -538,9 +538,9 @@ TEST_CASE("Renaming a folder renames its descendants too")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine/Tests").HasValue());
-    REQUIRE(editor.Value()->RenameFolder("Engine", "Core").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->AddFolder("Engine/Tests").HasValue());
+    REQUIRE(editor.GetValue()->RenameFolder("Engine", "Core").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const std::string written = Read(file);
 
@@ -558,14 +558,14 @@ TEST_CASE("Renaming a folder leaves its projects where they are")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->RenameFolder("App", "Application").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->RenameFolder("App", "Application").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    REQUIRE(solution.Value().root.folders.size() == 1);
-    CHECK(solution.Value().root.folders[0].name == "Application");
-    CHECK(solution.Value().root.folders[0].projects.size() == 1);
+    REQUIRE(solution.GetValue().root.folders.size() == 1);
+    CHECK(solution.GetValue().root.folders[0].name == "Application");
+    CHECK(solution.GetValue().root.folders[0].projects.size() == 1);
 }
 
 TEST_CASE("A project moves between folders")
@@ -575,16 +575,16 @@ TEST_CASE("A project moves between folders")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
-    REQUIRE(editor.Value()
-                ->MoveProject(temp.Path() / "app" / "App.vcxproj", "Engine")
+    REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.GetValue()
+                ->MoveProject(temp.GetPath() / "app" / "App.vcxproj", "Engine")
                 .HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
 
-    for (const Core::Folder& folder : solution.Value().root.folders)
+    for (const Core::Folder& folder : solution.GetValue().root.folders)
     {
         if (folder.name == "Engine")
             CHECK(folder.projects.size() == 1);
@@ -600,13 +600,13 @@ TEST_CASE("A project moves out of a folder to the solution root")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->MoveProject(temp.Path() / "app" / "App.vcxproj", "").HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->MoveProject(temp.GetPath() / "app" / "App.vcxproj", "").HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     const auto solution = Core::ReadSolution(file);
     REQUIRE(solution.HasValue());
-    CHECK(solution.Value().root.projects.size() == 1);
-    CHECK(solution.Value().root.folders[0].projects.empty());
+    CHECK(solution.GetValue().root.projects.size() == 1);
+    CHECK(solution.GetValue().root.folders[0].projects.empty());
 }
 
 TEST_CASE("Moving a project keeps its identifier")
@@ -616,11 +616,11 @@ TEST_CASE("Moving a project keeps its identifier")
 
     auto editor = Core::SolutionEditor::Open(file);
     REQUIRE(editor.HasValue());
-    REQUIRE(editor.Value()->AddFolder("Engine").HasValue());
-    REQUIRE(editor.Value()
-                ->MoveProject(temp.Path() / "app" / "App.vcxproj", "Engine")
+    REQUIRE(editor.GetValue()->AddFolder("Engine").HasValue());
+    REQUIRE(editor.GetValue()
+                ->MoveProject(temp.GetPath() / "app" / "App.vcxproj", "Engine")
                 .HasValue());
-    REQUIRE(editor.Value()->Save().HasValue());
+    REQUIRE(editor.GetValue()->Save().HasValue());
 
     // A move is a remove and an add, and a new identifier would make it look like a
     // different project to anything keying off it.

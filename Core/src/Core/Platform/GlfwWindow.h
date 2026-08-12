@@ -26,7 +26,7 @@ namespace Core
         void FramebufferSize(int& width, int& height) const override;
         void SetVSync(bool enabled) override;
 
-        [[nodiscard]] void* NativeHandle() const override { return m_Handle; }
+        [[nodiscard]] void* GetNativeHandle() const override { return m_Handle; }
 
         void Minimize() override;
         void ToggleMaximize() override;

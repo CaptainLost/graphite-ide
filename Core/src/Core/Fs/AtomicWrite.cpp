@@ -194,11 +194,11 @@ namespace Core
         if (!temporary)
             return temporary.GetError();
 
-        const Result<void> written = WriteTemporary(temporary.Value(), bytes);
+        const Result<void> written = WriteTemporary(temporary.GetValue(), bytes);
 
         if (!written)
             return written;
 
-        return SwapIntoPlace(temporary.Value(), path);
+        return SwapIntoPlace(temporary.GetValue(), path);
     }
 }

@@ -145,7 +145,7 @@ namespace Core
                         break;
                     }
 
-                    project.content = std::move(content).Value();
+                    project.content = std::move(content).GetValue();
                     project.contentRead = true;
                     break;
                 }
@@ -272,7 +272,7 @@ namespace Core
         if (!parsed)
             return parsed;
 
-        Solution solution = std::move(parsed).Value();
+        Solution solution = std::move(parsed).GetValue();
 
         // Run after either parser, so the two formats cannot drift apart in what they
         // hand back.

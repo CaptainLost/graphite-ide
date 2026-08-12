@@ -19,7 +19,7 @@ TEST_CASE("UTF-8 passes through decoding untouched")
     const auto decoded = Decode("plain text", Encoding::Utf8);
 
     REQUIRE(decoded);
-    CHECK(decoded.Value() == "plain text");
+    CHECK(decoded.GetValue() == "plain text");
 }
 
 TEST_CASE("Unknown passes through decoding untouched")
@@ -29,7 +29,7 @@ TEST_CASE("Unknown passes through decoding untouched")
     const auto decoded = Decode(bytes, Encoding::Unknown);
 
     REQUIRE(decoded);
-    CHECK(decoded.Value() == bytes);
+    CHECK(decoded.GetValue() == bytes);
 }
 
 TEST_CASE("UTF-16 decodes in both byte orders")
@@ -39,8 +39,8 @@ TEST_CASE("UTF-16 decodes in both byte orders")
 
     REQUIRE(le);
     REQUIRE(be);
-    CHECK(le.Value() == "Hi");
-    CHECK(be.Value() == "Hi");
+    CHECK(le.GetValue() == "Hi");
+    CHECK(be.GetValue() == "Hi");
 }
 
 TEST_CASE("An empty file decodes to nothing rather than failing")
@@ -48,7 +48,7 @@ TEST_CASE("An empty file decodes to nothing rather than failing")
     const auto decoded = Decode("", Encoding::Utf16Le);
 
     REQUIRE(decoded);
-    CHECK(decoded.Value() == "");
+    CHECK(decoded.GetValue() == "");
 }
 
 TEST_CASE("Characters outside the basic plane decode from a surrogate pair")
@@ -58,7 +58,7 @@ TEST_CASE("Characters outside the basic plane decode from a surrogate pair")
     const auto decoded = Decode(bytes, Encoding::Utf16Le);
 
     REQUIRE(decoded);
-    CHECK(decoded.Value() == "\xF0\x9F\x99\x82");
+    CHECK(decoded.GetValue() == "\xF0\x9F\x99\x82");
 }
 
 TEST_CASE("Polish characters survive the round trip in both byte orders")
@@ -71,7 +71,7 @@ TEST_CASE("Polish characters survive the round trip in both byte orders")
         const auto decoded = Decode(encoded, encoding);
 
         REQUIRE(decoded);
-        CHECK(decoded.Value() == text);
+        CHECK(decoded.GetValue() == text);
     }
 }
 
@@ -84,7 +84,7 @@ TEST_CASE("An emoji survives the round trip, which is the only case that makes a
         const auto decoded = Decode(Encode(text, encoding), encoding);
 
         REQUIRE(decoded);
-        CHECK(decoded.Value() == text);
+        CHECK(decoded.GetValue() == text);
     }
 }
 
@@ -93,7 +93,7 @@ TEST_CASE("Bytes decoded and re-encoded come back identical")
     const auto decoded = Decode(kHiLe, Encoding::Utf16Le);
 
     REQUIRE(decoded);
-    CHECK(Encode(decoded.Value(), Encoding::Utf16Le) == kHiLe);
+    CHECK(Encode(decoded.GetValue(), Encoding::Utf16Le) == kHiLe);
 }
 
 TEST_CASE("An odd number of bytes is a truncated file, not a character")

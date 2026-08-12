@@ -20,7 +20,7 @@ namespace Core
         Layer& Push(std::unique_ptr<Layer> layer);
         void Clear();
 
-        [[nodiscard]] std::size_t Size() const noexcept { return m_Layers.size(); }
+        [[nodiscard]] std::size_t GetSize() const noexcept { return m_Layers.size(); }
 
         Container::iterator begin() noexcept { return m_Layers.begin(); }
         Container::iterator end() noexcept { return m_Layers.end(); }

@@ -52,15 +52,15 @@ TEST_CASE("A file created in the watched directory is reported")
 {
     TempDirectory temp;
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
 
     temp.MakeFile("created.txt", "x");
 
-    const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+    const auto changes = WaitForChanges(*watcher.GetValue(), std::chrono::seconds{5});
 
     REQUIRE_FALSE(changes.empty());
-    CHECK(changes[0] == temp.Path());
+    CHECK(changes[0] == temp.GetPath());
 }
 
 namespace
@@ -176,7 +176,7 @@ TEST_CASE("A file created the instant Start returns is reported on every start")
 
         TempDirectory temp;
 
-        auto watcher = DirectoryWatcher::Start(temp.Path());
+        auto watcher = DirectoryWatcher::Start(temp.GetPath());
         REQUIRE(watcher.HasValue());
 
         // Nothing at all between these two lines on purpose. That gap is the defect: the
@@ -184,10 +184,10 @@ TEST_CASE("A file created the instant Start returns is reported on every start")
         // afterwards. Do not "stabilise" this with a sleep — it would test nothing.
         temp.MakeFile("created.txt", "x");
 
-        const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+        const auto changes = WaitForChanges(*watcher.GetValue(), std::chrono::seconds{5});
 
         REQUIRE_FALSE(changes.empty());
-        CHECK(changes[0] == temp.Path());
+        CHECK(changes[0] == temp.GetPath());
     }
 }
 
@@ -196,18 +196,18 @@ TEST_CASE("A file created in a subdirectory reports that subdirectory")
     TempDirectory temp;
     temp.MakeDir("nested");
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
 
     temp.MakeFile("nested/created.txt", "x");
 
-    const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+    const auto changes = WaitForChanges(*watcher.GetValue(), std::chrono::seconds{5});
 
     REQUIRE_FALSE(changes.empty());
 
     // The subtree is watched, and what is reported is the directory holding the changed
     // entry — that is the node the tree will refresh.
-    CHECK(changes[0] == temp.Path() / "nested");
+    CHECK(changes[0] == temp.GetPath() / "nested");
 }
 
 TEST_CASE("Changes inside a .git directory are not reported")
@@ -215,31 +215,31 @@ TEST_CASE("Changes inside a .git directory are not reported")
     TempDirectory temp;
     temp.MakeDir(".git");
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
 
     temp.MakeFile(".git/index", "x");
 
     // Git rewrites files under .git on every operation, and refreshing for each one
     // would be a storm of no-op work.
-    CHECK(WaitForChanges(*watcher.Value(), std::chrono::seconds{2}).empty());
+    CHECK(WaitForChanges(*watcher.GetValue(), std::chrono::seconds{2}).empty());
 }
 
 TEST_CASE("The .git directory appearing is reported")
 {
     TempDirectory temp;
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
 
     // How `git init` in a terminal becomes visible: the directory itself passes the
     // filter that its contents do not.
     temp.MakeDir(".git");
 
-    const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+    const auto changes = WaitForChanges(*watcher.GetValue(), std::chrono::seconds{5});
 
     REQUIRE_FALSE(changes.empty());
-    CHECK(changes[0] == temp.Path());
+    CHECK(changes[0] == temp.GetPath());
 }
 
 TEST_CASE("Destroying a watcher with no changes pending returns promptly")
@@ -249,7 +249,7 @@ TEST_CASE("Destroying a watcher with no changes pending returns promptly")
     const auto before = std::chrono::steady_clock::now();
 
     {
-        auto watcher = DirectoryWatcher::Start(temp.Path());
+        auto watcher = DirectoryWatcher::Start(temp.GetPath());
         REQUIRE(watcher.HasValue());
     }
 
@@ -264,33 +264,33 @@ TEST_CASE("A change to the repository's exclude file is reported as a root chang
     TempDirectory temp;
     temp.MakeDir(".git/info");
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
 
     temp.MakeFile(".git/info/exclude", "build/");
 
-    const auto changes = WaitForChanges(*watcher.Value(), std::chrono::seconds{5});
+    const auto changes = WaitForChanges(*watcher.GetValue(), std::chrono::seconds{5});
 
     REQUIRE_FALSE(changes.empty());
 
     // The root, not the directory holding the file: these rules apply to the whole tree,
     // and refreshing the root is what re-asks every loaded node.
-    CHECK(changes[0] == temp.Path());
+    CHECK(changes[0] == temp.GetPath());
 }
 
 TEST_CASE("A watcher stops running once its directory is deleted")
 {
     TempDirectory temp;
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
-    REQUIRE(watcher.Value()->IsRunning());
+    REQUIRE(watcher.GetValue()->IsRunning());
 
     // Deleting the watched directory is what kills the thread in practice, and the whole
     // point of IsRunning is that the consumer cannot tell this apart from a quiet disk
     // any other way — TakeSettled simply returns nothing, for ever.
     std::error_code code;
-    std::filesystem::remove_all(temp.Path(), code);
+    std::filesystem::remove_all(temp.GetPath(), code);
     REQUIRE_FALSE(code);
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
@@ -298,7 +298,7 @@ TEST_CASE("A watcher stops running once its directory is deleted")
 
     while (!stopped && std::chrono::steady_clock::now() < deadline)
     {
-        stopped = !watcher.Value()->IsRunning();
+        stopped = !watcher.GetValue()->IsRunning();
 
         if (!stopped)
             std::this_thread::sleep_for(std::chrono::milliseconds{20});
@@ -337,13 +337,13 @@ TEST_CASE("A watched directory that is renamed is reported at its new path")
     REQUIRE(watcher.HasValue());
 
     std::error_code code;
-    std::filesystem::rename(watched, temp.Path() / "after", code);
+    std::filesystem::rename(watched, temp.GetPath() / "after", code);
     REQUIRE_FALSE(code);
 
-    const auto moved = WaitForMove(*watcher.Value(), std::chrono::seconds{10});
+    const auto moved = WaitForMove(*watcher.GetValue(), std::chrono::seconds{10});
 
     REQUIRE(moved.has_value());
-    CHECK(*moved == temp.Path() / "after");
+    CHECK(*moved == temp.GetPath() / "after");
 }
 
 TEST_CASE("A watched directory that is moved elsewhere is reported at its new path")
@@ -358,13 +358,13 @@ TEST_CASE("A watched directory that is moved elsewhere is reported at its new pa
     // Moving and renaming are the same operation to the filesystem, but the resulting
     // path differs in more than its last component, so both are worth pinning.
     std::error_code code;
-    std::filesystem::rename(watched, temp.Path() / "destination" / "watched", code);
+    std::filesystem::rename(watched, temp.GetPath() / "destination" / "watched", code);
     REQUIRE_FALSE(code);
 
-    const auto moved = WaitForMove(*watcher.Value(), std::chrono::seconds{10});
+    const auto moved = WaitForMove(*watcher.GetValue(), std::chrono::seconds{10});
 
     REQUIRE(moved.has_value());
-    CHECK(*moved == temp.Path() / "destination" / "watched");
+    CHECK(*moved == temp.GetPath() / "destination" / "watched");
 }
 
 TEST_CASE("A directory that stays put is never reported as moved")
@@ -372,7 +372,7 @@ TEST_CASE("A directory that stays put is never reported as moved")
     TempDirectory temp;
     temp.MakeFile("a.txt", "x");
 
-    auto watcher = DirectoryWatcher::Start(temp.Path());
+    auto watcher = DirectoryWatcher::Start(temp.GetPath());
     REQUIRE(watcher.HasValue());
 
     // Ordinary activity must not be mistaken for a move — and neither must the case
@@ -382,7 +382,7 @@ TEST_CASE("A directory that stays put is never reported as moved")
 
     // Five seconds against a two-second interval, so at least two polls run even on a
     // loaded machine. At three the test could pass by simply not having polled.
-    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{5}).has_value());
+    CHECK_FALSE(WaitForMove(*watcher.GetValue(), std::chrono::seconds{5}).has_value());
 }
 
 TEST_CASE("A move is reported once, not on every poll")
@@ -394,16 +394,16 @@ TEST_CASE("A move is reported once, not on every poll")
     REQUIRE(watcher.HasValue());
 
     std::error_code code;
-    std::filesystem::rename(watched, temp.Path() / "after", code);
+    std::filesystem::rename(watched, temp.GetPath() / "after", code);
     REQUIRE_FALSE(code);
 
-    REQUIRE(WaitForMove(*watcher.Value(), std::chrono::seconds{10}).has_value());
+    REQUIRE(WaitForMove(*watcher.GetValue(), std::chrono::seconds{10}).has_value());
 
     // The consumer acts on it by re-pointing the workspace; being told again afterwards
     // would make it do that work over and over.
     // Five seconds against a two-second interval, so at least two polls run even on a
     // loaded machine. At three the test could pass by simply not having polled.
-    CHECK_FALSE(WaitForMove(*watcher.Value(), std::chrono::seconds{5}).has_value());
+    CHECK_FALSE(WaitForMove(*watcher.GetValue(), std::chrono::seconds{5}).has_value());
 }
 
 TEST_CASE("A move is noticed even while the directory is busy")
@@ -415,7 +415,7 @@ TEST_CASE("A move is noticed even while the directory is busy")
     REQUIRE(watcher.HasValue());
 
     std::error_code code;
-    std::filesystem::rename(watched, temp.Path() / "busy-moved", code);
+    std::filesystem::rename(watched, temp.GetPath() / "busy-moved", code);
     REQUIRE_FALSE(code);
 
     // Writing faster than kMoveCheckInterval. The check used to run only when the wait
@@ -426,14 +426,14 @@ TEST_CASE("A move is noticed even while the directory is busy")
 
     for (int i = 0; !moved && std::chrono::steady_clock::now() < deadline; ++i)
     {
-        std::ofstream{temp.Path() / "busy-moved" / ("churn" + std::to_string(i) + ".txt")}
+        std::ofstream{temp.GetPath() / "busy-moved" / ("churn" + std::to_string(i) + ".txt")}
             << "x";
 
         std::this_thread::sleep_for(std::chrono::milliseconds{100});
 
-        moved = watcher.Value()->TakeSettled().movedTo;
+        moved = watcher.GetValue()->TakeSettled().movedTo;
     }
 
     REQUIRE(moved.has_value());
-    CHECK(*moved == temp.Path() / "busy-moved");
+    CHECK(*moved == temp.GetPath() / "busy-moved");
 }

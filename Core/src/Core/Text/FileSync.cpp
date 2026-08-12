@@ -52,7 +52,7 @@ namespace Core
             return FileSyncOutcome::WentMissing;
         }
 
-        if (!item.document || !item.document->ChangedOnDisk())
+        if (!item.document || !item.document->HasChangedOnDisk())
         {
             // Only the item that just came back and has nothing to show asks to be
             // loaded. An item carrying Binary, TooLarge or ReadFailed also has no
@@ -94,7 +94,7 @@ namespace Core
         // the new length and pulls back to a character boundary, the same as a click past
         // a line's end does.
         item.caret =
-            PlaceAt(item.document->Buffer(), item.caret, item.caret.offset, false, DefaultTabWidth);
+            PlaceAt(item.document->GetBuffer(), item.caret, item.caret.offset, false, DefaultTabWidth);
 
         // The vertical aim was measured against the text that just went away. Left
         // standing, the next Up or Down would aim at a column of the old document from a
@@ -136,7 +136,7 @@ namespace Core
     {
         SaveAllReport report;
 
-        for (std::size_t index = 0; index < documents.Count(); ++index)
+        for (std::size_t index = 0; index < documents.GetCount(); ++index)
         {
             const OpenItem& item = documents.At(index);
 
@@ -145,13 +145,13 @@ namespace Core
                 continue;
             }
 
-            // The same safety net a single deliberate save gets: ChangedOnDisk() true
+            // The same safety net a single deliberate save gets: HasChangedOnDisk() true
             // means a change nobody was told about. But unlike a single save, a batch has
             // no good way to ask about it mid-flight without turning into a sequence of
             // modals — so this document is skipped, not asked about and not silently
             // overwritten, and the batch continues: three other dirty files having nothing
             // wrong with them is no reason to leave them unsaved over a fourth that does.
-            if (item.document->ChangedOnDisk())
+            if (item.document->HasChangedOnDisk())
             {
                 report.conflicted.push_back(item.path);
                 continue;

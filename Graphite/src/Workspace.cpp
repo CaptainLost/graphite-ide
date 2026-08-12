@@ -46,7 +46,7 @@ namespace Graphite
             return rooted;
         }
 
-        if (const auto expanded = candidate.Expand(candidate.Root()); !expanded)
+        if (const auto expanded = candidate.Expand(candidate.GetRoot()); !expanded)
         {
             CORE_ERROR("Cannot read folder '{}': {}", root.string(), expanded.GetError().message);
             return expanded;
@@ -57,7 +57,7 @@ namespace Graphite
         m_SelectedFile.clear();
 
         TryOpenRepository();
-        m_Tree.Refresh(m_Tree.Root());
+        m_Tree.Refresh(m_Tree.GetRoot());
 
         // A new folder gets a fresh resume budget: the previous one having failed says
         // nothing about this one.
@@ -65,7 +65,7 @@ namespace Graphite
 
         if (auto watcher = Core::DirectoryWatcher::Start(root); watcher)
         {
-            m_Watcher = std::move(watcher).Value();
+            m_Watcher = std::move(watcher).GetValue();
         }
         else
         {
@@ -236,7 +236,7 @@ namespace Graphite
             if (changed.overflowed)
                 CORE_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 
-            m_Tree.Refresh(m_Tree.Root());
+            m_Tree.Refresh(m_Tree.GetRoot());
 
             FindSolutions();
             LoadSolution();
@@ -306,7 +306,7 @@ namespace Graphite
         // would bake in the previous answer.
         (void)SyncRepository();
 
-        m_Tree.Refresh(m_Tree.Root());
+        m_Tree.Refresh(m_Tree.GetRoot());
 
         FindSolutions();
         LoadSolution();
@@ -325,14 +325,14 @@ namespace Graphite
         // A bare repository has no working directory at all, so there is no .git beside
         // it to look for and the probe below would test a relative path against whatever
         // the process's working directory happens to be.
-        if (m_Repository->WorkingDirectory().empty())
+        if (m_Repository->GetWorkingDirectory().empty())
             return false;
 
         // Checked against the repository's own working directory rather than m_Root: the
         // workspace can be a subdirectory of the repository, where m_Root/.git never
         // existed in the first place.
         std::error_code code;
-        const bool present = std::filesystem::exists(m_Repository->WorkingDirectory() / ".git",
+        const bool present = std::filesystem::exists(m_Repository->GetWorkingDirectory() / ".git",
                                                      code);
 
         // `code` being set means the question could not be answered — a denied parent, a
@@ -347,7 +347,7 @@ namespace Graphite
         // tree — so entries would stay dimmed for a folder that is no longer a
         // repository. Pinned by a test in GitRepositoryTests.cpp.
         CORE_INFO("The git repository at '{}' is gone",
-                  m_Repository->WorkingDirectory().string());
+                  m_Repository->GetWorkingDirectory().string());
 
         m_Tree.SetIgnoreQuery({});
         m_Repository.reset();
@@ -383,7 +383,7 @@ namespace Graphite
             return;
         }
 
-        m_Watcher = std::move(watcher).Value();
+        m_Watcher = std::move(watcher).GetValue();
 
         // Whatever happened while nothing was watching is simply gone, so the tree is
         // re-read wholesale rather than trusted — and the repository is settled first,
@@ -391,7 +391,7 @@ namespace Graphite
         // before that would re-ask a repository that is no longer there and bake the
         // stale answer back in.
         (void)SyncRepository();
-        m_Tree.Refresh(m_Tree.Root());
+        m_Tree.Refresh(m_Tree.GetRoot());
 
         CORE_INFO("Resumed watching '{}' after a failure", m_Root.string());
     }
@@ -424,7 +424,7 @@ namespace Graphite
 
         if (auto watcher = Core::DirectoryWatcher::Start(to); watcher)
         {
-            m_Watcher = std::move(watcher).Value();
+            m_Watcher = std::move(watcher).GetValue();
         }
         else
         {
@@ -438,7 +438,7 @@ namespace Graphite
 
         // Nothing was read from disk during the rebase, so this is the first look at the
         // new location — and the ignore query may have just changed too.
-        m_Tree.Refresh(m_Tree.Root());
+        m_Tree.Refresh(m_Tree.GetRoot());
 
         // Both hold absolute paths under the old root, so both are rebuilt rather than
         // rewritten. Left alone, the settings store would keep writing into the folder's
@@ -472,7 +472,7 @@ namespace Graphite
 
         // An explicit stack rather than recursion: a deep tree is user-supplied input and
         // this runs every frame that something changed.
-        std::vector<Core::FileNode*> pending{&m_Tree.Root()};
+        std::vector<Core::FileNode*> pending{&m_Tree.GetRoot()};
 
         while (!pending.empty())
         {
@@ -506,13 +506,13 @@ namespace Graphite
             return;
         }
 
-        m_Repository.emplace(std::move(repository).Value());
+        m_Repository.emplace(std::move(repository).GetValue());
 
         m_Tree.SetIgnoreQuery(
             [this](const std::filesystem::path& path, bool) -> bool
             { return m_Repository && m_Repository->IsIgnored(path); });
 
-        CORE_INFO("Git repository detected at '{}'", m_Repository->WorkingDirectory().string());
+        CORE_INFO("Git repository detected at '{}'", m_Repository->GetWorkingDirectory().string());
     }
 
     void Workspace::FindSolutions()
@@ -526,7 +526,7 @@ namespace Graphite
 
         std::vector<std::filesystem::path> legacy;
 
-        for (const Core::DirectoryEntry& entry : entries.Value())
+        for (const Core::DirectoryEntry& entry : entries.GetValue())
         {
             if (entry.isDirectory)
                 continue;
@@ -599,7 +599,7 @@ namespace Graphite
         // Recorded even when the parse fails. Otherwise an unreadable solution re-parses
         // and re-warns on every focus change, which is the same noise the guard removes
         // from the success path.
-        const std::filesystem::file_time_type stamp = SolutionStamp();
+        const std::filesystem::file_time_type stamp = GetSolutionStamp();
 
         if (m_SolutionAttempted && m_AttemptedSolution == m_SelectedSolution
             && stamp == m_SolutionStamp)
@@ -624,7 +624,7 @@ namespace Graphite
             return;
         }
 
-        m_Solution.emplace(std::move(solution).Value());
+        m_Solution.emplace(std::move(solution).GetValue());
 
         // Recomputed against the model that was just read. The stamp spans the project
         // files as well as the solution, and SolutionStamp finds those through m_Solution
@@ -632,14 +632,14 @@ namespace Graphite
         // file alone. Keeping it would make the very next call see a different stamp and
         // parse again, which is exactly what happened: one wasted reload after every
         // start, surfacing at whatever first touched the workspace.
-        m_SolutionStamp = SolutionStamp();
+        m_SolutionStamp = GetSolutionStamp();
 
         CORE_INFO("Solution '{}' loaded with {} projects", m_Solution->name,
                   m_Solution->projectCount);
     }
 
 
-    std::filesystem::file_time_type Workspace::SolutionStamp() const
+    std::filesystem::file_time_type Workspace::GetSolutionStamp() const
     {
         std::error_code code;
         auto newest = std::filesystem::last_write_time(m_SelectedSolution, code);
@@ -723,10 +723,10 @@ namespace Graphite
         }
 
         // An empty path means the user cancelled, which is not a failure.
-        if (picked.Value().empty())
+        if (picked.GetValue().empty())
             return;
 
-        (void)workspace.OpenFolder(picked.Value());
+        (void)workspace.OpenFolder(picked.GetValue());
     }
 
     void OpenSolutionInteractively(Workspace& workspace)
@@ -744,10 +744,10 @@ namespace Graphite
         }
 
         // An empty path is the user cancelling, which is not worth a log line.
-        if (picked.Value().empty())
+        if (picked.GetValue().empty())
             return;
 
-        if (const auto opened = workspace.OpenSolution(picked.Value()); !opened)
+        if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
             CORE_ERROR("Cannot open the solution: {}", opened.GetError().message);
     }
 }

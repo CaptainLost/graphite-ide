@@ -72,9 +72,9 @@ namespace Core
 
         node.accessible = true;
         node.children.clear();
-        node.children.reserve(entries.Value().size());
+        node.children.reserve(entries.GetValue().size());
 
-        for (const DirectoryEntry& entry : entries.Value())
+        for (const DirectoryEntry& entry : entries.GetValue())
         {
             FileNode child;
             child.path = entry.path;
@@ -112,9 +112,9 @@ namespace Core
 
         std::vector<FileNode> previous = std::move(node.children);
         node.children.clear();
-        node.children.reserve(entries.Value().size());
+        node.children.reserve(entries.GetValue().size());
 
-        for (const DirectoryEntry& entry : entries.Value())
+        for (const DirectoryEntry& entry : entries.GetValue())
         {
             const auto match = std::find_if(previous.begin(), previous.end(),
                                             [&entry](const FileNode& candidate)

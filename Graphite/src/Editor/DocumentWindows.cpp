@@ -75,9 +75,9 @@ namespace Graphite
         [[nodiscard]] std::vector<std::string> CurrentIdentities(const Core::DocumentSet& documents)
         {
             std::vector<std::string> identities;
-            identities.reserve(documents.Count());
+            identities.reserve(documents.GetCount());
 
-            for (std::size_t index = 0; index < documents.Count(); ++index)
+            for (std::size_t index = 0; index < documents.GetCount(); ++index)
                 identities.push_back(Identity(documents, index));
 
             return identities;
@@ -132,7 +132,7 @@ namespace Graphite
         // answered, and a failure here means the file went away in between.
         if (const auto probe = Core::ProbeFile(path))
         {
-            question.size = probe.Value().size;
+            question.size = probe.GetValue().size;
         }
 
         // Guarded the way the reload and close questions are: two events naming the same
@@ -192,7 +192,7 @@ namespace Graphite
     void DocumentWindows::HandleFilesChanged(
         const std::vector<std::filesystem::path>& directories, bool everything)
     {
-        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
         {
             const Core::OpenItem& item = m_Documents.At(index);
 
@@ -222,7 +222,7 @@ namespace Graphite
             return;
         }
 
-        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
         {
             RespondToSync(index, Core::SyncWithFile(m_Documents, index));
         }
@@ -332,7 +332,7 @@ namespace Graphite
         if (!item.document)
             return;
 
-        if (item.document->ChangedOnDisk())
+        if (item.document->HasChangedOnDisk())
         {
             // Never noticed: a dropped notification, with no chance to have asked
             // earlier. This is the last safety net, immediately before the write.
@@ -365,11 +365,11 @@ namespace Graphite
                                 + Core::ToUtf8(report.stoppedAt->path.filename()) + ": "
                                 + report.stoppedAt->error.message);
 
-            // Every exit here answers "did everything reach disk" with report.Complete()
+            // Every exit here answers "did everything reach disk" with report.IsComplete()
             // rather than with a literal. The branches below differ in what they say, not
             // in what they conclude, and a second failure mode added to SaveAllReport must
-            // not be able to reach Complete() while this wrapper keeps returning true.
-            return report.Complete();
+            // not be able to reach IsComplete() while this wrapper keeps returning true.
+            return report.IsComplete();
         }
 
         if (report.conflicted.empty())
@@ -380,7 +380,7 @@ namespace Graphite
                                     + (report.saved == 1 ? " file." : " files."));
             }
 
-            return report.Complete();
+            return report.IsComplete();
         }
 
         std::vector<std::string> names;
@@ -408,12 +408,12 @@ namespace Graphite
 
         SetTransientMessage(message);
 
-        return report.Complete();
+        return report.IsComplete();
     }
 
-    bool DocumentWindows::AnyModified() const
+    bool DocumentWindows::HasAnyModified() const
     {
-        for (std::size_t index = 0; index < m_Documents.Count(); ++index)
+        for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
         {
             const Core::OpenItem& item = m_Documents.At(index);
 
@@ -431,7 +431,7 @@ namespace Graphite
         commands.Add({.id = "document.saveAll",
                       .label = "Save All",
                       .run = [this] { (void)SaveAllModified(); },
-                      .enabled = [this] { return AnyModified(); }});
+                      .enabled = [this] { return HasAnyModified(); }});
 
         keys.SetDefault("document.saveAll",
                         {.primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
@@ -443,7 +443,7 @@ namespace Graphite
             TransientMessage{std::move(text), ImGui::GetTime() + kTransientMessageSeconds};
     }
 
-    std::optional<std::string> DocumentWindows::StatusMessage() const
+    std::optional<std::string> DocumentWindows::GetStatusMessage() const
     {
         if (!m_TransientMessage)
             return std::nullopt;
@@ -477,7 +477,7 @@ namespace Graphite
         // question drawn from this function can leave the mechanism behind it wedged.
         if (m_SizeQuestion.Begin())
         {
-            const LargeFileQuestion* question = m_SizeQuestion.Current();
+            const LargeFileQuestion* question = m_SizeQuestion.GetCurrent();
             const std::uint64_t size = question != nullptr ? question->size : 0;
 
             // A size of zero means the probe in RequestOpen failed, which after a
@@ -524,7 +524,7 @@ namespace Graphite
 
         if (m_ReloadConflict.Begin())
         {
-            const std::filesystem::path* path = m_ReloadConflict.Current();
+            const std::filesystem::path* path = m_ReloadConflict.GetCurrent();
             const std::string fileName =
                 path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
@@ -568,7 +568,7 @@ namespace Graphite
 
         if (m_OverwriteConfirm.Begin())
         {
-            const std::filesystem::path* path = m_OverwriteConfirm.Current();
+            const std::filesystem::path* path = m_OverwriteConfirm.GetCurrent();
             const std::string fileName =
                 path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
@@ -636,7 +636,7 @@ namespace Graphite
 
         if (m_CloseConfirm.Begin(stillModified))
         {
-            const std::filesystem::path* path = m_CloseConfirm.Current();
+            const std::filesystem::path* path = m_CloseConfirm.GetCurrent();
             const std::string fileName =
                 path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
 
@@ -702,7 +702,7 @@ namespace Graphite
             m_CloseConfirm.End();
         }
 
-        for (std::size_t index = 0; index < m_Documents.Count();)
+        for (std::size_t index = 0; index < m_Documents.GetCount();)
         {
             Core::OpenItem& item = m_Documents.At(index);
             const std::string identity = Identity(m_Documents, index);

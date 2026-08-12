@@ -53,7 +53,7 @@ namespace Core
         virtual void SetVSync(bool enabled) = 0;
 
         /// Platform handle — for the ImGui backend. In practice a GLFWwindow*.
-        [[nodiscard]] virtual void* NativeHandle() const = 0;
+        [[nodiscard]] virtual void* GetNativeHandle() const = 0;
 
         virtual void Minimize() = 0;
 

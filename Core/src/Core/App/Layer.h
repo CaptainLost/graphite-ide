@@ -28,7 +28,7 @@ namespace Core
         /// Window::RequestClose() itself to re-arm it.
         virtual bool OnCloseRequested() { return true; }
 
-        [[nodiscard]] const std::string& Name() const noexcept { return m_Name; }
+        [[nodiscard]] const std::string& GetName() const noexcept { return m_Name; }
 
     private:
         std::string m_Name;
