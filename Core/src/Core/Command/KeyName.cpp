@@ -56,6 +56,16 @@ namespace core
         return name;
     }
 
+    bool IsModifierKey(ImGuiKey key) noexcept
+    {
+        if (key >= ImGuiKey_LeftCtrl && key <= ImGuiKey_RightSuper)
+        {
+            return true;
+        }
+
+        return key >= ImGuiKey_ReservedForModCtrl && key <= ImGuiKey_ReservedForModSuper;
+    }
+
     ImGuiKey KeyNamed(std::string_view name)
     {
         const std::string wanted = ascii::Lowered(name);

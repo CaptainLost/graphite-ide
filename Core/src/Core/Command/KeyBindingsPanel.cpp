@@ -7,6 +7,7 @@
 #include "Core/Command/Binding.h"
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
+#include "Core/Command/KeyName.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/Scope.h"
 #include "Core/Command/Trigger.h"
@@ -306,8 +307,11 @@ namespace core
             const auto key = static_cast<ImGuiKey>(index);
 
             // A modifier alone is never the answer: every capture would otherwise end on the
-            // first Shift the user pressed on the way to the chord they meant.
-            if (key >= ImGuiKey_LeftCtrl && key <= ImGuiKey_RightSuper)
+            // first Shift the user pressed on the way to the chord they meant. Through
+            // IsModifierKey rather than a range written here, because the modifiers are not
+            // one contiguous span — see its comment for the second one, which this code got
+            // wrong until a user pressed Ctrl and was handed "Ctrl+ModCtrl".
+            if (IsModifierKey(key))
             {
                 continue;
             }

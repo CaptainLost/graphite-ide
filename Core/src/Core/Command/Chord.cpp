@@ -147,6 +147,17 @@ namespace core
             return std::nullopt;
         }
 
+        // A modifier is not a trigger — it is carried in the mods mask, which is why every
+        // modifier name was already stripped above. Refused here rather than left to
+        // KeyNamed, which honestly answers what a name names: "LeftShift" and "ModCtrl" do
+        // name keys, they just cannot be what a chord fires on. Without this a hand-edited
+        // "ModCtrl" installs a chord nobody can deliberately press and hands it to
+        // ImGui::Shortcut to route.
+        if (IsModifierKey(key))
+        {
+            return std::nullopt;
+        }
+
         return Chord::Key(mods | key);
     }
 }
