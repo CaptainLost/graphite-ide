@@ -6,32 +6,24 @@
 #include <string>
 #include <utility>
 
-namespace Core
-{
-    /// Unit of application lifetime: receives updates and draws its own UI.
-    class Layer : NonCopyable
-    {
-    public:
-        explicit Layer(std::string name) : m_Name(std::move(name)) {}
-        virtual ~Layer() = default;
+namespace Core {
 
-        virtual void OnAttach() {}
-        virtual void OnDetach() {}
-        virtual void OnUpdate(Timestep ts) { (void)ts; }
-        virtual void OnUIRender() {}
+	class Layer : NonCopyable
+	{
+	public:
+		explicit Layer(std::string name) : m_Name(std::move(name)) {}
+		virtual ~Layer() = default;
 
-        /// Whether the application may close now. A layer returning false is expected to
-        /// be asking the user something; it will be asked again every frame until it
-        /// answers true, which is what lets a modal draw at all.
-        ///
-        /// Returning true does not by itself close the window: refusing already cleared
-        /// the flag the loop tests, so a layer that has finished asking must call
-        /// Window::RequestClose() itself to re-arm it.
-        virtual bool OnCloseRequested() { return true; }
+		virtual void OnAttach() {}
+		virtual void OnDetach() {}
+		virtual void OnUpdate(Timestep ts) { (void)ts; }
+		virtual void OnUIRender() {}
 
-        [[nodiscard]] const std::string& GetName() const noexcept { return m_Name; }
+		virtual bool OnCloseRequested() { return true; }
 
-    private:
-        std::string m_Name;
-    };
+		const std::string& GetName() const { return m_Name; }
+
+	private:
+		std::string m_Name;
+	};
 }

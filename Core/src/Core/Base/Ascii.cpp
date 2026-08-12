@@ -4,40 +4,40 @@
 
 #include <cctype>
 
-namespace Core
-{
-    std::string Lowered(std::string_view text)
-    {
-        std::string result;
-        result.reserve(text.size());
+namespace Core {
 
-        for (const char character : text)
-        {
-            // Cast through unsigned char: tolower on a negative char is undefined,
-            // and a settings file can hold any byte.
-            result.push_back(static_cast<char>(
-                std::tolower(static_cast<unsigned char>(character))));
-        }
+	std::string Lowered(std::string_view text)
+	{
+		std::string result;
+		result.reserve(text.size());
 
-        return result;
-    }
+		for (const char character : text)
+		{
+			// Cast through unsigned char: tolower on a negative char is undefined,
+			// and a settings file can hold any byte.
+			result.push_back(static_cast<char>(
+				std::tolower(static_cast<unsigned char>(character))));
+		}
 
-    std::string Trimmed(std::string_view text)
-    {
-        const auto notSpace = [](unsigned char character) { return std::isspace(character) == 0; };
+		return result;
+	}
 
-        std::size_t begin = 0;
-        while (begin < text.size() && !notSpace(static_cast<unsigned char>(text[begin])))
-        {
-            ++begin;
-        }
+	std::string Trimmed(std::string_view text)
+	{
+		const auto notSpace = [](unsigned char character) { return std::isspace(character) == 0; };
 
-        std::size_t end = text.size();
-        while (end > begin && !notSpace(static_cast<unsigned char>(text[end - 1])))
-        {
-            --end;
-        }
+		std::size_t begin = 0;
+		while (begin < text.size() && !notSpace(static_cast<unsigned char>(text[begin])))
+		{
+			++begin;
+		}
 
-        return std::string(text.substr(begin, end - begin));
-    }
+		std::size_t end = text.size();
+		while (end > begin && !notSpace(static_cast<unsigned char>(text[end - 1])))
+		{
+			--end;
+		}
+
+		return std::string(text.substr(begin, end - begin));
+	}
 }

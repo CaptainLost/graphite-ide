@@ -16,205 +16,203 @@
 #include <string>
 
 #ifdef CORE_PLATFORM_WINDOWS
-    // <GL/gl.h> on Windows depends on typedefs from <windows.h>, so the order matters
-    // and windows.h has to come first.
-    #include <windows.h>
+// <GL/gl.h> on Windows depends on typedefs from <windows.h>, so the order matters
+// and windows.h has to come first.
+#include <windows.h>
 
-    #include <GL/gl.h>
+#include <GL/gl.h>
 #else
-    #include <GL/gl.h>
+#include <GL/gl.h>
 #endif
 
 #include <GLFW/glfw3.h>
 
-namespace Core
-{
-    namespace
-    {
-        ImFont* g_monoFont = nullptr;
-    }
+namespace Core {
 
-    ImFont* ImGuiRenderer::MonoFont() noexcept
-    {
-        return g_monoFont;
-    }
+	namespace {
+		ImFont* g_monoFont = nullptr;
+	}
 
-    ImGuiRenderer::~ImGuiRenderer()
-    {
-        Shutdown();
-    }
+	ImFont* ImGuiRenderer::MonoFont()
+	{
+		return g_monoFont;
+	}
 
-    Result<void> ImGuiRenderer::Init(Window& window)
-    {
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
+	ImGuiRenderer::~ImGuiRenderer()
+	{
+		Shutdown();
+	}
 
-        ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        // ImGui stores this pointer rather than copying the string, so the storage has
-        // to outlive the context — a local would dangle at the next save.
-        static std::string iniPath = []
-        {
-            const auto directory = ExecutableDirectory();
+	Result<void> ImGuiRenderer::Init(Window& window)
+	{
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
 
-            if (directory)
-                return ToUtf8(directory.GetValue() / "imgui.ini");
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		// ImGui stores this pointer rather than copying the string, so the storage has
+		// to outlive the context — a local would dangle at the next save.
+		static std::string iniPath = [] {
+			const auto directory = ExecutableDirectory();
 
-            // Falling back to the working directory keeps the layout working rather than
-            // losing it, but say so: a layout that silently moves between launches is
-            // otherwise very hard to explain.
-            CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
-                      directory.GetError().message);
+			if (directory)
+				return ToUtf8(directory.GetValue() / "imgui.ini");
 
-            return std::string{"imgui.ini"};
-        }();
+			// Falling back to the working directory keeps the layout working rather than
+			// losing it, but say so: a layout that silently moves between launches is
+			// otherwise very hard to explain.
+			CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
+					  directory.GetError().message);
 
-        io.IniFilename = iniPath.c_str();
+			return std::string{"imgui.ini"};
+		}();
 
-        // By default ImGui lets a window be dragged by any empty part of its body, which
-        // makes context menus and popups draggable — they have no title bar, so their
-        // whole surface counts. Panels are moved by their dock tabs and dialogs by their
-        // title bars, so nothing in this application needs the permissive behaviour.
-        io.ConfigWindowsMoveFromTitleBarOnly = true;
+		io.IniFilename = iniPath.c_str();
 
-        constexpr float kBaseFontSize = 15.0f;
+		// By default ImGui lets a window be dragged by any empty part of its body, which
+		// makes context menus and popups draggable — they have no title bar, so their
+		// whole surface counts. Panels are moved by their dock tabs and dialogs by their
+		// title bars, so nothing in this application needs the permissive behaviour.
+		io.ConfigWindowsMoveFromTitleBarOnly = true;
 
-        ImFontConfig textConfig;
-        textConfig.SizePixels = kBaseFontSize;
-        // Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
-        // returns nullptr, which crashes a Debug build instead of letting the warning run.
-        textConfig.Flags |= ImFontFlags_NoLoadError;
+		constexpr float kBaseFontSize = 15.0f;
 
-        const auto executableDirectory = ExecutableDirectory();
+		ImFontConfig textConfig;
+		textConfig.SizePixels = kBaseFontSize;
+		// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
+		// returns nullptr, which crashes a Debug build instead of letting the warning run.
+		textConfig.Flags |= ImFontFlags_NoLoadError;
 
-        if (executableDirectory)
-        {
-            const auto regular = executableDirectory.GetValue() / "JetBrainsMono-Regular.ttf";
+		const auto executableDirectory = ExecutableDirectory();
 
-            g_monoFont = io.Fonts->AddFontFromFileTTF(ToUtf8(regular).c_str(), kBaseFontSize,
-                                                       &textConfig);
-        }
+		if (executableDirectory)
+		{
+			const auto regular = executableDirectory.GetValue() / "JetBrainsMono-Regular.ttf";
 
-        if (g_monoFont == nullptr)
-        {
-            // ProggyClean has no glyphs beyond Latin-1, so Polish file names will show as
-            // empty boxes — but an IDE that starts is better than one that does not.
-            CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
+			g_monoFont = io.Fonts->AddFontFromFileTTF(ToUtf8(regular).c_str(), kBaseFontSize,
+													  &textConfig);
+		}
 
-            ImFontConfig fallbackConfig;
-            fallbackConfig.SizePixels = kBaseFontSize;
-            g_monoFont = io.Fonts->AddFontDefault(&fallbackConfig);
-        }
+		if (g_monoFont == nullptr)
+		{
+			// ProggyClean has no glyphs beyond Latin-1, so Polish file names will show as
+			// empty boxes — but an IDE that starts is better than one that does not.
+			CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
 
-        ImFontConfig iconConfig;
-        iconConfig.MergeMode = true;
-        // PixelSnapH rounds each glyph's horizontal advance to a whole pixel, which is
-        // meant for monospaced text but visibly skews a small round icon like the refresh
-        // arrows — left off so MDI's curves render at their natural proportions.
-        iconConfig.GlyphMinAdvanceX = kBaseFontSize;
-        // MDI's webfont declares its own vertical metrics (built for CSS line-height, not
-        // for sitting on a text baseline), so merged as-is its glyphs sit visibly above the
-        // surrounding text's baseline. Nudge them down to align — see
-        // ImFontConfig::MergeMode's own doc comment, which calls this out by name.
-        iconConfig.GlyphOffset = ImVec2(0.0f, 1.5f);
-        // Without this, a missing/unreadable .ttf trips ImGui's internal
-        // IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
-        // (and crashes) in Debug builds instead of letting the CORE_WARN below run.
-        iconConfig.Flags |= ImFontFlags_NoLoadError;
+			ImFontConfig fallbackConfig;
+			fallbackConfig.SizePixels = kBaseFontSize;
+			g_monoFont = io.Fonts->AddFontDefault(&fallbackConfig);
+		}
 
-        // Merged onto the mono face immediately after it is added — ImGui's dynamic atlas
-        // merges onto whichever font was added last. There is only one face now, but the
-        // ordering still matters: any face added here later would take the merge with it
-        // and leave the text face without icons.
-        if (executableDirectory)
-        {
-            const auto fontPath =
-                executableDirectory.GetValue() / "materialdesignicons-webfont.ttf";
+		ImFontConfig iconConfig;
+		iconConfig.MergeMode = true;
+		// PixelSnapH rounds each glyph's horizontal advance to a whole pixel, which is
+		// meant for monospaced text but visibly skews a small round icon like the refresh
+		// arrows — left off so MDI's curves render at their natural proportions.
+		iconConfig.GlyphMinAdvanceX = kBaseFontSize;
+		// MDI's webfont declares its own vertical metrics (built for CSS line-height, not
+		// for sitting on a text baseline), so merged as-is its glyphs sit visibly above the
+		// surrounding text's baseline. Nudge them down to align — see
+		// ImFontConfig::MergeMode's own doc comment, which calls this out by name.
+		iconConfig.GlyphOffset = ImVec2(0.0f, 1.5f);
+		// Without this, a missing/unreadable .ttf trips ImGui's internal
+		// IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
+		// (and crashes) in Debug builds instead of letting the CORE_WARN below run.
+		iconConfig.Flags |= ImFontFlags_NoLoadError;
 
-            if (io.Fonts->AddFontFromFileTTF(ToUtf8(fontPath).c_str(), kBaseFontSize,
-                                              &iconConfig, UsedGlyphRanges()) == nullptr)
-            {
-                CORE_WARN("Could not load the icon font, the UI will show text only: {}",
-                          ToUtf8(fontPath));
-            }
-        }
-        else
-        {
-            CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
-                      executableDirectory.GetError().message);
-        }
+		// Merged onto the mono face immediately after it is added — ImGui's dynamic atlas
+		// merges onto whichever font was added last. There is only one face now, but the
+		// ordering still matters: any face added here later would take the merge with it
+		// and leave the text face without icons.
+		if (executableDirectory)
+		{
+			const auto fontPath =
+				executableDirectory.GetValue() / "materialdesignicons-webfont.ttf";
 
-        Theme::ApplyDark();
+			if (io.Fonts->AddFontFromFileTTF(ToUtf8(fontPath).c_str(), kBaseFontSize,
+											 &iconConfig, UsedGlyphRanges()) == nullptr)
+			{
+				CORE_WARN("Could not load the icon font, the UI will show text only: {}",
+						  ToUtf8(fontPath));
+			}
+		}
+		else
+		{
+			CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
+					  executableDirectory.GetError().message);
+		}
 
-        // With undocked panels, viewports get their own system windows —
-        // rounding and transparency would look out of place on them.
-        if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
-        {
-            ImGuiStyle& style = ImGui::GetStyle();
-            style.WindowRounding = 0.0f;
-            style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-        }
+		Theme::ApplyDark();
 
-        auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
-        if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
-        {
-            ImGui::DestroyContext();
-            return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL failed"};
-        }
+		// With undocked panels, viewports get their own system windows —
+		// rounding and transparency would look out of place on them.
+		if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
+		{
+			ImGuiStyle& style = ImGui::GetStyle();
+			style.WindowRounding = 0.0f;
+			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+		}
 
-        if (!ImGui_ImplOpenGL3_Init("#version 330 core"))
-        {
-            ImGui_ImplGlfw_Shutdown();
-            ImGui::DestroyContext();
-            return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
-        }
+		auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
+		if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
+		{
+			ImGui::DestroyContext();
+			return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL failed"};
+		}
 
-        m_Initialized = true;
-        CORE_INFO("ImGui initialized (docking + viewports)");
-        return Result<void>::Ok();
-    }
+		if (!ImGui_ImplOpenGL3_Init("#version 330 core"))
+		{
+			ImGui_ImplGlfw_Shutdown();
+			ImGui::DestroyContext();
+			return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
+		}
 
-    void ImGuiRenderer::Shutdown()
-    {
-        if (!m_Initialized)
-            return;
+		m_Initialized = true;
+		CORE_INFO("ImGui initialized (docking + viewports)");
+		return Result<void>::Ok();
+	}
 
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui_ImplGlfw_Shutdown();
-        ImGui::DestroyContext();
-        m_Initialized = false;
-    }
+	void ImGuiRenderer::Shutdown()
+	{
+		if (!m_Initialized)
+			return;
 
-    void ImGuiRenderer::BeginFrame()
-    {
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-    }
+		ImGui_ImplOpenGL3_Shutdown();
+		ImGui_ImplGlfw_Shutdown();
+		ImGui::DestroyContext();
+		m_Initialized = false;
+	}
 
-    void ImGuiRenderer::EndFrame(Window& window)
-    {
-        ImGui::Render();
+	void ImGuiRenderer::BeginFrame()
+	{
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+	}
 
-        int width = 0;
-        int height = 0;
-        window.FramebufferSize(width, height);
+	void ImGuiRenderer::EndFrame(Window& window)
+	{
+		ImGui::Render();
 
-        glViewport(0, 0, width, height);
-        glClearColor(0.106f, 0.114f, 0.129f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+		int width = 0;
+		int height = 0;
+		window.FramebufferSize(width, height);
 
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		glViewport(0, 0, width, height);
+		glClearColor(0.106f, 0.114f, 0.129f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
 
-        const ImGuiIO& io = ImGui::GetIO();
-        if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
-        {
-            GLFWwindow* context = glfwGetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            glfwMakeContextCurrent(context);
-        }
-    }
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+		const ImGuiIO& io = ImGui::GetIO();
+		if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
+		{
+			GLFWwindow* context = glfwGetCurrentContext();
+			ImGui::UpdatePlatformWindows();
+			ImGui::RenderPlatformWindowsDefault();
+			glfwMakeContextCurrent(context);
+		}
+	}
 }

@@ -4,89 +4,81 @@
 
 #include "Core/Base/Ascii.h"
 
-namespace Core
-{
-    namespace
-    {
-        /// Primary first, alternates after, '|' between. The separator cannot occur in a
-        /// chord's own text, which is made of modifier and key names joined by '+'.
-        constexpr char kChordSeparator = '|';
+namespace Core {
 
-        /// What a command the user took every chord away from is written as. The empty
-        /// string cannot carry it — ParseBinding refuses empty text, so an unbound
-        /// override would be dropped on the next start and the factory chord would come
-        /// back, silently undoing the very conflict the rebinding screen resolved. No key
-        /// is named "None", so this cannot collide with a chord's own text.
-        constexpr std::string_view kUnboundText = "None";
-    }
+	namespace {
+		constexpr char kChordSeparator = '|';
 
-    std::string ToString(const Binding& binding)
-    {
-        if (binding.primary.IsEmpty() && binding.alternates.empty())
-        {
-            return std::string{kUnboundText};
-        }
+		constexpr std::string_view kUnboundText = "None";
+	}
 
-        std::string text = binding.primary.ToString();
+	std::string ToString(const Binding& binding)
+	{
+		if (binding.primary.IsEmpty() && binding.alternates.empty())
+		{
+			return std::string{kUnboundText};
+		}
 
-        for (const Chord& alternate : binding.alternates)
-        {
-            text += kChordSeparator;
-            text += alternate.ToString();
-        }
+		std::string text = binding.primary.ToString();
 
-        return text;
-    }
+		for (const Chord& alternate : binding.alternates)
+		{
+			text += kChordSeparator;
+			text += alternate.ToString();
+		}
 
-    std::optional<Binding> ParseBinding(std::string_view text)
-    {
-        Binding binding;
-        bool first = true;
-        std::size_t start = 0;
+		return text;
+	}
 
-        // An override that binds nothing, which is a different thing from a missing
-        // override: the latter restores the factory chord.
-        // Case-insensitively, like Chord::Parse reads every other name in the file this
-        // comes from: a hand-written "none" must not be refused and silently restore the
-        // factory chord, which is the one failure this token exists to prevent.
-        if (Lowered(Trimmed(text)) == Lowered(kUnboundText))
-        {
-            return binding;
-        }
+	std::optional<Binding> ParseBinding(std::string_view text)
+	{
+		Binding binding;
+		bool first = true;
+		std::size_t start = 0;
 
-        for (;;)
-        {
-            const std::size_t separator = text.find(kChordSeparator, start);
-            const std::string_view part =
-                text.substr(start, separator == std::string_view::npos
-                                       ? std::string_view::npos
-                                       : separator - start);
+		// An override that binds nothing, which is a different thing from a missing
+		// override: the latter restores the factory chord.
+		// Case-insensitively, like Chord::Parse reads every other name in the file this
+		// comes from: a hand-written "none" must not be refused and silently restore the
+		// factory chord, which is the one failure this token exists to prevent.
+		if (Lowered(Trimmed(text)) == Lowered(kUnboundText))
+		{
+			return binding;
+		}
 
-            const std::optional<Chord> chord = Chord::Parse(part);
+		for (;;)
+		{
+			const std::size_t separator = text.find(kChordSeparator, start);
+			const std::string_view part =
+				text.substr(start, separator == std::string_view::npos
+									   ? std::string_view::npos
+									   : separator - start);
 
-            if (!chord.has_value())
-            {
-                return std::nullopt;
-            }
+			const std::optional<Chord> chord = Chord::Parse(part);
 
-            if (first)
-            {
-                binding.primary = *chord;
-                first = false;
-            }
-            else
-            {
-                binding.alternates.push_back(*chord);
-            }
+			if (!chord.has_value())
+			{
+				return std::nullopt;
+			}
 
-            if (separator == std::string_view::npos)
-            {
-                break;
-            }
+			if (first)
+			{
+				binding.primary = *chord;
+				first = false;
+			}
+			else
+			{
+				binding.alternates.push_back(*chord);
+			}
 
-            start = separator + 1;
-        }
+			if (separator == std::string_view::npos)
+			{
+				break;
+			}
 
-        return binding;
-    }
+			start = separator + 1;
+		}
+
+		return binding;
+	}
 }

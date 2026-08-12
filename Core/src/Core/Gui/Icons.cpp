@@ -6,107 +6,106 @@
 
 #include <cctype>
 
-namespace Core
-{
-    namespace
-    {
-        // Every icon this app uses sits in MDI's private-use plane (above U+FFFF), which
-        // is always a 4-byte UTF-8 sequence — decoding it by hand avoids depending on an
-        // internal ImGui helper that isn't part of its public API.
-        ImWchar DecodeIcon(const char* utf8)
-        {
-            const auto b0 = static_cast<unsigned char>(utf8[0]);
-            const auto b1 = static_cast<unsigned char>(utf8[1]);
-            const auto b2 = static_cast<unsigned char>(utf8[2]);
-            const auto b3 = static_cast<unsigned char>(utf8[3]);
-            return static_cast<ImWchar>(((b0 & 0x07u) << 18) | ((b1 & 0x3Fu) << 12) |
-                                          ((b2 & 0x3Fu) << 6) | (b3 & 0x3Fu));
-        }
+namespace Core {
 
-        // Kept in one array so UsedGlyphRanges() can never drift from what
-        // IconForExtension() and the panels actually return/use — add a new icon here
-        // first and the range that bakes it follows automatically.
-        constexpr const char* kUsedIcons[] = {
-            ICON_MDI_FILE,
-            ICON_MDI_FOLDER,
-            ICON_MDI_FOLDER_OPEN,
-            ICON_MDI_LANGUAGE_C,
-            ICON_MDI_LANGUAGE_CPP,
-            ICON_MDI_LANGUAGE_CSHARP,
-            ICON_MDI_LANGUAGE_LUA,
-            ICON_MDI_CODE_JSON,
-            ICON_MDI_LANGUAGE_MARKDOWN,
-            ICON_MDI_LANGUAGE_PYTHON,
-            ICON_MDI_APPLICATION_BRACES,
-            ICON_MDI_REFRESH,
-            ICON_MDI_MAGNIFY,
-            ICON_MDI_WINDOW_MINIMIZE,
-            ICON_MDI_WINDOW_MAXIMIZE,
-            ICON_MDI_WINDOW_RESTORE,
-            ICON_MDI_CLOSE,
-        };
+	namespace {
+		// Every icon this app uses sits in MDI's private-use plane (above U+FFFF), which
+		// is always a 4-byte UTF-8 sequence — decoding it by hand avoids depending on an
+		// internal ImGui helper that isn't part of its public API.
+		ImWchar DecodeIcon(const char* utf8)
+		{
+			const auto b0 = static_cast<unsigned char>(utf8[0]);
+			const auto b1 = static_cast<unsigned char>(utf8[1]);
+			const auto b2 = static_cast<unsigned char>(utf8[2]);
+			const auto b3 = static_cast<unsigned char>(utf8[3]);
+			return static_cast<ImWchar>(((b0 & 0x07u) << 18) | ((b1 & 0x3Fu) << 12) |
+										((b2 & 0x3Fu) << 6) | (b3 & 0x3Fu));
+		}
 
-        constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
+		// Kept in one array so UsedGlyphRanges() can never drift from what
+		// IconForExtension() and the panels actually return/use — add a new icon here
+		// first and the range that bakes it follows automatically.
+		constexpr const char* kUsedIcons[] = {
+			ICON_MDI_FILE,
+			ICON_MDI_FOLDER,
+			ICON_MDI_FOLDER_OPEN,
+			ICON_MDI_LANGUAGE_C,
+			ICON_MDI_LANGUAGE_CPP,
+			ICON_MDI_LANGUAGE_CSHARP,
+			ICON_MDI_LANGUAGE_LUA,
+			ICON_MDI_CODE_JSON,
+			ICON_MDI_LANGUAGE_MARKDOWN,
+			ICON_MDI_LANGUAGE_PYTHON,
+			ICON_MDI_APPLICATION_BRACES,
+			ICON_MDI_REFRESH,
+			ICON_MDI_MAGNIFY,
+			ICON_MDI_WINDOW_MINIMIZE,
+			ICON_MDI_WINDOW_MAXIMIZE,
+			ICON_MDI_WINDOW_RESTORE,
+			ICON_MDI_CLOSE,
+		};
 
-        std::string ToLowerWithDot(std::string_view extension)
-        {
-            std::string lower{extension};
-            std::transform(lower.begin(), lower.end(), lower.begin(),
-                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
 
-            if (!lower.empty() && lower.front() != '.')
-                lower.insert(lower.begin(), '.');
+		std::string ToLowerWithDot(std::string_view extension)
+		{
+			std::string lower{extension};
+			std::transform(lower.begin(), lower.end(), lower.begin(),
+						   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
-            return lower;
-        }
-    }
+			if (!lower.empty() && lower.front() != '.')
+				lower.insert(lower.begin(), '.');
 
-    const char* IconForExtension(std::string_view extension)
-    {
-        const std::string lower = ToLowerWithDot(extension);
+			return lower;
+		}
+	}
 
-        // Project files (.vcxproj, .csproj) get a generic project icon rather than a
-        // language one: the extension names the build tool, not what's compiled inside —
-        // GLFW is a C library built through a .vcxproj, same as any C++ project.
-        if (lower == ".vcxproj" || lower == ".csproj")
-            return ICON_MDI_APPLICATION_BRACES;
+	const char* IconForExtension(std::string_view extension)
+	{
+		const std::string lower = ToLowerWithDot(extension);
 
-        if (lower == ".c")
-            return ICON_MDI_LANGUAGE_C;
-        if (lower == ".cpp" || lower == ".cc" || lower == ".cxx" || lower == ".h" ||
-            lower == ".hpp" || lower == ".hxx")
-            return ICON_MDI_LANGUAGE_CPP;
-        if (lower == ".cs")
-            return ICON_MDI_LANGUAGE_CSHARP;
-        if (lower == ".lua")
-            return ICON_MDI_LANGUAGE_LUA;
-        if (lower == ".json")
-            return ICON_MDI_CODE_JSON;
-        if (lower == ".md")
-            return ICON_MDI_LANGUAGE_MARKDOWN;
-        if (lower == ".py")
-            return ICON_MDI_LANGUAGE_PYTHON;
+		// Project files (.vcxproj, .csproj) get a generic project icon rather than a
+		// language one: the extension names the build tool, not what's compiled inside —
+		// GLFW is a C library built through a .vcxproj, same as any C++ project.
+		if (lower == ".vcxproj" || lower == ".csproj")
+			return ICON_MDI_APPLICATION_BRACES;
 
-        return ICON_MDI_FILE;
-    }
+		if (lower == ".c")
+			return ICON_MDI_LANGUAGE_C;
+		if (lower == ".cpp" || lower == ".cc" || lower == ".cxx" || lower == ".h" ||
+			lower == ".hpp" || lower == ".hxx")
+			return ICON_MDI_LANGUAGE_CPP;
+		if (lower == ".cs")
+			return ICON_MDI_LANGUAGE_CSHARP;
+		if (lower == ".lua")
+			return ICON_MDI_LANGUAGE_LUA;
+		if (lower == ".json")
+			return ICON_MDI_CODE_JSON;
+		if (lower == ".md")
+			return ICON_MDI_LANGUAGE_MARKDOWN;
+		if (lower == ".py")
+			return ICON_MDI_LANGUAGE_PYTHON;
 
-    const ImWchar* UsedGlyphRanges()
-    {
-        static ImWchar ranges[2 * kUsedIconCount + 2] = {};
-        static bool built = false;
+		return ICON_MDI_FILE;
+	}
 
-        if (!built)
-        {
-            for (std::size_t i = 0; i < kUsedIconCount; ++i)
-            {
-                const ImWchar codepoint = DecodeIcon(kUsedIcons[i]);
-                ranges[2 * i] = codepoint;
-                ranges[2 * i + 1] = codepoint;
-            }
+	const ImWchar* UsedGlyphRanges()
+	{
+		static ImWchar ranges[2 * kUsedIconCount + 2] = {};
+		static bool built = false;
 
-            built = true;
-        }
+		if (!built)
+		{
+			for (std::size_t i = 0; i < kUsedIconCount; ++i)
+			{
+				const ImWchar codepoint = DecodeIcon(kUsedIcons[i]);
+				ranges[2 * i] = codepoint;
+				ranges[2 * i + 1] = codepoint;
+			}
 
-        return ranges;
-    }
+			built = true;
+		}
+
+		return ranges;
+	}
 }

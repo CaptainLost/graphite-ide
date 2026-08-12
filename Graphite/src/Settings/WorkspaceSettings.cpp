@@ -7,59 +7,56 @@
 #include <filesystem>
 #include <utility>
 
-namespace Graphite
-{
-    namespace
-    {
-        /// Named after the application. Ignored by git the way .vs is: it holds view
-        /// state, not configuration anyone would want to share.
-        constexpr const char* kDirectory = ".graphite";
-        constexpr const char* kFile = "workspace.json";
-    }
+namespace Graphite {
 
-    WorkspaceSettings::WorkspaceSettings(std::filesystem::path root) : m_Root(std::move(root))
-    {
-    }
+	namespace {
+		constexpr const char* kDirectory = ".graphite";
+		constexpr const char* kFile = "workspace.json";
+	}
 
-    std::filesystem::path WorkspaceSettings::GetFilePath() const
-    {
-        return m_Root / kDirectory / kFile;
-    }
+	WorkspaceSettings::WorkspaceSettings(std::filesystem::path root) : m_Root(std::move(root))
+	{
+	}
 
-    std::string WorkspaceSettings::Get(std::string_view key) const
-    {
-        if (m_Root.empty())
-            return {};
+	std::filesystem::path WorkspaceSettings::GetFilePath() const
+	{
+		return m_Root / kDirectory / kFile;
+	}
 
-        return Core::JsonFile::Load(GetFilePath()).Get(key);
-    }
+	std::string WorkspaceSettings::Get(std::string_view key) const
+	{
+		if (m_Root.empty())
+			return {};
 
-    void WorkspaceSettings::Set(std::string_view key, std::string value)
-    {
-        if (m_Root.empty())
-            return;
+		return Core::JsonFile::Load(GetFilePath()).Get(key);
+	}
 
-        // Created on the first write rather than when the folder opens, so browsing a
-        // folder read-only never leaves anything behind in it.
-        const std::filesystem::path directory = m_Root / kDirectory;
+	void WorkspaceSettings::Set(std::string_view key, std::string value)
+	{
+		if (m_Root.empty())
+			return;
 
-        // MakeDirectory reports an error when the directory already exists, so the
-        // ordinary case — every write after the first — has to be guarded here rather
-        // than treated as a failure.
-        std::error_code code;
-        if (!std::filesystem::exists(directory, code))
-        {
-            if (const auto made = Core::MakeDirectory(directory); !made)
-            {
-                CORE_WARN("Cannot create '{}': {}", directory.string(), made.GetError().message);
-                return;
-            }
-        }
+		// Created on the first write rather than when the folder opens, so browsing a
+		// folder read-only never leaves anything behind in it.
+		const std::filesystem::path directory = m_Root / kDirectory;
 
-        Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
-        file.Set(key, std::move(value));
+		// MakeDirectory reports an error when the directory already exists, so the
+		// ordinary case — every write after the first — has to be guarded here rather
+		// than treated as a failure.
+		std::error_code code;
+		if (!std::filesystem::exists(directory, code))
+		{
+			if (const auto made = Core::MakeDirectory(directory); !made)
+			{
+				CORE_WARN("Cannot create '{}': {}", directory.string(), made.GetError().message);
+				return;
+			}
+		}
 
-        if (!file.Save(GetFilePath()))
-            CORE_WARN("Cannot write '{}'", GetFilePath().string());
-    }
+		Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
+		file.Set(key, std::move(value));
+
+		if (!file.Save(GetFilePath()))
+			CORE_WARN("Cannot write '{}'", GetFilePath().string());
+	}
 }

@@ -8,175 +8,174 @@
 #include <algorithm>
 #include <cctype>
 
-namespace Core
-{
-    bool FileNodeLess(const FileNode& left, const FileNode& right)
-    {
-        if (left.isDirectory != right.isDirectory)
-            return left.isDirectory;
+namespace Core {
 
-        return CompareNames(left.name, right.name) < 0;
-    }
+	bool FileNodeLess(const FileNode& left, const FileNode& right)
+	{
+		if (left.isDirectory != right.isDirectory)
+			return left.isDirectory;
 
-    Result<void> FileTree::SetRoot(const std::filesystem::path& root)
-    {
-        std::error_code code;
-        if (!std::filesystem::is_directory(root, code))
-        {
-            return Error{ErrorCode::InvalidArgument,
-                         std::format("'{}' is not a directory", root.string())};
-        }
+		return CompareNames(left.name, right.name) < 0;
+	}
 
-        m_Root = FileNode{};
-        m_Root.path = root;
-        m_Root.name = ToUtf8(root.filename());
+	Result<void> FileTree::SetRoot(const std::filesystem::path& root)
+	{
+		std::error_code code;
+		if (!std::filesystem::is_directory(root, code))
+		{
+			return Error{ErrorCode::InvalidArgument,
+						 std::format("'{}' is not a directory", root.string())};
+		}
 
-        if (m_Root.name.empty())
-            m_Root.name = ToUtf8(root);
+		m_Root = FileNode{};
+		m_Root.path = root;
+		m_Root.name = ToUtf8(root.filename());
 
-        m_Root.isDirectory = true;
-        m_HasRoot = true;
+		if (m_Root.name.empty())
+			m_Root.name = ToUtf8(root);
 
-        CORE_INFO("Workspace root set to '{}'", root.string());
-        return Result<void>::Ok();
-    }
+		m_Root.isDirectory = true;
+		m_HasRoot = true;
 
-    bool FileTree::AskIgnored(const std::filesystem::path& path, bool isDirectory) const
-    {
-        // No query means no opinion, which is the right answer for a folder that is not
-        // a repository at all.
-        return m_IgnoreQuery ? m_IgnoreQuery(path, isDirectory) : false;
-    }
+		CORE_INFO("Workspace root set to '{}'", root.string());
+		return Result<void>::Ok();
+	}
 
-    Result<void> FileTree::Expand(FileNode& node)
-    {
-        if (!node.isDirectory)
-            return Error{ErrorCode::InvalidArgument, "cannot expand a file node"};
+	bool FileTree::AskIgnored(const std::filesystem::path& path, bool isDirectory) const
+	{
+		// No query means no opinion, which is the right answer for a folder that is not
+		// a repository at all.
+		return m_IgnoreQuery ? m_IgnoreQuery(path, isDirectory) : false;
+	}
 
-        node.expanded = true;
+	Result<void> FileTree::Expand(FileNode& node)
+	{
+		if (!node.isDirectory)
+			return Error{ErrorCode::InvalidArgument, "cannot expand a file node"};
 
-        if (node.loaded)
-            return Result<void>::Ok();
+		node.expanded = true;
 
-        auto entries = ReadDirectory(node.path);
-        node.loaded = true;
+		if (node.loaded)
+			return Result<void>::Ok();
 
-        if (!entries)
-        {
-            // One unreadable folder must not break browsing the rest of the tree.
-            node.accessible = false;
-            node.children.clear();
-            CORE_WARN("Cannot read '{}': {}", node.path.string(), entries.GetError().message);
-            return Result<void>::Ok();
-        }
+		auto entries = ReadDirectory(node.path);
+		node.loaded = true;
 
-        node.accessible = true;
-        node.children.clear();
-        node.children.reserve(entries.GetValue().size());
+		if (!entries)
+		{
+			// One unreadable folder must not break browsing the rest of the tree.
+			node.accessible = false;
+			node.children.clear();
+			CORE_WARN("Cannot read '{}': {}", node.path.string(), entries.GetError().message);
+			return Result<void>::Ok();
+		}
 
-        for (const DirectoryEntry& entry : entries.GetValue())
-        {
-            FileNode child;
-            child.path = entry.path;
-            child.name = entry.name;
-            child.isDirectory = entry.isDirectory;
-            child.ignored = AskIgnored(entry.path, entry.isDirectory);
-            node.children.push_back(std::move(child));
-        }
+		node.accessible = true;
+		node.children.clear();
+		node.children.reserve(entries.GetValue().size());
 
-        std::sort(node.children.begin(), node.children.end(), FileNodeLess);
-        return Result<void>::Ok();
-    }
+		for (const DirectoryEntry& entry : entries.GetValue())
+		{
+			FileNode child;
+			child.path = entry.path;
+			child.name = entry.name;
+			child.isDirectory = entry.isDirectory;
+			child.ignored = AskIgnored(entry.path, entry.isDirectory);
+			node.children.push_back(std::move(child));
+		}
 
-    void FileTree::Collapse(FileNode& node)
-    {
-        node.expanded = false;
-    }
+		std::sort(node.children.begin(), node.children.end(), FileNodeLess);
+		return Result<void>::Ok();
+	}
 
-    void FileTree::Refresh(FileNode& node)
-    {
-        if (!node.isDirectory || !node.loaded)
-            return;
+	void FileTree::Collapse(FileNode& node)
+	{
+		node.expanded = false;
+	}
 
-        auto entries = ReadDirectory(node.path);
+	void FileTree::Refresh(FileNode& node)
+	{
+		if (!node.isDirectory || !node.loaded)
+			return;
 
-        if (!entries)
-        {
-            node.accessible = false;
-            node.children.clear();
-            CORE_WARN("Cannot refresh '{}': {}", node.path.string(), entries.GetError().message);
-            return;
-        }
+		auto entries = ReadDirectory(node.path);
 
-        node.accessible = true;
+		if (!entries)
+		{
+			node.accessible = false;
+			node.children.clear();
+			CORE_WARN("Cannot refresh '{}': {}", node.path.string(), entries.GetError().message);
+			return;
+		}
 
-        std::vector<FileNode> previous = std::move(node.children);
-        node.children.clear();
-        node.children.reserve(entries.GetValue().size());
+		node.accessible = true;
 
-        for (const DirectoryEntry& entry : entries.GetValue())
-        {
-            const auto match = std::find_if(previous.begin(), previous.end(),
-                                            [&entry](const FileNode& candidate)
-                                            { return candidate.path == entry.path; });
+		std::vector<FileNode> previous = std::move(node.children);
+		node.children.clear();
+		node.children.reserve(entries.GetValue().size());
 
-            if (match != previous.end() && match->isDirectory == entry.isDirectory)
-            {
-                // Carry the whole subtree over, then let the recursion below bring it
-                // up to date. This is what keeps the user's open folders open.
-                node.children.push_back(std::move(*match));
-                node.children.back().ignored = AskIgnored(entry.path, entry.isDirectory);
-                previous.erase(match);
-                continue;
-            }
+		for (const DirectoryEntry& entry : entries.GetValue())
+		{
+			const auto match = std::find_if(previous.begin(), previous.end(),
+											[&entry](const FileNode& candidate) { return candidate.path == entry.path; });
 
-            FileNode child;
-            child.path = entry.path;
-            child.name = entry.name;
-            child.isDirectory = entry.isDirectory;
-            child.ignored = AskIgnored(entry.path, entry.isDirectory);
-            node.children.push_back(std::move(child));
-        }
+			if (match != previous.end() && match->isDirectory == entry.isDirectory)
+			{
+				// Carry the whole subtree over, then let the recursion below bring it
+				// up to date. This is what keeps the user's open folders open.
+				node.children.push_back(std::move(*match));
+				node.children.back().ignored = AskIgnored(entry.path, entry.isDirectory);
+				previous.erase(match);
+				continue;
+			}
 
-        std::sort(node.children.begin(), node.children.end(), FileNodeLess);
+			FileNode child;
+			child.path = entry.path;
+			child.name = entry.name;
+			child.isDirectory = entry.isDirectory;
+			child.ignored = AskIgnored(entry.path, entry.isDirectory);
+			node.children.push_back(std::move(child));
+		}
 
-        for (FileNode& child : node.children)
-        {
-            if (child.isDirectory && child.loaded)
-                Refresh(child);
-        }
-    }
+		std::sort(node.children.begin(), node.children.end(), FileNodeLess);
 
-    void FileTree::Rebase(const std::filesystem::path& newRoot)
-    {
-        if (!m_HasRoot)
-            return;
+		for (FileNode& child : node.children)
+		{
+			if (child.isDirectory && child.loaded)
+				Refresh(child);
+		}
+	}
 
-        const std::filesystem::path normalized = NormalizeDirectory(newRoot);
+	void FileTree::Rebase(const std::filesystem::path& newRoot)
+	{
+		if (!m_HasRoot)
+			return;
 
-        RebaseNode(m_Root, normalized);
+		const std::filesystem::path normalized = NormalizeDirectory(newRoot);
 
-        // The root is the one node whose name a move can change — a child keeps its name
-        // and only moves underneath. Without this the tree would go on displaying the
-        // folder's previous name while every path beneath it was already correct.
-        //
-        // The fallback mirrors SetRoot: a drive root has no filename component, and an
-        // empty label would render as a blank row.
-        m_Root.name = ToUtf8(normalized.filename());
+		RebaseNode(m_Root, normalized);
 
-        if (m_Root.name.empty())
-            m_Root.name = ToUtf8(normalized);
-    }
+		// The root is the one node whose name a move can change — a child keeps its name
+		// and only moves underneath. Without this the tree would go on displaying the
+		// folder's previous name while every path beneath it was already correct.
+		//
+		// The fallback mirrors SetRoot: a drive root has no filename component, and an
+		// empty label would render as a blank row.
+		m_Root.name = ToUtf8(normalized.filename());
 
-    void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)
-    {
-        node.path = newPath;
+		if (m_Root.name.empty())
+			m_Root.name = ToUtf8(normalized);
+	}
 
-        // Rebuilt from the parent's new path and the child's own name rather than by
-        // string surgery on the old path: the two spellings only have to agree on the
-        // part being replaced, and a prefix replacement would quietly do nothing if they
-        // differed in case or separators.
-        for (FileNode& child : node.children)
-            RebaseNode(child, newPath / child.name);
-    }
+	void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)
+	{
+		node.path = newPath;
+
+		// Rebuilt from the parent's new path and the child's own name rather than by
+		// string surgery on the old path: the two spellings only have to agree on the
+		// part being replaced, and a prefix replacement would quietly do nothing if they
+		// differed in case or separators.
+		for (FileNode& child : node.children)
+			RebaseNode(child, newPath / child.name);
+	}
 }

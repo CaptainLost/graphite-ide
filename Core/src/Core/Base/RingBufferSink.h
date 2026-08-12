@@ -7,25 +7,24 @@
 #include <mutex>
 #include <vector>
 
-namespace Core
-{
-    /// Sink that holds the last N entries. Data source for the console panel in the IDE.
-    class RingBufferSink final : public ILogSink
-    {
-    public:
-        explicit RingBufferSink(std::size_t capacity);
+namespace Core {
 
-        void Write(const LogEntry& entry) override;
+	class RingBufferSink final : public ILogSink
+	{
+	public:
+		explicit RingBufferSink(std::size_t capacity);
 
-        [[nodiscard]] std::vector<LogEntry> GetSnapshot() const;
-        [[nodiscard]] std::size_t GetCount() const;
-        [[nodiscard]] std::size_t GetCapacity() const noexcept { return m_Capacity; }
+		void Write(const LogEntry& entry) override;
 
-        void Clear();
+		std::vector<LogEntry> GetSnapshot() const;
+		std::size_t GetCount() const;
+		std::size_t GetCapacity() const { return m_Capacity; }
 
-    private:
-        mutable std::mutex m_Mutex;
-        std::deque<LogEntry> m_Entries;
-        std::size_t m_Capacity;
-    };
+		void Clear();
+
+	private:
+		mutable std::mutex m_Mutex;
+		std::deque<LogEntry> m_Entries;
+		std::size_t m_Capacity;
+	};
 }

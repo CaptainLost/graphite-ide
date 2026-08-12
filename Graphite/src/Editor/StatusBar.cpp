@@ -10,119 +10,115 @@
 
 #include <string>
 
-namespace Graphite
-{
-    namespace
-    {
-        [[nodiscard]] const char* LineEndingName(Core::LineEnding ending, bool mixed)
-        {
-            if (ending == Core::LineEnding::Crlf)
-                return mixed ? "CRLF (mixed)" : "CRLF";
+namespace Graphite {
 
-            return mixed ? "LF (mixed)" : "LF";
-        }
+	namespace {
+		const char* LineEndingName(Core::LineEnding ending, bool mixed)
+		{
+			if (ending == Core::LineEnding::Crlf)
+				return mixed ? "CRLF (mixed)" : "CRLF";
 
-        /// The path as the user thinks of it: relative to the open folder when it sits
-        /// inside one, and spelled in full when it does not.
-        [[nodiscard]] std::string RelativePath(const std::filesystem::path& path,
-                                               const std::filesystem::path& root)
-        {
-            const auto relative = Core::RelativeTo(path, root);
+			return mixed ? "LF (mixed)" : "LF";
+		}
 
-            return Core::ToUtf8(relative ? *relative : path);
-        }
-    }
+		std::string RelativePath(const std::filesystem::path& path,
+								 const std::filesystem::path& root)
+		{
+			const auto relative = Core::RelativeTo(path, root);
 
-    void DrawStatusBar(const Core::DocumentSet& documents,
-                       const std::filesystem::path& root,
-                       const std::optional<std::string>& transientMessage)
-    {
-        ImGuiViewport* viewport = ImGui::GetMainViewport();
-        const float height = ImGui::GetFrameHeight();
+			return Core::ToUtf8(relative ? *relative : path);
+		}
+	}
 
-        constexpr ImGuiWindowFlags flags =
-            ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
+	void DrawStatusBar(const Core::DocumentSet& documents,
+					   const std::filesystem::path& root,
+					   const std::optional<std::string>& transientMessage)
+	{
+		ImGuiViewport* viewport = ImGui::GetMainViewport();
+		const float height = ImGui::GetFrameHeight();
 
-        if (!ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags))
-        {
-            ImGui::End();
-            return;
-        }
+		constexpr ImGuiWindowFlags flags =
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
 
-        const auto active = documents.GetActive();
+		if (!ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags))
+		{
+			ImGui::End();
+			return;
+		}
 
-        if (active && documents.At(*active).document)
-        {
-            const Core::OpenItem& item = documents.At(*active);
-            const Core::TextBuffer& buffer = item.document->GetBuffer();
+		const auto active = documents.GetActive();
 
-            // The strip is exactly one frame tall: height == FontSize + 2 * FramePadding.y
-            // (that is what GetFrameHeight() above returns), and a line of text is
-            // FontSize tall (GetTextLineHeight()). Centering it means leaving
-            // (height - textHeight) / 2 == FramePadding.y of empty space above the text,
-            // which is what SetCursorPosY places the cursor at — measured from the
-            // window's own top edge, the same origin GetCursorPosY() uses, so this holds
-            // regardless of WindowPadding and stays centred if the font size changes at
-            // runtime. Both sides of the strip share one cursor row, so SameLine() below
-            // carries this same Y to the right-hand group.
-            const float textHeight = ImGui::GetTextLineHeight();
-            ImGui::SetCursorPosY((height - textHeight) * 0.5f);
+		if (active && documents.At(*active).document)
+		{
+			const Core::OpenItem& item = documents.At(*active);
+			const Core::TextBuffer& buffer = item.document->GetBuffer();
 
-            // A leading marker rather than a colour: the strip has no guarantee its text
-            // colour reads as "warning" against every theme, and a dirty document is not
-            // an error worth one.
-            std::string left = RelativePath(item.path, root);
+			// The strip is exactly one frame tall: height == FontSize + 2 * FramePadding.y
+			// (that is what GetFrameHeight() above returns), and a line of text is
+			// FontSize tall (GetTextLineHeight()). Centering it means leaving
+			// (height - textHeight) / 2 == FramePadding.y of empty space above the text,
+			// which is what SetCursorPosY places the cursor at — measured from the
+			// window's own top edge, the same origin GetCursorPosY() uses, so this holds
+			// regardless of WindowPadding and stays centred if the font size changes at
+			// runtime. Both sides of the strip share one cursor row, so SameLine() below
+			// carries this same Y to the right-hand group.
+			const float textHeight = ImGui::GetTextLineHeight();
+			ImGui::SetCursorPosY((height - textHeight) * 0.5f);
 
-            if (item.document->IsModified())
-                left = "* " + left;
+			// A leading marker rather than a colour: the strip has no guarantee its text
+			// colour reads as "warning" against every theme, and a dirty document is not
+			// an error worth one.
+			std::string left = RelativePath(item.path, root);
 
-            // Invalid UTF-8 for its own declared encoding - the one thing that makes
-            // editing refuse to touch a file - is exactly what the status bar exists to
-            // surface, not silently allow.
-            if (item.document->IsReadOnly())
-                left += "  (read-only: not valid text for its encoding)";
+			if (item.document->IsModified())
+				left = "* " + left;
 
-            ImGui::TextUnformatted(left.c_str());
+			// Invalid UTF-8 for its own declared encoding - the one thing that makes
+			// editing refuse to touch a file - is exactly what the status bar exists to
+			// surface, not silently allow.
+			if (item.document->IsReadOnly())
+				left += "  (read-only: not valid text for its encoding)";
 
-            const Core::Position where = buffer.ToPosition(item.caret.offset);
-            const std::size_t column = Core::ColumnOfByte(
-                buffer.LineText(where.line), where.column, Core::DefaultTabWidth);
+			ImGui::TextUnformatted(left.c_str());
 
-            // One-based, because that is how people and every compiler count.
-            std::string position = "Ln " + std::to_string(where.line + 1) + ", Col "
-                                   + std::to_string(column + 1);
+			const Core::Position where = buffer.ToPosition(item.caret.offset);
+			const std::size_t column = Core::ColumnOfByte(
+				buffer.LineText(where.line), where.column, Core::DefaultTabWidth);
 
-            const auto [from, to] = Core::SelectionRange(item.caret);
+			// One-based, because that is how people and every compiler count.
+			std::string position = "Ln " + std::to_string(where.line + 1) + ", Col " + std::to_string(column + 1);
 
-            if (from != to)
-                position += " (" + std::to_string(to - from) + " selected)";
+			const auto [from, to] = Core::SelectionRange(item.caret);
 
-            const std::string encoding{Core::EncodingName(item.document->GetFileEncoding())};
-            const std::string ending =
-                LineEndingName(item.document->GetDocumentLineEnding(), item.document->WasMixed());
+			if (from != to)
+				position += " (" + std::to_string(to - from) + " selected)";
 
-            const std::string right = position + "    " + encoding + "    " + ending;
-            const float width = ImGui::CalcTextSize(right.c_str()).x;
+			const std::string encoding{Core::EncodingName(item.document->GetFileEncoding())};
+			const std::string ending =
+				LineEndingName(item.document->GetDocumentLineEnding(), item.document->WasMixed());
 
-            ImGui::SameLine(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
-            ImGui::TextUnformatted(right.c_str());
-        }
+			const std::string right = position + "    " + encoding + "    " + ending;
+			const float width = ImGui::CalcTextSize(right.c_str()).x;
 
-        if (transientMessage && !transientMessage->empty())
-        {
-            // Centred using the same math as the row above: the strip is exactly one
-            // frame tall, and (height - textHeight) / 2 is where that leaves for the text
-            // to sit, this time measured from the window's own top edge again rather than
-            // carried over from the row above, since there may have been no active
-            // document to draw one.
-            const float textHeight = ImGui::GetTextLineHeight();
-            const float messageWidth = ImGui::CalcTextSize(transientMessage->c_str()).x;
+			ImGui::SameLine(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
+			ImGui::TextUnformatted(right.c_str());
+		}
 
-            ImGui::SetCursorPos(ImVec2((ImGui::GetWindowWidth() - messageWidth) * 0.5f,
-                                       (height - textHeight) * 0.5f));
-            ImGui::TextUnformatted(transientMessage->c_str());
-        }
+		if (transientMessage && !transientMessage->empty())
+		{
+			// Centred using the same math as the row above: the strip is exactly one
+			// frame tall, and (height - textHeight) / 2 is where that leaves for the text
+			// to sit, this time measured from the window's own top edge again rather than
+			// carried over from the row above, since there may have been no active
+			// document to draw one.
+			const float textHeight = ImGui::GetTextLineHeight();
+			const float messageWidth = ImGui::CalcTextSize(transientMessage->c_str()).x;
 
-        ImGui::End();
-    }
+			ImGui::SetCursorPos(ImVec2((ImGui::GetWindowWidth() - messageWidth) * 0.5f,
+									   (height - textHeight) * 0.5f));
+			ImGui::TextUnformatted(transientMessage->c_str());
+		}
+
+		ImGui::End();
+	}
 }

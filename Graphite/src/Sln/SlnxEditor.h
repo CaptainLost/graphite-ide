@@ -6,42 +6,32 @@
 #include <filesystem>
 #include <string>
 
-namespace Graphite
-{
-    /// Edits a .slnx by splicing its text. pugixml locates the elements; nothing is ever
-    /// re-serialised, because saving a parsed document rewrites every self-closing tag —
-    /// a diff touching the whole file for one added line.
-    class SlnxEditor final : public SolutionEditor
-    {
-    public:
-        SlnxEditor(std::filesystem::path path, std::string text);
+namespace Graphite {
 
-        [[nodiscard]] Core::Result<void> AddProject(const std::filesystem::path& project,
-                                                    const std::string& folder) override;
-        [[nodiscard]] Core::Result<void> RemoveProject(const std::filesystem::path& project) override;
-        [[nodiscard]] Core::Result<void> AddFolder(const std::string& folder) override;
-        [[nodiscard]] Core::Result<void> RemoveFolder(const std::string& folder) override;
-        [[nodiscard]] Core::Result<void> RenameFolder(const std::string& folder,
-                                                      const std::string& name) override;
-        [[nodiscard]] Core::Result<void> MoveProject(const std::filesystem::path& project,
-                                                     const std::string& folder) override;
-        [[nodiscard]] Core::Result<void> Save() override;
+	class SlnxEditor final : public SolutionEditor
+	{
+	public:
+		SlnxEditor(std::filesystem::path path, std::string text);
 
-    private:
-        /// Offset of the `<Solution>` or `<Folder>` element the logical path names — pugixml's,
-        /// one past the '<'. Empty `folder` means the solution element. A folder the solution
-        /// does not have is an error here; creating it is the caller's decision.
-        [[nodiscard]] Core::Result<std::size_t> FindContainer(const std::string& folder) const;
+		Core::Result<void> AddProject(const std::filesystem::path& project,
+									  const std::string& folder) override;
+		Core::Result<void> RemoveProject(const std::filesystem::path& project) override;
+		Core::Result<void> AddFolder(const std::string& folder) override;
+		Core::Result<void> RemoveFolder(const std::string& folder) override;
+		Core::Result<void> RenameFolder(const std::string& folder,
+										const std::string& name) override;
+		Core::Result<void> MoveProject(const std::filesystem::path& project,
+									   const std::string& folder) override;
+		Core::Result<void> Save() override;
 
-        /// Offset of the `<Project>` element naming this file, or an error when the
-        /// solution does not have it.
-        [[nodiscard]] Core::Result<std::size_t> FindProject(const std::filesystem::path& project) const;
+	private:
+		Core::Result<std::size_t> FindContainer(const std::string& folder) const;
 
-        /// Inserts `element` as the first child of the container at `offset`, expanding a
-        /// self-closing container into an open/close pair when it has no children yet.
-        void InsertChild(std::size_t offset, const std::string& element);
+		Core::Result<std::size_t> FindProject(const std::filesystem::path& project) const;
 
-        std::filesystem::path m_Path;
-        std::string m_Text;
-    };
+		void InsertChild(std::size_t offset, const std::string& element);
+
+		std::filesystem::path m_Path;
+		std::string m_Text;
+	};
 }

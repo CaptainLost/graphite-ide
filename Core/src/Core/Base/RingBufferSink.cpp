@@ -4,37 +4,37 @@
 
 #include "Core/Base/Assert.h"
 
-namespace Core
-{
-    RingBufferSink::RingBufferSink(std::size_t capacity) : m_Capacity(capacity)
-    {
-        CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
-    }
+namespace Core {
 
-    void RingBufferSink::Write(const LogEntry& entry)
-    {
-        const std::scoped_lock lock{m_Mutex};
+	RingBufferSink::RingBufferSink(std::size_t capacity) : m_Capacity(capacity)
+	{
+		CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
+	}
 
-        m_Entries.push_back(entry);
-        while (m_Entries.size() > m_Capacity)
-            m_Entries.pop_front();
-    }
+	void RingBufferSink::Write(const LogEntry& entry)
+	{
+		const std::scoped_lock lock{m_Mutex};
 
-    std::vector<LogEntry> RingBufferSink::GetSnapshot() const
-    {
-        const std::scoped_lock lock{m_Mutex};
-        return {m_Entries.begin(), m_Entries.end()};
-    }
+		m_Entries.push_back(entry);
+		while (m_Entries.size() > m_Capacity)
+			m_Entries.pop_front();
+	}
 
-    std::size_t RingBufferSink::GetCount() const
-    {
-        const std::scoped_lock lock{m_Mutex};
-        return m_Entries.size();
-    }
+	std::vector<LogEntry> RingBufferSink::GetSnapshot() const
+	{
+		const std::scoped_lock lock{m_Mutex};
+		return {m_Entries.begin(), m_Entries.end()};
+	}
 
-    void RingBufferSink::Clear()
-    {
-        const std::scoped_lock lock{m_Mutex};
-        m_Entries.clear();
-    }
+	std::size_t RingBufferSink::GetCount() const
+	{
+		const std::scoped_lock lock{m_Mutex};
+		return m_Entries.size();
+	}
+
+	void RingBufferSink::Clear()
+	{
+		const std::scoped_lock lock{m_Mutex};
+		m_Entries.clear();
+	}
 }

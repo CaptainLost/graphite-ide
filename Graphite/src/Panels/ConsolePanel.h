@@ -9,24 +9,23 @@
 #include <memory>
 #include <vector>
 
-namespace Graphite
-{
-    /// View of the engine logs. Reads the ring buffer filled by Logger.
-    class ConsolePanel final : public Core::Panel
-    {
-    public:
-        explicit ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink);
+namespace Graphite {
 
-        void OnUIRender() override;
+	class ConsolePanel final : public Core::Panel
+	{
+	public:
+		explicit ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink);
 
-    private:
-        void RenderToolbar();
-        void RenderEntries();
+		void OnUIRender() override;
 
-        std::shared_ptr<Core::RingBufferSink> m_Sink;
-        std::vector<Core::LogEntry> m_Entries;
-        ImGuiTextFilter m_Filter;
-        bool m_AutoScroll = true;
-        std::size_t m_LastCount = 0;
-    };
+	private:
+		void RenderToolbar();
+		void RenderEntries();
+
+		std::shared_ptr<Core::RingBufferSink> m_Sink;
+		std::vector<Core::LogEntry> m_Entries;
+		ImGuiTextFilter m_Filter;
+		bool m_AutoScroll = true;
+		std::size_t m_LastCount = 0;
+	};
 }

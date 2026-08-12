@@ -7,27 +7,27 @@
 #include <memory>
 #include <vector>
 
-namespace Core
-{
-    class LayerStack final : NonCopyable
-    {
-    public:
-        using Container = std::vector<std::unique_ptr<Layer>>;
+namespace Core {
 
-        LayerStack() = default;
-        ~LayerStack();
+	class LayerStack final : NonCopyable
+	{
+	public:
+		using Container = std::vector<std::unique_ptr<Layer>>;
 
-        Layer& Push(std::unique_ptr<Layer> layer);
-        void Clear();
+		LayerStack() = default;
+		~LayerStack();
 
-        [[nodiscard]] std::size_t GetSize() const noexcept { return m_Layers.size(); }
+		Layer& Push(std::unique_ptr<Layer> layer);
+		void Clear();
 
-        Container::iterator begin() noexcept { return m_Layers.begin(); }
-        Container::iterator end() noexcept { return m_Layers.end(); }
-        Container::const_iterator begin() const noexcept { return m_Layers.begin(); }
-        Container::const_iterator end() const noexcept { return m_Layers.end(); }
+		std::size_t GetSize() const { return m_Layers.size(); }
 
-    private:
-        Container m_Layers;
-    };
+		Container::iterator begin() { return m_Layers.begin(); }
+		Container::iterator end() { return m_Layers.end(); }
+		Container::const_iterator begin() const { return m_Layers.begin(); }
+		Container::const_iterator end() const { return m_Layers.end(); }
+
+	private:
+		Container m_Layers;
+	};
 }

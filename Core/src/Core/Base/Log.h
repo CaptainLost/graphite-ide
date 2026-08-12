@@ -10,64 +10,61 @@
 #include <utility>
 #include <vector>
 
-namespace Core
-{
-    enum class LogLevel
-    {
-        Trace = 0,
-        Info,
-        Warn,
-        Error
-    };
+namespace Core {
 
-    std::string_view ToString(LogLevel level) noexcept;
+	enum class LogLevel
+	{
+		Trace = 0,
+		Info,
+		Warn,
+		Error
+	};
 
-    struct LogEntry
-    {
-        LogLevel level = LogLevel::Info;
-        std::string message;
-    };
+	std::string_view ToString(LogLevel level);
 
-    class ILogSink
-    {
-    public:
-        virtual ~ILogSink() = default;
-        virtual void Write(const LogEntry& entry) = 0;
-    };
+	struct LogEntry
+	{
+		LogLevel level = LogLevel::Info;
+		std::string message;
+	};
 
-    class ConsoleSink final : public ILogSink
-    {
-    public:
-        void Write(const LogEntry& entry) override;
-    };
+	class ILogSink
+	{
+	public:
+		virtual ~ILogSink() = default;
+		virtual void Write(const LogEntry& entry) = 0;
+	};
 
-    /// Central hub for logs. Dispatches entries to every attached sink.
-    /// Safe to call from multiple threads.
-    class Logger final : NonCopyable
-    {
-    public:
-        static Logger& Get();
+	class ConsoleSink final : public ILogSink
+	{
+	public:
+		void Write(const LogEntry& entry) override;
+	};
 
-        void AddSink(std::shared_ptr<ILogSink> sink);
-        void ClearSinks();
+	class Logger final : NonCopyable
+	{
+	public:
+		static Logger& Get();
 
-        void SetLevel(LogLevel level);
-        [[nodiscard]] LogLevel GetLevel() const;
+		void AddSink(std::shared_ptr<ILogSink> sink);
+		void ClearSinks();
 
-        void Write(LogLevel level, std::string message);
+		void SetLevel(LogLevel level);
+		LogLevel GetLevel() const;
 
-    private:
-        Logger() = default;
+		void Write(LogLevel level, std::string message);
 
-        mutable std::mutex m_Mutex;
-        std::vector<std::shared_ptr<ILogSink>> m_Sinks;
-        LogLevel m_Level = LogLevel::Trace;
-    };
+	private:
+		Logger() = default;
+
+		mutable std::mutex m_Mutex;
+		std::vector<std::shared_ptr<ILogSink>> m_Sinks;
+		LogLevel m_Level = LogLevel::Trace;
+	};
 }
-
 #define CORE_LOG(level, ...) ::Core::Logger::Get().Write((level), std::format(__VA_ARGS__))
 
 #define CORE_TRACE(...) CORE_LOG(::Core::LogLevel::Trace, __VA_ARGS__)
-#define CORE_INFO(...)  CORE_LOG(::Core::LogLevel::Info, __VA_ARGS__)
-#define CORE_WARN(...)  CORE_LOG(::Core::LogLevel::Warn, __VA_ARGS__)
+#define CORE_INFO(...) CORE_LOG(::Core::LogLevel::Info, __VA_ARGS__)
+#define CORE_WARN(...) CORE_LOG(::Core::LogLevel::Warn, __VA_ARGS__)
 #define CORE_ERROR(...) CORE_LOG(::Core::LogLevel::Error, __VA_ARGS__)

@@ -7,104 +7,104 @@
 
 #include <algorithm>
 
-namespace Core
-{
-    std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth)
-    {
-        const std::size_t width = tabWidth == 0 ? 1 : tabWidth;
+namespace Core {
 
-        return column + width - column % width;
-    }
+	std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth)
+	{
+		const std::size_t width = tabWidth == 0 ? 1 : tabWidth;
 
-    std::size_t ColumnOfByte(std::string_view line, std::size_t byte, std::size_t tabWidth)
-    {
-        const std::size_t target = std::min(byte, line.size());
+		return column + width - column % width;
+	}
 
-        std::size_t column = 0;
-        std::size_t at = 0;
+	std::size_t ColumnOfByte(std::string_view line, std::size_t byte, std::size_t tabWidth)
+	{
+		const std::size_t target = std::min(byte, line.size());
 
-        while (at < target)
-        {
-            if (line[at] == '\t')
-            {
-                column = ColumnAfterTab(column, tabWidth);
-                ++at;
-                continue;
-            }
+		std::size_t column = 0;
+		std::size_t at = 0;
 
-            ++column;
-            at = NextCharacter(line, at);
-        }
+		while (at < target)
+		{
+			if (line[at] == '\t')
+			{
+				column = ColumnAfterTab(column, tabWidth);
+				++at;
+				continue;
+			}
 
-        return column;
-    }
+			++column;
+			at = NextCharacter(line, at);
+		}
 
-    std::size_t ByteOfColumn(std::string_view line, std::size_t column, std::size_t tabWidth)
-    {
-        std::size_t at = 0;
-        std::size_t current = 0;
+		return column;
+	}
 
-        while (at < line.size())
-        {
-            // A tab covers a run of columns and a character has no inside, so any column
-            // before the next boundary resolves to the byte that starts this character.
-            const std::size_t next =
-                line[at] == '\t' ? ColumnAfterTab(current, tabWidth) : current + 1;
+	std::size_t ByteOfColumn(std::string_view line, std::size_t column, std::size_t tabWidth)
+	{
+		std::size_t at = 0;
+		std::size_t current = 0;
 
-            if (column < next)
-                return at;
+		while (at < line.size())
+		{
+			// A tab covers a run of columns and a character has no inside, so any column
+			// before the next boundary resolves to the byte that starts this character.
+			const std::size_t next =
+				line[at] == '\t' ? ColumnAfterTab(current, tabWidth) : current + 1;
 
-            current = next;
-            at = line[at] == '\t' ? at + 1 : NextCharacter(line, at);
-        }
+			if (column < next)
+				return at;
 
-        return line.size();
-    }
+			current = next;
+			at = line[at] == '\t' ? at + 1 : NextCharacter(line, at);
+		}
 
-    std::size_t ColumnCount(std::string_view line, std::size_t tabWidth)
-    {
-        return ColumnOfByte(line, line.size(), tabWidth);
-    }
+		return line.size();
+	}
 
-    std::string ExpandTabs(std::string_view line, std::size_t tabWidth)
-    {
-        std::string expanded;
-        expanded.reserve(line.size());
+	std::size_t ColumnCount(std::string_view line, std::size_t tabWidth)
+	{
+		return ColumnOfByte(line, line.size(), tabWidth);
+	}
 
-        std::size_t column = 0;
-        std::size_t at = 0;
+	std::string ExpandTabs(std::string_view line, std::size_t tabWidth)
+	{
+		std::string expanded;
+		expanded.reserve(line.size());
 
-        while (at < line.size())
-        {
-            if (line[at] == '\t')
-            {
-                const std::size_t next = ColumnAfterTab(column, tabWidth);
+		std::size_t column = 0;
+		std::size_t at = 0;
 
-                expanded.append(next - column, ' ');
-                column = next;
-                ++at;
-                continue;
-            }
+		while (at < line.size())
+		{
+			if (line[at] == '\t')
+			{
+				const std::size_t next = ColumnAfterTab(column, tabWidth);
 
-            // One column per character, however many bytes it takes — the same rule
-            // ColumnOfByte applies, so the two cannot disagree about where a byte lands.
-            const std::size_t next = NextCharacter(line, at);
+				expanded.append(next - column, ' ');
+				column = next;
+				++at;
+				continue;
+			}
 
-            expanded.append(line.substr(at, next - at));
-            ++column;
-            at = next;
-        }
+			// One column per character, however many bytes it takes — the same rule
+			// ColumnOfByte applies, so the two cannot disagree about where a byte lands.
+			const std::size_t next = NextCharacter(line, at);
 
-        return expanded;
-    }
+			expanded.append(line.substr(at, next - at));
+			++column;
+			at = next;
+		}
 
-    std::size_t WidestColumn(const TextBuffer& buffer, std::size_t tabWidth)
-    {
-        std::size_t widest = 0;
+		return expanded;
+	}
 
-        for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
-            widest = std::max(widest, ColumnCount(buffer.LineText(line), tabWidth));
+	std::size_t WidestColumn(const TextBuffer& buffer, std::size_t tabWidth)
+	{
+		std::size_t widest = 0;
 
-        return widest;
-    }
+		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
+			widest = std::max(widest, ColumnCount(buffer.LineText(line), tabWidth));
+
+		return widest;
+	}
 }

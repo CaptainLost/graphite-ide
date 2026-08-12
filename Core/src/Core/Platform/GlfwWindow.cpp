@@ -6,152 +6,151 @@
 
 #include <GLFW/glfw3.h>
 
-namespace Core
-{
-    namespace
-    {
-        int s_GlfwWindowCount = 0;
+namespace Core {
 
-        void OnGlfwError(int code, const char* description)
-        {
-            CORE_ERROR("GLFW ({}): {}", code, description);
-        }
-    }
+	namespace {
+		int s_GlfwWindowCount = 0;
 
-    GlfwWindow::GlfwWindow(GLFWwindow* handle) : m_Handle(handle) {}
+		void OnGlfwError(int code, const char* description)
+		{
+			CORE_ERROR("GLFW ({}): {}", code, description);
+		}
+	}
 
-    GlfwWindow::~GlfwWindow()
-    {
-        // Before glfwDestroyWindow, always: the frame restores a window procedure, and a
-        // destroyed window has none left to restore it to.
-        m_Frame.reset();
+	GlfwWindow::GlfwWindow(GLFWwindow* handle) : m_Handle(handle) {}
 
-        if (m_Handle == nullptr)
-            return;
+	GlfwWindow::~GlfwWindow()
+	{
+		// Before glfwDestroyWindow, always: the frame restores a window procedure, and a
+		// destroyed window has none left to restore it to.
+		m_Frame.reset();
 
-        glfwDestroyWindow(m_Handle);
-        m_Handle = nullptr;
+		if (m_Handle == nullptr)
+			return;
 
-        if (--s_GlfwWindowCount == 0)
-            glfwTerminate();
-    }
+		glfwDestroyWindow(m_Handle);
+		m_Handle = nullptr;
 
-    void GlfwWindow::PollEvents()
-    {
-        glfwPollEvents();
-    }
+		if (--s_GlfwWindowCount == 0)
+			glfwTerminate();
+	}
 
-    void GlfwWindow::SwapBuffers()
-    {
-        glfwSwapBuffers(m_Handle);
-    }
+	void GlfwWindow::PollEvents()
+	{
+		glfwPollEvents();
+	}
 
-    bool GlfwWindow::ShouldClose() const
-    {
-        return glfwWindowShouldClose(m_Handle) != 0;
-    }
+	void GlfwWindow::SwapBuffers()
+	{
+		glfwSwapBuffers(m_Handle);
+	}
 
-    void GlfwWindow::RequestClose()
-    {
-        glfwSetWindowShouldClose(m_Handle, GLFW_TRUE);
-    }
+	bool GlfwWindow::ShouldClose() const
+	{
+		return glfwWindowShouldClose(m_Handle) != 0;
+	}
 
-    void GlfwWindow::CancelClose()
-    {
-        glfwSetWindowShouldClose(m_Handle, GLFW_FALSE);
-    }
+	void GlfwWindow::RequestClose()
+	{
+		glfwSetWindowShouldClose(m_Handle, GLFW_TRUE);
+	}
 
-    void GlfwWindow::FramebufferSize(int& width, int& height) const
-    {
-        glfwGetFramebufferSize(m_Handle, &width, &height);
-    }
+	void GlfwWindow::CancelClose()
+	{
+		glfwSetWindowShouldClose(m_Handle, GLFW_FALSE);
+	}
 
-    void GlfwWindow::SetVSync(bool enabled)
-    {
-        glfwMakeContextCurrent(m_Handle);
-        glfwSwapInterval(enabled ? 1 : 0);
-    }
+	void GlfwWindow::FramebufferSize(int& width, int& height) const
+	{
+		glfwGetFramebufferSize(m_Handle, &width, &height);
+	}
 
-    void GlfwWindow::Minimize()
-    {
-        glfwIconifyWindow(m_Handle);
-    }
+	void GlfwWindow::SetVSync(bool enabled)
+	{
+		glfwMakeContextCurrent(m_Handle);
+		glfwSwapInterval(enabled ? 1 : 0);
+	}
 
-    void GlfwWindow::ToggleMaximize()
-    {
-        if (IsMaximized())
-        {
-            glfwRestoreWindow(m_Handle);
-            return;
-        }
+	void GlfwWindow::Minimize()
+	{
+		glfwIconifyWindow(m_Handle);
+	}
 
-        glfwMaximizeWindow(m_Handle);
-    }
+	void GlfwWindow::ToggleMaximize()
+	{
+		if (IsMaximized())
+		{
+			glfwRestoreWindow(m_Handle);
+			return;
+		}
 
-    bool GlfwWindow::IsMaximized() const
-    {
-        return glfwGetWindowAttrib(m_Handle, GLFW_MAXIMIZED) == GLFW_TRUE;
-    }
+		glfwMaximizeWindow(m_Handle);
+	}
 
-    bool GlfwWindow::HasCustomTitleBar() const
-    {
-        return m_Frame != nullptr;
-    }
+	bool GlfwWindow::IsMaximized() const
+	{
+		return glfwGetWindowAttrib(m_Handle, GLFW_MAXIMIZED) == GLFW_TRUE;
+	}
 
-    void GlfwWindow::SetCaptionMetrics(const CaptionMetrics& metrics)
-    {
-        if (m_Frame != nullptr)
-        {
-            m_Frame->SetCaptionMetrics(metrics);
-        }
-    }
+	bool GlfwWindow::HasCustomTitleBar() const
+	{
+		return m_Frame != nullptr;
+	}
 
-    Result<std::unique_ptr<Window>> Window::Create(const WindowSpec& spec)
-    {
-        if (s_GlfwWindowCount == 0)
-        {
-            glfwSetErrorCallback(&OnGlfwError);
+	void GlfwWindow::SetCaptionMetrics(const CaptionMetrics& metrics)
+	{
+		if (m_Frame != nullptr)
+		{
+			m_Frame->SetCaptionMetrics(metrics);
+		}
+	}
 
-            if (glfwInit() == GLFW_FALSE)
-                return Error{ErrorCode::Unsupported, "glfwInit failed"};
-        }
+	Result<std::unique_ptr<Window>> Window::Create(const WindowSpec& spec)
+	{
+		if (s_GlfwWindowCount == 0)
+		{
+			glfwSetErrorCallback(&OnGlfwError);
 
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
+			if (glfwInit() == GLFW_FALSE)
+				return Error{ErrorCode::Unsupported, "glfwInit failed"};
+		}
 
-        GLFWwindow* handle =
-            glfwCreateWindow(spec.width, spec.height, spec.title.c_str(), nullptr, nullptr);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
-        if (handle == nullptr)
-        {
-            if (s_GlfwWindowCount == 0)
-                glfwTerminate();
+		GLFWwindow* handle =
+			glfwCreateWindow(spec.width, spec.height, spec.title.c_str(), nullptr, nullptr);
 
-            return Error{ErrorCode::Unsupported, "failed to create an OpenGL 3.3 window"};
-        }
+		if (handle == nullptr)
+		{
+			if (s_GlfwWindowCount == 0)
+				glfwTerminate();
 
-        ++s_GlfwWindowCount;
+			return Error{ErrorCode::Unsupported, "failed to create an OpenGL 3.3 window"};
+		}
 
-        auto window = std::make_unique<GlfwWindow>(handle);
-        glfwMakeContextCurrent(handle);
-        window->SetVSync(spec.vsync);
+		++s_GlfwWindowCount;
 
-        if (spec.customTitleBar)
-        {
-            auto frame = WindowFrame::Hide(*window, spec.borderColor);
-            if (frame)
-            {
-                window->AdoptFrame(std::move(frame).GetValue());
-            }
-            else
-            {
-                CORE_WARN("Keeping the system title bar: {}", frame.GetError().message);
-            }
-        }
+		auto window = std::make_unique<GlfwWindow>(handle);
+		glfwMakeContextCurrent(handle);
+		window->SetVSync(spec.vsync);
 
-        CORE_INFO("Window created: {}x{} \"{}\"", spec.width, spec.height, spec.title);
-        return Result<std::unique_ptr<Window>>{std::move(window)};
-    }
+		if (spec.customTitleBar)
+		{
+			auto frame = WindowFrame::Hide(*window, spec.borderColor);
+			if (frame)
+			{
+				window->AdoptFrame(std::move(frame).GetValue());
+			}
+			else
+			{
+				CORE_WARN("Keeping the system title bar: {}", frame.GetError().message);
+			}
+		}
+
+		CORE_INFO("Window created: {}x{} \"{}\"", spec.width, spec.height, spec.title);
+		return Result<std::unique_ptr<Window>>{std::move(window)};
+	}
 }

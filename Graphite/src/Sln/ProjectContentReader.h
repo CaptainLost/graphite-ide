@@ -5,28 +5,21 @@
 
 #include <filesystem>
 
-namespace Graphite
-{
-    /// Reads what is inside one project file.
-    ///
-    /// One implementation per project type, chosen by extension. The interface takes a
-    /// path and returns content rather than being handed a parsed document, because the
-    /// implementations do not share a source of truth: a .vcxproj lists its files, while
-    /// a modern .csproj lists none and globs them from its own directory. They agree only
-    /// on the shape of the answer.
-    class ProjectContentReader
-    {
-    public:
-        virtual ~ProjectContentReader() = default;
+namespace Graphite {
 
-        ProjectContentReader(const ProjectContentReader&) = delete;
-        ProjectContentReader& operator=(const ProjectContentReader&) = delete;
+	class ProjectContentReader
+	{
+	public:
+		virtual ~ProjectContentReader() = default;
 
-        [[nodiscard]] virtual bool Handles(const std::filesystem::path& project) const = 0;
-        [[nodiscard]] virtual Core::Result<ProjectContent> Read(
-            const std::filesystem::path& project) const = 0;
+		ProjectContentReader(const ProjectContentReader&) = delete;
+		ProjectContentReader& operator=(const ProjectContentReader&) = delete;
 
-    protected:
-        ProjectContentReader() = default;
-    };
+		virtual bool Handles(const std::filesystem::path& project) const = 0;
+		virtual Core::Result<ProjectContent> Read(
+			const std::filesystem::path& project) const = 0;
+
+	protected:
+		ProjectContentReader() = default;
+	};
 }

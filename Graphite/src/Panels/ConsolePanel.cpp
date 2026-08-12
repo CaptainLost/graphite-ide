@@ -2,104 +2,107 @@
 
 #include <utility>
 
-namespace Graphite
-{
-    namespace
-    {
-        ImVec4 ColorFor(Core::LogLevel level)
-        {
-            switch (level)
-            {
-            case Core::LogLevel::Trace: return ImVec4(0.55f, 0.58f, 0.62f, 1.0f);
-            case Core::LogLevel::Info:  return ImVec4(0.84f, 0.86f, 0.89f, 1.0f);
-            case Core::LogLevel::Warn:  return ImVec4(0.95f, 0.75f, 0.30f, 1.0f);
-            case Core::LogLevel::Error: return ImVec4(0.94f, 0.42f, 0.42f, 1.0f);
-            }
+namespace Graphite {
 
-            return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-        }
-    }
+	namespace {
+		ImVec4 ColorFor(Core::LogLevel level)
+		{
+			switch (level)
+			{
+			case Core::LogLevel::Trace:
+				return ImVec4(0.55f, 0.58f, 0.62f, 1.0f);
+			case Core::LogLevel::Info:
+				return ImVec4(0.84f, 0.86f, 0.89f, 1.0f);
+			case Core::LogLevel::Warn:
+				return ImVec4(0.95f, 0.75f, 0.30f, 1.0f);
+			case Core::LogLevel::Error:
+				return ImVec4(0.94f, 0.42f, 0.42f, 1.0f);
+			}
 
-    ConsolePanel::ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink)
-        : Core::Panel("console", "Console"), m_Sink(std::move(sink))
-    {
-    }
+			return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+		}
+	}
 
-    void ConsolePanel::OnUIRender()
-    {
-        m_Entries = m_Sink->GetSnapshot();
+	ConsolePanel::ConsolePanel(std::shared_ptr<Core::RingBufferSink> sink)
+		: Core::Panel("console", "Console"), m_Sink(std::move(sink))
+	{
+	}
 
-        RenderToolbar();
-        ImGui::Separator();
-        RenderEntries();
-    }
+	void ConsolePanel::OnUIRender()
+	{
+		m_Entries = m_Sink->GetSnapshot();
 
-    void ConsolePanel::RenderToolbar()
-    {
-        if (ImGui::Button("Clear"))
-        {
-            m_Sink->Clear();
-            m_Entries.clear();
-            m_LastCount = 0;
-        }
+		RenderToolbar();
+		ImGui::Separator();
+		RenderEntries();
+	}
 
-        ImGui::SameLine();
+	void ConsolePanel::RenderToolbar()
+	{
+		if (ImGui::Button("Clear"))
+		{
+			m_Sink->Clear();
+			m_Entries.clear();
+			m_LastCount = 0;
+		}
 
-        if (ImGui::Button("Copy all"))
-        {
-            std::string joined;
-            for (const Core::LogEntry& entry : m_Entries)
-            {
-                joined.append(Core::ToString(entry.level));
-                joined.append(" ");
-                joined.append(entry.message);
-                joined.append("\n");
-            }
+		ImGui::SameLine();
 
-            ImGui::SetClipboardText(joined.c_str());
-        }
+		if (ImGui::Button("Copy all"))
+		{
+			std::string joined;
+			for (const Core::LogEntry& entry : m_Entries)
+			{
+				joined.append(Core::ToString(entry.level));
+				joined.append(" ");
+				joined.append(entry.message);
+				joined.append("\n");
+			}
 
-        ImGui::SameLine();
-        ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
+			ImGui::SetClipboardText(joined.c_str());
+		}
 
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(240.0f);
-        m_Filter.Draw("##consoleFilter");
+		ImGui::SameLine();
+		ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
 
-        ImGui::SameLine();
-        ImGui::TextDisabled("%d entries", static_cast<int>(m_Entries.size()));
-    }
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(240.0f);
+		m_Filter.Draw("##consoleFilter");
 
-    void ConsolePanel::RenderEntries()
-    {
-        if (!ImGui::BeginChild("##consoleOutput", ImVec2(0.0f, 0.0f),
-                               ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
-        {
-            ImGui::EndChild();
-            return;
-        }
+		ImGui::SameLine();
+		ImGui::TextDisabled("%d entries", static_cast<int>(m_Entries.size()));
+	}
 
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
+	void ConsolePanel::RenderEntries()
+	{
+		if (!ImGui::BeginChild("##consoleOutput", ImVec2(0.0f, 0.0f),
+							   ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
+		{
+			ImGui::EndChild();
+			return;
+		}
 
-        for (const Core::LogEntry& entry : m_Entries)
-        {
-            if (!m_Filter.PassFilter(entry.message.c_str()))
-                continue;
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, 1.0f));
 
-            ImGui::PushStyleColor(ImGuiCol_Text, ColorFor(entry.level));
-            ImGui::TextUnformatted(entry.message.c_str());
-            ImGui::PopStyleColor();
-        }
+		for (const Core::LogEntry& entry : m_Entries)
+		{
+			if (!m_Filter.PassFilter(entry.message.c_str()))
+				continue;
 
-        ImGui::PopStyleVar();
+			ImGui::PushStyleColor(ImGuiCol_Text, ColorFor(entry.level));
+			ImGui::TextUnformatted(entry.message.c_str());
+			ImGui::PopStyleColor();
+		}
 
-        // We only scroll after a new entry is written, so we don't block
-        // manual scrolling upward.
-        if (m_AutoScroll && m_Entries.size() != m_LastCount)
-            ImGui::SetScrollHereY(1.0f);
+		ImGui::PopStyleVar();
 
-        m_LastCount = m_Entries.size();
+		// We only scroll after a new entry is written, so we don't block
+		// manual scrolling upward.
+		if (m_AutoScroll && m_Entries.size() != m_LastCount)
+			ImGui::SetScrollHereY(1.0f);
 
-        ImGui::EndChild();
-    }
+		m_LastCount = m_Entries.size();
+
+		ImGui::EndChild();
+	}
 }

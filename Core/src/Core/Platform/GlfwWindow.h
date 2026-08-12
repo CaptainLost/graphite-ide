@@ -8,40 +8,37 @@
 
 struct GLFWwindow;
 
-namespace Core
-{
-    class GlfwWindow final : public Window
-    {
-    public:
-        explicit GlfwWindow(GLFWwindow* handle);
-        ~GlfwWindow() override;
+namespace Core {
 
-        void PollEvents() override;
-        void SwapBuffers() override;
+	class GlfwWindow final : public Window
+	{
+	public:
+		explicit GlfwWindow(GLFWwindow* handle);
+		~GlfwWindow() override;
 
-        [[nodiscard]] bool ShouldClose() const override;
-        void RequestClose() override;
-        void CancelClose() override;
+		void PollEvents() override;
+		void SwapBuffers() override;
 
-        void FramebufferSize(int& width, int& height) const override;
-        void SetVSync(bool enabled) override;
+		bool ShouldClose() const override;
+		void RequestClose() override;
+		void CancelClose() override;
 
-        [[nodiscard]] void* GetNativeHandle() const override { return m_Handle; }
+		void FramebufferSize(int& width, int& height) const override;
+		void SetVSync(bool enabled) override;
 
-        void Minimize() override;
-        void ToggleMaximize() override;
-        [[nodiscard]] bool IsMaximized() const override;
-        [[nodiscard]] bool HasCustomTitleBar() const override;
-        void SetCaptionMetrics(const CaptionMetrics& metrics) override;
+		void* GetNativeHandle() const override { return m_Handle; }
 
-        /// Takes over a frame built for this window. Create does it once the window
-        /// exists, which is the earliest the platform can be asked to drop its caption.
-        void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_Frame = std::move(frame); }
+		void Minimize() override;
+		void ToggleMaximize() override;
+		bool IsMaximized() const override;
+		bool HasCustomTitleBar() const override;
+		void SetCaptionMetrics(const CaptionMetrics& metrics) override;
 
-    private:
-        GLFWwindow* m_Handle = nullptr;
+		void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_Frame = std::move(frame); }
 
-        /// Null while the window still wears the system title bar.
-        std::unique_ptr<WindowFrame> m_Frame;
-    };
+	private:
+		GLFWwindow* m_Handle = nullptr;
+
+		std::unique_ptr<WindowFrame> m_Frame;
+	};
 }

@@ -20,266 +20,249 @@
 #include <utility>
 #include <vector>
 
-namespace Graphite
-{
-    namespace
-    {
-        /// Compared case-insensitively, because the filesystem this runs on is: rejecting
-        /// MyApp.SLNX as an unknown format would be a lie about an ordinary file.
-        std::string LowercaseExtension(const std::filesystem::path& path)
-        {
-            std::string extension = Core::ToUtf8(path.extension());
+namespace Graphite {
 
-            std::transform(extension.begin(), extension.end(), extension.begin(),
-                           [](unsigned char character)
-                           { return static_cast<char>(std::tolower(character)); });
+	namespace {
+		std::string LowercaseExtension(const std::filesystem::path& path)
+		{
+			std::string extension = Core::ToUtf8(path.extension());
 
-            return extension;
-        }
+			std::transform(extension.begin(), extension.end(), extension.begin(),
+						   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 
-        /// Splits "/App/Sub/" into {"App", "Sub"}. The slashes in a .slnx folder name
-        /// carry the nesting; the elements themselves are siblings in the document.
-        std::vector<std::string> SplitFolderPath(std::string_view name)
-        {
-            std::vector<std::string> parts;
-            std::size_t start = 0;
+			return extension;
+		}
 
-            while (start < name.size())
-            {
-                const std::size_t slash = name.find('/', start);
-                const std::size_t end = slash == std::string_view::npos ? name.size() : slash;
+		std::vector<std::string> SplitFolderPath(std::string_view name)
+		{
+			std::vector<std::string> parts;
+			std::size_t start = 0;
 
-                if (end > start)
-                    parts.emplace_back(name.substr(start, end - start));
+			while (start < name.size())
+			{
+				const std::size_t slash = name.find('/', start);
+				const std::size_t end = slash == std::string_view::npos ? name.size() : slash;
 
-                if (slash == std::string_view::npos)
-                    break;
+				if (end > start)
+					parts.emplace_back(name.substr(start, end - start));
 
-                start = slash + 1;
-            }
+				if (slash == std::string_view::npos)
+					break;
 
-            return parts;
-        }
+				start = slash + 1;
+			}
 
-        /// Finds or creates the folder chain, so a child folder declared before its
-        /// parent still lands in the right place.
-        Folder& EnsureFolder(Folder& root, const std::vector<std::string>& parts)
-        {
-            Folder* current = &root;
+			return parts;
+		}
 
-            for (const std::string& part : parts)
-            {
-                const auto match = std::find_if(current->folders.begin(), current->folders.end(),
-                                                [&part](const Folder& f) { return f.name == part; });
+		Folder& EnsureFolder(Folder& root, const std::vector<std::string>& parts)
+		{
+			Folder* current = &root;
 
-                if (match != current->folders.end())
-                {
-                    current = &*match;
-                    continue;
-                }
+			for (const std::string& part : parts)
+			{
+				const auto match = std::find_if(current->folders.begin(), current->folders.end(),
+												[&part](const Folder& f) { return f.name == part; });
 
-                Folder created;
-                created.name = part;
-                current->folders.push_back(std::move(created));
-                current = &current->folders.back();
-            }
+				if (match != current->folders.end())
+				{
+					current = &*match;
+					continue;
+				}
 
-            return *current;
-        }
+				Folder created;
+				created.name = part;
+				current->folders.push_back(std::move(created));
+				current = &current->folders.back();
+			}
 
-        void ReadProjects(const pugi::xml_node& parent, Folder& folder,
-                          const std::filesystem::path& solutionDirectory, std::size_t& count)
-        {
-            for (const pugi::xml_node& node : parent.children("Project"))
-            {
-                const char* declared = node.attribute("Path").value();
+			return *current;
+		}
 
-                if (declared[0] == '\0')
-                    continue;
+		void ReadProjects(const pugi::xml_node& parent, Folder& folder,
+						  const std::filesystem::path& solutionDirectory, std::size_t& count)
+		{
+			for (const pugi::xml_node& node : parent.children("Project"))
+			{
+				const char* declared = node.attribute("Path").value();
 
-                Project project;
+				if (declared[0] == '\0')
+					continue;
 
-                // Declared relative to the solution and usually with backslashes, which
-                // std::filesystem accepts on Windows. Made absolute here, once, because
-                // everything downstream opens the file rather than displaying the path.
-                project.path = (solutionDirectory / Core::FromUtf8(declared)).lexically_normal();
-                project.path.make_preferred();
+				Project project;
 
-                project.displayName = Core::ToUtf8(project.path.stem());
-                project.typeId = node.attribute("Type").value();
+				// Declared relative to the solution and usually with backslashes, which
+				// std::filesystem accepts on Windows. Made absolute here, once, because
+				// everything downstream opens the file rather than displaying the path.
+				project.path = (solutionDirectory / Core::FromUtf8(declared)).lexically_normal();
+				project.path.make_preferred();
 
-                // One stat per project, and worth it: a solution naming a file that is
-                // not there is a real and common problem, and the view is meant to show
-                // it rather than to quietly render an ordinary-looking node.
-                std::error_code exists;
-                project.exists = std::filesystem::is_regular_file(project.path, exists);
+				project.displayName = Core::ToUtf8(project.path.stem());
+				project.typeId = node.attribute("Type").value();
 
-                folder.projects.push_back(std::move(project));
-                ++count;
-            }
-        }
+				// One stat per project, and worth it: a solution naming a file that is
+				// not there is a real and common problem, and the view is meant to show
+				// it rather than to quietly render an ordinary-looking node.
+				std::error_code exists;
+				project.exists = std::filesystem::is_regular_file(project.path, exists);
 
-        /// Every reader this build knows about. A project no reader claims keeps
-        /// contentRead == false and shows as a leaf, so an unsupported project type never
-        /// costs more than its own contents.
-        void FillContent(Folder& folder)
-        {
-            static const VcxprojReader kVcxproj;
-            static const CsprojReader kCsproj;
-            static const ProjectContentReader* const kReaders[] = {&kVcxproj, &kCsproj};
+				folder.projects.push_back(std::move(project));
+				++count;
+			}
+		}
 
-            for (Project& project : folder.projects)
-            {
-                for (const ProjectContentReader* reader : kReaders)
-                {
-                    if (!reader->Handles(project.path))
-                        continue;
+		void FillContent(Folder& folder)
+		{
+			static const VcxprojReader kVcxproj;
+			static const CsprojReader kCsproj;
+			static const ProjectContentReader* const kReaders[] = {&kVcxproj, &kCsproj};
 
-                    auto content = reader->Read(project.path);
+			for (Project& project : folder.projects)
+			{
+				for (const ProjectContentReader* reader : kReaders)
+				{
+					if (!reader->Handles(project.path))
+						continue;
 
-                    // A project that cannot be read does not sink the solution: the
-                    // structure around it is still true and still useful.
-                    if (!content)
-                    {
-                        CORE_TRACE("Cannot read '{}': {}", project.path.string(),
-                                   content.GetError().message);
-                        break;
-                    }
+					auto content = reader->Read(project.path);
 
-                    project.content = std::move(content).GetValue();
-                    project.contentRead = true;
-                    break;
-                }
-            }
+					// A project that cannot be read does not sink the solution: the
+					// structure around it is still true and still useful.
+					if (!content)
+					{
+						CORE_TRACE("Cannot read '{}': {}", project.path.string(),
+								   content.GetError().message);
+						break;
+					}
 
-            for (Folder& child : folder.folders)
-                FillContent(child);
-        }
+					project.content = std::move(content).GetValue();
+					project.contentRead = true;
+					break;
+				}
+			}
 
-        /// Visual Studio lists solution folders and projects sorted, not in the order the
-        /// file declares them. Folders first, then projects, names compared
-        /// case-insensitively — the same rule as the file tree and as a project's own
-        /// contents, so the two views cannot disagree about where a name belongs.
-        void SortSolution(Folder& folder)
-        {
-            std::sort(folder.folders.begin(), folder.folders.end(),
-                      [](const Folder& left, const Folder& right)
-                      { return Core::CompareNames(left.name, right.name) < 0; });
+			for (Folder& child : folder.folders)
+				FillContent(child);
+		}
 
-            std::sort(folder.projects.begin(), folder.projects.end(),
-                      [](const Project& left, const Project& right)
-                      { return Core::CompareNames(left.displayName, right.displayName) < 0; });
+		void SortSolution(Folder& folder)
+		{
+			std::sort(folder.folders.begin(), folder.folders.end(),
+					  [](const Folder& left, const Folder& right) { return Core::CompareNames(left.name, right.name) < 0; });
 
-            for (Folder& child : folder.folders)
-                SortSolution(child);
-        }
+			std::sort(folder.projects.begin(), folder.projects.end(),
+					  [](const Project& left, const Project& right) { return Core::CompareNames(left.displayName, right.displayName) < 0; });
 
-        Core::Result<Solution> ReadSlnx(const std::filesystem::path& path)
-        {
-            pugi::xml_document document;
-            const pugi::xml_parse_result parsed = document.load_file(path.c_str());
+			for (Folder& child : folder.folders)
+				SortSolution(child);
+		}
 
-            if (!parsed)
-            {
-                return Core::Error{Core::ErrorCode::InvalidArgument,
-                                   std::format("cannot parse '{}': {}", path.string(),
-                                               parsed.description())};
-            }
+		Core::Result<Solution> ReadSlnx(const std::filesystem::path& path)
+		{
+			pugi::xml_document document;
+			const pugi::xml_parse_result parsed = document.load_file(path.c_str());
 
-            const pugi::xml_node root = document.child("Solution");
+			if (!parsed)
+			{
+				return Core::Error{Core::ErrorCode::InvalidArgument,
+								   std::format("cannot parse '{}': {}", path.string(),
+											   parsed.description())};
+			}
 
-            if (!root)
-            {
-                return Core::Error{Core::ErrorCode::InvalidArgument,
-                                   std::format("'{}' has no Solution element", path.string())};
-            }
+			const pugi::xml_node root = document.child("Solution");
 
-            Solution solution;
-            solution.path = path;
-            solution.name = Core::ToUtf8(path.stem());
+			if (!root)
+			{
+				return Core::Error{Core::ErrorCode::InvalidArgument,
+								   std::format("'{}' has no Solution element", path.string())};
+			}
 
-            const std::filesystem::path directory = path.parent_path();
+			Solution solution;
+			solution.path = path;
+			solution.name = Core::ToUtf8(path.stem());
 
-            // Projects declared outside any Folder belong to the solution itself.
-            ReadProjects(root, solution.root, directory, solution.projectCount);
+			const std::filesystem::path directory = path.parent_path();
 
-            for (const pugi::xml_node& node : root.children("Folder"))
-            {
-                const std::vector<std::string> parts = SplitFolderPath(node.attribute("Name").value());
+			// Projects declared outside any Folder belong to the solution itself.
+			ReadProjects(root, solution.root, directory, solution.projectCount);
 
-                if (parts.empty())
-                    continue;
+			for (const pugi::xml_node& node : root.children("Folder"))
+			{
+				const std::vector<std::string> parts = SplitFolderPath(node.attribute("Name").value());
 
-                Folder& folder = EnsureFolder(solution.root, parts);
-                ReadProjects(node, folder, directory, solution.projectCount);
-            }
+				if (parts.empty())
+					continue;
 
-            return solution;
-        }
+				Folder& folder = EnsureFolder(solution.root, parts);
+				ReadProjects(node, folder, directory, solution.projectCount);
+			}
 
-        Core::Result<Solution> ReadSlnText(const std::filesystem::path& path)
-        {
-            std::ifstream stream{path, std::ios::binary};
+			return solution;
+		}
 
-            if (!stream.is_open())
-            {
-                return Core::Error{Core::ErrorCode::IoFailure,
-                                   std::format("cannot open '{}'", path.string())};
-            }
+		Core::Result<Solution> ReadSlnText(const std::filesystem::path& path)
+		{
+			std::ifstream stream{path, std::ios::binary};
 
-            std::ostringstream buffer;
-            buffer << stream.rdbuf();
+			if (!stream.is_open())
+			{
+				return Core::Error{Core::ErrorCode::IoFailure,
+								   std::format("cannot open '{}'", path.string())};
+			}
 
-            return ParseSln(path, buffer.str());
-        }
-    }
+			std::ostringstream buffer;
+			buffer << stream.rdbuf();
 
-    bool IsSolutionFile(const std::filesystem::path& path)
-    {
-        const std::string extension = LowercaseExtension(path);
+			return ParseSln(path, buffer.str());
+		}
+	}
 
-        return extension == ".slnx" || extension == ".sln";
-    }
+	bool IsSolutionFile(const std::filesystem::path& path)
+	{
+		const std::string extension = LowercaseExtension(path);
 
-    Core::Result<Solution> ReadSolution(const std::filesystem::path& requested)
-    {
-        std::error_code code;
+		return extension == ".slnx" || extension == ".sln";
+	}
 
-        if (!std::filesystem::is_regular_file(requested, code))
-        {
-            return Core::Error{Core::ErrorCode::NotFound,
-                               std::format("no solution file at '{}'", requested.string())};
-        }
+	Core::Result<Solution> ReadSolution(const std::filesystem::path& requested)
+	{
+		std::error_code code;
 
-        // Resolved once, here, rather than trusting the caller. Every project path is
-        // built by appending to this one, and the model promises absolute paths — a
-        // relative argument would quietly hand back relative projects that only resolve
-        // while the process happens to sit in the right directory.
-        std::filesystem::path path = std::filesystem::absolute(requested, code);
+		if (!std::filesystem::is_regular_file(requested, code))
+		{
+			return Core::Error{Core::ErrorCode::NotFound,
+							   std::format("no solution file at '{}'", requested.string())};
+		}
 
-        if (code)
-            path = requested;
+		// Resolved once, here, rather than trusting the caller. Every project path is
+		// built by appending to this one, and the model promises absolute paths — a
+		// relative argument would quietly hand back relative projects that only resolve
+		// while the process happens to sit in the right directory.
+		std::filesystem::path path = std::filesystem::absolute(requested, code);
 
-        if (!IsSolutionFile(path))
-        {
-            return Core::Error{Core::ErrorCode::Unsupported,
-                               std::format("'{}' is not a solution format this build can read",
-                                           path.string())};
-        }
+		if (code)
+			path = requested;
 
-        Core::Result<Solution> parsed =
-            LowercaseExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
+		if (!IsSolutionFile(path))
+		{
+			return Core::Error{Core::ErrorCode::Unsupported,
+							   std::format("'{}' is not a solution format this build can read",
+										   path.string())};
+		}
 
-        if (!parsed)
-            return parsed;
+		Core::Result<Solution> parsed =
+			LowercaseExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
 
-        Solution solution = std::move(parsed).GetValue();
+		if (!parsed)
+			return parsed;
 
-        // Run after either parser, so the two formats cannot drift apart in what they
-        // hand back.
-        FillContent(solution.root);
-        SortSolution(solution.root);
+		Solution solution = std::move(parsed).GetValue();
 
-        return solution;
-    }
+		// Run after either parser, so the two formats cannot drift apart in what they
+		// hand back.
+		FillContent(solution.root);
+		SortSolution(solution.root);
+
+		return solution;
+	}
 }

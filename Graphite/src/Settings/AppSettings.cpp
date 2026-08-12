@@ -14,204 +14,193 @@
 #include <string_view>
 #include <vector>
 
-namespace Graphite
-{
-    namespace
-    {
-        constexpr const char* kLastFolderKey = "lastFolder";
+namespace Graphite {
 
-        /// Still spelled without "git", unlike the GitIgnoredDisplay it stores: this is
-        /// the key in a file already written on every machine that has run this build,
-        /// and renaming it would silently reset that setting for every one of them.
-        constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
+	namespace {
+		constexpr const char* kLastFolderKey = "lastFolder";
 
-        constexpr const char* kEditorFontSizeKey = "editorFontSize";
-        constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
-        constexpr const char* kIndentWidthKey = "indentWidth";
-        constexpr const char* kWordWrapKey = "wordWrap";
+		constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
 
-        /// One key per overridden command, `key.` plus the command id. Flat, like every
-        /// other setting here: a blob under a single key would not be hand-editable, and
-        /// this file is meant to be.
-        constexpr std::string_view kKeyBindingPrefix = "key.";
+		constexpr const char* kEditorFontSizeKey = "editorFontSize";
+		constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
+		constexpr const char* kIndentWidthKey = "indentWidth";
+		constexpr const char* kWordWrapKey = "wordWrap";
 
-        /// Resolved once: the executable does not move while it runs, and a settings
-        /// write happens on every menu interaction.
-        const std::filesystem::path& SettingsPath()
-        {
-            static const std::filesystem::path path = []
-            {
-                const auto directory = Core::ExecutableDirectory();
+		constexpr std::string_view kKeyBindingPrefix = "key.";
 
-                if (directory)
-                    return directory.GetValue() / "graphite.json";
+		const std::filesystem::path& SettingsPath()
+		{
+			static const std::filesystem::path path = [] {
+				const auto directory = Core::ExecutableDirectory();
 
-                // Falling back to the working directory keeps settings working rather
-                // than losing them, which is the better failure for a preferences file.
-                CORE_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
-                          directory.GetError().message);
+				if (directory)
+					return directory.GetValue() / "graphite.json";
 
-                return std::filesystem::path{"graphite.json"};
-            }();
+				// Falling back to the working directory keeps settings working rather
+				// than losing them, which is the better failure for a preferences file.
+				CORE_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
+						  directory.GetError().message);
 
-            return path;
-        }
+				return std::filesystem::path{"graphite.json"};
+			}();
 
-        void WriteValue(const char* key, std::string value)
-        {
-            Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
-            file.Set(key, std::move(value));
+			return path;
+		}
 
-            if (!file.Save(SettingsPath()))
-                CORE_WARN("Cannot write '{}'", SettingsPath().string());
-        }
-    }
+		void WriteValue(const char* key, std::string value)
+		{
+			Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+			file.Set(key, std::move(value));
 
-    std::filesystem::path AppSettings::LoadLastFolder()
-    {
-        return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
-    }
+			if (!file.Save(SettingsPath()))
+				CORE_WARN("Cannot write '{}'", SettingsPath().string());
+		}
+	}
 
-    void AppSettings::SaveLastFolder(const std::filesystem::path& folder)
-    {
-        WriteValue(kLastFolderKey, Core::ToUtf8(folder));
-    }
+	std::filesystem::path AppSettings::LoadLastFolder()
+	{
+		return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
+	}
 
-    std::string AppSettings::LoadGitIgnoredDisplay()
-    {
-        return Core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
-    }
+	void AppSettings::SaveLastFolder(const std::filesystem::path& folder)
+	{
+		WriteValue(kLastFolderKey, Core::ToUtf8(folder));
+	}
 
-    void AppSettings::SaveGitIgnoredDisplay(std::string_view mode)
-    {
-        WriteValue(kIgnoredDisplayKey, std::string{mode});
-    }
+	std::string AppSettings::LoadGitIgnoredDisplay()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
+	}
 
-    float AppSettings::LoadEditorFontSize()
-    {
-        const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
+	void AppSettings::SaveGitIgnoredDisplay(std::string_view mode)
+	{
+		WriteValue(kIgnoredDisplayKey, std::string{mode});
+	}
 
-        char* end = nullptr;
-        const float size = std::strtof(stored.c_str(), &end);
+	float AppSettings::LoadEditorFontSize()
+	{
+		const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
 
-        // An unparseable or empty value (strtof leaves end == stored.data()) reads as
-        // "nothing stored", so the caller's default applies rather than a garbage size.
-        if (end == stored.c_str())
-            return 0.0f;
+		char* end = nullptr;
+		const float size = std::strtof(stored.c_str(), &end);
 
-        return size;
-    }
+		// An unparseable or empty value (strtof leaves end == stored.data()) reads as
+		// "nothing stored", so the caller's default applies rather than a garbage size.
+		if (end == stored.c_str())
+			return 0.0f;
 
-    void AppSettings::SaveEditorFontSize(float size)
-    {
-        WriteValue(kEditorFontSizeKey, std::to_string(size));
-    }
+		return size;
+	}
 
-    bool AppSettings::LoadIndentWithSpaces()
-    {
-        // Absent or anything other than an explicit "0" reads as spaces, which is also
-        // IndentStyle's own default — a hand-edited file cannot land on a value this
-        // does not recognise.
-        return Core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
-    }
+	void AppSettings::SaveEditorFontSize(float size)
+	{
+		WriteValue(kEditorFontSizeKey, std::to_string(size));
+	}
 
-    void AppSettings::SaveIndentWithSpaces(bool useSpaces)
-    {
-        WriteValue(kIndentWithSpacesKey, useSpaces ? "1" : "0");
-    }
+	bool AppSettings::LoadIndentWithSpaces()
+	{
+		// Absent or anything other than an explicit "0" reads as spaces, which is also
+		// IndentStyle's own default — a hand-edited file cannot land on a value this
+		// does not recognise.
+		return Core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
+	}
 
-    std::size_t AppSettings::LoadIndentWidth()
-    {
-        const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
+	void AppSettings::SaveIndentWithSpaces(bool useSpaces)
+	{
+		WriteValue(kIndentWithSpacesKey, useSpaces ? "1" : "0");
+	}
 
-        char* end = nullptr;
-        const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
+	std::size_t AppSettings::LoadIndentWidth()
+	{
+		const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
 
-        // An unparseable, empty or zero value reads as "nothing stored", so the caller's
-        // default applies rather than an unusable indent width.
-        if (end == stored.c_str() || width == 0)
-            return 0;
+		char* end = nullptr;
+		const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
 
-        return static_cast<std::size_t>(width);
-    }
+		// An unparseable, empty or zero value reads as "nothing stored", so the caller's
+		// default applies rather than an unusable indent width.
+		if (end == stored.c_str() || width == 0)
+			return 0;
 
-    void AppSettings::SaveIndentWidth(std::size_t width)
-    {
-        WriteValue(kIndentWidthKey, std::to_string(width));
-    }
+		return static_cast<std::size_t>(width);
+	}
 
-    bool AppSettings::LoadWordWrap()
-    {
-        return Core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
-    }
+	void AppSettings::SaveIndentWidth(std::size_t width)
+	{
+		WriteValue(kIndentWidthKey, std::to_string(width));
+	}
 
-    void AppSettings::SaveWordWrap(bool wrap)
-    {
-        WriteValue(kWordWrapKey, wrap ? "1" : "0");
-    }
+	bool AppSettings::LoadWordWrap()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
+	}
 
-    void AppSettings::LoadKeyBindings(Core::Keymap& keys)
-    {
-        const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+	void AppSettings::SaveWordWrap(bool wrap)
+	{
+		WriteValue(kWordWrapKey, wrap ? "1" : "0");
+	}
 
-        for (const std::string& key : file.GetKeys())
-        {
-            if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
-            {
-                continue;
-            }
+	void AppSettings::LoadKeyBindings(Core::Keymap& keys)
+	{
+		const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 
-            const std::string id = key.substr(kKeyBindingPrefix.size());
-            const std::optional<Core::Binding> binding = Core::ParseBinding(file.Get(key));
+		for (const std::string& key : file.GetKeys())
+		{
+			if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
+			{
+				continue;
+			}
 
-            // Skipped rather than fatal, and named so it can be found: one hand-edited
-            // line should cost the one binding it describes, not every shortcut in the
-            // IDE.
-            if (!binding.has_value())
-            {
-                CORE_WARN("Ignoring the unreadable key binding stored for '{}'", id);
-                continue;
-            }
+			const std::string id = key.substr(kKeyBindingPrefix.size());
+			const std::optional<Core::Binding> binding = Core::ParseBinding(file.Get(key));
 
-            keys.Override(id, *binding);
-        }
-    }
+			// Skipped rather than fatal, and named so it can be found: one hand-edited
+			// line should cost the one binding it describes, not every shortcut in the
+			// IDE.
+			if (!binding.has_value())
+			{
+				CORE_WARN("Ignoring the unreadable key binding stored for '{}'", id);
+				continue;
+			}
 
-    void AppSettings::SaveKeyBindings(const Core::Keymap& keys)
-    {
-        Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+			keys.Override(id, *binding);
+		}
+	}
 
-        // Written in one pass rather than through WriteValue per command: that helper
-        // loads and saves the whole file each time, which over a table of bindings would
-        // rewrite the file once per entry.
-        //
-        // Collected before removing, because removing while iterating the keys would
-        // invalidate what is being walked.
-        std::vector<std::string> stale;
+	void AppSettings::SaveKeyBindings(const Core::Keymap& keys)
+	{
+		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 
-        for (const std::string& key : file.GetKeys())
-        {
-            if (std::string_view{key}.starts_with(kKeyBindingPrefix))
-            {
-                stale.push_back(key);
-            }
-        }
+		// Written in one pass rather than through WriteValue per command: that helper
+		// loads and saves the whole file each time, which over a table of bindings would
+		// rewrite the file once per entry.
+		//
+		// Collected before removing, because removing while iterating the keys would
+		// invalidate what is being walked.
+		std::vector<std::string> stale;
 
-        // Removed, not blanked: a binding the user has reset must leave the file rather
-        // than sit there as an empty value that LoadKeyBindings would warn about on every
-        // start.
-        for (const std::string& key : stale)
-        {
-            file.Remove(key);
-        }
+		for (const std::string& key : file.GetKeys())
+		{
+			if (std::string_view{key}.starts_with(kKeyBindingPrefix))
+			{
+				stale.push_back(key);
+			}
+		}
 
-        keys.ForEachOverride(
-            [&file](const std::string& id, const Core::Binding& binding)
-            { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });
+		// Removed, not blanked: a binding the user has reset must leave the file rather
+		// than sit there as an empty value that LoadKeyBindings would warn about on every
+		// start.
+		for (const std::string& key : stale)
+		{
+			file.Remove(key);
+		}
 
-        if (!file.Save(SettingsPath()))
-        {
-            CORE_WARN("Cannot write '{}'", SettingsPath().string());
-        }
-    }
+		keys.ForEachOverride(
+			[&file](const std::string& id, const Core::Binding& binding) { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });
+
+		if (!file.Save(SettingsPath()))
+		{
+			CORE_WARN("Cannot write '{}'", SettingsPath().string());
+		}
+	}
 }

@@ -9,123 +9,118 @@
 
 #include <utility>
 
-namespace Core
-{
-    namespace
-    {
-        /// libgit2 requires initialisation before any other call and keeps a reference
-        /// count, so initialising once per process on first use is both sufficient and
-        /// safe. A function-local static gives us that with C++'s own thread-safe
-        /// initialisation rather than a hand-rolled flag.
-        void EnsureInitialised()
-        {
-            static const int result = git_libgit2_init();
+namespace Core {
 
-            if (result < 0)
-                CORE_ERROR("libgit2 failed to initialise (code {})", result);
-        }
-    }
+	namespace {
+		void EnsureInitialised()
+		{
+			static const int result = git_libgit2_init();
 
-    Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
-    {
-        EnsureInitialised();
+			if (result < 0)
+				CORE_ERROR("libgit2 failed to initialise (code {})", result);
+		}
+	}
 
-        git_repository* handle = nullptr;
-        const std::string path = ToUtf8(anyPathInside);
+	Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
+	{
+		EnsureInitialised();
 
-        // ceiling_dirs is null so the search walks up to the filesystem root, matching
-        // what the git command line does from a subdirectory.
-        const int result = git_repository_open_ext(&handle, path.c_str(), 0, nullptr);
+		git_repository* handle = nullptr;
+		const std::string path = ToUtf8(anyPathInside);
 
-        if (result != 0 || handle == nullptr)
-        {
-            // libgit2's own message names the real cause — a .git file pointing at a
-            // deleted worktree reads very differently from an unreadable directory, and
-            // collapsing both into "not a repository" throws that away.
-            const git_error* detail = git_error_last();
-            const std::string message =
-                detail != nullptr && detail->message != nullptr ? detail->message : "unknown error";
+		// ceiling_dirs is null so the search walks up to the filesystem root, matching
+		// what the git command line does from a subdirectory.
+		const int result = git_repository_open_ext(&handle, path.c_str(), 0, nullptr);
 
-            ErrorCode code = ErrorCode::IoFailure;
+		if (result != 0 || handle == nullptr)
+		{
+			// libgit2's own message names the real cause — a .git file pointing at a
+			// deleted worktree reads very differently from an unreadable directory, and
+			// collapsing both into "not a repository" throws that away.
+			const git_error* detail = git_error_last();
+			const std::string message =
+				detail != nullptr && detail->message != nullptr ? detail->message : "unknown error";
 
-            if (result == GIT_ENOTFOUND)
-                code = ErrorCode::NotFound;
-            else if (result == GIT_EAUTH)
-                code = ErrorCode::AccessDenied;
+			ErrorCode code = ErrorCode::IoFailure;
 
-            return Error{code, std::format("cannot open a git repository at '{}': {}", path, message)};
-        }
+			if (result == GIT_ENOTFOUND)
+				code = ErrorCode::NotFound;
+			else if (result == GIT_EAUTH)
+				code = ErrorCode::AccessDenied;
 
-        Repository repository;
-        repository.m_Handle = handle;
+			return Error{code, std::format("cannot open a git repository at '{}': {}", path, message)};
+		}
 
-        if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
-            repository.m_WorkingDirectory = FromUtf8(workdir);
+		Repository repository;
+		repository.m_Handle = handle;
 
-        return repository;
-    }
+		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
+			repository.m_WorkingDirectory = FromUtf8(workdir);
 
-    Repository::~Repository()
-    {
-        if (m_Handle != nullptr)
-            git_repository_free(m_Handle);
-    }
+		return repository;
+	}
 
-    Repository::Repository(Repository&& other) noexcept
-        : m_Handle(std::exchange(other.m_Handle, nullptr)),
-          m_WorkingDirectory(std::move(other.m_WorkingDirectory))
-    {
-    }
+	Repository::~Repository()
+	{
+		if (m_Handle != nullptr)
+			git_repository_free(m_Handle);
+	}
 
-    Repository& Repository::operator=(Repository&& other) noexcept
-    {
-        if (this == &other)
-            return *this;
+	Repository::Repository(Repository&& other) noexcept
+		: m_Handle(std::exchange(other.m_Handle, nullptr)),
+		  m_WorkingDirectory(std::move(other.m_WorkingDirectory))
+	{
+	}
 
-        if (m_Handle != nullptr)
-            git_repository_free(m_Handle);
+	Repository& Repository::operator=(Repository&& other) noexcept
+	{
+		if (this == &other)
+			return *this;
 
-        m_Handle = std::exchange(other.m_Handle, nullptr);
-        m_WorkingDirectory = std::move(other.m_WorkingDirectory);
-        return *this;
-    }
+		if (m_Handle != nullptr)
+			git_repository_free(m_Handle);
 
-    bool Repository::IsIgnored(const std::filesystem::path& path) const
-    {
-        if (m_Handle == nullptr)
-            return false;
+		m_Handle = std::exchange(other.m_Handle, nullptr);
+		m_WorkingDirectory = std::move(other.m_WorkingDirectory);
+		return *this;
+	}
 
-        std::error_code code;
-        const std::filesystem::path relative =
-            std::filesystem::relative(path, m_WorkingDirectory, code);
+	bool Repository::IsIgnored(const std::filesystem::path& path) const
+	{
+		if (m_Handle == nullptr)
+			return false;
 
-        // A leading ".." component means the path sits outside the working tree, and
-        // there is nothing for git to have an opinion about. Comparing components rather
-        // than the string keeps an in-tree file called "..config" from being mistaken
-        // for one.
-        const bool outsideTree =
-            relative.begin() != relative.end() && *relative.begin() == "..";
+		std::error_code code;
+		const std::filesystem::path relative =
+			std::filesystem::relative(path, m_WorkingDirectory, code);
 
-        if (code || relative.empty() || outsideTree)
-            return false;
+		// A leading ".." component means the path sits outside the working tree, and
+		// there is nothing for git to have an opinion about. Comparing components rather
+		// than the string keeps an in-tree file called "..config" from being mistaken
+		// for one.
+		const bool outsideTree =
+			relative.begin() != relative.end() && *relative.begin() == "..";
 
-        // git speaks forward slashes on every platform; the relative path may carry
-        // native separators, so they are translated explicitly below.
-        std::string text = ToUtf8(relative);
+		if (code || relative.empty() || outsideTree)
+			return false;
 
-        for (char& character : text)
-        {
-            if (character == '\\')
-                character = '/';
-        }
+		// git speaks forward slashes on every platform; the relative path may carry
+		// native separators, so they are translated explicitly below.
+		std::string text = ToUtf8(relative);
 
-        int ignored = 0;
-        if (git_ignore_path_is_ignored(&ignored, m_Handle, text.c_str()) != 0)
-        {
-            CORE_TRACE("Cannot determine ignore status for '{}'", text);
-            return false;
-        }
+		for (char& character : text)
+		{
+			if (character == '\\')
+				character = '/';
+		}
 
-        return ignored != 0;
-    }
+		int ignored = 0;
+		if (git_ignore_path_is_ignored(&ignored, m_Handle, text.c_str()) != 0)
+		{
+			CORE_TRACE("Cannot determine ignore status for '{}'", text);
+			return false;
+		}
+
+		return ignored != 0;
+	}
 }

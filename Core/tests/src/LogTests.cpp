@@ -12,91 +12,91 @@ using Core::RingBufferSink;
 
 TEST_CASE("RingBufferSink remembers entries in order")
 {
-    RingBufferSink sink{4};
+	RingBufferSink sink{4};
 
-    sink.Write(LogEntry{LogLevel::Info, "first"});
-    sink.Write(LogEntry{LogLevel::Warn, "second"});
+	sink.Write(LogEntry{LogLevel::Info, "first"});
+	sink.Write(LogEntry{LogLevel::Warn, "second"});
 
-    const auto entries = sink.GetSnapshot();
-    REQUIRE(entries.size() == 2);
-    CHECK(entries[0].message == "first");
-    CHECK(entries[1].level == LogLevel::Warn);
+	const auto entries = sink.GetSnapshot();
+	REQUIRE(entries.size() == 2);
+	CHECK(entries[0].message == "first");
+	CHECK(entries[1].level == LogLevel::Warn);
 }
 
 TEST_CASE("RingBufferSink drops the oldest entries on overflow")
 {
-    RingBufferSink sink{3};
+	RingBufferSink sink{3};
 
-    for (int i = 1; i <= 5; ++i)
-        sink.Write(LogEntry{LogLevel::Info, std::to_string(i)});
+	for (int i = 1; i <= 5; ++i)
+		sink.Write(LogEntry{LogLevel::Info, std::to_string(i)});
 
-    const auto entries = sink.GetSnapshot();
-    REQUIRE(entries.size() == 3);
-    CHECK(entries[0].message == "3");
-    CHECK(entries[1].message == "4");
-    CHECK(entries[2].message == "5");
+	const auto entries = sink.GetSnapshot();
+	REQUIRE(entries.size() == 3);
+	CHECK(entries[0].message == "3");
+	CHECK(entries[1].message == "4");
+	CHECK(entries[2].message == "5");
 }
 
 TEST_CASE("Clear empties the buffer")
 {
-    RingBufferSink sink{4};
-    sink.Write(LogEntry{LogLevel::Info, "whatever"});
+	RingBufferSink sink{4};
+	sink.Write(LogEntry{LogLevel::Info, "whatever"});
 
-    sink.Clear();
+	sink.Clear();
 
-    CHECK(sink.GetCount() == 0);
-    CHECK(sink.GetSnapshot().empty());
+	CHECK(sink.GetCount() == 0);
+	CHECK(sink.GetSnapshot().empty());
 }
 
 TEST_CASE("Logger dispatches entries to attached sinks")
 {
-    auto sink = std::make_shared<RingBufferSink>(8);
+	auto sink = std::make_shared<RingBufferSink>(8);
 
-    Logger::Get().ClearSinks();
-    Logger::Get().SetLevel(LogLevel::Trace);
-    Logger::Get().AddSink(sink);
-    Logger::Get().Write(LogLevel::Error, "failure");
+	Logger::Get().ClearSinks();
+	Logger::Get().SetLevel(LogLevel::Trace);
+	Logger::Get().AddSink(sink);
+	Logger::Get().Write(LogLevel::Error, "failure");
 
-    const auto entries = sink->GetSnapshot();
-    REQUIRE(entries.size() == 1);
-    CHECK(entries[0].level == LogLevel::Error);
-    CHECK(entries[0].message == "failure");
+	const auto entries = sink->GetSnapshot();
+	REQUIRE(entries.size() == 1);
+	CHECK(entries[0].level == LogLevel::Error);
+	CHECK(entries[0].message == "failure");
 
-    Logger::Get().ClearSinks();
+	Logger::Get().ClearSinks();
 }
 
 TEST_CASE("Logger filters out entries below the configured level")
 {
-    auto sink = std::make_shared<RingBufferSink>(8);
+	auto sink = std::make_shared<RingBufferSink>(8);
 
-    Logger::Get().ClearSinks();
-    Logger::Get().AddSink(sink);
-    Logger::Get().SetLevel(LogLevel::Warn);
+	Logger::Get().ClearSinks();
+	Logger::Get().AddSink(sink);
+	Logger::Get().SetLevel(LogLevel::Warn);
 
-    Logger::Get().Write(LogLevel::Info, "skipped");
-    Logger::Get().Write(LogLevel::Error, "passed through");
+	Logger::Get().Write(LogLevel::Info, "skipped");
+	Logger::Get().Write(LogLevel::Error, "passed through");
 
-    const auto entries = sink->GetSnapshot();
-    REQUIRE(entries.size() == 1);
-    CHECK(entries[0].message == "passed through");
+	const auto entries = sink->GetSnapshot();
+	REQUIRE(entries.size() == 1);
+	CHECK(entries[0].message == "passed through");
 
-    Logger::Get().ClearSinks();
-    Logger::Get().SetLevel(LogLevel::Trace);
+	Logger::Get().ClearSinks();
+	Logger::Get().SetLevel(LogLevel::Trace);
 }
 
 TEST_CASE("The CORE_INFO macro formats arguments")
 {
-    auto sink = std::make_shared<RingBufferSink>(8);
+	auto sink = std::make_shared<RingBufferSink>(8);
 
-    Logger::Get().ClearSinks();
-    Logger::Get().SetLevel(LogLevel::Trace);
-    Logger::Get().AddSink(sink);
+	Logger::Get().ClearSinks();
+	Logger::Get().SetLevel(LogLevel::Trace);
+	Logger::Get().AddSink(sink);
 
-    CORE_INFO("file {} has {} lines", "main.cpp", 12);
+	CORE_INFO("file {} has {} lines", "main.cpp", 12);
 
-    const auto entries = sink->GetSnapshot();
-    REQUIRE(entries.size() == 1);
-    CHECK(entries[0].message == "file main.cpp has 12 lines");
+	const auto entries = sink->GetSnapshot();
+	REQUIRE(entries.size() == 1);
+	CHECK(entries[0].message == "file main.cpp has 12 lines");
 
-    Logger::Get().ClearSinks();
+	Logger::Get().ClearSinks();
 }

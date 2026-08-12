@@ -4,29 +4,29 @@
 
 #include "Core/Base/Assert.h"
 
-namespace Core
-{
-    LayerStack::~LayerStack()
-    {
-        Clear();
-    }
+namespace Core {
 
-    Layer& LayerStack::Push(std::unique_ptr<Layer> layer)
-    {
-        CORE_ASSERT(layer != nullptr, "LayerStack::Push received a null pointer");
+	LayerStack::~LayerStack()
+	{
+		Clear();
+	}
 
-        Layer& reference = *layer;
-        m_Layers.push_back(std::move(layer));
-        reference.OnAttach();
-        return reference;
-    }
+	Layer& LayerStack::Push(std::unique_ptr<Layer> layer)
+	{
+		CORE_ASSERT(layer != nullptr, "LayerStack::Push received a null pointer");
 
-    void LayerStack::Clear()
-    {
-        // Reverse order: a layer added later may depend on an earlier one.
-        for (auto it = m_Layers.rbegin(); it != m_Layers.rend(); ++it)
-            (*it)->OnDetach();
+		Layer& reference = *layer;
+		m_Layers.push_back(std::move(layer));
+		reference.OnAttach();
+		return reference;
+	}
 
-        m_Layers.clear();
-    }
+	void LayerStack::Clear()
+	{
+		// Reverse order: a layer added later may depend on an earlier one.
+		for (auto it = m_Layers.rbegin(); it != m_Layers.rend(); ++it)
+			(*it)->OnDetach();
+
+		m_Layers.clear();
+	}
 }

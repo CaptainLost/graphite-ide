@@ -14,215 +14,200 @@
 #include <utility>
 #include <vector>
 
-namespace Graphite
-{
-    namespace
-    {
-        /// The three item kinds that carry files. Anything else in a .vcxproj describes
-        /// the build rather than its contents.
-        constexpr std::string_view kFileItems[] = {"ClCompile", "ClInclude", "None"};
+namespace Graphite {
 
-        std::vector<std::string> SplitFilter(std::string_view filter)
-        {
-            std::vector<std::string> parts;
-            std::size_t start = 0;
+	namespace {
+		constexpr std::string_view kFileItems[] = {"ClCompile", "ClInclude", "None"};
 
-            while (start < filter.size())
-            {
-                const std::size_t slash = filter.find('\\', start);
-                const std::size_t end = slash == std::string_view::npos ? filter.size() : slash;
+		std::vector<std::string> SplitFilter(std::string_view filter)
+		{
+			std::vector<std::string> parts;
+			std::size_t start = 0;
 
-                if (end > start)
-                    parts.emplace_back(filter.substr(start, end - start));
+			while (start < filter.size())
+			{
+				const std::size_t slash = filter.find('\\', start);
+				const std::size_t end = slash == std::string_view::npos ? filter.size() : slash;
 
-                if (slash == std::string_view::npos)
-                    break;
+				if (end > start)
+					parts.emplace_back(filter.substr(start, end - start));
 
-                start = slash + 1;
-            }
+				if (slash == std::string_view::npos)
+					break;
 
-            return parts;
-        }
+				start = slash + 1;
+			}
 
-        ContentFolder& EnsureContentFolder(ContentFolder& root,
-                                           const std::vector<std::string>& parts)
-        {
-            ContentFolder* current = &root;
+			return parts;
+		}
 
-            for (const std::string& part : parts)
-            {
-                const auto match =
-                    std::find_if(current->folders.begin(), current->folders.end(),
-                                 [&part](const ContentFolder& f) { return f.name == part; });
+		ContentFolder& EnsureContentFolder(ContentFolder& root,
+										   const std::vector<std::string>& parts)
+		{
+			ContentFolder* current = &root;
 
-                if (match != current->folders.end())
-                {
-                    current = &*match;
-                    continue;
-                }
+			for (const std::string& part : parts)
+			{
+				const auto match =
+					std::find_if(current->folders.begin(), current->folders.end(),
+								 [&part](const ContentFolder& f) { return f.name == part; });
 
-                ContentFolder created;
-                created.name = part;
-                current->folders.push_back(std::move(created));
-                current = &current->folders.back();
-            }
+				if (match != current->folders.end())
+				{
+					current = &*match;
+					continue;
+				}
 
-            return *current;
-        }
+				ContentFolder created;
+				created.name = part;
+				current->folders.push_back(std::move(created));
+				current = &current->folders.back();
+			}
 
-        /// Which filter each file was assigned, keyed by the Include string exactly as
-        /// the .filters file spells it — the two files must agree for a lookup to hit.
-        std::unordered_map<std::string, std::string> ReadFilterAssignments(
-            const std::filesystem::path& filters)
-        {
-            std::unordered_map<std::string, std::string> assignments;
+			return *current;
+		}
 
-            std::error_code code;
+		std::unordered_map<std::string, std::string> ReadFilterAssignments(
+			const std::filesystem::path& filters)
+		{
+			std::unordered_map<std::string, std::string> assignments;
 
-            if (!std::filesystem::is_regular_file(filters, code))
-                return assignments;
+			std::error_code code;
 
-            pugi::xml_document document;
+			if (!std::filesystem::is_regular_file(filters, code))
+				return assignments;
 
-            if (!document.load_file(filters.c_str()))
-                return assignments;
+			pugi::xml_document document;
 
-            for (const pugi::xml_node& group : document.child("Project").children("ItemGroup"))
-            {
-                for (const pugi::xml_node& item : group.children())
-                {
-                    const pugi::xml_node filter = item.child("Filter");
+			if (!document.load_file(filters.c_str()))
+				return assignments;
 
-                    if (!filter)
-                        continue;
+			for (const pugi::xml_node& group : document.child("Project").children("ItemGroup"))
+			{
+				for (const pugi::xml_node& item : group.children())
+				{
+					const pugi::xml_node filter = item.child("Filter");
 
-                    assignments.emplace(item.attribute("Include").value(),
-                                        filter.child_value());
-                }
-            }
+					if (!filter)
+						continue;
 
-            return assignments;
-        }
+					assignments.emplace(item.attribute("Include").value(),
+										filter.child_value());
+				}
+			}
 
-        /// Visual Studio shows a project's contents sorted, not in the order the file
-        /// happens to list them — and a .vcxproj lists every ClInclude in one group and
-        /// every ClCompile in another, so preserving file order puts all the headers
-        /// above all the sources. Folders first, then names, case-insensitively: the same
-        /// rule the file tree uses.
-        void SortContent(ContentFolder& folder)
-        {
-            std::sort(folder.folders.begin(), folder.folders.end(),
-                      [](const ContentFolder& left, const ContentFolder& right)
-                      { return Core::CompareNames(left.name, right.name) < 0; });
+			return assignments;
+		}
 
-            std::sort(folder.files.begin(), folder.files.end(),
-                      [](const ContentFile& left, const ContentFile& right)
-                      { return Core::CompareNames(left.name, right.name) < 0; });
+		void SortContent(ContentFolder& folder)
+		{
+			std::sort(folder.folders.begin(), folder.folders.end(),
+					  [](const ContentFolder& left, const ContentFolder& right) { return Core::CompareNames(left.name, right.name) < 0; });
 
-            for (ContentFolder& child : folder.folders)
-                SortContent(child);
-        }
-    }
+			std::sort(folder.files.begin(), folder.files.end(),
+					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.name, right.name) < 0; });
 
-    bool VcxprojReader::Handles(const std::filesystem::path& project) const
-    {
-        // Compared case-insensitively, as ReadSolution does for the solution itself: the
-        // filesystem does not care, so App.VCXPROJ must not silently render as a leaf.
-        std::string extension = Core::ToUtf8(project.extension());
-        std::transform(extension.begin(), extension.end(), extension.begin(),
-                       [](unsigned char character)
-                       { return static_cast<char>(std::tolower(character)); });
+			for (ContentFolder& child : folder.folders)
+				SortContent(child);
+		}
+	}
 
-        return extension == ".vcxproj";
-    }
+	bool VcxprojReader::Handles(const std::filesystem::path& project) const
+	{
+		// Compared case-insensitively, as ReadSolution does for the solution itself: the
+		// filesystem does not care, so App.VCXPROJ must not silently render as a leaf.
+		std::string extension = Core::ToUtf8(project.extension());
+		std::transform(extension.begin(), extension.end(), extension.begin(),
+					   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
 
-    Core::Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const
-    {
-        std::error_code code;
+		return extension == ".vcxproj";
+	}
 
-        if (!std::filesystem::is_regular_file(project, code))
-        {
-            return Core::Error{Core::ErrorCode::NotFound,
-                               std::format("no project file at '{}'", project.string())};
-        }
+	Core::Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const
+	{
+		std::error_code code;
 
-        pugi::xml_document document;
-        const pugi::xml_parse_result parsed = document.load_file(project.c_str());
+		if (!std::filesystem::is_regular_file(project, code))
+		{
+			return Core::Error{Core::ErrorCode::NotFound,
+							   std::format("no project file at '{}'", project.string())};
+		}
 
-        if (!parsed)
-        {
-            return Core::Error{Core::ErrorCode::InvalidArgument,
-                               std::format("cannot parse '{}': {}", project.string(),
-                                           parsed.description())};
-        }
+		pugi::xml_document document;
+		const pugi::xml_parse_result parsed = document.load_file(project.c_str());
 
-        // The .filters file sits beside the project with the extension appended, so
-        // App.vcxproj is paired with App.vcxproj.filters.
-        std::filesystem::path filtersPath = project;
-        filtersPath += ".filters";
+		if (!parsed)
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument,
+							   std::format("cannot parse '{}': {}", project.string(),
+										   parsed.description())};
+		}
 
-        const auto assignments = ReadFilterAssignments(filtersPath);
-        const std::filesystem::path directory = project.parent_path();
+		// The .filters file sits beside the project with the extension appended, so
+		// App.vcxproj is paired with App.vcxproj.filters.
+		std::filesystem::path filtersPath = project;
+		filtersPath += ".filters";
 
-        ProjectContent content;
+		const auto assignments = ReadFilterAssignments(filtersPath);
+		const std::filesystem::path directory = project.parent_path();
 
-        for (const pugi::xml_node& group : document.child("Project").children("ItemGroup"))
-        {
-            for (const pugi::xml_node& item : group.children())
-            {
-                const std::string_view name = item.name();
+		ProjectContent content;
 
-                if (name == "ProjectReference")
-                {
-                    const std::filesystem::path referenced =
-                        Core::FromUtf8(item.attribute("Include").value());
+		for (const pugi::xml_node& group : document.child("Project").children("ItemGroup"))
+		{
+			for (const pugi::xml_node& item : group.children())
+			{
+				const std::string_view name = item.name();
 
-                    content.references.push_back(Core::ToUtf8(referenced.stem()));
-                    continue;
-                }
+				if (name == "ProjectReference")
+				{
+					const std::filesystem::path referenced =
+						Core::FromUtf8(item.attribute("Include").value());
 
-                if (std::find(std::begin(kFileItems), std::end(kFileItems), name)
-                    == std::end(kFileItems))
-                {
-                    continue;
-                }
+					content.references.push_back(Core::ToUtf8(referenced.stem()));
+					continue;
+				}
 
-                const char* include = item.attribute("Include").value();
+				if (std::find(std::begin(kFileItems), std::end(kFileItems), name) == std::end(kFileItems))
+				{
+					continue;
+				}
 
-                if (include[0] == '\0')
-                    continue;
+				const char* include = item.attribute("Include").value();
 
-                ContentFile file;
-                file.path = (directory / Core::FromUtf8(include)).lexically_normal();
-                file.path.make_preferred();
-                file.name = Core::ToUtf8(file.path.filename());
+				if (include[0] == '\0')
+					continue;
 
-                const auto assignment = assignments.find(include);
+				ContentFile file;
+				file.path = (directory / Core::FromUtf8(include)).lexically_normal();
+				file.path.make_preferred();
+				file.name = Core::ToUtf8(file.path.filename());
 
-                // No entry in the .filters file — or no .filters file at all — puts the
-                // file at the project root, which is what Visual Studio shows.
-                if (assignment == assignments.end())
-                {
-                    content.root.files.push_back(std::move(file));
-                    continue;
-                }
+				const auto assignment = assignments.find(include);
 
-                const std::vector<std::string> parts = SplitFilter(assignment->second);
+				// No entry in the .filters file — or no .filters file at all — puts the
+				// file at the project root, which is what Visual Studio shows.
+				if (assignment == assignments.end())
+				{
+					content.root.files.push_back(std::move(file));
+					continue;
+				}
 
-                if (parts.empty())
-                    content.root.files.push_back(std::move(file));
-                else
-                    EnsureContentFolder(content.root, parts).files.push_back(std::move(file));
-            }
-        }
+				const std::vector<std::string> parts = SplitFilter(assignment->second);
 
-        SortContent(content.root);
+				if (parts.empty())
+					content.root.files.push_back(std::move(file));
+				else
+					EnsureContentFolder(content.root, parts).files.push_back(std::move(file));
+			}
+		}
 
-        // References are names too, and Visual Studio lists them sorted.
-        std::sort(content.references.begin(), content.references.end(),
-                  [](const std::string& left, const std::string& right)
-                  { return Core::CompareNames(left, right) < 0; });
+		SortContent(content.root);
 
-        return content;
-    }
+		// References are names too, and Visual Studio lists them sorted.
+		std::sort(content.references.begin(), content.references.end(),
+				  [](const std::string& left, const std::string& right) { return Core::CompareNames(left, right) < 0; });
+
+		return content;
+	}
 }
