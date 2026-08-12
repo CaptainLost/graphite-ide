@@ -1,6 +1,6 @@
 #include "corepch.h"
 
-#include "Core/Ui/Chord.h"
+#include "Core/Command/Chord.h"
 
 #include <algorithm>
 #include <cctype>

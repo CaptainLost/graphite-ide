@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Core/Ui/CommandRegistry.h"
+#include "Core/Command/CommandRegistry.h"
 
 #include <string>
 #include <vector>

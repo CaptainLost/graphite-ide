@@ -1,5 +1,5 @@
 #include "corepch.h"
-#include "Core/Ui/CommandRegistry.h"
+#include "Core/Command/CommandRegistry.h"
 
 #include <utility>
 

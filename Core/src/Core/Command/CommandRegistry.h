@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Base/NonCopyable.h"
-#include "Core/Ui/Command.h"
+#include "Core/Command/Command.h"
 
 #include <cstddef>
 #include <functional>
@@ -34,8 +34,6 @@ namespace core
         [[nodiscard]] std::vector<const Command*> InGroup(std::string_view group) const;
 
         void ForEach(const std::function<void(const Command&)>& action) const;
-
-        [[nodiscard]] std::size_t Count() const noexcept { return m_commands.size(); }
 
     private:
         /// unique_ptr rather than Command by value: Add hands out a pointer the caller

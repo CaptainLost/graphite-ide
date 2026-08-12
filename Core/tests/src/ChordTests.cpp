@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Core/Ui/Chord.h"
+#include "Core/Command/Chord.h"
 
 #include <optional>
 #include <string>
