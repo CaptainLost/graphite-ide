@@ -9,6 +9,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/KeyName.h"
 #include "Core/Command/Keymap.h"
+#include "Core/Command/ModifierName.h"
 #include "Core/Command/Scope.h"
 #include "Core/Command/Trigger.h"
 
@@ -73,6 +74,36 @@ namespace core
                 text.append(" ");
                 text.append(alternate.ToString());
             }
+
+            return text;
+        }
+
+        /// What a cell that is waiting for a chord reads. A capture ends on a key, so
+        /// everything before that key is a state the user can otherwise only guess at:
+        /// holding Ctrl has to look different from a screen that has stopped listening.
+        ///
+        /// Spelled with the same modifier table Chord::ToString prints with — Chord itself
+        /// cannot express "modifiers, no trigger yet", since that is precisely what it
+        /// calls empty — so a held Ctrl reads the way the recorded chord will.
+        [[nodiscard]] std::string CaptureLabel(ImGuiKeyChord mods)
+        {
+            if (mods == ImGuiMod_None)
+            {
+                return "Press a key...  (Esc cancels)";
+            }
+
+            std::string text;
+
+            for (const ModifierName& modifier : kModifiers)
+            {
+                if ((mods & modifier.bit) != 0)
+                {
+                    text += modifier.name;
+                    text += '+';
+                }
+            }
+
+            text += "...";
 
             return text;
         }
@@ -225,7 +256,7 @@ namespace core
         ImGui::PushID(static_cast<int>(slot));
 
         const bool capturing = m_capturing == id && m_capturingSlot == slot;
-        std::string label = capturing ? "Press a key..." : text;
+        std::string label = capturing ? CaptureLabel(ImGui::GetIO().KeyMods) : text;
 
         if (label.empty())
         {
@@ -306,12 +337,17 @@ namespace core
         {
             const auto key = static_cast<ImGuiKey>(index);
 
-            // A modifier alone is never the answer: every capture would otherwise end on the
-            // first Shift the user pressed on the way to the chord they meant. Through
-            // IsModifierKey rather than a range written here, because the modifiers are not
-            // one contiguous span — see its comment for the second one, which this code got
-            // wrong until a user pressed Ctrl and was handed "Ctrl+ModCtrl".
-            if (IsModifierKey(key))
+            // A capturable trigger is a keyboard key that is not a modifier, stated once
+            // rather than as a growing list of spans to skip.
+            //
+            // Not a modifier, because every capture would otherwise end on the first Shift
+            // the user pressed on the way to the chord they meant — and because ImGui has
+            // two spans of those, which cost this screen a round of its own.
+            //
+            // A keyboard key, because the named range also carries the mouse: arming a
+            // capture is a left click, so the scan used to find MouseLeft already pressed
+            // on the very frame it started and bind it before the user could do anything.
+            if (!IsKeyboardKey(key) || IsModifierKey(key))
             {
                 continue;
             }

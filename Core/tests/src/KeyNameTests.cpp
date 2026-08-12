@@ -1,6 +1,5 @@
 #include <doctest/doctest.h>
 
-#include "Core/Command/Chord.h"
 #include "Core/Command/KeyName.h"
 
 #include <imgui.h>
@@ -41,6 +40,41 @@ TEST_CASE("IsModifierKey leaves ordinary keys alone")
     CHECK_FALSE(IsModifierKey(ImGuiKey_Escape));
 }
 
+TEST_CASE("IsKeyboardKey holds at both ends of the keyboard block")
+{
+    // Tab opens the named range and Oem102 closes the keyboard part of it, so these two
+    // are what a submodule bump would move first.
+    CHECK(core::IsKeyboardKey(ImGuiKey_Tab));
+    CHECK(core::IsKeyboardKey(ImGuiKey_Oem102));
+    CHECK(core::IsKeyboardKey(ImGuiKey_S));
+    CHECK(core::IsKeyboardKey(ImGuiKey_F12));
+    CHECK(core::IsKeyboardKey(ImGuiKey_KeypadAdd));
+    CHECK(core::IsKeyboardKey(ImGuiKey_Escape));
+    CHECK(core::IsKeyboardKey(ImGuiKey_LeftCtrl));
+}
+
+TEST_CASE("IsKeyboardKey refuses the mouse aliases")
+{
+    // The seven that cost a user their left click: arming a capture is itself a left
+    // click, so a scan that accepted these answered its own question.
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseLeft));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseRight));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseMiddle));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseX1));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseX2));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseWheelX));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_MouseWheelY));
+}
+
+TEST_CASE("IsKeyboardKey refuses the gamepad buttons and the reserved mod slots")
+{
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_GamepadStart));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_GamepadFaceDown));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_GamepadRStickDown));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_ReservedForModCtrl));
+    CHECK_FALSE(core::IsKeyboardKey(ImGuiKey_ReservedForModSuper));
+}
+
 TEST_CASE("No key a capture can return names a modifier")
 {
     // The failure itself, pinned. A capture walks the named-key range and takes the first
@@ -52,7 +86,7 @@ TEST_CASE("No key a capture can return names a modifier")
     {
         const auto key = static_cast<ImGuiKey>(index);
 
-        if (IsModifierKey(key))
+        if (!core::IsKeyboardKey(key) || IsModifierKey(key))
         {
             continue;
         }
@@ -65,14 +99,4 @@ TEST_CASE("No key a capture can return names a modifier")
         CHECK(name.find("Alt") == std::string::npos);
         CHECK(name.find("Super") == std::string::npos);
     }
-}
-
-TEST_CASE("Parse refuses a modifier as a chord's trigger")
-{
-    // A settings file is hand-editable, and "ModCtrl" is a name ImGui really does give a
-    // key — but a chord fired by a modifier is one nothing can deliberately press.
-    CHECK_FALSE(core::Chord::Parse("ModCtrl").has_value());
-    CHECK_FALSE(core::Chord::Parse("Ctrl+ModCtrl").has_value());
-    CHECK_FALSE(core::Chord::Parse("LeftShift").has_value());
-    CHECK(core::Chord::Parse("Ctrl+S").has_value());
 }

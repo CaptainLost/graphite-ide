@@ -147,13 +147,16 @@ namespace core
             return std::nullopt;
         }
 
-        // A modifier is not a trigger — it is carried in the mods mask, which is why every
-        // modifier name was already stripped above. Refused here rather than left to
-        // KeyNamed, which honestly answers what a name names: "LeftShift" and "ModCtrl" do
-        // name keys, they just cannot be what a chord fires on. Without this a hand-edited
-        // "ModCtrl" installs a chord nobody can deliberately press and hands it to
-        // ImGui::Shortcut to route.
-        if (IsModifierKey(key))
+        // One rule: a chord's trigger is a keyboard key or a wheel direction, nothing else.
+        //
+        // ImGuiKey's named range also holds gamepad buttons, mouse aliases and ImGui's
+        // internal mod slots, and KeyNamed answers about all of them honestly — "MouseLeft"
+        // and "ModCtrl" really are names of keys. They just cannot be what a chord fires
+        // on: a modifier is carried in the mods mask (which is why every modifier name was
+        // stripped above), and a chord on MouseLeft would run its command at every click.
+        // Refused here rather than in KeyNamed, so the printer and the parser go on
+        // agreeing about one table.
+        if (!IsKeyboardKey(key) || IsModifierKey(key))
         {
             return std::nullopt;
         }

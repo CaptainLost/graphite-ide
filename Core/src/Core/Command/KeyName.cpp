@@ -66,6 +66,11 @@ namespace core
         return key >= ImGuiKey_ReservedForModCtrl && key <= ImGuiKey_ReservedForModSuper;
     }
 
+    bool IsKeyboardKey(ImGuiKey key) noexcept
+    {
+        return key >= ImGuiKey_NamedKey_BEGIN && key <= ImGuiKey_Oem102;
+    }
+
     ImGuiKey KeyNamed(std::string_view name)
     {
         const std::string wanted = ascii::Lowered(name);

@@ -71,6 +71,25 @@ TEST_CASE("Parsing is forgiving about case and spacing but not about nonsense")
     CHECK_FALSE(Chord::Parse("Ctrl").has_value());
 }
 
+TEST_CASE("Parse accepts only a keyboard key or a wheel direction as the trigger")
+{
+    // ImGuiKey's named range also holds mouse aliases, gamepad buttons and ImGui's
+    // internal mod slots, and every one of them has a name a hand-edited file could carry.
+    // A chord on MouseLeft would run its command at every click, and one on a modifier
+    // could not be pressed deliberately at all — so a stored one is refused on load and
+    // costs a warning, not a broken mouse.
+    CHECK_FALSE(Chord::Parse("MouseLeft").has_value());
+    CHECK_FALSE(Chord::Parse("Ctrl+MouseLeft").has_value());
+    CHECK_FALSE(Chord::Parse("MouseWheelY").has_value());
+    CHECK_FALSE(Chord::Parse("GamepadStart").has_value());
+    CHECK_FALSE(Chord::Parse("ModCtrl").has_value());
+    CHECK_FALSE(Chord::Parse("Ctrl+ModCtrl").has_value());
+    CHECK_FALSE(Chord::Parse("LeftShift").has_value());
+
+    CHECK(Chord::Parse("Ctrl+S").has_value());
+    CHECK(Chord::Parse("Ctrl+WheelUp").has_value());
+}
+
 TEST_CASE("A parsed wheel chord is scoped to the hovered editor")
 {
     // Scope is not written into the text: there is one wheel gesture in the application
