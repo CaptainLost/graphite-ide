@@ -17,6 +17,10 @@ namespace Core {
 		constexpr DWORD kFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME |
 								  FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE;
 
+		// Bounds the wait for the arming signal, not Start as a whole. On expiry Start
+		// destroys the watcher and the destructor joins the worker with no bound of its own.
+		// That is deliberate: detaching a thread that still owns the handle would trade a
+		// hang for a use-after-free.
 		constexpr std::chrono::seconds kArmTimeout{10};
 
 		bool IsInsideGitDirectory(const std::filesystem::path& relative)
