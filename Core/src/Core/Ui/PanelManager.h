@@ -11,6 +11,8 @@
 
 namespace core
 {
+    class CommandRegistry;
+
     class PanelManager final : NonCopyable
     {
     public:
@@ -26,12 +28,18 @@ namespace core
         void OnUpdate(float deltaSeconds);
         void OnUIRender();
 
-        /// Items that toggle visibility — for insertion into the View menu.
-        void RenderViewMenuItems();
+        /// Registers a visibility toggle per panel, in the group "panels", so a menu can
+        /// place them without knowing which panels exist. Panels added afterwards register
+        /// as they arrive, so the order of Add and this call does not matter.
+        void RegisterCommands(CommandRegistry& commands);
+
+        /// Returns every panel to the visibility it was constructed with.
+        void ResetVisibility();
 
         void ForEach(const std::function<void(Panel&)>& action);
 
     private:
         std::vector<std::unique_ptr<Panel>> m_panels;
+        CommandRegistry* m_commands = nullptr;
     };
 }

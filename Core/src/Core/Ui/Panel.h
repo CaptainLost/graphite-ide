@@ -12,8 +12,9 @@ namespace core
     class Panel : NonCopyable
     {
     public:
-        Panel(std::string id, std::string title)
-            : m_id(std::move(id)), m_title(std::move(title))
+        Panel(std::string id, std::string title, bool visible = true)
+            : m_id(std::move(id)), m_title(std::move(title)), m_visible(visible),
+              m_defaultVisible(visible)
         {
         }
 
@@ -28,9 +29,14 @@ namespace core
         [[nodiscard]] bool IsVisible() const noexcept { return m_visible; }
         void SetVisible(bool visible) noexcept { m_visible = visible; }
 
+        /// What this panel's visibility returns to when the layout is reset. A panel that
+        /// starts hidden stays hidden through a reset: nobody asked to open it.
+        [[nodiscard]] bool DefaultVisible() const noexcept { return m_defaultVisible; }
+
     private:
         std::string m_id;
         std::string m_title;
         bool m_visible = true;
+        bool m_defaultVisible = true;
     };
 }

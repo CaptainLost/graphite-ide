@@ -3,11 +3,24 @@
 #include "Core/Ui/PanelManager.h"
 
 #include "Core/Base/Assert.h"
+#include "Core/Command/CommandRegistry.h"
 
 #include <imgui.h>
 
 namespace core
 {
+    namespace
+    {
+        void RegisterPanelCommand(CommandRegistry& commands, Panel& panel)
+        {
+            commands.Add({.id = "panel." + panel.Id(),
+                          .label = panel.Title(),
+                          .group = "panels",
+                          .run = [&panel] { panel.SetVisible(!panel.IsVisible()); },
+                          .checked = [&panel] { return panel.IsVisible(); }});
+        }
+    }
+
     Panel* PanelManager::Add(std::unique_ptr<Panel> panel)
     {
         CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
@@ -17,6 +30,15 @@ namespace core
 
         Panel* reference = panel.get();
         m_panels.push_back(std::move(panel));
+
+        // A panel added after RegisterCommands registers as it arrives, so OnAttach can call
+        // the two in either order. The lambdas capture the panel by reference, which is safe
+        // because PanelManager owns it for as long as it owns the registry pointer.
+        if (m_commands != nullptr)
+        {
+            RegisterPanelCommand(*m_commands, *m_panels.back());
+        }
+
         return reference;
     }
 
@@ -67,14 +89,21 @@ namespace core
         }
     }
 
-    void PanelManager::RenderViewMenuItems()
+    void PanelManager::RegisterCommands(CommandRegistry& commands)
+    {
+        m_commands = &commands;
+
+        for (auto& panel : m_panels)
+        {
+            RegisterPanelCommand(commands, *panel);
+        }
+    }
+
+    void PanelManager::ResetVisibility()
     {
         for (auto& panel : m_panels)
         {
-            bool visible = panel->IsVisible();
-            const std::string label = panel->Title() + "###" + panel->Id();
-            if (ImGui::MenuItem(label.c_str(), nullptr, &visible))
-                panel->SetVisible(visible);
+            panel->SetVisible(panel->DefaultVisible());
         }
     }
 
