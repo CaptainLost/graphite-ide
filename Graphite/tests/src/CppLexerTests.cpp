@@ -287,8 +287,9 @@ TEST_CASE("CppLexer continues a directive past a trailing backslash without spec
 	CHECK(Exit("#define M(x) \\") == Graphite::LineState{});
 }
 
-// out.empty() is what makes this a directive rather than a stringify operator: a # that is not
-// the first thing on the line is ordinary punctuation.
+// The guard is out.empty(), so any earlier token on the line defeats it — including a comment,
+// which real C++ permits before a directive. This case is a known limitation this lexer accepts.
+// A # that is not the first thing on the line is ordinary punctuation here.
 TEST_CASE("CppLexer does not treat a mid-line hash as a directive")
 {
 	CHECK(Shape("x #y") == "i .i");
