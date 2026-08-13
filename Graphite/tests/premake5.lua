@@ -25,7 +25,13 @@ project "GraphiteTests"
         "src/**.h",
         "src/**.cpp",
         "%{wks.location}/Graphite/src/Sln/**.h",
-        "%{wks.location}/Graphite/src/Sln/**.cpp"
+        "%{wks.location}/Graphite/src/Sln/**.cpp",
+        "%{wks.location}/Graphite/src/Lang/**.h",
+        "%{wks.location}/Graphite/src/Lang/**.cpp",
+        "%{wks.location}/Graphite/src/Settings/**.h",
+        "%{wks.location}/Graphite/src/Settings/**.cpp",
+        "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
+        "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp"
     }
 
     includedirs

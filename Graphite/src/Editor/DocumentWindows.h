@@ -4,11 +4,14 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Syntax/SyntaxCache.h"
+
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -61,6 +64,10 @@ namespace Graphite {
 		std::optional<std::string> GetStatusMessage() const;
 
 	private:
+		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
+
+		void PruneSyntaxCaches();
+
 		void SyncEveryDocument();
 
 		void RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
@@ -154,5 +161,16 @@ namespace Graphite {
 		};
 
 		std::optional<TransientMessage> m_TransientMessage;
+
+		// Keyed by path rather than by index: the document list is reordered by dragging tabs
+		// and compacted on close, and either would hand a document another one's colours.
+		//
+		// A side-map on a container that owns the identity: Core::DocumentSet::RewritePaths can
+		// change item.Path (a rename on disk, or of a directory an open document lives under)
+		// without telling this map, so the entry under the old path would otherwise sit here
+		// for the rest of the process. PruneSyntaxCaches is what recovers that rather than a
+		// rewrite at the rename site — the rename happens in Core, this map is Graphite's own,
+		// and a prune is the one fix that does not need the rename to know this map exists.
+		std::map<std::filesystem::path, SyntaxCache> m_Syntax;
 	};
 }

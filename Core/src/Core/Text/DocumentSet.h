@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Text/Caret.h"
+#include "Core/Text/Columns.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
@@ -45,6 +46,11 @@ namespace Core {
 		std::size_t RowAimAt = NoRowAim;
 
 		std::vector<std::size_t> IndentDepths;
+
+		// How many columns a tab character occupies in this document. A layout input like the
+		// wrap width beside it, not a preference: Core does not know where the number comes
+		// from, only that everything measuring this document must use the same one.
+		std::size_t TabWidth = DefaultTabWidth;
 
 		std::string Detail;
 	};

@@ -2,6 +2,8 @@
 
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Registry/LanguageRegistry.h"
+
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
@@ -442,6 +444,7 @@ namespace Graphite {
 		// file, so a reopened document lands where the user is working rather than where it
 		// was months ago — and imgui.ini stops collecting a dead section per file.
 		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
+		m_Syntax.erase(m_Documents.At(index).Path);
 		m_Documents.Close(index);
 	}
 
@@ -712,6 +715,51 @@ namespace Graphite {
 			m_LastFocusedNode = window->DockNode->ID;
 	}
 
+	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
+	{
+		const auto [entry, inserted] = m_Syntax.try_emplace(item.Path);
+
+		if (inserted)
+		{
+			entry->second.SetLexer(LexerFor(LanguageOfPath(item.Path)));
+			// Keeps the cache's width equal to the item's when a fresh cache is inserted for an
+			// item that was already at a non-default width — the case being a path rewrite
+			// while the document stays open: RewritePaths changes item.Path (a rename of the
+			// file or of a directory it lives under), this try_emplace then inserts under the
+			// new key with `inserted` true, and without this seed the new cache would sit at
+			// Core::DefaultTabWidth forever. DrawEditor's compare-and-rebuild block in
+			// TextEditorWidget.cpp only fires on item.TabWidth != view.Indent.Width, which is
+			// already false the moment the item's own width was set correctly earlier — so
+			// nothing would ever re-lex the cache at the right width.
+			entry->second.SetTabWidth(item.TabWidth);
+		}
+
+		return entry->second;
+	}
+
+	// Drops every m_Syntax entry whose key is not the path of a currently open document. Run
+	// once a frame rather than at the one place a path changes: m_Syntax is a side-map keyed on
+	// an identity DocumentSet owns and can rewrite (a rename on disk, or of a directory an open
+	// document lives under) without this map hearing about it, so an entry orphaned that way
+	// would otherwise hold its std::vector<LineState> — one Continuation and one std::string
+	// per line of the file — for the rest of the process. SyntaxFor already does the right
+	// thing after a rename (a fresh cache under the new path, lexed with whatever language the
+	// new extension implies), so this only ever removes what nothing can reach any more.
+	void DocumentWindows::PruneSyntaxCaches()
+	{
+		for (auto it = m_Syntax.begin(); it != m_Syntax.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_Syntax.erase(it);
+			}
+		}
+	}
+
 	void DocumentWindows::ForgetLayoutOfWindowsClosedElsewhere(
 		const std::vector<std::string>& startingIdentities)
 	{
@@ -786,8 +834,13 @@ namespace Graphite {
 				if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
 					m_Documents.Promote(index);
 
-				const EditorFrameResult editorResult =
-					DrawEditor(context, item, fontSize, indentStyle, wordWrap);
+				EditorView view;
+				view.FontSize = fontSize;
+				view.Indent = indentStyle;
+				view.WordWrap = wordWrap;
+				view.Syntax = &SyntaxFor(item);
+
+				const EditorFrameResult editorResult = DrawEditor(context, item, view);
 
 				// Once the user has typed into a preview it is no longer something they were
 				// just glancing at.
@@ -847,6 +900,11 @@ namespace Graphite {
 
 		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap,
 							  focusRequest);
+
+		// Once per frame, not once per document: a prune that ran inside the per-document loop
+		// above would cost a walk of m_Syntax for every open document instead of one for the
+		// whole frame.
+		PruneSyntaxCaches();
 
 		// After the loop, not before: a renamed document's pending dock target has to be
 		// consumed by Begin() above before its old identity's node can be undocked and

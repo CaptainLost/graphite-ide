@@ -80,7 +80,7 @@ namespace Core {
 		// The reload can shorten the document past where the caret sat; PlaceAt clamps to the
 		// new length and pulls back to a character boundary.
 		item.Caret =
-			PlaceAt(item.Document->GetBuffer(), item.Caret, item.Caret.Offset, false, DefaultTabWidth);
+			PlaceAt(item.Document->GetBuffer(), item.Caret, item.Caret.Offset, false, item.TabWidth);
 
 		// The vertical aim was measured against text that has gone. Cleared rather than
 		// converted, so the next Up or Down resolves it from where the caret actually is now.

@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/Text/DocumentSet.h"
 #include "Core/Text/Indent.h"
 #include "Core/Text/TextBuffer.h"
 
@@ -181,4 +182,32 @@ TEST_CASE("IndentDepths resolves blank lines against the lines around them")
 		REQUIRE(depths.size() == 1);
 		CHECK(depths[0] == 4);
 	}
+}
+
+// The depth of a line is measured in columns, so the same leading tab is a different depth at
+// a different width. This is what the indent guides are drawn from, and it was the visible
+// symptom of the width being a constant: guides that did not line up with the indentation.
+TEST_CASE("IndentDepths measures a leading tab at the width it is given")
+{
+	const Core::TextBuffer buffer{"\tone\n\t\ttwo\n"};
+
+	const std::vector<std::size_t> atFour = Core::IndentDepths(buffer, 4);
+	const std::vector<std::size_t> atEight = Core::IndentDepths(buffer, 8);
+
+	REQUIRE(atFour.size() >= 2);
+	REQUIRE(atEight.size() >= 2);
+
+	CHECK(atFour[0] == 4);
+	CHECK(atFour[1] == 8);
+
+	CHECK(atEight[0] == 8);
+	CHECK(atEight[1] == 16);
+}
+
+// A document opened without anyone setting a width still lays out the way it always did.
+TEST_CASE("OpenItem defaults its tab width to the shared default")
+{
+	const Core::OpenItem item;
+
+	CHECK(item.TabWidth == Core::DefaultTabWidth);
 }

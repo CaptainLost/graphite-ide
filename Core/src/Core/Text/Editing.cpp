@@ -104,7 +104,7 @@ namespace Core {
 		void RecomputeDepths(OpenItem& item, const TextBuffer& buffer, std::size_t from,
 							 std::size_t to)
 		{
-			const std::vector<std::size_t> depths = IndentDepths(buffer, DefaultTabWidth, from, to);
+			const std::vector<std::size_t> depths = IndentDepths(buffer, item.TabWidth, from, to);
 
 			for (std::size_t line = from; line <= to; ++line)
 				item.IndentDepths[line] = depths[line - from];
@@ -139,7 +139,7 @@ namespace Core {
 			for (std::size_t line = firstLine; line <= lastLine && line < buffer.GetLineCount();
 				 ++line)
 			{
-				const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
+				const std::size_t width = ColumnCount(buffer.LineText(line), item.TabWidth);
 
 				if (width > item.WidestColumn)
 				{
@@ -194,7 +194,7 @@ namespace Core {
 
 			const Caret target = HasSelection(item.Caret)
 									 ? item.Caret
-									 : Move(buffer, item.Caret, motion, true, DefaultTabWidth, 0);
+									 : Move(buffer, item.Caret, motion, true, item.TabWidth, 0);
 
 			const auto [from, to] = SelectionRange(target);
 
@@ -289,13 +289,13 @@ namespace Core {
 	{
 		const TextBuffer& buffer = item.Document->GetBuffer();
 
-		item.IndentDepths = IndentDepths(buffer, DefaultTabWidth);
+		item.IndentDepths = IndentDepths(buffer, item.TabWidth);
 		item.WidestColumn = 0;
 		item.WidestLine = 0;
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
-			const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
+			const std::size_t width = ColumnCount(buffer.LineText(line), item.TabWidth);
 
 			if (width > item.WidestColumn)
 			{
@@ -306,7 +306,7 @@ namespace Core {
 
 		// Rebuilt at the width already in force, not at kNoWrap, or a document on screen
 		// would unwrap under the user until the window was next resized.
-		item.Rows.Rebuild(buffer, item.Rows.GetColumnsPerRow(), DefaultTabWidth);
+		item.Rows.Rebuild(buffer, item.Rows.GetColumnsPerRow(), item.TabWidth);
 	}
 
 	bool InsertText(OpenItem& item, std::string_view utf8)

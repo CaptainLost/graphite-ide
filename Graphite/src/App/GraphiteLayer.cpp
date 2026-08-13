@@ -16,7 +16,9 @@
 
 #include "Core/Base/Log.h"
 
-#include "Panels/KeyBindingsPanel.h"
+#include "Settings/EditorSection.h"
+#include "Settings/KeyBindingsSection.h"
+#include "Settings/SettingsPanel.h"
 
 #include "Core/Fs/FileSystem.h"
 
@@ -53,7 +55,7 @@ namespace Graphite {
 	{
 		m_Layout.Left = {"files"};
 		m_Layout.Bottom = {"console"};
-		m_Layout.Center = {"keybindings"};
+		m_Layout.Center = {"settings"};
 
 		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
 		// system one, and then TitleBar::Render draws nothing and the taller row would be
@@ -84,8 +86,13 @@ namespace Graphite {
 		// replaces rather than being shadowed by it.
 		AppSettings::LoadKeyBindings(m_Keys);
 
-		m_Panels.Add(Core::CreateScope<KeyBindingsPanel>(
+		std::vector<Core::Scope<SettingsSection>> sections;
+
+		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
+		sections.push_back(Core::CreateScope<KeyBindingsSection>(
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
+
+		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
 
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();

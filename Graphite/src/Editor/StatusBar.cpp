@@ -71,7 +71,7 @@ namespace Graphite {
 			const Core::TextBuffer& buffer = item.Document->GetBuffer();
 			const Core::Position where = buffer.ToPosition(item.Caret.Offset);
 			const std::size_t column = Core::ColumnOfByte(buffer.LineText(where.Line), where.Column,
-														  Core::DefaultTabWidth);
+														  item.TabWidth);
 
 			std::string description =
 				"Ln " + std::to_string(where.Line + 1) + ", Col " + std::to_string(column + 1);
