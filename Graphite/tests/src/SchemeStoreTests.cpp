@@ -125,6 +125,17 @@ TEST_CASE("A built-in name cannot be written over")
 	CHECK(Graphite::SaveScheme(temp.GetPath(), "mine", scheme));
 }
 
+TEST_CASE("A name that would escape the themes directory is refused")
+{
+	const TempDirectory temp;
+
+	const Graphite::ColorScheme scheme;
+
+	CHECK_FALSE(Graphite::SaveScheme(temp.GetPath(), "../evil", scheme));
+	CHECK_FALSE(Graphite::SaveScheme(temp.GetPath(), "sub/evil", scheme));
+	CHECK_FALSE(Graphite::SaveScheme(temp.GetPath(), "sub\\evil", scheme));
+}
+
 TEST_CASE("Listing a directory names the schemes in it and ignores the built-ins")
 {
 	const TempDirectory temp;

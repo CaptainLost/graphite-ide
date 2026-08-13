@@ -126,6 +126,16 @@ namespace Graphite {
 			return false;
 		}
 
+		// The name is joined straight onto the themes directory below. Harmless while it only
+		// ever comes from a user editing their own JSON, but a name with a path separator or a
+		// ".." segment would resolve outside that directory the moment something else supplies
+		// it — a text field, say.
+		if (name.find('/') != std::string_view::npos || name.find('\\') != std::string_view::npos ||
+			name.find("..") != std::string_view::npos)
+		{
+			return false;
+		}
+
 		std::error_code ec;
 		std::filesystem::create_directories(directory, ec);
 
