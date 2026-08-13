@@ -686,7 +686,10 @@ namespace Graphite {
 						result.Edited |= Core::InsertText(item, clipboard);
 				}
 
-				if (control && stroke.Key == Core::KeyCode::X)
+				// Only with something selected. DeleteBackward on an empty selection removes the
+				// character before the caret, so a stray Ctrl+X used to eat a character and put
+				// nothing on the clipboard — a deletion with no way to get the text back.
+				if (control && stroke.Key == Core::KeyCode::X && Core::HasSelection(item.Caret))
 				{
 					CopySelectionToClipboard(buffer, item.Caret);
 					result.Edited |= Core::DeleteBackward(item);
