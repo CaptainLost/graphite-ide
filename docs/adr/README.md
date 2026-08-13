@@ -509,4 +509,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0477](0477-draw-the-title-bar-in-the-application.md) | Draw the title bar in the application | accepted | 2026-08-11 |
 | [0478](0478-route-menu-items-and-shortcuts-through-commands.md) | Route menu items and shortcuts through commands | proposed | 2026-08-12 |
 | [0479](0479-settle-one-house-style-for-naming-formatting-and-layout.md) | Settle one house style for naming, formatting and layout | accepted | 2026-08-12 |
+| [0480](0480-drive-input-from-events-and-leave-the-drawn-gestures-to-the-gui.md) | Drive input from events and leave the drawn gestures to the GUI | accepted | 2026-08-13 |
 <!-- /adr-index -->

@@ -27,7 +27,7 @@ records, never hand-edited.
 
 | Path | What it holds |
 |---|---|
-| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Event`, `Fs`, `Git`, `Gui`, `Platform`, `Text`, `Ui` |
+| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `Fs`, `Git`, `ImGui`, `Platform`, `Text`, `UI` |
 | `Core/tests` | doctest suite for the engine, built as `CoreTests` |
 | `Graphite/src` | The application: `App`, `Editor`, `Panels`, `Settings`, `Sln`, `Workspace` |
 | `Graphite/tests` | doctest suite for the application, built as `GraphiteTests` |
