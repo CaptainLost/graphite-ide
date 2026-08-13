@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include "TempDirectory.h"
+#include "Theme/ActiveScheme.h"
+#include "Theme/BuiltInSchemes.h"
 #include "Theme/SchemeStore.h"
 
 #include <algorithm>
@@ -150,4 +152,30 @@ TEST_CASE("A deleted scheme stops being listed")
 	REQUIRE(Graphite::DeleteScheme(temp.GetPath(), "gone"));
 
 	CHECK(Graphite::ListSchemes(temp.GetPath()).empty());
+}
+
+TEST_CASE("An empty name resolves to the dark built-in without reading anything")
+{
+	const TempDirectory temp;
+
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveNamed("", temp.GetPath());
+
+	const std::size_t background = static_cast<std::size_t>(Graphite::EditorColor::Background);
+
+	CHECK(resolved.Editor[background].R ==
+		  doctest::Approx(Graphite::DarkScheme().Editor[background].R));
+}
+
+TEST_CASE("A scheme naming light as its base inherits from light")
+{
+	const TempDirectory temp;
+
+	WriteFile(temp.GetPath() / "pale.json", R"({"base":"light"})");
+
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveNamed("pale", temp.GetPath());
+
+	const std::size_t background = static_cast<std::size_t>(Graphite::EditorColor::Background);
+
+	CHECK(resolved.Editor[background].R ==
+		  doctest::Approx(Graphite::LightScheme().Editor[background].R));
 }

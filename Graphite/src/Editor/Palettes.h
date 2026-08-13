@@ -1,6 +1,9 @@
 #pragma once
 
+#include "Editor/EditorPalette.h"
+
 #include "Lang/Api/TokenKind.h"
+#include "Theme/ColorScheme.h"
 
 #include <imgui.h>
 
@@ -10,8 +13,7 @@
 
 namespace Graphite {
 
-	// One colour per token kind, read once a frame. Only Text comes from the theme; the rest are
-	// IM_COL32 literals fixed until an editable colour scheme exists — a later stage's job.
+	// One colour per token kind, read once a frame.
 	struct SyntaxPalette
 	{
 		// Sized from TokenKind::Count rather than a literal, so a kind added to TokenKind grows
@@ -27,5 +29,10 @@ namespace Graphite {
 	static_assert(std::tuple_size_v<decltype(SyntaxPalette::Colours)> ==
 				  static_cast<std::size_t>(TokenKind::Count));
 
-	SyntaxPalette ReadSyntaxPalette(ImU32 text);
+	// The ImGui boundary for both palettes: the one place in this sub-project a Core::Color
+	// turns into an ImU32, via IM_COL32. Theme/ stays free of imgui.h so it can build and be
+	// tested without a window.
+	SyntaxPalette ReadSyntaxPalette(const ResolvedScheme& scheme);
+
+	EditorPalette ReadEditorPalette(const ResolvedScheme& scheme);
 }

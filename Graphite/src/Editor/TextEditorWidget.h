@@ -18,6 +18,7 @@ namespace Core {
 namespace Graphite {
 
 	class SyntaxCache;
+	struct ResolvedScheme;
 
 	struct CommandContext
 	{
@@ -43,13 +44,15 @@ namespace Graphite {
 	// language with no lexer simply has TokensOf return an empty vector, so the row still draws
 	// in one colour. The null default and the guard around every use are defence, not a
 	// supported "no cache" mode: the struct default-constructs to something, and a null pointer
-	// is cheaper to guard against than to rule out by construction.
+	// is cheaper to guard against than to rule out by construction. Scheme is filled the same
+	// way, from the ActiveScheme GraphiteLayer owns and loads at startup.
 	struct EditorView
 	{
 		float FontSize = 0.0f;
 		Core::IndentStyle Indent;
 		bool WordWrap = false;
 		SyntaxCache* Syntax = nullptr;
+		const ResolvedScheme* Scheme = nullptr;
 	};
 
 	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,

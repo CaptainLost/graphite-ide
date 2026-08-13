@@ -1,9 +1,11 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Editor/EditorPalette.h"
-#include "Editor/SyntaxPalette.h"
+#include "Editor/Palettes.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
+
+#include "Theme/BuiltInSchemes.h"
 
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
@@ -890,24 +892,6 @@ namespace Graphite {
 				ImGui::SetScrollX(caretX + metrics.CellWidth - ImGui::GetWindowWidth());
 		}
 
-		EditorPalette ReadPalette()
-		{
-			EditorPalette palette;
-
-			palette.Background = ImGui::GetColorU32(ImGuiCol_WindowBg);
-			palette.Text = ImGui::GetColorU32(ImGuiCol_Text);
-			palette.Number = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-			palette.Selection = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
-			palette.CurrentLine = ImGui::GetColorU32(ImGuiCol_FrameBg, 0.45f);
-			// Structure, not content: clearly dimmer than the line numbers, which already use
-			// TextDisabled at full strength.
-			palette.Guide = ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.35f);
-			palette.GutterFill = ImGui::GetColorU32(ImGuiCol_WindowBg);
-			palette.Caret = ImGui::GetColorU32(ImGuiCol_Text);
-
-			return palette;
-		}
-
 		// Everything a row needs that is the same for every row of the frame. ContentWidth is the
 		// post-edit one, so a line that just became the widest gets its full-width highlight this
 		// frame rather than one frame later.
@@ -1298,7 +1282,8 @@ namespace Graphite {
 
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
-							 float available, bool wordWrap, bool focused, SyntaxCache* syntax)
+							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
+							 const ResolvedScheme& scheme)
 		{
 			RowCanvas canvas;
 
@@ -1309,8 +1294,8 @@ namespace Graphite {
 			canvas.ContentWidth = ContentWidthOf(item, metrics, available, wordWrap);
 			canvas.WindowWidth = ImGui::GetWindowWidth();
 			canvas.Metrics = metrics;
-			canvas.Palette = ReadPalette();
-			canvas.SyntaxColours = ReadSyntaxPalette(canvas.Palette.Text);
+			canvas.Palette = ReadEditorPalette(scheme);
+			canvas.SyntaxColours = ReadSyntaxPalette(scheme);
 
 			// Under every other layer: the current-line highlight, the gutter fill, the
 			// selection and the text itself all draw after this. The rectangle matches the one
@@ -1488,8 +1473,11 @@ namespace Graphite {
 				s_CaretMovedAt = ImGui::GetTime();
 			}
 
+			// A null Scheme is defence, not a supported mode — DocumentWindows always fills it
+			// from the ActiveScheme GraphiteLayer loads at startup, the same guard the syntax
+			// cache above gets.
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
-							focused, view.Syntax);
+							focused, view.Syntax, view.Scheme != nullptr ? *view.Scheme : DarkScheme());
 		}
 
 		ImGui::EndChild();

@@ -34,6 +34,13 @@ namespace Graphite {
 		static bool LoadWordWrap();
 		static void SaveWordWrap(bool wrap);
 
+		static std::string LoadColorScheme();
+		static void SaveColorScheme(std::string_view name);
+
+		// The executable directory's themes subdirectory, whether or not it exists yet — the
+		// same directory ResolveNamed reads from and the settings panel writes into.
+		static std::filesystem::path ThemesDirectory();
+
 		static void LoadKeyBindings(Core::Keymap& keys);
 
 		static void SaveKeyBindings(const Core::Keymap& keys);
