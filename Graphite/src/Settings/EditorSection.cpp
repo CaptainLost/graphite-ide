@@ -100,7 +100,11 @@ namespace Graphite {
 		// control does something visible in both Spaces and Tabs mode.
 		int width = static_cast<int>(m_Settings.GetIndentStyle().Width);
 
-		if (ImGui::SliderInt("Tab width", &width, 1, 8))
+		// AlwaysClamp: Ctrl+Click turns this into a text input, and without the flag ImGui
+		// does not clamp a typed value to the given range — a width the setter and Load both
+		// have to defend against independently, since it reaches them the same way a
+		// hand-edited graphite.json would.
+		if (ImGui::SliderInt("Tab width", &width, 1, 8, "%d", ImGuiSliderFlags_AlwaysClamp))
 		{
 			m_PendingIndentWidth = width;
 		}

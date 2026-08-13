@@ -74,3 +74,24 @@ TEST_CASE("EditorSettings refuses an indent width of zero")
 
 	CHECK(settings.GetIndentStyle().Width == 2);
 }
+
+// The slider offers 1 to 8, but Ctrl+Click turns it into a text input that ImGui does not clamp
+// on its own — SliderInt is given ImGuiSliderFlags_AlwaysClamp for that, but the setter has to
+// hold the line too, since the same value can arrive from a hand-edited graphite.json.
+TEST_CASE("EditorSettings clamps an indent width above its maximum")
+{
+	Graphite::EditorSettings settings;
+
+	settings.SetIndentWidth(999999999);
+
+	CHECK(settings.GetIndentStyle().Width == 8);
+}
+
+TEST_CASE("EditorSettings keeps an indent width exactly on the maximum")
+{
+	Graphite::EditorSettings settings;
+
+	settings.SetIndentWidth(8);
+
+	CHECK(settings.GetIndentStyle().Width == 8);
+}

@@ -42,6 +42,9 @@ namespace Graphite {
 
 		static constexpr float kFontSizeStep = 1.0f;
 
+		static constexpr std::size_t kMinimumIndentWidth = 1;
+		static constexpr std::size_t kMaximumIndentWidth = 8;
+
 		float m_FontSize = kDefaultFontSize;
 
 		bool m_IndentWithSpaces = true;
