@@ -2,6 +2,8 @@
 
 #include "Settings/SettingsSection.h"
 
+#include <optional>
+
 namespace Core {
 
 	class CommandRegistry;
@@ -27,5 +29,11 @@ namespace Graphite {
 
 		EditorSettings& m_Settings;
 		Core::CommandRegistry& m_Commands;
+
+		// The slider's working value while it is being dragged. Committed to m_Settings only on
+		// ImGui::IsItemDeactivatedAfterEdit, so a drag writes graphite.json once instead of once
+		// per frame. Empty when no drag is in progress.
+		std::optional<float> m_PendingFontSize;
+		std::optional<int> m_PendingIndentWidth;
 	};
 }

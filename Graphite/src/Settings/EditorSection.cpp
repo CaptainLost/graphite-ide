@@ -57,11 +57,23 @@ namespace Graphite {
 		// A slider rather than the zoom commands: those step by a fixed amount from wherever
 		// the size is, which is the right shape for a shortcut and the wrong one for a control
 		// you drag. SetFontSize clamps, so a drag past either end settles on the bound.
+		//
+		// Written on release, not on every frame of the drag: SetFontSize rewrites the whole
+		// settings file (AppSettings::WriteValue does a full JsonFile load, Set and Save), and a
+		// drag across the range produces a new value every frame at "%.1f". This does mean the
+		// editor's own font does not change live while dragging — it updates on release, along
+		// with the file.
 		float fontSize = m_Settings.GetFontSize();
 
 		if (ImGui::SliderFloat("Font size", &fontSize, 8.0f, 32.0f, "%.1f"))
 		{
-			m_Settings.SetFontSize(fontSize);
+			m_PendingFontSize = fontSize;
+		}
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingFontSize.has_value())
+		{
+			m_Settings.SetFontSize(*m_PendingFontSize);
+			m_PendingFontSize.reset();
 		}
 
 		RenderCommandCheckbox("Word wrap", "editor.toggleWordWrap");
@@ -70,24 +82,42 @@ namespace Graphite {
 
 		bool useSpaces = m_Settings.GetIndentStyle().UseSpaces;
 
-		if (ImGui::RadioButton("Spaces", useSpaces))
+		if (ImGui::RadioButton("Spaces", useSpaces) && !useSpaces)
 		{
 			m_Settings.SetIndentWithSpaces(true);
 		}
 
 		ImGui::SameLine();
 
-		if (ImGui::RadioButton("Tabs", !useSpaces))
+		if (ImGui::RadioButton("Tabs", !useSpaces) && useSpaces)
 		{
 			m_Settings.SetIndentWithSpaces(false);
 		}
 
+		// Tab *display* width — expansion when drawing, selection columns, indent guides, the
+		// status bar column, the syntax lexer — is fixed at Core::DefaultTabWidth and is not
+		// what this control changes. This is only how many spaces Indent inserts and Outdent
+		// removes, so it does nothing visible in Tabs mode.
+		ImGui::BeginDisabled(!useSpaces);
+
 		int width = static_cast<int>(m_Settings.GetIndentStyle().Width);
 
-		if (ImGui::SliderInt("Width", &width, 1, 8) && width > 0)
+		if (ImGui::SliderInt("Spaces per indent", &width, 1, 8))
 		{
-			m_Settings.SetIndentWidth(static_cast<std::size_t>(width));
+			m_PendingIndentWidth = width;
 		}
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingIndentWidth.has_value())
+		{
+			if (*m_PendingIndentWidth > 0)
+			{
+				m_Settings.SetIndentWidth(static_cast<std::size_t>(*m_PendingIndentWidth));
+			}
+
+			m_PendingIndentWidth.reset();
+		}
+
+		ImGui::EndDisabled();
 
 		ImGui::SeparatorText("Git");
 
