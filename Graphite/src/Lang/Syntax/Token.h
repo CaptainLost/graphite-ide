@@ -22,8 +22,8 @@ namespace Graphite {
 	};
 
 	// What a line hands the line below it. A lexer that needs no context between lines returns
-	// a default-constructed one, and SyntaxCache uses equality on this to decide when a re-lex
-	// can stop early.
+	// a default-constructed one. Comparable because a value SyntaxCache stores one of per line
+	// has to be, not because anything compares two of these to stop a re-lex early today.
 	struct LineState
 	{
 		enum class Continuation : std::uint8_t
