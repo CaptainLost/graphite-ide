@@ -247,15 +247,16 @@ namespace Graphite {
 		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
 								 m_EditorSettings.IsWordWrap());
-
 	}
 
 	void GraphiteLayer::OnEvent(Core::Event& event)
 	{
-		// Not while a panel is reading raw keys: a chord pressed to record it would be bound
-		// and run at once, so capturing Ctrl+Shift+S would also save everything. Asked of the
-		// panels as a whole, so this knows nothing about which one captures.
-		if (m_Panels.IsCapturingInput())
+		// The panels first, and only those that drew: a chord being recorded is consumed
+		// there, so the router never sees it. Capturing Ctrl+Shift+S would otherwise bind it
+		// and save everything in the same keystroke.
+		m_Panels.OnEvent(event);
+
+		if (event.Handled)
 		{
 			return;
 		}
@@ -265,8 +266,7 @@ namespace Graphite {
 		Core::EventDispatcher dispatcher{event};
 
 		dispatcher.Dispatch<Core::KeyPressedEvent>(
-			[this](Core::KeyPressedEvent& pressed)
-			{ return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed); });
+			[this](Core::KeyPressedEvent& pressed) { return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed); });
 	}
 
 	bool GraphiteLayer::OnCloseRequested()

@@ -23,12 +23,11 @@ namespace Core {
 		Panel* Find(std::string_view id);
 		std::size_t GetCount() const { return m_Panels.size(); }
 
-		bool IsCapturingInput() const;
-
 		bool SetVisible(std::string_view id, bool visible);
 
 		void OnUpdate(Timestep ts);
 		void OnImGuiRender();
+		void OnEvent(Event& event);
 
 		void RegisterCommands(CommandRegistry& commands);
 

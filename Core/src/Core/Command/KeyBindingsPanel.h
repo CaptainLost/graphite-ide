@@ -22,12 +22,10 @@ namespace Core {
 
 		void OnImGuiRender() override;
 
-		void OnNotDrawn() override;
-
-		bool IsCapturingInput() const override { return !m_Capturing.empty(); }
+		void OnEvent(Event& event) override;
 
 	private:
-		std::optional<Chord> CaptureChord(bool pointerOverCell);
+		std::optional<Chord> CaptureWheelChord(bool pointerOverCell);
 
 		void RenderRow(const Command& command);
 
@@ -46,6 +44,12 @@ namespace Core {
 		CommandRegistry& m_Commands;
 		Keymap& m_Keys;
 		std::function<void()> m_OnChanged;
+
+		// Whether this screen held the focus while it last drew. Events arrive before the
+		// frame they belong to, so a capture has to be judged against the frame just past:
+		// without it a keystroke aimed at the editor would be recorded by a cell waiting on
+		// a panel the user is no longer looking at.
+		bool m_WasFocused = false;
 
 		std::string m_Capturing;
 		std::size_t m_CapturingSlot = 0;

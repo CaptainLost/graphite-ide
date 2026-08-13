@@ -2,6 +2,7 @@
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
+#include "Core/Events/Event.h"
 
 #include <string>
 #include <utility>
@@ -22,9 +23,11 @@ namespace Core {
 		virtual void OnUpdate(Timestep ts) { (void)ts; }
 		virtual void OnImGuiRender() {}
 
-		virtual void OnNotDrawn() {}
-
-		virtual bool IsCapturingInput() const { return false; }
+		// Delivered only to panels whose body ran on the previous frame, so a panel behind
+		// another tab of the same dock node receives nothing. That is what lets a panel read
+		// raw keys without any of the others having to know it does: an unread event simply
+		// carries on to whatever is below.
+		virtual void OnEvent(Event& event) { (void)event; }
 
 		const std::string& GetId() const { return m_Id; }
 		const std::string& GetTitle() const { return m_Title; }
@@ -34,10 +37,17 @@ namespace Core {
 
 		bool IsDefaultVisible() const { return m_DefaultVisible; }
 
+		// Whether this panel's body ran on the last frame. Set by whoever draws it; read to
+		// decide whether it is entitled to an event. Hidden, collapsed and tab-hidden all
+		// come out the same way, which is the only distinction an event has to make.
+		bool WasDrawn() const { return m_WasDrawn; }
+		void SetWasDrawn(bool drawn) { m_WasDrawn = drawn; }
+
 	private:
 		std::string m_Id;
 		std::string m_Title;
 		bool m_Visible = true;
 		bool m_DefaultVisible = true;
+		bool m_WasDrawn = false;
 	};
 }

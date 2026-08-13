@@ -17,24 +17,41 @@ namespace {
 		}
 
 		void OnUpdate(Core::Timestep) override { ++updates; }
-		void OnNotDrawn() override { ++notDrawn; }
 
 		int updates = 0;
-		int notDrawn = 0;
 	};
 
-	class CapturingPanel final : public Core::Panel
+	// Counts what reaches it and can be told to consume, which is the whole contract a panel
+	// has with the event walk.
+	class ListeningPanel final : public Core::Panel
 	{
 	public:
-		CapturingPanel(std::string id, bool capturing)
-			: Core::Panel(std::move(id), "Panel"), m_Capturing(capturing)
+		ListeningPanel(std::string id, bool consume)
+			: Core::Panel(std::move(id), "Panel"), m_Consume(consume)
 		{
 		}
 
-		bool IsCapturingInput() const override { return m_Capturing; }
+		void OnEvent(Core::Event& event) override
+		{
+			++seen;
+			event.Handled = m_Consume;
+		}
+
+		int seen = 0;
 
 	private:
-		bool m_Capturing = false;
+		bool m_Consume = false;
+	};
+
+	// Written out rather than declared with the EVENT_CLASS_* macros: those name EventType
+	// unqualified, which only resolves inside namespace Core.
+	class TestEvent final : public Core::Event
+	{
+	public:
+		static Core::EventType GetStaticType() { return Core::EventType::None; }
+		Core::EventType GetEventType() const override { return GetStaticType(); }
+		const char* GetName() const override { return "TestEvent"; }
+		int GetCategoryFlags() const override { return Core::EventCategoryApplication; }
 	};
 }
 
@@ -140,50 +157,55 @@ TEST_CASE("A panel added after RegisterCommands still gets its command")
 	REQUIRE(commands.Find("panel.files") != nullptr);
 }
 
-TEST_CASE("IsCapturingInput answers for any panel reading raw keys")
+TEST_CASE("An event reaches only the panels that drew")
 {
-	// What the application asks before routing shortcuts: a chord being recorded for a
-	// rebinding must not also run the command it is being taken from. A panel that
-	// captures nothing is the default, so the ordinary case has to stay false.
+	// A panel behind another tab of the same dock node is not on screen for the user to have
+	// aimed at. Were it given the event anyway, a shortcut capture left waiting on a hidden
+	// screen would swallow every keystroke in the application with nothing on screen to
+	// explain it.
 	Core::PanelManager panels;
-	panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
-
-	CHECK_FALSE(panels.IsCapturingInput());
-
-	panels.Add(std::make_unique<CapturingPanel>("keybindings", true));
-
-	CHECK(panels.IsCapturingInput());
-}
-
-TEST_CASE("IsCapturingInput ignores a hidden panel")
-{
-	// A hidden panel draws nothing and so can be reading nothing, whatever it left behind
-	// in its own state. Were it believed, closing the screen mid-capture would leave every
-	// shortcut in the application dead with nothing on screen to explain it.
-	Core::PanelManager panels;
-	Core::Panel* keys = panels.Add(std::make_unique<CapturingPanel>("keybindings", true));
-	keys->SetVisible(false);
-
-	CHECK_FALSE(panels.IsCapturingInput());
-}
-
-TEST_CASE("A hidden panel is told it was not drawn")
-{
-	// The whole point of OnNotDrawn: a screen in the middle of something — a shortcut
-	// capture waiting for a key — must be told the frame it never got, or it waits
-	// invisibly with nothing on screen able to end it. The hidden branch reaches this
-	// before any ImGui call, so it needs no context or frame to be checked here.
-	Core::PanelManager panels;
+	auto* drawn = static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("files", false)));
 	auto* hidden =
-		static_cast<CountingPanel*>(panels.Add(std::make_unique<CountingPanel>("keybindings",
-																			   "Keyboard Shortcuts",
-																			   false)));
+		static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("keybindings", false)));
 
-	REQUIRE_FALSE(hidden->IsVisible());
+	drawn->SetWasDrawn(true);
+	hidden->SetWasDrawn(false);
 
-	panels.OnImGuiRender();
+	TestEvent event;
+	panels.OnEvent(event);
 
-	CHECK(hidden->notDrawn == 1);
+	CHECK(drawn->seen == 1);
+	CHECK(hidden->seen == 0);
+}
+
+TEST_CASE("A panel that consumes an event stops it reaching the rest")
+{
+	// What replaces asking every panel whether it is capturing: the panel recording a chord
+	// simply takes the keystroke, and nothing below — the shortcut router included — sees it.
+	Core::PanelManager panels;
+	auto* first = static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("first", true)));
+	auto* second =
+		static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("second", false)));
+
+	first->SetWasDrawn(true);
+	second->SetWasDrawn(true);
+
+	TestEvent event;
+	panels.OnEvent(event);
+
+	CHECK(first->seen == 1);
+	CHECK(second->seen == 0);
+	CHECK(event.Handled);
+}
+
+TEST_CASE("A panel starts out not drawn")
+{
+	// Events arrive before the first frame is drawn. A panel that claimed to have been on
+	// screen before it ever was would answer a keystroke aimed at nothing.
+	Core::PanelManager panels;
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+
+	CHECK_FALSE(files->WasDrawn());
 }
 
 TEST_CASE("ResetVisibility restores each panel's own default, not everything visible")

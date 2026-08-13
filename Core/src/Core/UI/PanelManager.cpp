@@ -55,19 +55,19 @@ namespace Core {
 		return nullptr;
 	}
 
-	bool PanelManager::IsCapturingInput() const
+	void PanelManager::OnEvent(Event& event)
 	{
-		for (const auto& panel : m_Panels)
+		// Only the panels that actually drew last frame. A hidden or tab-hidden panel is not
+		// on screen for the user to have aimed at, so it gets no say — which is what makes it
+		// safe for a panel to consume keys without anything else having to ask whether it is.
+		for (auto& panel : m_Panels)
 		{
-			// A hidden panel draws nothing and so can be reading nothing, whatever it
-			// last left behind in its own state.
-			if (panel->IsVisible() && panel->IsCapturingInput())
-			{
-				return true;
-			}
-		}
+			if (event.Handled)
+				return;
 
-		return false;
+			if (panel->WasDrawn())
+				panel->OnEvent(event);
+		}
 	}
 
 	bool PanelManager::SetVisible(std::string_view id, bool visible)
@@ -92,24 +92,22 @@ namespace Core {
 		{
 			if (!panel->IsVisible())
 			{
-				panel->OnNotDrawn();
+				panel->SetWasDrawn(false);
 				continue;
 			}
 
 			bool open = true;
 			const std::string label = panel->GetTitle() + "###" + panel->GetId();
 
-			if (ImGui::Begin(label.c_str(), &open))
+			// Begin returning false means collapsed, or another tab of the same dock node is
+			// the selected one — the panel is visible and got its turn, but its body did not
+			// run, so it did not draw.
+			const bool drawn = ImGui::Begin(label.c_str(), &open);
+			panel->SetWasDrawn(drawn);
+
+			if (drawn)
 			{
 				panel->OnImGuiRender();
-			}
-			else
-			{
-				// Collapsed, or another tab of the same dock node is the selected one.
-				// The panel is still visible and still gets its turn, but its body never
-				// ran, so whatever that body was in the middle of has to be ended rather
-				// than left waiting invisibly.
-				panel->OnNotDrawn();
 			}
 
 			ImGui::End();

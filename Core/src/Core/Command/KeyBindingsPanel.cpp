@@ -11,6 +11,8 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Command/ModifierName.h"
 #include "Core/Command/Trigger.h"
+#include "Core/Events/KeyEvent.h"
+#include "Core/ImGui/ImGuiKeys.h"
 
 #include <imgui.h>
 
@@ -137,6 +139,8 @@ namespace Core {
 
 	void KeyBindingsPanel::OnImGuiRender()
 	{
+		m_WasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
 		ImGui::SetNextItemWidth(-1.0f);
 		ImGui::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut",
 								 m_Filter.data(), m_Filter.size());
@@ -167,9 +171,43 @@ namespace Core {
 		RenderConflictPopup();
 	}
 
-	void KeyBindingsPanel::OnNotDrawn()
+	void KeyBindingsPanel::OnEvent(Event& event)
 	{
-		ForgetConflict();
+		// Only while a cell is actually waiting, and only while this screen has the focus.
+		// The event reached here at all because nothing above consumed it — a focused filter
+		// box makes the GUI claim the keyboard, so typing into it never arrives.
+		if (m_Capturing.empty() || m_Conflict.has_value() || !m_WasFocused)
+		{
+			return;
+		}
+
+		EventDispatcher dispatcher{event};
+
+		dispatcher.Dispatch<KeyPressedEvent>(
+			[this](KeyPressedEvent& pressed) {
+				const ImGuiKey key = ToImGuiKey(pressed.GetKeyCode());
+
+				// Escape leaves the capture without binding anything — which is why Escape
+				// cannot be bound. The alternative is a cell the user cannot get out of.
+				if (key == ImGuiKey_Escape)
+				{
+					m_Capturing.clear();
+					return true;
+				}
+
+				// A modifier alone is never an answer: every capture would otherwise end on
+				// the first Shift pressed on the way to the chord the user meant.
+				if (key == ImGuiKey_None || IsModifierKey(key))
+				{
+					return false;
+				}
+
+				const std::string id = m_Capturing;
+				const std::size_t slot = m_CapturingSlot;
+
+				Offer(id, slot, Chord::Key(ToImGuiModifiers(pressed.GetModifiers()) | key));
+				return true;
+			});
 	}
 
 	bool KeyBindingsPanel::Matches(const Command& command) const
@@ -274,7 +312,7 @@ namespace Core {
 			{
 				m_Capturing.clear();
 			}
-			else if (const std::optional<Chord> chord = CaptureChord(hovered); chord.has_value())
+			else if (const std::optional<Chord> chord = CaptureWheelChord(hovered); chord.has_value())
 			{
 				Offer(id, slot, *chord);
 			}
@@ -283,19 +321,13 @@ namespace Core {
 		ImGui::PopID();
 	}
 
-	std::optional<Chord> KeyBindingsPanel::CaptureChord(bool pointerOverCell)
+	std::optional<Chord> KeyBindingsPanel::CaptureWheelChord(bool pointerOverCell)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 
-		// Escape leaves capture without binding anything — which is why Escape cannot be
-		// bound. The alternative is a cell the user cannot get out of, and that is the worse
-		// trade: nothing here is worth reaching by Escape.
-		if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
-		{
-			m_Capturing.clear();
-			return std::nullopt;
-		}
-
+		// The keys arrive as events; the wheel does not, because it is the one gesture whose
+		// meaning depends on what it is pointing at, and that is known only while drawing.
+		//
 		// Without it the screen would show Ctrl+WheelUp beside Zoom In and have no way to
 		// set it. Checked before the keys because a wheel gesture carries modifiers too,
 		// and only over the cell itself: the table scrolls, and a scroll aimed at the list
@@ -311,31 +343,6 @@ namespace Core {
 		{
 			return Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown,
 								Chord::Scope::HoveredEditor);
-		}
-
-		for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index)
-		{
-			const auto key = static_cast<ImGuiKey>(index);
-
-			// A capturable trigger is a keyboard key that is not a modifier, stated once
-			// rather than as a growing list of spans to skip.
-			//
-			// Not a modifier, because every capture would otherwise end on the first Shift
-			// the user pressed on the way to the chord they meant — and because ImGui has
-			// two spans of those, which cost this screen a round of its own.
-			//
-			// A keyboard key, because the named range also carries the mouse: arming a
-			// capture is a left click, so the scan used to find MouseLeft already pressed
-			// on the very frame it started and bind it before the user could do anything.
-			if (!IsKeyboardKey(key) || IsModifierKey(key))
-			{
-				continue;
-			}
-
-			if (ImGui::IsKeyPressed(key, false))
-			{
-				return Chord::Key(io.KeyMods | key);
-			}
 		}
 
 		return std::nullopt;
