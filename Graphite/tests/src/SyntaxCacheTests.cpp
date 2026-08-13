@@ -15,6 +15,32 @@ namespace {
 		return cache;
 	}
 
+	// SyntaxCache's output is a deterministic function of the buffer and the width, so a wasted
+	// Reset is invisible in the tokens it returns — Reset() followed by a recompute yields
+	// byte-identical output to a cache hit. The only way to see the difference is to count how
+	// often the cache actually asks for a line to be lexed.
+	class CountingLexer final : public Graphite::Lexer
+	{
+	public:
+		Graphite::LineState LexLine(std::string_view line, const Graphite::LineState& entry,
+									std::vector<Graphite::Token>& out) const override
+		{
+			++m_Calls;
+
+			if (!line.empty())
+			{
+				out.push_back(Graphite::Token{Graphite::TokenKind::Identifier, 0, line.size()});
+			}
+
+			return entry;
+		}
+
+		std::size_t GetCallCount() const { return m_Calls; }
+
+	private:
+		mutable std::size_t m_Calls = 0;
+	};
+
 	std::string KindsOf(Graphite::SyntaxCache& cache, const Core::TextBuffer& buffer,
 						std::size_t line)
 	{
@@ -128,15 +154,27 @@ TEST_CASE("SyntaxCache re-lexes when the tab width changes")
 }
 
 // Setting the width it already has must not throw the cache away — that would re-lex the file
-// on any frame something asked twice.
+// on any frame something asked twice. The tokens returned are a deterministic function of the
+// buffer and the width, so a wasted Reset would be invisible in them; only counting the lexer
+// calls can catch it.
 TEST_CASE("SyntaxCache keeps its states when the tab width is unchanged")
 {
 	const Core::TextBuffer buffer{"/* open\nstill"};
-	Graphite::SyntaxCache cache = CppCache();
+	CountingLexer lexer;
+	Graphite::SyntaxCache cache;
+	cache.SetLexer(&lexer);
 
 	cache.SetTabWidth(4);
-	CHECK(KindsOf(cache, buffer, 1) == "m");
+	cache.TokensOf(buffer, 1);
+	const std::size_t callsAfterFirst = lexer.GetCallCount();
 
 	cache.SetTabWidth(4);
-	CHECK(KindsOf(cache, buffer, 1) == "m");
+	cache.TokensOf(buffer, 1);
+	CHECK(lexer.GetCallCount() == callsAfterFirst);
+
+	// A width that actually differs must still cause a re-lex — otherwise this test would pass
+	// just because the guard had been deleted outright.
+	cache.SetTabWidth(8);
+	cache.TokensOf(buffer, 1);
+	CHECK(lexer.GetCallCount() > callsAfterFirst);
 }
