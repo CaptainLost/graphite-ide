@@ -1415,15 +1415,21 @@ namespace Graphite {
 				item.TabWidth = view.Indent.Width;
 				Core::RefreshDerived(item);
 
-				if (view.Syntax != nullptr)
-				{
-					view.Syntax->SetTabWidth(item.TabWidth);
-				}
-
 				// The aim was a column measured at the old width; at the new width the same
 				// column lands somewhere else. Cleared rather than converted, so the next
 				// vertical move resolves it from where the caret actually is now.
 				item.RowAimAt = Core::NoRowAim;
+			}
+
+			// Called every frame rather than only inside the block above: the item's width and
+			// the cache's must never be able to diverge, and tying this to the same edge as
+			// RefreshDerived would let a null view.Syntax on the one frame the width changes
+			// desync the two for good, since the block above only fires again on the next
+			// actual change. SetTabWidth's own equality guard already makes the repeated call
+			// free once the two agree, so the null check is the only guard this still needs.
+			if (view.Syntax != nullptr)
+			{
+				view.Syntax->SetTabWidth(item.TabWidth);
 			}
 
 			RewrapIfGeometryChanged(item, buffer,
