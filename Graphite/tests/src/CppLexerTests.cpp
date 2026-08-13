@@ -253,3 +253,36 @@ TEST_CASE("CppLexer needs the prefix to touch the quote")
 {
 	CHECK(Shape("R \"hi\"") == "i ssss");
 }
+
+TEST_CASE("CppLexer marks the directive introducer and its name")
+{
+	// The token covers the # and the directive name only; what follows lexes as ordinary code,
+	// so "once" is an identifier.
+	CHECK(Shape("#pragma once") == "ppppppp iiii");
+	CHECK(Shape("  # include <x>") == "  ppppppppp sss");
+}
+
+// Everything after the directive name lexes as ordinary C++, so a macro body is coloured.
+TEST_CASE("CppLexer lexes a macro body as code")
+{
+	CHECK(Shape("#define N 42") == "ppppppp i nn");
+}
+
+// The angle-bracket form of an include is a header name, not a less-than: colour it as a
+// string, which is what it is.
+TEST_CASE("CppLexer reads an angled include as a string")
+{
+	CHECK(Shape("#include <vector>") == "pppppppp ssssssss");
+	CHECK(Shape("#include \"Local.h\"") == "pppppppp sssssssss");
+}
+
+// An unclosed angle bracket must not swallow the line — a half-typed include is normal.
+TEST_CASE("CppLexer leaves an unclosed angled include as punctuation")
+{
+	CHECK(Shape("#include <vec") == "pppppppp .iii");
+}
+
+TEST_CASE("CppLexer continues a directive past a trailing backslash without special state")
+{
+	CHECK(Exit("#define M(x) \\") == Graphite::LineState{});
+}

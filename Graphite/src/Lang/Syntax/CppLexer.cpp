@@ -312,6 +312,45 @@ namespace Graphite {
 				continue;
 			}
 
+			// Applies only when nothing but whitespace precedes the # on this line — that is
+			// what distinguishes a directive from a stringify operator inside a macro body.
+			if (c == '#' && out.empty() && state.Kind == LineState::Continuation::None)
+			{
+				const std::size_t from = at;
+				++at;
+
+				while (at < line.size() && (line[at] == ' ' || line[at] == '\t'))
+				{
+					++at;
+				}
+
+				const std::size_t nameFrom = at;
+
+				while (at < line.size() && IsIdentifierPart(line[at]))
+				{
+					++at;
+				}
+
+				Emit(out, TokenKind::Preprocessor, from, at);
+
+				// The header name in an angled include is the one place a < is not an operator.
+				if (line.substr(nameFrom, at - nameFrom) == "include")
+				{
+					const std::size_t angle = line.find('<', at);
+					const std::size_t close = angle == std::string_view::npos
+												  ? std::string_view::npos
+												  : line.find('>', angle);
+
+					if (close != std::string_view::npos)
+					{
+						Emit(out, TokenKind::String, angle, close + 1);
+						at = close + 1;
+					}
+				}
+
+				continue;
+			}
+
 			if (IsIdentifierStart(c))
 			{
 				const std::size_t from = at;
