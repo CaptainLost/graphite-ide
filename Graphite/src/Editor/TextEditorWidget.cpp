@@ -323,11 +323,16 @@ namespace Graphite {
 			const bool routable =
 				context.Router != nullptr && context.Commands != nullptr && context.Keys != nullptr;
 
+			// The wheel stays on the draw-time path rather than moving to events with the
+			// keyboard: it is a gesture the user aims, and which editor it was aimed at is
+			// known here and nowhere else.
 			if (ImGui::IsWindowHovered() && routable)
 			{
-				context.Router->DispatchWheel(*context.Commands, *context.Keys,
-											  Core::Chord::Scope::HoveredEditor,
-											  ImGui::GetIO().MouseWheel);
+				const Core::MouseScrolledEvent scrolled{ImGui::GetIO().MouseWheelH,
+														ImGui::GetIO().MouseWheel};
+
+				context.Router->OnMouseScrolled(*context.Commands, *context.Keys,
+												Core::Chord::Scope::HoveredEditor, scrolled);
 			}
 
 			// The keyboard is scoped to this document's own child window, not merely to

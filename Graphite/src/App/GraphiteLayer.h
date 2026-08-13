@@ -33,6 +33,7 @@ namespace Graphite {
 		void OnAttach() override;
 		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;
+		void OnEvent(Core::Event& event) override;
 
 		bool OnCloseRequested() override;
 

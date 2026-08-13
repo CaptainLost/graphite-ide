@@ -248,26 +248,25 @@ namespace Graphite {
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
 								 m_EditorSettings.IsWordWrap());
 
-		// After every window this frame has Begin/End'd, which is what
-		// ImGuiInputFlags_RouteGlobal expects — there is no "current" window whose focus a
-		// RouteFocused check could compare against at this point. The chords themselves
-		// are the keymap's, registered alongside the commands they run, so a key press and
-		// the menu item showing the same combination cannot drift apart.
-		//
-		// Not while a panel is reading raw keys: a chord pressed to record it would be
-		// bound and run in the same frame, so capturing Ctrl+Shift+S would also save
-		// everything. Asked of the panels as a whole, so this knows nothing about which
-		// one captures.
-		//
-		// Known and accepted: skipping the call also skips the routing registrations
-		// Dispatch's own comment describes, so the first frame after a capture ends can
-		// miss a chord. It costs one keypress in a situation the user just created on
-		// purpose, and the alternative is a router that can be told to observe without
-		// running — more machinery than the fault is worth.
-		if (!m_Panels.IsCapturingInput())
+	}
+
+	void GraphiteLayer::OnEvent(Core::Event& event)
+	{
+		// Not while a panel is reading raw keys: a chord pressed to record it would be bound
+		// and run at once, so capturing Ctrl+Shift+S would also save everything. Asked of the
+		// panels as a whole, so this knows nothing about which one captures.
+		if (m_Panels.IsCapturingInput())
 		{
-			m_Router.Dispatch(m_Commands, m_Keys);
+			return;
 		}
+
+		// The chords are the keymap's, registered alongside the commands they run, so a key
+		// press and the menu item showing the same combination cannot drift apart.
+		Core::EventDispatcher dispatcher{event};
+
+		dispatcher.Dispatch<Core::KeyPressedEvent>(
+			[this](Core::KeyPressedEvent& pressed)
+			{ return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed); });
 	}
 
 	bool GraphiteLayer::OnCloseRequested()
