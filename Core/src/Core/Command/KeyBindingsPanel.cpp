@@ -283,9 +283,17 @@ namespace Core {
 			RenderSlot(command.Id, index + 1, TextOf(binding, index + 1));
 		}
 
-		// One slot past the end appends, so a command can gain a second way of being
-		// reached without any other gesture for it.
-		RenderSlot(command.Id, alternates + 1, {});
+		// One slot past the end appends, so a command can gain a second way of being reached
+		// without any other gesture for it.
+		//
+		// Only once there is a first way in. An alternate to nothing is not a thing the user
+		// can mean, and the append would not even have produced one: with no chords stored,
+		// the appended chord lands at index 0 and becomes the primary, so the cell clicked
+		// under Alternates would have filled the Shortcut column instead.
+		if (binding != nullptr && !binding->Primary.IsEmpty())
+		{
+			RenderSlot(command.Id, alternates + 1, {});
+		}
 
 		ImGui::TableNextColumn();
 
@@ -310,14 +318,31 @@ namespace Core {
 		const bool capturing = m_Capturing == id && m_CapturingSlot == slot;
 		std::string label = capturing ? CaptureLabel(ImGui::GetIO().KeyMods) : text;
 
-		if (label.empty())
+		// An empty cell is an invitation, not a value, and has to read as one: in a column
+		// of chords the '+' it used to show was indistinguishable from the '+' that
+		// separates modifiers, so it looked like a truncated shortcut rather than a button.
+		const bool placeholder = label.empty();
+
+		if (placeholder)
 		{
-			label = slot == 0 ? "(none)" : "+";
+			label = slot == 0 ? "(none)" : "+ Add";
 		}
 
 		label.append("###slot");
 
-		if (ImGui::Selectable(label.c_str(), capturing))
+		if (placeholder)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		}
+
+		const bool clicked = ImGui::Selectable(label.c_str(), capturing);
+
+		if (placeholder)
+		{
+			ImGui::PopStyleColor();
+		}
+
+		if (clicked)
 		{
 			m_Capturing = id;
 			m_CapturingSlot = slot;
