@@ -1,5 +1,6 @@
 #include "Editor/TextEditorWidget.h"
 
+#include "Editor/EditorPalette.h"
 #include "Editor/SyntaxPalette.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
@@ -889,20 +890,11 @@ namespace Graphite {
 				ImGui::SetScrollX(caretX + metrics.CellWidth - ImGui::GetWindowWidth());
 		}
 
-		struct EditorPalette
-		{
-			ImU32 Text = 0;
-			ImU32 Number = 0;
-			ImU32 Selection = 0;
-			ImU32 CurrentLine = 0;
-			ImU32 Guide = 0;
-			ImU32 GutterFill = 0;
-		};
-
 		EditorPalette ReadPalette()
 		{
 			EditorPalette palette;
 
+			palette.Background = ImGui::GetColorU32(ImGuiCol_WindowBg);
 			palette.Text = ImGui::GetColorU32(ImGuiCol_Text);
 			palette.Number = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 			palette.Selection = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
@@ -911,6 +903,7 @@ namespace Graphite {
 			// TextDisabled at full strength.
 			palette.Guide = ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.35f);
 			palette.GutterFill = ImGui::GetColorU32(ImGuiCol_WindowBg);
+			palette.Caret = ImGui::GetColorU32(ImGuiCol_Text);
 
 			return palette;
 		}
@@ -1238,7 +1231,7 @@ namespace Graphite {
 			{
 				canvas.Draw->AddLine(ImVec2(caretX, slice.Y),
 									 ImVec2(caretX, slice.Y + canvas.Metrics.LineHeight),
-									 canvas.Palette.Text, 1.0f);
+									 canvas.Palette.Caret, 1.0f);
 			}
 		}
 
@@ -1318,6 +1311,17 @@ namespace Graphite {
 			canvas.Metrics = metrics;
 			canvas.Palette = ReadPalette();
 			canvas.SyntaxColours = ReadSyntaxPalette(canvas.Palette.Text);
+
+			// Under every other layer: the current-line highlight, the gutter fill, the
+			// selection and the text itself all draw after this. The rectangle matches the one
+			// AddInteractiveSurface hit-tests against, so the fill never falls short of what the
+			// editor actually covers.
+			canvas.Draw->AddRectFilled(
+				canvas.Origin,
+				ImVec2(canvas.Origin.x + std::max(canvas.ContentWidth, canvas.WindowWidth),
+					   canvas.Origin.y + std::max(DocumentHeightOf(item, metrics),
+												  ImGui::GetWindowHeight())),
+				canvas.Palette.Background);
 
 			CaretPaint caret;
 
