@@ -38,6 +38,10 @@ namespace Graphite {
 
 	void SchemeSection::OnDeactivated()
 	{
+		// The question's popup is torn down with the section that renders it, and only this
+		// section's render can release the gate — so it has to be given back here.
+		m_DeleteQuestion.Withdraw();
+
 		m_Draft.Select(AppSettings::LoadColorScheme());
 		Apply();
 	}
@@ -85,7 +89,11 @@ namespace Graphite {
 
 		if (readOnly)
 		{
-			flags |= ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoOptions;
+			// NoInputs as well as NoPicker: without it the inline RGBA fields still take a drag,
+			// and the swatch flickers to the dragged value for a frame before the draft's own
+			// refusal snaps it back.
+			flags |= ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoOptions |
+					 ImGuiColorEditFlags_NoInputs;
 		}
 
 		// .data() is safe only because every label is a string literal and therefore
@@ -145,6 +153,8 @@ namespace Graphite {
 	{
 		RenderSchemeList();
 
+		const bool readOnly = m_Draft.IsReadOnly();
+
 		if (ImGui::Button("Duplicate"))
 		{
 			if (m_Draft.Duplicate())
@@ -154,7 +164,7 @@ namespace Graphite {
 			}
 		}
 
-		if (!m_Draft.IsReadOnly())
+		if (!readOnly)
 		{
 			ImGui::SameLine();
 
@@ -164,7 +174,7 @@ namespace Graphite {
 			}
 		}
 
-		if (m_Draft.IsReadOnly())
+		if (readOnly)
 		{
 			ImGui::TextDisabled("Built-in schemes cannot be edited. Duplicate one to change it.");
 		}
