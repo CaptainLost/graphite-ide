@@ -31,6 +31,20 @@ namespace Graphite {
 		std::array<Core::Color, static_cast<std::size_t>(EditorColor::Count)> Editor;
 	};
 
+	// A colour's two spellings, produced together so they cannot drift: Key is what the scheme
+	// file stores, Label is what the settings row shows.
+	struct ColorNames
+	{
+		std::string_view Key;
+		std::string_view Label;
+	};
+
+	ColorNames NamesOf(TokenKind kind);
+	ColorNames NamesOf(EditorColor color);
+
+	std::string_view LabelOf(TokenKind kind);
+	std::string_view LabelOf(EditorColor color);
+
 	// The key text a colour is stored under, without its "syntax." or "editor." prefix. Shared
 	// with sub-project C, which labels its rows from the same names rather than keeping a
 	// second list that could drift.
