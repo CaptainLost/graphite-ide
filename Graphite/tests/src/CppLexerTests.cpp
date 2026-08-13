@@ -33,6 +33,10 @@ namespace {
 				case Graphite::TokenKind::Punctuation: mark = '.'; break;
 				case Graphite::TokenKind::Invalid: mark = 'x'; break;
 				case Graphite::TokenKind::Text: mark = ' '; break;
+				// Not a colourable kind — see TokenKind::Count's own comment. No token this
+				// lexer produces is ever Count; a default: here would hide a genuinely missing
+				// kind instead of failing loudly like this one does.
+				case Graphite::TokenKind::Count: mark = '?'; break;
 			}
 
 			for (std::size_t at = token.From; at < token.To; ++at)
@@ -196,6 +200,30 @@ TEST_CASE("CppLexer marks an unterminated literal invalid rather than eating the
 TEST_CASE("CppLexer continues a string past a trailing backslash")
 {
 	CHECK(Exit("\"open \\").Kind == Graphite::LineState::Continuation::String);
+}
+
+// The resume side of the case above: three ways the following line can go once entered in
+// Continuation::String, none of which the exit-state check alone exercises.
+TEST_CASE("CppLexer resumes a string literal from the entry state")
+{
+	const Graphite::LineState after = Exit("\"open \\");
+
+	CHECK(after.Kind == Graphite::LineState::Continuation::String);
+
+	// Closes: the closing quote ends the literal on this line and the state falls back to the
+	// default, same as an ordinary string would.
+	CHECK(Shape("end\"", after) == "ssss");
+	CHECK(Exit("end\"", after) == Graphite::LineState{});
+
+	// Continues: another trailing backslash keeps the literal open into the line after this one
+	// too — resuming does not consume the "carried over" property of the state.
+	CHECK(Shape("more\\", after) == "sssss");
+	CHECK(Exit("more\\", after).Kind == Graphite::LineState::Continuation::String);
+
+	// Runs out: no closing quote and no trailing backslash is a half-typed line, coloured
+	// invalid rather than left open indefinitely.
+	CHECK(Shape("abc", after) == "xxx");
+	CHECK(Exit("abc", after) == Graphite::LineState{});
 }
 
 TEST_CASE("CppLexer reads the string prefixes")

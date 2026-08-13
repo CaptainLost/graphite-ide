@@ -18,6 +18,11 @@ namespace Graphite {
 		Comment,
 		Preprocessor,
 		Punctuation,
-		Invalid
+		Invalid,
+
+		// Not a colourable kind — the count of the ones above it. Sizes SyntaxPalette::Colours
+		// and must stay the last enumerator, so a new kind grows the palette instead of reading
+		// past the end of it.
+		Count
 	};
 }
