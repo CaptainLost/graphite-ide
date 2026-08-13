@@ -42,8 +42,14 @@ namespace Graphite {
 
 		// Handed to DrawRowText for a document whose language has no lexer, so the row loop
 		// never has to branch on whether SyntaxCache exists — an empty token list already
-		// draws the row in one colour.
-		const std::vector<Token> kNoTokens;
+		// draws the row in one colour. Function-local rather than a file scope object, per ADR
+		// 0033 on complex initialization of globals.
+		const std::vector<Token>& NoTokens()
+		{
+			static const std::vector<Token> tokens;
+
+			return tokens;
+		}
 
 		double s_CaretMovedAt = 0.0;
 
@@ -632,14 +638,15 @@ namespace Graphite {
 		// this.
 		//
 		// Invalidated from the topmost line the edit touched, not simply from where the caret
-		// ended up: Enter leaves the caret on the lower half of the split, a multi-line paste
-		// further down still, and only a selection delete collapses it upward to the edit's
-		// start. `Invalidate(n)` keeps the entry states for lines 0..n and drops the rest, so
-		// invalidating from the caret's post-edit line on a line-adding edit would keep a stale
-		// entry state at the line the split's lower half now occupies — the state that used to
-		// describe whatever followed the whole unsplit line. `lineBefore` is the caret's line
-		// read before the mutation ran; the lower of it and the post-edit line is the one every
-		// case agrees was affected.
+		// ended up. The caret is only one END of a selection — the anchor can sit above it —
+		// so the line the edit actually BEGAN on is the selection's start, not the caret's
+		// line: with the anchor above the caret, replacing a multi-line selection with text
+		// that grows the line count leaves both the pre-edit and the post-edit caret lines
+		// below where the edit started, and invalidating from either of those would keep stale
+		// entry states for the lines in between. `Invalidate(n)` keeps the entry states for
+		// lines 0..n and drops the rest, so `lineBefore` has to be the line the edit started
+		// on; the lower of it and the post-edit caret line is the one every case agrees was
+		// affected.
 		void InvalidateSyntaxAfterEdit(SyntaxCache* syntax, const Core::TextBuffer& buffer,
 									   const Core::OpenItem& item, std::size_t lineBefore,
 									   bool changed)
@@ -676,7 +683,8 @@ namespace Graphite {
 
 				if (length > 0)
 				{
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					const std::size_t lineBefore =
+						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 					const bool changed = Core::InsertText(
 						item, std::string_view(utf8, static_cast<std::size_t>(length)));
 
@@ -699,7 +707,8 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KPEnter)
 				{
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					const std::size_t lineBefore =
+						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 					const bool changed = Core::InsertNewline(item, indentStyle);
 					result.Edited |= changed;
 					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
@@ -707,7 +716,8 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Backspace)
 				{
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					const std::size_t lineBefore =
+						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 					const bool changed =
 						control ? Core::DeleteWordBackward(item) : Core::DeleteBackward(item);
 					result.Edited |= changed;
@@ -716,7 +726,8 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Delete)
 				{
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					const std::size_t lineBefore =
+						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 					const bool changed =
 						control ? Core::DeleteWordForward(item) : Core::DeleteForward(item);
 					result.Edited |= changed;
@@ -733,7 +744,8 @@ namespace Graphite {
 				// and quietly editing the document behind it.
 				if (!control && stroke.Key == Core::KeyCode::Tab)
 				{
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					const std::size_t lineBefore =
+						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 					const bool changed =
 						shift ? Core::Outdent(item, indentStyle) : Core::Indent(item, indentStyle);
 					result.Edited |= changed;
@@ -749,10 +761,17 @@ namespace Graphite {
 				if ((undoPressed || redoPressed) &&
 					HistoryStepIsDue(stroke.IsRepeat, ImGui::GetTime()))
 				{
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					// The caret cannot say what an undo or redo group touched: an undone group
+					// leaves no selection to read the start from, and a redo of a multi-edit
+					// group can leave the caret at the group's LAST edit while its first sat
+					// higher up the file. Rather than track the group's own span, this
+					// invalidates from line 0 unconditionally — a full re-lex is cheap next to
+					// colouring the file wrongly until the next edit, and undo/redo already
+					// breaks the undo group, so it is rare enough that the blunt instrument
+					// costs nothing worth optimising away.
 					const bool changed = undoPressed ? Core::Undo(item) : Core::Redo(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, 0, changed);
 				}
 
 				// What follows are commands rather than edits, and holding one of them would
@@ -767,7 +786,8 @@ namespace Graphite {
 					// null pointer rather than an empty string.
 					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
 					{
-						const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+						const std::size_t lineBefore =
+							buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 						const bool changed = Core::InsertText(item, clipboard);
 						result.Edited |= changed;
 						InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
@@ -780,7 +800,8 @@ namespace Graphite {
 				if (control && stroke.Key == Core::KeyCode::X && Core::HasSelection(item.Caret))
 				{
 					CopySelectionToClipboard(buffer, item.Caret);
-					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
+					const std::size_t lineBefore =
+						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
 					const bool changed = Core::DeleteBackward(item);
 					result.Edited |= changed;
 					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
@@ -1329,7 +1350,7 @@ namespace Graphite {
 					// same line here in a row, so every call after the first is the cache's fast
 					// path.
 					const std::vector<Token>& tokens =
-						syntax != nullptr ? syntax->TokensOf(buffer, ref.Line) : kNoTokens;
+						syntax != nullptr ? syntax->TokensOf(buffer, ref.Line) : NoTokens();
 
 					const RowSlice slice = SliceRow(cache, item.Rows, ref, rowIndex, y);
 
