@@ -10,6 +10,15 @@ namespace Core {
 
 	class Window;
 
+	// Whether the GUI is entitled to a keystroke, and so whether the event stops here.
+	//
+	// Deliberately not ImGui's WantCaptureKeyboard: with keyboard navigation enabled that
+	// flag is true for any focused window that allows navigation, meaning "the GUI could
+	// navigate" rather than "the GUI is using this key". Consuming on it swallows every
+	// keystroke in the application. An active item is the honest signal — a text field being
+	// typed into sets one; a table cell merely clicked does not.
+	bool GuiConsumesKeyboard(bool anyItemActive, bool modalOpen);
+
 	class ImGuiRenderer final : NonCopyable
 	{
 	public:

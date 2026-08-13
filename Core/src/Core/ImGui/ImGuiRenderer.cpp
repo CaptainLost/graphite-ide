@@ -185,6 +185,11 @@ namespace Core {
 		m_Initialized = false;
 	}
 
+	bool GuiConsumesKeyboard(bool anyItemActive, bool modalOpen)
+	{
+		return anyItemActive || modalOpen;
+	}
+
 	void ImGuiRenderer::OnEvent(Event& event)
 	{
 		if (!m_Initialized)
@@ -192,13 +197,23 @@ namespace Core {
 
 		const ImGuiIO& io = ImGui::GetIO();
 
-		// Asked per category rather than per type: the question is whether the GUI wants the
-		// keyboard or the mouse at all, and every event in the category answers the same way.
-		if (event.IsInCategory(EventCategoryKeyboard) && io.WantCaptureKeyboard)
-			event.Handled = true;
+		// Asked per category rather than per type: the question is whether the GUI is using
+		// the keyboard or the mouse at all, and every event in the category answers alike.
+		const bool popupOpen =
+			ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
-		if (event.IsInCategory(EventCategoryMouse) && io.WantCaptureMouse)
+		if (event.IsInCategory(EventCategoryKeyboard) &&
+			GuiConsumesKeyboard(ImGui::IsAnyItemActive(), popupOpen))
+		{
 			event.Handled = true;
+		}
+
+		// The mouse flag is left alone: navigation does not inflate it the way it does the
+		// keyboard one, so it still means what it says.
+		if (event.IsInCategory(EventCategoryMouse) && io.WantCaptureMouse)
+		{
+			event.Handled = true;
+		}
 	}
 
 	void ImGuiRenderer::BeginFrame()
