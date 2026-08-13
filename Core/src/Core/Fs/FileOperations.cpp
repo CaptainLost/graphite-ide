@@ -39,9 +39,8 @@ namespace Core {
 	Result<void> CreateEmptyFile(const std::filesystem::path& path)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// CREATE_NEW makes the OS itself refuse an existing target, so there is no
-		// window between a check and the act in which someone else's file could appear
-		// and be truncated.
+		// CREATE_NEW makes the OS itself refuse an existing target, so no file appearing
+		// between a check and the act could be truncated.
 		const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
 											FILE_ATTRIBUTE_NORMAL, nullptr);
 
@@ -68,8 +67,7 @@ namespace Core {
 		::CloseHandle(handle);
 		return Result<void>::Ok();
 #else
-		// std::filesystem has no atomic exclusive-create before C++23, and this
-		// operation exists precisely to refuse an existing target, so a check-then-act
+		// std::filesystem has no atomic exclusive-create before C++23, so a check-then-act
 		// fallback would be a silent downgrade rather than a port.
 		return Error{ErrorCode::Unsupported,
 					 std::format("creating '{}' is not implemented on this platform",
@@ -98,8 +96,8 @@ namespace Core {
 	Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// No MOVEFILE_REPLACE_EXISTING: the OS refuses an occupied destination, so the
-		// destination cannot be clobbered by a file that appears after a check.
+		// No MOVEFILE_REPLACE_EXISTING: the OS refuses an occupied destination, so a file
+		// appearing after a check cannot be clobbered.
 		if (::MoveFileExW(from.c_str(), to.c_str(), 0) != 0)
 			return Result<void>::Ok();
 

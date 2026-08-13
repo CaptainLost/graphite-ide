@@ -111,6 +111,8 @@ namespace Core {
 
 		void ApplyEdit(Edit& edit, bool reversed);
 
+		bool ContinuesLastGroup(std::size_t from, std::size_t to, bool inserted) const;
+
 		std::size_t GroupForNewEdit(std::size_t from, std::size_t to, std::string_view text,
 									bool inserted);
 

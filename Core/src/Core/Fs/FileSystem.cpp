@@ -57,10 +57,10 @@ namespace Core {
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
 	{
 		std::error_code code;
-		// Use directory_options::none rather than skip_permission_denied: if the directory
-		// itself is unreadable, we must report an error. skip_permission_denied would
-		// silently turn that into an empty listing, making unreadable folders indistinguishable
-		// from genuinely empty ones, breaking the contract for consumers to mark them inaccessible.
+
+		// directory_options::none rather than skip_permission_denied, which turns an
+		// unreadable directory into an empty listing indistinguishable from a genuinely
+		// empty one.
 		std::filesystem::directory_iterator iterator{
 			path, std::filesystem::directory_options::none, code};
 
@@ -133,13 +133,10 @@ namespace Core {
 		std::filesystem::path normalized = path.lexically_normal();
 		normalized.make_preferred();
 
-		// lexically_normal leaves a trailing separator in place, which shows up as an
-		// empty final element and makes the path unequal to the same directory spelled
-		// without it. has_filename() is false exactly in that case.
-		//
-		// has_relative_path() guards the roots: for `D:/` there is nothing to strip, and
-		// parent_path() would return `D:` — a drive-relative path meaning "wherever that
-		// drive's cursor happens to be", which is not the same directory at all.
+		// lexically_normal leaves a trailing separator in place, which shows up as an empty
+		// final element — has_filename() is false exactly then — and makes the path unequal
+		// to the same directory spelled without it. has_relative_path() guards the roots:
+		// parent_path() of `D:/` is `D:`, a drive-relative path naming a different place.
 		if (!normalized.has_filename() && normalized.has_relative_path())
 			normalized = normalized.parent_path();
 

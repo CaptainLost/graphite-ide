@@ -24,10 +24,8 @@ namespace Core {
 		m_RowsPerLine.assign(lines, 0);
 		m_Breaks.assign(lines, {});
 
-		// The counts are filled in directly and the tree built once from them, the same
-		// way the splices below do it. Doing this by repeated SetCount would be a
-		// logarithmic update per line for a tree that is thrown away and rebuilt whole
-		// anyway, and RebuildTree is already the trusted path.
+		// The counts are filled in directly and the tree built once from them: SetCount per
+		// line would be a logarithmic update each time into a tree about to be thrown away.
 		for (std::size_t line = 0; line < lines; ++line)
 		{
 			if (columnsPerRow != kNoWrap)
@@ -96,9 +94,8 @@ namespace Core {
 		m_Tree.assign(lines + 1, 0);
 		m_TotalRows = 0;
 
-		// Linear Fenwick construction: each node takes its own line's count and then hands
-		// its subtotal to its parent, so the whole tree is one pass rather than one
-		// logarithmic update per line.
+		// Linear Fenwick construction: each node takes its own line's count and hands its
+		// subtotal to its parent, so the whole tree is one pass.
 		for (std::size_t index = 1; index <= lines; ++index)
 		{
 			m_Tree[index] += m_RowsPerLine[index - 1];
@@ -127,11 +124,9 @@ namespace Core {
 		m_RowsPerLine[line] = rows;
 		m_TotalRows = m_TotalRows - previous + rows;
 
-		// Fenwick update. The delta is computed as an unsigned difference in the direction
-		// that keeps it positive, with `grew` recording which way it went, rather than
-		// relying on signed arithmetic: a line that shrank subtracts its delta from every
-		// covering node, and an unsigned wraparound here would corrupt every later lookup
-		// rather than failing loudly.
+		// Fenwick update, with the delta kept positive and its direction carried separately:
+		// an unsigned wraparound here would corrupt every later lookup rather than fail
+		// loudly.
 		const bool grew = rows > previous;
 		const std::size_t delta = grew ? rows - previous : previous - rows;
 
@@ -174,8 +169,8 @@ namespace Core {
 		if (m_RowsPerLine.empty())
 			return RowRef{};
 
-		// A row past the end resolves to the last line's last row, matching how the widget
-		// already clamps a click below the document rather than treating it as an error.
+		// A row past the end resolves to the last line's last row, the way a click below the
+		// document is already clamped rather than treated as an error.
 		if (row >= m_TotalRows)
 		{
 			const std::size_t last = m_RowsPerLine.size() - 1;
@@ -184,10 +179,9 @@ namespace Core {
 			return RowRef{last, rows > 0 ? rows - 1 : 0};
 		}
 
-		// Fenwick descent: walk the tree from the highest power of two downwards, taking
-		// a branch whenever the rows it covers still fit below `row`. Lands on the last
-		// line whose first row is at or before `row`, skipping lines of zero rows for
-		// free, since they add nothing to take.
+		// Fenwick descent from the highest power of two downwards, taking a branch whenever
+		// the rows it covers still fit below `row`, which lands on the last line whose first
+		// row is at or before it.
 		std::size_t index = 0;
 		std::size_t remaining = row;
 		std::size_t step = 1;

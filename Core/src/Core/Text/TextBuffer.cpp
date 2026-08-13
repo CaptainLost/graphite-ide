@@ -28,7 +28,6 @@ namespace Core {
 		if (offset >= m_Length)
 			return m_Pieces.size();
 
-		// The first piece starting after `offset`, minus one, is the piece covering it.
 		const auto after = std::upper_bound(
 			m_Pieces.begin(), m_Pieces.end(), offset,
 			[](std::size_t value, const Piece& piece) { return value < piece.start; });
@@ -113,13 +112,9 @@ namespace Core {
 		if (from >= end)
 			return;
 
-		// Split at both ends first, so the range to remove is a whole run of pieces and
-		// there is no partial piece left to trim afterwards.
-		//
-		// The indices are looked up *after* both splits rather than taken from their
-		// return values: splitting at `from` inserts a piece ahead of the boundary at
-		// `end`, which would push the index the earlier split reported one place out of
-		// date. Two lookups are cheaper than that bug.
+		// Both indices are looked up after both splits rather than taken from their return
+		// values: splitting at `from` inserts a piece ahead of the boundary at `end`, which
+		// leaves the index the earlier split reported one place out of date.
 		SplitAt(end);
 		SplitAt(from);
 
@@ -207,8 +202,7 @@ namespace Core {
 		if (line >= m_LineStarts.size())
 			return 0;
 
-		// Every line but the last is followed by the '\n' that ended it, which is not
-		// part of its text.
+		// Every line but the last ends with a '\n' that is not part of its text.
 		const std::size_t end =
 			line + 1 < m_LineStarts.size() ? m_LineStarts[line + 1] - 1 : m_Length;
 
@@ -234,7 +228,6 @@ namespace Core {
 	{
 		const std::size_t at = std::min(offset, m_Length);
 
-		// The last line starting at or before `at` is the line `at` sits on.
 		const auto after = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), at);
 		const std::size_t line = static_cast<std::size_t>(after - m_LineStarts.begin()) - 1;
 
@@ -243,12 +236,12 @@ namespace Core {
 
 	void TextBuffer::PatchLineIndexForInsert(std::size_t offset, std::string_view text)
 	{
-		// The first line starting after the insertion point. Everything before it is
-		// untouched, which is the whole reason for patching rather than rebuilding.
+		// Everything before the first line start past the insertion point is untouched, which
+		// is the whole reason for patching rather than rebuilding.
 		const auto after = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), offset);
-		const std::size_t index = static_cast<std::size_t>(after - m_LineStarts.begin());
+		const std::size_t firstShifted = static_cast<std::size_t>(after - m_LineStarts.begin());
 
-		for (std::size_t at = index; at < m_LineStarts.size(); ++at)
+		for (std::size_t at = firstShifted; at < m_LineStarts.size(); ++at)
 			m_LineStarts[at] += text.size();
 
 		std::vector<std::size_t> added;
@@ -259,7 +252,7 @@ namespace Core {
 				added.push_back(offset + at + 1);
 		}
 
-		m_LineStarts.insert(m_LineStarts.begin() + static_cast<std::ptrdiff_t>(index),
+		m_LineStarts.insert(m_LineStarts.begin() + static_cast<std::ptrdiff_t>(firstShifted),
 							added.begin(), added.end());
 	}
 
@@ -267,9 +260,8 @@ namespace Core {
 	{
 		const std::size_t removed = to - from;
 
-		// A line start at s exists because of a '\n' at s - 1. That newline is inside
-		// the erased range exactly when from < s <= to, so those starts go away and the
-		// one at `from` itself, if any, stays.
+		// A line start at s exists because of a '\n' at s - 1, so it is erased exactly when
+		// from < s <= to — which leaves a start at `from` itself in place.
 		const auto first = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), from);
 		const auto last = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), to);
 
@@ -286,10 +278,8 @@ namespace Core {
 
 		if (inserting)
 		{
-			// The text may already live in m_Append — from this edit's own original
-			// insertion, or from an earlier undo of an erasure. Those bytes are never
-			// removed or rewritten, so a range recorded once stays valid for every later
-			// replay and nothing is appended twice.
+			// Appended bytes are never removed or rewritten, so a range recorded once stays
+			// valid for every later replay of this edit.
 			if (!edit.hasAppendOffset)
 			{
 				edit.appendOffset = m_Append.size();
@@ -317,6 +307,17 @@ namespace Core {
 			--m_TransactionDepth;
 	}
 
+	bool TextBuffer::ContinuesLastGroup(std::size_t from, std::size_t to, bool inserted) const
+	{
+		if (m_Undo.empty())
+			return false;
+
+		if (inserted)
+			return m_LastGroupKind == GroupKind::Insertion && from == m_InsertEnd;
+
+		return m_LastGroupKind == GroupKind::Deletion && (to == m_DeleteAt || from == m_DeleteAt);
+	}
+
 	std::size_t TextBuffer::GroupForNewEdit(std::size_t from, std::size_t to,
 											std::string_view text, bool inserted)
 	{
@@ -333,7 +334,7 @@ namespace Core {
 		else
 		{
 			const bool continues =
-				!m_BreakGroup && !hasNewline && !m_Undo.empty() && (inserted ? m_LastGroupKind == GroupKind::Insertion && from == m_InsertEnd : m_LastGroupKind == GroupKind::Deletion && (to == m_DeleteAt || from == m_DeleteAt));
+				!m_BreakGroup && !hasNewline && ContinuesLastGroup(from, to, inserted);
 
 			group = continues ? m_Undo.back().group : m_NextGroupId++;
 
@@ -342,16 +343,13 @@ namespace Core {
 		}
 
 		// Runs for every edit, including one that took the transaction shortcut above, so
-		// these describe the group's *last* edit rather than its first — a transaction's
-		// second edit can be the one that lands a newline or turns an erase-then-insert
-		// into something a following keystroke should still coalesce with.
+		// these describe the group's *last* edit rather than its first.
 		m_LastGroupKind = inserted ? GroupKind::Insertion : GroupKind::Deletion;
 		m_InsertEnd = inserted ? from + text.size() : from;
 		m_DeleteAt = from;
 
 		// A group holding a newline is closed behind itself: Enter is a boundary a user
-		// expects undo to stop at, and it is where an accidental merge would be most
-		// confusing.
+		// expects undo to stop at.
 		m_BreakGroup = hasNewline;
 
 		return group;

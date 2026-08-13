@@ -176,9 +176,8 @@ namespace Core {
 
 		Transform CodecFor(Encoding encoding)
 		{
-			// No default: adding an Encoding enumerator without deciding its Transform
-			// here is a build error, the same guarantee BomLength and EncodingName rely
-			// on elsewhere in this module.
+			// No default: adding an Encoding enumerator without deciding its Transform here
+			// is then a build error.
 			switch (encoding)
 			{
 			case Encoding::Utf16Le:
@@ -198,10 +197,9 @@ namespace Core {
 
 	bool LooksLikeText(std::string_view utf8)
 	{
-		// Byte value alone is not enough: DEL (U+007F) is a single byte >= 0x20, and the
-		// C1 controls (U+0080-U+009F) encode as C2 80 through C2 9F, whose bytes are also
-		// >= 0x20. Both are control characters and must be rejected like any other, so
-		// they are matched by the specific sequences that encode them.
+		// Byte value alone is not enough: DEL (U+007F) is a single byte >= 0x20, and the C1
+		// controls (U+0080-U+009F) encode as C2 80 through C2 9F, whose bytes are also
+		// >= 0x20, so both are matched by the exact sequences that encode them.
 		for (std::size_t at = 0; at < utf8.size(); ++at)
 		{
 			const auto byte = static_cast<unsigned char>(utf8[at]);

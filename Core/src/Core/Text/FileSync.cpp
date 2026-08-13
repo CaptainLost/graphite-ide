@@ -20,33 +20,27 @@ namespace Core {
 		std::error_code error;
 		const bool present = std::filesystem::exists(item.Path, error);
 
+		// A stat error is not an answer: a share that blinked must read as neither "still
+		// gone" above nor "deleted" below.
+		const bool knownGone = !error && !present;
+		const bool knownPresent = !error && present;
+
 		bool cameBack = false;
 
 		if (item.Failure == OpenFailure::Missing)
 		{
-			// An error is not an answer, the same as below: a share that blinked must not
-			// read as "still gone".
-			if (error || !present)
-			{
+			if (!knownPresent)
 				return FileSyncOutcome::Unchanged;
-			}
 
 			documents.MarkPresent(item.Path);
 			cameBack = true;
 
-			// Deliberately falls through rather than returning. This is the very event
-			// saying the file came back, and so the one moment its content is most worth
-			// comparing: a file deleted and restored with different content — git checkout
-			// after a git rm — would otherwise go on showing the old content until some
-			// unrelated later sweep happened to notice. MarkPresent only clears the
-			// Missing flag; it does not touch the item's document or its stamp, and the
-			// reference above stays valid across it.
+			// Falls through rather than returning: a file deleted and restored with different
+			// content would otherwise go on showing the old content until some later sweep
+			// happened to notice.
 		}
 
-		// An error is not an answer. A share that blinked or a directory that briefly
-		// denied access must not turn every document open on it into a deleted one — the
-		// same reasoning SyncRepository applies before dropping a repository.
-		if (!error && !present)
+		if (knownGone)
 		{
 			documents.MarkMissing(item.Path);
 			return FileSyncOutcome::WentMissing;
@@ -54,10 +48,8 @@ namespace Core {
 
 		if (!item.Document || !item.Document->CheckChangedOnDisk())
 		{
-			// Only the item that just came back and has nothing to show asks to be
-			// loaded. An item carrying Binary, TooLarge or ReadFailed also has no
-			// document, and its file appearing is not what it is waiting for - those
-			// mean "not opening this", not "waiting for the file".
+			// Only the item that just came back is waiting for its file. Binary, TooLarge and
+			// ReadFailed also carry no document, but they mean "not opening this".
 			return cameBack ? FileSyncOutcome::NeedsLoad : FileSyncOutcome::Unchanged;
 		}
 
@@ -67,8 +59,6 @@ namespace Core {
 			return FileSyncOutcome::SafeToReload;
 		}
 
-		// Dirty: neither reloaded nor overwritten here. Which version survives is not a
-		// decision this can make, so it is handed back as one still to be made.
 		return FileSyncOutcome::NeedsDecision;
 	}
 
@@ -76,9 +66,6 @@ namespace Core {
 	{
 		OpenItem& item = documents.At(index);
 
-		// Nothing to reload into. Unreachable from SyncWithFile, which checks first, but
-		// this is public API and dereferencing an empty optional is a poor way to find
-		// that out.
 		if (!item.Document)
 		{
 			return Error{ErrorCode::InvalidArgument,
@@ -90,16 +77,13 @@ namespace Core {
 			return result.GetError();
 		}
 
-		// The reload can shorten the document past where the caret sat. PlaceAt clamps to
-		// the new length and pulls back to a character boundary, the same as a click past
-		// a line's end does.
+		// The reload can shorten the document past where the caret sat; PlaceAt clamps to the
+		// new length and pulls back to a character boundary.
 		item.Caret =
 			PlaceAt(item.Document->GetBuffer(), item.Caret, item.Caret.Offset, false, DefaultTabWidth);
 
-		// The vertical aim was measured against the text that just went away. Left
-		// standing, the next Up or Down would aim at a column of the old document from a
-		// caret sitting in the new one. Cleared rather than converted, so the move
-		// resolves it from where the caret actually is now.
+		// The vertical aim was measured against text that has gone. Cleared rather than
+		// converted, so the next Up or Down resolves it from where the caret actually is now.
 		item.RowAimAt = NoRowAim;
 
 		RefreshDerived(item);
@@ -121,12 +105,9 @@ namespace Core {
 			return result.GetError();
 		}
 
-		// A document marked Missing whose file this just recreated (Save writes through
-		// WriteFileAtomically, which falls through to MoveFileExW onto a path that need
-		// not already exist) is still there on disk now — the tab should stop saying
-		// "(deleted)". MarkPresent already refuses to touch Binary, TooLarge and
-		// ReadFailed, so it is safe to call unconditionally on every successful save
-		// rather than only when the failure was Missing.
+		// A save recreates the file of a document marked Missing, so the tab should stop
+		// saying "(deleted)". MarkPresent refuses to touch any other failure, so it is safe
+		// on every successful save rather than only on that one.
 		documents.MarkPresent(item.Path);
 
 		return {};
@@ -145,21 +126,17 @@ namespace Core {
 				continue;
 			}
 
-			// The same safety net a single deliberate save gets: CheckChangedOnDisk() true
-			// means a change nobody was told about. But unlike a single save, a batch has
-			// no good way to ask about it mid-flight without turning into a sequence of
-			// modals — so this document is skipped, not asked about and not silently
-			// overwritten, and the batch continues: three other dirty files having nothing
-			// wrong with them is no reason to leave them unsaved over a fourth that does.
+			// A batch has no way to ask about a change nobody was told about without turning
+			// into a sequence of modals, so this document is collected and skipped rather
+			// than silently overwritten, and the rest of the batch still gets saved.
 			if (item.Document->CheckChangedOnDisk())
 			{
 				report.Conflicted.push_back(item.Path);
 				continue;
 			}
 
-			// A genuine write failure is different from a conflict: it stops the batch on
-			// the spot rather than being collected, since continuing past a real I/O error
-			// would be a batch pretending nothing went wrong.
+			// A write failure stops the batch rather than being collected: continuing past a
+			// real I/O error would be a batch pretending nothing went wrong.
 			if (auto result = SaveDocument(documents, index); !result)
 			{
 				report.StoppedAt = SaveAllReport::Failure{item.Path, result.GetError()};

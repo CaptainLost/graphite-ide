@@ -21,9 +21,7 @@ namespace Core {
 			probe.FileEncoding == Encoding::Utf16Le || probe.FileEncoding == Encoding::Utf16Be;
 
 		// UTF-16 text is half NUL bytes, so it has to be recognised before this check or
-		// every UTF-16 file would be called binary. SniffEncoding is deliberately hard to
-		// convince: a file of small 16-bit integers has the same byte pattern and must
-		// not end up opened as editable text.
+		// every UTF-16 file would be called binary.
 		if (!isUtf16 && sample.find('\0') != std::string_view::npos)
 		{
 			probe.Kind = FileKind::Binary;

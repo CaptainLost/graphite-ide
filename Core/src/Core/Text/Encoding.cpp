@@ -25,8 +25,8 @@ namespace Core {
 
 	std::size_t BomLength(Encoding encoding)
 	{
-		// No default: fatalwarnings turns a missing case here into a build error the
-		// moment a new encoding is added, the same guarantee EncodingName relies on.
+		// No default: fatalwarnings turns a missing case here into a build error the moment
+		// a new encoding is added.
 		switch (encoding)
 		{
 		case Encoding::Utf8Bom:
@@ -125,10 +125,9 @@ namespace Core {
 				codepoint = (codepoint << 6) | (next & 0x3Fu);
 			}
 
-			// The shape can be right while the value is wrong. An overlong form encodes a
-			// small value in more bytes than it needs, which is how '/' gets smuggled
-			// past a naive path check; surrogates and values above U+10FFFF are not
-			// characters at all.
+			// The shape can be right while the value is wrong: an overlong form encodes a
+			// small value in more bytes than it needs, which is how '/' gets smuggled past a
+			// naive path check, and surrogates and values above U+10FFFF are not characters.
 			if (length == 2 && codepoint < 0x80u)
 				return false;
 			if (length == 3 && codepoint < 0x800u)

@@ -21,8 +21,8 @@ namespace Core {
 	std::vector<std::filesystem::path> ChangeCollector::TakeSettled(
 		Clock::time_point now, std::chrono::milliseconds quietPeriod)
 	{
-		// Cleared on every call, so a consumer that acted on an overflow once is not
-		// told again on the next frame.
+		// Cleared on every call, so a consumer that acted on an overflow is not told again on
+		// the next frame.
 		m_Overflowed = false;
 
 		if (!m_HasPending || now - m_LastChange < quietPeriod)

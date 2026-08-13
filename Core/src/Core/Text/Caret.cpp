@@ -21,8 +21,8 @@ namespace Core {
 		{
 			const unsigned char byte = static_cast<unsigned char>(value);
 
-			// Anything outside ASCII is a letter: it makes `variableName_ąę` one word,
-			// which is what a programmer means by a word here.
+			// Anything outside ASCII counts as a letter, which makes `variableName_ąę` one
+			// word rather than three.
 			if (byte >= 0x80)
 				return CharacterClass::Letter;
 
@@ -219,10 +219,8 @@ namespace Core {
 
 		Caret result = Settle(caret, target, extend);
 
-		// Vertical movement keeps aiming at the column it started with — even when this
-		// line is too short to reach it — so it carries the resolved column forward
-		// rather than the (possibly shorter) column it actually landed on. Every other
-		// motion redefines where the caret is aiming from the position it now sits at.
+		// Vertical movement carries the column it aimed at forward, even when this line was
+		// too short to reach it; every other motion re-aims from where the caret now sits.
 		result.DesiredColumn = vertical ? verticalColumn : ColumnAt(buffer, result.Offset, tabWidth);
 
 		return result;

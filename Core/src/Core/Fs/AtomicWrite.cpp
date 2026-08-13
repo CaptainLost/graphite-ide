@@ -23,10 +23,8 @@ namespace Core {
 			std::error_code code;
 			const bool exists = std::filesystem::exists(candidate, code);
 
-			// A stat error is not "nothing is there" — the same reasoning
-			// DocumentWindows::HandleFilesChanged applies before marking an open document
-			// missing. Treating it as absence here could hand back a name something already
-			// occupies; reporting it is the only answer that cannot be quietly wrong.
+			// A stat error is not "nothing is there": treating it as absence would hand back
+			// a name something already occupies.
 			if (code)
 			{
 				return Error{ErrorCode::IoFailure,
@@ -101,18 +99,14 @@ namespace Core {
 			std::error_code existsError;
 			const bool targetExists = std::filesystem::exists(path, existsError);
 
-			// A stat error is not "the target is gone" — the same reasoning
-			// DocumentWindows::HandleFilesChanged applies before marking an open document
-			// missing. Skipping ReplaceFileW on the strength of a failed stat would silently
-			// drop the ACLs, creation time and identity this function exists to keep, with
-			// nothing to distinguish that from an ordinary first save. So ReplaceFileW is
-			// attempted whenever the target is known to exist OR the stat could not say it
-			// doesn't; only a stat that confirmed absence skips straight to MoveFileExW.
+			// A stat error is not "the target is gone": skipping ReplaceFileW on the strength
+			// of a failed stat would silently drop the ACLs, creation time and identity this
+			// function exists to keep, so only a stat confirming absence goes straight to
+			// MoveFileExW.
 			if (targetExists || existsError)
 			{
-				// REPLACEFILE_IGNORE_MERGE_ERRORS: proceed when the target's ACLs or
+				// REPLACEFILE_IGNORE_MERGE_ERRORS proceeds when the target's ACLs or
 				// attributes cannot all be carried across, rather than failing the save.
-				// The content is what the user asked for; the metadata is what we prefer.
 				if (::ReplaceFileW(path.c_str(), temporary.c_str(), nullptr,
 								   REPLACEFILE_IGNORE_MERGE_ERRORS, nullptr, nullptr) != 0)
 				{
@@ -121,10 +115,8 @@ namespace Core {
 
 				const DWORD error = ::GetLastError();
 
-				// ReplaceFileW requires an existing target. This code means there genuinely
-				// is none — the stat above could not say so, or the file vanished between
-				// the two calls — which is the ordinary case MoveFileExW below handles, not
-				// a failure to report.
+				// ReplaceFileW requires an existing target, so this code means there is
+				// genuinely none: the ordinary case MoveFileExW below handles.
 				if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
 				{
 					std::error_code ignored;
@@ -135,9 +127,8 @@ namespace Core {
 				}
 			}
 
-			// Nothing to replace: confirmed absent, or ReplaceFileW just said so.
-			// MoveFileExW with MOVEFILE_REPLACE_EXISTING also covers the race in which the
-			// file appears between whichever check above ran and this call.
+			// MOVEFILE_REPLACE_EXISTING covers the race in which the file appears between
+			// whichever check above ran and this call.
 			if (::MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING) != 0)
 				return Result<void>::Ok();
 
@@ -149,11 +140,9 @@ namespace Core {
 			return Error{ErrorCodeFor(error),
 						 std::format("cannot write '{}' (error {})", ToUtf8(path), error)};
 #else
-			// Not every platform exposes an equivalent of ReplaceFileW, so this branch
-			// deliberately does NOT return ErrorCode::Unsupported the way every other
-			// platform split in Core does: that would mean an editor that cannot save.
-			// A rename is still atomic, just without the metadata preservation the
-			// Windows branch above gets from ReplaceFileW.
+			// The one platform split in Core that must not return Unsupported — that would
+			// mean an editor that cannot save. A rename is still atomic, just without the
+			// metadata ReplaceFileW preserves above.
 			std::error_code code;
 			std::filesystem::rename(temporary, path, code);
 

@@ -47,7 +47,7 @@ namespace Core {
 		while (at < line.size())
 		{
 			// A tab covers a run of columns and a character has no inside, so any column
-			// before the next boundary resolves to the byte that starts this character.
+			// before the next boundary resolves to this character's first byte.
 			const std::size_t next =
 				line[at] == '\t' ? ColumnAfterTab(current, tabWidth) : current + 1;
 
@@ -86,8 +86,6 @@ namespace Core {
 				continue;
 			}
 
-			// One column per character, however many bytes it takes — the same rule
-			// ColumnOfByte applies, so the two cannot disagree about where a byte lands.
 			const std::size_t next = NextCharacter(line, at);
 
 			expanded.append(line.substr(at, next - at));

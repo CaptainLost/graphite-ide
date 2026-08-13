@@ -78,10 +78,8 @@ namespace Core {
 
 		if (!probe)
 		{
-			// NotFound is the only code that actually means "gone" — a directory, a
-			// locked file and an unmeasurable one are all still there, so claiming
-			// otherwise would send the user looking for a file sitting right in front
-			// of them. ProbeFile's own message says which one it was.
+			// NotFound is the only code that means "gone": a directory, a locked file and an
+			// unmeasurable one are all still there, and ProbeFile's message says which.
 			item.Failure = probe.GetError().Code == Core::ErrorCode::NotFound
 							   ? OpenFailure::Missing
 							   : OpenFailure::ReadFailed;
@@ -90,22 +88,17 @@ namespace Core {
 			return ItemLoad::Failed;
 		}
 
-		// The probe's encoding is deliberately not kept: the document sniffs its own, and
-		// two fields both meaning "the file's encoding" are two answers waiting to differ.
-		// The status bar reads the document's, which is the one the buffer was decoded
-		// with; size has no such counterpart, since a failed item has no document to ask.
+		// The probe's encoding is deliberately not kept: the document sniffs its own, and two
+		// fields both meaning "the file's encoding" are two answers waiting to differ.
 		item.Size = probe.GetValue().Size;
 
 		if (probe.GetValue().Kind == FileKind::LargeText && !confirmed)
 		{
-			// Nothing decided and nothing touched beyond the size the asking needs. An
-			// item that already carries a reason keeps it, so a question answered with
-			// "no" leaves the tab saying exactly what it said before.
+			// Nothing else touched, so an item that already carries a reason keeps it and a
+			// question answered with "no" leaves the tab saying what it said before.
 			return ItemLoad::NeedsConfirmation;
 		}
 
-		// Whatever the item last failed with is now out of date: this is a fresh look at
-		// the file, and the switch below either loads it or says why it could not.
 		item.Failure = OpenFailure::None;
 		item.Detail.clear();
 
@@ -151,10 +144,8 @@ namespace Core {
 			return OpenOutcome::Activated;
 		}
 
-		// At most one preview at a time: a single click replaces the last one rather than
-		// stacking tabs up. Called right before an item is actually pushed — not any
-		// earlier — so a path that adds nothing (NeedsConfirmation, answered by never
-		// calling OpenConfirmed) never costs the existing preview its slot.
+		// At most one preview at a time, so a single click replaces the last one rather than
+		// stacking tabs up.
 		const auto evictPreview = [this, permanent] {
 			if (!permanent)
 			{
@@ -167,9 +158,8 @@ namespace Core {
 		item.Path = path;
 		item.Preview = !permanent;
 
-		// Asking has to happen before anything is added, so answering "no" leaves no
-		// trace of the question — including the preview slot, which stays exactly as it
-		// was since evictPreview has not run yet.
+		// Asked before anything is added and before evictPreview runs, so answering "no"
+		// leaves no trace of the question — not even the loss of the existing preview slot.
 		const ItemLoad load = LoadFromFile(item, confirmed);
 
 		if (load == ItemLoad::NeedsConfirmation)
@@ -200,8 +190,6 @@ namespace Core {
 		if (!m_Active.has_value())
 			return;
 
-		// An item before the active one shifts it down; closing the active one falls back
-		// to whatever now occupies that slot, or the last item when it was the last.
 		if (*m_Active > index)
 			m_Active = *m_Active - 1;
 		else if (*m_Active == index)
@@ -231,6 +219,17 @@ namespace Core {
 			m_Items[index].Preview = false;
 	}
 
+	bool DocumentSet::HasOtherItemNamed(std::size_t index, const std::string& name) const
+	{
+		for (std::size_t other = 0; other < m_Items.size(); ++other)
+		{
+			if (other != index && ToUtf8(m_Items[other].Path.filename()) == name)
+				return true;
+		}
+
+		return false;
+	}
+
 	std::string DocumentSet::DisplayTitle(std::size_t index) const
 	{
 		if (index >= m_Items.size())
@@ -239,26 +238,16 @@ namespace Core {
 		const std::filesystem::path& path = m_Items[index].Path;
 		const std::string name = ToUtf8(path.filename());
 
-		// A file deleted while it was open keeps its window and its content, so nothing
-		// else on screen would say the file is gone — the tab has to. Appended after any
-		// disambiguating directory below, so the suffix always reads last.
+		// A file deleted while it was open keeps its window and its content, so nothing else
+		// on screen would say the file is gone.
 		const std::string suffix =
 			m_Items[index].Failure == OpenFailure::Missing ? " (deleted)" : "";
 
-		for (std::size_t other = 0; other < m_Items.size(); ++other)
-		{
-			if (other == index)
-				continue;
+		if (!HasOtherItemNamed(index, name))
+			return name + suffix;
 
-			if (ToUtf8(m_Items[other].Path.filename()) != name)
-				continue;
-
-			// Forward slash regardless of platform: this is a label, not a path anyone
-			// will open.
-			return ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
-		}
-
-		return name + suffix;
+		// Forward slash regardless of platform: this is a label, not a path anyone will open.
+		return ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
 	}
 
 	void DocumentSet::RewritePaths(const std::filesystem::path& from,
@@ -271,16 +260,12 @@ namespace Core {
 			if (!relative)
 				continue;
 
-			// relative is "." when the item path equals `from` exactly — an item can be
-			// the workspace root itself (opening a directory produces a ReadFailed item
-			// at that path). `to / "."` would keep a trailing separator-dot that compares
-			// unequal to `to` itself, breaking Find and duplicate detection, so that case
-			// becomes `to` directly instead of going through the append.
+			// `relative` is "." when the item is the moved directory itself, and `to / "."`
+			// keeps a trailing separator-dot that compares unequal to `to`, breaking Find.
 			item.Path = (*relative == ".") ? to : to / *relative;
 
-			// The document carries its own copy of the path, and that is the one a save
-			// writes to. Left behind, it would put the file back where it used to be
-			// without anything on screen suggesting it had.
+			// The document's own copy of the path is the one a save writes to; left behind it
+			// would put the file back where it used to be.
 			if (item.Document)
 				item.Document->SetPath(item.Path);
 		}
@@ -295,9 +280,8 @@ namespace Core {
 
 		m_Items[*index].Failure = OpenFailure::Missing;
 
-		// Whatever detail the previous failure carried — a sharing violation, an
-		// unreadable directory — no longer describes what is wrong. Left in place,
-		// FailureMessage would keep preferring it over "This file no longer exists".
+		// FailureMessage prefers any detail over the failure itself, and the previous one no
+		// longer describes what is wrong.
 		m_Items[*index].Detail.clear();
 	}
 
@@ -308,9 +292,8 @@ namespace Core {
 		if (!index)
 			return;
 
-		// Only clear the Missing failure. Binary, TooLarge, and ReadFailed carry no
-		// document at all — clearing one would claim a tab holds content that was never
-		// loaded, and everything downstream would then dereference an empty optional.
+		// Only Missing is cleared: Binary, TooLarge and ReadFailed carry no document, and
+		// clearing one would claim a tab holds content that was never loaded.
 		if (m_Items[*index].Failure == OpenFailure::Missing)
 		{
 			m_Items[*index].Failure = OpenFailure::None;

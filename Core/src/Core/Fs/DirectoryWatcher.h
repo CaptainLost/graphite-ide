@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <future>
 #include <memory>
@@ -27,8 +28,8 @@ namespace Core {
 
 		// Returns only once the watch is actually armed. Windows buffers nothing for a
 		// directory handle until a read has been issued against it, and that read happens on
-		// the worker thread - returning as soon as the handle existed dropped every change
-		// made before the worker was first scheduled. This is why m_Armed exists.
+		// the worker thread, so returning as soon as the handle existed would drop every
+		// change made before the worker was first scheduled.
 		static Result<Scope<DirectoryWatcher>> Start(
 			const std::filesystem::path& root);
 
@@ -56,6 +57,10 @@ namespace Core {
 
 		void CheckForMoveIfDue();
 		void RecordChange(const std::filesystem::path& path);
+
+		void RecordChangesIn(const void* records, std::size_t bytes);
+
+		void RecordOverflow();
 
 		std::filesystem::path m_Root;
 		std::thread m_Thread;

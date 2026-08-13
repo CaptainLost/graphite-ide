@@ -104,6 +104,8 @@ namespace Core {
 	private:
 		OpenOutcome Add(const std::filesystem::path& path, bool permanent, bool confirmed);
 
+		bool HasOtherItemNamed(std::size_t index, const std::string& name) const;
+
 		std::vector<OpenItem> m_Items;
 		std::optional<std::size_t> m_Active;
 	};

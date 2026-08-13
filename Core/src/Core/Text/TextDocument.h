@@ -77,10 +77,8 @@ namespace Core {
 			std::uintmax_t size = 0;
 		};
 
-		// Read BEFORE the content, never after. A stamp taken afterwards records a state
-		// newer than what was read, and that change is lost for good. One optional rather
-		// than two fields: a default file_time_type compares unequal to every real file, so
-		// a half-taken stamp would make CheckChangedOnDisk permanently true.
+		// Read BEFORE the content, never after: a stamp taken afterwards records a state
+		// newer than what was read, and that change is then lost for good.
 		std::optional<DiskStamp> m_DiskStamp;
 	};
 }

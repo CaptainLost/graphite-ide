@@ -26,6 +26,68 @@ namespace Core {
 
 			return true;
 		}
+
+		std::optional<std::size_t> DepthAboveRange(const TextBuffer& buffer, std::size_t firstLine,
+												   std::size_t tabWidth)
+		{
+			for (std::size_t line = firstLine; line-- > 0;)
+			{
+				const std::string text = buffer.LineText(line);
+
+				if (!IsBlank(text))
+					return IndentDepth(text, tabWidth);
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<std::size_t> DepthBelowRange(const TextBuffer& buffer, std::size_t lastLine,
+												   std::size_t tabWidth)
+		{
+			for (std::size_t line = lastLine + 1; line < buffer.GetLineCount(); ++line)
+			{
+				const std::string text = buffer.LineText(line);
+
+				if (!IsBlank(text))
+					return IndentDepth(text, tabWidth);
+			}
+
+			return std::nullopt;
+		}
+
+		std::vector<std::optional<std::size_t>> CarryForward(
+			const std::vector<std::size_t>& depths, const std::vector<bool>& blank,
+			std::optional<std::size_t> seed)
+		{
+			std::vector<std::optional<std::size_t>> carried(depths.size());
+
+			for (std::size_t index = 0; index < depths.size(); ++index)
+			{
+				if (!blank[index])
+					seed = depths[index];
+
+				carried[index] = seed;
+			}
+
+			return carried;
+		}
+
+		std::vector<std::optional<std::size_t>> CarryBackward(
+			const std::vector<std::size_t>& depths, const std::vector<bool>& blank,
+			std::optional<std::size_t> seed)
+		{
+			std::vector<std::optional<std::size_t>> carried(depths.size());
+
+			for (std::size_t index = depths.size(); index-- > 0;)
+			{
+				if (!blank[index])
+					seed = depths[index];
+
+				carried[index] = seed;
+			}
+
+			return carried;
+		}
 	}
 
 	std::size_t IndentDepth(std::string_view line, std::size_t tabWidth)
@@ -68,66 +130,20 @@ namespace Core {
 				depths[index] = IndentDepth(text, tabWidth);
 		}
 
-		// Nearest non-blank depth before firstLine, found outside the range when the
-		// range itself starts with a run of blank lines.
-		std::optional<std::size_t> before;
+		const std::vector<std::optional<std::size_t>> above =
+			CarryForward(depths, blank, DepthAboveRange(buffer, firstLine, tabWidth));
 
-		for (std::size_t line = firstLine; !before && line-- > 0;)
-		{
-			const std::string text = buffer.LineText(line);
-
-			if (!IsBlank(text))
-				before = IndentDepth(text, tabWidth);
-		}
-
-		// Nearest non-blank depth after lastLine, symmetrically.
-		std::optional<std::size_t> after;
-
-		for (std::size_t line = lastLine + 1; !after && line < lineCount; ++line)
-		{
-			const std::string text = buffer.LineText(line);
-
-			if (!IsBlank(text))
-				after = IndentDepth(text, tabWidth);
-		}
-
-		// Nearest non-blank depth at or before each line in the range, carried forward
-		// from `before`.
-		std::vector<std::optional<std::size_t>> above(rangeSize);
-		std::optional<std::size_t> lastNonBlank = before;
-
-		for (std::size_t index = 0; index < rangeSize; ++index)
-		{
-			if (!blank[index])
-				lastNonBlank = depths[index];
-
-			above[index] = lastNonBlank;
-		}
-
-		// Nearest non-blank depth at or after each line in the range, carried backward
-		// from `after`.
-		std::vector<std::optional<std::size_t>> below(rangeSize);
-		std::optional<std::size_t> nextNonBlank = after;
-
-		for (std::size_t index = rangeSize; index-- > 0;)
-		{
-			if (!blank[index])
-				nextNonBlank = depths[index];
-
-			below[index] = nextNonBlank;
-		}
+		const std::vector<std::optional<std::size_t>> below =
+			CarryBackward(depths, blank, DepthBelowRange(buffer, lastLine, tabWidth));
 
 		for (std::size_t index = 0; index < rangeSize; ++index)
 		{
 			if (!blank[index])
 				continue;
 
-			// A blank line belongs to neither the block above nor the block below, so a
-			// guide is only honest at the shallower of the two — the smaller of the two
-			// stops a guide from being drawn into a gap where the deeper block has
-			// already closed. A missing side counts as depth 0 here, which is exactly
-			// what "the depth is 0 with nothing on one side" means once folded into the
-			// same minimum rather than handled as a separate case.
+			// A blank line belongs to neither the block above nor the one below, so a guide
+			// is only honest at the shallower of the two; a missing side counts as depth 0,
+			// which folds into the same minimum rather than needing its own case.
 			depths[index] = std::min(above[index].value_or(0), below[index].value_or(0));
 		}
 

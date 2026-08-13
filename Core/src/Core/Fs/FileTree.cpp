@@ -43,8 +43,7 @@ namespace Core {
 
 	bool FileTree::AskIgnored(const std::filesystem::path& path, bool isDirectory) const
 	{
-		// No query means no opinion, which is the right answer for a folder that is not
-		// a repository at all.
+		// No query means no opinion, the right answer for a folder that is not a repository.
 		return m_IgnoreQuery ? m_IgnoreQuery(path, isDirectory) : false;
 	}
 
@@ -121,8 +120,8 @@ namespace Core {
 
 			if (match != previous.end() && match->IsDirectory == entry.IsDirectory)
 			{
-				// Carry the whole subtree over, then let the recursion below bring it
-				// up to date. This is what keeps the user's open folders open.
+				// The whole subtree is carried over and brought up to date by the recursion
+				// below, which is what keeps the user's open folders open.
 				node.Children.push_back(std::move(*match));
 				node.Children.back().Ignored = AskIgnored(entry.Path, entry.IsDirectory);
 				previous.erase(match);
@@ -155,12 +154,9 @@ namespace Core {
 
 		RebaseNode(m_Root, normalized);
 
-		// The root is the one node whose name a move can change — a child keeps its name
-		// and only moves underneath. Without this the tree would go on displaying the
-		// folder's previous name while every path beneath it was already correct.
-		//
-		// The fallback mirrors SetRoot: a drive root has no filename component, and an
-		// empty label would render as a blank row.
+		// The root is the one node whose name a move can change; a child keeps its name and
+		// only moves underneath. The fallback mirrors SetRoot: a drive root has no filename
+		// component, and an empty label would render as a blank row.
 		m_Root.Name = ToUtf8(normalized.filename());
 
 		if (m_Root.Name.empty())
@@ -171,9 +167,8 @@ namespace Core {
 	{
 		node.Path = newPath;
 
-		// Rebuilt from the parent's new path and the child's own name rather than by
-		// string surgery on the old path: the two spellings only have to agree on the
-		// part being replaced, and a prefix replacement would quietly do nothing if they
+		// Rebuilt from the parent's new path and the child's own name rather than by string
+		// surgery on the old one, which would quietly do nothing if the two spellings
 		// differed in case or separators.
 		for (FileNode& child : node.Children)
 			RebaseNode(child, newPath / child.Name);
