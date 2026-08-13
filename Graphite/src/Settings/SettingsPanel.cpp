@@ -29,6 +29,23 @@ namespace Graphite {
 		m_Active = index;
 	}
 
+	void SettingsPanel::OnUpdate(Core::Timestep ts)
+	{
+		(void)ts;
+
+		const bool drawn = WasDrawn();
+
+		// Latched on the edge, not on the state: hiding the panel deactivates the section once,
+		// rather than every frame it stays hidden. A section left holding transient state — an
+		// open confirmation, say — is never rendered again and so can never let go of it itself.
+		if (m_WasDrawnLastFrame && !drawn && m_Active < m_Sections.size())
+		{
+			m_Sections[m_Active]->OnDeactivated();
+		}
+
+		m_WasDrawnLastFrame = drawn;
+	}
+
 	void SettingsPanel::OnEvent(Core::Event& event)
 	{
 		if (m_Active >= m_Sections.size())
