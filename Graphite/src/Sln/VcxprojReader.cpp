@@ -99,6 +99,18 @@ namespace Graphite {
 			return assignments;
 		}
 
+		std::string LowercaseExtension(const std::filesystem::path& path)
+		{
+			std::string extension = Core::ToUtf8(path.extension());
+
+			std::transform(extension.begin(), extension.end(), extension.begin(),
+						   [](unsigned char character) {
+							   return static_cast<char>(std::tolower(character));
+						   });
+
+			return extension;
+		}
+
 		void SortContent(ContentFolder& folder)
 		{
 			std::sort(folder.Folders.begin(), folder.Folders.end(),
@@ -114,13 +126,7 @@ namespace Graphite {
 
 	bool VcxprojReader::Handles(const std::filesystem::path& project) const
 	{
-		// Compared case-insensitively, as ReadSolution does for the solution itself: the
-		// filesystem does not care, so App.VCXPROJ must not silently render as a leaf.
-		std::string extension = Core::ToUtf8(project.extension());
-		std::transform(extension.begin(), extension.end(), extension.begin(),
-					   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-
-		return extension == ".vcxproj";
+		return LowercaseExtension(project) == ".vcxproj";
 	}
 
 	Core::Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const
@@ -185,8 +191,7 @@ namespace Graphite {
 
 				const auto assignment = assignments.find(include);
 
-				// No entry in the .filters file — or no .filters file at all — puts the
-				// file at the project root, which is what Visual Studio shows.
+				// Visual Studio shows a file with no .filters entry at the project root.
 				if (assignment == assignments.end())
 				{
 					content.Root.Files.push_back(std::move(file));
@@ -204,7 +209,7 @@ namespace Graphite {
 
 		SortContent(content.Root);
 
-		// References are names too, and Visual Studio lists them sorted.
+		// Visual Studio lists references sorted.
 		std::sort(content.References.begin(), content.References.end(),
 				  [](const std::string& left, const std::string& right) { return Core::CompareNames(left, right) < 0; });
 

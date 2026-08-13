@@ -2,7 +2,9 @@
 
 #include "Panels/ConsolePanel.h"
 
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -22,6 +24,21 @@ namespace Graphite {
 			}
 
 			return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+		}
+
+		std::string JoinEntries(const std::vector<Core::LogEntry>& entries)
+		{
+			std::string joined;
+
+			for (const Core::LogEntry& entry : entries)
+			{
+				joined.append(Core::ToString(entry.Level));
+				joined.append(" ");
+				joined.append(entry.Message);
+				joined.append("\n");
+			}
+
+			return joined;
 		}
 	}
 
@@ -51,18 +68,7 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		if (ImGui::Button("Copy all"))
-		{
-			std::string joined;
-			for (const Core::LogEntry& entry : m_Entries)
-			{
-				joined.append(Core::ToString(entry.Level));
-				joined.append(" ");
-				joined.append(entry.Message);
-				joined.append("\n");
-			}
-
-			ImGui::SetClipboardText(joined.c_str());
-		}
+			ImGui::SetClipboardText(JoinEntries(m_Entries).c_str());
 
 		ImGui::SameLine();
 		ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
@@ -97,14 +103,16 @@ namespace Graphite {
 		}
 
 		ImGui::PopStyleVar();
+		FollowTailOnlyWhenEntriesArrived();
 
-		// We only scroll after a new entry is written, so we don't block
-		// manual scrolling upward.
+		ImGui::EndChild();
+	}
+
+	void ConsolePanel::FollowTailOnlyWhenEntriesArrived()
+	{
 		if (m_AutoScroll && m_Entries.size() != m_LastCount)
 			ImGui::SetScrollHereY(1.0f);
 
 		m_LastCount = m_Entries.size();
-
-		ImGui::EndChild();
 	}
 }

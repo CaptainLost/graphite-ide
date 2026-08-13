@@ -14,11 +14,9 @@ namespace Graphite {
 
 	namespace {
 		constexpr const char* kModeKey = "explorerMode";
+		constexpr const char* kFileSystemLabel = "File System";
+		constexpr const char* kSolutionLabel = "Visual Studio Solution";
 
-		// Adjectives, not verbs: the tick beside one of them makes these a state rather than
-		// a command, and four levels deep "Dim" alone no longer says what it would dim. The
-		// submenu names the subject and these name the treatment, so it reads as
-		// "Ignored Files: Dimmed".
 		struct DisplayMode
 		{
 			const char* Id;
@@ -57,53 +55,55 @@ namespace Graphite {
 			return;
 
 		m_ModeLoadedFor = m_Workspace.GetRoot();
+		m_Mode = ModeFromSetting(m_Workspace.FolderSettings().Read(kModeKey));
+	}
 
-		// Anything unrecognised — including the empty string of a folder opened for the
-		// first time — reads as Files, which is the mode that works in every folder.
-		m_Mode = m_Workspace.FolderSettings().Get(kModeKey) == "solution" ? Mode::Solution
-																		  : Mode::Files;
+	ExplorerPanel::Mode ExplorerPanel::ModeFromSetting(const std::string& value)
+	{
+		return value == "solution" ? Mode::Solution : Mode::Files;
+	}
+
+	const char* ExplorerPanel::SettingForMode(Mode mode)
+	{
+		return mode == Mode::Solution ? "solution" : "files";
 	}
 
 	void ExplorerPanel::SetMode(Mode mode)
 	{
 		m_Mode = mode;
-
-		// Stored per folder, which is what keeps a folder with no solution from opening
-		// into an empty Solution view: it never recorded that mode to begin with.
-		m_Workspace.FolderSettings().Set(kModeKey, mode == Mode::Solution ? "solution" : "files");
+		m_Workspace.FolderSettings().Write(kModeKey, SettingForMode(mode));
 	}
 
 	void ExplorerPanel::RenderHeader()
 	{
-		// Named in full rather than just "Solution": the word alone would not say
-		// which kind, and premake workspaces or CMake projects would each want the
-		// same slot with different meaning.
-		// "File System" rather than "Files" or "Folder": it says what you are looking at,
-		// and "folder" already means three different things in this panel — a directory on
-		// disk, a solution folder, and a filter folder inside a project.
-		const char* current = m_Mode == Mode::Files ? "File System" : "Visual Studio Solution";
+		RenderModeCombo();
+
+		if (m_Mode == Mode::Solution && m_Workspace.GetSolutionCandidates().size() > 1)
+			RenderSolutionChooser();
+	}
+
+	void ExplorerPanel::RenderModeCombo()
+	{
+		const char* current = m_Mode == Mode::Files ? kFileSystemLabel : kSolutionLabel;
 
 		ImGui::SetNextItemWidth(-1.0f);
 
 		if (ImGui::BeginCombo("##explorerMode", current))
 		{
-			if (ImGui::Selectable("File System", m_Mode == Mode::Files))
+			if (ImGui::Selectable(kFileSystemLabel, m_Mode == Mode::Files))
 				SetMode(Mode::Files);
 
-			if (ImGui::Selectable("Visual Studio Solution", m_Mode == Mode::Solution))
+			if (ImGui::Selectable(kSolutionLabel, m_Mode == Mode::Solution))
 				SetMode(Mode::Solution);
 
 			ImGui::EndCombo();
 		}
+	}
 
-		// Only worth the row when there is a choice to make. One solution needs no
-		// chooser, and none needs it even less.
-		if (m_Mode != Mode::Solution || m_Workspace.GetSolutionCandidates().size() < 2)
-			return;
-
-		// A value rather than a reference: the false branch of the conditional expression
-		// below is a temporary, and binding a const reference to it here would leave
-		// `loaded` dangling for the rest of the function.
+	void ExplorerPanel::RenderSolutionChooser()
+	{
+		// A value, not a reference: the false branch below is a temporary that a const
+		// reference would be left dangling on.
 		const std::filesystem::path loaded =
 			m_Workspace.LoadedSolution() ? m_Workspace.LoadedSolution()->Path : std::filesystem::path{};
 

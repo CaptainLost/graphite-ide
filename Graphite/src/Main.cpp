@@ -18,9 +18,8 @@ namespace Graphite {
 		constexpr std::size_t kLogFileSize = 5u * 1024u * 1024u;
 		constexpr std::size_t kLogFileCount = 3;
 
-		// The per-user application data directory: a place this program may write without
-		// asking, unlike the directory it was installed into. Read as wide characters so a
-		// user name outside the machine's ANSI codepage still resolves.
+		// Read as wide characters so a user name outside the machine's ANSI codepage still
+		// resolves.
 		std::filesystem::path LocalAppData()
 		{
 			wchar_t* value = nullptr;

@@ -28,6 +28,69 @@ namespace Graphite {
 
 			return Core::ToUtf8(relative ? *relative : path);
 		}
+
+		float CentredTextY(float barHeight)
+		{
+			// The bar is one frame tall — FontSize + 2 * FramePadding.y — and a line of text
+			// is FontSize tall, both measured from the window's own top edge.
+			return (barHeight - ImGui::GetTextLineHeight()) * 0.5f;
+		}
+
+		void DrawRightAligned(const std::string& text)
+		{
+			const float width = ImGui::CalcTextSize(text.c_str()).x;
+
+			ImGui::SameLine(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
+			ImGui::TextUnformatted(text.c_str());
+		}
+
+		void DrawCentred(const std::string& text, float barHeight)
+		{
+			const float width = ImGui::CalcTextSize(text.c_str()).x;
+
+			ImGui::SetCursorPos(
+				ImVec2((ImGui::GetWindowWidth() - width) * 0.5f, CentredTextY(barHeight)));
+			ImGui::TextUnformatted(text.c_str());
+		}
+
+		std::string DescribeDocument(const Core::OpenItem& item, const std::filesystem::path& root)
+		{
+			std::string description = RelativePath(item.Path, root);
+
+			if (item.Document->IsModified())
+				description = "* " + description;
+
+			if (item.Document->IsReadOnly())
+				description += "  (read-only: not valid text for its encoding)";
+
+			return description;
+		}
+
+		std::string DescribeCaret(const Core::OpenItem& item)
+		{
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const Core::Position where = buffer.ToPosition(item.Caret.Offset);
+			const std::size_t column = Core::ColumnOfByte(buffer.LineText(where.Line), where.Column,
+														  Core::DefaultTabWidth);
+
+			std::string description =
+				"Ln " + std::to_string(where.Line + 1) + ", Col " + std::to_string(column + 1);
+
+			const auto [from, to] = Core::SelectionRange(item.Caret);
+
+			if (from != to)
+				description += " (" + std::to_string(to - from) + " selected)";
+
+			return description;
+		}
+
+		std::string DescribeTextFormat(const Core::OpenItem& item)
+		{
+			const std::string encoding{Core::EncodingName(item.Document->GetFileEncoding())};
+
+			return encoding + "    " +
+				   LineEndingName(item.Document->GetDocumentLineEnding(), item.Document->WasMixed());
+		}
 	}
 
 	void DrawStatusBar(const Core::DocumentSet& documents,
@@ -51,72 +114,16 @@ namespace Graphite {
 		if (active && documents.At(*active).Document)
 		{
 			const Core::OpenItem& item = documents.At(*active);
-			const Core::TextBuffer& buffer = item.Document->GetBuffer();
 
-			// The strip is exactly one frame tall: height == FontSize + 2 * FramePadding.y
-			// (that is what GetFrameHeight() above returns), and a line of text is
-			// FontSize tall (GetTextLineHeight()). Centering it means leaving
-			// (height - textHeight) / 2 == FramePadding.y of empty space above the text,
-			// which is what SetCursorPosY places the cursor at — measured from the
-			// window's own top edge, the same origin GetCursorPosY() uses, so this holds
-			// regardless of WindowPadding and stays centred if the font size changes at
-			// runtime. Both sides of the strip share one cursor row, so SameLine() below
-			// carries this same Y to the right-hand group.
-			const float textHeight = ImGui::GetTextLineHeight();
-			ImGui::SetCursorPosY((height - textHeight) * 0.5f);
+			ImGui::SetCursorPosY(CentredTextY(height));
+			ImGui::TextUnformatted(DescribeDocument(item, root).c_str());
 
-			// A leading marker rather than a colour: the strip has no guarantee its text
-			// colour reads as "warning" against every theme, and a dirty document is not
-			// an error worth one.
-			std::string left = RelativePath(item.Path, root);
-
-			if (item.Document->IsModified())
-				left = "* " + left;
-
-			// Invalid UTF-8 for its own declared encoding - the one thing that makes
-			// editing refuse to touch a file - is exactly what the status bar exists to
-			// surface, not silently allow.
-			if (item.Document->IsReadOnly())
-				left += "  (read-only: not valid text for its encoding)";
-
-			ImGui::TextUnformatted(left.c_str());
-
-			const Core::Position where = buffer.ToPosition(item.Caret.Offset);
-			const std::size_t column = Core::ColumnOfByte(
-				buffer.LineText(where.Line), where.Column, Core::DefaultTabWidth);
-
-			// One-based, because that is how people and every compiler count.
-			std::string position = "Ln " + std::to_string(where.Line + 1) + ", Col " + std::to_string(column + 1);
-
-			const auto [from, to] = Core::SelectionRange(item.Caret);
-
-			if (from != to)
-				position += " (" + std::to_string(to - from) + " selected)";
-
-			const std::string encoding{Core::EncodingName(item.Document->GetFileEncoding())};
-			const std::string ending =
-				LineEndingName(item.Document->GetDocumentLineEnding(), item.Document->WasMixed());
-
-			const std::string right = position + "    " + encoding + "    " + ending;
-			const float width = ImGui::CalcTextSize(right.c_str()).x;
-
-			ImGui::SameLine(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
-			ImGui::TextUnformatted(right.c_str());
+			DrawRightAligned(DescribeCaret(item) + "    " + DescribeTextFormat(item));
 		}
 
 		if (transientMessage && !transientMessage->empty())
 		{
-			// Centred using the same math as the row above: the strip is exactly one
-			// frame tall, and (height - textHeight) / 2 is where that leaves for the text
-			// to sit, this time measured from the window's own top edge again rather than
-			// carried over from the row above, since there may have been no active
-			// document to draw one.
-			const float textHeight = ImGui::GetTextLineHeight();
-			const float messageWidth = ImGui::CalcTextSize(transientMessage->c_str()).x;
-
-			ImGui::SetCursorPos(ImVec2((ImGui::GetWindowWidth() - messageWidth) * 0.5f,
-									   (height - textHeight) * 0.5f));
-			ImGui::TextUnformatted(transientMessage->c_str());
+			DrawCentred(*transientMessage, height);
 		}
 
 		ImGui::End();

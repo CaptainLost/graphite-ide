@@ -36,9 +36,7 @@ namespace Graphite {
 
 	std::string NewGuid()
 	{
-		// Both solution formats wrap a GUID in braces and write it uppercase. That is the
-		// whole of this function: the identifier itself is a plain version 4 UUID, and
-		// Core::Uuid is where it is made and where the RFC is answered to.
+		// Both solution formats wrap the identifier in braces and write it uppercase.
 		return std::format("{{{}}}", Core::Uuid::Generate().ToString());
 	}
 
@@ -53,9 +51,8 @@ namespace Graphite {
 							   std::format("no solution file at '{}'", solution.string())};
 		}
 
-		// .sln is readable but not yet writable; a second plan adds it behind this same
-		// call. Refusing here is what keeps a caller from discovering that halfway
-		// through an edit.
+		// .sln is readable but not yet writable, and refusing here keeps a caller from
+		// discovering that halfway through an edit.
 		if (LowercaseExtension(solution) != ".slnx")
 		{
 			return Core::Error{Core::ErrorCode::Unsupported,

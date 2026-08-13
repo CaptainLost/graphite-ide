@@ -44,15 +44,18 @@ namespace Graphite {
 
 			Kind kind = Kind::None;
 			std::filesystem::path target;
-			std::string name; // the new name for Rename, CreateFile and MakeDirectory
+			std::string name;
 		};
 
 		void RenderToolbar();
 		void RenderEmptyState();
 		void RenderNode(Core::FileNode& node);
+		void RenderFileRow(const Core::FileNode& node);
+		void RenderDirectoryRow(Core::FileNode& node);
 		void RenderContextMenu(const Core::FileNode& node);
 		void RenderDeleteConfirmation();
 		bool RenderRenameEditor(const Core::FileNode& node);
+		void StartRenaming(const Core::FileNode& node);
 		void RecordAction(PendingAction action);
 		void ExecutePendingAction();
 		void HandleDelete(const PendingAction& action);
@@ -60,9 +63,11 @@ namespace Graphite {
 		void HandleRename(const PendingAction& action);
 		void HandleDuplicate(const PendingAction& action);
 		void HandleCreate(const PendingAction& action);
+		void ReadFolderFromDisk(Core::FileNode& folder);
 		Core::FileNode* FindNode(const std::filesystem::path& path);
 		void RefreshParentOf(const std::filesystem::path& path);
 		bool PassesFilter(const Core::FileNode& node) const;
+		bool AnyChildPassesFilter(const Core::FileNode& node) const;
 
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;

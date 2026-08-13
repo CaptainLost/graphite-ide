@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace Core {
@@ -106,6 +107,12 @@ namespace Graphite {
 		void RefreshChanged(const std::filesystem::path& directory);
 		void TryOpenRepository();
 
+		void StartWatching(const std::filesystem::path& root, std::string_view failureContext);
+		void RereadEverything();
+		bool IsInsideRoot(const std::filesystem::path& path) const;
+		void RememberSolutionCandidate(const std::filesystem::path& path);
+		bool HasRepositoryVanished() const;
+
 		bool SyncRepository();
 
 		void HandleDeadWatcher();
@@ -113,6 +120,7 @@ namespace Graphite {
 		void HandleRootMoved(const std::filesystem::path& destination);
 
 		void FindSolutions();
+		void KeepSelectedSolutionListed();
 		void LoadSolution();
 
 		bool TouchesSolution(

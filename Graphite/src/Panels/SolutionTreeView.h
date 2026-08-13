@@ -10,6 +10,7 @@
 #include <array>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -40,11 +41,15 @@ namespace Graphite {
 			std::string name;
 		};
 
+		void RenderFilter();
 		void RenderFolder(const Folder& folder, const std::string& path);
 		void RenderProject(const Project& project, const std::string& folder);
+		void RenderReferences(const std::vector<std::string>& references);
 		void RenderContentFolder(const ContentFolder& folder);
+		void RenderContentFile(const ContentFile& file);
 		void RenderEmptyState();
 
+		void StartRenamingFolder(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Project& project, const std::string& folder);
 		bool RenderFolderRenameEditor(const Folder& folder,

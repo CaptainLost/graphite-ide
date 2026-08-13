@@ -36,8 +36,6 @@ namespace Graphite {
 				if (directory)
 					return directory.GetValue() / "graphite.json";
 
-				// Falling back to the working directory keeps settings working rather
-				// than losing them, which is the better failure for a preferences file.
 				APP_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
 						 directory.GetError().Message);
 
@@ -45,6 +43,48 @@ namespace Graphite {
 			}();
 
 			return path;
+		}
+
+		float ParseFontSizeOrZero(const std::string& stored)
+		{
+			char* end = nullptr;
+			const float size = std::strtof(stored.c_str(), &end);
+
+			// strtof leaves end at the start of the string when it parsed nothing.
+			if (end == stored.c_str())
+				return 0.0f;
+
+			return size;
+		}
+
+		std::size_t ParseIndentWidthOrZero(const std::string& stored)
+		{
+			char* end = nullptr;
+			const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
+
+			// strtoul leaves end at the start of the string when it parsed nothing.
+			if (end == stored.c_str())
+				return 0;
+
+			return static_cast<std::size_t>(width);
+		}
+
+		void RemoveStoredKeyBindings(Core::JsonFile& file)
+		{
+			std::vector<std::string> stored;
+
+			for (const std::string& key : file.GetKeys())
+			{
+				if (std::string_view{key}.starts_with(kKeyBindingPrefix))
+				{
+					stored.push_back(key);
+				}
+			}
+
+			for (const std::string& key : stored)
+			{
+				file.Remove(key);
+			}
 		}
 
 		void WriteValue(const char* key, std::string value)
@@ -79,17 +119,7 @@ namespace Graphite {
 
 	float AppSettings::LoadEditorFontSize()
 	{
-		const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey);
-
-		char* end = nullptr;
-		const float size = std::strtof(stored.c_str(), &end);
-
-		// An unparseable or empty value (strtof leaves end == stored.data()) reads as
-		// "nothing stored", so the caller's default applies rather than a garbage size.
-		if (end == stored.c_str())
-			return 0.0f;
-
-		return size;
+		return ParseFontSizeOrZero(Core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey));
 	}
 
 	void AppSettings::SaveEditorFontSize(float size)
@@ -99,9 +129,6 @@ namespace Graphite {
 
 	bool AppSettings::LoadIndentWithSpaces()
 	{
-		// Absent or anything other than an explicit "0" reads as spaces, which is also
-		// IndentStyle's own default — a hand-edited file cannot land on a value this
-		// does not recognise.
 		return Core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
 	}
 
@@ -112,17 +139,7 @@ namespace Graphite {
 
 	std::size_t AppSettings::LoadIndentWidth()
 	{
-		const std::string stored = Core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey);
-
-		char* end = nullptr;
-		const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
-
-		// An unparseable, empty or zero value reads as "nothing stored", so the caller's
-		// default applies rather than an unusable indent width.
-		if (end == stored.c_str() || width == 0)
-			return 0;
-
-		return static_cast<std::size_t>(width);
+		return ParseIndentWidthOrZero(Core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey));
 	}
 
 	void AppSettings::SaveIndentWidth(std::size_t width)
@@ -154,9 +171,6 @@ namespace Graphite {
 			const std::string id = key.substr(kKeyBindingPrefix.size());
 			const std::optional<Core::Binding> binding = Core::ParseBinding(file.Get(key));
 
-			// Skipped rather than fatal, and named so it can be found: one hand-edited
-			// line should cost the one binding it describes, not every shortcut in the
-			// IDE.
 			if (!binding.has_value())
 			{
 				APP_WARN("Ignoring the unreadable key binding stored for '{}'", id);
@@ -171,29 +185,7 @@ namespace Graphite {
 	{
 		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 
-		// Written in one pass rather than through WriteValue per command: that helper
-		// loads and saves the whole file each time, which over a table of bindings would
-		// rewrite the file once per entry.
-		//
-		// Collected before removing, because removing while iterating the keys would
-		// invalidate what is being walked.
-		std::vector<std::string> stale;
-
-		for (const std::string& key : file.GetKeys())
-		{
-			if (std::string_view{key}.starts_with(kKeyBindingPrefix))
-			{
-				stale.push_back(key);
-			}
-		}
-
-		// Removed, not blanked: a binding the user has reset must leave the file rather
-		// than sit there as an empty value that LoadKeyBindings would warn about on every
-		// start.
-		for (const std::string& key : stale)
-		{
-			file.Remove(key);
-		}
+		RemoveStoredKeyBindings(file);
 
 		keys.ForEachOverride(
 			[&file](const std::string& id, const Core::Binding& binding) { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });

@@ -69,6 +69,11 @@ namespace Graphite {
 		return text.size();
 	}
 
+	bool EndsSelfClosingTag(std::string_view text, std::size_t tagEnd)
+	{
+		return tagEnd >= 2 && text[tagEnd - 2] == '/';
+	}
+
 	namespace {
 		bool NameEndsHere(std::string_view text, std::size_t after, bool opening)
 		{
@@ -88,12 +93,10 @@ namespace Graphite {
 	{
 		const std::size_t tagEnd = OpeningTagEnd(text, offset);
 
-		// Self-closing: the tag is the element.
-		if (tagEnd >= 2 && text[tagEnd - 2] == '/')
+		if (EndsSelfClosingTag(text, tagEnd))
 			return tagEnd;
 
-		// Otherwise find this element's own closing tag. Nesting is counted so a child of
-		// the same name does not end the parent early.
+		// Nesting is counted so a child of the same name does not end the parent early.
 		const std::string open = std::string{"<"} + std::string{name};
 		const std::string close = std::string{"</"} + std::string{name};
 
@@ -110,11 +113,11 @@ namespace Graphite {
 
 			if (nextOpen != std::string_view::npos && nextOpen < nextClose)
 			{
-				const std::size_t childEnd = OpeningTagEnd(text, nextOpen + 1);
-				const bool selfClosing = childEnd >= 2 && text[childEnd - 2] == '/';
-
 				// A self-closing child has no closing tag of its own, so counting it would
 				// leave the depth one too high and swallow the rest of the file.
+				const bool selfClosing =
+					EndsSelfClosingTag(text, OpeningTagEnd(text, nextOpen + 1));
+
 				if (NameEndsHere(text, nextOpen + open.size(), true) && !selfClosing)
 					++depth;
 

@@ -26,7 +26,8 @@ namespace Graphite {
 		{
 			std::string TypeId;
 			std::string Name;
-			std::string Location; // a relative path for a project, the name for a folder
+			// A relative path for a project, the name again for a folder.
+			std::string Location;
 			std::string Id;
 			bool IsFolder = false;
 		};
@@ -83,91 +84,170 @@ namespace Graphite {
 
 			return true;
 		}
+
+		bool ConsumeSolutionHeader(std::istream& stream)
+		{
+			std::string rawLine;
+
+			// Visual Studio writes a UTF-8 byte-order mark and then a blank line before the
+			// header, so the header is neither on line one nor at column zero.
+			for (int line = 0; line < kHeaderSearchLines && std::getline(stream, rawLine); ++line)
+			{
+				std::string_view candidate = Trim(rawLine);
+
+				if (candidate.starts_with(kByteOrderMark))
+					candidate.remove_prefix(kByteOrderMark.size());
+
+				if (candidate.empty())
+					continue;
+
+				return candidate.find(kHeader) == 0;
+			}
+
+			return false;
+		}
+
+		struct Body
+		{
+			std::vector<Entry> Entries;
+			std::unordered_map<std::string, std::string> ParentIdByChildId;
+		};
+
+		Body ReadBody(std::istream& stream)
+		{
+			Body body;
+			std::string rawLine;
+			bool inNesting = false;
+
+			while (std::getline(stream, rawLine))
+			{
+				const std::string_view line = Trim(rawLine);
+
+				if (line.starts_with("Project("))
+				{
+					// A line that does not parse costs that line rather than the whole view:
+					// hand-edited and merge-conflicted solutions exist.
+					if (Entry entry; ParseEntry(line, entry))
+						body.Entries.push_back(std::move(entry));
+
+					continue;
+				}
+
+				if (line.starts_with("GlobalSection(NestedProjects)"))
+				{
+					inNesting = true;
+					continue;
+				}
+
+				if (line.starts_with("EndGlobalSection"))
+				{
+					inNesting = false;
+					continue;
+				}
+
+				if (!inNesting)
+					continue;
+
+				// Every line of this section reads `{child} = {parent}`, and nothing else.
+				const std::size_t equals = line.find('=');
+
+				if (equals == std::string_view::npos)
+					continue;
+
+				const std::string_view child = Trim(line.substr(0, equals));
+				const std::string_view parent = Trim(line.substr(equals + 1));
+
+				if (!child.empty() && !parent.empty())
+					body.ParentIdByChildId.emplace(child, parent);
+			}
+
+			return body;
+		}
+
+		std::vector<std::size_t> ResolveParents(const Body& body)
+		{
+			const std::size_t count = body.Entries.size();
+			const std::size_t noParent = count;
+
+			std::unordered_map<std::string, std::size_t> indexById;
+
+			for (std::size_t i = 0; i < count; ++i)
+				indexById.emplace(body.Entries[i].Id, i);
+
+			std::vector<std::size_t> parentOfIndex(count, noParent);
+
+			for (std::size_t i = 0; i < count; ++i)
+			{
+				const auto link = body.ParentIdByChildId.find(body.Entries[i].Id);
+
+				if (link == body.ParentIdByChildId.end())
+					continue;
+
+				const auto parent = indexById.find(link->second);
+
+				if (parent == indexById.end() || parent->second == i ||
+					!body.Entries[parent->second].IsFolder)
+				{
+					continue;
+				}
+
+				parentOfIndex[i] = parent->second;
+			}
+
+			return parentOfIndex;
+		}
+
+		void RootEntriesInCycles(std::vector<std::size_t>& parentOfIndex)
+		{
+			const std::size_t count = parentOfIndex.size();
+			const std::size_t noParent = count;
+
+			// Detected against the untouched links and applied afterwards: rewriting as it
+			// walks would let the first entry freed from a cycle make the second one's chain
+			// look sound.
+			std::vector<bool> inCycle(count, false);
+
+			for (std::size_t i = 0; i < count; ++i)
+			{
+				std::size_t walker = parentOfIndex[i];
+
+				for (std::size_t steps = 0; walker != noParent && steps <= count; ++steps)
+					walker = parentOfIndex[walker];
+
+				inCycle[i] = walker != noParent;
+			}
+
+			for (std::size_t i = 0; i < count; ++i)
+			{
+				if (inCycle[i])
+					parentOfIndex[i] = noParent;
+			}
+		}
+
+		std::size_t CountProjects(const Folder& folder)
+		{
+			std::size_t total = folder.Projects.size();
+
+			for (const Folder& child : folder.Folders)
+				total += CountProjects(child);
+
+			return total;
+		}
 	}
 
 	Core::Result<Solution> ParseSln(const std::filesystem::path& path, const std::string& text)
 	{
 		std::istringstream stream{text};
-		std::string rawLine;
 
-		// Visual Studio writes a UTF-8 byte-order mark and then a blank line before the
-		// header, so a parser that demands the header on line one at column zero cannot
-		// open a file Visual Studio wrote — which is the only kind that matters here.
-		bool headerSeen = false;
-
-		for (int line = 0; line < kHeaderSearchLines && std::getline(stream, rawLine); ++line)
-		{
-			std::string_view candidate = Trim(rawLine);
-
-			if (candidate.starts_with(kByteOrderMark))
-				candidate.remove_prefix(kByteOrderMark.size());
-
-			if (candidate.empty())
-				continue;
-
-			if (candidate.find(kHeader) == 0)
-			{
-				headerSeen = true;
-				break;
-			}
-
-			// A non-empty line that is not the header means this is some other file.
-			break;
-		}
-
-		if (!headerSeen)
+		if (!ConsumeSolutionHeader(stream))
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("'{}' does not begin like a solution file",
 										   path.string())};
 		}
 
-		std::vector<Entry> entries;
-		std::unordered_map<std::string, std::string> parentOf; // child id -> parent id
-		bool inNesting = false;
-
-		while (std::getline(stream, rawLine))
-		{
-			const std::string_view line = Trim(rawLine);
-
-			if (line.starts_with("Project("))
-			{
-				if (Entry entry; ParseEntry(line, entry))
-					entries.push_back(std::move(entry));
-
-				// A line that does not parse is skipped rather than fatal: hand-edited
-				// and merge-conflicted solutions exist, and one bad line should cost that
-				// line rather than the whole view.
-				continue;
-			}
-
-			if (line.starts_with("GlobalSection(NestedProjects)"))
-			{
-				inNesting = true;
-				continue;
-			}
-
-			if (line.starts_with("EndGlobalSection"))
-			{
-				inNesting = false;
-				continue;
-			}
-
-			if (!inNesting)
-				continue;
-
-			// `{child} = {parent}`, and nothing else appears in this section.
-			const std::size_t equals = line.find('=');
-
-			if (equals == std::string_view::npos)
-				continue;
-
-			const std::string_view child = Trim(line.substr(0, equals));
-			const std::string_view parent = Trim(line.substr(equals + 1));
-
-			if (!child.empty() && !parent.empty())
-				parentOf.emplace(child, parent);
-		}
+		const Body body = ReadBody(stream);
+		const std::vector<Entry>& entries = body.Entries;
 
 		Solution solution;
 		solution.Path = path;
@@ -175,70 +255,19 @@ namespace Graphite {
 
 		const std::filesystem::path directory = path.parent_path();
 
-		// Nothing here holds a pointer into the model while it is being built. An earlier
-		// version kept a map of id to Folder* and appended through it, which looked safe
-		// because each folder is appended once — but a *sibling* append reallocates the
-		// same vector, so any solution with two folders at one level wrote through a
-		// dangling pointer. Our own solution has three.
-		//
-		// Instead the shape is worked out entirely in index space, and the model is built
-		// once, bottom-up, by value.
-		std::unordered_map<std::string, std::size_t> indexById;
-
-		for (std::size_t i = 0; i < entries.size(); ++i)
-			indexById.emplace(entries[i].Id, i);
-
 		const std::size_t count = entries.size();
+		const std::size_t noParent = count;
+
+		std::vector<std::size_t> parentOfIndex = ResolveParents(body);
+
+		RootEntriesInCycles(parentOfIndex);
+
 		std::vector<std::vector<std::size_t>> childrenOf(count);
 		std::vector<std::size_t> roots;
-		std::vector<std::size_t> parentOfIndex(count, count); // count == "no parent"
 
 		for (std::size_t i = 0; i < count; ++i)
 		{
-			const auto link = parentOf.find(entries[i].Id);
-
-			if (link == parentOf.end())
-				continue;
-
-			const auto parent = indexById.find(link->second);
-
-			// A parent that is not a folder, is not declared, or is the entry itself,
-			// means the entry belongs at the solution root.
-			if (parent == indexById.end() || parent->second == i || !entries[parent->second].IsFolder)
-				continue;
-
-			parentOfIndex[i] = parent->second;
-		}
-
-		// Anything whose parent chain does not reach the root is in a cycle — two folders
-		// naming each other, which a hand-edited file can produce. Walking the chain with
-		// a step limit turns that into "belongs at the root" instead of a hang.
-		//
-		// Detected against the untouched links and applied afterwards. Rewriting as it
-		// walks would let the first entry freed from a cycle make the second one's chain
-		// look sound, so of two folders naming each other one would end up inside the
-		// other instead of both standing at the root.
-		std::vector<bool> orphaned(count, false);
-
-		for (std::size_t i = 0; i < count; ++i)
-		{
-			std::size_t walker = parentOfIndex[i];
-
-			for (std::size_t steps = 0; walker != count && steps <= count; ++steps)
-				walker = parentOfIndex[walker];
-
-			orphaned[i] = walker != count;
-		}
-
-		for (std::size_t i = 0; i < count; ++i)
-		{
-			if (orphaned[i])
-				parentOfIndex[i] = count;
-		}
-
-		for (std::size_t i = 0; i < count; ++i)
-		{
-			if (parentOfIndex[i] == count)
+			if (parentOfIndex[i] == noParent)
 				roots.push_back(i);
 			else
 				childrenOf[parentOfIndex[i]].push_back(i);
@@ -257,9 +286,9 @@ namespace Graphite {
 			return project;
 		};
 
-		// Built by value, children first, so no reference into the tree is ever held
-		// across an append.
-		const auto build = [&](std::size_t index, auto&& self) -> Folder {
+		// Built by value, children first: a map of id to Folder* appended through would
+		// dangle the moment a sibling append reallocated the vector holding it.
+		const auto buildFolder = [&](std::size_t index, auto&& self) -> Folder {
 			Folder folder;
 			folder.Name = entries[index].Name;
 
@@ -277,23 +306,12 @@ namespace Graphite {
 		for (const std::size_t index : roots)
 		{
 			if (entries[index].IsFolder)
-				solution.Root.Folders.push_back(build(index, build));
+				solution.Root.Folders.push_back(buildFolder(index, buildFolder));
 			else
 				solution.Root.Projects.push_back(makeProject(entries[index]));
 		}
 
-		// Counted from the model rather than while parsing, so an entry dropped for any
-		// reason cannot leave the count disagreeing with the tree.
-		const auto countProjects = [](const Folder& folder, auto&& self) -> std::size_t {
-			std::size_t total = folder.Projects.size();
-
-			for (const Folder& child : folder.Folders)
-				total += self(child, self);
-
-			return total;
-		};
-
-		solution.ProjectCount = countProjects(solution.Root, countProjects);
+		solution.ProjectCount = CountProjects(solution.Root);
 
 		return solution;
 	}

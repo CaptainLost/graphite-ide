@@ -6,9 +6,9 @@ namespace Graphite {
 
 	enum class GitIgnoredDisplay
 	{
-		Show, ///< Draw them like any other entry.
-		Dim,  ///< Draw them in the disabled colour — the default.
-		Hide  ///< Leave them out of the tree.
+		Show,
+		Dim,
+		Hide
 	};
 
 	constexpr std::string_view GitIgnoredDisplayToString(GitIgnoredDisplay display)

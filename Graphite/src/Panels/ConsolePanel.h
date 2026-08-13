@@ -23,6 +23,7 @@ namespace Graphite {
 	private:
 		void RenderToolbar();
 		void RenderEntries();
+		void FollowTailOnlyWhenEntriesArrived();
 
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::vector<Core::LogEntry> m_Entries;

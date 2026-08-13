@@ -71,12 +71,12 @@ namespace Graphite {
 
 		void EraseElement(std::string& text, std::size_t offset, std::string_view name)
 		{
-			const std::size_t begin = offset - 1; // back over the '<'
+			// pugixml reports an element's offset just past its '<'.
+			const std::size_t begin = offset - 1;
 			const std::size_t end = ElementEnd(text, offset, name);
 
-			// Both ends are needed: an element with children spans several lines, and
-			// measuring the span from its first line alone erases that one line and leaves
-			// the children and the orphaned closing tag behind.
+			// An element with children spans several lines, so the span has to be measured
+			// from both ends or the children and the closing tag are left behind.
 			const std::size_t lineBegin = LineExtent(text, begin).first;
 			const std::size_t lineEnd = LineExtent(text, end).second;
 
@@ -86,6 +86,148 @@ namespace Graphite {
 				text.erase(lineBegin, lineEnd - lineBegin);
 			else
 				text.erase(begin, end - begin);
+		}
+
+		std::string IndentOfLineAt(const std::string& text, std::size_t offset)
+		{
+			const std::size_t lineBegin = LineExtent(text, offset).first;
+			std::string indent;
+
+			for (std::size_t i = lineBegin; i < text.size() && (text[i] == ' ' || text[i] == '\t');
+				 ++i)
+			{
+				indent += text[i];
+			}
+
+			return indent;
+		}
+
+		std::string ElementNameAt(const std::string& text, std::size_t offset)
+		{
+			std::size_t end = offset;
+
+			while (end < text.size() && text[end] != ' ' && text[end] != '\t' &&
+				   text[end] != '\r' && text[end] != '\n' && text[end] != '>' && text[end] != '/')
+			{
+				++end;
+			}
+
+			return text.substr(offset, end - offset);
+		}
+
+		Core::Result<void> RequireFolderEmpty(const std::string& text, const std::string& folder)
+		{
+			Parsed parsed{text};
+
+			if (!parsed.ok)
+				return Core::Error{Core::ErrorCode::InvalidArgument,
+								   "the solution is not well-formed XML"};
+
+			const std::string wanted = "/" + folder + "/";
+
+			for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
+			{
+				const std::string current = node.attribute("Name").value();
+
+				if (current == wanted)
+				{
+					if (const pugi::xml_node child = node.child("Project"))
+					{
+						return Core::Error{Core::ErrorCode::InvalidArgument,
+										   std::format("the folder '{}' still holds the project '{}'",
+													   folder, child.attribute("Path").value())};
+					}
+
+					continue;
+				}
+
+				if (current.rfind(wanted, 0) == 0)
+				{
+					return Core::Error{Core::ErrorCode::InvalidArgument,
+									   std::format("the folder '{}' still holds the folder '{}'",
+												   folder, current)};
+				}
+			}
+
+			return Core::Result<void>::Ok();
+		}
+
+		struct NameEdit
+		{
+			std::size_t Begin = 0;
+			std::size_t Length = 0;
+			std::string NewValue;
+		};
+
+		struct ProjectAttributes
+		{
+			std::string Path;
+			std::string Id;
+			bool WellFormed = false;
+		};
+
+		ProjectAttributes ReadProjectAt(const std::string& text, std::size_t offset)
+		{
+			Parsed parsed{text};
+
+			ProjectAttributes attributes;
+			attributes.WellFormed = parsed.ok;
+
+			if (!parsed.ok)
+				return attributes;
+
+			for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
+			{
+				if (static_cast<std::size_t>(node.node().offset_debug()) != offset)
+					continue;
+
+				attributes.Path = node.node().attribute("Path").value();
+				attributes.Id = node.node().attribute("Id").value();
+				break;
+			}
+
+			return attributes;
+		}
+
+		Core::Result<std::filesystem::path> PickScratchPath(const std::filesystem::path& path)
+		{
+			std::filesystem::path stem = path;
+			stem.replace_extension();
+			const std::filesystem::path extension = path.extension();
+
+			// "Sample.tmp.slnx", keeping the solution's own extension: ReadSolution picks
+			// its parser by extension and would refuse a plain ".tmp".
+			return Core::PickAvailablePath([&stem, &extension](int attempt) {
+				std::filesystem::path candidate = stem;
+				candidate += attempt == 0 ? std::string{".tmp"} : std::format(".tmp{}", attempt);
+				candidate += extension;
+				return candidate;
+			});
+		}
+
+		Core::Result<void> WriteWholeFile(const std::filesystem::path& path, const std::string& text)
+		{
+			const Core::Error failure{Core::ErrorCode::IoFailure,
+									  std::format("cannot write '{}'", Core::ToUtf8(path))};
+
+			std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+
+			if (!stream.is_open())
+				return failure;
+
+			stream << text;
+
+			if (!stream.good())
+			{
+				stream.close();
+
+				std::error_code ignored;
+				std::filesystem::remove(path, ignored);
+
+				return failure;
+			}
+
+			return Core::Result<void>::Ok();
 		}
 	}
 
@@ -106,8 +248,7 @@ namespace Graphite {
 
 		const std::filesystem::path directory = m_Path.parent_path();
 
-		// Every Project element, wherever it sits: the format allows them at the root and
-		// inside any Folder, and a caller naming a file should not have to say which.
+		// The format allows a Project element at the root and inside any Folder.
 		for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
 		{
 			const char* declared = node.node().attribute("Path").value();
@@ -142,8 +283,8 @@ namespace Graphite {
 		if (folder.empty())
 			return static_cast<std::size_t>(root.offset_debug());
 
-		// Folders are flat elements under the root; the nesting lives in the name, with a
-		// slash at each end.
+		// Folders are flat elements under the root; the nesting lives in the Name attribute,
+		// which carries a slash at each end.
 		const std::string wanted = "/" + folder + "/";
 
 		for (const pugi::xml_node& node : root.children("Folder"))
@@ -160,41 +301,19 @@ namespace Graphite {
 	{
 		const std::string ending = DetectLineEnding(m_Text);
 		const std::string unit = IndentUnit(m_Text);
-
-		// Indented one level past the container's own line.
-		const std::size_t lineBegin = LineExtent(m_Text, offset).first;
-		std::string containerIndent;
-
-		for (std::size_t i = lineBegin;
-			 i < m_Text.size() && (m_Text[i] == ' ' || m_Text[i] == '\t'); ++i)
-		{
-			containerIndent += m_Text[i];
-		}
-
+		const std::string containerIndent = IndentOfLineAt(m_Text, offset);
 		const std::size_t tagEnd = OpeningTagEnd(m_Text, offset);
 
 		// A container with no children yet is written self-closing, so it has to become an
 		// open/close pair before anything can go inside it.
-		if (tagEnd >= 2 && m_Text[tagEnd - 2] == '/')
+		if (EndsSelfClosingTag(m_Text, tagEnd))
 		{
-			// Name it from the text rather than guessing: this is used for both Solution
-			// and Folder.
-			std::size_t nameEnd = offset;
-
-			// A container written with its attributes on the next line ends its name at the
-			// line break, so both terminators belong here too.
-			while (nameEnd < m_Text.size() && m_Text[nameEnd] != ' ' && m_Text[nameEnd] != '\t' && m_Text[nameEnd] != '\r' && m_Text[nameEnd] != '\n' && m_Text[nameEnd] != '>' && m_Text[nameEnd] != '/')
-			{
-				++nameEnd;
-			}
-
-			const std::string name = m_Text.substr(offset, nameEnd - offset);
+			const std::string name = ElementNameAt(m_Text, offset);
 
 			std::string replacement = ">";
 			replacement += ending + containerIndent + unit + element;
 			replacement += ending + containerIndent + "</" + name + ">";
 
-			// Replaces the "/>" that ended the empty element.
 			m_Text.replace(tagEnd - 2, 2, replacement);
 			return;
 		}
@@ -205,10 +324,8 @@ namespace Graphite {
 	Core::Result<void> SlnxEditor::AddProject(const std::filesystem::path& project,
 											  const std::string& folder)
 	{
-		// A solution names its projects relatively, and there is no relative path from one
-		// drive to another: lexically_relative gives back nothing at all. Writing that
-		// empty string produces a Path="" entry the reader then skips, so the garbage
-		// survives every check that follows.
+		// lexically_relative gives back nothing at all across drives, and the Path="" entry
+		// that would write is one the reader silently skips.
 		const std::string relative = RelativeProjectPath(m_Path, project);
 
 		if (relative.empty())
@@ -227,7 +344,6 @@ namespace Graphite {
 							   std::format("no project file at '{}'", project.string())};
 		}
 
-		// Checked before anything is spliced, so a refusal leaves the text untouched.
 		if (FindProject(project).HasValue())
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
@@ -238,9 +354,6 @@ namespace Graphite {
 
 		auto container = FindContainer(folder);
 
-		// A folder the caller names but the solution does not have yet is created rather
-		// than refused: the folder is scaffolding for the project, not a thing the caller
-		// has to build first.
 		if (!container && container.GetError().Code == Core::ErrorCode::NotFound)
 		{
 			const auto created = AddFolder(folder);
@@ -281,15 +394,14 @@ namespace Graphite {
 		if (parts.empty())
 			return Core::Error{Core::ErrorCode::InvalidArgument, "a solution folder needs a name"};
 
-		// Checked before anything is spliced, so a refusal leaves the text untouched.
 		if (FindContainer(folder).HasValue())
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("the solution already has a folder '{}'", folder)};
 		}
 
-		// Every ancestor that is missing has to be written too: nesting lives in the name,
-		// so a folder whose parent has no element of its own has nothing to hang from.
+		// Every missing ancestor needs an element of its own: nesting lives in the name, so
+		// a folder whose parent has no element has nothing to hang from.
 		std::vector<std::string> missing;
 		std::string prefix;
 
@@ -301,8 +413,8 @@ namespace Graphite {
 				missing.push_back(prefix);
 		}
 
-		// Written deepest first, because each insertion goes in as the container's first
-		// child — so the shallowest ends up first in the file, as a reader expects.
+		// Deepest first, because each insertion goes in as the container's first child, so
+		// the shallowest ends up first in the file.
 		for (std::size_t i = missing.size(); i > 0; --i)
 		{
 			const auto root = FindContainer("");
@@ -326,44 +438,8 @@ namespace Graphite {
 		if (!found)
 			return found.GetError();
 
-		{
-			Parsed parsed{m_Text};
-
-			if (!parsed.ok)
-				return Core::Error{Core::ErrorCode::InvalidArgument,
-								   "the solution is not well-formed XML"};
-
-			const std::string wanted = "/" + folder + "/";
-
-			for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
-			{
-				const std::string current = node.attribute("Name").value();
-
-				// A folder that still holds something is refused rather than emptied by
-				// implication, and the refusal names what was found so the caller can act
-				// on it.
-				if (current == wanted)
-				{
-					const pugi::xml_node child = node.child("Project");
-
-					if (child)
-					{
-						return Core::Error{Core::ErrorCode::InvalidArgument,
-										   std::format("the folder '{}' still holds the project '{}'",
-													   folder, child.attribute("Path").value())};
-					}
-
-					continue;
-				}
-
-				if (current.rfind(wanted, 0) == 0)
-				{
-					return Core::Error{Core::ErrorCode::InvalidArgument,
-									   std::format("the folder '{}' still holds the folder '{}'", folder,
-												   current)};
-				}
-			}
-		}
+		if (const auto empty = RequireFolderEmpty(m_Text, folder); !empty)
+			return empty.GetError();
 
 		EraseElement(m_Text, found.GetValue(), "Folder");
 
@@ -392,9 +468,7 @@ namespace Graphite {
 		if (!parsed.ok)
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 
-		// Offset of the Name attribute's value, and how long it is.
-		std::vector<std::pair<std::size_t, std::size_t>> edits;
-		std::vector<std::string> replacements;
+		std::vector<NameEdit> edits;
 
 		for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
 		{
@@ -403,29 +477,28 @@ namespace Graphite {
 			if (current.rfind(oldPath, 0) != 0)
 				continue;
 
-			// The attribute's value is not given an offset of its own, so it is found in
-			// the element's own text — the first occurrence after the element start.
+			// pugixml gives an attribute value no offset of its own, so it is found as the
+			// first occurrence after the element start.
 			const auto elementBegin = static_cast<std::size_t>(node.offset_debug());
 			const std::size_t valueBegin = m_Text.find(current, elementBegin);
 
 			if (valueBegin == std::string::npos)
 				continue;
 
-			edits.emplace_back(valueBegin, current.size());
-			replacements.push_back(newPath + current.substr(oldPath.size()));
+			edits.push_back(NameEdit{valueBegin, current.size(),
+									 newPath + current.substr(oldPath.size())});
 		}
 
 		if (edits.empty())
 			return Core::Error{Core::ErrorCode::NotFound,
 							   std::format("the solution has no folder '{}'", folder)};
 
-		// Applied from the last to the first: replacing a shorter name with a longer one
-		// shifts every offset after it, and applying them forwards would corrupt the file
-		// in a way that still parses.
+		// Applied last to first: a longer replacement shifts every offset after it, and
+		// applying them forwards would corrupt the file in a way that still parses.
 		for (std::size_t i = edits.size(); i > 0; --i)
 		{
-			const auto& [begin, length] = edits[i - 1];
-			m_Text.replace(begin, length, replacements[i - 1]);
+			const NameEdit& edit = edits[i - 1];
+			m_Text.replace(edit.Begin, edit.Length, edit.NewValue);
 		}
 
 		return Core::Result<void>::Ok();
@@ -439,34 +512,21 @@ namespace Graphite {
 		if (!found)
 			return found.GetError();
 
-		std::string declared;
-		std::string id;
+		ProjectAttributes attributes = ReadProjectAt(m_Text, found.GetValue());
 
+		if (!attributes.WellFormed)
 		{
-			Parsed parsed{m_Text};
-
-			if (!parsed.ok)
-				return Core::Error{Core::ErrorCode::InvalidArgument,
-								   "the solution is not well-formed XML"};
-
-			for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
-			{
-				if (static_cast<std::size_t>(node.node().offset_debug()) != found.GetValue())
-					continue;
-
-				declared = node.node().attribute("Path").value();
-				id = node.node().attribute("Id").value();
-				break;
-			}
+			return Core::Error{Core::ErrorCode::InvalidArgument,
+							   "the solution is not well-formed XML"};
 		}
 
-		if (declared.empty())
-			declared = RelativeProjectPath(m_Path, project);
+		if (attributes.Path.empty())
+			attributes.Path = RelativeProjectPath(m_Path, project);
 
-		// The identifier is carried over rather than regenerated: a new one would make the
-		// moved project look like a different project to anything keying off it.
-		if (id.empty())
-			id = NewGuid();
+		// Carried over rather than regenerated: a new identifier would make the moved
+		// project look like a different project to anything keying off it.
+		if (attributes.Id.empty())
+			attributes.Id = NewGuid();
 
 		// The folder is created first, so the removal below is the last thing that can go
 		// wrong — and it cannot, the element having just been found.
@@ -489,67 +549,28 @@ namespace Graphite {
 		if (!container)
 			return container.GetError();
 
-		InsertChild(container.GetValue(), std::format(R"(<Project Path="{}" Id="{}" />)", declared, id));
+		InsertChild(container.GetValue(),
+					std::format(R"(<Project Path="{}" Id="{}" />)", attributes.Path, attributes.Id));
 
 		return Core::Result<void>::Ok();
 	}
 
 	Core::Result<void> SlnxEditor::Save()
 	{
-		// A scratch file to read back before anything touches the target — not the
-		// temporary Core::WriteFileAtomically itself uses below. It keeps the solution's own
-		// extension, "Sample.tmp.slnx", because ReadSolution picks its parser by
-		// extension and a plain ".tmp" would be refused as a format this build cannot
-		// read. Collision avoidance goes through the same helper Core::WriteFileAtomically uses
-		// for its own temporary, rather than a second hand-rolled version of that check —
-		// a leftover scratch file from a crashed earlier save must not be clobbered.
-		std::filesystem::path stem = m_Path;
-		stem.replace_extension();
-		const std::filesystem::path extension = m_Path.extension();
+		const Core::Result<std::filesystem::path> scratch = PickScratchPath(m_Path);
 
-		const Core::Result<std::filesystem::path> picked = Core::PickAvailablePath(
-			[&stem, &extension](int attempt) {
-				std::filesystem::path candidate = stem;
-				candidate += attempt == 0 ? std::string{".tmp"} : std::format(".tmp{}", attempt);
-				candidate += extension;
-				return candidate;
-			});
+		if (!scratch)
+			return scratch.GetError();
 
-		if (!picked)
-			return picked.GetError();
+		if (const auto written = WriteWholeFile(scratch.GetValue(), m_Text); !written)
+			return written.GetError();
 
-		const std::filesystem::path& scratch = picked.GetValue();
+		// The edited text never reaches the file Visual Studio has open until this build's
+		// own reader has proved it can read it back.
+		const auto verified = ReadSolution(scratch.GetValue());
 
-		{
-			std::ofstream stream{scratch, std::ios::binary | std::ios::trunc};
-
-			if (!stream.is_open())
-				return Core::Error{Core::ErrorCode::IoFailure,
-								   std::format("cannot write '{}'", Core::ToUtf8(scratch))};
-
-			stream << m_Text;
-
-			if (!stream.good())
-			{
-				stream.close();
-
-				std::error_code ignored;
-				std::filesystem::remove(scratch, ignored);
-
-				return Core::Error{Core::ErrorCode::IoFailure,
-								   std::format("cannot write '{}'", Core::ToUtf8(scratch))};
-			}
-		}
-
-		// Read back with this build's own parser before the file is replaced. A write that
-		// produced something unreadable therefore never reaches the file the user's Visual
-		// Studio has open — the only failure in this feature that genuinely hurts.
-		const auto verified = ReadSolution(scratch);
-
-		{
-			std::error_code ignored;
-			std::filesystem::remove(scratch, ignored);
-		}
+		std::error_code ignored;
+		std::filesystem::remove(scratch.GetValue(), ignored);
 
 		if (!verified)
 		{

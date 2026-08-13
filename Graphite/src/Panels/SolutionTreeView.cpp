@@ -9,6 +9,8 @@
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,15 +18,54 @@
 namespace Graphite {
 
 	namespace {
+		std::string ChildPath(const std::string& path, const std::string& name)
+		{
+			return path.empty() ? name : path + "/" + name;
+		}
+
 		void CollectFolderPaths(const Folder& folder, const std::string& path,
 								std::vector<std::string>& out)
 		{
 			for (const Folder& child : folder.Folders)
 			{
-				const std::string childPath = path.empty() ? child.Name : path + "/" + child.Name;
+				const std::string childPath = ChildPath(path, child.Name);
 				out.push_back(childPath);
 				CollectFolderPaths(child, childPath, out);
 			}
+		}
+
+		// BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets the
+		// menu be dragged by its body: a popup has no title bar, so its whole surface counts
+		// as draggable background. Opening by hand allows BeginPopup, which does take window
+		// flags.
+		bool BeginRightClickPopup(const char* popupId)
+		{
+			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
+			{
+				ImGui::OpenPopup(popupId);
+			}
+
+			return ImGui::BeginPopup(popupId, ImGuiWindowFlags_NoMove);
+		}
+
+		std::optional<std::filesystem::path> PickProjectFile()
+		{
+			const std::vector<Core::FileDialog::Filter> filters = {
+				{"Visual Studio projects", "*.vcxproj"}, {"All files", "*.*"}};
+
+			auto picked = Core::FileDialog::PickFile("Add Existing Project", filters);
+
+			if (!picked)
+			{
+				APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+				return std::nullopt;
+			}
+
+			if (picked.GetValue().empty())
+				return std::nullopt;
+
+			return picked.GetValue();
 		}
 	}
 
@@ -40,14 +81,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::SetNextItemWidth(-1.0f);
-
-		if (ImGui::InputTextWithHint("##solutionFilter", ICON_MDI_MAGNIFY "  Filter files",
-									 m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf)))
-		{
-			m_Filter.Build();
-		}
-
+		RenderFilter();
 		ImGui::Separator();
 
 		const Solution& solution = *m_Workspace.LoadedSolution();
@@ -60,8 +94,6 @@ namespace Graphite {
 
 			const bool rootOpen = ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
 
-			// Attached right after the item, regardless of whether it is expanded — a
-			// right click on a collapsed root must still open the menu.
 			RenderContextMenu(solution.Root, "");
 
 			if (rootOpen)
@@ -73,17 +105,28 @@ namespace Graphite {
 
 		ImGui::EndChild();
 
-		// Both run outside the walk: the executor edits the solution the walk just read,
+		// Outside the walk: the executor edits the solution the walk holds references into,
 		// and the modal must not be nested inside the child window.
 		ExecutePendingAction();
 		RenderRemoveConfirmation();
+	}
+
+	void SolutionTreeView::RenderFilter()
+	{
+		ImGui::SetNextItemWidth(-1.0f);
+
+		if (ImGui::InputTextWithHint("##solutionFilter", ICON_MDI_MAGNIFY "  Filter files",
+									 m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf)))
+		{
+			m_Filter.Build();
+		}
 	}
 
 	void SolutionTreeView::RenderFolder(const Folder& folder, const std::string& path)
 	{
 		for (const Folder& child : folder.Folders)
 		{
-			const std::string childPath = path.empty() ? child.Name : path + "/" + child.Name;
+			const std::string childPath = ChildPath(path, child.Name);
 
 			if (RenderFolderRenameEditor(child, childPath))
 				continue;
@@ -109,13 +152,9 @@ namespace Graphite {
 	void SolutionTreeView::RenderProject(const Project& project,
 										 const std::string& folder)
 	{
-		// A project nobody could read is a leaf rather than an empty expandable node: the
-		// arrow would promise contents that are not merely absent but unknown.
 		const ImGuiTreeNodeFlags flags =
 			project.ContentRead ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_Leaf;
 
-		// Said in the label rather than only in a colour: this is the one state in the
-		// view the user has to act on, and it is why the solution is worth looking at.
 		const std::string icon =
 			Core::IconForExtension(Core::ToUtf8(project.Path.extension()));
 		const std::string label =
@@ -129,7 +168,6 @@ namespace Graphite {
 		if (!project.Exists)
 			ImGui::PopStyleColor();
 
-		// Attached right after the item, regardless of whether it is expanded.
 		RenderContextMenu(project, folder);
 
 		if (!open)
@@ -137,16 +175,20 @@ namespace Graphite {
 
 		if (project.ContentRead)
 		{
-			if (!project.Content.References.empty() && ImGui::TreeNodeEx("References"))
-			{
-				for (const std::string& reference : project.Content.References)
-					ImGui::BulletText("%s", reference.c_str());
-
-				ImGui::TreePop();
-			}
-
+			RenderReferences(project.Content.References);
 			RenderContentFolder(project.Content.Root);
 		}
+
+		ImGui::TreePop();
+	}
+
+	void SolutionTreeView::RenderReferences(const std::vector<std::string>& references)
+	{
+		if (references.empty() || !ImGui::TreeNodeEx("References"))
+			return;
+
+		for (const std::string& reference : references)
+			ImGui::BulletText("%s", reference.c_str());
 
 		ImGui::TreePop();
 	}
@@ -166,24 +208,27 @@ namespace Graphite {
 
 		for (const ContentFile& file : folder.Files)
 		{
-			if (!m_Filter.PassFilter(file.Name.c_str()))
-				continue;
-
-			const bool selected = m_Workspace.GetSelectedFile() == file.Path;
-
-			const std::string label =
-				std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} +
-				"  " + file.Name;
-
-			// Keyed by the full path: two projects can hold files of the same name, and
-			// ImGui would treat same-labelled siblings as one node.
-			ImGui::PushID(Core::ToUtf8(file.Path).c_str());
-
-			if (ImGui::Selectable(label.c_str(), selected))
-				m_Workspace.SelectFile(file.Path);
-
-			ImGui::PopID();
+			if (m_Filter.PassFilter(file.Name.c_str()))
+				RenderContentFile(file);
 		}
+	}
+
+	void SolutionTreeView::RenderContentFile(const ContentFile& file)
+	{
+		const bool selected = m_Workspace.GetSelectedFile() == file.Path;
+
+		const std::string label =
+			std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} + "  " +
+			file.Name;
+
+		// Keyed by the full path: ImGui gives same-labelled siblings the same id, and two
+		// projects can hold files of the same name.
+		ImGui::PushID(Core::ToUtf8(file.Path).c_str());
+
+		if (ImGui::Selectable(label.c_str(), selected))
+			m_Workspace.SelectFile(file.Path);
+
+		ImGui::PopID();
 	}
 
 	void SolutionTreeView::RenderEmptyState()
@@ -200,30 +245,17 @@ namespace Graphite {
 			return;
 		}
 
-		// Candidates exist but none loaded, so reading the chosen one failed. The reason
-		// was logged to the console when it happened.
 		ImGui::TextUnformatted("This Visual Studio solution could not be read. See the console.");
 	}
 
 	void SolutionTreeView::RenderContextMenu(const Folder& folder,
 											 const std::string& path)
 	{
-		// BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
-		// the menu be dragged anywhere by its body — a popup has no title bar, so its
-		// whole surface counts as draggable background. So open the popup by hand and use
-		// BeginPopup, which does take window flags. Mirrors FileTreeView::RenderContextMenu.
 		const std::string popupId = "##ctxSlnFolder" + path;
 
-		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-			ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
-		{
-			ImGui::OpenPopup(popupId.c_str());
-		}
-
-		if (!ImGui::BeginPopup(popupId.c_str(), ImGuiWindowFlags_NoMove))
+		if (!BeginRightClickPopup(popupId.c_str()))
 			return;
 
-		// The solution root is not itself a folder the editor can rename or remove.
 		const bool isRoot = path.empty();
 
 		if (ImGui::MenuItem("Add Existing Project..."))
@@ -231,8 +263,8 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New Folder"))
 		{
-			const std::string childPath = path.empty() ? "New Folder" : path + "/New Folder";
-			m_Pending = PendingAction{PendingAction::Kind::AddFolder, {}, childPath, {}};
+			m_Pending =
+				PendingAction{PendingAction::Kind::AddFolder, {}, ChildPath(path, "New Folder"), {}};
 		}
 
 		if (!isRoot)
@@ -240,15 +272,7 @@ namespace Graphite {
 			ImGui::Separator();
 
 			if (ImGui::MenuItem("Rename"))
-			{
-				m_RenamingFolder = path;
-				m_FocusRenameField = true;
-
-				std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
-
-				if (folder.Name.size() < m_RenameBuffer.size())
-					std::copy_n(folder.Name.begin(), folder.Name.size(), m_RenameBuffer.begin());
-			}
+				StartRenamingFolder(folder, path);
 
 			if (ImGui::MenuItem("Remove"))
 				m_Pending = PendingAction{PendingAction::Kind::RemoveFolder, {}, path, {}};
@@ -257,18 +281,23 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
+	void SolutionTreeView::StartRenamingFolder(const Folder& folder, const std::string& path)
+	{
+		m_RenamingFolder = path;
+		m_FocusRenameField = true;
+
+		std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
+
+		if (folder.Name.size() < m_RenameBuffer.size())
+			std::copy_n(folder.Name.begin(), folder.Name.size(), m_RenameBuffer.begin());
+	}
+
 	void SolutionTreeView::RenderContextMenu(const Project& project,
 											 const std::string& folder)
 	{
 		const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.Path);
 
-		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-			ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
-		{
-			ImGui::OpenPopup(popupId.c_str());
-		}
-
-		if (!ImGui::BeginPopup(popupId.c_str(), ImGuiWindowFlags_NoMove))
+		if (!BeginRightClickPopup(popupId.c_str()))
 			return;
 
 		if (ImGui::MenuItem("Remove from Solution"))
@@ -298,7 +327,6 @@ namespace Graphite {
 
 		for (const std::string& path : folders)
 		{
-			// Already there — offering it as a destination would be a no-op move.
 			if (path == currentFolder)
 				continue;
 
@@ -328,8 +356,8 @@ namespace Graphite {
 							 ImGuiInputTextFlags_EnterReturnsTrue |
 								 ImGuiInputTextFlags_AutoSelectAll);
 
-		// Escape cancels, but only while this field owns the keyboard — an unscoped key
-		// poll would also catch an Escape aimed at a modal elsewhere.
+		// Scoped to this field: an unscoped key poll would also catch an Escape aimed at a
+		// modal elsewhere.
 		const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
 		const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
 
@@ -400,34 +428,21 @@ namespace Graphite {
 		PendingAction action = std::move(m_Pending);
 		m_Pending = PendingAction{};
 
-		// The picker is shown here rather than from the menu that recorded the action: a
-		// system dialog opened from inside the tree walk would be modal over a window
-		// whose draw is not finished, and the walk holds references into the solution
-		// this action is about to invalidate.
+		// Picked here rather than from the menu that recorded the action: a system dialog
+		// opened from inside the tree walk would be modal over a window whose draw is not
+		// finished.
 		if (action.kind == PendingAction::Kind::AddProject)
 		{
-			const std::vector<Core::FileDialog::Filter> filters = {
-				{"Visual Studio projects", "*.vcxproj"}, {"All files", "*.*"}};
+			const std::optional<std::filesystem::path> chosen = PickProjectFile();
 
-			auto picked = Core::FileDialog::PickFile("Add Existing Project", filters);
-
-			if (!picked)
-			{
-				APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
-				return;
-			}
-
-			// An empty path is the user cancelling, which is not worth a log line.
-			if (picked.GetValue().empty())
+			if (!chosen.has_value())
 				return;
 
-			action.project = picked.GetValue();
+			action.project = *chosen;
 		}
 
-		// No reload here: writing the file changes something the directory watcher is
-		// already watching, and the reload arrives through that path. Reloading here too
-		// would give the view two ways to update, and one of them would eventually be
-		// wrong.
+		// No reload here: writing the file wakes the directory watcher, and the reload
+		// arrives through that path.
 		if (const auto applied = Apply(action); !applied)
 			APP_ERROR("{}", applied.GetError().Message);
 	}

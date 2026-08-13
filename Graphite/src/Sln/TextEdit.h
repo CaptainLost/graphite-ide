@@ -13,6 +13,8 @@ namespace Graphite {
 
 	std::size_t OpeningTagEnd(std::string_view text, std::size_t offset);
 
+	bool EndsSelfClosingTag(std::string_view text, std::size_t tagEnd);
+
 	std::size_t ElementEnd(std::string_view text, std::size_t offset,
 						   std::string_view name);
 

@@ -11,9 +11,9 @@ namespace Graphite {
 	public:
 		explicit WorkspaceSettings(std::filesystem::path root);
 
-		std::string Get(std::string_view key) const;
+		std::string Read(std::string_view key) const;
 
-		void Set(std::string_view key, std::string value);
+		void Write(std::string_view key, std::string value);
 
 	private:
 		std::filesystem::path GetFilePath() const;

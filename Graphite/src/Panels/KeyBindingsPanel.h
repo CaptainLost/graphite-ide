@@ -28,6 +28,12 @@ namespace Graphite {
 		void OnEvent(Core::Event& event) override;
 
 	private:
+		bool IsWaitingForChord() const;
+
+		void CancelCapture();
+
+		static bool CaptureOwnsKeyboard(bool selfActive, bool anyActive);
+
 		std::optional<Core::Chord> CaptureWheelChord(bool pointerOverCell);
 
 		void RenderRow(const Core::Command& command);
@@ -48,14 +54,12 @@ namespace Graphite {
 		Core::Keymap& m_Keys;
 		std::function<void()> m_OnChanged;
 
-		// Whether this screen held the focus while it last drew. Events arrive before the
-		// frame they belong to, so a capture has to be judged against the frame just past:
-		// without it a keystroke aimed at the editor would be recorded by a cell waiting on
-		// a panel the user is no longer looking at.
+		// Events arrive before the frame they belong to, so a capture is judged against the
+		// focus of the frame just past.
 		bool m_WasFocused = false;
 
 		// The modifiers held since the first went down, cleared as soon as anything else is
-		// pressed. Non-zero means the release of a modifier still counts as a tap.
+		// pressed. Non-zero means a modifier release still counts as a tap.
 		ImGuiKeyChord m_TapMods = 0;
 
 		std::string m_Capturing;

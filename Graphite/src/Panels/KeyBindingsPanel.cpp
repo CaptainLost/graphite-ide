@@ -113,6 +113,30 @@ namespace Graphite {
 			return chords;
 		}
 
+		bool CanAppendAlternate(const Core::Binding* binding)
+		{
+			return binding != nullptr && !binding->Primary.IsEmpty();
+		}
+
+		// The same chord twice in one command reaches it no more often than once. The user
+		// put it in keptSlot, so it leaves the slot it was in.
+		void DropDuplicatesOfChord(std::vector<Core::Chord>& chords, const Core::Chord& chord,
+								   std::size_t& keptSlot)
+		{
+			for (std::size_t index = chords.size(); index > 0; --index)
+			{
+				if (index - 1 != keptSlot && chords[index - 1] == chord)
+				{
+					chords.erase(chords.begin() + static_cast<std::ptrdiff_t>(index - 1));
+
+					if (index - 1 < keptSlot)
+					{
+						--keptSlot;
+					}
+				}
+			}
+		}
+
 		Core::Binding Rebuild(std::vector<Core::Chord> chords)
 		{
 			std::erase_if(chords, [](const Core::Chord& chord) { return chord.IsEmpty(); });
@@ -151,7 +175,7 @@ namespace Graphite {
 
 		if (ImGui::BeginTable("bindings", 4, flags))
 		{
-			ImGui::TableSetupColumn("Core::Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+			ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
 			ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, 2.0f);
 			ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, 3.0f);
 			ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
@@ -174,10 +198,7 @@ namespace Graphite {
 
 	void KeyBindingsPanel::OnEvent(Core::Event& event)
 	{
-		// Only while a cell is actually waiting, and only while this screen has the focus.
-		// The event reached here at all because nothing above consumed it — a focused filter
-		// box makes the GUI claim the keyboard, so typing into it never arrives.
-		if (m_Capturing.empty() || m_Conflict.has_value() || !m_WasFocused)
+		if (!IsWaitingForChord())
 		{
 			return;
 		}
@@ -188,17 +209,16 @@ namespace Graphite {
 			[this](Core::KeyPressedEvent& pressed) {
 				const ImGuiKey key = Core::ToImGuiKey(pressed.GetKeyCode());
 
-				// Escape leaves the capture without binding anything — which is why Escape
-				// cannot be bound. The alternative is a cell the user cannot get out of.
+				// Escape leaves the capture, which is why Escape cannot itself be bound: the
+				// alternative is a cell the user cannot get out of.
 				if (key == ImGuiKey_Escape)
 				{
-					m_Capturing.clear();
-					m_TapMods = 0;
+					CancelCapture();
 					return true;
 				}
 
-				// A modifier going down is not an answer yet: it may be the start of a chord
-				// or a tap of its own, and only what happens next tells them apart.
+				// A modifier going down is not an answer yet: only what happens next tells a
+				// chord from a tap.
 				if (const ImGuiKeyChord bit = Core::ModifierBitOf(pressed.GetKeyCode()); bit != 0)
 				{
 					if (!pressed.IsRepeat())
@@ -224,9 +244,7 @@ namespace Graphite {
 			});
 
 		// Modifiers released with nothing pressed in between: the gesture is the modifiers
-		// themselves. Recorded here rather than on the press for the same reason the router
-		// fires it here — until the release, this is indistinguishable from the start of an
-		// ordinary chord.
+		// themselves, and only the release tells it apart from the start of a chord.
 		dispatcher.Dispatch<Core::KeyReleasedEvent>(
 			[this](Core::KeyReleasedEvent& released) {
 				if (Core::ModifierBitOf(released.GetKeyCode()) == 0 || m_TapMods == 0)
@@ -243,6 +261,17 @@ namespace Graphite {
 				Offer(id, slot, Core::Chord::ModifierTap(tapped));
 				return true;
 			});
+	}
+
+	bool KeyBindingsPanel::IsWaitingForChord() const
+	{
+		return !m_Capturing.empty() && !m_Conflict.has_value() && m_WasFocused;
+	}
+
+	void KeyBindingsPanel::CancelCapture()
+	{
+		m_Capturing.clear();
+		m_TapMods = 0;
 	}
 
 	bool KeyBindingsPanel::Matches(const Core::Command& command) const
@@ -284,14 +313,9 @@ namespace Graphite {
 			RenderSlot(command.Id, index + 1, TextOf(binding, index + 1));
 		}
 
-		// One slot past the end appends, so a command can gain a second way of being reached
-		// without any other gesture for it.
-		//
-		// Only once there is a first way in. An alternate to nothing is not a thing the user
-		// can mean, and the append would not even have produced one: with no chords stored,
-		// the appended chord lands at index 0 and becomes the primary, so the cell clicked
-		// under Alternates would have filled the Shortcut column instead.
-		if (binding != nullptr && !binding->Primary.IsEmpty())
+		// One slot past the end appends. With no primary the appended chord would land at
+		// index 0 and fill the Shortcut column instead of this one.
+		if (CanAppendAlternate(binding))
 		{
 			RenderSlot(command.Id, alternates + 1, {});
 		}
@@ -319,9 +343,6 @@ namespace Graphite {
 		const bool capturing = m_Capturing == id && m_CapturingSlot == slot;
 		std::string label = capturing ? CaptureLabel(ImGui::GetIO().KeyMods) : text;
 
-		// An empty cell is an invitation, not a value, and has to read as one: in a column
-		// of chords the '+' it used to show was indistinguishable from the '+' that
-		// separates modifiers, so it looked like a truncated shortcut rather than a button.
 		const bool placeholder = label.empty();
 
 		if (placeholder)
@@ -349,10 +370,9 @@ namespace Graphite {
 			m_CapturingSlot = slot;
 		}
 
+		// All three are about the Selectable just drawn: ImGui's last-item state belongs to
+		// the next widget as soon as one is submitted.
 		const bool hovered = ImGui::IsItemHovered();
-
-		// Both about the Selectable just drawn, so they have to be read before anything
-		// else becomes "the last item".
 		const bool selfActive = ImGui::IsItemActive();
 		const bool anyActive = ImGui::IsAnyItemActive();
 
@@ -360,15 +380,9 @@ namespace Graphite {
 		// read as a fresh capture.
 		if (capturing && !m_Conflict.has_value())
 		{
-			// Capture reads raw key state, which no widget owns, so it has to be fenced by
-			// hand: without this, typing into the filter box — or into any other window —
-			// while a cell waits would bind whatever was typed. Anything else taking the
-			// keyboard ends the capture rather than merely pausing it, because the user
-			// who clicked elsewhere has plainly stopped answering the question.
-			const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-			const bool ownsKeyboard = !anyActive || selfActive;
-
-			if (!focused || !ownsKeyboard)
+			// Capture reads raw key state, which no widget owns: without this fence, typing
+			// into the filter box while a cell waits would bind whatever was typed.
+			if (!CaptureOwnsKeyboard(selfActive, anyActive))
 			{
 				m_Capturing.clear();
 			}
@@ -381,24 +395,22 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
+	bool KeyBindingsPanel::CaptureOwnsKeyboard(bool selfActive, bool anyActive)
+	{
+		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+		return focused && (!anyActive || selfActive);
+	}
+
 	std::optional<Core::Chord> KeyBindingsPanel::CaptureWheelChord(bool pointerOverCell)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 
-		// The keys arrive as events; the wheel does not, because it is the one gesture whose
-		// meaning depends on what it is pointing at, and that is known only while drawing.
-		//
-		// Without it the screen would show Ctrl+WheelUp beside Zoom In and have no way to
-		// set it. Checked before the keys because a wheel gesture carries modifiers too,
-		// and only over the cell itself: the table scrolls, and a scroll aimed at the list
-		// must not overwrite whatever row happens to be waiting.
-		//
-		// A modifier is required as well, because the cell the pointer is over is normally
-		// the very one just clicked to arm the capture: scrolling the table to find another
-		// row would otherwise bind a bare WheelUp, after which every scroll in an editor
-		// runs that command once per notch. The modifiers are also what distinguish the
-		// gesture from ordinary scrolling, so a bare wheel is not a shortcut anyone means
-		// to set.
+		// The keys arrive as events; the wheel does not, because its meaning depends on what
+		// it points at, which is known only while drawing. Only over the cell itself, so a
+		// scroll aimed at the table does not overwrite the row that is waiting, and only
+		// with a modifier: a bare WheelUp would be bound while scrolling to find another
+		// row, and would then fire once per notch in every editor.
 		if (pointerOverCell && io.MouseWheel != 0.0f && io.KeyMods != ImGuiMod_None)
 		{
 			return Core::Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Core::Trigger::WheelUp : Core::Trigger::WheelDown,
@@ -418,8 +430,6 @@ namespace Graphite {
 			return;
 		}
 
-		// Held rather than applied: a user who lost Ctrl+S without being told would
-		// discover it at the moment they wanted to save.
 		m_Conflict = chord;
 		m_ConflictOwner = std::string(owner);
 		m_ConflictAsked = false;
@@ -439,21 +449,7 @@ namespace Graphite {
 			slot = chords.size() - 1;
 		}
 
-		// The same chord twice in one command reaches it no more often than once, and it
-		// would sit there looking like a second way in. Moving it is what the user asked
-		// for: they put it in this slot, so it leaves the one it was in.
-		for (std::size_t index = chords.size(); index > 0; --index)
-		{
-			if (index - 1 != slot && chords[index - 1] == chord)
-			{
-				chords.erase(chords.begin() + static_cast<std::ptrdiff_t>(index - 1));
-
-				if (index - 1 < slot)
-				{
-					--slot;
-				}
-			}
-		}
+		DropDuplicatesOfChord(chords, chord, slot);
 
 		m_Keys.Override(id, Rebuild(std::move(chords)));
 		m_Capturing.clear();
@@ -467,9 +463,9 @@ namespace Graphite {
 			return;
 		}
 
-		// Opened here rather than where the conflict was noticed: a popup's identifier is
-		// relative to the ID stack it is opened under, and that one is inside the table's
-		// per-row and per-cell PushIDs.
+		// Opened here rather than where the conflict was noticed: a popup's id is relative
+		// to the ID stack it is opened under, and there it sits inside the table's per-row
+		// and per-cell PushIDs.
 		if (!m_ConflictAsked)
 		{
 			ImGui::OpenPopup(kConflictPopup);
@@ -477,9 +473,8 @@ namespace Graphite {
 		}
 		else if (!ImGui::IsPopupOpen(kConflictPopup))
 		{
-			// Asked and then closed by something other than the two buttons — Escape, or
-			// the panel having been hidden and shown again. A dismissed question is a
-			// "no": the chord stays with the command that already had it.
+			// Closed by something other than the two buttons — Escape, or the panel being
+			// hidden and shown again. A dismissed question is a "no".
 			ForgetConflict();
 			return;
 		}
@@ -506,9 +501,8 @@ namespace Graphite {
 				std::vector<Core::Chord> chords = Flatten(current);
 				std::erase(chords, chord);
 
-				// Stored even when nothing is left, as an override that binds nothing.
-				// Clearing the override instead would hand the previous owner its factory
-				// chord straight back, which is the conflict again with no one told.
+				// Stored even when empty, as an override that binds nothing: clearing the
+				// override would hand the previous owner its factory chord straight back.
 				m_Keys.Override(m_ConflictOwner, Rebuild(std::move(chords)));
 			}
 

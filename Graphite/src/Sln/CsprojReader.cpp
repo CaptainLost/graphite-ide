@@ -46,8 +46,7 @@ namespace Graphite {
 					continue;
 				}
 
-				// Visual Studio shows the project as the node, not as a file inside
-				// itself.
+				// Visual Studio shows the project as the node, not as a file inside itself.
 				if (entry.Path == projectFile)
 					continue;
 
@@ -57,6 +56,18 @@ namespace Graphite {
 
 				folder.Files.push_back(std::move(file));
 			}
+		}
+
+		std::string LowercaseExtension(const std::filesystem::path& path)
+		{
+			std::string extension = Core::ToUtf8(path.extension());
+
+			std::transform(extension.begin(), extension.end(), extension.begin(),
+						   [](unsigned char character) {
+							   return static_cast<char>(std::tolower(character));
+						   });
+
+			return extension;
 		}
 
 		void SortContent(ContentFolder& folder)
@@ -74,11 +85,7 @@ namespace Graphite {
 
 	bool CsprojReader::Handles(const std::filesystem::path& project) const
 	{
-		std::string extension = Core::ToUtf8(project.extension());
-		std::transform(extension.begin(), extension.end(), extension.begin(),
-					   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-
-		return extension == ".csproj";
+		return LowercaseExtension(project) == ".csproj";
 	}
 
 	Core::Result<ProjectContent> CsprojReader::Read(const std::filesystem::path& project) const
@@ -93,7 +100,8 @@ namespace Graphite {
 
 		ProjectContent content;
 
-		// References come from the document; everything else comes from the disk.
+		// An SDK-style project does not list its files, so only the references come from
+		// the document and the tree comes from the disk.
 		pugi::xml_document document;
 
 		if (document.load_file(project.c_str()))

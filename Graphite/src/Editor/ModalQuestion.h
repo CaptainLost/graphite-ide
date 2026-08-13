@@ -53,14 +53,7 @@ namespace Graphite {
 				return true;
 			}
 
-			// Believed on screen by the gate and yet not open: dismissed with Escape, or
-			// destroyed by something opening over it. Treated as no answer at all - what
-			// the question was about is untouched, and the site is free to ask again.
-			if (m_Gate.HoldsFor(m_Title) && !ImGui::IsPopupOpen(m_Title))
-			{
-				m_Current.reset();
-				m_Gate.Close(m_Title);
-			}
+			WithdrawIfNoLongerOnScreen();
 
 			return false;
 		}
@@ -80,6 +73,19 @@ namespace Graphite {
 		void End() { ImGui::EndPopup(); }
 
 	private:
+		// ImGui closes a popup on Escape, and destroys it when another opens over it,
+		// without either reaching the code that asked the question.
+		void WithdrawIfNoLongerOnScreen()
+		{
+			if (!m_Gate.HoldsFor(m_Title) || ImGui::IsPopupOpen(m_Title))
+			{
+				return;
+			}
+
+			m_Current.reset();
+			m_Gate.Close(m_Title);
+		}
+
 		template<std::predicate<const Payload&> Predicate>
 		void OpenNext(Predicate& stillWorthAsking)
 		{
@@ -93,15 +99,11 @@ namespace Graphite {
 					continue;
 				}
 
-				// Asked again even though the loop condition just found the gate free,
-				// because stillWorthAsking runs in between and runs application code: a
-				// predicate that acts on the question having gone stale - closing the tab
-				// it was about, carrying out the close it was asking permission for - can
-				// reach something that opens a question of its own and takes the level.
+				// Asked again even though the loop condition just found the gate free:
+				// stillWorthAsking runs application code in between, which can itself ask a
+				// question and take the gate.
 				if (!m_Gate.TryOpen(m_Title))
 				{
-					// It did. Put the question back where it was rather than dropping it,
-					// and wait for whichever question now holds the level.
 					m_Queue.insert(m_Queue.begin(), std::move(candidate));
 					return;
 				}

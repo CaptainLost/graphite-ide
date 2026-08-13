@@ -91,18 +91,14 @@ namespace Graphite {
 
 				Project project;
 
-				// Declared relative to the solution and usually with backslashes, which
-				// std::filesystem accepts on Windows. Made absolute here, once, because
-				// everything downstream opens the file rather than displaying the path.
+				// The format declares a project relative to the solution, usually with
+				// backslashes, which std::filesystem accepts on Windows.
 				project.Path = (solutionDirectory / Core::FromUtf8(declared)).lexically_normal();
 				project.Path.make_preferred();
 
 				project.DisplayName = Core::ToUtf8(project.Path.stem());
 				project.TypeId = node.attribute("Type").value();
 
-				// One stat per project, and worth it: a solution naming a file that is
-				// not there is a real and common problem, and the view is meant to show
-				// it rather than to quietly render an ordinary-looking node.
 				std::error_code exists;
 				project.Exists = std::filesystem::is_regular_file(project.Path, exists);
 
@@ -127,7 +123,7 @@ namespace Graphite {
 					auto content = reader->Read(project.Path);
 
 					// A project that cannot be read does not sink the solution: the
-					// structure around it is still true and still useful.
+					// structure around it is still true.
 					if (!content)
 					{
 						APP_TRACE("Cannot read '{}': {}", project.Path.string(),
@@ -234,10 +230,8 @@ namespace Graphite {
 							   std::format("no solution file at '{}'", requested.string())};
 		}
 
-		// Resolved once, here, rather than trusting the caller. Every project path is
-		// built by appending to this one, and the model promises absolute paths — a
-		// relative argument would quietly hand back relative projects that only resolve
-		// while the process happens to sit in the right directory.
+		// Every project path is built by appending to this one, and the model promises
+		// absolute paths.
 		std::filesystem::path path = std::filesystem::absolute(requested, code);
 
 		if (code)
@@ -258,8 +252,6 @@ namespace Graphite {
 
 		Solution solution = std::move(parsed).GetValue();
 
-		// Run after either parser, so the two formats cannot drift apart in what they
-		// hand back.
 		FillContent(solution.Root);
 		SortSolution(solution.Root);
 

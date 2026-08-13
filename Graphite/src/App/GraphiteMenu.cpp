@@ -24,11 +24,6 @@ namespace Graphite {
 					MenuItem::Group("panels"),
 					MenuItem::Separator(),
 					MenuItem::Command("editor.toggleWordWrap"),
-					// Nested under Git so it is obvious whose rules decide what is
-					// ignored — the answer comes from .gitignore, .git/info/exclude and
-					// the user's global configuration, and nothing in "Ignored Files"
-					// alone said so. The submenu is also where a branch indicator and
-					// file status belong when they arrive.
 					MenuItem::Submenu("Git",
 									  {
 										  MenuItem::Submenu("Ignored Files",

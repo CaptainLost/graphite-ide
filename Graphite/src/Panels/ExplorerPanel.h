@@ -7,6 +7,9 @@
 
 #include "Core/UI/Panel.h"
 
+#include <filesystem>
+#include <string>
+
 namespace Core {
 
 	class CommandRegistry;
@@ -39,7 +42,12 @@ namespace Graphite {
 			Solution
 		};
 
+		static Mode ModeFromSetting(const std::string& value);
+		static const char* SettingForMode(Mode mode);
+
 		void RenderHeader();
+		void RenderModeCombo();
+		void RenderSolutionChooser();
 		void SetMode(Mode mode);
 
 		void SyncModeWithWorkspace();

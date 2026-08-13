@@ -16,6 +16,50 @@
 
 namespace Graphite {
 
+	namespace {
+		// BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets the
+		// menu be dragged by its body: a popup has no title bar, so its whole surface counts
+		// as draggable background, and ConfigWindowsMoveFromTitleBarOnly skips its cancel
+		// path for exactly those windows. Opening by hand allows BeginPopup, which does take
+		// window flags.
+		bool BeginRightClickPopup(const char* popupId)
+		{
+			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
+			{
+				ImGui::OpenPopup(popupId);
+			}
+
+			return ImGui::BeginPopup(popupId, ImGuiWindowFlags_NoMove);
+		}
+
+		void CenterNextItem(float availableWidth, float itemWidth)
+		{
+			if (availableWidth > itemWidth)
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availableWidth - itemWidth) * 0.5f);
+		}
+
+		void PushFadedHighlight()
+		{
+			constexpr float kFadedAlpha = 0.45f;
+
+			ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+			colour.w *= kFadedAlpha;
+			ImGui::PushStyleColor(ImGuiCol_Header, colour);
+		}
+
+		float FitWidthToText(const char* text, float paddingX)
+		{
+			constexpr float kMinFieldWidth = 90.0f;
+
+			// One character of slack leaves room for the caret as the name grows.
+			const float fitted =
+				ImGui::CalcTextSize(text).x + paddingX * 2.0f + ImGui::GetFontSize();
+
+			return std::clamp(fitted, kMinFieldWidth, ImGui::GetContentRegionAvail().x);
+		}
+	}
+
 	FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents)
 		: m_Workspace(workspace), m_Documents(documents)
 	{
@@ -40,8 +84,9 @@ namespace Graphite {
 
 		ImGui::EndChild();
 
-		// Both run outside the walk: the executor mutates the tree, and the modal must
-		// not be nested inside the child window.
+		// Outside the walk: RenderNode recurses over the tree by reference, so the executor
+		// must not mutate it before the walk ends, and the modal must not be nested inside
+		// the child window.
 		ExecutePendingAction();
 		RenderDeleteConfirmation();
 	}
@@ -75,22 +120,17 @@ namespace Graphite {
 	void FileTreeView::RenderEmptyState()
 	{
 		constexpr const char* kMessage = "No folder open.";
+		constexpr float kDownFromTheTop = 0.33f;
 		const ImVec2 buttonSize{140.0f, 0.0f};
 		const float available = ImGui::GetContentRegionAvail().x;
 
-		// Sit the block a third of the way down so it reads as an invitation rather than
-		// a caption pinned under the tab bar.
-		ImGui::Dummy(ImVec2(0.0f, ImGui::GetContentRegionAvail().y * 0.33f));
+		ImGui::Dummy(ImVec2(0.0f, ImGui::GetContentRegionAvail().y * kDownFromTheTop));
 
-		const float messageWidth = ImGui::CalcTextSize(kMessage).x;
-		if (available > messageWidth)
-			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (available - messageWidth) * 0.5f);
-
+		CenterNextItem(available, ImGui::CalcTextSize(kMessage).x);
 		ImGui::TextDisabled("%s", kMessage);
 		ImGui::Spacing();
 
-		if (available > buttonSize.x)
-			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (available - buttonSize.x) * 0.5f);
+		CenterNextItem(available, buttonSize.x);
 
 		if (ImGui::Button("Open Folder", buttonSize))
 			OpenFolderInteractively(m_Workspace);
@@ -104,8 +144,11 @@ namespace Graphite {
 		if (m_Filter.PassFilter(node.Name.c_str()))
 			return true;
 
-		// A directory stays visible when anything below it matches, otherwise the
-		// filter would hide the path leading to the hit.
+		return AnyChildPassesFilter(node);
+	}
+
+	bool FileTreeView::AnyChildPassesFilter(const Core::FileNode& node) const
+	{
 		for (const Core::FileNode& child : node.Children)
 		{
 			if (PassesFilter(child))
@@ -117,24 +160,11 @@ namespace Graphite {
 
 	void FileTreeView::RenderContextMenu(const Core::FileNode& node)
 	{
-		// BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets
-		// the menu be dragged anywhere by its body — a popup has no title bar, so its
-		// whole surface counts as draggable background. ConfigWindowsMoveFromTitleBarOnly
-		// does not help: its cancel path is skipped for windows that have no title bar.
-		// So open the popup by hand and use BeginPopup, which does take window flags.
 		const std::string popupId = "##ctx" + Core::ToUtf8(node.Path);
 
-		if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-			ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
-		{
-			ImGui::OpenPopup(popupId.c_str());
-		}
-
-		if (!ImGui::BeginPopup(popupId.c_str(), ImGuiWindowFlags_NoMove))
+		if (!BeginRightClickPopup(popupId.c_str()))
 			return;
 
-		// The workspace root has no parent inside the tree, so renaming, deleting or
-		// duplicating it would leave the panel pointing at a path that no longer exists.
 		const bool isRoot = m_Workspace.IsOpen() && node.Path == m_Workspace.GetRoot();
 
 		if (ImGui::MenuItem("Show in Explorer"))
@@ -154,7 +184,8 @@ namespace Graphite {
 			const std::filesystem::path relative =
 				std::filesystem::relative(node.Path, m_Workspace.GetRoot(), code);
 
-			// No common prefix means relative() fails; the absolute path is still useful.
+			// relative() fails when the two paths share no prefix; the absolute path is
+			// still worth copying.
 			ImGui::SetClipboardText(Core::ToUtf8(code ? node.Path : relative).c_str());
 		}
 
@@ -166,9 +197,6 @@ namespace Graphite {
 				RecordAction(PendingAction{PendingAction::Kind::Duplicate, node.Path, {}});
 		}
 
-		// Creating from a file means creating beside it, in its folder — the same thing
-		// Explorer and VS Code do. Restricting this to directories would force the user
-		// to hunt for the parent row just to make a sibling.
 		const std::filesystem::path creationTarget =
 			node.IsDirectory ? node.Path : node.Path.parent_path();
 
@@ -187,22 +215,7 @@ namespace Graphite {
 			ImGui::Separator();
 
 			if (ImGui::MenuItem("Rename"))
-			{
-				const std::string current = Core::ToUtf8(node.Path.filename());
-
-				if (current.size() >= m_RenameBuffer.size())
-				{
-					APP_ERROR("Cannot rename '{}': the name is too long to edit", current);
-				}
-				else
-				{
-					m_RenamingPath = node.Path;
-					m_FocusRenameField = true;
-
-					std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
-					std::copy_n(current.begin(), current.size(), m_RenameBuffer.begin());
-				}
-			}
+				StartRenaming(node);
 
 			if (ImGui::MenuItem("Delete"))
 				RecordAction(PendingAction{PendingAction::Kind::Delete, node.Path, {}});
@@ -219,13 +232,28 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
+	void FileTreeView::StartRenaming(const Core::FileNode& node)
+	{
+		const std::string current = Core::ToUtf8(node.Path.filename());
+
+		if (current.size() >= m_RenameBuffer.size())
+		{
+			APP_ERROR("Cannot rename '{}': the name is too long to edit", current);
+			return;
+		}
+
+		m_RenamingPath = node.Path;
+		m_FocusRenameField = true;
+
+		std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
+		std::copy_n(current.begin(), current.size(), m_RenameBuffer.begin());
+	}
+
 	Core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
 	{
 		if (!m_Workspace.IsOpen())
 			return nullptr;
 
-		// Depth-first over an explicit stack: the tree is only as deep as the user has
-		// expanded it, and this avoids a recursive helper for a two-line job.
 		std::vector<Core::FileNode*> stack{&m_Workspace.Tree().GetRoot()};
 
 		while (!stack.empty())
@@ -247,17 +275,12 @@ namespace Graphite {
 	{
 		Core::FileNode* parent = FindNode(path.parent_path());
 
-		// Outside the tree, or the parent was never loaded: nothing on screen to update.
 		if (parent != nullptr)
 			m_Workspace.Tree().Refresh(*parent);
 	}
 
 	void FileTreeView::RecordAction(PendingAction action)
 	{
-		// One slot, two producers: the context menu and the rename editor can both fire
-		// in the same frame. Assigning the whole struct keeps stale fields from leaking
-		// between kinds, and the warning makes a dropped request visible instead of
-		// silent.
 		if (m_Pending.kind != PendingAction::Kind::None)
 		{
 			APP_WARN("Discarding a pending file action that was replaced before it ran");
@@ -298,8 +321,6 @@ namespace Graphite {
 
 	void FileTreeView::HandleDelete(const PendingAction& action)
 	{
-		// Deletion is the one irreversible-looking action, so it goes through a
-		// confirmation rather than straight to the filesystem.
 		m_RenamingPath.clear();
 		m_DeleteCandidate = action.target;
 		m_OpenDeleteConfirmation = true;
@@ -355,7 +376,6 @@ namespace Graphite {
 			return;
 		}
 
-		// MakeUniquePath keeps repeated clicks from failing on the default name.
 		const std::filesystem::path target =
 			Core::MakeUniquePath(action.target / Core::FromUtf8(action.name));
 
@@ -371,18 +391,20 @@ namespace Graphite {
 
 		if (Core::FileNode* parent = FindNode(action.target); parent != nullptr)
 		{
-			// Load the folder if it was never opened, otherwise re-read it. Doing both
-			// would read the same directory from disk twice.
-			if (!parent->Loaded)
-				(void)m_Workspace.Tree().Expand(*parent);
-			else
-				m_Workspace.Tree().Refresh(*parent);
-
+			ReadFolderFromDisk(*parent);
 			parent->Expanded = true;
 			m_ForceOpenPath = action.target;
 		}
 
 		APP_INFO("Created '{}'", Core::ToUtf8(target));
+	}
+
+	void FileTreeView::ReadFolderFromDisk(Core::FileNode& folder)
+	{
+		if (!folder.Loaded)
+			(void)m_Workspace.Tree().Expand(folder);
+		else
+			m_Workspace.Tree().Refresh(folder);
 	}
 
 	void FileTreeView::RenderDeleteConfirmation()
@@ -436,9 +458,9 @@ namespace Graphite {
 			m_FocusRenameField = false;
 		}
 
-		// A directory's label sits to the right of its arrow, so shift the field by the
-		// same amount — otherwise the name visibly jumps left the moment editing starts.
-		// Files have no arrow and need no shift.
+		// A directory's label sits GetTreeNodeToLabelSpacing right of its arrow; without
+		// the same shift the name jumps left the moment editing starts. Files have no
+		// arrow and need no shift.
 		constexpr float kFieldPaddingX = 2.0f;
 		const float indent =
 			node.IsDirectory ? ImGui::GetTreeNodeToLabelSpacing() - kFieldPaddingX : 0.0f;
@@ -447,32 +469,21 @@ namespace Graphite {
 			ImGui::Indent(indent);
 
 		// The theme's frame padding is sized for buttons and would make the edited row
-		// taller than its neighbours, shoving the rest of the tree down.
+		// taller than its neighbours.
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kFieldPaddingX, 0.0f));
-
-		// Fit the field to the name rather than the panel: a full-width box for a short
-		// name reads as a dialog dropped into the tree. One character of slack leaves
-		// room for the caret, and it grows as the user types.
-		constexpr float kMinFieldWidth = 90.0f;
-		const float textWidth = ImGui::CalcTextSize(m_RenameBuffer.data()).x;
-		const float fitted = textWidth + kFieldPaddingX * 2.0f + ImGui::GetFontSize();
-		const float available = ImGui::GetContentRegionAvail().x;
-
-		ImGui::SetNextItemWidth(std::clamp(fitted, kMinFieldWidth, available));
+		ImGui::SetNextItemWidth(FitWidthToText(m_RenameBuffer.data(), kFieldPaddingX));
 
 		const bool committed =
 			ImGui::InputText("##renameField", m_RenameBuffer.data(), m_RenameBuffer.size(),
 							 ImGuiInputTextFlags_EnterReturnsTrue |
 								 ImGuiInputTextFlags_AutoSelectAll);
 
-		// Escape cancels, but only while this field owns the keyboard — an unscoped key
-		// poll would also catch an Escape aimed at a modal elsewhere and silently throw
-		// away what the user typed here.
+		// Scoped to this field: an unscoped key poll would also catch an Escape aimed at a
+		// modal elsewhere.
 		const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
 
-		// Any other way of leaving the field commits, the way Explorer and VS Code behave.
-		// IsItemDeactivated fires whether or not the text changed, so a rename opened by
-		// mistake and clicked away still ends instead of leaving the row stuck.
+		// IsItemDeactivated fires whether or not the text changed, so a rename clicked away
+		// from still ends instead of leaving the row stuck in the editor.
 		const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
 
 		ImGui::PopStyleVar();
@@ -493,79 +504,64 @@ namespace Graphite {
 		return true;
 	}
 
-	// RenderNode must not mutate the tree while walking it: it recurses over
-	// node.children by reference. Context menu commands therefore record a
-	// PendingAction instead of acting immediately; ExecutePendingAction runs the
-	// recorded action after the walk finishes, once it is safe to mutate.
 	void FileTreeView::RenderNode(Core::FileNode& node)
 	{
 		if (!PassesFilter(node))
 			return;
 
 		if (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Hide)
-		{
 			return;
-		}
-
-		if (!node.IsDirectory)
-		{
-			if (RenderRenameEditor(node))
-				return;
-
-			const bool dimmed = node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim;
-
-			if (dimmed)
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-
-			// Which document is on screen, and which are merely open, are both facts the
-			// DocumentSet owns - so they are read from it rather than from
-			// Workspace::SelectedFile, which only ever moves when a row here is clicked and
-			// so stayed put whenever the user switched tabs in the editor instead.
-			const auto active = m_Documents.GetActive();
-			const bool isActive = active.has_value() && m_Documents.At(*active).Path == node.Path;
-			const bool isOpen = m_Documents.Find(node.Path).has_value();
-
-			// An open document that is not the active one gets the same highlight at a
-			// fraction of its opacity: enough to pick the open files out of a long folder,
-			// never enough to compete with the one row saying "this is what you are
-			// looking at". Drawn through Selectable's own selected state rather than a
-			// hand-drawn rect so it lines up with the real highlight exactly.
-			const bool faded = isOpen && !isActive;
-
-			if (faded)
-			{
-				ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_Header);
-				colour.w *= 0.45f;
-				ImGui::PushStyleColor(ImGuiCol_Header, colour);
-			}
-
-			const std::string label =
-				std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} +
-				"  " + node.Name;
-
-			const bool clicked = ImGui::Selectable(label.c_str(), isActive || faded,
-												   ImGuiSelectableFlags_AllowDoubleClick);
-
-			if (faded)
-				ImGui::PopStyleColor();
-
-			if (clicked)
-			{
-				m_Workspace.SelectFile(node.Path);
-				m_Workspace.RequestOpenFile(node.Path, ImGui::IsMouseDoubleClicked(0));
-			}
-
-			if (dimmed)
-				ImGui::PopStyleColor();
-
-			RenderContextMenu(node);
-
-			return;
-		}
 
 		if (RenderRenameEditor(node))
 			return;
 
+		if (node.IsDirectory)
+			RenderDirectoryRow(node);
+		else
+			RenderFileRow(node);
+	}
+
+	void FileTreeView::RenderFileRow(const Core::FileNode& node)
+	{
+		const bool dimmed = node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim;
+
+		if (dimmed)
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+
+		// Read from the DocumentSet rather than from the workspace selection, which only
+		// moves when a row here is clicked and so misses tab switches in the editor.
+		const auto active = m_Documents.GetActive();
+		const bool isActive = active.has_value() && m_Documents.At(*active).Path == node.Path;
+		const bool isOpen = m_Documents.Find(node.Path).has_value();
+		const bool faded = isOpen && !isActive;
+
+		if (faded)
+			PushFadedHighlight();
+
+		const std::string label =
+			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
+			node.Name;
+
+		const bool clicked = ImGui::Selectable(label.c_str(), isActive || faded,
+											   ImGuiSelectableFlags_AllowDoubleClick);
+
+		if (faded)
+			ImGui::PopStyleColor();
+
+		if (clicked)
+		{
+			m_Workspace.SelectFile(node.Path);
+			m_Workspace.RequestOpenFile(node.Path, ImGui::IsMouseDoubleClicked(0));
+		}
+
+		if (dimmed)
+			ImGui::PopStyleColor();
+
+		RenderContextMenu(node);
+	}
+
+	void FileTreeView::RenderDirectoryRow(Core::FileNode& node)
+	{
 		if (!m_ForceOpenPath.empty() && m_ForceOpenPath == node.Path)
 		{
 			ImGui::SetNextItemOpen(true);
