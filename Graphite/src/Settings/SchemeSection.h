@@ -3,6 +3,7 @@
 #include "Settings/SettingsSection.h"
 #include "Theme/SchemeDraft.h"
 
+#include <cstddef>
 #include <string>
 
 namespace Graphite {
@@ -28,6 +29,14 @@ namespace Graphite {
 		void Apply();
 
 		void RenderSchemeList();
+
+		// Templated over the enum so the two groups share one row, rather than a syntax copy and
+		// an editor copy drifting apart the way a key table and a label table would.
+		template<typename Which>
+		void RenderColorRow(Which which);
+
+		template<typename Which>
+		void RenderGroup(const char* title, std::size_t count);
 
 		ActiveScheme& m_Active;
 
