@@ -629,15 +629,29 @@ namespace Graphite {
 		// Called after every mutation that actually changed the buffer, never on one that
 		// merely tried to — an Invalidate on a no-op edit would arm SyntaxCache's revision
 		// backstop and leave it primed to swallow the next genuine edit that forgets to call
-		// this. The caret already sits where the edit landed by the time this runs: at the
-		// end of an insertion, at the start of an erased range, or wherever Undo/Redo put it.
+		// this.
+		//
+		// Invalidated from the topmost line the edit touched, not simply from where the caret
+		// ended up: Enter leaves the caret on the lower half of the split, a multi-line paste
+		// further down still, and only a selection delete collapses it upward to the edit's
+		// start. `Invalidate(n)` keeps the entry states for lines 0..n and drops the rest, so
+		// invalidating from the caret's post-edit line on a line-adding edit would keep a stale
+		// entry state at the line the split's lower half now occupies — the state that used to
+		// describe whatever followed the whole unsplit line. `lineBefore` is the caret's line
+		// read before the mutation ran; the lower of it and the post-edit line is the one every
+		// case agrees was affected.
 		void InvalidateSyntaxAfterEdit(SyntaxCache* syntax, const Core::TextBuffer& buffer,
-									   const Core::OpenItem& item, bool changed)
+									   const Core::OpenItem& item, std::size_t lineBefore,
+									   bool changed)
 		{
 			if (!changed || syntax == nullptr)
+			{
 				return;
+			}
 
-			syntax->Invalidate(buffer.ToPosition(item.Caret.Offset).Line);
+			const std::size_t lineAfter = buffer.ToPosition(item.Caret.Offset).Line;
+
+			syntax->Invalidate(std::min(lineBefore, lineAfter));
 		}
 
 		bool InsertTypedCharacters(const Core::FrameInput& input, Core::OpenItem& item,
@@ -662,11 +676,12 @@ namespace Graphite {
 
 				if (length > 0)
 				{
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed = Core::InsertText(
 						item, std::string_view(utf8, static_cast<std::size_t>(length)));
 
 					edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 			}
 
@@ -684,25 +699,28 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KPEnter)
 				{
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed = Core::InsertNewline(item, indentStyle);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 
 				if (stroke.Key == Core::KeyCode::Backspace)
 				{
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed =
 						control ? Core::DeleteWordBackward(item) : Core::DeleteBackward(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 
 				if (stroke.Key == Core::KeyCode::Delete)
 				{
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed =
 						control ? Core::DeleteWordForward(item) : Core::DeleteForward(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 
 				// Consumed here rather than left for ImGui's own focus navigation, which is
@@ -715,10 +733,11 @@ namespace Graphite {
 				// and quietly editing the document behind it.
 				if (!control && stroke.Key == Core::KeyCode::Tab)
 				{
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed =
 						shift ? Core::Outdent(item, indentStyle) : Core::Indent(item, indentStyle);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 
 				const bool undoPressed = control && !shift && stroke.Key == Core::KeyCode::Z;
@@ -730,9 +749,10 @@ namespace Graphite {
 				if ((undoPressed || redoPressed) &&
 					HistoryStepIsDue(stroke.IsRepeat, ImGui::GetTime()))
 				{
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed = undoPressed ? Core::Undo(item) : Core::Redo(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 
 				// What follows are commands rather than edits, and holding one of them would
@@ -747,9 +767,10 @@ namespace Graphite {
 					// null pointer rather than an empty string.
 					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
 					{
+						const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 						const bool changed = Core::InsertText(item, clipboard);
 						result.Edited |= changed;
-						InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+						InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 					}
 				}
 
@@ -759,9 +780,10 @@ namespace Graphite {
 				if (control && stroke.Key == Core::KeyCode::X && Core::HasSelection(item.Caret))
 				{
 					CopySelectionToClipboard(buffer, item.Caret);
+					const std::size_t lineBefore = buffer.ToPosition(item.Caret.Offset).Line;
 					const bool changed = Core::DeleteBackward(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
 				}
 
 				// Saving is not this widget's decision: a stale document on disk needs confirming
