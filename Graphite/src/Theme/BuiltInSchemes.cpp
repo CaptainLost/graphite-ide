@@ -24,7 +24,7 @@ namespace Graphite {
 		{
 			ResolvedScheme scheme;
 
-			const Core::Color text = FromBytes(212, 212, 212);
+			const Core::Color text = FromBytes(214, 219, 226);
 
 			// Every token kind starts at the text colour, so a kind added later draws as plain
 			// text rather than as whatever the array was left holding.
@@ -38,13 +38,13 @@ namespace Graphite {
 			Set(scheme, TokenKind::Comment, FromBytes(106, 153, 85));
 			Set(scheme, TokenKind::Preprocessor, FromBytes(155, 155, 155));
 
-			Set(scheme, EditorColor::Background, FromBytes(30, 30, 30));
+			Set(scheme, EditorColor::Background, FromBytes(27, 29, 33));
 			Set(scheme, EditorColor::Text, text);
-			Set(scheme, EditorColor::Selection, FromBytes(38, 79, 120, 153));
-			Set(scheme, EditorColor::CurrentLine, FromBytes(45, 45, 45, 115));
-			Set(scheme, EditorColor::Guide, FromBytes(128, 128, 128, 89));
-			Set(scheme, EditorColor::GutterFill, FromBytes(30, 30, 30));
-			Set(scheme, EditorColor::LineNumber, FromBytes(133, 133, 133));
+			Set(scheme, EditorColor::Selection, FromBytes(66, 150, 250, 89));
+			Set(scheme, EditorColor::CurrentLine, FromBytes(37, 40, 45, 115));
+			Set(scheme, EditorColor::Guide, FromBytes(123, 130, 141, 89));
+			Set(scheme, EditorColor::GutterFill, FromBytes(27, 29, 33));
+			Set(scheme, EditorColor::LineNumber, FromBytes(123, 130, 141));
 			Set(scheme, EditorColor::Caret, text);
 
 			return scheme;
