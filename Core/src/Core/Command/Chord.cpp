@@ -33,8 +33,25 @@ namespace Core {
 		return chord;
 	}
 
+	Chord Chord::ModifierTap(ImGuiKeyChord mods)
+	{
+		Chord chord;
+		chord.m_Keys = mods & ImGuiMod_Mask_;
+		chord.m_Trigger = Trigger::ModifierTap;
+		chord.m_Scope = Chord::Scope::Global;
+
+		return chord;
+	}
+
 	bool Chord::IsEmpty() const
 	{
+		// A tap names its gesture with the modifiers alone, so it is the modifiers that have
+		// to be there. Every other trigger says what it fires on by its own kind.
+		if (m_Trigger == Trigger::ModifierTap)
+		{
+			return (m_Keys & ImGuiMod_Mask_) == 0;
+		}
+
 		if (m_Trigger != Trigger::Key)
 		{
 			return false;
@@ -59,6 +76,14 @@ namespace Core {
 				result += modifier.Name;
 				result += '+';
 			}
+		}
+
+		// A tap has no trigger to append: the modifiers are the gesture, so the last one
+		// stands where a key would, and the separator behind it goes.
+		if (m_Trigger == Trigger::ModifierTap)
+		{
+			result.pop_back();
+			return result;
 		}
 
 		switch (m_Trigger)
@@ -137,6 +162,18 @@ namespace Core {
 		if (Lowered(trigger) == Lowered(kWheelDownName))
 		{
 			return Chord::Wheel(mods, Trigger::WheelDown, Chord::Scope::HoveredEditor);
+		}
+
+		// A trailing segment that is itself a modifier name means the gesture is the
+		// modifiers: "Ctrl" is a tap, "Ctrl+Shift" is a tap of both. No keyboard key is
+		// named this way — ImGui calls them LeftCtrl and RightCtrl — so the two forms
+		// cannot be mistaken for one another.
+		for (const ModifierName& modifier : kModifiers)
+		{
+			if (Lowered(modifier.Name) == Lowered(trigger))
+			{
+				return Chord::ModifierTap(mods | modifier.Bit);
+			}
 		}
 
 		const ImGuiKey key = KeyNamed(trigger);

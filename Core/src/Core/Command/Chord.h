@@ -26,6 +26,10 @@ namespace Core {
 
 		static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Chord::Scope scope);
 
+		// Modifiers on their own, fired when they are released with nothing pressed in
+		// between. Empty when given no modifiers, since that names no gesture at all.
+		static Chord ModifierTap(ImGuiKeyChord mods);
+
 		Trigger GetTrigger() const { return m_Trigger; }
 		Chord::Scope GetScope() const { return m_Scope; }
 

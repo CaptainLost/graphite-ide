@@ -267,6 +267,16 @@ namespace Graphite {
 
 		dispatcher.Dispatch<Core::KeyPressedEvent>(
 			[this](Core::KeyPressedEvent& pressed) { return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed); });
+
+		dispatcher.Dispatch<Core::KeyReleasedEvent>(
+			[this](Core::KeyReleasedEvent& released) { return m_Router.OnKeyReleased(m_Commands, m_Keys, released); });
+
+		// A modifier held for a Ctrl+click is not a tap, however it is released afterwards.
+		dispatcher.Dispatch<Core::MouseButtonPressedEvent>(
+			[this](Core::MouseButtonPressedEvent&) {
+				m_Router.CancelTap();
+				return false;
+			});
 	}
 
 	bool GraphiteLayer::OnCloseRequested()

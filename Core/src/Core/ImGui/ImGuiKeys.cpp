@@ -231,6 +231,27 @@ namespace Core {
 		return ImGuiKey_None;
 	}
 
+	ImGuiKeyChord ModifierBitOf(KeyCode key)
+	{
+		switch (key)
+		{
+		case KeyCode::LeftControl:
+		case KeyCode::RightControl:
+			return ImGuiMod_Ctrl;
+		case KeyCode::LeftShift:
+		case KeyCode::RightShift:
+			return ImGuiMod_Shift;
+		case KeyCode::LeftAlt:
+		case KeyCode::RightAlt:
+			return ImGuiMod_Alt;
+		case KeyCode::LeftSuper:
+		case KeyCode::RightSuper:
+			return ImGuiMod_Super;
+		default:
+			return 0;
+		}
+	}
+
 	ImGuiKeyChord ToImGuiModifiers(KeyModifier modifiers)
 	{
 		ImGuiKeyChord chord = 0;

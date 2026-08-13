@@ -68,7 +68,10 @@ TEST_CASE("Parsing is forgiving about case and spacing but not about nonsense")
 	CHECK_FALSE(Chord::Parse("Ctrl+Nonsense").has_value());
 	CHECK_FALSE(Chord::Parse("Ctrl+").has_value());
 	CHECK_FALSE(Chord::Parse("").has_value());
-	CHECK_FALSE(Chord::Parse("Ctrl").has_value());
+
+	// "Ctrl" used to be refused here, back when a chord could only fire on a key and a
+	// modifier alone therefore named nothing. It now parses as a tap — see the tap cases
+	// below — so what stays refused is a trailing '+' with nothing after it.
 }
 
 TEST_CASE("Parse accepts only a keyboard key or a wheel direction as the trigger")
@@ -107,4 +110,52 @@ TEST_CASE("A default-constructed chord is empty and prints as nothing")
 
 	CHECK(empty.IsEmpty());
 	CHECK(empty.ToString().empty());
+}
+
+TEST_CASE("A modifier on its own round-trips as a tap chord")
+{
+	// The hole this closes: a chord holding only modifiers reads as empty, so binding Ctrl
+	// alone produced something that displayed as unbound, never fired and did not survive a
+	// reload. A distinct trigger is what makes it a chord rather than an absence — the same
+	// mechanism that already lets Ctrl+WheelUp exist.
+	const Core::Chord tap = Core::Chord::ModifierTap(ImGuiMod_Ctrl);
+
+	CHECK_FALSE(tap.IsEmpty());
+	CHECK(tap.ToString() == "Ctrl");
+
+	const std::optional<Core::Chord> parsed = Core::Chord::Parse("Ctrl");
+
+	REQUIRE(parsed.has_value());
+	CHECK(*parsed == tap);
+	CHECK(parsed->GetTrigger() == Core::Trigger::ModifierTap);
+}
+
+TEST_CASE("Several modifiers tap together")
+{
+	const Core::Chord tap = Core::Chord::ModifierTap(ImGuiMod_Ctrl | ImGuiMod_Shift);
+
+	CHECK(tap.ToString() == "Ctrl+Shift");
+
+	const std::optional<Core::Chord> parsed = Core::Chord::Parse("Ctrl+Shift");
+
+	REQUIRE(parsed.has_value());
+	CHECK(*parsed == tap);
+}
+
+TEST_CASE("A tap of nothing is empty")
+{
+	// Guards the same conflation from the other side: without this a tap chord carrying no
+	// modifiers would claim to be a real binding while naming no gesture at all.
+	CHECK(Core::Chord::ModifierTap(ImGuiMod_None).IsEmpty());
+}
+
+TEST_CASE("A tap chord does not collide with the key of the same modifier")
+{
+	// "Ctrl" is a tap; "Ctrl+S" is still an ordinary chord. The parser decides by what the
+	// last segment is, so the two forms cannot be confused for one another.
+	const std::optional<Core::Chord> ordinary = Core::Chord::Parse("Ctrl+S");
+
+	REQUIRE(ordinary.has_value());
+	CHECK(ordinary->GetTrigger() == Core::Trigger::Key);
+	CHECK(ordinary->ToString() == "Ctrl+S");
 }

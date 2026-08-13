@@ -33,6 +33,21 @@ namespace Core {
 	{
 		const ImGuiKey key = ToImGuiKey(event.GetKeyCode());
 
+		// A modifier going down keeps a tap possible and adds itself to it; anything else
+		// going down ends the possibility, which is what stops an abandoned Ctrl+S from
+		// firing whatever Ctrl alone is bound to when the hand comes off.
+		if (const ImGuiKeyChord bit = ModifierBitOf(event.GetKeyCode()); bit != 0)
+		{
+			if (!event.IsRepeat())
+			{
+				m_TapMods |= bit;
+			}
+
+			return false;
+		}
+
+		m_TapMods = 0;
+
 		if (key == ImGuiKey_None)
 		{
 			return false;
@@ -48,6 +63,49 @@ namespace Core {
 					// empty chord names no key: matching it would fire on the modifiers alone.
 					return !chord.IsEmpty() && chord.GetTrigger() == Trigger::Key &&
 						   chord.GetScope() == Chord::Scope::Global && chord.GetKeys() == pressed;
+				};
+
+				if (matches(binding.Primary))
+				{
+					fired.push_back(id);
+					return;
+				}
+
+				for (const Chord& alternate : binding.Alternates)
+				{
+					if (matches(alternate))
+					{
+						fired.push_back(id);
+						return;
+					}
+				}
+			});
+
+		RunAll(commands, fired);
+		return !fired.empty();
+	}
+
+	bool ShortcutRouter::OnKeyReleased(CommandRegistry& commands, const Keymap& keys,
+									   const KeyReleasedEvent& event)
+	{
+		if (ModifierBitOf(event.GetKeyCode()) == 0 || m_TapMods == 0)
+		{
+			return false;
+		}
+
+		// Read and cleared before anything runs: the command about to fire may open a
+		// window or take the focus, and a tap left half-recorded would fire again on the
+		// next modifier released anywhere.
+		const ImGuiKeyChord tapped = m_TapMods;
+		m_TapMods = 0;
+
+		std::vector<std::string> fired;
+
+		keys.ForEachBinding(
+			[&fired, tapped](const std::string& id, const Binding& binding) {
+				const auto matches = [tapped](const Chord& chord) {
+					return chord.GetTrigger() == Trigger::ModifierTap && !chord.IsEmpty() &&
+						   chord.GetKeys() == tapped;
 				};
 
 				if (matches(binding.Primary))

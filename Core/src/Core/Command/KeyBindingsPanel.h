@@ -51,6 +51,10 @@ namespace Core {
 		// a panel the user is no longer looking at.
 		bool m_WasFocused = false;
 
+		// The modifiers held since the first went down, cleared as soon as anything else is
+		// pressed. Non-zero means the release of a modifier still counts as a tap.
+		ImGuiKeyChord m_TapMods = 0;
+
 		std::string m_Capturing;
 		std::size_t m_CapturingSlot = 0;
 

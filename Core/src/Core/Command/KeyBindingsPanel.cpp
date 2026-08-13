@@ -192,12 +192,25 @@ namespace Core {
 				if (key == ImGuiKey_Escape)
 				{
 					m_Capturing.clear();
+					m_TapMods = 0;
 					return true;
 				}
 
-				// A modifier alone is never an answer: every capture would otherwise end on
-				// the first Shift pressed on the way to the chord the user meant.
-				if (key == ImGuiKey_None || IsModifierKey(key))
+				// A modifier going down is not an answer yet: it may be the start of a chord
+				// or a tap of its own, and only what happens next tells them apart.
+				if (const ImGuiKeyChord bit = ModifierBitOf(pressed.GetKeyCode()); bit != 0)
+				{
+					if (!pressed.IsRepeat())
+					{
+						m_TapMods |= bit;
+					}
+
+					return false;
+				}
+
+				m_TapMods = 0;
+
+				if (key == ImGuiKey_None)
 				{
 					return false;
 				}
@@ -206,6 +219,27 @@ namespace Core {
 				const std::size_t slot = m_CapturingSlot;
 
 				Offer(id, slot, Chord::Key(ToImGuiModifiers(pressed.GetModifiers()) | key));
+				return true;
+			});
+
+		// Modifiers released with nothing pressed in between: the gesture is the modifiers
+		// themselves. Recorded here rather than on the press for the same reason the router
+		// fires it here — until the release, this is indistinguishable from the start of an
+		// ordinary chord.
+		dispatcher.Dispatch<KeyReleasedEvent>(
+			[this](KeyReleasedEvent& released) {
+				if (ModifierBitOf(released.GetKeyCode()) == 0 || m_TapMods == 0)
+				{
+					return false;
+				}
+
+				const ImGuiKeyChord tapped = m_TapMods;
+				m_TapMods = 0;
+
+				const std::string id = m_Capturing;
+				const std::size_t slot = m_CapturingSlot;
+
+				Offer(id, slot, Chord::ModifierTap(tapped));
 				return true;
 			});
 	}
