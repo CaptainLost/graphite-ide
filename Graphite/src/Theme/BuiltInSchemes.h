@@ -1,7 +1,9 @@
 #pragma once
 
+#include "Theme/BuiltInScheme.h"
 #include "Theme/ColorScheme.h"
 
+#include <optional>
 #include <string_view>
 
 namespace Graphite {
@@ -9,11 +11,12 @@ namespace Graphite {
 	const ResolvedScheme& DarkScheme();
 	const ResolvedScheme& LightScheme();
 
-	// Null when the name is not one of the built-ins, which is how a scheme naming a base that
-	// does not exist is detected rather than guessed at.
-	const ResolvedScheme* BuiltInScheme(std::string_view name);
+	const ResolvedScheme& Get(BuiltInScheme scheme);
 
-	// The names SchemeStore refuses to write, so "the built-in one cannot be edited" stays true
-	// for the first person who names their file dark.json.
-	bool IsBuiltInName(std::string_view name);
+	// The text a base is written as in a scheme file.
+	std::string_view NameOf(BuiltInScheme scheme);
+
+	// Nothing when the text names no built-in, which is how a scheme naming a base that does not
+	// exist is detected at the point it is read rather than guessed at later.
+	std::optional<BuiltInScheme> ParseBuiltInName(std::string_view name);
 }

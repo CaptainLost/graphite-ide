@@ -2,24 +2,24 @@
 
 #include "Theme/BuiltInSchemes.h"
 
-TEST_CASE("Both built-in schemes are reachable by name")
+TEST_CASE("Both built-in schemes are reachable by their enumerator")
 {
-	CHECK(Graphite::BuiltInScheme("dark") == &Graphite::DarkScheme());
-	CHECK(Graphite::BuiltInScheme("light") == &Graphite::LightScheme());
+	CHECK(&Graphite::Get(Graphite::BuiltInScheme::Dark) == &Graphite::DarkScheme());
+	CHECK(&Graphite::Get(Graphite::BuiltInScheme::Light) == &Graphite::LightScheme());
 }
 
 TEST_CASE("An unknown base name resolves to nothing")
 {
-	CHECK(Graphite::BuiltInScheme("solarized") == nullptr);
-	CHECK(Graphite::BuiltInScheme("") == nullptr);
-	CHECK(Graphite::BuiltInScheme("Dark") == nullptr);
+	CHECK(Graphite::ParseBuiltInName("solarized") == std::nullopt);
+	CHECK(Graphite::ParseBuiltInName("") == std::nullopt);
+	CHECK(Graphite::ParseBuiltInName("Dark") == std::nullopt);
 }
 
 TEST_CASE("The built-in names are exactly the ones the store must refuse")
 {
-	CHECK(Graphite::IsBuiltInName("dark"));
-	CHECK(Graphite::IsBuiltInName("light"));
-	CHECK_FALSE(Graphite::IsBuiltInName("mine"));
+	CHECK(Graphite::ParseBuiltInName("dark") == Graphite::BuiltInScheme::Dark);
+	CHECK(Graphite::ParseBuiltInName("light") == Graphite::BuiltInScheme::Light);
+	CHECK_FALSE(Graphite::ParseBuiltInName("mine").has_value());
 }
 
 // A base is what every omitted colour falls back to, so a base with a gap in it is a colour

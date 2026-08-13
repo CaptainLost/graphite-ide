@@ -14,9 +14,9 @@ namespace Graphite {
 	// name.
 	std::vector<std::string> ListSchemes(const std::filesystem::path& directory);
 
-	// Never fails. A file that is missing, unreadable or malformed yields a scheme with no base
-	// and no overrides, and warns — because a scheme on a drive that is not plugged in should
-	// come back when the drive does, not take the editor down while it is out.
+	// Never fails. A file that is missing, unreadable or malformed yields a scheme with the dark
+	// base and no overrides, and warns — because a scheme on a drive that is not plugged in
+	// should come back when the drive does, not take the editor down while it is out.
 	ColorScheme LoadScheme(const std::filesystem::path& file);
 
 	// False when the name is a built-in or the write fails. Writes only the colours the scheme

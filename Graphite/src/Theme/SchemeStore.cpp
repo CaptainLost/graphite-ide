@@ -60,7 +60,17 @@ namespace Graphite {
 
 		const Core::JsonFile json = Core::JsonFile::Load(file);
 
-		scheme.Base = json.Get("base");
+		if (const std::optional<BuiltInScheme> base = ParseBuiltInName(json.Get("base")))
+		{
+			scheme.Base = *base;
+		}
+		else
+		{
+			// A base nobody has heard of, or none at all. Dark is the fallback and the scheme's
+			// own overrides still apply on top of it.
+			APP_WARN("Colour scheme '{}' names an unknown base '{}'", file.string(),
+					 json.Get("base"));
+		}
 
 		for (const std::string& key : json.GetKeys())
 		{
@@ -111,7 +121,7 @@ namespace Graphite {
 	{
 		// The built-ins are not files, so writing over one would only ever succeed at making
 		// dark.json shadow the real thing.
-		if (IsBuiltInName(name))
+		if (ParseBuiltInName(name).has_value())
 		{
 			return false;
 		}
@@ -120,7 +130,7 @@ namespace Graphite {
 		std::filesystem::create_directories(directory, ec);
 
 		Core::JsonFile json;
-		json.Set("base", scheme.Base);
+		json.Set("base", std::string(NameOf(scheme.Base)));
 
 		for (std::size_t kind = 0; kind < scheme.Syntax.size(); ++kind)
 		{
@@ -165,7 +175,7 @@ namespace Graphite {
 
 			const std::string stem = entry.path().stem().string();
 
-			if (IsBuiltInName(stem))
+			if (ParseBuiltInName(stem).has_value())
 			{
 				continue;
 			}

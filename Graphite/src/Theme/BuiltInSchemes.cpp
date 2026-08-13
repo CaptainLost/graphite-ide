@@ -10,72 +10,98 @@ namespace Graphite {
 							   static_cast<float>(b) / 255.0f, static_cast<float>(a) / 255.0f};
 		}
 
-		void Set(ResolvedScheme& scheme, TokenKind kind, Core::Color color)
+		struct SyntaxEntry
 		{
-			scheme.Syntax[static_cast<std::size_t>(kind)] = color;
-		}
+			TokenKind Kind;
+			int R;
+			int G;
+			int B;
+			int A = 255;
+		};
 
-		void Set(ResolvedScheme& scheme, EditorColor color, Core::Color value)
+		struct EditorEntry
 		{
-			scheme.Editor[static_cast<std::size_t>(color)] = value;
-		}
+			EditorColor Color;
+			int R;
+			int G;
+			int B;
+			int A = 255;
+		};
 
-		ResolvedScheme MakeDark()
+		constexpr SyntaxEntry kDarkSyntax[] = {
+			{TokenKind::Keyword, 197, 134, 192},
+			{TokenKind::Number, 181, 206, 168},
+			{TokenKind::String, 206, 145, 120},
+			{TokenKind::Character, 206, 145, 120},
+			{TokenKind::Comment, 106, 153, 85},
+			{TokenKind::Preprocessor, 155, 155, 155},
+		};
+
+		constexpr EditorEntry kDarkEditor[] = {
+			{EditorColor::Background, 27, 29, 33},
+			{EditorColor::Text, 214, 219, 226},
+			{EditorColor::Selection, 66, 150, 250, 89},
+			{EditorColor::CurrentLine, 37, 40, 45, 115},
+			{EditorColor::Guide, 123, 130, 141, 89},
+			{EditorColor::GutterFill, 27, 29, 33},
+			{EditorColor::LineNumber, 123, 130, 141},
+			{EditorColor::Caret, 214, 219, 226},
+		};
+
+		constexpr SyntaxEntry kLightSyntax[] = {
+			{TokenKind::Keyword, 0, 0, 255},
+			{TokenKind::Number, 9, 134, 88},
+			{TokenKind::String, 163, 21, 21},
+			{TokenKind::Character, 163, 21, 21},
+			{TokenKind::Comment, 0, 128, 0},
+			{TokenKind::Preprocessor, 128, 128, 128},
+		};
+
+		constexpr EditorEntry kLightEditor[] = {
+			{EditorColor::Background, 255, 255, 255},
+			{EditorColor::Text, 36, 36, 36},
+			{EditorColor::Selection, 173, 214, 255, 153},
+			{EditorColor::CurrentLine, 0, 0, 0, 20},
+			{EditorColor::Guide, 0, 0, 0, 40},
+			{EditorColor::GutterFill, 255, 255, 255},
+			{EditorColor::LineNumber, 140, 140, 140},
+			{EditorColor::Caret, 36, 36, 36},
+		};
+
+		template <std::size_t SyntaxCount, std::size_t EditorCount>
+		ResolvedScheme Build(Core::Color text, const SyntaxEntry (&syntax)[SyntaxCount],
+							  const EditorEntry (&editor)[EditorCount])
 		{
 			ResolvedScheme scheme;
-
-			const Core::Color text = FromBytes(214, 219, 226);
 
 			// Every token kind starts at the text colour, so a kind added later draws as plain
 			// text rather than as whatever the array was left holding.
 			scheme.Syntax.fill(text);
 			scheme.Editor.fill(text);
 
-			Set(scheme, TokenKind::Keyword, FromBytes(197, 134, 192));
-			Set(scheme, TokenKind::Number, FromBytes(181, 206, 168));
-			Set(scheme, TokenKind::String, FromBytes(206, 145, 120));
-			Set(scheme, TokenKind::Character, FromBytes(206, 145, 120));
-			Set(scheme, TokenKind::Comment, FromBytes(106, 153, 85));
-			Set(scheme, TokenKind::Preprocessor, FromBytes(155, 155, 155));
+			for (const SyntaxEntry& entry : syntax)
+			{
+				scheme.Syntax[static_cast<std::size_t>(entry.Kind)] =
+					FromBytes(entry.R, entry.G, entry.B, entry.A);
+			}
 
-			Set(scheme, EditorColor::Background, FromBytes(27, 29, 33));
-			Set(scheme, EditorColor::Text, text);
-			Set(scheme, EditorColor::Selection, FromBytes(66, 150, 250, 89));
-			Set(scheme, EditorColor::CurrentLine, FromBytes(37, 40, 45, 115));
-			Set(scheme, EditorColor::Guide, FromBytes(123, 130, 141, 89));
-			Set(scheme, EditorColor::GutterFill, FromBytes(27, 29, 33));
-			Set(scheme, EditorColor::LineNumber, FromBytes(123, 130, 141));
-			Set(scheme, EditorColor::Caret, text);
+			for (const EditorEntry& entry : editor)
+			{
+				scheme.Editor[static_cast<std::size_t>(entry.Color)] =
+					FromBytes(entry.R, entry.G, entry.B, entry.A);
+			}
 
 			return scheme;
 		}
 
+		ResolvedScheme MakeDark()
+		{
+			return Build(FromBytes(214, 219, 226), kDarkSyntax, kDarkEditor);
+		}
+
 		ResolvedScheme MakeLight()
 		{
-			ResolvedScheme scheme;
-
-			const Core::Color text = FromBytes(36, 36, 36);
-
-			scheme.Syntax.fill(text);
-			scheme.Editor.fill(text);
-
-			Set(scheme, TokenKind::Keyword, FromBytes(0, 0, 255));
-			Set(scheme, TokenKind::Number, FromBytes(9, 134, 88));
-			Set(scheme, TokenKind::String, FromBytes(163, 21, 21));
-			Set(scheme, TokenKind::Character, FromBytes(163, 21, 21));
-			Set(scheme, TokenKind::Comment, FromBytes(0, 128, 0));
-			Set(scheme, TokenKind::Preprocessor, FromBytes(128, 128, 128));
-
-			Set(scheme, EditorColor::Background, FromBytes(255, 255, 255));
-			Set(scheme, EditorColor::Text, text);
-			Set(scheme, EditorColor::Selection, FromBytes(173, 214, 255, 153));
-			Set(scheme, EditorColor::CurrentLine, FromBytes(0, 0, 0, 20));
-			Set(scheme, EditorColor::Guide, FromBytes(0, 0, 0, 40));
-			Set(scheme, EditorColor::GutterFill, FromBytes(255, 255, 255));
-			Set(scheme, EditorColor::LineNumber, FromBytes(140, 140, 140));
-			Set(scheme, EditorColor::Caret, text);
-
-			return scheme;
+			return Build(FromBytes(36, 36, 36), kLightSyntax, kLightEditor);
 		}
 	}
 
@@ -95,23 +121,40 @@ namespace Graphite {
 		return scheme;
 	}
 
-	const ResolvedScheme* BuiltInScheme(std::string_view name)
+	const ResolvedScheme& Get(BuiltInScheme scheme)
+	{
+		switch (scheme)
+		{
+			case BuiltInScheme::Dark: return DarkScheme();
+			case BuiltInScheme::Light: return LightScheme();
+		}
+
+		return DarkScheme();
+	}
+
+	std::string_view NameOf(BuiltInScheme scheme)
+	{
+		switch (scheme)
+		{
+			case BuiltInScheme::Dark: return "dark";
+			case BuiltInScheme::Light: return "light";
+		}
+
+		return {};
+	}
+
+	std::optional<BuiltInScheme> ParseBuiltInName(std::string_view name)
 	{
 		if (name == "dark")
 		{
-			return &DarkScheme();
+			return BuiltInScheme::Dark;
 		}
 
 		if (name == "light")
 		{
-			return &LightScheme();
+			return BuiltInScheme::Light;
 		}
 
-		return nullptr;
-	}
-
-	bool IsBuiltInName(std::string_view name)
-	{
-		return BuiltInScheme(name) != nullptr;
+		return std::nullopt;
 	}
 }

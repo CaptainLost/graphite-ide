@@ -2,12 +2,12 @@
 
 #include "Core/Base/Color.h"
 #include "Lang/Api/TokenKind.h"
+#include "Theme/BuiltInScheme.h"
 #include "Theme/EditorColor.h"
 
 #include <array>
 #include <cstddef>
 #include <optional>
-#include <string>
 #include <string_view>
 
 namespace Graphite {
@@ -17,7 +17,7 @@ namespace Graphite {
 	// stage adds a fourth, because the new one comes from the base.
 	struct ColorScheme
 	{
-		std::string Base;
+		BuiltInScheme Base = BuiltInScheme::Dark;
 
 		std::array<std::optional<Core::Color>, static_cast<std::size_t>(TokenKind::Count)> Syntax;
 		std::array<std::optional<Core::Color>, static_cast<std::size_t>(EditorColor::Count)>
