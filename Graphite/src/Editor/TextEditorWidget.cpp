@@ -1228,9 +1228,24 @@ namespace Graphite {
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
 		const EditorMetrics metrics = MeasureEditor(buffer);
 
+		// Asked of the document window, before the child below becomes the current one. True
+		// when this document holds the keyboard, whether the focus sits on the tab itself or
+		// has already been taken by the surface inside it.
+		const bool documentHoldsFocus = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
 		if (ImGui::BeginChild("##EditorSurface", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  EditorSurfaceFlags()))
 		{
+			// Selecting a tab focuses the document window, not the surface inside it, and only
+			// the surface draws a caret or reads keys — so without this, switching documents
+			// left the new one with no caret and a dead keyboard until it was clicked. Handing
+			// the focus down cannot steal it from elsewhere: it only runs while this document
+			// already holds it.
+			if (documentHoldsFocus && !ImGui::IsWindowFocused())
+			{
+				ImGui::SetWindowFocus();
+			}
+
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float scrollX = ImGui::GetScrollX();
 			const float available = ImGui::GetContentRegionAvail().x;
