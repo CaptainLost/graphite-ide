@@ -727,6 +727,29 @@ namespace Graphite {
 		return entry->second;
 	}
 
+	// Drops every m_Syntax entry whose key is not the path of a currently open document. Run
+	// once a frame rather than at the one place a path changes: m_Syntax is a side-map keyed on
+	// an identity DocumentSet owns and can rewrite (a rename on disk, or of a directory an open
+	// document lives under) without this map hearing about it, so an entry orphaned that way
+	// would otherwise hold its std::vector<LineState> — one Continuation and one std::string
+	// per line of the file — for the rest of the process. SyntaxFor already does the right
+	// thing after a rename (a fresh cache under the new path, lexed with whatever language the
+	// new extension implies), so this only ever removes what nothing can reach any more.
+	void DocumentWindows::PruneSyntaxCaches()
+	{
+		for (auto it = m_Syntax.begin(); it != m_Syntax.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_Syntax.erase(it);
+			}
+		}
+	}
+
 	void DocumentWindows::ForgetLayoutOfWindowsClosedElsewhere(
 		const std::vector<std::string>& startingIdentities)
 	{
@@ -867,6 +890,11 @@ namespace Graphite {
 
 		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap,
 							  focusRequest);
+
+		// Once per frame, not once per document: a prune that ran inside the per-document loop
+		// above would cost a walk of m_Syntax for every open document instead of one for the
+		// whole frame.
+		PruneSyntaxCaches();
 
 		// After the loop, not before: a renamed document's pending dock target has to be
 		// consumed by Begin() above before its old identity's node can be undocked and
