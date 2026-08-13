@@ -4,37 +4,56 @@
 
 #include "Core/Base/Assert.h"
 
-namespace core
-{
-    RingBufferSink::RingBufferSink(std::size_t capacity) : m_capacity(capacity)
-    {
-        CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
-    }
+#include <string_view>
 
-    void RingBufferSink::Write(const LogEntry& entry)
-    {
-        const std::scoped_lock lock{m_mutex};
+namespace Core {
 
-        m_entries.push_back(entry);
-        while (m_entries.size() > m_capacity)
-            m_entries.pop_front();
-    }
+	namespace {
+		LogSource SourceOf(const spdlog::details::log_msg& msg)
+		{
+			const std::string_view name{msg.logger_name.data(), msg.logger_name.size()};
+			return name == ToString(LogSource::Application) ? LogSource::Application
+															: LogSource::Engine;
+		}
+	}
 
-    std::vector<LogEntry> RingBufferSink::Snapshot() const
-    {
-        const std::scoped_lock lock{m_mutex};
-        return {m_entries.begin(), m_entries.end()};
-    }
+	RingBufferSink::RingBufferSink(std::size_t capacity) : m_Capacity(capacity)
+	{
+		CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
+	}
 
-    std::size_t RingBufferSink::Count() const
-    {
-        const std::scoped_lock lock{m_mutex};
-        return m_entries.size();
-    }
+	void RingBufferSink::sink_it_(const spdlog::details::log_msg& msg)
+	{
+		LogEntry entry{FromBackendLevel(msg.level), SourceOf(msg),
+					   std::string{msg.payload.data(), msg.payload.size()}};
 
-    void RingBufferSink::Clear()
-    {
-        const std::scoped_lock lock{m_mutex};
-        m_entries.clear();
-    }
+		const std::scoped_lock lock{m_Mutex};
+
+		m_Entries.push_back(std::move(entry));
+		while (m_Entries.size() > m_Capacity)
+			m_Entries.pop_front();
+	}
+
+	void RingBufferSink::flush_()
+	{
+		// Nothing is buffered on the way in, so there is nothing to push out.
+	}
+
+	std::vector<LogEntry> RingBufferSink::TakeSnapshot() const
+	{
+		const std::scoped_lock lock{m_Mutex};
+		return {m_Entries.begin(), m_Entries.end()};
+	}
+
+	std::size_t RingBufferSink::GetCount() const
+	{
+		const std::scoped_lock lock{m_Mutex};
+		return m_Entries.size();
+	}
+
+	void RingBufferSink::Clear()
+	{
+		const std::scoped_lock lock{m_Mutex};
+		m_Entries.clear();
+	}
 }

@@ -1,60 +1,80 @@
 #pragma once
 
 #include "Core/App/LayerStack.h"
+#include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
-#include "Core/Gui/ImGuiRenderer.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/Platform/Window.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
-namespace core
-{
-    struct ApplicationSpec
-    {
-        std::string name = "IDE";
-        int width = 1600;
-        int height = 900;
+namespace Core {
 
-        /// Draw the title bar in the application instead of letting the system draw one.
-        bool customTitleBar = false;
-    };
+	struct ApplicationCommandLineArgs
+	{
+		int Count = 0;
+		char** Args = nullptr;
 
-    /// Owner of the window, the ImGui layer, and the main loop.
-    class Application : NonCopyable
-    {
-    public:
-        explicit Application(ApplicationSpec spec);
-        virtual ~Application();
+		const char* operator[](int index) const
+		{
+			CORE_ASSERT(index < Count, "Command line argument index out of range");
+			return Args[index];
+		}
+	};
 
-        /// Runs the main loop until the window is closed or Close() is called.
-        /// Returns an error if the window or the ImGui renderer failed to initialize.
-        Result<void> Run();
-        void Close();
+	struct ApplicationSpec
+	{
+		std::string Name = "IDE";
+		int Width = 1600;
+		int Height = 900;
 
-        Layer& PushLayer(std::unique_ptr<Layer> layer);
+		bool CustomTitleBar = false;
+	};
 
-        [[nodiscard]] Window& GetWindow() { return *m_window; }
-        [[nodiscard]] const ApplicationSpec& Spec() const noexcept { return m_spec; }
+	class Application : NonCopyable
+	{
+	public:
+		explicit Application(ApplicationSpec spec);
+		virtual ~Application();
 
-        static Application& Get();
+		Result<void> Run();
+		void Close();
 
-    protected:
-        /// Called after the window and ImGui context are created, before the first frame.
-        virtual void OnInit() {}
-        virtual void OnShutdown() {}
+		Layer& PushLayer(Scope<Layer> layer);
 
-    private:
-        ApplicationSpec m_spec;
-        std::unique_ptr<Window> m_window;
-        ImGuiRenderer m_gui;
-        LayerStack m_layers;
-        std::vector<Layer*> m_frameLayers;
-        bool m_running = false;
-        double m_lastFrameTime = 0.0;
+		Window& GetWindow() { return *m_Window; }
+		const ApplicationSpec& GetSpec() const { return m_Spec; }
 
-        static Application* s_instance;
-    };
+		static Application& Get();
+
+		// Entry point for everything the window reports. The GUI gets first refusal, then the
+		// layers from the top down, and the walk stops at the first one that consumes.
+		void OnEvent(Event& event);
+
+	protected:
+		virtual void OnInit() {}
+		virtual void OnShutdown() {}
+
+	private:
+		Result<void> OpenWindowAndGui();
+		void RefreshFrameLayers();
+		bool EveryLayerAllowsClose();
+		bool HasNoPixels() const;
+
+		ApplicationSpec m_Spec;
+		Scope<Window> m_Window;
+		ImGuiRenderer m_Gui;
+		LayerStack m_Layers;
+		std::vector<Layer*> m_FrameLayers;
+		bool m_Running = false;
+		bool m_Minimized = false;
+		double m_LastFrameTime = 0.0;
+
+		static Application* s_Instance;
+	};
+
+	Scope<Application> CreateApplication(ApplicationCommandLineArgs args);
 }

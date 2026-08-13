@@ -1,36 +1,38 @@
 #pragma once
 
 #include "Core/Base/NonCopyable.h"
+#include "Core/Base/Timestep.h"
+#include "Core/Events/Event.h"
 
 #include <string>
 #include <utility>
 
-namespace core
-{
-    /// Unit of application lifetime: receives updates and draws its own UI.
-    class Layer : NonCopyable
-    {
-    public:
-        explicit Layer(std::string name) : m_name(std::move(name)) {}
-        virtual ~Layer() = default;
+namespace Core {
 
-        virtual void OnAttach() {}
-        virtual void OnDetach() {}
-        virtual void OnUpdate(float deltaSeconds) { (void)deltaSeconds; }
-        virtual void OnUIRender() {}
+	class Layer : NonCopyable
+	{
+	public:
+		explicit Layer(std::string name) : m_DebugName(std::move(name)) {}
+		virtual ~Layer() = default;
 
-        /// Whether the application may close now. A layer returning false is expected to
-        /// be asking the user something; it will be asked again every frame until it
-        /// answers true, which is what lets a modal draw at all.
-        ///
-        /// Returning true does not by itself close the window: refusing already cleared
-        /// the flag the loop tests, so a layer that has finished asking must call
-        /// Window::RequestClose() itself to re-arm it.
-        virtual bool OnCloseRequested() { return true; }
+		virtual void OnAttach() {}
+		virtual void OnDetach() {}
+		virtual void OnUpdate(Timestep ts) { (void)ts; }
+		virtual void OnImGuiRender() {}
 
-        [[nodiscard]] const std::string& Name() const noexcept { return m_name; }
+		// Called as the event arrives, before the frame that produced it draws. Set
+		// event.Handled to stop it reaching the layers below.
+		virtual void OnEvent(Event& event) { (void)event; }
 
-    private:
-        std::string m_name;
-    };
+		// Returning true does not by itself close the window: refusing already cleared the
+		// flag the loop tests, so a layer that has finished asking must call
+		// Window::RequestClose() itself. A layer that refuses is asked again every frame,
+		// which is what lets a modal draw.
+		virtual bool OnCloseRequested() { return true; }
+
+		const std::string& GetName() const { return m_DebugName; }
+
+	protected:
+		std::string m_DebugName;
+	};
 }

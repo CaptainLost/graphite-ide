@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/Layer.h"
 #include "Core/Base/NonCopyable.h"
 
@@ -7,27 +9,32 @@
 #include <memory>
 #include <vector>
 
-namespace core
-{
-    class LayerStack final : NonCopyable
-    {
-    public:
-        using Container = std::vector<std::unique_ptr<Layer>>;
+namespace Core {
 
-        LayerStack() = default;
-        ~LayerStack();
+	class LayerStack final : NonCopyable
+	{
+	public:
+		using Container = std::vector<Scope<Layer>>;
 
-        Layer& Push(std::unique_ptr<Layer> layer);
-        void Clear();
+		LayerStack() = default;
+		~LayerStack();
 
-        [[nodiscard]] std::size_t Size() const noexcept { return m_layers.size(); }
+		Layer& Push(Scope<Layer> layer);
+		void Clear();
 
-        Container::iterator begin() noexcept { return m_layers.begin(); }
-        Container::iterator end() noexcept { return m_layers.end(); }
-        Container::const_iterator begin() const noexcept { return m_layers.begin(); }
-        Container::const_iterator end() const noexcept { return m_layers.end(); }
+		std::size_t GetSize() const { return m_Layers.size(); }
 
-    private:
-        Container m_layers;
-    };
+		Container::iterator begin() { return m_Layers.begin(); }
+		Container::iterator end() { return m_Layers.end(); }
+		Container::const_iterator begin() const { return m_Layers.begin(); }
+		Container::const_iterator end() const { return m_Layers.end(); }
+
+		// Events walk the stack from the top down, which is the reverse of the order layers
+		// update and draw in: the layer nearest the user gets first refusal on a keystroke.
+		Container::reverse_iterator rbegin() { return m_Layers.rbegin(); }
+		Container::reverse_iterator rend() { return m_Layers.rend(); }
+
+	private:
+		Container m_Layers;
+	};
 }

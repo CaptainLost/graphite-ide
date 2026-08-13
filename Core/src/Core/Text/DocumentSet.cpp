@@ -9,314 +9,295 @@
 #include <algorithm>
 #include <utility>
 
-namespace core::text
-{
-    namespace
-    {
-        [[nodiscard]] std::string Megabytes(std::uint64_t bytes)
-        {
-            return std::to_string(bytes / (1024 * 1024)) + " MB";
-        }
+namespace Core {
 
-        [[nodiscard]] std::string Kilobytes(std::uint64_t bytes)
-        {
-            return std::to_string(bytes / 1024) + " KB";
-        }
-    }
+	namespace {
+		std::string Megabytes(std::uint64_t bytes)
+		{
+			return std::to_string(bytes / (1024 * 1024)) + " MB";
+		}
 
-    std::string FailureMessage(const OpenItem& item)
-    {
-        if (!item.detail.empty())
-            return item.detail;
+		std::string Kilobytes(std::uint64_t bytes)
+		{
+			return std::to_string(bytes / 1024) + " KB";
+		}
+	}
 
-        switch (item.failure)
-        {
-        case OpenFailure::Binary:
-            return "Binary file — " + Kilobytes(item.size);
-        case OpenFailure::TooLarge:
-            return "This file is " + Megabytes(item.size) + ", too large to open";
-        case OpenFailure::Missing:
-            return "This file no longer exists on disk";
-        case OpenFailure::ReadFailed:
-            return "This file could not be read";
-        case OpenFailure::None:
-            break;
-        }
+	std::string FailureMessage(const OpenItem& item)
+	{
+		if (!item.Detail.empty())
+			return item.Detail;
 
-        return {};
-    }
+		switch (item.Failure)
+		{
+		case OpenFailure::Binary:
+			return "Binary file — " + Kilobytes(item.Size);
+		case OpenFailure::TooLarge:
+			return "This file is " + Megabytes(item.Size) + ", too large to open";
+		case OpenFailure::Missing:
+			return "This file no longer exists on disk";
+		case OpenFailure::ReadFailed:
+			return "This file could not be read";
+		case OpenFailure::None:
+			break;
+		}
 
-    std::optional<std::size_t> DocumentSet::Find(const std::filesystem::path& path) const
-    {
-        for (std::size_t index = 0; index < m_items.size(); ++index)
-        {
-            if (m_items[index].path == path)
-                return index;
-        }
+		return {};
+	}
 
-        return std::nullopt;
-    }
+	std::optional<std::size_t> DocumentSet::Find(const std::filesystem::path& path) const
+	{
+		for (std::size_t index = 0; index < m_Items.size(); ++index)
+		{
+			if (m_Items[index].Path == path)
+				return index;
+		}
 
-    void DocumentSet::Activate(std::size_t index)
-    {
-        if (index < m_items.size())
-            m_active = index;
-    }
+		return std::nullopt;
+	}
 
-    OpenOutcome DocumentSet::Open(const std::filesystem::path& path, bool permanent)
-    {
-        return Add(path, permanent, false);
-    }
+	void DocumentSet::Activate(std::size_t index)
+	{
+		if (index < m_Items.size())
+			m_Active = index;
+	}
 
-    OpenOutcome DocumentSet::OpenConfirmed(const std::filesystem::path& path, bool permanent)
-    {
-        return Add(path, permanent, true);
-    }
+	OpenOutcome DocumentSet::Open(const std::filesystem::path& path, bool permanent)
+	{
+		return Add(path, permanent, false);
+	}
 
-    ItemLoad LoadFromFile(OpenItem& item, bool confirmed)
-    {
-        const auto probe = ProbeFile(item.path);
+	OpenOutcome DocumentSet::OpenConfirmed(const std::filesystem::path& path, bool permanent)
+	{
+		return Add(path, permanent, true);
+	}
 
-        if (!probe)
-        {
-            // NotFound is the only code that actually means "gone" — a directory, a
-            // locked file and an unmeasurable one are all still there, so claiming
-            // otherwise would send the user looking for a file sitting right in front
-            // of them. ProbeFile's own message says which one it was.
-            item.failure = probe.GetError().code == core::ErrorCode::NotFound
-                               ? OpenFailure::Missing
-                               : OpenFailure::ReadFailed;
-            item.detail = probe.GetError().message;
+	ItemLoad LoadFromFile(OpenItem& item, bool confirmed)
+	{
+		const auto probe = ProbeFile(item.Path);
 
-            return ItemLoad::Failed;
-        }
+		if (!probe)
+		{
+			// NotFound is the only code that means "gone": a directory, a locked file and an
+			// unmeasurable one are all still there, and ProbeFile's message says which.
+			item.Failure = probe.GetError().Code == Core::ErrorCode::NotFound
+							   ? OpenFailure::Missing
+							   : OpenFailure::ReadFailed;
+			item.Detail = probe.GetError().Message;
 
-        // The probe's encoding is deliberately not kept: the document sniffs its own, and
-        // two fields both meaning "the file's encoding" are two answers waiting to differ.
-        // The status bar reads the document's, which is the one the buffer was decoded
-        // with; size has no such counterpart, since a failed item has no document to ask.
-        item.size = probe.Value().size;
+			return ItemLoad::Failed;
+		}
 
-        if (probe.Value().kind == FileKind::LargeText && !confirmed)
-        {
-            // Nothing decided and nothing touched beyond the size the asking needs. An
-            // item that already carries a reason keeps it, so a question answered with
-            // "no" leaves the tab saying exactly what it said before.
-            return ItemLoad::NeedsConfirmation;
-        }
+		// The probe's encoding is deliberately not kept: the document sniffs its own, and two
+		// fields both meaning "the file's encoding" are two answers waiting to differ.
+		item.Size = probe.GetValue().Size;
 
-        // Whatever the item last failed with is now out of date: this is a fresh look at
-        // the file, and the switch below either loads it or says why it could not.
-        item.failure = OpenFailure::None;
-        item.detail.clear();
+		if (probe.GetValue().Kind == FileKind::LargeText && !confirmed)
+		{
+			// Nothing else touched, so an item that already carries a reason keeps it and a
+			// question answered with "no" leaves the tab saying what it said before.
+			return ItemLoad::NeedsConfirmation;
+		}
 
-        switch (probe.Value().kind)
-        {
-        case FileKind::Binary:
-            item.failure = OpenFailure::Binary;
-            break;
-        case FileKind::TooLarge:
-            item.failure = OpenFailure::TooLarge;
-            break;
-        case FileKind::Text:
-        case FileKind::LargeText:
-            {
-                auto document = TextDocument::Load(item.path);
+		item.Failure = OpenFailure::None;
+		item.Detail.clear();
 
-                if (document)
-                {
-                    item.document = std::move(document).Value();
-                    RefreshDerived(item);
-                }
-                else
-                {
-                    item.failure = OpenFailure::ReadFailed;
-                    item.detail = document.GetError().message;
-                }
-            }
-            break;
-        }
+		switch (probe.GetValue().Kind)
+		{
+		case FileKind::Binary:
+			item.Failure = OpenFailure::Binary;
+			break;
+		case FileKind::TooLarge:
+			item.Failure = OpenFailure::TooLarge;
+			break;
+		case FileKind::Text:
+		case FileKind::LargeText:
+		{
+			auto document = TextDocument::Load(item.Path);
 
-        return item.document.has_value() ? ItemLoad::Loaded : ItemLoad::Failed;
-    }
+			if (document)
+			{
+				item.Document = std::move(document).GetValue();
+				RefreshDerived(item);
+			}
+			else
+			{
+				item.Failure = OpenFailure::ReadFailed;
+				item.Detail = document.GetError().Message;
+			}
+		}
+		break;
+		}
 
-    OpenOutcome DocumentSet::Add(const std::filesystem::path& path, bool permanent, bool confirmed)
-    {
-        if (const auto existing = Find(path))
-        {
-            Activate(*existing);
+		return item.Document.has_value() ? ItemLoad::Loaded : ItemLoad::Failed;
+	}
 
-            if (permanent)
-                m_items[*existing].preview = false;
+	OpenOutcome DocumentSet::Add(const std::filesystem::path& path, bool permanent, bool confirmed)
+	{
+		if (const auto existing = Find(path))
+		{
+			Activate(*existing);
 
-            return OpenOutcome::Activated;
-        }
+			if (permanent)
+				m_Items[*existing].Preview = false;
 
-        // At most one preview at a time: a single click replaces the last one rather than
-        // stacking tabs up. Called right before an item is actually pushed — not any
-        // earlier — so a path that adds nothing (NeedsConfirmation, answered by never
-        // calling OpenConfirmed) never costs the existing preview its slot.
-        const auto evictPreview = [this, permanent]
-        {
-            if (!permanent)
-            {
-                if (const auto preview = Preview())
-                    Close(*preview);
-            }
-        };
+			return OpenOutcome::Activated;
+		}
 
-        OpenItem item;
-        item.path = path;
-        item.preview = !permanent;
+		// At most one preview at a time, so a single click replaces the last one rather than
+		// stacking tabs up.
+		const auto evictPreview = [this, permanent] {
+			if (!permanent)
+			{
+				if (const auto preview = GetPreviewIndex())
+					Close(*preview);
+			}
+		};
 
-        // Asking has to happen before anything is added, so answering "no" leaves no
-        // trace of the question — including the preview slot, which stays exactly as it
-        // was since evictPreview has not run yet.
-        const ItemLoad load = LoadFromFile(item, confirmed);
+		OpenItem item;
+		item.Path = path;
+		item.Preview = !permanent;
 
-        if (load == ItemLoad::NeedsConfirmation)
-        {
-            return OpenOutcome::NeedsConfirmation;
-        }
+		// Asked before anything is added and before evictPreview runs, so answering "no"
+		// leaves no trace of the question — not even the loss of the existing preview slot.
+		const ItemLoad load = LoadFromFile(item, confirmed);
 
-        evictPreview();
-        m_items.push_back(std::move(item));
-        Activate(m_items.size() - 1);
+		if (load == ItemLoad::NeedsConfirmation)
+		{
+			return OpenOutcome::NeedsConfirmation;
+		}
 
-        return load == ItemLoad::Loaded ? OpenOutcome::Opened : OpenOutcome::Failed;
-    }
+		evictPreview();
+		m_Items.push_back(std::move(item));
+		Activate(m_Items.size() - 1);
 
-    void DocumentSet::Close(std::size_t index)
-    {
-        if (index >= m_items.size())
-            return;
+		return load == ItemLoad::Loaded ? OpenOutcome::Opened : OpenOutcome::Failed;
+	}
 
-        m_items.erase(m_items.begin() + static_cast<std::ptrdiff_t>(index));
+	void DocumentSet::Close(std::size_t index)
+	{
+		if (index >= m_Items.size())
+			return;
 
-        if (m_items.empty())
-        {
-            m_active.reset();
-            return;
-        }
+		m_Items.erase(m_Items.begin() + static_cast<std::ptrdiff_t>(index));
 
-        if (!m_active.has_value())
-            return;
+		if (m_Items.empty())
+		{
+			m_Active.reset();
+			return;
+		}
 
-        // An item before the active one shifts it down; closing the active one falls back
-        // to whatever now occupies that slot, or the last item when it was the last.
-        if (*m_active > index)
-            m_active = *m_active - 1;
-        else if (*m_active == index)
-            m_active = std::min(index, m_items.size() - 1);
-    }
+		if (!m_Active.has_value())
+			return;
 
-    void DocumentSet::CloseAll()
-    {
-        m_items.clear();
-        m_active.reset();
-    }
+		if (*m_Active > index)
+			m_Active = *m_Active - 1;
+		else if (*m_Active == index)
+			m_Active = std::min(index, m_Items.size() - 1);
+	}
 
-    std::optional<std::size_t> DocumentSet::Preview() const
-    {
-        for (std::size_t index = 0; index < m_items.size(); ++index)
-        {
-            if (m_items[index].preview)
-                return index;
-        }
+	void DocumentSet::CloseAll()
+	{
+		m_Items.clear();
+		m_Active.reset();
+	}
 
-        return std::nullopt;
-    }
+	std::optional<std::size_t> DocumentSet::GetPreviewIndex() const
+	{
+		for (std::size_t index = 0; index < m_Items.size(); ++index)
+		{
+			if (m_Items[index].Preview)
+				return index;
+		}
 
-    void DocumentSet::Promote(std::size_t index)
-    {
-        if (index < m_items.size())
-            m_items[index].preview = false;
-    }
+		return std::nullopt;
+	}
 
-    std::string DocumentSet::DisplayTitle(std::size_t index) const
-    {
-        if (index >= m_items.size())
-            return {};
+	void DocumentSet::Promote(std::size_t index)
+	{
+		if (index < m_Items.size())
+			m_Items[index].Preview = false;
+	}
 
-        const std::filesystem::path& path = m_items[index].path;
-        const std::string name = fs::ToUtf8(path.filename());
+	bool DocumentSet::HasOtherItemNamed(std::size_t index, const std::string& name) const
+	{
+		for (std::size_t other = 0; other < m_Items.size(); ++other)
+		{
+			if (other != index && ToUtf8(m_Items[other].Path.filename()) == name)
+				return true;
+		}
 
-        // A file deleted while it was open keeps its window and its content, so nothing
-        // else on screen would say the file is gone — the tab has to. Appended after any
-        // disambiguating directory below, so the suffix always reads last.
-        const std::string suffix =
-            m_items[index].failure == OpenFailure::Missing ? " (deleted)" : "";
+		return false;
+	}
 
-        for (std::size_t other = 0; other < m_items.size(); ++other)
-        {
-            if (other == index)
-                continue;
+	std::string DocumentSet::DisplayTitle(std::size_t index) const
+	{
+		if (index >= m_Items.size())
+			return {};
 
-            if (fs::ToUtf8(m_items[other].path.filename()) != name)
-                continue;
+		const std::filesystem::path& path = m_Items[index].Path;
+		const std::string name = ToUtf8(path.filename());
 
-            // Forward slash regardless of platform: this is a label, not a path anyone
-            // will open.
-            return fs::ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
-        }
+		// A file deleted while it was open keeps its window and its content, so nothing else
+		// on screen would say the file is gone.
+		const std::string suffix =
+			m_Items[index].Failure == OpenFailure::Missing ? " (deleted)" : "";
 
-        return name + suffix;
-    }
+		if (!HasOtherItemNamed(index, name))
+			return name + suffix;
 
-    void DocumentSet::RewritePaths(const std::filesystem::path& from,
-                                   const std::filesystem::path& to)
-    {
-        for (OpenItem& item : m_items)
-        {
-            const auto relative = fs::RelativeTo(item.path, from);
+		// Forward slash regardless of platform: this is a label, not a path anyone will open.
+		return ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
+	}
 
-            if (!relative)
-                continue;
+	void DocumentSet::RewritePaths(const std::filesystem::path& from,
+								   const std::filesystem::path& to)
+	{
+		for (OpenItem& item : m_Items)
+		{
+			const auto relative = RelativeTo(item.Path, from);
 
-            // relative is "." when the item path equals `from` exactly — an item can be
-            // the workspace root itself (opening a directory produces a ReadFailed item
-            // at that path). `to / "."` would keep a trailing separator-dot that compares
-            // unequal to `to` itself, breaking Find and duplicate detection, so that case
-            // becomes `to` directly instead of going through the append.
-            item.path = (*relative == ".") ? to : to / *relative;
+			if (!relative)
+				continue;
 
-            // The document carries its own copy of the path, and that is the one a save
-            // writes to. Left behind, it would put the file back where it used to be
-            // without anything on screen suggesting it had.
-            if (item.document)
-                item.document->SetPath(item.path);
-        }
-    }
+			// `relative` is "." when the item is the moved directory itself, and `to / "."`
+			// keeps a trailing separator-dot that compares unequal to `to`, breaking Find.
+			item.Path = (*relative == ".") ? to : to / *relative;
 
-    void DocumentSet::MarkMissing(const std::filesystem::path& path)
-    {
-        const auto index = Find(path);
+			// The document's own copy of the path is the one a save writes to; left behind it
+			// would put the file back where it used to be.
+			if (item.Document)
+				item.Document->SetPath(item.Path);
+		}
+	}
 
-        if (!index)
-            return;
+	void DocumentSet::MarkMissing(const std::filesystem::path& path)
+	{
+		const auto index = Find(path);
 
-        m_items[*index].failure = OpenFailure::Missing;
+		if (!index)
+			return;
 
-        // Whatever detail the previous failure carried — a sharing violation, an
-        // unreadable directory — no longer describes what is wrong. Left in place,
-        // FailureMessage would keep preferring it over "This file no longer exists".
-        m_items[*index].detail.clear();
-    }
+		m_Items[*index].Failure = OpenFailure::Missing;
 
-    void DocumentSet::MarkPresent(const std::filesystem::path& path)
-    {
-        const auto index = Find(path);
+		// FailureMessage prefers any detail over the failure itself, and the previous one no
+		// longer describes what is wrong.
+		m_Items[*index].Detail.clear();
+	}
 
-        if (!index)
-            return;
+	void DocumentSet::MarkPresent(const std::filesystem::path& path)
+	{
+		const auto index = Find(path);
 
-        // Only clear the Missing failure. Binary, TooLarge, and ReadFailed carry no
-        // document at all — clearing one would claim a tab holds content that was never
-        // loaded, and everything downstream would then dereference an empty optional.
-        if (m_items[*index].failure == OpenFailure::Missing)
-        {
-            m_items[*index].failure = OpenFailure::None;
-            m_items[*index].detail.clear();
-        }
-    }
+		if (!index)
+			return;
+
+		// Only Missing is cleared: Binary, TooLarge and ReadFailed carry no document, and
+		// clearing one would claim a tab holds content that was never loaded.
+		if (m_Items[*index].Failure == OpenFailure::Missing)
+		{
+			m_Items[*index].Failure = OpenFailure::None;
+			m_Items[*index].Detail.clear();
+		}
+	}
 }

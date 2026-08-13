@@ -11,325 +11,318 @@
 #include <string>
 #include <string_view>
 
-using core::git::Repository;
+using Core::Repository;
 
-namespace
-{
-    /// Creates a real repository so the tests exercise libgit2 rather than a stub.
-    /// libgit2 can initialise one itself, so this needs no git executable on PATH.
-    void InitRepository(const std::filesystem::path& path)
-    {
-        git_libgit2_init();
+namespace {
+	void InitRepository(const std::filesystem::path& path)
+	{
+		git_libgit2_init();
 
-        git_repository* repository = nullptr;
-        const int result = git_repository_init(&repository, core::fs::ToUtf8(path).c_str(), 0);
+		git_repository* repository = nullptr;
+		const int result = git_repository_init(&repository, Core::ToUtf8(path).c_str(), 0);
 
-        REQUIRE(result == 0);
-        git_repository_free(repository);
-    }
+		REQUIRE(result == 0);
+		git_repository_free(repository);
+	}
 }
 
 TEST_CASE("Opening a directory that is not a repository fails")
 {
-    TempDirectory temp;
+	TempDirectory temp;
 
-    auto opened = Repository::Open(temp.Path());
+	auto opened = Repository::Open(temp.GetPath());
 
-    REQUIRE_FALSE(opened.HasValue());
-    CHECK(opened.GetError().code == core::ErrorCode::NotFound);
+	REQUIRE_FALSE(opened.HasValue());
+	CHECK(opened.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("Opening succeeds from the repository root")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
 
-    auto opened = Repository::Open(temp.Path());
+	auto opened = Repository::Open(temp.GetPath());
 
-    REQUIRE(opened.HasValue());
+	REQUIRE(opened.HasValue());
 }
 
 TEST_CASE("Opening succeeds from a directory inside the repository")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeDir("deep/nested");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeDir("deep/nested");
 
-    auto opened = Repository::Open(temp.Path() / "deep" / "nested");
+	auto opened = Repository::Open(temp.GetPath() / "deep" / "nested");
 
-    REQUIRE(opened.HasValue());
+	REQUIRE(opened.HasValue());
 }
 
 TEST_CASE("A file matching a rule is reported as ignored")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "*.log\n");
-    temp.MakeFile("error.log", "x");
-    temp.MakeFile("main.cpp", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "*.log\n");
+	temp.MakeFile("error.log", "x");
+	temp.MakeFile("main.cpp", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    const Repository& repository = opened.Value();
+	const Repository& repository = opened.GetValue();
 
-    CHECK(repository.IsIgnored(temp.Path() / "error.log"));
-    CHECK_FALSE(repository.IsIgnored(temp.Path() / "main.cpp"));
+	CHECK(repository.IsIgnored(temp.GetPath() / "error.log"));
+	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "main.cpp"));
 }
 
 TEST_CASE("A nested rules file applies inside its own directory only")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeDir("sub");
-    temp.MakeFile("sub/.gitignore", "secret.txt\n");
-    temp.MakeFile("sub/secret.txt", "x");
-    temp.MakeFile("secret.txt", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeDir("sub");
+	temp.MakeFile("sub/.gitignore", "secret.txt\n");
+	temp.MakeFile("sub/secret.txt", "x");
+	temp.MakeFile("secret.txt", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    const Repository& repository = opened.Value();
+	const Repository& repository = opened.GetValue();
 
-    CHECK(repository.IsIgnored(temp.Path() / "sub" / "secret.txt"));
-    CHECK_FALSE(repository.IsIgnored(temp.Path() / "secret.txt"));
+	CHECK(repository.IsIgnored(temp.GetPath() / "sub" / "secret.txt"));
+	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "secret.txt"));
 }
 
 TEST_CASE("A wildcard-free negation in a nested file does not override a parent rule")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "*.log\n");
-    temp.MakeDir("sub");
-    temp.MakeFile("sub/.gitignore", "!keep.log\n");
-    temp.MakeFile("sub/keep.log", "x");
-    temp.MakeFile("sub/other.log", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "*.log\n");
+	temp.MakeDir("sub");
+	temp.MakeFile("sub/.gitignore", "!keep.log\n");
+	temp.MakeFile("sub/keep.log", "x");
+	temp.MakeFile("sub/other.log", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    const Repository& repository = opened.Value();
+	const Repository& repository = opened.GetValue();
 
-    CHECK(repository.IsIgnored(temp.Path() / "sub" / "other.log"));
+	CHECK(repository.IsIgnored(temp.GetPath() / "sub" / "other.log"));
 
-    // This asserts libgit2's behaviour, which diverges from the git command line
-    // here: git honours the nested negation and reports keep.log as tracked.
-    // libgit2's ignore.c discards a negation that carries no wildcard when it does
-    // not negate a rule from the SAME .gitignore file — does_negate_rule only scans
-    // the rules of the file being parsed, so the parent's "*.log" is invisible to
-    // it. A negation WITH a wildcard, such as "!keep.*", is kept and does work.
-    // Do not "fix" this assertion to match git without first checking whether the
-    // vendored libgit2 version still behaves this way.
-    CHECK(repository.IsIgnored(temp.Path() / "sub" / "keep.log"));
+	// This asserts libgit2's behaviour, which diverges from the git command line
+	// here: git honours the nested negation and reports keep.log as tracked.
+	// libgit2's ignore.c discards a negation that carries no wildcard when it does
+	// not negate a rule from the SAME .gitignore file — does_negate_rule only scans
+	// the rules of the file being parsed, so the parent's "*.log" is invisible to
+	// it. A negation WITH a wildcard, such as "!keep.*", is kept and does work.
+	// Do not "fix" this assertion to match git without first checking whether the
+	// vendored libgit2 version still behaves this way.
+	CHECK(repository.IsIgnored(temp.GetPath() / "sub" / "keep.log"));
 }
 
 TEST_CASE("A negation with a wildcard does override a parent rule")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "*.log\n");
-    temp.MakeDir("sub");
-    temp.MakeFile("sub/.gitignore", "!keep.*\n");
-    temp.MakeFile("sub/keep.log", "x");
-    temp.MakeFile("sub/other.log", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "*.log\n");
+	temp.MakeDir("sub");
+	temp.MakeFile("sub/.gitignore", "!keep.*\n");
+	temp.MakeFile("sub/keep.log", "x");
+	temp.MakeFile("sub/other.log", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    const Repository& repository = opened.Value();
+	const Repository& repository = opened.GetValue();
 
-    CHECK(repository.IsIgnored(temp.Path() / "sub" / "other.log"));
-    CHECK_FALSE(repository.IsIgnored(temp.Path() / "sub" / "keep.log"));
+	CHECK(repository.IsIgnored(temp.GetPath() / "sub" / "other.log"));
+	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "sub" / "keep.log"));
 }
 
 TEST_CASE("A file whose name begins with two dots is inside the tree")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "..config\n");
-    temp.MakeFile("..config", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "..config\n");
+	temp.MakeFile("..config", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    // "..config" is a single path component, not a parent reference. A string-prefix
-    // test for ".." would treat it as outside the working tree and answer "not
-    // ignored" for every such file, whatever the rules say.
-    CHECK(opened.Value().IsIgnored(temp.Path() / "..config"));
+	// "..config" is a single path component, not a parent reference. A string-prefix
+	// test for ".." would treat it as outside the working tree and answer "not
+	// ignored" for every such file, whatever the rules say.
+	CHECK(opened.GetValue().IsIgnored(temp.GetPath() / "..config"));
 }
 
 TEST_CASE("A file inside an ignored directory is ignored")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "build/\n");
-    temp.MakeFile("build/output.o", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "build/\n");
+	temp.MakeFile("build/output.o", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    // The commonest shape in a real tree, and the one the file tree will ask about
-    // most: the rule names the directory, the query names a file underneath it.
-    CHECK(opened.Value().IsIgnored(temp.Path() / "build" / "output.o"));
+	// The commonest shape in a real tree, and the one the file tree will ask about
+	// most: the rule names the directory, the query names a file underneath it.
+	CHECK(opened.GetValue().IsIgnored(temp.GetPath() / "build" / "output.o"));
 }
 
 TEST_CASE("A directory-only rule ignores the directory itself")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "build/\n");
-    temp.MakeDir("build");
-    temp.MakeFile("build.txt", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "build/\n");
+	temp.MakeDir("build");
+	temp.MakeFile("build.txt", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    const Repository& repository = opened.Value();
+	const Repository& repository = opened.GetValue();
 
-    CHECK(repository.IsIgnored(temp.Path() / "build"));
+	CHECK(repository.IsIgnored(temp.GetPath() / "build"));
 
-    // The trailing slash means directories only, so the similarly named file must
-    // not match. The hand-rolled matcher pinned this before it was deleted; nothing
-    // pinned it afterwards until now.
-    CHECK_FALSE(repository.IsIgnored(temp.Path() / "build.txt"));
+	// The trailing slash means directories only, so the similarly named file must
+	// not match. The hand-rolled matcher pinned this before it was deleted; nothing
+	// pinned it afterwards until now.
+	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "build.txt"));
 }
 
 TEST_CASE("The repository exposes its working directory")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    CHECK_FALSE(opened.Value().WorkingDirectory().empty());
+	CHECK_FALSE(opened.GetValue().GetWorkingDirectory().empty());
 }
 
 TEST_CASE("A moved-from repository does not double-free")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    Repository moved = std::move(opened).Value();
+	Repository moved = std::move(opened).GetValue();
 
-    // The source must have been left with nothing to release; the destructor of both
-    // objects runs at the end of this scope and must not free the same handle twice.
-    CHECK_FALSE(moved.WorkingDirectory().empty());
+	// The source must have been left with nothing to release; the destructor of both
+	// objects runs at the end of this scope and must not free the same handle twice.
+	CHECK_FALSE(moved.GetWorkingDirectory().empty());
 }
 
 TEST_CASE("An open repository keeps answering after its .git directory is deleted")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile(".gitignore", "*.log\n");
-    temp.MakeFile("build.log", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "*.log\n");
+	temp.MakeFile("build.log", "x");
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    Repository repository = std::move(opened).Value();
-    REQUIRE(repository.IsIgnored(temp.Path() / "build.log"));
+	Repository repository = std::move(opened).GetValue();
+	REQUIRE(repository.IsIgnored(temp.GetPath() / "build.log"));
 
-    std::error_code code;
-    std::filesystem::remove_all(temp.Path() / ".git", code);
-    REQUIRE_FALSE(code);
+	std::error_code code;
+	std::filesystem::remove_all(temp.GetPath() / ".git", code);
+	REQUIRE_FALSE(code);
 
-    // Not the intuitive answer, which is why it is pinned here. The folder is no longer
-    // a repository, but .gitignore lives in the working tree rather than in .git, and
-    // libgit2 goes on reading it through the handle it already holds. So the verdict
-    // survives the repository that justified it.
-    //
-    // Callers therefore cannot wait to be told. graphite::Workspace::SyncRepository watches
-    // for .git disappearing and drops the repository itself; without that, a folder that
-    // stopped being a repository would keep dimming entries for the rest of the session.
-    INFO("If this fails, libgit2 changed and now invalidates the handle itself — "
-         "re-evaluate whether graphite::Workspace::SyncRepository is still needed.");
-    CHECK(repository.IsIgnored(temp.Path() / "build.log"));
+	// Not the intuitive answer, which is why it is pinned here. The folder is no longer
+	// a repository, but .gitignore lives in the working tree rather than in .git, and
+	// libgit2 goes on reading it through the handle it already holds. So the verdict
+	// survives the repository that justified it.
+	//
+	// Callers therefore cannot wait to be told. Graphite::Workspace::SyncRepository watches
+	// for .git disappearing and drops the repository itself; without that, a folder that
+	// stopped being a repository would keep dimming entries for the rest of the session.
+	INFO("If this fails, libgit2 changed and now invalidates the handle itself — "
+		 "re-evaluate whether Graphite::Workspace::SyncRepository is still needed.");
+	CHECK(repository.IsIgnored(temp.GetPath() / "build.log"));
 }
 
-namespace
-{
-    /// Points the repository's config at an excludes file, the way core.excludesFile
-    /// normally does from the user's global config. Written into the repository config
-    /// instead so the test cannot disturb the machine it runs on.
-    void SetExcludesFile(const std::filesystem::path& repository,
-                         const std::filesystem::path& excludes)
-    {
-        std::string text = core::fs::ToUtf8(excludes);
+namespace {
+	void SetExcludesFile(const std::filesystem::path& repository,
+						 const std::filesystem::path& excludes)
+	{
+		std::string text = Core::ToUtf8(excludes);
 
-        for (char& character : text)
-        {
-            if (character == '\\')
-                character = '/';
-        }
+		for (char& character : text)
+		{
+			if (character == '\\')
+				character = '/';
+		}
 
-        std::ofstream config{repository / ".git" / "config", std::ios::app};
-        config << "\texcludesfile = " << text << "\n";
-    }
+		std::ofstream config{repository / ".git" / "config", std::ios::app};
+		config << "\texcludesfile = " << text << "\n";
+	}
 
-    void WriteFile(const std::filesystem::path& path, std::string_view contents)
-    {
-        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
-        stream << contents;
-    }
+	void WriteFile(const std::filesystem::path& path, std::string_view contents)
+	{
+		std::ofstream stream{path, std::ios::binary | std::ios::trunc};
+		stream << contents;
+	}
 }
 
 TEST_CASE("An edited excludes file is picked up without reopening the repository")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile("build.log", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile("build.log", "x");
 
-    const auto excludes = temp.Path() / "my-excludes";
-    WriteFile(excludes, "\n");
-    SetExcludesFile(temp.Path(), excludes);
+	const auto excludes = temp.GetPath() / "my-excludes";
+	WriteFile(excludes, "\n");
+	SetExcludesFile(temp.GetPath(), excludes);
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    Repository repository = std::move(opened).Value();
-    REQUIRE_FALSE(repository.IsIgnored(temp.Path() / "build.log"));
+	Repository repository = std::move(opened).GetValue();
+	REQUIRE_FALSE(repository.IsIgnored(temp.GetPath() / "build.log"));
 
-    WriteFile(excludes, "*.log\n");
+	WriteFile(excludes, "*.log\n");
 
-    // libgit2 revalidates rule files by timestamp and size on every query, so editing
-    // one takes effect through nothing more than a refresh of the tree. That holds for
-    // the file core.excludesFile points at just as it does for .gitignore, which is why
-    // this file lives outside the working tree and is still covered.
-    CHECK(repository.IsIgnored(temp.Path() / "build.log"));
+	// libgit2 revalidates rule files by timestamp and size on every query, so editing
+	// one takes effect through nothing more than a refresh of the tree. That holds for
+	// the file core.excludesFile points at just as it does for .gitignore, which is why
+	// this file lives outside the working tree and is still covered.
+	CHECK(repository.IsIgnored(temp.GetPath() / "build.log"));
 }
 
 TEST_CASE("Repointing core.excludesFile needs the repository reopened")
 {
-    TempDirectory temp;
-    InitRepository(temp.Path());
-    temp.MakeFile("build.log", "x");
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile("build.log", "x");
 
-    const auto empty = temp.Path() / "empty-excludes";
-    const auto real = temp.Path() / "real-excludes";
-    WriteFile(empty, "\n");
-    WriteFile(real, "*.log\n");
-    SetExcludesFile(temp.Path(), empty);
+	const auto empty = temp.GetPath() / "empty-excludes";
+	const auto real = temp.GetPath() / "real-excludes";
+	WriteFile(empty, "\n");
+	WriteFile(real, "*.log\n");
+	SetExcludesFile(temp.GetPath(), empty);
 
-    auto opened = Repository::Open(temp.Path());
-    REQUIRE(opened.HasValue());
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
 
-    Repository repository = std::move(opened).Value();
-    REQUIRE_FALSE(repository.IsIgnored(temp.Path() / "build.log"));
+	Repository repository = std::move(opened).GetValue();
+	REQUIRE_FALSE(repository.IsIgnored(temp.GetPath() / "build.log"));
 
-    SetExcludesFile(temp.Path(), real);
+	SetExcludesFile(temp.GetPath(), real);
 
-    // The other half of the answer, and the surprising one: the *contents* of a rule
-    // file are revalidated, but the configuration saying which file to read is not. It
-    // is resolved once when the repository is opened and cached in the handle.
-    //
-    // So a refresh covers editing the ignore rules, and only changing which file holds
-    // them requires reopening the folder. That is a once-in-a-long-while action, which
-    // is why nothing in the application reopens on its own.
-    INFO("If this fails, libgit2 started rereading config — a refresh would then cover "
-         "this case too and any workaround built around it can go.");
-    CHECK_FALSE(repository.IsIgnored(temp.Path() / "build.log"));
+	// The other half of the answer, and the surprising one: the *contents* of a rule
+	// file are revalidated, but the configuration saying which file to read is not. It
+	// is resolved once when the repository is opened and cached in the handle.
+	//
+	// So a refresh covers editing the ignore rules, and only changing which file holds
+	// them requires reopening the folder. That is a once-in-a-long-while action, which
+	// is why nothing in the application reopens on its own.
+	INFO("If this fails, libgit2 started rereading config — a refresh would then cover "
+		 "this case too and any workaround built around it can go.");
+	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "build.log"));
 }

@@ -1,53 +1,51 @@
 #pragma once
 
-#include "Core/Command/Scope.h"
 #include "Core/Command/Trigger.h"
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 
-namespace core
-{
-    /// One trigger with its modifiers: what a binding is made of, and the only thing in
-    /// this design that is written to disk verbatim. Regular (ADR 0049) — copied,
-    /// compared and stored in containers freely.
-    class Chord
-    {
-    public:
-        Chord() = default;
+namespace Core {
 
-        /// Key chords are always global: that is what every one of them is today, and a
-        /// scoped one would need the router to know which window defines the scope.
-        [[nodiscard]] static Chord Key(ImGuiKeyChord keys);
+	class Chord
+	{
+	public:
+		enum class Scope : std::uint8_t
+		{
+			Global,
+			HoveredEditor
+		};
 
-        /// `mods` carries modifier bits only; the direction is the trigger.
-        [[nodiscard]] static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Scope scope);
+		Chord() = default;
 
-        [[nodiscard]] Trigger GetTrigger() const noexcept { return m_trigger; }
-        [[nodiscard]] Scope GetScope() const noexcept { return m_scope; }
+		static Chord Key(ImGuiKeyChord keys);
 
-        /// Modifiers ORed with the key for Trigger::Key; modifiers alone otherwise.
-        [[nodiscard]] ImGuiKeyChord Keys() const noexcept { return m_keys; }
+		static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Chord::Scope scope);
 
-        [[nodiscard]] bool IsEmpty() const noexcept;
+		// Modifiers on their own, fired when they are released with nothing pressed in
+		// between. Empty when given no modifiers, since that names no gesture at all.
+		static Chord ModifierTap(ImGuiKeyChord mods);
 
-        /// "Ctrl+Shift+S", "Ctrl+=", "Ctrl+WheelUp". Empty for an empty chord. This is
-        /// both what the menu shows beside an item and what is stored, so the two cannot
-        /// drift apart.
-        [[nodiscard]] std::string ToString() const;
+		Trigger GetTrigger() const { return m_Trigger; }
+		Chord::Scope GetScope() const { return m_Scope; }
 
-        /// Empty when the text names no key this build knows. A hand-edited settings
-        /// file must not be able to crash the IDE, so this reports rather than asserts.
-        [[nodiscard]] static std::optional<Chord> Parse(std::string_view text);
+		ImGuiKeyChord GetKeys() const { return m_Keys; }
 
-        [[nodiscard]] friend bool operator==(const Chord&, const Chord&) noexcept = default;
+		bool IsEmpty() const;
 
-    private:
-        ImGuiKeyChord m_keys = 0;
-        Trigger m_trigger = Trigger::Key;
-        Scope m_scope = Scope::Global;
-    };
+		std::string ToString() const;
+
+		static std::optional<Chord> Parse(std::string_view text);
+
+		friend bool operator==(const Chord&, const Chord&) = default;
+
+	private:
+		ImGuiKeyChord m_Keys = 0;
+		Trigger m_Trigger = Trigger::Key;
+		Chord::Scope m_Scope = Chord::Scope::Global;
+	};
 }

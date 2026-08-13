@@ -1,0 +1,65 @@
+#include "Settings/WorkspaceSettings.h"
+
+#include "Core/Base/JsonFile.h"
+#include "Core/Base/Log.h"
+#include "Core/Fs/FileOperations.h"
+
+#include <filesystem>
+#include <utility>
+
+namespace Graphite {
+
+	namespace {
+		constexpr const char* kDirectory = ".graphite";
+		constexpr const char* kFile = "workspace.json";
+
+		bool EnsureDirectoryExists(const std::filesystem::path& directory)
+		{
+			// MakeDirectory reports an error when the directory is already there, which is
+			// every write after the first.
+			std::error_code code;
+			if (std::filesystem::exists(directory, code))
+				return true;
+
+			if (const auto made = Core::MakeDirectory(directory); !made)
+			{
+				APP_WARN("Cannot create '{}': {}", directory.string(), made.GetError().Message);
+				return false;
+			}
+
+			return true;
+		}
+	}
+
+	WorkspaceSettings::WorkspaceSettings(std::filesystem::path root) : m_Root(std::move(root))
+	{
+	}
+
+	std::filesystem::path WorkspaceSettings::GetFilePath() const
+	{
+		return m_Root / kDirectory / kFile;
+	}
+
+	std::string WorkspaceSettings::Read(std::string_view key) const
+	{
+		if (m_Root.empty())
+			return {};
+
+		return Core::JsonFile::Load(GetFilePath()).Get(key);
+	}
+
+	void WorkspaceSettings::Write(std::string_view key, std::string value)
+	{
+		if (m_Root.empty())
+			return;
+
+		if (!EnsureDirectoryExists(m_Root / kDirectory))
+			return;
+
+		Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
+		file.Set(key, std::move(value));
+
+		if (!file.Save(GetFilePath()))
+			APP_WARN("Cannot write '{}'", GetFilePath().string());
+	}
+}

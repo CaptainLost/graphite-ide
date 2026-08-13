@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Platform/Window.h"
 #include "Core/Platform/WindowFrame.h"
 
@@ -8,40 +10,44 @@
 
 struct GLFWwindow;
 
-namespace core
-{
-    class GlfwWindow final : public Window
-    {
-    public:
-        explicit GlfwWindow(GLFWwindow* handle);
-        ~GlfwWindow() override;
+namespace Core {
 
-        void PollEvents() override;
-        void SwapBuffers() override;
+	class GlfwWindow final : public Window
+	{
+	public:
+		explicit GlfwWindow(GLFWwindow* handle);
+		~GlfwWindow() override;
 
-        [[nodiscard]] bool ShouldClose() const override;
-        void RequestClose() override;
-        void CancelClose() override;
+		void SetEventCallback(EventCallbackFn callback) override { m_EventCallback = std::move(callback); }
 
-        void FramebufferSize(int& width, int& height) const override;
-        void SetVSync(bool enabled) override;
+		// Must run before the GUI backend initialises: that backend chains to whatever
+		// callbacks it finds, so these have to be there first or they are replaced.
+		void InstallCallbacks();
 
-        [[nodiscard]] void* NativeHandle() const override { return m_handle; }
+		void PollEvents() override;
+		void SwapBuffers() override;
 
-        void Minimize() override;
-        void ToggleMaximize() override;
-        [[nodiscard]] bool IsMaximized() const override;
-        [[nodiscard]] bool HasCustomTitleBar() const override;
-        void SetCaptionMetrics(const CaptionMetrics& metrics) override;
+		bool ShouldClose() const override;
+		void RequestClose() override;
+		void CancelClose() override;
 
-        /// Takes over a frame built for this window. Create does it once the window
-        /// exists, which is the earliest the platform can be asked to drop its caption.
-        void AdoptFrame(std::unique_ptr<WindowFrame> frame) { m_frame = std::move(frame); }
+		void FramebufferSize(int& width, int& height) const override;
+		void SetVSync(bool enabled) override;
 
-    private:
-        GLFWwindow* m_handle = nullptr;
+		void* GetNativeHandle() const override { return m_Handle; }
 
-        /// Null while the window still wears the system title bar.
-        std::unique_ptr<WindowFrame> m_frame;
-    };
+		void Minimize() override;
+		void ToggleMaximize() override;
+		bool IsMaximized() const override;
+		bool HasCustomTitleBar() const override;
+		void SetCaptionMetrics(const CaptionMetrics& metrics) override;
+
+		void AdoptFrame(Scope<WindowFrame> frame) { m_Frame = std::move(frame); }
+
+	private:
+		GLFWwindow* m_Handle = nullptr;
+		EventCallbackFn m_EventCallback;
+
+		Scope<WindowFrame> m_Frame;
+	};
 }

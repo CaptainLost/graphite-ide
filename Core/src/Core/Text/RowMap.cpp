@@ -7,206 +7,199 @@
 
 #include <algorithm>
 
-namespace core::text
-{
-    namespace
-    {
-        const std::vector<std::size_t> kNoBreaks;
-    }
+namespace Core {
 
-    void RowMap::Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow,
-                          std::size_t tabWidth)
-    {
-        m_columnsPerRow = columnsPerRow;
-        m_tabWidth = tabWidth;
+	namespace {
+		const std::vector<std::size_t> kNoBreaks;
+	}
 
-        const std::size_t lines = buffer.LineCount();
+	void RowMap::Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow,
+						 std::size_t tabWidth)
+	{
+		m_ColumnsPerRow = columnsPerRow;
+		m_TabWidth = tabWidth;
 
-        m_rowsPerLine.assign(lines, 0);
-        m_breaks.assign(lines, {});
+		const std::size_t lines = buffer.GetLineCount();
 
-        // The counts are filled in directly and the tree built once from them, the same
-        // way the splices below do it. Doing this by repeated SetCount would be a
-        // logarithmic update per line for a tree that is thrown away and rebuilt whole
-        // anyway, and RebuildTree is already the trusted path.
-        for (std::size_t line = 0; line < lines; ++line)
-        {
-            if (columnsPerRow != kNoWrap)
-                m_breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
+		m_RowsPerLine.assign(lines, 0);
+		m_Breaks.assign(lines, {});
 
-            m_rowsPerLine[line] = m_breaks[line].size() + 1;
-        }
+		// The counts are filled in directly and the tree built once from them: SetCount per
+		// line would be a logarithmic update each time into a tree about to be thrown away.
+		for (std::size_t line = 0; line < lines; ++line)
+		{
+			if (columnsPerRow != kNoWrap)
+				m_Breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
 
-        RebuildTree();
-    }
+			m_RowsPerLine[line] = m_Breaks[line].size() + 1;
+		}
 
-    void RowMap::UpdateLine(const TextBuffer& buffer, std::size_t line)
-    {
-        if (line >= m_rowsPerLine.size())
-            return;
+		RebuildTree();
+	}
 
-        m_breaks[line].clear();
+	void RowMap::UpdateLine(const TextBuffer& buffer, std::size_t line)
+	{
+		if (line >= m_RowsPerLine.size())
+			return;
 
-        if (m_columnsPerRow != kNoWrap)
-            m_breaks[line] = WrapColumns(buffer.LineText(line), m_columnsPerRow, m_tabWidth);
+		m_Breaks[line].clear();
 
-        SetCount(line, m_breaks[line].size() + 1);
-    }
+		if (m_ColumnsPerRow != kNoWrap)
+			m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 
-    void RowMap::InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count)
-    {
-        if (count == 0)
-            return;
+		SetCount(line, m_Breaks[line].size() + 1);
+	}
 
-        const std::size_t where = std::min(at, m_rowsPerLine.size());
-        const auto offset = static_cast<std::ptrdiff_t>(where);
+	void RowMap::InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count)
+	{
+		if (count == 0)
+			return;
 
-        m_rowsPerLine.insert(m_rowsPerLine.begin() + offset, count, 0);
-        m_breaks.insert(m_breaks.begin() + offset, count, std::vector<std::size_t>{});
+		const std::size_t where = std::min(at, m_RowsPerLine.size());
+		const auto offset = static_cast<std::ptrdiff_t>(where);
 
-        for (std::size_t line = where; line < where + count; ++line)
-        {
-            if (m_columnsPerRow != kNoWrap && line < buffer.LineCount())
-                m_breaks[line] = WrapColumns(buffer.LineText(line), m_columnsPerRow, m_tabWidth);
+		m_RowsPerLine.insert(m_RowsPerLine.begin() + offset, count, 0);
+		m_Breaks.insert(m_Breaks.begin() + offset, count, std::vector<std::size_t>{});
 
-            m_rowsPerLine[line] = m_breaks[line].size() + 1;
-        }
+		for (std::size_t line = where; line < where + count; ++line)
+		{
+			if (m_ColumnsPerRow != kNoWrap && line < buffer.GetLineCount())
+				m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 
-        RebuildTree();
-    }
+			m_RowsPerLine[line] = m_Breaks[line].size() + 1;
+		}
 
-    void RowMap::RemoveLines(std::size_t at, std::size_t count)
-    {
-        if (count == 0 || at >= m_rowsPerLine.size())
-            return;
+		RebuildTree();
+	}
 
-        const std::size_t end = std::min(at + count, m_rowsPerLine.size());
-        const auto first = static_cast<std::ptrdiff_t>(at);
-        const auto last = static_cast<std::ptrdiff_t>(end);
+	void RowMap::RemoveLines(std::size_t at, std::size_t count)
+	{
+		if (count == 0 || at >= m_RowsPerLine.size())
+			return;
 
-        m_rowsPerLine.erase(m_rowsPerLine.begin() + first, m_rowsPerLine.begin() + last);
-        m_breaks.erase(m_breaks.begin() + first, m_breaks.begin() + last);
+		const std::size_t end = std::min(at + count, m_RowsPerLine.size());
+		const auto first = static_cast<std::ptrdiff_t>(at);
+		const auto last = static_cast<std::ptrdiff_t>(end);
 
-        RebuildTree();
-    }
+		m_RowsPerLine.erase(m_RowsPerLine.begin() + first, m_RowsPerLine.begin() + last);
+		m_Breaks.erase(m_Breaks.begin() + first, m_Breaks.begin() + last);
 
-    void RowMap::RebuildTree()
-    {
-        const std::size_t lines = m_rowsPerLine.size();
+		RebuildTree();
+	}
 
-        m_tree.assign(lines + 1, 0);
-        m_totalRows = 0;
+	void RowMap::RebuildTree()
+	{
+		const std::size_t lines = m_RowsPerLine.size();
 
-        // Linear Fenwick construction: each node takes its own line's count and then hands
-        // its subtotal to its parent, so the whole tree is one pass rather than one
-        // logarithmic update per line.
-        for (std::size_t index = 1; index <= lines; ++index)
-        {
-            m_tree[index] += m_rowsPerLine[index - 1];
-            m_totalRows += m_rowsPerLine[index - 1];
+		m_Tree.assign(lines + 1, 0);
+		m_TotalRows = 0;
 
-            const std::size_t parent = index + (index & (~index + 1));
+		// Linear Fenwick construction: each node takes its own line's count and hands its
+		// subtotal to its parent, so the whole tree is one pass.
+		for (std::size_t index = 1; index <= lines; ++index)
+		{
+			m_Tree[index] += m_RowsPerLine[index - 1];
+			m_TotalRows += m_RowsPerLine[index - 1];
 
-            if (parent <= lines)
-                m_tree[parent] += m_tree[index];
-        }
-    }
+			const std::size_t parent = index + (index & (~index + 1));
 
-    void RowMap::SetRowsOf(std::size_t line, std::size_t rows)
-    {
-        if (line < m_rowsPerLine.size())
-            SetCount(line, rows);
-    }
+			if (parent <= lines)
+				m_Tree[parent] += m_Tree[index];
+		}
+	}
 
-    void RowMap::SetCount(std::size_t line, std::size_t rows)
-    {
-        const std::size_t previous = m_rowsPerLine[line];
+	void RowMap::SetRowsOf(std::size_t line, std::size_t rows)
+	{
+		if (line < m_RowsPerLine.size())
+			SetCount(line, rows);
+	}
 
-        if (rows == previous)
-            return;
+	void RowMap::SetCount(std::size_t line, std::size_t rows)
+	{
+		const std::size_t previous = m_RowsPerLine[line];
 
-        m_rowsPerLine[line] = rows;
-        m_totalRows = m_totalRows - previous + rows;
+		if (rows == previous)
+			return;
 
-        // Fenwick update. The delta is computed as an unsigned difference in the direction
-        // that keeps it positive, with `grew` recording which way it went, rather than
-        // relying on signed arithmetic: a line that shrank subtracts its delta from every
-        // covering node, and an unsigned wraparound here would corrupt every later lookup
-        // rather than failing loudly.
-        const bool grew = rows > previous;
-        const std::size_t delta = grew ? rows - previous : previous - rows;
+		m_RowsPerLine[line] = rows;
+		m_TotalRows = m_TotalRows - previous + rows;
 
-        for (std::size_t index = line + 1; index < m_tree.size(); index += index & (~index + 1))
-        {
-            if (grew)
-                m_tree[index] += delta;
-            else
-                m_tree[index] -= delta;
-        }
-    }
+		// Fenwick update, with the delta kept positive and its direction carried separately:
+		// an unsigned wraparound here would corrupt every later lookup rather than fail
+		// loudly.
+		const bool grew = rows > previous;
+		const std::size_t delta = grew ? rows - previous : previous - rows;
 
-    std::size_t RowMap::PrefixSum(std::size_t line) const
-    {
-        std::size_t sum = 0;
+		for (std::size_t index = line + 1; index < m_Tree.size(); index += index & (~index + 1))
+		{
+			if (grew)
+				m_Tree[index] += delta;
+			else
+				m_Tree[index] -= delta;
+		}
+	}
 
-        for (std::size_t index = line; index > 0; index -= index & (~index + 1))
-            sum += m_tree[index];
+	std::size_t RowMap::PrefixSum(std::size_t line) const
+	{
+		std::size_t sum = 0;
 
-        return sum;
-    }
+		for (std::size_t index = line; index > 0; index -= index & (~index + 1))
+			sum += m_Tree[index];
 
-    std::size_t RowMap::FirstRowOf(std::size_t line) const
-    {
-        return PrefixSum(std::min(line, m_rowsPerLine.size()));
-    }
+		return sum;
+	}
 
-    std::size_t RowMap::RowsOf(std::size_t line) const
-    {
-        return line < m_rowsPerLine.size() ? m_rowsPerLine[line] : 0;
-    }
+	std::size_t RowMap::FirstRowOf(std::size_t line) const
+	{
+		return PrefixSum(std::min(line, m_RowsPerLine.size()));
+	}
 
-    const std::vector<std::size_t>& RowMap::BreaksOf(std::size_t line) const
-    {
-        return line < m_breaks.size() ? m_breaks[line] : kNoBreaks;
-    }
+	std::size_t RowMap::RowsOf(std::size_t line) const
+	{
+		return line < m_RowsPerLine.size() ? m_RowsPerLine[line] : 0;
+	}
 
-    RowRef RowMap::RowAt(std::size_t row) const
-    {
-        if (m_rowsPerLine.empty())
-            return RowRef{};
+	const std::vector<std::size_t>& RowMap::BreaksOf(std::size_t line) const
+	{
+		return line < m_Breaks.size() ? m_Breaks[line] : kNoBreaks;
+	}
 
-        // A row past the end resolves to the last line's last row, matching how the widget
-        // already clamps a click below the document rather than treating it as an error.
-        if (row >= m_totalRows)
-        {
-            const std::size_t last = m_rowsPerLine.size() - 1;
-            const std::size_t rows = m_rowsPerLine[last];
+	RowRef RowMap::RowAt(std::size_t row) const
+	{
+		if (m_RowsPerLine.empty())
+			return RowRef{};
 
-            return RowRef{last, rows > 0 ? rows - 1 : 0};
-        }
+		// A row past the end resolves to the last line's last row, the way a click below the
+		// document is already clamped rather than treated as an error.
+		if (row >= m_TotalRows)
+		{
+			const std::size_t last = m_RowsPerLine.size() - 1;
+			const std::size_t rows = m_RowsPerLine[last];
 
-        // Fenwick descent: walk the tree from the highest power of two downwards, taking
-        // a branch whenever the rows it covers still fit below `row`. Lands on the last
-        // line whose first row is at or before `row`, skipping lines of zero rows for
-        // free, since they add nothing to take.
-        std::size_t index = 0;
-        std::size_t remaining = row;
-        std::size_t step = 1;
+			return RowRef{last, rows > 0 ? rows - 1 : 0};
+		}
 
-        while (step * 2 <= m_tree.size() - 1)
-            step *= 2;
+		// Fenwick descent from the highest power of two downwards, taking a branch whenever
+		// the rows it covers still fit below `row`, which lands on the last line whose first
+		// row is at or before it.
+		std::size_t index = 0;
+		std::size_t remaining = row;
+		std::size_t step = 1;
 
-        for (; step > 0; step /= 2)
-        {
-            const std::size_t next = index + step;
+		while (step * 2 <= m_Tree.size() - 1)
+			step *= 2;
 
-            if (next < m_tree.size() && m_tree[next] <= remaining)
-            {
-                index = next;
-                remaining -= m_tree[next];
-            }
-        }
+		for (; step > 0; step /= 2)
+		{
+			const std::size_t next = index + step;
 
-        return RowRef{index, remaining};
-    }
+			if (next < m_Tree.size() && m_Tree[next] <= remaining)
+			{
+				index = next;
+				remaining -= m_Tree[next];
+			}
+		}
+
+		return RowRef{index, remaining};
+	}
 }

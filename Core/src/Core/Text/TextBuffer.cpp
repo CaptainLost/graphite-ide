@@ -6,436 +6,445 @@
 
 #include <algorithm>
 
-namespace core::text
-{
-    TextBuffer::TextBuffer(std::string original) : m_original(std::move(original))
-    {
-        m_length = m_original.size();
+namespace Core {
 
-        if (m_length > 0)
-            m_pieces.push_back(Piece{Source::Original, 0, m_length, 0});
+	TextBuffer::TextBuffer(std::string original) : m_Original(std::move(original))
+	{
+		m_Length = m_Original.size();
 
-        m_lineStarts = BuildLineIndex();
-    }
+		if (m_Length > 0)
+			m_Pieces.push_back(Piece{Source::Original, 0, m_Length, 0});
 
-    const std::string& TextBuffer::SourceBuffer(Source source) const
-    {
-        return source == Source::Original ? m_original : m_append;
-    }
+		m_LineStarts = BuildLineIndex();
+	}
 
-    std::size_t TextBuffer::PieceAt(std::size_t offset) const
-    {
-        if (offset >= m_length)
-            return m_pieces.size();
+	const std::string& TextBuffer::SourceBuffer(Source source) const
+	{
+		return source == Source::Original ? m_Original : m_Append;
+	}
 
-        // The first piece starting after `offset`, minus one, is the piece covering it.
-        const auto after = std::upper_bound(
-            m_pieces.begin(), m_pieces.end(), offset,
-            [](std::size_t value, const Piece& piece) { return value < piece.start; });
+	std::size_t TextBuffer::PieceAt(std::size_t offset) const
+	{
+		if (offset >= m_Length)
+			return m_Pieces.size();
 
-        return static_cast<std::size_t>(after - m_pieces.begin()) - 1;
-    }
+		const auto after = std::upper_bound(
+			m_Pieces.begin(), m_Pieces.end(), offset,
+			[](std::size_t value, const Piece& piece) { return value < piece.start; });
 
-    void TextBuffer::RefreshPieceStarts(std::size_t index)
-    {
-        std::size_t start = index == 0 ? 0 : m_pieces[index - 1].start + m_pieces[index - 1].length;
+		return static_cast<std::size_t>(after - m_Pieces.begin()) - 1;
+	}
 
-        for (std::size_t at = index; at < m_pieces.size(); ++at)
-        {
-            m_pieces[at].start = start;
-            start += m_pieces[at].length;
-        }
+	void TextBuffer::RefreshPieceStarts(std::size_t index)
+	{
+		std::size_t start = index == 0 ? 0 : m_Pieces[index - 1].start + m_Pieces[index - 1].length;
 
-        m_length = start;
-    }
+		for (std::size_t at = index; at < m_Pieces.size(); ++at)
+		{
+			m_Pieces[at].start = start;
+			start += m_Pieces[at].length;
+		}
 
-    std::size_t TextBuffer::SplitAt(std::size_t offset)
-    {
-        if (offset >= m_length)
-            return m_pieces.size();
+		m_Length = start;
+	}
 
-        const std::size_t index = PieceAt(offset);
-        const Piece& piece = m_pieces[index];
+	std::size_t TextBuffer::SplitAt(std::size_t offset)
+	{
+		if (offset >= m_Length)
+			return m_Pieces.size();
 
-        if (piece.start == offset)
-            return index;
+		const std::size_t index = PieceAt(offset);
+		const Piece& piece = m_Pieces[index];
 
-        const std::size_t taken = offset - piece.start;
+		if (piece.start == offset)
+			return index;
 
-        Piece tail{piece.source, piece.offset + taken, piece.length - taken, offset};
-        m_pieces[index].length = taken;
-        m_pieces.insert(m_pieces.begin() + static_cast<std::ptrdiff_t>(index) + 1, tail);
+		const std::size_t taken = offset - piece.start;
 
-        return index + 1;
-    }
+		Piece tail{piece.source, piece.offset + taken, piece.length - taken, offset};
+		m_Pieces[index].length = taken;
+		m_Pieces.insert(m_Pieces.begin() + static_cast<std::ptrdiff_t>(index) + 1, tail);
 
-    std::size_t TextBuffer::InsertRaw(std::size_t offset, std::string_view text)
-    {
-        if (text.empty())
-            return m_append.size();
+		return index + 1;
+	}
 
-        const std::size_t appended = m_append.size();
-        m_append.append(text);
+	std::size_t TextBuffer::InsertRaw(std::size_t offset, std::string_view text)
+	{
+		if (text.empty())
+			return m_Append.size();
 
-        InsertPieceRaw(offset, appended, text);
+		const std::size_t appended = m_Append.size();
+		m_Append.append(text);
 
-        return appended;
-    }
+		InsertPieceRaw(offset, appended, text);
 
-    void TextBuffer::InsertPieceRaw(std::size_t offset, std::size_t appendOffset, std::string_view text)
-    {
-        const std::size_t at = std::min(offset, m_length);
-        const std::size_t index = SplitAt(at);
+		return appended;
+	}
 
-        m_pieces.insert(m_pieces.begin() + static_cast<std::ptrdiff_t>(index),
-                        Piece{Source::Append, appendOffset, text.size(), at});
+	void TextBuffer::InsertPieceRaw(std::size_t offset, std::size_t appendOffset, std::string_view text)
+	{
+		const std::size_t at = std::min(offset, m_Length);
+		const std::size_t index = SplitAt(at);
 
-        RefreshPieceStarts(index);
+		m_Pieces.insert(m_Pieces.begin() + static_cast<std::ptrdiff_t>(index),
+						Piece{Source::Append, appendOffset, text.size(), at});
 
-        PatchLineIndexForInsert(at, text);
+		RefreshPieceStarts(index);
 
-        CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
-    }
+		PatchLineIndexForInsert(at, text);
 
-    std::size_t TextBuffer::PieceStartingAt(std::size_t offset) const
-    {
-        const auto found = std::lower_bound(
-            m_pieces.begin(), m_pieces.end(), offset,
-            [](const Piece& piece, std::size_t value) { return piece.start < value; });
+		CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
+	}
 
-        return static_cast<std::size_t>(found - m_pieces.begin());
-    }
+	std::size_t TextBuffer::PieceStartingAt(std::size_t offset) const
+	{
+		const auto found = std::lower_bound(
+			m_Pieces.begin(), m_Pieces.end(), offset,
+			[](const Piece& piece, std::size_t value) { return piece.start < value; });
 
-    void TextBuffer::EraseRaw(std::size_t from, std::size_t to)
-    {
-        const std::size_t end = std::min(to, m_length);
+		return static_cast<std::size_t>(found - m_Pieces.begin());
+	}
 
-        if (from >= end)
-            return;
+	void TextBuffer::EraseRaw(std::size_t from, std::size_t to)
+	{
+		const std::size_t end = std::min(to, m_Length);
 
-        // Split at both ends first, so the range to remove is a whole run of pieces and
-        // there is no partial piece left to trim afterwards.
-        //
-        // The indices are looked up *after* both splits rather than taken from their
-        // return values: splitting at `from` inserts a piece ahead of the boundary at
-        // `end`, which would push the index the earlier split reported one place out of
-        // date. Two lookups are cheaper than that bug.
-        SplitAt(end);
-        SplitAt(from);
+		if (from >= end)
+			return;
 
-        const std::size_t first = PieceStartingAt(from);
-        const std::size_t last = PieceStartingAt(end);
+		// Both indices are looked up after both splits rather than taken from their return
+		// values: splitting at `from` inserts a piece ahead of the boundary at `end`, which
+		// leaves the index the earlier split reported one place out of date.
+		SplitAt(end);
+		SplitAt(from);
 
-        CORE_ASSERT(first <= last, "Erase found its bounds out of order");
+		const std::size_t first = PieceStartingAt(from);
+		const std::size_t last = PieceStartingAt(end);
 
-        m_pieces.erase(m_pieces.begin() + static_cast<std::ptrdiff_t>(first),
-                       m_pieces.begin() + static_cast<std::ptrdiff_t>(last));
+		CORE_ASSERT(first <= last, "Erase found its bounds out of order");
 
-        RefreshPieceStarts(first);
+		m_Pieces.erase(m_Pieces.begin() + static_cast<std::ptrdiff_t>(first),
+					   m_Pieces.begin() + static_cast<std::ptrdiff_t>(last));
 
-        PatchLineIndexForErase(from, end);
+		RefreshPieceStarts(first);
 
-        CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
-    }
+		PatchLineIndexForErase(from, end);
 
-    std::string TextBuffer::Substring(std::size_t from, std::size_t to) const
-    {
-        const std::size_t end = std::min(to, m_length);
+		CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
+	}
 
-        if (from >= end)
-            return {};
+	std::string TextBuffer::Substring(std::size_t from, std::size_t to) const
+	{
+		const std::size_t end = std::min(to, m_Length);
 
-        std::string result;
-        result.reserve(end - from);
+		if (from >= end)
+			return {};
 
-        for (std::size_t index = PieceAt(from); index < m_pieces.size(); ++index)
-        {
-            const Piece& piece = m_pieces[index];
+		std::string result;
+		result.reserve(end - from);
 
-            if (piece.start >= end)
-                break;
+		for (std::size_t index = PieceAt(from); index < m_Pieces.size(); ++index)
+		{
+			const Piece& piece = m_Pieces[index];
 
-            const std::size_t sliceFrom = from > piece.start ? from - piece.start : 0;
-            const std::size_t sliceTo = std::min(piece.length, end - piece.start);
+			if (piece.start >= end)
+				break;
 
-            result.append(SourceBuffer(piece.source), piece.offset + sliceFrom,
-                          sliceTo - sliceFrom);
-        }
+			const std::size_t sliceFrom = from > piece.start ? from - piece.start : 0;
+			const std::size_t sliceTo = std::min(piece.length, end - piece.start);
 
-        return result;
-    }
+			result.append(SourceBuffer(piece.source), piece.offset + sliceFrom,
+						  sliceTo - sliceFrom);
+		}
 
-    char TextBuffer::CharAt(std::size_t offset) const
-    {
-        if (offset >= m_length)
-            return '\0';
+		return result;
+	}
 
-        const Piece& piece = m_pieces[PieceAt(offset)];
+	char TextBuffer::CharAt(std::size_t offset) const
+	{
+		if (offset >= m_Length)
+			return '\0';
 
-        return SourceBuffer(piece.source)[piece.offset + (offset - piece.start)];
-    }
+		const Piece& piece = m_Pieces[PieceAt(offset)];
 
-    std::vector<std::size_t> TextBuffer::BuildLineIndex() const
-    {
-        std::vector<std::size_t> starts{0};
-        const std::string content = Text();
+		return SourceBuffer(piece.source)[piece.offset + (offset - piece.start)];
+	}
 
-        for (std::size_t offset = 0; offset < content.size(); ++offset)
-        {
-            if (content[offset] == '\n')
-                starts.push_back(offset + 1);
-        }
+	std::vector<std::size_t> TextBuffer::BuildLineIndex() const
+	{
+		std::vector<std::size_t> starts{0};
+		const std::string content = Materialize();
 
-        return starts;
-    }
+		for (std::size_t offset = 0; offset < content.size(); ++offset)
+		{
+			if (content[offset] == '\n')
+				starts.push_back(offset + 1);
+		}
 
-    bool TextBuffer::LineIndexMatchesRebuild() const
-    {
-        return m_lineStarts == BuildLineIndex();
-    }
-
-    std::size_t TextBuffer::LineStart(std::size_t line) const
-    {
-        if (line >= m_lineStarts.size())
-            return m_length;
-
-        return m_lineStarts[line];
-    }
-
-    std::size_t TextBuffer::LineLength(std::size_t line) const
-    {
-        if (line >= m_lineStarts.size())
-            return 0;
-
-        // Every line but the last is followed by the '\n' that ended it, which is not
-        // part of its text.
-        const std::size_t end =
-            line + 1 < m_lineStarts.size() ? m_lineStarts[line + 1] - 1 : m_length;
-
-        return end - m_lineStarts[line];
-    }
-
-    std::string TextBuffer::LineText(std::size_t line) const
-    {
-        const std::size_t start = LineStart(line);
-
-        return Substring(start, start + LineLength(line));
-    }
-
-    std::size_t TextBuffer::ToOffset(Position position) const
-    {
-        if (position.line >= m_lineStarts.size())
-            return m_length;
-
-        return m_lineStarts[position.line] + std::min(position.column, LineLength(position.line));
-    }
-
-    Position TextBuffer::ToPosition(std::size_t offset) const
-    {
-        const std::size_t at = std::min(offset, m_length);
-
-        // The last line starting at or before `at` is the line `at` sits on.
-        const auto after = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), at);
-        const std::size_t line = static_cast<std::size_t>(after - m_lineStarts.begin()) - 1;
-
-        return Position{line, at - m_lineStarts[line]};
-    }
-
-    void TextBuffer::PatchLineIndexForInsert(std::size_t offset, std::string_view text)
-    {
-        // The first line starting after the insertion point. Everything before it is
-        // untouched, which is the whole reason for patching rather than rebuilding.
-        const auto after = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), offset);
-        const std::size_t index = static_cast<std::size_t>(after - m_lineStarts.begin());
-
-        for (std::size_t at = index; at < m_lineStarts.size(); ++at)
-            m_lineStarts[at] += text.size();
-
-        std::vector<std::size_t> added;
-
-        for (std::size_t at = 0; at < text.size(); ++at)
-        {
-            if (text[at] == '\n')
-                added.push_back(offset + at + 1);
-        }
-
-        m_lineStarts.insert(m_lineStarts.begin() + static_cast<std::ptrdiff_t>(index),
-                            added.begin(), added.end());
-    }
-
-    void TextBuffer::PatchLineIndexForErase(std::size_t from, std::size_t to)
-    {
-        const std::size_t removed = to - from;
-
-        // A line start at s exists because of a '\n' at s - 1. That newline is inside
-        // the erased range exactly when from < s <= to, so those starts go away and the
-        // one at `from` itself, if any, stays.
-        const auto first = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), from);
-        const auto last = std::upper_bound(m_lineStarts.begin(), m_lineStarts.end(), to);
-
-        const std::size_t index = static_cast<std::size_t>(first - m_lineStarts.begin());
-        m_lineStarts.erase(first, last);
-
-        for (std::size_t at = index; at < m_lineStarts.size(); ++at)
-            m_lineStarts[at] -= removed;
-    }
-
-    void TextBuffer::ApplyEdit(Edit& edit, bool reversed)
-    {
-        const bool inserting = reversed ? !edit.inserted : edit.inserted;
-
-        if (inserting)
-        {
-            // The text may already live in m_append — from this edit's own original
-            // insertion, or from an earlier undo of an erasure. Those bytes are never
-            // removed or rewritten, so a range recorded once stays valid for every later
-            // replay and nothing is appended twice.
-            if (!edit.hasAppendOffset)
-            {
-                edit.appendOffset = m_append.size();
-                m_append.append(edit.text);
-                edit.hasAppendOffset = true;
-            }
-
-            InsertPieceRaw(edit.offset, edit.appendOffset, edit.text);
-        }
-        else
-        {
-            EraseRaw(edit.offset, edit.offset + edit.text.size());
-        }
-    }
-
-    void TextBuffer::BeginTransaction()
-    {
-        if (m_transactionDepth++ == 0)
-            m_transactionGroup = 0;
-    }
-
-    void TextBuffer::EndTransaction()
-    {
-        if (m_transactionDepth > 0)
-            --m_transactionDepth;
-    }
-
-    std::size_t TextBuffer::GroupForNewEdit(std::size_t from, std::size_t to,
-                                            std::string_view text, bool inserted)
-    {
-        const bool hasNewline = text.find('\n') != std::string_view::npos;
-
-        std::size_t group;
-
-        // Inside a transaction every edit joins the one this transaction opened, so the
-        // whole gesture reverses together.
-        if (m_transactionDepth > 0 && m_transactionGroup != 0)
-        {
-            group = m_transactionGroup;
-        }
-        else
-        {
-            const bool continues =
-                !m_breakGroup && !hasNewline && !m_undo.empty()
-                && (inserted ? m_lastGroupKind == GroupKind::Insertion && from == m_insertEnd
-                             : m_lastGroupKind == GroupKind::Deletion
-                                   && (to == m_deleteAt || from == m_deleteAt));
-
-            group = continues ? m_undo.back().group : m_nextGroupId++;
-
-            if (m_transactionDepth > 0)
-                m_transactionGroup = group;
-        }
-
-        // Runs for every edit, including one that took the transaction shortcut above, so
-        // these describe the group's *last* edit rather than its first — a transaction's
-        // second edit can be the one that lands a newline or turns an erase-then-insert
-        // into something a following keystroke should still coalesce with.
-        m_lastGroupKind = inserted ? GroupKind::Insertion : GroupKind::Deletion;
-        m_insertEnd = inserted ? from + text.size() : from;
-        m_deleteAt = from;
-
-        // A group holding a newline is closed behind itself: Enter is a boundary a user
-        // expects undo to stop at, and it is where an accidental merge would be most
-        // confusing.
-        m_breakGroup = hasNewline;
-
-        return group;
-    }
-
-    void TextBuffer::Insert(std::size_t offset, std::string_view text)
-    {
-        if (text.empty())
-            return;
-
-        const std::size_t at = std::min(offset, m_length);
-        const std::size_t appendOffset = InsertRaw(at, text);
-
-        m_redo.clear();
-        m_undo.push_back(Edit{m_nextEditId++, at, std::string{text}, true, appendOffset, true,
-                              GroupForNewEdit(at, at, text, true)});
-    }
-
-    void TextBuffer::Erase(std::size_t from, std::size_t to)
-    {
-        const std::size_t end = std::min(to, m_length);
-
-        if (from >= end)
-            return;
-
-        std::string removed = Substring(from, end);
-
-        EraseRaw(from, end);
-
-        const std::size_t group = GroupForNewEdit(from, end, removed, false);
-
-        m_redo.clear();
-        m_undo.push_back(Edit{m_nextEditId++, from, std::move(removed), false, 0, false, group});
-    }
-
-    bool TextBuffer::Undo()
-    {
-        if (m_undo.empty())
-            return false;
-
-        const std::size_t group = m_undo.back().group;
-
-        while (!m_undo.empty() && m_undo.back().group == group)
-        {
-            Edit edit = std::move(m_undo.back());
-            m_undo.pop_back();
-
-            ApplyEdit(edit, true);
-            m_redo.push_back(std::move(edit));
-        }
-
-        m_breakGroup = true;
-        m_lastGroupKind = GroupKind::None;
-
-        return true;
-    }
-
-    bool TextBuffer::Redo()
-    {
-        if (m_redo.empty())
-            return false;
-
-        const std::size_t group = m_redo.back().group;
-
-        while (!m_redo.empty() && m_redo.back().group == group)
-        {
-            Edit edit = std::move(m_redo.back());
-            m_redo.pop_back();
-
-            ApplyEdit(edit, false);
-            m_undo.push_back(std::move(edit));
-        }
-
-        m_breakGroup = true;
-        m_lastGroupKind = GroupKind::None;
-
-        return true;
-    }
-
-    std::size_t TextBuffer::Revision() const noexcept
-    {
-        return m_undo.empty() ? 0 : m_undo.back().id;
-    }
+		return starts;
+	}
+
+	bool TextBuffer::LineIndexMatchesRebuild() const
+	{
+		return m_LineStarts == BuildLineIndex();
+	}
+
+	std::size_t TextBuffer::LineStart(std::size_t line) const
+	{
+		if (line >= m_LineStarts.size())
+			return m_Length;
+
+		return m_LineStarts[line];
+	}
+
+	std::size_t TextBuffer::LineLength(std::size_t line) const
+	{
+		if (line >= m_LineStarts.size())
+			return 0;
+
+		// Every line but the last ends with a '\n' that is not part of its text.
+		const std::size_t end =
+			line + 1 < m_LineStarts.size() ? m_LineStarts[line + 1] - 1 : m_Length;
+
+		return end - m_LineStarts[line];
+	}
+
+	std::string TextBuffer::LineText(std::size_t line) const
+	{
+		const std::size_t start = LineStart(line);
+
+		return Substring(start, start + LineLength(line));
+	}
+
+	std::size_t TextBuffer::ToOffset(Position position) const
+	{
+		if (position.Line >= m_LineStarts.size())
+			return m_Length;
+
+		return m_LineStarts[position.Line] + std::min(position.Column, LineLength(position.Line));
+	}
+
+	Position TextBuffer::ToPosition(std::size_t offset) const
+	{
+		const std::size_t at = std::min(offset, m_Length);
+
+		const auto after = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), at);
+		const std::size_t line = static_cast<std::size_t>(after - m_LineStarts.begin()) - 1;
+
+		return Position{line, at - m_LineStarts[line]};
+	}
+
+	void TextBuffer::PatchLineIndexForInsert(std::size_t offset, std::string_view text)
+	{
+		// Everything before the first line start past the insertion point is untouched, which
+		// is the whole reason for patching rather than rebuilding.
+		const auto after = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), offset);
+		const std::size_t firstShifted = static_cast<std::size_t>(after - m_LineStarts.begin());
+
+		for (std::size_t at = firstShifted; at < m_LineStarts.size(); ++at)
+			m_LineStarts[at] += text.size();
+
+		std::vector<std::size_t> added;
+
+		for (std::size_t at = 0; at < text.size(); ++at)
+		{
+			if (text[at] == '\n')
+				added.push_back(offset + at + 1);
+		}
+
+		m_LineStarts.insert(m_LineStarts.begin() + static_cast<std::ptrdiff_t>(firstShifted),
+							added.begin(), added.end());
+	}
+
+	void TextBuffer::PatchLineIndexForErase(std::size_t from, std::size_t to)
+	{
+		const std::size_t removed = to - from;
+
+		// A line start at s exists because of a '\n' at s - 1, so it is erased exactly when
+		// from < s <= to — which leaves a start at `from` itself in place.
+		const auto first = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), from);
+		const auto last = std::upper_bound(m_LineStarts.begin(), m_LineStarts.end(), to);
+
+		const std::size_t index = static_cast<std::size_t>(first - m_LineStarts.begin());
+		m_LineStarts.erase(first, last);
+
+		for (std::size_t at = index; at < m_LineStarts.size(); ++at)
+			m_LineStarts[at] -= removed;
+	}
+
+	void TextBuffer::ApplyEdit(Edit& edit, bool reversed)
+	{
+		const bool inserting = reversed ? !edit.inserted : edit.inserted;
+
+		if (inserting)
+		{
+			// Appended bytes are never removed or rewritten, so a range recorded once stays
+			// valid for every later replay of this edit.
+			if (!edit.hasAppendOffset)
+			{
+				edit.appendOffset = m_Append.size();
+				m_Append.append(edit.text);
+				edit.hasAppendOffset = true;
+			}
+
+			InsertPieceRaw(edit.offset, edit.appendOffset, edit.text);
+		}
+		else
+		{
+			EraseRaw(edit.offset, edit.offset + edit.text.size());
+		}
+	}
+
+	void TextBuffer::BeginTransaction()
+	{
+		if (m_TransactionDepth++ == 0)
+			m_TransactionGroup = 0;
+	}
+
+	void TextBuffer::EndTransaction()
+	{
+		if (m_TransactionDepth > 0)
+			--m_TransactionDepth;
+	}
+
+	bool TextBuffer::ContinuesLastGroup(std::size_t from, std::size_t to, bool inserted) const
+	{
+		if (m_Undo.empty())
+			return false;
+
+		if (inserted)
+			return m_LastGroupKind == GroupKind::Insertion && from == m_InsertEnd;
+
+		return m_LastGroupKind == GroupKind::Deletion && (to == m_DeleteAt || from == m_DeleteAt);
+	}
+
+	std::size_t TextBuffer::GroupForNewEdit(std::size_t from, std::size_t to,
+											std::string_view text, bool inserted)
+	{
+		const bool hasNewline = text.find('\n') != std::string_view::npos;
+
+		std::size_t group;
+
+		// Inside a transaction every edit joins the one this transaction opened, so the
+		// whole gesture reverses together.
+		if (m_TransactionDepth > 0 && m_TransactionGroup != 0)
+		{
+			group = m_TransactionGroup;
+		}
+		else
+		{
+			const bool continues =
+				!m_BreakGroup && !hasNewline && ContinuesLastGroup(from, to, inserted);
+
+			group = continues ? m_Undo.back().group : m_NextGroupId++;
+
+			if (m_TransactionDepth > 0)
+				m_TransactionGroup = group;
+		}
+
+		// Runs for every edit, including one that took the transaction shortcut above, so
+		// these describe the group's *last* edit rather than its first.
+		m_LastGroupKind = inserted ? GroupKind::Insertion : GroupKind::Deletion;
+		m_InsertEnd = inserted ? from + text.size() : from;
+		m_DeleteAt = from;
+
+		// A group holding a newline is closed behind itself: Enter is a boundary a user
+		// expects undo to stop at.
+		m_BreakGroup = hasNewline;
+
+		return group;
+	}
+
+	void TextBuffer::Insert(std::size_t offset, std::string_view text)
+	{
+		if (text.empty())
+			return;
+
+		const std::size_t at = std::min(offset, m_Length);
+		const std::size_t appendOffset = InsertRaw(at, text);
+
+		m_Redo.clear();
+		m_Undo.push_back(Edit{m_NextEditId++, at, std::string{text}, true, appendOffset, true,
+							  GroupForNewEdit(at, at, text, true)});
+	}
+
+	void TextBuffer::Erase(std::size_t from, std::size_t to)
+	{
+		const std::size_t end = std::min(to, m_Length);
+
+		if (from >= end)
+			return;
+
+		std::string removed = Substring(from, end);
+
+		EraseRaw(from, end);
+
+		const std::size_t group = GroupForNewEdit(from, end, removed, false);
+
+		m_Redo.clear();
+		m_Undo.push_back(Edit{m_NextEditId++, from, std::move(removed), false, 0, false, group});
+	}
+
+	std::optional<std::size_t> TextBuffer::Undo()
+	{
+		if (m_Undo.empty())
+			return std::nullopt;
+
+		const std::size_t group = m_Undo.back().group;
+		std::size_t caret = 0;
+
+		while (!m_Undo.empty() && m_Undo.back().group == group)
+		{
+			Edit edit = std::move(m_Undo.back());
+			m_Undo.pop_back();
+
+			ApplyEdit(edit, true);
+
+			// Reversed: an insertion is taken away, so the caret goes where it began; a
+			// deletion is put back, so the caret goes to the end of what returned. The group
+			// is walked newest first, so the last turn of this loop is the oldest edit in it
+			// and its position is the one the user is looking at.
+			caret = edit.inserted ? edit.offset : edit.offset + edit.text.size();
+
+			m_Redo.push_back(std::move(edit));
+		}
+
+		m_BreakGroup = true;
+		m_LastGroupKind = GroupKind::None;
+
+		return caret;
+	}
+
+	std::optional<std::size_t> TextBuffer::Redo()
+	{
+		if (m_Redo.empty())
+			return std::nullopt;
+
+		const std::size_t group = m_Redo.back().group;
+		std::size_t caret = 0;
+
+		while (!m_Redo.empty() && m_Redo.back().group == group)
+		{
+			Edit edit = std::move(m_Redo.back());
+			m_Redo.pop_back();
+
+			ApplyEdit(edit, false);
+
+			// Applied forwards, so the mirror of Undo: an insertion ends with the caret past
+			// the text it added, a deletion with the caret where the text used to start.
+			caret = edit.inserted ? edit.offset + edit.text.size() : edit.offset;
+
+			m_Undo.push_back(std::move(edit));
+		}
+
+		m_BreakGroup = true;
+		m_LastGroupKind = GroupKind::None;
+
+		return caret;
+	}
+
+	std::size_t TextBuffer::GetRevision() const
+	{
+		return m_Undo.empty() ? 0 : m_Undo.back().id;
+	}
 }

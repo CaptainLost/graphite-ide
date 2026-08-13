@@ -1,77 +1,98 @@
-#include "GraphiteLayer.h"
+#include "App/GraphiteLayer.h"
 
-#include "Version.h"
+#include "App/Version.h"
 
-#include "Core/App/Application.h"
-#include "Core/Base/Log.h"
-#include "Core/Base/RingBufferSink.h"
+#include "Core.h"
+#include "Core/App/EntryPoint.h"
 
-#include <exception>
+#include <cstddef>
+#include <cstdlib>
 #include <filesystem>
-#include <memory>
+#include <system_error>
+#include <utility>
 
-namespace
+namespace Graphite {
+
+	namespace {
+		constexpr std::size_t kConsoleCapacity = 4096;
+		constexpr std::size_t kLogFileSize = 5u * 1024u * 1024u;
+		constexpr std::size_t kLogFileCount = 3;
+
+		// Read as wide characters so a user name outside the machine's ANSI codepage still
+		// resolves.
+		std::filesystem::path LocalAppData()
+		{
+			wchar_t* value = nullptr;
+			std::size_t size = 0;
+			if (_wdupenv_s(&value, &size, L"LOCALAPPDATA") != 0 || !value)
+				return {};
+
+			std::filesystem::path path{value};
+			std::free(value);
+			return path;
+		}
+
+		std::filesystem::path LogFilePath()
+		{
+			std::filesystem::path root = LocalAppData();
+			if (root.empty())
+			{
+				std::error_code code;
+				root = std::filesystem::temp_directory_path(code);
+				if (code)
+					return {};
+			}
+
+			return root / "Graphite" / "logs" / "graphite.log";
+		}
+	}
+
+	class GraphiteApplication final : public Core::Application
+	{
+	public:
+		GraphiteApplication(Core::Ref<Core::RingBufferSink> sink,
+							std::filesystem::path initialFolder)
+			: Core::Application(Core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
+			  m_Sink(std::move(sink)),
+			  m_InitialFolder(std::move(initialFolder))
+		{
+		}
+
+	protected:
+		void OnInit() override
+		{
+			PushLayer(Core::CreateScope<GraphiteLayer>(m_Sink, m_InitialFolder));
+		}
+
+		void OnShutdown() override
+		{
+			APP_INFO("Graphite IDE closed");
+		}
+
+	private:
+		Core::Ref<Core::RingBufferSink> m_Sink;
+		std::filesystem::path m_InitialFolder;
+	};
+}
+Core::LogSpec Core::CreateLogSpec()
 {
-    constexpr std::size_t kConsoleCapacity = 4096;
-
-    class GraphiteApplication final : public core::Application
-    {
-    public:
-        GraphiteApplication(std::shared_ptr<core::RingBufferSink> sink,
-                             std::filesystem::path initialFolder)
-            : core::Application(core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
-              m_sink(std::move(sink)),
-              m_initialFolder(std::move(initialFolder))
-        {
-        }
-
-    protected:
-        void OnInit() override
-        {
-            PushLayer(std::make_unique<graphite::GraphiteLayer>(m_sink, m_initialFolder));
-        }
-
-    private:
-        std::shared_ptr<core::RingBufferSink> m_sink;
-        std::filesystem::path m_initialFolder;
-    };
+	Core::LogSpec spec;
+	spec.FilePath = Graphite::LogFilePath();
+	spec.MaxFileSize = Graphite::kLogFileSize;
+	spec.MaxFiles = Graphite::kLogFileCount;
+	spec.ConsoleCapacity = Graphite::kConsoleCapacity;
+	return spec;
 }
 
-int main(int argc, char** argv)
+Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationCommandLineArgs args)
 {
-    auto consoleSink = std::make_shared<core::RingBufferSink>(kConsoleCapacity);
+	Core::Ref<Core::RingBufferSink> consoleSink = Core::Log::GetConsoleSink();
 
-#ifndef CORE_DIST
-    core::Logger::Get().AddSink(std::make_shared<core::ConsoleSink>());
-#endif
-    core::Logger::Get().AddSink(consoleSink);
+	APP_INFO("Graphite IDE {}", Graphite::Version::String());
 
-    try
-    {
-        CORE_INFO("Graphite IDE {}", graphite::Version::String());
+	std::filesystem::path initialFolder;
+	if (args.Count > 1)
+		initialFolder = args[1];
 
-        std::filesystem::path initialFolder;
-        if (argc > 1)
-            initialFolder = argv[1];
-
-        GraphiteApplication app{consoleSink, initialFolder};
-        if (const auto result = app.Run(); !result)
-        {
-            CORE_ERROR("IDE terminated: {}", result.GetError().message);
-            return 1;
-        }
-
-        CORE_INFO("Graphite IDE closed");
-        return 0;
-    }
-    catch (const std::exception& e)
-    {
-        CORE_ERROR("Unhandled exception: {}", e.what());
-        return 1;
-    }
-    catch (...)
-    {
-        CORE_ERROR("Unhandled unknown exception");
-        return 1;
-    }
+	return Core::CreateScope<Graphite::GraphiteApplication>(consoleSink, std::move(initialFolder));
 }

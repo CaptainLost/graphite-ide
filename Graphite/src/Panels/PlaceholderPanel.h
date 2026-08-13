@@ -1,30 +1,30 @@
 #pragma once
 
-#include "Core/Ui/Panel.h"
+#include "Core/UI/Panel.h"
 
 #include <imgui.h>
 
 #include <string>
 #include <utility>
 
-namespace graphite
-{
-    class PlaceholderPanel final : public core::Panel
-    {
-    public:
-        PlaceholderPanel(std::string id, std::string title, std::string message)
-            : core::Panel(std::move(id), std::move(title)), m_message(std::move(message))
-        {
-        }
+namespace Graphite {
 
-        void OnUIRender() override
-        {
-            ImGui::TextDisabled("%s", m_message.c_str());
-        }
+	class PlaceholderPanel final : public Core::Panel
+	{
+	public:
+		PlaceholderPanel(std::string id, std::string title, std::string message)
+			: Core::Panel(std::move(id), std::move(title)), m_Message(std::move(message))
+		{
+		}
 
-        void SetMessage(std::string message) { m_message = std::move(message); }
+		void OnImGuiRender() override
+		{
+			ImGui::TextDisabled("%s", m_Message.c_str());
+		}
 
-    private:
-        std::string m_message;
-    };
+		void SetMessage(std::string message) { m_Message = std::move(message); }
+
+	private:
+		std::string m_Message;
+	};
 }

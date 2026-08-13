@@ -2,30 +2,39 @@
 
 #include "Core/Base/Log.h"
 
+#include <spdlog/sinks/base_sink.h>
+
 #include <cstddef>
 #include <deque>
 #include <mutex>
 #include <vector>
 
-namespace core
-{
-    /// Sink that holds the last N entries. Data source for the console panel in the IDE.
-    class RingBufferSink final : public ILogSink
-    {
-    public:
-        explicit RingBufferSink(std::size_t capacity);
+namespace Core {
 
-        void Write(const LogEntry& entry) override;
+	// Keeps the last N messages in memory so a panel can render them, dropping the oldest
+	// rather than letting a long session grow without limit. The entries carry the message
+	// text alone: the clock, the writer and the severity stay fields a renderer can lay out or
+	// filter on, rather than being formatted in and parsed back out.
+	class RingBufferSink final : public spdlog::sinks::base_sink<std::mutex>
+	{
+	public:
+		explicit RingBufferSink(std::size_t capacity);
 
-        [[nodiscard]] std::vector<LogEntry> Snapshot() const;
-        [[nodiscard]] std::size_t Count() const;
-        [[nodiscard]] std::size_t Capacity() const noexcept { return m_capacity; }
+		std::vector<LogEntry> TakeSnapshot() const;
+		std::size_t GetCount() const;
+		std::size_t GetCapacity() const { return m_Capacity; }
 
-        void Clear();
+		void Clear();
 
-    private:
-        mutable std::mutex m_mutex;
-        std::deque<LogEntry> m_entries;
-        std::size_t m_capacity;
-    };
+	protected:
+		void sink_it_(const spdlog::details::log_msg& msg) override;
+		void flush_() override;
+
+	private:
+		// The base class only locks around sink_it_, and TakeSnapshot is called from wherever
+		// a panel renders.
+		mutable std::mutex m_Mutex;
+		std::deque<LogEntry> m_Entries;
+		std::size_t m_Capacity;
+	};
 }

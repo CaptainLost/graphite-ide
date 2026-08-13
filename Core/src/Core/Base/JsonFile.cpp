@@ -1,3 +1,5 @@
+#include "Core/Base/Base.h"
+
 #include "corepch.h"
 
 #include "Core/Base/JsonFile.h"
@@ -7,103 +9,99 @@
 #include <nlohmann/json.hpp>
 
 #include <fstream>
+
 #include <sstream>
+
 #include <utility>
 
-namespace core
-{
-    struct JsonFile::Document
-    {
-        nlohmann::json root = nlohmann::json::object();
-    };
+namespace Core {
 
-    JsonFile::JsonFile() : m_document(std::make_unique<Document>())
-    {
-    }
+	struct JsonFile::Document
+	{
+		nlohmann::json root = nlohmann::json::object();
+	};
 
-    JsonFile::~JsonFile() = default;
+	JsonFile::JsonFile() : m_Document(CreateScope<Document>())
+	{
+	}
 
-    JsonFile::JsonFile(JsonFile&&) noexcept = default;
-    JsonFile& JsonFile::operator=(JsonFile&&) noexcept = default;
+	JsonFile::~JsonFile() = default;
 
-    JsonFile JsonFile::Load(const std::filesystem::path& path)
-    {
-        JsonFile file;
+	JsonFile::JsonFile(JsonFile&&) noexcept = default;
+	JsonFile& JsonFile::operator=(JsonFile&&) noexcept = default;
 
-        std::ifstream stream{path};
-        if (!stream.is_open())
-            return file;
+	JsonFile JsonFile::Load(const std::filesystem::path& path)
+	{
+		JsonFile file;
 
-        std::ostringstream buffer;
-        buffer << stream.rdbuf();
+		std::ifstream stream{path};
+		if (!stream.is_open())
+			return file;
 
-        // The non-throwing overload (`allow_exceptions = false`) returns a discarded
-        // value on malformed input instead of throwing: nlohmann/json throws by
-        // default, and a hand-edited settings file must load as empty rather than
-        // crash the IDE, exactly like a missing or unreadable one.
-        nlohmann::json parsed = nlohmann::json::parse(buffer.str(), nullptr, false);
+		std::ostringstream buffer;
+		buffer << stream.rdbuf();
 
-        if (parsed.is_discarded() || !parsed.is_object())
-            return file;
+		// nlohmann/json throws by default; `allow_exceptions = false` returns a discarded
+		// value instead, so a hand-edited settings file loads as empty like a missing one.
+		nlohmann::json parsed = nlohmann::json::parse(buffer.str(), nullptr, false);
 
-        file.m_document->root = std::move(parsed);
-        return file;
-    }
+		if (parsed.is_discarded() || !parsed.is_object())
+			return file;
 
-    std::string JsonFile::Get(std::string_view key) const
-    {
-        const nlohmann::json& root = m_document->root;
+		file.m_Document->root = std::move(parsed);
+		return file;
+	}
 
-        const auto entry = root.find(std::string{key});
-        if (entry == root.end() || !entry->is_string())
-            return {};
+	std::string JsonFile::Get(std::string_view key) const
+	{
+		const nlohmann::json& root = m_Document->root;
 
-        return entry->get<std::string>();
-    }
+		const auto entry = root.find(std::string{key});
+		if (entry == root.end() || !entry->is_string())
+			return {};
 
-    void JsonFile::Set(std::string_view key, std::string value)
-    {
-        m_document->root[std::string{key}] = std::move(value);
-    }
+		return entry->get<std::string>();
+	}
 
-    void JsonFile::Remove(std::string_view key)
-    {
-        m_document->root.erase(std::string{key});
-    }
+	void JsonFile::Set(std::string_view key, std::string value)
+	{
+		m_Document->root[std::string{key}] = std::move(value);
+	}
 
-    std::vector<std::string> JsonFile::Keys() const
-    {
-        const nlohmann::json& root = m_document->root;
+	void JsonFile::Remove(std::string_view key)
+	{
+		m_Document->root.erase(std::string{key});
+	}
 
-        std::vector<std::string> keys;
-        keys.reserve(root.size());
+	std::vector<std::string> JsonFile::GetKeys() const
+	{
+		const nlohmann::json& root = m_Document->root;
 
-        for (const auto& entry : root.items())
-        {
-            keys.push_back(entry.key());
-        }
+		std::vector<std::string> keys;
+		keys.reserve(root.size());
 
-        return keys;
-    }
+		for (const auto& entry : root.items())
+		{
+			keys.push_back(entry.key());
+		}
 
-    std::size_t JsonFile::Count() const noexcept
-    {
-        return m_document->root.size();
-    }
+		return keys;
+	}
 
-    bool JsonFile::Save(const std::filesystem::path& path) const
-    {
-        // Serialised before the temporary is opened, not into it. dump() is the one call
-        // here that can still throw — it rejects invalid UTF-8 unless told otherwise —
-        // and throwing with the file already open would leave a .tmp behind, breaking the
-        // promise this function makes in its own doc comment.
-        //
-        // `replace` substitutes U+FFFD for anything malformed instead of refusing. A
-        // settings value is not worth an exception crossing out of Core, and a visibly
-        // mangled string is a better outcome than a lost file.
-        const std::string text =
-            m_document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+	std::size_t JsonFile::GetCount() const
+	{
+		return m_Document->root.size();
+	}
 
-        return static_cast<bool>(fs::WriteFileAtomically(path, text));
-    }
+	bool JsonFile::Save(const std::filesystem::path& path) const
+	{
+		// dump() rejects invalid UTF-8 unless told otherwise, and `replace` substitutes U+FFFD
+		// instead: a visibly mangled setting is a better outcome than an exception crossing
+		// out of Core. Serialised before WriteFileAtomically opens anything, so a throw here
+		// could not leave a .tmp behind either.
+		const std::string text =
+			m_Document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+
+		return static_cast<bool>(WriteFileAtomically(path, text));
+	}
 }

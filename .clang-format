@@ -1,15 +1,31 @@
 ---
 Language: Cpp
 BasedOnStyle: Microsoft
-ColumnLimit: 110
+ColumnLimit: 0
 IndentWidth: 4
 TabWidth: 4
-UseTab: Never
+UseTab: Always
 AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
-BreakBeforeBraces: Allman
-NamespaceIndentation: None
+NamespaceIndentation: All
 PointerAlignment: Left
-SortIncludes: CaseInsensitive
+SortIncludes: false
 SpaceAfterTemplateKeyword: false
+KeepEmptyLinesAtTheStartOfBlocks: true
+MaxEmptyLinesToKeep: 1
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterNamespace: false
+  AfterClass: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterEnum: true
+  AfterFunction: true
+  AfterControlStatement: Always
+  AfterCaseLabel: true
+  BeforeCatch: true
+  BeforeElse: true
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+FixNamespaceComments: false

@@ -9,489 +9,474 @@
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
-namespace core::text
-{
-    namespace
-    {
-        [[nodiscard]] bool Editable(const OpenItem& item)
-        {
-            return item.document && !item.document->IsReadOnly();
-        }
-
-        /// LF-only copy of text arriving from outside the editor.
-        [[nodiscard]] std::string NormaliseNewlines(std::string_view text)
-        {
-            std::string result;
-            result.reserve(text.size());
-
-            for (std::size_t index = 0; index < text.size(); ++index)
-            {
-                if (text[index] == '\r')
-                {
-                    // Swallow the LF of a CRLF pair; a lone CR becomes LF on its own.
-                    if (index + 1 < text.size() && text[index + 1] == '\n')
-                        ++index;
-
-                    result.push_back('\n');
-                    continue;
-                }
-
-                result.push_back(text[index]);
-            }
-
-            return result;
-        }
-
-        /// Repairs indentDepths after an edit that left the document with a new line
-        /// count and changed lines [firstLine, lastLine].
-        ///
-        /// The range recomputed is wider than the range edited. Indent.h gives a blank
-        /// line the smaller of the nearest non-blank depths above and below it, so
-        /// editing one line can change every blank line adjacent to it, and reaching the
-        /// non-blank line past that run is what supplies the anchor to resolve them
-        /// against. Nothing outside that widened range can have changed.
-        void UpdateIndentDepths(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
-        {
-            const TextBuffer& buffer = item.document->Buffer();
-
-            const std::size_t previousCount = item.indentDepths.size();
-            const std::size_t currentCount = buffer.LineCount();
-
-            // The vector is indexed by line, so lines added or removed at the edit site
-            // shift every entry below them. resize() only pads or truncates the tail,
-            // which pairs surviving depths with the wrong lines the moment the edit
-            // isn't at the very end of the document; splicing at the edit site keeps
-            // every depth below it lined up with the line it actually belongs to.
-            //
-            // `firstLine` is a valid index into the *old* line count in every caller —
-            // each computes it from a position taken before the edit changed the line
-            // count — but it is clamped anyway rather than trusting that indefinitely.
-            const std::size_t at = std::min(firstLine, previousCount);
-
-            if (currentCount > previousCount)
-            {
-                item.indentDepths.insert(
-                    item.indentDepths.begin() + static_cast<std::ptrdiff_t>(at),
-                    currentCount - previousCount, 0);
-            }
-            else if (currentCount < previousCount)
-            {
-                const std::size_t removed = previousCount - currentCount;
-
-                // An edit only ever changes lines from `firstLine` onward, so the lines
-                // that vanished lie within [at, previousCount) by construction — the end
-                // is clamped too, so a future caller whose bookkeeping disagreed would
-                // erase short of the vector's end rather than past it.
-                const std::size_t end = std::min(at + removed, previousCount);
-
-                item.indentDepths.erase(
-                    item.indentDepths.begin() + static_cast<std::ptrdiff_t>(at),
-                    item.indentDepths.begin() + static_cast<std::ptrdiff_t>(end));
-            }
-
-            const auto blank = [&buffer](std::size_t line)
-            {
-                const std::string text = buffer.LineText(line);
-                return text.find_first_not_of(" \t") == std::string::npos;
-            };
-
-            std::size_t from = std::min(firstLine, buffer.LineCount() - 1);
-            while (from > 0 && blank(from))
-                --from;
-
-            std::size_t to = std::min(lastLine, buffer.LineCount() - 1);
-            while (to + 1 < buffer.LineCount() && blank(to))
-                ++to;
-
-            // IndentDepths resolves blank lines against their neighbours, so it is given
-            // the whole widened range at once rather than a line at a time. The range
-            // overload returns entries indexed from `from`, not from line 0, so writing
-            // them back means offsetting by `from` rather than indexing by line number
-            // directly.
-            const std::vector<std::size_t> depths = IndentDepths(buffer, DefaultTabWidth, from, to);
-
-            for (std::size_t line = from; line <= to; ++line)
-                item.indentDepths[line] = depths[line - from];
-        }
-
-        /// The cheap maintenance path, for an edit that touched lines
-        /// [firstLine, lastLine].
-        ///
-        /// widestColumn only ever grows here. It can only fall when the widest line was
-        /// itself edited or no longer exists, and those two cases are the only ones that
-        /// pay for a full walk. RefreshDerived is declared in Editing.h, so calling it
-        /// from here before its definition is fine.
-        void UpdateDerived(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
-        {
-            const TextBuffer& buffer = item.document->Buffer();
-
-            if (item.widestLine >= buffer.LineCount() || item.widestLine >= firstLine)
-            {
-                RefreshDerived(item);
-                return;
-            }
-
-            for (std::size_t line = firstLine; line <= lastLine && line < buffer.LineCount();
-                 ++line)
-            {
-                const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
-
-                if (width > item.widestColumn)
-                {
-                    item.widestColumn = width;
-                    item.widestLine = line;
-                }
-            }
-
-            UpdateIndentDepths(item, firstLine, lastLine);
-
-            // The row map is indexed by line, so lines added or removed at the edit site
-            // shift every entry below them — the same problem UpdateIndentDepths solves
-            // just above, spliced the same way and at the same point, so the two caches
-            // cannot disagree about which line an entry belongs to. Nothing here walks the
-            // whole document: the splice measures only the lines that are new, and the
-            // loop after it re-measures only the lines the edit actually touched.
-            //
-            // The map still holds the pre-edit line count at this point — nothing has
-            // touched it yet — so it is what says how many lines came or went.
-            const std::size_t previousLines = item.rows.LineCount();
-            const std::size_t currentLines = buffer.LineCount();
-            const std::size_t at = std::min(firstLine, previousLines);
-
-            if (currentLines > previousLines)
-                item.rows.InsertLines(buffer, at, currentLines - previousLines);
-            else if (currentLines < previousLines)
-                item.rows.RemoveLines(at, previousLines - currentLines);
-
-            for (std::size_t line = firstLine; line <= lastLine && line < currentLines; ++line)
-                item.rows.UpdateLine(buffer, line);
-        }
-
-        /// The inclusive line range a block indent should touch.
-        ///
-        /// A selection ending exactly at the start of a line does not reach that line.
-        /// Dragging down over two whole lines leaves the offset on the third line's first
-        /// byte, and indenting a line the user cannot see highlighted is a surprise. Only
-        /// when the range would otherwise be empty does the end line stay.
-        std::pair<std::size_t, std::size_t> BlockLines(const TextBuffer& buffer,
-                                                         const Caret& caret)
-        {
-            const auto [from, to] = SelectionRange(caret);
-
-            const std::size_t firstLine = buffer.ToPosition(from).line;
-            std::size_t lastLine = buffer.ToPosition(to).line;
-
-            if (lastLine > firstLine && to == buffer.LineStart(lastLine))
-                --lastLine;
-
-            return {firstLine, lastLine};
-        }
-
-        /// Erases the selection, growing one with `motion` first when there is none.
-        bool DeleteRange(OpenItem& item, Motion motion)
-        {
-            if (!Editable(item))
-                return false;
-
-            TextBuffer& buffer = item.document->Buffer();
-
-            // Move rather than NextCharacter/PreviousCharacter: those take a
-            // string_view and would need the surrounding bytes cut out and the offsets
-            // translated back, while Move already does exactly this over a buffer and
-            // its rules — whole UTF-8 characters, whole words — are the ones CaretTests
-            // already covers.
-            Caret target = HasSelection(item.caret)
-                               ? item.caret
-                               : Move(buffer, item.caret, motion, true, DefaultTabWidth, 0);
-
-            const auto [from, to] = SelectionRange(target);
-
-            if (from == to)
-                return false;
-
-            const std::size_t firstLine = buffer.ToPosition(from).line;
-
-            buffer.BeginTransaction();
-            buffer.Erase(from, to);
-            buffer.EndTransaction();
-
-            item.caret.offset = from;
-            item.caret.anchor = from;
-            item.caret.desiredColumn = NoDesiredColumn;
-
-            UpdateDerived(item, firstLine, firstLine);
-
-            return true;
-        }
-    }
-
-    void RefreshDerived(OpenItem& item)
-    {
-        const TextBuffer& buffer = item.document->Buffer();
-
-        item.indentDepths = IndentDepths(buffer, DefaultTabWidth);
-        item.widestColumn = 0;
-        item.widestLine = 0;
-
-        for (std::size_t line = 0; line < buffer.LineCount(); ++line)
-        {
-            const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
-
-            if (width > item.widestColumn)
-            {
-                item.widestColumn = width;
-                item.widestLine = line;
-            }
-        }
-
-        // At the width already in force, not at kNoWrap: this runs after an undo and after
-        // any edit that changed the line count, both of which happen while the document is
-        // on screen and wrapping to a width only the widget knows. Rebuilding unwrapped
-        // here would unwrap the document under the user until the next time the window was
-        // resized. A map that has never been built reports kNoWrap, which is exactly the
-        // unwrapped editor a freshly loaded document should start as.
-        item.rows.Rebuild(buffer, item.rows.ColumnsPerRow(), DefaultTabWidth);
-    }
-
-    bool InsertText(OpenItem& item, std::string_view utf8)
-    {
-        if (!Editable(item) || utf8.empty())
-            return false;
-
-        const std::string text = NormaliseNewlines(utf8);
-        TextBuffer& buffer = item.document->Buffer();
-        const auto [from, to] = SelectionRange(item.caret);
-
-        const std::size_t firstLine = buffer.ToPosition(from).line;
-
-        buffer.BeginTransaction();
-
-        if (from != to)
-            buffer.Erase(from, to);
-
-        buffer.Insert(from, text);
-        buffer.EndTransaction();
-
-        item.caret.offset = from + text.size();
-        item.caret.anchor = item.caret.offset;
-        item.caret.desiredColumn = NoDesiredColumn;
-
-        UpdateDerived(item, firstLine, buffer.ToPosition(item.caret.offset).line);
-
-        return true;
-    }
-
-    bool DeleteBackward(OpenItem& item)
-    {
-        return DeleteRange(item, Motion::Left);
-    }
-
-    bool DeleteForward(OpenItem& item)
-    {
-        return DeleteRange(item, Motion::Right);
-    }
-
-    bool DeleteWordBackward(OpenItem& item)
-    {
-        return DeleteRange(item, Motion::WordLeft);
-    }
-
-    bool DeleteWordForward(OpenItem& item)
-    {
-        return DeleteRange(item, Motion::WordRight);
-    }
-
-    bool Undo(OpenItem& item)
-    {
-        // Deliberately not guarded by Editable. The read-only flag exists to stop UTF-8
-        // being inserted among bytes in some other encoding, and reversing an edit the
-        // buffer already recorded introduces no new bytes: every state in the history is
-        // one the buffer legitimately held - a whole content from a load or a reload, or
-        // the result of edits made while the document was editable - so Bytes() round
-        // trips from any of them.
-        //
-        // Without this, a reload that turns the document read-only cannot be undone. A
-        // clean UTF-8 file rewritten by another tool as Latin-1 reloads silently, which
-        // the design justifies precisely by the reload being undoable; the previous text
-        // would otherwise sit on the undo stack unreachable.
-        if (!item.document || !item.document->Buffer().Undo())
-            return false;
-
-        TextBuffer& buffer = item.document->Buffer();
-
-        buffer.BreakUndoGroup();
-        item.caret.offset = std::min(item.caret.offset, buffer.Length());
-        item.caret.anchor = item.caret.offset;
-        item.caret.desiredColumn = NoDesiredColumn;
-
-        RefreshDerived(item);
-
-        return true;
-    }
-
-    bool Redo(OpenItem& item)
-    {
-        // Ungated for the same reason as Undo above: it only ever restores a state the
-        // buffer already held.
-        if (!item.document || !item.document->Buffer().Redo())
-            return false;
-
-        TextBuffer& buffer = item.document->Buffer();
-
-        buffer.BreakUndoGroup();
-        item.caret.offset = std::min(item.caret.offset, buffer.Length());
-        item.caret.anchor = item.caret.offset;
-        item.caret.desiredColumn = NoDesiredColumn;
-
-        RefreshDerived(item);
-
-        return true;
-    }
-
-    bool InsertNewline(OpenItem& item, IndentStyle /*style*/)
-    {
-        if (!Editable(item))
-            return false;
-
-        TextBuffer& buffer = item.document->Buffer();
-        const auto [from, to] = SelectionRange(item.caret);
-        const std::size_t line = buffer.ToPosition(from).line;
-
-        // Copied verbatim from the current line rather than synthesised from `style`: a
-        // tab-indented file should stay tab-indented for the line below it even under a
-        // spaces setting. The file's own lines are the better authority.
-        const std::string text = buffer.LineText(line);
-        const std::size_t indentEnd = text.find_first_not_of(" \t");
-        const std::string indent =
-            text.substr(0, indentEnd == std::string::npos ? text.size() : indentEnd);
-
-        const std::string insertion = "\n" + indent;
-
-        buffer.BeginTransaction();
-
-        if (from != to)
-            buffer.Erase(from, to);
-
-        buffer.Insert(from, insertion);
-        buffer.EndTransaction();
-
-        item.caret.offset = from + insertion.size();
-        item.caret.anchor = item.caret.offset;
-        item.caret.desiredColumn = NoDesiredColumn;
-
-        UpdateDerived(item, line, buffer.ToPosition(item.caret.offset).line);
-
-        return true;
-    }
-
-    bool Indent(OpenItem& item, IndentStyle style)
-    {
-        if (!Editable(item))
-            return false;
-
-        const std::string indent =
-            style.useSpaces ? std::string(style.width, ' ') : std::string{"\t"};
-
-        TextBuffer& buffer = item.document->Buffer();
-
-        if (!HasSelection(item.caret))
-        {
-            // A width of zero would make this insert nothing; InsertText would say so by
-            // returning false, but only after the group had already been broken for an
-            // edit that never happened.
-            if (indent.empty())
-                return false;
-
-            // Bracketed exactly as the block form below is, and as Outdent is either way:
-            // one press of Tab is one press of Ctrl+Z, whether or not anything was
-            // selected and whichever direction it went. Left to coalesce with the typing
-            // around it, Tab and Shift+Tab would answer differently to the same gesture.
-            buffer.BreakUndoGroup();
-            const bool changed = InsertText(item, indent);
-            buffer.BreakUndoGroup();
-
-            return changed;
-        }
-
-        const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
-
-        buffer.BreakUndoGroup();
-        buffer.BeginTransaction();
-
-        for (std::size_t line = lastLine + 1; line > firstLine; --line)
-            buffer.Insert(buffer.LineStart(line - 1), indent);
-
-        buffer.EndTransaction();
-        buffer.BreakUndoGroup();
-
-        // The block stays selected, so Tab pressed again indents the same lines rather
-        // than replacing them with a tab character.
-        item.caret.anchor = buffer.LineStart(firstLine);
-        item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
-        item.caret.desiredColumn = NoDesiredColumn;
-
-        UpdateDerived(item, firstLine, lastLine);
-
-        return true;
-    }
-
-    bool Outdent(OpenItem& item, IndentStyle style)
-    {
-        if (!Editable(item))
-            return false;
-
-        TextBuffer& buffer = item.document->Buffer();
-        const auto [firstLine, lastLine] = BlockLines(buffer, item.caret);
-
-        // Measured before the buffer is touched at all, so that having nothing to remove
-        // costs no transaction and — the part that was actually wrong — no
-        // BreakUndoGroup. Shift+Tab against a line with no indentation used to break the
-        // group the typing around it belonged to, splitting one gesture's worth of undo
-        // in two over an edit that never happened.
-        //
-        // Each entry is a line start and how many bytes to drop from it.
-        std::vector<std::pair<std::size_t, std::size_t>> removals;
-
-        for (std::size_t line = firstLine; line <= lastLine; ++line)
-        {
-            const std::string text = buffer.LineText(line);
-
-            std::size_t remove = 0;
-
-            if (!text.empty() && text[0] == '\t')
-            {
-                remove = 1;
-            }
-            else
-            {
-                while (remove < style.width && remove < text.size() && text[remove] == ' ')
-                    ++remove;
-            }
-
-            if (remove > 0)
-                removals.emplace_back(buffer.LineStart(line), remove);
-        }
-
-        if (removals.empty())
-            return false;
-
-        buffer.BreakUndoGroup();
-        buffer.BeginTransaction();
-
-        // Back to front, as before: erasing a line's indent moves every offset after it,
-        // and the starts still to be used are the ones above.
-        for (auto entry = removals.rbegin(); entry != removals.rend(); ++entry)
-            buffer.Erase(entry->first, entry->first + entry->second);
-
-        buffer.EndTransaction();
-        buffer.BreakUndoGroup();
-
-        item.caret.anchor = buffer.LineStart(firstLine);
-        item.caret.offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
-        item.caret.desiredColumn = NoDesiredColumn;
-
-        UpdateDerived(item, firstLine, lastLine);
-
-        return true;
-    }
+namespace Core {
+
+	namespace {
+		bool Editable(const OpenItem& item)
+		{
+			return item.Document && !item.Document->IsReadOnly();
+		}
+
+		std::string NormaliseNewlines(std::string_view text)
+		{
+			std::string result;
+			result.reserve(text.size());
+
+			for (std::size_t index = 0; index < text.size(); ++index)
+			{
+				if (text[index] == '\r')
+				{
+					const bool isCrLfPair = index + 1 < text.size() && text[index + 1] == '\n';
+
+					if (isCrLfPair)
+						++index;
+
+					result.push_back('\n');
+					continue;
+				}
+
+				result.push_back(text[index]);
+			}
+
+			return result;
+		}
+
+		void CollapseCaretTo(Caret& caret, std::size_t offset)
+		{
+			caret.Offset = offset;
+			caret.Anchor = offset;
+			caret.DesiredColumn = NoDesiredColumn;
+		}
+
+		void SelectWholeLines(Caret& caret, const TextBuffer& buffer, std::size_t firstLine,
+							  std::size_t lastLine)
+		{
+			caret.Anchor = buffer.LineStart(firstLine);
+			caret.Offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
+			caret.DesiredColumn = NoDesiredColumn;
+		}
+
+		bool IsBlankLine(const TextBuffer& buffer, std::size_t line)
+		{
+			return buffer.LineText(line).find_first_not_of(" \t") == std::string::npos;
+		}
+
+		std::pair<std::size_t, std::size_t> WidenOverBlankNeighbours(const TextBuffer& buffer,
+																	 std::size_t firstLine,
+																	 std::size_t lastLine)
+		{
+			std::size_t from = std::min(firstLine, buffer.GetLineCount() - 1);
+
+			while (from > 0 && IsBlankLine(buffer, from))
+				--from;
+
+			std::size_t to = std::min(lastLine, buffer.GetLineCount() - 1);
+
+			while (to + 1 < buffer.GetLineCount() && IsBlankLine(buffer, to))
+				++to;
+
+			return {from, to};
+		}
+
+		void SpliceDepthsAtEditSite(OpenItem& item, std::size_t firstLine, std::size_t currentCount)
+		{
+			// resize() only pads or truncates the tail, which pairs every surviving depth
+			// below the edit with the wrong line.
+			const std::size_t previousCount = item.IndentDepths.size();
+			const std::size_t at = std::min(firstLine, previousCount);
+
+			if (currentCount > previousCount)
+			{
+				item.IndentDepths.insert(
+					item.IndentDepths.begin() + static_cast<std::ptrdiff_t>(at),
+					currentCount - previousCount, 0);
+			}
+			else if (currentCount < previousCount)
+			{
+				const std::size_t end = std::min(at + (previousCount - currentCount), previousCount);
+
+				item.IndentDepths.erase(
+					item.IndentDepths.begin() + static_cast<std::ptrdiff_t>(at),
+					item.IndentDepths.begin() + static_cast<std::ptrdiff_t>(end));
+			}
+		}
+
+		void RecomputeDepths(OpenItem& item, const TextBuffer& buffer, std::size_t from,
+							 std::size_t to)
+		{
+			const std::vector<std::size_t> depths = IndentDepths(buffer, DefaultTabWidth, from, to);
+
+			for (std::size_t line = from; line <= to; ++line)
+				item.IndentDepths[line] = depths[line - from];
+		}
+
+		void UpdateIndentDepths(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
+		{
+			const TextBuffer& buffer = item.Document->GetBuffer();
+
+			SpliceDepthsAtEditSite(item, firstLine, buffer.GetLineCount());
+
+			const auto [from, to] = WidenOverBlankNeighbours(buffer, firstLine, lastLine);
+
+			RecomputeDepths(item, buffer, from, to);
+		}
+
+		void SpliceRowsAtEditSite(OpenItem& item, const TextBuffer& buffer, std::size_t firstLine)
+		{
+			const std::size_t previousLines = item.Rows.GetLineCount();
+			const std::size_t currentLines = buffer.GetLineCount();
+			const std::size_t at = std::min(firstLine, previousLines);
+
+			if (currentLines > previousLines)
+				item.Rows.InsertLines(buffer, at, currentLines - previousLines);
+			else if (currentLines < previousLines)
+				item.Rows.RemoveLines(at, previousLines - currentLines);
+		}
+
+		void ExtendWidestLine(OpenItem& item, const TextBuffer& buffer, std::size_t firstLine,
+							  std::size_t lastLine)
+		{
+			for (std::size_t line = firstLine; line <= lastLine && line < buffer.GetLineCount();
+				 ++line)
+			{
+				const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
+
+				if (width > item.WidestColumn)
+				{
+					item.WidestColumn = width;
+					item.WidestLine = line;
+				}
+			}
+		}
+
+		void UpdateDerived(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
+		{
+			const TextBuffer& buffer = item.Document->GetBuffer();
+
+			const bool widestLineMayHaveShrunk =
+				item.WidestLine >= buffer.GetLineCount() || item.WidestLine >= firstLine;
+
+			if (widestLineMayHaveShrunk)
+			{
+				RefreshDerived(item);
+				return;
+			}
+
+			ExtendWidestLine(item, buffer, firstLine, lastLine);
+			UpdateIndentDepths(item, firstLine, lastLine);
+			SpliceRowsAtEditSite(item, buffer, firstLine);
+
+			for (std::size_t line = firstLine; line <= lastLine && line < buffer.GetLineCount();
+				 ++line)
+				item.Rows.UpdateLine(buffer, line);
+		}
+
+		std::pair<std::size_t, std::size_t> BlockLines(const TextBuffer& buffer,
+													   const Caret& caret)
+		{
+			const auto [from, to] = SelectionRange(caret);
+
+			const std::size_t firstLine = buffer.ToPosition(from).Line;
+			std::size_t lastLine = buffer.ToPosition(to).Line;
+
+			if (lastLine > firstLine && to == buffer.LineStart(lastLine))
+				--lastLine;
+
+			return {firstLine, lastLine};
+		}
+
+		bool DeleteRange(OpenItem& item, Motion motion)
+		{
+			if (!Editable(item))
+				return false;
+
+			TextBuffer& buffer = item.Document->GetBuffer();
+
+			const Caret target = HasSelection(item.Caret)
+									 ? item.Caret
+									 : Move(buffer, item.Caret, motion, true, DefaultTabWidth, 0);
+
+			const auto [from, to] = SelectionRange(target);
+
+			if (from == to)
+				return false;
+
+			const std::size_t firstLine = buffer.ToPosition(from).Line;
+
+			buffer.BeginTransaction();
+			buffer.Erase(from, to);
+			buffer.EndTransaction();
+
+			CollapseCaretTo(item.Caret, from);
+
+			UpdateDerived(item, firstLine, firstLine);
+
+			return true;
+		}
+
+		bool SettleAfterHistoryStep(OpenItem& item, std::size_t caretOffset)
+		{
+			TextBuffer& buffer = item.Document->GetBuffer();
+
+			buffer.BreakUndoGroup();
+
+			CollapseCaretTo(item.Caret, std::min(caretOffset, buffer.GetLength()));
+
+			RefreshDerived(item);
+
+			return true;
+		}
+
+		std::string LeadingWhitespace(std::string_view line)
+		{
+			const std::size_t end = line.find_first_not_of(" \t");
+
+			return std::string{line.substr(0, end == std::string_view::npos ? line.size() : end)};
+		}
+
+		bool InsertAsOwnUndoGroup(OpenItem& item, TextBuffer& buffer, std::string_view text)
+		{
+			buffer.BreakUndoGroup();
+			const bool changed = InsertText(item, text);
+			buffer.BreakUndoGroup();
+
+			return changed;
+		}
+
+		struct IndentRemoval
+		{
+			std::size_t Offset = 0;
+			std::size_t Bytes = 0;
+		};
+
+		std::size_t OutdentBytesOf(std::string_view text, std::size_t spaceWidth)
+		{
+			if (!text.empty() && text[0] == '\t')
+				return 1;
+
+			std::size_t spaces = 0;
+
+			while (spaces < spaceWidth && spaces < text.size() && text[spaces] == ' ')
+				++spaces;
+
+			return spaces;
+		}
+
+		std::vector<IndentRemoval> PlanOutdent(const TextBuffer& buffer, std::size_t firstLine,
+											   std::size_t lastLine, std::size_t spaceWidth)
+		{
+			std::vector<IndentRemoval> removals;
+
+			for (std::size_t line = firstLine; line <= lastLine; ++line)
+			{
+				const std::size_t bytes = OutdentBytesOf(buffer.LineText(line), spaceWidth);
+
+				if (bytes > 0)
+					removals.push_back(IndentRemoval{buffer.LineStart(line), bytes});
+			}
+
+			return removals;
+		}
+
+		void EraseBackToFront(TextBuffer& buffer, const std::vector<IndentRemoval>& removals)
+		{
+			for (auto entry = removals.rbegin(); entry != removals.rend(); ++entry)
+				buffer.Erase(entry->Offset, entry->Offset + entry->Bytes);
+		}
+	}
+
+	void RefreshDerived(OpenItem& item)
+	{
+		const TextBuffer& buffer = item.Document->GetBuffer();
+
+		item.IndentDepths = IndentDepths(buffer, DefaultTabWidth);
+		item.WidestColumn = 0;
+		item.WidestLine = 0;
+
+		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
+		{
+			const std::size_t width = ColumnCount(buffer.LineText(line), DefaultTabWidth);
+
+			if (width > item.WidestColumn)
+			{
+				item.WidestColumn = width;
+				item.WidestLine = line;
+			}
+		}
+
+		// Rebuilt at the width already in force, not at kNoWrap, or a document on screen
+		// would unwrap under the user until the window was next resized.
+		item.Rows.Rebuild(buffer, item.Rows.GetColumnsPerRow(), DefaultTabWidth);
+	}
+
+	bool InsertText(OpenItem& item, std::string_view utf8)
+	{
+		if (!Editable(item) || utf8.empty())
+			return false;
+
+		const std::string text = NormaliseNewlines(utf8);
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const auto [from, to] = SelectionRange(item.Caret);
+
+		const std::size_t firstLine = buffer.ToPosition(from).Line;
+
+		buffer.BeginTransaction();
+
+		if (from != to)
+			buffer.Erase(from, to);
+
+		buffer.Insert(from, text);
+		buffer.EndTransaction();
+
+		CollapseCaretTo(item.Caret, from + text.size());
+
+		UpdateDerived(item, firstLine, buffer.ToPosition(item.Caret.Offset).Line);
+
+		return true;
+	}
+
+	bool DeleteBackward(OpenItem& item)
+	{
+		return DeleteRange(item, Motion::Left);
+	}
+
+	bool DeleteForward(OpenItem& item)
+	{
+		return DeleteRange(item, Motion::Right);
+	}
+
+	bool DeleteWordBackward(OpenItem& item)
+	{
+		return DeleteRange(item, Motion::WordLeft);
+	}
+
+	bool DeleteWordForward(OpenItem& item)
+	{
+		return DeleteRange(item, Motion::WordRight);
+	}
+
+	bool Undo(OpenItem& item)
+	{
+		// Not gated by Editable: every state in the history is one the buffer already held,
+		// so a reload that turned the document read-only stays reversible.
+		if (!item.Document)
+			return false;
+
+		const std::optional<std::size_t> caret = item.Document->GetBuffer().Undo();
+
+		if (!caret)
+			return false;
+
+		return SettleAfterHistoryStep(item, *caret);
+	}
+
+	bool Redo(OpenItem& item)
+	{
+		// Ungated for the same reason as Undo.
+		if (!item.Document)
+			return false;
+
+		const std::optional<std::size_t> caret = item.Document->GetBuffer().Redo();
+
+		if (!caret)
+			return false;
+
+		return SettleAfterHistoryStep(item, *caret);
+	}
+
+	bool InsertNewline(OpenItem& item, IndentStyle /*style*/)
+	{
+		if (!Editable(item))
+			return false;
+
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const auto [from, to] = SelectionRange(item.Caret);
+		const std::size_t line = buffer.ToPosition(from).Line;
+
+		// Copied from the current line rather than synthesised from `style`, so a
+		// tab-indented file stays tab-indented even under a spaces setting.
+		const std::string insertion = "\n" + LeadingWhitespace(buffer.LineText(line));
+
+		buffer.BeginTransaction();
+
+		if (from != to)
+			buffer.Erase(from, to);
+
+		buffer.Insert(from, insertion);
+		buffer.EndTransaction();
+
+		CollapseCaretTo(item.Caret, from + insertion.size());
+
+		UpdateDerived(item, line, buffer.ToPosition(item.Caret.Offset).Line);
+
+		return true;
+	}
+
+	bool Indent(OpenItem& item, IndentStyle style)
+	{
+		if (!Editable(item))
+			return false;
+
+		const std::string indent =
+			style.UseSpaces ? std::string(style.Width, ' ') : std::string{"\t"};
+
+		TextBuffer& buffer = item.Document->GetBuffer();
+
+		if (!HasSelection(item.Caret))
+		{
+			// Refused before the group is broken: InsertText would also report a width of
+			// zero as "nothing changed", but only after an edit that never happened had
+			// already split the surrounding typing in two.
+			if (indent.empty())
+				return false;
+
+			return InsertAsOwnUndoGroup(item, buffer, indent);
+		}
+
+		const auto [firstLine, lastLine] = BlockLines(buffer, item.Caret);
+
+		buffer.BreakUndoGroup();
+		buffer.BeginTransaction();
+
+		for (std::size_t line = lastLine + 1; line > firstLine; --line)
+			buffer.Insert(buffer.LineStart(line - 1), indent);
+
+		buffer.EndTransaction();
+		buffer.BreakUndoGroup();
+
+		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
+
+		UpdateDerived(item, firstLine, lastLine);
+
+		return true;
+	}
+
+	bool Outdent(OpenItem& item, IndentStyle style)
+	{
+		if (!Editable(item))
+			return false;
+
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const auto [firstLine, lastLine] = BlockLines(buffer, item.Caret);
+
+		const std::vector<IndentRemoval> removals =
+			PlanOutdent(buffer, firstLine, lastLine, style.Width);
+
+		if (removals.empty())
+			return false;
+
+		buffer.BreakUndoGroup();
+		buffer.BeginTransaction();
+
+		EraseBackToFront(buffer, removals);
+
+		buffer.EndTransaction();
+		buffer.BreakUndoGroup();
+
+		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
+
+		UpdateDerived(item, firstLine, lastLine);
+
+		return true;
+	}
 }

@@ -27,9 +27,10 @@ records, never hand-edited.
 
 | Path | What it holds |
 |---|---|
-| `Core/src/Core` | The engine: `App`, `Base`, `Event`, `Fs`, `Git`, `Gui`, `Platform`, `Sln`, `Text`, `Ui` |
-| `Core/tests` | doctest suite, built as `CoreTests` |
-| `Graphite/src` | The application: `Workspace`, `Editor`, panels, settings |
+| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `Fs`, `Git`, `ImGui`, `Platform`, `Text`, `UI` |
+| `Core/tests` | doctest suite for the engine, built as `CoreTests` |
+| `Graphite/src` | The application: `App`, `Editor`, `Panels`, `Settings`, `Sln`, `Workspace` |
+| `Graphite/tests` | doctest suite for the application, built as `GraphiteTests` |
 | `vendor` | Dependencies as git submodules, built from source by premake |
 | `scripts` | ADR tooling |
 | `docs/adr` | Decision records |
@@ -47,16 +48,27 @@ The solution is `Graphite.slnx`. Generated project files are gitignored, so a
 premake run never shows up in `git status`. MSBuild lives at
 `C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe`.
 
-Build the test project directly rather than through the solution, then run it:
+Build the test projects directly rather than through the solution, then run
+them. There are two, and a change to the solution readers only shows up in the
+second:
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' Core\tests\CoreTests.vcxproj -p:Configuration=Debug -p:Platform=x64 -v:minimal -nologo -m
 .\bin\Debug-windows-x86_64\CoreTests\CoreTests.exe
+
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe' Graphite\tests\GraphiteTests.vcxproj -p:Configuration=Debug -p:Platform=x64 -v:minimal -nologo -m
+.\bin\Debug-windows-x86_64\GraphiteTests\GraphiteTests.exe
 ```
 
 Core and CoreTests build with `warnings "High"` and `fatalwarnings { "All" }`,
 so a clean build already proves there are no new warnings. Building Release too
 is worthwhile — some warnings only fire with optimisation on.
+
+The `Graphite` project's post-build step copies fonts from `Graphite/vendor/fonts`,
+which does not exist — they live in `vendor/fonts`. `Graphite.exe` links fine and
+the copy is the only thing that fails, so an MSBuild run on that project exits
+non-zero even when the build succeeded. Check for `error C` / `error LNK`
+specifically rather than trusting the exit code.
 
 **Both doctest filters fail open.** `-sf=*FooTests.cpp` matches nothing in this
 build, and `-tc` splits its argument on commas, so a test name containing one

@@ -1,26 +1,36 @@
 #pragma once
 
 #include "Core/Command/Chord.h"
+#include "Core/Events/KeyEvent.h"
+#include "Core/Events/MouseEvent.h"
 
-namespace core
-{
-    class CommandRegistry;
-    class Keymap;
+namespace Core {
 
-    /// Turns key presses and wheel gestures into commands. Stateless — a class rather
-    /// than free functions only so that a future router with state (chord sequences,
-    /// "waiting for the second key") has somewhere to keep it.
-    class ShortcutRouter final
-    {
-    public:
-        /// Every global chord in `keys`, once per frame. Must be called at a point where
-        /// no window is open — after every Begin/End this frame — because that is what
-        /// ImGuiInputFlags_RouteGlobal expects.
-        void Dispatch(CommandRegistry& commands, const Keymap& keys);
+	class CommandRegistry;
+	class Keymap;
 
-        /// Chords scoped to `scope`, fired by whoever owns that scope from inside the
-        /// window defining it. `wheel` is ImGuiIO::MouseWheel: its sign picks the
-        /// direction and its magnitude is how many notches arrived this frame.
-        void DispatchWheel(CommandRegistry& commands, const Keymap& keys, Scope scope, float wheel);
-    };
+	// Turns keystrokes into commands. Each handler returns whether a command ran, which the
+	// caller reports as the event being handled.
+	class ShortcutRouter final
+	{
+	public:
+		bool OnKeyPressed(CommandRegistry& commands, const Keymap& keys, const KeyPressedEvent& event);
+
+		// A tap fires on the release, because every ordinary shortcut begins with the same
+		// modifiers held down.
+		bool OnKeyReleased(CommandRegistry& commands, const Keymap& keys, const KeyReleasedEvent& event);
+
+		// A modifier held for a Ctrl+click is not a tap, however it is released.
+		void CancelTap() { m_TapMods = 0; }
+
+		// What the wheel means depends on what it is pointing at, which is known only while
+		// drawing, so the caller passes the scope it determined for the frame.
+		bool OnMouseScrolled(CommandRegistry& commands, const Keymap& keys, Chord::Scope scope,
+							 const MouseScrolledEvent& event);
+
+	private:
+		// The modifiers held since the first of them went down, cleared the moment anything
+		// else is pressed. Non-zero means a tap is still possible.
+		ImGuiKeyChord m_TapMods = 0;
+	};
 }

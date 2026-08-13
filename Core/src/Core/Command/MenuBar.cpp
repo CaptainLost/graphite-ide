@@ -9,181 +9,182 @@
 
 #include <utility>
 
-namespace core
-{
-    namespace
-    {
-        /// Opens one of the bar's top-level menus and gives its dropdown back the padding
-        /// the theme asks for. The enlarged row padding has to be live while BeginMenu
-        /// runs — it is what sizes the label to the row and what puts the dropdown
-        /// directly beneath it rather than a few pixels into it — but everything
-        /// submitted next belongs to the popup, where rows as tall as a title bar would
-        /// be nonsense. Pushing the theme's value back inside the popup rather than
-        /// popping the outer one is what ImGui allows: it compares the style stack at
-        /// End() with the one at Begin(), so a pop crossing that boundary trips its own
-        /// check. Pair with EndTopLevelMenu.
-        bool BeginTopLevelMenu(const char* label, const ImVec2& dropdownPadding)
-        {
-            if (!ImGui::BeginMenu(label))
-            {
-                return false;
-            }
+namespace Core {
 
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, dropdownPadding);
-            return true;
-        }
+	namespace {
+		bool BeginTopLevelMenu(const char* label, const ImVec2& dropdownPadding)
+		{
+			if (!ImGui::BeginMenu(label))
+			{
+				return false;
+			}
 
-        void EndTopLevelMenu()
-        {
-            ImGui::PopStyleVar();
-            ImGui::EndMenu();
-        }
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, dropdownPadding);
+			return true;
+		}
 
-        void RenderCommand(CommandRegistry& commands, const Keymap& keys, const std::string& id)
-        {
-            const Command* command = commands.Find(id);
+		void EndTopLevelMenu()
+		{
+			ImGui::PopStyleVar();
+			ImGui::EndMenu();
+		}
 
-            if (command == nullptr)
-            {
-                // A menu naming a command nobody registered is a wiring mistake, and
-                // drawing nothing hides it. The id itself is the most useful thing to
-                // show: it is what the tree names and what a search would find.
-                ImGui::MenuItem(id.c_str(), nullptr, false, false);
-                return;
-            }
+		// A label may carry a hint after a tab ("Exit\tAlt+F4") for a shortcut the application
+		// does not own and cannot rebind, so no keymap entry exists to advertise it. The tab
+		// has to be split off rather than passed through: ImGui's text renderer handles only
+		// '\n' and '\r', so a tab draws as the fallback glyph in one left-aligned run instead
+		// of reaching the right-aligned shortcut column MenuItem keeps for exactly this.
+		std::string TextBeforeShortcutHint(const std::string& label)
+		{
+			return label.substr(0, label.find('\t'));
+		}
 
-            // A label may carry a hint after a tab ("Exit\tAlt+F4") for a shortcut the
-            // application does not own and cannot rebind, so no keymap entry exists to
-            // advertise it. The tab has to be split off rather than passed through:
-            // ImGui's text renderer handles only '\n' and '\r', so a tab draws as the
-            // fallback glyph in one left-aligned run instead of reaching the right-aligned
-            // shortcut column MenuItem keeps for exactly this.
-            const std::size_t tab = command->label.find('\t');
-            const std::string text = command->label.substr(0, tab);
+		std::string ShortcutHintIn(const std::string& label)
+		{
+			const std::size_t tab = label.find('\t');
 
-            const Binding* binding = keys.For(id);
-            std::string shortcut = binding != nullptr ? binding->primary.ToString() : std::string();
+			return tab == std::string::npos ? std::string() : label.substr(tab + 1);
+		}
 
-            // A binding wins over the hint: a command must never show two shortcut texts,
-            // and the one that can actually be rebound is the truthful one.
-            if (shortcut.empty() && tab != std::string::npos)
-            {
-                shortcut = command->label.substr(tab + 1);
-            }
+		// "###id" fixes the item's identity to the command, so a label that changes with state
+		// does not make ImGui treat it as a different item.
+		std::string LabelWithStableId(const std::string& text, const std::string& id)
+		{
+			return text + "###" + id;
+		}
 
-            const bool enabled = !command->enabled || command->enabled();
-            const bool checked = command->checked && command->checked();
+		// A menu naming a command nobody registered is a wiring mistake, and drawing nothing
+		// hides it. The id is what the tree names and what a search would find.
+		void RenderUnregisteredCommand(const std::string& id)
+		{
+			ImGui::MenuItem(id.c_str(), nullptr, false, false);
+		}
 
-            // "###id" fixes the item's identity to the command, so a label that changes
-            // with state does not make ImGui treat it as a different item.
-            const std::string label = text + "###" + id;
+		void RenderCommand(CommandRegistry& commands, const Keymap& keys, const std::string& id)
+		{
+			const Command* command = commands.Find(id);
 
-            if (ImGui::MenuItem(label.c_str(), shortcut.empty() ? nullptr : shortcut.c_str(), checked,
-                                 enabled))
-            {
-                commands.Run(id);
-            }
-        }
+			if (command == nullptr)
+			{
+				RenderUnregisteredCommand(id);
+				return;
+			}
 
-        void RenderItems(CommandRegistry& commands, const Keymap& keys,
-                          const std::vector<MenuItem>& items);
+			const Binding* binding = keys.For(id);
+			std::string shortcut = binding != nullptr ? binding->Primary.ToString() : std::string();
 
-        void RenderItem(CommandRegistry& commands, const Keymap& keys, const MenuItem& item)
-        {
-            switch (item.GetKind())
-            {
-                case MenuItem::Kind::Separator:
-                    ImGui::Separator();
-                    break;
+			// A binding wins over the hint: a command must never show two shortcut texts, and
+			// the one that can actually be rebound is the truthful one.
+			if (shortcut.empty())
+			{
+				shortcut = ShortcutHintIn(command->Label);
+			}
 
-                case MenuItem::Kind::Command:
-                    RenderCommand(commands, keys, item.Text());
-                    break;
+			const bool enabled = !command->Enabled || command->Enabled();
+			const bool checked = command->Checked && command->Checked();
+			const std::string label =
+				LabelWithStableId(TextBeforeShortcutHint(command->Label), id);
 
-                case MenuItem::Kind::Group:
-                    // Copied out before drawing: RenderCommand runs commands, and one of
-                    // them registering a command would otherwise resize the registry
-                    // mid-iteration.
-                    for (const Command* member : commands.InGroup(item.Text()))
-                    {
-                        RenderCommand(commands, keys, member->id);
-                    }
-                    break;
+			if (ImGui::MenuItem(label.c_str(), shortcut.empty() ? nullptr : shortcut.c_str(), checked,
+								enabled))
+			{
+				commands.Run(id);
+			}
+		}
 
-                case MenuItem::Kind::Submenu:
-                    if (ImGui::BeginMenu(item.Text().c_str()))
-                    {
-                        RenderItems(commands, keys, item.Children());
-                        ImGui::EndMenu();
-                    }
-                    break;
-            }
-        }
+		void RenderItems(CommandRegistry& commands, const Keymap& keys,
+						 const std::vector<MenuItem>& items);
 
-        void RenderItems(CommandRegistry& commands, const Keymap& keys,
-                          const std::vector<MenuItem>& items)
-        {
-            for (const MenuItem& item : items)
-            {
-                RenderItem(commands, keys, item);
-            }
-        }
-    }
+		void RenderItem(CommandRegistry& commands, const Keymap& keys, const MenuItem& item)
+		{
+			switch (item.GetKind())
+			{
+			case MenuItem::Kind::Separator:
+				ImGui::Separator();
+				break;
 
-    void MenuBar::Render(CommandRegistry& commands, const Keymap& keys,
-                          const std::vector<MenuItem>& tree, float rowHeight,
-                          const std::function<void()>& trailing)
-    {
-        // Read before anything is pushed over it: this is the padding the dropdowns are
-        // entitled to, and BeginTopLevelMenu hands it back to each of them.
-        const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
+			case MenuItem::Kind::Command:
+				RenderCommand(commands, keys, item.GetText());
+				break;
 
-        // The host window's menu-bar height was already fixed by DockSpaceHost::Begin,
-        // which popped its own override before opening the dockspace so panels dock at
-        // their normal tab-bar height. The bar itself therefore sees plain default
-        // padding unless pushed again here — and it has to match, or the top-level items
-        // sit at the wrong height for the row and anything the caller draws in `trailing`
-        // (which relies on the padding-driven text baseline BeginMenuBar sets up) lands
-        // off-centre.
-        const bool overridePadding = rowHeight > 0.0f;
+			case MenuItem::Kind::Group:
+				// InGroup hands back a copy, so a command registered by one of the members
+				// run below cannot resize the registry mid-iteration.
+				for (const Command* member : commands.InGroup(item.GetText()))
+				{
+					RenderCommand(commands, keys, member->Id);
+				}
+				break;
 
-        if (overridePadding)
-        {
-            ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                                 ImVec2(dropdownPadding.x, (rowHeight - ImGui::GetFontSize()) * 0.5f));
-        }
+			case MenuItem::Kind::Submenu:
+				if (ImGui::BeginMenu(item.GetText().c_str()))
+				{
+					RenderItems(commands, keys, item.GetChildren());
+					ImGui::EndMenu();
+				}
+				break;
+			}
+		}
 
-        // Not an early return on BeginMenuBar: the push above still has to be popped.
-        if (ImGui::BeginMenuBar())
-        {
-            for (const MenuItem& item : tree)
-            {
-                // Only submenus can sit at the top level of a bar; anything else there is
-                // a malformed tree, and drawing it as a bare item would look like a menu
-                // that failed to open.
-                if (item.GetKind() != MenuItem::Kind::Submenu)
-                {
-                    continue;
-                }
+		void RenderItems(CommandRegistry& commands, const Keymap& keys,
+						 const std::vector<MenuItem>& items)
+		{
+			for (const MenuItem& item : items)
+			{
+				RenderItem(commands, keys, item);
+			}
+		}
+	}
 
-                if (BeginTopLevelMenu(item.Text().c_str(), dropdownPadding))
-                {
-                    RenderItems(commands, keys, item.Children());
-                    EndTopLevelMenu();
-                }
-            }
+	void MenuBar::Render(CommandRegistry& commands, const Keymap& keys,
+						 const std::vector<MenuItem>& tree, float rowHeight,
+						 const std::function<void()>& trailing)
+	{
+		// Read before the override below is pushed over it: this is the padding the dropdowns
+		// are entitled to, and BeginTopLevelMenu hands it back to each of them.
+		const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
 
-            if (trailing)
-            {
-                trailing();
-            }
+		// DockSpaceHost::Begin pops its own override before opening the dockspace, so the bar
+		// sees default padding unless it is pushed again here. It has to match the row, or the
+		// top-level items and whatever `trailing` draws sit off-centre in it.
+		const bool overridePadding = rowHeight > 0.0f;
 
-            ImGui::EndMenuBar();
-        }
+		if (overridePadding)
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+								ImVec2(dropdownPadding.x, (rowHeight - ImGui::GetFontSize()) * 0.5f));
+		}
 
-        if (overridePadding)
-        {
-            ImGui::PopStyleVar();
-        }
-    }
+		// Not an early return on BeginMenuBar: the push above still has to be popped.
+		if (ImGui::BeginMenuBar())
+		{
+			for (const MenuItem& item : tree)
+			{
+				// Anything else at the top level is a malformed tree, and drawing it as a bare
+				// item would look like a menu that failed to open.
+				if (item.GetKind() != MenuItem::Kind::Submenu)
+				{
+					continue;
+				}
+
+				if (BeginTopLevelMenu(item.GetText().c_str(), dropdownPadding))
+				{
+					RenderItems(commands, keys, item.GetChildren());
+					EndTopLevelMenu();
+				}
+			}
+
+			if (trailing)
+			{
+				trailing();
+			}
+
+			ImGui::EndMenuBar();
+		}
+
+		if (overridePadding)
+		{
+			ImGui::PopStyleVar();
+		}
+	}
 }

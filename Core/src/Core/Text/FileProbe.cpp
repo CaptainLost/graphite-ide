@@ -9,62 +9,60 @@
 #include <string>
 #include <system_error>
 
-namespace core::text
-{
-    FileProbe ClassifySample(std::string_view sample, std::uint64_t size)
-    {
-        FileProbe probe;
-        probe.size = size;
-        probe.encoding = SniffEncoding(sample);
+namespace Core {
 
-        const bool isUtf16 =
-            probe.encoding == Encoding::Utf16Le || probe.encoding == Encoding::Utf16Be;
+	FileProbe ClassifySample(std::string_view sample, std::uint64_t size)
+	{
+		FileProbe probe;
+		probe.Size = size;
+		probe.FileEncoding = SniffEncoding(sample);
 
-        // UTF-16 text is half NUL bytes, so it has to be recognised before this check or
-        // every UTF-16 file would be called binary. SniffEncoding is deliberately hard to
-        // convince: a file of small 16-bit integers has the same byte pattern and must
-        // not end up opened as editable text.
-        if (!isUtf16 && sample.find('\0') != std::string_view::npos)
-        {
-            probe.kind = FileKind::Binary;
-            return probe;
-        }
+		const bool isUtf16 =
+			probe.FileEncoding == Encoding::Utf16Le || probe.FileEncoding == Encoding::Utf16Be;
 
-        if (size > MaximumFileSize)
-            probe.kind = FileKind::TooLarge;
-        else if (size > LargeFileThreshold)
-            probe.kind = FileKind::LargeText;
-        else
-            probe.kind = FileKind::Text;
+		// UTF-16 text is half NUL bytes, so it has to be recognised before this check or
+		// every UTF-16 file would be called binary.
+		if (!isUtf16 && sample.find('\0') != std::string_view::npos)
+		{
+			probe.Kind = FileKind::Binary;
+			return probe;
+		}
 
-        return probe;
-    }
+		if (size > MaximumFileSize)
+			probe.Kind = FileKind::TooLarge;
+		else if (size > LargeFileThreshold)
+			probe.Kind = FileKind::LargeText;
+		else
+			probe.Kind = FileKind::Text;
 
-    Result<FileProbe> ProbeFile(const std::filesystem::path& path)
-    {
-        std::error_code code;
-        const auto status = std::filesystem::status(path, code);
+		return probe;
+	}
 
-        if (code || !std::filesystem::exists(status))
-            return Error{ErrorCode::NotFound, "No such file: " + fs::ToUtf8(path)};
+	Result<FileProbe> ProbeFile(const std::filesystem::path& path)
+	{
+		std::error_code code;
+		const auto status = std::filesystem::status(path, code);
 
-        if (!std::filesystem::is_regular_file(status))
-            return Error{ErrorCode::InvalidArgument, "Not a file: " + fs::ToUtf8(path)};
+		if (code || !std::filesystem::exists(status))
+			return Error{ErrorCode::NotFound, "No such file: " + ToUtf8(path)};
 
-        const std::uintmax_t size = std::filesystem::file_size(path, code);
+		if (!std::filesystem::is_regular_file(status))
+			return Error{ErrorCode::InvalidArgument, "Not a file: " + ToUtf8(path)};
 
-        if (code)
-            return Error{ErrorCode::IoFailure, "Cannot measure file: " + fs::ToUtf8(path)};
+		const std::uintmax_t size = std::filesystem::file_size(path, code);
 
-        std::ifstream stream{path, std::ios::binary};
+		if (code)
+			return Error{ErrorCode::IoFailure, "Cannot measure file: " + ToUtf8(path)};
 
-        if (!stream.is_open())
-            return Error{ErrorCode::AccessDenied, "Cannot open file: " + fs::ToUtf8(path)};
+		std::ifstream stream{path, std::ios::binary};
 
-        std::string sample(ProbeSampleSize, '\0');
-        stream.read(sample.data(), static_cast<std::streamsize>(sample.size()));
-        sample.resize(static_cast<std::size_t>(stream.gcount()));
+		if (!stream.is_open())
+			return Error{ErrorCode::AccessDenied, "Cannot open file: " + ToUtf8(path)};
 
-        return ClassifySample(sample, static_cast<std::uint64_t>(size));
-    }
+		std::string sample(ProbeSampleSize, '\0');
+		stream.read(sample.data(), static_cast<std::streamsize>(sample.size()));
+		sample.resize(static_cast<std::size_t>(stream.gcount()));
+
+		return ClassifySample(sample, static_cast<std::uint64_t>(size));
+	}
 }
