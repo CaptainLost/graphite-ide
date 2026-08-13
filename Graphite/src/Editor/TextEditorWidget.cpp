@@ -620,10 +620,22 @@ namespace Graphite {
 											   : Core::Indent(item, indentStyle);
 					}
 
-					// Everything above takes auto-repeat: holding Backspace deletes on. What
-					// follows are commands rather than edits repeated by holding, and a held
-					// Ctrl+Z would undo the session away, so they answer to a first press
-					// only.
+					// Stepping through the history takes auto-repeat like the edit keys above:
+					// holding Ctrl+Z walks back through the changes at the keyboard's own
+					// rate, which is the delay-then-stream that makes a hold feel like it
+					// speeds up.
+					if (control && !shift && stroke.Key == Core::KeyCode::Z)
+						result.Edited |= Core::Undo(item);
+
+					if (control && (stroke.Key == Core::KeyCode::Y ||
+									(shift && stroke.Key == Core::KeyCode::Z)))
+					{
+						result.Edited |= Core::Redo(item);
+					}
+
+					// What follows are commands rather than edits, and holding one of them
+					// would repeat an action nobody asked to repeat — a held Ctrl+V pasting
+					// the clipboard over and over — so they answer to a first press only.
 					if (stroke.IsRepeat)
 						continue;
 
@@ -639,14 +651,6 @@ namespace Graphite {
 					{
 						copySelection();
 						result.Edited |= Core::DeleteBackward(item);
-					}
-
-					if (control && !shift && stroke.Key == Core::KeyCode::Z)
-						result.Edited |= Core::Undo(item);
-
-					if (control && (stroke.Key == Core::KeyCode::Y || (shift && stroke.Key == Core::KeyCode::Z)))
-					{
-						result.Edited |= Core::Redo(item);
 					}
 
 					// Saving is not this widget's decision: a stale document on disk needs
