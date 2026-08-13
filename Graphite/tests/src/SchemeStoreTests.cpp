@@ -61,13 +61,14 @@ TEST_CASE("A colour that will not parse is skipped and the rest of the file surv
 	const TempDirectory temp;
 
 	WriteFile(temp.GetPath() / "broken.json",
-			  R"({"base":"dark","syntax.keyword":"nonsense","syntax.comment":"6A9955"})");
+			  R"({"base":"dark","syntax.character":"nonsense","syntax.comment":"6A9955"})");
 
 	const Graphite::ColorScheme loaded =
 		Graphite::LoadScheme(temp.GetPath() / "broken.json");
 
 	CHECK(loaded.Base == "dark");
-	CHECK_FALSE(loaded.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Keyword)].has_value());
+	CHECK_FALSE(
+		loaded.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Character)].has_value());
 	CHECK(loaded.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Comment)].has_value());
 }
 
@@ -76,7 +77,7 @@ TEST_CASE("An unrecognised key is skipped rather than refusing the file")
 	const TempDirectory temp;
 
 	WriteFile(temp.GetPath() / "future.json",
-			  R"({"base":"dark","syntax.tealeaf":"C586C0","syntax.comment":"6A9955"})");
+			  R"({"base":"dark","syntax.aardvark":"C586C0","syntax.comment":"6A9955"})");
 
 	const Graphite::ColorScheme loaded =
 		Graphite::LoadScheme(temp.GetPath() / "future.json");
