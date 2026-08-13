@@ -1,23 +1,25 @@
 #pragma once
 
 #include "Editor/DocumentWindows.h"
+#include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
-#include "GitIgnoredDisplay.h"
 #include "TitleBar.h"
 #include "Workspace.h"
 
 #include "Core/App/Layer.h"
 #include "Core/Base/RingBufferSink.h"
+#include "Core/Command/CommandRegistry.h"
+#include "Core/Command/Keymap.h"
+#include "Core/Command/MenuBar.h"
+#include "Core/Command/ShortcutRouter.h"
 #include "Core/Event/EventBus.h"
 #include "Core/Gui/DockSpaceHost.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Ui/PanelManager.h"
 
-#include <imgui.h>
-
-#include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <vector>
 
 namespace graphite
 {
@@ -38,19 +40,6 @@ namespace graphite
         bool OnCloseRequested() override;
 
     private:
-        /// Opens the host window's menu bar at the caption row's height and closes it
-        /// again. The height is a FramePadding override, which is why the menus
-        /// themselves are a separate function: the override has to be popped on the path
-        /// where the bar does not open either.
-        void RenderMenuBar();
-
-        /// The menus and, after them, the title bar's own half of the row.
-        /// `dropdownPadding` is the theme's FramePadding, captured before the row's
-        /// override went on, so each dropdown can be given it back — see
-        /// BeginTopLevelMenu.
-        void RenderMenus(const ImVec2& dropdownPadding);
-        void ApplyGitIgnoredDisplay(GitIgnoredDisplay display, bool persist);
-
         /// What answering the "Unsaved changes" question should do once it resolves in
         /// favour of closing. The exit path and "Close Workspace" both lose whatever is
         /// unsaved - CloseAll no less than the window closing - so both ask through the
@@ -80,13 +69,6 @@ namespace graphite
         /// OpenPopup/BeginPopupModal need to be called there to draw reliably.
         void RenderCloseConfirm();
 
-        [[nodiscard]] bool AnyDocumentModified() const;
-
-        /// Clamps `newSize` into range, applies it and persists it — the single path
-        /// both the Ctrl+wheel handling and the View menu's zoom items go through, so
-        /// they cannot drift apart on what "zoom in" or "reset" means.
-        void SetEditorFontSize(float newSize);
-
         /// Reloads the workspace when the window comes back after a pause. Separated
         /// from OnUpdate so its early return governs only itself.
         void UpdateFocusReload(float deltaSeconds);
@@ -106,28 +88,6 @@ namespace graphite
 
         bool m_appForeground = true;
         float m_secondsInBackground = 0.0f;
-
-        /// Editor font size in pixels. Separate from the interface size, so zooming the
-        /// code leaves the menus alone.
-        float m_editorFontSize = 13.0f;
-
-        static constexpr float kMinimumEditorFontSize = 8.0f;
-        static constexpr float kMaximumEditorFontSize = 32.0f;
-        static constexpr float kDefaultEditorFontSize = 13.0f;
-
-        /// The change applied by one click of the View menu's "Zoom In"/"Zoom Out" —
-        /// there is no wheel delta to read from a menu click, so this stands in for one.
-        static constexpr float kEditorFontSizeStep = 1.0f;
-
-        /// What Tab, Enter's auto-indent and the newline splitter insert. No menu edits
-        /// these yet; they exist so DrawEditor has a real IndentStyle to work with and
-        /// so the choice, once a menu sets it, persists the same way the font size does.
-        bool m_indentWithSpaces = true;
-        std::size_t m_indentWidth = 4;
-
-        /// Shared by every document, like the font size and the indent style: one answer
-        /// for the whole editor, loaded once and written back when it changes.
-        bool m_wordWrap = false;
 
         /// Set once FinishClose(ExitApplication) has re-armed the window's close flag,
         /// so the OnCloseRequested asked again next frame returns true unconditionally
@@ -167,7 +127,18 @@ namespace graphite
         core::PanelManager m_panels;
         core::DockSpaceHost m_dockSpace;
         core::DockLayout m_layout;
-        GitIgnoredDisplay m_gitIgnoredDisplay = GitIgnoredDisplay::Dim;
         TitleBar m_titleBar;
+
+        core::CommandRegistry m_commands;
+        core::Keymap m_keys;
+        core::ShortcutRouter m_router;
+        core::MenuBar m_menuBar;
+
+        /// Built once in OnAttach, after every command is registered — the tree names
+        /// ids, and a tree built before them would draw a bar full of unregistered
+        /// entries.
+        std::vector<core::MenuItem> m_menuTree;
+
+        EditorSettings m_editorSettings;
     };
 }

@@ -4,11 +4,13 @@
 
 #include "TempDirectory.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <utility>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 using core::JsonFile;
 
@@ -205,4 +207,58 @@ TEST_CASE("A moved-from file leaves the source usable enough to destroy")
     // and must not fall over.
     CHECK(moved.Get("lastFolder") == "D:\\Repos\\IDE");
     CHECK(moved.Save(path));
+}
+
+TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
+{
+    TempDirectory temp;
+    const auto path = temp.Path() / "settings.json";
+
+    JsonFile file;
+    file.Set("key.editor.zoomIn", "Ctrl+U");
+    file.Set("wordWrap", "true");
+    REQUIRE(file.Save(path));
+
+    const JsonFile loaded = JsonFile::Load(path);
+    std::vector<std::string> keys = loaded.Keys();
+    std::sort(keys.begin(), keys.end());
+
+    REQUIRE(keys.size() == 2);
+    CHECK(keys[0] == "key.editor.zoomIn");
+    CHECK(keys[1] == "wordWrap");
+}
+
+TEST_CASE("Keys on an empty file is empty")
+{
+    CHECK(JsonFile{}.Keys().empty());
+}
+
+TEST_CASE("Remove takes the key out rather than leaving it holding an empty value")
+{
+    TempDirectory temp;
+    const auto path = temp.Path() / "settings.json";
+
+    JsonFile file;
+    file.Set("key.editor.zoomIn", "Ctrl+U");
+    file.Set("wordWrap", "true");
+    file.Remove("key.editor.zoomIn");
+
+    CHECK(file.Count() == 1);
+    CHECK(file.Get("key.editor.zoomIn").empty());
+    REQUIRE(file.Save(path));
+
+    // Proven through the file too: a key merely blanked would survive the round trip and
+    // every reader would have to keep apologising for it.
+    const JsonFile read = JsonFile::Load(path);
+    CHECK(read.Keys() == std::vector<std::string>{"wordWrap"});
+}
+
+TEST_CASE("Removing a key that is not there changes nothing")
+{
+    JsonFile file;
+    file.Set("wordWrap", "true");
+    file.Remove("absent");
+
+    CHECK(file.Count() == 1);
+    CHECK(file.Get("wordWrap") == "true");
 }

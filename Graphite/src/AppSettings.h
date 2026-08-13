@@ -5,6 +5,11 @@
 #include <string>
 #include <string_view>
 
+namespace core
+{
+    class Keymap;
+}
+
 namespace graphite
 {
     /// Typed access to the values that outlive a session, stored in `graphite.json` next to
@@ -44,5 +49,14 @@ namespace graphite
         /// being asked would be a surprise, and off is what every previous version did.
         static bool LoadWordWrap();
         static void SaveWordWrap(bool wrap);
+
+        /// Applies every stored override to `keys`. Unreadable entries are logged and
+        /// skipped: a hand-edited file must not be able to crash the IDE, and one bad
+        /// line should cost one binding rather than all of them.
+        static void LoadKeyBindings(core::Keymap& keys);
+
+        /// Writes the overrides and removes stored entries the user has since reset, so
+        /// the file holds exactly what differs from the factory table.
+        static void SaveKeyBindings(const core::Keymap& keys);
     };
 }

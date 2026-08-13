@@ -2,6 +2,13 @@
 
 #include "Core/Text/Editing.h"
 
+namespace core
+{
+    class CommandRegistry;
+    class Keymap;
+    class ShortcutRouter;
+}
+
 namespace core::text
 {
     struct OpenItem;
@@ -9,12 +16,18 @@ namespace core::text
 
 namespace graphite
 {
+    /// What the editor needs in order to turn a gesture into a command. Passed rather
+    /// than stored: the widget is redrawn from a call that already holds all three.
+    struct CommandContext
+    {
+        core::CommandRegistry* commands = nullptr;
+        core::Keymap* keys = nullptr;
+        core::ShortcutRouter* router = nullptr;
+    };
+
     /// What one call to DrawEditor produced, for the caller to act on.
     struct EditorFrameResult
     {
-        /// The wheel delta the user applied with Ctrl held, or 0.
-        float zoomDelta = 0.0f;
-
         /// True when an edit this frame actually changed the document. The caller
         /// promotes a preview tab on this, the same as a double click on its tab does.
         bool edited = false;
@@ -48,7 +61,12 @@ namespace graphite
     /// Drawing goes through `item.rows` either way: with wrapping off the map is built
     /// with RowMap::kNoWrap, which gives one row per line — the same picture as before,
     /// down the same code path, rather than a second renderer to keep in step.
-    [[nodiscard]] EditorFrameResult DrawEditor(core::text::OpenItem& item, float fontSize,
+    ///
+    /// `context` is what the Ctrl+wheel gesture is fired through: this window is what
+    /// defines core::Scope::HoveredEditor, so the command runs here rather than being
+    /// reported upwards for someone else to act on.
+    [[nodiscard]] EditorFrameResult DrawEditor(const CommandContext& context,
+                                               core::text::OpenItem& item, float fontSize,
                                                core::text::IndentStyle indentStyle,
                                                bool wordWrap);
 }

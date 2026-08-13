@@ -2,11 +2,17 @@
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
+#include "Core/Command/Binding.h"
+#include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace graphite
 {
@@ -23,6 +29,11 @@ namespace graphite
         constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
         constexpr const char* kIndentWidthKey = "indentWidth";
         constexpr const char* kWordWrapKey = "wordWrap";
+
+        /// One key per overridden command, `key.` plus the command id. Flat, like every
+        /// other setting here: a blob under a single key would not be hand-editable, and
+        /// this file is meant to be.
+        constexpr std::string_view kKeyBindingPrefix = "key.";
 
         /// Resolved once: the executable does not move while it runs, and a settings
         /// write happens on every menu interaction.
@@ -137,5 +148,70 @@ namespace graphite
     void AppSettings::SaveWordWrap(bool wrap)
     {
         WriteValue(kWordWrapKey, wrap ? "1" : "0");
+    }
+
+    void AppSettings::LoadKeyBindings(core::Keymap& keys)
+    {
+        const core::JsonFile file = core::JsonFile::Load(SettingsPath());
+
+        for (const std::string& key : file.Keys())
+        {
+            if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
+            {
+                continue;
+            }
+
+            const std::string id = key.substr(kKeyBindingPrefix.size());
+            const std::optional<core::Binding> binding = core::ParseBinding(file.Get(key));
+
+            // Skipped rather than fatal, and named so it can be found: one hand-edited
+            // line should cost the one binding it describes, not every shortcut in the
+            // IDE.
+            if (!binding.has_value())
+            {
+                CORE_WARN("Ignoring the unreadable key binding stored for '{}'", id);
+                continue;
+            }
+
+            keys.Override(id, *binding);
+        }
+    }
+
+    void AppSettings::SaveKeyBindings(const core::Keymap& keys)
+    {
+        core::JsonFile file = core::JsonFile::Load(SettingsPath());
+
+        // Written in one pass rather than through WriteValue per command: that helper
+        // loads and saves the whole file each time, which over a table of bindings would
+        // rewrite the file once per entry.
+        //
+        // Collected before removing, because removing while iterating the keys would
+        // invalidate what is being walked.
+        std::vector<std::string> stale;
+
+        for (const std::string& key : file.Keys())
+        {
+            if (std::string_view{key}.starts_with(kKeyBindingPrefix))
+            {
+                stale.push_back(key);
+            }
+        }
+
+        // Removed, not blanked: a binding the user has reset must leave the file rather
+        // than sit there as an empty value that LoadKeyBindings would warn about on every
+        // start.
+        for (const std::string& key : stale)
+        {
+            file.Remove(key);
+        }
+
+        keys.ForEachOverride(
+            [&file](const std::string& id, const core::Binding& binding)
+            { file.Set(std::string{kKeyBindingPrefix} + id, core::ToString(binding)); });
+
+        if (!file.Save(SettingsPath()))
+        {
+            CORE_WARN("Cannot write '{}'", SettingsPath().string());
+        }
     }
 }

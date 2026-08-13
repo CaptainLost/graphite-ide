@@ -1,5 +1,8 @@
 #include "Panels/ExplorerPanel.h"
 
+#include "AppSettings.h"
+
+#include "Core/Command/CommandRegistry.h"
 #include "Core/Fs/FileSystem.h"
 
 #include <imgui.h>
@@ -12,6 +15,23 @@ namespace graphite
     namespace
     {
         constexpr const char* kModeKey = "explorerMode";
+
+        // Adjectives, not verbs: the tick beside one of them makes these a state rather than
+        // a command, and four levels deep "Dim" alone no longer says what it would dim. The
+        // submenu names the subject and these name the treatment, so it reads as
+        // "Ignored Files: Dimmed".
+        struct DisplayMode
+        {
+            const char* id;
+            const char* label;
+            GitIgnoredDisplay display;
+        };
+
+        constexpr DisplayMode kDisplayModes[] = {
+            {"git.ignored.show", "Visible", GitIgnoredDisplay::Show},
+            {"git.ignored.dim", "Dimmed", GitIgnoredDisplay::Dim},
+            {"git.ignored.hide", "Hidden", GitIgnoredDisplay::Hide},
+        };
     }
 
     ExplorerPanel::ExplorerPanel(Workspace& workspace, const core::text::DocumentSet& documents)
@@ -102,5 +122,32 @@ namespace graphite
         }
 
         ImGui::EndCombo();
+    }
+
+    void ExplorerPanel::LoadSettings()
+    {
+        Apply(GitIgnoredDisplayFromString(AppSettings::LoadGitIgnoredDisplay()), false);
+    }
+
+    void ExplorerPanel::RegisterCommands(core::CommandRegistry& commands)
+    {
+        for (const DisplayMode& mode : kDisplayModes)
+        {
+            commands.Add({.id = mode.id,
+                          .label = mode.label,
+                          .run = [this, mode] { Apply(mode.display, true); },
+                          .checked = [this, mode] { return m_display == mode.display; }});
+        }
+    }
+
+    void ExplorerPanel::Apply(GitIgnoredDisplay display, bool persist)
+    {
+        m_display = display;
+        m_files.SetGitIgnoredDisplay(display);
+
+        if (persist)
+        {
+            AppSettings::SaveGitIgnoredDisplay(GitIgnoredDisplayToString(display));
+        }
     }
 }

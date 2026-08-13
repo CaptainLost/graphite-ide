@@ -2,6 +2,7 @@
 
 #include "Editor/ModalGate.h"
 #include "Editor/ModalQuestion.h"
+#include "Editor/TextEditorWidget.h"
 
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
@@ -12,6 +13,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+namespace core
+{
+    class CommandRegistry;
+    class Keymap;
+}
 
 namespace core::text
 {
@@ -59,11 +66,11 @@ namespace graphite
         /// document rather than held here: like the font size and the indent style, it
         /// belongs to whoever persists it.
         ///
-        /// Returns the total Ctrl+wheel zoom delta applied across every visible document
-        /// this frame - only one can be hovered at a time, so in practice at most one
-        /// contributes, but summing costs nothing and needs no assumption about that.
-        float Render(float fontSize, core::text::IndentStyle indentStyle,
-                    unsigned int fallbackDockNode, bool wordWrap);
+        /// `context` is passed straight through to each editor, which fires the Ctrl+wheel
+        /// gesture itself: nothing about it is read here.
+        void Render(const CommandContext& context, float fontSize,
+                    core::text::IndentStyle indentStyle, unsigned int fallbackDockNode,
+                    bool wordWrap);
 
         /// Opens a file, asking first when it is large enough to need confirmation.
         void RequestOpen(const std::filesystem::path& path, bool permanent);
@@ -119,6 +126,14 @@ namespace graphite
         /// which is why this is public rather than folded into Render() - one save-all
         /// recipe, not two.
         bool SaveAllModified();
+
+        /// Whether any open document has unsaved changes. What "Save All" is enabled by,
+        /// and what the exit question is asked over.
+        [[nodiscard]] bool AnyModified() const;
+
+        /// Registers "Save All" and its Ctrl+Shift+S default. Here rather than in the
+        /// layer because this is the object that already owns saving.
+        void RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys);
 
         /// A short-lived note for the status bar - what a reload or a failed save just
         /// did - or nothing once it has expired. GraphiteLayer reads this every frame to

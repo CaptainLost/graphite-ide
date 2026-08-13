@@ -1,5 +1,6 @@
 #include "Editor/TextEditorWidget.h"
 
+#include "Core/Command/ShortcutRouter.h"
 #include "Core/Gui/ImGuiRenderer.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
@@ -99,8 +100,9 @@ namespace graphite
         }
     }
 
-    EditorFrameResult DrawEditor(core::text::OpenItem& item, float fontSize,
-                                 core::text::IndentStyle indentStyle, bool wordWrap)
+    EditorFrameResult DrawEditor(const CommandContext& context, core::text::OpenItem& item,
+                                 float fontSize, core::text::IndentStyle indentStyle,
+                                 bool wordWrap)
     {
         EditorFrameResult result;
 
@@ -336,10 +338,24 @@ namespace graphite
                 }
             }
 
-            if (ImGui::IsWindowHovered() && ImGui::GetIO().KeyCtrl
-                && ImGui::GetIO().MouseWheel != 0.0f)
+            // Fired here rather than reported upwards: this window is what defines the
+            // scope, and the value used to travel three levels — widget,
+            // DocumentWindows::Render's sum, its return value — before anything acted on
+            // it. Which modifiers count and how a fast spin's several notches turn into
+            // several steps are the router's and the keymap's business now, so neither
+            // KeyCtrl nor the wheel value is inspected here.
+            // All three checked, not just the router: the struct's members each default to
+            // nullptr, so a partly filled one is a thing the type admits, and a guard that
+            // reads as "this may arrive incomplete" while crashing if it does is worse
+            // than no guard at all.
+            const bool routable =
+                context.router != nullptr && context.commands != nullptr && context.keys != nullptr;
+
+            if (ImGui::IsWindowHovered() && routable)
             {
-                result.zoomDelta = ImGui::GetIO().MouseWheel;
+                context.router->DispatchWheel(*context.commands, *context.keys,
+                                              core::Scope::HoveredEditor,
+                                              ImGui::GetIO().MouseWheel);
             }
 
             // The keyboard is scoped to this document's own child window, not merely to

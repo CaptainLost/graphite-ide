@@ -66,6 +66,26 @@ namespace core
         m_document->root[std::string{key}] = std::move(value);
     }
 
+    void JsonFile::Remove(std::string_view key)
+    {
+        m_document->root.erase(std::string{key});
+    }
+
+    std::vector<std::string> JsonFile::Keys() const
+    {
+        const nlohmann::json& root = m_document->root;
+
+        std::vector<std::string> keys;
+        keys.reserve(root.size());
+
+        for (const auto& entry : root.items())
+        {
+            keys.push_back(entry.key());
+        }
+
+        return keys;
+    }
+
     std::size_t JsonFile::Count() const noexcept
     {
         return m_document->root.size();

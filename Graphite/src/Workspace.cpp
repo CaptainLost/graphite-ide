@@ -3,6 +3,7 @@
 #include "AppSettings.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Command/CommandRegistry.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/FileDialog.h"
 
@@ -699,6 +700,17 @@ namespace graphite
         // The guard keys on which solution was attempted, so switching to another is
         // never mistaken for a repeat of the last one.
         LoadSolution();
+    }
+
+    void Workspace::RegisterCommands(core::CommandRegistry& commands)
+    {
+        commands.Add({.id = "workspace.openFolder",
+                      .label = "Open Folder...",
+                      .run = [this] { OpenFolderInteractively(*this); }});
+
+        commands.Add({.id = "workspace.openSolution",
+                      .label = "Open Solution...",
+                      .run = [this] { OpenSolutionInteractively(*this); }});
     }
 
     void OpenFolderInteractively(Workspace& workspace)

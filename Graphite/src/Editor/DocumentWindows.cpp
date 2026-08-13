@@ -2,6 +2,9 @@
 
 #include "Editor/TextEditorWidget.h"
 
+#include "Core/Command/Chord.h"
+#include "Core/Command/CommandRegistry.h"
+#include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Gui/Icons.h"
 #include "Core/Text/DocumentSet.h"
@@ -13,6 +16,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -407,6 +411,32 @@ namespace graphite
         return report.Complete();
     }
 
+    bool DocumentWindows::AnyModified() const
+    {
+        for (std::size_t index = 0; index < m_documents.Count(); ++index)
+        {
+            const core::text::OpenItem& item = m_documents.At(index);
+
+            if (item.document && item.document->IsModified())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void DocumentWindows::RegisterCommands(core::CommandRegistry& commands, core::Keymap& keys)
+    {
+        commands.Add({.id = "document.saveAll",
+                      .label = "Save All",
+                      .run = [this] { (void)SaveAllModified(); },
+                      .enabled = [this] { return AnyModified(); }});
+
+        keys.SetDefault("document.saveAll",
+                        {.primary = core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
+    }
+
     void DocumentWindows::SetTransientMessage(std::string text)
     {
         m_transientMessage =
@@ -424,8 +454,9 @@ namespace graphite
         return m_transientMessage->text;
     }
 
-    float DocumentWindows::Render(float fontSize, core::text::IndentStyle indentStyle,
-                                  unsigned int fallbackDockNode, bool wordWrap)
+    void DocumentWindows::Render(const CommandContext& context, float fontSize,
+                                 core::text::IndentStyle indentStyle,
+                                 unsigned int fallbackDockNode, bool wordWrap)
     {
         // Identities as they stand at the start of this frame - after RequestOpen,
         // CloseAll or HandleRootMoved, all of which run earlier in the same
@@ -438,8 +469,6 @@ namespace graphite
         // path.
         const std::optional<std::filesystem::path> focusRequest =
             std::exchange(m_focusRequest, std::nullopt);
-
-        float zoomDelta = 0.0f;
 
         // Every question below asks the gate before opening and keeps whatever it was
         // asked about pending when refused - see ModalGate for why they cannot simply all
@@ -803,8 +832,7 @@ namespace graphite
                     m_documents.Promote(index);
 
                 const EditorFrameResult editorResult =
-                    DrawEditor(item, fontSize, indentStyle, wordWrap);
-                zoomDelta += editorResult.zoomDelta;
+                    DrawEditor(context, item, fontSize, indentStyle, wordWrap);
 
                 // The first edit promotes a preview tab exactly as a double click does:
                 // once the user has typed into it, it is no longer something they were
@@ -850,16 +878,6 @@ namespace graphite
             ++index;
         }
 
-        // Ctrl+Shift+S over every dirty document. RouteGlobal, the same as
-        // GraphiteLayer's zoom shortcuts and for the same reason: this runs after every
-        // window this frame has already Begin/End'd, so there is no "current" window a
-        // RouteFocused check could compare against.
-        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S,
-                            ImGuiInputFlags_RouteGlobal))
-        {
-            SaveAllModified();
-        }
-
         // Purges whatever left the document set since the last time this ran without
         // going through this loop's own close button above - see m_previousIdentities.
         // Deliberately runs after the loop: a renamed document's pending dock target has
@@ -876,7 +894,5 @@ namespace graphite
         }
 
         m_previousIdentities = CurrentIdentities(m_documents);
-
-        return zoomDelta;
     }
 }
