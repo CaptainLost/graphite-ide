@@ -642,3 +642,40 @@ TEST_CASE("Undo keeps the map wrapping to the width it was built for")
 	CHECK(item.Rows.TotalRows() == rowsBefore);
 	CheckDerivedCachesAreCorrect(item);
 }
+
+TEST_CASE("Undo puts the caret where the change it reversed was")
+{
+	// The caret used to be left where it happened to be and merely clamped to the new
+	// length, so undoing an insertion that sat before it shifted the text out from under
+	// it: the offset stayed put while the bytes moved, and the caret ended up somewhere the
+	// user never pointed at.
+	Core::OpenItem item = ItemWith("abc");
+
+	Core::InsertText(item, "XYZ");
+	REQUIRE(item.Document->GetBuffer().Materialize() == "XYZabc");
+
+	item.Caret.Offset = 6;
+	item.Caret.Anchor = 6;
+
+	REQUIRE(Core::Undo(item));
+
+	CHECK(item.Document->GetBuffer().Materialize() == "abc");
+	CHECK(item.Caret.Offset == 0);
+	CHECK(item.Caret.Anchor == 0);
+}
+
+TEST_CASE("Redo puts the caret after the change it reapplied")
+{
+	Core::OpenItem item = ItemWith("abc");
+
+	Core::InsertText(item, "XYZ");
+	REQUIRE(Core::Undo(item));
+
+	item.Caret.Offset = 3;
+	item.Caret.Anchor = 3;
+
+	REQUIRE(Core::Redo(item));
+
+	CHECK(item.Document->GetBuffer().Materialize() == "XYZabc");
+	CHECK(item.Caret.Offset == 3);
+}

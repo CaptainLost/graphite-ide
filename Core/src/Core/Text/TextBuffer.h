@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,9 +25,12 @@ namespace Core {
 		void Insert(std::size_t offset, std::string_view text);
 		void Erase(std::size_t from, std::size_t to);
 
-		bool Undo();
+		// Both report where the caret belongs afterwards — the end of what was put back, or
+		// the start of what was taken away — because only the history knows which part of
+		// the document moved. Nothing when there was nothing to step through.
+		std::optional<std::size_t> Undo();
 
-		bool Redo();
+		std::optional<std::size_t> Redo();
 
 		void BeginTransaction();
 		void EndTransaction();

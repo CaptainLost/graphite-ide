@@ -385,12 +385,13 @@ namespace Core {
 		m_Undo.push_back(Edit{m_NextEditId++, from, std::move(removed), false, 0, false, group});
 	}
 
-	bool TextBuffer::Undo()
+	std::optional<std::size_t> TextBuffer::Undo()
 	{
 		if (m_Undo.empty())
-			return false;
+			return std::nullopt;
 
 		const std::size_t group = m_Undo.back().group;
+		std::size_t caret = 0;
 
 		while (!m_Undo.empty() && m_Undo.back().group == group)
 		{
@@ -398,21 +399,29 @@ namespace Core {
 			m_Undo.pop_back();
 
 			ApplyEdit(edit, true);
+
+			// Reversed: an insertion is taken away, so the caret goes where it began; a
+			// deletion is put back, so the caret goes to the end of what returned. The group
+			// is walked newest first, so the last turn of this loop is the oldest edit in it
+			// and its position is the one the user is looking at.
+			caret = edit.inserted ? edit.offset : edit.offset + edit.text.size();
+
 			m_Redo.push_back(std::move(edit));
 		}
 
 		m_BreakGroup = true;
 		m_LastGroupKind = GroupKind::None;
 
-		return true;
+		return caret;
 	}
 
-	bool TextBuffer::Redo()
+	std::optional<std::size_t> TextBuffer::Redo()
 	{
 		if (m_Redo.empty())
-			return false;
+			return std::nullopt;
 
 		const std::size_t group = m_Redo.back().group;
+		std::size_t caret = 0;
 
 		while (!m_Redo.empty() && m_Redo.back().group == group)
 		{
@@ -420,13 +429,18 @@ namespace Core {
 			m_Redo.pop_back();
 
 			ApplyEdit(edit, false);
+
+			// Applied forwards, so the mirror of Undo: an insertion ends with the caret past
+			// the text it added, a deletion with the caret where the text used to start.
+			caret = edit.inserted ? edit.offset + edit.text.size() : edit.offset;
+
 			m_Undo.push_back(std::move(edit));
 		}
 
 		m_BreakGroup = true;
 		m_LastGroupKind = GroupKind::None;
 
-		return true;
+		return caret;
 	}
 
 	std::size_t TextBuffer::GetRevision() const

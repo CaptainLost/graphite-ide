@@ -214,13 +214,13 @@ namespace Core {
 			return true;
 		}
 
-		bool SettleAfterHistoryStep(OpenItem& item)
+		bool SettleAfterHistoryStep(OpenItem& item, std::size_t caretOffset)
 		{
 			TextBuffer& buffer = item.Document->GetBuffer();
 
 			buffer.BreakUndoGroup();
 
-			CollapseCaretTo(item.Caret, std::min(item.Caret.Offset, buffer.GetLength()));
+			CollapseCaretTo(item.Caret, std::min(caretOffset, buffer.GetLength()));
 
 			RefreshDerived(item);
 
@@ -359,19 +359,29 @@ namespace Core {
 	{
 		// Not gated by Editable: every state in the history is one the buffer already held,
 		// so a reload that turned the document read-only stays reversible.
-		if (!item.Document || !item.Document->GetBuffer().Undo())
+		if (!item.Document)
 			return false;
 
-		return SettleAfterHistoryStep(item);
+		const std::optional<std::size_t> caret = item.Document->GetBuffer().Undo();
+
+		if (!caret)
+			return false;
+
+		return SettleAfterHistoryStep(item, *caret);
 	}
 
 	bool Redo(OpenItem& item)
 	{
 		// Ungated for the same reason as Undo.
-		if (!item.Document || !item.Document->GetBuffer().Redo())
+		if (!item.Document)
 			return false;
 
-		return SettleAfterHistoryStep(item);
+		const std::optional<std::size_t> caret = item.Document->GetBuffer().Redo();
+
+		if (!caret)
+			return false;
+
+		return SettleAfterHistoryStep(item, *caret);
 	}
 
 	bool InsertNewline(OpenItem& item, IndentStyle /*style*/)
