@@ -310,7 +310,11 @@ namespace Core {
 
 			const std::size_t headerBytes = offsetof(FILE_NOTIFY_INFORMATION, FileName);
 
-			if (offset + headerBytes + record->FileNameLength > bytes)
+			// The header has to be proved to fit before FileNameLength is read, because that
+			// field is part of the header: testing both at once reads it out of whatever
+			// follows the reported data when fewer bytes than a header are left.
+			if (offset + headerBytes > bytes ||
+				offset + headerBytes + record->FileNameLength > bytes)
 			{
 				CORE_WARN("Discarding a truncated change record while watching '{}'",
 						  m_Root.string());
