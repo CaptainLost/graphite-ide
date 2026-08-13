@@ -5,7 +5,10 @@
 #include "Core/Base/Color.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
+#include "Core/Events/Event.h"
 #include "Core/Platform/Caption.h"
+
+#include <functional>
 
 #include <memory>
 #include <string>
@@ -28,6 +31,11 @@ namespace Core {
 	{
 	public:
 		virtual ~Window() = default;
+
+		// Called as each event arrives, from inside PollEvents. Install it before the first
+		// poll: events produced before there is a callback are dropped, not queued.
+		using EventCallbackFn = std::function<void(Event&)>;
+		virtual void SetEventCallback(EventCallbackFn callback) = 0;
 
 		virtual void PollEvents() = 0;
 		virtual void SwapBuffers() = 0;

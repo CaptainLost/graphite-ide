@@ -2,6 +2,7 @@
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
+#include "Core/Events/Event.h"
 
 #include <string>
 #include <utility>
@@ -18,6 +19,10 @@ namespace Core {
 		virtual void OnDetach() {}
 		virtual void OnUpdate(Timestep ts) { (void)ts; }
 		virtual void OnImGuiRender() {}
+
+		// Called as the event arrives, before the frame that produced it draws. Set
+		// event.Handled to stop it reaching the layers below.
+		virtual void OnEvent(Event& event) { (void)event; }
 
 		// Returning true does not by itself close the window: refusing already cleared the
 		// flag the loop tests, so a layer that has finished asking must call

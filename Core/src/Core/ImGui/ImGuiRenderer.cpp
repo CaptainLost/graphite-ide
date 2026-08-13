@@ -185,6 +185,22 @@ namespace Core {
 		m_Initialized = false;
 	}
 
+	void ImGuiRenderer::OnEvent(Event& event)
+	{
+		if (!m_Initialized)
+			return;
+
+		const ImGuiIO& io = ImGui::GetIO();
+
+		// Asked per category rather than per type: the question is whether the GUI wants the
+		// keyboard or the mouse at all, and every event in the category answers the same way.
+		if (event.IsInCategory(EventCategoryKeyboard) && io.WantCaptureKeyboard)
+			event.Handled = true;
+
+		if (event.IsInCategory(EventCategoryMouse) && io.WantCaptureMouse)
+			event.Handled = true;
+	}
+
 	void ImGuiRenderer::BeginFrame()
 	{
 		ImGui_ImplOpenGL3_NewFrame();

@@ -12,6 +12,22 @@ namespace Core {
 
 	Application* Application::s_Instance = nullptr;
 
+	void Application::OnEvent(Event& event)
+	{
+		// Nothing here handles WindowClose. Closing still runs through ShouldClose in the
+		// loop below, which asks every layer rather than stopping at the first that answers
+		// — a layer that is never asked never gets to put its question on screen.
+		m_Gui.OnEvent(event);
+
+		for (auto layer = m_Layers.rbegin(); layer != m_Layers.rend(); ++layer)
+		{
+			if (event.Handled)
+				break;
+
+			(*layer)->OnEvent(event);
+		}
+	}
+
 	Application::Application(ApplicationSpec spec) : m_Spec(std::move(spec))
 	{
 		CORE_ASSERT(s_Instance == nullptr, "Application already exists");
@@ -66,6 +82,8 @@ namespace Core {
 			m_Window.reset();
 			return init.GetError();
 		}
+
+		m_Window->SetEventCallback(CORE_BIND_EVENT_FN(Application::OnEvent));
 
 		OnInit();
 

@@ -50,6 +50,10 @@ namespace Core {
 
 		static Application& Get();
 
+		// Entry point for everything the window reports. The GUI gets first refusal, then the
+		// layers from the top down, and the walk stops at the first one that consumes.
+		void OnEvent(Event& event);
+
 	protected:
 		virtual void OnInit() {}
 		virtual void OnShutdown() {}

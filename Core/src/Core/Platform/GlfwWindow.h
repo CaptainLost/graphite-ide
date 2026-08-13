@@ -18,6 +18,14 @@ namespace Core {
 		explicit GlfwWindow(GLFWwindow* handle);
 		~GlfwWindow() override;
 
+		void SetEventCallback(EventCallbackFn callback) override { m_EventCallback = std::move(callback); }
+
+		// Installs the GLFW callbacks that turn window and input notifications into events.
+		// Must run before the GUI backend initialises: that backend installs callbacks of
+		// its own and chains to whatever it found, so ours have to be there first or they
+		// are replaced rather than chained.
+		void InstallCallbacks();
+
 		void PollEvents() override;
 		void SwapBuffers() override;
 
@@ -40,6 +48,7 @@ namespace Core {
 
 	private:
 		GLFWwindow* m_Handle = nullptr;
+		EventCallbackFn m_EventCallback;
 
 		Scope<WindowFrame> m_Frame;
 	};
