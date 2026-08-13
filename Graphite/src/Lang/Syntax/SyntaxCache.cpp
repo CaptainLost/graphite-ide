@@ -9,7 +9,14 @@ namespace Graphite {
 
 	namespace {
 
-		const std::vector<Token> kNoTokens;
+		// Function-local rather than a file scope object, per ADR 0033 on complex
+		// initialization of globals.
+		const std::vector<Token>& NoTokens()
+		{
+			static const std::vector<Token> tokens;
+
+			return tokens;
+		}
 	}
 
 	void SyntaxCache::SetLexer(const Lexer* lexer)
@@ -61,7 +68,7 @@ namespace Graphite {
 	{
 		if (m_Lexer == nullptr || line >= buffer.GetLineCount())
 		{
-			return kNoTokens;
+			return NoTokens();
 		}
 
 		const std::size_t revision = buffer.GetRevision();
