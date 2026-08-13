@@ -25,7 +25,7 @@
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Conflict.h"
-#include "Core/Command/KeyBindingsPanel.h"
+#include "Panels/KeyBindingsPanel.h"
 #include "Core/Command/KeyName.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuBar.h"

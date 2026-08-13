@@ -1,6 +1,4 @@
-#include "corepch.h"
-
-#include "Core/Command/KeyBindingsPanel.h"
+#include "Panels/KeyBindingsPanel.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
@@ -16,15 +14,18 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <string_view>
+
 #include <utility>
 #include <vector>
 
-namespace Core {
+namespace Graphite {
 
 	namespace {
 		constexpr const char* kConflictPopup = "Shortcut already taken##keybindings";
 
-		std::string LabelOf(const Command& command)
+		std::string LabelOf(const Core::Command& command)
 		{
 			const std::size_t tab = command.Label.find('\t');
 
@@ -36,7 +37,7 @@ namespace Core {
 			return command.Label.substr(0, tab);
 		}
 
-		std::string TextOf(const Binding* binding, std::size_t slot)
+		std::string TextOf(const Core::Binding* binding, std::size_t slot)
 		{
 			if (binding == nullptr)
 			{
@@ -56,7 +57,7 @@ namespace Core {
 			return {};
 		}
 
-		std::string AllChordText(const Binding* binding)
+		std::string AllChordText(const Core::Binding* binding)
 		{
 			if (binding == nullptr)
 			{
@@ -65,7 +66,7 @@ namespace Core {
 
 			std::string text = binding->Primary.ToString();
 
-			for (const Chord& alternate : binding->Alternates)
+			for (const Core::Chord& alternate : binding->Alternates)
 			{
 				text.append(" ");
 				text.append(alternate.ToString());
@@ -83,7 +84,7 @@ namespace Core {
 
 			std::string text;
 
-			for (const ModifierName& modifier : kModifiers)
+			for (const Core::ModifierName& modifier : Core::kModifiers)
 			{
 				if ((mods & modifier.Bit) != 0)
 				{
@@ -97,14 +98,14 @@ namespace Core {
 			return text;
 		}
 
-		std::vector<Chord> Flatten(const Binding* binding)
+		std::vector<Core::Chord> Flatten(const Core::Binding* binding)
 		{
 			if (binding == nullptr)
 			{
 				return {};
 			}
 
-			std::vector<Chord> chords;
+			std::vector<Core::Chord> chords;
 			chords.reserve(binding->Alternates.size() + 1);
 			chords.push_back(binding->Primary);
 			chords.insert(chords.end(), binding->Alternates.begin(), binding->Alternates.end());
@@ -112,11 +113,11 @@ namespace Core {
 			return chords;
 		}
 
-		Binding Rebuild(std::vector<Chord> chords)
+		Core::Binding Rebuild(std::vector<Core::Chord> chords)
 		{
-			std::erase_if(chords, [](const Chord& chord) { return chord.IsEmpty(); });
+			std::erase_if(chords, [](const Core::Chord& chord) { return chord.IsEmpty(); });
 
-			Binding binding;
+			Core::Binding binding;
 
 			if (chords.empty())
 			{
@@ -130,9 +131,9 @@ namespace Core {
 		}
 	}
 
-	KeyBindingsPanel::KeyBindingsPanel(CommandRegistry& commands, Keymap& keys,
+	KeyBindingsPanel::KeyBindingsPanel(Core::CommandRegistry& commands, Core::Keymap& keys,
 									   std::function<void()> onChanged)
-		: Panel("keybindings", "Keyboard Shortcuts", false), m_Commands(commands), m_Keys(keys),
+		: Core::Panel("keybindings", "Keyboard Shortcuts", false), m_Commands(commands), m_Keys(keys),
 		  m_OnChanged(std::move(onChanged))
 	{
 	}
@@ -150,7 +151,7 @@ namespace Core {
 
 		if (ImGui::BeginTable("bindings", 4, flags))
 		{
-			ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+			ImGui::TableSetupColumn("Core::Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
 			ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, 2.0f);
 			ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, 3.0f);
 			ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
@@ -158,7 +159,7 @@ namespace Core {
 			ImGui::TableHeadersRow();
 
 			m_Commands.ForEach(
-				[this](const Command& command) {
+				[this](const Core::Command& command) {
 					if (Matches(command))
 					{
 						RenderRow(command);
@@ -171,7 +172,7 @@ namespace Core {
 		RenderConflictPopup();
 	}
 
-	void KeyBindingsPanel::OnEvent(Event& event)
+	void KeyBindingsPanel::OnEvent(Core::Event& event)
 	{
 		// Only while a cell is actually waiting, and only while this screen has the focus.
 		// The event reached here at all because nothing above consumed it — a focused filter
@@ -181,11 +182,11 @@ namespace Core {
 			return;
 		}
 
-		EventDispatcher dispatcher{event};
+		Core::EventDispatcher dispatcher{event};
 
-		dispatcher.Dispatch<KeyPressedEvent>(
-			[this](KeyPressedEvent& pressed) {
-				const ImGuiKey key = ToImGuiKey(pressed.GetKeyCode());
+		dispatcher.Dispatch<Core::KeyPressedEvent>(
+			[this](Core::KeyPressedEvent& pressed) {
+				const ImGuiKey key = Core::ToImGuiKey(pressed.GetKeyCode());
 
 				// Escape leaves the capture without binding anything — which is why Escape
 				// cannot be bound. The alternative is a cell the user cannot get out of.
@@ -198,7 +199,7 @@ namespace Core {
 
 				// A modifier going down is not an answer yet: it may be the start of a chord
 				// or a tap of its own, and only what happens next tells them apart.
-				if (const ImGuiKeyChord bit = ModifierBitOf(pressed.GetKeyCode()); bit != 0)
+				if (const ImGuiKeyChord bit = Core::ModifierBitOf(pressed.GetKeyCode()); bit != 0)
 				{
 					if (!pressed.IsRepeat())
 					{
@@ -218,7 +219,7 @@ namespace Core {
 				const std::string id = m_Capturing;
 				const std::size_t slot = m_CapturingSlot;
 
-				Offer(id, slot, Chord::Key(ToImGuiModifiers(pressed.GetModifiers()) | key));
+				Offer(id, slot, Core::Chord::Key(Core::ToImGuiModifiers(pressed.GetModifiers()) | key));
 				return true;
 			});
 
@@ -226,9 +227,9 @@ namespace Core {
 		// themselves. Recorded here rather than on the press for the same reason the router
 		// fires it here — until the release, this is indistinguishable from the start of an
 		// ordinary chord.
-		dispatcher.Dispatch<KeyReleasedEvent>(
-			[this](KeyReleasedEvent& released) {
-				if (ModifierBitOf(released.GetKeyCode()) == 0 || m_TapMods == 0)
+		dispatcher.Dispatch<Core::KeyReleasedEvent>(
+			[this](Core::KeyReleasedEvent& released) {
+				if (Core::ModifierBitOf(released.GetKeyCode()) == 0 || m_TapMods == 0)
 				{
 					return false;
 				}
@@ -239,32 +240,32 @@ namespace Core {
 				const std::string id = m_Capturing;
 				const std::size_t slot = m_CapturingSlot;
 
-				Offer(id, slot, Chord::ModifierTap(tapped));
+				Offer(id, slot, Core::Chord::ModifierTap(tapped));
 				return true;
 			});
 	}
 
-	bool KeyBindingsPanel::Matches(const Command& command) const
+	bool KeyBindingsPanel::Matches(const Core::Command& command) const
 	{
-		const std::string needle = Lowered(m_Filter.data());
+		const std::string needle = Core::Lowered(m_Filter.data());
 
 		if (needle.empty())
 		{
 			return true;
 		}
 
-		if (Lowered(command.Label).find(needle) != std::string::npos)
+		if (Core::Lowered(command.Label).find(needle) != std::string::npos)
 		{
 			return true;
 		}
 
-		return Lowered(AllChordText(m_Keys.For(command.Id))).find(needle) !=
+		return Core::Lowered(AllChordText(m_Keys.For(command.Id))).find(needle) !=
 			   std::string::npos;
 	}
 
-	void KeyBindingsPanel::RenderRow(const Command& command)
+	void KeyBindingsPanel::RenderRow(const Core::Command& command)
 	{
-		const Binding* binding = m_Keys.For(command.Id);
+		const Core::Binding* binding = m_Keys.For(command.Id);
 
 		ImGui::PushID(command.Id.c_str());
 		ImGui::TableNextRow();
@@ -371,7 +372,7 @@ namespace Core {
 			{
 				m_Capturing.clear();
 			}
-			else if (const std::optional<Chord> chord = CaptureWheelChord(hovered); chord.has_value())
+			else if (const std::optional<Core::Chord> chord = CaptureWheelChord(hovered); chord.has_value())
 			{
 				Offer(id, slot, *chord);
 			}
@@ -380,7 +381,7 @@ namespace Core {
 		ImGui::PopID();
 	}
 
-	std::optional<Chord> KeyBindingsPanel::CaptureWheelChord(bool pointerOverCell)
+	std::optional<Core::Chord> KeyBindingsPanel::CaptureWheelChord(bool pointerOverCell)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 
@@ -400,14 +401,14 @@ namespace Core {
 		// to set.
 		if (pointerOverCell && io.MouseWheel != 0.0f && io.KeyMods != ImGuiMod_None)
 		{
-			return Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown,
-								Chord::Scope::HoveredEditor);
+			return Core::Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Core::Trigger::WheelUp : Core::Trigger::WheelDown,
+									  Core::Chord::Scope::HoveredEditor);
 		}
 
 		return std::nullopt;
 	}
 
-	void KeyBindingsPanel::Offer(const std::string& id, std::size_t slot, const Chord& chord)
+	void KeyBindingsPanel::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
 		const std::string_view owner = m_Keys.BoundTo(chord);
 
@@ -424,9 +425,9 @@ namespace Core {
 		m_ConflictAsked = false;
 	}
 
-	void KeyBindingsPanel::Apply(const std::string& id, std::size_t slot, const Chord& chord)
+	void KeyBindingsPanel::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
-		std::vector<Chord> chords = Flatten(m_Keys.For(id));
+		std::vector<Core::Chord> chords = Flatten(m_Keys.For(id));
 
 		if (slot < chords.size())
 		{
@@ -488,7 +489,7 @@ namespace Core {
 			return;
 		}
 
-		const Command* owner = m_Commands.Find(m_ConflictOwner);
+		const Core::Command* owner = m_Commands.Find(m_ConflictOwner);
 		const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : m_ConflictOwner;
 
 		ImGui::Text("%s is already bound to %s.", m_Conflict->ToString().c_str(),
@@ -498,11 +499,11 @@ namespace Core {
 		{
 			const std::string id = m_Capturing;
 			const std::size_t slot = m_CapturingSlot;
-			const Chord chord = *m_Conflict;
+			const Core::Chord chord = *m_Conflict;
 
-			if (const Binding* current = m_Keys.For(m_ConflictOwner); current != nullptr)
+			if (const Core::Binding* current = m_Keys.For(m_ConflictOwner); current != nullptr)
 			{
-				std::vector<Chord> chords = Flatten(current);
+				std::vector<Core::Chord> chords = Flatten(current);
 				std::erase(chords, chord);
 
 				// Stored even when nothing is left, as an override that binds nothing.

@@ -14,35 +14,38 @@ namespace Core {
 	class CommandRegistry;
 	class Keymap;
 	struct Command;
+}
 
-	class KeyBindingsPanel final : public Panel
+namespace Graphite {
+
+	class KeyBindingsPanel final : public Core::Panel
 	{
 	public:
-		KeyBindingsPanel(CommandRegistry& commands, Keymap& keys, std::function<void()> onChanged);
+		KeyBindingsPanel(Core::CommandRegistry& commands, Core::Keymap& keys, std::function<void()> onChanged);
 
 		void OnImGuiRender() override;
 
-		void OnEvent(Event& event) override;
+		void OnEvent(Core::Event& event) override;
 
 	private:
-		std::optional<Chord> CaptureWheelChord(bool pointerOverCell);
+		std::optional<Core::Chord> CaptureWheelChord(bool pointerOverCell);
 
-		void RenderRow(const Command& command);
+		void RenderRow(const Core::Command& command);
 
 		void RenderSlot(const std::string& id, std::size_t slot, const std::string& text);
 
-		void Offer(const std::string& id, std::size_t slot, const Chord& chord);
+		void Offer(const std::string& id, std::size_t slot, const Core::Chord& chord);
 
-		void Apply(const std::string& id, std::size_t slot, const Chord& chord);
+		void Apply(const std::string& id, std::size_t slot, const Core::Chord& chord);
 
 		void RenderConflictPopup();
 
 		void ForgetConflict();
 
-		bool Matches(const Command& command) const;
+		bool Matches(const Core::Command& command) const;
 
-		CommandRegistry& m_Commands;
-		Keymap& m_Keys;
+		Core::CommandRegistry& m_Commands;
+		Core::Keymap& m_Keys;
 		std::function<void()> m_OnChanged;
 
 		// Whether this screen held the focus while it last drew. Events arrive before the
@@ -58,7 +61,7 @@ namespace Core {
 		std::string m_Capturing;
 		std::size_t m_CapturingSlot = 0;
 
-		std::optional<Chord> m_Conflict;
+		std::optional<Core::Chord> m_Conflict;
 		std::string m_ConflictOwner;
 
 		bool m_ConflictAsked = false;

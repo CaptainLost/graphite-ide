@@ -16,7 +16,7 @@
 
 #include "Core/Base/Log.h"
 
-#include "Core/Command/KeyBindingsPanel.h"
+#include "Panels/KeyBindingsPanel.h"
 
 #include "Core/Fs/FileSystem.h"
 
@@ -121,7 +121,7 @@ namespace Graphite {
 		// After the load, so the screen opens onto the bindings actually in force. The
 		// callback is what keeps Core clear of AppSettings: the panel knows a binding
 		// moved, this layer knows where bindings are kept.
-		m_Panels.Add(Core::CreateScope<Core::KeyBindingsPanel>(
+		m_Panels.Add(Core::CreateScope<KeyBindingsPanel>(
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
 
 		// The defaults are assembled across five files, each of which believes it is
