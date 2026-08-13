@@ -255,7 +255,7 @@ namespace Graphite {
 			if (columnsPerRow == item.WrappedTo && item.Rows.GetLineCount() == buffer.GetLineCount())
 				return;
 
-			item.Rows.Rebuild(buffer, columnsPerRow, Core::DefaultTabWidth);
+			item.Rows.Rebuild(buffer, columnsPerRow, item.TabWidth);
 			item.WrappedTo = columnsPerRow;
 
 			// The aim was a column of the geometry that just went away: after a resize or a
@@ -385,12 +385,12 @@ namespace Graphite {
 			// right of a short row land on its end.
 			const std::size_t offset =
 				Core::VisualToCaret(buffer, item.Rows, Core::VisualPosition{row, column},
-									Core::DefaultTabWidth);
+									item.TabWidth);
 
 			if (!pointer.PressedThisFrame)
 			{
 				// Dragging always extends, whichever way it goes.
-				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, true, Core::DefaultTabWidth);
+				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, true, item.TabWidth);
 				return;
 			}
 
@@ -404,7 +404,7 @@ namespace Graphite {
 				item.Caret = Core::SelectWordAt(buffer, offset);
 			else
 				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, ImGui::GetIO().KeyShift,
-										   Core::DefaultTabWidth);
+										   item.TabWidth);
 		}
 
 		void RouteMouseWheel(const CommandContext& context)
@@ -454,7 +454,7 @@ namespace Graphite {
 		// motions need it.
 		std::size_t RowOfCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item)
 		{
-			return Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset, Core::DefaultTabWidth)
+			return Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset, item.TabWidth)
 				.Row;
 		}
 
@@ -471,7 +471,7 @@ namespace Graphite {
 		{
 			const std::size_t offset =
 				Core::VisualToCaret(buffer, item.Rows, Core::VisualPosition{targetRow, column},
-									Core::DefaultTabWidth);
+									item.TabWidth);
 
 			item.Caret.Offset = offset;
 
@@ -497,7 +497,7 @@ namespace Graphite {
 						std::size_t rows, bool shift)
 		{
 			const Core::VisualPosition here =
-				Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset, Core::DefaultTabWidth);
+				Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset, item.TabWidth);
 
 			// The aim is trusted only while the caret is still where it was computed for.
 			// Anything else that moved the caret — a click, an arrow key, an edit, a rebuild at a
@@ -568,7 +568,7 @@ namespace Graphite {
 
 					item.Caret = Core::Move(buffer, item.Caret,
 											control ? binding.WithControl : binding.Plain, shift,
-											Core::DefaultTabWidth, pageRows);
+											item.TabWidth, pageRows);
 				}
 
 				if (stroke.Key == Core::KeyCode::Up)
@@ -588,7 +588,7 @@ namespace Graphite {
 					if (control)
 					{
 						item.Caret = Core::Move(buffer, item.Caret, Core::Motion::DocumentStart,
-												shift, Core::DefaultTabWidth, pageRows);
+												shift, item.TabWidth, pageRows);
 					}
 					else
 					{
@@ -601,7 +601,7 @@ namespace Graphite {
 					if (control)
 					{
 						item.Caret = Core::Move(buffer, item.Caret, Core::Motion::DocumentEnd,
-												shift, Core::DefaultTabWidth, pageRows);
+												shift, item.TabWidth, pageRows);
 					}
 					else
 					{
@@ -856,7 +856,7 @@ namespace Graphite {
 			// reach, which is short of the caret by however much the text above it wrapped.
 			const float caretY = static_cast<float>(Core::CaretToVisual(buffer, item.Rows,
 																		item.Caret.Offset,
-																		Core::DefaultTabWidth)
+																		item.TabWidth)
 														.Row) *
 								 metrics.LineHeight;
 
@@ -880,7 +880,7 @@ namespace Graphite {
 			const float caretX =
 				metrics.Gutter.TotalWidth +
 				static_cast<float>(Core::ColumnOfByte(buffer.LineText(where.Line), where.Column,
-													  Core::DefaultTabWidth)) *
+													  item.TabWidth)) *
 					metrics.CellWidth;
 
 			if (caretX - metrics.Gutter.TotalWidth < ImGui::GetScrollX())
@@ -975,7 +975,7 @@ namespace Graphite {
 		};
 
 		void CacheLine(VisibleLineCache& cache, const Core::TextBuffer& buffer, std::size_t line,
-					   std::size_t selectionFrom, std::size_t selectionTo)
+					   std::size_t selectionFrom, std::size_t selectionTo, std::size_t tabWidth)
 		{
 			if (cache.Valid && cache.Line == line)
 				return;
@@ -983,7 +983,7 @@ namespace Graphite {
 			cache.Text = buffer.LineText(line);
 			// Tabs are advances, not glyphs; expanding them into spaces first keeps a row one
 			// AddText call instead of one run per tab.
-			cache.Expanded = Core::ExpandTabs(cache.Text, Core::DefaultTabWidth);
+			cache.Expanded = Core::ExpandTabs(cache.Text, tabWidth);
 			cache.Line = line;
 			cache.Valid = true;
 			cache.HaveCarried = false;
@@ -1002,12 +1002,12 @@ namespace Graphite {
 			const std::size_t toByte = std::min(selectionTo - start, cache.Text.size() + 1);
 
 			cache.SelectionFromColumn =
-				Core::ColumnOfByte(cache.Text, fromByte, Core::DefaultTabWidth);
+				Core::ColumnOfByte(cache.Text, fromByte, tabWidth);
 			// A selection running past this line's end shows the newline as one cell of
 			// highlight, which is how every editor draws it — that is the trailing +1.
 			cache.SelectionToColumn = Core::ColumnOfByte(cache.Text,
 														 std::min(toByte, cache.Text.size()),
-														 Core::DefaultTabWidth) +
+														 tabWidth) +
 									  (toByte > cache.Text.size() ? 1 : 0);
 		}
 
@@ -1076,9 +1076,10 @@ namespace Graphite {
 		// starts partway into the line, and a guide drawn from the line's own column 0 would sit
 		// that far to the right of the character it belongs under. A guide whose column is behind
 		// this row's start belongs to a row above and is not drawn again here.
-		void DrawIndentGuides(const RowCanvas& canvas, const RowSlice& slice, std::size_t depth)
+		void DrawIndentGuides(const RowCanvas& canvas, const RowSlice& slice, std::size_t depth,
+							  std::size_t tabWidth)
 		{
-			for (std::size_t column = 0; column < depth; column += Core::DefaultTabWidth)
+			for (std::size_t column = 0; column < depth; column += tabWidth)
 			{
 				if (column < slice.FromColumn)
 					continue;
@@ -1125,7 +1126,8 @@ namespace Graphite {
 		// still one *cell* and a UTF-8 character is one to four bytes, so the x of a run is
 		// counted in cells from the row's first column with ColumnCount.
 		void DrawRowText(const RowCanvas& canvas, const RowSlice& slice,
-						 const VisibleLineCache& cache, const std::vector<Token>& tokens)
+						 const VisibleLineCache& cache, const std::vector<Token>& tokens,
+						 std::size_t tabWidth)
 		{
 			if (slice.FromByte >= slice.ToByte)
 			{
@@ -1158,7 +1160,7 @@ namespace Graphite {
 				canvas.Draw->AddText(ImVec2(x, slice.Y), colour, run.data(),
 									 run.data() + run.size());
 
-				column += Core::ColumnCount(run, Core::DefaultTabWidth);
+				column += Core::ColumnCount(run, tabWidth);
 				at = to;
 			};
 
@@ -1261,12 +1263,12 @@ namespace Graphite {
 			const std::size_t depth =
 				slice.Line < item.IndentDepths.size() ? item.IndentDepths[slice.Line] : 0;
 
-			DrawIndentGuides(canvas, slice, depth);
+			DrawIndentGuides(canvas, slice, depth, item.TabWidth);
 
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
 
-			DrawRowText(canvas, slice, cache, tokens);
+			DrawRowText(canvas, slice, cache, tokens, item.TabWidth);
 			DrawGutter(canvas, slice, slice.Line == caret.Line);
 
 			// Tested against the caret's *row*, not its line: a wrapped line occupies several rows
@@ -1321,7 +1323,7 @@ namespace Graphite {
 			// Read once here rather than per row: the loop below only compares against it, and
 			// CaretToVisual walks the caret line's break list.
 			caret.Visual = Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset,
-											   Core::DefaultTabWidth);
+											   item.TabWidth);
 			caret.Focused = focused;
 
 			const auto [selectionFrom, selectionTo] = Core::SelectionRange(item.Caret);
@@ -1341,7 +1343,7 @@ namespace Graphite {
 					const Core::RowRef ref = item.Rows.RowAt(rowIndex);
 					const float y = origin.y + static_cast<float>(row) * metrics.LineHeight;
 
-					CacheLine(cache, buffer, ref.Line, selectionFrom, selectionTo);
+					CacheLine(cache, buffer, ref.Line, selectionFrom, selectionTo, item.TabWidth);
 
 					// TokensOf caches one line at a time and returns a reference into that cache,
 					// so this is only safe to hold across the rows of *this* line — exactly the
@@ -1402,6 +1404,15 @@ namespace Graphite {
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float scrollX = ImGui::GetScrollX();
 			const float available = ImGui::GetContentRegionAvail().x;
+
+			// The same compare-and-rebuild the wrap width uses. A changed tab width invalidates
+			// every column in the document — the guides, the widest line and the wrap points are
+			// all measured in columns — so RefreshDerived recomputes all three.
+			if (item.TabWidth != view.Indent.Width && view.Indent.Width > 0)
+			{
+				item.TabWidth = view.Indent.Width;
+				Core::RefreshDerived(item);
+			}
 
 			RewrapIfGeometryChanged(item, buffer,
 									ColumnsThatFit(metrics, available, view.WordWrap));
