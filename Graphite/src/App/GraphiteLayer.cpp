@@ -242,11 +242,17 @@ namespace Graphite {
 		// gesture is the one place that knows the gesture happened over an editor, and it
 		// is drawn from here, so what it needs to turn that into a command is passed down
 		// rather than stored anywhere on the way.
-		const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router};
+		const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router, &m_FrameInput};
 
 		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
 								 m_EditorSettings.IsWordWrap());
+
+		// At the end of the frame, not at the start: the queue a frame drains is exactly what
+		// arrived since the previous one was drawn, and events keep arriving while a frame is
+		// being built. Cleared here rather than in OnUpdate for the same reason — this is the
+		// last point in the frame that reads it.
+		m_FrameInput.Clear();
 	}
 
 	void GraphiteLayer::OnEvent(Core::Event& event)
@@ -277,6 +283,28 @@ namespace Graphite {
 				m_Router.CancelTap();
 				return false;
 			});
+
+		if (event.Handled)
+		{
+			return;
+		}
+
+		// Whatever is left over is the text editor's to consider. Queued rather than handed
+		// to it here: which document holds the keyboard is decided by ImGui's window focus,
+		// which is only knowable while drawing, and by then the event object is long gone.
+		//
+		// Both handlers return false. Nothing below this layer is listening, and reporting a
+		// key as consumed here would claim it landed somewhere — while the queue is read by
+		// at most one focused editor, and often by none at all.
+		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
+			m_FrameInput.PushKey(pressed.GetKeyCode(), pressed.GetModifiers(), pressed.IsRepeat());
+			return false;
+		});
+
+		dispatcher.Dispatch<Core::KeyTypedEvent>([this](Core::KeyTypedEvent& typed) {
+			m_FrameInput.PushCharacter(typed.GetCodepoint());
+			return false;
+		});
 	}
 
 	bool GraphiteLayer::OnCloseRequested()

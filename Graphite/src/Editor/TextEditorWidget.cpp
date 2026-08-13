@@ -1,6 +1,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Core/Command/ShortcutRouter.h"
+#include "Core/Events/FrameInput.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
@@ -349,21 +350,34 @@ namespace Graphite {
 			// changes between the two calls in the same frame.
 			const bool focused = ImGui::IsWindowFocused();
 
-			if (focused)
+			// The queue is what the keyboard used to be polled for. A context arriving
+			// without one is a caller that has no input to offer, not an error: this
+			// document then simply draws, exactly as an unfocused one does.
+			if (focused && context.Input != nullptr)
 			{
-				const ImGuiIO& io = ImGui::GetIO();
-				const bool shift = io.KeyShift;
+				const Core::FrameInput& input = *context.Input;
+
+				// Asked of the stroke rather than of the keyboard: the queue is drained
+				// after the fact, and by then the modifiers held are not necessarily the
+				// ones that were held when the key went down.
+				const auto shiftOf = [](const Core::KeyStroke& stroke) {
+					return Core::HasModifier(stroke.Modifiers, Core::KeyModifier::Shift);
+				};
+
 				// On Windows, AltGr reports as Ctrl+Alt, not as a key of its own — so
 				// typing a Polish letter that needs AltGr (ą, ć, ę, ...) would otherwise
-				// read as Ctrl+<letter> here. Excluding KeyAlt keeps every shortcut in
+				// read as Ctrl+<letter> here. Excluding Alt keeps every shortcut in
 				// this block, not just Ctrl+A and Ctrl+C, from firing on those letters.
-				const bool control = io.KeyCtrl && !io.KeyAlt;
+				const auto controlOf = [](const Core::KeyStroke& stroke) {
+					return Core::HasModifier(stroke.Modifiers, Core::KeyModifier::Control) &&
+						   !Core::HasModifier(stroke.Modifiers, Core::KeyModifier::Alt);
+				};
 
 				struct Binding
 				{
-					ImGuiKey key;
-					Core::Motion plain;
-					Core::Motion withControl;
+					Core::KeyCode Key;
+					Core::Motion Plain;
+					Core::Motion WithControl;
 				};
 
 				// Horizontal motion only. Up, Down, Page Up, Page Down and the plain Home
@@ -373,20 +387,9 @@ namespace Graphite {
 				// and the end of the document are the same offsets however the text is laid
 				// out.
 				const Binding bindings[] = {
-					{ImGuiKey_LeftArrow, Core::Motion::Left, Core::Motion::WordLeft},
-					{ImGuiKey_RightArrow, Core::Motion::Right, Core::Motion::WordRight},
+					{Core::KeyCode::Left, Core::Motion::Left, Core::Motion::WordLeft},
+					{Core::KeyCode::Right, Core::Motion::Right, Core::Motion::WordRight},
 				};
-
-				for (const Binding& binding : bindings)
-				{
-					if (!ImGui::IsKeyPressed(binding.key, true))
-						continue;
-
-					item.Caret =
-						Core::Move(buffer, item.Caret,
-								   control ? binding.withControl : binding.plain, shift,
-								   Core::DefaultTabWidth, pageRows);
-				}
 
 				// Where the caret sits on screen. Computed on demand rather than once per
 				// frame: it copies the caret's line, which on a minified file is the whole
@@ -403,8 +406,11 @@ namespace Graphite {
 				// left for good — from Home and End, which stop aiming: the column they
 				// land on is the caret's own row column, which is what the next vertical
 				// move resolves for itself anyway.
+				//
+				// `shift` is passed in rather than captured: it belongs to the stroke being
+				// handled, and the strokes of one frame need not have been held alike.
 				const auto placeOnRow = [&](std::size_t targetRow, std::size_t column,
-											bool aiming) {
+											bool aiming, bool shift) {
 					const std::size_t offset = Core::VisualToCaret(
 						buffer, item.Rows, Core::VisualPosition{targetRow, column},
 						Core::DefaultTabWidth);
@@ -429,7 +435,7 @@ namespace Graphite {
 					}
 				};
 
-				const auto moveByRows = [&](bool down, std::size_t rows) {
+				const auto moveByRows = [&](bool down, std::size_t rows, bool shift) {
 					const Core::VisualPosition here = Core::CaretToVisual(
 						buffer, item.Rows, item.Caret.Offset, Core::DefaultTabWidth);
 
@@ -448,62 +454,89 @@ namespace Graphite {
 					const std::size_t target =
 						down ? here.Row + rows : (here.Row >= rows ? here.Row - rows : 0);
 
-					placeOnRow(target, aim, true);
+					placeOnRow(target, aim, true, shift);
 				};
 
-				if (ImGui::IsKeyPressed(ImGuiKey_UpArrow, true))
-					moveByRows(false, 1);
-
-				if (ImGui::IsKeyPressed(ImGuiKey_DownArrow, true))
-					moveByRows(true, 1);
-
-				if (ImGui::IsKeyPressed(ImGuiKey_PageUp, true))
-					moveByRows(false, pageRows);
-
-				if (ImGui::IsKeyPressed(ImGuiKey_PageDown, true))
-					moveByRows(true, pageRows);
-
-				if (ImGui::IsKeyPressed(ImGuiKey_Home, true))
+				// Movement first, in its own pass over the queue, and the edits below in a
+				// second one after the undo group has been broken and the typed characters
+				// inserted. That is the order this ran in when every key was polled — all the
+				// motions, then the text, then the rest — and the break between the two passes
+				// is what makes moving and then typing a fresh undo step.
+				//
+				// Auto-repeat is accepted here throughout: holding an arrow, Page Up or Home
+				// moves for as long as it is held. Only Ctrl+A refuses a repeat, being a
+				// selection rather than a motion.
+				for (const Core::KeyStroke& stroke : input.GetStrokes())
 				{
-					if (control)
-					{
-						item.Caret = Core::Move(buffer, item.Caret,
-												Core::Motion::DocumentStart, shift,
-												Core::DefaultTabWidth, pageRows);
-					}
-					else
-					{
-						placeOnRow(caretRow(), 0, false);
-					}
-				}
+					const bool shift = shiftOf(stroke);
+					const bool control = controlOf(stroke);
 
-				if (ImGui::IsKeyPressed(ImGuiKey_End, true))
-				{
-					if (control)
+					for (const Binding& binding : bindings)
 					{
-						item.Caret = Core::Move(buffer, item.Caret,
-												Core::Motion::DocumentEnd, shift,
-												Core::DefaultTabWidth, pageRows);
-					}
-					else
-					{
-						// A column no row can reach, left to VisualToCaret's clamp — which
-						// is precisely why it clamps rather than failing. On a wrapped row
-						// that lands one column short of the right edge: the offset at the
-						// edge is also the offset at the next row's column zero, and the
-						// rule assigns it to the next row. Deliberate, and recorded as
-						// debt — reaching the edge needs a caret affinity bit.
-						//
-						// Halved rather than the maximum itself: VisualToCaret adds the
-						// row's own start column to this before clamping, and that sum has
-						// to stay representable.
-						placeOnRow(caretRow(), std::numeric_limits<std::size_t>::max() / 2,
-								   false);
-					}
-				}
+						if (stroke.Key != binding.Key)
+							continue;
 
-				if (control && ImGui::IsKeyPressed(ImGuiKey_A, false))
-					item.Caret = Core::SelectAll(buffer);
+						item.Caret =
+							Core::Move(buffer, item.Caret,
+									   control ? binding.WithControl : binding.Plain, shift,
+									   Core::DefaultTabWidth, pageRows);
+					}
+
+					if (stroke.Key == Core::KeyCode::Up)
+						moveByRows(false, 1, shift);
+
+					if (stroke.Key == Core::KeyCode::Down)
+						moveByRows(true, 1, shift);
+
+					if (stroke.Key == Core::KeyCode::PageUp)
+						moveByRows(false, pageRows, shift);
+
+					if (stroke.Key == Core::KeyCode::PageDown)
+						moveByRows(true, pageRows, shift);
+
+					if (stroke.Key == Core::KeyCode::Home)
+					{
+						if (control)
+						{
+							item.Caret = Core::Move(buffer, item.Caret,
+													Core::Motion::DocumentStart, shift,
+													Core::DefaultTabWidth, pageRows);
+						}
+						else
+						{
+							placeOnRow(caretRow(), 0, false, shift);
+						}
+					}
+
+					if (stroke.Key == Core::KeyCode::End)
+					{
+						if (control)
+						{
+							item.Caret = Core::Move(buffer, item.Caret,
+													Core::Motion::DocumentEnd, shift,
+													Core::DefaultTabWidth, pageRows);
+						}
+						else
+						{
+							// A column no row can reach, left to VisualToCaret's clamp — which
+							// is precisely why it clamps rather than failing. On a wrapped row
+							// that lands one column short of the right edge: the offset at the
+							// edge is also the offset at the next row's column zero, and the
+							// rule assigns it to the next row. Deliberate, and recorded as
+							// debt — reaching the edge needs a caret affinity bit.
+							//
+							// Halved rather than the maximum itself: VisualToCaret adds the
+							// row's own start column to this before clamping, and that sum has
+							// to stay representable.
+							placeOnRow(caretRow(),
+									   std::numeric_limits<std::size_t>::max() / 2, false,
+									   shift);
+						}
+					}
+
+					if (control && !stroke.IsRepeat && stroke.Key == Core::KeyCode::A)
+						item.Caret = Core::SelectAll(buffer);
+				}
 
 				// Whatever moved the caret above — a motion key or Ctrl+A, and the mouse
 				// click or drag earlier in this function, since caretAtFrameStart was
@@ -531,23 +564,22 @@ namespace Graphite {
 					}
 				};
 
-				// The order below matters: the first match wins, and Enter never reaches
-				// the character queue (it arrives here as a key), so nothing double-fires
-				// it.
+				// The characters before the keys below, which is the order this has always
+				// run in: Enter, Tab and Backspace never reach the character queue — the
+				// window layer reports them as keys and nothing else — so nothing here
+				// double-fires.
 
-				// ImGui delivers ordinary typed text as UTF-16 code units, not bytes —
-				// InsertText's contract is UTF-8, so every character is encoded before
-				// reaching it. Control characters ride along in the same queue; skipping
-				// everything below 0x20 except tab, and 0x7f, is what keeps a stray
-				// Escape from being inserted as a literal character.
-				for (const ImWchar character : io.InputQueueCharacters)
+				// A codepoint per character, after the layout and any dead key have had
+				// their say. InsertText's contract is UTF-8, so each one is encoded before
+				// reaching it. Skipping everything below 0x20 except tab, and 0x7f, is what
+				// keeps a control character from ever being inserted literally.
+				for (const unsigned int codepoint : input.GetCharacters())
 				{
-					if ((character < 0x20 && character != '\t') || character == 0x7f)
+					if ((codepoint < 0x20 && codepoint != '\t') || codepoint == 0x7f)
 						continue;
 
 					char utf8[5];
-					const int length =
-						ImTextCharToUtf8(utf8, static_cast<unsigned int>(character));
+					const int length = ImTextCharToUtf8(utf8, codepoint);
 
 					if (length > 0)
 					{
@@ -556,67 +588,80 @@ namespace Graphite {
 					}
 				}
 
-				if (ImGui::IsKeyPressed(ImGuiKey_Enter, true) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, true))
+				for (const Core::KeyStroke& stroke : input.GetStrokes())
 				{
-					result.Edited |= Core::InsertNewline(item, indentStyle);
+					const bool shift = shiftOf(stroke);
+					const bool control = controlOf(stroke);
+
+					if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KPEnter)
+					{
+						result.Edited |= Core::InsertNewline(item, indentStyle);
+					}
+
+					if (stroke.Key == Core::KeyCode::Backspace)
+					{
+						result.Edited |= control ? Core::DeleteWordBackward(item)
+												 : Core::DeleteBackward(item);
+					}
+
+					if (stroke.Key == Core::KeyCode::Delete)
+					{
+						result.Edited |= control ? Core::DeleteWordForward(item)
+												 : Core::DeleteForward(item);
+					}
+
+					// Consumed here rather than left for ImGui's own focus navigation, which
+					// is exactly what NoNavInputs on this child window (see its own comment
+					// above) makes safe — with the nav fallbacks disabled, nothing else is
+					// listening for Tab.
+					if (stroke.Key == Core::KeyCode::Tab)
+					{
+						result.Edited |= shift ? Core::Outdent(item, indentStyle)
+											   : Core::Indent(item, indentStyle);
+					}
+
+					// Everything above takes auto-repeat: holding Backspace deletes on. What
+					// follows are commands rather than edits repeated by holding, and a held
+					// Ctrl+Z would undo the session away, so they answer to a first press
+					// only.
+					if (stroke.IsRepeat)
+						continue;
+
+					if (control && stroke.Key == Core::KeyCode::V)
+					{
+						// An empty clipboard, or one holding something that is not text,
+						// hands back a null pointer rather than an empty string.
+						if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
+							result.Edited |= Core::InsertText(item, clipboard);
+					}
+
+					if (control && stroke.Key == Core::KeyCode::X)
+					{
+						copySelection();
+						result.Edited |= Core::DeleteBackward(item);
+					}
+
+					if (control && !shift && stroke.Key == Core::KeyCode::Z)
+						result.Edited |= Core::Undo(item);
+
+					if (control && (stroke.Key == Core::KeyCode::Y || (shift && stroke.Key == Core::KeyCode::Z)))
+					{
+						result.Edited |= Core::Redo(item);
+					}
+
+					// Saving is not this widget's decision: a stale document on disk needs
+					// confirming first, and only DocumentWindows knows how to ask that. This
+					// only reports that the user asked. !shift, the same as Ctrl+Z two lines
+					// above: without it Ctrl+Shift+S also reads as a request to save this one
+					// document, colliding with DocumentWindows's own Ctrl+Shift+S handling
+					// for "save every dirty document" and writing this one twice from a
+					// single keypress.
+					if (control && !shift && stroke.Key == Core::KeyCode::S)
+						result.SaveRequested = true;
+
+					if (control && stroke.Key == Core::KeyCode::C)
+						copySelection();
 				}
-
-				if (ImGui::IsKeyPressed(ImGuiKey_Backspace, true))
-				{
-					result.Edited |= control ? Core::DeleteWordBackward(item)
-											 : Core::DeleteBackward(item);
-				}
-
-				if (ImGui::IsKeyPressed(ImGuiKey_Delete, true))
-				{
-					result.Edited |= control ? Core::DeleteWordForward(item)
-											 : Core::DeleteForward(item);
-				}
-
-				// Consumed here rather than left for ImGui's own focus navigation, which
-				// is exactly what NoNavInputs on this child window (see its own comment
-				// above) makes safe — with the nav fallbacks disabled, nothing else is
-				// listening for Tab.
-				if (ImGui::IsKeyPressed(ImGuiKey_Tab, true))
-				{
-					result.Edited |= shift ? Core::Outdent(item, indentStyle)
-										   : Core::Indent(item, indentStyle);
-				}
-
-				if (control && ImGui::IsKeyPressed(ImGuiKey_V, false))
-				{
-					// An empty clipboard, or one holding something that is not text,
-					// hands back a null pointer rather than an empty string.
-					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
-						result.Edited |= Core::InsertText(item, clipboard);
-				}
-
-				if (control && ImGui::IsKeyPressed(ImGuiKey_X, false))
-				{
-					copySelection();
-					result.Edited |= Core::DeleteBackward(item);
-				}
-
-				if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))
-					result.Edited |= Core::Undo(item);
-
-				if (control && (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (shift && ImGui::IsKeyPressed(ImGuiKey_Z, false))))
-				{
-					result.Edited |= Core::Redo(item);
-				}
-
-				// Saving is not this widget's decision: a stale document on disk needs
-				// confirming first, and only DocumentWindows knows how to ask that. This
-				// only reports that the user asked. !shift, the same as Ctrl+Z two lines
-				// above: without it Ctrl+Shift+S also reads as a request to save this one
-				// document, colliding with DocumentWindows's own Ctrl+Shift+S handling
-				// for "save every dirty document" and writing this one twice from a
-				// single keypress.
-				if (control && !shift && ImGui::IsKeyPressed(ImGuiKey_S, false))
-					result.SaveRequested = true;
-
-				if (control && ImGui::IsKeyPressed(ImGuiKey_C, false))
-					copySelection();
 			}
 
 			// Scrolling follows the caret only when this frame actually moved it — not

@@ -15,6 +15,7 @@
 #include "Core/Command/MenuBar.h"
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/EventBus.h"
+#include "Core/Events/FrameInput.h"
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/PanelManager.h"
@@ -64,6 +65,12 @@ namespace Graphite {
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::filesystem::path m_InitialFolder;
 		Core::EventBus m_Events;
+
+		// Keyboard input that reached neither a panel nor the shortcut router, kept for the
+		// editors to read while they draw. Filled in OnEvent, drained and cleared in
+		// OnImGuiRender.
+		Core::FrameInput m_FrameInput;
+
 		Workspace m_Workspace{m_Events};
 		Core::DocumentSet m_Documents;
 
