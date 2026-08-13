@@ -11,7 +11,7 @@ namespace Graphite {
 	const ResolvedScheme& DarkScheme();
 	const ResolvedScheme& LightScheme();
 
-	const ResolvedScheme& Get(BuiltInScheme scheme);
+	const ResolvedScheme& SchemeFor(BuiltInScheme scheme);
 
 	// The text a base is written as in a scheme file.
 	std::string_view NameOf(BuiltInScheme scheme);

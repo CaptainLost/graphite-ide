@@ -1,5 +1,7 @@
 #include "Theme/BuiltInSchemes.h"
 
+#include <iterator>
+
 namespace Graphite {
 
 	namespace {
@@ -37,6 +39,16 @@ namespace Graphite {
 			{TokenKind::Preprocessor, 155, 155, 155},
 		};
 
+		// Mirrors Core::Theme::ApplyDark — Text, TextDisabled, WindowBg and FrameBg — plus
+		// ImGui's own dark default for TextSelectedBg, which ApplyDark leaves alone. Nothing
+		// checks that these still agree: Theme/ is deliberately free of ImGui, so the values
+		// are copied rather than read, and an edit to ApplyDark's palette will not fail here.
+		//
+		// Background and GutterFill are WindowBg. Guide and LineNumber are both TextDisabled;
+		// Guide is TextDisabled at 35% and LineNumber is TextDisabled at full strength, so the
+		// guide reads clearly dimmer than the numbers next to it rather than the same weight by
+		// coincidence. CurrentLine is FrameBg at 45% — structure, not content: dimmer again than
+		// either.
 		constexpr EditorEntry kDarkEditor[] = {
 			{EditorColor::Background, 27, 29, 33},
 			{EditorColor::Text, 214, 219, 226},
@@ -47,6 +59,11 @@ namespace Graphite {
 			{EditorColor::LineNumber, 123, 130, 141},
 			{EditorColor::Caret, 214, 219, 226},
 		};
+
+		// The editor table is not sparse like the syntax one: every EditorColor is meant to be
+		// drawn as itself, so a gap here must fail to build rather than silently paint that
+		// region of the editor in the text colour.
+		static_assert(std::size(kDarkEditor) == static_cast<std::size_t>(EditorColor::Count));
 
 		constexpr SyntaxEntry kLightSyntax[] = {
 			{TokenKind::Keyword, 0, 0, 255},
@@ -68,26 +85,28 @@ namespace Graphite {
 			{EditorColor::Caret, 36, 36, 36},
 		};
 
+		static_assert(std::size(kLightEditor) == static_cast<std::size_t>(EditorColor::Count));
+
 		template <std::size_t SyntaxCount, std::size_t EditorCount>
-		ResolvedScheme Build(Core::Color text, const SyntaxEntry (&syntax)[SyntaxCount],
+		ResolvedScheme Build(const SyntaxEntry (&syntax)[SyntaxCount],
 							  const EditorEntry (&editor)[EditorCount])
 		{
 			ResolvedScheme scheme;
 
-			// Every token kind starts at the text colour, so a kind added later draws as plain
-			// text rather than as whatever the array was left holding.
-			scheme.Syntax.fill(text);
-			scheme.Editor.fill(text);
+			for (const EditorEntry& entry : editor)
+			{
+				scheme.Editor[static_cast<std::size_t>(entry.Color)] =
+					FromBytes(entry.R, entry.G, entry.B, entry.A);
+			}
+
+			// The syntax fallback IS the editor's text colour: a kind with no colour of its own
+			// must draw exactly as ordinary text does, and deriving it here is what keeps that
+			// true when one of them is edited.
+			scheme.Syntax.fill(scheme.Editor[static_cast<std::size_t>(EditorColor::Text)]);
 
 			for (const SyntaxEntry& entry : syntax)
 			{
 				scheme.Syntax[static_cast<std::size_t>(entry.Kind)] =
-					FromBytes(entry.R, entry.G, entry.B, entry.A);
-			}
-
-			for (const EditorEntry& entry : editor)
-			{
-				scheme.Editor[static_cast<std::size_t>(entry.Color)] =
 					FromBytes(entry.R, entry.G, entry.B, entry.A);
 			}
 
@@ -96,12 +115,12 @@ namespace Graphite {
 
 		ResolvedScheme MakeDark()
 		{
-			return Build(FromBytes(214, 219, 226), kDarkSyntax, kDarkEditor);
+			return Build(kDarkSyntax, kDarkEditor);
 		}
 
 		ResolvedScheme MakeLight()
 		{
-			return Build(FromBytes(36, 36, 36), kLightSyntax, kLightEditor);
+			return Build(kLightSyntax, kLightEditor);
 		}
 	}
 
@@ -121,7 +140,7 @@ namespace Graphite {
 		return scheme;
 	}
 
-	const ResolvedScheme& Get(BuiltInScheme scheme)
+	const ResolvedScheme& SchemeFor(BuiltInScheme scheme)
 	{
 		switch (scheme)
 		{

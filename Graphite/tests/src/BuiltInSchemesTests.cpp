@@ -4,8 +4,8 @@
 
 TEST_CASE("Both built-in schemes are reachable by their enumerator")
 {
-	CHECK(&Graphite::Get(Graphite::BuiltInScheme::Dark) == &Graphite::DarkScheme());
-	CHECK(&Graphite::Get(Graphite::BuiltInScheme::Light) == &Graphite::LightScheme());
+	CHECK(&Graphite::SchemeFor(Graphite::BuiltInScheme::Dark) == &Graphite::DarkScheme());
+	CHECK(&Graphite::SchemeFor(Graphite::BuiltInScheme::Light) == &Graphite::LightScheme());
 }
 
 TEST_CASE("An unknown base name resolves to nothing")
