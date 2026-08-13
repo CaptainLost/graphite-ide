@@ -27,7 +27,7 @@ namespace Core {
 		// Returning true does not by itself close the window: refusing already cleared the
 		// flag the loop tests, so a layer that has finished asking must call
 		// Window::RequestClose() itself. A layer that refuses is asked again every frame,
-		// which is what lets a modal draw at all.
+		// which is what lets a modal draw.
 		virtual bool OnCloseRequested() { return true; }
 
 		const std::string& GetName() const { return m_DebugName; }

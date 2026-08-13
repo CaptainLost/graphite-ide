@@ -34,8 +34,7 @@ namespace Core {
 		m_Panels.push_back(std::move(panel));
 
 		// A panel added after RegisterCommands registers as it arrives, so OnAttach can call
-		// the two in either order. The lambdas capture the panel by reference, which is safe
-		// because PanelManager owns it for as long as it owns the registry pointer.
+		// the two in either order.
 		if (m_Commands != nullptr)
 		{
 			RegisterPanelCommand(*m_Commands, *m_Panels.back());
@@ -57,9 +56,6 @@ namespace Core {
 
 	void PanelManager::OnEvent(Event& event)
 	{
-		// Only the panels that actually drew last frame. A hidden or tab-hidden panel is not
-		// on screen for the user to have aimed at, so it gets no say — which is what makes it
-		// safe for a panel to consume keys without anything else having to ask whether it is.
 		for (auto& panel : m_Panels)
 		{
 			if (event.Handled)
@@ -99,9 +95,8 @@ namespace Core {
 			bool open = true;
 			const std::string label = panel->GetTitle() + "###" + panel->GetId();
 
-			// Begin returning false means collapsed, or another tab of the same dock node is
-			// the selected one — the panel is visible and got its turn, but its body did not
-			// run, so it did not draw.
+			// Begin returns false when the window is collapsed or another tab of the same dock
+			// node is selected: the panel got its turn, but its body did not run.
 			const bool drawn = ImGui::Begin(label.c_str(), &open);
 			panel->SetWasDrawn(drawn);
 

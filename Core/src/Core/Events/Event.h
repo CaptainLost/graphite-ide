@@ -6,9 +6,9 @@
 
 namespace Core {
 
-	// Events are dispatched the moment they arrive, not queued: a handler that consumes one
-	// has to do so before the frame that produced it draws, or the shortcut and the text
-	// field both see the same key.
+	// Dispatched the moment they arrive, not queued: a handler that consumes one has to do so
+	// before the frame that produced it draws, or the shortcut and the text field both see the
+	// same key.
 	enum class EventType
 	{
 		None = 0,
@@ -26,8 +26,8 @@ namespace Core {
 		MouseScrolled
 	};
 
-	// Categories exist so a handler can consume a whole class of event without naming every
-	// type in it — which is exactly what the GUI layer does when it has the keyboard.
+	// Lets a handler consume a whole class of event without naming every type in it, which is
+	// what the GUI layer does when it has the keyboard.
 	enum EventCategory
 	{
 		EventCategoryNone = 0,
@@ -38,6 +38,7 @@ namespace Core {
 		EventCategoryMouseButton = BIT(4)
 	};
 
+// clang-format off
 #define EVENT_CLASS_TYPE(type)                                             \
 	static EventType GetStaticType() { return EventType::type; }           \
 	virtual EventType GetEventType() const override { return GetStaticType(); } \
@@ -45,6 +46,7 @@ namespace Core {
 
 #define EVENT_CLASS_CATEGORY(category) \
 	virtual int GetCategoryFlags() const override { return category; }
+// clang-format on
 
 	class Event
 	{
@@ -68,9 +70,8 @@ namespace Core {
 	public:
 		explicit EventDispatcher(Event& event) : m_Event(event) {}
 
-		// Runs the handler only when the event is of the handler's type. The handler
-		// returns whether it dealt with it, which is ORed into Handled rather than
-		// assigned: an event already consumed upstream must not be un-consumed here.
+		// Runs the handler only when the event is of the handler's type. Its answer is ORed
+		// into Handled rather than assigned: an event consumed upstream stays consumed.
 		template<typename T, typename F>
 		bool Dispatch(const F& handler)
 		{

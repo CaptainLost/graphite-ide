@@ -16,8 +16,7 @@
 #include <string>
 
 #ifdef CORE_PLATFORM_WINDOWS
-// <GL/gl.h> on Windows depends on typedefs from <windows.h>, so the order matters
-// and windows.h has to come first.
+// <GL/gl.h> on Windows depends on typedefs from <windows.h>, so windows.h comes first.
 #include <windows.h>
 
 #include <GL/gl.h>
@@ -30,7 +29,104 @@
 namespace Core {
 
 	namespace {
+		constexpr float kBaseFontSize = 15.0f;
+
 		ImFont* g_monoFont = nullptr;
+
+		// ImGui stores the pointer rather than copying the string, so the storage has to
+		// outlive the context.
+		const char* PersistentIniPath()
+		{
+			static const std::string path = [] {
+				const auto directory = ExecutableDirectory();
+
+				if (directory)
+					return ToUtf8(directory.GetValue() / "imgui.ini");
+
+				// Falling back to the working directory keeps the layout working rather than
+				// losing it, but a layout that silently moves between launches is otherwise
+				// very hard to explain.
+				CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
+						  directory.GetError().Message);
+
+				return std::string{"imgui.ini"};
+			}();
+
+			return path.c_str();
+		}
+
+		ImFont* LoadTextFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
+		{
+			ImFontConfig config;
+			config.SizePixels = kBaseFontSize;
+			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
+			// returns nullptr, which crashes a Debug build instead of letting the warning run.
+			config.Flags |= ImFontFlags_NoLoadError;
+
+			if (directory)
+			{
+				const auto path = directory.GetValue() / "JetBrainsMono-Regular.ttf";
+
+				if (ImFont* loaded = io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(),
+																  kBaseFontSize, &config))
+				{
+					return loaded;
+				}
+			}
+
+			// ProggyClean has no glyphs beyond Latin-1, so Polish file names will show as
+			// empty boxes — but an IDE that starts is better than one that does not.
+			CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
+
+			ImFontConfig fallbackConfig;
+			fallbackConfig.SizePixels = kBaseFontSize;
+
+			return io.Fonts->AddFontDefault(&fallbackConfig);
+		}
+
+		// Must run immediately after the text face is added: ImGui's dynamic atlas merges onto
+		// whichever font was added last, so any face added in between would take the merge
+		// with it and leave the text face without icons.
+		void MergeIconFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
+		{
+			if (!directory)
+			{
+				CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
+						  directory.GetError().Message);
+				return;
+			}
+
+			ImFontConfig config;
+			config.MergeMode = true;
+			// Setting the minimum advance to the font size rather than enabling PixelSnapH,
+			// which rounds each glyph's advance to a whole pixel and visibly skews a small
+			// round icon.
+			config.GlyphMinAdvanceX = kBaseFontSize;
+			// The icon webfont declares vertical metrics built for CSS line-height rather than
+			// for a text baseline, so merged as-is its glyphs sit above the surrounding text.
+			config.GlyphOffset = ImVec2(0.0f, 1.5f);
+			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
+			// returns nullptr, which crashes a Debug build instead of letting the warning run.
+			config.Flags |= ImFontFlags_NoLoadError;
+
+			const auto path = directory.GetValue() / "materialdesignicons-webfont.ttf";
+
+			if (io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config,
+											 UsedGlyphRanges()) == nullptr)
+			{
+				CORE_WARN("Could not load the icon font, the UI will show text only: {}",
+						  ToUtf8(path));
+			}
+		}
+
+		// An undocked panel gets its own system window, where rounding and transparency would
+		// look out of place.
+		void SquareOffViewportWindows()
+		{
+			ImGuiStyle& style = ImGui::GetStyle();
+			style.WindowRounding = 0.0f;
+			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+		}
 	}
 
 	ImFont* ImGuiRenderer::GetMonoFont()
@@ -52,107 +148,23 @@ namespace Core {
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-		// ImGui stores this pointer rather than copying the string, so the storage has
-		// to outlive the context — a local would dangle at the next save.
-		static std::string iniPath = [] {
-			const auto directory = ExecutableDirectory();
+		io.IniFilename = PersistentIniPath();
 
-			if (directory)
-				return ToUtf8(directory.GetValue() / "imgui.ini");
-
-			// Falling back to the working directory keeps the layout working rather than
-			// losing it, but say so: a layout that silently moves between launches is
-			// otherwise very hard to explain.
-			CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
-					  directory.GetError().Message);
-
-			return std::string{"imgui.ini"};
-		}();
-
-		io.IniFilename = iniPath.c_str();
-
-		// By default ImGui lets a window be dragged by any empty part of its body, which
-		// makes context menus and popups draggable — they have no title bar, so their
-		// whole surface counts. Panels are moved by their dock tabs and dialogs by their
-		// title bars, so nothing in this application needs the permissive behaviour.
+		// Otherwise a window can be dragged by any empty part of its body, which makes
+		// context menus and popups draggable — they have no title bar, so their whole
+		// surface counts.
 		io.ConfigWindowsMoveFromTitleBarOnly = true;
-
-		constexpr float kBaseFontSize = 15.0f;
-
-		ImFontConfig textConfig;
-		textConfig.SizePixels = kBaseFontSize;
-		// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
-		// returns nullptr, which crashes a Debug build instead of letting the warning run.
-		textConfig.Flags |= ImFontFlags_NoLoadError;
 
 		const auto executableDirectory = ExecutableDirectory();
 
-		if (executableDirectory)
-		{
-			const auto regular = executableDirectory.GetValue() / "JetBrainsMono-Regular.ttf";
-
-			g_monoFont = io.Fonts->AddFontFromFileTTF(ToUtf8(regular).c_str(), kBaseFontSize,
-													  &textConfig);
-		}
-
-		if (g_monoFont == nullptr)
-		{
-			// ProggyClean has no glyphs beyond Latin-1, so Polish file names will show as
-			// empty boxes — but an IDE that starts is better than one that does not.
-			CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
-
-			ImFontConfig fallbackConfig;
-			fallbackConfig.SizePixels = kBaseFontSize;
-			g_monoFont = io.Fonts->AddFontDefault(&fallbackConfig);
-		}
-
-		ImFontConfig iconConfig;
-		iconConfig.MergeMode = true;
-		// PixelSnapH rounds each glyph's horizontal advance to a whole pixel, which is
-		// meant for monospaced text but visibly skews a small round icon like the refresh
-		// arrows — left off so MDI's curves render at their natural proportions.
-		iconConfig.GlyphMinAdvanceX = kBaseFontSize;
-		// MDI's webfont declares its own vertical metrics (built for CSS line-height, not
-		// for sitting on a text baseline), so merged as-is its glyphs sit visibly above the
-		// surrounding text's baseline. Nudge them down to align — see
-		// ImFontConfig::MergeMode's own doc comment, which calls this out by name.
-		iconConfig.GlyphOffset = ImVec2(0.0f, 1.5f);
-		// Without this, a missing/unreadable .ttf trips ImGui's internal
-		// IM_ASSERT_USER_ERROR before AddFontFromFileTTF returns nullptr, which asserts
-		// (and crashes) in Debug builds instead of letting the CORE_WARN below run.
-		iconConfig.Flags |= ImFontFlags_NoLoadError;
-
-		// Merged onto the mono face immediately after it is added — ImGui's dynamic atlas
-		// merges onto whichever font was added last. There is only one face now, but the
-		// ordering still matters: any face added here later would take the merge with it
-		// and leave the text face without icons.
-		if (executableDirectory)
-		{
-			const auto fontPath =
-				executableDirectory.GetValue() / "materialdesignicons-webfont.ttf";
-
-			if (io.Fonts->AddFontFromFileTTF(ToUtf8(fontPath).c_str(), kBaseFontSize,
-											 &iconConfig, UsedGlyphRanges()) == nullptr)
-			{
-				CORE_WARN("Could not load the icon font, the UI will show text only: {}",
-						  ToUtf8(fontPath));
-			}
-		}
-		else
-		{
-			CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
-					  executableDirectory.GetError().Message);
-		}
+		g_monoFont = LoadTextFont(io, executableDirectory);
+		MergeIconFont(io, executableDirectory);
 
 		Theme::ApplyDark();
 
-		// With undocked panels, viewports get their own system windows —
-		// rounding and transparency would look out of place on them.
 		if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
 		{
-			ImGuiStyle& style = ImGui::GetStyle();
-			style.WindowRounding = 0.0f;
-			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+			SquareOffViewportWindows();
 		}
 
 		auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
@@ -197,8 +209,6 @@ namespace Core {
 
 		const ImGuiIO& io = ImGui::GetIO();
 
-		// Asked per category rather than per type: the question is whether the GUI is using
-		// the keyboard or the mouse at all, and every event in the category answers alike.
 		const bool popupOpen =
 			ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
@@ -207,8 +217,8 @@ namespace Core {
 			event.Handled = true;
 		}
 
-		// The mouse flag is left alone: navigation does not inflate it the way it does the
-		// keyboard one, so it still means what it says.
+		// WantCaptureMouse is used directly: keyboard navigation does not inflate it the way
+		// it does WantCaptureKeyboard, so it still means what it says.
 		if (event.IsInCategory(EventCategoryMouse) && io.WantCaptureMouse)
 		{
 			event.Handled = true;

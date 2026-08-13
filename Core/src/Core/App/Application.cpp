@@ -14,9 +14,7 @@ namespace Core {
 
 	void Application::OnEvent(Event& event)
 	{
-		// Nothing here handles WindowClose. Closing still runs through ShouldClose in the
-		// loop below, which asks every layer rather than stopping at the first that answers
-		// — a layer that is never asked never gets to put its question on screen.
+		// Nothing here handles WindowClose; that runs through EveryLayerAllowsClose instead.
 		m_Gui.OnEvent(event);
 
 		for (auto layer = m_Layers.rbegin(); layer != m_Layers.rend(); ++layer)
@@ -55,22 +53,55 @@ namespace Core {
 		m_Running = false;
 	}
 
-	Result<void> Application::Run()
+	// A layer that refuses usually does so by opening a question, and one that is never asked
+	// never opens its own — so every layer is asked, not just up to the first refusal.
+	bool Application::EveryLayerAllowsClose()
+	{
+		bool mayClose = true;
+
+		for (Layer* layer : m_FrameLayers)
+		{
+			if (!layer->OnCloseRequested())
+				mayClose = false;
+		}
+
+		return mayClose;
+	}
+
+	// A layer may push another layer during the frame, and a reallocated vector would
+	// invalidate the iterator. This guards against insertion only; layer removal would need
+	// rethinking.
+	void Application::RefreshFrameLayers()
+	{
+		m_FrameLayers.clear();
+
+		for (auto& layer : m_Layers)
+			m_FrameLayers.push_back(layer.get());
+	}
+
+	bool Application::HasNoPixels() const
+	{
+		int width = 0;
+		int height = 0;
+		m_Window->FramebufferSize(width, height);
+
+		return width == 0 || height == 0;
+	}
+
+	Result<void> Application::OpenWindowAndGui()
 	{
 		WindowSpec windowSpec;
 		windowSpec.Title = m_Spec.Name;
 		windowSpec.Width = m_Spec.Width;
 		windowSpec.Height = m_Spec.Height;
 		windowSpec.CustomTitleBar = m_Spec.CustomTitleBar;
-		// The window is created before the ImGui context exists, so the border colour is
-		// asked of the theme here — the one layer that can see both — and travels down as
-		// a value. Core::Platform never learns that there is a theme.
+		// The window is created before the ImGui context exists, so the border colour is asked
+		// of the theme here — the one layer that can see both — and travels down as a value.
 		windowSpec.BorderColor = Theme::GetBorderColor();
 
 		auto windowResult = Window::Create(windowSpec);
 		if (!windowResult)
 		{
-			CORE_ERROR("Startup aborted: {}", windowResult.GetError().Message);
 			return windowResult.GetError();
 		}
 
@@ -78,12 +109,22 @@ namespace Core {
 
 		if (auto init = m_Gui.Init(*m_Window); !init)
 		{
-			CORE_ERROR("Startup aborted: {}", init.GetError().Message);
 			m_Window.reset();
 			return init.GetError();
 		}
 
 		m_Window->SetEventCallback(CORE_BIND_EVENT_FN(Application::OnEvent));
+
+		return Result<void>::Ok();
+	}
+
+	Result<void> Application::Run()
+	{
+		if (auto opened = OpenWindowAndGui(); !opened)
+		{
+			CORE_ERROR("Startup aborted: {}", opened.GetError().Message);
+			return opened.GetError();
+		}
 
 		OnInit();
 
@@ -92,48 +133,27 @@ namespace Core {
 
 		while (m_Running)
 		{
-			// glfwGetTime is a double because it counts from process start; the step
-			// between two frames is small enough that a float loses nothing, so the
-			// subtraction happens in double and only the result narrows.
+			// glfwGetTime counts in double from process start, so the subtraction happens
+			// there and only the much smaller frame step narrows to float.
 			const double now = glfwGetTime();
 			const Timestep ts = static_cast<float>(now - m_LastFrameTime);
 			m_LastFrameTime = now;
 
 			m_Window->PollEvents();
-
-			// We iterate over a copy of the pointers: a layer may push another layer during
-			// the frame, and a reallocated vector would invalidate the iterator. The copy guards
-			// against insertion — if layer removal is ever introduced, this will need rethinking.
-			m_FrameLayers.clear();
-			for (auto& layer : m_Layers)
-				m_FrameLayers.push_back(layer.get());
+			RefreshFrameLayers();
 
 			if (m_Window->ShouldClose())
 			{
-				// Every layer is asked, not just up to the first refusal: a layer that
-				// refuses usually does so by opening a question, and one that never gets
-				// asked never opens its own.
-				bool mayClose = true;
-				for (Layer* layer : m_FrameLayers)
-				{
-					if (!layer->OnCloseRequested())
-						mayClose = false;
-				}
-
-				if (mayClose)
+				if (EveryLayerAllowsClose())
 					break;
 
 				m_Window->CancelClose();
 			}
 
-			// A minimized window has a zero-sized framebuffer. Neither updating nor
-			// drawing into it accomplishes anything, and the GUI layer would be building
-			// a frame for a surface with no pixels, so the whole body is skipped. Close
-			// requests above are not: the window can still be closed from the taskbar.
-			int width = 0;
-			int height = 0;
-			m_Window->FramebufferSize(width, height);
-			m_Minimized = width == 0 || height == 0;
+			// A minimized window has a zero-sized framebuffer, so updating and drawing are
+			// both skipped. Close requests above are not: it can still be closed from the
+			// taskbar.
+			m_Minimized = HasNoPixels();
 
 			if (!m_Minimized)
 			{

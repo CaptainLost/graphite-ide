@@ -41,10 +41,8 @@ namespace Core {
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();
 
-		// The non-throwing overload (`allow_exceptions = false`) returns a discarded
-		// value on malformed input instead of throwing: nlohmann/json throws by
-		// default, and a hand-edited settings file must load as empty rather than
-		// crash the IDE, exactly like a missing or unreadable one.
+		// nlohmann/json throws by default; `allow_exceptions = false` returns a discarded
+		// value instead, so a hand-edited settings file loads as empty like a missing one.
 		nlohmann::json parsed = nlohmann::json::parse(buffer.str(), nullptr, false);
 
 		if (parsed.is_discarded() || !parsed.is_object())
@@ -97,14 +95,10 @@ namespace Core {
 
 	bool JsonFile::Save(const std::filesystem::path& path) const
 	{
-		// Serialised before the temporary is opened, not into it. dump() is the one call
-		// here that can still throw — it rejects invalid UTF-8 unless told otherwise —
-		// and throwing with the file already open would leave a .tmp behind, breaking the
-		// promise this function makes in its own doc comment.
-		//
-		// `replace` substitutes U+FFFD for anything malformed instead of refusing. A
-		// settings value is not worth an exception crossing out of Core, and a visibly
-		// mangled string is a better outcome than a lost file.
+		// dump() rejects invalid UTF-8 unless told otherwise, and `replace` substitutes U+FFFD
+		// instead: a visibly mangled setting is a better outcome than an exception crossing
+		// out of Core. Serialised before WriteFileAtomically opens anything, so a throw here
+		// could not leave a .tmp behind either.
 		const std::string text =
 			m_Document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
 

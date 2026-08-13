@@ -12,6 +12,29 @@
 
 namespace Core {
 
+#ifdef CORE_PLATFORM_WINDOWS
+	namespace {
+		std::wstring SelectArgumentFor(const std::filesystem::path& path)
+		{
+			// explorer.exe only understands backslashes after /select. Handed forward slashes
+			// it silently ignores the argument and opens a default folder instead.
+			std::filesystem::path native = path;
+			native.make_preferred();
+
+			std::wstring quoted = native.wstring();
+
+			// A backslash immediately before the closing quote would escape it, so a path
+			// ending in one — a drive root such as "D:\" — needs it doubled to survive.
+			if (!quoted.empty() && quoted.back() == L'\\')
+				quoted.push_back(L'\\');
+
+			// The quotes are load-bearing: without them Explorer splits the argument on the
+			// comma and on spaces, and opens the wrong folder or none at all.
+			return L"/select,\"" + quoted + L"\"";
+		}
+	}
+#endif
+
 	Result<void> Shell::RevealInFileBrowser(const std::filesystem::path& path)
 	{
 		std::error_code code;
@@ -22,23 +45,7 @@ namespace Core {
 		}
 
 #ifdef CORE_PLATFORM_WINDOWS
-		// explorer.exe only understands backslashes after /select. Handed a path with
-		// forward slashes — which is what a command-line argument or a settings file
-		// usually carries — it silently ignores the argument and opens a default folder
-		// instead, which looks to the user like the wrong folder opening at random.
-		std::filesystem::path native = path;
-		native.make_preferred();
-
-		std::wstring quoted = native.wstring();
-
-		// A backslash immediately before the closing quote would escape it, so a path
-		// ending in one — a drive root such as "D:\" — needs it doubled to survive.
-		if (!quoted.empty() && quoted.back() == L'\\')
-			quoted.push_back(L'\\');
-
-		// The quotes are load-bearing: without them Explorer splits the argument on the
-		// comma and on spaces, and opens the wrong folder or none at all.
-		const std::wstring arguments = L"/select,\"" + quoted + L"\"";
+		const std::wstring arguments = SelectArgumentFor(path);
 
 		const HINSTANCE result = ::ShellExecuteW(nullptr, L"open", L"explorer.exe",
 												 arguments.c_str(), nullptr, SW_SHOWNORMAL);

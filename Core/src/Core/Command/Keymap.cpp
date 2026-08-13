@@ -76,8 +76,8 @@ namespace Core {
 	{
 		std::string_view owner;
 
-		// Through ForEachBinding rather than over the two maps directly, so this cannot
-		// start disagreeing with For about which layer wins.
+		// Through ForEachBinding rather than over the two maps directly, so this cannot start
+		// disagreeing with For about which layer wins.
 		ForEachBinding(
 			[&owner, &chord](const std::string& id, const Binding& binding) {
 				if (owner.empty() && Holds(binding, chord))

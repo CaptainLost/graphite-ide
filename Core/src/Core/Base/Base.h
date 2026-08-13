@@ -34,8 +34,6 @@ namespace Core {
 		return std::make_shared<T>(std::forward<Args>(args)...);
 	}
 }
-// Included last, and it has to be: Log.h uses Ref, so the alias must already be declared
-// when it arrives. Both are included at all because the assertion and logging macros are
-// part of what including this header is expected to bring in.
+// Included last, and it has to be: Log.h uses Ref, so the alias must already be declared.
 #include "Core/Base/Assert.h"
 #include "Core/Base/Log.h"

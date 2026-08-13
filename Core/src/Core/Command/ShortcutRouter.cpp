@@ -14,8 +14,24 @@
 namespace Core {
 
 	namespace {
-		// Collected first, run afterwards, throughout this file: running a command inside the
-		// walk would let it register another command while the map is being iterated.
+		// Collected first and run afterwards, because running a command inside the walk would
+		// let it register another command while the keymap is being iterated.
+		template<typename Matches>
+		std::vector<std::string> CommandsBoundTo(const Keymap& keys, Matches matches)
+		{
+			std::vector<std::string> fired;
+
+			keys.ForEachBinding([&fired, &matches](const std::string& id, const Binding& binding) {
+				if (matches(binding.Primary) ||
+					std::any_of(binding.Alternates.begin(), binding.Alternates.end(), matches))
+				{
+					fired.push_back(id);
+				}
+			});
+
+			return fired;
+		}
+
 		void RunAll(CommandRegistry& commands, const std::vector<std::string>& fired, int times = 1)
 		{
 			for (const std::string& id : fired)
@@ -54,31 +70,13 @@ namespace Core {
 		}
 
 		const ImGuiKeyChord pressed = ToImGuiModifiers(event.GetModifiers()) | key;
-		std::vector<std::string> fired;
 
-		keys.ForEachBinding(
-			[&fired, pressed](const std::string& id, const Binding& binding) {
-				const auto matches = [pressed](const Chord& chord) {
-					// A command every chord was taken away from holds an empty primary, and an
-					// empty chord names no key: matching it would fire on the modifiers alone.
-					return !chord.IsEmpty() && chord.GetTrigger() == Trigger::Key &&
-						   chord.GetScope() == Chord::Scope::Global && chord.GetKeys() == pressed;
-				};
-
-				if (matches(binding.Primary))
-				{
-					fired.push_back(id);
-					return;
-				}
-
-				for (const Chord& alternate : binding.Alternates)
-				{
-					if (matches(alternate))
-					{
-						fired.push_back(id);
-						return;
-					}
-				}
+		const std::vector<std::string> fired =
+			CommandsBoundTo(keys, [pressed](const Chord& chord) {
+				// A command every chord was taken away from holds an empty primary, and an
+				// empty chord names no key: matching it would fire on the modifiers alone.
+				return !chord.IsEmpty() && chord.GetTrigger() == Trigger::Key &&
+					   chord.GetScope() == Chord::Scope::Global && chord.GetKeys() == pressed;
 			});
 
 		RunAll(commands, fired);
@@ -99,29 +97,10 @@ namespace Core {
 		const ImGuiKeyChord tapped = m_TapMods;
 		m_TapMods = 0;
 
-		std::vector<std::string> fired;
-
-		keys.ForEachBinding(
-			[&fired, tapped](const std::string& id, const Binding& binding) {
-				const auto matches = [tapped](const Chord& chord) {
-					return chord.GetTrigger() == Trigger::ModifierTap && !chord.IsEmpty() &&
-						   chord.GetKeys() == tapped;
-				};
-
-				if (matches(binding.Primary))
-				{
-					fired.push_back(id);
-					return;
-				}
-
-				for (const Chord& alternate : binding.Alternates)
-				{
-					if (matches(alternate))
-					{
-						fired.push_back(id);
-						return;
-					}
-				}
+		const std::vector<std::string> fired =
+			CommandsBoundTo(keys, [tapped](const Chord& chord) {
+				return chord.GetTrigger() == Trigger::ModifierTap && !chord.IsEmpty() &&
+					   chord.GetKeys() == tapped;
 			});
 
 		RunAll(commands, fired);
@@ -140,35 +119,17 @@ namespace Core {
 
 		const Trigger direction = wheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown;
 
-		// A fast spin reports several notches at once, and the zoom this replaces added the
-		// raw value — so one notch per event would make wheel zoom visibly slower. At least
-		// one, since any non-zero wheel is a gesture the user made.
+		// A fast spin reports several notches at once, so firing once per event would make a
+		// wheel-bound command visibly slower. At least one, since any non-zero wheel is a
+		// gesture the user made.
 		const auto notches = static_cast<int>(std::max(1.0f, std::round(std::fabs(wheel))));
 
-		const ImGuiKeyChord mods = ToImGuiModifiers(KeyModifier::None) | ImGui::GetIO().KeyMods;
-		std::vector<std::string> fired;
+		const ImGuiKeyChord mods = ImGui::GetIO().KeyMods;
 
-		keys.ForEachBinding(
-			[&fired, scope, direction, mods](const std::string& id, const Binding& binding) {
-				const auto matches = [&](const Chord& chord) {
-					return chord.GetTrigger() == direction && chord.GetScope() == scope &&
-						   chord.GetKeys() == mods;
-				};
-
-				if (matches(binding.Primary))
-				{
-					fired.push_back(id);
-					return;
-				}
-
-				for (const Chord& alternate : binding.Alternates)
-				{
-					if (matches(alternate))
-					{
-						fired.push_back(id);
-						return;
-					}
-				}
+		const std::vector<std::string> fired =
+			CommandsBoundTo(keys, [scope, direction, mods](const Chord& chord) {
+				return chord.GetTrigger() == direction && chord.GetScope() == scope &&
+					   chord.GetKeys() == mods;
 			});
 
 		RunAll(commands, fired, notches);

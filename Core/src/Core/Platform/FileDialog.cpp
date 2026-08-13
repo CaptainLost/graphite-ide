@@ -151,10 +151,9 @@ namespace Core {
 			return Error{ErrorCode::Unsupported, "cannot configure the dialog as a file picker"};
 		}
 
-		// The COMDLG_FILTERSPEC entries hold raw pointers into these strings, so the
-		// vector must not reallocate: moving a wstring with the small-string optimisation
-		// copies its buffer inline and every earlier pointer goes stale. The reserve is
-		// load-bearing, not a performance hint — exactly one push_back per reserved slot.
+		// The COMDLG_FILTERSPEC entries below hold raw pointers into these strings, and moving
+		// a short wstring copies its buffer inline, so the reserve is load-bearing rather than
+		// a performance hint: exactly one push_back per reserved slot, and no reallocation.
 		std::vector<std::wstring> storage;
 		storage.reserve(filters.size() * 2);
 

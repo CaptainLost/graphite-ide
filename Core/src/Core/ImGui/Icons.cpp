@@ -9,9 +9,8 @@
 namespace Core {
 
 	namespace {
-		// Every icon this app uses sits in MDI's private-use plane (above U+FFFF), which
-		// is always a 4-byte UTF-8 sequence — decoding it by hand avoids depending on an
-		// internal ImGui helper that isn't part of its public API.
+		// Every icon used here sits above U+FFFF, which is always a 4-byte UTF-8 sequence.
+		// Decoded by hand because ImGui's own decoder is not part of its public API.
 		ImWchar DecodeIcon(const char* utf8)
 		{
 			const auto b0 = static_cast<unsigned char>(utf8[0]);
@@ -22,9 +21,8 @@ namespace Core {
 										((b2 & 0x3Fu) << 6) | (b3 & 0x3Fu));
 		}
 
-		// Kept in one array so UsedGlyphRanges() can never drift from what
-		// IconForExtension() and the panels actually return/use — add a new icon here
-		// first and the range that bakes it follows automatically.
+		// The one list UsedGlyphRanges bakes from: an icon added here is baked, and one that
+		// is not here has no glyph to draw.
 		constexpr const char* kUsedIcons[] = {
 			ICON_MDI_FILE,
 			ICON_MDI_FOLDER,
@@ -64,9 +62,7 @@ namespace Core {
 	{
 		const std::string lower = ToLowerWithDot(extension);
 
-		// Project files (.vcxproj, .csproj) get a generic project icon rather than a
-		// language one: the extension names the build tool, not what's compiled inside —
-		// GLFW is a C library built through a .vcxproj, same as any C++ project.
+		// A project extension names the build tool, not what is compiled inside it.
 		if (lower == ".vcxproj" || lower == ".csproj")
 			return ICON_MDI_APPLICATION_BRACES;
 

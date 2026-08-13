@@ -36,11 +36,10 @@ namespace Core {
 		bool first = true;
 		std::size_t start = 0;
 
-		// An override that binds nothing, which is a different thing from a missing
-		// override: the latter restores the factory chord.
-		// Case-insensitively, like Chord::Parse reads every other name in the file this
-		// comes from: a hand-written "none" must not be refused and silently restore the
-		// factory chord, which is the one failure this token exists to prevent.
+		// An override binding nothing, which is a different thing from a missing override:
+		// that one restores the factory chord. Matched case-insensitively, like every other
+		// name in the file this comes from, so a hand-written "none" is not refused into
+		// exactly the outcome the token exists to prevent.
 		if (Lowered(Trimmed(text)) == Lowered(kUnboundText))
 		{
 			return binding;

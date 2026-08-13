@@ -19,6 +19,38 @@ namespace Core {
 			if (result < 0)
 				CORE_ERROR("libgit2 failed to initialise (code {})", result);
 		}
+
+		// Compared as components rather than as a string, so an in-tree file called "..config"
+		// is not mistaken for a leading "..".
+		bool LeadsOutOfTree(const std::filesystem::path& relative)
+		{
+			return relative.begin() != relative.end() && *relative.begin() == "..";
+		}
+
+		// git speaks forward slashes on every platform; a relative path may carry native
+		// separators.
+		std::string ToGitPath(const std::filesystem::path& relative)
+		{
+			std::string text = ToUtf8(relative);
+
+			for (char& character : text)
+			{
+				if (character == '\\')
+					character = '/';
+			}
+
+			return text;
+		}
+
+		// libgit2's own message names the real cause — a .git file pointing at a deleted
+		// worktree reads very differently from an unreadable directory.
+		std::string LastLibgit2Message()
+		{
+			const git_error* detail = git_error_last();
+
+			return detail != nullptr && detail->message != nullptr ? detail->message
+																   : "unknown error";
+		}
 	}
 
 	Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
@@ -34,12 +66,7 @@ namespace Core {
 
 		if (result != 0 || handle == nullptr)
 		{
-			// libgit2's own message names the real cause — a .git file pointing at a
-			// deleted worktree reads very differently from an unreadable directory, and
-			// collapsing both into "not a repository" throws that away.
-			const git_error* detail = git_error_last();
-			const std::string message =
-				detail != nullptr && detail->message != nullptr ? detail->message : "unknown error";
+			const std::string message = LastLibgit2Message();
 
 			ErrorCode code = ErrorCode::IoFailure;
 
@@ -94,25 +121,10 @@ namespace Core {
 		const std::filesystem::path relative =
 			std::filesystem::relative(path, m_WorkingDirectory, code);
 
-		// A leading ".." component means the path sits outside the working tree, and
-		// there is nothing for git to have an opinion about. Comparing components rather
-		// than the string keeps an in-tree file called "..config" from being mistaken
-		// for one.
-		const bool outsideTree =
-			relative.begin() != relative.end() && *relative.begin() == "..";
-
-		if (code || relative.empty() || outsideTree)
+		if (code || relative.empty() || LeadsOutOfTree(relative))
 			return false;
 
-		// git speaks forward slashes on every platform; the relative path may carry
-		// native separators, so they are translated explicitly below.
-		std::string text = ToUtf8(relative);
-
-		for (char& character : text)
-		{
-			if (character == '\\')
-				character = '/';
-		}
+		const std::string text = ToGitPath(relative);
 
 		int ignored = 0;
 		if (git_ignore_path_is_ignored(&ignored, m_Handle, text.c_str()) != 0)

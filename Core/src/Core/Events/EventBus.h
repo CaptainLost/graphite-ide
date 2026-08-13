@@ -28,11 +28,9 @@ namespace Core {
 			if (entry == m_Handlers.end())
 				return;
 
-			// Dispatch over a copy: a handler may subscribe while we are iterating,
-			// and a reallocated vector would invalidate the iterator underneath us.
-			// This only guards against subscribing during dispatch — a handler that
-			// publishes the same event type it is handling recurses without bound,
-			// the copy does nothing to stop that.
+			// Copied because a handler may subscribe while this iterates, and a reallocated
+			// vector would invalidate the iterator. Only subscription is guarded: a handler
+			// that publishes the event type it is handling still recurses without bound.
 			const std::vector<Handler> handlers = entry->second;
 
 			for (const Handler& handler : handlers)

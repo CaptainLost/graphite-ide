@@ -59,6 +59,11 @@ namespace Core {
 		virtual void OnShutdown() {}
 
 	private:
+		Result<void> OpenWindowAndGui();
+		void RefreshFrameLayers();
+		bool EveryLayerAllowsClose();
+		bool HasNoPixels() const;
+
 		ApplicationSpec m_Spec;
 		Scope<Window> m_Window;
 		ImGuiRenderer m_Gui;

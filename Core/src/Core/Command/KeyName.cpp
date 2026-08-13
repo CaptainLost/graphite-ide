@@ -44,14 +44,13 @@ namespace Core {
 			}
 		}
 
-		// Named keypad digits are not in the override table — Keypad0..Keypad9 read
-		// well enough as "Num0" once the prefix is swapped, and listing ten more
-		// entries to say so would be noise.
 		const std::string name = ImGui::GetKeyName(key);
 
-		if (name.rfind("Keypad", 0) == 0)
+		constexpr std::string_view kKeypadPrefix = "Keypad";
+
+		if (name.rfind(kKeypadPrefix, 0) == 0)
 		{
-			return "Num" + name.substr(6);
+			return "Num" + name.substr(kKeypadPrefix.size());
 		}
 
 		return name;

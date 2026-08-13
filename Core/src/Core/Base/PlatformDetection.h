@@ -1,9 +1,8 @@
 #pragma once
 
-// The build already defines CORE_PLATFORM_WINDOWS from premake. This header exists to
-// notice when it does not: without it EntryPoint.h compiles to no main() at all and
-// Assert.h to no debug break, and the first sign of either is a link error that names
-// nothing. Detect the platform here instead, so an unsupported one says so.
+// premake already defines CORE_PLATFORM_WINDOWS. This header exists to notice when it does
+// not: without it EntryPoint.h compiles to no main() at all, and the first sign is a link
+// error that names nothing.
 
 #ifdef _WIN32
 #ifdef _WIN64

@@ -20,10 +20,8 @@ namespace Core {
 
 		void SetEventCallback(EventCallbackFn callback) override { m_EventCallback = std::move(callback); }
 
-		// Installs the GLFW callbacks that turn window and input notifications into events.
-		// Must run before the GUI backend initialises: that backend installs callbacks of
-		// its own and chains to whatever it found, so ours have to be there first or they
-		// are replaced rather than chained.
+		// Must run before the GUI backend initialises: that backend chains to whatever
+		// callbacks it finds, so these have to be there first or they are replaced.
 		void InstallCallbacks();
 
 		void PollEvents() override;

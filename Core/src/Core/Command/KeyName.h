@@ -13,10 +13,9 @@ namespace Core {
 
 	bool IsModifierKey(ImGuiKey key);
 
-	// Says what a keyboard key is, rather than listing what to skip - the skip list went
-	// stale twice. ImGui's named-key range is four blocks, and the reserved
-	// ReservedForModCtrl..ReservedForModSuper slots sit inside NamedKey_BEGIN..END, far
-	// from the modifier span. Missing them recorded Ctrl+ModCtrl; and since arming a
-	// capture is a left click, the capture answered itself.
+	// ImGui's named-key range also holds gamepad buttons, mouse aliases and the reserved
+	// ReservedForModCtrl..ReservedForModSuper slots, which sit inside NamedKey_BEGIN..END far
+	// from the modifier span. Answered as what a keyboard key is, not as a list of what to
+	// skip, because such a list went stale twice.
 	bool IsKeyboardKey(ImGuiKey key);
 }

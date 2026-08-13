@@ -24,9 +24,7 @@ namespace Core {
 		virtual void OnImGuiRender() {}
 
 		// Delivered only to panels whose body ran on the previous frame, so a panel behind
-		// another tab of the same dock node receives nothing. That is what lets a panel read
-		// raw keys without any of the others having to know it does: an unread event simply
-		// carries on to whatever is below.
+		// another tab of the same dock node receives nothing.
 		virtual void OnEvent(Event& event) { (void)event; }
 
 		const std::string& GetId() const { return m_Id; }
@@ -37,9 +35,8 @@ namespace Core {
 
 		bool IsDefaultVisible() const { return m_DefaultVisible; }
 
-		// Whether this panel's body ran on the last frame. Set by whoever draws it; read to
-		// decide whether it is entitled to an event. Hidden, collapsed and tab-hidden all
-		// come out the same way, which is the only distinction an event has to make.
+		// Whether this panel's body ran on the last frame, and so whether it is entitled to an
+		// event. Hidden, collapsed and tab-hidden all come out the same way.
 		bool WasDrawn() const { return m_WasDrawn; }
 		void SetWasDrawn(bool drawn) { m_WasDrawn = drawn; }
 

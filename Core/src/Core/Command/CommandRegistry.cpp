@@ -23,9 +23,6 @@ namespace Core {
 
 	const Command* CommandRegistry::Find(std::string_view id) const
 	{
-		// Constructing a std::string to look up a std::string_view is the price of an
-		// unordered_map keyed by string until this codebase has a heterogeneous hash.
-		// These lookups happen when a menu is drawn, not in a loop over text.
 		const auto found = m_ById.find(std::string(id));
 
 		if (found == m_ById.end())

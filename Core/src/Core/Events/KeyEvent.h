@@ -30,8 +30,8 @@ namespace Core {
 		{
 		}
 
-		// A held key repeats. A shortcut usually wants only the first press; an arrow key in
-		// the editor wants every one, which is why this is reported rather than filtered.
+		// Reported rather than filtered: a shortcut usually wants only the first press, an
+		// arrow key in the editor wants every one.
 		bool IsRepeat() const { return m_IsRepeat; }
 
 		std::string ToString() const override
@@ -58,9 +58,9 @@ namespace Core {
 		EVENT_CLASS_TYPE(KeyReleased)
 	};
 
-	// The character a keystroke produced, after the keyboard layout and any dead keys have
-	// had their say. This is what text input must read: a key code cannot tell you whether
-	// the user typed a comma or a semicolon on a layout you did not anticipate.
+	// The character a keystroke produced, after the keyboard layout and any dead keys have had
+	// their say. This is what text input must read: a key code cannot tell a comma from a
+	// semicolon on a layout nobody anticipated.
 	class KeyTypedEvent final : public Event
 	{
 	public:

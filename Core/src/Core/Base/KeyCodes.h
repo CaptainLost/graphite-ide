@@ -4,9 +4,8 @@
 
 namespace Core {
 
-	// The values are GLFW's, because the window layer is what produces them and a
-	// translation table would be one more thing to keep in step for nothing. Callers
-	// above the window never see a GLFW header, which is the point of naming them here.
+	// GLFW's values, because the window layer is what produces them, named here so nothing
+	// above that layer needs a GLFW header.
 	enum class KeyCode : std::uint16_t
 	{
 		Space = 32,
@@ -124,8 +123,8 @@ namespace Core {
 		Menu = 348
 	};
 
-	// Modifier bits as they arrive with a key event, so a handler can ask what was held
-	// without polling the keyboard a second time and getting a different answer.
+	// Modifier bits as they arrive with a key event, so a handler never has to poll the
+	// keyboard a second time and get a different answer.
 	enum class KeyModifier : std::uint8_t
 	{
 		None = 0,

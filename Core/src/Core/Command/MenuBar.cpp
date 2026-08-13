@@ -29,44 +29,61 @@ namespace Core {
 			ImGui::EndMenu();
 		}
 
+		// A label may carry a hint after a tab ("Exit\tAlt+F4") for a shortcut the application
+		// does not own and cannot rebind, so no keymap entry exists to advertise it. The tab
+		// has to be split off rather than passed through: ImGui's text renderer handles only
+		// '\n' and '\r', so a tab draws as the fallback glyph in one left-aligned run instead
+		// of reaching the right-aligned shortcut column MenuItem keeps for exactly this.
+		std::string TextBeforeShortcutHint(const std::string& label)
+		{
+			return label.substr(0, label.find('\t'));
+		}
+
+		std::string ShortcutHintIn(const std::string& label)
+		{
+			const std::size_t tab = label.find('\t');
+
+			return tab == std::string::npos ? std::string() : label.substr(tab + 1);
+		}
+
+		// "###id" fixes the item's identity to the command, so a label that changes with state
+		// does not make ImGui treat it as a different item.
+		std::string LabelWithStableId(const std::string& text, const std::string& id)
+		{
+			return text + "###" + id;
+		}
+
+		// A menu naming a command nobody registered is a wiring mistake, and drawing nothing
+		// hides it. The id is what the tree names and what a search would find.
+		void RenderUnregisteredCommand(const std::string& id)
+		{
+			ImGui::MenuItem(id.c_str(), nullptr, false, false);
+		}
+
 		void RenderCommand(CommandRegistry& commands, const Keymap& keys, const std::string& id)
 		{
 			const Command* command = commands.Find(id);
 
 			if (command == nullptr)
 			{
-				// A menu naming a command nobody registered is a wiring mistake, and
-				// drawing nothing hides it. The id itself is the most useful thing to
-				// show: it is what the tree names and what a search would find.
-				ImGui::MenuItem(id.c_str(), nullptr, false, false);
+				RenderUnregisteredCommand(id);
 				return;
 			}
-
-			// A label may carry a hint after a tab ("Exit\tAlt+F4") for a shortcut the
-			// application does not own and cannot rebind, so no keymap entry exists to
-			// advertise it. The tab has to be split off rather than passed through:
-			// ImGui's text renderer handles only '\n' and '\r', so a tab draws as the
-			// fallback glyph in one left-aligned run instead of reaching the right-aligned
-			// shortcut column MenuItem keeps for exactly this.
-			const std::size_t tab = command->Label.find('\t');
-			const std::string text = command->Label.substr(0, tab);
 
 			const Binding* binding = keys.For(id);
 			std::string shortcut = binding != nullptr ? binding->Primary.ToString() : std::string();
 
-			// A binding wins over the hint: a command must never show two shortcut texts,
-			// and the one that can actually be rebound is the truthful one.
-			if (shortcut.empty() && tab != std::string::npos)
+			// A binding wins over the hint: a command must never show two shortcut texts, and
+			// the one that can actually be rebound is the truthful one.
+			if (shortcut.empty())
 			{
-				shortcut = command->Label.substr(tab + 1);
+				shortcut = ShortcutHintIn(command->Label);
 			}
 
 			const bool enabled = !command->Enabled || command->Enabled();
 			const bool checked = command->Checked && command->Checked();
-
-			// "###id" fixes the item's identity to the command, so a label that changes
-			// with state does not make ImGui treat it as a different item.
-			const std::string label = text + "###" + id;
+			const std::string label =
+				LabelWithStableId(TextBeforeShortcutHint(command->Label), id);
 
 			if (ImGui::MenuItem(label.c_str(), shortcut.empty() ? nullptr : shortcut.c_str(), checked,
 								enabled))
@@ -91,9 +108,8 @@ namespace Core {
 				break;
 
 			case MenuItem::Kind::Group:
-				// Copied out before drawing: RenderCommand runs commands, and one of
-				// them registering a command would otherwise resize the registry
-				// mid-iteration.
+				// InGroup hands back a copy, so a command registered by one of the members
+				// run below cannot resize the registry mid-iteration.
 				for (const Command* member : commands.InGroup(item.GetText()))
 				{
 					RenderCommand(commands, keys, member->Id);
@@ -124,17 +140,13 @@ namespace Core {
 						 const std::vector<MenuItem>& tree, float rowHeight,
 						 const std::function<void()>& trailing)
 	{
-		// Read before anything is pushed over it: this is the padding the dropdowns are
-		// entitled to, and BeginTopLevelMenu hands it back to each of them.
+		// Read before the override below is pushed over it: this is the padding the dropdowns
+		// are entitled to, and BeginTopLevelMenu hands it back to each of them.
 		const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
 
-		// The host window's menu-bar height was already fixed by DockSpaceHost::Begin,
-		// which popped its own override before opening the dockspace so panels dock at
-		// their normal tab-bar height. The bar itself therefore sees plain default
-		// padding unless pushed again here — and it has to match, or the top-level items
-		// sit at the wrong height for the row and anything the caller draws in `trailing`
-		// (which relies on the padding-driven text baseline BeginMenuBar sets up) lands
-		// off-centre.
+		// DockSpaceHost::Begin pops its own override before opening the dockspace, so the bar
+		// sees default padding unless it is pushed again here. It has to match the row, or the
+		// top-level items and whatever `trailing` draws sit off-centre in it.
 		const bool overridePadding = rowHeight > 0.0f;
 
 		if (overridePadding)
@@ -148,9 +160,8 @@ namespace Core {
 		{
 			for (const MenuItem& item : tree)
 			{
-				// Only submenus can sit at the top level of a bar; anything else there is
-				// a malformed tree, and drawing it as a bare item would look like a menu
-				// that failed to open.
+				// Anything else at the top level is a malformed tree, and drawing it as a bare
+				// item would look like a menu that failed to open.
 				if (item.GetKind() != MenuItem::Kind::Submenu)
 				{
 					continue;

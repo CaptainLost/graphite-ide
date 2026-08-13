@@ -6,9 +6,8 @@
 
 namespace Core {
 
-	// One key press exactly as it arrived, modifiers and all. The modifiers travel with the
-	// stroke rather than being polled when it is read: a queue is drained after the fact,
-	// and by then the keyboard may be holding something else entirely.
+	// The modifiers travel with the stroke rather than being polled when it is read: a queue
+	// is drained after the fact, and by then the keyboard may be holding something else.
 	struct KeyStroke
 	{
 		KeyCode Key = KeyCode::Space;
@@ -16,14 +15,12 @@ namespace Core {
 		bool IsRepeat = false;
 	};
 
-	// The keyboard input nobody upstream consumed, held until something drawing this frame
-	// can say it was meant for it. Events are dispatched the moment they arrive, which is
-	// before any window has been submitted and so before it is known which one has focus;
-	// a widget that only learns it has the keyboard while drawing needs the input to still
-	// be there when it does.
+	// The keyboard input nobody upstream consumed, held until something drawing this frame can
+	// say it was meant for it: events are dispatched before any window has been submitted, so
+	// a widget only learns it has the keyboard while drawing.
 	//
-	// Owned by whoever clears it, once per frame, at the end of the frame — clearing at the
-	// start would drop everything that arrived while the previous frame was being built.
+	// Cleared at the end of a frame, never the start, which would drop everything that arrived
+	// while the previous frame was being built.
 	class FrameInput
 	{
 	public:

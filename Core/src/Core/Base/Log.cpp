@@ -17,10 +17,8 @@
 namespace Core {
 
 	namespace {
-		// The process console carries the clock and the writer, and colours the line by
-		// severity. The file repeats all of it in a form that still sorts and greps a week
-		// later, which is the reason the date and the sub-second field are there and are
-		// not on the console.
+		// The file carries the date and sub-second field the console has no use for, so that
+		// it still sorts and greps a week later.
 		constexpr const char* kConsolePattern = "%^[%T] [%n] %v%$";
 		constexpr const char* kFilePattern = "[%Y-%m-%d %T.%e] [%n] [%l] %v";
 
