@@ -106,3 +106,65 @@ TEST_CASE("CppLexer leaves a plain line in the default state")
 {
 	CHECK(Exit("int x = 1;") == Graphite::LineState{});
 }
+
+// A line with nothing but whitespace produces no tokens at all — the gaps between tokens are
+// whitespace, so whitespace alone is all gap.
+TEST_CASE("CppLexer produces no tokens for a whitespace-only line")
+{
+	CHECK(Shape("    ") == "    ");
+	CHECK(Shape("\t \t") == "   ");
+}
+
+// UTF-8 lead and continuation bytes are all >= 0x80, which IsIdentifierStart accepts, so a
+// non-ASCII identifier lexes as one token rather than as punctuation per byte.
+TEST_CASE("CppLexer reads a non-ASCII identifier as one token")
+{
+	CHECK(Shape("\xC5\xBColw") == "iiiii");
+}
+
+TEST_CASE("CppLexer takes a line comment to the end of the line")
+{
+	CHECK(Shape("int x; // note") == "kkk i. mmmmmmm");
+	CHECK(Exit("int x; // note") == Graphite::LineState{});
+}
+
+TEST_CASE("CppLexer closes a block comment on the same line")
+{
+	CHECK(Shape("a /* c */ b") == "i mmmmmmm i");
+	CHECK(Exit("a /* c */ b") == Graphite::LineState{});
+}
+
+TEST_CASE("CppLexer carries an unclosed block comment to the next line")
+{
+	CHECK(Shape("a /* open") == "i mmmmmmm");
+	CHECK(Exit("a /* open").Kind == Graphite::LineState::Continuation::BlockComment);
+}
+
+TEST_CASE("CppLexer resumes a block comment from the entry state")
+{
+	const Graphite::LineState inside{Graphite::LineState::Continuation::BlockComment, {}};
+
+	CHECK(Shape("still inside", inside) == "mmmmmmmmmmmm");
+	CHECK(Exit("still inside", inside).Kind ==
+		  Graphite::LineState::Continuation::BlockComment);
+
+	CHECK(Shape("done */ x", inside) == "mmmmmmm i");
+	CHECK(Exit("done */ x", inside) == Graphite::LineState{});
+}
+
+// Block comments do not nest in C++: the first */ closes it, and the second is punctuation.
+TEST_CASE("CppLexer does not nest block comments")
+{
+	CHECK(Shape("/* a /* b */ c") == "mmmmmmmmmmmm i");
+}
+
+// A line comment ending in a backslash continues onto the next line, which is how a macro
+// gets accidentally commented out and worth colouring correctly.
+TEST_CASE("CppLexer continues a line comment past a trailing backslash")
+{
+	CHECK(Exit("// note \\").Kind == Graphite::LineState::Continuation::LineComment);
+
+	const Graphite::LineState inside{Graphite::LineState::Continuation::LineComment, {}};
+	CHECK(Shape("still comment", inside) == "mmmmmmmmmmmmm");
+	CHECK(Exit("still comment", inside) == Graphite::LineState{});
+}

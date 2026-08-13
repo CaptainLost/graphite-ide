@@ -30,7 +30,9 @@ namespace Graphite {
 		{
 			None,
 			BlockComment,
-			// The three below are reached only through a backslash at the end of the line.
+			// LineComment, String and Character are reached only through a backslash at the end
+			// of the line. RawString is not — a raw string runs to its delimiter and crosses
+			// line boundaries on its own.
 			LineComment,
 			String,
 			Character,

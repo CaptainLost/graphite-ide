@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 
 namespace Graphite {
 
@@ -88,7 +87,7 @@ namespace Graphite {
 			{
 				const char c = line[at];
 
-				if ((c == '+' || c == '-') && at > 0 &&
+				if ((c == '+' || c == '-') &&
 					(line[at - 1] == 'e' || line[at - 1] == 'E' || line[at - 1] == 'p' ||
 					 line[at - 1] == 'P'))
 				{
@@ -107,6 +106,42 @@ namespace Graphite {
 
 			return at;
 		}
+
+		// Consumes to the closing */, emitting one comment token from `from`. Returns true when
+		// the comment closed on this line.
+		bool ScanBlockComment(std::string_view line, std::size_t& at, std::size_t from,
+							  std::vector<Token>& out)
+		{
+			while (at < line.size())
+			{
+				if (line[at] == '*' && at + 1 < line.size() && line[at + 1] == '/')
+				{
+					at += 2;
+					Emit(out, TokenKind::Comment, from, at);
+					return true;
+				}
+
+				++at;
+			}
+
+			Emit(out, TokenKind::Comment, from, line.size());
+			return false;
+		}
+
+		// True when the line ends with an odd number of backslashes, which is what splices it
+		// onto the line below.
+		bool EndsWithContinuation(std::string_view line)
+		{
+			std::size_t backslashes = 0;
+
+			while (backslashes < line.size() &&
+				   line[line.size() - 1 - backslashes] == '\\')
+			{
+				++backslashes;
+			}
+
+			return backslashes % 2 == 1;
+		}
 	}
 
 	LineState CppLexer::LexLine(std::string_view line, const LineState& entry,
@@ -115,6 +150,22 @@ namespace Graphite {
 		LineState state = entry;
 		std::size_t at = 0;
 
+		if (state.Kind == LineState::Continuation::BlockComment)
+		{
+			if (!ScanBlockComment(line, at, 0, out))
+			{
+				return state;
+			}
+
+			state = LineState{};
+		}
+		else if (state.Kind == LineState::Continuation::LineComment)
+		{
+			Emit(out, TokenKind::Comment, 0, line.size());
+
+			return EndsWithContinuation(line) ? state : LineState{};
+		}
+
 		while (at < line.size())
 		{
 			const char c = line[at];
@@ -122,6 +173,27 @@ namespace Graphite {
 			if (c == ' ' || c == '\t' || c == '\r')
 			{
 				++at;
+				continue;
+			}
+
+			if (c == '/' && at + 1 < line.size() && line[at + 1] == '/')
+			{
+				Emit(out, TokenKind::Comment, at, line.size());
+
+				return EndsWithContinuation(line) ? LineState{LineState::Continuation::LineComment, {}}
+												  : LineState{};
+			}
+
+			if (c == '/' && at + 1 < line.size() && line[at + 1] == '*')
+			{
+				const std::size_t from = at;
+				at += 2;
+
+				if (!ScanBlockComment(line, at, from, out))
+				{
+					return LineState{LineState::Continuation::BlockComment, {}};
+				}
+
 				continue;
 			}
 
