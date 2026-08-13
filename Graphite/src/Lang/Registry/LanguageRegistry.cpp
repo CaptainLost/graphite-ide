@@ -26,9 +26,10 @@ namespace Graphite {
 
 	LanguageId LanguageOfPath(const std::filesystem::path& path)
 	{
-		// stem().empty() rejects the dotfiles: for ".gitignore" the filesystem library reports
-		// the whole name as the extension, which would otherwise make every dotfile a language.
-		if (!path.has_extension() || path.stem().empty())
+		// This also covers the dotfiles: a name whose only period is its first character has no
+		// extension at all by [fs.path.decompose], so ".gitignore" reports the whole name as the
+		// stem and an empty extension.
+		if (!path.has_extension())
 		{
 			return LanguageId::PlainText;
 		}
