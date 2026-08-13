@@ -4,6 +4,9 @@
 
 // None of these call Load(). AppSettings writes beside the test executable, so a Load() here
 // would read whatever an earlier case's setter left behind and make the suite order-dependent.
+// The setters below do still write a real graphite.json next to the test executable — that is
+// deliberate and harmless, since nothing in this suite reads it back, and the directory is
+// disposable build output.
 TEST_CASE("EditorSettings starts at its documented defaults")
 {
 	const Graphite::EditorSettings settings;
