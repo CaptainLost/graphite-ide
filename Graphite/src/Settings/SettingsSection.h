@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/NonCopyable.h"
+
 #include <string_view>
 
 namespace Core {
@@ -16,7 +18,7 @@ namespace Graphite {
 	// Deliberately not a Core::Panel. Panel carries window management — visibility, WasDrawn,
 	// its own Begin and End — and a section must have none of it; nesting one inside another
 	// panel's body would nest ImGui windows.
-	class SettingsSection
+	class SettingsSection : Core::NonCopyable
 	{
 	public:
 		virtual ~SettingsSection() = default;
