@@ -18,10 +18,14 @@ project "Graphite"
     objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
     debugdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
 
+    -- Relative to this project rather than through %{wks.location}: that token is emitted as
+    -- MSBuild's $(SolutionDir), which only points at the repository root when the build goes
+    -- through the solution. Building a .vcxproj directly sets it to the project's own
+    -- directory, and the copy then looks for the fonts inside Graphite/.
     postbuildcommands
     {
-        '{COPYFILE} "%{wks.location}/vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
-        '{COPYFILE} "%{wks.location}/vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"'
+        '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
+        '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"'
     }
 
     files { "src/**.h", "src/**.cpp" }

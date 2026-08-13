@@ -64,11 +64,15 @@ Core and CoreTests build with `warnings "High"` and `fatalwarnings { "All" }`,
 so a clean build already proves there are no new warnings. Building Release too
 is worthwhile — some warnings only fire with optimisation on.
 
-The `Graphite` project's post-build step copies fonts from `Graphite/vendor/fonts`,
-which does not exist — they live in `vendor/fonts`. `Graphite.exe` links fine and
-the copy is the only thing that fails, so an MSBuild run on that project exits
-non-zero even when the build succeeded. Check for `error C` / `error LNK`
-specifically rather than trusting the exit code.
+Build with `-nodeReuse:false`. Without it MSBuild leaves worker processes behind
+that hold open handles to the sources, and the next `git checkout` or branch
+switch fails partway with `unable to unlink old ...: Invalid argument`.
+
+Paths in `postbuildcommands` must be relative to the project, not written
+through `%{wks.location}`: premake emits that token as MSBuild's
+`$(SolutionDir)`, which points at the repository root only when the build goes
+through the solution. Building a `.vcxproj` directly — which is what the
+commands above do — sets it to the project's own directory instead.
 
 **Both doctest filters fail open.** `-sf=*FooTests.cpp` matches nothing in this
 build, and `-tc` splits its argument on commas, so a test name containing one
