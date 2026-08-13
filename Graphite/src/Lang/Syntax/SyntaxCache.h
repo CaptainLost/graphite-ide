@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Text/Columns.h"
 #include "Lang/Syntax/Token.h"
 
 #include <cstddef>
@@ -25,6 +26,11 @@ namespace Graphite {
 
 		bool HasLexer() const { return m_Lexer != nullptr; }
 
+		// A width change moves every token offset in any line holding a tab, because the lexer
+		// is fed tab-expanded text. Nothing below the changed width is salvageable, so this
+		// resets rather than invalidating from a line.
+		void SetTabWidth(std::size_t width);
+
 		// Drops the entry states from `fromLine` down. Called after every edit with the line the
 		// edit touched: an edit cannot change what a line above it starts in.
 		void Invalidate(std::size_t fromLine);
@@ -38,6 +44,7 @@ namespace Graphite {
 		void ExtendTo(const Core::TextBuffer& buffer, std::size_t line);
 
 		const Lexer* m_Lexer = nullptr;
+		std::size_t m_TabWidth = Core::DefaultTabWidth;
 
 		// m_EntryStates[n] is the state line n begins in. Always holds at least one element —
 		// line 0 begins in the default state — and is valid for lines below its size.

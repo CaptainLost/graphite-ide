@@ -722,6 +722,10 @@ namespace Graphite {
 		if (inserted)
 		{
 			entry->second.SetLexer(LexerFor(LanguageOfPath(item.Path)));
+			// Without this, a document opened after the setting was already changed would start
+			// its cache at Core::DefaultTabWidth and re-lex on the first frame the editor's
+			// compare-and-rebuild block in DrawEditor notices the mismatch.
+			entry->second.SetTabWidth(item.TabWidth);
 		}
 
 		return entry->second;

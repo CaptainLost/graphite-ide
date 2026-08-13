@@ -107,3 +107,36 @@ TEST_CASE("SyntaxCache clamps a line past the end")
 
 	CHECK(cache.TokensOf(buffer, 99).empty());
 }
+
+// Token offsets are offsets into the TAB-EXPANDED line, so a width change moves every one of
+// them. Nothing about this fails loudly if it is missed — the colours land in the wrong columns.
+TEST_CASE("SyntaxCache re-lexes when the tab width changes")
+{
+	const Core::TextBuffer buffer{"\tint x;"};
+	Graphite::SyntaxCache cache = CppCache();
+
+	cache.SetTabWidth(4);
+	const Graphite::Token firstAtFour = cache.TokensOf(buffer, 0).front();
+
+	cache.SetTabWidth(8);
+	const Graphite::Token firstAtEight = cache.TokensOf(buffer, 0).front();
+
+	// "int" starts after the expanded tab, so it starts four bytes later at width eight.
+	CHECK(firstAtFour.From == 4);
+	CHECK(firstAtEight.From == 8);
+	CHECK(firstAtEight.To - firstAtEight.From == firstAtFour.To - firstAtFour.From);
+}
+
+// Setting the width it already has must not throw the cache away — that would re-lex the file
+// on any frame something asked twice.
+TEST_CASE("SyntaxCache keeps its states when the tab width is unchanged")
+{
+	const Core::TextBuffer buffer{"/* open\nstill"};
+	Graphite::SyntaxCache cache = CppCache();
+
+	cache.SetTabWidth(4);
+	CHECK(KindsOf(cache, buffer, 1) == "m");
+
+	cache.SetTabWidth(4);
+	CHECK(KindsOf(cache, buffer, 1) == "m");
+}

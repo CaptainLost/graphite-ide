@@ -1412,6 +1412,16 @@ namespace Graphite {
 			{
 				item.TabWidth = view.Indent.Width;
 				Core::RefreshDerived(item);
+
+				if (view.Syntax != nullptr)
+				{
+					view.Syntax->SetTabWidth(item.TabWidth);
+				}
+
+				// The aim was a column measured at the old width; at the new width the same
+				// column lands somewhere else. Cleared rather than converted, so the next
+				// vertical move resolves it from where the caret actually is now.
+				item.RowAimAt = Core::NoRowAim;
 			}
 
 			RewrapIfGeometryChanged(item, buffer,

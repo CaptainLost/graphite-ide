@@ -30,6 +30,17 @@ namespace Graphite {
 		Reset();
 	}
 
+	void SyntaxCache::SetTabWidth(std::size_t width)
+	{
+		if (width == 0 || width == m_TabWidth)
+		{
+			return;
+		}
+
+		m_TabWidth = width;
+		Reset();
+	}
+
 	void SyntaxCache::Invalidate(std::size_t fromLine)
 	{
 		m_EntryStates.resize(std::min(m_EntryStates.size(), fromLine + 1));
@@ -56,8 +67,7 @@ namespace Graphite {
 			scratch.clear();
 			// Lexed over the tab-expanded text because that is what the editor draws and what
 			// its column arithmetic measures. Tabs become spaces, which no token spans.
-			const std::string expanded =
-				Core::ExpandTabs(buffer.LineText(at), Core::DefaultTabWidth);
+			const std::string expanded = Core::ExpandTabs(buffer.LineText(at), m_TabWidth);
 
 			m_EntryStates.push_back(m_Lexer->LexLine(expanded, m_EntryStates[at], scratch));
 		}
@@ -97,8 +107,7 @@ namespace Graphite {
 		ExtendTo(buffer, line);
 
 		m_Tokens.clear();
-		const std::string expanded =
-			Core::ExpandTabs(buffer.LineText(line), Core::DefaultTabWidth);
+		const std::string expanded = Core::ExpandTabs(buffer.LineText(line), m_TabWidth);
 		m_Lexer->LexLine(expanded, m_EntryStates[line], m_Tokens);
 
 		m_TokensLine = line;
