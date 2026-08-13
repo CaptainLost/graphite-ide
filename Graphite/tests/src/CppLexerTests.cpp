@@ -222,3 +222,34 @@ TEST_CASE("CppLexer carries a raw string and its delimiter to the next line")
 	CHECK(Shape("done )json\" x", after) == "sssssssssss i");
 	CHECK(Exit("done )json\" x", after) == Graphite::LineState{});
 }
+
+// There is no raw character literal, so the R is an identifier and the literal is its own token.
+TEST_CASE("CppLexer does not treat R as a prefix before a character literal")
+{
+	CHECK(Shape("R'x'") == "iccc");
+}
+
+// The prefixes that ARE valid before a character literal must keep working.
+TEST_CASE("CppLexer reads the character literal prefixes")
+{
+	CHECK(Shape("u8'x'") == "ccccc");
+	CHECK(Shape("L'x'") == "cccc");
+}
+
+// Sixteen characters is the longest delimiter the standard allows.
+TEST_CASE("CppLexer caps a raw string delimiter at sixteen characters")
+{
+	const Graphite::LineState after = Exit("R\"0123456789abcdef(open");
+
+	CHECK(after.Kind == Graphite::LineState::Continuation::RawString);
+	CHECK(after.Delimiter == "0123456789abcdef");
+
+	// Seventeen is not a delimiter, so the literal is invalid rather than left open.
+	CHECK(Exit("R\"0123456789abcdefg(open") == Graphite::LineState{});
+}
+
+// A prefix only counts when it touches the quote.
+TEST_CASE("CppLexer needs the prefix to touch the quote")
+{
+	CHECK(Shape("R \"hi\"") == "i ssss");
+}

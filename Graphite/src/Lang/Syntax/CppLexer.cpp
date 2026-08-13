@@ -189,7 +189,9 @@ namespace Graphite {
 		{
 			const std::size_t from = at;
 
-			while (at < line.size() && line[at] != '(' && at - from <= 16)
+			// Strictly less than 16: the bound is tested before the increment, so `<= 16` would
+			// let the loop walk to an offset of 17 and accept a delimiter one over the limit.
+			while (at < line.size() && line[at] != '(' && at - from < 16)
 			{
 				++at;
 			}
@@ -321,11 +323,15 @@ namespace Graphite {
 
 				const std::string_view word = line.substr(from, at - from);
 
-				if (at < line.size() && (line[at] == '"' || line[at] == '\'') &&
-					IsLiteralPrefix(word))
+				// An R counts as a prefix only before a double quote: there is no raw character
+				// literal, so R'x' is the identifier R followed by a character literal.
+				const bool rawPrefix = !word.empty() && word.back() == 'R';
+
+				if (at < line.size() && IsLiteralPrefix(word) &&
+					(line[at] == '"' || (line[at] == '\'' && !rawPrefix)))
 				{
 					// Fall through to the literal scanner with the token starting at `from`.
-					const bool raw = word.back() == 'R' && line[at] == '"';
+					const bool raw = rawPrefix;
 					++at;
 
 					if (raw)
