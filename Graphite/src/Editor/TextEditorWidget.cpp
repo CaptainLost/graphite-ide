@@ -38,6 +38,25 @@ namespace Graphite {
 
 		double s_CaretMovedAt = 0.0;
 
+		// Which document the blink above is being timed for. One value for the whole
+		// application, like the clock itself: only the focused editor draws a caret, so only
+		// one document is ever being timed.
+		std::filesystem::path s_BlinkOwner;
+
+		// The blink is measured from the last caret movement, and switching documents is not
+		// one — so without this the caret in the newly chosen document inherits the phase of
+		// the one just left and can spend its first half-second dark, exactly when the user
+		// is looking for it. Keyed on the path rather than the item's address, which a
+		// reallocation of the open-document list can hand to a different document.
+		void RestartBlinkOnDocumentChange(const std::filesystem::path& path)
+		{
+			if (s_BlinkOwner == path)
+				return;
+
+			s_BlinkOwner = path;
+			s_CaretMovedAt = ImGui::GetTime();
+		}
+
 		// Stepping through the history runs on its own clock rather than on the keyboard's
 		// auto-repeat, which is tuned for typing: at the ~30 a second Windows delivers, a
 		// held undo is a dozen changes past the one being looked for before the key comes
@@ -1209,9 +1228,24 @@ namespace Graphite {
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
 		const EditorMetrics metrics = MeasureEditor(buffer);
 
+		// Asked of the document window, before the child below becomes the current one. True
+		// when this document holds the keyboard, whether the focus sits on the tab itself or
+		// has already been taken by the surface inside it.
+		const bool documentHoldsFocus = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
 		if (ImGui::BeginChild("##EditorSurface", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  EditorSurfaceFlags()))
 		{
+			// Selecting a tab focuses the document window, not the surface inside it, and only
+			// the surface draws a caret or reads keys — so without this, switching documents
+			// left the new one with no caret and a dead keyboard until it was clicked. Handing
+			// the focus down cannot steal it from elsewhere: it only runs while this document
+			// already holds it.
+			if (documentHoldsFocus && !ImGui::IsWindowFocused())
+			{
+				ImGui::SetWindowFocus();
+			}
+
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float scrollX = ImGui::GetScrollX();
 			const float available = ImGui::GetContentRegionAvail().x;
@@ -1242,6 +1276,11 @@ namespace Graphite {
 			// is active, and asking IsWindowFocused() twice risks exactly that if ImGui's focus
 			// state ever changes between the two calls in the same frame.
 			const bool focused = ImGui::IsWindowFocused();
+
+			if (focused)
+			{
+				RestartBlinkOnDocumentChange(item.Path);
+			}
 
 			// A context arriving without a queue is a caller that has no input to offer, not an
 			// error: this document then simply draws, exactly as an unfocused one does.
