@@ -1,5 +1,9 @@
 #include "Editor/TextEditorWidget.h"
 
+#include "Editor/SyntaxPalette.h"
+
+#include "Lang/Syntax/SyntaxCache.h"
+
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -35,6 +39,11 @@ namespace Graphite {
 		constexpr float kFoldColumnCells = 1.0f;
 
 		constexpr double kCaretBlinkPeriod = 1.0;
+
+		// Handed to DrawRowText for a document whose language has no lexer, so the row loop
+		// never has to branch on whether SyntaxCache exists — an empty token list already
+		// draws the row in one colour.
+		const std::vector<Token> kNoTokens;
 
 		double s_CaretMovedAt = 0.0;
 
@@ -617,9 +626,26 @@ namespace Graphite {
 			ImGui::SetClipboardText(clipboard.c_str());
 		}
 
-		bool InsertTypedCharacters(const Core::FrameInput& input, Core::OpenItem& item)
+		// Called after every mutation that actually changed the buffer, never on one that
+		// merely tried to — an Invalidate on a no-op edit would arm SyntaxCache's revision
+		// backstop and leave it primed to swallow the next genuine edit that forgets to call
+		// this. The caret already sits where the edit landed by the time this runs: at the
+		// end of an insertion, at the start of an erased range, or wherever Undo/Redo put it.
+		void InvalidateSyntaxAfterEdit(SyntaxCache* syntax, const Core::TextBuffer& buffer,
+									   const Core::OpenItem& item, bool changed)
+		{
+			if (!changed || syntax == nullptr)
+				return;
+
+			syntax->Invalidate(buffer.ToPosition(item.Caret.Offset).Line);
+		}
+
+		bool InsertTypedCharacters(const Core::FrameInput& input, Core::OpenItem& item,
+								   SyntaxCache* syntax)
 		{
 			bool edited = false;
+
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
 
 			// A codepoint per character, after the layout and any dead key have had their say.
 			// InsertText's contract is UTF-8, so each one is encoded before reaching it. Skipping
@@ -636,8 +662,11 @@ namespace Graphite {
 
 				if (length > 0)
 				{
-					edited |= Core::InsertText(
+					const bool changed = Core::InsertText(
 						item, std::string_view(utf8, static_cast<std::size_t>(length)));
+
+					edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 			}
 
@@ -646,7 +675,7 @@ namespace Graphite {
 
 		void ApplyEditKeys(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   EditorFrameResult& result)
+						   SyntaxCache* syntax, EditorFrameResult& result)
 		{
 			for (const Core::KeyStroke& stroke : input.GetStrokes())
 			{
@@ -655,19 +684,25 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KPEnter)
 				{
-					result.Edited |= Core::InsertNewline(item, indentStyle);
+					const bool changed = Core::InsertNewline(item, indentStyle);
+					result.Edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 
 				if (stroke.Key == Core::KeyCode::Backspace)
 				{
-					result.Edited |=
+					const bool changed =
 						control ? Core::DeleteWordBackward(item) : Core::DeleteBackward(item);
+					result.Edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 
 				if (stroke.Key == Core::KeyCode::Delete)
 				{
-					result.Edited |=
+					const bool changed =
 						control ? Core::DeleteWordForward(item) : Core::DeleteForward(item);
+					result.Edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 
 				// Consumed here rather than left for ImGui's own focus navigation, which is
@@ -680,8 +715,10 @@ namespace Graphite {
 				// and quietly editing the document behind it.
 				if (!control && stroke.Key == Core::KeyCode::Tab)
 				{
-					result.Edited |=
+					const bool changed =
 						shift ? Core::Outdent(item, indentStyle) : Core::Indent(item, indentStyle);
+					result.Edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 
 				const bool undoPressed = control && !shift && stroke.Key == Core::KeyCode::Z;
@@ -693,7 +730,9 @@ namespace Graphite {
 				if ((undoPressed || redoPressed) &&
 					HistoryStepIsDue(stroke.IsRepeat, ImGui::GetTime()))
 				{
-					result.Edited |= undoPressed ? Core::Undo(item) : Core::Redo(item);
+					const bool changed = undoPressed ? Core::Undo(item) : Core::Redo(item);
+					result.Edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 
 				// What follows are commands rather than edits, and holding one of them would
@@ -707,7 +746,11 @@ namespace Graphite {
 					// An empty clipboard, or one holding something that is not text, hands back a
 					// null pointer rather than an empty string.
 					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
-						result.Edited |= Core::InsertText(item, clipboard);
+					{
+						const bool changed = Core::InsertText(item, clipboard);
+						result.Edited |= changed;
+						InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
+					}
 				}
 
 				// Only with something selected. DeleteBackward on an empty selection removes the
@@ -716,7 +759,9 @@ namespace Graphite {
 				if (control && stroke.Key == Core::KeyCode::X && Core::HasSelection(item.Caret))
 				{
 					CopySelectionToClipboard(buffer, item.Caret);
-					result.Edited |= Core::DeleteBackward(item);
+					const bool changed = Core::DeleteBackward(item);
+					result.Edited |= changed;
+					InvalidateSyntaxAfterEdit(syntax, buffer, item, changed);
 				}
 
 				// Saving is not this widget's decision: a stale document on disk needs confirming
@@ -735,8 +780,8 @@ namespace Graphite {
 
 		void ApplyKeyboard(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   std::size_t pageRows, std::size_t caretAtFrameStart,
-						   EditorFrameResult& result)
+						   SyntaxCache* syntax, std::size_t pageRows,
+						   std::size_t caretAtFrameStart, EditorFrameResult& result)
 		{
 			// Movement first, in its own pass over the queue, and the edits in a second one after
 			// the undo group has been broken and the typed characters inserted. That is the order
@@ -753,9 +798,9 @@ namespace Graphite {
 			if (item.Caret.Offset != caretAtFrameStart)
 				item.Document->GetBuffer().BreakUndoGroup();
 
-			result.Edited |= InsertTypedCharacters(input, item);
+			result.Edited |= InsertTypedCharacters(input, item, syntax);
 
-			ApplyEditKeys(input, buffer, item, indentStyle, result);
+			ApplyEditKeys(input, buffer, item, indentStyle, syntax, result);
 		}
 
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
@@ -844,6 +889,7 @@ namespace Graphite {
 			float WindowWidth = 0.0f;
 			EditorMetrics Metrics;
 			EditorPalette Palette;
+			SyntaxPalette SyntaxColours;
 		};
 
 		// The slice of the line one row shows, as a half-open column range and the bytes of the
@@ -1029,15 +1075,69 @@ namespace Graphite {
 									   canvas.Palette.Selection);
 		}
 
+		// One AddText per token run rather than one for the row: the row is still a single
+		// string, so the runs are slices of it and nothing is copied.
+		//
+		// Positioned by column, not by byte: the text has had its tabs expanded, but a column is
+		// still one *cell* and a UTF-8 character is one to four bytes, so the x of a run is
+		// counted in cells from the row's first column with ColumnCount.
 		void DrawRowText(const RowCanvas& canvas, const RowSlice& slice,
-						 const VisibleLineCache& cache)
+						 const VisibleLineCache& cache, const std::vector<Token>& tokens)
 		{
 			if (slice.FromByte >= slice.ToByte)
+			{
 				return;
+			}
 
-			canvas.Draw->AddText(ImVec2(canvas.TextOriginX, slice.Y), canvas.Palette.Text,
-								 cache.Expanded.data() + slice.FromByte,
-								 cache.Expanded.data() + slice.ToByte);
+			const char* const base = cache.Expanded.data();
+
+			if (tokens.empty())
+			{
+				canvas.Draw->AddText(ImVec2(canvas.TextOriginX, slice.Y), canvas.Palette.Text,
+									 base + slice.FromByte, base + slice.ToByte);
+				return;
+			}
+
+			std::size_t at = slice.FromByte;
+			std::size_t column = slice.FromColumn;
+
+			const auto draw = [&](std::size_t to, ImU32 colour)
+			{
+				if (to <= at)
+				{
+					return;
+				}
+
+				const std::string_view run(base + at, to - at);
+				const float x = canvas.TextOriginX + static_cast<float>(column - slice.FromColumn) *
+													 canvas.Metrics.CellWidth;
+
+				canvas.Draw->AddText(ImVec2(x, slice.Y), colour, run.data(),
+									 run.data() + run.size());
+
+				column += Core::ColumnCount(run, Core::DefaultTabWidth);
+				at = to;
+			};
+
+			for (const Token& token : tokens)
+			{
+				if (token.To <= slice.FromByte)
+				{
+					continue;
+				}
+
+				if (token.From >= slice.ToByte)
+				{
+					break;
+				}
+
+				// The gap before this token is whitespace; drawing it keeps `column` advancing
+				// without special-casing it.
+				draw(std::max(token.From, slice.FromByte), canvas.Palette.Text);
+				draw(std::min(token.To, slice.ToByte), canvas.SyntaxColours.Of(token.Kind));
+			}
+
+			draw(slice.ToByte, canvas.Palette.Text);
 		}
 
 		// Drawn last and offset by the horizontal scroll, so the gutter stays pinned to the left
@@ -1109,7 +1209,8 @@ namespace Graphite {
 		};
 
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
-					 const VisibleLineCache& cache, const RowSlice& slice, const CaretPaint& caret)
+					 const VisibleLineCache& cache, const RowSlice& slice,
+					 const std::vector<Token>& tokens, const CaretPaint& caret)
 		{
 			if (slice.Line == caret.Line)
 				DrawCurrentLineHighlight(canvas, slice);
@@ -1122,7 +1223,7 @@ namespace Graphite {
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
 
-			DrawRowText(canvas, slice, cache);
+			DrawRowText(canvas, slice, cache, tokens);
 			DrawGutter(canvas, slice, slice.Line == caret.Line);
 
 			// Tested against the caret's *row*, not its line: a wrapped line occupies several rows
@@ -1157,7 +1258,7 @@ namespace Graphite {
 
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
-							 float available, bool wordWrap, bool focused)
+							 float available, bool wordWrap, bool focused, SyntaxCache* syntax)
 		{
 			RowCanvas canvas;
 
@@ -1169,6 +1270,7 @@ namespace Graphite {
 			canvas.WindowWidth = ImGui::GetWindowWidth();
 			canvas.Metrics = metrics;
 			canvas.Palette = ReadPalette();
+			canvas.SyntaxColours = ReadSyntaxPalette(canvas.Palette.Text);
 
 			CaretPaint caret;
 
@@ -1198,9 +1300,18 @@ namespace Graphite {
 
 					CacheLine(cache, buffer, ref.Line, selectionFrom, selectionTo);
 
+					// TokensOf caches one line at a time and returns a reference into that cache,
+					// so this is only safe to hold across the rows of *this* line — exactly the
+					// window this loop body is. Fetching it once per row rather than hoisting it
+					// above the loop is what keeps that true: a wrapped line's rows all reach the
+					// same line here in a row, so every call after the first is the cache's fast
+					// path.
+					const std::vector<Token>& tokens =
+						syntax != nullptr ? syntax->TokensOf(buffer, ref.Line) : kNoTokens;
+
 					const RowSlice slice = SliceRow(cache, item.Rows, ref, rowIndex, y);
 
-					DrawRow(canvas, item, cache, slice, caret);
+					DrawRow(canvas, item, cache, slice, tokens, caret);
 				}
 			}
 
@@ -1209,8 +1320,7 @@ namespace Graphite {
 	}
 
 	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
-								 float fontSize, Core::IndentStyle indentStyle,
-								 bool wordWrap)
+								 const EditorView& view)
 	{
 		EditorFrameResult result;
 
@@ -1220,7 +1330,7 @@ namespace Graphite {
 			return result;
 		}
 
-		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), fontSize);
+		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), view.FontSize);
 
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		// Read before anything in this function can move the caret — the mouse below moves it
@@ -1250,15 +1360,16 @@ namespace Graphite {
 			const float scrollX = ImGui::GetScrollX();
 			const float available = ImGui::GetContentRegionAvail().x;
 
-			RewrapIfGeometryChanged(item, buffer, ColumnsThatFit(metrics, available, wordWrap));
+			RewrapIfGeometryChanged(item, buffer,
+									ColumnsThatFit(metrics, available, view.WordWrap));
 
 			// Pre-edit: the mouse and keyboard handling below can still grow or shrink the
 			// document before the frame is over. The interactive rectangle is allowed to
 			// hit-test against a size one frame stale; the reservation the scrollbars and the
 			// clipper read is computed fresh, inside DrawVisibleRows.
-			const PointerState pointer =
-				AddInteractiveSurface(origin, ContentWidthOf(item, metrics, available, wordWrap),
-									  DocumentHeightOf(item, metrics));
+			const PointerState pointer = AddInteractiveSurface(
+				origin, ContentWidthOf(item, metrics, available, view.WordWrap),
+				DocumentHeightOf(item, metrics));
 
 			ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
 							  origin.x + metrics.Gutter.TotalWidth);
@@ -1286,8 +1397,8 @@ namespace Graphite {
 			// error: this document then simply draws, exactly as an unfocused one does.
 			if (focused && context.Input != nullptr)
 			{
-				ApplyKeyboard(*context.Input, buffer, item, indentStyle, RowsPerPage(metrics),
-							  caretAtFrameStart, result);
+				ApplyKeyboard(*context.Input, buffer, item, view.Indent, view.Syntax,
+							  RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 
 			// Only when this frame actually moved the caret — not merely when the window has
@@ -1297,11 +1408,12 @@ namespace Graphite {
 			// motion key or an edit changed where the caret sits.
 			if (item.Caret.Offset != caretAtFrameStart)
 			{
-				ScrollToCaret(buffer, item, metrics, wordWrap);
+				ScrollToCaret(buffer, item, metrics, view.WordWrap);
 				s_CaretMovedAt = ImGui::GetTime();
 			}
 
-			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, wordWrap, focused);
+			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
+							focused, view.Syntax);
 		}
 
 		ImGui::EndChild();

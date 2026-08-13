@@ -17,6 +17,8 @@ namespace Core {
 
 namespace Graphite {
 
+	class SyntaxCache;
+
 	struct CommandContext
 	{
 		Core::CommandRegistry* Commands = nullptr;
@@ -36,8 +38,16 @@ namespace Graphite {
 		bool SaveRequested = false;
 	};
 
-	EditorFrameResult DrawEditor(const CommandContext& context,
-								 Core::OpenItem& item, float fontSize,
-								 Core::IndentStyle indentStyle,
-								 bool wordWrap);
+	// What the frame draws with, as opposed to what it draws. Syntax may be null: a document
+	// whose language has no lexer is drawn in one colour.
+	struct EditorView
+	{
+		float FontSize = 0.0f;
+		Core::IndentStyle Indent;
+		bool WordWrap = false;
+		SyntaxCache* Syntax = nullptr;
+	};
+
+	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
+								 const EditorView& view);
 }

@@ -2,6 +2,8 @@
 
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Registry/LanguageRegistry.h"
+
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
@@ -442,6 +444,7 @@ namespace Graphite {
 		// file, so a reopened document lands where the user is working rather than where it
 		// was months ago — and imgui.ini stops collecting a dead section per file.
 		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
+		m_Syntax.erase(m_Documents.At(index).Path);
 		m_Documents.Close(index);
 	}
 
@@ -712,6 +715,18 @@ namespace Graphite {
 			m_LastFocusedNode = window->DockNode->ID;
 	}
 
+	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
+	{
+		const auto [entry, inserted] = m_Syntax.try_emplace(item.Path);
+
+		if (inserted)
+		{
+			entry->second.SetLexer(LexerFor(LanguageOfPath(item.Path)));
+		}
+
+		return entry->second;
+	}
+
 	void DocumentWindows::ForgetLayoutOfWindowsClosedElsewhere(
 		const std::vector<std::string>& startingIdentities)
 	{
@@ -786,8 +801,13 @@ namespace Graphite {
 				if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
 					m_Documents.Promote(index);
 
-				const EditorFrameResult editorResult =
-					DrawEditor(context, item, fontSize, indentStyle, wordWrap);
+				EditorView view;
+				view.FontSize = fontSize;
+				view.Indent = indentStyle;
+				view.WordWrap = wordWrap;
+				view.Syntax = &SyntaxFor(item);
+
+				const EditorFrameResult editorResult = DrawEditor(context, item, view);
 
 				// Once the user has typed into a preview it is no longer something they were
 				// just glancing at.
