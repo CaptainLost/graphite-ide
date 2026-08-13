@@ -38,8 +38,12 @@ namespace Graphite {
 		bool SaveRequested = false;
 	};
 
-	// What the frame draws with, as opposed to what it draws. Syntax may be null: a document
-	// whose language has no lexer is drawn in one colour.
+	// What the frame draws with, as opposed to what it draws. Syntax is always supplied today —
+	// DocumentWindows::SyntaxFor hands back a valid cache for every document, and one for a
+	// language with no lexer simply has TokensOf return an empty vector, so the row still draws
+	// in one colour. The null default and the guard around every use are defence, not a
+	// supported "no cache" mode: the struct default-constructs to something, and a null pointer
+	// is cheaper to guard against than to rule out by construction.
 	struct EditorView
 	{
 		float FontSize = 0.0f;
