@@ -312,8 +312,11 @@ namespace Graphite {
 				continue;
 			}
 
-			// Applies only when nothing but whitespace precedes the # on this line — that is
-			// what distinguishes a directive from a stringify operator inside a macro body.
+			// out.empty() is the real guard: it is true only when no token has yet been emitted
+			// on this line, so after the whitespace skip above it means the # is the first thing
+			// on the line rather than a stringify operator inside a macro body. The state check
+			// is belt-and-braces — this loop is only ever reached with state.Kind == None, since
+			// every other entry state either returns before the loop or resets state first.
 			if (c == '#' && out.empty() && state.Kind == LineState::Continuation::None)
 			{
 				const std::size_t from = at;

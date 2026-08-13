@@ -286,3 +286,18 @@ TEST_CASE("CppLexer continues a directive past a trailing backslash without spec
 {
 	CHECK(Exit("#define M(x) \\") == Graphite::LineState{});
 }
+
+// out.empty() is what makes this a directive rather than a stringify operator: a # that is not
+// the first thing on the line is ordinary punctuation.
+TEST_CASE("CppLexer does not treat a mid-line hash as a directive")
+{
+	CHECK(Shape("x #y") == "i .i");
+	CHECK(Shape("/* c */ #define X") == "mmmmmmm .iiiiii i");
+}
+
+// The angle-bracket exception belongs to #include alone.
+TEST_CASE("CppLexer scans an angled header name for include only")
+{
+	CHECK(Shape("#if <x>") == "ppp .i.");
+	CHECK(Shape("#includex <x>") == "ppppppppp .i.");
+}

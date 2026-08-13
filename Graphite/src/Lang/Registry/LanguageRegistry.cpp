@@ -1,6 +1,7 @@
 #include "Lang/Registry/LanguageRegistry.h"
 
 #include "Core/Base/Ascii.h"
+#include "Lang/Syntax/CppLexer.h"
 
 #include <array>
 #include <string>
@@ -45,5 +46,14 @@ namespace Graphite {
 		}
 
 		return LanguageId::PlainText;
+	}
+
+	const Lexer* LexerFor(LanguageId language)
+	{
+		// Stateless, so one instance serves every document. Function-local rather than a file
+		// scope object, per ADR 0033 on complex initialization of globals.
+		static const CppLexer cpp;
+
+		return language == LanguageId::Cpp ? &cpp : nullptr;
 	}
 }
