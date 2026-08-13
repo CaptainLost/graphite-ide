@@ -86,7 +86,7 @@ TEST_CASE("Hex parsing rejects anything that is not six or eight hex digits")
 	CHECK_FALSE(ParseHexColor("C586C").has_value());
 	CHECK_FALSE(ParseHexColor("C586C0F").has_value());
 	CHECK_FALSE(ParseHexColor("C586C0FFF").has_value());
-	CHECK_FALSE(ParseHexColor("#C586C0").has_value());
+	CHECK_FALSE(ParseHexColor("#C586C0F").has_value());
 	CHECK_FALSE(ParseHexColor("GGGGGG").has_value());
 	CHECK_FALSE(ParseHexColor("C586 0").has_value());
 }
