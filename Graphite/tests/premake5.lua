@@ -31,7 +31,9 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Settings/**.h",
         "%{wks.location}/Graphite/src/Settings/**.cpp",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
-        "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp"
+        "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
+        "%{wks.location}/Graphite/src/Theme/**.h",
+        "%{wks.location}/Graphite/src/Theme/**.cpp",
     }
 
     includedirs
