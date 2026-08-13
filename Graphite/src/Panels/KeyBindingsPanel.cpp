@@ -75,6 +75,40 @@ namespace Graphite {
 			return text;
 		}
 
+		// Chords the GUI toolkit routes for itself, before any window sees them. Binding one
+		// would not replace what it already does — both would happen on the same keystroke,
+		// which is how Ctrl+Tab came to open the window switcher and indent the document
+		// behind it. Refused at the point of binding rather than at the point of firing, so
+		// the answer arrives while the user is still choosing.
+		struct ReservedChord
+		{
+			ImGuiKeyChord Keys;
+			const char* Reason;
+		};
+
+		constexpr ReservedChord kReservedChords[] = {
+			{ImGuiMod_Ctrl | ImGuiKey_Tab, "the window switcher uses it"},
+			{ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Tab, "the window switcher uses it"},
+		};
+
+		std::string_view ReservedReasonFor(const Core::Chord& chord)
+		{
+			if (chord.GetTrigger() != Core::Trigger::Key)
+			{
+				return {};
+			}
+
+			for (const ReservedChord& reserved : kReservedChords)
+			{
+				if (chord.GetKeys() == reserved.Keys)
+				{
+					return reserved.Reason;
+				}
+			}
+
+			return {};
+		}
+
 		std::string CaptureLabel(ImGuiKeyChord mods)
 		{
 			if (mods == ImGuiMod_None)
@@ -422,6 +456,15 @@ namespace Graphite {
 
 	void KeyBindingsPanel::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
+		if (const std::string_view reason = ReservedReasonFor(chord); !reason.empty())
+		{
+			m_Conflict = chord;
+			m_ConflictOwner.clear();
+			m_ConflictReason = std::string(reason);
+			m_ConflictAsked = false;
+			return;
+		}
+
 		const std::string_view owner = m_Keys.BoundTo(chord);
 
 		if (owner.empty() || owner == id)
@@ -484,6 +527,23 @@ namespace Graphite {
 			return;
 		}
 
+		// A reserved chord names no owner to take it from: the answer is only that it cannot
+		// be had, so the question loses its first button and becomes a statement.
+		if (!m_ConflictReason.empty())
+		{
+			ImGui::Text("%s cannot be bound: %s.", m_Conflict->ToString().c_str(),
+						m_ConflictReason.c_str());
+
+			if (ImGui::Button("OK"))
+			{
+				ForgetConflict();
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+			return;
+		}
+
 		const Core::Command* owner = m_Commands.Find(m_ConflictOwner);
 		const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : m_ConflictOwner;
 
@@ -530,6 +590,7 @@ namespace Graphite {
 	{
 		m_Conflict.reset();
 		m_ConflictOwner.clear();
+		m_ConflictReason.clear();
 		m_ConflictAsked = false;
 		m_Capturing.clear();
 	}

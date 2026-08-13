@@ -68,6 +68,10 @@ namespace Graphite {
 		std::optional<Core::Chord> m_Conflict;
 		std::string m_ConflictOwner;
 
+		// Set instead of the owner when the chord is one the toolkit keeps for itself, which
+		// is a refusal rather than a question: there is nobody to take it from.
+		std::string m_ConflictReason;
+
 		bool m_ConflictAsked = false;
 
 		std::array<char, 128> m_Filter{};
