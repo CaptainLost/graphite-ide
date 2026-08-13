@@ -147,7 +147,13 @@ namespace Graphite {
 			return false;
 		}
 
-		return SaveScheme(m_Directory, m_Selected, m_Scheme);
+		if (!SaveScheme(m_Directory, m_Selected, m_Scheme))
+		{
+			APP_WARN("Could not save colour scheme '{}'", m_Selected);
+			return false;
+		}
+
+		return true;
 	}
 
 	bool SchemeDraft::Duplicate()
