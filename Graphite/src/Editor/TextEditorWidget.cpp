@@ -38,6 +38,50 @@ namespace Graphite {
 
 		double s_CaretMovedAt = 0.0;
 
+		// Stepping through the history runs on its own clock rather than on the keyboard's
+		// auto-repeat, which is tuned for typing: at the ~30 a second Windows delivers, a
+		// held undo is a dozen changes past the one being looked for before the key comes
+		// up. A history step is a whole change — a word, a line, a pasted block — so it
+		// wants to be slow enough to watch and stop.
+		constexpr double kHistoryHoldDelay = 0.4;
+
+		constexpr double kHistoryFirstInterval = 0.14;
+
+		constexpr double kHistoryFastestInterval = 0.06;
+
+		// How much of the interval a second of holding takes away, so the stream tightens
+		// from the first rate to the fastest over roughly three seconds.
+		constexpr double kHistoryRampPerSecond = 0.027;
+
+		double s_HistoryHoldBeganAt = 0.0;
+		double s_LastHistoryStepAt = 0.0;
+
+		// Whether a held undo or redo is allowed to take another step this instant.
+		bool HistoryStepIsDue(bool isRepeat, double now)
+		{
+			if (!isRepeat)
+			{
+				s_HistoryHoldBeganAt = now;
+				s_LastHistoryStepAt = now;
+				return true;
+			}
+
+			const double held = now - s_HistoryHoldBeganAt;
+
+			if (held < kHistoryHoldDelay)
+				return false;
+
+			const double interval =
+				std::max(kHistoryFastestInterval,
+						 kHistoryFirstInterval - (held - kHistoryHoldDelay) * kHistoryRampPerSecond);
+
+			if (now - s_LastHistoryStepAt < interval)
+				return false;
+
+			s_LastHistoryStepAt = now;
+			return true;
+		}
+
 		int DigitCount(std::size_t value)
 		{
 			int digits = 1;
@@ -620,17 +664,17 @@ namespace Graphite {
 											   : Core::Indent(item, indentStyle);
 					}
 
-					// Stepping through the history takes auto-repeat like the edit keys above:
-					// holding Ctrl+Z walks back through the changes at the keyboard's own
-					// rate, which is the delay-then-stream that makes a hold feel like it
-					// speeds up.
-					if (control && !shift && stroke.Key == Core::KeyCode::Z)
-						result.Edited |= Core::Undo(item);
+					const bool undoPressed = control && !shift && stroke.Key == Core::KeyCode::Z;
+					const bool redoPressed =
+						control && (stroke.Key == Core::KeyCode::Y ||
+									(shift && stroke.Key == Core::KeyCode::Z));
 
-					if (control && (stroke.Key == Core::KeyCode::Y ||
-									(shift && stroke.Key == Core::KeyCode::Z)))
+					// Asked once for the pair, so holding one and rolling onto the other does
+					// not restart the ramp mid-gesture.
+					if ((undoPressed || redoPressed) &&
+						HistoryStepIsDue(stroke.IsRepeat, ImGui::GetTime()))
 					{
-						result.Edited |= Core::Redo(item);
+						result.Edited |= undoPressed ? Core::Undo(item) : Core::Redo(item);
 					}
 
 					// What follows are commands rather than edits, and holding one of them
