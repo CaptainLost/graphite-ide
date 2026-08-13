@@ -12,8 +12,10 @@ namespace {
 	constexpr std::size_t kComment = static_cast<std::size_t>(Graphite::TokenKind::Comment);
 	constexpr std::size_t kKeyword = static_cast<std::size_t>(Graphite::TokenKind::Keyword);
 
-	// A colour no built-in uses, so a test that finds it can only have got it from the draft.
-	constexpr Core::Color kTestColor{0.25f, 0.5f, 0.75f, 1.0f};
+	// Channels chosen as exact multiples of 1/255 so they survive the scheme file's eight-bit
+	// hex round-trip: 0.75 would come back as 191/255, and a test that cannot round-trip its own
+	// fixture fails for a reason that has nothing to do with what it is testing.
+	constexpr Core::Color kTestColor{0.2f, 0.4f, 0.8f, 1.0f};
 }
 
 TEST_CASE("A fresh draft lists both built-ins and starts read-only")
@@ -74,7 +76,7 @@ TEST_CASE("Editing one colour overrides exactly one colour")
 
 	CHECK(draft.IsOverridden(Graphite::TokenKind::Comment));
 	CHECK_FALSE(draft.IsOverridden(Graphite::TokenKind::Keyword));
-	CHECK(draft.GetPreview().Syntax[kComment].B == doctest::Approx(0.75f));
+	CHECK(draft.GetPreview().Syntax[kComment].B == doctest::Approx(0.8f));
 
 	REQUIRE(draft.Save());
 
@@ -149,7 +151,7 @@ TEST_CASE("A duplicate carries the source scheme's overrides")
 	REQUIRE(draft.Duplicate());
 
 	CHECK(draft.IsOverridden(Graphite::TokenKind::Comment));
-	CHECK(draft.GetPreview().Syntax[kComment].B == doctest::Approx(0.75f));
+	CHECK(draft.GetPreview().Syntax[kComment].B == doctest::Approx(0.8f));
 
 	// The base travelled too, or the copy would look nothing like what was copied.
 	const std::size_t background = static_cast<std::size_t>(Graphite::EditorColor::Background);
