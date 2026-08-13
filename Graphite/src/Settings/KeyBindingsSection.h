@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Command/Chord.h"
-#include "Core/UI/Panel.h"
+#include "Settings/SettingsSection.h"
 
 #include <array>
 #include <cstddef>
@@ -18,14 +18,18 @@ namespace Core {
 
 namespace Graphite {
 
-	class KeyBindingsPanel final : public Core::Panel
+	class KeyBindingsSection final : public SettingsSection
 	{
 	public:
-		KeyBindingsPanel(Core::CommandRegistry& commands, Core::Keymap& keys, std::function<void()> onChanged);
+		KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys, std::function<void()> onChanged);
+
+		std::string_view GetTitle() const override { return "Key Bindings"; }
 
 		void OnImGuiRender() override;
 
 		void OnEvent(Core::Event& event) override;
+
+		void OnDeactivated() override { CancelCapture(); }
 
 	private:
 		bool IsWaitingForChord() const;

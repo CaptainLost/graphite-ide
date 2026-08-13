@@ -20,11 +20,16 @@ namespace {
 
 		void OnEvent(Core::Event&) override { ++m_Events; }
 
+		void OnDeactivated() override { ++m_Deactivations; }
+
 		std::size_t GetEventCount() const { return m_Events; }
+
+		std::size_t GetDeactivationCount() const { return m_Deactivations; }
 
 	private:
 		std::string_view m_Title;
 		std::size_t m_Events = 0;
+		std::size_t m_Deactivations = 0;
 	};
 
 	struct Fixture
@@ -96,4 +101,25 @@ TEST_CASE("SettingsPanel with no sections answers without indexing anything")
 	panel.OnEvent(event);
 
 	CHECK(panel.GetActiveSection() == 0);
+}
+
+TEST_CASE("SettingsPanel tells a section it is being left")
+{
+	Fixture fixture;
+
+	fixture.Panel.SelectSection(1);
+
+	CHECK(fixture.First->GetDeactivationCount() == 1);
+	CHECK(fixture.Second->GetDeactivationCount() == 0);
+}
+
+// Selecting the section already showing is not a change and must not drop its state — a user
+// clicking the highlighted entry would otherwise lose a capture in progress.
+TEST_CASE("SettingsPanel does not deactivate a section reselected")
+{
+	Fixture fixture;
+
+	fixture.Panel.SelectSection(0);
+
+	CHECK(fixture.First->GetDeactivationCount() == 0);
 }

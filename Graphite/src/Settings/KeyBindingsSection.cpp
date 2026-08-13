@@ -1,4 +1,4 @@
-#include "Panels/KeyBindingsPanel.h"
+#include "Settings/KeyBindingsSection.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
@@ -189,14 +189,13 @@ namespace Graphite {
 		}
 	}
 
-	KeyBindingsPanel::KeyBindingsPanel(Core::CommandRegistry& commands, Core::Keymap& keys,
-									   std::function<void()> onChanged)
-		: Core::Panel("keybindings", "Keyboard Shortcuts", false), m_Commands(commands), m_Keys(keys),
-		  m_OnChanged(std::move(onChanged))
+	KeyBindingsSection::KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys,
+										   std::function<void()> onChanged)
+		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged))
 	{
 	}
 
-	void KeyBindingsPanel::OnImGuiRender()
+	void KeyBindingsSection::OnImGuiRender()
 	{
 		m_WasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
@@ -230,7 +229,7 @@ namespace Graphite {
 		RenderConflictPopup();
 	}
 
-	void KeyBindingsPanel::OnEvent(Core::Event& event)
+	void KeyBindingsSection::OnEvent(Core::Event& event)
 	{
 		if (!IsWaitingForChord())
 		{
@@ -297,18 +296,18 @@ namespace Graphite {
 			});
 	}
 
-	bool KeyBindingsPanel::IsWaitingForChord() const
+	bool KeyBindingsSection::IsWaitingForChord() const
 	{
 		return !m_Capturing.empty() && !m_Conflict.has_value() && m_WasFocused;
 	}
 
-	void KeyBindingsPanel::CancelCapture()
+	void KeyBindingsSection::CancelCapture()
 	{
 		m_Capturing.clear();
 		m_TapMods = 0;
 	}
 
-	bool KeyBindingsPanel::Matches(const Core::Command& command) const
+	bool KeyBindingsSection::Matches(const Core::Command& command) const
 	{
 		const std::string needle = Core::Lowered(m_Filter.data());
 
@@ -326,7 +325,7 @@ namespace Graphite {
 			   std::string::npos;
 	}
 
-	void KeyBindingsPanel::RenderRow(const Core::Command& command)
+	void KeyBindingsSection::RenderRow(const Core::Command& command)
 	{
 		const Core::Binding* binding = m_Keys.For(command.Id);
 
@@ -369,7 +368,7 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
-	void KeyBindingsPanel::RenderSlot(const std::string& id, std::size_t slot,
+	void KeyBindingsSection::RenderSlot(const std::string& id, std::size_t slot,
 									  const std::string& text)
 	{
 		ImGui::PushID(static_cast<int>(slot));
@@ -429,14 +428,14 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
-	bool KeyBindingsPanel::CaptureOwnsKeyboard(bool selfActive, bool anyActive)
+	bool KeyBindingsSection::CaptureOwnsKeyboard(bool selfActive, bool anyActive)
 	{
 		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
 		return focused && (!anyActive || selfActive);
 	}
 
-	std::optional<Core::Chord> KeyBindingsPanel::CaptureWheelChord(bool pointerOverCell)
+	std::optional<Core::Chord> KeyBindingsSection::CaptureWheelChord(bool pointerOverCell)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 
@@ -454,7 +453,7 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	void KeyBindingsPanel::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
+	void KeyBindingsSection::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
 		if (const std::string_view reason = ReservedReasonFor(chord); !reason.empty())
 		{
@@ -478,7 +477,7 @@ namespace Graphite {
 		m_ConflictAsked = false;
 	}
 
-	void KeyBindingsPanel::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
+	void KeyBindingsSection::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
 		std::vector<Core::Chord> chords = Flatten(m_Keys.For(id));
 
@@ -499,7 +498,7 @@ namespace Graphite {
 		m_OnChanged();
 	}
 
-	void KeyBindingsPanel::RenderConflictPopup()
+	void KeyBindingsSection::RenderConflictPopup()
 	{
 		if (!m_Conflict.has_value())
 		{
@@ -586,7 +585,7 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
-	void KeyBindingsPanel::ForgetConflict()
+	void KeyBindingsSection::ForgetConflict()
 	{
 		m_Conflict.reset();
 		m_ConflictOwner.clear();

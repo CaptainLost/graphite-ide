@@ -28,5 +28,10 @@ namespace Graphite {
 		// Only the section the user is looking at is offered events. A section that captures
 		// keys — KeyBindingsSection does — must not capture them from behind another section.
 		virtual void OnEvent(Core::Event& event) { (void)event; }
+
+		// Called on the section being left, so a section holding transient state — a chord
+		// capture, a half-filled field — can drop it rather than sit waiting for input it will
+		// no longer be offered.
+		virtual void OnDeactivated() {}
 	};
 }

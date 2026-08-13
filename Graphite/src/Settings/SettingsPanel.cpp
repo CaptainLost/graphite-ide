@@ -21,6 +21,11 @@ namespace Graphite {
 			return;
 		}
 
+		if (index != m_Active)
+		{
+			m_Sections[m_Active]->OnDeactivated();
+		}
+
 		m_Active = index;
 	}
 
@@ -52,6 +57,11 @@ namespace Graphite {
 
 				if (ImGui::Selectable(std::string(title).c_str(), index == m_Active))
 				{
+					if (index != m_Active)
+					{
+						m_Sections[m_Active]->OnDeactivated();
+					}
+
 					m_Active = index;
 				}
 			}
