@@ -12,11 +12,21 @@ TEST_CASE("Keyboard navigation being available does not entitle the GUI to a key
 	CHECK_FALSE(Core::GuiConsumesKeyboard(false, false));
 }
 
-TEST_CASE("An active item takes the keystroke")
+TEST_CASE("A field being typed into takes the keystroke")
 {
-	// A text field being typed into is the case worth protecting: naming a file must not
-	// also run the command bound to the letters of the name.
+	// The case worth protecting: naming a file must not also run the commands bound to the
+	// letters of the name.
 	CHECK(Core::GuiConsumesKeyboard(true, false));
+}
+
+TEST_CASE("A widget merely being interacted with does not take the keystroke")
+{
+	// Held mouse buttons make an item active for as long as they are held, so deciding on
+	// "some item is active" stopped the keyboard working for the whole of a selection drag
+	// in an editor. Wanting text input is the narrower question, and the right one.
+	const bool draggingASelection = false; // an active item, but nothing wants text
+
+	CHECK_FALSE(Core::GuiConsumesKeyboard(draggingASelection, false));
 }
 
 TEST_CASE("An open modal takes the keystroke")
@@ -25,7 +35,7 @@ TEST_CASE("An open modal takes the keystroke")
 	CHECK(Core::GuiConsumesKeyboard(false, true));
 }
 
-TEST_CASE("An active item inside a modal still takes the keystroke")
+TEST_CASE("A field inside a popup still takes the keystroke")
 {
 	CHECK(Core::GuiConsumesKeyboard(true, true));
 }
