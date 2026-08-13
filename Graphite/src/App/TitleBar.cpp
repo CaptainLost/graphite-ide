@@ -51,6 +51,94 @@ namespace Graphite {
 
 			return pressed;
 		}
+
+		void DrawVersionLabel(const Core::CaptionRect& slot, const std::string& version)
+		{
+			// No centring formula on y: BeginMenuBar() already called
+			// AlignTextToFramePadding(), and that baseline offset survives SetCursorPos, so a
+			// second one on top of it would push the label low.
+			ImGui::SetCursorPos(ImVec2(slot.X, 0.0f));
+			ImGui::TextDisabled("%s", version.c_str());
+		}
+
+		Core::CaptionMetrics MeasureDragRegion(float dragBegin, float dragEnd)
+		{
+			// The span itself, not "the cursor is over it": the moment the hit test answers
+			// HTCAPTION the pointer belongs to the non-client area, GLFW gets WM_MOUSELEAVE
+			// and the backend pushes an invalid mouse position, so an answer computed from
+			// GetMousePos() would flip the hit test back and forth under a still cursor.
+			//
+			// These x values are window-local while the hit test asks in client coordinates.
+			// They coincide only because the dockspace host sits at the main viewport's
+			// WorkPos, which the bottom-docked status bar leaves equal to the client's
+			// top-left; a bar docked along the top or the left would need the offset between
+			// GetWindowPos() and the viewport's Pos added here.
+			Core::CaptionMetrics metrics;
+			metrics.Height = kCaptionHeight;
+			metrics.DragBegin = dragBegin;
+			metrics.DragEnd = dragEnd;
+
+			// An open menu is the one thing a free-caption click has to reach the application
+			// for: it should close the menu, and a drag would swallow it. Unlike a hover test
+			// this stays true while the pointer is off in the non-client area.
+			metrics.DragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+
+			return metrics;
+		}
+
+		bool PointerBelongsToSystem(Core::Window& window, const Core::CaptionMetrics& metrics)
+		{
+			// The same metrics the hit test is given, so the button highlights follow it
+			// rather than guessing alongside it. The client size, the point and the maximized
+			// flag are not shared with the frame, only equal: they agree because of how the
+			// GLFW backend sits on Win32, and a framebuffer scaled against the client
+			// rectangle would part them.
+			//
+			// An invalid mouse position — what the backend reports while the pointer is away
+			// in the non-client area — lands far outside the client rectangle and reads as an
+			// edge, which is the wanted answer anyway.
+			int clientWidth = 0;
+			int clientHeight = 0;
+			window.FramebufferSize(clientWidth, clientHeight);
+
+			const ImVec2 origin = ImGui::GetWindowPos();
+			const ImVec2 pointer = ImGui::GetMousePos();
+
+			return Core::Classify(metrics, static_cast<float>(clientWidth),
+								  static_cast<float>(clientHeight), pointer.x - origin.x,
+								  pointer.y - origin.y,
+								  window.IsMaximized()) != Core::CaptionHit::Client;
+		}
+
+		void DrawWindowButtons(Core::Window& window, const Core::CaptionLayout& layout,
+							   bool systemOwnsPointer)
+		{
+			const ImU32 hovered = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
+			const ImU32 held = ImGui::GetColorU32(ImGuiCol_ButtonActive);
+
+			if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.Minimize,
+							  hovered, held, systemOwnsPointer))
+			{
+				window.Minimize();
+			}
+
+			const char* middle =
+				window.IsMaximized() ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE;
+
+			if (CaptionButton("CaptionMaximize", middle, layout.Maximize, hovered, held,
+							  systemOwnsPointer))
+			{
+				window.ToggleMaximize();
+			}
+
+			const ImU32 closeColour = ImGui::GetColorU32(kCloseHovered);
+
+			if (CaptionButton("CaptionClose", ICON_MDI_CLOSE, layout.Close, closeColour,
+							  closeColour, systemOwnsPointer))
+			{
+				window.RequestClose();
+			}
+		}
 	}
 
 	void TitleBar::Render(Core::Window& window)
@@ -63,116 +151,24 @@ namespace Graphite {
 		const std::string version = std::format("Graphite {}", Version::String());
 		const float versionWidth = ImGui::CalcTextSize(version.c_str()).x;
 
-		// Where the menus stopped: the layout has to know what it may not cover.
-		const float contentLeft = ImGui::GetCursorPosX();
+		const float menuEnd = ImGui::GetCursorPosX();
 
 		// BeginMenuBar() does not open a child window — it repositions the cursor of the
-		// dockspace host window that is already current, so GetWindowWidth() here answers
-		// for that host window (which DockSpaceHost::Begin sizes to the whole work area),
-		// not for some narrower menu-bar-only window. That is exactly the width the row
-		// spans, so it is what the button layout needs.
+		// dockspace host window that is already current, so this is that host window's
+		// width, which is exactly the width the row spans.
 		const float barWidth = ImGui::GetWindowWidth();
 
 		const Core::CaptionLayout layout = Core::LayOutCaption(
-			barWidth, kCaptionHeight, kButtonWidth, versionWidth, kVersionGap, contentLeft);
+			barWidth, kCaptionHeight, kButtonWidth, versionWidth, kVersionGap, menuEnd);
 
 		if (layout.VersionVisible)
 		{
-			// Not a centring formula on y — BeginMenuBar() already called
-			// AlignTextToFramePadding(), and that base offset survives across SetCursorPos
-			// (TextEx draws at CursorPos.y + CurrLineTextBaseOffset, which SetCursorPos
-			// does not touch). It was computed from the same enlarged FramePadding this
-			// row uses, so it already centres a text line in kCaptionHeight; adding a
-			// second centring offset on top of it would double-count and push the label
-			// low.
-			ImGui::SetCursorPos(ImVec2(layout.Version.X, 0.0f));
-			ImGui::TextDisabled("%s", version.c_str());
+			DrawVersionLabel(layout.Version, version);
 		}
 
-		// What is left of the row between the menus and the window buttons is what the
-		// system may treat as a title bar — reported as the span itself, not as "the
-		// cursor is over it". The difference is not stylistic: the moment the hit test
-		// answers HTCAPTION the pointer belongs to the non-client area, GLFW gets
-		// WM_MOUSELEAVE and the ImGui backend pushes an invalid mouse position, so any
-		// answer computed from GetMousePos() or IsAnyItemHovered() would collapse the
-		// frame after it was given and flip the hit test back and forth under a cursor
-		// that never moved.
-		//
-		// These x values are window-local, the same space SetCursorPos below uses, while
-		// the hit test asks in client coordinates. They coincide because the dockspace
-		// host sits at the main viewport's WorkPos, which the status bar (docked at the
-		// bottom) leaves equal to the viewport's Pos, i.e. the client's top-left. A bar
-		// docked along the top or the left would break that — as it would already break
-		// measuring the caption's height from the client top — and both would then need
-		// the offset between GetWindowPos() and the viewport's Pos added here.
-		Core::CaptionMetrics metrics;
-		metrics.Height = kCaptionHeight;
-		metrics.DragBegin = contentLeft;
-		metrics.DragEnd = layout.Minimize.X;
+		const Core::CaptionMetrics metrics = MeasureDragRegion(menuEnd, layout.Minimize.X);
 
-		// An open menu is the one thing a free-caption click has to reach the application
-		// for: it should close the menu, and a drag would swallow it. Unlike a hover test
-		// this says nothing about where the cursor is, so it stays true while the pointer
-		// is off in the non-client area.
-		metrics.DragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
-
-		// The buttons then ask that same function, on that same metrics object, what the
-		// pointer is over: anything Classify does not call Client is the system's this
-		// frame, and the highlight follows the hit test rather than guessing alongside it.
-		//
-		// The remaining arguments are not shared, only equal. The frame takes the client
-		// size from GetClientRect where this takes it from the framebuffer, the point from
-		// ScreenToClient where this takes it from ImGui, and the maximized flag from
-		// IsZoomed where this takes it from GLFW's attribute. They agree because of how
-		// the GLFW backend sits on Win32, not because anything here enforces it: a
-		// framebuffer scaled against the client rectangle would part them, and the
-		// highlight would drift from the hit test by that scale.
-		//
-		// An invalid mouse position — what the backend reports while the pointer is away
-		// in the non-client area — lands far outside the client rectangle and reads as an
-		// edge, which is the wanted answer anyway: a pointer the application cannot see
-		// hovers nothing.
-		int clientWidth = 0;
-		int clientHeight = 0;
-		window.FramebufferSize(clientWidth, clientHeight);
-
-		const ImVec2 origin = ImGui::GetWindowPos();
-		const ImVec2 pointer = ImGui::GetMousePos();
-
-		const bool systemOwnsPointer =
-			Core::Classify(metrics, static_cast<float>(clientWidth),
-						   static_cast<float>(clientHeight), pointer.x - origin.x,
-						   pointer.y - origin.y,
-						   window.IsMaximized()) != Core::CaptionHit::Client;
-
-		const ImU32 hovered = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
-		const ImU32 held = ImGui::GetColorU32(ImGuiCol_ButtonActive);
-
-		if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.Minimize,
-						  hovered, held, systemOwnsPointer))
-		{
-			window.Minimize();
-		}
-
-		const char* middle =
-			window.IsMaximized() ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE;
-
-		if (CaptionButton("CaptionMaximize", middle, layout.Maximize, hovered, held,
-						  systemOwnsPointer))
-		{
-			window.ToggleMaximize();
-		}
-
-		// Through the window's close flag rather than Application::Close(), for the same
-		// reason the File > Exit item does: it is the only path that asks the layers
-		// whether anything is unsaved.
-		const ImU32 closeColour = ImGui::GetColorU32(kCloseHovered);
-
-		if (CaptionButton("CaptionClose", ICON_MDI_CLOSE, layout.Close, closeColour,
-						  closeColour, systemOwnsPointer))
-		{
-			window.RequestClose();
-		}
+		DrawWindowButtons(window, layout, PointerBelongsToSystem(window, metrics));
 
 		window.SetCaptionMetrics(metrics);
 	}

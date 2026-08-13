@@ -61,6 +61,8 @@ namespace Graphite {
 		std::optional<std::string> GetStatusMessage() const;
 
 	private:
+		void SyncEveryDocument();
+
 		void RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
 
 		void ReloadOne(std::size_t index);
@@ -74,6 +76,40 @@ namespace Graphite {
 		void RequestSave(std::size_t index);
 
 		void SetTransientMessage(std::string text);
+
+		unsigned int DockNodeForIdentity(const std::string& identity) const;
+
+		void MovePendingDockTarget(const std::string& oldIdentity,
+								   const std::string& newIdentity);
+
+		void RenderSizeQuestion();
+
+		void RenderReloadConflict();
+
+		void RenderOverwriteConfirm();
+
+		void RenderCloseConfirm();
+
+		bool StillNeedsCloseConfirmation(const std::filesystem::path& path);
+
+		void RenderDocumentWindows(const CommandContext& context, float fontSize,
+								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
+								   bool wordWrap,
+								   const std::optional<std::filesystem::path>& focusRequest);
+
+		bool IsNewSinceLastFrame(const std::string& identity) const;
+
+		unsigned int ChooseDockTarget(const std::string& identity,
+									  unsigned int fallbackDockNode);
+
+		void ActivateAndRememberNode(std::size_t index);
+
+		void CloseAndForgetLayout(std::size_t index);
+
+		void CloseIfOpen(const std::filesystem::path& path);
+
+		void ForgetLayoutOfWindowsClosedElsewhere(
+			const std::vector<std::string>& startingIdentities);
 
 		static constexpr const char* kSizeQuestionTitle = "Large file##EditorSizeQuestion";
 		static constexpr const char* kReloadConflictTitle =

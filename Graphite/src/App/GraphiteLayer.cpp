@@ -33,7 +33,17 @@
 namespace Graphite {
 
 	namespace {
-		constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
+		// The main window alone, not the process: a stale-content sweep only makes sense for
+		// the window whose editors are on screen. ImGuiIO::AppFocusLost is not this — the
+		// backend sets it on focus *loss*, so it fires as the user leaves rather than as they
+		// come back.
+		bool MainWindowHasFocus()
+		{
+			auto* handle =
+				static_cast<GLFWwindow*>(Core::Application::Get().GetWindow().GetNativeHandle());
+
+			return glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0;
+		}
 	}
 
 	GraphiteLayer::GraphiteLayer(Core::Ref<Core::RingBufferSink> sink,
@@ -45,16 +55,9 @@ namespace Graphite {
 		m_Layout.Bottom = {"console"};
 		m_Layout.Center = {"keybindings"};
 
-		// 32 px is what Windows itself uses for a caption, so the drawn window buttons
-		// keep their familiar hit size — see TitleBar.h. DockSpaceHost::Begin is what
-		// actually applies this, at the one moment it can (its own host window's Begin()).
-		//
-		// Only when the caption is actually ours to draw. WindowFrame::Hide is allowed to
-		// refuse — a non-Windows build, a subclass that did not take — and then
-		// TitleBar::Render draws nothing, so the row would be twice the height it needs,
-		// empty on the right, underneath the system title bar it failed to remove: worse
-		// than the menu bar this branch started from. The layer is constructed in
-		// OnInit(), after Window::Create, so the window can already answer.
+		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
+		// system one, and then TitleBar::Render draws nothing and the taller row would be
+		// empty. The layer is constructed after Window::Create, so the window can answer.
 		m_CustomTitleBar = Core::Application::Get().GetWindow().HasCustomTitleBar();
 
 		if (m_CustomTitleBar)
@@ -75,23 +78,46 @@ namespace Graphite {
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		explorer->RegisterCommands(m_Commands);
 		m_Panels.RegisterCommands(m_Commands);
+		RegisterApplicationCommands();
 
+		// After every default registered above, so an override shadows the binding it
+		// replaces rather than being shadowed by it.
+		AppSettings::LoadKeyBindings(m_Keys);
+
+		m_Panels.Add(Core::CreateScope<KeyBindingsPanel>(
+			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
+
+		ReportConflictingKeyBindings();
+		SubscribeToWorkspaceEvents();
+
+		APP_INFO("Registered panels: {}", m_Panels.GetCount());
+
+		explorer->LoadSettings();
+
+		m_EditorSettings.Load();
+
+		OpenStartupFolder();
+
+		// Last, after every command there is: the tree names ids, so one built earlier would
+		// draw a bar of disabled entries showing raw ids.
+		m_MenuTree = BuildMenuTree();
+	}
+
+	void GraphiteLayer::RegisterApplicationCommands()
+	{
 		// "Workspace" rather than "Folder": closing drops the solution and the selection
-		// along with the folder, and the menu offers two ways to open one. Naming only
-		// the folder would leave the other two looking like they survive.
+		// along with the folder.
 		m_Commands.Add({.Id = "workspace.close",
 						.Label = "Close Workspace",
 						.Run = [this] { RequestCloseConfirmation(ClosePurpose::CloseWorkspace); },
 						.Enabled = [this] { return m_Workspace.IsOpen(); }});
 
-		// Through the window's close flag, not Application::Close() directly:
-		// Application's main loop only asks a layer's OnCloseRequested when
-		// Window::ShouldClose() is true, and Close() alone never sets it. Routing through
-		// RequestClose() puts Exit through the exact same question as the OS close button
-		// and Alt+F4.
+		// Through the window's close flag, not Application::Close(): the main loop only asks
+		// a layer's OnCloseRequested when Window::ShouldClose() is true, and Close() alone
+		// never sets it, so this is what puts Exit through the same question as Alt+F4.
 		//
-		// "Alt+F4" is in the label rather than in the keymap: it is Windows' shortcut, not
-		// ours, and a binding for it would advertise something that cannot be rebound.
+		// Alt+F4 is in the label rather than in the keymap: it is Windows' shortcut, and a
+		// binding for it would advertise something that cannot be rebound.
 		m_Commands.Add({.Id = "app.exit",
 						.Label = "Exit\tAlt+F4",
 						.Run = [] { Core::Application::Get().GetWindow().RequestClose(); }});
@@ -112,57 +138,48 @@ namespace Graphite {
 							APP_WARN("Warning entry");
 							APP_ERROR("Sample error");
 						}});
+	}
 
-		// After the defaults are registered and before the menu is built: overrides
-		// shadow defaults, and the menu reads the binding in force when it draws each
-		// item's shortcut.
-		AppSettings::LoadKeyBindings(m_Keys);
-
-		// After the load, so the screen opens onto the bindings actually in force. The
-		// callback is what keeps Core clear of AppSettings: the panel knows a binding
-		// moved, this layer knows where bindings are kept.
-		m_Panels.Add(Core::CreateScope<KeyBindingsPanel>(
-			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
-
-		// The defaults are assembled across five files, each of which believes it is
-		// claiming a free chord, and nothing but this notices when two of them claim the
-		// same one. An error rather than an assertion: a duplicate binding is a wiring
+	void GraphiteLayer::ReportConflictingKeyBindings()
+	{
+		// The defaults are assembled across five files, each of which believes it is claiming
+		// a free chord. An error rather than an assertion: a duplicate binding is a wiring
 		// mistake worth shouting about, not a reason to refuse to start.
 		for (const Core::Conflict& conflict : m_Keys.FindConflicts())
 		{
 			APP_ERROR("'{}' and '{}' are both bound to {}", conflict.First, conflict.Second,
 					  conflict.Chord.ToString());
 		}
+	}
 
-		m_Events.Subscribe<OpenFileRequested>(
-			[this](const OpenFileRequested& event) {
-				m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
-			});
+	void GraphiteLayer::SubscribeToWorkspaceEvents()
+	{
+		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
+			m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
+		});
 
-		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { m_Documents.CloseAll(); });
+		m_Events.Subscribe<WorkspaceClosedEvent>(
+			[this](const WorkspaceClosedEvent&) { m_Documents.CloseAll(); });
 
-		m_Events.Subscribe<WorkspaceRootMovedEvent>(
-			[this](const WorkspaceRootMovedEvent& event) { m_DocumentWindows.HandleRootMoved(event.From, event.To); });
+		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
+			m_DocumentWindows.HandleRootMoved(event.From, event.To);
+		});
 
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
-			[this](const WorkspaceFilesChangedEvent& event) { m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything); });
+			[this](const WorkspaceFilesChangedEvent& event) {
+				m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything);
+			});
+	}
 
-		APP_INFO("Registered panels: {}", m_Panels.GetCount());
-
-		explorer->LoadSettings();
-
-		m_EditorSettings.Load();
-
+	void GraphiteLayer::OpenStartupFolder()
+	{
 		std::filesystem::path startFolder = m_InitialFolder;
+
 		if (startFolder.empty())
 			startFolder = AppSettings::LoadLastFolder();
 
 		if (!startFolder.empty())
 			(void)m_Workspace.OpenFolder(startFolder);
-
-		// Last, after every RegisterCommands above: the tree names ids, so one built
-		// earlier would draw a bar of disabled entries showing raw ids.
-		m_MenuTree = BuildMenuTree();
 	}
 
 	void GraphiteLayer::OnUpdate(Core::Timestep ts)
@@ -170,30 +187,17 @@ namespace Graphite {
 		m_Workspace.Update();
 		m_Panels.OnUpdate(ts);
 
-		// In its own function so its early return cannot swallow the calls above. An
-		// earlier revision had this logic inlined here and dropped the panel update
-		// silently — nothing failed, because no panel overrides it yet.
 		UpdateFocusReload(ts);
 
-		// Watchers drop events — buffer overflow, or a tool touching many files at once —
-		// and returning from another application is exactly when that matters. Reading
-		// the OS-level flag directly (rather than reusing Core::IsForeground(),
-		// which UpdateFocusReload above already does) is deliberate: that one answers for
-		// the whole process, true for a panel dragged into its own viewport just as much
-		// as for the main window, where a stale-content sweep only makes sense for the
-		// window whose editors are actually on screen. ImGuiIO::AppFocusLost is not this:
-		// it is a one-frame flag the backend sets on focus *loss*, so it would fire the
-		// sweep as the user leaves rather than as they return.
-		auto* handle = static_cast<GLFWwindow*>(Core::Application::Get().GetWindow().GetNativeHandle());
-		m_DocumentWindows.NotifyWindowFocus(glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0);
+		// Watchers drop events — buffer overflow, or a tool touching many files at once — and
+		// returning from another application is exactly when that matters.
+		m_DocumentWindows.NotifyWindowFocus(MainWindowHasFocus());
 	}
 
 	void GraphiteLayer::UpdateFocusReload(Core::Timestep ts)
 	{
-		// The process, not the main window: a panel dragged out into its own viewport is
-		// a separate OS window, and working in one used to read as having left the
-		// application — so coming back to the main window announced a return from an
-		// absence that never happened.
+		// The process, not the main window: a panel dragged out into its own viewport is a
+		// separate OS window, and working in one is not having left the application.
 		if (!Core::IsForeground())
 		{
 			m_SecondsInBackground += ts.GetSeconds();
@@ -201,15 +205,12 @@ namespace Graphite {
 			return;
 		}
 
-		// Only the moment focus returns, not every frame it is held.
 		if (!m_AppForeground)
 		{
 			m_AppForeground = true;
 
-			// Reload itself does nothing without an open folder, but the log line would
-			// still claim a reload happened. A trace that reports work nobody did is
-			// worse than no trace at all — it is the sort of thing someone later spends
-			// an afternoon believing.
+			// Reload does nothing without an open folder, but the trace below would still
+			// claim a reload happened.
 			if (m_SecondsInBackground >= kReloadAfterSecondsAway && m_Workspace.IsOpen())
 			{
 				APP_TRACE("Reloading the workspace after {:.1f}s away", m_SecondsInBackground);
@@ -229,29 +230,23 @@ namespace Graphite {
 						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		m_DockSpace.End();
 
-		// Never nested inside the dockspace host's Begin/End above, or any other
-		// window's - see RenderCloseConfirm's own comment for why that matters to a
-		// modal popup.
+		// Outside the dockspace host's Begin/End above, and outside every other window: a
+		// modal popup must not be opened from inside a window that may not be current when
+		// the popup needs to draw.
 		RenderCloseConfirm();
 
-		// Panels render outside the host window — inside it they would dock as ordinary
-		// child windows instead of landing in the dockspace nodes.
+		// Panels render outside the host window — inside it they would dock as ordinary child
+		// windows instead of landing in the dockspace nodes.
 		m_Panels.OnImGuiRender();
 
-		// The context rather than three arguments: the widget that observes a Ctrl+wheel
-		// gesture is the one place that knows the gesture happened over an editor, and it
-		// is drawn from here, so what it needs to turn that into a command is passed down
-		// rather than stored anywhere on the way.
 		const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router, &m_FrameInput};
 
 		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
 								 m_EditorSettings.IsWordWrap());
 
-		// At the end of the frame, not at the start: the queue a frame drains is exactly what
-		// arrived since the previous one was drawn, and events keep arriving while a frame is
-		// being built. Cleared here rather than in OnUpdate for the same reason — this is the
-		// last point in the frame that reads it.
+		// The last point in the frame that reads the queue: what a frame drains is exactly
+		// what arrived since the previous one was drawn.
 		m_FrameInput.Clear();
 	}
 
@@ -267,35 +262,46 @@ namespace Graphite {
 			return;
 		}
 
-		// The chords are the keymap's, registered alongside the commands they run, so a key
-		// press and the menu item showing the same combination cannot drift apart.
-		Core::EventDispatcher dispatcher{event};
-
-		dispatcher.Dispatch<Core::KeyPressedEvent>(
-			[this](Core::KeyPressedEvent& pressed) { return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed); });
-
-		dispatcher.Dispatch<Core::KeyReleasedEvent>(
-			[this](Core::KeyReleasedEvent& released) { return m_Router.OnKeyReleased(m_Commands, m_Keys, released); });
-
-		// A modifier held for a Ctrl+click is not a tap, however it is released afterwards.
-		dispatcher.Dispatch<Core::MouseButtonPressedEvent>(
-			[this](Core::MouseButtonPressedEvent&) {
-				m_Router.CancelTap();
-				return false;
-			});
+		RouteShortcuts(event);
 
 		if (event.Handled)
 		{
 			return;
 		}
 
-		// Whatever is left over is the text editor's to consider. Queued rather than handed
-		// to it here: which document holds the keyboard is decided by ImGui's window focus,
-		// which is only knowable while drawing, and by then the event object is long gone.
+		QueueForFocusedEditor(event);
+	}
+
+	void GraphiteLayer::RouteShortcuts(Core::Event& event)
+	{
+		Core::EventDispatcher dispatcher{event};
+
+		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
+			return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed);
+		});
+
+		dispatcher.Dispatch<Core::KeyReleasedEvent>([this](Core::KeyReleasedEvent& released) {
+			return m_Router.OnKeyReleased(m_Commands, m_Keys, released);
+		});
+
+		// A modifier held for a Ctrl+click is not a tap, however it is released afterwards.
+		dispatcher.Dispatch<Core::MouseButtonPressedEvent>([this](Core::MouseButtonPressedEvent&) {
+			m_Router.CancelTap();
+			return false;
+		});
+	}
+
+	void GraphiteLayer::QueueForFocusedEditor(Core::Event& event)
+	{
+		// Queued rather than handed to an editor here: which document holds the keyboard is
+		// decided by ImGui's window focus, which is only knowable while drawing, and by then
+		// the event object is long gone.
 		//
-		// Both handlers return false. Nothing below this layer is listening, and reporting a
-		// key as consumed here would claim it landed somewhere — while the queue is read by
-		// at most one focused editor, and often by none at all.
+		// Both handlers return false: the queue is read by at most one focused editor, and
+		// often by none at all, so reporting the key as consumed would claim it landed
+		// somewhere.
+		Core::EventDispatcher dispatcher{event};
+
 		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
 			m_FrameInput.PushKey(pressed.GetKeyCode(), pressed.GetModifiers(), pressed.IsRepeat());
 			return false;
@@ -309,26 +315,16 @@ namespace Graphite {
 
 	bool GraphiteLayer::OnCloseRequested()
 	{
-		// Save All having succeeded, or Discard All having been chosen, already
-		// answered this - see FinishClose. Re-checking for dirty documents here would
-		// reopen the modal on Discard All, which never touches document content, only
-		// bypasses asking about it.
+		// Save All having succeeded, or Discard All having been chosen, already answered this
+		// — see FinishClose. Re-checking for dirty documents here would reopen the modal on
+		// Discard All, which never touches document content.
 		if (m_CloseApproved)
 			return true;
 
-		// Some close question is already up and unresolved - not necessarily this one.
-		// "Close Workspace" reaches here too: it asks the same question with
-		// CloseWorkspace as its purpose, and the OS close button / Alt+F4
-		// reach Window::ShouldClose() regardless of what ImGui thinks has input focus,
-		// modal or not. Testing `== ExitApplication` here would fall through on a
-		// pending CloseWorkspace question and silently overwrite it below - the user
-		// would be looking at a dialog they opened from the menu, believing Save All
-		// will close the workspace, while it would actually exit the application.
-		// Refusing until whichever question is already open resolves is the
-		// conservative choice; the user can just close again afterwards. This is
-		// deliberately the wider check, not an oversight - and wider still than "on
-		// screen": a close question waiting its turn behind another is every bit as
-		// unanswered as one the user is looking at.
+		// Any unresolved close question, not only this purpose's: "Close Workspace" asks the
+		// same question, and Alt+F4 reaches here regardless of what ImGui thinks holds input
+		// focus, so testing the purpose would overwrite a pending workspace close with an
+		// application exit under a dialog the user is already reading.
 		if (m_CloseQuestion.IsAsked())
 		{
 			return false;
@@ -339,11 +335,6 @@ namespace Graphite {
 			return true;
 		}
 
-		// Asked even when another question - one of DocumentWindows' four - is on
-		// screen, which Alt+F4 and the OS close button reach past regardless of ImGui
-		// holding input. ModalQuestion asks the gate before opening anything, so this is
-		// a question queued rather than a modal stacked, and its being asked at all is
-		// what keeps this refusing until it is answered.
 		m_CloseQuestion.Ask(ClosePurpose::ExitApplication);
 		return false;
 	}
@@ -356,10 +347,9 @@ namespace Graphite {
 			return;
 		}
 
-		// The same refusal OnCloseRequested makes, and for the same reason: one close
-		// question at a time, whatever raised it. Ask queues rather than replaces, so
-		// without this a second "Close Workspace" from the menu would put a second
-		// question behind the first and close the workspace twice - once per answer.
+		// One close question at a time, whatever raised it. Ask queues rather than replaces,
+		// so without this a second "Close Workspace" from the menu would close the workspace
+		// twice, once per answer.
 		if (m_CloseQuestion.IsAsked())
 		{
 			return;
@@ -373,10 +363,8 @@ namespace Graphite {
 		switch (purpose)
 		{
 		case ClosePurpose::ExitApplication:
-			// OnCloseRequested refusing earlier - to raise this very modal - cleared
-			// Window's close flag for good; nothing re-raises it but this call, which
-			// is what lets the main loop ask again next frame and actually break out
-			// of it this time. See Window::CancelClose and Layer::OnCloseRequested.
+			// OnCloseRequested refusing earlier — to raise this very modal — cleared Window's
+			// close flag for good, and nothing but this call re-raises it.
 			m_CloseApproved = true;
 			Core::Application::Get().GetWindow().RequestClose();
 			break;
@@ -387,52 +375,21 @@ namespace Graphite {
 		}
 	}
 
-	void GraphiteLayer::RenderCloseConfirm()
+	bool GraphiteLayer::ConfirmationStillNeeded(ClosePurpose purpose)
 	{
-		// The question waits for as long as another holds the gate, so an exit asked for
-		// while a per-tab or reload question is up is put on screen the moment that one
-		// resolves rather than being dropped - and dropping it would matter twice over,
-		// since an unanswered question is what makes OnCloseRequested refuse, and nothing
-		// but this modal ever answers it. A popup dismissed with Escape, or destroyed,
-		// counts as Cancel for the same reason: left asked, it would make OnCloseRequested
-		// refuse every close for the rest of the session and the window could then only be
-		// force-quit. Begin does both.
-		// Worth asking only while something is still unsaved. A question raised over dirty
-		// documents can reach the front of the queue after they have been dealt with one at
-		// a time - a per-tab close question answered with Save, say - and asking then would
-		// put "These files have unsaved changes:" on screen above an empty list. Checked
-		// when it comes off the queue rather than when it joined, since that is exactly the
-		// interval in which the answer changes.
-		//
-		// The close still happens. What went stale is the question, not the request behind
-		// it: the user asked to exit and nothing now stands in the way, which is the case
-		// RequestCloseConfirmation already closes outright when it finds no dirty document
-		// to ask about. Dropping the question alone would leave the application refusing an
-		// exit it has no reason left to refuse.
-		const auto stillWorthAsking = [this](ClosePurpose purpose) {
-			if (m_DocumentWindows.HasModifiedDocuments())
-			{
-				return true;
-			}
-
-			FinishClose(purpose);
-			return false;
-		};
-
-		if (!m_CloseQuestion.Begin(stillWorthAsking))
+		if (m_DocumentWindows.HasModifiedDocuments())
 		{
-			return;
+			return true;
 		}
 
-		ImGui::TextUnformatted("These files have unsaved changes:");
-		ImGui::Separator();
+		// The question went stale while it waited its turn, the request behind it did not:
+		// the user asked to close and nothing now stands in the way.
+		FinishClose(purpose);
+		return false;
+	}
 
-		// Recomputed every frame this modal is open, deliberately not snapshotted once
-		// when it opens: a failed Save All can leave some documents saved and others
-		// not (see the comment on the Save All button below), and the list here should
-		// reflect that partial progress if the user looks again or retries, rather than
-		// continuing to name a file that already saved cleanly. Recomputing also cannot
-		// go stale the way a snapshot taken once at open time could.
+	void GraphiteLayer::ListModifiedDocuments() const
+	{
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
 			const Core::OpenItem& item = m_Documents.At(index);
@@ -440,27 +397,41 @@ namespace Graphite {
 			if (item.Document && item.Document->IsModified())
 				ImGui::BulletText("%s", Core::ToUtf8(item.Path.filename()).c_str());
 		}
+	}
+
+	GraphiteLayer::ClosePurpose GraphiteLayer::AskedPurposeOrExit() const
+	{
+		const ClosePurpose* asked = m_CloseQuestion.GetCurrent();
+
+		return asked != nullptr ? *asked : ClosePurpose::ExitApplication;
+	}
+
+	void GraphiteLayer::RenderCloseConfirm()
+	{
+		if (!m_CloseQuestion.Begin([this](ClosePurpose purpose) {
+				return ConfirmationStillNeeded(purpose);
+			}))
+		{
+			return;
+		}
+
+		ImGui::TextUnformatted("These files have unsaved changes:");
+		ImGui::Separator();
+
+		// Listed afresh every frame, so a Save All that saved some and not others shows what
+		// it actually left behind.
+		ListModifiedDocuments();
 
 		ImGui::Separator();
 
-		// There can only be no purpose here if the popup is somehow drawn without
-		// RequestCloseConfirmation or OnCloseRequested having asked first, which never
-		// happens - ExitApplication is a reasonable fallback all the same, since it is the
-		// more conservative of the two actions FinishClose can take.
-		const ClosePurpose* asked = m_CloseQuestion.GetCurrent();
-		const ClosePurpose purpose = asked != nullptr ? *asked : ClosePurpose::ExitApplication;
+		const ClosePurpose purpose = AskedPurposeOrExit();
 
 		if (ImGui::Button("Save All"))
 		{
-			// A stopped batch and one that finished with a document skipped over a
-			// conflict both come back false from SaveAllModified, and both mean the same
-			// thing here: some dirty document is not actually saved, so closing now
-			// would lose it exactly as a failed write would. Treating them alike is
-			// deliberate - the status bar SaveAllModified itself sets already says which
-			// one happened and to which file, and this modal simply stays up instead of
-			// closing on a promise it did not keep, so the user can retry (a conflicted
-			// file resolves itself once its own Ctrl+S is answered) or fall through to
-			// Discard All / Cancel with the same picture in front of them.
+			// A stopped batch and one that skipped a conflicted document both come back
+			// false, and both mean some dirty document is not on disk, so the modal stays up
+			// rather than closing on a promise it did not keep. SaveAllModified has already
+			// put which one happened in the status bar.
 			if (m_DocumentWindows.SaveAllModified())
 			{
 				FinishClose(purpose);

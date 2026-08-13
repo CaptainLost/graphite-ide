@@ -45,11 +45,29 @@ namespace Graphite {
 			CloseWorkspace
 		};
 
+		void RegisterApplicationCommands();
+
+		void ReportConflictingKeyBindings();
+
+		void SubscribeToWorkspaceEvents();
+
+		void OpenStartupFolder();
+
+		void RouteShortcuts(Core::Event& event);
+
+		void QueueForFocusedEditor(Core::Event& event);
+
 		void RequestCloseConfirmation(ClosePurpose purpose);
 
 		void FinishClose(ClosePurpose purpose);
 
 		void RenderCloseConfirm();
+
+		bool ConfirmationStillNeeded(ClosePurpose purpose);
+
+		void ListModifiedDocuments() const;
+
+		ClosePurpose AskedPurposeOrExit() const;
 
 		void UpdateFocusReload(Core::Timestep ts);
 
@@ -67,8 +85,7 @@ namespace Graphite {
 		Core::EventBus m_Events;
 
 		// Keyboard input that reached neither a panel nor the shortcut router, kept for the
-		// editors to read while they draw. Filled in OnEvent, drained and cleared in
-		// OnImGuiRender.
+		// editors to read while they draw.
 		Core::FrameInput m_FrameInput;
 
 		Workspace m_Workspace{m_Events};
