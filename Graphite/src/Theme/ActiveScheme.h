@@ -4,7 +4,6 @@
 #include "Theme/ColorScheme.h"
 
 #include <filesystem>
-#include <string>
 #include <string_view>
 
 namespace Graphite {
@@ -29,10 +28,7 @@ namespace Graphite {
 
 		const ResolvedScheme& Get() const { return m_Resolved; }
 
-		const std::string& GetName() const { return m_Name; }
-
 	private:
-		std::string m_Name;
 		ResolvedScheme m_Resolved = DarkScheme();
 	};
 }

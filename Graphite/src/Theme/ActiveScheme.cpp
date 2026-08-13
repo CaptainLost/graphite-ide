@@ -17,17 +17,17 @@ namespace Graphite {
 
 		if (const std::optional<BuiltInScheme> builtIn = ParseBuiltInName(name))
 		{
-			return Get(*builtIn);
+			return SchemeFor(*builtIn);
 		}
 
 		const ColorScheme scheme = LoadScheme(directory / (std::string(name) + ".json"));
 
-		return Resolve(scheme, Get(scheme.Base));
+		return Resolve(scheme, SchemeFor(scheme.Base));
 	}
 
 	void ActiveScheme::Load()
 	{
-		m_Name = AppSettings::LoadColorScheme();
-		m_Resolved = ResolveNamed(m_Name, AppSettings::ThemesDirectory());
+		const std::string name = AppSettings::LoadColorScheme();
+		m_Resolved = ResolveNamed(name, AppSettings::ThemesDirectory());
 	}
 }
