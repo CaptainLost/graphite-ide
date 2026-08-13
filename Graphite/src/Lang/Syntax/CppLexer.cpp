@@ -142,6 +142,91 @@ namespace Graphite {
 
 			return backslashes % 2 == 1;
 		}
+
+		// Scans a quoted literal to its closing `quote`. Returns Closed when it ended on this
+		// line, Continued when a trailing backslash splices it onto the next, and Unterminated
+		// when it simply ran out — which is what a half-typed line looks like, so it is drawn
+		// as invalid rather than swallowing everything below it.
+		enum class QuoteEnd
+		{
+			Closed,
+			Continued,
+			Unterminated
+		};
+
+		QuoteEnd ScanQuoted(std::string_view line, std::size_t& at, char quote)
+		{
+			while (at < line.size())
+			{
+				if (line[at] == '\\')
+				{
+					// A backslash at the very end escapes the newline, not a character.
+					if (at + 1 >= line.size())
+					{
+						at = line.size();
+						return QuoteEnd::Continued;
+					}
+
+					at += 2;
+					continue;
+				}
+
+				if (line[at] == quote)
+				{
+					++at;
+					return QuoteEnd::Closed;
+				}
+
+				++at;
+			}
+
+			return QuoteEnd::Unterminated;
+		}
+
+		// R"delim( ... )delim" — `at` sits on the character after the opening quote. Returns the
+		// delimiter through `delimiter` and leaves `at` past the opening paren.
+		bool ScanRawOpening(std::string_view line, std::size_t& at, std::string& delimiter)
+		{
+			const std::size_t from = at;
+
+			while (at < line.size() && line[at] != '(' && at - from <= 16)
+			{
+				++at;
+			}
+
+			if (at >= line.size() || line[at] != '(')
+			{
+				return false;
+			}
+
+			delimiter.assign(line.substr(from, at - from));
+			++at;
+			return true;
+		}
+
+		// Consumes to )delim" from `at`. Returns true when it closed on this line.
+		bool ScanRawBody(std::string_view line, std::size_t& at, std::string_view delimiter)
+		{
+			const std::string closing = std::string(")") + std::string(delimiter) + "\"";
+			const std::size_t found = line.find(closing, at);
+
+			if (found == std::string_view::npos)
+			{
+				at = line.size();
+				return false;
+			}
+
+			at = found + closing.size();
+			return true;
+		}
+
+		// The characters that may precede a quote as a literal's prefix: u8, u, U, L, and R in
+		// any of their combinations. Only used to decide where the token starts.
+		bool IsLiteralPrefix(std::string_view word)
+		{
+			return word == "u8" || word == "u" || word == "U" || word == "L" || word == "R" ||
+				   word == "u8R" || word == "uR" || word == "UR" || word == "LR";
+		}
 	}
 
 	LineState CppLexer::LexLine(std::string_view line, const LineState& entry,
@@ -164,6 +249,34 @@ namespace Graphite {
 			Emit(out, TokenKind::Comment, 0, line.size());
 
 			return EndsWithContinuation(line) ? state : LineState{};
+		}
+		else if (state.Kind == LineState::Continuation::RawString)
+		{
+			const bool closed = ScanRawBody(line, at, state.Delimiter);
+			Emit(out, TokenKind::String, 0, at);
+
+			if (!closed)
+			{
+				return state;
+			}
+
+			state = LineState{};
+		}
+		else if (state.Kind == LineState::Continuation::String ||
+				 state.Kind == LineState::Continuation::Character)
+		{
+			const char quote = state.Kind == LineState::Continuation::String ? '"' : '\'';
+			const TokenKind kind = quote == '"' ? TokenKind::String : TokenKind::Character;
+			const QuoteEnd end = ScanQuoted(line, at, quote);
+
+			Emit(out, end == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, 0, at);
+
+			if (end == QuoteEnd::Continued)
+			{
+				return state;
+			}
+
+			state = LineState{};
 		}
 
 		while (at < line.size())
@@ -207,6 +320,50 @@ namespace Graphite {
 				}
 
 				const std::string_view word = line.substr(from, at - from);
+
+				if (at < line.size() && (line[at] == '"' || line[at] == '\'') &&
+					IsLiteralPrefix(word))
+				{
+					// Fall through to the literal scanner with the token starting at `from`.
+					const bool raw = word.back() == 'R' && line[at] == '"';
+					++at;
+
+					if (raw)
+					{
+						std::string delimiter;
+
+						if (!ScanRawOpening(line, at, delimiter))
+						{
+							Emit(out, TokenKind::Invalid, from, line.size());
+							return LineState{};
+						}
+
+						if (!ScanRawBody(line, at, delimiter))
+						{
+							Emit(out, TokenKind::String, from, line.size());
+							return LineState{LineState::Continuation::RawString, delimiter};
+						}
+
+						Emit(out, TokenKind::String, from, at);
+						continue;
+					}
+
+					const char quote = line[at - 1];
+					const TokenKind kind = quote == '"' ? TokenKind::String : TokenKind::Character;
+					const QuoteEnd end = ScanQuoted(line, at, quote);
+
+					Emit(out, end == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, from, at);
+
+					if (end == QuoteEnd::Continued)
+					{
+						return LineState{quote == '"' ? LineState::Continuation::String
+													  : LineState::Continuation::Character,
+										 {}};
+					}
+
+					continue;
+				}
+
 				Emit(out, IsKeyword(word) ? TokenKind::Keyword : TokenKind::Identifier, from, at);
 				continue;
 			}
@@ -218,6 +375,26 @@ namespace Graphite {
 				const std::size_t from = at;
 				at = ScanNumber(line, at);
 				Emit(out, TokenKind::Number, from, at);
+				continue;
+			}
+
+			if (c == '"' || c == '\'')
+			{
+				const std::size_t from = at;
+				++at;
+
+				const TokenKind kind = c == '"' ? TokenKind::String : TokenKind::Character;
+				const QuoteEnd end = ScanQuoted(line, at, c);
+
+				Emit(out, end == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, from, at);
+
+				if (end == QuoteEnd::Continued)
+				{
+					return LineState{c == '"' ? LineState::Continuation::String
+											  : LineState::Continuation::Character,
+									 {}};
+				}
+
 				continue;
 			}
 

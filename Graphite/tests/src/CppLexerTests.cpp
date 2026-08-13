@@ -168,3 +168,57 @@ TEST_CASE("CppLexer continues a line comment past a trailing backslash")
 	CHECK(Shape("still comment", inside) == "mmmmmmmmmmmmm");
 	CHECK(Exit("still comment", inside) == Graphite::LineState{});
 }
+
+TEST_CASE("CppLexer reads a string and a character literal")
+{
+	CHECK(Shape("s = \"hi\";") == "i . ssss.");
+	CHECK(Shape("c = 'x';") == "i . ccc.");
+}
+
+TEST_CASE("CppLexer keeps an escaped quote inside the literal")
+{
+	CHECK(Shape("\"a\\\"b\"") == "ssssss");
+	CHECK(Shape("'\\''") == "cccc");
+}
+
+// A backslash escaping a backslash does not escape the quote after it.
+TEST_CASE("CppLexer ends a literal after an escaped backslash")
+{
+	CHECK(Shape("\"a\\\\\" b") == "sssss i");
+}
+
+TEST_CASE("CppLexer marks an unterminated literal invalid rather than eating the line")
+{
+	CHECK(Shape("\"open") == "xxxxx");
+	CHECK(Exit("\"open") == Graphite::LineState{});
+}
+
+TEST_CASE("CppLexer continues a string past a trailing backslash")
+{
+	CHECK(Exit("\"open \\").Kind == Graphite::LineState::Continuation::String);
+}
+
+TEST_CASE("CppLexer reads the string prefixes")
+{
+	CHECK(Shape("u8\"hi\"") == "ssssss");
+	CHECK(Shape("L\"hi\"") == "sssss");
+	CHECK(Shape("u\"hi\"") == "sssss");
+}
+
+TEST_CASE("CppLexer closes a raw string on the same line")
+{
+	CHECK(Shape("R\"(a\"b)\"") == "ssssssss");
+	CHECK(Exit("R\"(a\"b)\"") == Graphite::LineState{});
+}
+
+TEST_CASE("CppLexer carries a raw string and its delimiter to the next line")
+{
+	const Graphite::LineState after = Exit("R\"json(open");
+
+	CHECK(after.Kind == Graphite::LineState::Continuation::RawString);
+	CHECK(after.Delimiter == "json");
+
+	CHECK(Shape("still )notjson\" raw", after) == "sssssssssssssssssss");
+	CHECK(Shape("done )json\" x", after) == "sssssssssss i");
+	CHECK(Exit("done )json\" x", after) == Graphite::LineState{});
+}
