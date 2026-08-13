@@ -94,15 +94,13 @@ namespace Graphite {
 			m_Settings.SetIndentWithSpaces(false);
 		}
 
-		// Tab *display* width — expansion when drawing, selection columns, indent guides, the
-		// status bar column, the syntax lexer — is fixed at Core::DefaultTabWidth and is not
-		// what this control changes. This is only how many spaces Indent inserts and Outdent
-		// removes, so it does nothing visible in Tabs mode.
-		ImGui::BeginDisabled(!useSpaces);
-
+		// One number now governs both how wide a tab draws — expansion when drawing, selection
+		// columns, indent guides, the status bar column, the syntax lexer — and how many spaces
+		// Indent inserts and Outdent removes. The two were only ever split by accident, so this
+		// control does something visible in both Spaces and Tabs mode.
 		int width = static_cast<int>(m_Settings.GetIndentStyle().Width);
 
-		if (ImGui::SliderInt("Spaces per indent", &width, 1, 8))
+		if (ImGui::SliderInt("Tab width", &width, 1, 8))
 		{
 			m_PendingIndentWidth = width;
 		}
@@ -116,8 +114,6 @@ namespace Graphite {
 
 			m_PendingIndentWidth.reset();
 		}
-
-		ImGui::EndDisabled();
 
 		ImGui::SeparatorText("Git");
 
