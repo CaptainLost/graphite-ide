@@ -53,17 +53,16 @@ namespace Graphite {
 		{
 			for (std::size_t index = 0; index < m_Sections.size(); ++index)
 			{
+				ImGui::PushID(static_cast<int>(index));
+
 				const std::string_view title = m_Sections[index]->GetTitle();
 
 				if (ImGui::Selectable(std::string(title).c_str(), index == m_Active))
 				{
-					if (index != m_Active)
-					{
-						m_Sections[m_Active]->OnDeactivated();
-					}
-
-					m_Active = index;
+					SelectSection(index);
 				}
+
+				ImGui::PopID();
 			}
 		}
 
