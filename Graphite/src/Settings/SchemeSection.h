@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/ModalQuestion.h"
 #include "Settings/SettingsSection.h"
 #include "Theme/SchemeDraft.h"
 
@@ -15,7 +16,7 @@ namespace Graphite {
 	class SchemeSection : public SettingsSection
 	{
 	public:
-		explicit SchemeSection(ActiveScheme& scheme);
+		SchemeSection(ActiveScheme& scheme, ModalGate& modals);
 
 		std::string_view GetTitle() const override { return "Colours"; }
 
@@ -41,5 +42,7 @@ namespace Graphite {
 		ActiveScheme& m_Active;
 
 		SchemeDraft m_Draft;
+
+		ModalQuestion<std::string> m_DeleteQuestion;
 	};
 }

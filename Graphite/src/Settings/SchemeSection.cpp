@@ -20,8 +20,9 @@ namespace Graphite {
 		}
 	}
 
-	SchemeSection::SchemeSection(ActiveScheme& scheme)
-		: m_Active(scheme), m_Draft(AppSettings::ThemesDirectory())
+	SchemeSection::SchemeSection(ActiveScheme& scheme, ModalGate& modals)
+		: m_Active(scheme), m_Draft(AppSettings::ThemesDirectory()),
+		  m_DeleteQuestion(modals, "Delete colour scheme?")
 	{
 		// Constructed before GraphiteLayer calls ActiveScheme::Load, so this reads the setting
 		// rather than the resolved value — the two agree, because Load reads the same key. An
@@ -144,6 +145,25 @@ namespace Graphite {
 	{
 		RenderSchemeList();
 
+		if (ImGui::Button("Duplicate"))
+		{
+			if (m_Draft.Duplicate())
+			{
+				AppSettings::SaveColorScheme(m_Draft.GetSelected());
+				Apply();
+			}
+		}
+
+		if (!m_Draft.IsReadOnly())
+		{
+			ImGui::SameLine();
+
+			if (ImGui::Button("Delete"))
+			{
+				m_DeleteQuestion.Ask(m_Draft.GetSelected());
+			}
+		}
+
 		if (m_Draft.IsReadOnly())
 		{
 			ImGui::TextDisabled("Built-in schemes cannot be edited. Duplicate one to change it.");
@@ -153,5 +173,35 @@ namespace Graphite {
 
 		RenderGroup<TokenKind>("Syntax", static_cast<std::size_t>(TokenKind::Count));
 		RenderGroup<EditorColor>("Editor", static_cast<std::size_t>(EditorColor::Count));
+
+		// Asked before deleting because the file is the user's own work and there is no undo.
+		// A scheme that was renamed or deleted between the ask and the answer is no longer worth
+		// asking about, which is what the predicate is for.
+		if (m_DeleteQuestion.Begin([this](const std::string& name)
+								   { return name == m_Draft.GetSelected(); }))
+		{
+			ImGui::TextUnformatted("This cannot be undone.");
+			ImGui::Separator();
+
+			if (ImGui::Button("Delete"))
+			{
+				if (m_Draft.DeleteSelected())
+				{
+					AppSettings::SaveColorScheme(m_Draft.GetSelected());
+					Apply();
+				}
+
+				m_DeleteQuestion.Answer();
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel"))
+			{
+				m_DeleteQuestion.Answer();
+			}
+
+			m_DeleteQuestion.End();
+		}
 	}
 }
