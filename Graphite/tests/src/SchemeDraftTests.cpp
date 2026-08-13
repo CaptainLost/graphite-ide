@@ -6,8 +6,16 @@
 #include "Theme/SchemeStore.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 namespace {
+
+	void WriteFile(const std::filesystem::path& path, std::string_view contents)
+	{
+		std::ofstream out(path, std::ios::binary);
+		out << contents;
+	}
 
 	constexpr std::size_t kComment = static_cast<std::size_t>(Graphite::TokenKind::Comment);
 	constexpr std::size_t kKeyword = static_cast<std::size_t>(Graphite::TokenKind::Keyword);
@@ -180,9 +188,16 @@ TEST_CASE("Deleting the selected scheme falls back to its base")
 		  draft.GetNames().end());
 }
 
+// The file is written by hand because SaveScheme refuses a built-in's name. Without it on disk
+// the deletion would fail for want of a file and the test would pass with the refusal removed.
 TEST_CASE("Deleting a built-in is refused")
 {
 	const TempDirectory temp;
+
+	const std::filesystem::path shadow = temp.GetPath() / "dark.json";
+
+	WriteFile(shadow, "{\"base\":\"dark\"}");
+	REQUIRE(std::filesystem::exists(shadow));
 
 	Graphite::SchemeDraft draft(temp.GetPath());
 
@@ -190,4 +205,5 @@ TEST_CASE("Deleting a built-in is refused")
 
 	CHECK_FALSE(draft.DeleteSelected());
 	CHECK(draft.GetSelected() == "dark");
+	CHECK(std::filesystem::exists(shadow));
 }
