@@ -1160,6 +1160,8 @@ namespace Graphite {
 				canvas.Draw->AddText(ImVec2(x, slice.Y), colour, run.data(),
 									 run.data() + run.size());
 
+				// tabWidth is inert here: run slices cache.Expanded, which has already had its
+				// tabs expanded away, so ColumnCount cannot see one to size.
 				column += Core::ColumnCount(run, tabWidth);
 				at = to;
 			};
