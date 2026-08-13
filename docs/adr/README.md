@@ -512,4 +512,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0480](0480-drive-input-from-events-and-leave-the-drawn-gestures-to-the-gui.md) | Drive input from events and leave the drawn gestures to the GUI | accepted | 2026-08-13 |
 | [0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md) | Lex one line at a time carrying a resumable state | proposed | 2026-08-13 |
 | [0482](0482-keep-the-language-layer-in-graphite-rather-than-core.md) | Keep the language layer in Graphite rather than Core | proposed | 2026-08-13 |
+| [0483](0483-show-settings-as-sections-inside-one-panel.md) | Show settings as sections inside one panel | proposed | 2026-08-13 |
 <!-- /adr-index -->
