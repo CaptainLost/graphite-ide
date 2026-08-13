@@ -722,9 +722,15 @@ namespace Graphite {
 		if (inserted)
 		{
 			entry->second.SetLexer(LexerFor(LanguageOfPath(item.Path)));
-			// Without this, a document opened after the setting was already changed would start
-			// its cache at Core::DefaultTabWidth and re-lex on the first frame the editor's
-			// compare-and-rebuild block in DrawEditor notices the mismatch.
+			// Keeps the cache's width equal to the item's when a fresh cache is inserted for an
+			// item that was already at a non-default width — the case being a path rewrite
+			// while the document stays open: RewritePaths changes item.Path (a rename of the
+			// file or of a directory it lives under), this try_emplace then inserts under the
+			// new key with `inserted` true, and without this seed the new cache would sit at
+			// Core::DefaultTabWidth forever. DrawEditor's compare-and-rebuild block in
+			// TextEditorWidget.cpp only fires on item.TabWidth != view.Indent.Width, which is
+			// already false the moment the item's own width was set correctly earlier — so
+			// nothing would ever re-lex the cache at the right width.
 			entry->second.SetTabWidth(item.TabWidth);
 		}
 
