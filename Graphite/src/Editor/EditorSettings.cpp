@@ -67,6 +67,25 @@ namespace Graphite {
 		AppSettings::SaveEditorFontSize(m_FontSize);
 	}
 
+	void EditorSettings::SetIndentWithSpaces(bool useSpaces)
+	{
+		m_IndentWithSpaces = useSpaces;
+		AppSettings::SaveIndentWithSpaces(m_IndentWithSpaces);
+	}
+
+	// Zero is refused rather than clamped: Load treats a stored zero as "use the default", so
+	// storing one would make that branch reachable from the UI and leave the width ambiguous.
+	void EditorSettings::SetIndentWidth(std::size_t width)
+	{
+		if (width == 0)
+		{
+			return;
+		}
+
+		m_IndentWidth = width;
+		AppSettings::SaveIndentWidth(m_IndentWidth);
+	}
+
 	void EditorSettings::SetWordWrap(bool wrap)
 	{
 		m_WordWrap = wrap;

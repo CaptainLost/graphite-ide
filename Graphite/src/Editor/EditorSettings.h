@@ -22,6 +22,10 @@ namespace Graphite {
 
 		void SetFontSize(float size);
 
+		void SetIndentWithSpaces(bool useSpaces);
+
+		void SetIndentWidth(std::size_t width);
+
 		Core::IndentStyle GetIndentStyle() const
 		{
 			return {m_IndentWithSpaces, m_IndentWidth};
