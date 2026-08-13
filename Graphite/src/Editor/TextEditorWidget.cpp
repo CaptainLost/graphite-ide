@@ -653,8 +653,13 @@ namespace Graphite {
 
 				// Consumed here rather than left for ImGui's own focus navigation, which is
 				// exactly what NoNavInputs on this child window makes safe — with the nav
-				// fallbacks disabled, nothing else is listening for Tab.
-				if (stroke.Key == Core::KeyCode::Tab)
+				// fallbacks disabled, nothing else is listening for a bare Tab.
+				//
+				// Ctrl+Tab is the exception: NoNavInputs does not reach it, because ImGui
+				// routes the window switcher globally rather than through the focused window.
+				// Indenting on it as well would mean one keystroke both opening the switcher
+				// and quietly editing the document behind it.
+				if (!control && stroke.Key == Core::KeyCode::Tab)
 				{
 					result.Edited |=
 						shift ? Core::Outdent(item, indentStyle) : Core::Indent(item, indentStyle);
