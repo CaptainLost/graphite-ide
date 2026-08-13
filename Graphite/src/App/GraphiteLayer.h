@@ -6,6 +6,7 @@
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
 #include "App/TitleBar.h"
+#include "Theme/ActiveScheme.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/App/Layer.h"
@@ -111,5 +112,6 @@ namespace Graphite {
 		std::vector<Core::MenuItem> m_MenuTree;
 
 		EditorSettings m_EditorSettings;
+		ActiveScheme m_ActiveScheme;
 	};
 }

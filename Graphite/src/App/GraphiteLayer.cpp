@@ -102,6 +102,7 @@ namespace Graphite {
 		explorer->LoadSettings();
 
 		m_EditorSettings.Load();
+		m_ActiveScheme.Load();
 
 		OpenStartupFolder();
 
@@ -250,7 +251,7 @@ namespace Graphite {
 
 		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
-								 m_EditorSettings.IsWordWrap());
+								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get());
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

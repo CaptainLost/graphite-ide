@@ -25,6 +25,7 @@ namespace Graphite {
 		constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
 		constexpr const char* kIndentWidthKey = "indentWidth";
 		constexpr const char* kWordWrapKey = "wordWrap";
+		constexpr const char* kColorSchemeKey = "colorScheme";
 
 		constexpr std::string_view kKeyBindingPrefix = "key.";
 
@@ -155,6 +156,29 @@ namespace Graphite {
 	void AppSettings::SaveWordWrap(bool wrap)
 	{
 		WriteValue(kWordWrapKey, wrap ? "1" : "0");
+	}
+
+	std::string AppSettings::LoadColorScheme()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kColorSchemeKey);
+	}
+
+	void AppSettings::SaveColorScheme(std::string_view name)
+	{
+		WriteValue(kColorSchemeKey, std::string{name});
+	}
+
+	std::filesystem::path AppSettings::ThemesDirectory()
+	{
+		const auto directory = Core::ExecutableDirectory();
+
+		if (directory)
+			return directory.GetValue() / "themes";
+
+		APP_WARN("Cannot locate the executable directory, using 'themes' as-is: {}",
+				 directory.GetError().Message);
+
+		return std::filesystem::path{"themes"};
 	}
 
 	void AppSettings::LoadKeyBindings(Core::Keymap& keys)

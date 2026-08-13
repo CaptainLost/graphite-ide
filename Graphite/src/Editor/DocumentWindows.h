@@ -44,7 +44,7 @@ namespace Graphite {
 
 		void Render(const CommandContext& context, float fontSize,
 					Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
-					bool wordWrap);
+					bool wordWrap, const ResolvedScheme& scheme);
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
 
@@ -101,7 +101,7 @@ namespace Graphite {
 
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
-								   bool wordWrap,
+								   bool wordWrap, const ResolvedScheme& scheme,
 								   const std::optional<std::filesystem::path>& focusRequest);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;

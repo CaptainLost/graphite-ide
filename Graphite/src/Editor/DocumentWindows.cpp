@@ -772,7 +772,7 @@ namespace Graphite {
 
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
-		unsigned int fallbackDockNode, bool wordWrap,
+		unsigned int fallbackDockNode, bool wordWrap, const ResolvedScheme& scheme,
 		const std::optional<std::filesystem::path>& focusRequest)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
@@ -839,6 +839,7 @@ namespace Graphite {
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.Syntax = &SyntaxFor(item);
+				view.Scheme = &scheme;
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view);
 
@@ -880,7 +881,8 @@ namespace Graphite {
 
 	void DocumentWindows::Render(const CommandContext& context, float fontSize,
 								 Core::IndentStyle indentStyle,
-								 unsigned int fallbackDockNode, bool wordWrap)
+								 unsigned int fallbackDockNode, bool wordWrap,
+								 const ResolvedScheme& scheme)
 	{
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
@@ -898,7 +900,7 @@ namespace Graphite {
 		RenderOverwriteConfirm();
 		RenderCloseConfirm();
 
-		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap,
+		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap, scheme,
 							  focusRequest);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
