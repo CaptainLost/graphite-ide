@@ -939,10 +939,11 @@ namespace Graphite {
 		}
 
 		// Room for a query worth typing, and no more: the bar hangs off the editor's right corner
-		// and every pixel it takes is a pixel of code it covers.
+		// and every pixel it takes is a pixel of code it covers. Measured in characters of the
+		// editor's own font, so the bar keeps its proportions when the font size changes.
 		float FindFieldWidth()
 		{
-			return ImGui::CalcTextSize("0").x * 18.0f;
+			return ImGui::CalcTextSize("0").x * 14.0f;
 		}
 
 		// Smaller than a row, so the buttons sit inside the bar with air around them rather than
@@ -1034,12 +1035,15 @@ namespace Graphite {
 			return clicked;
 		}
 
+		// No spaces around the slash. The counter's box is reserved at its widest and paid for on
+		// every search, so two characters of padding inside it are two characters of code the bar
+		// covers for the whole time it is open.
 		std::string MatchCounterText(const Core::FindState& find)
 		{
 			if (find.Matches.empty())
-				return "0 / 0";
+				return "0/0";
 
-			return std::to_string(find.Current + 1) + " / " + std::to_string(find.Matches.size());
+			return std::to_string(find.Current + 1) + "/" + std::to_string(find.Matches.size());
 		}
 
 		// A constant, and reserved even while the counter shows nothing. It depends on neither the
@@ -1053,7 +1057,7 @@ namespace Graphite {
 		// that resizes for everyone else.
 		float MatchCounterWidth()
 		{
-			return ImGui::CalcTextSize("9999 / 9999").x;
+			return ImGui::CalcTextSize("9999/9999").x;
 		}
 
 		void DrawMatchCounter(const Core::FindState& find, float width)
