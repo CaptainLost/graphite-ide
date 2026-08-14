@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Core {
@@ -24,6 +25,35 @@ namespace Core {
 	};
 
 	inline constexpr std::size_t NoRowAim = static_cast<std::size_t>(-1);
+
+	// What a document remembers about the find bar between one visit and the next. Lives here
+	// rather than beside the editor so closing or renaming a document takes it along, which a
+	// map kept next to the editor would have to be told about.
+	//
+	// Deliberately plain: a string, two flags, offset pairs, two indices. The matcher and its
+	// query type live above Core and must stay there — a text editor remembering what you last
+	// searched for is a text-editing concept, a search query carrying a file mask is not.
+	struct FindState
+	{
+		bool Open = false;
+
+		std::string Query;
+		bool MatchCase = false;
+		bool WholeWord = false;
+
+		// Ascending document byte ranges, and which of them the caret is on.
+		std::vector<std::pair<std::size_t, std::size_t>> Matches;
+		std::size_t Current = 0;
+
+		// The buffer revision Matches were computed from. Comparing it against the buffer's
+		// current one is what makes a stale list detectable rather than something the editor has
+		// to remember to invalidate on every edit path.
+		//
+		// Zero is a real revision — a buffer starts there — so it cannot double as a "never
+		// computed" sentinel. An empty Query is what says the state has never been searched
+		// with; Revision only says whether a list that exists is still current.
+		std::size_t Revision = 0;
+	};
 
 	struct OpenItem
 	{
@@ -58,6 +88,8 @@ namespace Core {
 		// wrap width beside it, not a preference: Core does not know where the number comes
 		// from, only that everything measuring this document must use the same one.
 		std::size_t TabWidth = DefaultTabWidth;
+
+		FindState Find;
 
 		std::string Detail;
 	};

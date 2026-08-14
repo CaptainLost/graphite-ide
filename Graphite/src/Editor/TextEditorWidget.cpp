@@ -944,6 +944,19 @@ namespace Graphite {
 			std::size_t SelectionFromColumn = 0;
 			std::size_t SelectionToColumn = 0;
 
+			// Column ranges of every find match on this line, and the index within them of the
+			// current one — or the size when the current match is on another line. Converted in
+			// CacheLine, for the same reason the selection is: the editor draws expanded text,
+			// and a raw byte offset lands several cells out on any line holding a tab.
+			struct MatchColumns
+			{
+				std::size_t FromColumn = 0;
+				std::size_t ToColumn = 0;
+			};
+
+			std::vector<MatchColumns> Matches;
+			std::size_t CurrentMatch = 0;
+
 			// The byte the previous row ended at, and the row that follows it. Valid only for
 			// that one row: the clipper may jump, and a jump lands somewhere the carry says
 			// nothing about.
@@ -960,7 +973,11 @@ namespace Graphite {
 		{
 			const Core::TextBuffer& Buffer;
 
+			// Document byte ranges, ascending, and which of them the caret is on.
+			const std::vector<std::pair<std::size_t, std::size_t>>& Matches;
+
 			std::pair<std::size_t, std::size_t> Selection;
+			std::size_t CurrentMatch = 0;
 			std::size_t TabWidth = Core::DefaultTabWidth;
 		};
 
@@ -981,6 +998,44 @@ namespace Graphite {
 			cache.HaveCarried = false;
 
 			const std::size_t start = input.Buffer.LineStart(line);
+
+			cache.Matches.clear();
+
+			const std::size_t lineEnd = start + cache.Text.size();
+			bool currentOnLine = false;
+
+			for (std::size_t index = 0; index < input.Matches.size(); ++index)
+			{
+				const auto [matchFrom, matchTo] = input.Matches[index];
+
+				// Half-open against the line's own span. A match ending exactly at the line's
+				// start belongs to the line above.
+				if (matchTo <= start || matchFrom > lineEnd)
+				{
+					continue;
+				}
+
+				const std::size_t fromByte = matchFrom > start ? matchFrom - start : 0;
+				const std::size_t toByte = std::min(matchTo - start, cache.Text.size());
+
+				if (index == input.CurrentMatch)
+				{
+					cache.CurrentMatch = cache.Matches.size();
+					currentOnLine = true;
+				}
+
+				cache.Matches.push_back(VisibleLineCache::MatchColumns{
+					Core::ColumnOfByte(cache.Text, fromByte, tabWidth),
+					Core::ColumnOfByte(cache.Text, toByte, tabWidth)});
+			}
+
+			// Past the end of this line's own list when the caret's match is on another line.
+			// Leaving it at zero instead would draw the first match of every other line in the
+			// current match's colour.
+			if (!currentOnLine)
+			{
+				cache.CurrentMatch = cache.Matches.size();
+			}
 
 			cache.SelectionFromColumn = 0;
 			cache.SelectionToColumn = 0;
@@ -1083,6 +1138,41 @@ namespace Graphite {
 				canvas.Draw->AddLine(ImVec2(guideX, slice.Y),
 									 ImVec2(guideX, slice.Y + canvas.Metrics.LineHeight),
 									 canvas.Palette.Guide, 1.0f);
+			}
+		}
+
+		// Drawn before the selection and before the text, so a selected match still reads as
+		// selected and the glyphs sit on top of both.
+		void DrawRowMatches(const RowCanvas& canvas, const RowSlice& slice,
+							const VisibleLineCache& cache)
+		{
+			for (std::size_t index = 0; index < cache.Matches.size(); ++index)
+			{
+				const VisibleLineCache::MatchColumns& match = cache.Matches[index];
+
+				const std::size_t clippedFrom =
+					std::clamp(match.FromColumn, slice.FromColumn, slice.ToColumn);
+				const std::size_t clippedTo =
+					std::clamp(match.ToColumn, slice.FromColumn, slice.ToColumn);
+
+				if (clippedTo <= clippedFrom)
+				{
+					continue;
+				}
+
+				const float fromX =
+					canvas.TextOriginX +
+					static_cast<float>(clippedFrom - slice.FromColumn) * canvas.Metrics.CellWidth;
+				const float toX =
+					canvas.TextOriginX +
+					static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
+
+				const ImU32 color = index == cache.CurrentMatch ? canvas.Palette.FindCurrentMatch
+																: canvas.Palette.FindMatch;
+
+				canvas.Draw->AddRectFilled(ImVec2(fromX, slice.Y),
+										   ImVec2(toX, slice.Y + canvas.Metrics.LineHeight),
+										   color);
 			}
 		}
 
@@ -1259,6 +1349,8 @@ namespace Graphite {
 
 			DrawIndentGuides(canvas, slice, depth, item.TabWidth);
 
+			DrawRowMatches(canvas, slice, cache);
+
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
 
@@ -1332,9 +1424,10 @@ namespace Graphite {
 											   item.TabWidth);
 			caret.Focused = focused;
 
-			LineCacheInput lineInput{buffer};
+			LineCacheInput lineInput{buffer, item.Find.Matches};
 
 			lineInput.Selection = Core::SelectionRange(item.Caret);
+			lineInput.CurrentMatch = item.Find.Current;
 			lineInput.TabWidth = item.TabWidth;
 
 			ReserveDocumentExtent(origin, canvas.ContentWidth, DocumentHeightOf(item, metrics));
