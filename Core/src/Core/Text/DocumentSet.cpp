@@ -119,14 +119,6 @@ namespace Core {
 			{
 				item.Document = std::move(document).GetValue();
 				RefreshDerived(item);
-
-				// The find state described the document being replaced: its offsets point into
-				// text that may no longer be there, and its revision cannot say so — a freshly
-				// loaded buffer starts back at revision zero, which is a revision the old state
-				// may well have been computed at. Reloading a file from disk is the case, and
-				// leaving the bar open over a list belonging to the previous contents would
-				// highlight ranges at random.
-				item.Find = FindState{};
 			}
 			else
 			{
