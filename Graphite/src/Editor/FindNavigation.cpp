@@ -93,6 +93,11 @@ namespace Graphite {
 		return true;
 	}
 
+	bool AcceptsQueryEdit(const FindFieldEvents& events)
+	{
+		return events.Edited && !events.EscapePressed;
+	}
+
 	void StepFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, bool backwards)
 	{
 		const std::vector<DocumentMatch> matches = MatchesOf(item.Find);

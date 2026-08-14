@@ -1042,6 +1042,13 @@ namespace Graphite {
 		{
 			const bool noMatches = item.Find.Matches.empty() && !item.Find.Query.empty();
 
+			// Read before the field is submitted so that the press which closes the bar below and
+			// the press which cancels the write-back are one and the same reading, not two that
+			// could drift apart. IsKeyPressed answers for the whole frame and ignores ownership,
+			// so asking early is the same question asked late.
+			const bool escapePressed =
+				frame.DocumentFocused && ImGui::IsKeyPressed(ImGuiKey_Escape);
+
 			// BeginChild sizes its item like any other, which pushes the surface's CursorMaxPos
 			// out to the bar's far corner — and the surface's extent is what its scrollbars are
 			// decided from, so an overlay pinned to the window's own edges would make the content
@@ -1096,7 +1103,8 @@ namespace Graphite {
 				ImGui::InputTextWithHint("##findQuery", "Find", field.data(), field.size(),
 										 ImGuiInputTextFlags_EnterReturnsTrue);
 
-			const bool queryEdited = ImGui::IsItemEdited();
+			const bool queryEdited =
+				AcceptsQueryEdit(FindFieldEvents{ImGui::IsItemEdited(), escapePressed});
 
 			if (noMatches)
 			{
@@ -1146,7 +1154,7 @@ namespace Graphite {
 			const bool stepBack = previousClicked || (shift && (entered || f3));
 			const bool stepOn = nextClicked || (!shift && (entered || f3));
 
-			if (closeClicked || (frame.DocumentFocused && ImGui::IsKeyPressed(ImGuiKey_Escape)))
+			if (closeClicked || escapePressed)
 			{
 				// Leaves the caret where the last step put it, which is the point of closing on
 				// the match rather than jumping back to where the search began.

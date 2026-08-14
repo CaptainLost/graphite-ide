@@ -24,6 +24,21 @@ namespace Graphite {
 	// every path that can change them rebuilds on the spot.
 	bool RefreshFindMatchesIfStale(Core::OpenItem& item, const Core::TextBuffer& buffer);
 
+	// What one frame of the find field reported: whether the widget called itself edited, and
+	// whether the Escape that closes the bar was pressed on that same frame.
+	struct FindFieldEvents
+	{
+		bool Edited = false;
+		bool EscapePressed = false;
+	};
+
+	// Whether the field's text is the user's to keep. Escape makes an ImGui field revert to the
+	// value it held when it was activated, and the field reports itself edited on that frame as
+	// it would for any other change — so on the frame the bar closes, the "edit" is ImGui undoing
+	// what was typed rather than the user typing it. Writing that back would overwrite the query
+	// the bar exists to hand back the next time it opens.
+	bool AcceptsQueryEdit(const FindFieldEvents& events);
+
 	// Moves to the next match, or the previous one, wrapping at either end, and selects it:
 	// anchor at the start, offset at the end. Does nothing when there are no matches. Asks for a
 	// scroll rather than performing one — the caller is not necessarily drawing.

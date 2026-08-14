@@ -31,8 +31,9 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Settings/**.h",
         "%{wks.location}/Graphite/src/Settings/**.cpp",
         -- Editor is named file by file rather than globbed: most of it is widget code that
-        -- drags in ImGui and the application's own layers. These two are the parts that are
-        -- only logic, and depend on nothing but Core.
+        -- drags in ImGui and the application's own layers. The units named here are the parts
+        -- that are only logic, drawing nothing and reaching no further than Core and the
+        -- search modules already listed below.
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.h",

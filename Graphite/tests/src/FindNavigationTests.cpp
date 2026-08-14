@@ -139,3 +139,17 @@ TEST_CASE("Refreshing twice at the same revision does not rebuild")
 	// "alpha alpha beta alpha": the planted pair is gone and the third match is a real one.
 	CHECK(item.Find.Matches[2].first == 17);
 }
+
+TEST_CASE("The frame Escape closes the bar on does not write the field back")
+{
+	// ImGui reverts the field to the value it held at activation when Escape is pressed, and
+	// reports it edited on that same frame. Taking that edit at face value would put the
+	// reverted text into the query, which is the one the bar hands back when it reopens.
+	CHECK_FALSE(Graphite::AcceptsQueryEdit(Graphite::FindFieldEvents{true, true}));
+
+	// Every other combination is left alone: typing is still typing, and a frame with no edit
+	// writes nothing back whether or not the bar is closing.
+	CHECK(Graphite::AcceptsQueryEdit(Graphite::FindFieldEvents{true, false}));
+	CHECK_FALSE(Graphite::AcceptsQueryEdit(Graphite::FindFieldEvents{false, false}));
+	CHECK_FALSE(Graphite::AcceptsQueryEdit(Graphite::FindFieldEvents{false, true}));
+}
