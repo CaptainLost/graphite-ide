@@ -1072,14 +1072,25 @@ namespace Graphite {
 			}
 
 			const std::string counter = MatchCounterText(find);
-			const float text = ImGui::CalcTextSize(counter.c_str()).x;
 
-			// Right-aligned in its box, against the separator, so the digits grow leftwards into
-			// the gap rather than pushing anything along.
-			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(width - text, 0.0f));
-
+			// Left-aligned, so it sits against the field it belongs to and the slack in its
+			// reserved box falls before the separator instead. Right-aligning it put that slack
+			// between the query and its own count, which read as the two being unrelated.
+			//
+			// The digits therefore grow rightwards, into room already reserved for them: the box
+			// is a constant, so nothing outside it moves either way.
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextDisabled("%s", counter.c_str());
+
+			// Whatever the text did not use, so the separator stands where it does on every other
+			// frame regardless of how many digits the counter is showing.
+			const float text = ImGui::CalcTextSize(counter.c_str()).x;
+
+			if (text < width)
+			{
+				ImGui::SameLine(0.0f, 0.0f);
+				ImGui::Dummy(ImVec2(width - text, ImGui::GetFrameHeight()));
+			}
 		}
 
 		struct FindBarFrame
