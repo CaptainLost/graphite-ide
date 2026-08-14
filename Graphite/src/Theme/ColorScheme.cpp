@@ -34,6 +34,8 @@ namespace Graphite {
 			case EditorColor::GutterFill: return {"gutterFill", "Gutter"};
 			case EditorColor::LineNumber: return {"lineNumber", "Line number"};
 			case EditorColor::Caret: return {"caret", "Caret"};
+			case EditorColor::FindMatch: return {"findMatch", "Find match"};
+			case EditorColor::FindCurrentMatch: return {"findCurrentMatch", "Current find match"};
 			case EditorColor::Count: break;
 		}
 

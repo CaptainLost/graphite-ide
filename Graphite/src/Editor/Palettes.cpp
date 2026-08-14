@@ -43,6 +43,9 @@ namespace Graphite {
 		palette.Guide = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Guide)]);
 		palette.GutterFill = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::GutterFill)]);
 		palette.Caret = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Caret)]);
+		palette.FindMatch = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::FindMatch)]);
+		palette.FindCurrentMatch =
+			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::FindCurrentMatch)]);
 
 		return palette;
 	}

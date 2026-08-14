@@ -6,7 +6,7 @@ namespace Graphite {
 
 	// Everything the editor draws that is not a token. Named fields rather than an array
 	// indexed by EditorColor, because nothing indexes it — the one place that maps the two
-	// together is the palette builder, and eight explicit assignments there are easier to
+	// together is the palette builder, and ten explicit assignments there are easier to
 	// check than a loop.
 	struct EditorPalette
 	{
@@ -18,5 +18,7 @@ namespace Graphite {
 		ImU32 Guide = 0;
 		ImU32 GutterFill = 0;
 		ImU32 Caret = 0;
+		ImU32 FindMatch = 0;
+		ImU32 FindCurrentMatch = 0;
 	};
 }

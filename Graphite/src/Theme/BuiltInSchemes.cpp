@@ -58,6 +58,8 @@ namespace Graphite {
 			{EditorColor::GutterFill, 27, 29, 33},
 			{EditorColor::LineNumber, 123, 130, 141},
 			{EditorColor::Caret, 214, 219, 226},
+			{EditorColor::FindMatch, 88, 88, 40, 140},
+			{EditorColor::FindCurrentMatch, 120, 100, 30, 200},
 		};
 
 		// The editor table is not sparse like the syntax one: every EditorColor is meant to be
@@ -83,6 +85,8 @@ namespace Graphite {
 			{EditorColor::GutterFill, 255, 255, 255},
 			{EditorColor::LineNumber, 140, 140, 140},
 			{EditorColor::Caret, 36, 36, 36},
+			{EditorColor::FindMatch, 250, 235, 130, 160},
+			{EditorColor::FindCurrentMatch, 250, 200, 60, 220},
 		};
 
 		static_assert(std::size(kLightEditor) == static_cast<std::size_t>(EditorColor::Count));

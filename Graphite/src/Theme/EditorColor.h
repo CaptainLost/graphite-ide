@@ -16,6 +16,12 @@ namespace Graphite {
 		GutterFill,
 		LineNumber,
 		Caret,
+
+		// Every match of the current find, and the one the caret is on. Two colours, because a
+		// counter reading "3 / 17" is only useful when the other sixteen are visible and the
+		// third is distinguishable among them.
+		FindMatch,
+		FindCurrentMatch,
 		Count
 	};
 }
