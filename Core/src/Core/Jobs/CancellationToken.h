@@ -1,0 +1,25 @@
+#pragma once
+
+#include <atomic>
+#include <memory>
+
+namespace Core {
+
+	// Copyable on purpose: every copy shares one flag, so the thread that starts a job and the
+	// thread that runs it hold the same token without either owning the other's lifetime.
+	//
+	// Cancellation is cooperative. A job that never asks is never stopped, and there is no way
+	// to interrupt one — killing a thread mid-work leaves whatever it was holding half-written.
+	class CancellationToken
+	{
+	public:
+		void Cancel() const { m_Cancelled->store(true, std::memory_order_relaxed); }
+
+		bool IsCancelled() const { return m_Cancelled->load(std::memory_order_relaxed); }
+
+	private:
+		// relaxed is enough: this flag guards no other data. Everything a cancelled job hands
+		// back crosses threads through its own mutex.
+		std::shared_ptr<std::atomic_bool> m_Cancelled = std::make_shared<std::atomic_bool>(false);
+	};
+}
