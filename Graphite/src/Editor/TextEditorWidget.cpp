@@ -28,6 +28,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -951,13 +952,27 @@ namespace Graphite {
 			bool HaveCarried = false;
 		};
 
-		void CacheLine(VisibleLineCache& cache, const Core::TextBuffer& buffer, std::size_t line,
-					   std::size_t selectionFrom, std::size_t selectionTo, std::size_t tabWidth)
+		// Everything CacheLine needs that is the same for every line of the frame, bundled rather
+		// than passed one argument at a time: the selection alone already put two std::size_t
+		// side by side in the parameter list, where a caller can transpose them and the compiler
+		// has nothing to say about it. Fields are filled by name at the one call site.
+		struct LineCacheInput
+		{
+			const Core::TextBuffer& Buffer;
+
+			std::pair<std::size_t, std::size_t> Selection;
+			std::size_t TabWidth = Core::DefaultTabWidth;
+		};
+
+		void CacheLine(VisibleLineCache& cache, const LineCacheInput& input, std::size_t line)
 		{
 			if (cache.Valid && cache.Line == line)
 				return;
 
-			cache.Text = buffer.LineText(line);
+			const auto [selectionFrom, selectionTo] = input.Selection;
+			const std::size_t tabWidth = input.TabWidth;
+
+			cache.Text = input.Buffer.LineText(line);
 			// Tabs are advances, not glyphs; expanding them into spaces first keeps a row one
 			// AddText call instead of one run per tab.
 			cache.Expanded = Core::ExpandTabs(cache.Text, tabWidth);
@@ -965,7 +980,7 @@ namespace Graphite {
 			cache.Valid = true;
 			cache.HaveCarried = false;
 
-			const std::size_t start = buffer.LineStart(line);
+			const std::size_t start = input.Buffer.LineStart(line);
 
 			cache.SelectionFromColumn = 0;
 			cache.SelectionToColumn = 0;
@@ -1317,7 +1332,10 @@ namespace Graphite {
 											   item.TabWidth);
 			caret.Focused = focused;
 
-			const auto [selectionFrom, selectionTo] = Core::SelectionRange(item.Caret);
+			LineCacheInput lineInput{buffer};
+
+			lineInput.Selection = Core::SelectionRange(item.Caret);
+			lineInput.TabWidth = item.TabWidth;
 
 			ReserveDocumentExtent(origin, canvas.ContentWidth, DocumentHeightOf(item, metrics));
 
@@ -1334,7 +1352,7 @@ namespace Graphite {
 					const Core::RowRef ref = item.Rows.RowAt(rowIndex);
 					const float y = origin.y + static_cast<float>(row) * metrics.LineHeight;
 
-					CacheLine(cache, buffer, ref.Line, selectionFrom, selectionTo, item.TabWidth);
+					CacheLine(cache, lineInput, ref.Line);
 
 					// TokensOf caches one line at a time and returns a reference into that cache,
 					// so this is only safe to hold across the rows of *this* line — exactly the
