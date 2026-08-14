@@ -45,12 +45,11 @@ namespace Core {
 		std::size_t RowAim = 0;
 		std::size_t RowAimAt = NoRowAim;
 
-		// Set by anything that moves the caret from outside the editor's own frame — a jump to
-		// a search result, say. The editor only scrolls to the caret when it notices the caret
-		// changed during its own processing this frame (see caretAtFrameStart in
-		// TextEditorWidget.cpp); a change made earlier in the same frame, before the editor's
-		// turn, looks like no change at all from inside that function. This flag says "scroll
-		// anyway", and the editor clears it once it has.
+		// Set by anything that moves the caret from outside the editor's own frame — a jump
+		// requested from elsewhere. The editor only scrolls to the caret when it notices the
+		// caret changed during its own processing this frame; a change made earlier in the same
+		// frame, before the editor's turn, looks like no change at all from inside that
+		// processing. This flag says "scroll anyway", and the editor clears it once it has.
 		bool PendingScroll = false;
 
 		std::vector<std::size_t> IndentDepths;
