@@ -14,7 +14,11 @@ namespace Graphite {
 
 	SearchPanel::SearchPanel(SearchService& service, const SearchSettings& settings,
 							 Workspace& workspace, Core::DocumentSet& documents)
-		: Core::Panel("search", "Search"), m_Service(service), m_Settings(settings),
+		// Hidden until asked for, like the settings panel. Panel's third parameter defaults to
+		// visible, which suits the explorer and the console — a window you want on screen from
+		// the first frame. A search panel is not that: it opens with an empty query and nothing
+		// to show, so it started every session taking up space nobody had asked for.
+		: Core::Panel("search", "Search", false), m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents)
 	{
 	}
@@ -26,7 +30,15 @@ namespace Graphite {
 		// Drain is the only thing that ever clears Progress.Running. Draining there instead of
 		// here left the status bar stuck reading a frozen "Searching..." count while another
 		// tab was on screen.
-		m_Service.Drain(m_Hits, m_Progress);
+		m_Drained.clear();
+		m_Service.Drain(m_Drained, m_Progress);
+
+		// Grouped here, as hits arrive, rather than in the render: this frame's cost is what this
+		// frame drained, and a finished search costs nothing at all.
+		for (SearchHit& hit : m_Drained)
+		{
+			m_Groups.Add(std::move(hit));
+		}
 	}
 
 	void SearchPanel::OnImGuiRender()
@@ -137,7 +149,8 @@ namespace Graphite {
 
 	void SearchPanel::RunSearch()
 	{
-		m_Hits.clear();
+		m_Groups.Clear();
+		m_Drained.clear();
 		m_Progress = SearchProgress{};
 
 		m_Service.Start(BuildRequest());
@@ -145,7 +158,7 @@ namespace Graphite {
 
 	void SearchPanel::RenderSummary()
 	{
-		std::string summary = std::to_string(m_Hits.size()) + " hits, " +
+		std::string summary = std::to_string(m_Groups.GetCount()) + " hits, " +
 							  std::to_string(m_Progress.FilesScanned) + " files scanned";
 
 		// Reported only when non-zero: the spec calls for saying what could not be read, not for
@@ -171,37 +184,41 @@ namespace Graphite {
 			return;
 		}
 
-		// Grouped afresh each frame rather than incrementally: hits arrive from a job queue in
-		// no promised order, so a file's hits are not necessarily contiguous in m_Hits.
-		std::map<std::filesystem::path, std::vector<const SearchHit*>> byFile;
-
-		for (const SearchHit& hit : m_Hits)
-			byFile[hit.File].push_back(&hit);
-
-		for (const auto& [file, hits] : byFile)
+		// Already grouped, in OnUpdate, as the hits arrived. This loop walks groups; it never
+		// touches a hit belonging to a file it is not drawing.
+		for (const HitGroup& group : m_Groups.Get())
 		{
 			// The id and the label are kept apart on purpose: the label carries the running hit
 			// count, which changes on every new hit. Passing that combined string as the node's
-			// id — its earlier mistake — made ImGui see a new node each time and close whatever
-			// the user had just opened. The id below never changes while a search runs.
-			const std::string id = Core::ToUtf8(file);
-			const std::string label = id + "  (" + std::to_string(hits.size()) + ")";
+			// id — an earlier mistake here — made ImGui see a new node each time and close
+			// whatever the user had just opened. The id below never changes while a search runs.
+			const std::string label =
+				group.Name + "  (" + std::to_string(group.Hits.size()) + ")";
 
-			if (!ImGui::TreeNode(id.c_str(), "%s", label.c_str()))
+			if (!ImGui::TreeNode(group.Name.c_str(), "%s", label.c_str()))
 				continue;
 
-			int hitIndex = 0;
+			// One expanded file can hold thousands of hits, and every row costs a string built to
+			// draw it. The clipper submits only the rows the scroll actually shows, so an expanded
+			// file costs what is on screen rather than what is in it.
+			ImGuiListClipper clipper;
+			clipper.Begin(static_cast<int>(group.Hits.size()));
 
-			for (const SearchHit* hit : hits)
+			while (clipper.Step())
 			{
-				ImGui::PushID(hitIndex++);
+				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+				{
+					const SearchHit& hit = group.Hits[static_cast<std::size_t>(row)];
 
-				const std::string entry = std::to_string(hit->Line + 1) + ": " + hit->Text;
+					ImGui::PushID(row);
 
-				if (ImGui::Selectable(entry.c_str()))
-					OpenAndSelect(*hit);
+					const std::string entry = std::to_string(hit.Line + 1) + ": " + hit.Text;
 
-				ImGui::PopID();
+					if (ImGui::Selectable(entry.c_str()))
+						OpenAndSelect(hit);
+
+					ImGui::PopID();
+				}
 			}
 
 			ImGui::TreePop();

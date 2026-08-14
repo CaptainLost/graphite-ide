@@ -2,6 +2,7 @@
 
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/Panel.h"
+#include "Search/HitGroups.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Workspace/Workspace.h"
@@ -66,9 +67,14 @@ namespace Graphite {
 		// only takes effect when called immediately before the widget it targets.
 		bool m_FocusQueryNextFrame = false;
 
-		// Accumulated across frames: Drain appends rather than replaces, and is cleared only
-		// when a new search starts.
-		std::vector<SearchHit> m_Hits;
+		// What Drain hands over each frame, emptied into m_Groups immediately. A member rather
+		// than a local so a long search does not reallocate it sixty times a second.
+		std::vector<SearchHit> m_Drained;
+
+		// Accumulated across frames and grouped as hits arrive, because regrouping every hit on
+		// every frame cost 5.3 ms per frame at 8000 hits — see the note on HitGroups.
+		HitGroups m_Groups;
+
 		SearchProgress m_Progress;
 	};
 }
