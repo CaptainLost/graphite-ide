@@ -63,7 +63,15 @@ namespace Graphite {
 			}
 		}
 
-		if (request.Options.ProjectsOnly && m_Workspace.LoadedSolution())
+		// The setting outlives the solution it was set for: it persists to graphite.json, and a
+		// later session on a plain folder has no projects to list. Left set, the worker would
+		// take the projects branch over an empty file list and report nothing found, every time,
+		// with the checkbox greyed out because no solution is open — a dead search with no way
+		// out of it short of editing the settings file. Without a solution, walk the folder.
+		request.Options.ProjectsOnly =
+			request.Options.ProjectsOnly && m_Workspace.LoadedSolution().has_value();
+
+		if (request.Options.ProjectsOnly)
 		{
 			EnumerateProjectFiles(*m_Workspace.LoadedSolution(),
 								  [&request](const std::filesystem::path& file)
@@ -84,6 +92,15 @@ namespace Graphite {
 	void SearchPanel::Focus()
 	{
 		SetVisible(true);
+
+		// Visible is not the same as on screen: a panel sharing a dock node with another tab
+		// stays behind it, never reaches OnImGuiRender, and so never consumes the queued
+		// keyboard focus below — the user would have to click the tab first.
+		// The same name PanelManager gives the window, because that is what ImGui knows it by.
+		const std::string window = GetTitle() + "###" + GetId();
+
+		ImGui::SetWindowFocus(window.c_str());
+
 		m_FocusQueryNextFrame = true;
 	}
 

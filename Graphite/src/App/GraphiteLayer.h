@@ -104,6 +104,13 @@ namespace Graphite {
 		SearchService m_Search;
 		SearchSettings m_SearchSettings;
 
+		// Declared before m_Panels for the same reason as m_Search: SearchSection holds a
+		// reference to this, and a member declared after m_Panels would be destroyed first.
+		// Read by SearchSection to grey out "projects only" when there is nothing to limit to,
+		// and updated every frame rather than reached for through Workspace: a section knows
+		// nothing about Workspace, by design.
+		bool m_SolutionLoaded = false;
+
 		static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 
 		ModalQuestion<ClosePurpose> m_CloseQuestion;
@@ -124,10 +131,5 @@ namespace Graphite {
 		ActiveScheme m_ActiveScheme;
 
 		SearchPanel* m_SearchPanel = nullptr;
-
-		// Read by SearchSection to grey out "projects only" when there is nothing to limit to,
-		// and updated every frame rather than reached for through Workspace: a section knows
-		// nothing about Workspace, by design.
-		bool m_SolutionLoaded = false;
 	};
 }
