@@ -3,6 +3,7 @@
 #include "App/GraphiteLayer.h"
 
 #include "Editor/StatusBar.h"
+#include "Editor/TextEditorWidget.h"
 
 #include "Panels/ConsolePanel.h"
 
@@ -158,6 +159,24 @@ namespace Graphite {
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",
 						.Run = [this] { m_SearchPanel->Focus(); }});
+
+		// The active document, not the focused one: which editor holds the keyboard is only
+		// knowable while drawing, and a command runs before any of them has drawn. Activating a
+		// tab is what makes a document the one being worked in, so it is the same document
+		// either way in every case a user can produce.
+		m_Commands.Add({.Id = "find.open",
+						.Label = "Find",
+						.Run = [this] {
+							if (const auto active = m_Documents.GetActive())
+								OpenFindBar(m_Documents.At(*active));
+						},
+						.Enabled = [this] {
+							const auto active = m_Documents.GetActive();
+
+							return active && m_Documents.At(*active).Document.has_value();
+						}});
+
+		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
 
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
