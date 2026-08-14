@@ -1462,15 +1462,17 @@ namespace Graphite {
 							  RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 
-			// Only when this frame actually moved the caret — not merely when the window has
-			// keyboard focus, which is true on every frame it is focused and would fight the
-			// user's own scrolling. Comparing against caretAtFrameStart, read before the mouse
-			// and keyboard above touched anything, is true exactly when a click, a drag, a
-			// motion key or an edit changed where the caret sits.
-			if (item.Caret.Offset != caretAtFrameStart)
+			// Not merely when the window has keyboard focus, which is true on every frame it is
+			// focused and would fight the user's own scrolling. Comparing against
+			// caretAtFrameStart, read before the mouse and keyboard above touched anything, is
+			// true exactly when a click, a drag, a motion key or an edit changed where the caret
+			// sits — but it says nothing about a caret moved earlier in the same frame, before
+			// this function ran, which is why PendingScroll carries that case separately.
+			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
 				ScrollToCaret(buffer, item, metrics, view.WordWrap);
 				s_CaretMovedAt = ImGui::GetTime();
+				item.PendingScroll = false;
 			}
 
 			// A null Scheme is defence, not a supported mode — DocumentWindows always fills it

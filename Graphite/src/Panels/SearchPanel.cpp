@@ -3,6 +3,7 @@
 #include "Search/FileEnumerator.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/Caret.h"
 
 #include <imgui.h>
 
@@ -12,18 +13,24 @@
 namespace Graphite {
 
 	SearchPanel::SearchPanel(SearchService& service, const SearchSettings& settings,
-							 Workspace& workspace, const Core::DocumentSet& documents)
+							 Workspace& workspace, Core::DocumentSet& documents)
 		: Core::Panel("search", "Search"), m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents)
 	{
 	}
 
+	void SearchPanel::OnUpdate(Core::Timestep)
+	{
+		// Once per frame, regardless of whether this panel is visible or drawn: a hidden panel,
+		// or one behind another tab of the same dock node, never reaches OnImGuiRender, and
+		// Drain is the only thing that ever clears Progress.Running. Draining there instead of
+		// here left the status bar stuck reading a frozen "Searching..." count while another
+		// tab was on screen.
+		m_Service.Drain(m_Hits, m_Progress);
+	}
+
 	void SearchPanel::OnImGuiRender()
 	{
-		// Once per frame, before anything is drawn: Drain appends, so a second call this frame
-		// would double what a frame already showed.
-		m_Service.Drain(m_Hits, m_Progress);
-
 		RenderQuery();
 		ImGui::Separator();
 		RenderSummary();
@@ -74,8 +81,22 @@ namespace Graphite {
 		return "Searching... " + std::to_string(m_Progress.FilesScanned) + " files";
 	}
 
+	void SearchPanel::Focus()
+	{
+		SetVisible(true);
+		m_FocusQueryNextFrame = true;
+	}
+
 	void SearchPanel::RenderQuery()
 	{
+		// Consumed on the first frame this panel actually draws after Focus() was called:
+		// SetKeyboardFocusHere only takes effect on the very next widget submitted.
+		if (m_FocusQueryNextFrame)
+		{
+			ImGui::SetKeyboardFocusHere();
+			m_FocusQueryNextFrame = false;
+		}
+
 		ImGui::SetNextItemWidth(-1.0f);
 
 		const bool entered = ImGui::InputTextWithHint(
@@ -142,10 +163,14 @@ namespace Graphite {
 
 		for (const auto& [file, hits] : byFile)
 		{
-			const std::string label =
-				Core::ToUtf8(file) + "  (" + std::to_string(hits.size()) + ")";
+			// The id and the label are kept apart on purpose: the label carries the running hit
+			// count, which changes on every new hit. Passing that combined string as the node's
+			// id — its earlier mistake — made ImGui see a new node each time and close whatever
+			// the user had just opened. The id below never changes while a search runs.
+			const std::string id = Core::ToUtf8(file);
+			const std::string label = id + "  (" + std::to_string(hits.size()) + ")";
 
-			if (!ImGui::TreeNode(label.c_str()))
+			if (!ImGui::TreeNode(id.c_str(), "%s", label.c_str()))
 				continue;
 
 			int hitIndex = 0;
@@ -157,7 +182,7 @@ namespace Graphite {
 				const std::string entry = std::to_string(hit->Line + 1) + ": " + hit->Text;
 
 				if (ImGui::Selectable(entry.c_str()))
-					m_Workspace.RequestOpenFile(hit->File, true);
+					OpenAndSelect(*hit);
 
 				ImGui::PopID();
 			}
@@ -166,5 +191,43 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
+	}
+
+	void SearchPanel::OpenAndSelect(const SearchHit& hit)
+	{
+		m_Workspace.RequestOpenFile(hit.File, true);
+
+		// RequestOpenFile publishes synchronously, and DocumentWindows::RequestOpen opens or
+		// activates the tab inline, so by the time control returns here the document is either
+		// in the set already or never will be this frame (a large file still waiting on the
+		// size confirmation, say) — either way Find is the right thing to check.
+		const auto index = m_Documents.Find(hit.File);
+
+		if (!index)
+			return;
+
+		Core::OpenItem& item = m_Documents.At(*index);
+
+		if (!item.Document)
+			return;
+
+		Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const std::size_t lineStart = buffer.LineStart(hit.Line);
+
+		// Line and byte offsets both come from the search that ran some time ago; the file may
+		// have changed since. PlaceAt runs every offset through SnapToBoundary, which clamps to
+		// the buffer's current length, so a stale range lands at the nearest valid position
+		// instead of reading past the end of a document that has since shrunk.
+		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.From, false, item.TabWidth);
+		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.To, true, item.TabWidth);
+
+		// The vertical aim was measured, if at all, against wherever the caret used to sit; the
+		// next Up or Down should resolve it fresh from here rather than carry that forward.
+		item.RowAimAt = Core::NoRowAim;
+
+		// This runs during the panels' turn, before DocumentWindows renders the editor later in
+		// the same frame — so by the editor's own reckoning the caret never moved this frame,
+		// and it would not otherwise scroll to it. See PendingScroll's comment in DocumentSet.h.
+		item.PendingScroll = true;
 	}
 }

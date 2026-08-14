@@ -99,6 +99,11 @@ namespace Graphite {
 		ModalGate m_Modals;
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals};
 
+		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
+		// references to both, so both must outlive it through teardown.
+		SearchService m_Search;
+		SearchSettings m_SearchSettings;
+
 		static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 
 		ModalQuestion<ClosePurpose> m_CloseQuestion;
@@ -118,8 +123,6 @@ namespace Graphite {
 		EditorSettings m_EditorSettings;
 		ActiveScheme m_ActiveScheme;
 
-		SearchService m_Search;
-		SearchSettings m_SearchSettings;
 		SearchPanel* m_SearchPanel = nullptr;
 
 		// Read by SearchSection to grey out "projects only" when there is nothing to limit to,

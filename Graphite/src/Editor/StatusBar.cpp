@@ -121,9 +121,11 @@ namespace Graphite {
 			DrawRightAligned(DescribeCaret(item) + "    " + DescribeTextFormat(item));
 		}
 
-		// A running search outranks a transient message: it is the longer-lived of the two, and
-		// a "Saved" toast that happens to land mid-search would otherwise blank out the count.
-		const std::optional<std::string>& centred = messages.Search ? messages.Search : messages.Transient;
+		// A transient message outranks a running search: it answers something the user just did
+		// and is gone in a few seconds, so losing it loses the only confirmation there was.
+		// Search progress is regenerated every frame, already appears in the panel's own summary
+		// line, and comes right back once the transient message clears.
+		const std::optional<std::string>& centred = messages.Transient ? messages.Transient : messages.Search;
 
 		if (centred && !centred->empty())
 		{

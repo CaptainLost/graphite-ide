@@ -153,7 +153,7 @@ namespace Graphite {
 		// with no binding is still reachable through the command palette and the panels menu.
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",
-						.Run = [this] { m_SearchPanel->SetVisible(true); }});
+						.Run = [this] { m_SearchPanel->Focus(); }});
 
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
