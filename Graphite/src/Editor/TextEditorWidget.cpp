@@ -1,6 +1,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Editor/EditorPalette.h"
+#include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
@@ -944,18 +945,10 @@ namespace Graphite {
 			std::size_t SelectionFromColumn = 0;
 			std::size_t SelectionToColumn = 0;
 
-			// Column ranges of every find match on this line, and the index within them of the
-			// current one — or the size when the current match is on another line. Converted in
-			// CacheLine, for the same reason the selection is: the editor draws expanded text,
-			// and a raw byte offset lands several cells out on any line holding a tab.
-			struct MatchColumns
-			{
-				std::size_t FromColumn = 0;
-				std::size_t ToColumn = 0;
-			};
-
-			std::vector<MatchColumns> Matches;
-			std::size_t CurrentMatch = 0;
+			// Column ranges of every find match on this line, converted in CacheLine for the same
+			// reason the selection is: the editor draws expanded text, and a raw byte offset
+			// lands several cells out on any line holding a tab.
+			LineMatches Matches;
 
 			// The byte the previous row ended at, and the row that follows it. Valid only for
 			// that one row: the clipper may jump, and a jump lands somewhere the carry says
@@ -999,43 +992,14 @@ namespace Graphite {
 
 			const std::size_t start = input.Buffer.LineStart(line);
 
-			cache.Matches.clear();
+			LineMatchInput matchInput{input.Matches};
 
-			const std::size_t lineEnd = start + cache.Text.size();
-			bool currentOnLine = false;
+			matchInput.LineText = cache.Text;
+			matchInput.LineStart = start;
+			matchInput.CurrentMatch = input.CurrentMatch;
+			matchInput.TabWidth = tabWidth;
 
-			for (std::size_t index = 0; index < input.Matches.size(); ++index)
-			{
-				const auto [matchFrom, matchTo] = input.Matches[index];
-
-				// Half-open against the line's own span. A match ending exactly at the line's
-				// start belongs to the line above.
-				if (matchTo <= start || matchFrom > lineEnd)
-				{
-					continue;
-				}
-
-				const std::size_t fromByte = matchFrom > start ? matchFrom - start : 0;
-				const std::size_t toByte = std::min(matchTo - start, cache.Text.size());
-
-				if (index == input.CurrentMatch)
-				{
-					cache.CurrentMatch = cache.Matches.size();
-					currentOnLine = true;
-				}
-
-				cache.Matches.push_back(VisibleLineCache::MatchColumns{
-					Core::ColumnOfByte(cache.Text, fromByte, tabWidth),
-					Core::ColumnOfByte(cache.Text, toByte, tabWidth)});
-			}
-
-			// Past the end of this line's own list when the caret's match is on another line.
-			// Leaving it at zero instead would draw the first match of every other line in the
-			// current match's colour.
-			if (!currentOnLine)
-			{
-				cache.CurrentMatch = cache.Matches.size();
-			}
+			cache.Matches = MatchColumnsOnLine(matchInput);
 
 			cache.SelectionFromColumn = 0;
 			cache.SelectionToColumn = 0;
@@ -1146,9 +1110,9 @@ namespace Graphite {
 		void DrawRowMatches(const RowCanvas& canvas, const RowSlice& slice,
 							const VisibleLineCache& cache)
 		{
-			for (std::size_t index = 0; index < cache.Matches.size(); ++index)
+			for (std::size_t index = 0; index < cache.Matches.Columns.size(); ++index)
 			{
-				const VisibleLineCache::MatchColumns& match = cache.Matches[index];
+				const MatchColumns& match = cache.Matches.Columns[index];
 
 				const std::size_t clippedFrom =
 					std::clamp(match.FromColumn, slice.FromColumn, slice.ToColumn);
@@ -1167,8 +1131,9 @@ namespace Graphite {
 					canvas.TextOriginX +
 					static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
 
-				const ImU32 color = index == cache.CurrentMatch ? canvas.Palette.FindCurrentMatch
-																: canvas.Palette.FindMatch;
+				const ImU32 color = index == cache.Matches.Current
+										? canvas.Palette.FindCurrentMatch
+										: canvas.Palette.FindMatch;
 
 				canvas.Draw->AddRectFilled(ImVec2(fromX, slice.Y),
 										   ImVec2(toX, slice.Y + canvas.Metrics.LineHeight),

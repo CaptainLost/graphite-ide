@@ -30,8 +30,13 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Lang/**.cpp",
         "%{wks.location}/Graphite/src/Settings/**.h",
         "%{wks.location}/Graphite/src/Settings/**.cpp",
+        -- Editor is named file by file rather than globbed: most of it is widget code that
+        -- drags in ImGui and the application's own layers. These two are the parts that are
+        -- only logic, and depend on nothing but Core.
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
+        "%{wks.location}/Graphite/src/Editor/MatchColumns.h",
+        "%{wks.location}/Graphite/src/Editor/MatchColumns.cpp",
         "%{wks.location}/Graphite/src/Theme/**.h",
         "%{wks.location}/Graphite/src/Theme/**.cpp",
         "%{wks.location}/Graphite/src/Search/**.h",
