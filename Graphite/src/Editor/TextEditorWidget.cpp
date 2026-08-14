@@ -1042,35 +1042,36 @@ namespace Graphite {
 			return std::to_string(find.Current + 1) + " / " + std::to_string(find.Matches.size());
 		}
 
-		// Sized from the total on both sides rather than from the counter as it currently reads,
-		// so the box changes width only when the number of matches does. Stepping through them
-		// is the frequent action, and it must not shove everything beside it sideways.
+		// A constant, and reserved even while the counter shows nothing. It depends on neither the
+		// query nor the number of matches on purpose: the bar hangs off the editor's right corner,
+		// so anything that changes its width moves its left edge — and a counter that appeared
+		// with the first keystroke, then widened again at the tenth match and the hundredth, made
+		// the whole bar jump sideways while being typed into.
 		//
-		// Zero while the query is empty: "0 / 0" beside an empty field reports a failure nobody
-		// has asked for yet, so nothing is drawn and nothing is reserved.
-		float MatchCounterWidth(const Core::FindState& find)
+		// Four digits either side covers a single file. Past that the text is wider than its box
+		// and runs into the separator, which is the one case where too much is preferable to a bar
+		// that resizes for everyone else.
+		float MatchCounterWidth()
 		{
-			if (find.Query.empty())
-				return 0.0f;
-
-			const std::string widest = find.Matches.empty()
-										   ? std::string("0 / 0")
-										   : std::to_string(find.Matches.size()) + " / " +
-												 std::to_string(find.Matches.size());
-
-			return ImGui::CalcTextSize(widest.c_str()).x;
+			return ImGui::CalcTextSize("9999 / 9999").x;
 		}
 
 		void DrawMatchCounter(const Core::FindState& find, float width)
 		{
-			if (width <= 0.0f)
+			// Nothing drawn while the query is empty — "0 / 0" beside an empty field reports a
+			// failure nobody has asked for yet — but the room stays claimed, so the bar is the
+			// same width before the first keystroke as after it.
+			if (find.Query.empty())
+			{
+				ImGui::Dummy(ImVec2(width, ImGui::GetFrameHeight()));
 				return;
+			}
 
 			const std::string counter = MatchCounterText(find);
 			const float text = ImGui::CalcTextSize(counter.c_str()).x;
 
-			// Right-aligned in its box, so the digits grow leftwards into the field's slack
-			// instead of pushing the buttons along.
+			// Right-aligned in its box, against the separator, so the digits grow leftwards into
+			// the gap rather than pushing anything along.
 			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(width - text, 0.0f));
 
 			ImGui::AlignTextToFramePadding();
@@ -1157,16 +1158,16 @@ namespace Graphite {
 			// bar's own edge.
 			const ImGuiStyle& style = ImGui::GetStyle();
 			const float square = FindButtonSize();
-			const float counterWidth = MatchCounterWidth(item.Find);
+			const float counterWidth = MatchCounterWidth();
 
-			float barWidth = kFindBarPaddingX * 2.0f + FindFieldWidth() +
-							 kFindSeparatorWidth + style.ItemSpacing.x +
-							 (square + style.ItemSpacing.x) * 5.0f;
-
-			if (counterWidth > 0.0f)
-				barWidth += counterWidth + style.ItemSpacing.x;
-
-			barWidth = std::min(barWidth, frame.Width);
+			// No conditional term anywhere in this sum: every part of it is a constant for a given
+			// font, so the bar has one width for the whole time it is open and its left edge never
+			// moves.
+			const float barWidth =
+				std::min(kFindBarPaddingX * 2.0f + FindFieldWidth() + style.ItemSpacing.x +
+							 counterWidth + style.ItemSpacing.x + kFindSeparatorWidth +
+							 (square + style.ItemSpacing.x) * 5.0f,
+						 frame.Width);
 
 			ImGui::SetCursorScreenPos(ImVec2(frame.Corner.x - barWidth, frame.Corner.y));
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kFindBarPaddingX, 0.0f));
@@ -1210,9 +1211,8 @@ namespace Graphite {
 			// What is left after the controls, which is FindFieldWidth() at any width the bar was
 			// not clamped at — and less than it when the panel is too narrow, so a cramped bar
 			// gives up field rather than spilling its buttons past its own edge.
-			const float controls =
-				counterWidth + (counterWidth > 0.0f ? style.ItemSpacing.x : 0.0f) +
-				kFindSeparatorWidth + style.ItemSpacing.x + (square + style.ItemSpacing.x) * 5.0f;
+			const float controls = style.ItemSpacing.x + counterWidth + style.ItemSpacing.x +
+								   kFindSeparatorWidth + (square + style.ItemSpacing.x) * 5.0f;
 
 			ImGui::SetNextItemWidth(
 				std::max(ImGui::GetContentRegionAvail().x - controls, ImGui::GetFontSize()));
