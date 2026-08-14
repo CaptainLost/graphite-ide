@@ -1084,6 +1084,11 @@ namespace Graphite {
 			const float padding = ImGui::GetStyle().FramePadding.x;
 			const float left = fieldMax.x - padding - size.x;
 
+			// Centred against the field's own height rather than offset by its padding. The
+			// padding is not square — the horizontal is the larger of the two — so using it for
+			// the vertical, as this first did, drops the counter below the query beside it.
+			const float top = fieldMin.y + (fieldMax.y - fieldMin.y - size.y) * 0.5f;
+
 			ImDrawList* draw = ImGui::GetWindowDrawList();
 
 			draw->AddRectFilled(ImVec2(left - padding, fieldMin.y + 1.0f),
@@ -1092,7 +1097,7 @@ namespace Graphite {
 
 			// Floored for the same reason the icons are: CalcTextSize rounds up, and text landed
 			// on a half pixel is resampled and reads blurrier than the query beside it.
-			draw->AddText(ImVec2(std::floor(left), std::floor(fieldMin.y + padding)),
+			draw->AddText(ImVec2(std::floor(left), std::floor(top)),
 						  ImGui::GetColorU32(ImGuiCol_TextDisabled), counter.c_str());
 		}
 
