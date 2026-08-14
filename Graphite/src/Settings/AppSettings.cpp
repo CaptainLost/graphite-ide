@@ -27,6 +27,9 @@ namespace Graphite {
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kColorSchemeKey = "colorScheme";
 
+		constexpr const char* kSearchRespectGitIgnoreKey = "searchRespectGitIgnore";
+		constexpr const char* kSearchProjectsOnlyKey = "searchProjectsOnly";
+
 		constexpr std::string_view kKeyBindingPrefix = "key.";
 
 		const std::filesystem::path& SettingsPath()
@@ -156,6 +159,26 @@ namespace Graphite {
 	void AppSettings::SaveWordWrap(bool wrap)
 	{
 		WriteValue(kWordWrapKey, wrap ? "1" : "0");
+	}
+
+	bool AppSettings::LoadSearchRespectGitIgnore()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kSearchRespectGitIgnoreKey) != "0";
+	}
+
+	void AppSettings::SaveSearchRespectGitIgnore(bool respect)
+	{
+		WriteValue(kSearchRespectGitIgnoreKey, respect ? "1" : "0");
+	}
+
+	bool AppSettings::LoadSearchProjectsOnly()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kSearchProjectsOnlyKey) == "1";
+	}
+
+	void AppSettings::SaveSearchProjectsOnly(bool projectsOnly)
+	{
+		WriteValue(kSearchProjectsOnlyKey, projectsOnly ? "1" : "0");
 	}
 
 	std::string AppSettings::LoadColorScheme()

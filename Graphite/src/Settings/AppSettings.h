@@ -34,6 +34,12 @@ namespace Graphite {
 		static bool LoadWordWrap();
 		static void SaveWordWrap(bool wrap);
 
+		static bool LoadSearchRespectGitIgnore();
+		static void SaveSearchRespectGitIgnore(bool respect);
+
+		static bool LoadSearchProjectsOnly();
+		static void SaveSearchProjectsOnly(bool projectsOnly);
+
 		static std::string LoadColorScheme();
 		static void SaveColorScheme(std::string_view name);
 
