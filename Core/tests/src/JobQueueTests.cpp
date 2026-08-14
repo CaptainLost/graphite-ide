@@ -82,7 +82,10 @@ TEST_CASE("A cancelled token stops a cooperative job")
 
 		queue.Submit([&]
 					 {
-						 while (!token.IsCancelled())
+						 // Bounded independently of the token: if cancellation ever stops
+						 // propagating, this test must fail, and a job that can only be stopped
+						 // by the thing under test would instead hang the destructor's join.
+						 for (int round = 0; round < 100000 && !token.IsCancelled(); ++round)
 						 {
 							 rounds.fetch_add(1);
 							 std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -99,6 +102,11 @@ TEST_CASE("A cancelled token stops a cooperative job")
 	}
 
 	CHECK(finished.load());
+
+	// finished alone is true on both exit paths (cancelled or bound exhausted). Comparing
+	// rounds against the bound is what actually proves the loop stopped because it saw the
+	// cancellation, not because it ran out of iterations.
+	CHECK(rounds.load() < 100000);
 }
 
 TEST_CASE("A token copy shares the flag with its original")
