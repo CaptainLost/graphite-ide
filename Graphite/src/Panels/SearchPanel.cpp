@@ -1,6 +1,7 @@
 #include "Panels/SearchPanel.h"
 
 #include "Search/FileEnumerator.h"
+#include "Search/HitDisplay.h"
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/Text/Caret.h"
@@ -132,10 +133,13 @@ namespace Graphite {
 			"##searchQuery", "Find in files", m_QueryBuffer.data(), m_QueryBuffer.size(),
 			ImGuiInputTextFlags_EnterReturnsTrue);
 
-		ImGui::SetNextItemWidth(-1.0f);
-		ImGui::InputTextWithHint("##searchMask", "*.cpp;*.h (empty matches everything)",
-								 m_MaskBuffer.data(), m_MaskBuffer.size());
+		// The mask shares a row with the toggles rather than taking one of its own: four rows of
+		// controls before the first result is most of a short panel.
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 10.0f);
+		ImGui::InputTextWithHint("##searchMask", "*.cpp;*.h", m_MaskBuffer.data(),
+								 m_MaskBuffer.size());
 
+		ImGui::SameLine();
 		ImGui::Checkbox("Match case", &m_MatchCase);
 		ImGui::SameLine();
 		ImGui::Checkbox("Whole word", &m_WholeWord);
@@ -150,6 +154,7 @@ namespace Graphite {
 	void SearchPanel::RunSearch()
 	{
 		m_Groups.Clear();
+		m_Groups.SetRoot(m_Workspace.GetRoot());
 		m_Drained.clear();
 		m_Progress = SearchProgress{};
 
@@ -186,16 +191,37 @@ namespace Graphite {
 
 		// Already grouped, in OnUpdate, as the hits arrived. This loop walks groups; it never
 		// touches a hit belonging to a file it is not drawing.
+		// The accent the theme already uses for a tick, so the match reads as marked rather than
+		// as a second colour nobody chose. When sub-project D makes the chrome data-driven this
+		// follows it without a setting of its own.
+		const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+
 		for (const HitGroup& group : m_Groups.Get())
 		{
-			// The id and the label are kept apart on purpose: the label carries the running hit
-			// count, which changes on every new hit. Passing that combined string as the node's
-			// id — an earlier mistake here — made ImGui see a new node each time and close
-			// whatever the user had just opened. The id below never changes while a search runs.
-			const std::string label =
-				group.Name + "  (" + std::to_string(group.Hits.size()) + ")";
+			// The node's id is the full path and never changes while a search runs. Its label is
+			// drawn separately, below, because the count in it changes on every new hit — passing
+			// the two combined as the id, an earlier mistake here, made ImGui see a new node each
+			// time and close whatever the user had just opened.
+			const bool open = ImGui::TreeNodeEx(group.Id.c_str(),
+												ImGuiTreeNodeFlags_SpanAvailWidth |
+													ImGuiTreeNodeFlags_AllowOverlap,
+												"");
 
-			if (!ImGui::TreeNode(group.Name.c_str(), "%s", label.c_str()))
+			ImGui::SameLine(0.0f, 0.0f);
+
+			// Dimmed, because the directory is the same for run after run of neighbouring rows
+			// and the eye is looking for the file name.
+			if (!group.Directory.empty())
+			{
+				ImGui::TextDisabled("%s", group.Directory.c_str());
+				ImGui::SameLine(0.0f, 0.0f);
+			}
+
+			ImGui::TextUnformatted(group.Name.c_str());
+			ImGui::SameLine(0.0f, 0.0f);
+			ImGui::TextDisabled("  (%d)", static_cast<int>(group.Hits.size()));
+
+			if (!open)
 				continue;
 
 			// One expanded file can hold thousands of hits, and every row costs a string built to
@@ -212,10 +238,36 @@ namespace Graphite {
 
 					ImGui::PushID(row);
 
-					const std::string entry = std::to_string(hit.Line + 1) + ": " + hit.Text;
+					const ImVec2 rowStart = ImGui::GetCursorPos();
 
-					if (ImGui::Selectable(entry.c_str()))
+					// An empty label, drawn first, so the whole row is the click target and the
+					// text can be laid over it in pieces. AllowOverlap keeps the click reaching
+					// this rather than being swallowed by the text items on top.
+					if (ImGui::Selectable("##hit", false, ImGuiSelectableFlags_AllowOverlap))
 						OpenAndSelect(hit);
+
+					ImGui::SetCursorPos(rowStart);
+
+					// Three pieces rather than one string with a coloured rectangle behind it:
+					// positioning that rectangle means measuring the text myself, and
+					// CalcTextSize rounds up — the same drift that made the editor count whole
+					// cells instead. Letting ImGui advance between pieces is exact by
+					// construction.
+					const HitLine line = SplitForDisplay(hit);
+
+					ImGui::TextDisabled("%d: ", static_cast<int>(hit.Line + 1));
+					ImGui::SameLine(0.0f, 0.0f);
+
+					ImGui::TextUnformatted(line.Before.data(),
+										   line.Before.data() + line.Before.size());
+					ImGui::SameLine(0.0f, 0.0f);
+
+					ImGui::TextColored(accent, "%.*s", static_cast<int>(line.Match.size()),
+									   line.Match.data());
+					ImGui::SameLine(0.0f, 0.0f);
+
+					ImGui::TextUnformatted(line.After.data(),
+										   line.After.data() + line.After.size());
 
 					ImGui::PopID();
 				}

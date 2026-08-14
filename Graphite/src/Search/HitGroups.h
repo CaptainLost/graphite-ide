@@ -12,11 +12,18 @@ namespace Graphite {
 
 	struct HitGroup
 	{
-		// UTF-8, because that is what the results list draws and what its tree node is keyed on.
+		// The full path in UTF-8. Never drawn — it is the tree node's id, and it has to stay the
+		// same for the life of a search or the node closes itself every time a hit arrives.
+		std::string Id;
+
+		// What is drawn: the directory relative to the workspace root, dimmed, and the file name
+		// after it. Computed once here rather than per frame, because every group is drawn on
+		// every frame whether or not it is expanded.
+		std::string Directory;
 		std::string Name;
 
-		// Kept beside the name because a jump needs the path and rebuilding one from the name
-		// on every click would undo the reason this holds both.
+		// Kept because a jump needs the path, and rebuilding one from the pieces above would
+		// undo the reason this holds them apart.
 		std::filesystem::path File;
 
 		std::vector<SearchHit> Hits;
@@ -36,6 +43,11 @@ namespace Graphite {
 	class HitGroups
 	{
 	public:
+		// The workspace root every group's directory is shown relative to. Set when a search
+		// starts; groups formed afterwards use it, so changing it mid-search would leave the
+		// list showing two different kinds of path.
+		void SetRoot(std::filesystem::path root);
+
 		void Add(SearchHit hit);
 
 		void Clear();
@@ -50,6 +62,8 @@ namespace Graphite {
 		// Name to index into m_Groups. Not an iterator or a pointer: m_Groups grows, and either
 		// would dangle the moment it reallocated.
 		std::unordered_map<std::string, std::size_t> m_Index;
+
+		std::filesystem::path m_Root;
 
 		std::size_t m_Count = 0;
 	};
