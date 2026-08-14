@@ -99,6 +99,13 @@ namespace Graphite {
 				{
 					const std::lock_guard<std::mutex> lock(shared->Mutex);
 
+					// Covers the one window Start's own clear cannot: a contribution from the
+					// previous search that is already inside this lock, blocked behind the
+					// contribute call the newer Start is waiting to make, when the newer Start's
+					// clear-and-bump runs. Without this check that contribution lands after the
+					// clear and survives into the new search's results. No test reaches this
+					// window — it is narrower than a lock hand-off, not a race a sleep can widen —
+					// so do not delete this guard because a passing suite implies it is unused.
 					if (shared->Generation != generation)
 					{
 						return;

@@ -154,9 +154,16 @@ TEST_CASE("SearchService skips a binary file and counts it")
 	CHECK(progress.FilesSkipped == 1);
 }
 
-// Staleness is detected rather than prevented, so a superseded search must contribute nothing
-// even if it was still running when the next one began.
-TEST_CASE("SearchService drops results from a superseded search")
+// What this can actually pin is deterministic: Start clears the shared hit vector under the
+// same lock it bumps the generation in, so nothing the first search already contributed
+// before the second Start survives into the second search's results. Whether the first search
+// contributes anything at all before it is superseded is opportunistic even with the wait
+// below — its worker only polls the cancellation token once per file, so it can still stop
+// before a single contribute call. This test does not exercise the generation guard inside
+// SearchService::Start's contribute lambda: that guard covers a narrower window (a
+// contribution already inside the lock when the next Start's clear-and-bump runs) that no
+// sleep can reliably open. See the comment on the guard itself.
+TEST_CASE("SearchService shows only the newest search's results")
 {
 	const TempDirectory temp;
 
@@ -168,13 +175,29 @@ TEST_CASE("SearchService drops results from a superseded search")
 	Graphite::SearchService service;
 
 	service.Start(Request(temp.GetPath(), "alpha"));
+
+	// Wait for the first search to have genuinely scanned something, so superseding it
+	// exercises a search that ran rather than one that may never have started.
+	Graphite::SearchProgress firstProgress;
+	const auto firstScanDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+
+	while (firstProgress.FilesScanned == 0 &&
+		   std::chrono::steady_clock::now() < firstScanDeadline)
+	{
+		std::vector<Graphite::SearchHit> discarded;
+		service.Drain(discarded, firstProgress);
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+
+	REQUIRE(firstProgress.FilesScanned > 0);
+
 	service.Start(Request(temp.GetPath(), "beta"));
 
 	Graphite::SearchProgress progress;
 	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
 
-	// Every hit belongs to the second search. The first may have produced some before it was
-	// cancelled; none of them may appear here.
+	// Every hit belongs to the second search.
 	for (const Graphite::SearchHit& hit : hits)
 	{
 		CHECK(hit.Text == "beta");
