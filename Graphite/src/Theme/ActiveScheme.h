@@ -28,6 +28,11 @@ namespace Graphite {
 
 		const ResolvedScheme& Get() const { return m_Resolved; }
 
+		// The settings section previews by writing here: GraphiteLayer already hands Get() to the
+		// editor every frame, so the next frame draws whatever was last set. There is no preview
+		// mode to leave switched on — this holds one resolved scheme and always has.
+		void Set(const ResolvedScheme& resolved) { m_Resolved = resolved; }
+
 	private:
 		ResolvedScheme m_Resolved = DarkScheme();
 	};

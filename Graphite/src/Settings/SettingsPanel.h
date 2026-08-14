@@ -16,6 +16,10 @@ namespace Graphite {
 
 		void OnImGuiRender() override;
 
+		// Runs whether or not the panel is drawn, which is what makes it the place to notice
+		// that it stopped being drawn.
+		void OnUpdate(Core::Timestep ts) override;
+
 		void OnEvent(Core::Event& event) override;
 
 		// Ignores an index past the end, so a command carrying a section that no longer exists
@@ -27,5 +31,6 @@ namespace Graphite {
 	private:
 		std::vector<Core::Scope<SettingsSection>> m_Sections;
 		std::size_t m_Active = 0;
+		bool m_WasDrawnLastFrame = false;
 	};
 }

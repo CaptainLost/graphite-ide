@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <ostream>
 #include <string_view>
 #include <vector>
 
@@ -96,4 +97,51 @@ TEST_CASE("Every colour has a key name, and no two in a set share one")
 
 		CHECK(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
 	}
+}
+
+// The point of one switch per enum: a key and its label cannot drift apart, because there is
+// no second place to edit. This test would still pass with two switches — what it actually
+// guards is that every enumerator has a label at all, and that no two rows in one group would
+// render under the same text.
+TEST_CASE("Every colour has a label, and no two in a group share one")
+{
+	std::vector<std::string_view> syntax;
+
+	for (std::size_t kind = 0; kind < static_cast<std::size_t>(Graphite::TokenKind::Count);
+		 ++kind)
+	{
+		syntax.push_back(Graphite::LabelOf(static_cast<Graphite::TokenKind>(kind)));
+	}
+
+	std::vector<std::string_view> editor;
+
+	for (std::size_t color = 0; color < static_cast<std::size_t>(Graphite::EditorColor::Count);
+		 ++color)
+	{
+		editor.push_back(Graphite::LabelOf(static_cast<Graphite::EditorColor>(color)));
+	}
+
+	for (const std::vector<std::string_view>* group : {&syntax, &editor})
+	{
+		for (const std::string_view label : *group)
+		{
+			CHECK_FALSE(label.empty());
+		}
+
+		std::vector<std::string_view> sorted = *group;
+		std::sort(sorted.begin(), sorted.end());
+
+		CHECK(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
+	}
+}
+
+// NameOf must keep returning the file key after the refactor, or every scheme already on disk
+// stops loading. This pins the two that are camelCase, which are the ones a label refactor
+// would be tempted to "tidy".
+TEST_CASE("Keys keep their file spelling after gaining labels")
+{
+	CHECK(Graphite::NameOf(Graphite::EditorColor::CurrentLine) == "currentLine");
+	CHECK(Graphite::NameOf(Graphite::EditorColor::GutterFill) == "gutterFill");
+	CHECK(Graphite::NameOf(Graphite::EditorColor::LineNumber) == "lineNumber");
+	CHECK(Graphite::LabelOf(Graphite::EditorColor::CurrentLine) == "Current line");
 }

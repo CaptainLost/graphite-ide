@@ -72,6 +72,18 @@ namespace Graphite {
 
 		void End() { ImGui::EndPopup(); }
 
+		// Abandons the question and hands the gate back. Begin is the only other code that
+		// releases the gate, and it runs from the owner's render — an owner that stops being
+		// rendered while a question is open would hold the gate forever, and no modal question
+		// anywhere in the application could be asked again. No CloseCurrentPopup here: that is
+		// only valid between a popup's Begin and End, and this is called from outside one.
+		void Withdraw()
+		{
+			m_Current.reset();
+			m_Queue.clear();
+			m_Gate.Close(m_Title);
+		}
+
 	private:
 		// ImGui closes a popup on Escape, and destroys it when another opens over it,
 		// without either reaching the code that asked the question.

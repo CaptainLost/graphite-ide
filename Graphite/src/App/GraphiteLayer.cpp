@@ -18,6 +18,7 @@
 
 #include "Settings/EditorSection.h"
 #include "Settings/KeyBindingsSection.h"
+#include "Settings/SchemeSection.h"
 #include "Settings/SettingsPanel.h"
 
 #include "Core/Fs/FileSystem.h"
@@ -89,6 +90,7 @@ namespace Graphite {
 		std::vector<Core::Scope<SettingsSection>> sections;
 
 		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
+		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_Modals));
 		sections.push_back(Core::CreateScope<KeyBindingsSection>(
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
 

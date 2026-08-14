@@ -2,43 +2,51 @@
 
 namespace Graphite {
 
-	std::string_view NameOf(TokenKind kind)
+	ColorNames NamesOf(TokenKind kind)
 	{
 		switch (kind)
 		{
-			case TokenKind::Text: return "text";
-			case TokenKind::Keyword: return "keyword";
-			case TokenKind::Identifier: return "identifier";
-			case TokenKind::Number: return "number";
-			case TokenKind::String: return "string";
-			case TokenKind::Character: return "character";
-			case TokenKind::Comment: return "comment";
-			case TokenKind::Preprocessor: return "preprocessor";
-			case TokenKind::Punctuation: return "punctuation";
-			case TokenKind::Invalid: return "invalid";
+			case TokenKind::Text: return {"text", "Text"};
+			case TokenKind::Keyword: return {"keyword", "Keyword"};
+			case TokenKind::Identifier: return {"identifier", "Identifier"};
+			case TokenKind::Number: return {"number", "Number"};
+			case TokenKind::String: return {"string", "String"};
+			case TokenKind::Character: return {"character", "Character"};
+			case TokenKind::Comment: return {"comment", "Comment"};
+			case TokenKind::Preprocessor: return {"preprocessor", "Preprocessor"};
+			case TokenKind::Punctuation: return {"punctuation", "Punctuation"};
+			case TokenKind::Invalid: return {"invalid", "Invalid"};
 			case TokenKind::Count: break;
 		}
 
 		return {};
 	}
 
-	std::string_view NameOf(EditorColor color)
+	ColorNames NamesOf(EditorColor color)
 	{
 		switch (color)
 		{
-			case EditorColor::Background: return "background";
-			case EditorColor::Text: return "text";
-			case EditorColor::Selection: return "selection";
-			case EditorColor::CurrentLine: return "currentLine";
-			case EditorColor::Guide: return "guide";
-			case EditorColor::GutterFill: return "gutterFill";
-			case EditorColor::LineNumber: return "lineNumber";
-			case EditorColor::Caret: return "caret";
+			case EditorColor::Background: return {"background", "Background"};
+			case EditorColor::Text: return {"text", "Text"};
+			case EditorColor::Selection: return {"selection", "Selection"};
+			case EditorColor::CurrentLine: return {"currentLine", "Current line"};
+			case EditorColor::Guide: return {"guide", "Indent guide"};
+			case EditorColor::GutterFill: return {"gutterFill", "Gutter"};
+			case EditorColor::LineNumber: return {"lineNumber", "Line number"};
+			case EditorColor::Caret: return {"caret", "Caret"};
 			case EditorColor::Count: break;
 		}
 
 		return {};
 	}
+
+	std::string_view NameOf(TokenKind kind) { return NamesOf(kind).Key; }
+
+	std::string_view NameOf(EditorColor color) { return NamesOf(color).Key; }
+
+	std::string_view LabelOf(TokenKind kind) { return NamesOf(kind).Label; }
+
+	std::string_view LabelOf(EditorColor color) { return NamesOf(color).Label; }
 
 	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base)
 	{
