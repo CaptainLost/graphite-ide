@@ -2,7 +2,10 @@
 
 #include "Core/Jobs/JobQueue.h"
 
+#include "Core/Base/Log.h"
+
 #include <algorithm>
+#include <exception>
 #include <utility>
 
 namespace Core {
@@ -88,7 +91,21 @@ namespace Core {
 				m_Jobs.pop_front();
 			}
 
-			job();
+			// An exception leaving a thread function calls std::terminate, so an allocation
+			// failure or a path conversion deep inside one job would take the whole process
+			// down with no message. The job is lost either way; the worker is not.
+			try
+			{
+				job();
+			}
+			catch (const std::exception& error)
+			{
+				CORE_ERROR("A job threw and was abandoned: {}", error.what());
+			}
+			catch (...)
+			{
+				CORE_ERROR("A job threw something that is not an exception and was abandoned");
+			}
 		}
 	}
 }

@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <stdexcept>
 #include <thread>
 
 namespace {
@@ -68,6 +69,24 @@ TEST_CASE("JobQueue finishes its queue before it is destroyed")
 	}
 
 	CHECK(done.load() == 20);
+}
+
+// One worker on purpose: the job that follows has to run on the very thread the exception
+// escaped from, so a worker that died with it would leave `after` false forever.
+TEST_CASE("A job that throws does not take its worker with it")
+{
+	std::atomic_bool after{false};
+
+	{
+		Core::JobQueue queue(1);
+
+		queue.Submit([] { throw std::runtime_error("a job that fails"); });
+		queue.Submit([&after] { after.store(true); });
+
+		CHECK(WaitFor([&after] { return after.load(); }));
+	}
+
+	CHECK(after.load());
 }
 
 TEST_CASE("A cancelled token stops a cooperative job")
