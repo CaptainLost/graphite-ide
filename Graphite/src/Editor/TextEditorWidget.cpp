@@ -59,6 +59,8 @@ namespace Graphite {
 		// one is showing. A floating box wedged into the corner reads as a rendering mistake.
 		constexpr float kFindBarMargin = 6.0f;
 
+		constexpr float kFindSeparatorWidth = 1.0f;
+
 		// Handed to DrawRowText for a document whose language has no lexer, so the row loop
 		// never has to branch on whether SyntaxCache exists — an empty token list already
 		// draws the row in one colour. Function-local rather than a file scope object, per ADR
@@ -1003,6 +1005,25 @@ namespace Graphite {
 			return pressed;
 		}
 
+		// A hairline between what you type into and what you press, shorter than the bar so it
+		// reads as a divider rather than as a wall. Drawn rather than submitted for the same
+		// reason the icons are: a separator here has to be centred against the field's height,
+		// which ImGui's own vertical separator takes from the layout instead.
+		void DrawFindSeparator()
+		{
+			const float height = std::floor(ImGui::GetFontSize() * 0.9f);
+
+			const ImVec2 at = ImGui::GetCursorScreenPos();
+			const float top = at.y + std::floor((ImGui::GetFrameHeight() - height) * 0.5f);
+
+			ImGui::GetWindowDrawList()->AddLine(ImVec2(at.x, top), ImVec2(at.x, top + height),
+											   ImGui::GetColorU32(ImGuiCol_Separator));
+
+			// Claims the line it drew on, so the spacing either side of it is the ordinary item
+			// spacing and nothing has to know a line went past.
+			ImGui::Dummy(ImVec2(kFindSeparatorWidth, ImGui::GetFrameHeight()));
+		}
+
 		bool DrawFindToggle(const char* id, const char* icon, const char* tooltip, bool& value)
 		{
 			const bool clicked = FindIconButton(id, icon, value, tooltip);
@@ -1139,6 +1160,7 @@ namespace Graphite {
 			const float counterWidth = MatchCounterWidth(item.Find);
 
 			float barWidth = kFindBarPaddingX * 2.0f + FindFieldWidth() +
+							 kFindSeparatorWidth + style.ItemSpacing.x +
 							 (square + style.ItemSpacing.x) * 5.0f;
 
 			if (counterWidth > 0.0f)
@@ -1190,7 +1212,7 @@ namespace Graphite {
 			// gives up field rather than spilling its buttons past its own edge.
 			const float controls =
 				counterWidth + (counterWidth > 0.0f ? style.ItemSpacing.x : 0.0f) +
-				(square + style.ItemSpacing.x) * 5.0f;
+				kFindSeparatorWidth + style.ItemSpacing.x + (square + style.ItemSpacing.x) * 5.0f;
 
 			ImGui::SetNextItemWidth(
 				std::max(ImGui::GetContentRegionAvail().x - controls, ImGui::GetFontSize()));
@@ -1217,6 +1239,11 @@ namespace Graphite {
 
 			ImGui::SameLine();
 			DrawMatchCounter(item.Find, counterWidth);
+
+			// After the counter rather than before it: the field and the number of matches it
+			// found are one thing, and the buttons that act on them are another.
+			ImGui::SameLine();
+			DrawFindSeparator();
 			ImGui::SameLine();
 
 			const bool matchCaseToggled = DrawFindToggle("##findCase", ICON_MDI_FORMAT_LETTER_CASE,
