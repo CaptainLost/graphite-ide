@@ -1,12 +1,11 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Editor/EditorPalette.h"
+#include "Editor/FindNavigation.h"
 #include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
-
-#include "Search/FileMatches.h"
 
 #include "Theme/BuiltInSchemes.h"
 
@@ -860,13 +859,8 @@ namespace Graphite {
 			ApplyEditKeys(input, buffer, item, indentStyle, syntax, result);
 		}
 
-		// topInset is how much of the window's top edge something is drawn over — the find bar,
-		// which is painted across the topmost rows rather than given a strip of its own. Without
-		// it a caret one row below the top of the window counts as visible while sitting behind
-		// the bar, and stepping onto a match there scrolls nowhere and reads as a jump that did
-		// nothing.
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
-						   const EditorMetrics& metrics, bool wordWrap, float topInset)
+						   const EditorMetrics& metrics, bool wordWrap)
 		{
 			const Core::Position where = buffer.ToPosition(item.Caret.Offset);
 
@@ -879,12 +873,13 @@ namespace Graphite {
 														.Row) *
 								 metrics.LineHeight;
 
-			// The first row a reader can actually see starts topInset below the window's top, so
-			// bringing the caret to the top of the *visible* region means scrolling that much
-			// further up. SetScrollY clamps at zero, so the first rows of a document still stop
-			// where the document does.
-			if (caretY - topInset < ImGui::GetScrollY())
-				ImGui::SetScrollY(caretY - topInset);
+			// caretY is measured from the first row's origin, and the find bar pushes that origin
+			// down by its own height (see ReserveFindBarRoom) rather than being subtracted here.
+			// So a row whose caretY is above the scroll position is exactly a row hidden behind
+			// the bar, and scrolling to caretY puts it immediately below the bar — the same
+			// arithmetic with the bar open as without it.
+			if (caretY < ImGui::GetScrollY())
+				ImGui::SetScrollY(caretY);
 			else if (caretY + metrics.LineHeight > ImGui::GetScrollY() + ImGui::GetWindowHeight())
 				ImGui::SetScrollY(caretY + metrics.LineHeight - ImGui::GetWindowHeight());
 
@@ -923,88 +918,6 @@ namespace Graphite {
 		ImVec4 NoMatchColor()
 		{
 			return ImVec4(0.94f, 0.42f, 0.42f, 1.0f);
-		}
-
-		// The state keeps plain offset pairs, because ADR 0002 stops Core naming DocumentMatch,
-		// and the stepping functions are written against the matcher's own type. Copying back
-		// happens once per keystroke that steps, never once per frame, so the boundary costs an
-		// allocation nobody is in a position to feel.
-		std::vector<DocumentMatch> MatchesOf(const Core::FindState& find)
-		{
-			std::vector<DocumentMatch> matches;
-
-			matches.reserve(find.Matches.size());
-
-			for (const std::pair<std::size_t, std::size_t>& range : find.Matches)
-			{
-				matches.push_back(DocumentMatch{range.first, range.second});
-			}
-
-			return matches;
-		}
-
-		// Every way the list can go stale ends here: the query field, the two toggles, the
-		// command that opens the bar, and the revision test the frame runs. That is why the
-		// state carries no shadow copy of the query to compare against — nothing can change the
-		// query without going through this call, so only the revision has to be remembered.
-		//
-		// Current is re-derived from the caret rather than merely clamped: after an edit the
-		// index that was current may name a different match, and the caret is where the user is.
-		void RefreshMatches(Core::OpenItem& item, const Core::TextBuffer& buffer)
-		{
-			SearchQuery query;
-
-			query.Needle = item.Find.Query;
-			query.MatchCase = item.Find.MatchCase;
-			query.WholeWord = item.Find.WholeWord;
-
-			const std::vector<DocumentMatch> matches = FindInBuffer(buffer, query);
-
-			item.Find.Matches.clear();
-			item.Find.Matches.reserve(matches.size());
-
-			for (const DocumentMatch& match : matches)
-			{
-				item.Find.Matches.emplace_back(match.From, match.To);
-			}
-
-			item.Find.Revision = buffer.GetRevision();
-			item.Find.Current = MatchAtOrAfter(matches, Core::SelectionRange(item.Caret).first);
-		}
-
-		// Selects the match rather than only placing the caret at it: the selection is what says
-		// which of several highlighted matches is the one being stepped through, and it is
-		// already what the user would have had if they had dragged over the text themselves.
-		void GoToMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, std::size_t index)
-		{
-			if (index >= item.Find.Matches.size())
-				return;
-
-			const std::pair<std::size_t, std::size_t> range = item.Find.Matches[index];
-
-			item.Find.Current = index;
-			item.Caret = Core::PlaceAt(buffer, item.Caret, range.first, false, item.TabWidth);
-			item.Caret = Core::PlaceAt(buffer, item.Caret, range.second, true, item.TabWidth);
-
-			// The vertical aim was measured against wherever the caret used to sit; the next Up
-			// or Down should resolve it from here instead.
-			item.RowAimAt = Core::NoRowAim;
-
-			// The bar is drawn after the frame's scroll decision, so the step lands one frame
-			// later. That is exactly the case PendingScroll exists for.
-			item.PendingScroll = true;
-		}
-
-		void StepMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, bool backwards)
-		{
-			const std::vector<DocumentMatch> matches = MatchesOf(item.Find);
-
-			const std::optional<std::size_t> target =
-				backwards ? PreviousMatch(matches, item.Find.Current)
-						  : NextMatch(matches, item.Find.Current);
-
-			if (target)
-				GoToMatch(item, buffer, *target);
 		}
 
 		void CloseFindBar(Core::OpenItem& item)
@@ -1072,6 +985,34 @@ namespace Graphite {
 		// The longest query the field takes. A find query is something typed by hand; a limit
 		// this side of a paragraph costs nothing and keeps the field off the heap.
 		constexpr std::size_t kFindQueryLimit = 256;
+
+		// What the selection is worth seeding the query with, and nothing when it is worth
+		// nothing. Both refusals leave the previous query standing rather than offering a
+		// trimmed one: a selection longer than the field would be searched for in full while
+		// showing only its first part, and a selection spanning lines cannot match at all —
+		// FindInBuffer works a line at a time, so a query holding a newline reads "0 / 0" in red
+		// whatever those lines say. Cutting either down to the part that fits would search for
+		// something the user did not select and blame them for the result.
+		std::optional<std::string> SelectionAsQuery(const Core::TextBuffer& buffer,
+												   const Core::Caret& caret)
+		{
+			if (!Core::HasSelection(caret))
+				return std::nullopt;
+
+			const std::pair<std::size_t, std::size_t> selection = Core::SelectionRange(caret);
+
+			// Measured before the text is taken: a selection of half a file has no business
+			// being copied out only to be thrown away.
+			if (selection.second - selection.first >= kFindQueryLimit)
+				return std::nullopt;
+
+			std::string text = buffer.Substring(selection.first, selection.second);
+
+			if (text.find('\n') != std::string::npos)
+				return std::nullopt;
+
+			return text;
+		}
 
 		void DrawFindBar(Core::OpenItem& item, const Core::TextBuffer& buffer,
 						 const FindBarFrame& frame)
@@ -1142,7 +1083,7 @@ namespace Graphite {
 			if (queryEdited)
 			{
 				item.Find.Query = field.data();
-				RefreshMatches(item, buffer);
+				RefreshFindMatches(item, buffer);
 			}
 
 			ImGui::SameLine();
@@ -1156,7 +1097,7 @@ namespace Graphite {
 			const bool wholeWordToggled = DrawFindToggle("\\w", item.Find.WholeWord);
 
 			if (matchCaseToggled || wholeWordToggled)
-				RefreshMatches(item, buffer);
+				RefreshFindMatches(item, buffer);
 
 			ImGui::SameLine();
 
@@ -1192,7 +1133,7 @@ namespace Graphite {
 
 			if (stepBack || stepOn)
 			{
-				StepMatch(item, buffer, stepBack);
+				StepFindMatch(item, buffer, stepBack);
 
 				// Enter deactivates a single-line field whatever else it does, so without this
 				// the second Enter of a run would land in the document instead of the bar.
@@ -1658,6 +1599,25 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(origin);
 		}
 
+		// Leading room the first row starts below, so the find bar covers blank space rather than
+		// the first line of the file. Biasing the scroll instead cannot work at the top of a
+		// document: there the scroll is already zero and has nothing left to give, so a match on
+		// line 1 would sit behind the bar with the counter cheerfully reading "1 / 1".
+		//
+		// Reserved through the cursor rather than drawn, so it is part of the document's extent —
+		// the scrollbars, the clipper and ReserveDocumentExtent's own Dummy all measure from
+		// where this leaves the cursor. The item spacing is pushed to zero for the same reason
+		// the height is exact: the room has to match the bar, not the bar plus a gap.
+		void ReserveFindBarRoom(bool findBarOpen)
+		{
+			if (!findBarOpen)
+				return;
+
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+			ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
+			ImGui::PopStyleVar();
+		}
+
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
 							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
@@ -1774,6 +1734,10 @@ namespace Graphite {
 				ImGui::SetWindowFocus();
 			}
 
+			// Before the origin is read, so every position derived from it — the rows, the
+			// clicks that map back to them, the caret and the scroll — starts below the bar.
+			ReserveFindBarRoom(item.Find.Open);
+
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float scrollX = ImGui::GetScrollX();
 			const float available = ImGui::GetContentRegionAvail().x;
@@ -1850,23 +1814,17 @@ namespace Graphite {
 			// true exactly when a click, a drag, a motion key or an edit changed where the caret
 			// sits — but it says nothing about a caret moved earlier in the same frame, before
 			// this function ran, which is why PendingScroll carries that case separately.
-			// Only while the bar is open, and only against the revision: everything else that
-			// can invalidate the list — the query field, the toggles, the command that opens the
-			// bar — rebuilds it as it changes it. Testing the revision every frame costs one
-			// comparison; rebuilding every frame would rescan the whole document sixty times a
-			// second.
-			if (item.Find.Open && item.Find.Revision != buffer.GetRevision())
+			//
+			// The list is brought up to date first: the rows below draw the highlight from it,
+			// and an edit this frame has already moved the offsets it holds.
+			if (item.Find.Open)
 			{
-				RefreshMatches(item, buffer);
+				(void)RefreshFindMatchesIfStale(item, buffer);
 			}
-
-			// What the bar covers of the window's top edge, so a match on the topmost visible
-			// row scrolls out from behind it rather than to where it cannot be read.
-			const float findBarHeight = item.Find.Open ? ImGui::GetFrameHeight() : 0.0f;
 
 			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
-				ScrollToCaret(buffer, item, metrics, view.WordWrap, findBarHeight);
+				ScrollToCaret(buffer, item, metrics, view.WordWrap);
 				s_CaretMovedAt = ImGui::GetTime();
 				item.PendingScroll = false;
 			}
@@ -1908,11 +1866,9 @@ namespace Graphite {
 		// A selection is what the user is already looking at, so it is what they mean to search
 		// for; without one the last query stands, which is what makes Ctrl+F twice in a row a
 		// way back to the same search.
-		if (Core::HasSelection(item.Caret))
+		if (const auto seed = SelectionAsQuery(buffer, item.Caret))
 		{
-			const std::pair<std::size_t, std::size_t> selection = Core::SelectionRange(item.Caret);
-
-			item.Find.Query = buffer.Substring(selection.first, selection.second);
+			item.Find.Query = *seed;
 		}
 
 		item.Find.Open = true;
@@ -1920,7 +1876,7 @@ namespace Graphite {
 		// Built here rather than left to the frame: the revision test alone cannot tell a list
 		// built for another query from a current one, so the query's every change rebuilds as it
 		// happens, and seeding one is a change.
-		RefreshMatches(item, buffer);
+		RefreshFindMatches(item, buffer);
 
 		s_FindFocusFor = item.Path;
 	}
