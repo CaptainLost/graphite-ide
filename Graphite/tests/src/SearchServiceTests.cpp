@@ -229,6 +229,29 @@ TEST_CASE("SearchService shows only the newest search's results")
 	CHECK_FALSE(hits.empty());
 }
 
+// The matcher already refuses an empty needle, which is why this looked handled. It was not:
+// refusing it there still costs a walk of the whole tree, with every file probed, read and
+// decoded before the matcher gets to say no. Nothing must be dispatched at all.
+TEST_CASE("SearchService runs nothing for an empty query")
+{
+	const TempDirectory temp;
+
+	WriteFile(temp.GetPath() / "a.cpp", "alpha\n");
+	WriteFile(temp.GetPath() / "b.cpp", "beta\n");
+
+	Graphite::SearchService service;
+	service.Start(Request(temp.GetPath(), ""));
+
+	Graphite::SearchProgress progress;
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+
+	CHECK(hits.empty());
+	CHECK(progress.FilesScanned == 0);
+	CHECK(progress.FilesSkipped == 0);
+	CHECK(progress.Unreadable == 0);
+	CHECK_FALSE(progress.Running);
+}
+
 TEST_CASE("SearchService stops when cancelled")
 {
 	const TempDirectory temp;

@@ -1,5 +1,6 @@
 #include "Search/SearchService.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
@@ -32,10 +33,28 @@ namespace Graphite {
 		const UnsavedFile* FindUnsaved(const std::vector<UnsavedFile>& unsaved,
 									   const std::filesystem::path& path)
 		{
-			std::error_code ec;
-
 			for (const UnsavedFile& file : unsaved)
 			{
+				// Two string comparisons before anything touches the disk. equivalent() stats
+				// both of its operands, and asking it about every enumerated file against every
+				// open tab is a stat pair per pairing — hundreds of thousands of them on a large
+				// tree with a normal number of tabs open, which dominated the search. A file
+				// whose name no open tab shares cannot be that tab's file, and the paths are
+				// normalised once when the search starts so the equal case usually settles here.
+				if (file.Path.filename() != path.filename())
+				{
+					continue;
+				}
+
+				if (file.Path == path)
+				{
+					return &file;
+				}
+
+				// Only for a same-named file at a different-looking path: a symlink, a
+				// substituted drive, or a root spelled differently from the tab's path.
+				std::error_code ec;
+
 				if (std::filesystem::equivalent(file.Path, path, ec) && !ec)
 				{
 					return &file;
@@ -83,6 +102,31 @@ namespace Graphite {
 	{
 		m_Token.Cancel();
 		m_Token = Core::CancellationToken{};
+
+		// Refused here rather than in the matcher, which is where the emptiness is finally
+		// noticed: by then every file in the tree has been enumerated, probed, read and
+		// decoded, and only then found to match nothing. An empty query runs nothing.
+		if (request.Query.Needle.empty())
+		{
+			const std::lock_guard<std::mutex> lock(m_Shared->Mutex);
+
+			++m_Shared->Generation;
+
+			m_Shared->Hits.clear();
+			m_Shared->Progress = SearchProgress{};
+
+			return;
+		}
+
+		// Once per open tab instead of once per pairing with an enumerated file: FindUnsaved
+		// settles on a path comparison when both sides are spelled the same way.
+		for (UnsavedFile& unsaved : request.Unsaved)
+		{
+			std::error_code ec;
+			std::filesystem::path resolved = std::filesystem::weakly_canonical(unsaved.Path, ec);
+
+			unsaved.Path = ec ? unsaved.Path.lexically_normal() : std::move(resolved);
+		}
 
 		std::uint64_t generation = 0;
 
@@ -143,7 +187,10 @@ namespace Graphite {
 						return;
 					}
 
-					if (!MaskAccepts(input.Query.Mask, file.filename().string()))
+					// ToUtf8, not string(): on MSVC the latter converts through the active code
+					// page, so a mask typed as UTF-8 in the query field could never match a
+					// filename with a non-ASCII character in it.
+					if (!MaskAccepts(input.Query.Mask, Core::ToUtf8(file.filename())))
 					{
 						return;
 					}
