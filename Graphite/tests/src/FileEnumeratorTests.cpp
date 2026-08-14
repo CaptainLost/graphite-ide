@@ -79,11 +79,15 @@ TEST_CASE("EnumerateFiles does not descend into an ignored directory")
 
 	const std::vector<std::string> names = NamesUnder(temp.GetPath(), ignored);
 
+	// Checked before the file-count REQUIRE below on purpose: that REQUIRE is fatal, so if
+	// pruning silently stopped working it would abort the test before this line ever ran,
+	// hiding the more direct evidence that bin/deep was entered. bin was asked about once;
+	// this only proves bin/deep was never asked about, since the predicate can't tell it apart
+	// from an entry reached honestly by walking down from a non-pruned bin.
+	CHECK(directoriesAsked == 1);
+
 	REQUIRE(names.size() == 1);
 	CHECK(names[0] == "keep.cpp");
-
-	// bin was asked about; bin/deep never was, because bin was never entered.
-	CHECK(directoriesAsked == 1);
 }
 
 TEST_CASE("EnumerateFiles leaves out an ignored file")

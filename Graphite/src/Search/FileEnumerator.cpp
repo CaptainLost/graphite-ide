@@ -82,6 +82,13 @@ namespace Graphite {
 
 			at.increment(ec);
 
+			// Measured on this toolchain (MSVC, Windows): when the directory the iterator is
+			// about to descend into vanishes first, increment sets ec AND leaves the iterator
+			// already equal to end() in the same call - there is no partial state to recover,
+			// and incrementing an iterator that already equals end() is undefined behaviour, not
+			// a second chance. So this return is reached only once the loop's own `at != end`
+			// condition would already be false; it exists to skip the entry() calls above on the
+			// next spin, not to cut the walk short.
 			if (ec)
 			{
 				return;
