@@ -9,6 +9,8 @@
 
 #include "Theme/BuiltInSchemes.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -953,19 +955,28 @@ namespace Graphite {
 			item.Find.Current = 0;
 		}
 
-		bool DrawFindToggle(const char* label, bool& value)
+		// The icon carries no meaning to someone meeting it for the first time, so the tooltip is
+		// not decoration here — it is the only place the button says what it does.
+		//
+		// Two signals for "on", not one: the darker fill alone reads as a button being pressed
+		// right now, which is what ButtonActive means everywhere else.
+		bool DrawFindToggle(const char* icon, const char* tooltip, bool& value)
 		{
 			if (value)
 			{
-				ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+				ImGui::PushStyleColor(ImGuiCol_Button,
+									  ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 			}
 
-			const bool clicked = ImGui::Button(label);
+			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
 
 			if (value)
 			{
-				ImGui::PopStyleColor();
+				ImGui::PopStyleColor(2);
 			}
+
+			ImGui::SetItemTooltip("%s", tooltip);
 
 			if (clicked)
 				value = !value;
@@ -973,23 +984,58 @@ namespace Graphite {
 			return clicked;
 		}
 
-		void DrawMatchCounter(const Core::FindState& find)
+		// Square, so the five controls line up as one row of equal cells rather than as buttons
+		// each sized to whatever glyph landed in it.
+		bool DrawFindButton(const char* icon, const char* tooltip)
 		{
-			// Nothing at all while the query is empty: "0 / 0" beside an empty field would
-			// report a failure nobody has asked for yet.
-			if (find.Query.empty())
-				return;
+			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
 
+			ImGui::SetItemTooltip("%s", tooltip);
+
+			return clicked;
+		}
+
+		std::string MatchCounterText(const Core::FindState& find)
+		{
 			if (find.Matches.empty())
-			{
-				ImGui::TextUnformatted("0 / 0");
+				return "0 / 0";
+
+			return std::to_string(find.Current + 1) + " / " + std::to_string(find.Matches.size());
+		}
+
+		// Sized from the total on both sides rather than from the counter as it currently reads,
+		// so the box changes width only when the number of matches does. Stepping through them
+		// is the frequent action, and it must not shove everything beside it sideways.
+		//
+		// Zero while the query is empty: "0 / 0" beside an empty field reports a failure nobody
+		// has asked for yet, so nothing is drawn and nothing is reserved.
+		float MatchCounterWidth(const Core::FindState& find)
+		{
+			if (find.Query.empty())
+				return 0.0f;
+
+			const std::string widest = find.Matches.empty()
+										   ? std::string("0 / 0")
+										   : std::to_string(find.Matches.size()) + " / " +
+												 std::to_string(find.Matches.size());
+
+			return ImGui::CalcTextSize(widest.c_str()).x;
+		}
+
+		void DrawMatchCounter(const Core::FindState& find, float width)
+		{
+			if (width <= 0.0f)
 				return;
-			}
 
-			const std::string counter = std::to_string(find.Current + 1) + " / " +
-										std::to_string(find.Matches.size());
+			const std::string counter = MatchCounterText(find);
+			const float text = ImGui::CalcTextSize(counter.c_str()).x;
 
-			ImGui::TextUnformatted(counter.c_str());
+			// Right-aligned in its box, so the digits grow leftwards into the field's slack
+			// instead of pushing the buttons along.
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(width - text, 0.0f));
+
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("%s", counter.c_str());
 		}
 
 		struct FindBarFrame
@@ -1095,7 +1141,21 @@ namespace Graphite {
 				ImGui::PushStyleColor(ImGuiCol_Text, NoMatchColor());
 			}
 
-			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+			// The five controls and the counter are measured first and the field is given what is
+			// left, so the buttons sit against the bar's right edge and stay there. Packing them
+			// from the left after a fixed-width field is what left them floating mid-bar, and
+			// moving whenever the counter gained a digit.
+			const float spacing = ImGui::GetStyle().ItemSpacing.x;
+			const float square = ImGui::GetFrameHeight();
+			const float counterWidth = MatchCounterWidth(item.Find);
+
+			const float controls =
+				counterWidth + (counterWidth > 0.0f ? spacing : 0.0f) + square * 5.0f + spacing * 5.0f;
+
+			// A floor, so a panel narrowed past the controls leaves a field to type in rather
+			// than a negative width ImGui would treat as "fill the line".
+			ImGui::SetNextItemWidth(
+				std::max(ImGui::GetContentRegionAvail().x - controls, ImGui::GetFontSize() * 4.0f));
 
 			// EnterReturnsTrue rather than a bare field: a single-line InputText swallows Enter
 			// whatever the flag says, and this is what hands it back to be stepped on.
@@ -1118,31 +1178,41 @@ namespace Graphite {
 			}
 
 			ImGui::SameLine();
-			DrawMatchCounter(item.Find);
+			DrawMatchCounter(item.Find, counterWidth);
 			ImGui::SameLine();
 
-			const bool matchCaseToggled = DrawFindToggle("Aa", item.Find.MatchCase);
+			const bool matchCaseToggled =
+				DrawFindToggle(ICON_MDI_FORMAT_LETTER_CASE, "Match case", item.Find.MatchCase);
 
 			ImGui::SameLine();
 
-			const bool wholeWordToggled = DrawFindToggle("\\w", item.Find.WholeWord);
+			const bool wholeWordToggled =
+				DrawFindToggle(ICON_MDI_FORMAT_LETTER_MATCHES, "Whole word", item.Find.WholeWord);
 
 			if (matchCaseToggled || wholeWordToggled)
 				RefreshFindMatches(item, buffer);
 
 			ImGui::SameLine();
 
-			const bool previousClicked = ImGui::Button("^");
+			const bool previousClicked = DrawFindButton(ICON_MDI_CHEVRON_UP, "Previous (Shift+Enter)");
 
 			ImGui::SameLine();
 
-			const bool nextClicked = ImGui::Button("v");
+			const bool nextClicked = DrawFindButton(ICON_MDI_CHEVRON_DOWN, "Next (Enter)");
 
 			ImGui::SameLine();
 
-			const bool closeClicked = ImGui::Button("X");
+			const bool closeClicked = DrawFindButton(ICON_MDI_CLOSE, "Close (Escape)");
 
 			ImGui::EndChild();
+
+			// Drawn on the parent after the child closes, so it sits over the topmost row rather
+			// than under it: without a line the first line of code butts straight against the
+			// controls and the bar reads as part of the text.
+			ImGui::GetWindowDrawList()->AddLine(
+				ImVec2(frame.Corner.x, frame.Corner.y + ImGui::GetFrameHeight()),
+				ImVec2(frame.Corner.x + frame.Width, frame.Corner.y + ImGui::GetFrameHeight()),
+				ImGui::GetColorU32(ImGuiCol_Border));
 			ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
 
 			const bool shift = ImGui::GetIO().KeyShift;
