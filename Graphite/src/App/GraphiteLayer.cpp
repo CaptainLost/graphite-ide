@@ -168,7 +168,7 @@ namespace Graphite {
 						.Label = "Find",
 						.Run = [this] {
 							if (const auto active = m_Documents.GetActive())
-								OpenFindBar(m_Documents.At(*active));
+								m_DocumentWindows.OpenFind(m_Documents.At(*active));
 						},
 						.Enabled = [this] {
 							const auto active = m_Documents.GetActive();

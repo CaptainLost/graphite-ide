@@ -55,12 +55,10 @@ namespace Graphite {
 		const ResolvedScheme* Scheme = nullptr;
 	};
 
-	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
-								 const EditorView& view);
+	class FindBar;
 
-	// Opens the document's find bar, seeds the query from the selection when there is one, and
-	// hands the keyboard to the field on the next frame that document draws. Lives beside the
-	// editor rather than in the layer that binds Ctrl+F to it, because which widget the keyboard
-	// goes to is the editor's business and nobody else's.
-	void OpenFindBar(Core::OpenItem& item);
+	// The find bar is passed in rather than owned here: it remembers which document asked for
+	// the keyboard, and that outlives any one frame.
+	EditorFrameResult DrawEditor(const CommandContext& context, Core::OpenItem& item,
+								 const EditorView& view, FindBar& findBar);
 }

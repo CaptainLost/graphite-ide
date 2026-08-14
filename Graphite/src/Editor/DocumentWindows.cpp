@@ -841,7 +841,7 @@ namespace Graphite {
 				view.Syntax = &SyntaxFor(item);
 				view.Scheme = &scheme;
 
-				const EditorFrameResult editorResult = DrawEditor(context, item, view);
+				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 
 				// Once the user has typed into a preview it is no longer something they were
 				// just glancing at.

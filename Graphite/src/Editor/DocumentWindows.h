@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/ModalGate.h"
+#include "Editor/FindBar.h"
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
@@ -62,6 +63,11 @@ namespace Graphite {
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
 		std::optional<std::string> GetStatusMessage() const;
+
+		// Opens a document's find bar. Routed through here rather than called on the bar directly,
+		// because the bar belongs to whatever draws the documents and the command that binds
+		// Ctrl+F to it has no business knowing where that is.
+		void OpenFind(Core::OpenItem& item) { m_FindBar.Open(item); }
 
 	private:
 		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
@@ -172,5 +178,9 @@ namespace Graphite {
 		// rewrite at the rename site — the rename happens in Core, this map is Graphite's own,
 		// and a prune is the one fix that does not need the rename to know this map exists.
 		std::map<std::filesystem::path, SyntaxCache> m_Syntax;
+
+		// One for every document rather than one each: what it holds is which document wants the
+		// keyboard next, and only one can.
+		FindBar m_FindBar;
 	};
 }
