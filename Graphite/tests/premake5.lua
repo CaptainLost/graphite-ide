@@ -35,6 +35,8 @@ project "GraphiteTests"
         -- only logic, and depend on nothing but Core.
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
+        "%{wks.location}/Graphite/src/Editor/FindNavigation.h",
+        "%{wks.location}/Graphite/src/Editor/FindNavigation.cpp",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.h",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.cpp",
         "%{wks.location}/Graphite/src/Theme/**.h",

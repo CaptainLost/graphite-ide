@@ -1,0 +1,141 @@
+#include <doctest/doctest.h>
+
+#include "Editor/FindNavigation.h"
+
+#include "Core/Text/DocumentSet.h"
+#include "Core/Text/TextBuffer.h"
+
+namespace {
+
+	// No Document on the item: these functions take the buffer beside it, which is what lets a
+	// test drive them without loading a file.
+	Core::OpenItem ItemSearchingFor(std::string needle)
+	{
+		Core::OpenItem item;
+
+		item.Find.Open = true;
+		item.Find.Query = std::move(needle);
+
+		return item;
+	}
+}
+
+TEST_CASE("Stepping forward from the last match wraps to the first")
+{
+	const Core::TextBuffer buffer("alpha beta alpha gamma alpha");
+	Core::OpenItem item = ItemSearchingFor("alpha");
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Matches.size() == 3);
+
+	item.Find.Current = 2;
+
+	Graphite::StepFindMatch(item, buffer, false);
+
+	CHECK(item.Find.Current == 0);
+
+	// Selected, not merely landed on: the anchor is the match's start and the offset its end.
+	CHECK(item.Caret.Anchor == 0);
+	CHECK(item.Caret.Offset == 5);
+	CHECK(item.PendingScroll);
+}
+
+TEST_CASE("Stepping back from the first match wraps to the last")
+{
+	const Core::TextBuffer buffer("alpha beta alpha gamma alpha");
+	Core::OpenItem item = ItemSearchingFor("alpha");
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Matches.size() == 3);
+
+	item.Find.Current = 0;
+
+	Graphite::StepFindMatch(item, buffer, true);
+
+	CHECK(item.Find.Current == 2);
+	CHECK(item.Caret.Anchor == 23);
+	CHECK(item.Caret.Offset == 28);
+}
+
+TEST_CASE("Stepping through no matches at all does nothing")
+{
+	const Core::TextBuffer buffer("alpha beta");
+	Core::OpenItem item = ItemSearchingFor("gamma");
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	Graphite::StepFindMatch(item, buffer, false);
+
+	CHECK(item.Find.Matches.empty());
+	CHECK(item.Caret.Offset == 0);
+	CHECK_FALSE(item.PendingScroll);
+}
+
+TEST_CASE("A refresh after the buffer shrank leaves Current inside the new list")
+{
+	Core::TextBuffer buffer("alpha\nalpha\nalpha\n");
+	Core::OpenItem item = ItemSearchingFor("alpha");
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Matches.size() == 3);
+
+	item.Find.Current = 2;
+
+	// Two of the three lines go, so the index that was current is past the end of what is left.
+	buffer.Erase(0, 12);
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Matches.size() == 1);
+	CHECK(item.Find.Current < item.Find.Matches.size());
+	CHECK(item.Find.Matches[0].first == 0);
+	CHECK(item.Find.Matches[0].second == 5);
+	CHECK(item.Find.Revision == buffer.GetRevision());
+}
+
+TEST_CASE("A refresh with an empty query clears the matches")
+{
+	const Core::TextBuffer buffer("alpha beta alpha");
+	Core::OpenItem item = ItemSearchingFor("alpha");
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Matches.size() == 2);
+
+	item.Find.Query.clear();
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	CHECK(item.Find.Matches.empty());
+	CHECK(item.Find.Current == 0);
+}
+
+// Pins the invalidation strategy: the editor calls this every frame, and only a changed
+// revision may make it scan the document again. A refresh that ran unconditionally would
+// rescan the whole file sixty times a second for as long as the bar is open.
+TEST_CASE("Refreshing twice at the same revision does not rebuild")
+{
+	Core::TextBuffer buffer("alpha beta alpha");
+	Core::OpenItem item = ItemSearchingFor("alpha");
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Matches.size() == 2);
+
+	// Planted by hand, so a rebuild is visible as its disappearance rather than as an
+	// identical list nobody can tell apart from the one that was already there.
+	item.Find.Matches.emplace_back(99, 100);
+
+	CHECK_FALSE(Graphite::RefreshFindMatchesIfStale(item, buffer));
+	CHECK(item.Find.Matches.size() == 3);
+
+	buffer.Insert(0, "alpha ");
+
+	CHECK(Graphite::RefreshFindMatchesIfStale(item, buffer));
+	CHECK(item.Find.Matches.size() == 3);
+	// "alpha alpha beta alpha": the planted pair is gone and the third match is a real one.
+	CHECK(item.Find.Matches[2].first == 17);
+}
