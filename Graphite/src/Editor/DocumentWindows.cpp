@@ -741,7 +741,7 @@ namespace Graphite {
 	// once a frame rather than at the one place a path changes: m_Syntax is a side-map keyed on
 	// an identity DocumentSet owns and can rewrite (a rename on disk, or of a directory an open
 	// document lives under) without this map hearing about it, so an entry orphaned that way
-	// would otherwise hold its std::vector<LineState> — one Continuation and one std::string
+	// would otherwise hold its std::vector<LineState> — one mode word and one std::string
 	// per line of the file — for the rest of the process. SyntaxFor already does the right
 	// thing after a rename (a fresh cache under the new path, lexed with whatever language the
 	// new extension implies), so this only ever removes what nothing can reach any more.

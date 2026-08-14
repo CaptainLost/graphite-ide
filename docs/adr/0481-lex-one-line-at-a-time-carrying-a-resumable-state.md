@@ -35,9 +35,10 @@ virtual LineState LexLine(std::string_view line, const LineState& entry,
                           std::vector<Token>& out) const = 0;
 ```
 
-`LineState` is a value — a `Continuation` enum plus the raw-string delimiter
-when it applies — not a cursor into a stream or a handle the lexer keeps for
-itself. `SyntaxCache` stores one `LineState` per line (`m_EntryStates`), and an
+`LineState` is a value — an opaque `Mode` word plus a string for a resume
+condition too wide to fit in it — not a cursor into a stream or a handle the
+lexer keeps for itself. It deliberately does not name the constructs it
+carries: see [0484](0484-keep-cross-line-lexer-state-opaque.md). `SyntaxCache` stores one `LineState` per line (`m_EntryStates`), and an
 edit invalidates from the touched line down by dropping every entry state at
 or below it; the states above are untouched because nothing below an edit can
 change what a line above it started in. Re-lexing after an edit is lazy: only
