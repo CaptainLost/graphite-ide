@@ -859,6 +859,16 @@ namespace Graphite {
 			ApplyEditKeys(input, buffer, item, indentStyle, syntax, result);
 		}
 
+		// How much of the surface the find bar takes off the top. The one place that answers this
+		// question: the room reserved below and the scroll arithmetic that has to allow for it
+		// are the same number by construction, and a second reading of GetFrameHeight() somewhere
+		// else is how the two would come to differ. Zero with the bar closed, which is what keeps
+		// every caller free of a "while the bar is open" branch of its own.
+		float FindBarRoom(const Core::OpenItem& item)
+		{
+			return item.Find.Open ? ImGui::GetFrameHeight() : 0.0f;
+		}
+
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 						   const EditorMetrics& metrics, bool wordWrap)
 		{
@@ -873,15 +883,28 @@ namespace Graphite {
 														.Row) *
 								 metrics.LineHeight;
 
-			// caretY is measured from the first row's origin, and the find bar pushes that origin
-			// down by its own height (see ReserveFindBarRoom) rather than being subtracted here.
-			// So a row whose caretY is above the scroll position is exactly a row hidden behind
-			// the bar, and scrolling to caretY puts it immediately below the bar — the same
-			// arithmetic with the bar open as without it.
+			// caretY is measured from the first row's origin, which FindBarRoom pushes down the
+			// height of the bar; ImGui's scroll is measured from the top of the content, a room
+			// above that. The two edges therefore read differently:
+			//
+			// The top needs no correction at all. A row whose caretY is above the scroll position
+			// is exactly a row behind the bar, and scrolling to caretY brings it out from under
+			// it — subtracting the room here as well would leave a bar of blank space above the
+			// caret every time.
+			//
+			// The bottom is where the frames have to be reconciled: the window's lower edge is
+			// windowHeight from the top of the *content*, so the caret's distance from that same
+			// origin is what has to fit under it, and that distance is room + caretY. Leaving the
+			// room out scrolls a bar's height too little — and on the document's last row, where
+			// the room is exactly what the scroll maximum grew by, too little means the row can
+			// never be reached at all.
+			const float room = FindBarRoom(item);
+
 			if (caretY < ImGui::GetScrollY())
 				ImGui::SetScrollY(caretY);
-			else if (caretY + metrics.LineHeight > ImGui::GetScrollY() + ImGui::GetWindowHeight())
-				ImGui::SetScrollY(caretY + metrics.LineHeight - ImGui::GetWindowHeight());
+			else if (room + caretY + metrics.LineHeight >
+					 ImGui::GetScrollY() + ImGui::GetWindowHeight())
+				ImGui::SetScrollY(room + caretY + metrics.LineHeight - ImGui::GetWindowHeight());
 
 			// Skipped entirely while wrapping: there is no horizontal range to scroll through,
 			// and chasing the caret across one that is zero wide would fight the vertical scroll
@@ -1608,13 +1631,15 @@ namespace Graphite {
 		// the scrollbars, the clipper and ReserveDocumentExtent's own Dummy all measure from
 		// where this leaves the cursor. The item spacing is pushed to zero for the same reason
 		// the height is exact: the room has to match the bar, not the bar plus a gap.
-		void ReserveFindBarRoom(bool findBarOpen)
+		void ReserveFindBarRoom(const Core::OpenItem& item)
 		{
-			if (!findBarOpen)
+			const float room = FindBarRoom(item);
+
+			if (room <= 0.0f)
 				return;
 
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-			ImGui::Dummy(ImVec2(0.0f, ImGui::GetFrameHeight()));
+			ImGui::Dummy(ImVec2(0.0f, room));
 			ImGui::PopStyleVar();
 		}
 
@@ -1736,7 +1761,7 @@ namespace Graphite {
 
 			// Before the origin is read, so every position derived from it — the rows, the
 			// clicks that map back to them, the caret and the scroll — starts below the bar.
-			ReserveFindBarRoom(item.Find.Open);
+			ReserveFindBarRoom(item);
 
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float scrollX = ImGui::GetScrollX();
