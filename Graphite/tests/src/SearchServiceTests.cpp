@@ -115,6 +115,7 @@ TEST_CASE("SearchService searches an open document's text rather than the file's
 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].Text == "fresh text");
+	CHECK(progress.FilesScanned == 1);
 }
 
 TEST_CASE("SearchService does not find what only the saved file still says")
@@ -152,6 +153,28 @@ TEST_CASE("SearchService skips a binary file and counts it")
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].File.filename() == "a.cpp");
 	CHECK(progress.FilesSkipped == 1);
+}
+
+// Distinguishes Unreadable from Skipped: a probe failure is neither binary nor too large, so an
+// implementation that folded every non-scan outcome into FilesSkipped would still pass every
+// other test in this file.
+TEST_CASE("SearchService counts a file it cannot probe as unreadable")
+{
+	const TempDirectory temp;
+
+	Graphite::SearchStart request = Request(temp.GetPath(), "needle");
+	request.Options.ProjectsOnly = true;
+	request.ProjectFiles.push_back(temp.GetPath() / "missing.cpp");
+
+	Graphite::SearchService service;
+	service.Start(std::move(request));
+
+	Graphite::SearchProgress progress;
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+
+	CHECK(hits.empty());
+	CHECK(progress.Unreadable == 1);
+	CHECK(progress.FilesSkipped == 0);
 }
 
 // What this can actually pin is deterministic: Start clears the shared hit vector under the
@@ -224,6 +247,18 @@ TEST_CASE("SearchService stops when cancelled")
 
 	CHECK_FALSE(progress.Running);
 	CHECK(progress.FilesScanned < 200);
+
+	// Pins the stop, not just the flag: a service that only flipped Running without actually
+	// halting the worker would keep climbing here. A bounded wait, not an open-ended one — this
+	// is well past the 1ms drain interval RunToEnd already used to settle.
+	const std::size_t scannedAfterStop = progress.FilesScanned;
+
+	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+	std::vector<Graphite::SearchHit> hits;
+	service.Drain(hits, progress);
+
+	CHECK(progress.FilesScanned == scannedAfterStop);
 }
 
 TEST_CASE("SearchService searches only the listed files under the projects-only scope")

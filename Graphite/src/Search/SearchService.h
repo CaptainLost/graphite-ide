@@ -8,13 +8,10 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <vector>
 
 namespace Graphite {
-
-	struct Solution;
 
 	// An open document's current text, copied on the UI thread before the search starts. The
 	// copy is the whole point: DocumentSet's buffers change under the user's hands, so a worker

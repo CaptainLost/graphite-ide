@@ -1,6 +1,5 @@
 #include "Search/SearchService.h"
 
-#include "Core/Base/Log.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
@@ -9,6 +8,7 @@
 
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <system_error>
 #include <utility>
 
@@ -59,8 +59,9 @@ namespace Graphite {
 
 	SearchService::~SearchService()
 	{
-		// Before the queue joins: a running search polls its token between files, so cancelling
-		// first turns a long shutdown into a short one.
+		// Before the queue joins: a running search polls its token once per file, so cancelling
+		// first bounds the wait to whatever file is already in flight — at most one LargeText
+		// file's read, decode and scan — rather than however much of the search remains.
 		m_Token.Cancel();
 	}
 
@@ -69,6 +70,12 @@ namespace Graphite {
 		m_Token.Cancel();
 
 		const std::lock_guard<std::mutex> lock(m_Shared->Mutex);
+
+		// Bumping the generation here, not just flipping the flag, closes the same window the
+		// guard in Start's contribute lambda closes: a worker between token polls can still be
+		// mid-file when Cancel runs, and without this its eventual contribute call would still
+		// match and land after the search was reported finished.
+		++m_Shared->Generation;
 		m_Shared->Progress.Running = false;
 	}
 
@@ -103,9 +110,11 @@ namespace Graphite {
 					// previous search that is already inside this lock, blocked behind the
 					// contribute call the newer Start is waiting to make, when the newer Start's
 					// clear-and-bump runs. Without this check that contribution lands after the
-					// clear and survives into the new search's results. No test reaches this
-					// window — it is narrower than a lock hand-off, not a race a sleep can widen —
-					// so do not delete this guard because a passing suite implies it is unused.
+					// clear and survives into the new search's results. The same check also
+					// covers Cancel, which bumps the generation under this same mutex for exactly
+					// this reason. No test reaches either window — narrower than a lock hand-off,
+					// not a race a sleep can widen — so do not delete this guard because a
+					// passing suite implies it is unused.
 					if (shared->Generation != generation)
 					{
 						return;
