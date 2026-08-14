@@ -861,16 +861,6 @@ namespace Graphite {
 			ApplyEditKeys(input, buffer, item, indentStyle, syntax, result);
 		}
 
-		// How much of the surface the find bar takes off the top. The one place that answers this
-		// question: the room reserved below and the scroll arithmetic that has to allow for it
-		// are the same number by construction, and a second reading of GetFrameHeight() somewhere
-		// else is how the two would come to differ. Zero with the bar closed, which is what keeps
-		// every caller free of a "while the bar is open" branch of its own.
-		float FindBarRoom(const Core::OpenItem& item)
-		{
-			return item.Find.Open ? ImGui::GetFrameHeight() : 0.0f;
-		}
-
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 						   const EditorMetrics& metrics, bool wordWrap)
 		{
@@ -885,28 +875,15 @@ namespace Graphite {
 														.Row) *
 								 metrics.LineHeight;
 
-			// caretY is measured from the first row's origin, which FindBarRoom pushes down the
-			// height of the bar; ImGui's scroll is measured from the top of the content, a room
-			// above that. The two edges therefore read differently:
-			//
-			// The top needs no correction at all. A row whose caretY is above the scroll position
-			// is exactly a row behind the bar, and scrolling to caretY brings it out from under
-			// it — subtracting the room here as well would leave a bar of blank space above the
-			// caret every time.
-			//
-			// The bottom is where the frames have to be reconciled: the window's lower edge is
-			// windowHeight from the top of the *content*, so the caret's distance from that same
-			// origin is what has to fit under it, and that distance is room + caretY. Leaving the
-			// room out scrolls a bar's height too little — and on the document's last row, where
-			// the room is exactly what the scroll maximum grew by, too little means the row can
-			// never be reached at all.
-			const float room = FindBarRoom(item);
-
+			// No correction for the find bar in either edge. The bar is a compact overlay in the
+			// top-right corner: it takes no room out of the content and covers only the tail of
+			// the first rows, which is where a line has usually already ended. Biasing the scroll
+			// for it would push the caret down a bar's height on every move, for the sake of a
+			// column the text rarely reaches.
 			if (caretY < ImGui::GetScrollY())
 				ImGui::SetScrollY(caretY);
-			else if (room + caretY + metrics.LineHeight >
-					 ImGui::GetScrollY() + ImGui::GetWindowHeight())
-				ImGui::SetScrollY(room + caretY + metrics.LineHeight - ImGui::GetWindowHeight());
+			else if (caretY + metrics.LineHeight > ImGui::GetScrollY() + ImGui::GetWindowHeight())
+				ImGui::SetScrollY(caretY + metrics.LineHeight - ImGui::GetWindowHeight());
 
 			// Skipped entirely while wrapping: there is no horizontal range to scroll through,
 			// and chasing the caret across one that is zero wide would fight the vertical scroll
@@ -955,42 +932,52 @@ namespace Graphite {
 			item.Find.Current = 0;
 		}
 
-		// The icon carries no meaning to someone meeting it for the first time, so the tooltip is
-		// not decoration here — it is the only place the button says what it does.
-		//
-		// Two signals for "on", not one: the darker fill alone reads as a button being pressed
-		// right now, which is what ButtonActive means everywhere else.
-		bool DrawFindToggle(const char* icon, const char* tooltip, bool& value)
+		// Room for a query worth typing, and no more: the bar hangs off the editor's right corner
+		// and every pixel it takes is a pixel of code it covers.
+		float FindFieldWidth()
 		{
-			if (value)
-			{
-				ImGui::PushStyleColor(ImGuiCol_Button,
-									  ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
-			}
+			return ImGui::CalcTextSize("0").x * 18.0f;
+		}
+
+		// Square and frameless, so the five controls read as one row of icons rather than as five
+		// boxed buttons crowding a text field. The frame comes back on hover, which is where a
+		// button needs to say it is one.
+		bool DrawFindButton(const char* icon, const char* tooltip)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
 			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
 
+			ImGui::PopStyleColor();
+
+			ImGui::SetItemTooltip("%s", tooltip);
+
+			return clicked;
+		}
+
+		// The icon carries no meaning to someone meeting it for the first time, so the tooltip is
+		// not decoration here — it is the only place the button says what it does.
+		//
+		// An engaged toggle keeps its frame and takes the accent, rather than only darkening:
+		// a darker fill alone is what ImGui uses for a button being pressed right now, so "on"
+		// and "under the mouse" would look the same.
+		bool DrawFindToggle(const char* icon, const char* tooltip, bool& value)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Button,
+								  value ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
+										: ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+
 			if (value)
-			{
-				ImGui::PopStyleColor(2);
-			}
+				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
+
+			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
+
+			ImGui::PopStyleColor(value ? 2 : 1);
 
 			ImGui::SetItemTooltip("%s", tooltip);
 
 			if (clicked)
 				value = !value;
-
-			return clicked;
-		}
-
-		// Square, so the five controls line up as one row of equal cells rather than as buttons
-		// each sized to whatever glyph landed in it.
-		bool DrawFindButton(const char* icon, const char* tooltip)
-		{
-			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
-
-			ImGui::SetItemTooltip("%s", tooltip);
 
 			return clicked;
 		}
@@ -1040,10 +1027,19 @@ namespace Graphite {
 
 		struct FindBarFrame
 		{
-			// The visible top-left of the editor surface, which is the window's own corner and
+			// The visible top-RIGHT of the editor surface, which is the window's own corner and
 			// not the content's: the content origin scrolls away upwards, and a bar pinned to it
 			// would scroll off with the text.
+			//
+			// The right corner rather than the left because the bar is compact and hangs off it.
+			// It takes no room out of the document, so the code never moves when it opens; what
+			// it covers is the tail of the first rows, which is where a line has usually already
+			// ended.
 			ImVec2 Corner;
+
+			// How much room there is to hang it in. The bar sizes itself to its contents and is
+			// clamped to this, so a panel dragged narrow gives up query field rather than
+			// spilling its buttons past the edge.
 			float Width = 0.0f;
 
 			// Root and children, so the bar's own field counts as this document holding the
@@ -1103,7 +1099,23 @@ namespace Graphite {
 			// Dummy the only thing in this file that grows the extent.
 			const ImVec2 extentBeforeBar = ImGui::GetCurrentWindow()->DC.CursorMaxPos;
 
-			ImGui::SetCursorScreenPos(frame.Corner);
+			// Measured before the bar is opened, because it decides how wide the bar is. The five
+			// controls are square cells of one row's height, so the whole thing is arithmetic
+			// rather than a guess — which is what stops the last button being clipped by the
+			// bar's own edge.
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const float square = ImGui::GetFrameHeight();
+			const float counterWidth = MatchCounterWidth(item.Find);
+
+			float barWidth = kFindBarPaddingX * 2.0f + FindFieldWidth() +
+							 (square + style.ItemSpacing.x) * 5.0f;
+
+			if (counterWidth > 0.0f)
+				barWidth += counterWidth + style.ItemSpacing.x;
+
+			barWidth = std::min(barWidth, frame.Width);
+
+			ImGui::SetCursorScreenPos(ImVec2(frame.Corner.x - barWidth, frame.Corner.y));
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kFindBarPaddingX, 0.0f));
 
 			// Opaque, and drawn as a child window rather than as a rectangle on the editor's own
@@ -1112,8 +1124,8 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
 
 			const bool visible =
-				ImGui::BeginChild("##FindBar", ImVec2(frame.Width, ImGui::GetFrameHeight()),
-								  ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollWithMouse);
+				ImGui::BeginChild("##FindBar", ImVec2(barWidth, square), ImGuiChildFlags_Borders,
+								  ImGuiWindowFlags_NoScrollWithMouse);
 
 			ImGui::PopStyleColor();
 			ImGui::PopStyleVar();
@@ -1141,21 +1153,15 @@ namespace Graphite {
 				ImGui::PushStyleColor(ImGuiCol_Text, NoMatchColor());
 			}
 
-			// The five controls and the counter are measured first and the field is given what is
-			// left, so the buttons sit against the bar's right edge and stay there. Packing them
-			// from the left after a fixed-width field is what left them floating mid-bar, and
-			// moving whenever the counter gained a digit.
-			const float spacing = ImGui::GetStyle().ItemSpacing.x;
-			const float square = ImGui::GetFrameHeight();
-			const float counterWidth = MatchCounterWidth(item.Find);
-
+			// What is left after the controls, which is FindFieldWidth() at any width the bar was
+			// not clamped at — and less than it when the panel is too narrow, so a cramped bar
+			// gives up field rather than spilling its buttons past its own edge.
 			const float controls =
-				counterWidth + (counterWidth > 0.0f ? spacing : 0.0f) + square * 5.0f + spacing * 5.0f;
+				counterWidth + (counterWidth > 0.0f ? style.ItemSpacing.x : 0.0f) +
+				(square + style.ItemSpacing.x) * 5.0f;
 
-			// A floor, so a panel narrowed past the controls leaves a field to type in rather
-			// than a negative width ImGui would treat as "fill the line".
 			ImGui::SetNextItemWidth(
-				std::max(ImGui::GetContentRegionAvail().x - controls, ImGui::GetFontSize() * 4.0f));
+				std::max(ImGui::GetContentRegionAvail().x - controls, ImGui::GetFontSize()));
 
 			// EnterReturnsTrue rather than a bare field: a single-line InputText swallows Enter
 			// whatever the flag says, and this is what hands it back to be stepped on.
@@ -1205,14 +1211,6 @@ namespace Graphite {
 			const bool closeClicked = DrawFindButton(ICON_MDI_CLOSE, "Close (Escape)");
 
 			ImGui::EndChild();
-
-			// Drawn on the parent after the child closes, so it sits over the topmost row rather
-			// than under it: without a line the first line of code butts straight against the
-			// controls and the bar reads as part of the text.
-			ImGui::GetWindowDrawList()->AddLine(
-				ImVec2(frame.Corner.x, frame.Corner.y + ImGui::GetFrameHeight()),
-				ImVec2(frame.Corner.x + frame.Width, frame.Corner.y + ImGui::GetFrameHeight()),
-				ImGui::GetColorU32(ImGuiCol_Border));
 			ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
 
 			const bool shift = ImGui::GetIO().KeyShift;
@@ -1700,27 +1698,6 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(origin);
 		}
 
-		// Leading room the first row starts below, so the find bar covers blank space rather than
-		// the first line of the file. Biasing the scroll instead cannot work at the top of a
-		// document: there the scroll is already zero and has nothing left to give, so a match on
-		// line 1 would sit behind the bar with the counter cheerfully reading "1 / 1".
-		//
-		// Reserved through the cursor rather than drawn, so it is part of the document's extent —
-		// the scrollbars, the clipper and ReserveDocumentExtent's own Dummy all measure from
-		// where this leaves the cursor. The item spacing is pushed to zero for the same reason
-		// the height is exact: the room has to match the bar, not the bar plus a gap.
-		void ReserveFindBarRoom(const Core::OpenItem& item)
-		{
-			const float room = FindBarRoom(item);
-
-			if (room <= 0.0f)
-				return;
-
-			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
-			ImGui::Dummy(ImVec2(0.0f, room));
-			ImGui::PopStyleVar();
-		}
-
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
 							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
@@ -1837,10 +1814,6 @@ namespace Graphite {
 				ImGui::SetWindowFocus();
 			}
 
-			// Before the origin is read, so every position derived from it — the rows, the
-			// clicks that map back to them, the caret and the scroll — starts below the bar.
-			ReserveFindBarRoom(item);
-
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const float scrollX = ImGui::GetScrollX();
 			const float available = ImGui::GetContentRegionAvail().x;
@@ -1945,8 +1918,13 @@ namespace Graphite {
 			{
 				FindBarFrame frame;
 
-				frame.Corner = ImGui::GetWindowPos();
-				frame.Width = ImGui::GetWindowWidth();
+				// The top-right, less whatever the vertical scrollbar is taking, so the bar hangs
+				// beside it rather than over it.
+				const float usable =
+					ImGui::GetWindowWidth() - ImGui::GetCurrentWindow()->ScrollbarSizes.x;
+
+				frame.Corner = ImVec2(ImGui::GetWindowPos().x + usable, ImGui::GetWindowPos().y);
+				frame.Width = usable;
 				frame.DocumentFocused = documentHoldsFocus;
 
 				DrawFindBar(item, buffer, frame);
