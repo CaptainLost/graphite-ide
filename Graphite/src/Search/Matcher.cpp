@@ -104,8 +104,8 @@ namespace Graphite {
 		return false;
 	}
 
-	void FindInText(const SearchQuery& query, std::string_view text,
-					const std::filesystem::path& file, std::vector<SearchHit>& hits)
+	void FindInLine(const SearchQuery& query, std::string_view line,
+					std::vector<LineMatch>& matches)
 	{
 		if (query.Needle.empty())
 		{
@@ -114,8 +114,57 @@ namespace Graphite {
 
 		const std::string_view needle = query.Needle;
 
+		for (std::size_t at = 0; at + needle.size() <= line.size();)
+		{
+			bool same = true;
+
+			for (std::size_t index = 0; index < needle.size(); ++index)
+			{
+				if (!SameChar(line[at + index], needle[index], query.MatchCase))
+				{
+					same = false;
+					break;
+				}
+			}
+
+			if (!same)
+			{
+				++at;
+				continue;
+			}
+
+			const std::size_t to = at + needle.size();
+
+			const bool bounded =
+				!query.WholeWord ||
+				((at == 0 || !IsIdentifierChar(line[at - 1])) &&
+				 (to == line.size() || !IsIdentifierChar(line[to])));
+
+			if (bounded)
+			{
+				matches.push_back(LineMatch{at, to});
+
+				// Past the match, not one character on: overlapping matches are one match to
+				// anyone reading the line.
+				at = to;
+				continue;
+			}
+
+			++at;
+		}
+	}
+
+	void FindInText(const SearchQuery& query, std::string_view text,
+					const std::filesystem::path& file, std::vector<SearchHit>& hits)
+	{
+		if (query.Needle.empty())
+		{
+			return;
+		}
+
 		std::size_t lineStart = 0;
 		std::size_t lineNumber = 0;
+		std::vector<LineMatch> inLine;
 
 		while (lineStart <= text.size())
 		{
@@ -129,43 +178,12 @@ namespace Graphite {
 				line.remove_suffix(1);
 			}
 
-			for (std::size_t at = 0; at + needle.size() <= line.size();)
+			inLine.clear();
+			FindInLine(query, line, inLine);
+
+			for (const LineMatch& match : inLine)
 			{
-				bool same = true;
-
-				for (std::size_t index = 0; index < needle.size(); ++index)
-				{
-					if (!SameChar(line[at + index], needle[index], query.MatchCase))
-					{
-						same = false;
-						break;
-					}
-				}
-
-				if (!same)
-				{
-					++at;
-					continue;
-				}
-
-				const std::size_t to = at + needle.size();
-
-				const bool bounded =
-					!query.WholeWord ||
-					((at == 0 || !IsIdentifierChar(line[at - 1])) &&
-					 (to == line.size() || !IsIdentifierChar(line[to])));
-
-				if (bounded)
-				{
-					hits.push_back(SearchHit{file, lineNumber, std::string(line), at, to});
-
-					// Past the match, not one character on: overlapping matches are one match to
-					// anyone reading the line.
-					at = to;
-					continue;
-				}
-
-				++at;
+				hits.push_back(SearchHit{file, lineNumber, std::string(line), match.From, match.To});
 			}
 
 			if (newline == std::string_view::npos)
