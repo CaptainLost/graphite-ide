@@ -95,7 +95,7 @@ namespace Graphite {
 
 	void DrawStatusBar(const Core::DocumentSet& documents,
 					   const std::filesystem::path& root,
-					   const std::optional<std::string>& transientMessage)
+					   const StatusMessages& messages)
 	{
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const float height = ImGui::GetFrameHeight();
@@ -121,9 +121,13 @@ namespace Graphite {
 			DrawRightAligned(DescribeCaret(item) + "    " + DescribeTextFormat(item));
 		}
 
-		if (transientMessage && !transientMessage->empty())
+		// A running search outranks a transient message: it is the longer-lived of the two, and
+		// a "Saved" toast that happens to land mid-search would otherwise blank out the count.
+		const std::optional<std::string>& centred = messages.Search ? messages.Search : messages.Transient;
+
+		if (centred && !centred->empty())
 		{
-			DrawCentred(*transientMessage, height);
+			DrawCentred(*centred, height);
 		}
 
 		ImGui::End();

@@ -8,6 +8,8 @@
 
 #include "Panels/ExplorerPanel.h"
 
+#include "Panels/SearchPanel.h"
+
 #include "Settings/AppSettings.h"
 
 #include "App/GraphiteMenu.h"
@@ -19,6 +21,7 @@
 #include "Settings/EditorSection.h"
 #include "Settings/KeyBindingsSection.h"
 #include "Settings/SchemeSection.h"
+#include "Settings/SearchSection.h"
 #include "Settings/SettingsPanel.h"
 
 #include "Core/Fs/FileSystem.h"
@@ -76,6 +79,9 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
 
+		m_SearchPanel = static_cast<SearchPanel*>(m_Panels.Add(Core::CreateScope<SearchPanel>(
+			m_Search, m_SearchSettings, m_Workspace, m_Documents)));
+
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
@@ -93,6 +99,8 @@ namespace Graphite {
 		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_Modals));
 		sections.push_back(Core::CreateScope<KeyBindingsSection>(
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
+		sections.push_back(
+			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
 
 		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
 
@@ -105,6 +113,7 @@ namespace Graphite {
 
 		m_EditorSettings.Load();
 		m_ActiveScheme.Load();
+		m_SearchSettings.Load();
 
 		OpenStartupFolder();
 
@@ -139,6 +148,12 @@ namespace Graphite {
 							m_DockSpace.RequestLayoutReset();
 							APP_INFO("Layout restored to the default");
 						}});
+
+		// Bound to nothing by default: there is no established chord for it yet, and a command
+		// with no binding is still reachable through the command palette and the panels menu.
+		m_Commands.Add({.Id = "search.focus",
+						.Label = "Find in Files",
+						.Run = [this] { m_SearchPanel->SetVisible(true); }});
 
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
@@ -197,6 +212,8 @@ namespace Graphite {
 		m_Workspace.Update();
 		m_Panels.OnUpdate(ts);
 
+		m_SolutionLoaded = m_Workspace.LoadedSolution().has_value();
+
 		UpdateFocusReload(ts);
 
 		// Watchers drop events — buffer overflow, or a tool touching many files at once — and
@@ -233,7 +250,9 @@ namespace Graphite {
 
 	void GraphiteLayer::OnImGuiRender()
 	{
-		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), m_DocumentWindows.GetStatusMessage());
+		DrawStatusBar(m_Documents, m_Workspace.GetRoot(),
+					 StatusMessages{m_DocumentWindows.GetStatusMessage(),
+									 m_SearchPanel->GetStatusMessage()});
 
 		m_DockSpace.Begin(m_Layout);
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,

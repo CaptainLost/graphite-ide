@@ -6,6 +6,8 @@
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
 #include "App/TitleBar.h"
+#include "Search/SearchService.h"
+#include "Search/SearchSettings.h"
 #include "Theme/ActiveScheme.h"
 #include "Workspace/Workspace.h"
 
@@ -26,6 +28,8 @@
 #include <vector>
 
 namespace Graphite {
+
+	class SearchPanel;
 
 	class GraphiteLayer final : public Core::Layer
 	{
@@ -113,5 +117,14 @@ namespace Graphite {
 
 		EditorSettings m_EditorSettings;
 		ActiveScheme m_ActiveScheme;
+
+		SearchService m_Search;
+		SearchSettings m_SearchSettings;
+		SearchPanel* m_SearchPanel = nullptr;
+
+		// Read by SearchSection to grey out "projects only" when there is nothing to limit to,
+		// and updated every frame rather than reached for through Workspace: a section knows
+		// nothing about Workspace, by design.
+		bool m_SolutionLoaded = false;
 	};
 }
