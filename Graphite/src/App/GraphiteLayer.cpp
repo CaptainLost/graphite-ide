@@ -58,7 +58,11 @@ namespace Graphite {
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle)
 	{
 		m_Layout.Left = {"files"};
-		m_Layout.Bottom = {"console"};
+
+		// Beside the console rather than floating: a results list is something you read while
+		// looking at the code it points into, which is what the bottom row is for. Without an
+		// entry here a panel has nowhere to land and opens as a window of its own.
+		m_Layout.Bottom = {"console", "search"};
 		m_Layout.Center = {"settings"};
 
 		// Only when the caption is ours to draw: the window is allowed to refuse to hide the

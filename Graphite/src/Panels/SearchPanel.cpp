@@ -19,7 +19,10 @@ namespace Graphite {
 		// visible, which suits the explorer and the console — a window you want on screen from
 		// the first frame. A search panel is not that: it opens with an empty query and nothing
 		// to show, so it started every session taking up space nobody had asked for.
-		: Core::Panel("search", "Search", false), m_Service(service), m_Settings(settings),
+		// The id stays "search" while the title changes: the id is what imgui.ini keys the dock
+		// layout on and what the panel's command is named after, so renaming it would move
+		// everyone's panel back to where it started.
+		: Core::Panel("search", "Find in Files", false), m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents)
 	{
 	}
