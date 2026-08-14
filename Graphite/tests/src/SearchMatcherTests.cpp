@@ -54,15 +54,25 @@ TEST_CASE("FindInText does not report overlapping matches twice")
 	CHECK(hits[0].From == 0);
 }
 
+// Both directions matter: a fold that only lowers one side of the comparison (say, the needle
+// but not the text) would pass a lowercase-needle-only test while still being wrong.
 TEST_CASE("FindInText ignores case unless asked not to")
 {
 	CHECK(Find(Plain("beta"), "BETA").size() == 1);
+	CHECK(Find(Plain("BETA"), "beta").size() == 1);
+	CHECK(Find(Plain("BeTa"), "bEtA").size() == 1);
 
 	Graphite::SearchQuery exact = Plain("beta");
 	exact.MatchCase = true;
 
 	CHECK(Find(exact, "BETA").empty());
 	CHECK(Find(exact, "beta").size() == 1);
+
+	Graphite::SearchQuery exactUpper = Plain("BETA");
+	exactUpper.MatchCase = true;
+
+	CHECK(Find(exactUpper, "beta").empty());
+	CHECK(Find(exactUpper, "BETA").size() == 1);
 }
 
 TEST_CASE("Whole word rejects a match glued to an identifier character")
