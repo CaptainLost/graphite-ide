@@ -54,6 +54,11 @@ namespace {
 		std::vector<Graphite::Token> tokens;
 		return lexer.LexLine(line, entry, tokens);
 	}
+
+	// Which construct a line carries over is the lexer's own business — LineState says only
+	// whether there is one. So these tests assert that something carried, and prove what it was
+	// by the shape of the line that resumes it, which is the behaviour anyone actually depends on.
+	bool CarriedOver(const Graphite::LineState& state) { return state != Graphite::LineState{}; }
 }
 
 TEST_CASE("CppLexer separates keywords from identifiers")
@@ -141,16 +146,18 @@ TEST_CASE("CppLexer closes a block comment on the same line")
 TEST_CASE("CppLexer carries an unclosed block comment to the next line")
 {
 	CHECK(Shape("a /* open") == "i mmmmmmm");
-	CHECK(Exit("a /* open").Kind == Graphite::LineState::Continuation::BlockComment);
+	CHECK(CarriedOver(Exit("a /* open")));
+
+	// What it carried: the line after it is comment all the way across.
+	CHECK(Shape("still inside", Exit("a /* open")) == "mmmmmmmmmmmm");
 }
 
 TEST_CASE("CppLexer resumes a block comment from the entry state")
 {
-	const Graphite::LineState inside{Graphite::LineState::Continuation::BlockComment, {}};
+	const Graphite::LineState inside = Exit("a /* open");
 
 	CHECK(Shape("still inside", inside) == "mmmmmmmmmmmm");
-	CHECK(Exit("still inside", inside).Kind ==
-		  Graphite::LineState::Continuation::BlockComment);
+	CHECK(CarriedOver(Exit("still inside", inside)));
 
 	CHECK(Shape("done */ x", inside) == "mmmmmmm i");
 	CHECK(Exit("done */ x", inside) == Graphite::LineState{});
@@ -166,9 +173,9 @@ TEST_CASE("CppLexer does not nest block comments")
 // gets accidentally commented out and worth colouring correctly.
 TEST_CASE("CppLexer continues a line comment past a trailing backslash")
 {
-	CHECK(Exit("// note \\").Kind == Graphite::LineState::Continuation::LineComment);
+	CHECK(CarriedOver(Exit("// note \\")));
 
-	const Graphite::LineState inside{Graphite::LineState::Continuation::LineComment, {}};
+	const Graphite::LineState inside = Exit("// note \\");
 	CHECK(Shape("still comment", inside) == "mmmmmmmmmmmmm");
 	CHECK(Exit("still comment", inside) == Graphite::LineState{});
 }
@@ -199,16 +206,16 @@ TEST_CASE("CppLexer marks an unterminated literal invalid rather than eating the
 
 TEST_CASE("CppLexer continues a string past a trailing backslash")
 {
-	CHECK(Exit("\"open \\").Kind == Graphite::LineState::Continuation::String);
+	CHECK(CarriedOver(Exit("\"open \\")));
 }
 
-// The resume side of the case above: three ways the following line can go once entered in
-// Continuation::String, none of which the exit-state check alone exercises.
+// The resume side of the case above: three ways the following line can go once entered inside an
+// open string literal, none of which the exit-state check alone exercises.
 TEST_CASE("CppLexer resumes a string literal from the entry state")
 {
 	const Graphite::LineState after = Exit("\"open \\");
 
-	CHECK(after.Kind == Graphite::LineState::Continuation::String);
+	CHECK(CarriedOver(after));
 
 	// Closes: the closing quote ends the literal on this line and the state falls back to the
 	// default, same as an ordinary string would.
@@ -218,7 +225,7 @@ TEST_CASE("CppLexer resumes a string literal from the entry state")
 	// Continues: another trailing backslash keeps the literal open into the line after this one
 	// too — resuming does not consume the "carried over" property of the state.
 	CHECK(Shape("more\\", after) == "sssss");
-	CHECK(Exit("more\\", after).Kind == Graphite::LineState::Continuation::String);
+	CHECK(CarriedOver(Exit("more\\", after)));
 
 	// Runs out: no closing quote and no trailing backslash is a half-typed line, coloured
 	// invalid rather than left open indefinitely.
@@ -243,7 +250,7 @@ TEST_CASE("CppLexer carries a raw string and its delimiter to the next line")
 {
 	const Graphite::LineState after = Exit("R\"json(open");
 
-	CHECK(after.Kind == Graphite::LineState::Continuation::RawString);
+	CHECK(CarriedOver(after));
 	CHECK(after.Delimiter == "json");
 
 	CHECK(Shape("still )notjson\" raw", after) == "sssssssssssssssssss");
@@ -269,7 +276,7 @@ TEST_CASE("CppLexer caps a raw string delimiter at sixteen characters")
 {
 	const Graphite::LineState after = Exit("R\"0123456789abcdef(open");
 
-	CHECK(after.Kind == Graphite::LineState::Continuation::RawString);
+	CHECK(CarriedOver(after));
 	CHECK(after.Delimiter == "0123456789abcdef");
 
 	// Seventeen is not a delimiter, so the literal is invalid rather than left open.

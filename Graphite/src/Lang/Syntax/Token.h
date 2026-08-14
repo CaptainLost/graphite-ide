@@ -24,25 +24,23 @@ namespace Graphite {
 	// What a line hands the line below it. A lexer that needs no context between lines returns
 	// a default-constructed one. Comparable because a value SyntaxCache stores one of per line
 	// has to be, not because anything compares two of these to stop a re-lex early today.
+	//
+	// Deliberately says nothing about what a state means. Cross-line constructs are each
+	// language's own — C++ resumes a raw string on a delimiter, C# resumes one on a count of
+	// quotes and carries a brace depth through an interpolated string — so an enum here naming
+	// one language's constructs would have to be edited by every language added after it, which
+	// is the one thing a shared vocabulary exists to prevent. Storing and comparing is all
+	// SyntaxCache does with these, and all the contract needs to be.
 	struct LineState
 	{
-		enum class Continuation : std::uint8_t
-		{
-			None,
-			BlockComment,
-			// LineComment, String and Character are reached only through a backslash at the end
-			// of the line. RawString is not — a raw string runs to its delimiter and crosses
-			// line boundaries on its own.
-			LineComment,
-			String,
-			Character,
-			RawString
-		};
+		// Zero is "no continuation" in every language, so a default-constructed state is the
+		// start of a file whichever lexer reads it. Every other value belongs to the lexer that
+		// produced it and means nothing to any other.
+		std::uint32_t Mode = 0;
 
-		Continuation Kind = Continuation::None;
-
-		// Only meaningful for RawString: R"delim(...)delim" ends on this exact delimiter, and
-		// the standard allows up to 16 characters in it.
+		// A resume condition too wide for Mode. C++ uses it for a raw string's delimiter, which
+		// the standard allows 16 characters in; a lexer that needs no such condition leaves it
+		// empty.
 		std::string Delimiter;
 
 		friend bool operator==(const LineState&, const LineState&) = default;

@@ -7,6 +7,34 @@ namespace Graphite {
 
 	namespace {
 
+		// C++'s cross-line constructs, carried in LineState::Mode. They live here rather than in
+		// the shared header because no other lexer's Mode means any of this — a C# lexer's 1 is
+		// its own business.
+		enum class Continuation : std::uint32_t
+		{
+			None,
+			BlockComment,
+			// LineComment, String and Character are reached only through a backslash at the end
+			// of the line. RawString is not — a raw string runs to its delimiter and crosses
+			// line boundaries on its own.
+			LineComment,
+			String,
+			Character,
+			RawString
+		};
+
+		// The two casts live in one place each, so the rest of the file reads in C++'s vocabulary
+		// and never in the shared type's.
+		LineState StateOf(Continuation kind, std::string delimiter = {})
+		{
+			return LineState{static_cast<std::uint32_t>(kind), std::move(delimiter)};
+		}
+
+		Continuation ContinuationOf(const LineState& state)
+		{
+			return static_cast<Continuation>(state.Mode);
+		}
+
 		// Sorted, so the lookup is a binary search. Nothing checks the sortedness at run time —
 		// a keyword out of order goes quietly unrecognised — so keep it sorted when adding one.
 		constexpr std::array kKeywords{
@@ -237,7 +265,9 @@ namespace Graphite {
 		LineState state = entry;
 		std::size_t at = 0;
 
-		if (state.Kind == LineState::Continuation::BlockComment)
+		const Continuation carried = ContinuationOf(entry);
+
+		if (carried == Continuation::BlockComment)
 		{
 			if (!ScanBlockComment(line, at, 0, out))
 			{
@@ -246,13 +276,13 @@ namespace Graphite {
 
 			state = LineState{};
 		}
-		else if (state.Kind == LineState::Continuation::LineComment)
+		else if (carried == Continuation::LineComment)
 		{
 			Emit(out, TokenKind::Comment, 0, line.size());
 
 			return EndsWithContinuation(line) ? state : LineState{};
 		}
-		else if (state.Kind == LineState::Continuation::RawString)
+		else if (carried == Continuation::RawString)
 		{
 			const bool closed = ScanRawBody(line, at, state.Delimiter);
 			Emit(out, TokenKind::String, 0, at);
@@ -264,10 +294,9 @@ namespace Graphite {
 
 			state = LineState{};
 		}
-		else if (state.Kind == LineState::Continuation::String ||
-				 state.Kind == LineState::Continuation::Character)
+		else if (carried == Continuation::String || carried == Continuation::Character)
 		{
-			const char quote = state.Kind == LineState::Continuation::String ? '"' : '\'';
+			const char quote = carried == Continuation::String ? '"' : '\'';
 			const TokenKind kind = quote == '"' ? TokenKind::String : TokenKind::Character;
 			const QuoteEnd end = ScanQuoted(line, at, quote);
 
@@ -295,7 +324,7 @@ namespace Graphite {
 			{
 				Emit(out, TokenKind::Comment, at, line.size());
 
-				return EndsWithContinuation(line) ? LineState{LineState::Continuation::LineComment, {}}
+				return EndsWithContinuation(line) ? StateOf(Continuation::LineComment)
 												  : LineState{};
 			}
 
@@ -306,7 +335,7 @@ namespace Graphite {
 
 				if (!ScanBlockComment(line, at, from, out))
 				{
-					return LineState{LineState::Continuation::BlockComment, {}};
+					return StateOf(Continuation::BlockComment);
 				}
 
 				continue;
@@ -315,9 +344,9 @@ namespace Graphite {
 			// out.empty() is the real guard: it is true only when no token has yet been emitted
 			// on this line, so after the whitespace skip above it means the # is the first thing
 			// on the line rather than a stringify operator inside a macro body. The state check
-			// is belt-and-braces — this loop is only ever reached with state.Kind == None, since
+			// is belt-and-braces — this loop is only ever reached with the state reset, since
 			// every other entry state either returns before the loop or resets state first.
-			if (c == '#' && out.empty() && state.Kind == LineState::Continuation::None)
+			if (c == '#' && out.empty() && state == LineState{})
 			{
 				const std::size_t from = at;
 				++at;
@@ -389,7 +418,7 @@ namespace Graphite {
 						if (!ScanRawBody(line, at, delimiter))
 						{
 							Emit(out, TokenKind::String, from, line.size());
-							return LineState{LineState::Continuation::RawString, delimiter};
+							return StateOf(Continuation::RawString, delimiter);
 						}
 
 						Emit(out, TokenKind::String, from, at);
@@ -404,9 +433,8 @@ namespace Graphite {
 
 					if (end == QuoteEnd::Continued)
 					{
-						return LineState{quote == '"' ? LineState::Continuation::String
-													  : LineState::Continuation::Character,
-										 {}};
+						return StateOf(quote == '"' ? Continuation::String
+													: Continuation::Character);
 					}
 
 					continue;
@@ -438,9 +466,7 @@ namespace Graphite {
 
 				if (end == QuoteEnd::Continued)
 				{
-					return LineState{c == '"' ? LineState::Continuation::String
-											  : LineState::Continuation::Character,
-									 {}};
+					return StateOf(c == '"' ? Continuation::String : Continuation::Character);
 				}
 
 				continue;
