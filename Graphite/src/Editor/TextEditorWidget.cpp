@@ -55,6 +55,10 @@ namespace Graphite {
 		// frame tall, which is exactly what the widgets inside it need and nothing more.
 		constexpr float kFindBarPaddingX = 6.0f;
 
+		// What the bar keeps clear of the editor's top and right edges, and of the scrollbar when
+		// one is showing. A floating box wedged into the corner reads as a rendering mistake.
+		constexpr float kFindBarMargin = 6.0f;
+
 		// Handed to DrawRowText for a document whose language has no lexer, so the row loop
 		// never has to branch on whether SyntaxCache exists — an empty token list already
 		// draws the row in one colour. Function-local rather than a file scope object, per ADR
@@ -939,42 +943,69 @@ namespace Graphite {
 			return ImGui::CalcTextSize("0").x * 18.0f;
 		}
 
-		// Square and frameless, so the five controls read as one row of icons rather than as five
-		// boxed buttons crowding a text field. The frame comes back on hover, which is where a
-		// button needs to say it is one.
-		bool DrawFindButton(const char* icon, const char* tooltip)
+		// Smaller than a row, so the buttons sit inside the bar with air around them rather than
+		// filling it edge to edge.
+		float FindButtonSize()
 		{
-			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-
-			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
-
-			ImGui::PopStyleColor();
-
-			ImGui::SetItemTooltip("%s", tooltip);
-
-			return clicked;
+			return std::floor(ImGui::GetFontSize() + 4.0f);
 		}
 
-		// The icon carries no meaning to someone meeting it for the first time, so the tooltip is
-		// not decoration here — it is the only place the button says what it does.
+		// Drawn rather than submitted as an ImGui::Button, which is what put the glyphs off centre:
+		// Button centres its label inside the frame LESS FramePadding, and on a square the width of
+		// a row the horizontal padding leaves an inner box narrower than the glyph — so the text no
+		// longer fits, and RenderTextClipped falls back to aligning it left.
 		//
-		// An engaged toggle keeps its frame and takes the accent, rather than only darkening:
-		// a darker fill alone is what ImGui uses for a button being pressed right now, so "on"
-		// and "under the mouse" would look the same.
-		bool DrawFindToggle(const char* icon, const char* tooltip, bool& value)
+		// The same shape TitleBar::CaptionButton already uses for its window buttons.
+		bool FindIconButton(const char* id, const char* glyph, bool engaged, const char* tooltip)
 		{
-			ImGui::PushStyleColor(ImGuiCol_Button,
-								  value ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
-										: ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+			const float size = FindButtonSize();
 
-			if (value)
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
+			// Centred in the row the field sets the height of.
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() +
+								 std::floor((ImGui::GetFrameHeight() - size) * 0.5f));
 
-			const bool clicked = ImGui::Button(icon, ImVec2(ImGui::GetFrameHeight(), 0.0f));
+			const ImVec2 min = ImGui::GetCursorScreenPos();
+			const ImVec2 max(min.x + size, min.y + size);
 
-			ImGui::PopStyleColor(value ? 2 : 1);
+			const bool pressed = ImGui::InvisibleButton(id, ImVec2(size, size));
+			const bool held = ImGui::IsItemActive();
+			const bool hovered = ImGui::IsItemHovered();
 
+			ImDrawList* draw = ImGui::GetWindowDrawList();
+
+			// No fill at rest: five boxed buttons beside a text field read as a form. An engaged
+			// toggle keeps one, because "on" has to be visible without hovering it.
+			if (held || hovered || engaged)
+			{
+				const ImU32 fill = held	   ? ImGui::GetColorU32(ImGuiCol_ButtonActive)
+								   : hovered ? ImGui::GetColorU32(ImGuiCol_ButtonHovered)
+											 : ImGui::GetColorU32(ImGuiCol_Button);
+
+				draw->AddRectFilled(min, max, fill, ImGui::GetStyle().FrameRounding);
+			}
+
+			// Floored, not rounded: CalcTextSize rounds up, so a glyph centred onto a half pixel
+			// is resampled and reads blurrier than the text beside it.
+			const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
+			const ImVec2 at(std::floor(min.x + (size - glyphSize.x) * 0.5f),
+							std::floor(min.y + (size - glyphSize.y) * 0.5f));
+
+			// The accent is the second signal that a toggle is on: the darker fill alone is what
+			// ImGui uses for a button being pressed right now, so on and under-the-mouse would
+			// otherwise look the same.
+			draw->AddText(at, ImGui::GetColorU32(engaged ? ImGuiCol_CheckMark : ImGuiCol_Text),
+						  glyph);
+
+			// The icon says nothing to someone meeting it for the first time, so this is not
+			// decoration — it is the only place the button explains itself.
 			ImGui::SetItemTooltip("%s", tooltip);
+
+			return pressed;
+		}
+
+		bool DrawFindToggle(const char* id, const char* icon, const char* tooltip, bool& value)
+		{
+			const bool clicked = FindIconButton(id, icon, value, tooltip);
 
 			if (clicked)
 				value = !value;
@@ -1104,7 +1135,7 @@ namespace Graphite {
 			// rather than a guess — which is what stops the last button being clipped by the
 			// bar's own edge.
 			const ImGuiStyle& style = ImGui::GetStyle();
-			const float square = ImGui::GetFrameHeight();
+			const float square = FindButtonSize();
 			const float counterWidth = MatchCounterWidth(item.Find);
 
 			float barWidth = kFindBarPaddingX * 2.0f + FindFieldWidth() +
@@ -1124,7 +1155,8 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
 
 			const bool visible =
-				ImGui::BeginChild("##FindBar", ImVec2(barWidth, square), ImGuiChildFlags_Borders,
+				ImGui::BeginChild("##FindBar", ImVec2(barWidth, ImGui::GetFrameHeight()),
+								  ImGuiChildFlags_Borders,
 								  ImGuiWindowFlags_NoScrollWithMouse);
 
 			ImGui::PopStyleColor();
@@ -1187,28 +1219,32 @@ namespace Graphite {
 			DrawMatchCounter(item.Find, counterWidth);
 			ImGui::SameLine();
 
-			const bool matchCaseToggled =
-				DrawFindToggle(ICON_MDI_FORMAT_LETTER_CASE, "Match case", item.Find.MatchCase);
+			const bool matchCaseToggled = DrawFindToggle("##findCase", ICON_MDI_FORMAT_LETTER_CASE,
+														 "Match case", item.Find.MatchCase);
 
 			ImGui::SameLine();
 
 			const bool wholeWordToggled =
-				DrawFindToggle(ICON_MDI_FORMAT_LETTER_MATCHES, "Whole word", item.Find.WholeWord);
+				DrawFindToggle("##findWord", ICON_MDI_FORMAT_LETTER_MATCHES, "Whole word",
+							   item.Find.WholeWord);
 
 			if (matchCaseToggled || wholeWordToggled)
 				RefreshFindMatches(item, buffer);
 
 			ImGui::SameLine();
 
-			const bool previousClicked = DrawFindButton(ICON_MDI_CHEVRON_UP, "Previous (Shift+Enter)");
+			const bool previousClicked =
+				FindIconButton("##findPrev", ICON_MDI_CHEVRON_UP, false, "Previous (Shift+Enter)");
 
 			ImGui::SameLine();
 
-			const bool nextClicked = DrawFindButton(ICON_MDI_CHEVRON_DOWN, "Next (Enter)");
+			const bool nextClicked =
+				FindIconButton("##findNext", ICON_MDI_CHEVRON_DOWN, false, "Next (Enter)");
 
 			ImGui::SameLine();
 
-			const bool closeClicked = DrawFindButton(ICON_MDI_CLOSE, "Close (Escape)");
+			const bool closeClicked =
+				FindIconButton("##findClose", ICON_MDI_CLOSE, false, "Close (Escape)");
 
 			ImGui::EndChild();
 			ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
@@ -1920,11 +1956,12 @@ namespace Graphite {
 
 				// The top-right, less whatever the vertical scrollbar is taking, so the bar hangs
 				// beside it rather than over it.
-				const float usable =
-					ImGui::GetWindowWidth() - ImGui::GetCurrentWindow()->ScrollbarSizes.x;
+				const float usable = ImGui::GetWindowWidth() -
+									 ImGui::GetCurrentWindow()->ScrollbarSizes.x - kFindBarMargin;
 
-				frame.Corner = ImVec2(ImGui::GetWindowPos().x + usable, ImGui::GetWindowPos().y);
-				frame.Width = usable;
+				frame.Corner = ImVec2(ImGui::GetWindowPos().x + usable,
+									  ImGui::GetWindowPos().y + kFindBarMargin);
+				frame.Width = usable - kFindBarMargin;
 				frame.DocumentFocused = documentHoldsFocus;
 
 				DrawFindBar(item, buffer, frame);
