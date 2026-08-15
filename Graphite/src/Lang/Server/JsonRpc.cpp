@@ -56,10 +56,43 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// Decide on "id" first: a reply carries an id but no method, and a wrongly-ordered check
-		// here is how a $/progress notification would get mistaken for an answer, or vice versa.
+		// Decide on "method" first, not "id": a reply carries an id but no method, a notification
+		// carries a method but no id, and a server-initiated *request* (clangd sends
+		// workspace/configuration and window/workDoneProgress/create early in a session) carries
+		// both. Deciding on id first reads that third shape as a reply, finds the id was never
+		// one we issued, and drops it — leaving the server waiting forever for an answer it
+		// believes we received.
+		if (message.contains("method"))
+		{
+			if (!message.at("method").is_string())
+			{
+				// A conformant server never sends a non-string method, but nothing here throws.
+				return std::nullopt;
+			}
+
+			IncomingMessage incoming;
+			incoming.Method = message.at("method").get<std::string>();
+			incoming.Payload = message.value("params", nlohmann::json::object());
+
+			if (message.contains("id") && message.at("id").is_number_integer())
+			{
+				// A server-initiated request: remember the id so a later task can answer it.
+				incoming.RespondTo = message.at("id").get<RequestId>();
+			}
+
+			return incoming;
+		}
+
 		if (message.contains("id"))
 		{
+			if (!message.at("id").is_number_integer())
+			{
+				// JSON-RPC allows a string id; we only ever issue integers, so a string can never
+				// be one of ours. Treat it the same as an id we never asked about, rather than
+				// throwing trying to coerce it.
+				return std::nullopt;
+			}
+
 			const RequestId id = message.at("id").get<RequestId>();
 			if (!IsOutstanding(id))
 			{
@@ -76,14 +109,6 @@ namespace Graphite {
 			reply.Payload = reply.IsError ? message.value("error", nlohmann::json::object())
 										   : message.value("result", nlohmann::json::object());
 			return reply;
-		}
-
-		if (message.contains("method"))
-		{
-			IncomingMessage notification;
-			notification.Method = message.at("method").get<std::string>();
-			notification.Payload = message.value("params", nlohmann::json::object());
-			return notification;
 		}
 
 		return std::nullopt;

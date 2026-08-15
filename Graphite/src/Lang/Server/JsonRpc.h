@@ -13,12 +13,17 @@ namespace Graphite {
 
 	using RequestId = std::int64_t;
 
-	// What Receive hands back once it has decided what a body is: a reply to a request we made,
-	// or a method call/notification the server started on its own. Never both — see JsonRpc::Receive.
+	// What Receive hands back once it has decided what a body is. There are three shapes,
+	// distinguished by which of "method" and "id" the body carried:
+	//   - method, no id   -> a notification: Method set, ReplyTo/RespondTo both empty.
+	//   - no method, id   -> a reply to something we asked: ReplyTo set, Method empty.
+	//   - method and id   -> a server-initiated request (e.g. clangd's workspace/configuration):
+	//                        Method set, RespondTo set to the id a later reply must carry.
 	struct IncomingMessage
 	{
 		std::optional<RequestId> ReplyTo;   // set when this is a reply we asked for
-		std::string Method;                 // set when this is a server-initiated message
+		std::optional<RequestId> RespondTo; // set when this is a server-initiated request we must answer
+		std::string Method;                 // set when this is a server-initiated request or notification
 		nlohmann::json Payload;             // "result" for a reply, "params" otherwise
 		bool IsError = false;
 	};

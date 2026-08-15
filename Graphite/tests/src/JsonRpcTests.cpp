@@ -79,3 +79,22 @@ TEST_CASE("JsonRpc ignores a body that is not JSON rather than throwing")
 
 	CHECK_FALSE(rpc.Receive("not json at all").has_value());
 }
+
+TEST_CASE("JsonRpc ignores a reply whose id is a string rather than throwing")
+{
+	Graphite::JsonRpc rpc;
+
+	CHECK_FALSE(rpc.Receive(R"({"id":"not-a-number","result":1})").has_value());
+}
+
+TEST_CASE("JsonRpc reads a server-initiated request as one, not as a reply")
+{
+	Graphite::JsonRpc rpc;
+
+	const auto message = rpc.Receive(R"({"id":7,"method":"workspace/configuration","params":{}})");
+
+	REQUIRE(message.has_value());
+	CHECK(message->Method == "workspace/configuration");
+	CHECK(message->RespondTo == 7);
+	CHECK_FALSE(message->ReplyTo.has_value());
+}
