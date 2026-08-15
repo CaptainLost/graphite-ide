@@ -94,7 +94,13 @@ namespace Core {
 		startupInfo.dwFlags = STARTF_USESTDHANDLES;
 		startupInfo.hStdInput = childStdinRead;
 		startupInfo.hStdOutput = childStdoutWrite;
-		startupInfo.hStdError = childStdoutWrite;
+
+		// This class exists to carry a framed protocol on stdout: a later caller parses that
+		// stream by a length prefix, and anything else written into the same pipe is
+		// indistinguishable from protocol content. Redirecting stderr here too would interleave
+		// the child's log lines into message bodies, so leave it on the parent's own stderr,
+		// where diagnostics already go.
+		startupInfo.hStdError = ::GetStdHandle(STD_ERROR_HANDLE);
 
 		PROCESS_INFORMATION processInfo{};
 
