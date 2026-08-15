@@ -1,9 +1,12 @@
 #pragma once
 
 #include "Core/Text/TextBuffer.h"
+#include "Lang/Syntax/SyntaxCache.h"
+#include "Lang/Syntax/Token.h"
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace Core {
 
@@ -55,6 +58,21 @@ namespace Graphite {
 		// can change that set, and is re-resolved by every Show.
 		const Core::TextBuffer* GetBuffer() const { return m_Buffer; }
 
+		// This preview's own colours, not the editor's. Borrowing the editor's would mean
+		// handing this class a reference to DocumentWindows — a panel reaching into another
+		// panel's internals to save one lexing pass.
+		//
+		// Empty for a file with no lexer, for a line past the end, and when nothing is showing.
+		//
+		// Not const: lexing fills the cache. A line's colours depend on every line above it, so
+		// asking for line 400 lexes lines 0 to 400 — once per file, which is what the cache is
+		// for.
+		const std::vector<Token>& TokensOf(std::size_t line);
+
+		// The editor's tab width, so the preview breaks columns where the editor would. Resets
+		// the cache when it changes, because the lexer is fed tab-expanded text.
+		void SetTabWidth(std::size_t width);
+
 	private:
 		void LoadFromDisk();
 
@@ -67,5 +85,7 @@ namespace Graphite {
 		Core::TextBuffer m_Loaded;
 
 		const Core::TextBuffer* m_Buffer = nullptr;
+
+		SyntaxCache m_Syntax;
 	};
 }

@@ -3,11 +3,13 @@
 #include "Search/PreviewContent.h"
 
 #include "Core/Text/DocumentSet.h"
+#include "Lang/Syntax/Token.h"
 
 #include "TempDirectory.h"
 
 #include <fstream>
 #include <string>
+#include <vector>
 
 using namespace Graphite;
 
@@ -129,6 +131,93 @@ TEST_CASE("A file closed while its preview is showing falls back to disk")
 
 	REQUIRE(content.GetState() == PreviewState::Ready);
 	CHECK(content.GetBuffer()->Materialize() == "on disk\n");
+}
+
+TEST_CASE("A previewed file is coloured by the lexer for its extension")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "int x;\n");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(file, documents);
+
+	const std::vector<Token>& tokens = content.TokensOf(0);
+
+	REQUIRE_FALSE(tokens.empty());
+	CHECK(tokens.front().Kind == TokenKind::Keyword);
+}
+
+TEST_CASE("A file with no lexer is left uncoloured rather than coloured wrongly")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("notes.unknownext", "int x;\n");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(file, documents);
+
+	REQUIRE(content.GetState() == PreviewState::Ready);
+	CHECK(content.TokensOf(0).empty());
+}
+
+TEST_CASE("Changing the previewed path resets the colours with it")
+{
+	TempDirectory temp;
+
+	// A file whose first line opens a block comment, so a cache carried across would colour
+	// the next file's first line as comment text.
+	const std::filesystem::path commented = temp.MakeFile("first.cpp", "/* open\nstill\n");
+	const std::filesystem::path plain = temp.MakeFile("second.cpp", "int x;\n");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(commented, documents);
+
+	REQUIRE_FALSE(content.TokensOf(0).empty());
+	REQUIRE(content.TokensOf(0).front().Kind == TokenKind::Comment);
+
+	// Line 1 of the first file is inside the comment; asking for it is what fills the cache's
+	// entry states past line 0, which is exactly what must not survive the switch.
+	REQUIRE_FALSE(content.TokensOf(1).empty());
+
+	content.Show(plain, documents);
+
+	const std::vector<Token>& tokens = content.TokensOf(0);
+
+	REQUIRE_FALSE(tokens.empty());
+	CHECK(tokens.front().Kind == TokenKind::Keyword);
+}
+
+TEST_CASE("Colours follow an edit to the open document being previewed")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "int x;\n");
+
+	Core::DocumentSet documents;
+
+	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+
+	const auto index = documents.Find(file);
+	REQUIRE(index.has_value());
+
+	Core::OpenItem& item = documents.At(*index);
+	REQUIRE(item.Document.has_value());
+
+	PreviewContent content;
+	content.Show(file, documents);
+
+	REQUIRE(content.TokensOf(0).front().Kind == TokenKind::Keyword);
+
+	// Turns the line into a comment. SyntaxCache notices the buffer's revision moved without
+	// an Invalidate and re-lexes, which is the behaviour this pins.
+	item.Document->GetBuffer().Insert(0, "// ");
+	content.Show(file, documents);
+
+	CHECK(content.TokensOf(0).front().Kind == TokenKind::Comment);
 }
 
 TEST_CASE("Clear forgets the file")

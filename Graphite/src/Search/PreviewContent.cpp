@@ -3,6 +3,7 @@
 #include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Lang/Registry/LanguageRegistry.h"
 
 #include <fstream>
 #include <iterator>
@@ -38,6 +39,12 @@ namespace Graphite {
 			m_Buffer = nullptr;
 			m_Message.clear();
 			m_State = PreviewState::Empty;
+
+			// One file's colours at a time. The cache's entry states belong to the file that
+			// was showing — line 40 of the next file starts in whatever state its own line 39
+			// left, not in the one carried over from a block comment in the last file.
+			m_Syntax.Reset();
+			m_Syntax.SetLexer(LexerFor(LanguageOfPath(m_Path)));
 		}
 
 		// Re-resolved on every call rather than remembered: the set reallocates as tabs open
@@ -73,6 +80,31 @@ namespace Graphite {
 		m_Buffer = nullptr;
 		m_Message.clear();
 		m_State = PreviewState::Empty;
+
+		m_Syntax.Reset();
+		m_Syntax.SetLexer(nullptr);
+	}
+
+	const std::vector<Token>& PreviewContent::TokensOf(std::size_t line)
+	{
+		// Function-local rather than a member: a caller holding this reference past the next
+		// call is holding one into the cache either way, and a shared empty vector cannot be
+		// mistaken for one file's tokens.
+		static const std::vector<Token> none;
+
+		if (m_Buffer == nullptr)
+		{
+			return none;
+		}
+
+		return m_Syntax.TokensOf(*m_Buffer, line);
+	}
+
+	void PreviewContent::SetTabWidth(std::size_t width)
+	{
+		// SyntaxCache::SetTabWidth already ignores a width it is holding, so this costs nothing
+		// to call every frame.
+		m_Syntax.SetTabWidth(width);
 	}
 
 	void PreviewContent::LoadFromDisk()
