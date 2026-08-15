@@ -2,9 +2,12 @@
 
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/Panel.h"
+#include "Editor/EditorSettings.h"
 #include "Search/HitGroups.h"
+#include "Search/PreviewContent.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
+#include "Theme/ActiveScheme.h"
 #include "Workspace/Workspace.h"
 
 #include <array>
@@ -20,7 +23,8 @@ namespace Graphite {
 	{
 	public:
 		SearchPanel(SearchService& service, const SearchSettings& settings, Workspace& workspace,
-					Core::DocumentSet& documents);
+					Core::DocumentSet& documents, const ActiveScheme& scheme,
+					const EditorSettings& editor);
 
 		// Drains every frame regardless of visibility — PanelManager::OnUpdate runs for every
 		// panel, PanelManager::OnImGuiRender does not (a hidden panel, or one behind another tab
@@ -46,6 +50,7 @@ namespace Graphite {
 		void RenderQuery();
 		void RenderSummary();
 		void RenderResults();
+		void RenderPreview();
 
 		void RunSearch();
 		void OpenAndSelect(const SearchHit& hit);
@@ -76,5 +81,24 @@ namespace Graphite {
 		HitGroups m_Groups;
 
 		SearchProgress m_Progress;
+
+		const ActiveScheme& m_Scheme;
+
+		// The preview draws in the editor's font at the editor's tab width, so a previewed file
+		// reads exactly as it does in a tab.
+		const EditorSettings& m_Editor;
+
+		// Which hit the preview is showing. Keyed on the group's id — the file's full path —
+		// and the hit's index within that group, not on a pointer: hits are appended to groups
+		// as a search runs, and the vector holding them reallocates.
+		struct Selection
+		{
+			std::string Group;
+			std::size_t Hit = 0;
+		};
+
+		std::optional<Selection> m_Selected;
+
+		PreviewContent m_Preview;
 	};
 }

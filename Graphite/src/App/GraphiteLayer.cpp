@@ -85,7 +85,8 @@ namespace Graphite {
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
 
 		m_SearchPanel = static_cast<SearchPanel*>(m_Panels.Add(Core::CreateScope<SearchPanel>(
-			m_Search, m_SearchSettings, m_Workspace, m_Documents)));
+			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
+			m_EditorSettings)));
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);

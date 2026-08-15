@@ -111,6 +111,13 @@ namespace Graphite {
 		// nothing about Workspace, by design.
 		bool m_SolutionLoaded = false;
 
+		// Declared before m_Panels for the same reason as m_Search: SearchPanel holds a
+		// reference to each — it previews a file in the editor's font, at the editor's tab
+		// width, in the editor's colours — and a member declared after m_Panels would be
+		// destroyed while the panel still held it.
+		EditorSettings m_EditorSettings;
+		ActiveScheme m_ActiveScheme;
+
 		static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 
 		ModalQuestion<ClosePurpose> m_CloseQuestion;
@@ -126,9 +133,6 @@ namespace Graphite {
 		Core::MenuBar m_MenuBar;
 
 		std::vector<Core::MenuItem> m_MenuTree;
-
-		EditorSettings m_EditorSettings;
-		ActiveScheme m_ActiveScheme;
 
 		SearchPanel* m_SearchPanel = nullptr;
 	};

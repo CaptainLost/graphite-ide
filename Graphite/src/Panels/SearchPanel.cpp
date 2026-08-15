@@ -1,5 +1,6 @@
 #include "Panels/SearchPanel.h"
 
+#include "Panels/SearchPreview.h"
 #include "Search/FileEnumerator.h"
 #include "Search/HitDisplay.h"
 
@@ -14,7 +15,8 @@
 namespace Graphite {
 
 	SearchPanel::SearchPanel(SearchService& service, const SearchSettings& settings,
-							 Workspace& workspace, Core::DocumentSet& documents)
+							 Workspace& workspace, Core::DocumentSet& documents,
+							 const ActiveScheme& scheme, const EditorSettings& editor)
 		// Hidden until asked for, like the settings panel. Panel's third parameter defaults to
 		// visible, which suits the explorer and the console — a window you want on screen from
 		// the first frame. A search panel is not that: it opens with an empty query and nothing
@@ -23,7 +25,7 @@ namespace Graphite {
 		// layout on and what the panel's command is named after, so renaming it would move
 		// everyone's panel back to where it started.
 		: Core::Panel("search", "Find in Files", false), m_Service(service), m_Settings(settings),
-		  m_Workspace(workspace), m_Documents(documents)
+		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor)
 	{
 	}
 
@@ -51,7 +53,29 @@ namespace Graphite {
 		ImGui::Separator();
 		RenderSummary();
 		ImGui::Separator();
-		RenderResults();
+
+		// A fixed ratio rather than a splitter: the panel is dockable and resizes, so a ratio
+		// follows it, and an adjustable divider is a control to maintain that almost nobody
+		// moves. The settings panel made the same call.
+		const float resultsWidth = ImGui::GetContentRegionAvail().x * 0.45f;
+
+		if (ImGui::BeginChild("##searchResults", ImVec2(resultsWidth, 0.0f), ImGuiChildFlags_None,
+							  ImGuiWindowFlags_HorizontalScrollbar))
+		{
+			RenderResults();
+		}
+
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		if (ImGui::BeginChild("##searchPreview", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders,
+							  ImGuiWindowFlags_HorizontalScrollbar))
+		{
+			RenderPreview();
+		}
+
+		ImGui::EndChild();
 	}
 
 	SearchStart SearchPanel::BuildRequest() const
@@ -158,6 +182,12 @@ namespace Graphite {
 	{
 		m_Groups.Clear();
 		m_Groups.SetRoot(m_Workspace.GetRoot());
+
+		// The old selection names a group that no longer exists, and a preview of it would
+		// outlive the results it came from.
+		m_Selected.reset();
+		m_Preview.Clear();
+
 		m_Drained.clear();
 		m_Progress = SearchProgress{};
 
@@ -185,13 +215,6 @@ namespace Graphite {
 
 	void SearchPanel::RenderResults()
 	{
-		if (!ImGui::BeginChild("##searchResults", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-							   ImGuiWindowFlags_HorizontalScrollbar))
-		{
-			ImGui::EndChild();
-			return;
-		}
-
 		// Already grouped, in OnUpdate, as the hits arrived. This loop walks groups; it never
 		// touches a hit belonging to a file it is not drawing.
 		// The accent the theme already uses for a tick, so the match reads as marked rather than
@@ -243,11 +266,29 @@ namespace Graphite {
 
 					const ImVec2 rowStart = ImGui::GetCursorPos();
 
+					const bool selected = m_Selected && m_Selected->Group == group.Id &&
+										  m_Selected->Hit == static_cast<std::size_t>(row);
+
 					// An empty label, drawn first, so the whole row is the click target and the
 					// text can be laid over it in pieces. AllowOverlap keeps the click reaching
-					// this rather than being swallowed by the text items on top.
-					if (ImGui::Selectable("##hit", false, ImGuiSelectableFlags_AllowOverlap))
-						OpenAndSelect(hit);
+					// this rather than being swallowed by the text items on top;
+					// AllowDoubleClick is what lets one row answer both gestures.
+					if (ImGui::Selectable("##hit", selected,
+										  ImGuiSelectableFlags_AllowOverlap |
+											  ImGuiSelectableFlags_AllowDoubleClick))
+					{
+						m_Selected = Selection{group.Id, static_cast<std::size_t>(row)};
+
+						// Single click previews, double click opens. That is the whole point:
+						// arrow through fifty hits without leaving fifty tabs behind.
+						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+							OpenAndSelect(hit);
+					}
+
+					// The preview follows the selection when it moves by keyboard too, which
+					// arrives as nav focus rather than as a click.
+					if (!selected && ImGui::IsItemFocused())
+						m_Selected = Selection{group.Id, static_cast<std::size_t>(row)};
 
 					ImGui::SetCursorPos(rowStart);
 
@@ -278,8 +319,52 @@ namespace Graphite {
 
 			ImGui::TreePop();
 		}
+	}
 
-		ImGui::EndChild();
+	void SearchPanel::RenderPreview()
+	{
+		if (!m_Selected)
+		{
+			ImGui::TextDisabled("Select a result to preview it.");
+			return;
+		}
+
+		// Looked up by id rather than remembered as a pointer: groups are appended to as a
+		// search runs, and the vector holding them reallocates.
+		const HitGroup* group = nullptr;
+
+		for (const HitGroup& candidate : m_Groups.Get())
+		{
+			if (candidate.Id == m_Selected->Group)
+			{
+				group = &candidate;
+				break;
+			}
+		}
+
+		if (group == nullptr || m_Selected->Hit >= group->Hits.size())
+		{
+			m_Selected.reset();
+			m_Preview.Clear();
+
+			ImGui::TextDisabled("Select a result to preview it.");
+			return;
+		}
+
+		const SearchHit& hit = group->Hits[m_Selected->Hit];
+
+		// Every frame, not only when the selection changes: the file may have been opened,
+		// closed or edited since the last one, and Show is cheap when nothing moved.
+		m_Preview.Show(hit.File, m_Documents);
+
+		// By name: Current and TabWidth are both std::size_t, and a positional list would take
+		// them transposed without a word.
+		DrawSearchPreview(m_Preview,
+						  SearchPreviewInput{.Hits = group->Hits,
+											 .Current = m_Selected->Hit,
+											 .Scheme = m_Scheme.Get(),
+											 .TabWidth = m_Editor.GetIndentStyle().Width,
+											 .FontSize = m_Editor.GetFontSize()});
 	}
 
 	void SearchPanel::OpenAndSelect(const SearchHit& hit)
