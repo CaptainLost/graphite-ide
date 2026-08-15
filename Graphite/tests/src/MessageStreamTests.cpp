@@ -52,3 +52,30 @@ TEST_CASE("MessageStream drops a header with no length rather than stalling")
 
 	CHECK(stream.Take() == "{}");
 }
+
+TEST_CASE("MessageStream drops a length that overflows rather than stalling")
+{
+	Graphite::MessageStream stream;
+
+	stream.Append("Content-Length: 99999999999999999999\r\n\r\nContent-Length: 2\r\n\r\n{}");
+
+	CHECK(stream.Take() == "{}");
+}
+
+TEST_CASE("MessageStream drops a negative length rather than stalling")
+{
+	Graphite::MessageStream stream;
+
+	stream.Append("Content-Length: -5\r\n\r\nContent-Length: 2\r\n\r\n{}");
+
+	CHECK(stream.Take() == "{}");
+}
+
+TEST_CASE("MessageStream drops a length that is not a number rather than stalling")
+{
+	Graphite::MessageStream stream;
+
+	stream.Append("Content-Length: abc\r\n\r\nContent-Length: 2\r\n\r\n{}");
+
+	CHECK(stream.Take() == "{}");
+}

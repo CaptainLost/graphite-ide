@@ -115,6 +115,13 @@ namespace Graphite {
 			}
 
 			std::string body = m_Buffer.substr(bodyStart, *length);
+
+			// Erasing from the front shifts everything after it, so this is O(remaining buffer)
+			// rather than O(1). That is fine here because a body is taken as soon as it is
+			// complete: the buffer never holds more than one partial message plus whatever
+			// arrived alongside it, not a backlog. Resist swapping this for an offset cursor —
+			// it buys nothing at these sizes and rates, and it drags in the bookkeeping needed
+			// to keep the cursor and the buffer's capacity from growing without bound.
 			m_Buffer.erase(0, bodyStart + *length);
 			return body;
 		}
