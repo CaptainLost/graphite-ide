@@ -53,7 +53,7 @@ namespace Graphite {
 		// editor's own font, so the bar keeps its proportions when the font size changes.
 		float FindFieldWidth()
 		{
-			return ImGui::CalcTextSize("0").x * 14.0f;
+			return ImGui::CalcTextSize("0").x * 28.0f;
 		}
 
 		// Smaller than a row, so the buttons sit inside the bar with air around them rather than
@@ -167,48 +167,85 @@ namespace Graphite {
 		// that resizes for everyone else.
 		float MatchCounterWidth()
 		{
-			return ImGui::CalcTextSize("9999/9999").x;
+			return ImGui::CalcTextSize("999/999").x;
 		}
 
-		// Drawn inside the query field, against its right edge, rather than as an item beside it.
+		// An item of its own, not something drawn inside the field. Inside it, the counter was in
+		// the way: an InputText scrolls its text and puts its caret anywhere within its own
+		// frame, so a field that kept the counter's width for itself let a long query — and the
+		// caret with it — run underneath. Keeping the two apart is what makes that impossible
+		// rather than merely unlikely.
 		//
-		// Beside it, the counter floated: the field is a fixed fourteen characters and a short
-		// query leaves most of it empty, so a counter placed after the field sat a wide gap away
-		// from the text it was counting no matter which way it was aligned within its own box.
-		// Anchoring it to the field removes the gap by removing the box.
+		// Right-aligned in its box, against the buttons that act on what it counts. The box is
+		// reserved at its widest and the text in it is usually three characters, so it has to
+		// sit against one edge or the other, and this is the edge it belongs to.
 		//
-		// A filled rect under it, in the field's own background colour, because a long query
-		// scrolls its tail to exactly this corner — the counter has to sit on top of it rather
-		// than blend into it.
-		void DrawMatchCounterInField(const Core::FindState& find, const ImVec2& fieldMin,
-									 const ImVec2& fieldMax)
+		// Drawn rather than submitted as ImGui::Text, for the same reason the icons and the
+		// separator are: this has to be centred against the field's height, which the layout
+		// alone does not do.
+		void DrawMatchCounter(const Core::FindState& find, float width)
 		{
 			// Nothing while the query is empty: "0/0" beside an empty field reports a failure
-			// nobody has asked for yet. Costs no room either way — the field reserved it.
-			if (find.Query.empty())
-				return;
+			// nobody has asked for yet. Costs no room either way — the box is reserved.
+			if (!find.Query.empty())
+			{
+				const std::string counter = MatchCounterText(find);
+				const ImVec2 size = ImGui::CalcTextSize(counter.c_str());
 
-			const std::string counter = MatchCounterText(find);
-			const ImVec2 size = ImGui::CalcTextSize(counter.c_str());
+				const ImVec2 at = ImGui::GetCursorScreenPos();
 
-			const float padding = ImGui::GetStyle().FramePadding.x;
-			const float left = fieldMax.x - padding - size.x;
+				// Floored for the same reason the icons are: CalcTextSize rounds up, and text
+				// landed on a half pixel is resampled and reads blurrier than the query beside
+				// it.
+				ImGui::GetWindowDrawList()->AddText(
+					ImVec2(std::floor(at.x + width - size.x),
+						   std::floor(at.y + (ImGui::GetFrameHeight() - size.y) * 0.5f)),
+					ImGui::GetColorU32(ImGuiCol_TextDisabled), counter.c_str());
+			}
 
-			// Centred against the field's own height rather than offset by its padding. The
-			// padding is not square — the horizontal is the larger of the two — so using it for
-			// the vertical, as this first did, drops the counter below the query beside it.
-			const float top = fieldMin.y + (fieldMax.y - fieldMin.y - size.y) * 0.5f;
+			// Claims the box whether anything was drawn in it or not, so the bar's width is the
+			// same all the time it is open and its left edge never moves.
+			ImGui::Dummy(ImVec2(width, ImGui::GetFrameHeight()));
+		}
 
-			ImDrawList* draw = ImGui::GetWindowDrawList();
+		// Every horizontal part of the bar, measured once. The bar's own width and the query
+		// field's are read from these same numbers rather than each summing the row for itself,
+		// which is what keeps the two from drifting: the field is given what the rest did not
+		// spend, so the last button can never be clipped by the bar's own edge.
+		struct FindBarWidths
+		{
+			float Field = 0.0f;
+			float Counter = 0.0f;
 
-			draw->AddRectFilled(ImVec2(left - padding, fieldMin.y + 1.0f),
-								ImVec2(fieldMax.x - 1.0f, fieldMax.y - 1.0f),
-								ImGui::GetColorU32(ImGuiCol_FrameBg));
+			// Everything to the right of the field — the separator, the counter's box and the
+			// five buttons — each with the spacing that precedes it.
+			float RightOfField = 0.0f;
 
-			// Floored for the same reason the icons are: CalcTextSize rounds up, and text landed
-			// on a half pixel is resampled and reads blurrier than the query beside it.
-			draw->AddText(ImVec2(std::floor(left), std::floor(top)),
-						  ImGui::GetColorU32(ImGuiCol_TextDisabled), counter.c_str());
+			// What the bar asks for, its own insets included.
+			float Total = 0.0f;
+		};
+
+		// No conditional term anywhere in this sum: every part of it is a constant for a given
+		// font, so the bar has one width for the whole time it is open. That matters because the
+		// bar hangs off the editor's right corner — anything that changes its width moves its
+		// left edge, and a row that grew with the tenth match and again with the hundredth made
+		// the whole bar jump sideways while being typed into.
+		FindBarWidths MeasureFindBar()
+		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+
+			FindBarWidths widths;
+
+			widths.Field = FindFieldWidth();
+			widths.Counter = MatchCounterWidth();
+
+			widths.RightOfField = style.ItemSpacing.x + kFindSeparatorWidth +
+								  style.ItemSpacing.x + widths.Counter +
+								  (style.ItemSpacing.x + FindButtonSize()) * 5.0f;
+
+			widths.Total = kFindBarPaddingX * 2.0f + widths.Field + widths.RightOfField;
+
+			return widths;
 		}
 
 		struct FindBarFrame
@@ -332,25 +369,12 @@ namespace Graphite {
 		// Dummy the only thing in this file that grows the extent.
 		const ImVec2 extentBeforeBar = ImGui::GetCurrentWindow()->DC.CursorMaxPos;
 
-		// Measured before the bar is opened, because it decides how wide the bar is. The five
-		// controls are square cells of one row's height, so the whole thing is arithmetic
-		// rather than a guess — which is what stops the last button being clipped by the
-		// bar's own edge.
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float square = FindButtonSize();
-		const float counterWidth = MatchCounterWidth();
+		// Measured before the bar is opened, because it is what decides how wide the bar is.
+		// Clamped to the room there is, so a panel dragged narrow gives up query field rather
+		// than spilling its buttons past the edge.
+		const FindBarWidths widths = MeasureFindBar();
 
-		// The field swallows the counter's room, because the counter is drawn inside it.
-		//
-		// No conditional term anywhere in this sum: every part of it is a constant for a given
-		// font, so the bar has one width for the whole time it is open and its left edge never
-		// moves.
-		const float fieldWidth = FindFieldWidth() + counterWidth;
-
-		const float barWidth =
-			std::min(kFindBarPaddingX * 2.0f + fieldWidth + style.ItemSpacing.x +
-						 kFindSeparatorWidth + (square + style.ItemSpacing.x) * 5.0f,
-					 frame.Width);
+		const float barWidth = std::min(widths.Total, frame.Width);
 
 		ImGui::SetCursorScreenPos(ImVec2(frame.Corner.x - barWidth, frame.Corner.y));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kFindBarPaddingX, 0.0f));
@@ -391,14 +415,11 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, NoMatchColor());
 		}
 
-		// What is left after the controls, which is FindFieldWidth() at any width the bar was
-		// not clamped at — and less than it when the panel is too narrow, so a cramped bar
-		// gives up field rather than spilling its buttons past its own edge.
-		const float controls =
-			style.ItemSpacing.x + kFindSeparatorWidth + (square + style.ItemSpacing.x) * 5.0f;
-
-		ImGui::SetNextItemWidth(
-			std::max(ImGui::GetContentRegionAvail().x - controls, ImGui::GetFontSize()));
+		// What is left after the rest of the row, which is FindBarWidths::Field at any width the
+		// bar was not clamped at, and less than it when it was. Never less than a single
+		// character: a field too narrow to show one is not a field.
+		ImGui::SetNextItemWidth(std::max(ImGui::GetContentRegionAvail().x - widths.RightOfField,
+										 ImGui::GetFontSize()));
 
 		// EnterReturnsTrue rather than a bare field: a single-line InputText swallows Enter
 		// whatever the flag says, and this is what hands it back to be stepped on.
@@ -409,14 +430,20 @@ namespace Graphite {
 		const bool queryEdited =
 			AcceptsQueryEdit(FindFieldEvents{ImGui::IsItemEdited(), escapePressed});
 
-		// Read from the item just submitted, so the counter lands in the field whatever the
-		// layout did with it.
-		const ImVec2 fieldMin = ImGui::GetItemRectMin();
-		const ImVec2 fieldMax = ImGui::GetItemRectMax();
-
 		if (noMatches)
 		{
 			ImGui::PopStyleColor();
+		}
+
+		// Enter deactivates a single-line field whatever else it does, and a find run is a
+		// string of Enters. Asked for here, of the item just submitted, rather than through
+		// m_FocusFor on the next frame: a request aimed at the previous item is resolved this
+		// frame and applied on the next, so the field is never drawn — nor read from —
+		// unfocused. Through m_FocusFor there was a frame in between where the field was
+		// inactive and the keystroke that fell into it was lost.
+		if (entered)
+		{
+			ImGui::SetKeyboardFocusHere(-1);
 		}
 
 		if (queryEdited)
@@ -425,12 +452,13 @@ namespace Graphite {
 			RefreshFindMatches(item, buffer);
 		}
 
-		DrawMatchCounterInField(item.Find, fieldMin, fieldMax);
-
-		// The field and the count it carries are one thing; the buttons that act on them are
-		// another.
+		// What was typed on one side of the divider, what came of it on the other.
 		ImGui::SameLine();
 		DrawFindSeparator();
+		ImGui::SameLine();
+
+		DrawMatchCounter(item.Find, widths.Counter);
+
 		ImGui::SameLine();
 
 		const bool matchCaseToggled = DrawFindToggle("##findCase", ICON_MDI_FORMAT_LETTER_CASE,
@@ -483,9 +511,14 @@ namespace Graphite {
 		if (stepBack || stepOn)
 		{
 			StepFindMatch(item, buffer, stepBack);
+		}
 
-			// Enter deactivates a single-line field whatever else it does, so without this
-			// the second Enter of a run would land in the document instead of the bar.
+		// A click hands the keyboard to the button it lands on, so without this the Enter after
+		// one would be the document's. Only the buttons: Enter has already re-armed the field
+		// above, and F3 is answered wherever the document holds the keyboard — pressing it with
+		// the caret in the text is not a request to leave it.
+		if (previousClicked || nextClicked)
+		{
 			m_FocusFor = item.Path;
 		}
 	}

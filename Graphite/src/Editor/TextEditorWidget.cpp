@@ -1475,7 +1475,14 @@ namespace Graphite {
 			// left the new one with no caret and a dead keyboard until it was clicked. Handing
 			// the focus down cannot steal it from elsewhere: it only runs while this document
 			// already holds it.
-			if (documentHoldsFocus && !ImGui::IsWindowFocused())
+			//
+			// Children count, and the flags are what says so. The find bar is a child of this
+			// surface, so while its field holds the keyboard the plain IsWindowFocused() below
+			// is false and this took the focus back off it on every frame — which reset
+			// ImGui's NavId, so the field's focus ring only appeared on the frames it
+			// reactivated itself on, and left the document drawing a live caret and reading
+			// keys the whole time the user was typing into the bar.
+			if (documentHoldsFocus && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
 			{
 				ImGui::SetWindowFocus();
 			}
