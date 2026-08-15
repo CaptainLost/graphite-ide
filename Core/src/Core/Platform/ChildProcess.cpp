@@ -24,30 +24,36 @@ namespace Core {
 			}
 		}
 
+		// Quoting only when a space is present keeps the common case (plain flags such as /c,
+		// or a program path with none) readable in a debugger without changing what the child
+		// receives. This is not full Win32 argv escaping — nothing this class launches needs
+		// an embedded quote — just enough to keep a single argument, or the program path
+		// itself, from being split into two by CreateProcessW's own space-splitting.
+		std::wstring QuoteIfNeeded(const std::wstring& piece)
+		{
+			if (piece.find(L' ') == std::wstring::npos)
+			{
+				return piece;
+			}
+
+			return L'"' + piece + L'"';
+		}
+
 		// CreateProcessW takes one command line rather than an argv array, so the pieces have
-		// to be joined here. Quoting only when a space is present keeps the common case (plain
-		// flags such as /c) readable in a debugger without changing what the child receives.
+		// to be joined here. The program path is quoted exactly like an argument: unquoted, a
+		// space in it (as under "C:\Program Files\...", where a Windows clangd install lands)
+		// makes CreateProcessW split the path itself into a program and a bogus first argument.
 		std::wstring BuildCommandLine(const std::filesystem::path& program,
 									  const std::vector<std::string>& arguments)
 		{
-			std::wstring commandLine = program.wstring();
+			std::wstring commandLine = QuoteIfNeeded(program.wstring());
 
 			for (const std::string& argument : arguments)
 			{
 				const std::wstring wide{argument.begin(), argument.end()};
 
 				commandLine.push_back(L' ');
-
-				if (wide.find(L' ') != std::wstring::npos)
-				{
-					commandLine.push_back(L'"');
-					commandLine += wide;
-					commandLine.push_back(L'"');
-				}
-				else
-				{
-					commandLine += wide;
-				}
+				commandLine += QuoteIfNeeded(wide);
 			}
 
 			return commandLine;
@@ -89,18 +95,48 @@ namespace Core {
 		::SetHandleInformation(childStdinWrite, HANDLE_FLAG_INHERIT, 0);
 		::SetHandleInformation(childStdoutRead, HANDLE_FLAG_INHERIT, 0);
 
-		STARTUPINFOW startupInfo{};
-		startupInfo.cb = sizeof(startupInfo);
-		startupInfo.dwFlags = STARTF_USESTDHANDLES;
-		startupInfo.hStdInput = childStdinRead;
-		startupInfo.hStdOutput = childStdoutWrite;
-
 		// This class exists to carry a framed protocol on stdout: a later caller parses that
 		// stream by a length prefix, and anything else written into the same pipe is
 		// indistinguishable from protocol content. Redirecting stderr here too would interleave
 		// the child's log lines into message bodies, so leave it on the parent's own stderr,
 		// where diagnostics already go.
-		startupInfo.hStdError = ::GetStdHandle(STD_ERROR_HANDLE);
+		HANDLE childStdError = ::GetStdHandle(STD_ERROR_HANDLE);
+		bool ownsChildStdError = false;
+
+		// Graphite is a windowed application with no console attached, so this is the normal
+		// case in the shipped product, not a rare one: GetStdHandle returns NULL there almost
+		// always. STARTF_USESTDHANDLES requires all three handles to be valid, and a child
+		// handed a null one gets a broken stderr that fails far from here in ways that look
+		// unrelated to this. Opening the null device keeps the child's handle valid regardless
+		// of whether this process has a console; a real console handle, when there is one, is
+		// used as-is so a server's diagnostics still land there during development.
+		if (childStdError == nullptr || childStdError == INVALID_HANDLE_VALUE)
+		{
+			childStdError = ::CreateFileW(L"NUL", GENERIC_WRITE,
+										  FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable,
+										  OPEN_EXISTING, 0, nullptr);
+			ownsChildStdError = true;
+
+			if (childStdError == INVALID_HANDLE_VALUE)
+			{
+				const Error error{ErrorCodeFor(::GetLastError()),
+								  "cannot open the null device for the child's stderr"};
+
+				::CloseHandle(childStdinRead);
+				::CloseHandle(childStdinWrite);
+				::CloseHandle(childStdoutRead);
+				::CloseHandle(childStdoutWrite);
+
+				return error;
+			}
+		}
+
+		STARTUPINFOW startupInfo{};
+		startupInfo.cb = sizeof(startupInfo);
+		startupInfo.dwFlags = STARTF_USESTDHANDLES;
+		startupInfo.hStdInput = childStdinRead;
+		startupInfo.hStdOutput = childStdoutWrite;
+		startupInfo.hStdError = childStdError;
 
 		PROCESS_INFORMATION processInfo{};
 
@@ -121,14 +157,27 @@ namespace Core {
 			::CloseHandle(childStdoutRead);
 			::CloseHandle(childStdoutWrite);
 
+			if (ownsChildStdError)
+			{
+				::CloseHandle(childStdError);
+			}
+
 			return error;
 		}
 
 		// The parent never reads or writes through these ends; the child owns them now, and
-		// keeping the parent's copy open would stop the pipe from signalling closure.
+		// keeping the parent's copy open would stop the pipe from signalling closure. The
+		// null-device handle, when this process opened one, is the same story; the real console
+		// stderr handle, when GetStdHandle supplied it, belongs to the process rather than to
+		// this call and is never closed here.
 		::CloseHandle(childStdinRead);
 		::CloseHandle(childStdoutWrite);
 		::CloseHandle(processInfo.hThread);
+
+		if (ownsChildStdError)
+		{
+			::CloseHandle(childStdError);
+		}
 
 		Scope<ChildProcess> process{new ChildProcess()};
 		process->m_Process = processInfo.hProcess;

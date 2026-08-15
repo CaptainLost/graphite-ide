@@ -2,6 +2,8 @@
 
 #include "Core/Platform/ChildProcess.h"
 
+#include "TempDirectory.h"
+
 #include <string>
 
 namespace {
@@ -36,6 +38,25 @@ TEST_CASE("ChildProcess writes to the child's input")
 
 	REQUIRE(process);
 	CHECK(process.GetValue()->Write("unwanted line\r\nwanted line\r\n"));
+}
+
+TEST_CASE("ChildProcess quotes a program path that contains a space")
+{
+	// An unquoted command line lets CreateProcessW split the program path itself on the
+	// space, which is exactly what a real "C:\Program Files\..." install path would trigger.
+	TempDirectory temp;
+	const std::filesystem::path directory = temp.MakeDir("has space");
+	const std::filesystem::path copiedExe = directory / "cmd.exe";
+
+	std::error_code copyError;
+	std::filesystem::copy_file("C:\\Windows\\System32\\cmd.exe", copiedExe, copyError);
+	REQUIRE_FALSE(copyError);
+
+	auto process =
+		Core::ChildProcess::Start(copiedExe, {"/c", "echo hello"}, std::filesystem::current_path());
+
+	REQUIRE(process);
+	CHECK(ReadAll(*process.GetValue()).find("hello") != std::string::npos);
 }
 
 TEST_CASE("ChildProcess reports a program that does not exist")
