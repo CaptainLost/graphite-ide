@@ -8,7 +8,10 @@
 #include "Core/Text/Caret.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
+#include <algorithm>
+#include <cmath>
 #include <map>
 #include <string>
 
@@ -54,27 +57,100 @@ namespace Graphite {
 		RenderSummary();
 		ImGui::Separator();
 
+		// Nothing selected, no pane at all — not an empty one with a prompt in it. This panel
+		// is used to read a list far more often than to look at one hit, and a pane reserving
+		// half the height for a message is half a panel spent saying nothing.
+		//
+		// The results are then the whole panel, and the preview costs nothing until it is
+		// asked for.
+		if (!m_Selected)
+		{
+			if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
+								  ImGuiWindowFlags_HorizontalScrollbar))
+			{
+				RenderResults();
+			}
+
+			ImGui::EndChild();
+			return;
+		}
+
 		// Stacked, not side by side: the query field and its row of toggles run the full width
 		// above both, so a preview beside the results made three columns of a panel that reads
 		// top to bottom.
-		//
-		// A fixed ratio rather than a splitter: the panel is dockable and resizes, so a ratio
-		// follows it, and an adjustable divider is a control to maintain that almost nobody
-		// moves. The settings panel made the same call.
-		//
-		// The cost is height. This panel docks at the bottom by default, where it is wide and
-		// short, and half of that is fewer rows than the preview's window holds — so the
-		// preview scrolls rather than showing all twenty-one lines at once. Undocking it, or
-		// dragging the dock node taller, is what buys them back.
-		const float resultsHeight = ImGui::GetContentRegionAvail().y * 0.5f;
+		const float available = ImGui::GetContentRegionAvail().y;
 
-		if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, resultsHeight), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_HorizontalScrollbar))
+		// The thickness ImGui gives the resizing border between docked windows, read from the
+		// same style field because this divider does the same job. At ItemSpacing.y, which is
+		// what this first used, it was five pixels against the docking separators' two and read
+		// as a heavier rule than anything else in the application.
+		const float thickness = std::max(1.0f, ImGui::GetStyle().DockingSeparatorSize);
+
+		// A quarter of the panel each at the tightest, and two rows each when there is room for
+		// more than that — scaled rather than fixed, because this panel docks at the bottom
+		// where it is wide and short, and a fixed minimum taller than half of it would leave
+		// the splitter nothing to travel through.
+		const float minimum = std::min(ImGui::GetFrameHeight() * 2.0f, available * 0.25f);
+
+		if (m_ResultsHeight <= 0.0f)
+		{
+			m_ResultsHeight = (available - thickness) * 0.5f;
+		}
+
+		float previewHeight = available - thickness - m_ResultsHeight;
+
+		// The dock node resizes under us, which moves `available` without touching the split
+		// the user dragged. Clamped here rather than rescaled: a split is a position the user
+		// chose, and the pane that gives way when there is less room is the one they are not
+		// looking at.
+		if (previewHeight < minimum)
+		{
+			previewHeight = minimum;
+			m_ResultsHeight = available - thickness - previewHeight;
+		}
+
+		if (m_ResultsHeight < minimum)
+		{
+			m_ResultsHeight = minimum;
+			previewHeight = available - thickness - m_ResultsHeight;
+		}
+
+		if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, m_ResultsHeight),
+							  ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
 		{
 			RenderResults();
 		}
 
 		ImGui::EndChild();
+
+		// A short delay before the divider lights up and the cursor changes, so sweeping the
+		// mouse across the panel does not flash it. The same 0.04s ImGui waits before
+		// highlighting a window's resize border (WINDOWS_RESIZE_FROM_EDGES_FEEDBACK_TIMER in
+		// imgui.cpp) — copied as a value because that one is file-static.
+		constexpr float kSplitterHoverDelay = 0.04f;
+
+		// EndChild leaves the cursor an item's spacing below the results. The divider replaces
+		// that spacing rather than sitting under it, so the gap between the two panes is the
+		// line and nothing else — which is how the docking separators beside it look.
+		const ImVec2 below = ImGui::GetCursorScreenPos();
+		const ImVec2 at(below.x, below.y - ImGui::GetStyle().ItemSpacing.y);
+
+		const ImRect bar(at, ImVec2(at.x + ImGui::GetContentRegionAvail().x, at.y + thickness));
+
+		// ImGui's own splitter rather than a line and a hand-rolled drag: it carries the
+		// ResizeNS cursor, a grab zone wider than the line it draws, the minimum sizes above
+		// and the Separator colours every other divider in the application uses. The grab zone
+		// is the same padding ImGui gives a window's own border, so this divider is no harder
+		// to catch than the ones around it.
+		ImGui::SplitterBehavior(bar, ImGui::GetID("##searchSplit"), ImGuiAxis_Y, &m_ResultsHeight,
+								&previewHeight, minimum, minimum,
+								ImGui::GetCurrentContext()->WindowsBorderHoverPadding,
+								kSplitterHoverDelay);
+
+		// SplitterBehavior hit-tests and draws but never calls ItemSize, so the cursor is still
+		// where it was. Set rather than advanced with a Dummy, which would add the ordinary
+		// item spacing back on top of the bar's own height.
+		ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + thickness));
 
 		if (ImGui::BeginChild("##searchPreview", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders,
 							  ImGuiWindowFlags_HorizontalScrollbar))
@@ -328,14 +404,9 @@ namespace Graphite {
 		}
 	}
 
+	// Only reached with a selection: OnImGuiRender draws no pane at all without one.
 	void SearchPanel::RenderPreview()
 	{
-		if (!m_Selected)
-		{
-			ImGui::TextDisabled("Select a result to preview it.");
-			return;
-		}
-
 		// Looked up by id rather than remembered as a pointer: groups are appended to as a
 		// search runs, and the vector holding them reallocates.
 		const HitGroup* group = nullptr;
@@ -349,12 +420,12 @@ namespace Graphite {
 			}
 		}
 
+		// The results were cleared or regrouped under the selection. Dropping it here is what
+		// takes the pane away again on the next frame.
 		if (group == nullptr || m_Selected->Hit >= group->Hits.size())
 		{
 			m_Selected.reset();
 			m_Preview.Clear();
-
-			ImGui::TextDisabled("Select a result to preview it.");
 			return;
 		}
 

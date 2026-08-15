@@ -100,5 +100,13 @@ namespace Graphite {
 		std::optional<Selection> m_Selected;
 
 		PreviewContent m_Preview;
+
+		// How tall the results are; the preview takes what is left. Zero until the first frame
+		// that shows both, which is when there is a panel height to halve — asking for one in
+		// the constructor would ask before there is a window to ask about.
+		//
+		// Kept across a preview being dismissed and brought back, so a split the user dragged
+		// is theirs until they drag it again.
+		float m_ResultsHeight = 0.0f;
 	};
 }
