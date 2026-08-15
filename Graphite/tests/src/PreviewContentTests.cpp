@@ -67,7 +67,7 @@ TEST_CASE("A file that has gone reports itself unreadable rather than empty")
 	content.Show(file, documents);
 
 	CHECK(content.GetState() == PreviewState::Unreadable);
-	CHECK_FALSE(content.GetMessage().empty());
+	CHECK_FALSE(content.GetDetail().empty());
 	CHECK(content.GetBuffer() == nullptr);
 }
 
@@ -88,7 +88,7 @@ TEST_CASE("A binary file is skipped rather than shown")
 	content.Show(file, documents);
 
 	CHECK(content.GetState() == PreviewState::Skipped);
-	CHECK_FALSE(content.GetMessage().empty());
+	CHECK_FALSE(content.GetDetail().empty());
 	CHECK(content.GetBuffer() == nullptr);
 }
 

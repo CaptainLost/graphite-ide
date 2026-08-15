@@ -51,7 +51,13 @@ namespace Graphite {
 		const std::filesystem::path& GetPath() const { return m_Path; }
 
 		// Empty unless the state is Unreadable or Skipped.
-		const std::string& GetMessage() const { return m_Message; }
+		//
+		// Not GetMessage: <windows.h> defines GetMessage as a macro expanding to GetMessageW,
+		// so a member of that name compiles here and fails in every translation unit that has
+		// seen a Windows header — which is the one that draws this, and not the one that tests
+		// it. The name matches Core::OpenItem::Detail, which carries the same thing for a tab
+		// that would not open.
+		const std::string& GetDetail() const { return m_Message; }
 
 		// Null unless the state is Ready. May point into Core::DocumentSet, which reallocates
 		// as tabs open and close — so it is only valid until the next call to anything that
