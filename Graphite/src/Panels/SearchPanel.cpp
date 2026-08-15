@@ -54,20 +54,27 @@ namespace Graphite {
 		RenderSummary();
 		ImGui::Separator();
 
+		// Stacked, not side by side: the query field and its row of toggles run the full width
+		// above both, so a preview beside the results made three columns of a panel that reads
+		// top to bottom.
+		//
 		// A fixed ratio rather than a splitter: the panel is dockable and resizes, so a ratio
 		// follows it, and an adjustable divider is a control to maintain that almost nobody
 		// moves. The settings panel made the same call.
-		const float resultsWidth = ImGui::GetContentRegionAvail().x * 0.45f;
+		//
+		// The cost is height. This panel docks at the bottom by default, where it is wide and
+		// short, and half of that is fewer rows than the preview's window holds — so the
+		// preview scrolls rather than showing all twenty-one lines at once. Undocking it, or
+		// dragging the dock node taller, is what buys them back.
+		const float resultsHeight = ImGui::GetContentRegionAvail().y * 0.5f;
 
-		if (ImGui::BeginChild("##searchResults", ImVec2(resultsWidth, 0.0f), ImGuiChildFlags_None,
+		if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, resultsHeight), ImGuiChildFlags_None,
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
 			RenderResults();
 		}
 
 		ImGui::EndChild();
-
-		ImGui::SameLine();
 
 		if (ImGui::BeginChild("##searchPreview", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders,
 							  ImGuiWindowFlags_HorizontalScrollbar))
