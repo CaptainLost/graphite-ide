@@ -27,13 +27,33 @@ those functions are written against.
 ## Decision
 
 `Core::RowMap` is not told about a reference-count row, or about any other row
-a lens draws that does not correspond to a document line. A Graphite-side
-`LensRows` translates between the screen rows `TextEditorWidget` draws and the
-document rows `RowMap` knows about, and the five sites in
-`TextEditorWidget.cpp` that turn a screen position into a document position or
-back — the click/drag hit test, the caret-to-pixel placement, the two
-`VisualToCaret` call sites driving vertical motion, and the scroll-to-caret
-calculation — go through that translation before calling into `Core::Text`.
+a lens draws that does not correspond to a document line. Caret arithmetic is
+untouched: vertical motion, selection and the find bar keep calling
+`CaretToVisual`/`VisualToCaret` exactly as they do today, entirely in document
+rows, with no lens in sight. A Graphite-side `LensRows` sits only where a
+*screen* row — one that may or may not be a document row — has to be
+identified as one or the other, or turned into a height or a pixel offset.
+Five sites in `TextEditorWidget.cpp` do this:
+
+- `DocumentHeightOf` (`:298`) asks `LensRows::TotalScreenRows`, not
+  `RowMap::TotalRows`, for the height the scrollbar and the clipper size
+  against — otherwise the scrollbar stops short of the file's true end by
+  however many lens rows it never counted.
+- The `ImGuiListClipper` loop (`:1414`) counts screen rows from
+  `clipper.Begin`, and `LensRows::At` says, for each one, whether it is a
+  lens row to draw a reference count on or a document row to hand to
+  `Core::Text` for its tokens and caret paint.
+- The mouse hit test (`:385`) divides a pixel offset by the row height to get
+  a screen row, and `LensRows::At` converts that screen row before it ever
+  reaches `VisualToCaret` — a click on a lens row opens references instead of
+  placing the caret in text that is not there.
+- Scrolling to the caret (`:869`) computes a document row with
+  `CaretToVisual`, unchanged, and only then asks `LensRows::ScreenRowOf` to
+  wrap that document row into a screen row before multiplying by the line
+  height — the caret's own position is never computed in screen-row terms.
+- `pageRows`, the row count `PageUp`/`PageDown` step by (`:306`), is left
+  alone deliberately: it is a count of rows to move, not a row to look up, so
+  it has nothing to translate and nothing to ask `LensRows` about.
 
 ## Rationale
 
@@ -47,7 +67,11 @@ the skip wrong is quiet — a caret that lands one row off from where a click
 happened is a bug a screenshot does not obviously show, and moving up twice
 from a line under a lens could either skip the lens row correctly or land the
 caret inside it, silently, depending on whether every one of those call sites
-remembered the exception.
+remembered the exception. The design this record chooses avoids that failure
+mode by not putting the exception in those call sites at all: vertical
+motion never sees a lens row, because `CaretToVisual`/`VisualToCaret` keep
+working purely in document rows, exactly as before this record. There is
+nothing there to get quietly wrong.
 
 `LensRows` living in Graphite and translating at the boundary fails loudly
 instead: a call site that forgets to translate does not produce a subtly
@@ -75,16 +99,17 @@ geometry.
 
 ### Negative
 
-- Five sites in `TextEditorWidget.cpp` must each remember to translate
-  through `LensRows` before calling into `Core::Text`, and a sixth call site
-  added later that forgets is a bug this decision does not prevent, only
-  makes cheaper to find than the alternative would have.
-- `pageRows`, the row count `PageUp`/`PageDown` step by, deliberately does not
-  translate: it is a count of rows to move, not a row to look up, so it
-  overshoots by however many lens rows sit in the range it crosses. A page
-  down that would land ten document rows lower lands fewer if lens rows sat in
-  between, because the count consumed some of its budget on rows that are not
-  document rows at all.
+- The four sites that map a screen position to or from a document one —
+  `DocumentHeightOf`, the clipper loop, the mouse hit test, and scroll-to-caret
+  — must each remember to go through `LensRows`, and a later call site that
+  works in screen rows without doing so is a bug this decision does not
+  prevent, only makes cheaper to find than the alternative would have.
+- `pageRows`, the row count `PageUp`/`PageDown` step by, is the fifth site and
+  is deliberately left untranslated: it is a count of rows to move, not a row
+  to look up, so it overshoots by however many lens rows sit in the range it
+  crosses. A page down that would land ten document rows lower lands fewer if
+  lens rows sat in between, because the count consumed some of its budget on
+  rows that are not document rows at all.
 
 ### Neutral
 
@@ -131,4 +156,6 @@ of a single shared `RowMap` has one wrap implementation to get right.
   language-server answer a lens row displays.
 - `Core/src/Core/Text/RowMap.h`, `Core/src/Core/Text/WrapLayout.cpp` — the
   types and functions this record keeps document-only.
-- `Graphite/src/Editor/TextEditorWidget.cpp` — the five translation sites.
+- `Graphite/src/Editor/TextEditorWidget.cpp` — the five sites: `DocumentHeightOf`,
+  the clipper loop, the mouse hit test and scroll-to-caret translate through
+  `LensRows`; `pageRows` deliberately does not.
