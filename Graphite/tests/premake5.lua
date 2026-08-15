@@ -59,7 +59,8 @@ project "GraphiteTests"
         "%{IncludeDir.pugixml}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.MdiIcons}",
-        "%{IncludeDir.spdlog}"
+        "%{IncludeDir.spdlog}",
+        "%{IncludeDir.json}"
     }
 
     externalwarnings "Off"
