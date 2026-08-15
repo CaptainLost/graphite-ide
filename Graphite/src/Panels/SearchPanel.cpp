@@ -152,7 +152,12 @@ namespace Graphite {
 		// item spacing back on top of the bar's own height.
 		ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + thickness));
 
-		if (ImGui::BeginChild("##searchPreview", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders,
+		// AlwaysUseWindowPadding, because a child's padding is otherwise conditional: ImGui
+		// zeroes it for any bordered-looking child whose border size resolves to zero, and the
+		// first line of the preview then sat against the divider with its top clipped. The
+		// padding is wanted here whatever the border turns out to be, so it is asked for.
+		if (ImGui::BeginChild("##searchPreview", ImVec2(0.0f, 0.0f),
+							  ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
 			RenderPreview();

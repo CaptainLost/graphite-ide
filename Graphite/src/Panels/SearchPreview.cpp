@@ -109,6 +109,12 @@ namespace Graphite {
 		// The editor's font, so a preview of a file reads exactly as the file does in a tab.
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), input.FontSize);
 
+		// Rows of text butt against each other, as the editor's do. The Dummy that claims each
+		// line below is an ordinary item, so without this ImGui puts ItemSpacing.y between
+		// them — five pixels of panel background striping every line, and a window of twenty-one
+		// lines a hundred pixels taller than the text in it.
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+
 		const EditorPalette palette = ReadEditorPalette(input.Scheme);
 		const SyntaxPalette syntax = ReadSyntaxPalette(input.Scheme);
 
@@ -203,6 +209,7 @@ namespace Graphite {
 			ImGui::Dummy(ImVec2(lineWidth, lineHeight));
 		}
 
+		ImGui::PopStyleVar();
 		ImGui::PopFont();
 	}
 }
