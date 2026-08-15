@@ -514,4 +514,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0482](0482-keep-the-language-layer-in-graphite-rather-than-core.md) | Keep the language layer in Graphite rather than Core | proposed | 2026-08-13 |
 | [0483](0483-show-settings-as-sections-inside-one-panel.md) | Show settings as sections inside one panel | proposed | 2026-08-13 |
 | [0484](0484-keep-cross-line-lexer-state-opaque.md) | Keep cross-line lexer state opaque | proposed | 2026-08-14 |
+| [0485](0485-take-code-intelligence-from-external-language-servers.md) | Take code intelligence from external language servers | proposed | 2026-08-16 |
+| [0486](0486-insert-non-document-rows-above-rowmap-rather-than-inside-it.md) | Insert non-document rows above RowMap rather than inside it | proposed | 2026-08-16 |
+| [0487](0487-correct-adr-0482s-premise-about-project-data.md) | Correct ADR 0482's premise about project data | proposed | 2026-08-16 |
 <!-- /adr-index -->

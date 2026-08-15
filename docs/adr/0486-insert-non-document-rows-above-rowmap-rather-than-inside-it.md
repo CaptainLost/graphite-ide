@@ -1,0 +1,134 @@
+# 0486. Insert non-document rows above RowMap rather than inside it
+
+Status: proposed
+Date: 2026-08-16
+
+## Context
+
+[0485](0485-take-code-intelligence-from-external-language-servers.md) has a
+language server answer "find references", and the natural place to show the
+count is a line drawn above the symbol it describes — `3 references` sitting
+in the gutter's column, occupying a screen row of its own, the way an inlay
+hint or a code lens does in other editors. That row corresponds to no
+document line: it is not line *N* of the buffer wrapped an extra time, it is
+a row `TextEditorWidget` draws that `TextBuffer` has never heard of.
+
+`Core::RowMap` is the sole authority for the relationship between a screen row
+and a document position. `RowAt` returns a `RowRef{Line, SubRow}` for every
+row it knows about, and [0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md)'s
+`CaretToVisual`/`VisualToCaret` in `WrapLayout.cpp` are built on the
+assumption that this relationship is total and bijective on the rows that
+exist: every row is part of some line, at some sub-row, and every reachable
+caret position maps to exactly one row. Vertical caret motion, a click at a
+pixel, a drag selection and `PageUp`/`PageDown` all go through one of those
+two functions. A screen row that is not part of any line breaks the premise
+those functions are written against.
+
+## Decision
+
+`Core::RowMap` is not told about a reference-count row, or about any other row
+a lens draws that does not correspond to a document line. A Graphite-side
+`LensRows` translates between the screen rows `TextEditorWidget` draws and the
+document rows `RowMap` knows about, and the five sites in
+`TextEditorWidget.cpp` that turn a screen position into a document position or
+back — the click/drag hit test, the caret-to-pixel placement, the two
+`VisualToCaret` call sites driving vertical motion, and the scroll-to-caret
+calculation — go through that translation before calling into `Core::Text`.
+
+## Rationale
+
+Teaching `RowMap` about non-document rows would make `CaretToVisual` and
+`VisualToCaret` non-bijective: rows would exist on screen that no caret
+position maps to, and the caret would have to skip them on every vertical
+move, every click and every drag. That skip is one more conditional in
+functions [0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md)
+already treats as the single source of truth for caret placement, and getting
+the skip wrong is quiet — a caret that lands one row off from where a click
+happened is a bug a screenshot does not obviously show, and moving up twice
+from a line under a lens could either skip the lens row correctly or land the
+caret inside it, silently, depending on whether every one of those call sites
+remembered the exception.
+
+`LensRows` living in Graphite and translating at the boundary fails loudly
+instead: a call site that forgets to translate does not produce a subtly
+wrong caret position, it draws a lens row's reference count where a line of
+code should be, or vice versa — a rendering bug that is visible on the screen
+it broke, not a caret arithmetic bug that only shows up under specific
+navigation. It also keeps a lens as something `Core::Text` never has to know
+exists, consistent with [0002](0002-keep-core-free-of-ide-knowledge.md):
+reference counts and code lenses are IDE-specific decoration, not text-buffer
+geometry.
+
+## Consequences
+
+### Positive
+
+- `Core::RowMap`, `CaretToVisual` and `VisualToCaret` keep the bijective
+  property they were written under: every row they know about is a real
+  document position, so [0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md)'s
+  reasoning about them does not need revisiting.
+- A lens drawing wrong is visible where it happens — the row is off — rather
+  than surfacing as a caret placed one row away from a click, which is a
+  worse bug to trace because the symptom is far from the cause.
+- `Core/tests` and `CoreTests` are unaffected: `RowMap` grows no new case for
+  a screen concept it never needed to represent.
+
+### Negative
+
+- Five sites in `TextEditorWidget.cpp` must each remember to translate
+  through `LensRows` before calling into `Core::Text`, and a sixth call site
+  added later that forgets is a bug this decision does not prevent, only
+  makes cheaper to find than the alternative would have.
+- `pageRows`, the row count `PageUp`/`PageDown` step by, deliberately does not
+  translate: it is a count of rows to move, not a row to look up, so it
+  overshoots by however many lens rows sit in the range it crosses. A page
+  down that would land ten document rows lower lands fewer if lens rows sat in
+  between, because the count consumed some of its budget on rows that are not
+  document rows at all.
+
+### Neutral
+
+- Code folding is a different problem from a lens row: it hides real document
+  lines that still exist, rather than inserting rows that never corresponded
+  to one, and the mapping it needs — document line to screen row, skipping a
+  hidden range — is a mapping `RowMap` is positioned to own directly, not one
+  a Graphite-side translator can supply from outside. Folding, when it
+  arrives, supersedes this record for the folded case rather than extending
+  it; a lens row and a folded line are not the same kind of gap and are not
+  expected to share a fix.
+
+## Alternatives Considered
+
+### Teach RowMap a non-document row kind
+
+`RowRef` gains a tag distinguishing a document row from a decoration row, and
+`RowAt` returns the tag alongside the position. Keeps the row-to-position
+mapping in one place instead of two. Rejected because it is the option the
+Rationale argues against directly: `CaretToVisual` and `VisualToCaret` would
+have to check the tag on every call and skip or special-case decoration rows,
+turning code that is currently a straightforward lookup into code that
+branches on a case most calls do not care about, for a concept — a
+reference-count lens — that `Core::Text` has no other reason to know exists.
+
+### Give TextEditorWidget its own full row-to-document mapping, independent of RowMap
+
+Skip translation entirely and have the widget compute document positions
+itself, wrapping included, without going through `Core::RowMap` at all.
+Rejected: it duplicates the wrap-layout arithmetic
+[0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md) already
+built and tested in `Core::Text`, and two implementations of "which row is
+this document position on" drifting apart is a worse failure mode than the
+one this record accepts — at least a `LensRows` translation sitting in front
+of a single shared `RowMap` has one wrap implementation to get right.
+
+## Related
+
+- [0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md) — the
+  `CaretToVisual`/`VisualToCaret` contract this record keeps bijective.
+- [0002](0002-keep-core-free-of-ide-knowledge.md) — why a reference-count lens
+  is Graphite's concept to hold, not Core's.
+- [0485](0485-take-code-intelligence-from-external-language-servers.md) — the
+  language-server answer a lens row displays.
+- `Core/src/Core/Text/RowMap.h`, `Core/src/Core/Text/WrapLayout.cpp` — the
+  types and functions this record keeps document-only.
+- `Graphite/src/Editor/TextEditorWidget.cpp` — the five translation sites.
