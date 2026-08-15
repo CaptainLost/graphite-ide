@@ -86,6 +86,13 @@ namespace Graphite {
 		// as a heavier rule than anything else in the application.
 		const float thickness = std::max(1.0f, ImGui::GetStyle().DockingSeparatorSize);
 
+		// Air either side of the line, and the whole band is what the two panes have to share
+		// the panel with. The line sat tight against both at first, like a docking separator —
+		// but that separates panes with no frame of their own, and the preview has a border:
+		// a box touching the divider reads as wedged against it.
+		const float spacing = ImGui::GetStyle().ItemSpacing.y;
+		const float divider = thickness + spacing * 2.0f;
+
 		// A quarter of the panel each at the tightest, and two rows each when there is room for
 		// more than that — scaled rather than fixed, because this panel docks at the bottom
 		// where it is wide and short, and a fixed minimum taller than half of it would leave
@@ -94,10 +101,10 @@ namespace Graphite {
 
 		if (m_ResultsHeight <= 0.0f)
 		{
-			m_ResultsHeight = (available - thickness) * 0.5f;
+			m_ResultsHeight = (available - divider) * 0.5f;
 		}
 
-		float previewHeight = available - thickness - m_ResultsHeight;
+		float previewHeight = available - divider - m_ResultsHeight;
 
 		// The dock node resizes under us, which moves `available` without touching the split
 		// the user dragged. Clamped here rather than rescaled: a split is a position the user
@@ -106,13 +113,13 @@ namespace Graphite {
 		if (previewHeight < minimum)
 		{
 			previewHeight = minimum;
-			m_ResultsHeight = available - thickness - previewHeight;
+			m_ResultsHeight = available - divider - previewHeight;
 		}
 
 		if (m_ResultsHeight < minimum)
 		{
 			m_ResultsHeight = minimum;
-			previewHeight = available - thickness - m_ResultsHeight;
+			previewHeight = available - divider - m_ResultsHeight;
 		}
 
 		if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, m_ResultsHeight),
@@ -129,12 +136,9 @@ namespace Graphite {
 		// imgui.cpp) — copied as a value because that one is file-static.
 		constexpr float kSplitterHoverDelay = 0.04f;
 
-		// EndChild leaves the cursor an item's spacing below the results. The divider replaces
-		// that spacing rather than sitting under it, so the gap between the two panes is the
-		// line and nothing else — which is how the docking separators beside it look.
-		const ImVec2 below = ImGui::GetCursorScreenPos();
-		const ImVec2 at(below.x, below.y - ImGui::GetStyle().ItemSpacing.y);
-
+		// EndChild already left the cursor an item's spacing below the results, which is the
+		// air above the line. The matching air below it is added after the bar.
+		const ImVec2 at = ImGui::GetCursorScreenPos();
 		const ImRect bar(at, ImVec2(at.x + ImGui::GetContentRegionAvail().x, at.y + thickness));
 
 		// ImGui's own splitter rather than a line and a hand-rolled drag: it carries the
@@ -148,9 +152,10 @@ namespace Graphite {
 								kSplitterHoverDelay);
 
 		// SplitterBehavior hit-tests and draws but never calls ItemSize, so the cursor is still
-		// where it was. Set rather than advanced with a Dummy, which would add the ordinary
-		// item spacing back on top of the bar's own height.
-		ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + thickness));
+		// where the bar starts. Moved past the bar and its lower air in one step: a Dummy would
+		// claim the bar's height and then have ImGui add the spacing, which is the same sum by
+		// a longer route and leaves the bar's height in the layout for the next item to trip on.
+		ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + thickness + spacing));
 
 		// AlwaysUseWindowPadding, because a child's padding is otherwise conditional: ImGui
 		// zeroes it for any bordered-looking child whose border size resolves to zero, and the
