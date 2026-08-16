@@ -468,8 +468,16 @@ namespace Graphite {
 			else if (clicks == 2)
 				item.Caret = Core::SelectWordAt(buffer, offset);
 			else
+			{
 				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, ImGui::GetIO().KeyShift,
 										   item.TabWidth);
+
+				// Ctrl+click asks the same question F12 does, from wherever this click just put
+				// the caret — a single click only, the same restriction a double or triple click
+				// already has on meaning something else entirely.
+				if (ImGui::GetIO().KeyCtrl)
+					result.DefinitionRequested = true;
+			}
 		}
 
 		void RouteMouseWheel(const CommandContext& context)
@@ -1489,6 +1497,105 @@ namespace Graphite {
 			}
 		}
 
+		// The identifier token, if any, under the mouse while Ctrl is held — an absolute column
+		// range within its document row, the same coordinate system SliceRow already draws in.
+		struct HoverIdentifier
+		{
+			bool Valid = false;
+			std::size_t Row = 0;
+			std::size_t FromColumn = 0;
+			std::size_t ToColumn = 0;
+		};
+
+		// Finds the identifier token under the mouse using the same row/column arithmetic
+		// ApplyMouseToCaret uses for a click, so the underline this feeds lines up with wherever
+		// a Ctrl+click would actually land the caret. A look only — nothing here moves the caret
+		// or asks a server; syntax is non-null because TokensOf lexes on demand.
+		HoverIdentifier ComputeHoverIdentifier(const Core::TextBuffer& buffer,
+											   const Core::OpenItem& item,
+											   const EditorMetrics& metrics, const ImVec2& origin,
+											   float textOriginX, const LensRows& lenses,
+											   SyntaxCache* syntax)
+		{
+			HoverIdentifier hover;
+
+			if (syntax == nullptr || !ImGui::GetIO().KeyCtrl || !ImGui::IsWindowHovered())
+				return hover;
+
+			const ImVec2 mouse = ImGui::GetMousePos();
+
+			if (mouse.y < origin.y || mouse.x < textOriginX)
+				return hover;
+
+			const auto screenRow =
+				static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
+			const LensRows::Row hit = lenses.At(screenRow);
+
+			// There is no text on a lens row for an identifier to sit in.
+			if (hit.IsLens)
+				return hover;
+
+			const std::size_t row = hit.DocumentRow;
+			const float relativeX = mouse.x - textOriginX;
+			const auto column = static_cast<std::size_t>(
+				(relativeX + metrics.CellWidth * 0.5f) / metrics.CellWidth);
+
+			const Core::RowRef ref = item.Rows.RowAt(row);
+			const std::vector<std::size_t>& breaks = item.Rows.BreaksOf(ref.Line);
+			const std::size_t fromColumn =
+				ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0 : breaks[ref.SubRow - 1];
+
+			// The exact arithmetic SliceRow uses: a column, measured from the row's own left
+			// edge, converted to a byte offset in the tab-expanded line the tokens are ranges of.
+			const std::string expanded = Core::ExpandTabs(buffer.LineText(ref.Line), item.TabWidth);
+			const std::size_t byteInLine = AdvanceColumns(expanded, 0, fromColumn + column);
+
+			for (const Token& token : syntax->TokensOf(buffer, ref.Line))
+			{
+				if (token.Kind != TokenKind::Identifier)
+					continue;
+
+				if (byteInLine < token.From || byteInLine >= token.To)
+					continue;
+
+				hover.Valid = true;
+				hover.Row = row;
+				hover.FromColumn = Core::ColumnOfByte(expanded, token.From, item.TabWidth);
+				hover.ToColumn = Core::ColumnOfByte(expanded, token.To, item.TabWidth);
+				break;
+			}
+
+			return hover;
+		}
+
+		// Drawn under the same row math as a find match, clipped to this row's own column span
+		// for the same reason: a token spanning a wrap boundary would otherwise be drawn in full
+		// on every row it touches.
+		void DrawHoverUnderline(const RowCanvas& canvas, const RowSlice& slice,
+								const HoverIdentifier& hover)
+		{
+			if (!hover.Valid || hover.Row != slice.Index)
+				return;
+
+			const std::size_t clippedFrom =
+				std::clamp(hover.FromColumn, slice.FromColumn, slice.ToColumn);
+			const std::size_t clippedTo =
+				std::clamp(hover.ToColumn, slice.FromColumn, slice.ToColumn);
+
+			if (clippedTo <= clippedFrom)
+				return;
+
+			const float fromX =
+				canvas.TextOriginX +
+				static_cast<float>(clippedFrom - slice.FromColumn) * canvas.Metrics.CellWidth;
+			const float toX =
+				canvas.TextOriginX +
+				static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
+			const float y = slice.Y + canvas.Metrics.LineHeight - 1.0f;
+
+			canvas.Draw->AddLine(ImVec2(fromX, y), ImVec2(toX, y), canvas.Palette.Text, 1.0f);
+		}
+
 		struct CaretPaint
 		{
 			std::size_t Line = 0;
@@ -1504,7 +1611,8 @@ namespace Graphite {
 
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
 					 const VisibleLineCache& cache, const RowSlice& slice,
-					 const std::vector<Token>& tokens, const CaretPaint& caret)
+					 const std::vector<Token>& tokens, const CaretPaint& caret,
+					 const HoverIdentifier& hover)
 		{
 			if (slice.Line == caret.Line)
 				DrawCurrentLineHighlight(canvas, slice);
@@ -1521,6 +1629,7 @@ namespace Graphite {
 
 			DrawRowText(canvas, slice, cache, tokens, item.TabWidth);
 			DrawGutter(canvas, slice, slice.Line == caret.Line);
+			DrawHoverUnderline(canvas, slice, hover);
 
 			// Tested against the caret's *row*, not its line: a wrapped line occupies several rows
 			// and the caret is on exactly one of them, so comparing lines would draw it once per
@@ -1592,6 +1701,12 @@ namespace Graphite {
 											   item.TabWidth);
 			caret.Focused = focused;
 
+			// Computed once here rather than per row, exactly like the caret above: the loop
+			// below only compares each row against it.
+			const HoverIdentifier hover =
+				ComputeHoverIdentifier(buffer, item, metrics, origin, canvas.TextOriginX, lenses,
+									   syntax);
+
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
 			lineInput.Selection = Core::SelectionRange(item.Caret);
@@ -1658,7 +1773,7 @@ namespace Graphite {
 
 					const RowSlice slice = SliceRow(cache, item.Rows, ref, rowIndex, y);
 
-					DrawRow(canvas, item, cache, slice, tokens, caret);
+					DrawRow(canvas, item, cache, slice, tokens, caret, hover);
 				}
 			}
 

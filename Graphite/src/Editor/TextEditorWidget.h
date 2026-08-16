@@ -42,6 +42,13 @@ namespace Graphite {
 
 		bool SaveRequested = false;
 
+		// Ctrl+click on the document surface, reported the same way SaveRequested is: this
+		// widget does not own a LanguageServices, so it can only say what the user asked for, not
+		// go ask it. Not restricted to a click that landed on an identifier — F12 does not care
+		// what is under the caret either, and this is defined to mean exactly what F12 means from
+		// wherever the click just placed it.
+		bool DefinitionRequested = false;
+
 		// The document row a lens was clicked on, if one was. A lens row holds no text, so the
 		// click cannot become a caret position; it is reported instead, for whoever wants to act
 		// on the declaration the lens sits above.

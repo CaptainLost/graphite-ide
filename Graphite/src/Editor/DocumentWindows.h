@@ -9,6 +9,8 @@
 #include "Lang/Server/LanguageServices.h"
 #include "Lang/Syntax/SyntaxCache.h"
 
+#include "Search/PreviewContent.h"
+
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
@@ -68,6 +70,13 @@ namespace Graphite {
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
 		std::optional<std::string> GetStatusMessage() const;
+
+		// Asks the language server serving the document at `index` for the definition of
+		// whatever the caret sits on, and routes the reply through ResolveDefinition once it
+		// arrives. The active document's index, not a path: F12 and Ctrl+click both already know
+		// which tab they mean, and resolving that from a path would need a second lookup that
+		// could disagree with the one the caller already did.
+		void RequestDefinition(std::size_t index);
 
 		// Opens a document's find bar. Routed through here rather than called on the bar directly,
 		// because the bar belongs to whatever draws the documents and the command that binds
@@ -134,6 +143,26 @@ namespace Graphite {
 		void ApplySymbolAnswer(const std::filesystem::path& path,
 							   const LanguageServices::Answer& answer);
 
+		// The caret's offset at the moment RequestDefinition asked stands in for a generation:
+		// nothing outside an edit moves it on its own, so an answer that finds a different offset
+		// there now is about a question the caret has since moved on from, and jumping on its
+		// strength would read as the editor jumping unprompted.
+		struct PendingDefinition
+		{
+			LanguageServices::Ticket Ticket{};
+			std::filesystem::path Path;
+			std::size_t CaretOffset = 0;
+			FilePosition From;
+		};
+
+		void ApplyDefinitionAnswer(const PendingDefinition& pending,
+								   const LanguageServices::Answer& answer);
+
+		// Drawn like the other questions in Render(), before the per-document loop: OpenPopup is
+		// called from ApplyDefinitionAnswer, itself reached from CollectServerAnswers, which also
+		// runs before that loop, so this never has to run from inside a Begin/BeginChild pair.
+		void RenderDefinitionChoices(const ResolvedScheme& scheme, std::size_t tabWidth);
+
 		void SyncEveryDocument();
 
 		void RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
@@ -190,6 +219,7 @@ namespace Graphite {
 		static constexpr const char* kOverwriteConfirmTitle =
 			"Overwrite unsaved changes on disk?##EditorOverwriteConfirm";
 		static constexpr const char* kCloseConfirmTitle = "Unsaved changes##EditorCloseConfirm";
+		static constexpr const char* kDefinitionChoicesTitle = "##EditorDefinitionChoices";
 
 		struct LargeFileQuestion
 		{
@@ -229,6 +259,20 @@ namespace Graphite {
 		};
 
 		std::optional<TransientMessage> m_TransientMessage;
+
+		// At most one definition request outstanding at a time: a second F12 (or Ctrl+click)
+		// before the first has answered cancels it, on the same reasoning as m_PendingCounts —
+		// only the most recent question is one the user is still waiting on.
+		std::optional<PendingDefinition> m_PendingDefinition;
+
+		// What ResolveDefinition left to choose from, drawn by RenderDefinitionChoices until a
+		// choice is made or the popup is dismissed.
+		std::vector<Location> m_DefinitionChoices;
+
+		// Its own PreviewContent rather than borrowing SyntaxFor's caches: the choices can name
+		// several different files, none of which need be open, and the popup outlives none of
+		// them — a fresh Show per row is what a search preview already does for the same reason.
+		PreviewContent m_DefinitionPreview;
 
 		// Keyed by path rather than by index: the document list is reordered by dragging tabs
 		// and compacted on close, and either would hand a document another one's colours.

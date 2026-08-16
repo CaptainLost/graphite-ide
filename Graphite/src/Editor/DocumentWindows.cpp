@@ -1,5 +1,7 @@
 #include "Editor/DocumentWindows.h"
 
+#include "Editor/DefinitionNavigation.h"
+#include "Editor/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
 #include "Lang/Registry/LanguageRegistry.h"
@@ -1009,6 +1011,190 @@ namespace Graphite {
 		state.Asked.clear();
 	}
 
+	void DocumentWindows::RequestDefinition(std::size_t index)
+	{
+		if (index >= m_Documents.GetCount())
+		{
+			return;
+		}
+
+		Core::OpenItem& item = m_Documents.At(index);
+
+		if (!item.Document)
+		{
+			return;
+		}
+
+		const LanguageId language = LanguageOfPath(item.Path);
+
+		if (ServerConfigFor(language) == nullptr)
+		{
+			// Nothing configured to ask - the same answer a server that never started would give,
+			// said immediately rather than after a round trip that could not have happened.
+			SetTransientMessage("no definition found");
+			return;
+		}
+
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const Core::Position position = buffer.ToPosition(item.Caret.Offset);
+		const std::string lineText = buffer.LineText(position.Line);
+
+		FilePosition where;
+		where.Path = item.Path;
+		where.Line = position.Line;
+		where.Column = ToUtf16Column(lineText, position.Column);
+
+		// A second F12 before the first has answered supersedes it: the user is asking a new
+		// question, and an answer to the old one arriving late would be about a place they have
+		// since moved past.
+		if (m_PendingDefinition)
+		{
+			m_LanguageServices.Cancel(m_PendingDefinition->Ticket);
+		}
+
+		m_LanguageServices.EnsureStarted(item.Path, language);
+
+		const LanguageServices::Ticket ticket =
+			m_LanguageServices.AskDefinition(item.Path, language, where);
+
+		m_PendingDefinition = PendingDefinition{ticket, item.Path, item.Caret.Offset, where};
+	}
+
+	void DocumentWindows::ApplyDefinitionAnswer(const PendingDefinition& pending,
+												const LanguageServices::Answer& answer)
+	{
+		// The stand-in generation check: a document closed, or a caret that has moved since the
+		// request, both mean this answer is about a question that no longer stands.
+		const auto index = m_Documents.Find(pending.Path);
+
+		if (!index || m_Documents.At(*index).Caret.Offset != pending.CaretOffset)
+		{
+			return;
+		}
+
+		if (answer.Failed)
+		{
+			SetTransientMessage("no definition found");
+			return;
+		}
+
+		std::vector<Location> candidates;
+		const DefinitionOutcome outcome = ResolveDefinition(answer.Locations, pending.From, candidates);
+
+		switch (outcome)
+		{
+		case DefinitionOutcome::None:
+			SetTransientMessage("no definition found");
+			break;
+
+		case DefinitionOutcome::Jumped:
+			if (!candidates.empty())
+			{
+				Jump(m_Documents, candidates.front());
+			}
+			break;
+
+		case DefinitionOutcome::NeedsChoice:
+			m_DefinitionChoices = std::move(candidates);
+			// Called here, before any window this frame has opened, rather than deferred to
+			// RenderDefinitionChoices: CollectServerAnswers runs at the very top of Render, ahead
+			// of every Begin, which is exactly where OpenPopup is safe to call.
+			ImGui::OpenPopup(kDefinitionChoicesTitle);
+			break;
+		}
+	}
+
+	void DocumentWindows::RenderDefinitionChoices(const ResolvedScheme& scheme,
+												  std::size_t tabWidth)
+	{
+		if (!ImGui::BeginPopup(kDefinitionChoicesTitle))
+		{
+			return;
+		}
+
+		const EditorPalette editorPalette = ReadEditorPalette(scheme);
+		const SyntaxPalette syntaxPalette = ReadSyntaxPalette(scheme);
+
+		m_DefinitionPreview.SetTabWidth(tabWidth);
+
+		for (std::size_t index = 0; index < m_DefinitionChoices.size(); ++index)
+		{
+			const Location& location = m_DefinitionChoices[index];
+
+			ImGui::PushID(static_cast<int>(index));
+
+			const std::string header = Core::ToUtf8(location.Path.filename()) + ":" +
+									   std::to_string(location.Line + 1);
+
+			if (ImGui::Selectable(header.c_str()))
+			{
+				Jump(m_Documents, location);
+				ImGui::CloseCurrentPopup();
+			}
+
+			// The line the location names, coloured the way the editor would draw it -
+			// PreviewContent already knows how to lex and colour one line without this owning a
+			// whole SyntaxCache per candidate.
+			m_DefinitionPreview.Show(location.Path, m_Documents);
+
+			if (const Core::TextBuffer* buffer = m_DefinitionPreview.GetBuffer();
+				buffer != nullptr && location.Line < buffer->GetLineCount())
+			{
+				const std::string expanded =
+					Core::ExpandTabs(buffer->LineText(location.Line), tabWidth);
+				const std::vector<Token>& tokens = m_DefinitionPreview.TokensOf(location.Line);
+
+				ImGui::Indent();
+
+				std::size_t drawn = 0;
+				bool first = true;
+
+				const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour)
+				{
+					if (to <= from || from >= expanded.size())
+					{
+						return;
+					}
+
+					if (!first)
+					{
+						ImGui::SameLine(0.0f, 0.0f);
+					}
+
+					first = false;
+
+					const std::size_t end = std::min(to, expanded.size());
+					const ImVec4 rgba = ImGui::ColorConvertU32ToFloat4(colour);
+
+					ImGui::TextColored(rgba, "%.*s", static_cast<int>(end - from),
+									   expanded.data() + from);
+				};
+
+				if (tokens.empty())
+				{
+					drawRun(0, expanded.size(), editorPalette.Text);
+				}
+				else
+				{
+					for (const Token& token : tokens)
+					{
+						drawRun(drawn, token.From, editorPalette.Text);
+						drawRun(token.From, token.To, syntaxPalette.Of(token.Kind));
+						drawn = token.To;
+					}
+
+					drawRun(drawn, expanded.size(), editorPalette.Text);
+				}
+
+				ImGui::Unindent();
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndPopup();
+	}
+
 	void DocumentWindows::CollectServerAnswers()
 	{
 		std::vector<LanguageServices::Answer> answers;
@@ -1017,6 +1203,15 @@ namespace Graphite {
 
 		for (const LanguageServices::Answer& answer : answers)
 		{
+			if (m_PendingDefinition && m_PendingDefinition->Ticket == answer.For)
+			{
+				const PendingDefinition pending = *m_PendingDefinition;
+
+				m_PendingDefinition.reset();
+				ApplyDefinitionAnswer(pending, answer);
+				continue;
+			}
+
 			if (const auto symbols = m_PendingSymbols.find(answer.For);
 				symbols != m_PendingSymbols.end())
 			{
@@ -1159,6 +1354,13 @@ namespace Graphite {
 
 				if (editorResult.SaveRequested)
 					RequestSave(index);
+
+				// Ctrl+click asks the same question F12 does, from wherever the click just put
+				// the caret — reported through the frame result rather than resolved from the
+				// active document, so the request is unambiguously about the document that was
+				// actually clicked even on the one frame a click both switches and asks.
+				if (editorResult.DefinitionRequested)
+					RequestDefinition(index);
 			}
 
 			ImGui::End();
@@ -1213,6 +1415,7 @@ namespace Graphite {
 		RenderReloadConflict();
 		RenderOverwriteConfirm();
 		RenderCloseConfirm();
+		RenderDefinitionChoices(scheme, indentStyle.Width);
 
 		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap, scheme,
 							  focusRequest);

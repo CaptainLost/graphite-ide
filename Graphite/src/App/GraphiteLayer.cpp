@@ -181,6 +181,33 @@ namespace Graphite {
 
 		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
 
+		// The active document, for the same reason find.open above reads it rather than whatever
+		// holds the keyboard: F12 runs before anything has drawn this frame, and activating a tab
+		// is what makes it the document a command means either way.
+		m_Commands.Add({.Id = "editor.goToDefinition",
+						.Label = "Go to Definition",
+						.Run = [this] {
+							if (const auto active = m_Documents.GetActive())
+								m_DocumentWindows.RequestDefinition(*active);
+						},
+						.Enabled = [this] {
+							const auto active = m_Documents.GetActive();
+
+							return active && m_Documents.At(*active).Document.has_value();
+						}});
+
+		m_Keys.SetDefault("editor.goToDefinition", {.Primary = Core::Chord::Key(ImGuiKey_F12)});
+
+		// No consumer yet — the panel that will show what this finds is a later task. Registered
+		// now regardless, so KeyBindingsSection already offers Shift+F12 for rebinding, and the
+		// binding is not something that arrives alongside the feature and needs a second look
+		// here. The handler stays empty rather than growing a placeholder UI nobody asked for.
+		m_Commands.Add({.Id = "editor.findReferences", .Label = "Find All References", .Run = [] {
+						}});
+
+		m_Keys.SetDefault("editor.findReferences",
+						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
+
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
 						.Run = [] {
