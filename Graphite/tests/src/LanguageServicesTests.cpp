@@ -33,6 +33,43 @@ TEST_CASE("A configured server with no binary reports NotFound and names what is
 	CHECK_FALSE(status.Detail.empty());
 }
 
+// The shape the editor is in on a machine with no clangd, which is every machine until one is
+// installed: the language IS configured, so a server entry exists and reports NotFound, but it
+// never got a client. That is a different path from a language with no entry at all, and it is
+// the only path such a machine ever takes.
+TEST_CASE("A ticket asked of a configured server whose binary is missing comes back Failed")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp,
+								 temp.GetPath() / "no-such-clangd.exe");
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+
+	REQUIRE(services.StatusFor(Graphite::LanguageId::Cpp).State ==
+			Graphite::ServerState::NotFound);
+
+	Graphite::FilePosition where;
+	where.Path = source;
+	where.Line = 0;
+	where.Column = Graphite::Utf16Column(0);
+
+	const Graphite::LanguageServices::Ticket ticket =
+		services.AskDefinition(source, Graphite::LanguageId::Cpp, where);
+
+	services.Poll();
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].For == ticket);
+	CHECK(answers[0].Failed);
+}
+
 TEST_CASE("EnsureStarted is idempotent for the same root")
 {
 	TempDirectory temp;
