@@ -6,10 +6,14 @@
 #include "Lang/Server/ServerRegistry.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace Graphite {
 
@@ -54,13 +58,52 @@ namespace Graphite {
 		ServerStatus StatusFor(LanguageId language) const;
 
 		// UI thread, once a frame: collects each running client's replies and status, notices a
-		// process that has died, and restarts it once its backoff has elapsed. Never blocks.
+		// process that has died, and restarts it once its backoff has elapsed. Never blocks. This
+		// is the only place any `LspClient::Drain` is called — see `TakeAnswers`.
 		void Poll();
 
-		// The client managing this file's language and root, or null when none is configured,
-		// none has been started yet, or the one that was started never got a process (NotFound,
-		// or Failed after exhausting its restarts).
-		LspClient* ClientFor(const std::filesystem::path& path, LanguageId language);
+		// Unique across every server this owns, unlike `LspClient::RequestId`, which is numbered
+		// per client and restarts at 1 for each one — two different servers would otherwise hand
+		// out the same number, and a consumer matching on that alone would attribute one server's
+		// answer to the other's question. A consumer holds one of these and matches `Answer::For`
+		// against it.
+		enum class Ticket : std::uint64_t
+		{
+		};
+
+		// Each returns a ticket immediately; the answer arrives through `TakeAnswers`. A ticket
+		// for a language with no configured server, or for a root whose server never got a
+		// process, is answered `Failed` on the very next `TakeAnswers` — there is no such thing as
+		// a ticket nobody ever hears back about.
+		Ticket AskDefinition(const std::filesystem::path& path, LanguageId language,
+							const FilePosition& where);
+		Ticket AskReferences(const std::filesystem::path& path, LanguageId language,
+							const FilePosition& where);
+		Ticket AskSymbols(const std::filesystem::path& path, LanguageId language);
+
+		struct Answer
+		{
+			Ticket For{};
+			std::vector<Location> Locations;
+			std::vector<Declaration> Declarations;
+			bool Failed = false;
+		};
+
+		// Moves everything answered since the last call into `answers`. UI thread only, and the
+		// only place answers leave this class.
+		//
+		// `LspClient::Drain` *consumes* what it returns — a second caller draining the same
+		// client would see nothing, because the first caller already took it. `Poll` has to call
+		// `Drain` on every client it owns to notice a dead process, so it is also the only place
+		// that may collect answers; if a second caller drained a client directly, answers would
+		// vanish at random depending on which caller ran first in a frame, which is the worst
+		// failure shape there is — indistinguishable from a server that occasionally forgets to
+		// answer. `TakeAnswers` is therefore the only way anything outside this class ever sees an
+		// answer, and there is deliberately no accessor to a raw `LspClient` for a second drain
+		// loop to form around.
+		void TakeAnswers(std::vector<Answer>& answers);
+
+		void Cancel(Ticket ticket);
 
 		// Forwarded to the matching client and remembered here, so a restart can tell it again —
 		// a fresh `LspClient` knows nothing about what was open, and re-sending is the only way
@@ -112,6 +155,12 @@ namespace Graphite {
 			// The text last sent for every document this server was told is open, so a restarted
 			// client can be told the same thing again.
 			std::map<std::filesystem::path, std::string> OpenDocuments;
+
+			// What ticket a still-outstanding `RequestId` of *this* client belongs to. RequestId
+			// is only meaningful together with the client that issued it — this is the map that
+			// makes that pairing explicit, and it is why the ticket, not the RequestId, is what a
+			// caller outside this class ever holds.
+			std::unordered_map<RequestId, Ticket> Pending;
 		};
 
 		// Resolves the config and the root for (path, language); null when the language has no
@@ -131,8 +180,23 @@ namespace Graphite {
 		// back is a brand new instance, which is what this does.
 		void RestartServer(const Key& key, ManagedServer& server);
 
+		Ticket IssueTicket();
+
+		// Records an immediately-Failed answer for a ticket that will never reach a client —
+		// no server configured, or no process ever started for one that was.
+		void Fail(Ticket ticket);
+
+		// Shared by AskDefinition/AskReferences/AskSymbols: resolves (path, language) to a
+		// server, and either forwards through `ask` and remembers the resulting RequestId against
+		// a fresh ticket, or fails the ticket immediately when there is no live client to ask.
+		Ticket AskVia(const std::filesystem::path& path, LanguageId language,
+					 const std::function<RequestId(LspClient&)>& ask);
+
 		std::filesystem::path m_FallbackRoot;
 		std::map<LanguageId, std::filesystem::path> m_ConfiguredBinaries;
 		std::map<Key, ManagedServer> m_Servers;
+
+		std::uint64_t m_NextTicket = 1;
+		std::vector<Answer> m_Answers;
 	};
 }

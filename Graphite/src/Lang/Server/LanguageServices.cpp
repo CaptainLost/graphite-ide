@@ -129,23 +129,105 @@ namespace Graphite {
 		return {};
 	}
 
-	LspClient* LanguageServices::ClientFor(const std::filesystem::path& path, LanguageId language)
+	LanguageServices::Ticket LanguageServices::IssueTicket()
 	{
+		return static_cast<Ticket>(m_NextTicket++);
+	}
+
+	void LanguageServices::Fail(Ticket ticket)
+	{
+		Answer answer;
+		answer.For = ticket;
+		answer.Failed = true;
+
+		m_Answers.push_back(std::move(answer));
+	}
+
+	LanguageServices::Ticket LanguageServices::AskVia(
+		const std::filesystem::path& path, LanguageId language,
+		const std::function<RequestId(LspClient&)>& ask)
+	{
+		const Ticket ticket = IssueTicket();
+
 		Key key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			return nullptr;
+			// Nothing configured for this language — there is no client that will ever answer,
+			// so the ticket is failed on the spot rather than left to hang forever.
+			Fail(ticket);
+			return ticket;
 		}
 
 		const auto found = m_Servers.find(key);
 
-		if (found == m_Servers.end())
+		if (found == m_Servers.end() || !found->second.Client)
 		{
-			return nullptr;
+			// Not started yet, or started and never got a process (NotFound, or Failed after
+			// exhausting its restarts) — same reasoning as above.
+			Fail(ticket);
+			return ticket;
 		}
 
-		return found->second.Client.get();
+		ManagedServer& server = found->second;
+		const RequestId requestId = ask(*server.Client);
+
+		server.Pending[requestId] = ticket;
+
+		return ticket;
+	}
+
+	LanguageServices::Ticket LanguageServices::AskDefinition(const std::filesystem::path& path,
+															  LanguageId language,
+															  const FilePosition& where)
+	{
+		return AskVia(path, language,
+					 [&where](LspClient& client) { return client.AskDefinition(where); });
+	}
+
+	LanguageServices::Ticket LanguageServices::AskReferences(const std::filesystem::path& path,
+															   LanguageId language,
+															   const FilePosition& where)
+	{
+		return AskVia(path, language,
+					 [&where](LspClient& client) { return client.AskReferences(where); });
+	}
+
+	LanguageServices::Ticket LanguageServices::AskSymbols(const std::filesystem::path& path,
+														   LanguageId language)
+	{
+		return AskVia(path, language,
+					 [&path](LspClient& client) { return client.AskSymbols(path); });
+	}
+
+	void LanguageServices::TakeAnswers(std::vector<Answer>& answers)
+	{
+		answers.insert(answers.end(), std::make_move_iterator(m_Answers.begin()),
+					   std::make_move_iterator(m_Answers.end()));
+
+		m_Answers.clear();
+	}
+
+	void LanguageServices::Cancel(Ticket ticket)
+	{
+		for (auto& [key, server] : m_Servers)
+		{
+			for (auto pending = server.Pending.begin(); pending != server.Pending.end(); ++pending)
+			{
+				if (pending->second != ticket)
+				{
+					continue;
+				}
+
+				if (server.Client)
+				{
+					server.Client->Cancel(pending->first);
+				}
+
+				server.Pending.erase(pending);
+				return;
+			}
+		}
 	}
 
 	void LanguageServices::OpenDocument(const std::filesystem::path& path, LanguageId language,
@@ -284,9 +366,29 @@ namespace Graphite {
 			ServerStatus status;
 			server.Client->Drain(answers, status);
 
-			// Answers themselves belong to whichever editor-facing code asked the question that
-			// produced them — LanguageServices owns the server, not the conversation with it —
-			// so nothing here inspects them beyond having drained them out of the client.
+			// This is the single place any LspClient::Answer is turned into a ticketed Answer —
+			// see TakeAnswers for why there must be exactly one. A RequestId with no entry in
+			// Pending was already cancelled (Cancel erases it there without waiting for the
+			// server's reply), so it is dropped rather than delivered to nobody.
+			for (LspClient::Answer& answer : answers)
+			{
+				const auto pending = server.Pending.find(answer.Id);
+
+				if (pending == server.Pending.end())
+				{
+					continue;
+				}
+
+				Answer delivered;
+				delivered.For = pending->second;
+				delivered.Locations = std::move(answer.Locations);
+				delivered.Declarations = std::move(answer.Declarations);
+				delivered.Failed = answer.Failed;
+
+				m_Answers.push_back(std::move(delivered));
+				server.Pending.erase(pending);
+			}
+
 			status.Restarts = server.Restarts;
 			server.Status = status;
 
@@ -295,6 +397,17 @@ namespace Graphite {
 				server.RestartPending = false;
 				continue;
 			}
+
+			// A dead client's reader answers everything it still held outstanding as Failed
+			// before it reports Failed at all (LspClient's own invariant), so by this point
+			// Pending should already be empty. Cleared here as well in case a ticket was issued
+			// in the same frame the client died, after the reader's own sweep but before this
+			// Drain — belt and braces so a ticket is never silently forgotten.
+			for (auto& entry : server.Pending)
+			{
+				Fail(entry.second);
+			}
+			server.Pending.clear();
 
 			if (server.Restarts >= 3)
 			{

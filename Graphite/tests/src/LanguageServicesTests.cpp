@@ -54,3 +54,54 @@ TEST_CASE("Restart backoff grows with the number of restarts already attempted")
 	CHECK(Graphite::RestartBackoff(1) == std::chrono::seconds(2));
 	CHECK(Graphite::RestartBackoff(2) == std::chrono::seconds(4));
 }
+
+TEST_CASE("Tickets are unique across two different servers")
+{
+	TempDirectory tempA;
+	TempDirectory tempB;
+
+	Graphite::LanguageServices services{tempA.GetPath()};
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, tempA.GetPath() / "absent.exe");
+
+	// Neither root ever gets a live client (the binary does not exist), so both tickets are
+	// failed on the spot — but a ticket is issued before that is known, and issuing is what
+	// this case checks: two different (language, root) keys must never hand out the same one.
+	const Graphite::LanguageServices::Ticket first =
+		services.AskDefinition(tempA.GetPath() / "a.cpp", Graphite::LanguageId::Cpp, {});
+	const Graphite::LanguageServices::Ticket second =
+		services.AskDefinition(tempB.GetPath() / "b.cpp", Graphite::LanguageId::Cpp, {});
+
+	CHECK(first != second);
+}
+
+TEST_CASE("A ticket for a language with no configured server is answered Failed immediately")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	const Graphite::LanguageServices::Ticket ticket = services.AskSymbols(
+		temp.GetPath() / "notes.txt", Graphite::LanguageId::PlainText);
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].For == ticket);
+	CHECK(answers[0].Failed);
+}
+
+TEST_CASE("TakeAnswers empties its queue")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.AskSymbols(temp.GetPath() / "notes.txt", Graphite::LanguageId::PlainText);
+
+	std::vector<Graphite::LanguageServices::Answer> first;
+	services.TakeAnswers(first);
+	CHECK(first.size() == 1);
+
+	std::vector<Graphite::LanguageServices::Answer> second;
+	services.TakeAnswers(second);
+	CHECK(second.empty());
+}
