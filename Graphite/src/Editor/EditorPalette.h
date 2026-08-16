@@ -20,5 +20,6 @@ namespace Graphite {
 		ImU32 Caret = 0;
 		ImU32 FindMatch = 0;
 		ImU32 FindCurrentMatch = 0;
+		ImU32 Lens = 0;
 	};
 }

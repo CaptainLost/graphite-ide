@@ -22,6 +22,10 @@ namespace Graphite {
 		// third is distinguishable among them.
 		FindMatch,
 		FindCurrentMatch,
+
+		// The reference count drawn on its own row above a declaration. Dimmed: it is a note
+		// about the code rather than code, and reading past it must cost nothing.
+		Lens,
 		Count
 	};
 }

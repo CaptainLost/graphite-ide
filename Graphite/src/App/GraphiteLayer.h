@@ -104,7 +104,9 @@ namespace Graphite {
 		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
 
 		ModalGate m_Modals;
-		DocumentWindows m_DocumentWindows{m_Documents, m_Modals};
+		// Declared after m_LanguageServices, which it holds by reference: it opens each document
+		// with the matching server and feeds the reference-count rows from the answers.
+		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.

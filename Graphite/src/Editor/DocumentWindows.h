@@ -2,9 +2,11 @@
 
 #include "Editor/ModalGate.h"
 #include "Editor/FindBar.h"
+#include "Editor/LensModel.h"
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Server/LanguageServices.h"
 #include "Lang/Syntax/SyntaxCache.h"
 
 #include "Core/Text/Editing.h"
@@ -14,6 +16,7 @@
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -34,8 +37,10 @@ namespace Graphite {
 	class DocumentWindows
 	{
 	public:
-		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals)
+		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
+						LanguageServices& languageServices)
 			: m_Documents(documents),
+			  m_LanguageServices(languageServices),
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
 			  m_ReloadConflict(modals, kReloadConflictTitle),
 			  m_OverwriteConfirm(modals, kOverwriteConfirmTitle),
@@ -70,9 +75,64 @@ namespace Graphite {
 		void OpenFind(Core::OpenItem& item) { m_FindBar.Open(item); }
 
 	private:
+		// Everything the reference-count rows need for one document. LensModel alone is not
+		// enough: the declarations behind it have to be kept so the anchors can be rebuilt when
+		// the wrap width changes — a lens anchors to a ROW, and a rewrap moves every row without
+		// any declaration having moved.
+		struct LensState
+		{
+			LensModel Model;
+
+			std::vector<Declaration> Declarations;
+
+			// The wrap width the anchors were last built at, so a rewrap is noticed. Only
+			// meaningful once a reply has arrived.
+			std::size_t BuiltAt = 0;
+
+			bool HaveDeclarations = false;
+
+			// Document rows an AskReferences is already outstanding for, so a row visible for a
+			// second is asked about once rather than sixty times. Cleared whenever the anchors
+			// move, because the rows it holds no longer mean what they did.
+			std::set<std::size_t> Asked;
+
+			// Symbols are wanted from the moment the document opens and again after every edit.
+			// One request may be outstanding at a time, and a failed one — a server still
+			// starting, or still indexing — is retried on a clock rather than on the next frame,
+			// which would be one request per frame for as long as the server took.
+			bool WantSymbols = true;
+			bool SymbolsOutstanding = false;
+			double NextSymbolsAt = 0.0;
+		};
+
 		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
 
 		void PruneSyntaxCaches();
+
+		// Null when no language server is configured for this document's language, which is what
+		// puts a null LensModel on EditorView and spares the widget a branch on whether a server
+		// exists. Opens the document with the server the first time it is asked for.
+		LensState* LensFor(const Core::OpenItem& item);
+
+		void PruneLensStates();
+
+		// Sends what the frame's edits and geometry mean for this document's lenses, and asks for
+		// the counts the rows on screen still need.
+		void UpdateLenses(const Core::OpenItem& item, LensState& state,
+						  const EditorFrameResult& frame);
+
+		void AskForSymbols(const Core::OpenItem& item, LensState& state);
+
+		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
+								 const EditorFrameResult& frame);
+
+		// Routes everything the servers have answered since the last frame to the document that
+		// asked. LanguageServices::TakeAnswers is the single drain point, so this is the only
+		// place answers are collected.
+		void CollectServerAnswers();
+
+		void ApplySymbolAnswer(const std::filesystem::path& path,
+							   const LanguageServices::Answer& answer);
 
 		void SyncEveryDocument();
 
@@ -142,6 +202,8 @@ namespace Graphite {
 
 		Core::DocumentSet& m_Documents;
 
+		LanguageServices& m_LanguageServices;
+
 		unsigned int m_LastFocusedNode = 0;
 
 		ModalQuestion<LargeFileQuestion> m_SizeQuestion;
@@ -178,6 +240,24 @@ namespace Graphite {
 		// rewrite at the rename site — the rename happens in Core, this map is Graphite's own,
 		// and a prune is the one fix that does not need the rename to know this map exists.
 		std::map<std::filesystem::path, SyntaxCache> m_Syntax;
+
+		// Keyed and pruned exactly as m_Syntax is, and for the same reason: DocumentSet owns the
+		// path this is keyed on and can rewrite it without telling this map, so an entry orphaned
+		// by a rename would otherwise hold its declarations for the rest of the process.
+		std::map<std::filesystem::path, LensState> m_Lenses;
+
+		// What an outstanding ticket was asked for. Tickets are unique across every server, which
+		// is what lets one map per question kind route an answer back to the document — and to the
+		// row — that wanted it, without either server's numbering colliding with the other's.
+		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSymbols;
+
+		struct PendingCount
+		{
+			std::filesystem::path Path;
+			std::size_t DocumentRow = 0;
+		};
+
+		std::map<LanguageServices::Ticket, PendingCount> m_PendingCounts;
 
 		// One for every document rather than one each: what it holds is which document wants the
 		// keyboard next, and only one can.

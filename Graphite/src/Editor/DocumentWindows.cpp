@@ -3,15 +3,20 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Lang/Registry/LanguageRegistry.h"
+#include "Lang/Server/LspClient.h"
+#include "Lang/Server/ServerRegistry.h"
 
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
 #include "Core/Text/FileSync.h"
+#include "Core/Text/RowMap.h"
+#include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextDocument.h"
 
 #include <imgui.h>
@@ -26,6 +31,12 @@ namespace Graphite {
 
 	namespace {
 		constexpr double kTransientMessageSeconds = 4.0;
+
+		// How long before a symbols request that came back Failed is tried again. A server is
+		// routinely still starting or still indexing when the first one goes out, and its answer
+		// then says nothing about whether a later one would succeed — but retrying on the next
+		// frame would be sixty requests a second at a server that is busy.
+		constexpr double kSymbolsRetrySeconds = 2.0;
 
 		std::string Join(const std::vector<std::string>& values)
 		{
@@ -446,6 +457,9 @@ namespace Graphite {
 		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
 		m_Syntax.erase(m_Documents.At(index).Path);
 		m_Documents.Close(index);
+		// After the close, so the prune sees the document gone and tells the server so. Erasing
+		// here directly would be the same thing minus the CloseDocument the prune sends.
+		PruneLensStates();
 	}
 
 	void DocumentWindows::CloseIfOpen(const std::filesystem::path& path)
@@ -760,6 +774,282 @@ namespace Graphite {
 		}
 	}
 
+	DocumentWindows::LensState* DocumentWindows::LensFor(const Core::OpenItem& item)
+	{
+		const LanguageId language = LanguageOfPath(item.Path);
+
+		// The one test for "a server serves this document". A language with no row in the server
+		// registry gets no lens state at all, which is what puts a null LensModel on EditorView.
+		if (ServerConfigFor(language) == nullptr || !item.Document)
+		{
+			return nullptr;
+		}
+
+		const auto [entry, inserted] = m_Lenses.try_emplace(item.Path);
+
+		if (inserted)
+		{
+			// EnsureStarted before OpenDocument, in that order: OpenDocument is a no-op while no
+			// server runs for this root, and every answer afterwards would be about a file the
+			// server was never told exists. Both are safe to repeat, but this is the one moment
+			// per document they are needed.
+			m_LanguageServices.EnsureStarted(item.Path, language);
+			m_LanguageServices.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
+		}
+
+		return &entry->second;
+	}
+
+	// The same prune, for the same reason, as PruneSyntaxCaches next door — see its comment. The
+	// server is told the document closed from here as well, so its copy does not outlive the tab:
+	// a path that has gone from DocumentSet is one nothing will ask about again.
+	void DocumentWindows::PruneLensStates()
+	{
+		for (auto it = m_Lenses.begin(); it != m_Lenses.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				m_LanguageServices.CloseDocument(it->first, LanguageOfPath(it->first));
+				it = m_Lenses.erase(it);
+			}
+		}
+	}
+
+	void DocumentWindows::AskForSymbols(const Core::OpenItem& item, LensState& state)
+	{
+		const double now = ImGui::GetTime();
+
+		if (!state.WantSymbols || state.SymbolsOutstanding || now < state.NextSymbolsAt)
+		{
+			return;
+		}
+
+		const LanguageServices::Ticket ticket =
+			m_LanguageServices.AskSymbols(item.Path, LanguageOfPath(item.Path));
+
+		m_PendingSymbols.emplace(ticket, item.Path);
+		state.SymbolsOutstanding = true;
+		state.NextSymbolsAt = now + kSymbolsRetrySeconds;
+	}
+
+	void DocumentWindows::AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
+											  const EditorFrameResult& frame)
+	{
+		// A screen either side of what was drawn, so scrolling steadily finds the counts already
+		// there rather than a blank row for as long as the server takes to answer. Measured from
+		// the frame's own span rather than from a constant: that is what "a screen" is here,
+		// whatever the window height and font size make it.
+		const std::size_t margin = frame.LastVisibleRow - frame.FirstVisibleRow + 1;
+		const std::size_t from =
+			frame.FirstVisibleRow > margin ? frame.FirstVisibleRow - margin : 0;
+		const std::size_t to = frame.LastVisibleRow + margin + 1;
+
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+
+		for (const std::size_t row : state.Model.RowsNeedingCounts(from, to))
+		{
+			// The whole of the re-asking guard: a row already asked about is skipped for as long
+			// as it stays in this set, which is until the anchors move. RowsNeedingCounts on its
+			// own would return the same rows every frame until the answer arrived, which at sixty
+			// frames a second is a request storm at the server for one visible declaration.
+			if (!state.Asked.insert(row).second)
+			{
+				continue;
+			}
+
+			const Lens* lens = state.Model.LensAt(row);
+
+			if (lens == nullptr)
+			{
+				continue;
+			}
+
+			const Core::RowRef ref = item.Rows.RowAt(row);
+			const std::string lineText = buffer.LineText(ref.Line);
+
+			FilePosition where;
+			where.Path = item.Path;
+			where.Line = ref.Line;
+			// The lens carries a VISUAL column, in cells, because that is what draws it in the
+			// right place. The protocol wants UTF-16 code units, so it goes back through the
+			// line's own bytes: cells to a byte offset with the tab width, and the byte offset to
+			// a Utf16Column with the line's text. Neither step can be skipped on a line holding a
+			// tab or a character outside ASCII.
+			where.Column = ToUtf16Column(
+				lineText, Core::ByteOfColumn(lineText, lens->Column, item.TabWidth));
+
+			const LanguageServices::Ticket ticket =
+				m_LanguageServices.AskReferences(item.Path, LanguageOfPath(item.Path), where);
+
+			m_PendingCounts.emplace(ticket, PendingCount{item.Path, row});
+		}
+	}
+
+	void DocumentWindows::UpdateLenses(const Core::OpenItem& item, LensState& state,
+									   const EditorFrameResult& frame)
+	{
+		if (frame.Edited)
+		{
+			// Once per frame per document, not once per edit: the widget reports that this frame
+			// changed the buffer, however many edits went into it, and a transaction touching
+			// twenty lines would otherwise send the whole file twenty times in one frame. The
+			// server only needs the state the frame ended in.
+			m_LanguageServices.ChangeDocument(item.Path, LanguageOfPath(item.Path),
+											  item.Document->GetBuffer().Materialize());
+
+			// The declarations the server last reported are now about text that has moved. The
+			// model has already shifted its anchors as a stopgap; what is asked for here is the
+			// exact set, at once rather than on the retry clock.
+			state.WantSymbols = true;
+			state.NextSymbolsAt = 0.0;
+
+			// The rows in flight were asked about before the edit, so their answers are about
+			// positions that no longer hold. Dropping the tickets means those answers are ignored
+			// when they arrive, and clearing the set lets the shifted rows be asked about again.
+			state.Asked.clear();
+
+			for (auto it = m_PendingCounts.begin(); it != m_PendingCounts.end();)
+			{
+				if (it->second.Path == item.Path)
+				{
+					m_LanguageServices.Cancel(it->first);
+					it = m_PendingCounts.erase(it);
+				}
+				else
+				{
+					++it;
+				}
+			}
+		}
+
+		// A lens anchors to a row, and every row moved when the wrap width did — so the anchors
+		// are rebuilt from the declarations already in hand rather than waiting for the server to
+		// say the same thing again. SetDeclarations carries the counts over by identity, so
+		// nothing is re-asked for.
+		if (state.HaveDeclarations && state.BuiltAt != item.WrappedTo)
+		{
+			state.Model.SetDeclarations(state.Declarations, item.Rows,
+										item.Document->GetBuffer(), item.TabWidth);
+			state.BuiltAt = item.WrappedTo;
+			state.Asked.clear();
+		}
+
+		AskForSymbols(item, state);
+		AskForVisibleCounts(item, state, frame);
+	}
+
+	void DocumentWindows::ApplySymbolAnswer(const std::filesystem::path& path,
+											const LanguageServices::Answer& answer)
+	{
+		const auto entry = m_Lenses.find(path);
+
+		if (entry == m_Lenses.end())
+		{
+			return;
+		}
+
+		LensState& state = entry->second;
+
+		state.SymbolsOutstanding = false;
+
+		// A failure says nothing about whether the next attempt would succeed — a server that was
+		// still indexing answers this way — so WantSymbols is left standing and the retry clock
+		// set in AskForSymbols decides when to try again.
+		if (answer.Failed)
+		{
+			return;
+		}
+
+		const auto index = m_Documents.Find(path);
+
+		if (!index || !m_Documents.At(*index).Document)
+		{
+			return;
+		}
+
+		const Core::OpenItem& item = m_Documents.At(*index);
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+
+		// A reply is about the text as the server last saw it, and the buffer may have moved on
+		// since — an edit that removed lines from the end leaves declarations naming lines that
+		// are no longer there. Both RowMap and TextBuffer clamp rather than fail, so keeping them
+		// would not crash; it would anchor a lens past the last line of the file, which is a row
+		// drawn where no row belongs. Dropped instead, and the next reply brings them back if the
+		// server still says they are there.
+		state.Declarations.clear();
+		state.Declarations.reserve(answer.Declarations.size());
+
+		for (const Declaration& declaration : answer.Declarations)
+		{
+			if (declaration.Line < buffer.GetLineCount())
+			{
+				state.Declarations.push_back(declaration);
+			}
+		}
+
+		state.HaveDeclarations = true;
+		state.WantSymbols = false;
+		state.Model.SetDeclarations(state.Declarations, item.Rows, buffer, item.TabWidth);
+		state.BuiltAt = item.WrappedTo;
+
+		// The anchors have been replaced outright, so the rows the outstanding requests name are
+		// no longer the rows they were asked about. Cleared rather than translated: an answer that
+		// arrives for a dropped ticket is ignored, and the counts that survived the rebuild are
+		// already known, so only the genuinely unknown rows are asked about again.
+		state.Asked.clear();
+	}
+
+	void DocumentWindows::CollectServerAnswers()
+	{
+		std::vector<LanguageServices::Answer> answers;
+
+		m_LanguageServices.TakeAnswers(answers);
+
+		for (const LanguageServices::Answer& answer : answers)
+		{
+			if (const auto symbols = m_PendingSymbols.find(answer.For);
+				symbols != m_PendingSymbols.end())
+			{
+				const std::filesystem::path path = symbols->second;
+
+				m_PendingSymbols.erase(symbols);
+				ApplySymbolAnswer(path, answer);
+				continue;
+			}
+
+			const auto count = m_PendingCounts.find(answer.For);
+
+			if (count == m_PendingCounts.end())
+			{
+				// Nothing here asked this, or what asked it has since been dropped — an edit
+				// invalidated the row, or the document closed. Either way the answer is about a
+				// question that no longer stands.
+				continue;
+			}
+
+			const PendingCount pending = count->second;
+
+			m_PendingCounts.erase(count);
+
+			if (answer.Failed)
+			{
+				// Left in state.Asked deliberately: a failure that is re-asked the moment it comes
+				// back is a request per frame for as long as the server keeps failing. The next
+				// edit or reply clears the set and gives the row another chance.
+				continue;
+			}
+
+			if (const auto entry = m_Lenses.find(pending.Path); entry != m_Lenses.end())
+			{
+				entry->second.Model.SetCount(pending.DocumentRow, answer.Locations.size());
+			}
+		}
+	}
+
 	void DocumentWindows::ForgetLayoutOfWindowsClosedElsewhere(
 		const std::vector<std::string>& startingIdentities)
 	{
@@ -834,14 +1124,27 @@ namespace Graphite {
 				if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
 					m_Documents.Promote(index);
 
+				// Null for a document no server serves, which is what spares the widget a branch
+				// on whether one exists — the same role an empty token list plays for SyntaxCache.
+				LensState* const lens = LensFor(item);
+
 				EditorView view;
 				view.FontSize = fontSize;
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.Syntax = &SyntaxFor(item);
 				view.Scheme = &scheme;
+				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
+
+				// After the draw, not before: what to ask the server for depends on the rows the
+				// frame actually drew, and whether to tell it about an edit depends on whether one
+				// happened during it.
+				if (lens != nullptr)
+				{
+					UpdateLenses(item, *lens, editorResult);
+				}
 
 				// Once the user has typed into a preview it is no longer something they were
 				// just glancing at.
@@ -886,6 +1189,11 @@ namespace Graphite {
 	{
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
+		// Before the documents draw, so an answer that arrived since the last frame is on screen
+		// this one. GraphiteLayer has already called LanguageServices::Poll, which is what moved
+		// the servers' replies into the queue this drains.
+		CollectServerAnswers();
+
 		// Taken and cleared in one step: whatever asked for this focus did so earlier in this
 		// same pass, so a request that matches no document this frame never will, and leaving
 		// it set would hand a stolen focus to whichever document next claims that path.
@@ -907,6 +1215,7 @@ namespace Graphite {
 		// above would cost a walk of m_Syntax for every open document instead of one for the
 		// whole frame.
 		PruneSyntaxCaches();
+		PruneLensStates();
 
 		// After the loop, not before: a renamed document's pending dock target has to be
 		// consumed by Begin() above before its old identity's node can be undocked and

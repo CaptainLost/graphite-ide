@@ -36,6 +36,7 @@ namespace Graphite {
 			case EditorColor::Caret: return {"caret", "Caret"};
 			case EditorColor::FindMatch: return {"findMatch", "Find match"};
 			case EditorColor::FindCurrentMatch: return {"findCurrentMatch", "Current find match"};
+			case EditorColor::Lens: return {"lens", "Reference count"};
 			case EditorColor::Count: break;
 		}
 
