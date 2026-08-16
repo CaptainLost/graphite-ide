@@ -13,6 +13,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
@@ -1081,6 +1082,90 @@ namespace Graphite {
 			PendingDefinition{ticket, item.Path, item.Caret.Offset, where, screenPosition};
 	}
 
+	void DocumentWindows::RequestReferences(std::size_t index, ReferencesPanel& panel)
+	{
+		if (index >= m_Documents.GetCount())
+		{
+			return;
+		}
+
+		Core::OpenItem& item = m_Documents.At(index);
+
+		if (!item.Document)
+		{
+			return;
+		}
+
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const Core::Position position = buffer.ToPosition(item.Caret.Offset);
+		const std::string lineText = buffer.LineText(position.Line);
+
+		FilePosition where;
+		where.Path = item.Path;
+		where.Line = position.Line;
+		where.Column = ToUtf16Column(lineText, position.Column);
+
+		// The word touching the caret, the same word a double click would select - Shift+F12 has
+		// nothing else to name the symbol with while the reply is still outstanding.
+		const Core::Caret word = Core::SelectWordAt(buffer, item.Caret.Offset);
+		const auto [wordFrom, wordTo] = Core::SelectionRange(word);
+		const std::string symbol = buffer.Substring(wordFrom, wordTo);
+
+		RequestReferencesAt(item, LanguageOfPath(item.Path), where, symbol, panel);
+	}
+
+	void DocumentWindows::RequestReferencesForLens(const Core::OpenItem& item,
+												   const LensState& state, std::size_t documentRow,
+												   ReferencesPanel& panel)
+	{
+		for (const Declaration& declaration : state.Declarations)
+		{
+			if (item.Rows.FirstRowOf(declaration.Line) != documentRow)
+			{
+				continue;
+			}
+
+			FilePosition where;
+			where.Path = item.Path;
+			where.Line = declaration.Line;
+			where.Column = declaration.Column;
+
+			RequestReferencesAt(item, LanguageOfPath(item.Path), where, declaration.Name, panel);
+			return;
+		}
+	}
+
+	void DocumentWindows::RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
+											  const FilePosition& where, const std::string& symbol,
+											  ReferencesPanel& panel)
+	{
+		if (ServerConfigFor(language) == nullptr)
+		{
+			// Nothing configured to ask - the same answer a server that never started would give,
+			// said immediately rather than after a round trip that could not have happened.
+			SetTransientMessage("no references found");
+			return;
+		}
+
+		// A second question before the first has answered supersedes it, on the same reasoning as
+		// RequestDefinition: the user is asking about something else now, and a late answer to the
+		// old question would be about a symbol they have since moved past.
+		if (m_PendingReferences)
+		{
+			m_LanguageServices.Cancel(m_PendingReferences->Ticket);
+		}
+
+		m_LanguageServices.EnsureStarted(item.Path, language);
+
+		const LanguageServices::Ticket ticket =
+			m_LanguageServices.AskReferences(item.Path, language, where);
+
+		m_PendingReferences = PendingReferences{ticket, symbol};
+
+		panel.ShowWorking(symbol);
+		panel.Focus();
+	}
+
 	void DocumentWindows::ApplyDefinitionAnswer(const PendingDefinition& pending,
 												const LanguageServices::Answer& answer)
 	{
@@ -1221,7 +1306,7 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
-	void DocumentWindows::CollectServerAnswers()
+	void DocumentWindows::CollectServerAnswers(ReferencesPanel& referencesPanel)
 	{
 		std::vector<LanguageServices::Answer> answers;
 
@@ -1235,6 +1320,21 @@ namespace Graphite {
 
 				m_PendingDefinition.reset();
 				ApplyDefinitionAnswer(pending, answer);
+				continue;
+			}
+
+			if (m_PendingReferences && m_PendingReferences->Ticket == answer.For)
+			{
+				const PendingReferences pending = *m_PendingReferences;
+
+				m_PendingReferences.reset();
+
+				// A failed request - no server, or one that never got a process - reads the same
+				// as a reply naming nothing: ShowResults with an empty vector says "no references
+				// found" either way, rather than leaving the panel stuck showing "working".
+				referencesPanel.ShowResults(pending.Symbol,
+											answer.Failed ? std::vector<Location>{}
+														 : answer.Locations);
 				continue;
 			}
 
@@ -1290,7 +1390,7 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, const ResolvedScheme& scheme,
-		const std::optional<std::filesystem::path>& focusRequest)
+		const std::optional<std::filesystem::path>& focusRequest, ReferencesPanel& referencesPanel)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -1393,6 +1493,12 @@ namespace Graphite {
 				// actually clicked even on the one frame a click both switches and asks.
 				if (editorResult.DefinitionRequested)
 					RequestDefinition(index);
+
+				// A lens row holds no text, so the click cannot become a caret position — it is
+				// reported as the document row the lens anchors to instead, and resolved back to
+				// the declaration through this document's own lens state.
+				if (lens != nullptr && editorResult.LensClicked)
+					RequestReferencesForLens(item, *lens, *editorResult.LensClicked, referencesPanel);
 			}
 
 			ImGui::End();
@@ -1425,14 +1531,14 @@ namespace Graphite {
 	void DocumentWindows::Render(const CommandContext& context, float fontSize,
 								 Core::IndentStyle indentStyle,
 								 unsigned int fallbackDockNode, bool wordWrap,
-								 const ResolvedScheme& scheme)
+								 const ResolvedScheme& scheme, ReferencesPanel& referencesPanel)
 	{
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
 		// Before the documents draw, so an answer that arrived since the last frame is on screen
 		// this one. GraphiteLayer has already called LanguageServices::Poll, which is what moved
 		// the servers' replies into the queue this drains.
-		CollectServerAnswers();
+		CollectServerAnswers(referencesPanel);
 
 		// Taken and cleared in one step: whatever asked for this focus did so earlier in this
 		// same pass, so a request that matches no document this frame never will, and leaving
@@ -1450,7 +1556,7 @@ namespace Graphite {
 		RenderDefinitionChoices(scheme, indentStyle.Width);
 
 		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap, scheme,
-							  focusRequest);
+							  focusRequest, referencesPanel);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
 		// above would cost a walk of m_Syntax for every open document instead of one for the

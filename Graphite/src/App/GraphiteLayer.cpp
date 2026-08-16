@@ -11,6 +11,8 @@
 
 #include "Panels/ExplorerPanel.h"
 
+#include "Panels/ReferencesPanel.h"
+
 #include "Panels/SearchPanel.h"
 
 #include "Settings/AppSettings.h"
@@ -65,7 +67,7 @@ namespace Graphite {
 		// Beside the console rather than floating: a results list is something you read while
 		// looking at the code it points into, which is what the bottom row is for. Without an
 		// entry here a panel has nowhere to land and opens as a window of its own.
-		m_Layout.Bottom = {"console", "search"};
+		m_Layout.Bottom = {"console", "search", "references"};
 		m_Layout.Center = {"settings"};
 
 		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
@@ -89,6 +91,10 @@ namespace Graphite {
 		m_SearchPanel = static_cast<SearchPanel*>(m_Panels.Add(Core::CreateScope<SearchPanel>(
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
 			m_EditorSettings)));
+
+		m_ReferencesPanel = static_cast<ReferencesPanel*>(m_Panels.Add(
+			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
+											   m_EditorSettings)));
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
@@ -200,11 +206,21 @@ namespace Graphite {
 
 		m_Keys.SetDefault("editor.goToDefinition", {.Primary = Core::Chord::Key(ImGuiKey_F12)});
 
-		// No consumer yet — the panel that will show what this finds is a later task. Registered
-		// now regardless, so KeyBindingsSection already offers Shift+F12 for rebinding, and the
-		// binding is not something that arrives alongside the feature and needs a second look
-		// here. The handler stays empty rather than growing a placeholder UI nobody asked for.
-		m_Commands.Add({.Id = "editor.findReferences", .Label = "Find All References", .Run = [] {
+		// The active document, for the same reason editor.goToDefinition reads it rather than
+		// whatever holds the keyboard: Shift+F12 runs before anything has drawn this frame, and
+		// activating a tab is what makes it the document a command means either way.
+		m_Commands.Add({.Id = "editor.findReferences",
+						.Label = "Find All References",
+						.Run = [this] {
+							if (const auto active = m_Documents.GetActive())
+							{
+								m_DocumentWindows.RequestReferences(*active, *m_ReferencesPanel);
+							}
+						},
+						.Enabled = [this] {
+							const auto active = m_Documents.GetActive();
+
+							return active && m_Documents.At(*active).Document.has_value();
 						}});
 
 		m_Keys.SetDefault("editor.findReferences",
@@ -347,7 +363,8 @@ namespace Graphite {
 
 		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
-								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get());
+								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get(),
+								 *m_ReferencesPanel);
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

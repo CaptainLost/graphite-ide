@@ -31,6 +31,7 @@
 namespace Graphite {
 
 	class SearchPanel;
+	class ReferencesPanel;
 
 	class GraphiteLayer final : public Core::Layer
 	{
@@ -144,5 +145,6 @@ namespace Graphite {
 		std::vector<Core::MenuItem> m_MenuTree;
 
 		SearchPanel* m_SearchPanel = nullptr;
+		ReferencesPanel* m_ReferencesPanel = nullptr;
 	};
 }

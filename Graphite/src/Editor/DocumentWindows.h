@@ -9,6 +9,7 @@
 #include "Lang/Server/LanguageServices.h"
 #include "Lang/Syntax/SyntaxCache.h"
 
+#include "Panels/ReferencesPanel.h"
 #include "Search/PreviewContent.h"
 
 #include "Core/Text/Editing.h"
@@ -52,7 +53,7 @@ namespace Graphite {
 
 		void Render(const CommandContext& context, float fontSize,
 					Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
-					bool wordWrap, const ResolvedScheme& scheme);
+					bool wordWrap, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel);
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
 
@@ -77,6 +78,12 @@ namespace Graphite {
 		// which tab they mean, and resolving that from a path would need a second lookup that
 		// could disagree with the one the caller already did.
 		void RequestDefinition(std::size_t index);
+
+		// Asks the language server serving the document at `index` for every reference to
+		// whatever word the caret sits on or touches, and shows the reply in `panel`. The
+		// active document's index, for the same reason RequestDefinition takes one: F12's sibling
+		// Shift+F12 knows which tab it means without a second lookup that could disagree.
+		void RequestReferences(std::size_t index, ReferencesPanel& panel);
 
 		// Opens a document's find bar. Routed through here rather than called on the bar directly,
 		// because the bar belongs to whatever draws the documents and the command that binds
@@ -135,10 +142,24 @@ namespace Graphite {
 		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 								 const EditorFrameResult& frame);
 
+		// The shared tail of both entry points: cancels whatever references request was already
+		// outstanding — a second question supersedes the first, on the same reasoning as
+		// m_PendingDefinition — issues the new one, and shows `panel` the symbol it is now
+		// working on.
+		void RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
+								 const FilePosition& where, const std::string& symbol,
+								 ReferencesPanel& panel);
+
+		// The lens-click entry point: finds the declaration a clicked lens sits above — LensClicked
+		// names the document row, not the declaration itself, since a lens row holds no text of
+		// its own to identify it by — and asks about that declaration's position and name.
+		void RequestReferencesForLens(const Core::OpenItem& item, const LensState& state,
+									  std::size_t documentRow, ReferencesPanel& panel);
+
 		// Routes everything the servers have answered since the last frame to the document that
 		// asked. LanguageServices::TakeAnswers is the single drain point, so this is the only
 		// place answers are collected.
-		void CollectServerAnswers();
+		void CollectServerAnswers(ReferencesPanel& referencesPanel);
 
 		void ApplySymbolAnswer(const std::filesystem::path& path,
 							   const LanguageServices::Answer& answer);
@@ -208,7 +229,8 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, const ResolvedScheme& scheme,
-								   const std::optional<std::filesystem::path>& focusRequest);
+								   const std::optional<std::filesystem::path>& focusRequest,
+								   ReferencesPanel& referencesPanel);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
 
@@ -289,6 +311,19 @@ namespace Graphite {
 		// several different files, none of which need be open, and the popup outlives none of
 		// them — a fresh Show per row is what a search preview already does for the same reason.
 		PreviewContent m_DefinitionPreview;
+
+		// What a references request currently outstanding was asked about. At most one at a
+		// time, exactly like m_PendingDefinition: a second Shift+F12 or lens click before the
+		// first has answered cancels it, because only the most recent question is one the user
+		// is still waiting on, and its answer is dropped by generation — this ticket is the
+		// generation.
+		struct PendingReferences
+		{
+			LanguageServices::Ticket Ticket{};
+			std::string Symbol;
+		};
+
+		std::optional<PendingReferences> m_PendingReferences;
 
 		// Keyed by path rather than by index: the document list is reordered by dragging tabs
 		// and compacted on close, and either would hand a document another one's colours.

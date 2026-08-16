@@ -1,0 +1,324 @@
+#include "Panels/ReferencesPanel.h"
+
+#include "Panels/SearchPreview.h"
+#include "Search/SplitResults.h"
+
+#include "Lang/Server/LspClient.h"
+
+#include "Core/Text/Caret.h"
+#include "Core/Text/Codec.h"
+#include "Core/Text/DocumentSet.h"
+#include "Core/Text/FileProbe.h"
+
+#include "Workspace/Workspace.h"
+
+#include <imgui.h>
+
+#include <algorithm>
+#include <fstream>
+#include <iterator>
+#include <utility>
+
+namespace Graphite {
+
+	namespace {
+
+		// The same read the search itself does, deliberately: a preview that decoded a file
+		// differently from the search that found the hit would disagree with the row above it.
+		std::optional<std::string> ReadAll(const std::filesystem::path& path)
+		{
+			std::ifstream in(path, std::ios::binary);
+
+			if (!in)
+			{
+				return std::nullopt;
+			}
+
+			return std::string(std::istreambuf_iterator<char>(in),
+							   std::istreambuf_iterator<char>());
+		}
+	}
+
+	std::vector<SearchHit> AsHits(const std::vector<Location>& locations, const std::string& symbol,
+								  const LineTextSource& lineText)
+	{
+		std::vector<Location> sorted = locations;
+
+		// File first, so a caller reading through disk reads each file only once - the whole
+		// reason this is sorted before anything else happens to it. Line and column after that
+		// so the panel's groups come out with their hits already in the order HitGroups expects.
+		std::sort(sorted.begin(), sorted.end(),
+				 [](const Location& a, const Location& b)
+				 {
+					 if (a.Path != b.Path)
+					 {
+						 return a.Path < b.Path;
+					 }
+
+					 if (a.Line != b.Line)
+					 {
+						 return a.Line < b.Line;
+					 }
+
+					 return a.Column.Value < b.Column.Value;
+				 });
+
+		// A server can report the same location twice; a reference listed twice would read as a
+		// miscount against the number the lens that opened this panel showed. Sorted just above,
+		// so equal locations are adjacent and std::unique finds them.
+		sorted.erase(std::unique(sorted.begin(), sorted.end(),
+								 [](const Location& a, const Location& b) {
+									 return a.Path == b.Path && a.Line == b.Line &&
+											a.Column.Value == b.Column.Value;
+								 }),
+					sorted.end());
+
+		std::vector<SearchHit> hits;
+		hits.reserve(sorted.size());
+
+		for (const Location& location : sorted)
+		{
+			SearchHit hit;
+			hit.File = location.Path;
+			hit.Line = location.Line;
+			hit.Text = lineText(location.Path, location.Line);
+
+			const std::size_t byteColumn = FromUtf16Column(hit.Text, location.Column);
+
+			hit.From = byteColumn;
+			hit.To = std::min(byteColumn + symbol.size(), hit.Text.size());
+
+			hits.push_back(std::move(hit));
+		}
+
+		return hits;
+	}
+
+	ReferencesPanel::ReferencesPanel(const Workspace& workspace, Core::DocumentSet& documents,
+									 const ActiveScheme& scheme, const EditorSettings& editor)
+		// Hidden until asked for, like the search panel: it opens with nothing to show, so it
+		// costs no space until Shift+F12 or a lens click first fills it.
+		: Core::Panel("references", "References", false), m_Workspace(workspace),
+		  m_Documents(documents), m_Scheme(scheme), m_Editor(editor)
+	{
+	}
+
+	void ReferencesPanel::OnImGuiRender()
+	{
+		RenderSummary();
+		ImGui::Separator();
+
+		const std::function<void()> drawResults = [this] { RenderResults(); };
+		const std::function<void()> drawPreview = [this] { RenderPreview(); };
+
+		DrawSplitResults(SplitResultsInput{.HasSelection = m_Selected.has_value(),
+										   .ResultsHeight = m_ResultsHeight,
+										   .DrawResults = drawResults,
+										   .DrawPreview = drawPreview,
+										   .ResultsChildId = "##referencesResults",
+										   .PreviewChildId = "##referencesPreview",
+										   .SplitterId = "##referencesSplit"});
+	}
+
+	void ReferencesPanel::ShowWorking(const std::string& symbol)
+	{
+		m_Symbol = symbol;
+		m_Working = true;
+
+		m_Groups.Clear();
+		m_Groups.SetRoot(m_Workspace.GetRoot());
+
+		m_Selected.reset();
+		m_Preview.Clear();
+	}
+
+	void ReferencesPanel::ShowResults(const std::string& symbol, const std::vector<Location>& locations)
+	{
+		m_Symbol = symbol;
+		m_Working = false;
+
+		m_Groups.Clear();
+		m_Groups.SetRoot(m_Workspace.GetRoot());
+
+		m_Selected.reset();
+		m_Preview.Clear();
+
+		// A fresh reply starts the disk cache over: the file LineTextFor last read may not be
+		// the first one this reply's locations name, and holding onto it costs nothing to avoid.
+		m_DiskPath.clear();
+		m_DiskBuffer.reset();
+
+		const LineTextSource lineText = [this](const std::filesystem::path& path, std::size_t line)
+		{ return LineTextFor(path, line); };
+
+		for (SearchHit& hit : AsHits(locations, symbol, lineText))
+		{
+			m_Groups.Add(std::move(hit));
+		}
+	}
+
+	void ReferencesPanel::Focus()
+	{
+		SetVisible(true);
+
+		// The same name PanelManager gives the window, because that is what ImGui knows it by -
+		// see SearchPanel::Focus for the same reasoning.
+		const std::string window = GetTitle() + "###" + GetId();
+
+		ImGui::SetWindowFocus(window.c_str());
+	}
+
+	void ReferencesPanel::RenderSummary()
+	{
+		if (m_Symbol.empty())
+		{
+			ImGui::TextUnformatted("Shift+F12, or click a reference count, to list a symbol's references.");
+			return;
+		}
+
+		std::string summary = "References to " + m_Symbol;
+
+		if (m_Working)
+		{
+			summary += "  (working...)";
+		}
+		else
+		{
+			summary += ": " + std::to_string(m_Groups.GetCount()) + " hits";
+		}
+
+		ImGui::TextUnformatted(summary.c_str());
+	}
+
+	void ReferencesPanel::RenderResults()
+	{
+		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit)
+		{ OpenAndSelect(hit); };
+
+		DrawHitList(HitListInput{
+			.Groups = m_Groups.Get(), .Selected = m_Selected, .OnOpen = onOpen});
+	}
+
+	// Only reached with a selection: OnImGuiRender's split leaves no preview pane without one.
+	void ReferencesPanel::RenderPreview()
+	{
+		// Looked up by id rather than remembered as a pointer: groups are appended to as results
+		// arrive, and the vector holding them reallocates.
+		const HitGroup* group = nullptr;
+
+		for (const HitGroup& candidate : m_Groups.Get())
+		{
+			if (candidate.Id == m_Selected->Group)
+			{
+				group = &candidate;
+				break;
+			}
+		}
+
+		// The results were cleared or regrouped under the selection. Dropping it here is what
+		// takes the pane away again on the next frame.
+		if (group == nullptr || m_Selected->Hit >= group->Hits.size())
+		{
+			m_Selected.reset();
+			m_Preview.Clear();
+			return;
+		}
+
+		const SearchHit& hit = group->Hits[m_Selected->Hit];
+
+		// Every frame, not only when the selection changes: the file may have been opened,
+		// closed or edited since the last one, and Show is cheap when nothing moved.
+		m_Preview.Show(hit.File, m_Documents);
+
+		DrawSearchPreview(m_Preview,
+						  SearchPreviewInput{.Hits = group->Hits,
+											 .Current = m_Selected->Hit,
+											 .Scheme = m_Scheme.Get(),
+											 .TabWidth = m_Editor.GetIndentStyle().Width,
+											 .FontSize = m_Editor.GetFontSize()});
+	}
+
+	void ReferencesPanel::OpenAndSelect(const SearchHit& hit)
+	{
+		// Opened permanently, not as a preview tab: like DefinitionNavigation::Jump, this is
+		// somewhere the user meant to go, not a file they are skimming past.
+		m_Documents.Open(hit.File, true);
+
+		const auto index = m_Documents.Find(hit.File);
+
+		if (!index)
+		{
+			return;
+		}
+
+		Core::OpenItem& item = m_Documents.At(*index);
+
+		if (!item.Document)
+		{
+			return;
+		}
+
+		Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const std::size_t lineStart = buffer.LineStart(hit.Line);
+
+		// The range comes from a reply that may be some frames old; the file may have changed
+		// since. PlaceAt runs every offset through SnapToBoundary, which clamps to the buffer's
+		// current length, so a stale range lands at the nearest valid position instead of
+		// reading past the end of a document that has since shrunk.
+		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.From, false, item.TabWidth);
+		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.To, true, item.TabWidth);
+
+		item.RowAimAt = Core::NoRowAim;
+		item.PendingScroll = true;
+	}
+
+	std::string ReferencesPanel::LineTextFor(const std::filesystem::path& path, std::size_t line)
+	{
+		// An open document's buffer wins over the file on disk, exactly as PreviewContent
+		// prefers it: unsaved edits are what the editor shows, and the row above this preview
+		// has to agree with it.
+		if (const auto index = m_Documents.Find(path))
+		{
+			const Core::OpenItem& item = m_Documents.At(*index);
+
+			if (item.Document)
+			{
+				return item.Document->GetBuffer().LineText(line);
+			}
+		}
+
+		// AsHits sorts its locations by file first, so consecutive calls for a file not open
+		// name the same path until every one of its locations has been asked about - this is
+		// what makes the read below happen once per file rather than once per location.
+		if (path != m_DiskPath)
+		{
+			m_DiskPath = path;
+			m_DiskBuffer.reset();
+
+			const Core::Result<Core::FileProbe> probe = Core::ProbeFile(path);
+
+			// Binary and too-large are the only kinds PreviewContent's own disk load skips too -
+			// a reference cannot sensibly have come from either, but the probe is what actually
+			// knows, not this panel's assumptions about what a language server would have found.
+			if (probe && probe.GetValue().Kind != Core::FileKind::Binary &&
+				probe.GetValue().Kind != Core::FileKind::TooLarge)
+			{
+				if (const std::optional<std::string> bytes = ReadAll(path))
+				{
+					if (const Core::Result<std::string> text =
+							Core::Decode(*bytes, probe.GetValue().FileEncoding))
+					{
+						m_DiskBuffer = Core::TextBuffer{text.GetValue()};
+					}
+				}
+			}
+		}
+
+		if (m_DiskBuffer && line < m_DiskBuffer->GetLineCount())
+		{
+			return m_DiskBuffer->LineText(line);
+		}
+
+		return {};
+	}
+}

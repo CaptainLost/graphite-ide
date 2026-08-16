@@ -48,10 +48,22 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Editor/MatchColumns.cpp",
         "%{wks.location}/Graphite/src/Editor/ServerStatusText.h",
         "%{wks.location}/Graphite/src/Editor/ServerStatusText.cpp",
+        -- Palettes is the one conversion from a scheme to what ImGui draws with; SearchPreview
+        -- draws the references panel's preview pane through it, and needs both here for the
+        -- same reason it needs Search below.
+        "%{wks.location}/Graphite/src/Editor/Palettes.h",
+        "%{wks.location}/Graphite/src/Editor/Palettes.cpp",
         "%{wks.location}/Graphite/src/Theme/**.h",
         "%{wks.location}/Graphite/src/Theme/**.cpp",
         "%{wks.location}/Graphite/src/Search/**.h",
         "%{wks.location}/Graphite/src/Search/**.cpp",
+        -- ReferencesPanel carries AsHits, the pure function this project tests; it and
+        -- SearchPreview - the pane it draws through - are named individually rather than
+        -- globbing all of Panels, which drags in the rest of the application's windows.
+        "%{wks.location}/Graphite/src/Panels/ReferencesPanel.h",
+        "%{wks.location}/Graphite/src/Panels/ReferencesPanel.cpp",
+        "%{wks.location}/Graphite/src/Panels/SearchPreview.h",
+        "%{wks.location}/Graphite/src/Panels/SearchPreview.cpp",
     }
 
     includedirs
