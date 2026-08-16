@@ -105,6 +105,13 @@ namespace Graphite {
 
 		void Cancel(RequestId id);
 
+		// Sends "shutdown" then "exit", queued the same way any other message is and not waited
+		// on — this class has no way to know whether a server is well enough to answer, and
+		// waiting here would be the UI thread blocking on a process that may be wedged. Owned by
+		// whoever manages this client's lifetime, called right before destroying it; the
+		// destructor's Terminate is the backstop for a server that ignores both.
+		void RequestShutdown();
+
 		// One message body, handled exactly as the reader thread handles what arrives on the pipe.
 		// The reader calls this too, so a test that feeds a body drives the same code a server
 		// does — there is no second path that could drift from the real one.

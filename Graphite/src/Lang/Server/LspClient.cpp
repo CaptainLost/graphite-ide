@@ -788,6 +788,20 @@ namespace Graphite {
 		SendLocked(*m_Shared, m_Shared->Rpc.Cancel(id));
 	}
 
+	void LspClient::RequestShutdown()
+	{
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+		// Numbered and queued like any request, then immediately forgotten: nothing here will
+		// ever read the reply, and leaving the id outstanding would only make JsonRpc's table
+		// grow for an object about to be destroyed anyway.
+		auto [id, bytes] = m_Shared->Rpc.Request("shutdown", nullptr);
+		m_Shared->Rpc.Forget(id);
+		SendLocked(*m_Shared, bytes);
+
+		SendLocked(*m_Shared, m_Shared->Rpc.Notification("exit", nullptr));
+	}
+
 	void LspClient::Drain(std::vector<Answer>& answers, ServerStatus& status)
 	{
 		// The only place anything crosses to the UI thread, and it touches nothing the server can
