@@ -54,6 +54,10 @@ namespace Graphite {
 
 		const std::vector<HitGroup>& Get() const { return m_Groups; }
 
+		// For a panel whose hits are completed after they are grouped — the references list fills
+		// a row's line text only when the file it belongs to is expanded, and writes it back here.
+		std::vector<HitGroup>& Get() { return m_Groups; }
+
 		std::size_t GetCount() const { return m_Count; }
 
 	private:

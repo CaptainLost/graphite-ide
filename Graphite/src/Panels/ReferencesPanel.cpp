@@ -81,12 +81,23 @@ namespace Graphite {
 			SearchHit hit;
 			hit.File = location.Path;
 			hit.Line = location.Line;
-			hit.Text = lineText(location.Path, location.Line);
 
-			const std::size_t byteColumn = FromUtf16Column(hit.Text, location.Column);
+			if (std::optional<std::string> text = lineText(location.Path, location.Line))
+			{
+				hit.Text = std::move(*text);
 
-			hit.From = byteColumn;
-			hit.To = std::min(byteColumn + symbol.size(), hit.Text.size());
+				const std::size_t byteColumn = FromUtf16Column(hit.Text, location.Column);
+
+				hit.From = byteColumn;
+				hit.To = std::min(byteColumn + symbol.size(), hit.Text.size());
+			}
+			else
+			{
+				// The line is not available yet, and this function does not go looking for it.
+				// The column is kept so whoever does read the line later can finish the job -
+				// converting it needs the line's own bytes, and nothing else here is enough.
+				hit.UnreadUtf16Column = location.Column.Value;
+			}
 
 			hits.push_back(std::move(hit));
 		}
@@ -148,8 +159,12 @@ namespace Graphite {
 		m_DiskPath.clear();
 		m_DiskBuffer.reset();
 
+		// Open documents only. A reply about a common symbol names hundreds of files, and reading
+		// them all here would be hundreds of probes, reads and decodes in the single frame the
+		// reply arrives - on the UI thread, with the application stopped for the length of it.
+		// The rest are read by ResolveGroup, one file at a time, as the user expands them.
 		const LineTextSource lineText = [this](const std::filesystem::path& path, std::size_t line)
-		{ return LineTextFor(path, line); };
+		{ return LineTextInOpenDocument(path, line); };
 
 		for (SearchHit& hit : AsHits(locations, symbol, lineText))
 		{
@@ -195,8 +210,13 @@ namespace Graphite {
 		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit)
 		{ OpenAndSelect(hit); };
 
-		DrawHitList(HitListInput{
-			.Groups = m_Groups.Get(), .Selected = m_Selected, .OnOpen = onOpen});
+		const std::function<void(HitGroup&)> onGroupOpened = [this](HitGroup& group)
+		{ ResolveGroup(group); };
+
+		DrawHitList(HitListInput{.Groups = m_Groups.Get(),
+								 .Selected = m_Selected,
+								 .OnOpen = onOpen,
+								 .OnGroupOpened = &onGroupOpened});
 	}
 
 	// Only reached with a selection: OnImGuiRender's split leaves no preview pane without one.
@@ -204,9 +224,9 @@ namespace Graphite {
 	{
 		// Looked up by id rather than remembered as a pointer: groups are appended to as results
 		// arrive, and the vector holding them reallocates.
-		const HitGroup* group = nullptr;
+		HitGroup* group = nullptr;
 
-		for (const HitGroup& candidate : m_Groups.Get())
+		for (HitGroup& candidate : m_Groups.Get())
 		{
 			if (candidate.Id == m_Selected->Group)
 			{
@@ -223,6 +243,11 @@ namespace Graphite {
 			m_Preview.Clear();
 			return;
 		}
+
+		// The row that was picked is drawn, so its group was expanded and is already resolved.
+		// Asked again anyway, because the preview highlights every hit in the file rather than
+		// only the selected one, and a row's byte range is what says where to draw that highlight.
+		ResolveGroup(*group);
 
 		const SearchHit& hit = group->Hits[m_Selected->Hit];
 
@@ -272,7 +297,8 @@ namespace Graphite {
 		item.PendingScroll = true;
 	}
 
-	std::string ReferencesPanel::LineTextFor(const std::filesystem::path& path, std::size_t line)
+	std::optional<std::string> ReferencesPanel::LineTextInOpenDocument(
+		const std::filesystem::path& path, std::size_t line) const
 	{
 		// An open document's buffer wins over the file on disk, exactly as PreviewContent
 		// prefers it: unsaved edits are what the editor shows, and the row above this preview
@@ -287,9 +313,42 @@ namespace Graphite {
 			}
 		}
 
-		// AsHits sorts its locations by file first, so consecutive calls for a file not open
-		// name the same path until every one of its locations has been asked about - this is
-		// what makes the read below happen once per file rather than once per location.
+		return std::nullopt;
+	}
+
+	void ReferencesPanel::ResolveGroup(HitGroup& group)
+	{
+		for (SearchHit& hit : group.Hits)
+		{
+			// Already read - by ShowResults, because the file was open, or by an earlier call
+			// here. This is what makes calling this on every frame a group stays expanded cost a
+			// walk of its hits and nothing else.
+			if (!hit.UnreadUtf16Column)
+			{
+				continue;
+			}
+
+			hit.Text = LineTextFor(hit.File, hit.Line);
+
+			const std::size_t byteColumn =
+				FromUtf16Column(hit.Text, Utf16Column(*hit.UnreadUtf16Column));
+
+			hit.From = byteColumn;
+			hit.To = std::min(byteColumn + m_Symbol.size(), hit.Text.size());
+			hit.UnreadUtf16Column.reset();
+		}
+	}
+
+	std::string ReferencesPanel::LineTextFor(const std::filesystem::path& path, std::size_t line)
+	{
+		if (const std::optional<std::string> open = LineTextInOpenDocument(path, line))
+		{
+			return *open;
+		}
+
+		// ResolveGroup asks about one file's lines at a time, so the path does not change until
+		// every line wanted from it has been asked about - this is what makes the read below
+		// happen once per file rather than once per hit.
 		if (path != m_DiskPath)
 		{
 			m_DiskPath = path;

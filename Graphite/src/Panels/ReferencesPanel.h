@@ -27,8 +27,14 @@ namespace Graphite {
 
 	// Answers the whole text of one line, however the caller can. Passed in rather than reached
 	// for so AsHits stays a pure function and its tests need no files on disk.
+	//
+	// Answering std::nullopt means "not now, ask again later": AsHits then leaves the hit's text
+	// and byte range unset and records the column it would have needed the line for, in
+	// SearchHit::UnreadUtf16Column. That is what lets the references panel answer only for files
+	// already open — a lookup, no I/O — and read the rest one file at a time as the user expands
+	// them, instead of reading every file a reply named in the frame the reply arrived.
 	using LineTextSource =
-		std::function<std::string(const std::filesystem::path&, std::size_t line)>;
+		std::function<std::optional<std::string>(const std::filesystem::path&, std::size_t line)>;
 
 	// Locations grouped by file, ascending by line within each — the shape HitGroups already
 	// renders for search results.
@@ -78,10 +84,23 @@ namespace Graphite {
 
 		void OpenAndSelect(const SearchHit& hit);
 
-		// The concrete LineTextSource AsHits is fed from: an open document's buffer, so unsaved
-		// edits agree with what the editor shows, or - failing that - the file on disk, read at
-		// most once per distinct path because AsHits sorts its locations by file first and calls
-		// this in that order.
+		// The concrete LineTextSource AsHits is fed from, and deliberately only half a source: it
+		// answers for a file already open and std::nullopt for anything else. Nothing here may
+		// read from disk in the frame a reply arrives — a common symbol names hundreds of files,
+		// and the Global Constraint on this feature is that nothing blocks the UI thread.
+		std::optional<std::string> LineTextInOpenDocument(const std::filesystem::path& path,
+														  std::size_t line) const;
+
+		// Fills in every row of one file that ShowResults could not: reads the file once, takes
+		// each hit's line out of it, and turns the UTF-16 column the reply named into the byte
+		// range the row highlights and a jump selects. Called from DrawHitList when the user
+		// expands the group, and again before its preview draws, so the cost is one file read per
+		// file the user actually looks at.
+		void ResolveGroup(HitGroup& group);
+
+		// An open document's buffer, so unsaved edits agree with what the editor shows, or -
+		// failing that - the file on disk, read at most once per distinct path because ResolveGroup
+		// asks for one file's lines at a time.
 		std::string LineTextFor(const std::filesystem::path& path, std::size_t line);
 
 		const Workspace& m_Workspace;

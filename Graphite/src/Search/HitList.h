@@ -24,7 +24,9 @@ namespace Graphite {
 	// with nothing said.
 	struct HitListInput
 	{
-		const std::vector<HitGroup>& Groups;
+		// Not const, because of OnGroupOpened below: a caller that fills its rows lazily writes
+		// into the group it is handed.
+		std::vector<HitGroup>& Groups;
 
 		// Written when a row is picked, by click or by keyboard focus landing on it, so a caller
 		// can drive its own preview from it. Read back to know which row to draw selected.
@@ -34,6 +36,12 @@ namespace Graphite {
 		// panel's own rule, applied here so a references panel opens the same way: one click
 		// previews, two open.
 		const std::function<void(const SearchHit&)>& OnOpen;
+
+		// Called with a group whose rows are about to be drawn, before any of them is, so a caller
+		// whose hits do not yet carry the text they show can read it now — one file, when the user
+		// expands it, rather than every file named by a reply in the frame that reply arrives.
+		// Null for a caller whose hits arrive complete, which is what a file-tree search's do.
+		const std::function<void(HitGroup&)>* OnGroupOpened = nullptr;
 	};
 
 	// Draws the tree of groups and their hits both the search panel and the references panel

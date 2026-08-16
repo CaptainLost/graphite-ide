@@ -13,7 +13,7 @@ namespace Graphite {
 		// follows it without a setting of its own.
 		const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
 
-		for (const HitGroup& group : input.Groups)
+		for (HitGroup& group : input.Groups)
 		{
 			// The node's id is the full path and never changes while results accumulate. Its
 			// label is drawn separately, below, because the count in it changes on every new hit
@@ -39,7 +39,18 @@ namespace Graphite {
 			ImGui::TextDisabled("  (%d)", static_cast<int>(group.Hits.size()));
 
 			if (!open)
+			{
 				continue;
+			}
+
+			// Before a single row of this group is submitted, and only for a group the user has
+			// actually expanded: this is where a caller that has not yet read the lines its rows
+			// show reads them, one file at a time, instead of reading every file a reply named in
+			// the frame the reply arrived.
+			if (input.OnGroupOpened != nullptr)
+			{
+				(*input.OnGroupOpened)(group);
+			}
 
 			// One expanded file can hold thousands of hits, and every row costs a string built to
 			// draw it. The clipper submits only the rows the scroll actually shows, so an expanded

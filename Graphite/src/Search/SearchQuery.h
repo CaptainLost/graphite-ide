@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace Graphite {
@@ -40,5 +41,12 @@ namespace Graphite {
 		// Byte range within Text. The editor selects it on a jump.
 		std::size_t From = 0;
 		std::size_t To = 0;
+
+		// Set while the line above has not been read yet, holding the column the hit starts at in
+		// UTF-16 code units — the units a language server names a position in. Turning that into
+		// the byte range above needs the line's own text, so a results list that reads its lines
+		// only when a row is drawn has to carry the column until then. A hit from a file-tree
+		// search arrives with its line already in hand and leaves this unset.
+		std::optional<std::size_t> UnreadUtf16Column;
 	};
 }
