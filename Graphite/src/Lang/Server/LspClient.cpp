@@ -506,6 +506,17 @@ namespace Graphite {
 	{
 		if (!shared.Initialized)
 		{
+			if (shared.HandshakeFailed)
+			{
+				// The handshake will never finish — refused, timed out, or never sent. Dropped
+				// rather than queued, and whatever is already queued is dropped with it: the queue
+				// stopped being a queue the moment nothing was ever going to drain it, and a
+				// session that keeps typing at such a server would append a whole copy of the file
+				// to it on every keystroke.
+				shared.Queued.clear();
+				return;
+			}
+
 			{
 				const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
 
@@ -552,6 +563,8 @@ namespace Graphite {
 		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root));
 
 		m_Shared->InitializeId = id;
+		m_Shared->HandshakeDeadline = std::chrono::steady_clock::now() + kHandshakeTimeout;
+
 		SendNowLocked(*m_Shared, std::move(bytes));
 	}
 
@@ -580,6 +593,12 @@ namespace Graphite {
 			{
 				const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 				m_Shared->ReaderStopped = true;
+
+				// No process means no handshake was ever sent, so there is no deadline to run out
+				// and nothing will ever set Initialized. Said here so SendLocked drops rather than
+				// queues from the very first call, and so the timeout below has nothing to expire
+				// and cannot overwrite the real reason this failed.
+				m_Shared->HandshakeFailed = true;
 			}
 
 			StopOutbound(*m_Shared);
@@ -813,8 +832,48 @@ namespace Graphite {
 		SendLocked(*m_Shared, m_Shared->Rpc.Notification("exit", nullptr));
 	}
 
+	void LspClient::ExpireHandshakeIfStalled(std::chrono::steady_clock::time_point now)
+	{
+		{
+			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+			if (m_Shared->Initialized || m_Shared->HandshakeFailed ||
+				now < m_Shared->HandshakeDeadline)
+			{
+				return;
+			}
+
+			m_Shared->HandshakeFailed = true;
+
+			// Everything held back for a reply that is not coming. Cleared here as well as in
+			// SendLocked, so the memory goes back now rather than on the next thing sent — a
+			// server that dies during its handshake may never be sent anything again.
+			m_Shared->Queued.clear();
+		}
+
+		// ProtocolMutex released first: the two are only ever taken in that order, and nothing
+		// here needs both at once.
+		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
+
+		m_Shared->Status.State = ServerState::Failed;
+		m_Shared->Status.Detail = "no answer to initialize within " +
+								  std::to_string(kHandshakeTimeout.count()) + " seconds";
+		m_Shared->Status.Percent = -1;
+	}
+
+	std::size_t LspClient::QueuedCount() const
+	{
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+		return m_Shared->Queued.size();
+	}
+
 	void LspClient::Drain(std::vector<Answer>& answers, ServerStatus& status)
 	{
+		// Before the status is read out, so a handshake that ran out of time between this frame
+		// and the last is reported as Failed on this one rather than the next.
+		ExpireHandshakeIfStalled(std::chrono::steady_clock::now());
+
 		// The only place anything crosses to the UI thread, and it touches nothing the server can
 		// hold up: StateMutex is never held across a read from, or a write to, the pipe.
 		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
@@ -1112,6 +1171,12 @@ namespace Graphite {
 			// A server that refused to start is not Ready, and nothing queued behind the handshake
 			// will ever be read by anyone. Keying the dispatch on the id alone and assuming success
 			// would report a working server for a process that has already given up.
+			// Said before the status, and under the mutex this already holds: Initialized never
+			// becomes true after a refusal, so every notification sent from here on would queue
+			// behind a handshake that has already ended.
+			shared.HandshakeFailed = true;
+			shared.Queued.clear();
+
 			const std::lock_guard<std::mutex> state(shared.StateMutex);
 
 			shared.Status.State = ServerState::Failed;

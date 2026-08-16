@@ -228,6 +228,64 @@ TEST_CASE("An initialize reply that is an error leaves the client failed, not re
 	CHECK(status.Detail == "no such flag");
 }
 
+TEST_CASE("A refused handshake stops the pre-handshake queue growing")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.TakeSent();
+
+	const std::filesystem::path file = temp.GetPath() / "main.cpp";
+	const std::string text(4096, 'x');
+
+	client.OpenDocument(file, text);
+
+	CHECK(client.QueuedCount() == 1);
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"no such flag"}})");
+
+	CHECK(client.QueuedCount() == 0);
+
+	// Typing at a server that refused to start used to append a whole copy of the file to the
+	// queue on every keystroke, for as long as the tab stayed open.
+	for (int keystroke = 0; keystroke < 20; ++keystroke)
+	{
+		client.ChangeDocument(file, text);
+	}
+
+	CHECK(client.QueuedCount() == 0);
+}
+
+TEST_CASE("A handshake nobody answers becomes Failed once its time is up")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.TakeSent();
+
+	client.OpenDocument(temp.GetPath() / "main.cpp", "int Main() { return 0; }\n");
+
+	// Still waiting: the server is entitled to take its time, and Starting is what the status bar
+	// should keep saying until the bound is reached.
+	CHECK(StatusOf(client).State == Graphite::ServerState::Starting);
+	CHECK(client.QueuedCount() == 1);
+
+	// The test's own clock rather than the real one: waiting out the real bound would cost the
+	// suite half a minute and prove nothing extra.
+	client.ExpireHandshakeIfStalled(std::chrono::steady_clock::now() +
+									Graphite::LspClient::kHandshakeTimeout +
+									std::chrono::seconds(1));
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Failed);
+	CHECK(client.QueuedCount() == 0);
+
+	client.ChangeDocument(temp.GetPath() / "main.cpp", "int Main() { return 1; }\n");
+
+	CHECK(client.QueuedCount() == 0);
+}
+
 TEST_CASE("A successful initialize reply reports the server's version and releases the queue")
 {
 	TempDirectory temp;

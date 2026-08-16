@@ -6,6 +6,7 @@
 #include "Lang/Server/ServerRegistry.h"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -99,8 +100,31 @@ namespace Graphite {
 			bool Failed = false;
 		};
 
+		// How long a server gets to answer `initialize` before it is called Failed. clangd answers
+		// the handshake before it indexes anything — indexing is reported afterwards through
+		// $/progress — so a healthy one answers in well under a second even on a cold, large
+		// project, and this is generous enough to survive a slow process start on a machine
+		// scanning the binary as it launches. It is also short enough that a server which starts
+		// and then says nothing is restarted while the user is still looking at the file that
+		// prompted it, rather than leaving the status bar reading "starting" for the session.
+		static constexpr std::chrono::seconds kHandshakeTimeout{30};
+
+		// Fails the handshake when `now` is past its deadline: without this a server that starts
+		// and never answers leaves Initialized false forever, every notification queued behind a
+		// reply that is not coming, and LanguageServices's restart policy — which acts on Failed —
+		// never gets its chance. Called by Drain with the real clock, so the check costs two
+		// comparisons a frame and needs no timer thread; a test passes its own clock rather than
+		// spending the timeout waiting.
+		void ExpireHandshakeIfStalled(std::chrono::steady_clock::time_point now);
+
+		// How many messages are held back waiting for the handshake. A test's window onto a queue
+		// that is otherwise invisible from out here — the leak it guards against has no symptom
+		// until the process runs out of memory.
+		std::size_t QueuedCount() const;
+
 		// UI thread only. Moves everything answered since the last call into `answers` and
-		// reports where the server is.
+		// reports where the server is. Also expires a handshake that has run out of time, which is
+		// what makes that check cost nothing extra: this already runs once a frame.
 		void Drain(std::vector<Answer>& answers, ServerStatus& status);
 
 		void Cancel(RequestId id);
@@ -179,6 +203,18 @@ namespace Graphite {
 			std::vector<std::string> Queued;
 			RequestId InitializeId = 0;
 			bool Initialized = false;
+
+			// The handshake will never finish: initialize was answered with an error, it ran out
+			// of time, or there was never a process to answer it. Initialized stays false in all
+			// three cases, so without this every notification sent afterwards would be appended to
+			// Queued and left there — a whole copy of the file per keystroke, forever, at a server
+			// nothing will ever hand it to. Under ProtocolMutex, like Initialized itself.
+			bool HandshakeFailed = false;
+
+			// When to give up waiting for the initialize reply. Set by BeginHandshake and read on
+			// the UI thread by ExpireHandshakeIfStalled; left at the epoch when no handshake was
+			// ever sent, which HandshakeFailed already covers.
+			std::chrono::steady_clock::time_point HandshakeDeadline{};
 
 			// Set by the reader as it exits, under ProtocolMutex and in the same breath as it
 			// abandons what was outstanding, so a question asked at that moment is either
