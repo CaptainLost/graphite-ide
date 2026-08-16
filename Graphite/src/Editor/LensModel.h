@@ -15,10 +15,10 @@ namespace Core {
 namespace Graphite {
 
 	// A reference count drawn above a declaration. DocumentRow is Core::RowMap's world - the
-	// row the lens sits above, one row before the declaration's own first row. Column is a
-	// visual column in cells, not the declaration's protocol column: it exists so the lens'
-	// text lines up with an indented declaration, and getting from one to the other needs the
-	// line it belongs to and the tab width, which only SetDeclarations has in hand.
+	// document row the lens is drawn immediately above, following LensRows's own convention.
+	// Column is a visual column in cells, not the declaration's protocol column: it exists so
+	// the lens' text lines up with an indented declaration, and getting from one to the other
+	// needs the line it belongs to and the tab width, which only SetDeclarations has in hand.
 	struct Lens
 	{
 		std::size_t DocumentRow = 0;
@@ -44,9 +44,11 @@ namespace Graphite {
 		// lens is drawn at: Core::FromUtf16Column needs the line's text to find the byte offset,
 		// and Core::ColumnOfByte needs the tab width to turn that into cells.
 		//
-		// Counts already known for a document row that survives the rebuild are carried over, so a
-		// reply does not blank the screen and then fill it in again - only rows that are new, or
-		// whose declaration moved to a different row, start out unknown.
+		// Counts are carried over by declaration identity (name and kind), not by row: a row
+		// surviving the rebuild does not mean the same declaration still owns it (see the .cpp for
+		// why row-keying was wrong). Only a declaration whose name and kind match one already known
+		// keeps its count; anything else starts out unknown, even if it landed on a row that used
+		// to have an answer.
 		void SetDeclarations(const std::vector<Declaration>& declarations, const Core::RowMap& rows,
 							 const Core::TextBuffer& buffer, std::size_t tabWidth);
 
@@ -72,9 +74,20 @@ namespace Graphite {
 		const Lens* LensAt(std::size_t documentRow) const;
 
 	private:
-		// Sorted by DocumentRow, unique - kept in step with m_Rows, which exists only to answer
-		// screen-row questions and carries no counts of its own.
-		std::vector<Lens> m_Lenses;
+		// The declaration's name and kind travel with its Lens so the next SetDeclarations can
+		// carry a count over by identity rather than by row - see SetDeclarations's comment.
+		struct Entry
+		{
+			Lens LensValue;
+			std::string Name;
+			DeclarationKind Kind = DeclarationKind::Other;
+		};
+
+		static bool ByDocumentRow(const Entry& a, const Entry& b);
+
+		// Sorted by LensValue.DocumentRow, unique - kept in step with m_Rows, which exists only to
+		// answer screen-row questions and carries no counts of its own.
+		std::vector<Entry> m_Entries;
 		LensRows m_Rows;
 	};
 }

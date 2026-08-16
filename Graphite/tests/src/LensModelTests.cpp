@@ -100,3 +100,41 @@ TEST_CASE("An edit below a lens leaves it where it was")
 
 	CHECK(model.LensAt(1) != nullptr);
 }
+
+TEST_CASE("Two declarations on one anchor row: the first one wins")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("A", 1)}, rows, buffer, 4);
+	model.SetCount(1, 5);
+
+	// "A" is listed first again, so it should be the survivor and keep its count; if "B" won
+	// instead, its identity would not match the previous carry-over map and the count would be
+	// lost.
+	model.SetDeclarations({Function("A", 1), Function("B", 1)}, rows, buffer, 4);
+
+	REQUIRE(model.LensAt(1) != nullptr);
+	CHECK(model.LensAt(1)->CountKnown);
+	CHECK(model.LensAt(1)->Count == 5);
+}
+
+TEST_CASE("A declaration on a wrapped line anchors on the line's first row, not the line number")
+{
+	// Columns per row of 1 forces every non-empty line to wrap onto several rows, so a
+	// declaration's line number and its first row diverge - this is the reason anchors are rows
+	// (FirstRowOf) rather than lines in the first place.
+	const Core::TextBuffer buffer{"ab\ncd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, 1, 4);
+
+	REQUIRE(rows.FirstRowOf(1) != 1);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+
+	REQUIRE(model.LensAt(rows.FirstRowOf(1)) != nullptr);
+	CHECK(model.GetRows().At(rows.FirstRowOf(1)).IsLens);
+}
