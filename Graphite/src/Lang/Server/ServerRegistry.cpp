@@ -74,6 +74,17 @@ namespace Graphite {
 			}
 		}
 
+		// compile_commands.json is also checked in build/, because that is where CMake puts it
+		// by convention and clangd itself looks there — a project laid out that way is fully
+		// configured, not lacking. compile_flags.txt and .clangd are not given the same
+		// treatment: both are hand-authored specifically to sit beside the sources they describe
+		// (compile_flags.txt has no notion of a subdirectory's worth of flags, and .clangd is
+		// read relative to the file it configures), so neither convention places them in build/.
+		if (std::filesystem::exists(root / "build" / "compile_commands.json"))
+		{
+			return false;
+		}
+
 		return true;
 	}
 }

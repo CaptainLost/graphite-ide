@@ -57,6 +57,14 @@ TEST_CASE("LacksCompileDatabase sees each accepted form")
 	CHECK_FALSE(Graphite::LacksCompileDatabase(temp.GetPath()));
 }
 
+TEST_CASE("LacksCompileDatabase finds compile_commands.json in build/ too")
+{
+	TempDirectory temp;
+
+	Touch(temp.GetPath() / "build" / "compile_commands.json");
+	CHECK_FALSE(Graphite::LacksCompileDatabase(temp.GetPath()));
+}
+
 TEST_CASE("FindServerBinary prefers a configured path that exists")
 {
 	TempDirectory temp;
