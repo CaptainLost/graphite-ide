@@ -311,7 +311,7 @@ namespace Graphite {
 		// Screen rows, not document rows and not lines: a wrapped line occupies as many document
 		// rows as it needs, and every lens adds one more row that no line owns. Asking LensRows
 		// rather than RowMap is what keeps the scrollbar reaching the true end of the file — the
-		// first of ADR 0486's five translation sites.
+		// first of ADR 0486's seven translation sites.
 		float DocumentHeightOf(const Core::OpenItem& item, const EditorMetrics& metrics,
 							   const LensRows& lenses)
 		{
@@ -322,8 +322,8 @@ namespace Graphite {
 		// Rows, not lines: Page Up and Page Down move by what fits on screen, and what fits on
 		// screen is rows once a line can occupy several of them.
 		//
-		// Deliberately NOT translated through LensRows, and this is the fifth of ADR 0486's five
-		// sites. What comes back is a count of rows to move by, not a row to look up: it is handed
+		// Deliberately NOT translated through LensRows, and this is the seventh of ADR 0486's
+		// seven sites. What comes back is a count of rows to move by, not a row to look up: it is handed
 		// to MoveByRows, which works entirely in document rows through CaretToVisual. A page down
 		// therefore overshoots by however many lens rows fell in the range it crossed — a row or
 		// two — and correcting it here would be pushing screen-row arithmetic into caret motion,
@@ -413,7 +413,7 @@ namespace Graphite {
 			const auto screenRow = static_cast<std::size_t>(
 				std::max(0.0f, (mouse.y - origin.y) / metrics.LineHeight));
 
-			// The third of ADR 0486's five sites: the division above yields a SCREEN row, and
+			// The third of ADR 0486's seven sites: the division above yields a SCREEN row, and
 			// everything below it — VisualToCaret, SelectLineAt — speaks document rows only. The
 			// translation happens here, before the caret arithmetic ever sees the number.
 			const LensRows::Row hit = lenses.At(screenRow);
@@ -972,7 +972,7 @@ namespace Graphite {
 			// the line number in a wrapped document would land wherever that many rows happen to
 			// reach, which is short of the caret by however much the text above it wrapped.
 			//
-			// The fourth of ADR 0486's five sites. CaretToVisual is called unchanged and answers
+			// The fourth of ADR 0486's seven sites. CaretToVisual is called unchanged and answers
 			// in document rows — the caret's own position is never computed in screen-row terms —
 			// and only its answer is wrapped in ScreenRowOf, because the pixel it is about to be
 			// multiplied into is a screen offset. Without that wrap the view scrolls short by
@@ -1535,6 +1535,9 @@ namespace Graphite {
 
 			const auto screenRow =
 				static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
+			// The fifth of ADR 0486's seven sites, and the mouse hit test's twin: the same
+			// division, for the pointer rather than for a click, translated before anything
+			// downstream is told about the row.
 			const LensRows::Row hit = lenses.At(screenRow);
 
 			// There is no text on a lens row for an identifier to sit in.
@@ -1721,6 +1724,10 @@ namespace Graphite {
 			// unconditionally — including on a frame nothing asked for it — so a request made
 			// from the keyboard, which never touches the mouse, still has somewhere on screen to
 			// open a popup near.
+			//
+			// The sixth of ADR 0486's seven sites, and scroll-to-caret's twin: the caret's row is
+			// computed in document rows and only wrapped through ScreenRowOf where it turns into
+			// a pixel offset.
 			result.CaretScreenX =
 				canvas.TextOriginX + static_cast<float>(caret.Visual.Column) * metrics.CellWidth;
 			result.CaretScreenY =
@@ -1744,7 +1751,7 @@ namespace Graphite {
 
 			VisibleLineCache cache;
 
-			// The second of ADR 0486's five sites. The clipper counts SCREEN rows — every lens
+			// The second of ADR 0486's seven sites. The clipper counts SCREEN rows — every lens
 			// occupies one — and LensRows::At says, for each row it hands back, whether it is a
 			// lens to draw a count on or a document row to take through RowMap exactly as before.
 			// Everything past that translation is unchanged document-row code.
