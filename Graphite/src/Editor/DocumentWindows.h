@@ -119,6 +119,13 @@ namespace Graphite {
 			bool WantSymbols = true;
 			bool SymbolsOutstanding = false;
 			double NextSymbolsAt = 0.0;
+
+			// What the serving server's state was the last frame this document drew, so a restart
+			// is noticed. A row already in `Asked` is never asked about again while it stays
+			// there, and the client that died failed everything it held outstanding — so without
+			// this the rows on screen at the moment of a crash keep a blank count for the rest of
+			// the session, however healthy the replacement server is.
+			ServerState LastServerState = ServerState::NotConfigured;
 		};
 
 		SyntaxCache& SyntaxFor(const Core::OpenItem& item);

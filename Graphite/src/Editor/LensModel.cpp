@@ -52,6 +52,18 @@ namespace Graphite {
 
 		for (const Declaration& declaration : declarations)
 		{
+			// A reply describes the text as the server last saw it, and the buffer may have moved
+			// on since - an edit that removed lines from the end leaves declarations naming lines
+			// that are no longer there. Both RowMap and TextBuffer clamp rather than fail, so
+			// keeping one would not crash; it would anchor a lens past the last line of the file,
+			// which is a row drawn where no row belongs. Filtered here rather than where the reply
+			// arrives because this runs again on every rewrap, against a buffer that may have
+			// shrunk since the reply did arrive.
+			if (declaration.Line >= buffer.GetLineCount())
+			{
+				continue;
+			}
+
 			const std::string lineText = buffer.LineText(declaration.Line);
 			const std::size_t byteOffset = FromUtf16Column(lineText, declaration.Column);
 

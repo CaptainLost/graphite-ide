@@ -138,3 +138,20 @@ TEST_CASE("A declaration on a wrapped line anchors on the line's first row, not 
 	REQUIRE(model.LensAt(rows.FirstRowOf(1)) != nullptr);
 	CHECK(model.GetRows().At(rows.FirstRowOf(1)).IsLens);
 }
+
+TEST_CASE("A declaration naming a line the buffer no longer has gets no lens")
+{
+	// A reply describes the text the server last saw. The buffer here has three lines, and the
+	// declaration names a fourth - a lens anchored on it would be drawn past the end of the
+	// file. Filtered inside SetDeclarations, so a rebuild after a rewrap drops it too, not only
+	// the frame the reply arrived on.
+	const Core::TextBuffer buffer{"a\nb\nc\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Gone", 9)}, rows, buffer, 4);
+
+	CHECK(model.LensAt(1) != nullptr);
+	CHECK(model.RowsNeedingCounts(0, rows.TotalRows()) == std::vector<std::size_t>{1});
+}

@@ -979,6 +979,26 @@ namespace Graphite {
 	void DocumentWindows::UpdateLenses(const Core::OpenItem& item, LensState& state,
 									   const EditorFrameResult& frame)
 	{
+		// A server that has just entered Starting is a server that has just been replaced —
+		// LanguageServices::RestartServer sets exactly that state, and the client it replaced
+		// failed every request it was holding. Those failures leave their rows in Asked, where
+		// nothing else would ever take them out, so the counts visible at the moment of the crash
+		// would stay blank while every row scrolled into view afterwards got one.
+		if (const ServerState now = m_LanguageServices.StatusFor(LanguageOfPath(item.Path)).State;
+			now != state.LastServerState)
+		{
+			state.LastServerState = now;
+
+			if (now == ServerState::Starting)
+			{
+				state.WantSymbols = true;
+				state.NextSymbolsAt = 0.0;
+				state.SymbolsOutstanding = false;
+
+				DropInFlightCounts(item.Path, state);
+			}
+		}
+
 		if (frame.Edited)
 		{
 			// Once per frame per document, not once per edit: the widget reports that this frame
@@ -1045,22 +1065,11 @@ namespace Graphite {
 		const Core::OpenItem& item = m_Documents.At(*index);
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 
-		// A reply is about the text as the server last saw it, and the buffer may have moved on
-		// since — an edit that removed lines from the end leaves declarations naming lines that
-		// are no longer there. Both RowMap and TextBuffer clamp rather than fail, so keeping them
-		// would not crash; it would anchor a lens past the last line of the file, which is a row
-		// drawn where no row belongs. Dropped instead, and the next reply brings them back if the
-		// server still says they are there.
-		state.Declarations.clear();
-		state.Declarations.reserve(answer.Declarations.size());
-
-		for (const Declaration& declaration : answer.Declarations)
-		{
-			if (declaration.Line < buffer.GetLineCount())
-			{
-				state.Declarations.push_back(declaration);
-			}
-		}
+		// Kept as the server said them, lines past the end of the buffer included: LensModel::
+		// SetDeclarations is what drops those, and it does so on every rebuild rather than only
+		// on the frame a reply arrives — which is the case that matters, since a rewrap rebuilds
+		// against whatever the buffer has become since.
+		state.Declarations = answer.Declarations;
 
 		state.HaveDeclarations = true;
 		state.WantSymbols = false;
