@@ -6,6 +6,7 @@
 #include "Lang/Server/ServerRegistry.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -36,11 +37,14 @@ namespace Graphite {
 	// conversions walk `line`'s UTF-8 lead bytes, counting one unit per code point below U+10000
 	// and two at or above — a code point at or above U+10000 is four bytes here and a surrogate
 	// pair there. A column past the end of the line clamps to its end rather than running off it.
+	//
+	// Neither is called by LspClient, deliberately. The caller converts, because the caller holds
+	// the buffer the column belongs to: the client has only the file on disk, and for a document
+	// with unsaved edits that is a different file, so converting here would answer confidently
+	// about text the user is not looking at. There is still exactly one pair of these functions.
 	std::size_t ToUtf16Column(std::string_view line, std::size_t byteColumn);
 	std::size_t FromUtf16Column(std::string_view line, std::size_t utf16Column);
 
-	// The columns these two return are still the protocol's UTF-16 units: a pure function has no
-	// text to convert against. LspClient converts them to bytes before an answer reaches Drain.
 	// Both tolerate null, a wrong type and missing fields by yielding less, never by failing — a
 	// server is allowed to answer nothing, and ADR 0004 forbids throwing across this boundary.
 	std::vector<Location> ParseLocations(const nlohmann::json& result);
@@ -60,6 +64,17 @@ namespace Graphite {
 	public:
 		LspClient(const ServerConfig& config, std::filesystem::path binary,
 				  std::filesystem::path root);
+
+		// Tags the constructor that does everything except start a process, so that the paths only
+		// a server can otherwise reach — the handshake, the queue that holds messages until it
+		// finishes, the answers to a server's own requests — are reachable from a test on a
+		// machine with no language server installed. Nothing in the application uses it.
+		struct WithoutServer
+		{
+		};
+
+		LspClient(const ServerConfig& config, std::filesystem::path root, WithoutServer);
+
 		~LspClient();
 
 		LspClient(const LspClient&) = delete;
@@ -89,6 +104,16 @@ namespace Graphite {
 
 		void Cancel(RequestId id);
 
+		// One message body, handled exactly as the reader thread handles what arrives on the pipe.
+		// The reader calls this too, so a test that feeds a body drives the same code a server
+		// does — there is no second path that could drift from the real one.
+		void Deliver(const std::string& body);
+
+		// Everything queued for the server since the last call, framed and in order. Only a client
+		// with no process to drain the queue accumulates anything here, which is what makes it a
+		// test's window onto what would have been sent.
+		std::vector<std::string> TakeSent();
+
 	private:
 		// What a reply id was asked for. The protocol does not echo the method back, so the
 		// question has to be remembered against its id to know how to read the answer.
@@ -99,96 +124,109 @@ namespace Graphite {
 			Symbols
 		};
 
-		// The server's copy of an open document, as far as this side knows it. Text is kept
-		// because a position leaving here has to be measured against the line it points into,
-		// and the reply's columns have to be measured back.
+		// The server's copy of an open document, as far as this side knows it: only the version,
+		// because the protocol requires it to increase per document. The text is not kept — the
+		// client has no reason to measure anything against it any more, and a second copy of every
+		// open file is not free.
 		struct Document
 		{
 			int Version = 0;
-			std::string Text;
 		};
 
-		// What was asked under an id. The document is remembered alongside the question because
-		// a documentSymbol answer names no file of its own, and its columns still have to be
-		// measured back against the text they came from.
+		// What was asked under an id. The protocol does not echo the method back, so the question
+		// has to be remembered against its id to know how to read the answer.
 		struct Asked
 		{
 			Question Kind = Question::Definition;
-			std::string Uri;
 		};
 
 		// Held through a shared_ptr so a reader thread still winding down after this object is
 		// gone has somewhere valid to write, exactly as SearchService's jobs do.
+		//
+		// Three locks, and which covers what matters more than any of them individually — the
+		// deadlock this shape exists to prevent is one where the UI thread waits to write while
+		// the server waits for us to read. Add a message and reach for the right one:
+		//
+		//   StateMutex     Answers and Status. What Drain collects, and nothing else.
+		//   ProtocolMutex  Bookkeeping only: id allocation, the outstanding table, the document
+		//                  versions, the pre-handshake queue, InitializeId, Initialized,
+		//                  ReaderStopped. Never held across any I/O whatsoever.
+		//   OutboundMutex  The outbound queue and nothing else. Held to push or to pop, never
+		//                  across the write itself.
+		//
+		// Nothing ever writes to the pipe while holding a lock: a synchronous write into a full
+		// pipe blocks until the server reads, the server does not read until we read, and our
+		// reader cannot read while it is waiting on a lock the blocked writer holds. The writer
+		// thread exists to break exactly that cycle — every sender pushes and returns.
 		struct Shared
 		{
-			// Guards what Drain collects, and only that. Never held while anything writes to the
-			// server, so Drain cannot end up waiting behind a pipe write.
 			std::mutex StateMutex;
 			std::vector<Answer> Answers;
 			ServerStatus Status;
 
-			// Guards the protocol: id allocation, the outstanding table, the documents, the
-			// queue of messages the handshake has not released yet, and the write end of the
-			// pipe — which must be written a whole framed message at a time or two threads
-			// interleave halves of two messages into one unparsable stream.
 			std::mutex ProtocolMutex;
 			JsonRpc Rpc;
-			std::shared_ptr<Core::ChildProcess> Process;
 			std::unordered_map<RequestId, Asked> Pending;
 			std::unordered_map<std::string, Document> Documents;
 			std::vector<std::string> Queued;
 			RequestId InitializeId = 0;
 			bool Initialized = false;
 
+			// Set by the reader as it exits, under ProtocolMutex and in the same breath as it
+			// abandons what was outstanding, so a question asked at that moment is either
+			// remembered by a reader still running or failed on the spot — never neither.
+			bool ReaderStopped = false;
+
+			std::mutex OutboundMutex;
+			std::condition_variable Outbound;
+			std::vector<std::string> ToSend;
+
+			// Set before the child is killed, so both threads can tell a shutdown they were asked
+			// for from a server that died on its own.
+			std::atomic<bool> Stopping{false};
+
+			// Written once, before either thread starts, and only read afterwards.
+			std::shared_ptr<Core::ChildProcess> Process;
 			std::string ProtocolLanguageId;
 
 			// Decided once at construction: a root with no compile database is a state the user
 			// has to fix, not a failure, and it outlives every reply that would otherwise report
 			// the server simply Ready.
 			bool NoCompileDatabase = false;
-
-			// Set before the child is killed, so the reader can tell a shutdown it was asked for
-			// from a server that died on its own.
-			std::atomic<bool> Stopping{false};
 		};
 
-		// Numbers a question, remembers what was asked so its reply can be read, and sends it.
-		// The caller already holds ProtocolMutex: a position's params can only be built while the
-		// document text they are measured against is held still.
-		RequestId Ask(std::string_view method, const nlohmann::json& params, Question question,
-					  const std::string& uri);
+		// Numbers a question, remembers what was asked so its reply can be read, and queues it.
+		// ProtocolMutex held by the caller.
+		RequestId Ask(std::string_view method, const nlohmann::json& params, Question question);
 
-		// Everything below runs on the reader thread and takes Shared explicitly, because by the
+		// Sends initialize and records the id its reply will carry. ProtocolMutex NOT held.
+		void BeginHandshake(const std::filesystem::path& root);
+
+		// Everything below runs on a background thread and takes Shared explicitly, because by the
 		// time some of it runs there may be no LspClient left to reach through.
 		static void RunReader(std::shared_ptr<Shared> shared);
+		static void RunWriter(std::shared_ptr<Shared> shared);
 		static void HandleBody(Shared& shared, const std::string& body);
 
 		// Both are called with ProtocolMutex held.
 		static void AnswerServerRequest(Shared& shared, const IncomingMessage& request);
-		static void CompleteHandshake(Shared& shared, const nlohmann::json& result);
+		static void CompleteHandshake(Shared& shared, const IncomingMessage& reply);
 
 		static void ApplyProgress(Shared& shared, const nlohmann::json& params);
 
-		// Both write a whole framed message and both need ProtocolMutex held by the caller —
-		// that is what keeps two threads from interleaving halves of two messages into one
-		// unparsable stream. SendLocked holds a message back until the handshake has finished;
-		// SendNowLocked is for the handshake itself and for answers a server is waiting on.
+		// Both hand a framed message to the writer thread and return without waiting for it to
+		// leave, and both need ProtocolMutex held by the caller — not to write, but because they
+		// read Initialized and because the order two messages are queued in has to be the order
+		// their ids were allocated in. SendLocked holds a message back until the handshake has
+		// finished; SendNowLocked is for the handshake itself and for answers a server is waiting
+		// on, which must overtake the queue rather than sit behind it.
 		static void SendLocked(Shared& shared, const std::string& bytes);
 		static void SendNowLocked(Shared& shared, const std::string& bytes);
 
-		// The UTF-16 column to send for a byte column, measured against the open document's line.
-		// ProtocolMutex held by the caller.
-		static std::size_t ColumnFor(Shared& shared, const std::string& uri,
-									 const FilePosition& where);
-
-		// Turns the protocol's UTF-16 columns into the byte columns this editor counts in,
-		// against the open document's text or, when the answer names a file no tab holds, the
-		// file on disk. Takes ProtocolMutex itself, so the caller must not hold it.
-		static void ToByteColumns(Shared& shared, Answer& answer, const std::string& askedUri);
-
 		std::shared_ptr<Shared> m_Shared = std::make_shared<Shared>();
 
-		// Declared last so it is destroyed last; the destructor joins it explicitly first.
+		// Declared last so they are destroyed last; the destructor joins both explicitly first.
 		std::thread m_Reader;
+		std::thread m_Writer;
 	};
 }

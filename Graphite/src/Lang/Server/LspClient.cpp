@@ -6,7 +6,6 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
-#include <fstream>
 #include <iterator>
 #include <optional>
 #include <utility>
@@ -189,7 +188,7 @@ namespace Graphite {
 			if (const nlohmann::json* start = StartOf(node))
 			{
 				location.Line = ReadUnsigned(*start, "line");
-				location.Column = ReadUnsigned(*start, "character");
+				location.Utf16Column = ReadUnsigned(*start, "character");
 			}
 
 			return location;
@@ -245,7 +244,7 @@ namespace Graphite {
 					if (const nlohmann::json* start = StartOf(node))
 					{
 						declaration.Line = ReadUnsigned(*start, "line");
-						declaration.Column = ReadUnsigned(*start, "character");
+						declaration.Utf16Column = ReadUnsigned(*start, "character");
 					}
 
 					// Before its children, so the flattened list reads in the order the file does.
@@ -259,62 +258,6 @@ namespace Graphite {
 			{
 				CollectSymbols(*children, declarations);
 			}
-		}
-
-		std::string_view LineAt(std::string_view text, std::size_t line)
-		{
-			std::size_t start = 0;
-
-			for (std::size_t index = 0; index < line; ++index)
-			{
-				const std::size_t newline = text.find('\n', start);
-
-				if (newline == std::string_view::npos)
-				{
-					return {};
-				}
-
-				start = newline + 1;
-			}
-
-			std::size_t end = text.find('\n', start);
-
-			if (end == std::string_view::npos)
-			{
-				end = text.size();
-			}
-
-			if (end > start && text[end - 1] == '\r')
-			{
-				--end;
-			}
-
-			return text.substr(start, end - start);
-		}
-
-		// A file whose column has to be converted but which no tab holds open. The cap is there
-		// because this runs on the reader thread for every location in an answer, and a reference
-		// list can name hundreds of files.
-		constexpr std::uintmax_t kLargestFileToMeasure = 8u * 1024u * 1024u;
-
-		std::string ReadForMeasuring(const std::filesystem::path& path)
-		{
-			std::error_code ec;
-			const std::uintmax_t size = std::filesystem::file_size(path, ec);
-
-			if (ec || size > kLargestFileToMeasure)
-			{
-				return {};
-			}
-
-			std::ifstream in(path, std::ios::binary);
-
-			if (!in)
-			{
-				return {};
-			}
-
-			return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 		}
 	}
 
@@ -507,16 +450,37 @@ namespace Graphite {
 
 			return params;
 		}
+
+		// The whole of what an error reply says, for a status line. A server that refuses to start
+		// says why in "message", and dropping that leaves a user with a red status and no reason.
+		std::string DescribeError(const nlohmann::json& error)
+		{
+			if (error.is_object())
+			{
+				const auto message = error.find("message");
+
+				if (message != error.end() && message->is_string())
+				{
+					return message->get<std::string>();
+				}
+			}
+
+			return "the language server refused to start";
+		}
 	}
 
 	void LspClient::SendNowLocked(Shared& shared, const std::string& bytes)
 	{
-		if (!shared.Process)
+		// Queued, not written: writing here would be a synchronous write under ProtocolMutex, and
+		// a pipe that is full because the server is busy writing to us would stop this thread with
+		// the mutex held — including when "this thread" is the reader, which is the one thread
+		// that must never stop. The writer thread takes it from here.
 		{
-			return;
+			const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
+			shared.ToSend.push_back(bytes);
 		}
 
-		shared.Process->Write(bytes);
+		shared.Outbound.notify_one();
 	}
 
 	void LspClient::SendLocked(Shared& shared, const std::string& bytes)
@@ -533,20 +497,17 @@ namespace Graphite {
 		SendNowLocked(shared, bytes);
 	}
 
-	std::size_t LspClient::ColumnFor(Shared& shared, const std::string& uri,
-									 const FilePosition& where)
+	void LspClient::BeginHandshake(const std::filesystem::path& root)
 	{
-		const auto found = shared.Documents.find(uri);
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		if (found == shared.Documents.end())
-		{
-			// Nothing to measure against. A byte column and a UTF-16 column agree on every line
-			// that is pure ASCII, which is what a position in a document no tab holds falls back
-			// to — and asking about such a document is already outside what this client tracks.
-			return where.Column;
-		}
+		// Recorded before it is queued, and under the same mutex the reader takes to read it, so
+		// the reply can never arrive at a reader that does not yet know which id the handshake
+		// used.
+		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root));
 
-		return ToUtf16Column(LineAt(found->second.Text, where.Line), where.Column);
+		m_Shared->InitializeId = id;
+		SendNowLocked(*m_Shared, bytes);
 	}
 
 	LspClient::LspClient(const ServerConfig& config, std::filesystem::path binary,
@@ -566,35 +527,58 @@ namespace Graphite {
 		{
 			m_Shared->Status.State = ServerState::Failed;
 			m_Shared->Status.Detail = started.GetError().Message;
+
+			// No process means no reader, so nothing will ever fail a question the way the reader's
+			// exit does. Ask checks this flag for exactly that reason.
+			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+			m_Shared->ReaderStopped = true;
+
 			return;
 		}
 
-		m_Shared->Process =
-			std::shared_ptr<Core::ChildProcess>(std::move(started.GetValue()));
+		m_Shared->Process = std::shared_ptr<Core::ChildProcess>(std::move(started.GetValue()));
 
 		m_Reader = std::thread(&LspClient::RunReader, m_Shared);
+		m_Writer = std::thread(&LspClient::RunWriter, m_Shared);
 
-		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+		BeginHandshake(root);
+	}
 
-		// Recorded before it is sent, and under the same mutex the reader takes to read it, so the
-		// reply can never arrive at a reader that does not yet know which id the handshake used.
-		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root));
+	LspClient::LspClient(const ServerConfig& config, std::filesystem::path root, WithoutServer)
+	{
+		m_Shared->ProtocolLanguageId = std::string(config.ProtocolLanguageId);
+		m_Shared->NoCompileDatabase = LacksCompileDatabase(root);
 
-		m_Shared->InitializeId = id;
-		SendNowLocked(*m_Shared, bytes);
+		m_Shared->Status.Name = std::string(config.Command);
+		m_Shared->Status.State = ServerState::Starting;
+
+		// Everything the real constructor does except start a process and the two threads that
+		// serve it. The handshake still goes out, into a queue nobody drains, so a test can read
+		// what would have been sent and answer it through Deliver.
+		BeginHandshake(root);
 	}
 
 	LspClient::~LspClient()
 	{
 		m_Shared->Stopping.store(true);
 
-		// Killing the child is what closes the pipe the reader is blocked on, and it is the only
-		// thing that bounds this wait: asking the server to shut down politely and waiting for it
-		// to agree would hold the UI thread here for as long as a wedged server felt like. A
-		// language server holds nothing that is not rebuildable from the files on disk.
+		// Killing the child is what releases both threads at once: it closes the pipe the reader
+		// is blocked reading, and it breaks the pipe the writer may be blocked writing into.
+		// Asking the server to shut down politely and waiting for it to agree would hold the UI
+		// thread here for as long as a wedged server felt like, and a language server holds
+		// nothing that is not rebuildable from the files on disk.
 		if (m_Shared->Process)
 		{
 			m_Shared->Process->Terminate();
+		}
+
+		// Woken as well as terminated: a writer parked on the condition variable has nothing to
+		// notice a dead pipe with.
+		m_Shared->Outbound.notify_all();
+
+		if (m_Writer.joinable())
+		{
+			m_Writer.join();
 		}
 
 		if (m_Reader.joinable())
@@ -611,7 +595,6 @@ namespace Graphite {
 
 		Document& document = m_Shared->Documents[uri];
 		document.Version = 1;
-		document.Text = text;
 
 		nlohmann::json params;
 		params["textDocument"]["uri"] = uri;
@@ -638,7 +621,6 @@ namespace Graphite {
 
 		Document& document = found->second;
 		++document.Version;
-		document.Text = text;
 
 		// Full text, not a range. An incremental change describes an edit the server applies to
 		// its own copy, and a range computed even slightly wrong corrupts that copy silently —
@@ -690,14 +672,18 @@ namespace Graphite {
 	}
 
 	RequestId LspClient::Ask(std::string_view method, const nlohmann::json& params,
-							 Question question, const std::string& uri)
+							 Question question)
 	{
 		auto [id, bytes] = m_Shared->Rpc.Request(method, params);
 
-		if (!m_Shared->Process)
+		if (m_Shared->ReaderStopped)
 		{
-			// There is no server to answer, so the answer is written here rather than never: a
-			// caller waiting on a ticket that can never come back waits forever.
+			// There is no reader left to bring an answer back — either the server never started or
+			// it has since died. Answering here rather than never is the whole point: a caller
+			// holding a ticket has no other way to find out, and a ticket nothing ever fails is a
+			// spinner that turns forever.
+			m_Shared->Rpc.Forget(id);
+
 			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
 			Answer answer;
@@ -709,7 +695,7 @@ namespace Graphite {
 			return id;
 		}
 
-		m_Shared->Pending[id] = Asked{question, uri};
+		m_Shared->Pending[id] = Asked{question};
 		SendLocked(*m_Shared, bytes);
 
 		return id;
@@ -717,43 +703,37 @@ namespace Graphite {
 
 	RequestId LspClient::AskDefinition(const FilePosition& where)
 	{
-		const std::string uri = ToFileUri(where.Path);
-
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
 		nlohmann::json params;
-		params["textDocument"]["uri"] = uri;
+		params["textDocument"]["uri"] = ToFileUri(where.Path);
 		params["position"]["line"] = where.Line;
-		params["position"]["character"] = ColumnFor(*m_Shared, uri, where);
+		params["position"]["character"] = where.Utf16Column;
 
-		return Ask("textDocument/definition", params, Question::Definition, uri);
+		return Ask("textDocument/definition", params, Question::Definition);
 	}
 
 	RequestId LspClient::AskReferences(const FilePosition& where)
 	{
-		const std::string uri = ToFileUri(where.Path);
-
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
 		nlohmann::json params;
-		params["textDocument"]["uri"] = uri;
+		params["textDocument"]["uri"] = ToFileUri(where.Path);
 		params["position"]["line"] = where.Line;
-		params["position"]["character"] = ColumnFor(*m_Shared, uri, where);
+		params["position"]["character"] = where.Utf16Column;
 		params["context"]["includeDeclaration"] = true;
 
-		return Ask("textDocument/references", params, Question::References, uri);
+		return Ask("textDocument/references", params, Question::References);
 	}
 
 	RequestId LspClient::AskSymbols(const std::filesystem::path& path)
 	{
-		const std::string uri = ToFileUri(path);
-
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
 		nlohmann::json params;
-		params["textDocument"]["uri"] = uri;
+		params["textDocument"]["uri"] = ToFileUri(path);
 
-		return Ask("textDocument/documentSymbol", params, Question::Symbols, uri);
+		return Ask("textDocument/documentSymbol", params, Question::Symbols);
 	}
 
 	void LspClient::Cancel(RequestId id)
@@ -782,14 +762,66 @@ namespace Graphite {
 		status = m_Shared->Status;
 	}
 
+	void LspClient::Deliver(const std::string& body)
+	{
+		HandleBody(*m_Shared, body);
+	}
+
+	std::vector<std::string> LspClient::TakeSent()
+	{
+		const std::lock_guard<std::mutex> outbound(m_Shared->OutboundMutex);
+
+		std::vector<std::string> sent;
+		sent.swap(m_Shared->ToSend);
+
+		return sent;
+	}
+
+	void LspClient::RunWriter(std::shared_ptr<Shared> shared)
+	{
+		Core::ChildProcess& process = *shared->Process;
+
+		for (;;)
+		{
+			std::vector<std::string> batch;
+
+			{
+				std::unique_lock<std::mutex> outbound(shared->OutboundMutex);
+
+				shared->Outbound.wait(outbound, [&shared]
+									  { return !shared->ToSend.empty() || shared->Stopping.load(); });
+
+				if (shared->ToSend.empty() && shared->Stopping.load())
+				{
+					return;
+				}
+
+				batch.swap(shared->ToSend);
+			}
+
+			// Outside every lock. This is the call that blocks when the server is not reading, and
+			// blocking here costs nothing: the reader keeps draining the pipe, which is what lets
+			// the server get back to reading ours.
+			for (const std::string& message : batch)
+			{
+				if (!process.Write(message))
+				{
+					// The pipe is gone. The reader will see the same thing and report it; there is
+					// nothing this thread can usefully do but stop trying.
+					return;
+				}
+			}
+		}
+	}
+
 	void LspClient::RunReader(std::shared_ptr<Shared> shared)
 	{
 		MessageStream stream;
 		std::array<char, 8192> buffer{};
 
-		// Read without the protocol mutex: it blocks for as long as the server stays quiet, and
-		// holding the mutex across that would stop every UI-thread call dead. The pointer itself
-		// is set before this thread starts and never reassigned.
+		// Read without any mutex held: it blocks for as long as the server stays quiet, and holding
+		// a mutex across that would stop every UI-thread call dead. The pointer itself is set
+		// before this thread starts and never reassigned.
 		Core::ChildProcess& process = *shared->Process;
 
 		for (;;)
@@ -822,7 +854,15 @@ namespace Graphite {
 			}
 
 			shared->Pending.clear();
+
+			// Set here, in the same breath as the abandonment and under the same mutex Ask holds:
+			// a question asked at this instant either got into Pending before this ran and is
+			// failed below, or arrives after and is failed by Ask. Never neither.
+			shared->ReaderStopped = true;
 		}
+
+		// The writer has nothing left to carry once the pipe is gone.
+		shared->Outbound.notify_all();
 
 		const std::lock_guard<std::mutex> state(shared->StateMutex);
 
@@ -867,7 +907,7 @@ namespace Graphite {
 
 			if (incoming->ReplyTo && *incoming->ReplyTo == shared.InitializeId)
 			{
-				CompleteHandshake(shared, incoming->Payload);
+				CompleteHandshake(shared, *incoming);
 				return;
 			}
 		}
@@ -922,8 +962,9 @@ namespace Graphite {
 			}
 		}
 
-		ToByteColumns(shared, answer, asked.Uri);
-
+		// Parse, correlate, hand over. The columns stay in the protocol's UTF-16 units, and the
+		// caller converts them against the buffer it is about to move the caret in — which is the
+		// only copy of the file that is certainly the one the user is looking at.
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 		shared.Answers.push_back(std::move(answer));
 	}
@@ -973,9 +1014,25 @@ namespace Graphite {
 		SendNowLocked(shared, shared.Rpc.ErrorReply(id, -32601, "method not found"));
 	}
 
-	void LspClient::CompleteHandshake(Shared& shared, const nlohmann::json& result)
+	void LspClient::CompleteHandshake(Shared& shared, const IncomingMessage& reply)
 	{
+		if (reply.IsError)
+		{
+			// A server that refused to start is not Ready, and nothing queued behind the handshake
+			// will ever be read by anyone. Keying the dispatch on the id alone and assuming success
+			// would report a working server for a process that has already given up.
+			const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+			shared.Status.State = ServerState::Failed;
+			shared.Status.Detail = DescribeError(reply.Payload);
+			shared.Status.Percent = -1;
+
+			return;
+		}
+
 		shared.Initialized = true;
+
+		const nlohmann::json& result = reply.Payload;
 
 		std::string detail;
 
@@ -1076,83 +1133,6 @@ namespace Graphite {
 		{
 			shared.Status.State = SettledState(shared.NoCompileDatabase);
 			shared.Status.Percent = -1;
-		}
-	}
-
-	void LspClient::ToByteColumns(Shared& shared, Answer& answer, const std::string& askedUri)
-	{
-		// One text per file, because a reference list names the same handful of files over and
-		// over and each miss otherwise costs a read from disk.
-		std::unordered_map<std::string, std::string> texts;
-
-		const auto textFor = [&shared, &texts](const std::string& uri) -> const std::string&
-		{
-			const auto cached = texts.find(uri);
-
-			if (cached != texts.end())
-			{
-				return cached->second;
-			}
-
-			std::string text;
-
-			{
-				const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
-
-				const auto open = shared.Documents.find(uri);
-
-				if (open != shared.Documents.end())
-				{
-					text = open->second.Text;
-				}
-			}
-
-			if (text.empty())
-			{
-				// The answer names a file no tab holds. Its bytes are the only thing a UTF-16
-				// column can be measured against, and an unreadable one simply leaves the column
-				// as the server counted it.
-				text = ReadForMeasuring(FromFileUri(uri));
-			}
-
-			return texts.emplace(uri, std::move(text)).first->second;
-		};
-
-		for (Location& location : answer.Locations)
-		{
-			if (location.Column == 0)
-			{
-				continue;
-			}
-
-			const std::string& text = textFor(ToFileUri(location.Path));
-
-			if (!text.empty())
-			{
-				location.Column = FromUtf16Column(LineAt(text, location.Line), location.Column);
-			}
-		}
-
-		if (answer.Declarations.empty())
-		{
-			return;
-		}
-
-		const std::string& text = textFor(askedUri);
-
-		if (text.empty())
-		{
-			return;
-		}
-
-		for (Declaration& declaration : answer.Declarations)
-		{
-			if (declaration.Column == 0)
-			{
-				continue;
-			}
-
-			declaration.Column = FromUtf16Column(LineAt(text, declaration.Line), declaration.Column);
 		}
 	}
 }
