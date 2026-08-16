@@ -38,6 +38,8 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.h",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.cpp",
+        "%{wks.location}/Graphite/src/Editor/LensRows.h",
+        "%{wks.location}/Graphite/src/Editor/LensRows.cpp",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.h",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.cpp",
         "%{wks.location}/Graphite/src/Editor/ServerStatusText.h",
