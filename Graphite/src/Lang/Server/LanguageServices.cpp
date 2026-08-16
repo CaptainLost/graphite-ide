@@ -244,7 +244,7 @@ namespace Graphite {
 	}
 
 	void LanguageServices::OpenDocument(const std::filesystem::path& path, LanguageId language,
-										const std::string& text)
+										std::string text)
 	{
 		Key key;
 
@@ -265,16 +265,19 @@ namespace Graphite {
 		// Remembered before forwarding, not instead of it: a restart needs the text on hand with
 		// nowhere else to read it from, since the client that used to hold it is the one that
 		// just died.
-		server.OpenDocuments[path] = text;
+		std::string& kept = server.OpenDocuments[path];
+		kept = std::move(text);
 
+		// The kept copy, not a second one: `text` has been moved from, and the client only reads
+		// what it is given long enough to escape it into JSON.
 		if (server.Client)
 		{
-			server.Client->OpenDocument(path, text);
+			server.Client->OpenDocument(path, kept);
 		}
 	}
 
 	void LanguageServices::ChangeDocument(const std::filesystem::path& path, LanguageId language,
-										  const std::string& text)
+										  std::string text)
 	{
 		Key key;
 
@@ -301,11 +304,11 @@ namespace Graphite {
 			return;
 		}
 
-		document->second = text;
+		document->second = std::move(text);
 
 		if (server.Client)
 		{
-			server.Client->ChangeDocument(path, text);
+			server.Client->ChangeDocument(path, document->second);
 		}
 	}
 

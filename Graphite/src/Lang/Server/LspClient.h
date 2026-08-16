@@ -236,8 +236,13 @@ namespace Graphite {
 		// their ids were allocated in. SendLocked holds a message back until the handshake has
 		// finished; SendNowLocked is for the handshake itself and for answers a server is waiting
 		// on, which must overtake the queue rather than sit behind it.
-		static void SendLocked(Shared& shared, const std::string& bytes);
-		static void SendNowLocked(Shared& shared, const std::string& bytes);
+		//
+		// Both take the message by value and move it onward rather than taking a reference: what
+		// arrives is a framed message nobody else keeps, and the only thing either does with it is
+		// hand it to a queue. Taken by reference it was copied into that queue, which for a
+		// didChange is one more whole copy of the source file, on the UI thread, per keystroke.
+		static void SendLocked(Shared& shared, std::string bytes);
+		static void SendNowLocked(Shared& shared, std::string bytes);
 
 		// Declares the outbound queue closed and empties it. Called by whichever of the two
 		// threads first learns the pipe is dead, so that senders start dropping rather than

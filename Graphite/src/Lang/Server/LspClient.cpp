@@ -480,7 +480,7 @@ namespace Graphite {
 		}
 	}
 
-	void LspClient::SendNowLocked(Shared& shared, const std::string& bytes)
+	void LspClient::SendNowLocked(Shared& shared, std::string bytes)
 	{
 		// Queued, not written: writing here would be a synchronous write under ProtocolMutex, and
 		// a pipe that is full because the server is busy writing to us would stop this thread with
@@ -496,13 +496,13 @@ namespace Graphite {
 				return;
 			}
 
-			shared.ToSend.push_back(bytes);
+			shared.ToSend.push_back(std::move(bytes));
 		}
 
 		shared.Outbound.notify_one();
 	}
 
-	void LspClient::SendLocked(Shared& shared, const std::string& bytes)
+	void LspClient::SendLocked(Shared& shared, std::string bytes)
 	{
 		if (!shared.Initialized)
 		{
@@ -522,11 +522,11 @@ namespace Graphite {
 			// Nothing but the handshake may go out before initialize is answered: a server is
 			// entitled to drop, or fail on, anything that arrives first. The queue keeps the
 			// order the caller asked in.
-			shared.Queued.push_back(bytes);
+			shared.Queued.push_back(std::move(bytes));
 			return;
 		}
 
-		SendNowLocked(shared, bytes);
+		SendNowLocked(shared, std::move(bytes));
 	}
 
 	void LspClient::StopOutbound(Shared& shared)
@@ -552,7 +552,7 @@ namespace Graphite {
 		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root));
 
 		m_Shared->InitializeId = id;
-		SendNowLocked(*m_Shared, bytes);
+		SendNowLocked(*m_Shared, std::move(bytes));
 	}
 
 	LspClient::LspClient(const ServerConfig& config, std::filesystem::path binary,
@@ -747,7 +747,7 @@ namespace Graphite {
 		}
 
 		m_Shared->Pending[id] = Asked{question};
-		SendLocked(*m_Shared, bytes);
+		SendLocked(*m_Shared, std::move(bytes));
 
 		return id;
 	}
@@ -808,7 +808,7 @@ namespace Graphite {
 		// grow for an object about to be destroyed anyway.
 		auto [id, bytes] = m_Shared->Rpc.Request("shutdown", nullptr);
 		m_Shared->Rpc.Forget(id);
-		SendLocked(*m_Shared, bytes);
+		SendLocked(*m_Shared, std::move(bytes));
 
 		SendLocked(*m_Shared, m_Shared->Rpc.Notification("exit", nullptr));
 	}
@@ -1153,9 +1153,9 @@ namespace Graphite {
 
 		// Everything the caller asked for while the handshake was in flight, in the order it was
 		// asked, now that the server will accept it.
-		for (const std::string& queued : shared.Queued)
+		for (std::string& queued : shared.Queued)
 		{
-			SendNowLocked(shared, queued);
+			SendNowLocked(shared, std::move(queued));
 		}
 
 		shared.Queued.clear();

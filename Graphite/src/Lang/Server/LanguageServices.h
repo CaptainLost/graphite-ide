@@ -110,10 +110,15 @@ namespace Graphite {
 		// a fresh `LspClient` knows nothing about what was open, and re-sending is the only way
 		// its answers are ever about the file the caller is looking at. A no-op when no server is
 		// configured or running for this language and root.
+		//
+		// The text is taken by value and moved into what this remembers, not copied out of a
+		// reference: the caller has just materialised the whole buffer for this call and keeps
+		// nothing, so a reference here only bought a second copy of the file on the UI thread —
+		// once per keystroke, since a full-text didChange goes out on every edited frame.
 		void OpenDocument(const std::filesystem::path& path, LanguageId language,
-						  const std::string& text);
+						  std::string text);
 		void ChangeDocument(const std::filesystem::path& path, LanguageId language,
-							const std::string& text);
+							std::string text);
 
 		// Matters less than the other three, and deliberately so: `ChangeDocument` already keeps
 		// the server's copy in step with the buffer, so no answer depends on this. What a
