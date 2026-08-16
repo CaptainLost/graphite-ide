@@ -60,6 +60,14 @@ namespace Graphite {
 		std::filesystem::path Path;
 		std::size_t Line = 0;
 		Utf16Column Column;
+
+		// The exclusive end of the range the server named, when it named one. A jump only ever
+		// spends the start; the end exists so ResolveDefinition can tell a caret sitting inside
+		// the name it is asking about — which is where a caret pressing F12 usually is — from one
+		// merely on the same line. Left at (0, 0) by a reply carrying no range, which reads as an
+		// empty span at the start and reduces that test to a comparison against the start alone.
+		std::size_t EndLine = 0;
+		Utf16Column EndColumn;
 	};
 
 	enum class DeclarationKind : std::uint8_t { Function, Type, Other };

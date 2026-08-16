@@ -23,9 +23,10 @@ namespace Graphite {
 	// location is applied through the same Jump below.
 	//
 	// Deduplicates on (Path, Line, Column) first - two locations naming the same place are one
-	// choice, not a pointless one between identical answers - and then drops any location equal
-	// to `from`: asking for the definition of a definition should say there is nowhere to go,
-	// not silently jump to where the caret already sits.
+	// choice, not a pointless one between identical answers - and then drops any location whose
+	// range already contains `from`: asking for the definition of a definition should say there
+	// is nowhere to go, not silently jump to where the caret already sits. The whole range, not
+	// its first character - the caret is ordinarily somewhere inside the name it is asking about.
 	//
 	// `candidates` is filled with what survives both steps in every outcome, not only
 	// NeedsChoice: the single survivor of a Jumped answer sits in it too, so a caller applying

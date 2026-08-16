@@ -147,8 +147,8 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// The "start" of whichever range this node carries, wherever it carries it.
-		const nlohmann::json* StartOf(const nlohmann::json& node)
+		// Whichever range this node carries, wherever it carries it.
+		const nlohmann::json* RangeOf(const nlohmann::json& node)
 		{
 			const nlohmann::json* range =
 				FirstOf(node, {"range", "targetSelectionRange", "targetRange"});
@@ -165,12 +165,7 @@ namespace Graphite {
 				range = FirstOf(*location, {"range"});
 			}
 
-			if (range == nullptr)
-			{
-				return nullptr;
-			}
-
-			return FirstOf(*range, {"start"});
+			return range;
 		}
 
 		std::optional<Location> ReadLocation(const nlohmann::json& node)
@@ -185,10 +180,23 @@ namespace Graphite {
 			Location location;
 			location.Path = FromFileUri(uri->get<std::string>());
 
-			if (const nlohmann::json* start = StartOf(node))
+			if (const nlohmann::json* range = RangeOf(node))
 			{
-				location.Line = ReadUnsigned(*start, "line");
-				location.Column = Utf16Column{ReadUnsigned(*start, "character")};
+				if (const nlohmann::json* start = FirstOf(*range, {"start"}))
+				{
+					location.Line = ReadUnsigned(*start, "line");
+					location.Column = Utf16Column{ReadUnsigned(*start, "character")};
+				}
+
+				// Read as well as the start, and left at the default when the server sends none:
+				// the end is what tells a caret sitting in the middle of a name apart from one
+				// somewhere else on the same line, and a definition's name is the one place a
+				// caret pressing F12 usually is. See ResolveDefinition, which is the only reader.
+				if (const nlohmann::json* end = FirstOf(*range, {"end"}))
+				{
+					location.EndLine = ReadUnsigned(*end, "line");
+					location.EndColumn = Utf16Column{ReadUnsigned(*end, "character")};
+				}
 			}
 
 			return location;
@@ -241,10 +249,13 @@ namespace Graphite {
 					declaration.Name = name->get<std::string>();
 					declaration.Kind = *mapped;
 
-					if (const nlohmann::json* start = StartOf(node))
+					if (const nlohmann::json* range = RangeOf(node))
 					{
-						declaration.Line = ReadUnsigned(*start, "line");
-						declaration.Column = Utf16Column{ReadUnsigned(*start, "character")};
+						if (const nlohmann::json* start = FirstOf(*range, {"start"}))
+						{
+							declaration.Line = ReadUnsigned(*start, "line");
+							declaration.Column = Utf16Column{ReadUnsigned(*start, "character")};
+						}
 					}
 
 					// Before its children, so the flattened list reads in the order the file does.
