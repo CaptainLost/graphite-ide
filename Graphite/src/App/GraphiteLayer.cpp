@@ -2,8 +2,10 @@
 
 #include "App/GraphiteLayer.h"
 
+#include "Editor/ServerStatusText.h"
 #include "Editor/StatusBar.h"
 #include "Editor/TextEditorWidget.h"
+#include "Lang/Registry/LanguageRegistry.h"
 
 #include "Panels/ConsolePanel.h"
 
@@ -274,9 +276,29 @@ namespace Graphite {
 
 	void GraphiteLayer::OnImGuiRender()
 	{
-		DrawStatusBar(m_Documents, m_Workspace.GetRoot(),
-					 StatusMessages{m_DocumentWindows.GetStatusMessage(),
-									 m_SearchPanel->GetStatusMessage()});
+		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
+								 m_SearchPanel->GetStatusMessage()};
+
+		// EnsureStarted is safe to call every frame the document stays active — see its own
+		// comment; the common case is a single map lookup. Poll drains what the server has said
+		// since the last frame, which is what lets Starting become Indexing become Ready here.
+		if (const auto active = m_Documents.GetActive();
+			active && m_Documents.At(*active).Document)
+		{
+			const std::filesystem::path& path = m_Documents.At(*active).Path;
+			const LanguageId language = LanguageOfPath(path);
+
+			m_LanguageServices.EnsureStarted(path, language);
+
+			const ServerStatus status = m_LanguageServices.StatusFor(language);
+
+			messages.Server = ServerStatusText(status);
+			messages.ServerDetail = ServerStatusDetail(status);
+		}
+
+		m_LanguageServices.Poll();
+
+		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
 
 		m_DockSpace.Begin(m_Layout);
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,

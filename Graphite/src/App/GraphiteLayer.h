@@ -6,6 +6,7 @@
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
 #include "App/TitleBar.h"
+#include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Theme/ActiveScheme.h"
@@ -95,6 +96,12 @@ namespace Graphite {
 
 		Workspace m_Workspace{m_Events};
 		Core::DocumentSet m_Documents;
+
+		// Declared after m_Workspace so its fallback root can read m_Workspace's — member
+		// initialisers run in declaration order regardless of the order they are listed in.
+		// Owns every language server the editor talks to; the status bar reads its state each
+		// frame through StatusFor.
+		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
 
 		ModalGate m_Modals;
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals};

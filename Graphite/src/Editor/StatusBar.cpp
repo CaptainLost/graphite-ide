@@ -118,7 +118,24 @@ namespace Graphite {
 			ImGui::SetCursorPosY(CentredTextY(height));
 			ImGui::TextUnformatted(DescribeDocument(item, root).c_str());
 
-			DrawRightAligned(DescribeCaret(item) + "    " + DescribeTextFormat(item));
+			std::string rightAligned;
+
+			// Server comes first, and only when there is something to say — a language with no
+			// server configured contributes nothing to the bar, not even a separator.
+			if (messages.Server && !messages.Server->empty())
+			{
+				rightAligned = *messages.Server + "    ";
+			}
+
+			rightAligned += DescribeCaret(item) + "    " + DescribeTextFormat(item);
+
+			DrawRightAligned(rightAligned);
+
+			if (messages.Server && !messages.Server->empty() && ImGui::IsItemHovered() &&
+				messages.ServerDetail && !messages.ServerDetail->empty())
+			{
+				ImGui::SetTooltip("%s", messages.ServerDetail->c_str());
+			}
 		}
 
 		// A transient message outranks a running search: it answers something the user just did
