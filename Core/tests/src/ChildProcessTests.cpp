@@ -5,6 +5,7 @@
 #include "TempDirectory.h"
 
 #include <string>
+#include <thread>
 
 namespace {
 
@@ -57,6 +58,26 @@ TEST_CASE("ChildProcess quotes a program path that contains a space")
 
 	REQUIRE(process);
 	CHECK(ReadAll(*process.GetValue()).find("hello") != std::string::npos);
+}
+
+TEST_CASE("ChildProcess terminating the child releases a thread blocked in Read")
+{
+	// cmd.exe with no arguments prints its banner and then waits on its input forever, so the
+	// reader thread ends up blocked inside ReadFile with nothing coming. Only the child's death
+	// closes the writing end and makes that call return, which is what a client's destructor
+	// depends on to join its reader without waiting on a server that may never speak again.
+	auto started = Core::ChildProcess::Start("cmd.exe", {}, std::filesystem::current_path());
+
+	REQUIRE(started);
+
+	Core::ChildProcess& process = *started.GetValue();
+
+	std::thread reader([&process] { ReadAll(process); });
+
+	process.Terminate();
+	reader.join();
+
+	CHECK_FALSE(process.IsRunning());
 }
 
 TEST_CASE("ChildProcess reports a program that does not exist")

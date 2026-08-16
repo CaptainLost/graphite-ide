@@ -262,6 +262,19 @@ namespace Core {
 #endif
 	}
 
+	void ChildProcess::Terminate()
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		if (m_Process != nullptr)
+		{
+			// Only the process is touched: the handle another thread may be reading through is
+			// left open, and the destructor still closes everything exactly once. Terminating an
+			// already-dead child simply fails, which is why the return value is ignored.
+			::TerminateProcess(static_cast<HANDLE>(m_Process), 0);
+		}
+#endif
+	}
+
 	bool ChildProcess::IsRunning() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS

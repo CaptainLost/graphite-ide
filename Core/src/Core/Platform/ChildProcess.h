@@ -33,6 +33,13 @@ namespace Core {
 
 		bool Write(std::string_view bytes);
 
+		// Kills the child without closing this side's handles, so a thread blocked in Read is
+		// released — the child's death closes the writing end of the pipe, and Read reports the
+		// zero that means "gone". Safe to call while another thread sits inside Read, which is
+		// the only reason it exists separately from the destructor: destroying the object under
+		// that thread would pull the handle out from beneath it.
+		void Terminate();
+
 		bool IsRunning() const;
 
 	private:
