@@ -1,6 +1,7 @@
 #include "Lang/Server/ServerRegistry.h"
 
 #include <array>
+#include <system_error>
 
 namespace Graphite {
 
@@ -19,6 +20,17 @@ namespace Graphite {
 
 		constexpr std::array<std::string_view, 3> kCompileDatabaseNames{
 			"compile_commands.json", "compile_flags.txt", ".clangd"};
+
+		// The error_code overload, never the throwing one. Both walks below climb to the drive
+		// root, and a directory that denies access — or a path that is not one at all — makes the
+		// throwing overload raise a filesystem_error across a boundary ADR 0004 says nothing
+		// throws across. "Cannot tell" reads as "not there", which is what a marker that cannot be
+		// examined means for a walk looking for one.
+		bool Exists(const std::filesystem::path& path)
+		{
+			std::error_code failed;
+			return std::filesystem::exists(path, failed) && !failed;
+		}
 	}
 
 	const ServerConfig* ServerConfigFor(LanguageId language)
@@ -45,7 +57,7 @@ namespace Graphite {
 		{
 			for (const std::string_view marker : config.RootMarkers)
 			{
-				if (std::filesystem::exists(directory / marker))
+				if (Exists(directory / marker))
 				{
 					return directory;
 				}
@@ -68,7 +80,7 @@ namespace Graphite {
 	{
 		for (const std::string_view name : kCompileDatabaseNames)
 		{
-			if (std::filesystem::exists(root / name))
+			if (Exists(root / name))
 			{
 				return false;
 			}
@@ -80,7 +92,7 @@ namespace Graphite {
 		// treatment: both are hand-authored specifically to sit beside the sources they describe
 		// (compile_flags.txt has no notion of a subdirectory's worth of flags, and .clangd is
 		// read relative to the file it configures), so neither convention places them in build/.
-		if (std::filesystem::exists(root / "build" / "compile_commands.json"))
+		if (Exists(root / "build" / "compile_commands.json"))
 		{
 			return false;
 		}
