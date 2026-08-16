@@ -70,6 +70,11 @@ namespace Graphite {
 		return Notification("$/cancelRequest", {{"id", id}});
 	}
 
+	void JsonRpc::Forget(RequestId id)
+	{
+		m_Outstanding.erase(id);
+	}
+
 	std::optional<IncomingMessage> JsonRpc::Receive(const std::string& body)
 	{
 		// Non-throwing parse: malformed input yields a discarded value rather than an exception

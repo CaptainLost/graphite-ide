@@ -50,6 +50,11 @@ namespace Graphite {
 
 		std::optional<IncomingMessage> Receive(const std::string& body);
 
+		// Drops an id without sending anything. For a request that was numbered and then never
+		// went anywhere — a server that had already died before it could be written — where
+		// leaving the id outstanding would make a later reply carrying it look answerable.
+		void Forget(RequestId id);
+
 		bool IsOutstanding(RequestId id) const;
 
 	private:
