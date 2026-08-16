@@ -137,6 +137,17 @@ namespace Graphite {
 		void UpdateLenses(const Core::OpenItem& item, LensState& state,
 						  const EditorFrameResult& frame);
 
+		// Forgets every reference count this document has in flight, and lets the rows they were
+		// asked about be asked about again. Shared by the two things that move the text under the
+		// anchors: an edit made in the widget, and a reload that replaced the buffer outright.
+		void DropInFlightCounts(const std::filesystem::path& path, LensState& state);
+
+		// Tells the server about a buffer replaced from disk and forgets what the old text was
+		// answered about. Nothing else does: `didChange` otherwise goes out only for a frame the
+		// editor itself edited, so a reload would leave the server holding text the user is no
+		// longer looking at, with no symptom anywhere to say so.
+		void AnnounceReload(const Core::OpenItem& item);
+
 		void AskForSymbols(const Core::OpenItem& item, LensState& state);
 
 		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,

@@ -321,6 +321,8 @@ namespace Graphite {
 
 		if (const auto result = Core::ReloadItem(m_Documents, index))
 		{
+			AnnounceReload(m_Documents.At(index));
+
 			SetTransientMessage(fileName + " reloaded (changed on disk)");
 		}
 		else
@@ -842,6 +844,68 @@ namespace Graphite {
 		}
 	}
 
+	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
+	{
+		// The rows in flight were asked about before the text moved, so their answers are about
+		// positions that no longer hold. Dropping the tickets means those answers are ignored when
+		// they arrive, and clearing the set lets the rows be asked about again.
+		state.Asked.clear();
+
+		for (auto it = m_PendingCounts.begin(); it != m_PendingCounts.end();)
+		{
+			if (it->second.Path == path)
+			{
+				m_LanguageServices.Cancel(it->first);
+				it = m_PendingCounts.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+	}
+
+	void DocumentWindows::AnnounceReload(const Core::OpenItem& item)
+	{
+		if (!item.Document)
+		{
+			return;
+		}
+
+		const LanguageId language = LanguageOfPath(item.Path);
+
+		// The only other didChange goes out from UpdateLenses, for a frame the editor itself
+		// edited. Without this one a file replaced from disk leaves the server holding the text
+		// from before the reload for as long as the tab stays open: F12 resolves a position
+		// against text nobody has, counts anchor to declarations that have moved, and the status
+		// bar says "ready" throughout, because from the server's side nothing went wrong.
+		m_LanguageServices.ChangeDocument(item.Path, language,
+										  item.Document->GetBuffer().Materialize());
+
+		const auto entry = m_Lenses.find(item.Path);
+
+		if (entry == m_Lenses.end())
+		{
+			return;
+		}
+
+		LensState& state = entry->second;
+
+		// Replaced wholesale, not edited: the declarations in hand describe text that need not
+		// resemble what is there now, so they are dropped outright rather than shifted the way an
+		// edit's stopgap shifts them — a lens row left over from the old text would be a count
+		// drawn confidently above whatever happens to be on that line now. Asked for again at
+		// once rather than on the retry clock.
+		state.Declarations.clear();
+		state.Model.SetDeclarations(state.Declarations, item.Rows, item.Document->GetBuffer(),
+									item.TabWidth);
+		state.HaveDeclarations = false;
+		state.WantSymbols = true;
+		state.NextSymbolsAt = 0.0;
+
+		DropInFlightCounts(item.Path, state);
+	}
+
 	void DocumentWindows::AskForSymbols(const Core::OpenItem& item, LensState& state)
 	{
 		const double now = ImGui::GetTime();
@@ -930,23 +994,7 @@ namespace Graphite {
 			state.WantSymbols = true;
 			state.NextSymbolsAt = 0.0;
 
-			// The rows in flight were asked about before the edit, so their answers are about
-			// positions that no longer hold. Dropping the tickets means those answers are ignored
-			// when they arrive, and clearing the set lets the shifted rows be asked about again.
-			state.Asked.clear();
-
-			for (auto it = m_PendingCounts.begin(); it != m_PendingCounts.end();)
-			{
-				if (it->second.Path == item.Path)
-				{
-					m_LanguageServices.Cancel(it->first);
-					it = m_PendingCounts.erase(it);
-				}
-				else
-				{
-					++it;
-				}
-			}
+			DropInFlightCounts(item.Path, state);
 		}
 
 		// A lens anchors to a row, and every row moved when the wrap width did — so the anchors
