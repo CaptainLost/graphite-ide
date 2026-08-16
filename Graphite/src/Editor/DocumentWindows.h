@@ -44,6 +44,7 @@ namespace Graphite {
 						LanguageServices& languageServices)
 			: m_Documents(documents),
 			  m_LanguageServices(languageServices),
+			  m_Modals(modals),
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
 			  m_ReloadConflict(modals, kReloadConflictTitle),
 			  m_OverwriteConfirm(modals, kOverwriteConfirmTitle),
@@ -285,6 +286,12 @@ namespace Graphite {
 
 		LanguageServices& m_LanguageServices;
 
+		// Held as well as handed to the questions below: the definition picker is an ordinary
+		// popup rather than a ModalQuestion, and it still has to take the same gate — ImGui
+		// cannot stack two popups at level 0, and opening this one over a question would destroy
+		// that question rather than queue behind it.
+		ModalGate& m_Modals;
+
 		unsigned int m_LastFocusedNode = 0;
 
 		ModalQuestion<LargeFileQuestion> m_SizeQuestion;
@@ -324,6 +331,14 @@ namespace Graphite {
 		// What ResolveDefinition left to choose from, drawn by RenderDefinitionChoices until a
 		// choice is made or the popup is dismissed.
 		std::vector<Location> m_DefinitionChoices;
+
+		// Where the picker opens, kept from the answer that filled m_DefinitionChoices until
+		// RenderDefinitionChoices can spend it. It cannot be spent where it is decided:
+		// SetNextWindowPos writes into ImGui's next-window state, and every BeginPopupModal that
+		// runs before the picker's own Begin clears that state on its early-out — the four
+		// questions drawn ahead of it would each eat the position, and the list would open at
+		// the mouse pointer, which is the one place F12 must never put it.
+		CaretScreenPosition m_DefinitionChoicesAt;
 
 		// Its own PreviewContent rather than borrowing SyntaxFor's caches: the choices can name
 		// several different files, none of which need be open, and the popup outlives none of

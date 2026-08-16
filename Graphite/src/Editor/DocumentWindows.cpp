@@ -1258,12 +1258,28 @@ namespace Graphite {
 			break;
 
 		case DefinitionOutcome::NeedsChoice:
+			// Through the gate, like every other popup this class opens. ImGui cannot stack two
+			// popups at level 0: opening this one while "File changed on disk" is up would tear
+			// that modal down, and ModalQuestion::WithdrawIfNoLongerOnScreen would then abandon
+			// the question rather than ask it again — the reload conflict would never be put to
+			// the user at all. Dropping the answer is the cheaper loss of the two: F12 asks
+			// again with one keystroke, and the message says why nothing happened.
+			if (!m_Modals.TryOpen(kDefinitionChoicesTitle))
+			{
+				SetTransientMessage("close the open dialog, then press F12 again");
+				break;
+			}
+
 			m_DefinitionChoices = std::move(candidates);
+
 			// At the caret, not the mouse: a keyboard-triggered F12 never touches the pointer,
 			// which could be anywhere — another panel, another monitor — so a popup that opened
 			// there would read as landing nowhere near the code being looked at. Ctrl+click's own
-			// caret sits under the pointer anyway, so one rule serves both gestures.
-			ImGui::SetNextWindowPos(ImVec2(pending.Screen.X, pending.Screen.Y));
+			// caret sits under the pointer anyway, so one rule serves both gestures. Kept for
+			// RenderDefinitionChoices to spend; see m_DefinitionChoicesAt for why it cannot be
+			// spent here.
+			m_DefinitionChoicesAt = pending.Screen;
+
 			// Called here, before any window this frame has opened, rather than deferred to
 			// RenderDefinitionChoices: CollectServerAnswers runs at the very top of Render, ahead
 			// of every Begin, which is exactly where OpenPopup is safe to call.
@@ -1275,8 +1291,25 @@ namespace Graphite {
 	void DocumentWindows::RenderDefinitionChoices(const ResolvedScheme& scheme,
 												  std::size_t tabWidth)
 	{
+		// Immediately before the Begin that consumes it, and on the frame the popup appears
+		// rather than every frame, so a list the user has scrolled is not dragged back under the
+		// caret each frame.
+		ImGui::SetNextWindowPos(ImVec2(m_DefinitionChoicesAt.X, m_DefinitionChoicesAt.Y),
+								ImGuiCond_Appearing);
+
 		if (!ImGui::BeginPopup(kDefinitionChoicesTitle))
 		{
+			// ImGui closes a popup on Escape and on a click outside it without telling whatever
+			// opened it. The gate would otherwise stay held for the rest of the session and no
+			// question anywhere in the application could be asked again — the same guard
+			// ModalQuestion keeps for exactly the same reason.
+			if (m_Modals.HoldsFor(kDefinitionChoicesTitle) &&
+				!ImGui::IsPopupOpen(kDefinitionChoicesTitle))
+			{
+				m_DefinitionChoices.clear();
+				m_Modals.Close(kDefinitionChoicesTitle);
+			}
+
 			return;
 		}
 
