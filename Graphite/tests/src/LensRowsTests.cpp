@@ -102,3 +102,23 @@ TEST_CASE("An edit that removes lines drops an anchor it would push above the ed
 	CHECK(rows.TotalScreenRows(20) == 21);
 	CHECK(rows.At(2).IsLens);
 }
+
+TEST_CASE("Duplicate anchors collapse to one lens")
+{
+	Graphite::LensRows rows = Rows({3, 3});
+
+	CHECK(rows.TotalScreenRows(10) == 11);
+	CHECK(rows.At(3).IsLens);
+	CHECK(rows.ScreenRowOf(3) == 4);
+}
+
+TEST_CASE("The last screen row in range is the last document row, not a lens")
+{
+	Graphite::LensRows rows = Rows({0, 4});
+
+	const std::size_t documentRowCount = 10;
+	const Graphite::LensRows::Row last = rows.At(rows.TotalScreenRows(documentRowCount) - 1);
+
+	CHECK_FALSE(last.IsLens);
+	CHECK(last.DocumentRow == documentRowCount - 1);
+}

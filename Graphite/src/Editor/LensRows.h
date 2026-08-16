@@ -44,7 +44,13 @@ namespace Graphite {
 		// anchor.
 		std::size_t TotalScreenRows(std::size_t documentRowCount) const;
 
-		// What screenRow is: a lens, or the document row it draws.
+		// What screenRow is: a lens, or the document row it draws. Precondition: screenRow is
+		// below TotalScreenRows(documentRowCount) for the document this instance describes. A
+		// row at or past that bound is arithmetically safe - no underflow, no undefined
+		// behaviour - but the DocumentRow it returns is extrapolated past the document and
+		// therefore meaningless. Not clamped and not asserted: the only caller is the clipper,
+		// which is itself bounded by TotalScreenRows, so the precondition never breaks in
+		// practice; a future caller that is not the clipper owes this bound itself.
 		Row At(std::size_t screenRow) const;
 
 		// The screen row that draws documentRow itself - not its lens, when it has one.
