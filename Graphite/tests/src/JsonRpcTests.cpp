@@ -87,6 +87,39 @@ TEST_CASE("JsonRpc ignores a reply whose id is a string rather than throwing")
 	CHECK_FALSE(rpc.Receive(R"({"id":"not-a-number","result":1})").has_value());
 }
 
+TEST_CASE("JsonRpc frames a reply carrying the id the server asked under")
+{
+	Graphite::JsonRpc rpc;
+
+	const std::string bytes = rpc.Reply(7, nlohmann::json::array({nlohmann::json::object()}));
+
+	CHECK(bytes.find("Content-Length: ") == 0);
+	CHECK(bytes.find(R"("id":7)") != std::string::npos);
+	CHECK(bytes.find(R"("result":[{}])") != std::string::npos);
+	CHECK(bytes.find("error") == std::string::npos);
+}
+
+TEST_CASE("JsonRpc frames an error reply so a server is never left waiting")
+{
+	Graphite::JsonRpc rpc;
+
+	const std::string bytes = rpc.ErrorReply(9, -32601, "method not found");
+
+	CHECK(bytes.find(R"("id":9)") != std::string::npos);
+	CHECK(bytes.find(R"("code":-32601)") != std::string::npos);
+	CHECK(bytes.find("method not found") != std::string::npos);
+	CHECK(bytes.find(R"("result")") == std::string::npos);
+}
+
+TEST_CASE("JsonRpc does not record a reply's id as one it is waiting on")
+{
+	Graphite::JsonRpc rpc;
+
+	rpc.Reply(7, nullptr);
+
+	CHECK_FALSE(rpc.IsOutstanding(7));
+}
+
 TEST_CASE("JsonRpc reads a server-initiated request as one, not as a reply")
 {
 	Graphite::JsonRpc rpc;

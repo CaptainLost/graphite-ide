@@ -40,6 +40,14 @@ namespace Graphite {
 		std::string Notification(std::string_view method, const nlohmann::json& params);
 		std::string Cancel(RequestId id);
 
+		// The answer to a server-initiated request, carrying the id that request arrived under.
+		// A server that asks something and is never answered waits forever: clangd asks
+		// workspace/configuration and window/workDoneProgress/create before it starts indexing,
+		// and holds its progress notifications until both are answered. ErrorReply is how a
+		// request nothing here understands is still answered rather than left hanging.
+		std::string Reply(RequestId id, const nlohmann::json& result);
+		std::string ErrorReply(RequestId id, int code, std::string_view message);
+
 		std::optional<IncomingMessage> Receive(const std::string& body);
 
 		bool IsOutstanding(RequestId id) const;

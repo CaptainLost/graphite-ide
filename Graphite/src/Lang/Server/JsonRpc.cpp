@@ -38,6 +38,30 @@ namespace Graphite {
 		return Frame(message.dump());
 	}
 
+	std::string JsonRpc::Reply(RequestId id, const nlohmann::json& result)
+	{
+		// The id belongs to the server's numbering, not ours, so nothing is recorded as
+		// outstanding here — this ends an exchange rather than starting one.
+		const nlohmann::json message{
+			{"jsonrpc", "2.0"},
+			{"id", id},
+			{"result", result},
+		};
+
+		return Frame(message.dump());
+	}
+
+	std::string JsonRpc::ErrorReply(RequestId id, int code, std::string_view message)
+	{
+		const nlohmann::json body{
+			{"jsonrpc", "2.0"},
+			{"id", id},
+			{"error", {{"code", code}, {"message", message}}},
+		};
+
+		return Frame(body.dump());
+	}
+
 	std::string JsonRpc::Cancel(RequestId id)
 	{
 		// A cancelled request's eventual reply, if one arrives at all, must not be delivered to a
