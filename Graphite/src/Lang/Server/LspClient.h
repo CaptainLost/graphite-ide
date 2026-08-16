@@ -41,9 +41,10 @@ namespace Graphite {
 	// Neither is called by LspClient, deliberately. The caller converts, because the caller holds
 	// the buffer the column belongs to: the client has only the file on disk, and for a document
 	// with unsaved edits that is a different file, so converting here would answer confidently
-	// about text the user is not looking at. There is still exactly one pair of these functions.
-	std::size_t ToUtf16Column(std::string_view line, std::size_t byteColumn);
-	std::size_t FromUtf16Column(std::string_view line, std::size_t utf16Column);
+	// about text the user is not looking at. There is still exactly one pair of these functions,
+	// and they are the only way to obtain or spend a Utf16Column.
+	Utf16Column ToUtf16Column(std::string_view line, std::size_t byteColumn);
+	std::size_t FromUtf16Column(std::string_view line, Utf16Column column);
 
 	// Both tolerate null, a wrong type and missing fields by yielding less, never by failing — a
 	// server is allowed to answer nothing, and ADR 0004 forbids throwing across this boundary.
@@ -181,6 +182,14 @@ namespace Graphite {
 			std::condition_variable Outbound;
 			std::vector<std::string> ToSend;
 
+			// Set by the writer as it stops, which is the moment the queue stops being a queue and
+			// becomes a leak: requests fail fast through ReaderStopped, but notifications do not,
+			// and a session that keeps typing at a dead server would pile up a whole file's text
+			// per keystroke forever. From here on messages are dropped instead of appended. The
+			// live path stays unbounded on purpose — a push that can never block is what keeps the
+			// reader off the writer's back.
+			bool WriterStopped = false;
+
 			// Set before the child is killed, so both threads can tell a shutdown they were asked
 			// for from a server that died on its own.
 			std::atomic<bool> Stopping{false};
@@ -222,6 +231,11 @@ namespace Graphite {
 		// on, which must overtake the queue rather than sit behind it.
 		static void SendLocked(Shared& shared, const std::string& bytes);
 		static void SendNowLocked(Shared& shared, const std::string& bytes);
+
+		// Declares the outbound queue closed and empties it. Called by whichever of the two
+		// threads first learns the pipe is dead, so that senders start dropping rather than
+		// piling up messages nothing will ever carry. Takes OutboundMutex.
+		static void StopOutbound(Shared& shared);
 
 		std::shared_ptr<Shared> m_Shared = std::make_shared<Shared>();
 

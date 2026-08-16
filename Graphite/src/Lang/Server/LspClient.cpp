@@ -188,7 +188,7 @@ namespace Graphite {
 			if (const nlohmann::json* start = StartOf(node))
 			{
 				location.Line = ReadUnsigned(*start, "line");
-				location.Utf16Column = ReadUnsigned(*start, "character");
+				location.Column = Utf16Column{ReadUnsigned(*start, "character")};
 			}
 
 			return location;
@@ -244,7 +244,7 @@ namespace Graphite {
 					if (const nlohmann::json* start = StartOf(node))
 					{
 						declaration.Line = ReadUnsigned(*start, "line");
-						declaration.Utf16Column = ReadUnsigned(*start, "character");
+						declaration.Column = Utf16Column{ReadUnsigned(*start, "character")};
 					}
 
 					// Before its children, so the flattened list reads in the order the file does.
@@ -343,7 +343,7 @@ namespace Graphite {
 		return Core::FromUtf8(decoded);
 	}
 
-	std::size_t ToUtf16Column(std::string_view line, std::size_t byteColumn)
+	Utf16Column ToUtf16Column(std::string_view line, std::size_t byteColumn)
 	{
 		const std::size_t limit = byteColumn < line.size() ? byteColumn : line.size();
 
@@ -358,15 +358,15 @@ namespace Graphite {
 			index += length;
 		}
 
-		return units;
+		return Utf16Column{units};
 	}
 
-	std::size_t FromUtf16Column(std::string_view line, std::size_t utf16Column)
+	std::size_t FromUtf16Column(std::string_view line, Utf16Column column)
 	{
 		std::size_t units = 0;
 		std::size_t index = 0;
 
-		while (index < line.size() && units < utf16Column)
+		while (index < line.size() && units < column.Value)
 		{
 			const std::size_t length = SequenceLength(static_cast<unsigned char>(line[index]));
 
@@ -477,6 +477,14 @@ namespace Graphite {
 		// that must never stop. The writer thread takes it from here.
 		{
 			const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
+
+			if (shared.WriterStopped)
+			{
+				// Dropped rather than kept: a didChange for a server that will never read it has
+				// nothing worth preserving, and keeping it costs a copy of the file per keystroke.
+				return;
+			}
+
 			shared.ToSend.push_back(bytes);
 		}
 
@@ -487,6 +495,19 @@ namespace Graphite {
 	{
 		if (!shared.Initialized)
 		{
+			{
+				const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
+
+				if (shared.WriterStopped)
+				{
+					// The other half of the same leak: a server that died during its own handshake
+					// leaves Initialized false forever, so without this every later notification
+					// would pile up here instead of in ToSend.
+					shared.Queued.clear();
+					return;
+				}
+			}
+
 			// Nothing but the handshake may go out before initialize is answered: a server is
 			// entitled to drop, or fail on, anything that arrives first. The queue keeps the
 			// order the caller asked in.
@@ -495,6 +516,19 @@ namespace Graphite {
 		}
 
 		SendNowLocked(shared, bytes);
+	}
+
+	void LspClient::StopOutbound(Shared& shared)
+	{
+		{
+			const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
+
+			shared.WriterStopped = true;
+			shared.ToSend.clear();
+		}
+
+		// A writer parked on the condition variable has no other way to notice.
+		shared.Outbound.notify_all();
 	}
 
 	void LspClient::BeginHandshake(const std::filesystem::path& root)
@@ -528,10 +562,16 @@ namespace Graphite {
 			m_Shared->Status.State = ServerState::Failed;
 			m_Shared->Status.Detail = started.GetError().Message;
 
-			// No process means no reader, so nothing will ever fail a question the way the reader's
-			// exit does. Ask checks this flag for exactly that reason.
-			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
-			m_Shared->ReaderStopped = true;
+			// No process means no reader and no writer, so nothing will ever fail a question the
+			// way the reader's exit does, and nothing will ever empty the outbound queue. Ask
+			// checks the first flag; every sender checks the second, or a session spent typing at
+			// a server that never started would queue every edit forever.
+			{
+				const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+				m_Shared->ReaderStopped = true;
+			}
+
+			StopOutbound(*m_Shared);
 
 			return;
 		}
@@ -708,7 +748,7 @@ namespace Graphite {
 		nlohmann::json params;
 		params["textDocument"]["uri"] = ToFileUri(where.Path);
 		params["position"]["line"] = where.Line;
-		params["position"]["character"] = where.Utf16Column;
+		params["position"]["character"] = where.Column.Value;
 
 		return Ask("textDocument/definition", params, Question::Definition);
 	}
@@ -720,7 +760,7 @@ namespace Graphite {
 		nlohmann::json params;
 		params["textDocument"]["uri"] = ToFileUri(where.Path);
 		params["position"]["line"] = where.Line;
-		params["position"]["character"] = where.Utf16Column;
+		params["position"]["character"] = where.Column.Value;
 		params["context"]["includeDeclaration"] = true;
 
 		return Ask("textDocument/references", params, Question::References);
@@ -769,6 +809,14 @@ namespace Graphite {
 
 	std::vector<std::string> LspClient::TakeSent()
 	{
+		if (m_Shared->Process)
+		{
+			// Refused rather than trusted to a comment: on a client with a writer thread this
+			// would steal messages out from under it, losing protocol traffic with no symptom at
+			// all. Only the constructor that starts no process leaves anything readable here.
+			return {};
+		}
+
 		const std::lock_guard<std::mutex> outbound(m_Shared->OutboundMutex);
 
 		std::vector<std::string> sent;
@@ -788,11 +836,24 @@ namespace Graphite {
 			{
 				std::unique_lock<std::mutex> outbound(shared->OutboundMutex);
 
-				shared->Outbound.wait(outbound, [&shared]
-									  { return !shared->ToSend.empty() || shared->Stopping.load(); });
+				shared->Outbound.wait(outbound,
+									  [&shared]
+									  {
+										  return !shared->ToSend.empty() ||
+												 shared->Stopping.load() || shared->WriterStopped;
+									  });
 
-				if (shared->ToSend.empty() && shared->Stopping.load())
+				if (shared->WriterStopped)
 				{
+					// The reader got there first: it saw the pipe close and closed the queue.
+					return;
+				}
+
+				if (shared->ToSend.empty())
+				{
+					outbound.unlock();
+					StopOutbound(*shared);
+
 					return;
 				}
 
@@ -808,6 +869,8 @@ namespace Graphite {
 				{
 					// The pipe is gone. The reader will see the same thing and report it; there is
 					// nothing this thread can usefully do but stop trying.
+					StopOutbound(*shared);
+
 					return;
 				}
 			}
@@ -861,8 +924,11 @@ namespace Graphite {
 			shared->ReaderStopped = true;
 		}
 
-		// The writer has nothing left to carry once the pipe is gone.
-		shared->Outbound.notify_all();
+		// The writer has nothing left to carry once the pipe is gone, and — the part that matters
+		// for a session that keeps running — every sender after this point has to drop rather than
+		// queue. A dead server would otherwise collect a whole file's text per keystroke, forever,
+		// because notifications have no ticket to fail the way requests do.
+		StopOutbound(*shared);
 
 		const std::lock_guard<std::mutex> state(shared->StateMutex);
 

@@ -9,6 +9,7 @@
 #include <chrono>
 #include <fstream>
 #include <thread>
+#include <type_traits>
 
 TEST_CASE("A path becomes a file URI a server accepts")
 {
@@ -27,18 +28,35 @@ TEST_CASE("A file URI becomes the path it named")
 TEST_CASE("A byte column becomes the UTF-16 column a server counts in")
 {
 	// "ąb" is two bytes then one; a server counts the first character as one UTF-16 unit.
-	CHECK(Graphite::ToUtf16Column("\xC4\x85""b", 3) == 2);
-	CHECK(Graphite::ToUtf16Column("plain", 3) == 3);
+	CHECK(Graphite::ToUtf16Column("\xC4\x85""b", 3) == Graphite::Utf16Column{2});
+	CHECK(Graphite::ToUtf16Column("plain", 3) == Graphite::Utf16Column{3});
 
 	// U+1F600 is four bytes and two UTF-16 units.
-	CHECK(Graphite::ToUtf16Column("\xF0\x9F\x98\x80""x", 5) == 3);
+	CHECK(Graphite::ToUtf16Column("\xF0\x9F\x98\x80""x", 5) == Graphite::Utf16Column{3});
+}
+
+TEST_CASE("A column is a type, so a byte count cannot be passed as one by accident")
+{
+	// The guarantee the type exists for, since nothing at runtime can catch a missed conversion:
+	// a plain number is not a Utf16Column, and brace elision inside FilePosition does not make it
+	// one. Both of these are compile errors, which is the whole mechanism:
+	//
+	//     client.AskDefinition({source, 1, 21});
+	//     Graphite::Utf16Column column = 21;
+	//
+	CHECK_FALSE(std::is_convertible_v<std::size_t, Graphite::Utf16Column>);
+	CHECK(std::is_constructible_v<Graphite::Utf16Column, std::size_t>);
+
+	// And it still compares and defaults like the number it wraps.
+	CHECK(Graphite::Utf16Column{} == Graphite::Utf16Column{0});
+	CHECK(Graphite::Utf16Column{7}.Value == 7);
 }
 
 TEST_CASE("A UTF-16 column becomes the byte column this editor counts in")
 {
-	CHECK(Graphite::FromUtf16Column("\xC4\x85""b", 2) == 3);
-	CHECK(Graphite::FromUtf16Column("plain", 3) == 3);
-	CHECK(Graphite::FromUtf16Column("\xF0\x9F\x98\x80""x", 3) == 5);
+	CHECK(Graphite::FromUtf16Column("\xC4\x85""b", Graphite::Utf16Column{2}) == 3);
+	CHECK(Graphite::FromUtf16Column("plain", Graphite::Utf16Column{3}) == 3);
+	CHECK(Graphite::FromUtf16Column("\xF0\x9F\x98\x80""x", Graphite::Utf16Column{3}) == 5);
 }
 
 TEST_CASE("A definition reply parses into locations")
@@ -107,15 +125,15 @@ TEST_CASE("A workspace symbol shape without children still parses through its lo
 
 	REQUIRE(declarations.size() == 1);
 	CHECK(declarations[0].Line == 7);
-	CHECK(declarations[0].Utf16Column == 2);
+	CHECK(declarations[0].Column == Graphite::Utf16Column{2});
 }
 
 TEST_CASE("A column conversion past the end of its line stops at the end")
 {
-	CHECK(Graphite::ToUtf16Column("ab", 99) == 2);
-	CHECK(Graphite::FromUtf16Column("ab", 99) == 2);
-	CHECK(Graphite::ToUtf16Column("", 0) == 0);
-	CHECK(Graphite::FromUtf16Column("", 0) == 0);
+	CHECK(Graphite::ToUtf16Column("ab", 99) == Graphite::Utf16Column{2});
+	CHECK(Graphite::FromUtf16Column("ab", Graphite::Utf16Column{99}) == 2);
+	CHECK(Graphite::ToUtf16Column("", 0) == Graphite::Utf16Column{0});
+	CHECK(Graphite::FromUtf16Column("", Graphite::Utf16Column{0}) == 0);
 }
 
 TEST_CASE("A URI round-trips through the encoding a server compares as a string")
@@ -334,7 +352,7 @@ TEST_CASE("An answer is correlated to the question that was asked under its id")
 
 	client.OpenDocument(source, "int Main() { return 0; }\n");
 
-	const Graphite::RequestId definition = client.AskDefinition({source, 1, 21});
+	const Graphite::RequestId definition = client.AskDefinition({source, 1, Graphite::Utf16Column{21}});
 	const Graphite::RequestId symbols = client.AskSymbols(source);
 
 	CHECK(definition != kInitializeId);
@@ -372,7 +390,7 @@ TEST_CASE("A cancelled question's reply is dropped rather than delivered to nobo
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 	client.OpenDocument(source, "int Main() { return 0; }\n");
 
-	const Graphite::RequestId id = client.AskReferences({source, 0, 4});
+	const Graphite::RequestId id = client.AskReferences({source, 0, Graphite::Utf16Column{4}});
 	client.Cancel(id);
 
 	client.Deliver(R"({"id":)" + std::to_string(id) +
@@ -439,7 +457,7 @@ TEST_CASE("A question asked of a server that never started is answered rather th
 	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp),
 							   "no-such-language-server-4c1e.exe", temp.GetPath()};
 
-	const Graphite::RequestId id = client.AskDefinition({temp.GetPath() / "main.cpp", 0, 0});
+	const Graphite::RequestId id = client.AskDefinition({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
 
 	std::vector<Graphite::LspClient::Answer> answers;
 	Graphite::ServerStatus status;
@@ -451,6 +469,47 @@ TEST_CASE("A question asked of a server that never started is answered rather th
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].Id == id);
 	CHECK(answers[0].Failed);
+}
+
+TEST_CASE("Nothing is queued for a server that is already gone")
+{
+	// The leak this closes is silent and unbounded: requests fail fast because a ticket comes
+	// back, but a notification has no ticket, so a session that keeps typing at a dead server
+	// would pile up a whole file's text per keystroke for as long as it ran.
+	TempDirectory temp;
+
+	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp),
+							   "no-such-language-server-4c1e.exe", temp.GetPath()};
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	client.OpenDocument(source, "int Main() { return 0; }\n");
+
+	for (int edit = 0; edit < 50; ++edit)
+	{
+		client.ChangeDocument(source, std::string(4096, 'x'));
+	}
+
+	client.SaveDocument(source);
+	client.CloseDocument(source);
+
+	// The client with no process never started a writer either, so this reads the queue directly.
+	CHECK(client.TakeSent().empty());
+}
+
+TEST_CASE("Nothing can steal the outbound queue from a running writer")
+{
+	// cmd.exe is a live process with a writer thread behind it. Reading the queue here would take
+	// messages the writer was about to send, and losing protocol traffic has no symptom at all —
+	// so the answer is nothing, rather than whatever happened to still be sitting there.
+	TempDirectory temp;
+
+	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp), "cmd.exe",
+							   temp.GetPath()};
+
+	client.OpenDocument(temp.GetPath() / "main.cpp", "int Main() { return 0; }\n");
+
+	CHECK(client.TakeSent().empty());
 }
 
 TEST_CASE("A client whose child never speaks the protocol still shuts down")
@@ -492,7 +551,7 @@ TEST_CASE("clangd answers a definition request" * doctest::skip(true))
 	client.OpenDocument(source, text);
 
 	// Line 1, column 21 is inside the call to Answer.
-	const Graphite::RequestId id = client.AskDefinition({source, 1, 21});
+	const Graphite::RequestId id = client.AskDefinition({source, 1, Graphite::Utf16Column{21}});
 
 	std::vector<Graphite::LspClient::Answer> answers;
 	Graphite::ServerStatus status;
