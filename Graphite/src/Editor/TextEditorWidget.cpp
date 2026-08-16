@@ -418,16 +418,20 @@ namespace Graphite {
 			// translation happens here, before the caret arithmetic ever sees the number.
 			const LensRows::Row hit = lenses.At(screenRow);
 
-			if (hit.IsLens)
+			// There is no text on a lens row to put a caret in, so a PRESS on one cannot become a
+			// caret position: it reports the declaration the lens sits above and leaves the caret
+			// where it was.
+			//
+			// A drag is a different gesture and must not return here. It reports nothing — a drag
+			// across a lens is not a click on it, and opening a references panel mid-selection
+			// would be absurd — but it must still extend, and it extends to the row the lens
+			// names, which is the row under the pointer. Returning early for a drag as well meant
+			// the extend was dropped on every frame the pointer sat over a lens: the selection
+			// stopped a row short of the pointer and caught up once it moved clear, which reads as
+			// the editor stuttering rather than as anything to do with lenses.
+			if (hit.IsLens && pointer.PressedThisFrame)
 			{
-				// There is no text on a lens row to put a caret in, so the click reports the
-				// declaration the lens sits above and the caret stays where it was. A drag that
-				// crosses one is not a click on it: only a press reports.
-				if (pointer.PressedThisFrame)
-				{
-					result.LensClicked = hit.DocumentRow;
-				}
-
+				result.LensClicked = hit.DocumentRow;
 				return;
 			}
 
@@ -1355,15 +1359,24 @@ namespace Graphite {
 		// The fill is drawn on every row, but the number itself only on a line's first row. A
 		// continuation row is the same line of the file, and repeating its number would say the
 		// file has more lines than it does.
-		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine)
+		// Split out from DrawGutter because a lens row wants the fill and nothing else: the fill
+		// runs the full height of the file and a row that skipped it would show as a hole in the
+		// gutter, while a number on it would claim the file has a line it does not.
+		void DrawGutterFill(const RowCanvas& canvas, float y)
 		{
 			const float gutterX = canvas.Origin.x + canvas.ScrollX;
 
 			canvas.Draw->AddRectFilled(
-				ImVec2(gutterX, slice.Y),
-				ImVec2(gutterX + canvas.Metrics.Gutter.TotalWidth,
-					   slice.Y + canvas.Metrics.LineHeight),
+				ImVec2(gutterX, y),
+				ImVec2(gutterX + canvas.Metrics.Gutter.TotalWidth, y + canvas.Metrics.LineHeight),
 				canvas.Palette.GutterFill);
+		}
+
+		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine)
+		{
+			const float gutterX = canvas.Origin.x + canvas.ScrollX;
+
+			DrawGutterFill(canvas, slice.Y);
 
 			if (slice.SubRow != 0)
 				return;
@@ -1379,33 +1392,83 @@ namespace Graphite {
 								 number.c_str());
 		}
 
-		// Nothing at all until the count is known: a "loading" placeholder on every declaration
-		// would flicker across the file on each reply, and a row that stays blank for a moment
-		// reads as the blank line it already looks like. "0 references" does draw, because knowing
-		// a declaration is dead is worth more than a blank row.
+		// Whether a selection running through the file passes THROUGH the lens anchored at
+		// documentRow, as opposed to merely starting or ending near it. True when the selection
+		// covers the boundary between the document row above and the one the lens anchors to,
+		// which is exactly the case where a band drawn on the rows either side would show a hole
+		// at the lens if the lens row painted nothing.
 		//
-		// Indented to the declaration's own visual column, so the count sits over the thing it
-		// counts rather than at the left margin. Positioned from TextOriginX with no scroll term,
-		// exactly as DrawRowText is: the origin already moves with the horizontal scroll, and only
-		// the gutter — which pins itself back — adds one.
-		void DrawLensRow(const RowCanvas& canvas, const Lens& lens, float y)
+		// Asked of the boundary rather than of the two rows separately: one offset test says what
+		// two row-coverage tests would, and it cannot disagree with itself about the row in
+		// between. A lens on the very first row has no row above and so is never passed through.
+		bool SelectionPassesThroughLens(const Core::TextBuffer& buffer, const Core::OpenItem& item,
+										std::size_t documentRow)
 		{
-			if (!lens.CountKnown)
+			if (documentRow == 0)
 			{
-				return;
+				return false;
 			}
 
-			const std::string text =
-				std::to_string(lens.Count) + (lens.Count == 1 ? " reference" : " references");
-			// No ScrollX term, and that is not an omission: TextOriginX is derived from the
-			// origin, which already carries the horizontal scroll. Subtracting ScrollX here would
-			// apply it twice and slide every lens away from its declaration the moment the view
-			// scrolls sideways. Only DrawGutter adds it back, to pin the gutter against the
-			// scroll — the opposite intent.
-			const float x = canvas.TextOriginX +
-							static_cast<float>(lens.Column) * canvas.Metrics.CellWidth;
+			const auto [from, to] = Core::SelectionRange(item.Caret);
 
-			canvas.Draw->AddText(ImVec2(x, y), canvas.Palette.Lens, text.c_str());
+			if (from == to)
+			{
+				return false;
+			}
+
+			const std::size_t boundary = Core::VisualToCaret(
+				buffer, item.Rows, Core::VisualPosition{documentRow, 0}, item.TabWidth);
+
+			return boundary > from && boundary < to;
+		}
+
+		// A lens row is not a document row, so almost nothing in the row painting has anything to
+		// say about it. Three things do.
+		//
+		// The count itself: nothing at all until it is known, because a "loading" placeholder on
+		// every declaration would flicker across the file on each reply, and a row that stays
+		// blank for a moment reads as the blank line it already looks like. "0 references" does
+		// draw — knowing a declaration is dead is worth more than a blank row. It is indented to
+		// the declaration's own visual column, so it sits over the thing it counts.
+		//
+		// A selection passing through, which would otherwise show a one-row gap in a band the eye
+		// expects to be continuous, and read as a rendering bug rather than a deliberate absence.
+		//
+		// The gutter fill, last, for the same reason DrawRow draws it last: it is pinned against
+		// the horizontal scroll and has to cover whatever scrolled under it.
+		//
+		// Not the current-line highlight: a lens is not the caret's line, and drawing it there
+		// would say the caret was on a row it can never reach.
+		void DrawLensRow(const RowCanvas& canvas, const Lens* lens, float y, bool selected)
+		{
+			if (selected)
+			{
+				// One cell, at the row's own column zero — precisely what an empty document line
+				// inside a selection already draws for its newline. Enough to keep the band
+				// continuous, and no wider than a convention this file already follows, which is
+				// what stops a lens row reading as a longer line than its neighbours.
+				canvas.Draw->AddRectFilled(ImVec2(canvas.TextOriginX, y),
+										   ImVec2(canvas.TextOriginX + canvas.Metrics.CellWidth,
+												  y + canvas.Metrics.LineHeight),
+										   canvas.Palette.Selection);
+			}
+
+			if (lens != nullptr && lens->CountKnown)
+			{
+				const std::string text = std::to_string(lens->Count) +
+										 (lens->Count == 1 ? " reference" : " references");
+				// No ScrollX term, and that is not an omission: TextOriginX is derived from the
+				// origin, which already carries the horizontal scroll. Subtracting ScrollX here
+				// would apply it twice and slide every lens away from its declaration the moment
+				// the view scrolls sideways. Only DrawGutterFill adds it back, to pin the gutter
+				// against the scroll — the opposite intent.
+				const float x = canvas.TextOriginX +
+								static_cast<float>(lens->Column) * canvas.Metrics.CellWidth;
+
+				canvas.Draw->AddText(ImVec2(x, y), canvas.Palette.Lens, text.c_str());
+			}
+
+			DrawGutterFill(canvas, y);
 		}
 
 		void DrawCaret(const RowCanvas& canvas, const RowSlice& slice, std::size_t column)
@@ -1562,13 +1625,11 @@ namespace Graphite {
 						// A lens row can only exist where a model supplied its anchor, so
 						// lensModel is non-null here by construction — NoLenses has no anchors.
 						// Tested anyway rather than reasoned about at the dereference.
-						if (lensModel != nullptr)
-						{
-							if (const Lens* lens = lensModel->LensAt(screen.DocumentRow))
-							{
-								DrawLensRow(canvas, *lens, y);
-							}
-						}
+						const Lens* const lens =
+							lensModel != nullptr ? lensModel->LensAt(screen.DocumentRow) : nullptr;
+
+						DrawLensRow(canvas, lens, y,
+									SelectionPassesThroughLens(buffer, item, screen.DocumentRow));
 
 						continue;
 					}

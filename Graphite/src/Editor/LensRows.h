@@ -44,13 +44,17 @@ namespace Graphite {
 		// anchor.
 		std::size_t TotalScreenRows(std::size_t documentRowCount) const;
 
-		// What screenRow is: a lens, or the document row it draws. Precondition: screenRow is
-		// below TotalScreenRows(documentRowCount) for the document this instance describes. A
-		// row at or past that bound is arithmetically safe - no underflow, no undefined
-		// behaviour - but the DocumentRow it returns is extrapolated past the document and
-		// therefore meaningless. Not clamped and not asserted: the only caller is the clipper,
-		// which is itself bounded by TotalScreenRows, so the precondition never breaks in
-		// practice; a future caller that is not the clipper owes this bound itself.
+		// What screenRow is: a lens, or the document row it draws.
+		//
+		// Total, not partial: a screenRow at or past TotalScreenRows(documentRowCount) is
+		// arithmetically safe - no underflow, no undefined behaviour - and always answers with a
+		// document row extrapolated past the end of the document, never with a lens. Both halves
+		// of that are relied on. The clipper stays within the bound and never sees the case; the
+		// mouse hit test deliberately does not, because a pointer can be below the last row or
+		// dragged out of the window entirely, and it hands the raw row over unclamped. What it
+		// gets back is a document row past the end, which VisualToCaret clamps exactly as it
+		// clamped an out-of-range row before lenses existed - so the pointer lands on the last
+		// line, and cannot be reported as having landed on a lens that is not there.
 		Row At(std::size_t screenRow) const;
 
 		// The screen row that draws documentRow itself - not its lens, when it has one.
