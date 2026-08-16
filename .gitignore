@@ -30,6 +30,12 @@ graphite.json
 !vendor/bin/premake/
 !vendor/bin/premake/premake5.exe
 
+# clangd is downloaded pre-built rather than committed - see vendor/bin/clangd/README.md.
+# Only the README belongs in the repository; a hundred-megabyte binary in the history
+# cannot practically be taken back out again.
+vendor/bin/clangd/*
+!vendor/bin/clangd/README.md
+
 # Internal design docs and plans, kept locally only
 docs/superpowers/
 
