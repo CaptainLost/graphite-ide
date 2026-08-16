@@ -114,6 +114,18 @@ namespace Graphite {
 						  const std::string& text);
 		void ChangeDocument(const std::filesystem::path& path, LanguageId language,
 							const std::string& text);
+
+		// Matters less than the other three, and deliberately so: `ChangeDocument` already keeps
+		// the server's copy in step with the buffer, so no answer depends on this. What a
+		// didSave tells the server is that the file on disk now matches what it has been sent,
+		// which is what lets it re-index from disk instead of from its own in-memory copy.
+		// Without this the counts are still right; the server just works harder for them.
+		//
+		// Nothing is remembered for a restart, unlike the other three: a fresh client is told
+		// what is open and what it contains, and whether a save happened before it existed says
+		// nothing it can act on.
+		void SaveDocument(const std::filesystem::path& path, LanguageId language);
+
 		void CloseDocument(const std::filesystem::path& path, LanguageId language);
 
 	private:

@@ -309,6 +309,37 @@ namespace Graphite {
 		}
 	}
 
+	void LanguageServices::SaveDocument(const std::filesystem::path& path, LanguageId language)
+	{
+		Key key;
+
+		if (Resolve(path, language, key) == nullptr)
+		{
+			return;
+		}
+
+		const auto found = m_Servers.find(key);
+
+		if (found == m_Servers.end())
+		{
+			return;
+		}
+
+		ManagedServer& server = found->second;
+
+		// The same guard ChangeDocument uses: a didSave for a document the server was never told
+		// about is a notification about nothing, and clangd is entitled to complain about one.
+		if (server.OpenDocuments.find(path) == server.OpenDocuments.end())
+		{
+			return;
+		}
+
+		if (server.Client)
+		{
+			server.Client->SaveDocument(path);
+		}
+	}
+
 	void LanguageServices::CloseDocument(const std::filesystem::path& path, LanguageId language)
 	{
 		Key key;

@@ -1397,6 +1397,11 @@ namespace Graphite {
 
 			const std::string text =
 				std::to_string(lens.Count) + (lens.Count == 1 ? " reference" : " references");
+			// No ScrollX term, and that is not an omission: TextOriginX is derived from the
+			// origin, which already carries the horizontal scroll. Subtracting ScrollX here would
+			// apply it twice and slide every lens away from its declaration the moment the view
+			// scrolls sideways. Only DrawGutter adds it back, to pin the gutter against the
+			// scroll — the opposite intent.
 			const float x = canvas.TextOriginX +
 							static_cast<float>(lens.Column) * canvas.Metrics.CellWidth;
 

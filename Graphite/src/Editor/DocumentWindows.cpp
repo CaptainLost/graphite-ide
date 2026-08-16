@@ -341,6 +341,12 @@ namespace Graphite {
 
 		if (const auto result = Core::SaveDocument(m_Documents, index))
 		{
+			// Only on a write that actually happened: a didSave for a save that failed would tell
+			// the server the file on disk matches what it has been sent, which is the one thing
+			// that is not true. Qualified against Core::SaveDocument above, which is the free
+			// function that does the writing.
+			m_LanguageServices.SaveDocument(item.Path, LanguageOfPath(item.Path));
+
 			SetTransientMessage(fileName + " saved");
 			return true;
 		}
