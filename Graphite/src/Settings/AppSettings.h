@@ -47,6 +47,12 @@ namespace Graphite {
 		// application nor whichever one is on PATH. Empty — the default — means "search as usual".
 		// This is the "configured location" the status bar's "not found" message names, and the
 		// only thing that makes that sentence true.
+		//
+		// `languageServerBinary` is hand-edited in `graphite.json` today: a settings-panel widget
+		// for it is deliberately not part of this pass, since the message promises a configured
+		// location rather than a particular way of configuring it. `SaveLanguageServerBinary` is
+		// therefore uncalled by design, kept as the writing half of the pair so that a widget, or
+		// a "locate clangd" prompt, has somewhere to write without reopening the JSON key.
 		static std::filesystem::path LoadLanguageServerBinary();
 		static void SaveLanguageServerBinary(const std::filesystem::path& binary);
 

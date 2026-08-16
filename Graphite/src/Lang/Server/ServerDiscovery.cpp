@@ -5,10 +5,25 @@
 
 #include <cstdlib>
 #include <memory>
+#include <system_error>
 
 namespace Graphite {
 
 	namespace {
+
+		// The error_code overload, never the throwing one. Every path tested below comes from
+		// outside this function — a value the user typed into graphite.json, the executable's own
+		// directory, an entry of PATH — and a disconnected drive or an unreachable UNC share makes
+		// the throwing overload raise a filesystem_error out through StartServer, across a boundary
+		// ADR 0004 says nothing throws across. "Cannot tell" reads as "not there", which is what an
+		// unexaminable candidate means to a search looking for one. Same helper, same reasoning, as
+		// ServerRegistry.cpp's; not shared, because a one-line wrapper is cheaper to repeat than a
+		// header for it.
+		bool Exists(const std::filesystem::path& path)
+		{
+			std::error_code failed;
+			return std::filesystem::exists(path, failed) && !failed;
+		}
 
 		// Appends ".exe" unless `command` already names one — callers pass a bare command name
 		// like "clangd", but nothing stops a settings value from already carrying the extension.
@@ -28,7 +43,7 @@ namespace Graphite {
 	Core::Result<std::filesystem::path> FindServerBinary(std::string_view command,
 														   const std::filesystem::path& configured)
 	{
-		if (!configured.empty() && std::filesystem::exists(configured))
+		if (!configured.empty() && Exists(configured))
 		{
 			return configured;
 		}
@@ -38,7 +53,7 @@ namespace Graphite {
 		if (const auto exeDir = Core::ExecutableDirectory())
 		{
 			if (const std::filesystem::path beside = exeDir.GetValue() / executableName;
-				std::filesystem::exists(beside))
+				Exists(beside))
 			{
 				return beside;
 			}
@@ -68,7 +83,7 @@ namespace Graphite {
 				if (const std::string_view entry = path.substr(start, end - start); !entry.empty())
 				{
 					if (const std::filesystem::path candidate = std::filesystem::path{entry} / executableName;
-						std::filesystem::exists(candidate))
+						Exists(candidate))
 					{
 						return candidate;
 					}
