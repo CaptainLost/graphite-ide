@@ -107,6 +107,15 @@ namespace Graphite {
 		// replaces rather than being shadowed by it.
 		AppSettings::LoadKeyBindings(m_Keys);
 
+		// Before any document opens, which is when the first server is started: SetConfiguredBinary
+		// deliberately does not touch a server already running, so a setting read after that point
+		// would not take effect until the next session.
+		if (std::filesystem::path binary = AppSettings::LoadLanguageServerBinary();
+			!binary.empty())
+		{
+			m_LanguageServices.SetConfiguredBinary(LanguageId::Cpp, std::move(binary));
+		}
+
 		std::vector<Core::Scope<SettingsSection>> sections;
 
 		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));

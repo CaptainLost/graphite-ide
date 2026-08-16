@@ -43,6 +43,13 @@ namespace Graphite {
 		static std::string LoadColorScheme();
 		static void SaveColorScheme(std::string_view name);
 
+		// Where to find the C++ language server, for a user who wants neither the copy beside the
+		// application nor whichever one is on PATH. Empty — the default — means "search as usual".
+		// This is the "configured location" the status bar's "not found" message names, and the
+		// only thing that makes that sentence true.
+		static std::filesystem::path LoadLanguageServerBinary();
+		static void SaveLanguageServerBinary(const std::filesystem::path& binary);
+
 		// The executable directory's themes subdirectory, whether or not it exists yet — the
 		// same directory ResolveNamed reads from and the settings panel writes into.
 		static std::filesystem::path ThemesDirectory();
