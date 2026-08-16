@@ -143,6 +143,16 @@ namespace Graphite {
 		void ApplySymbolAnswer(const std::filesystem::path& path,
 							   const LanguageServices::Answer& answer);
 
+		// Where DrawEditor last put the caret on screen for a document, kept so a request that
+		// began at the keyboard — F12 never touches the mouse the way Ctrl+click does — still has
+		// somewhere on screen to open a popup near. One frame stale at worst: the value from the
+		// document's own last draw, read back before that document draws again.
+		struct CaretScreenPosition
+		{
+			float X = 0.0f;
+			float Y = 0.0f;
+		};
+
 		// The caret's offset at the moment RequestDefinition asked stands in for a generation:
 		// nothing outside an edit moves it on its own, so an answer that finds a different offset
 		// there now is about a question the caret has since moved on from, and jumping on its
@@ -153,6 +163,7 @@ namespace Graphite {
 			std::filesystem::path Path;
 			std::size_t CaretOffset = 0;
 			FilePosition From;
+			CaretScreenPosition Screen;
 		};
 
 		void ApplyDefinitionAnswer(const PendingDefinition& pending,
@@ -259,6 +270,11 @@ namespace Graphite {
 		};
 
 		std::optional<TransientMessage> m_TransientMessage;
+
+		// Keyed and pruned alongside m_Syntax, for the document it belongs to: RequestDefinition
+		// reads the entry for whichever document it was asked about, which for F12 is the last
+		// position that document's own draw left behind.
+		std::map<std::filesystem::path, CaretScreenPosition> m_CaretScreen;
 
 		// At most one definition request outstanding at a time: a second F12 (or Ctrl+click)
 		// before the first has answered cancels it, on the same reasoning as m_PendingCounts —

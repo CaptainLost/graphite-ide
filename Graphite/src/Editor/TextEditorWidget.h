@@ -49,6 +49,13 @@ namespace Graphite {
 		// wherever the click just placed it.
 		bool DefinitionRequested = false;
 
+		// DrawCaret's own on-screen position, computed every frame regardless of whether
+		// anything asked for it: a keyboard-triggered request (F12) never touches the mouse the
+		// way Ctrl+click does, so a caller placing a popup "at the caret" for both gestures needs
+		// this rather than the pointer position for the keyboard one.
+		float CaretScreenX = 0.0f;
+		float CaretScreenY = 0.0f;
+
 		// The document row a lens was clicked on, if one was. A lens row holds no text, so the
 		// click cannot become a caret position; it is reported instead, for whoever wants to act
 		// on the declaration the lens sits above.

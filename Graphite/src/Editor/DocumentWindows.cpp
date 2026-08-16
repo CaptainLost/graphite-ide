@@ -780,6 +780,20 @@ namespace Graphite {
 				it = m_Syntax.erase(it);
 			}
 		}
+
+		// Same map, same reason: m_CaretScreen is keyed on a path DocumentSet can rewrite without
+		// telling it, and an entry orphaned that way would otherwise sit here for good.
+		for (auto it = m_CaretScreen.begin(); it != m_CaretScreen.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_CaretScreen.erase(it);
+			}
+		}
 	}
 
 	DocumentWindows::LensState* DocumentWindows::LensFor(const Core::OpenItem& item)
@@ -1057,7 +1071,14 @@ namespace Graphite {
 		const LanguageServices::Ticket ticket =
 			m_LanguageServices.AskDefinition(item.Path, language, where);
 
-		m_PendingDefinition = PendingDefinition{ticket, item.Path, item.Caret.Offset, where};
+		// Whatever this document's own last draw left in m_CaretScreen — default-constructed,
+		// screen position (0, 0), on the vanishingly unlikely frame nothing has drawn it yet.
+		const auto screen = m_CaretScreen.find(item.Path);
+		const CaretScreenPosition screenPosition =
+			screen != m_CaretScreen.end() ? screen->second : CaretScreenPosition{};
+
+		m_PendingDefinition =
+			PendingDefinition{ticket, item.Path, item.Caret.Offset, where, screenPosition};
 	}
 
 	void DocumentWindows::ApplyDefinitionAnswer(const PendingDefinition& pending,
@@ -1096,6 +1117,11 @@ namespace Graphite {
 
 		case DefinitionOutcome::NeedsChoice:
 			m_DefinitionChoices = std::move(candidates);
+			// At the caret, not the mouse: a keyboard-triggered F12 never touches the pointer,
+			// which could be anywhere — another panel, another monitor — so a popup that opened
+			// there would read as landing nowhere near the code being looked at. Ctrl+click's own
+			// caret sits under the pointer anyway, so one rule serves both gestures.
+			ImGui::SetNextWindowPos(ImVec2(pending.Screen.X, pending.Screen.Y));
 			// Called here, before any window this frame has opened, rather than deferred to
 			// RenderDefinitionChoices: CollectServerAnswers runs at the very top of Render, ahead
 			// of every Begin, which is exactly where OpenPopup is safe to call.
@@ -1338,6 +1364,12 @@ namespace Graphite {
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
+
+				// Recorded every frame the document draws, not only when something asks: a
+				// keyboard-triggered request reads this back later, from whichever frame drew
+				// last, so it has to already be here rather than computed on demand.
+				m_CaretScreen[item.Path] =
+					CaretScreenPosition{editorResult.CaretScreenX, editorResult.CaretScreenY};
 
 				// After the draw, not before: what to ask the server for depends on the rows the
 				// frame actually drew, and whether to tell it about an edit depends on whether one

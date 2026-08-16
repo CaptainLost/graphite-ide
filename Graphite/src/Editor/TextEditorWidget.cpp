@@ -476,7 +476,9 @@ namespace Graphite {
 				// the caret — a single click only, the same restriction a double or triple click
 				// already has on meaning something else entirely.
 				if (ImGui::GetIO().KeyCtrl)
+				{
 					result.DefinitionRequested = true;
+				}
 			}
 		}
 
@@ -1520,12 +1522,16 @@ namespace Graphite {
 			HoverIdentifier hover;
 
 			if (syntax == nullptr || !ImGui::GetIO().KeyCtrl || !ImGui::IsWindowHovered())
+			{
 				return hover;
+			}
 
 			const ImVec2 mouse = ImGui::GetMousePos();
 
 			if (mouse.y < origin.y || mouse.x < textOriginX)
+			{
 				return hover;
+			}
 
 			const auto screenRow =
 				static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
@@ -1533,7 +1539,9 @@ namespace Graphite {
 
 			// There is no text on a lens row for an identifier to sit in.
 			if (hit.IsLens)
+			{
 				return hover;
+			}
 
 			const std::size_t row = hit.DocumentRow;
 			const float relativeX = mouse.x - textOriginX;
@@ -1553,10 +1561,14 @@ namespace Graphite {
 			for (const Token& token : syntax->TokensOf(buffer, ref.Line))
 			{
 				if (token.Kind != TokenKind::Identifier)
+				{
 					continue;
+				}
 
 				if (byteInLine < token.From || byteInLine >= token.To)
+				{
 					continue;
+				}
 
 				hover.Valid = true;
 				hover.Row = row;
@@ -1575,7 +1587,9 @@ namespace Graphite {
 								const HoverIdentifier& hover)
 		{
 			if (!hover.Valid || hover.Row != slice.Index)
+			{
 				return;
+			}
 
 			const std::size_t clippedFrom =
 				std::clamp(hover.FromColumn, slice.FromColumn, slice.ToColumn);
@@ -1583,7 +1597,9 @@ namespace Graphite {
 				std::clamp(hover.ToColumn, slice.FromColumn, slice.ToColumn);
 
 			if (clippedTo <= clippedFrom)
+			{
 				return;
+			}
 
 			const float fromX =
 				canvas.TextOriginX +
@@ -1700,6 +1716,16 @@ namespace Graphite {
 			caret.Visual = Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset,
 											   item.TabWidth);
 			caret.Focused = focused;
+
+			// The same conversion DrawCaret uses to place the blinking line, computed here
+			// unconditionally — including on a frame nothing asked for it — so a request made
+			// from the keyboard, which never touches the mouse, still has somewhere on screen to
+			// open a popup near.
+			result.CaretScreenX =
+				canvas.TextOriginX + static_cast<float>(caret.Visual.Column) * metrics.CellWidth;
+			result.CaretScreenY =
+				origin.y +
+				static_cast<float>(lenses.ScreenRowOf(caret.Visual.Row)) * metrics.LineHeight;
 
 			// Computed once here rather than per row, exactly like the caret above: the loop
 			// below only compares each row against it.

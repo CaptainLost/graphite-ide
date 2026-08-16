@@ -188,7 +188,9 @@ namespace Graphite {
 						.Label = "Go to Definition",
 						.Run = [this] {
 							if (const auto active = m_Documents.GetActive())
+							{
 								m_DocumentWindows.RequestDefinition(*active);
+							}
 						},
 						.Enabled = [this] {
 							const auto active = m_Documents.GetActive();
