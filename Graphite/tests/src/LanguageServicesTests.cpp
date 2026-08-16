@@ -4,6 +4,7 @@
 #include "TempDirectory.h"
 
 #include <chrono>
+#include <thread>
 
 TEST_CASE("A language with no configured server reports NotConfigured")
 {
@@ -104,4 +105,56 @@ TEST_CASE("TakeAnswers empties its queue")
 	std::vector<Graphite::LanguageServices::Answer> second;
 	services.TakeAnswers(second);
 	CHECK(second.empty());
+}
+
+TEST_CASE("A ticket outstanding when its server dies is answered Failed, never left hanging")
+{
+	// where.exe is a real executable, not a fake path: LspClient always launches its binary with
+	// "--background-index", where.exe treats that as a pattern it cannot find anything for,
+	// prints its "could not find" message, and exits within a few hundred milliseconds — a
+	// process that starts and then genuinely dies mid-conversation, without depending on clangd
+	// being installed here.
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, "C:\\Windows\\System32\\where.exe");
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	const Graphite::LanguageServices::Ticket ticket =
+		services.AskSymbols(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	// Bounded so a broken implementation fails this test rather than hanging the suite — the
+	// same reasoning JobQueueTests' cancellation test uses for its own polling loop.
+	constexpr int kMaxAttempts = 500;
+	bool delivered = false;
+	bool failed = false;
+	int attempt = 0;
+
+	for (; attempt < kMaxAttempts && !delivered; ++attempt)
+	{
+		services.Poll();
+
+		std::vector<Graphite::LanguageServices::Answer> answers;
+		services.TakeAnswers(answers);
+
+		for (const Graphite::LanguageServices::Answer& answer : answers)
+		{
+			if (answer.For == ticket)
+			{
+				delivered = true;
+				failed = answer.Failed;
+			}
+		}
+
+		if (!delivered)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+	}
+
+	// attempt < kMaxAttempts proves the loop stopped because the ticket arrived, not because it
+	// ran out of patience — the same distinction JobQueueTests draws with `rounds`.
+	CHECK(attempt < kMaxAttempts);
+	CHECK(delivered);
+	CHECK(failed);
 }

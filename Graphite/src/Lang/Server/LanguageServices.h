@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -165,9 +166,10 @@ namespace Graphite {
 
 		// Resolves the config and the root for (path, language); null when the language has no
 		// configured server. Shared by every method that needs to find a server's entry rather
-		// than start one.
+		// than start one — including EnsureStarted, which is called every frame a document stays
+		// active, so this is on the hot path. Not const: it consults and fills m_RootCache.
 		const ServerConfig* Resolve(const std::filesystem::path& path, LanguageId language,
-									Key& key) const;
+									Key& key);
 
 		std::filesystem::path ConfiguredBinaryFor(LanguageId language) const;
 
@@ -195,6 +197,18 @@ namespace Graphite {
 		std::filesystem::path m_FallbackRoot;
 		std::map<LanguageId, std::filesystem::path> m_ConfiguredBinaries;
 		std::map<Key, ManagedServer> m_Servers;
+
+		// A document's directory resolves to the same root every time RootFor would walk it, for
+		// as long as this object lives — a project's layout does not move mid-session. Keyed on
+		// (language, parent directory) rather than the full file path, so every document in the
+		// same directory shares one entry. Without this, EnsureStarted — called every frame a
+		// document is active, per its own contract — would call RootFor, and so
+		// std::filesystem::exists, once per marker per directory level, sixty times a second, for
+		// a server that is already running and needs nothing. If a root ever did move during a
+		// session, the stale entry would point a server at where the project used to live; that
+		// is wrong but not silently so — restarting the application re-walks from scratch — and
+		// is a better trade than stat-ing the filesystem on every frame forever.
+		std::map<std::pair<LanguageId, std::filesystem::path>, std::filesystem::path> m_RootCache;
 
 		std::uint64_t m_NextTicket = 1;
 		std::vector<Answer> m_Answers;

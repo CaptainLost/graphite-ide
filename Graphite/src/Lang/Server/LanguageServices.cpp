@@ -34,7 +34,7 @@ namespace Graphite {
 	}
 
 	const ServerConfig* LanguageServices::Resolve(const std::filesystem::path& path,
-												   LanguageId language, Key& key) const
+												   LanguageId language, Key& key)
 	{
 		const ServerConfig* config = ServerConfigFor(language);
 
@@ -44,7 +44,20 @@ namespace Graphite {
 		}
 
 		key.Language = language;
+
+		// The directory, not the full path: every document in it resolves to the same root, and
+		// most callers here are one call per open document, not one per unique file name.
+		const auto cacheKey = std::make_pair(language, path.parent_path());
+		const auto cached = m_RootCache.find(cacheKey);
+
+		if (cached != m_RootCache.end())
+		{
+			key.Root = cached->second;
+			return config;
+		}
+
 		key.Root = RootFor(*config, path, m_FallbackRoot);
+		m_RootCache.emplace(cacheKey, key.Root);
 
 		return config;
 	}
