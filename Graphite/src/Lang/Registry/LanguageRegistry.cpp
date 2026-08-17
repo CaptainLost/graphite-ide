@@ -48,6 +48,23 @@ namespace Graphite {
 		return LanguageId::PlainText;
 	}
 
+	std::string_view LanguageDisplayName(LanguageId language)
+	{
+		switch (language)
+		{
+			case LanguageId::Cpp:
+				return "C++";
+			case LanguageId::CSharp:
+				return "C#";
+			case LanguageId::TypeScript:
+				return "TypeScript";
+			case LanguageId::PlainText:
+				return {};
+		}
+
+		return {};
+	}
+
 	const Lexer* LexerFor(LanguageId language)
 	{
 		// Stateless, so one instance serves every document. Function-local rather than a file

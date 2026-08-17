@@ -1,6 +1,7 @@
 #include "Lang/Server/ServerRegistry.h"
 
 #include <array>
+#include <vector>
 #include <system_error>
 
 namespace Graphite {
@@ -35,10 +36,24 @@ namespace Graphite {
 
 	std::span<const LanguageId> LanguagesWithServers()
 	{
-		// Listed rather than derived by asking ServerConfigFor about every enumerator: the two go
-		// out of step only if someone adds a row here and not there, which is one grep away, and
-		// deriving it would mean iterating an enum that has no iteration order of its own.
-		static constexpr std::array<LanguageId, 1> kConfigured{LanguageId::Cpp};
+		// Derived from ServerConfigFor rather than written out beside it. Adding a language is
+		// then a row in the table and nothing else: a second hand-kept list would be a second
+		// place to forget, and forgetting it here fails silently - the server simply never starts
+		// for that language and nothing says why.
+		static const std::vector<LanguageId> kConfigured = []
+		{
+			std::vector<LanguageId> configured;
+
+			for (const LanguageId language : kAllLanguages)
+			{
+				if (ServerConfigFor(language) != nullptr)
+				{
+					configured.push_back(language);
+				}
+			}
+
+			return configured;
+		}();
 
 		return kConfigured;
 	}

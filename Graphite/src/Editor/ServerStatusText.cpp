@@ -1,5 +1,7 @@
 #include "Editor/ServerStatusText.h"
 
+#include "Lang/Registry/LanguageRegistry.h"
+
 namespace Graphite {
 
 	namespace {
@@ -52,6 +54,29 @@ namespace Graphite {
 		}
 
 		return {};
+	}
+
+	std::string NoServerText(LanguageId language)
+	{
+		const std::string_view name = LanguageDisplayName(language);
+
+		return name.empty() ? std::string{} : std::string{name} + ": no language server";
+	}
+
+	std::string NoServerDetail(LanguageId language)
+	{
+		const std::string_view name = LanguageDisplayName(language);
+
+		if (name.empty())
+		{
+			return {};
+		}
+
+		// Says what is absent and what still works, because the question this answers is "why is
+		// nothing happening in this file" and half an answer invites a hunt for a broken setting.
+		return "No language server is configured for " + std::string{name} +
+			   ", so go to definition and reference counts are unavailable here. Syntax "
+			   "highlighting does not depend on a server and is unaffected.";
 	}
 
 	std::string ServerStatusDetail(const ServerStatus& status)

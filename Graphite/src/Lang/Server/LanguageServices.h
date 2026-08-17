@@ -9,6 +9,7 @@
 #include "Core/Jobs/JobQueue.h"
 
 #include <mutex>
+#include <optional>
 
 #include <chrono>
 #include <cstdint>
@@ -81,6 +82,17 @@ namespace Graphite {
 		// reports whichever the map happens to order first — every caller in this codebase works
 		// with one project root at a time, so that ambiguity has never mattered in practice.
 		ServerStatus StatusFor(LanguageId language) const;
+
+		// The status worth showing when the active document's own language has nothing to say —
+		// which is most of the time, since a folder now starts its servers before any document of
+		// theirs is opened, and a README or a build file is a perfectly ordinary thing to be
+		// looking at while a server indexes behind it.
+		//
+		// Busy first (Starting, Indexing), then broken (Failed, NotFound, NoCompileDatabase).
+		// Ready is deliberately never noteworthy: it is the resting state, and a badge that is
+		// always on is one nobody reads — which would cost exactly the attention the states above
+		// need. Nothing at all when no server is in either group.
+		std::optional<ServerStatus> NoteworthyStatus() const;
 
 		// UI thread, once a frame: collects each running client's replies and status, notices a
 		// process that has died, and restarts it once its backoff has elapsed. Never blocks. This

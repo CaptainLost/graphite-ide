@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Lang/Api/LanguageId.h"
 #include "Lang/Api/LanguageService.h"
 
 #include <string>
@@ -24,5 +25,14 @@ namespace Graphite {
 	// a running server, the binary path and the version its handshake reported. Notes a restart
 	// count once there has been one, regardless of state.
 	std::string ServerStatusDetail(const ServerStatus& status);
+
+	// What the bar says for a language this editor recognises but has no server for — "C#: no
+	// language server". Empty for PlainText, which stays silent: nobody opens a README expecting
+	// go-to-definition, so saying it is missing there is noise. A recognised programming language
+	// is different, because the expectation is reasonable and the silence would otherwise look
+	// like something broken.
+	std::string NoServerText(LanguageId language);
+
+	std::string NoServerDetail(LanguageId language);
 
 }

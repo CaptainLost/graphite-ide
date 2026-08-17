@@ -13,6 +13,8 @@
 
 #include "Panels/ReferencesPanel.h"
 
+#include <optional>
+
 #include "Panels/SearchPanel.h"
 
 #include "Settings/AppSettings.h"
@@ -351,18 +353,43 @@ namespace Graphite {
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup. Poll drains what the server has said
 		// since the last frame, which is what lets Starting become Indexing become Ready here.
+		ServerStatus status;
+		LanguageId activeLanguage = LanguageId::PlainText;
+
 		if (const auto active = m_Documents.GetActive();
 			active && m_Documents.At(*active).Document)
 		{
 			const std::filesystem::path& path = m_Documents.At(*active).Path;
-			const LanguageId language = LanguageOfPath(path);
 
-			m_LanguageServices.EnsureStarted(path, language);
+			activeLanguage = LanguageOfPath(path);
 
-			const ServerStatus status = m_LanguageServices.StatusFor(language);
+			m_LanguageServices.EnsureStarted(path, activeLanguage);
 
+			status = m_LanguageServices.StatusFor(activeLanguage);
+		}
+
+		if (status.State != ServerState::NotConfigured)
+		{
+			// The active document's own language has something to say, and it outranks everything
+			// else: it is the one whose answers are about what is on screen.
 			messages.Server = ServerStatusText(status);
 			messages.ServerDetail = ServerStatusDetail(status);
+		}
+		else if (std::string unserved = NoServerText(activeLanguage); !unserved.empty())
+		{
+			// A language recognised but unserved - a C# file with no OmniSharp. Said out loud,
+			// because the expectation of go to definition is reasonable here and silence would
+			// read as something broken rather than something absent.
+			messages.Server = std::move(unserved);
+			messages.ServerDetail = NoServerDetail(activeLanguage);
+		}
+		else if (const std::optional<ServerStatus> noteworthy = m_LanguageServices.NoteworthyStatus())
+		{
+			// Nothing to say about what is open - plain text, or no document at all - so any
+			// server that is busy or broken. This is what makes indexing started by opening the
+			// folder visible while reading a README, instead of a server working in silence.
+			messages.Server = ServerStatusText(*noteworthy);
+			messages.ServerDetail = ServerStatusDetail(*noteworthy);
 		}
 
 		m_LanguageServices.Poll();

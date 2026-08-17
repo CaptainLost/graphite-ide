@@ -1,5 +1,6 @@
 #include "Lang/Server/LanguageServices.h"
 
+#include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Lang/Registry/LanguageRegistry.h"
@@ -90,10 +91,21 @@ namespace Graphite {
 		{
 			server.Status.State = ServerState::NotFound;
 			server.Status.Detail = binary.GetError().Message;
+
+			APP_WARN("No {} for {}: {}", server.Config->Command,
+					 LanguageDisplayName(key.Language), binary.GetError().Message);
 			return;
 		}
 
 		server.Binary = binary.GetValue();
+
+		// Logged at the moment a process is about to exist, with everything needed to explain a
+		// later answer: which language it serves, which binary is running, and the root it was
+		// given - a server rooted somewhere unexpected answers about the wrong project, and this
+		// line is where that becomes visible instead of mysterious.
+		APP_INFO("Starting {} for {} at {}", server.Config->Command,
+				 LanguageDisplayName(key.Language), Core::ToUtf8(key.Root));
+
 		server.Client = std::make_unique<LspClient>(*server.Config, server.Binary, key.Root);
 
 		// The client's own Drain reports the real state — Starting, then Indexing/Ready/Failed —
@@ -145,6 +157,45 @@ namespace Graphite {
 		// No entry at all: never configured, or never started. Both read the same way to a
 		// caller — ServerStatus{} defaults to State == NotConfigured.
 		return {};
+	}
+
+	std::optional<ServerStatus> LanguageServices::NoteworthyStatus() const
+	{
+		const auto rank = [](ServerState state) -> int
+		{
+			switch (state)
+			{
+				case ServerState::Indexing:
+				case ServerState::Starting:
+					return 2; // something is happening and will stop happening
+				case ServerState::Failed:
+				case ServerState::NotFound:
+				case ServerState::NoCompileDatabase:
+					return 1; // something is wrong and will not fix itself
+				case ServerState::Ready:
+				case ServerState::NotConfigured:
+					return 0;
+			}
+
+			return 0;
+		};
+
+		const ServerStatus* best = nullptr;
+
+		for (const auto& [key, server] : m_Servers)
+		{
+			if (rank(server.Status.State) == 0)
+			{
+				continue;
+			}
+
+			if (best == nullptr || rank(server.Status.State) > rank(best->State))
+			{
+				best = &server.Status;
+			}
+		}
+
+		return best != nullptr ? std::optional<ServerStatus>{*best} : std::nullopt;
 	}
 
 	LanguageServices::Ticket LanguageServices::IssueTicket()
