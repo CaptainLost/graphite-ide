@@ -246,6 +246,33 @@ TEST_CASE("The handshake goes out first and carries the capabilities the server 
 	CHECK(sent[0].find(R"("workDoneProgress":true)") != std::string::npos);
 }
 
+// The count over a declaration answers "how many places use this". Counting the declaration
+// and the definition among them puts the floor at two, so a function nobody calls reports
+// "2 references" and never "0 references" - retiring the one signal the count exists to give.
+TEST_CASE("A references request asks for uses only, not for the declaration itself")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	// Answered first: before the handshake completes a request is queued rather than sent, so
+	// asking without this inspects an empty outbound queue and proves nothing.
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+	client.TakeSent();
+
+	Graphite::FilePosition where;
+	where.Path = temp.GetPath() / "main.cpp";
+	where.Line = 28;
+	where.Column = Graphite::Utf16Column(14);
+
+	client.AskReferences(where);
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("method":"textDocument/references")") != std::string::npos);
+	CHECK(sent[0].find(R"("includeDeclaration":false)") != std::string::npos);
+}
+
 TEST_CASE("An initialize reply that is an error leaves the client failed, not ready")
 {
 	TempDirectory temp;

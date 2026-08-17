@@ -808,7 +808,12 @@ namespace Graphite {
 		params["textDocument"]["uri"] = ToFileUri(where.Path);
 		params["position"]["line"] = where.Line;
 		params["position"]["character"] = where.Column.Value;
-		params["context"]["includeDeclaration"] = true;
+		// Uses only. With the declaration counted among them the floor is two — its declaration
+		// in a header and its definition in a source file — so a function nobody calls reports
+		// "2 references" and "0 references" becomes unreachable, retiring the one thing the count
+		// over a declaration is uniquely good at saying. The declaration is one keystroke away
+		// through Go to Definition, so nothing is lost by leaving it out.
+		params["context"]["includeDeclaration"] = false;
 
 		return Ask("textDocument/references", params, Question::References);
 	}

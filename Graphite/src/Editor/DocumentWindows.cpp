@@ -935,8 +935,6 @@ namespace Graphite {
 			frame.FirstVisibleRow > margin ? frame.FirstVisibleRow - margin : 0;
 		const std::size_t to = frame.LastVisibleRow + margin + 1;
 
-		const Core::TextBuffer& buffer = item.Document->GetBuffer();
-
 		for (const std::size_t row : state.Model.RowsNeedingCounts(from, to))
 		{
 			// The whole of the re-asking guard: a row already asked about is skipped for as long
@@ -955,19 +953,15 @@ namespace Graphite {
 				continue;
 			}
 
-			const Core::RowRef ref = item.Rows.RowAt(row);
-			const std::string lineText = buffer.LineText(ref.Line);
-
+			// The name's own position, in the units the server speaks, carried on the lens since
+			// the reply arrived. The drawing column cannot stand in for it: converting cells back
+			// to code units lands on where the declaration BEGINS, which for a constructor is its
+			// own class's name — so the count would answer about the type rather than about the
+			// constructor, and read far too high.
 			FilePosition where;
 			where.Path = item.Path;
-			where.Line = ref.Line;
-			// The lens carries a VISUAL column, in cells, because that is what draws it in the
-			// right place. The protocol wants UTF-16 code units, so it goes back through the
-			// line's own bytes: cells to a byte offset with the tab width, and the byte offset to
-			// a Utf16Column with the line's text. Neither step can be skipped on a line holding a
-			// tab or a character outside ASCII.
-			where.Column = ToUtf16Column(
-				lineText, Core::ByteOfColumn(lineText, lens->Column, item.TabWidth));
+			where.Line = lens->NameLine;
+			where.Column = lens->NameColumn;
 
 			const LanguageServices::Ticket ticket =
 				m_LanguageServices.AskReferences(item.Path, LanguageOfPath(item.Path), where);

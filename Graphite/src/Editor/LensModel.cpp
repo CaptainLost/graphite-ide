@@ -70,6 +70,12 @@ namespace Graphite {
 			Entry entry;
 			entry.LensValue.DocumentRow = rows.FirstRowOf(declaration.Line);
 			entry.LensValue.Column = Core::ColumnOfByte(lineText, byteOffset, tabWidth);
+
+			// Carried across untouched: the server is asked in the units it answered in, so
+			// nothing here has to convert and nothing can convert it wrong.
+			entry.LensValue.NameLine = declaration.NameLine;
+			entry.LensValue.NameColumn = declaration.NameColumn;
+
 			entry.Name = declaration.Name;
 			entry.Kind = declaration.Kind;
 			next.push_back(std::move(entry));

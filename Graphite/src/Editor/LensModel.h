@@ -22,7 +22,18 @@ namespace Graphite {
 	struct Lens
 	{
 		std::size_t DocumentRow = 0;
+
+		// Where to DRAW: a visual column in cells, so a lens over an indented declaration lines
+		// up with it. Derived from the declaration's start, and useless for anything else.
 		std::size_t Column = 0;
+
+		// What to ASK ABOUT: the declaration's name, carried in the protocol's own units so it
+		// reaches the server untouched. Kept beside the drawing column rather than derived from
+		// it - a column converted from cells back to code units lands on the declaration's start,
+		// which for a constructor is its own class's name and answers about the type instead.
+		std::size_t NameLine = 0;
+		Utf16Column NameColumn;
+
 		std::size_t Count = 0;
 		bool CountKnown = false;
 	};
