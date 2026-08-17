@@ -258,6 +258,23 @@ namespace Graphite {
 						}
 					}
 
+					// The name's own position, which is what the server must be asked about.
+					// RangeOf deliberately does not look here: it serves definition and reference
+					// replies too, where "selectionRange" means nothing. A flat SymbolInformation
+					// carries no selectionRange at all, so the declaration's start stands in —
+					// less precise, but a position that can still be asked about.
+					declaration.NameLine = declaration.Line;
+					declaration.NameColumn = declaration.Column;
+
+					if (const nlohmann::json* selection = FirstOf(node, {"selectionRange"}))
+					{
+						if (const nlohmann::json* start = FirstOf(*selection, {"start"}))
+						{
+							declaration.NameLine = ReadUnsigned(*start, "line");
+							declaration.NameColumn = Utf16Column{ReadUnsigned(*start, "character")};
+						}
+					}
+
 					// Before its children, so the flattened list reads in the order the file does.
 					declarations.push_back(std::move(declaration));
 				}

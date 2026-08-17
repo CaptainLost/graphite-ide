@@ -1182,10 +1182,14 @@ namespace Graphite {
 				continue;
 			}
 
+			// The name's position, not the declaration's start. Matched on the declaration's
+			// start above, because that is what the lens is anchored to, but asked about by
+			// name — a constructor's declaration begins with its own class's name, so asking
+			// at the start resolves to the class and counts every mention of the type.
 			FilePosition where;
 			where.Path = item.Path;
-			where.Line = declaration.Line;
-			where.Column = declaration.Column;
+			where.Line = declaration.NameLine;
+			where.Column = declaration.NameColumn;
 
 			RequestReferencesAt(item, LanguageOfPath(item.Path), where, declaration.Name, panel);
 			return;

@@ -92,6 +92,40 @@ TEST_CASE("A documentSymbol reply keeps functions and types and flattens childre
 	CHECK(declarations[1].Line == 4);
 }
 
+// A symbol carries two ranges and they mean different things: `range` covers the whole
+// declaration, `selectionRange` covers its name. Asking the server about a symbol has to use
+// the name, or a constructor - whose declaration begins with its own class's name - resolves
+// to the class, and the lens over it counts every mention of the type instead.
+TEST_CASE("A symbol's name position is read from selectionRange, not from the declaration's start")
+{
+	const auto declarations = Graphite::ParseSymbols(nlohmann::json::parse(
+		R"([{"name":"Application::Application","kind":9,
+			 "range":{"start":{"line":28,"character":1}},
+			 "selectionRange":{"start":{"line":28,"character":14}}}])"));
+
+	REQUIRE(declarations.size() == 1);
+
+	// Where the declaration begins: the lens is anchored and indented from this.
+	CHECK(declarations[0].Line == 28);
+	CHECK(declarations[0].Column == Graphite::Utf16Column(1));
+
+	// Where its name begins: this is what the server is asked about.
+	CHECK(declarations[0].NameLine == 28);
+	CHECK(declarations[0].NameColumn == Graphite::Utf16Column(14));
+}
+
+TEST_CASE("A symbol with no selectionRange falls back to its declaration's start")
+{
+	// The flat SymbolInformation shape carries only location.range. A server that answers in
+	// it still has to yield a position that can be asked about.
+	const auto declarations = Graphite::ParseSymbols(nlohmann::json::parse(
+		R"([{"name":"Draw","kind":12,"range":{"start":{"line":7,"character":3}}}])"));
+
+	REQUIRE(declarations.size() == 1);
+	CHECK(declarations[0].NameLine == 7);
+	CHECK(declarations[0].NameColumn == Graphite::Utf16Column(3));
+}
+
 TEST_CASE("A reply that is null yields no locations rather than failing")
 {
 	CHECK(Graphite::ParseLocations(nlohmann::json()).empty());

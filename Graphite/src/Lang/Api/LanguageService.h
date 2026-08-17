@@ -72,12 +72,24 @@ namespace Graphite {
 
 	enum class DeclarationKind : std::uint8_t { Function, Type, Other };
 
+	// Two positions, because the protocol gives two and they answer different questions.
+	//
+	// Line/Column are where the declaration begins — what the lens is anchored to and indented
+	// from, so a count over an indented function lines up with it.
+	//
+	// NameLine/NameColumn are where its name begins, and are what the server is asked about. The
+	// two differ for anything whose declaration starts before its own name, and a constructor is
+	// the case that makes the difference visible: `Application::Application(...)` begins with the
+	// class's name, so asking at the declaration's start resolves to the class and the lens
+	// counts every mention of the type rather than every construction of it.
 	struct Declaration
 	{
 		std::string Name;
 		DeclarationKind Kind = DeclarationKind::Other;
 		std::size_t Line = 0;
 		Utf16Column Column;
+		std::size_t NameLine = 0;
+		Utf16Column NameColumn;
 	};
 
 	enum class ServerState : std::uint8_t
