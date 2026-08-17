@@ -83,16 +83,55 @@ TEST_CASE("A highlight covers the name as written, not the length of its qualifi
 	const auto available = [](const std::filesystem::path&, std::size_t)
 	{ return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
 
-	// The server names the span it matched: "Get" at bytes 19 to 22.
-	std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(19)}};
+	// The server names the span it matched: "Get" at bytes 20 to 23.
+	std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(20)}};
 	locations[0].EndLine = 4;
-	locations[0].EndColumn = Graphite::Utf16Column(22);
+	locations[0].EndColumn = Graphite::Utf16Column(23);
 
 	const auto hits = Graphite::AsHits(locations, "Application::Get", available);
 
 	REQUIRE(hits.size() == 1);
-	CHECK(hits[0].From == 19);
+	CHECK(hits[0].From == 20);
+	CHECK(hits[0].To == 23);
+}
+
+// Ground truth from clangd 22: asked about the constructor of Application, it names the Main.cpp
+// reference as bytes 5 to 9 of "			: Core::Application(...)" - which is "Core", the namespace
+// and not the constructor. Drawn as given, the highlight lands on the wrong word entirely.
+TEST_CASE("A span that misses the name is corrected to the name itself")
+{
+	const auto available = [](const std::filesystem::path&, std::size_t)
+	{ return std::optional<std::string>{"			: Core::Application(Core::ApplicationSpec{})," }; };
+
+	std::vector<Graphite::Location> locations{{"D:/Main.cpp", 54, Graphite::Utf16Column(5)}};
+	locations[0].EndLine = 54;
+	locations[0].EndColumn = Graphite::Utf16Column(9);
+
+	const auto hits = Graphite::AsHits(locations, "Application::Application", available);
+
+	REQUIRE(hits.size() == 1);
+
+	// "Application" begins at byte 11 on that line, not byte 5.
+	CHECK(hits[0].From == 11);
 	CHECK(hits[0].To == 22);
+}
+
+TEST_CASE("A span the server named is kept when it does cover the name")
+{
+	const auto available = [](const std::filesystem::path&, std::size_t)
+	{ return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
+
+	// The same name appears twice on this line. The one the server pointed at is the one that
+	// stays highlighted - a search would be free to find either.
+	std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(20)}};
+	locations[0].EndLine = 4;
+	locations[0].EndColumn = Graphite::Utf16Column(23);
+
+	const auto hits = Graphite::AsHits(locations, "Application::Get", available);
+
+	REQUIRE(hits.size() == 1);
+	CHECK(hits[0].From == 20);
+	CHECK(hits[0].To == 23);
 }
 
 TEST_CASE("A reply carrying no end falls back to the unqualified name, not the whole symbol")
@@ -102,11 +141,11 @@ TEST_CASE("A reply carrying no end falls back to the unqualified name, not the w
 
 	// No end named, so the length has to be guessed - and the guess is "Get", three characters,
 	// rather than "Application::Get", sixteen.
-	const std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(19)}};
+	const std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(20)}};
 
 	const auto hits = Graphite::AsHits(locations, "Application::Get", available);
 
 	REQUIRE(hits.size() == 1);
-	CHECK(hits[0].From == 19);
-	CHECK(hits[0].To == 22);
+	CHECK(hits[0].From == 20);
+	CHECK(hits[0].To == 23);
 }

@@ -40,23 +40,42 @@ namespace Graphite {
 
 		// Where a hit's highlight starts and stops, in bytes of `text`.
 		//
-		// The server's own end is preferred over anything derived from the name: it points at the
-		// characters it matched, so it is right even where the name is spelled unusually - a
-		// macro, a line continuation, an alias. The name's length is the fallback for a reply that
-		// carries no end, and a range spanning more than one line degrades to it too, since a
-		// highlight here cannot reach past the line it is drawn on.
+		// Ordinarily the server's own range, which points at the characters it matched and is
+		// therefore right even where the name is spelled unusually - through a macro, across a
+		// line continuation, behind an alias.
+		//
+		// It is overridden in one case, and only after checking: a range that does not cover the
+		// name at all. clangd answers this way for a constructor reached through a qualified name
+		// - for `: Core::Application(spec)` it names bytes 5 to 9, which is `Core`, the namespace
+		// rather than the thing being referenced. Verified against clangd 22 rather than assumed.
+		// Highlighting that draws the eye to the wrong word on the row, so where the name itself
+		// can be found on the line at or after where the server pointed, that wins.
 		std::pair<std::size_t, std::size_t> SpanIn(const std::string& text, std::size_t line,
 												   Utf16Column column, std::size_t endLine,
 												   Utf16Column endColumn, const std::string& symbol)
 		{
-			const std::size_t from = FromUtf16Column(text, column);
+			const std::size_t from = std::min(FromUtf16Column(text, column), text.size());
+			const std::string_view name = UnqualifiedName(symbol);
 
-			if (endLine == line && endColumn.Value > column.Value)
+			const bool spansOneLine = endLine == line && endColumn.Value > column.Value;
+			const std::size_t to =
+				spansOneLine ? std::min(FromUtf16Column(text, endColumn), text.size())
+							 : std::min(from + name.size(), text.size());
+
+			if (std::string_view{text}.substr(from, to - from) == name)
 			{
-				return {from, std::min(FromUtf16Column(text, endColumn), text.size())};
+				return {from, to};
 			}
 
-			return {from, std::min(from + UnqualifiedName(symbol).size(), text.size())};
+			// Searched forward from where the server pointed, never backward, and never off this
+			// line: a name found earlier on the row belongs to some other expression, and the
+			// server's position is the only thing tying this hit to a place at all.
+			if (const std::size_t found = text.find(name, from); found != std::string::npos)
+			{
+				return {found, found + name.size()};
+			}
+
+			return {from, to};
 		}
 
 		// The same read the search itself does, deliberately: a preview that decoded a file
