@@ -3,6 +3,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Lang/Server/MessageStream.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -759,7 +760,7 @@ namespace Graphite {
 	}
 
 	RequestId LspClient::Ask(std::string_view method, const nlohmann::json& params,
-							 Question question)
+							 Question question, std::optional<FilePosition> from)
 	{
 		auto [id, bytes] = m_Shared->Rpc.Request(method, params);
 
@@ -782,7 +783,7 @@ namespace Graphite {
 			return id;
 		}
 
-		m_Shared->Pending[id] = Asked{question};
+		m_Shared->Pending[id] = Asked{question, std::move(from)};
 		SendLocked(*m_Shared, std::move(bytes));
 
 		return id;
@@ -800,7 +801,7 @@ namespace Graphite {
 		return Ask("textDocument/definition", params, Question::Definition);
 	}
 
-	RequestId LspClient::AskReferences(const FilePosition& where, ReferenceScope scope)
+	RequestId LspClient::AskReferences(const FilePosition& where)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
@@ -808,9 +809,14 @@ namespace Graphite {
 		params["textDocument"]["uri"] = ToFileUri(where.Path);
 		params["position"]["line"] = where.Line;
 		params["position"]["character"] = where.Column.Value;
-		params["context"]["includeDeclaration"] = scope == ReferenceScope::WithDeclaration;
+		// Every site, the declaration included — a symbol used nowhere still has a header worth
+		// jumping to, and an empty answer is a worse one than a short answer. The position asked
+		// from is dropped when the reply is read, so what comes back is every OTHER place: the
+		// count over a definition and the list opened from it then agree, and neither shows the
+		// line the question was asked on.
+		params["context"]["includeDeclaration"] = true;
 
-		return Ask("textDocument/references", params, Question::References);
+		return Ask("textDocument/references", params, Question::References, where);
 	}
 
 	RequestId LspClient::AskSymbols(const std::filesystem::path& path)
@@ -1126,6 +1132,22 @@ namespace Graphite {
 			else
 			{
 				answer.Locations = ParseLocations(incoming->Payload);
+
+				// Nobody is shown the line they asked from. The protocol counts a declaration as
+				// a reference to itself, so a count drawn over a definition would otherwise
+				// include that definition and read one too high, and the list opened from it
+				// would lead its results with the row already on screen. Only for references:
+				// a definition reply naming the place asked about is the answer, not noise, and
+				// ResolveDefinition is what decides there is nowhere to go.
+				if (asked.Kind == Question::References && asked.From)
+				{
+					const FilePosition& from = *asked.From;
+
+					std::erase_if(answer.Locations, [&from](const Location& location) {
+						return location.Line == from.Line && location.Column == from.Column &&
+							   location.Path == from.Path;
+					});
+				}
 			}
 		}
 

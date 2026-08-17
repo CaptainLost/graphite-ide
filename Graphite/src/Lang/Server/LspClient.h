@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -89,7 +90,7 @@ namespace Graphite {
 
 		// Each returns a ticket; the answer arrives through Drain.
 		RequestId AskDefinition(const FilePosition& where);
-		RequestId AskReferences(const FilePosition& where, ReferenceScope scope);
+		RequestId AskReferences(const FilePosition& where);
 		RequestId AskSymbols(const std::filesystem::path& path);
 
 		struct Answer
@@ -170,6 +171,13 @@ namespace Graphite {
 		struct Asked
 		{
 			Question Kind = Question::Definition;
+
+			// Where the question was asked from, for the questions that have a position. A
+			// references reply names it among its answers — a declaration is a reference to
+			// itself as far as the protocol is concerned — and nobody wants to be shown the
+			// line they are standing on, so it is dropped on the way out. Kept here because
+			// this is the only place that still knows it by the time the reply arrives.
+			std::optional<FilePosition> From;
 		};
 
 		// Held through a shared_ptr so a reader thread still winding down after this object is
@@ -249,7 +257,8 @@ namespace Graphite {
 
 		// Numbers a question, remembers what was asked so its reply can be read, and queues it.
 		// ProtocolMutex held by the caller.
-		RequestId Ask(std::string_view method, const nlohmann::json& params, Question question);
+		RequestId Ask(std::string_view method, const nlohmann::json& params, Question question,
+					  std::optional<FilePosition> from = std::nullopt);
 
 		// Sends initialize and records the id its reply will carry. ProtocolMutex NOT held.
 		void BeginHandshake(const std::filesystem::path& root);

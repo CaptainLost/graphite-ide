@@ -246,10 +246,12 @@ TEST_CASE("The handshake goes out first and carries the capabilities the server 
 	CHECK(sent[0].find(R"("workDoneProgress":true)") != std::string::npos);
 }
 
-// The count over a declaration answers "how many places use this". Counting the declaration
-// and the definition among them puts the floor at two, so a function nobody calls reports
-// "2 references" and never "0 references" - retiring the one signal the count exists to give.
-TEST_CASE("A references request asks for uses only, not for the declaration itself")
+// A declaration is a reference to itself as far as the protocol is concerned, so asking for
+// every site and then dropping the site asked from is what makes the count over a definition
+// and the list opened from it agree — and keeps both from leading with the line already on
+// screen. Asking for uses only would drop the header declaration too, which is a place worth
+// going to rather than noise.
+TEST_CASE("A references request asks for every site, declaration included")
 {
 	TempDirectory temp;
 	Graphite::LspClient client = Offline(temp.GetPath());
@@ -264,36 +266,52 @@ TEST_CASE("A references request asks for uses only, not for the declaration itse
 	where.Line = 28;
 	where.Column = Graphite::Utf16Column(14);
 
-	client.AskReferences(where, Graphite::ReferenceScope::UsesOnly);
+	client.AskReferences(where);
 
 	const std::vector<std::string> sent = client.TakeSent();
 
 	REQUIRE(sent.size() == 1);
 	CHECK(sent[0].find(R"("method":"textDocument/references")") != std::string::npos);
-	CHECK(sent[0].find(R"("includeDeclaration":false)") != std::string::npos);
+	CHECK(sent[0].find(R"("includeDeclaration":true)") != std::string::npos);
 }
 
-// The other question, asked by the panel: a symbol used nowhere still has a header to jump to,
-// so its list must not come back empty just because its count is zero.
-TEST_CASE("A references request can ask for everywhere a symbol appears, declaration included")
+TEST_CASE("A references answer leaves out the position it was asked from, and nothing else")
 {
 	TempDirectory temp;
 	Graphite::LspClient client = Offline(temp.GetPath());
 
 	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
-	client.TakeSent();
+
+	const std::filesystem::path source = temp.GetPath() / "Application.cpp";
 
 	Graphite::FilePosition where;
-	where.Path = temp.GetPath() / "main.cpp";
+	where.Path = source;
 	where.Line = 28;
 	where.Column = Graphite::Utf16Column(14);
 
-	client.AskReferences(where, Graphite::ReferenceScope::WithDeclaration);
+	const Graphite::RequestId id = client.AskReferences(where);
 
-	const std::vector<std::string> sent = client.TakeSent();
+	// Three sites, as clangd answers for a constructor: the definition asked from, the
+	// declaration in the header, and one real use.
+	client.Deliver(
+		R"({"id":)" + std::to_string(id) +
+		R"(,"result":[)"
+		R"({"uri":")" + Graphite::ToFileUri(source) +
+		R"(","range":{"start":{"line":28,"character":14}}},)"
+		R"({"uri":"file:///D:/Application.h","range":{"start":{"line":39,"character":11}}},)"
+		R"({"uri":"file:///D:/Main.cpp","range":{"start":{"line":54,"character":10}}}]})");
 
-	REQUIRE(sent.size() == 1);
-	CHECK(sent[0].find(R"("includeDeclaration":true)") != std::string::npos);
+	std::vector<Graphite::LspClient::Answer> answers;
+	Graphite::ServerStatus status;
+	client.Drain(answers, status);
+
+	REQUIRE(answers.size() == 1);
+
+	// Two, not three: the header declaration stays, because it is somewhere to go; the
+	// definition asked from does not, because it is where the question came from.
+	REQUIRE(answers[0].Locations.size() == 2);
+	CHECK(answers[0].Locations[0].Line == 39);
+	CHECK(answers[0].Locations[1].Line == 54);
 }
 
 TEST_CASE("An initialize reply that is an error leaves the client failed, not ready")
@@ -532,8 +550,7 @@ TEST_CASE("A cancelled question's reply is dropped rather than delivered to nobo
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 	client.OpenDocument(source, "int Main() { return 0; }\n");
 
-	const Graphite::RequestId id = client.AskReferences({source, 0, Graphite::Utf16Column{4}},
-														Graphite::ReferenceScope::UsesOnly);
+	const Graphite::RequestId id = client.AskReferences({source, 0, Graphite::Utf16Column{4}});
 	client.Cancel(id);
 
 	client.Deliver(R"({"id":)" + std::to_string(id) +

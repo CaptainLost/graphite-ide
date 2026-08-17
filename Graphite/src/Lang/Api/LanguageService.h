@@ -92,24 +92,6 @@ namespace Graphite {
 		Utf16Column NameColumn;
 	};
 
-	// Whether a references question is about where a symbol is USED, or about everywhere it
-	// appears. The two are different questions and the editor asks both.
-	//
-	// The count drawn over a declaration asks UsesOnly: counting the declaration and the
-	// definition among the answers puts its floor at two, so a function nobody calls would read
-	// "2 references" and "0 references" could never appear — retiring the one thing that count is
-	// uniquely good at saying.
-	//
-	// The panel asks WithDeclaration, because it is a place to navigate from: a symbol used
-	// nowhere still has a header to jump to, and an empty list is a worse answer than a short
-	// one. The count and the list therefore need not agree, and should not — they answer
-	// different questions and each says which in its own heading.
-	enum class ReferenceScope : std::uint8_t
-	{
-		UsesOnly,
-		WithDeclaration
-	};
-
 	enum class ServerState : std::uint8_t
 	{
 		NotConfigured, NotFound, Starting, Indexing, NoCompileDatabase, Ready, Failed
