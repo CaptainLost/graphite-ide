@@ -333,6 +333,21 @@ namespace Graphite {
 		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
 								 m_SearchPanel->GetStatusMessage()};
 
+		// Noticed here rather than hooked onto the two places a folder can be opened from: a
+		// root comparison per frame catches every way it can change, including ones added later,
+		// and costs a path compare against a path that almost never differs.
+		if (m_Workspace.GetRoot() != m_WarmedRoot)
+		{
+			m_WarmedRoot = m_Workspace.GetRoot();
+
+			if (!m_WarmedRoot.empty())
+			{
+				// Ignored trees skipped: this walk exists to find one source file per language as
+				// cheaply as it can, and build outputs hold plenty of files that answer nothing.
+				m_LanguageServices.WarmUp(m_WarmedRoot, true);
+			}
+		}
+
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup. Poll drains what the server has said
 		// since the last frame, which is what lets Starting become Indexing become Ready here.

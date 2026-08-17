@@ -33,6 +33,16 @@ namespace Graphite {
 		}
 	}
 
+	std::span<const LanguageId> LanguagesWithServers()
+	{
+		// Listed rather than derived by asking ServerConfigFor about every enumerator: the two go
+		// out of step only if someone adds a row here and not there, which is one grep away, and
+		// deriving it would mean iterating an enum that has no iteration order of its own.
+		static constexpr std::array<LanguageId, 1> kConfigured{LanguageId::Cpp};
+
+		return kConfigured;
+	}
+
 	const ServerConfig* ServerConfigFor(LanguageId language)
 	{
 		switch (language)

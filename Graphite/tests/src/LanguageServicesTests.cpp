@@ -70,6 +70,70 @@ TEST_CASE("A ticket asked of a configured server whose binary is missing comes b
 	CHECK(answers[0].Failed);
 }
 
+// The point of warming up: a server for a language the tree contains starts from the folder
+// alone, with no document of that language ever opened. Without it the first file opened is also
+// the first thing indexed, so the counts arrive late on exactly the file being read.
+TEST_CASE("Opening a folder starts a server for a language the tree contains")
+{
+	TempDirectory temp;
+
+	temp.MakeFile("notes.txt", "nothing to see\n");
+	temp.MakeFile("src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	// A binary that does not exist, so this proves a server was STARTED without depending on a
+	// clangd being installed: NotFound is a state only reachable by having tried.
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	services.WarmUp(temp.GetPath(), false);
+
+	// The walk runs on a worker and Poll is what turns what it found into servers, so this polls
+	// rather than assuming. Bounded, so a warm-up that never reports fails the test instead of
+	// hanging the suite - the same reason JobQueueTests bounds its own loop.
+	constexpr int kMaxAttempts = 500;
+	int attempt = 0;
+
+	for (; attempt < kMaxAttempts; ++attempt)
+	{
+		services.Poll();
+
+		if (services.StatusFor(Graphite::LanguageId::Cpp).State !=
+			Graphite::ServerState::NotConfigured)
+		{
+			break;
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(attempt < kMaxAttempts);
+	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotFound);
+}
+
+TEST_CASE("A folder holding no source of a configured language starts nothing")
+{
+	TempDirectory temp;
+
+	temp.MakeFile("notes.txt", "nothing to see\n");
+	temp.MakeFile("data/readme.md", "# nothing\n");
+
+	Graphite::LanguageServices services{temp.GetPath()};
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	services.WarmUp(temp.GetPath(), false);
+
+	// Long enough for the walk to have finished this two-file tree several times over.
+	for (int attempt = 0; attempt < 30; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::NotConfigured);
+}
+
 TEST_CASE("EnsureStarted is idempotent for the same root")
 {
 	TempDirectory temp;

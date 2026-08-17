@@ -23,6 +23,10 @@ namespace Graphite {
 	// pointer into static storage rather than a value keeps this total and allocation-free.
 	const ServerConfig* ServerConfigFor(LanguageId language);
 
+	// Every language that has one, so a walk looking for work can stop as soon as it has seen a
+	// file of each rather than reading the whole tree to find out there was nothing more to find.
+	std::span<const LanguageId> LanguagesWithServers();
+
 	// Walks upward from `file`'s directory, stopping at the first directory that holds any of
 	// `config.RootMarkers`. Proximity beats marker type deliberately: a nearer directory naming
 	// a build (compile_commands.json, .clangd) is a better root than a farther one naming only

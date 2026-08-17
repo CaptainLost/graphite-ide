@@ -146,5 +146,9 @@ namespace Graphite {
 
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
+
+		// The root the language servers were last warmed for, so the comparison in OnImGuiRender
+		// fires once per folder rather than once per frame.
+		std::filesystem::path m_WarmedRoot;
 	};
 }

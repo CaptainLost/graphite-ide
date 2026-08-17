@@ -5,6 +5,11 @@
 #include "Lang/Server/LspClient.h"
 #include "Lang/Server/ServerRegistry.h"
 
+#include "Core/Jobs/CancellationToken.h"
+#include "Core/Jobs/JobQueue.h"
+
+#include <mutex>
+
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -46,6 +51,25 @@ namespace Graphite {
 		// active, which is how the editor actually calls it: resolving the config and the root is
 		// cheap, and an entry already present makes the rest of the call a single map lookup.
 		void EnsureStarted(const std::filesystem::path& path, LanguageId language);
+
+		// Starts a server for every language that has one and that this tree actually contains,
+		// without waiting for a document of that language to be opened.
+		//
+		// Lazy starting is cheap but leaves the index cold at exactly the wrong moment: the first
+		// file you open is the first thing the server has to index, so the counts arrive late on
+		// the very file being read. Warming on the folder moves that work to the minutes nobody
+		// is waiting.
+		//
+		// The walk runs on a worker, never here: a tree can hold any number of files, and the
+		// design's one standing rule is that nothing blocks the UI thread. It stops as soon as it
+		// has seen a file of every configured language, so an ordinary source tree costs a
+		// fraction of a full walk; a tree with no such file costs one full walk, once, on a
+		// thread nobody is waiting for.
+		//
+		// Servers actually start in `Poll`, on the UI thread, from what the walk found — this
+		// only sets the walk going. Calling it again cancels a walk still running, which is what
+		// makes switching folders quickly cost one walk rather than a queue of them.
+		void WarmUp(std::filesystem::path root, bool respectGitIgnore);
 
 		// Overrides the binary `FindServerBinary` would otherwise search for, for every root of
 		// this language started from here on. Does not touch a server already running — call
@@ -211,8 +235,22 @@ namespace Graphite {
 		Ticket AskVia(const std::filesystem::path& path, LanguageId language,
 					 const std::function<RequestId(LspClient&)>& ask);
 
+		// One representative file per language, found by a warm-up walk and waiting for the next
+		// Poll to turn into a started server. Held through a shared_ptr for the same reason
+		// SearchService holds its results that way: a walk still winding down after Cancel needs
+		// somewhere valid to write, whether or not anything is still reading.
+		struct WarmFindings
+		{
+			std::mutex Mutex;
+			std::vector<std::pair<LanguageId, std::filesystem::path>> Found;
+		};
+
+		std::shared_ptr<WarmFindings> m_Warm = std::make_shared<WarmFindings>();
+		Core::CancellationToken m_WarmToken;
+
 		std::filesystem::path m_FallbackRoot;
 		std::map<LanguageId, std::filesystem::path> m_ConfiguredBinaries;
+
 		std::map<Key, ManagedServer> m_Servers;
 
 		// A document's directory resolves to the same root every time RootFor would walk it, for
@@ -229,5 +267,9 @@ namespace Graphite {
 
 		std::uint64_t m_NextTicket = 1;
 		std::vector<Answer> m_Answers;
+
+		// Last, deliberately: members are destroyed in reverse order of declaration, so this one
+		// joins its worker before anything the worker might still be touching goes away.
+		Core::JobQueue m_Jobs;
 	};
 }

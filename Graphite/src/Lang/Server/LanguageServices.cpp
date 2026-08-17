@@ -1,8 +1,13 @@
 #include "Lang/Server/LanguageServices.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/Repository.h"
+#include "Lang/Registry/LanguageRegistry.h"
 #include "Lang/Server/ServerDiscovery.h"
+#include "Search/FileEnumerator.h"
 
+#include <algorithm>
+#include <optional>
 #include <utility>
 
 namespace Graphite {
@@ -396,8 +401,88 @@ namespace Graphite {
 		server.Status.Restarts = server.Restarts;
 	}
 
+	void LanguageServices::WarmUp(std::filesystem::path root, bool respectGitIgnore)
+	{
+		// A walk still running is about the folder that was open a moment ago, and nothing it
+		// finds there is wanted now.
+		m_WarmToken.Cancel();
+		m_WarmToken = Core::CancellationToken{};
+
+		{
+			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
+			m_Warm->Found.clear();
+		}
+
+		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root),
+					   respectGitIgnore]
+		{
+			const std::span<const LanguageId> wanted = LanguagesWithServers();
+
+			std::vector<LanguageId> seen;
+
+			EnumerationInput enumeration;
+			enumeration.Root = root;
+
+			// Opened on this thread rather than shared with the workspace's: libgit2 handles are
+			// not safe to use from two threads, which is the same reason SearchService opens its
+			// own.
+			std::optional<Core::Repository> repository;
+
+			if (respectGitIgnore)
+			{
+				if (Core::Result<Core::Repository> opened = Core::Repository::Open(root))
+				{
+					repository.emplace(std::move(opened.GetValue()));
+
+					enumeration.Ignored = [&repository](const std::filesystem::path& path, bool)
+					{ return repository->IsIgnored(path); };
+				}
+			}
+
+			EnumerateFiles(enumeration, token, [&](const std::filesystem::path& file)
+			{
+				if (seen.size() == wanted.size())
+				{
+					// Everything worth finding has been found. EnumerateFiles checks the token
+					// between entries, so cancelling here stops the walk rather than merely
+					// skipping the rest of it — which on a large tree is the whole point.
+					token.Cancel();
+					return;
+				}
+
+				const LanguageId language = LanguageOfPath(file);
+
+				if (ServerConfigFor(language) == nullptr ||
+					std::find(seen.begin(), seen.end(), language) != seen.end())
+				{
+					return;
+				}
+
+				seen.push_back(language);
+
+				const std::lock_guard<std::mutex> guard(warm->Mutex);
+				warm->Found.emplace_back(language, file);
+			});
+		});
+	}
+
 	void LanguageServices::Poll()
 	{
+		// What the warm-up walk found, turned into servers here rather than on the worker: every
+		// other path into EnsureStarted is the UI thread, and m_Servers has no lock because that
+		// has always been true.
+		std::vector<std::pair<LanguageId, std::filesystem::path>> warm;
+
+		{
+			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
+			warm.swap(m_Warm->Found);
+		}
+
+		for (const auto& [language, file] : warm)
+		{
+			EnsureStarted(file, language);
+		}
+
 		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 
 		for (auto& [key, server] : m_Servers)
