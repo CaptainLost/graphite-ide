@@ -79,7 +79,7 @@ namespace Graphite {
 		Ticket AskDefinition(const std::filesystem::path& path, LanguageId language,
 							const FilePosition& where);
 		Ticket AskReferences(const std::filesystem::path& path, LanguageId language,
-							const FilePosition& where);
+							 const FilePosition& where, ReferenceScope scope);
 		Ticket AskSymbols(const std::filesystem::path& path, LanguageId language);
 
 		struct Answer

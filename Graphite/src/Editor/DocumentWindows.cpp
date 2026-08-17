@@ -963,8 +963,11 @@ namespace Graphite {
 			where.Line = lens->NameLine;
 			where.Column = lens->NameColumn;
 
-			const LanguageServices::Ticket ticket =
-				m_LanguageServices.AskReferences(item.Path, LanguageOfPath(item.Path), where);
+			// The count says how many places USE this, so it leaves the declaration out — see
+			// ReferenceScope. The panel below asks the other way, and the two numbers differing
+			// is the point rather than a discrepancy.
+			const LanguageServices::Ticket ticket = m_LanguageServices.AskReferences(
+				item.Path, LanguageOfPath(item.Path), where, ReferenceScope::UsesOnly);
 
 			m_PendingCounts.emplace(ticket, PendingCount{item.Path, row});
 		}
@@ -1213,7 +1216,10 @@ namespace Graphite {
 		m_LanguageServices.EnsureStarted(item.Path, language);
 
 		const LanguageServices::Ticket ticket =
-			m_LanguageServices.AskReferences(item.Path, language, where);
+			// Everywhere it appears, declaration included: this list is somewhere to navigate from,
+		// and a symbol used nowhere still has a header worth jumping to. An empty panel would be
+		// a worse answer than a short one.
+		m_LanguageServices.AskReferences(item.Path, language, where, ReferenceScope::WithDeclaration);
 
 		m_PendingReferences = PendingReferences{ticket, symbol};
 

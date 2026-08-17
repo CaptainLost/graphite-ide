@@ -49,6 +49,22 @@ Set `languageServerBinary` in `graphite.json` — which lives beside the built
 then `PATH`. With none of them the status bar reports `clangd: not found` and the
 editor works exactly as it did before this feature existed.
 
+## Telling it how this repository is built
+
+Run `scripts/New-CompileCommands.ps1`. It writes `compile_commands.json` at the
+repository root, listing every source file with the flags premake builds it
+under.
+
+A `compile_flags.txt` is not enough and is worse than it looks: it carries flags
+but no file list, so `clangd` does no background indexing at all and knows only
+the files that happen to be open. References then stop at the current tab, and a
+count over a declaration reads far too low without ever saying so. Worse still,
+`compile_flags.txt` takes **precedence** over `compile_commands.json`, so leaving
+one behind silently disables the other.
+
+Regenerate after adding or removing source files, for the same reason premake is
+regenerated: both walk the tree rather than keeping a list.
+
 ## Known gap
 
 `Graphite/premake5.lua`'s postbuild step copies `clangd.exe` alone next to the

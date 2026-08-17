@@ -89,7 +89,7 @@ namespace Graphite {
 
 		// Each returns a ticket; the answer arrives through Drain.
 		RequestId AskDefinition(const FilePosition& where);
-		RequestId AskReferences(const FilePosition& where);
+		RequestId AskReferences(const FilePosition& where, ReferenceScope scope);
 		RequestId AskSymbols(const std::filesystem::path& path);
 
 		struct Answer

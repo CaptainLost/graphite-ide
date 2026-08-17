@@ -264,13 +264,36 @@ TEST_CASE("A references request asks for uses only, not for the declaration itse
 	where.Line = 28;
 	where.Column = Graphite::Utf16Column(14);
 
-	client.AskReferences(where);
+	client.AskReferences(where, Graphite::ReferenceScope::UsesOnly);
 
 	const std::vector<std::string> sent = client.TakeSent();
 
 	REQUIRE(sent.size() == 1);
 	CHECK(sent[0].find(R"("method":"textDocument/references")") != std::string::npos);
 	CHECK(sent[0].find(R"("includeDeclaration":false)") != std::string::npos);
+}
+
+// The other question, asked by the panel: a symbol used nowhere still has a header to jump to,
+// so its list must not come back empty just because its count is zero.
+TEST_CASE("A references request can ask for everywhere a symbol appears, declaration included")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+	client.TakeSent();
+
+	Graphite::FilePosition where;
+	where.Path = temp.GetPath() / "main.cpp";
+	where.Line = 28;
+	where.Column = Graphite::Utf16Column(14);
+
+	client.AskReferences(where, Graphite::ReferenceScope::WithDeclaration);
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("includeDeclaration":true)") != std::string::npos);
 }
 
 TEST_CASE("An initialize reply that is an error leaves the client failed, not ready")
@@ -509,7 +532,8 @@ TEST_CASE("A cancelled question's reply is dropped rather than delivered to nobo
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 	client.OpenDocument(source, "int Main() { return 0; }\n");
 
-	const Graphite::RequestId id = client.AskReferences({source, 0, Graphite::Utf16Column{4}});
+	const Graphite::RequestId id = client.AskReferences({source, 0, Graphite::Utf16Column{4}},
+														Graphite::ReferenceScope::UsesOnly);
 	client.Cancel(id);
 
 	client.Deliver(R"({"id":)" + std::to_string(id) +

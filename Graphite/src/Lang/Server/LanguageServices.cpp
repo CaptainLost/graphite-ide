@@ -200,10 +200,12 @@ namespace Graphite {
 
 	LanguageServices::Ticket LanguageServices::AskReferences(const std::filesystem::path& path,
 															   LanguageId language,
-															   const FilePosition& where)
+															   const FilePosition& where,
+															   ReferenceScope scope)
 	{
-		return AskVia(path, language,
-					 [&where](LspClient& client) { return client.AskReferences(where); });
+		return AskVia(path, language, [&where, scope](LspClient& client) {
+			return client.AskReferences(where, scope);
+		});
 	}
 
 	LanguageServices::Ticket LanguageServices::AskSymbols(const std::filesystem::path& path,
