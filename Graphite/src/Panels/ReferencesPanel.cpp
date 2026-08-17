@@ -23,6 +23,42 @@ namespace Graphite {
 
 	namespace {
 
+		// The name as written at a use site, which is what a highlight there should cover. A
+		// server names a symbol in full - clangd answers "Application::Get" - but a call site
+		// spells only the last component, so measuring the highlight from the full name runs it
+		// past the end of the name and into whatever follows: "Get" highlighted for sixteen
+		// characters swallows "Get().GetWindow(", which is the same length by coincidence and
+		// looks like a parser gone wrong.
+		std::string_view UnqualifiedName(const std::string& symbol)
+		{
+			const std::size_t separator = symbol.rfind("::");
+
+			return separator == std::string::npos
+					   ? std::string_view{symbol}
+					   : std::string_view{symbol}.substr(separator + 2);
+		}
+
+		// Where a hit's highlight starts and stops, in bytes of `text`.
+		//
+		// The server's own end is preferred over anything derived from the name: it points at the
+		// characters it matched, so it is right even where the name is spelled unusually - a
+		// macro, a line continuation, an alias. The name's length is the fallback for a reply that
+		// carries no end, and a range spanning more than one line degrades to it too, since a
+		// highlight here cannot reach past the line it is drawn on.
+		std::pair<std::size_t, std::size_t> SpanIn(const std::string& text, std::size_t line,
+												   Utf16Column column, std::size_t endLine,
+												   Utf16Column endColumn, const std::string& symbol)
+		{
+			const std::size_t from = FromUtf16Column(text, column);
+
+			if (endLine == line && endColumn.Value > column.Value)
+			{
+				return {from, std::min(FromUtf16Column(text, endColumn), text.size())};
+			}
+
+			return {from, std::min(from + UnqualifiedName(symbol).size(), text.size())};
+		}
+
 		// The same read the search itself does, deliberately: a preview that decoded a file
 		// differently from the search that found the hit would disagree with the row above it.
 		std::optional<std::string> ReadAll(const std::filesystem::path& path)
@@ -86,17 +122,18 @@ namespace Graphite {
 			{
 				hit.Text = std::move(*text);
 
-				const std::size_t byteColumn = FromUtf16Column(hit.Text, location.Column);
+				const auto [from, to] = SpanIn(hit.Text, location.Line, location.Column,
+											   location.EndLine, location.EndColumn, symbol);
 
-				hit.From = byteColumn;
-				hit.To = std::min(byteColumn + symbol.size(), hit.Text.size());
+				hit.From = from;
+				hit.To = to;
 			}
 			else
 			{
 				// The line is not available yet, and this function does not go looking for it.
-				// The column is kept so whoever does read the line later can finish the job -
+				// The span is kept so whoever does read the line later can finish the job -
 				// converting it needs the line's own bytes, and nothing else here is enough.
-				hit.UnreadUtf16Column = location.Column.Value;
+				hit.Unread = SearchHit::UnreadSpan{location.Column.Value, location.EndColumn.Value};
 			}
 
 			hits.push_back(std::move(hit));
@@ -323,19 +360,23 @@ namespace Graphite {
 			// Already read - by ShowResults, because the file was open, or by an earlier call
 			// here. This is what makes calling this on every frame a group stays expanded cost a
 			// walk of its hits and nothing else.
-			if (!hit.UnreadUtf16Column)
+			if (!hit.Unread)
 			{
 				continue;
 			}
 
 			hit.Text = LineTextFor(hit.File, hit.Line);
 
-			const std::size_t byteColumn =
-				FromUtf16Column(hit.Text, Utf16Column(*hit.UnreadUtf16Column));
+			// The same span rule ShowResults applies, so a row resolved here and a row resolved
+			// there highlight identically - which they must, since which of the two ran depends
+			// only on whether the file happened to be open.
+			const auto [from, to] =
+				SpanIn(hit.Text, hit.Line, Utf16Column(hit.Unread->Column), hit.Line,
+					   Utf16Column(hit.Unread->EndColumn), m_Symbol);
 
-			hit.From = byteColumn;
-			hit.To = std::min(byteColumn + m_Symbol.size(), hit.Text.size());
-			hit.UnreadUtf16Column.reset();
+			hit.From = from;
+			hit.To = to;
+			hit.Unread.reset();
 		}
 	}
 

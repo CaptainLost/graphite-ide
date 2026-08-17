@@ -29,8 +29,8 @@ namespace Graphite {
 	// for so AsHits stays a pure function and its tests need no files on disk.
 	//
 	// Answering std::nullopt means "not now, ask again later": AsHits then leaves the hit's text
-	// and byte range unset and records the column it would have needed the line for, in
-	// SearchHit::UnreadUtf16Column. That is what lets the references panel answer only for files
+	// and byte range unset and records the span it would have needed the line for, in
+	// SearchHit::Unread. That is what lets the references panel answer only for files
 	// already open — a lookup, no I/O — and read the rest one file at a time as the user expands
 	// them, instead of reading every file a reply named in the frame the reply arrived.
 	using LineTextSource =
