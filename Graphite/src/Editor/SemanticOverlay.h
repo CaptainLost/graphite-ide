@@ -1,0 +1,66 @@
+#pragma once
+
+#include "Lang/Api/LanguageService.h"
+#include "Lang/Api/TokenKind.h"
+
+#include <cstddef>
+#include <map>
+#include <vector>
+
+namespace Core {
+
+	class TextBuffer;
+}
+
+namespace Graphite {
+
+	// One coloured range on one line, in the coordinates the lexer's own tokens use — offsets into
+	// the tab-expanded text, because that is what SyntaxCache lexes and what the editor draws by
+	// slicing. Converted once, when a reply arrives, so drawing a row converts nothing.
+	struct SemanticSpan
+	{
+		std::size_t From = 0;
+		std::size_t To = 0;
+		TokenKind Kind = TokenKind::Text;
+	};
+
+	// What a language server said the identifiers in one document are, kept in the form the editor
+	// draws from.
+	//
+	// A colour overlay and nothing more: it says what shade a span of an already-lexed line should
+	// take, never what that line contains. A document with no server behind it has an empty
+	// overlay and is drawn exactly as it was before any of this existed.
+	//
+	// Two coordinate systems meet here and both conversions are easy to get wrong in ways that
+	// look like the colours sliding rather than like arithmetic. A server counts columns in UTF-16
+	// code units of the raw line; the lexer was handed the line with its tabs expanded, and counts
+	// bytes of that. So a position crosses UTF-16 units to raw bytes, and raw bytes to expanded
+	// offsets — the first conversion needs the line's own text, the second needs the tab width,
+	// and neither can stand in for the other.
+	class SemanticOverlay
+	{
+	public:
+		// Replaces everything. A reply is about the whole document, so anything an edit had shifted
+		// in the meantime was a stopgap waiting for exactly this.
+		void Set(const std::vector<SemanticToken>& tokens, const Core::TextBuffer& buffer,
+				 std::size_t tabWidth);
+
+		void Clear();
+
+		// Covers the gap between an edit and the next reply: lines at or below `fromLine` move by
+		// `delta`, and `fromLine` itself is emptied.
+		//
+		// That line is emptied rather than moved because it is the one whose columns the edit
+		// actually invalidated — a character typed into it shifts everything after the caret,
+		// which no line-level adjustment can express. Every other line's spans are still exactly
+		// right; only their line numbers moved, and by a number this knows.
+		void OnLinesChanged(std::size_t fromLine, std::ptrdiff_t delta);
+
+		// Empty for a line nothing was said about, which is most of them: a server names
+		// identifiers, and blank lines, comments and punctuation are nobody's.
+		const std::vector<SemanticSpan>& SpansOn(std::size_t line) const;
+
+	private:
+		std::map<std::size_t, std::vector<SemanticSpan>> m_Lines;
+	};
+}
