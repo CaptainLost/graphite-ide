@@ -37,6 +37,19 @@ namespace Graphite {
 			{TokenKind::Character, 206, 145, 120},
 			{TokenKind::Comment, 106, 153, 85},
 			{TokenKind::Preprocessor, 155, 155, 155},
+
+			// Chosen to separate by hue rather than by brightness, so the distinctions survive
+			// being glanced at: types and namespaces share a teal family because both name
+			// places rather than values, functions take the warm yellow a call is read by, and
+			// macros a red that says "this is not what it looks like". Members and parameters
+			// stay close to plain text on purpose - they are the most common identifiers on any
+			// line, and colouring them loudly would make ordinary code look alarming.
+			{TokenKind::SemanticType, 78, 201, 176},
+			{TokenKind::SemanticFunction, 220, 220, 170},
+			{TokenKind::SemanticMacro, 190, 128, 116},
+			{TokenKind::SemanticMember, 156, 220, 254},
+			{TokenKind::SemanticParameter, 156, 190, 220},
+			{TokenKind::SemanticNamespace, 106, 190, 180},
 		};
 
 		// Mirrors Core::Theme::ApplyDark — Text, TextDisabled, WindowBg and FrameBg — plus
@@ -75,6 +88,14 @@ namespace Graphite {
 			{TokenKind::Character, 163, 21, 21},
 			{TokenKind::Comment, 0, 128, 0},
 			{TokenKind::Preprocessor, 128, 128, 128},
+
+			// The same reasoning as the dark scheme's, darkened to hold contrast on white.
+			{TokenKind::SemanticType, 38, 127, 153},
+			{TokenKind::SemanticFunction, 121, 94, 38},
+			{TokenKind::SemanticMacro, 175, 0, 219},
+			{TokenKind::SemanticMember, 0, 16, 128},
+			{TokenKind::SemanticParameter, 43, 65, 115},
+			{TokenKind::SemanticNamespace, 38, 127, 153},
 		};
 
 		constexpr EditorEntry kLightEditor[] = {

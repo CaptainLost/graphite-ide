@@ -16,6 +16,12 @@ namespace Graphite {
 			case TokenKind::Preprocessor: return {"preprocessor", "Preprocessor"};
 			case TokenKind::Punctuation: return {"punctuation", "Punctuation"};
 			case TokenKind::Invalid: return {"invalid", "Invalid"};
+			case TokenKind::SemanticType: return {"semanticType", "Type (semantic)"};
+			case TokenKind::SemanticFunction: return {"semanticFunction", "Function (semantic)"};
+			case TokenKind::SemanticMacro: return {"semanticMacro", "Macro (semantic)"};
+			case TokenKind::SemanticMember: return {"semanticMember", "Member (semantic)"};
+			case TokenKind::SemanticParameter: return {"semanticParameter", "Parameter (semantic)"};
+			case TokenKind::SemanticNamespace: return {"semanticNamespace", "Namespace (semantic)"};
 			case TokenKind::Count: break;
 		}
 
