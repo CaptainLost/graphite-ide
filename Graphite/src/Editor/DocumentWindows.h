@@ -129,11 +129,32 @@ namespace Graphite {
 			// this the rows on screen at the moment of a crash keep a blank count for the rest of
 			// the session, however healthy the replacement server is.
 			ServerState LastServerState = ServerState::NotConfigured;
+
+			// Whether the document had unsaved edits the last frame it drew. Read at close, by
+			// which point the document is gone from DocumentSet and cannot be asked - and its
+			// answer decides whether this analysis is worth keeping at all.
+			bool WasModified = false;
 		};
 
 		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
 
 		void PruneSyntaxCaches();
+
+	public:
+		// Whether what this document looks like is still being settled - its declarations and its
+		// colours, the two answers that arrive once per open and change the whole file at once.
+		//
+		// The status bar's subject, and the reason it has one: a server can be perfectly ready
+		// while the file on screen is not, and without this the bar answers about the server when
+		// the question is about the file.
+		//
+		// Reference counts are deliberately not part of this. They are asked for a screen at a
+		// time as rows scroll into view, so a file being read steadily always has some in flight,
+		// and counting them would leave the bar alternating between two words for as long as
+		// anybody kept scrolling.
+		bool IsAnalysing(const std::filesystem::path& path) const;
+
+	private:
 
 		// Null when no language server is configured for this document's language, which is what
 		// puts a null LensModel on EditorView and spares the widget a branch on whether a server
@@ -146,21 +167,16 @@ namespace Graphite {
 		// is a first frame rather than an answer - the server is asked either way.
 		void KeepAnalysis(const std::filesystem::path& path, const LensState& state);
 
-		void RestoreAnalysis(const std::filesystem::path& path, LensState& state);
+		// Drops the tickets outstanding for a document that has gone, so nothing waits on answers
+		// nobody will read.
+		void ForgetPendingFor(const std::filesystem::path& path);
 
-		static std::filesystem::file_time_type ModifiedTimeOf(const std::filesystem::path& path);
+		void RestoreAnalysis(const Core::OpenItem& item, LensState& state);
 
-	public:
-		// Whether anything this document's colours or reference counts depend on is still
-		// outstanding with a server. True from the moment a file is opened until its declarations,
-		// its semantic colours and the counts for its visible rows have all come back.
-		//
-		// The status bar's subject, and the reason it has one: a server can be perfectly ready
-		// while the file on screen is not, and without this the bar answers about the server when
-		// the question is about the file.
-		bool IsAnalysing(const std::filesystem::path& path) const;
+		static std::optional<std::filesystem::file_time_type> ModifiedTimeOf(
+			const std::filesystem::path& path);
 
-	private:
+
 
 		void PruneLensStates();
 

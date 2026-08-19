@@ -1,13 +1,14 @@
 #pragma once
 
 #include "Editor/LensModel.h"
+#include "Lang/Api/LanguageService.h"
 #include "Editor/SemanticOverlay.h"
 
 #include <cstddef>
 #include <filesystem>
 #include <list>
+#include <map>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 namespace Graphite {
@@ -18,6 +19,12 @@ namespace Graphite {
 	{
 		SemanticOverlay Semantic;
 
+		// Where the declarations were. Kept with the counts rather than left to be asked for
+		// again, because a count has nowhere to be drawn until these are known: the lens rows are
+		// built from them, so restoring counts without them buys nothing until the server answers
+		// anyway - which is the wait this exists to remove.
+		std::vector<Declaration> Declarations;
+
 		std::vector<KnownCount> Counts;
 
 		// The file's modification time when this was put away. What makes the entry refusable: a
@@ -26,6 +33,18 @@ namespace Graphite {
 		// at all.
 		std::filesystem::file_time_type ModifiedAt{};
 	};
+
+	// Whether a closing document's answers are worth keeping, and the stamp to keep them under.
+	//
+	// Refuses a document with unsaved edits. The analysis was measured against the buffer while
+	// the stamp describes the file, and for a document whose edits are being discarded those are
+	// two different texts - so the stamp would vouch for text the analysis never saw, which is the
+	// one thing it exists to prevent. Refuses equally when the file's time cannot be read at all:
+	// "could not check" has to mean "do not restore", or a share that blinked at both ends of a
+	// document's life restores an entry nothing ever validated.
+	std::optional<CachedAnalysis> AnalysisWorthKeeping(
+		CachedAnalysis analysis, bool documentModified,
+		std::optional<std::filesystem::file_time_type> modifiedAt);
 
 	// Analysis of documents whose tabs have closed, so reopening one paints in the frame it opens
 	// rather than after a round trip to the server.
@@ -64,7 +83,10 @@ namespace Graphite {
 		// have to survive both.
 		std::list<std::pair<std::filesystem::path, CachedAnalysis>> m_Entries;
 
-		std::unordered_map<std::filesystem::path::string_type,
-						   decltype(m_Entries)::iterator> m_ByPath;
+		// Keyed on the path itself, as m_Lenses and m_Semantic next door are, so that two
+		// spellings of one file - separators the other way round, a trailing one - are the same
+		// document here and there alike. Keying on the raw string would make this the only map in
+		// the class that disagreed, and it would disagree by silently never hitting.
+		std::map<std::filesystem::path, decltype(m_Entries)::iterator> m_ByPath;
 	};
 }

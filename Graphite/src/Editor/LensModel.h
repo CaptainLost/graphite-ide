@@ -106,6 +106,11 @@ namespace Graphite {
 		// Used once. After the next SetDeclarations the counts live in the entries themselves and
 		// carry over normally; keeping the seed beyond that would let a number the server has
 		// since revised come back every time the declarations were rebuilt.
+		//
+		// A rebuild with no declarations at all consumes it too, and that is deliberate rather
+		// than an oversight: the caller empties the declarations when the file changes underneath
+		// the editor, and counts measured against the text it held before are exactly what should
+		// not survive that.
 		void SeedCounts(std::vector<KnownCount> counts);
 
 	private:

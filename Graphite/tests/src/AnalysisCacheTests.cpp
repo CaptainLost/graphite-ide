@@ -96,3 +96,63 @@ TEST_CASE("Keeping a document again moves it out of the way of the next eviction
 	REQUIRE(restored.has_value());
 	CHECK(restored->Counts[0].Count == 9);
 }
+
+TEST_CASE("Where a document's declarations were is kept alongside their counts")
+{
+	Graphite::AnalysisCache cache{4};
+
+	Graphite::CachedAnalysis analysis = WithCount("Draw", 7, 100);
+	analysis.Declarations.push_back(
+		{"Draw", Graphite::DeclarationKind::Function, 12, Graphite::Utf16Column{4}, 12,
+		 Graphite::Utf16Column{9}});
+
+	cache.Put("a.cpp", std::move(analysis));
+
+	const std::optional<Graphite::CachedAnalysis> restored = cache.Take("a.cpp", At(100));
+
+	REQUIRE(restored.has_value());
+	REQUIRE(restored->Declarations.size() == 1);
+	CHECK(restored->Declarations[0].Name == "Draw");
+	CHECK(restored->Declarations[0].Line == 12);
+	CHECK(restored->Declarations[0].NameColumn.Value == 9);
+}
+
+namespace {
+
+	Graphite::CachedAnalysis WithOneDeclaration()
+	{
+		Graphite::CachedAnalysis analysis;
+		analysis.Declarations.push_back(
+			{"Draw", Graphite::DeclarationKind::Function, 12, Graphite::Utf16Column{4}, 12,
+			 Graphite::Utf16Column{9}});
+
+		return analysis;
+	}
+}
+
+TEST_CASE("Analysis of a document with unsaved edits is not worth keeping")
+{
+	CHECK_FALSE(Graphite::AnalysisWorthKeeping(WithOneDeclaration(), true, At(100)).has_value());
+}
+
+TEST_CASE("Analysis is not worth keeping when the file's own time cannot be read")
+{
+	CHECK_FALSE(
+		Graphite::AnalysisWorthKeeping(WithOneDeclaration(), false, std::nullopt).has_value());
+}
+
+TEST_CASE("Analysis that says nothing about the document is not worth keeping")
+{
+	CHECK_FALSE(
+		Graphite::AnalysisWorthKeeping(Graphite::CachedAnalysis{}, false, At(100)).has_value());
+}
+
+TEST_CASE("Kept analysis carries the file time it was checked against")
+{
+	const std::optional<Graphite::CachedAnalysis> kept =
+		Graphite::AnalysisWorthKeeping(WithOneDeclaration(), false, At(100));
+
+	REQUIRE(kept.has_value());
+	CHECK(kept->ModifiedAt == At(100));
+	CHECK(kept->Declarations.size() == 1);
+}

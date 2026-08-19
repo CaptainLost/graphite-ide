@@ -784,6 +784,21 @@ namespace Graphite {
 			}
 		}
 
+		// Same map, same reason - and this one needs the sweep even though PruneLensStates erases
+		// from it too: SemanticFor is called for every drawn document, including those no server
+		// serves, so m_Semantic collects entries m_Lenses never had and that prune never reaches.
+		for (auto it = m_Semantic.begin(); it != m_Semantic.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_Semantic.erase(it);
+			}
+		}
+
 		// Same map, same reason: m_CaretScreen is keyed on a path DocumentSet can rewrite without
 		// telling it, and an entry orphaned that way would otherwise sit here for good.
 		for (auto it = m_CaretScreen.begin(); it != m_CaretScreen.end();)
@@ -823,7 +838,7 @@ namespace Graphite {
 
 			// After the server is told, not before: this only fills the gap until the server
 			// answers, and the answer has to already be on its way for the gap to be a gap.
-			RestoreAnalysis(item.Path, entry->second);
+			RestoreAnalysis(item, entry->second);
 		}
 
 		return &entry->second;
@@ -849,6 +864,7 @@ namespace Graphite {
 				// document, and holding the document open with the server would make it keep a
 				// full parse of every file ever glanced at.
 				KeepAnalysis(it->first, it->second);
+				ForgetPendingFor(it->first);
 
 				m_Semantic.erase(it->first);
 				it = m_Lenses.erase(it);
@@ -884,62 +900,92 @@ namespace Graphite {
 			}
 		}
 
-		for (const auto& [ticket, pending] : m_PendingCounts)
-		{
-			if (pending.Path == path)
-			{
-				return true;
-			}
-		}
-
 		return false;
+	}
+
+	void DocumentWindows::ForgetPendingFor(const std::filesystem::path& path)
+	{
+		// A ticket is only ever taken out of these when its answer arrives, so a document closed
+		// with requests outstanding leaves entries behind that nothing collects if the server
+		// never answers them. IsAnalysing reads all three, and would then report that a file
+		// nobody has open is still being looked at - for the rest of the session.
+		std::erase_if(m_PendingSemantic, [&path](const auto& entry) { return entry.second == path; });
+		std::erase_if(m_PendingSymbols, [&path](const auto& entry) { return entry.second == path; });
+		std::erase_if(m_PendingCounts,
+					  [&path](const auto& entry) { return entry.second.Path == path; });
 	}
 
 	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& state)
 	{
 		CachedAnalysis analysis;
+		analysis.Declarations = state.Declarations;
 		analysis.Counts = state.Model.KnownCounts();
-		analysis.ModifiedAt = ModifiedTimeOf(path);
 
 		if (const auto semantic = m_Semantic.find(path); semantic != m_Semantic.end())
 		{
 			analysis.Semantic = semantic->second;
 		}
 
-		if (analysis.Counts.empty() && analysis.Semantic.IsEmpty())
+		std::optional<CachedAnalysis> worth =
+			AnalysisWorthKeeping(std::move(analysis), state.WasModified, ModifiedTimeOf(path));
+
+		if (worth)
 		{
-			// Nothing came back before the tab closed, so there is nothing to restore. Kept out
-			// rather than stored empty, where it would evict an entry that does hold answers.
+			m_Analysis.Put(path, std::move(*worth));
+		}
+	}
+
+	void DocumentWindows::RestoreAnalysis(const Core::OpenItem& item, LensState& state)
+	{
+		const std::optional<std::filesystem::file_time_type> modified = ModifiedTimeOf(item.Path);
+
+		if (!modified || !item.Document)
+		{
 			return;
 		}
 
-		m_Analysis.Put(path, std::move(analysis));
-	}
-
-	void DocumentWindows::RestoreAnalysis(const std::filesystem::path& path, LensState& state)
-	{
-		std::optional<CachedAnalysis> restored = m_Analysis.Take(path, ModifiedTimeOf(path));
+		std::optional<CachedAnalysis> restored = m_Analysis.Take(item.Path, *modified);
 
 		if (!restored)
 		{
 			return;
 		}
 
-		// The counts wait for declarations, which have not arrived yet - this document has just
-		// opened. The colours do not: they are measured against the text, which is on screen now.
+		state.Declarations = std::move(restored->Declarations);
+		state.HaveDeclarations = !state.Declarations.empty();
+
+		// Seeded before the rebuild below, because that rebuild is what applies the seed.
 		state.Model.SeedCounts(std::move(restored->Counts));
-		m_Semantic[path] = std::move(restored->Semantic);
+
+		// Built here rather than left to the rewrap check next frame: that check compares BuiltAt
+		// against the document's wrap width, and both are zero on a document this newly opened, so
+		// it would see nothing to do and the rows would wait for the server after all.
+		state.Model.SetDeclarations(state.Declarations, item.Rows, item.Document->GetBuffer(),
+									item.TabWidth);
+		state.BuiltAt = item.WrappedTo;
+
+		m_Semantic[item.Path] = std::move(restored->Semantic);
+
+		// WantSymbols is left standing: this is what the file looked like when its tab closed, and
+		// the server is still asked. Its answer replaces all of this, and until it arrives the
+		// reader has last time's answer rather than an empty margin.
 	}
 
-	std::filesystem::file_time_type DocumentWindows::ModifiedTimeOf(const std::filesystem::path& path)
+	std::optional<std::filesystem::file_time_type> DocumentWindows::ModifiedTimeOf(
+		const std::filesystem::path& path)
 	{
 		std::error_code error;
 		const std::filesystem::file_time_type modified = std::filesystem::last_write_time(path, error);
 
-		// A file that cannot be stat-ed - unsaved, deleted, on a share that just went away - gets
-		// the default stamp. Two of those compare equal, which is the lenient answer, but reaching
-		// here at all means the path is not a file on disk and its analysis was never about one.
-		return error ? std::filesystem::file_time_type{} : modified;
+		// Empty rather than a default stamp: two default stamps compare equal, so a file that
+		// could not be read at both ends of a document's life - a share that blinked, a scanner
+		// holding it open - would restore an entry nothing had ever checked.
+		if (error)
+		{
+			return std::nullopt;
+		}
+
+		return modified;
 	}
 
 	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
@@ -1085,6 +1131,8 @@ namespace Graphite {
 	void DocumentWindows::UpdateLenses(const Core::OpenItem& item, LensState& state,
 									   const EditorFrameResult& frame)
 	{
+		state.WasModified = item.Document && item.Document->IsModified();
+
 		// A server that has just entered Starting is a server that has just been replaced —
 		// LanguageServices::RestartServer sets exactly that state, and the client it replaced
 		// failed every request it was holding. Those failures leave their rows in Asked, where
