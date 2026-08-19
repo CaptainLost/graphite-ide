@@ -155,3 +155,51 @@ TEST_CASE("A declaration naming a line the buffer no longer has gets no lens")
 	CHECK(model.LensAt(1) != nullptr);
 	CHECK(model.RowsNeedingCounts(0, rows.TotalRows()) == std::vector<std::size_t>{1});
 }
+
+TEST_CASE("Only answered lenses are worth remembering")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Update", 3)}, rows, buffer, 4);
+	model.SetCount(1, 7);
+
+	const std::vector<Graphite::KnownCount> remembered = model.KnownCounts();
+
+	REQUIRE(remembered.size() == 1);
+	CHECK(remembered[0].Name == "Draw");
+	CHECK(remembered[0].Kind == Graphite::DeclarationKind::Function);
+	CHECK(remembered[0].Count == 7);
+}
+
+TEST_CASE("A count remembered from before is known the moment its declaration arrives")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SeedCounts({{"Draw", Graphite::DeclarationKind::Function, 7}});
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+
+	REQUIRE(model.LensAt(1) != nullptr);
+	CHECK(model.LensAt(1)->CountKnown);
+	CHECK(model.LensAt(1)->Count == 7);
+	CHECK(model.RowsNeedingCounts(0, 4).empty());
+}
+
+TEST_CASE("A remembered count whose declaration is gone is left behind")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SeedCounts({{"Deleted", Graphite::DeclarationKind::Function, 7}});
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+
+	CHECK_FALSE(model.LensAt(1)->CountKnown);
+	CHECK(model.KnownCounts().empty());
+}

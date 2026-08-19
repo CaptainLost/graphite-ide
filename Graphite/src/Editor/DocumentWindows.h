@@ -2,6 +2,7 @@
 
 #include "Editor/ModalGate.h"
 #include "Editor/FindBar.h"
+#include "Editor/AnalysisCache.h"
 #include "Editor/LensModel.h"
 #include "Editor/SemanticOverlay.h"
 #include "Editor/ModalQuestion.h"
@@ -139,6 +140,15 @@ namespace Graphite {
 		// exists. Opens the document with the server the first time it is asked for.
 		LensState* LensFor(const Core::OpenItem& item);
 		SemanticOverlay& SemanticFor(const Core::OpenItem& item);
+
+		// Analysis outlives its tab: KeepAnalysis puts a closing document's answers away and
+		// RestoreAnalysis hands them to a reopening one. See AnalysisCache for why what comes back
+		// is a first frame rather than an answer - the server is asked either way.
+		void KeepAnalysis(const std::filesystem::path& path, const LensState& state);
+
+		void RestoreAnalysis(const std::filesystem::path& path, LensState& state);
+
+		static std::filesystem::file_time_type ModifiedTimeOf(const std::filesystem::path& path);
 
 	public:
 		// Whether anything this document's colours or reference counts depend on is still
@@ -398,6 +408,10 @@ namespace Graphite {
 		// state rather than folded into it: they answer different questions about the same file
 		// and nothing about one is needed to read the other.
 		std::map<std::filesystem::path, SemanticOverlay> m_Semantic;
+
+		// Answers belonging to documents whose tabs have closed. Sixteen because the point is the
+		// handful of files someone moves between, and an entry costs a map of spans per line.
+		AnalysisCache m_Analysis{16};
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;
 
 		struct PendingCount

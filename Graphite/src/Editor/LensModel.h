@@ -4,6 +4,7 @@
 #include "Lang/Api/LanguageService.h"
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace Core {
@@ -36,6 +37,16 @@ namespace Graphite {
 
 		std::size_t Count = 0;
 		bool CountKnown = false;
+	};
+
+	// A count that survived its document, paired with the identity it belongs to. Name and kind
+	// rather than a row, for the same reason SetDeclarations carries counts over that way: a row
+	// only means something against the buffer it was measured in, and this outlives that buffer.
+	struct KnownCount
+	{
+		std::string Name;
+		DeclarationKind Kind = DeclarationKind::Other;
+		std::size_t Count = 0;
 	};
 
 	// The per-document model behind the reference-count rows: which declarations have a lens,
@@ -84,6 +95,19 @@ namespace Graphite {
 
 		const Lens* LensAt(std::size_t documentRow) const;
 
+		// Answers worth keeping past the model's own life - the counts that came back, and nothing
+		// about the ones still outstanding. What a closed document leaves behind.
+		std::vector<KnownCount> KnownCounts() const;
+
+		// Counts from a previous life of this document, applied to whatever declarations arrive
+		// next and matching by the same identity SetDeclarations carries over on. A name nothing
+		// answers to is dropped rather than kept waiting.
+		//
+		// Used once. After the next SetDeclarations the counts live in the entries themselves and
+		// carry over normally; keeping the seed beyond that would let a number the server has
+		// since revised come back every time the declarations were rebuilt.
+		void SeedCounts(std::vector<KnownCount> counts);
+
 	private:
 		// The declaration's name and kind travel with its Lens so the next SetDeclarations can
 		// carry a count over by identity rather than by row - see SetDeclarations's comment.
@@ -100,5 +124,8 @@ namespace Graphite {
 		// answer screen-row questions and carries no counts of its own.
 		std::vector<Entry> m_Entries;
 		LensRows m_Rows;
+
+		// Empty except between a restore and the first reply that follows it.
+		std::vector<KnownCount> m_Seeded;
 	};
 }

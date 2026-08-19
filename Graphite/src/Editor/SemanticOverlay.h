@@ -47,6 +47,10 @@ namespace Graphite {
 
 		void Clear();
 
+		// True for a document nothing has been said about yet, which is also true of one whose
+		// every line a server declined to colour - the two are the same thing to a reader.
+		bool IsEmpty() const { return m_Lines.empty(); }
+
 		// Covers the gap between an edit and the next reply: lines at or below `fromLine` move by
 		// `delta`, and `fromLine` itself is emptied.
 		//

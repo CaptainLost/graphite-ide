@@ -131,3 +131,16 @@ TEST_CASE("A reply replaces everything an edit had shifted")
 	REQUIRE(overlay.SpansOn(1).size() == 1);
 	CHECK(overlay.SpansOn(1)[0].Kind == Graphite::TokenKind::SemanticMacro);
 }
+
+TEST_CASE("An overlay nothing was said about is empty, and one with a span is not")
+{
+	const Core::TextBuffer buffer{"int value;\n"};
+
+	Graphite::SemanticOverlay overlay;
+
+	CHECK(overlay.IsEmpty());
+
+	overlay.Set({{0, Graphite::Utf16Column{4}, 5, Graphite::SemanticKind::Member}}, buffer, 4);
+
+	CHECK_FALSE(overlay.IsEmpty());
+}

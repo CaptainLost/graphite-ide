@@ -820,6 +820,10 @@ namespace Graphite {
 			// per document they are needed.
 			m_LanguageServices.EnsureStarted(item.Path, language);
 			m_LanguageServices.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
+
+			// After the server is told, not before: this only fills the gap until the server
+			// answers, and the answer has to already be on its way for the gap to be a gap.
+			RestoreAnalysis(item.Path, entry->second);
 		}
 
 		return &entry->second;
@@ -839,6 +843,13 @@ namespace Graphite {
 			else
 			{
 				m_LanguageServices.CloseDocument(it->first, LanguageOfPath(it->first));
+
+				// Kept rather than dropped, so reopening this document paints in the frame it
+				// opens. The server is still told it closed: this remembers the answers, not the
+				// document, and holding the document open with the server would make it keep a
+				// full parse of every file ever glanced at.
+				KeepAnalysis(it->first, it->second);
+
 				m_Semantic.erase(it->first);
 				it = m_Lenses.erase(it);
 			}
@@ -882,6 +893,53 @@ namespace Graphite {
 		}
 
 		return false;
+	}
+
+	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& state)
+	{
+		CachedAnalysis analysis;
+		analysis.Counts = state.Model.KnownCounts();
+		analysis.ModifiedAt = ModifiedTimeOf(path);
+
+		if (const auto semantic = m_Semantic.find(path); semantic != m_Semantic.end())
+		{
+			analysis.Semantic = semantic->second;
+		}
+
+		if (analysis.Counts.empty() && analysis.Semantic.IsEmpty())
+		{
+			// Nothing came back before the tab closed, so there is nothing to restore. Kept out
+			// rather than stored empty, where it would evict an entry that does hold answers.
+			return;
+		}
+
+		m_Analysis.Put(path, std::move(analysis));
+	}
+
+	void DocumentWindows::RestoreAnalysis(const std::filesystem::path& path, LensState& state)
+	{
+		std::optional<CachedAnalysis> restored = m_Analysis.Take(path, ModifiedTimeOf(path));
+
+		if (!restored)
+		{
+			return;
+		}
+
+		// The counts wait for declarations, which have not arrived yet - this document has just
+		// opened. The colours do not: they are measured against the text, which is on screen now.
+		state.Model.SeedCounts(std::move(restored->Counts));
+		m_Semantic[path] = std::move(restored->Semantic);
+	}
+
+	std::filesystem::file_time_type DocumentWindows::ModifiedTimeOf(const std::filesystem::path& path)
+	{
+		std::error_code error;
+		const std::filesystem::file_time_type modified = std::filesystem::last_write_time(path, error);
+
+		// A file that cannot be stat-ed - unsaved, deleted, on a share that just went away - gets
+		// the default stamp. Two of those compare equal, which is the lenient answer, but reaching
+		// here at all means the path is not a file on disk and its analysis was never about one.
+		return error ? std::filesystem::file_time_type{} : modified;
 	}
 
 	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)

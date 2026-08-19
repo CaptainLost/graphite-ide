@@ -93,6 +93,19 @@ namespace Graphite {
 								}),
 				  next.end());
 
+		// After the live entries, never before: emplace leaves an existing key alone, so a count
+		// this model already holds outranks one restored from a previous life of the document.
+		for (const KnownCount& seeded : m_Seeded)
+		{
+			Lens lens;
+			lens.Count = seeded.Count;
+			lens.CountKnown = true;
+
+			previousByKey.emplace(CarryOverKey(seeded.Name, seeded.Kind), lens);
+		}
+
+		m_Seeded.clear();
+
 		for (Entry& entry : next)
 		{
 			const auto it = previousByKey.find(CarryOverKey(entry.Name, entry.Kind));
@@ -115,6 +128,26 @@ namespace Graphite {
 		}
 
 		m_Rows.SetAnchors(std::move(anchors));
+	}
+
+	std::vector<KnownCount> LensModel::KnownCounts() const
+	{
+		std::vector<KnownCount> known;
+
+		for (const Entry& entry : m_Entries)
+		{
+			if (entry.LensValue.CountKnown)
+			{
+				known.push_back({entry.Name, entry.Kind, entry.LensValue.Count});
+			}
+		}
+
+		return known;
+	}
+
+	void LensModel::SeedCounts(std::vector<KnownCount> counts)
+	{
+		m_Seeded = std::move(counts);
 	}
 
 	void LensModel::SetCount(std::size_t documentRow, std::size_t count)

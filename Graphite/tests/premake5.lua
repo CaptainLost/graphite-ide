@@ -34,6 +34,8 @@ project "GraphiteTests"
         -- drags in ImGui and the application's own layers. The units named here are the parts
         -- that are only logic, drawing nothing and reaching no further than Core and the
         -- search modules already listed below.
+        "%{wks.location}/Graphite/src/Editor/AnalysisCache.h",
+        "%{wks.location}/Graphite/src/Editor/AnalysisCache.cpp",
         "%{wks.location}/Graphite/src/Editor/DefinitionNavigation.h",
         "%{wks.location}/Graphite/src/Editor/DefinitionNavigation.cpp",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
