@@ -140,6 +140,18 @@ namespace Graphite {
 		LensState* LensFor(const Core::OpenItem& item);
 		SemanticOverlay& SemanticFor(const Core::OpenItem& item);
 
+	public:
+		// Whether anything this document's colours or reference counts depend on is still
+		// outstanding with a server. True from the moment a file is opened until its declarations,
+		// its semantic colours and the counts for its visible rows have all come back.
+		//
+		// The status bar's subject, and the reason it has one: a server can be perfectly ready
+		// while the file on screen is not, and without this the bar answers about the server when
+		// the question is about the file.
+		bool IsAnalysing(const std::filesystem::path& path) const;
+
+	private:
+
 		void PruneLensStates();
 
 		// Sends what the frame's edits and geometry mean for this document's lenses, and asks for

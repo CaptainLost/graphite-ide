@@ -845,6 +845,45 @@ namespace Graphite {
 		}
 	}
 
+	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
+	{
+		if (const auto state = m_Lenses.find(path); state != m_Lenses.end())
+		{
+			// Wanted but not yet asked counts too: the retry clock is a delay before asking, not
+			// an answer, and a bar that went quiet during it would be saying the file had settled.
+			if (state->second.SymbolsOutstanding || state->second.WantSymbols)
+			{
+				return true;
+			}
+		}
+
+		for (const auto& [ticket, pending] : m_PendingSemantic)
+		{
+			if (pending == path)
+			{
+				return true;
+			}
+		}
+
+		for (const auto& [ticket, pending] : m_PendingSymbols)
+		{
+			if (pending == path)
+			{
+				return true;
+			}
+		}
+
+		for (const auto& [ticket, pending] : m_PendingCounts)
+		{
+			if (pending.Path == path)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
 	{
 		return m_Semantic[item.Path];

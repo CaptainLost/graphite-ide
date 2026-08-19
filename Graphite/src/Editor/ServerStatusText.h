@@ -31,6 +31,15 @@ namespace Graphite {
 	// go-to-definition, so saying it is missing there is noise. A recognised programming language
 	// is different, because the expectation is reasonable and the silence would otherwise look
 	// like something broken.
+	// What the bar says while the file on screen still has questions outstanding with a server
+	// that is otherwise up: its colours are still the lexer's own and its reference counts are
+	// still blank, and "ready" answers about the server when the question is about the file.
+	//
+	// Falls through to ServerStatusText for any state other than Ready. A server still indexing
+	// the whole project is the larger truth - this file's questions are outstanding because of
+	// it - and naming the file there would bury the reason.
+	std::string AnalysingText(const ServerStatus& status, const std::string& fileName);
+
 	std::string NoServerText(LanguageId language);
 
 	std::string NoServerDetail(LanguageId language);

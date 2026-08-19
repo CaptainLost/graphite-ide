@@ -56,6 +56,16 @@ namespace Graphite {
 		return {};
 	}
 
+	std::string AnalysingText(const ServerStatus& status, const std::string& fileName)
+	{
+		if (status.State != ServerState::Ready)
+		{
+			return ServerStatusText(status);
+		}
+
+		return status.Name + ": analysing " + fileName;
+	}
+
 	std::string NoServerText(LanguageId language)
 	{
 		const std::string_view name = LanguageDisplayName(language);

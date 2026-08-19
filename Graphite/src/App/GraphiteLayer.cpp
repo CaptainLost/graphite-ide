@@ -377,7 +377,16 @@ namespace Graphite {
 		{
 			// The active document's own language has something to say, and it outranks everything
 			// else: it is the one whose answers are about what is on screen.
-			messages.Server = ServerStatusText(status);
+			//
+			// Named while its answers are still coming, because a ready server and a file whose
+			// colours have not arrived look identical from here otherwise - and that gap is
+			// exactly when someone wonders whether anything is happening at all.
+			const std::filesystem::path& path = m_Documents.At(*m_Documents.GetActive()).Path;
+
+			messages.Server = m_DocumentWindows.IsAnalysing(path)
+								  ? AnalysingText(status, Core::ToUtf8(path.filename()))
+								  : ServerStatusText(status);
+
 			messages.ServerDetail = ServerStatusDetail(status);
 		}
 		else if (std::string unserved = NoServerText(activeLanguage); !unserved.empty())
