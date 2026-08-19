@@ -83,16 +83,20 @@ namespace Graphite {
 		// with one project root at a time, so that ambiguity has never mattered in practice.
 		ServerStatus StatusFor(LanguageId language) const;
 
-		// The status worth showing when the active document's own language has nothing to say —
-		// which is most of the time, since a folder now starts its servers before any document of
-		// theirs is opened, and a README or a build file is a perfectly ordinary thing to be
-		// looking at while a server indexes behind it.
+		// The state of the workspace's language servers as a whole, for the status bar to fall
+		// back on when the active document's own language has nothing to say — which is most of
+		// the time, since a folder starts its servers before any document of theirs is opened,
+		// and a README is a perfectly ordinary thing to be looking at while one indexes behind it.
 		//
-		// Busy first (Starting, Indexing), then broken (Failed, NotFound, NoCompileDatabase).
-		// Ready is deliberately never noteworthy: it is the resting state, and a badge that is
-		// always on is one nobody reads — which would cost exactly the attention the states above
-		// need. Nothing at all when no server is in either group.
-		std::optional<ServerStatus> NoteworthyStatus() const;
+		// Busy first (Starting, Indexing), then broken (Failed, NotFound, NoCompileDatabase),
+		// then Ready. Ready is included: a server that is up and answering is worth saying so,
+		// the slot is empty anyway, and leaving it silent means the bar comes alive only when a
+		// file of that language is opened — which reads as the feature not working rather than as
+		// a deliberately quiet resting state.
+		//
+		// Nothing at all when no server has been started, which is the one case with genuinely
+		// nothing to report.
+		std::optional<ServerStatus> OverallStatus() const;
 
 		// UI thread, once a frame: collects each running client's replies and status, notices a
 		// process that has died, and restarts it once its backoff has elapsed. Never blocks. This
@@ -251,10 +255,20 @@ namespace Graphite {
 		// Poll to turn into a started server. Held through a shared_ptr for the same reason
 		// SearchService holds its results that way: a walk still winding down after Cancel needs
 		// somewhere valid to write, whether or not anything is still reading.
+		struct WarmFinding
+		{
+			LanguageId Language = LanguageId::PlainText;
+			std::filesystem::path Path;
+
+			// Read on the walk's own thread, because it is wanted the moment the server starts
+			// and reading it in Poll would be a file of unknown size opened inside a frame.
+			std::string Text;
+		};
+
 		struct WarmFindings
 		{
 			std::mutex Mutex;
-			std::vector<std::pair<LanguageId, std::filesystem::path>> Found;
+			std::vector<WarmFinding> Found;
 		};
 
 		std::shared_ptr<WarmFindings> m_Warm = std::make_shared<WarmFindings>();

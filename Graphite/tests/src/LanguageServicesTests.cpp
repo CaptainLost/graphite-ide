@@ -4,6 +4,7 @@
 #include "TempDirectory.h"
 
 #include <chrono>
+#include <optional>
 #include <thread>
 
 TEST_CASE("A language with no configured server reports NotConfigured")
@@ -109,6 +110,52 @@ TEST_CASE("Opening a folder starts a server for a language the tree contains")
 
 	CHECK(attempt < kMaxAttempts);
 	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotFound);
+}
+
+// What keeps the status bar from going silent at exactly the wrong moment: a server started by
+// opening the folder has to be reportable before any document of its language is open, because
+// on a fresh start there is no such document and its indexing is the only thing happening.
+TEST_CASE("A server started by opening a folder is reportable with no document of its language")
+{
+	TempDirectory temp;
+
+	temp.MakeFile("src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{temp.GetPath()};
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.WarmUp(temp.GetPath(), false);
+
+	constexpr int kMaxAttempts = 500;
+	int attempt = 0;
+
+	for (; attempt < kMaxAttempts; ++attempt)
+	{
+		services.Poll();
+
+		if (services.OverallStatus().has_value())
+		{
+			break;
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(attempt < kMaxAttempts);
+
+	const std::optional<Graphite::ServerStatus> overall = services.OverallStatus();
+
+	REQUIRE(overall.has_value());
+	CHECK(overall->State == Graphite::ServerState::NotFound);
+	CHECK(overall->Name == "clangd");
+}
+
+TEST_CASE("A workspace with no server started has nothing to report")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	// Nothing started at all, so nothing to report - the resting case the bar stays quiet for.
+	CHECK_FALSE(services.OverallStatus().has_value());
 }
 
 TEST_CASE("A folder holding no source of a configured language starts nothing")

@@ -350,9 +350,14 @@ namespace Graphite {
 			}
 		}
 
+		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
+		// started servers and what moves a running one from Starting to Indexing to Ready — so a
+		// status read ahead of it is always one frame stale, and on the frame a server first
+		// appears there is nothing to read at all.
+		m_LanguageServices.Poll();
+
 		// EnsureStarted is safe to call every frame the document stays active — see its own
-		// comment; the common case is a single map lookup. Poll drains what the server has said
-		// since the last frame, which is what lets Starting become Indexing become Ready here.
+		// comment; the common case is a single map lookup.
 		ServerStatus status;
 		LanguageId activeLanguage = LanguageId::PlainText;
 
@@ -383,16 +388,15 @@ namespace Graphite {
 			messages.Server = std::move(unserved);
 			messages.ServerDetail = NoServerDetail(activeLanguage);
 		}
-		else if (const std::optional<ServerStatus> noteworthy = m_LanguageServices.NoteworthyStatus())
+		else if (const std::optional<ServerStatus> overall = m_LanguageServices.OverallStatus())
 		{
-			// Nothing to say about what is open - plain text, or no document at all - so any
-			// server that is busy or broken. This is what makes indexing started by opening the
-			// folder visible while reading a README, instead of a server working in silence.
-			messages.Server = ServerStatusText(*noteworthy);
-			messages.ServerDetail = ServerStatusDetail(*noteworthy);
+			// Nothing to say about what is open - plain text, or no document at all - so the
+			// workspace's servers as a whole. This is what makes a server started by opening the
+			// folder visible at all: without it the bar stays blank until a file of its language
+			// is opened, which looks like the feature is not working.
+			messages.Server = ServerStatusText(*overall);
+			messages.ServerDetail = ServerStatusDetail(*overall);
 		}
-
-		m_LanguageServices.Poll();
 
 		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
 

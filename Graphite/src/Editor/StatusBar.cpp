@@ -36,11 +36,16 @@ namespace Graphite {
 			return (barHeight - ImGui::GetTextLineHeight()) * 0.5f;
 		}
 
-		void DrawRightAligned(const std::string& text)
+		// Positioned outright rather than through SameLine, as DrawCentred beside it already is.
+		// SameLine places relative to the item before it, so it silently needs one - and the
+		// server's state is drawn on frames where no document is open and nothing precedes it.
+		void DrawRightAligned(const std::string& text, float barHeight)
 		{
 			const float width = ImGui::CalcTextSize(text.c_str()).x;
 
-			ImGui::SameLine(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x);
+			ImGui::SetCursorPos(
+				ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x,
+					   CentredTextY(barHeight)));
 			ImGui::TextUnformatted(text.c_str());
 		}
 
@@ -110,26 +115,42 @@ namespace Graphite {
 		}
 
 		const auto active = documents.GetActive();
+		const bool hasDocument = active && documents.At(*active).Document.has_value();
 
-		if (active && documents.At(*active).Document)
+		if (hasDocument)
+		{
+			ImGui::SetCursorPosY(CentredTextY(height));
+			ImGui::TextUnformatted(DescribeDocument(documents.At(*active), root).c_str());
+		}
+
+		std::string rightAligned;
+
+		// Server first, and only when there is something to say — a language with no server
+		// configured contributes nothing to the bar, not even a separator.
+		//
+		// Outside the has-a-document branch deliberately: a server is started when the folder
+		// opens, before anything has been opened from it, so the frames where its indexing most
+		// wants reporting are exactly the ones with no document to hang the report off.
+		if (messages.Server && !messages.Server->empty())
+		{
+			rightAligned = *messages.Server;
+		}
+
+		if (hasDocument)
 		{
 			const Core::OpenItem& item = documents.At(*active);
 
-			ImGui::SetCursorPosY(CentredTextY(height));
-			ImGui::TextUnformatted(DescribeDocument(item, root).c_str());
-
-			std::string rightAligned;
-
-			// Server comes first, and only when there is something to say — a language with no
-			// server configured contributes nothing to the bar, not even a separator.
-			if (messages.Server && !messages.Server->empty())
+			if (!rightAligned.empty())
 			{
-				rightAligned = *messages.Server + "    ";
+				rightAligned += "    ";
 			}
 
 			rightAligned += DescribeCaret(item) + "    " + DescribeTextFormat(item);
+		}
 
-			DrawRightAligned(rightAligned);
+		if (!rightAligned.empty())
+		{
+			DrawRightAligned(rightAligned, height);
 
 			if (messages.Server && !messages.Server->empty() && ImGui::IsItemHovered() &&
 				messages.ServerDetail && !messages.ServerDetail->empty())

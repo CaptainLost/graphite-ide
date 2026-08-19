@@ -8,10 +8,32 @@
 #include "Search/FileEnumerator.h"
 
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 namespace Graphite {
+
+	namespace {
+
+		// Bytes as they sit on disk, which is what a server wants: it re-reads the file itself for
+		// its index, and this copy exists only to make it load the compilation database. A third
+		// copy of this three-line helper rather than a shared one, matching what PreviewContent
+		// and SearchService already do - worth extracting when something needs a fourth.
+		std::string ReadAll(const std::filesystem::path& path)
+		{
+			std::ifstream in(path, std::ios::binary);
+
+			if (!in)
+			{
+				return {};
+			}
+
+			return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+		}
+	}
 
 	std::chrono::steady_clock::duration RestartBackoff(std::size_t restarts)
 	{
@@ -159,7 +181,7 @@ namespace Graphite {
 		return {};
 	}
 
-	std::optional<ServerStatus> LanguageServices::NoteworthyStatus() const
+	std::optional<ServerStatus> LanguageServices::OverallStatus() const
 	{
 		const auto rank = [](ServerState state) -> int
 		{
@@ -167,14 +189,15 @@ namespace Graphite {
 			{
 				case ServerState::Indexing:
 				case ServerState::Starting:
-					return 2; // something is happening and will stop happening
+					return 3; // something is happening and will stop happening
 				case ServerState::Failed:
 				case ServerState::NotFound:
 				case ServerState::NoCompileDatabase:
-					return 1; // something is wrong and will not fix itself
+					return 2; // something is wrong and will not fix itself
 				case ServerState::Ready:
+					return 1; // up and answering, which is worth saying when nothing else is
 				case ServerState::NotConfigured:
-					return 0;
+					return 0; // no server here at all - the one case with nothing to report
 			}
 
 			return 0;
@@ -511,8 +534,13 @@ namespace Graphite {
 
 				seen.push_back(language);
 
+				// Read here, on the walk's thread. Poll needs it to prime the server the moment
+				// it starts, and a file of unknown size read inside a frame is exactly what this
+				// class does not do.
+				std::string text = ReadAll(file);
+
 				const std::lock_guard<std::mutex> guard(warm->Mutex);
-				warm->Found.emplace_back(language, file);
+				warm->Found.push_back(WarmFinding{language, file, std::move(text)});
 			});
 		});
 	}
@@ -522,16 +550,54 @@ namespace Graphite {
 		// What the warm-up walk found, turned into servers here rather than on the worker: every
 		// other path into EnsureStarted is the UI thread, and m_Servers has no lock because that
 		// has always been true.
-		std::vector<std::pair<LanguageId, std::filesystem::path>> warm;
+		std::vector<WarmFinding> warm;
 
 		{
 			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
 			warm.swap(m_Warm->Found);
 		}
 
-		for (const auto& [language, file] : warm)
+		for (WarmFinding& finding : warm)
 		{
-			EnsureStarted(file, language);
+			EnsureStarted(finding.Path, finding.Language);
+
+			// Opened and closed straight away, to make the server load its compilation database.
+			// This is a workaround and worth naming as one.
+			//
+			// clangd loads that database lazily - on the first document it is asked about - and
+			// loading it is what starts the background index. Verified against clangd 22: twelve
+			// seconds after initialize with no document open produces no progress of any kind,
+			// and the first didOpen produces it immediately. So without this a server starts,
+			// reports itself ready, and then sits idle until the user opens a file - which is
+			// exactly the work opening the folder was meant to have underway already.
+			//
+			// One document is enough for all of them: on an empty index cache, a single didOpen
+			// takes the reported work from 0/1 to 0/201 within a tenth of a second - the whole
+			// compilation database, not just the file sent - and it keeps going after the close.
+			//
+			// Two better-looking routes were tried and neither works. workspace/symbol, being a
+			// question about the whole project rather than a claim about one document, answers
+			// instantly with nothing and loads no database. --compile-commands-dir, which reads
+			// as "here is the database, load it", changes nothing either: with an empty cache and
+			// that flag set, eighteen seconds after initialize produced no indexing and created
+			// no index directory at all. Nothing else in LSP or in clangd's flags says "load your
+			// project".
+			//
+			// What this does say is true, which is why it is a workaround rather than a lie:
+			// didOpen means the client owns this URI's content, and for those two messages it
+			// does - the content sent is what is on disk. It is closed again immediately because
+			// nothing is looking at it, the index task it started is a background one that
+			// outlives the document, and leaving it open would collide with a real didOpen if
+			// the user later opened that same file.
+			//
+			// If clangd ever loads its database eagerly, this stops having any effect and
+			// nothing breaks - the failure mode is a return to indexing on first open, not a
+			// wrong answer.
+			if (!finding.Text.empty())
+			{
+				OpenDocument(finding.Path, finding.Language, std::move(finding.Text));
+				CloseDocument(finding.Path, finding.Language);
+			}
 		}
 
 		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
@@ -573,6 +639,31 @@ namespace Graphite {
 			}
 
 			status.Restarts = server.Restarts;
+
+			// Logged on the change, not on the state: Poll runs every frame, so anything keyed on
+			// the state itself would say the same thing sixty times a second. Indexing is the one
+			// worth announcing at both ends — while it runs the server answers from a partial
+			// index, so counts read low and definitions in files it has not reached yet are
+			// missing, and knowing when that stopped being true is the difference between a wrong
+			// answer and a wrong answer with a reason.
+			if (status.State != server.Status.State)
+			{
+				const std::string_view name = LanguageDisplayName(key.Language);
+
+				if (status.State == ServerState::Indexing)
+				{
+					APP_INFO("{} started indexing for {}", server.Status.Name, name);
+				}
+				else if (server.Status.State == ServerState::Indexing)
+				{
+					APP_INFO("{} finished indexing for {}", server.Status.Name, name);
+				}
+				else if (status.State == ServerState::Failed)
+				{
+					APP_WARN("{} failed for {}: {}", server.Status.Name, name, status.Detail);
+				}
+			}
+
 			server.Status = status;
 
 			if (status.State != ServerState::Failed)
