@@ -433,6 +433,143 @@ namespace Graphite {
 		return locations;
 	}
 
+	namespace {
+
+		// The protocol's own token-type names, mapped onto the far smaller set this editor
+		// colours. Anything unlisted is Other, which leaves the lexer's colour standing — the
+		// right answer for a name whose kind makes no visible difference.
+		SemanticKind KindForTokenType(std::string_view name)
+		{
+			if (name == "namespace")
+			{
+				return SemanticKind::Namespace;
+			}
+
+			// Every way a server can say "this names a type". clangd sends class, enum, struct
+			// and concept where another server might send only "type", and a reader wants them
+			// coloured alike regardless.
+			if (name == "type" || name == "class" || name == "enum" || name == "struct" ||
+				name == "interface" || name == "typeParameter" || name == "concept")
+			{
+				return SemanticKind::Type;
+			}
+
+			if (name == "function" || name == "method")
+			{
+				return SemanticKind::Function;
+			}
+
+			if (name == "macro")
+			{
+				return SemanticKind::Macro;
+			}
+
+			if (name == "property" || name == "field" || name == "enumMember")
+			{
+				return SemanticKind::Member;
+			}
+
+			if (name == "parameter")
+			{
+				return SemanticKind::Parameter;
+			}
+
+			return SemanticKind::Other;
+		}
+	}
+
+	std::vector<SemanticKind> ParseSemanticLegend(const nlohmann::json& initializeResult)
+	{
+		std::vector<SemanticKind> legend;
+
+		const nlohmann::json* capabilities = FirstOf(initializeResult, {"capabilities"});
+
+		if (capabilities == nullptr)
+		{
+			return legend;
+		}
+
+		const nlohmann::json* provider = FirstOf(*capabilities, {"semanticTokensProvider"});
+
+		if (provider == nullptr)
+		{
+			return legend;
+		}
+
+		const nlohmann::json* names = FirstOf(*provider, {"legend"});
+
+		if (names == nullptr || (names = FirstOf(*names, {"tokenTypes"})) == nullptr ||
+			!names->is_array())
+		{
+			return legend;
+		}
+
+		legend.reserve(names->size());
+
+		for (const nlohmann::json& name : *names)
+		{
+			// Position matters: index N of this vector answers for the server's type N, so an
+			// entry whose name is not a string still has to occupy its slot.
+			legend.push_back(name.is_string() ? KindForTokenType(name.get<std::string>())
+											  : SemanticKind::Other);
+		}
+
+		return legend;
+	}
+
+	std::vector<SemanticToken> ParseSemanticTokens(const nlohmann::json& result,
+												   const std::vector<SemanticKind>& legend)
+	{
+		std::vector<SemanticToken> tokens;
+
+		const nlohmann::json* data = FirstOf(result, {"data"});
+
+		if (data == nullptr || !data->is_array())
+		{
+			return tokens;
+		}
+
+		std::size_t line = 0;
+		std::size_t column = 0;
+
+		// Five at a time, and a trailing remainder is discarded rather than guessed at: half a
+		// token is not a token.
+		for (std::size_t index = 0; index + 5 <= data->size(); index += 5)
+		{
+			const auto read = [&data, index](std::size_t offset) -> std::size_t
+			{
+				const nlohmann::json& value = (*data)[index + offset];
+
+				return value.is_number_unsigned() ? value.get<std::size_t>() : 0;
+			};
+
+			const std::size_t deltaLine = read(0);
+
+			// The column is relative to the previous token only while the line has not moved.
+			// Missing this reset shifts every token after the first line break, which reads as
+			// the colours sliding rather than as a decoding fault.
+			column = deltaLine == 0 ? column + read(1) : read(1);
+			line += deltaLine;
+
+			const std::size_t typeIndex = read(3);
+
+			if (typeIndex >= legend.size())
+			{
+				continue;
+			}
+
+			if (legend[typeIndex] == SemanticKind::Other)
+			{
+				// Nothing to paint over the lexer with, so not worth carrying to the editor.
+				continue;
+			}
+
+			tokens.push_back(SemanticToken{line, Utf16Column{column}, read(2), legend[typeIndex]});
+		}
+
+		return tokens;
+	}
+
 	std::vector<Declaration> ParseSymbols(const nlohmann::json& result)
 	{
 		std::vector<Declaration> declarations;

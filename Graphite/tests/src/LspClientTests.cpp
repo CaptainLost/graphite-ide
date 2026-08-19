@@ -77,6 +77,85 @@ TEST_CASE("A single-location reply that is not an array parses too")
 	CHECK(locations.size() == 1);
 }
 
+// The numbers a semantic token reply carries mean nothing on their own: which index is a type
+// and which a macro is declared by the server, in the legend it sends back from initialize.
+// Hard-coding the order would work against clangd and break against the next server added to the
+// table, which is exactly the coupling ADR 0485's "a language is a table row" exists to avoid.
+TEST_CASE("A semantic token legend maps the server's own indices onto what this editor colours")
+{
+	const auto legend = Graphite::ParseSemanticLegend(nlohmann::json::parse(
+		R"({"capabilities":{"semanticTokensProvider":{"legend":{"tokenTypes":
+			 ["variable","macro","class","function","namespace","parameter","property"]}}}})"));
+
+	REQUIRE(legend.size() == 7);
+	CHECK(legend[0] == Graphite::SemanticKind::Other);     // variable - the lexer's colour stands
+	CHECK(legend[1] == Graphite::SemanticKind::Macro);
+	CHECK(legend[2] == Graphite::SemanticKind::Type);      // class is a type
+	CHECK(legend[3] == Graphite::SemanticKind::Function);
+	CHECK(legend[4] == Graphite::SemanticKind::Namespace);
+	CHECK(legend[5] == Graphite::SemanticKind::Parameter);
+	CHECK(legend[6] == Graphite::SemanticKind::Member);    // property is a member
+}
+
+TEST_CASE("A server that offers no semantic tokens yields an empty legend rather than a wrong one")
+{
+	CHECK(Graphite::ParseSemanticLegend(nlohmann::json::parse(R"({"capabilities":{}})")).empty());
+	CHECK(Graphite::ParseSemanticLegend(nlohmann::json()).empty());
+}
+
+// The reply is a flat run of integers in fives, each relative to the token before it: the line is
+// a delta from the previous token's line, and the column a delta from the previous token's column
+// only while the line has not changed. Getting the reset-on-new-line wrong shifts every token
+// after the first line break, which looks like the colours sliding rather than like a decoding
+// bug.
+TEST_CASE("A semantic token reply decodes its deltas into absolute positions")
+{
+	const std::vector<Graphite::SemanticKind> legend{
+		Graphite::SemanticKind::Type, Graphite::SemanticKind::Function,
+		Graphite::SemanticKind::Macro};
+
+	//                     line col len type mod
+	const auto tokens = Graphite::ParseSemanticTokens(nlohmann::json::parse(
+		R"({"data":[0,5,3,0,0,  0,5,4,1,0,  2,1,6,2,0]})"), legend);
+
+	REQUIRE(tokens.size() == 3);
+
+	CHECK(tokens[0].Line == 0);
+	CHECK(tokens[0].Column == Graphite::Utf16Column(5));
+	CHECK(tokens[0].Length == 3);
+	CHECK(tokens[0].Kind == Graphite::SemanticKind::Type);
+
+	// Same line, so the column is 5 further along rather than 5 from the left edge.
+	CHECK(tokens[1].Line == 0);
+	CHECK(tokens[1].Column == Graphite::Utf16Column(10));
+	CHECK(tokens[1].Kind == Graphite::SemanticKind::Function);
+
+	// Two lines down, so the column starts from the left edge again.
+	CHECK(tokens[2].Line == 2);
+	CHECK(tokens[2].Column == Graphite::Utf16Column(1));
+	CHECK(tokens[2].Kind == Graphite::SemanticKind::Macro);
+}
+
+TEST_CASE("A semantic token naming an index the legend does not cover is dropped, not guessed")
+{
+	const std::vector<Graphite::SemanticKind> legend{Graphite::SemanticKind::Type};
+
+	// Type index 7 against a legend of one entry: a server and a legend that disagree is not
+	// something to colour by approximation.
+	CHECK(Graphite::ParseSemanticTokens(nlohmann::json::parse(R"({"data":[0,0,4,7,0]})"),
+									   legend).empty());
+}
+
+TEST_CASE("A semantic token reply that is malformed yields nothing rather than failing")
+{
+	const std::vector<Graphite::SemanticKind> legend{Graphite::SemanticKind::Type};
+
+	// Not a multiple of five: the run is truncated, and half a token is not a token.
+	CHECK(Graphite::ParseSemanticTokens(nlohmann::json::parse(R"({"data":[0,0,4]})"), legend).empty());
+	CHECK(Graphite::ParseSemanticTokens(nlohmann::json(), legend).empty());
+	CHECK(Graphite::ParseSemanticTokens(nlohmann::json::parse(R"({"data":"nope"})"), legend).empty());
+}
+
 TEST_CASE("A documentSymbol reply keeps functions and types and flattens children")
 {
 	const auto declarations = Graphite::ParseSymbols(nlohmann::json::parse(

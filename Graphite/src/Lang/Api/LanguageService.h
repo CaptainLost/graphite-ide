@@ -70,6 +70,35 @@ namespace Graphite {
 		Utf16Column EndColumn;
 	};
 
+	// What a server says an identifier *is*, which no lexer can know: it sees `Application`,
+	// `s_Instance` and `CORE_ASSERT` as the same kind of word, and only something that has
+	// compiled the code can tell a type from a static member from a macro.
+	//
+	// Deliberately far smaller than the protocol's own list. Every value here is a colour someone
+	// has to choose in every scheme, and distinctions nobody can see cost exactly as much to
+	// maintain as ones they can. Other means "the lexer's own colour stands" — most identifiers
+	// are ordinary variables, and colouring those differently from nothing is not worth a slot.
+	enum class SemanticKind : std::uint8_t
+	{
+		Type,
+		Function,
+		Macro,
+		Member,
+		Parameter,
+		Namespace,
+		Other
+	};
+
+	// One coloured span, in the units the server speaks: a line, a column in UTF-16 code units,
+	// and a length in the same. Turned into bytes against the line's own text by whoever draws it.
+	struct SemanticToken
+	{
+		std::size_t Line = 0;
+		Utf16Column Column;
+		std::size_t Length = 0;
+		SemanticKind Kind = SemanticKind::Other;
+	};
+
 	enum class DeclarationKind : std::uint8_t { Function, Type, Other };
 
 	// Two positions, because the protocol gives two and they answer different questions.

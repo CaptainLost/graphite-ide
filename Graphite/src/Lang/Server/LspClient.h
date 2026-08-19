@@ -57,6 +57,19 @@ namespace Graphite {
 	// is skipped rather than stored as DeclarationKind::Other, so no lens appears over a variable.
 	std::vector<Declaration> ParseSymbols(const nlohmann::json& result);
 
+	// The server's own numbering, read from its initialize reply. Index N of the returned vector
+	// is what this editor colours the server's token type N as, so a reply's raw integers can be
+	// turned into something meaningful. Empty when the server offers no semantic tokens at all,
+	// which is the signal not to ask for them.
+	std::vector<SemanticKind> ParseSemanticLegend(const nlohmann::json& initializeResult);
+
+	// Decodes the flat run of integers a semanticTokens reply carries - five per token, each
+	// relative to the token before it - into absolute positions. A token whose type index the
+	// legend does not cover is dropped: a server and a legend that disagree is not something to
+	// colour by approximation.
+	std::vector<SemanticToken> ParseSemanticTokens(const nlohmann::json& result,
+												   const std::vector<SemanticKind>& legend);
+
 	// One conversation with one language server: it starts the process, keeps the server's copy
 	// of the open documents in step, asks three questions, and hands the answers back to the UI
 	// thread through Drain — the same division SearchService draws, for the same reason. A
