@@ -393,6 +393,53 @@ TEST_CASE("A references answer leaves out the position it was asked from, and no
 	CHECK(answers[0].Locations[1].Line == 54);
 }
 
+TEST_CASE("A server declaring no semantic tokens is never asked for any")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	// A handshake that mentions no semanticTokensProvider - which is every server that does not
+	// offer them, and clangd itself before it grew the feature.
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}})");
+	client.TakeSent();
+
+	CHECK(client.AskSemanticTokens(temp.GetPath() / "main.cpp") == 0);
+	CHECK(client.TakeSent().empty());
+}
+
+TEST_CASE("A server declaring a legend is asked, and its reply is read through that legend")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{"capabilities":{"semanticTokensProvider":
+				   {"legend":{"tokenTypes":["variable","class"]}}}}})");
+	client.TakeSent();
+
+	const Graphite::RequestId id = client.AskSemanticTokens(temp.GetPath() / "main.cpp");
+
+	REQUIRE(id != 0);
+
+	const std::vector<std::string> sent = client.TakeSent();
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("method":"textDocument/semanticTokens/full")") != std::string::npos);
+
+	// Index 1 is "class" in this server's numbering, which this editor colours as a type. A
+	// client that had hard-coded the protocol's own order would read it as something else.
+	client.Deliver(R"({"id":)" + std::to_string(id) + R"(,"result":{"data":[3,2,11,1,0]}})");
+
+	std::vector<Graphite::LspClient::Answer> answers;
+	Graphite::ServerStatus status;
+	client.Drain(answers, status);
+
+	REQUIRE(answers.size() == 1);
+	REQUIRE(answers[0].SemanticTokens.size() == 1);
+	CHECK(answers[0].SemanticTokens[0].Line == 3);
+	CHECK(answers[0].SemanticTokens[0].Column == Graphite::Utf16Column(2));
+	CHECK(answers[0].SemanticTokens[0].Length == 11);
+	CHECK(answers[0].SemanticTokens[0].Kind == Graphite::SemanticKind::Type);
+}
+
 TEST_CASE("An initialize reply that is an error leaves the client failed, not ready")
 {
 	TempDirectory temp;

@@ -604,6 +604,17 @@ namespace Graphite {
 			// LocationLink whose several ranges mean different things, and only one of them is the
 			// place a reader wants to land.
 			capabilities["textDocument"]["definition"]["linkSupport"] = false;
+
+			// Declared, because the protocol has the client name the token types it understands and
+			// the server answer with a legend drawn from them. Only the ones this editor colours
+			// are listed - a type it never asked for is one it would have to map to nothing anyway.
+			capabilities["textDocument"]["semanticTokens"]["requests"]["full"] = true;
+			capabilities["textDocument"]["semanticTokens"]["formats"] = nlohmann::json::array({"relative"});
+			capabilities["textDocument"]["semanticTokens"]["tokenTypes"] = nlohmann::json::array(
+				{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter",
+				 "concept", "parameter", "variable", "property", "enumMember", "function",
+				 "method", "macro"});
+			capabilities["textDocument"]["semanticTokens"]["tokenModifiers"] = nlohmann::json::array();
 			capabilities["textDocument"]["references"]["dynamicRegistration"] = false;
 			capabilities["textDocument"]["documentSymbol"]["hierarchicalDocumentSymbolSupport"] =
 				true;
@@ -956,6 +967,24 @@ namespace Graphite {
 		return Ask("textDocument/references", params, Question::References, where);
 	}
 
+	RequestId LspClient::AskSemanticTokens(const std::filesystem::path& path)
+	{
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+		// No legend, no question. A server that declared no semantic tokens would answer with
+		// nothing or with numbers this side could not read, and either way the request is one the
+		// editor would be waiting on for no reason.
+		if (m_Shared->SemanticLegend.empty())
+		{
+			return 0;
+		}
+
+		nlohmann::json params;
+		params["textDocument"]["uri"] = ToFileUri(path);
+
+		return Ask("textDocument/semanticTokens/full", params, Question::SemanticTokens);
+	}
+
 	RequestId LspClient::AskSymbols(const std::filesystem::path& path)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
@@ -1266,6 +1295,10 @@ namespace Graphite {
 			{
 				answer.Declarations = ParseSymbols(incoming->Payload);
 			}
+			else if (asked.Kind == Question::SemanticTokens)
+			{
+				answer.SemanticTokens = ParseSemanticTokens(incoming->Payload, shared.SemanticLegend);
+			}
 			else
 			{
 				answer.Locations = ParseLocations(incoming->Payload);
@@ -1365,6 +1398,11 @@ namespace Graphite {
 		shared.Initialized = true;
 
 		const nlohmann::json& result = reply.Payload;
+
+		// Read once, here, because this is the only message that carries it. A reply's raw
+		// integers mean nothing without it, and it is server-specific: the same index is a macro
+		// to one server and a parameter to another.
+		shared.SemanticLegend = ParseSemanticLegend(result);
 
 		std::string detail;
 

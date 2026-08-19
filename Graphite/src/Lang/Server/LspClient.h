@@ -106,11 +106,17 @@ namespace Graphite {
 		RequestId AskReferences(const FilePosition& where);
 		RequestId AskSymbols(const std::filesystem::path& path);
 
+		// Answers nothing at all when the server declared no semantic token support in its
+		// handshake: there is no legend to read a reply through, so asking would be asking for
+		// integers nobody can interpret. Returns 0 in that case, which no request ever uses.
+		RequestId AskSemanticTokens(const std::filesystem::path& path);
+
 		struct Answer
 		{
 			RequestId Id = 0;
 			std::vector<Location> Locations;
 			std::vector<Declaration> Declarations;
+			std::vector<SemanticToken> SemanticTokens;
 			bool Failed = false;
 		};
 
@@ -167,7 +173,8 @@ namespace Graphite {
 		{
 			Definition,
 			References,
-			Symbols
+			Symbols,
+			SemanticTokens
 		};
 
 		// The server's copy of an open document, as far as this side knows it: only the version,
@@ -224,6 +231,12 @@ namespace Graphite {
 			std::vector<std::string> Queued;
 			RequestId InitializeId = 0;
 			bool Initialized = false;
+
+			// What the server said its semantic token numbering means, read once from the
+			// handshake. Empty when it offers none, which is what AskSemanticTokens checks before
+			// asking for integers nobody could interpret. Under ProtocolMutex with the rest of the
+			// bookkeeping.
+			std::vector<SemanticKind> SemanticLegend;
 
 			// The handshake will never finish: initialize was answered with an error, it ran out
 			// of time, or there was never a process to answer it. Initialized stays false in all
