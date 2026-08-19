@@ -34,6 +34,10 @@ graphite.json
 # whoever generated it rather than to the repository.
 compile_commands.json
 
+# clangd's own index, rebuilt from the sources whenever it is missing. Several megabytes of
+# binary that changes on every edit - the worst possible shape for source control.
+.cache/
+
 # clangd is downloaded pre-built rather than committed - see vendor/bin/clangd/README.md.
 # Only the README belongs in the repository; a hundred-megabyte binary in the history
 # cannot practically be taken back out again.
