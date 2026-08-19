@@ -22,6 +22,7 @@ namespace Graphite {
 
 	class LensModel;
 	class SyntaxCache;
+	class SemanticOverlay;
 	struct ResolvedScheme;
 
 	struct CommandContext
@@ -82,6 +83,12 @@ namespace Graphite {
 		Core::IndentStyle Indent;
 		bool WordWrap = false;
 		SyntaxCache* Syntax = nullptr;
+
+		// What a language server said this document's identifiers are, drawn over the lexer's own
+		// colouring. Null when no server serves this document, which is the ordinary case for a
+		// plain text file and for every file before a server has answered - and which the drawing
+		// code never has to branch on, because an empty overlay says nothing about any row.
+		SemanticOverlay* Semantic = nullptr;
 		const ResolvedScheme* Scheme = nullptr;
 
 		// Null when no language server serves this document, which is the ordinary case for a

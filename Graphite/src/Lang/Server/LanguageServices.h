@@ -121,12 +121,14 @@ namespace Graphite {
 		Ticket AskReferences(const std::filesystem::path& path, LanguageId language,
 							 const FilePosition& where);
 		Ticket AskSymbols(const std::filesystem::path& path, LanguageId language);
+		Ticket AskSemanticTokens(const std::filesystem::path& path, LanguageId language);
 
 		struct Answer
 		{
 			Ticket For{};
 			std::vector<Location> Locations;
 			std::vector<Declaration> Declarations;
+			std::vector<SemanticToken> SemanticTokens;
 			bool Failed = false;
 		};
 

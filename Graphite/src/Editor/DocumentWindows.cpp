@@ -839,9 +839,15 @@ namespace Graphite {
 			else
 			{
 				m_LanguageServices.CloseDocument(it->first, LanguageOfPath(it->first));
+				m_Semantic.erase(it->first);
 				it = m_Lenses.erase(it);
 			}
 		}
+	}
+
+	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
+	{
+		return m_Semantic[item.Path];
 	}
 
 	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
@@ -919,6 +925,15 @@ namespace Graphite {
 			m_LanguageServices.AskSymbols(item.Path, LanguageOfPath(item.Path));
 
 		m_PendingSymbols.emplace(ticket, item.Path);
+
+		// On the same beat, because they answer the same question at different grain - what this
+		// document contains - and go stale together on the same edit. Asking on one schedule is
+		// one thing to reason about rather than two that drift.
+		const LanguageServices::Ticket colours =
+			m_LanguageServices.AskSemanticTokens(item.Path, LanguageOfPath(item.Path));
+
+		m_PendingSemantic.emplace(colours, item.Path);
+
 		state.SymbolsOutstanding = true;
 		state.NextSymbolsAt = now + kSymbolsRetrySeconds;
 	}
@@ -1426,6 +1441,27 @@ namespace Graphite {
 				continue;
 			}
 
+			if (const auto colours = m_PendingSemantic.find(answer.For);
+				colours != m_PendingSemantic.end())
+			{
+				const std::filesystem::path path = colours->second;
+
+				m_PendingSemantic.erase(colours);
+
+				if (const auto index = m_Documents.Find(path); index && !answer.Failed)
+				{
+					const Core::OpenItem& item = m_Documents.At(*index);
+
+					if (item.Document)
+					{
+						m_Semantic[path].Set(answer.SemanticTokens, item.Document->GetBuffer(),
+											 item.TabWidth);
+					}
+				}
+
+				continue;
+			}
+
 			if (const auto symbols = m_PendingSymbols.find(answer.For);
 				symbols != m_PendingSymbols.end())
 			{
@@ -1550,6 +1586,11 @@ namespace Graphite {
 				view.Syntax = &SyntaxFor(item);
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
+
+				// Always handed over, even before a server has said anything: an overlay with
+				// nothing in it colours nothing, so the widget needs no branch of its own and a
+				// document with no server behind it draws exactly as it always did.
+				view.Semantic = &SemanticFor(item);
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 

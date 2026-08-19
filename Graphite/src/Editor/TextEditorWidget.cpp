@@ -6,6 +6,7 @@
 #include "Editor/LensModel.h"
 #include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
+#include "Editor/SemanticOverlay.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
 
@@ -717,6 +718,7 @@ namespace Graphite {
 			// Null when no language server serves this document; the lens notification is then a
 			// no-op rather than a branch at every edit site.
 			LensModel* Lens = nullptr;
+			SemanticOverlay* Semantic = nullptr;
 		};
 
 		// What has to be read BEFORE an edit runs to be able to describe it afterwards. The line
@@ -778,6 +780,16 @@ namespace Graphite {
 											 static_cast<std::ptrdiff_t>(before.LineCount);
 
 				sinks.Lens->OnLinesChanged(before.Line, delta, item.Rows);
+			}
+
+			if (sinks.Semantic != nullptr)
+			{
+				const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
+											 static_cast<std::ptrdiff_t>(before.LineCount);
+
+				// Lines, not rows: a semantic span belongs to a line of the document, and wrapping
+				// is nothing the server ever spoke about.
+				sinks.Semantic->OnLinesChanged(before.Line, delta);
 			}
 		}
 
@@ -1294,9 +1306,35 @@ namespace Graphite {
 		// Positioned by column, not by byte: the text has had its tabs expanded, but a column is
 		// still one *cell* and a UTF-8 character is one to four bytes, so the x of a run is
 		// counted in cells from the row's first column with ColumnCount.
+		// Which palette entry a token is drawn in: the lexer's own kind, unless a server said what
+		// this identifier is.
+		//
+		// Identifiers only. A server names them and nothing else, and a span that reached a
+		// comment or a string would be recolouring something the lexer already knows better than
+		// it does. Matched on the token's start rather than by overlap, because the two agree on
+		// where an identifier begins - both measure the expanded line - and a start is one
+		// comparison where an overlap is four.
+		TokenKind ColourKindFor(const Token& token, const std::vector<SemanticSpan>& semantic)
+		{
+			if (token.Kind != TokenKind::Identifier)
+			{
+				return token.Kind;
+			}
+
+			for (const SemanticSpan& span : semantic)
+			{
+				if (span.From == token.From)
+				{
+					return span.Kind;
+				}
+			}
+
+			return token.Kind;
+		}
+
 		void DrawRowText(const RowCanvas& canvas, const RowSlice& slice,
 						 const VisibleLineCache& cache, const std::vector<Token>& tokens,
-						 std::size_t tabWidth)
+						 const std::vector<SemanticSpan>& semantic, std::size_t tabWidth)
 		{
 			if (slice.FromByte >= slice.ToByte)
 			{
@@ -1350,7 +1388,8 @@ namespace Graphite {
 				// The gap before this token is whitespace; drawing it keeps `column` advancing
 				// without special-casing it.
 				draw(std::max(token.From, slice.FromByte), canvas.Palette.Text);
-				draw(std::min(token.To, slice.ToByte), canvas.SyntaxColours.Of(token.Kind));
+				draw(std::min(token.To, slice.ToByte),
+					 canvas.SyntaxColours.Of(ColourKindFor(token, semantic)));
 			}
 
 			draw(slice.ToByte, canvas.Palette.Text);
@@ -1630,8 +1669,8 @@ namespace Graphite {
 
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
 					 const VisibleLineCache& cache, const RowSlice& slice,
-					 const std::vector<Token>& tokens, const CaretPaint& caret,
-					 const HoverIdentifier& hover)
+					 const std::vector<Token>& tokens, const std::vector<SemanticSpan>& semantic,
+					 const CaretPaint& caret, const HoverIdentifier& hover)
 		{
 			if (slice.Line == caret.Line)
 				DrawCurrentLineHighlight(canvas, slice);
@@ -1646,7 +1685,7 @@ namespace Graphite {
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
 
-			DrawRowText(canvas, slice, cache, tokens, item.TabWidth);
+			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
 			DrawGutter(canvas, slice, slice.Line == caret.Line);
 			DrawHoverUnderline(canvas, slice, hover);
 
@@ -1684,7 +1723,7 @@ namespace Graphite {
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
 							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
 							 const ResolvedScheme& scheme, const LensModel* lensModel,
-							 EditorFrameResult& result)
+							 const SemanticOverlay* semanticOverlay, EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -1806,7 +1845,13 @@ namespace Graphite {
 
 					const RowSlice slice = SliceRow(cache, item.Rows, ref, rowIndex, y);
 
-					DrawRow(canvas, item, cache, slice, tokens, caret, hover);
+					// Empty for a line no server has spoken about, and for every line when none is
+					// running - which is what lets the call below need no branch of its own.
+					static const std::vector<SemanticSpan> kNoSpans;
+					const std::vector<SemanticSpan>& semantic =
+						semanticOverlay != nullptr ? semanticOverlay->SpansOn(ref.Line) : kNoSpans;
+
+					DrawRow(canvas, item, cache, slice, tokens, semantic, caret, hover);
 				}
 			}
 
@@ -1926,7 +1971,7 @@ namespace Graphite {
 			// error: this document then simply draws, exactly as an unfocused one does.
 			if (focused && context.Input != nullptr)
 			{
-				const EditSinks sinks{view.Syntax, view.Lens};
+				const EditSinks sinks{view.Syntax, view.Lens, view.Semantic};
 
 				ApplyKeyboard(*context.Input, buffer, item, view.Indent, sinks,
 							  RowsPerPage(metrics), caretAtFrameStart, result);
@@ -1959,7 +2004,7 @@ namespace Graphite {
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax,
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
-							result);
+							view.Semantic, result);
 
 			// After the rows, so a click on the bar is a click on the bar: the surface's own
 			// hit test has already run against a rectangle the bar now sits on top of, and a

@@ -285,6 +285,13 @@ namespace Graphite {
 					 [&where](LspClient& client) { return client.AskReferences(where); });
 	}
 
+	LanguageServices::Ticket LanguageServices::AskSemanticTokens(const std::filesystem::path& path,
+																  LanguageId language)
+	{
+		return AskVia(path, language,
+					 [&path](LspClient& client) { return client.AskSemanticTokens(path); });
+	}
+
 	LanguageServices::Ticket LanguageServices::AskSymbols(const std::filesystem::path& path,
 														   LanguageId language)
 	{
@@ -632,6 +639,7 @@ namespace Graphite {
 				delivered.For = pending->second;
 				delivered.Locations = std::move(answer.Locations);
 				delivered.Declarations = std::move(answer.Declarations);
+				delivered.SemanticTokens = std::move(answer.SemanticTokens);
 				delivered.Failed = answer.Failed;
 
 				m_Answers.push_back(std::move(delivered));

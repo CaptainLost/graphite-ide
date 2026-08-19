@@ -3,6 +3,7 @@
 #include "Editor/ModalGate.h"
 #include "Editor/FindBar.h"
 #include "Editor/LensModel.h"
+#include "Editor/SemanticOverlay.h"
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
@@ -137,6 +138,7 @@ namespace Graphite {
 		// puts a null LensModel on EditorView and spares the widget a branch on whether a server
 		// exists. Opens the document with the server the first time it is asked for.
 		LensState* LensFor(const Core::OpenItem& item);
+		SemanticOverlay& SemanticFor(const Core::OpenItem& item);
 
 		void PruneLensStates();
 
@@ -378,6 +380,13 @@ namespace Graphite {
 		// is what lets one map per question kind route an answer back to the document — and to the
 		// row — that wanted it, without either server's numbering colliding with the other's.
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSymbols;
+
+		// The colours a server said this document's identifiers should take, one overlay per
+		// document, beside m_Syntax and m_Lenses and pruned with them. Separate from the lens
+		// state rather than folded into it: they answer different questions about the same file
+		// and nothing about one is needed to read the other.
+		std::map<std::filesystem::path, SemanticOverlay> m_Semantic;
+		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;
 
 		struct PendingCount
 		{
