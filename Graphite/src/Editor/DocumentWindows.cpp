@@ -953,16 +953,17 @@ namespace Graphite {
 
 		state.Declarations = std::move(restored->Declarations);
 		state.HaveDeclarations = !state.Declarations.empty();
-
-		// Seeded before the rebuild below, because that rebuild is what applies the seed.
 		state.Model.SeedCounts(std::move(restored->Counts));
 
-		// Built here rather than left to the rewrap check next frame: that check compares BuiltAt
-		// against the document's wrap width, and both are zero on a document this newly opened, so
-		// it would see nothing to do and the rows would wait for the server after all.
-		state.Model.SetDeclarations(state.Declarations, item.Rows, item.Document->GetBuffer(),
-									item.TabWidth);
-		state.BuiltAt = item.WrappedTo;
+		// Asked for rather than done here, and this is the whole subtlety of restoring: a lens
+		// anchors to a ROW, and this runs before the document has been drawn even once, so its
+		// row map is still empty. RowMap::FirstRowOf answers zero for every line of an empty map,
+		// which would put every declaration on row zero, collapse them to one under the
+		// de-duplication by row, and consume the restored counts against that single survivor.
+		// The rebuild a frame later would fix the anchors and have nothing left to anchor.
+		//
+		// UpdateLenses runs after the editor has drawn, in this same frame, so nothing waits.
+		state.NeedsRebuild = true;
 
 		m_Semantic[item.Path] = std::move(restored->Semantic);
 
@@ -1175,11 +1176,12 @@ namespace Graphite {
 		// are rebuilt from the declarations already in hand rather than waiting for the server to
 		// say the same thing again. SetDeclarations carries the counts over by identity, so
 		// nothing is re-asked for.
-		if (state.HaveDeclarations && state.BuiltAt != item.WrappedTo)
+		if (state.HaveDeclarations && (state.NeedsRebuild || state.BuiltAt != item.WrappedTo))
 		{
 			state.Model.SetDeclarations(state.Declarations, item.Rows,
 										item.Document->GetBuffer(), item.TabWidth);
 			state.BuiltAt = item.WrappedTo;
+			state.NeedsRebuild = false;
 			state.Asked.clear();
 		}
 

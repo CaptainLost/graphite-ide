@@ -134,6 +134,10 @@ namespace Graphite {
 			// which point the document is gone from DocumentSet and cannot be asked - and its
 			// answer decides whether this analysis is worth keeping at all.
 			bool WasModified = false;
+
+			// Set when declarations arrive from somewhere that cannot anchor them itself, and
+			// cleared by the first rebuild that can. See RestoreAnalysis for the one case.
+			bool NeedsRebuild = false;
 		};
 
 		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
