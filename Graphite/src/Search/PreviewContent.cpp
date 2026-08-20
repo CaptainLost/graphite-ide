@@ -3,6 +3,7 @@
 #include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Editor/PreviewSemantics.h"
 #include "Lang/Registry/LanguageRegistry.h"
 
 #include <fstream>
@@ -59,6 +60,7 @@ namespace Graphite {
 				m_Buffer = &item.Document->GetBuffer();
 				m_Message.clear();
 				m_State = PreviewState::Ready;
+				DeclareToServer();
 				return;
 			}
 		}
@@ -67,10 +69,12 @@ namespace Graphite {
 		// not change, so the copy is still of the right file.
 		if (m_State == PreviewState::Ready && m_Buffer == &m_Loaded)
 		{
+			DeclareToServer();
 			return;
 		}
 
 		LoadFromDisk();
+		DeclareToServer();
 	}
 
 	void PreviewContent::Clear()
@@ -100,11 +104,36 @@ namespace Graphite {
 		return m_Syntax.TokensOf(*m_Buffer, line);
 	}
 
+	const std::vector<SemanticSpan>& PreviewContent::SpansOn(std::size_t line) const
+	{
+		static const std::vector<SemanticSpan> none;
+
+		return m_Semantics == nullptr ? none : m_Semantics->SpansOn(m_Path, line);
+	}
+
 	void PreviewContent::SetTabWidth(std::size_t width)
 	{
+		if (width != 0)
+		{
+			m_TabWidth = width;
+		}
+
 		// SyntaxCache::SetTabWidth already ignores a width it is holding, so this costs nothing
 		// to call every frame.
 		m_Syntax.SetTabWidth(width);
+	}
+
+	void PreviewContent::DeclareToServer()
+	{
+		if (m_Semantics == nullptr || m_Buffer == nullptr)
+		{
+			return;
+		}
+
+		// A buffer that is not our own copy came from a document with a tab, which means the
+		// editor already told the server about it. That is the whole difference the mediator
+		// needs, and it is a pointer comparison rather than a second search of the document set.
+		m_Semantics->Declare(m_Path, *m_Buffer, m_TabWidth, m_Buffer != &m_Loaded);
 	}
 
 	void PreviewContent::LoadFromDisk()

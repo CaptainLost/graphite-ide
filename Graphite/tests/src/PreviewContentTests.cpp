@@ -3,6 +3,8 @@
 #include "Search/PreviewContent.h"
 
 #include "Core/Text/DocumentSet.h"
+#include "Editor/PreviewSemantics.h"
+#include "Editor/SemanticOverlay.h"
 #include "Lang/Syntax/Token.h"
 
 #include "TempDirectory.h"
@@ -234,4 +236,115 @@ TEST_CASE("Clear forgets the file")
 	CHECK(content.GetState() == PreviewState::Empty);
 	CHECK(content.GetBuffer() == nullptr);
 	CHECK(content.GetPath().empty());
+}
+
+namespace {
+
+	// The same recording port PreviewSemanticsTests uses, kept separate rather than shared:
+	// a header holding one fake for two suites is a header that grows a reason to change for
+	// each of them.
+	class RecordingPort final : public PreviewServerPort
+	{
+	public:
+		void Open(const std::filesystem::path& path, LanguageId, std::string) override
+		{
+			Opened.push_back(path);
+		}
+
+		LanguageServices::Ticket Ask(const std::filesystem::path& path, LanguageId) override
+		{
+			Asked.push_back(path);
+
+			return static_cast<LanguageServices::Ticket>(++Tickets);
+		}
+
+		void Close(const std::filesystem::path& path, LanguageId) override
+		{
+			Closed.push_back(path);
+		}
+
+		std::vector<std::filesystem::path> Opened;
+		std::vector<std::filesystem::path> Asked;
+		std::vector<std::filesystem::path> Closed;
+		std::uint64_t Tickets = 0;
+	};
+}
+
+TEST_CASE("A preview with no mediator has no spans and asks nothing")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "int x;\n");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(file, documents);
+
+	CHECK(content.SpansOn(0).empty());
+}
+
+TEST_CASE("Showing a file declares it to the mediator")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "Renderer r;\n");
+
+	RecordingPort port;
+	PreviewSemantics semantics{port};
+	Core::DocumentSet documents;
+	PreviewContent content{&semantics};
+
+	semantics.Tick(1, 0.0);
+	content.Show(file, documents);
+
+	REQUIRE(port.Asked.size() == 1);
+	CHECK(port.Asked[0] == file);
+
+	// Not open in any tab, so this preview is the one telling the server about it.
+	REQUIRE(port.Opened.size() == 1);
+	CHECK(port.Opened[0] == file);
+}
+
+TEST_CASE("A file with a tab open is declared as one the editor holds")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "Renderer r;\n");
+
+	RecordingPort port;
+	PreviewSemantics semantics{port};
+	Core::DocumentSet documents;
+
+	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+
+	PreviewContent content{&semantics};
+
+	semantics.Tick(1, 0.0);
+	content.Show(file, documents);
+
+	CHECK(port.Opened.empty());
+	CHECK(port.Asked.size() == 1);
+}
+
+TEST_CASE("The spans of the file being shown are the ones handed back")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "Renderer r;\n");
+
+	RecordingPort port;
+	PreviewSemantics semantics{port};
+	Core::DocumentSet documents;
+	PreviewContent content{&semantics};
+
+	semantics.Tick(1, 0.0);
+	content.Show(file, documents);
+
+	LanguageServices::Answer answer;
+	answer.For = static_cast<LanguageServices::Ticket>(1);
+	answer.SemanticTokens = {SemanticToken{0, Utf16Column(0), 8, SemanticKind::Type}};
+
+	REQUIRE(semantics.Apply(answer));
+
+	const std::vector<SemanticSpan>& spans = content.SpansOn(0);
+
+	REQUIRE(spans.size() == 1);
+	CHECK(spans[0].Kind == TokenKind::SemanticType);
 }

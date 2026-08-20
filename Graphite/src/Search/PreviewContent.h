@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Text/TextBuffer.h"
+#include "Editor/SemanticOverlay.h"
 #include "Lang/Syntax/SyntaxCache.h"
 #include "Lang/Syntax/Token.h"
 
@@ -14,6 +15,8 @@ namespace Core {
 }
 
 namespace Graphite {
+
+	class PreviewSemantics;
 
 	enum class PreviewState
 	{
@@ -40,6 +43,10 @@ namespace Graphite {
 	class PreviewContent
 	{
 	public:
+		// Null in tests and anywhere no server is wanted: a preview with no mediator behaves
+		// exactly as it did before semantic colours existed.
+		explicit PreviewContent(PreviewSemantics* semantics = nullptr) : m_Semantics(semantics) {}
+
 		// Call once per frame with the selected hit's file. Cheap to repeat for the same path:
 		// the disk read happens when the path changes, or when the file stops being open.
 		void Show(const std::filesystem::path& file, const Core::DocumentSet& documents);
@@ -75,12 +82,18 @@ namespace Graphite {
 		// for.
 		const std::vector<Token>& TokensOf(std::size_t line);
 
+		// The server's colours for one line of the file being shown, in the same coordinates
+		// TokensOf answers in. Empty until an answer arrives, and empty forever for a file no
+		// server serves.
+		const std::vector<SemanticSpan>& SpansOn(std::size_t line) const;
+
 		// The editor's tab width, so the preview breaks columns where the editor would. Resets
 		// the cache when it changes, because the lexer is fed tab-expanded text.
 		void SetTabWidth(std::size_t width);
 
 	private:
 		void LoadFromDisk();
+		void DeclareToServer();
 
 		std::filesystem::path m_Path;
 		PreviewState m_State = PreviewState::Empty;
@@ -93,5 +106,12 @@ namespace Graphite {
 		const Core::TextBuffer* m_Buffer = nullptr;
 
 		SyntaxCache m_Syntax;
+
+		PreviewSemantics* m_Semantics = nullptr;
+
+		// Remembered as well as forwarded to the syntax cache, because the declaration made in
+		// Show needs it: the server's columns become offsets into tab-expanded text, so a span
+		// is only meaningful for one width.
+		std::size_t m_TabWidth = Core::DefaultTabWidth;
 	};
 }
