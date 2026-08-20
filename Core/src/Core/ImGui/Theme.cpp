@@ -26,6 +26,20 @@ namespace Core {
 		{
 			return Color{color.x, color.y, color.z, color.w};
 		}
+
+		// Rec. 709 luminance: the eye weighs green far above red and red above blue, so an
+		// average of the three channels calls a saturated blue "light" and a saturated green
+		// "dark". A plain threshold at the midpoint is enough — nothing here needs to grade a
+		// palette, only to say which of ImGui's two base styles is the nearer starting point.
+		constexpr float kLightBackgroundLuminance = 0.5f;
+
+		constexpr bool IsLight(const Color& background)
+		{
+			const float luminance =
+				0.2126f * background.R + 0.7152f * background.G + 0.0722f * background.B;
+
+			return luminance > kLightBackgroundLuminance;
+		}
 	}
 
 	ChromePalette Theme::DefaultPalette()
@@ -51,7 +65,24 @@ namespace Core {
 
 	void Theme::Apply(const ChromePalette& palette)
 	{
-		ImGui::StyleColorsDark();
+		// Around forty ImGuiCol_ entries are never named below — the scrollbar, the table
+		// borders and headers, the plot colours, the selection and navigation highlights — so
+		// whichever base style runs here is what they end up being. Choosing the base by the
+		// palette's own luminance is what stops a light palette from wearing near-black
+		// scrollbars and dark table headers on its white surfaces.
+		//
+		// The base is chosen rather than the remaining entries derived from the palette on
+		// purpose: the dark scheme this application ships has always shown ImGui's dark defaults
+		// in those places, and deriving them would change how it looks. This leaves the dark
+		// path byte-for-byte what it was and fixes only the light one.
+		if (IsLight(palette.Background))
+		{
+			ImGui::StyleColorsLight();
+		}
+		else
+		{
+			ImGui::StyleColorsDark();
+		}
 
 		ImGuiStyle& style = ImGui::GetStyle();
 
