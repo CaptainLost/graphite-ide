@@ -7,6 +7,11 @@ namespace Graphite {
 		return (static_cast<float>(lane) + 0.5f) * metrics.LaneWidth;
 	}
 
+	float RowCentreY(const GraphMetrics& metrics, std::size_t row)
+	{
+		return (static_cast<float>(row) + 0.5f) * metrics.RowHeight;
+	}
+
 	float GraphWidth(const GraphMetrics& metrics, std::size_t laneCount)
 	{
 		return static_cast<float>(laneCount) * metrics.LaneWidth;

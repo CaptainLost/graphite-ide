@@ -18,8 +18,7 @@ namespace Graphite {
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 
 		const auto centre = [&](std::size_t row, std::size_t lane) {
-			return ImVec2{origin.x + LaneCentreX(metrics, lane),
-						  origin.y + (static_cast<float>(row) + 0.5f) * metrics.RowHeight};
+			return ImVec2{origin.x + LaneCentreX(metrics, lane), origin.y + RowCentreY(metrics, row)};
 		};
 
 		for (const Core::GraphEdge& edge : graph.Edges)
@@ -32,7 +31,11 @@ namespace Graphite {
 
 			const ImVec2 from = centre(edge.FromRow, edge.FromLane);
 			const ImVec2 to = centre(edge.ToRow, edge.ToLane);
-			const ImU32 colour = palette.LaneOf(edge.ToLane);
+
+			// A connector belongs to the branch that occupies the outer lane: for a fork
+			// that is the side branch's tip, for a merge it is the branch reaching back to
+			// its base, and for a straight edge the two lanes agree anyway.
+			const ImU32 colour = palette.LaneOf(std::max(edge.FromLane, edge.ToLane));
 
 			if (ShapeOf(edge) == EdgeShape::Straight)
 			{

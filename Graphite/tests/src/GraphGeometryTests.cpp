@@ -36,6 +36,14 @@ TEST_CASE("A lane's centre sits half a lane in from its left edge")
 	CHECK(Graphite::LaneCentreX(metrics, 1) == doctest::Approx(21.0f));
 }
 
+TEST_CASE("A row's centre sits half a row down from its top edge")
+{
+	const GraphMetrics metrics = Metrics();
+
+	CHECK(Graphite::RowCentreY(metrics, 0) == doctest::Approx(9.0f));
+	CHECK(Graphite::RowCentreY(metrics, 1) == doctest::Approx(27.0f));
+}
+
 TEST_CASE("The graph column is as wide as its lanes")
 {
 	const GraphMetrics metrics = Metrics();

@@ -17,6 +17,8 @@ namespace Graphite {
 
 	float LaneCentreX(const GraphMetrics& metrics, std::size_t lane);
 
+	float RowCentreY(const GraphMetrics& metrics, std::size_t row);
+
 	// Zero for an empty history. A linear history reports one lane, so there is no case
 	// where a non-empty graph wants no width.
 	float GraphWidth(const GraphMetrics& metrics, std::size_t laneCount);
