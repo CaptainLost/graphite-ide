@@ -32,7 +32,20 @@ namespace Graphite {
 
 	void CommitListView::ToggleExpanded(const Core::Oid& commit)
 	{
-		if (!m_Expanded.erase(commit))
+		if (m_Expanded.erase(commit))
+		{
+			// The row the selection pointed at just left the list. A selection naming it
+			// would leave the diff pane showing a file that appears nowhere above it, and
+			// GitView has already dropped the cached diff for this commit — so nothing
+			// would ever answer it either. Clearing it here, in the class that owns both
+			// the expansion set and the selection, is what lets "Select a file to see its
+			// changes." stay honest about what is on screen.
+			if (m_SelectedFile.has_value() && m_SelectedFile->Commit == commit)
+			{
+				m_SelectedFile.reset();
+			}
+		}
+		else
 		{
 			m_Expanded.insert(commit);
 		}
@@ -139,7 +152,7 @@ namespace Graphite {
 
 					if (file != nullptr)
 					{
-						const std::filesystem::path& path = DisplayPath(*file);
+						const std::filesystem::path& path = ShownPath(*file);
 
 						const bool selected = m_SelectedFile.has_value() &&
 											  m_SelectedFile->Commit == commit.Id &&
