@@ -5,9 +5,10 @@ Date: 2026-08-20
 
 ## Context
 
-The git view needed a home: refs down one side, commits and their graph in the
-middle, and the selected commit's files and diff on the other. Two places in
-the running application already hold a screen area that widgets are drawn
+The git view needed a home: refs down one side, and beside them a history
+whose commits expand in place to show the files each one changed, over a
+diff of whichever file is selected along the bottom. Two places in the
+running application already hold a screen area that widgets are drawn
 into — `DocumentWindows`, the tabbed area that shows the files a person has
 open, and `Core::PanelManager`, which docks named panels (the explorer, the
 console, search results) around the edges and centre of the window.
@@ -60,8 +61,9 @@ gets a document-sized home for free.
 ### Neutral
 
 - The panel is constructed hidden (`Core::Panel`'s `visible` argument is
-  `false`) and reveals itself only through the `git.show` command, so it adds
-  nothing to the default layout until asked for.
+  `false`) and reveals itself through the panels group `PanelManager::Add`
+  registers it into, which the View menu renders, so it adds nothing to the
+  default layout until asked for.
 
 ## Alternatives Considered
 

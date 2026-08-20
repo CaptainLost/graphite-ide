@@ -114,7 +114,6 @@ namespace Graphite {
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		explorer->RegisterCommands(m_Commands);
 		m_Panels.RegisterCommands(m_Commands);
-		m_GitView->RegisterCommands(m_Commands);
 		RegisterApplicationCommands();
 
 		// After every default registered above, so an override shadows the binding it

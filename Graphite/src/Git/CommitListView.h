@@ -5,12 +5,25 @@
 #include "Git/GraphGeometry.h"
 
 #include "Core/Git/Commit.h"
+#include "Core/Git/Diff.h"
 #include "Core/Git/GraphLayout.h"
 
 #include <cstddef>
+#include <filesystem>
+#include <functional>
+#include <memory>
 #include <optional>
+#include <unordered_set>
 
 namespace Graphite {
+
+	// Which file is being shown below the list. Carries the commit as well as the path,
+	// because with several rows expanded the same path can appear under more than one.
+	struct FileSelection
+	{
+		Core::Oid Commit;
+		std::filesystem::path Path;
+	};
 
 	// A list of commits with the graph down its left edge. Used by the Git view, and by the
 	// file and line histories in the next plan — which is why it takes a LogPage and a graph
@@ -18,16 +31,17 @@ namespace Graphite {
 	class CommitListView
 	{
 	public:
+		// `diffOf` answers a commit's diff, or null while it is being fetched. The list
+		// asks for every commit it draws; the model is what decides whether that costs a
+		// query.
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-					const GitPalette& palette);
+					const GitPalette& palette,
+					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf);
 
-		// Empty when nothing is selected, or when the selected commit is no longer in the
-		// page — a refresh can drop it. Returned by value: the widget's own selection can be
-		// reassigned by the next click, and a pointer into it would silently start naming a
-		// different commit, or dangle after SelectFirst resets it on an empty page.
-		std::optional<Core::Oid> GetSelected() const { return m_Selected; }
+		bool IsExpanded(const Core::Oid& commit) const;
+		void ToggleExpanded(const Core::Oid& commit);
 
-		void SelectFirst(const Core::LogPage& page);
+		std::optional<FileSelection> GetSelectedFile() const { return m_SelectedFile; }
 
 		// True on the first frame, after a page arrives, that finds the reader at the
 		// bottom of an incomplete page. Latched on the page's own commit count rather than
@@ -39,7 +53,9 @@ namespace Graphite {
 		bool TakeLoadMoreRequest();
 
 	private:
-		std::optional<Core::Oid> m_Selected;
+		std::unordered_set<Core::Oid> m_Expanded;
+		std::optional<FileSelection> m_SelectedFile;
+
 		bool m_LoadMoreRequested = false;
 
 		// The page size the last load-more request was armed at. -1 so the very first

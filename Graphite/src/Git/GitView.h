@@ -6,16 +6,12 @@
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Git/Diff.h"
+#include "Core/Git/Ref.h"
 #include "Core/UI/Panel.h"
 
 #include <filesystem>
 #include <optional>
-
-namespace Core {
-
-	class CommandRegistry;
-
-}
+#include <string>
 
 namespace Graphite {
 
@@ -24,8 +20,13 @@ namespace Graphite {
 	std::optional<std::size_t> IndexOfFile(const Core::Diff& diff,
 										   const std::filesystem::path& path);
 
-	// The whole history in one panel: refs down the left, commits and their graph in the
-	// middle, the selected commit's files and diff on the right.
+	// "main", "* main  2/3" for the checked-out branch with a measured distance from its
+	// upstream. A pure function of the branch, pulled out of the draw loop so it can be
+	// checked without a frame to draw into.
+	std::string RefLabel(const Core::Branch& branch);
+
+	// The whole history in one panel: refs down the left, and on the right the commit list
+	// above the diff of whichever file is selected under an expanded commit.
 	//
 	// A panel rather than a document tab: DocumentWindows is keyed by filesystem path and
 	// has no way to hold a tab that is not a file on disk. Docked into the centre, it fills
@@ -37,14 +38,10 @@ namespace Graphite {
 
 		void OnImGuiRender() override;
 
-		void RegisterCommands(Core::CommandRegistry& commands);
-
 	private:
 		void RenderRefs(const std::vector<Core::Branch>& branches);
-		void RenderCommits();
-		void RenderDetails();
-
-		void RequestDiffForSelection();
+		void RenderCommits(const GitPalette& palette);
+		void RenderDiff(const GitPalette& palette);
 
 		GitModel& m_Model;
 		const ActiveScheme& m_Scheme;
@@ -52,13 +49,11 @@ namespace Graphite {
 		CommitListView m_Commits;
 		DiffView m_Diff;
 
-		// The commit the diff on screen was asked for. Compared against the list's current
-		// selection each frame, so moving the selection asks for a new diff exactly once
-		// rather than every frame it stays put.
-		std::optional<Core::Oid> m_DiffFor;
-
-		std::optional<std::filesystem::path> m_SelectedFile;
-
 		std::optional<std::string> m_SelectedRef;
+
+		// Set once, the first frame the panel draws with no log snapshot yet — an empty Ref
+		// means HEAD. Guards RequestLog so it fires once rather than every frame the log is
+		// still in flight.
+		bool m_LogRequested = false;
 	};
 }

@@ -1,13 +1,9 @@
 #include "Git/GitView.h"
 
-#include "Git/CommitLabels.h"
 #include "Git/GitPalette.h"
-
-#include "Core/Command/CommandRegistry.h"
 
 #include <imgui.h>
 
-#include <chrono>
 #include <format>
 
 namespace Graphite {
@@ -28,30 +24,37 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
+	std::string RefLabel(const Core::Branch& branch)
+	{
+		std::string label = branch.IsHead ? "* " + branch.Name : branch.Name;
+
+		// Ahead and Behind mean nothing unless the distance was measured — zero and zero
+		// also spells "in sync", so a caller that skips this check states a distance
+		// nobody computed. Core::Branch documents the same rule at its own definition.
+		if (branch.DistanceKnown && (branch.Ahead > 0 || branch.Behind > 0))
+		{
+			label += std::format("  {}/{}", branch.Ahead, branch.Behind);
+		}
+
+		return label;
+	}
+
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme)
 		: Core::Panel("git", "Git", false), m_Model(model), m_Scheme(scheme)
 	{
 	}
 
-	void GitView::RegisterCommands(Core::CommandRegistry& commands)
-	{
-		// Bound to nothing by default: there is no established chord for it, and a command
-		// with no binding is still reachable from the panels menu and the command palette.
-		commands.Add({.Id = "git.show",
-					  .Label = "Git",
-					  .Run = [this] { SetVisible(true); }});
-	}
-
 	void GitView::OnImGuiRender()
 	{
+		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
+
 		const std::shared_ptr<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
-		if (ImGui::BeginTable("git", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+		if (ImGui::BeginTable("git", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
 			ImGui::TableSetupColumn("refs", ImGuiTableColumnFlags_WidthFixed,
 									ImGui::GetFontSize() * 10.0f);
 			ImGui::TableSetupColumn("history", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("details", ImGuiTableColumnFlags_WidthStretch);
 
 			ImGui::TableNextRow();
 
@@ -59,10 +62,7 @@ namespace Graphite {
 			RenderRefs(branches ? *branches : std::vector<Core::Branch>{});
 
 			ImGui::TableSetColumnIndex(1);
-			RenderCommits();
-
-			ImGui::TableSetColumnIndex(2);
-			RenderDetails();
+			RenderCommits(palette);
 
 			ImGui::EndTable();
 		}
@@ -89,21 +89,7 @@ namespace Graphite {
 
 				const bool selected = m_SelectedRef.has_value() && *m_SelectedRef == branch.FullName;
 
-				std::string label = branch.Name;
-
-				if (branch.IsHead)
-				{
-					label = "* " + label;
-				}
-
-				// Ahead and behind are only meaningful when they were measured — zero and
-				// zero also spells "in sync", which is a different claim.
-				if (branch.DistanceKnown && (branch.Ahead > 0 || branch.Behind > 0))
-				{
-					label += std::format("  {}/{}", branch.Ahead, branch.Behind);
-				}
-
-				if (ImGui::Selectable(label.c_str(), selected))
+				if (ImGui::Selectable(RefLabel(branch).c_str(), selected))
 				{
 					m_SelectedRef = branch.FullName;
 
@@ -118,111 +104,96 @@ namespace Graphite {
 		group("Remote", Core::RefKind::Remote);
 	}
 
-	void GitView::RenderCommits()
+	void GitView::RenderCommits(const GitPalette& palette)
 	{
 		const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+
+		// Nothing calls RequestLog until a ref is clicked or a page runs out, so without
+		// this the history column stays empty until the user happens to click a branch.
+		// Guarded on m_LogRequested, not merely on page being null, so a first query still
+		// in flight is not re-asked every frame it takes to come back.
+		if (!page && !m_LogRequested)
+		{
+			m_LogRequested = true;
+			m_Model.RequestLog({});
+		}
+
+		const float commitsHeight = ImGui::GetContentRegionAvail().y * 0.6f;
+
+		if (!ImGui::BeginChild("commitList", ImVec2{0.0f, commitsHeight}))
+		{
+			ImGui::EndChild();
+			return;
+		}
 
 		if (!page)
 		{
 			ImGui::TextUnformatted("Loading history…");
-			return;
 		}
-
-		const Core::CommitGraph graph = Core::LayoutCommits(page->Commits);
-		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
-
-		m_Commits.Render(*page, graph, palette);
-
-		if (m_Commits.TakeLoadMoreRequest())
+		else
 		{
-			// Ask for a page twice the size rather than appending: the model holds one
-			// snapshot per query, and merging pages would need a second concept of
-			// identity for "the same log, more of it".
-			Core::LogRequest request;
-			request.Ref = m_SelectedRef;
-			request.MaxCount = page->Commits.size() * 2;
-			m_Model.RequestLog(request);
-		}
+			const Core::CommitGraph graph = Core::LayoutCommits(page->Commits);
 
-		RequestDiffForSelection();
-	}
+			const auto diffOf = [this](const Core::Oid& commit) {
+				return m_Model.GetDiffFor(commit);
+			};
 
-	void GitView::RequestDiffForSelection()
-	{
-		const std::optional<Core::Oid> selected = m_Commits.GetSelected();
+			m_Commits.Render(*page, graph, palette, diffOf);
 
-		if (!selected.has_value())
-		{
-			return;
-		}
-
-		if (m_DiffFor.has_value() && *m_DiffFor == *selected)
-		{
-			return;
-		}
-
-		m_DiffFor = *selected;
-		m_SelectedFile.reset();
-
-		Core::DiffRequest request;
-		request.Target = Core::DiffTarget::CommitToParent;
-		request.From = *selected;
-		m_Model.RequestDiff(request);
-	}
-
-	void GitView::RenderDetails()
-	{
-		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiff();
-
-		if (!diff)
-		{
-			ImGui::TextUnformatted("Select a commit.");
-			return;
-		}
-
-		const float half = ImGui::GetContentRegionAvail().y * 0.4f;
-
-		if (ImGui::BeginChild("files", ImVec2{0.0f, half}))
-		{
-			for (const Core::FileDiff& file : diff->Files)
+			// Driven from here, not from inside the list: the widget must not know the
+			// model. Asking for a diff already held, or already in flight, costs nothing,
+			// which is what makes it safe to ask about every expanded commit every frame.
+			for (const Core::CommitSummary& commit : page->Commits)
 			{
-				const std::filesystem::path& path =
-					file.NewPath.empty() ? file.OldPath : file.NewPath;
-
-				const bool selected =
-					m_SelectedFile.has_value() && *m_SelectedFile == path;
-
-				if (ImGui::Selectable(path.string().c_str(), selected))
+				if (m_Commits.IsExpanded(commit.Id) && !m_Model.GetDiffFor(commit.Id))
 				{
-					m_SelectedFile = path;
+					m_Model.RequestDiffFor(commit.Id);
 				}
+			}
+
+			if (m_Commits.TakeLoadMoreRequest())
+			{
+				// Ask for a page twice the size rather than appending: the model holds one
+				// snapshot per query, and merging pages would need a second concept of
+				// identity for "the same log, more of it".
+				Core::LogRequest request;
+				request.Ref = m_SelectedRef;
+				request.MaxCount = page->Commits.size() * 2;
+				m_Model.RequestLog(request);
 			}
 		}
 
 		ImGui::EndChild();
 
-		if (!m_SelectedFile.has_value() && !diff->Files.empty())
-		{
-			const Core::FileDiff& first = diff->Files.front();
-			m_SelectedFile = first.NewPath.empty() ? first.OldPath : first.NewPath;
-		}
+		RenderDiff(palette);
+	}
 
-		if (!m_SelectedFile.has_value())
+	void GitView::RenderDiff(const GitPalette& palette)
+	{
+		const std::optional<FileSelection> selected = m_Commits.GetSelectedFile();
+
+		if (!selected.has_value())
 		{
+			ImGui::TextUnformatted("Select a file to see its changes.");
 			return;
 		}
 
-		const std::optional<std::size_t> index = IndexOfFile(*diff, *m_SelectedFile);
+		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
+
+		if (!diff)
+		{
+			ImGui::TextUnformatted("Loading…");
+			return;
+		}
+
+		const std::optional<std::size_t> index = IndexOfFile(*diff, selected->Path);
 
 		if (!index.has_value())
 		{
-			// The refresh that replaced the diff no longer carries the file that was
-			// selected. Say so rather than drawing a different file's changes under the
-			// old heading.
 			ImGui::TextUnformatted("That file is not in this diff.");
 			return;
 		}
 
-		m_Diff.Render(diff->Files[*index], ReadGitPalette(m_Scheme.Get()));
+		m_Diff.Render(diff->Files[*index], palette);
 	}
 }

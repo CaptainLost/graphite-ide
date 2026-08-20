@@ -60,3 +60,69 @@ TEST_CASE("Nothing is found in an empty diff")
 {
 	CHECK_FALSE(Graphite::IndexOfFile(Core::Diff{}, "a.txt").has_value());
 }
+
+namespace {
+
+	Core::Branch BranchNamed(const char* name)
+	{
+		Core::Branch branch;
+		branch.Name = name;
+		branch.FullName = std::string("refs/heads/") + name;
+		branch.Kind = Core::RefKind::Local;
+		return branch;
+	}
+}
+
+TEST_CASE("A branch shows its own name")
+{
+	CHECK(Graphite::RefLabel(BranchNamed("main")) == "main");
+}
+
+TEST_CASE("The checked out branch is marked")
+{
+	Core::Branch branch = BranchNamed("main");
+	branch.IsHead = true;
+
+	CHECK(Graphite::RefLabel(branch).starts_with("*"));
+	CHECK(Graphite::RefLabel(branch).find("main") != std::string::npos);
+}
+
+TEST_CASE("A measured distance is shown")
+{
+	Core::Branch branch = BranchNamed("main");
+	branch.Upstream = "origin/main";
+	branch.DistanceKnown = true;
+	branch.Ahead = 2;
+	branch.Behind = 3;
+
+	const std::string label = Graphite::RefLabel(branch);
+
+	CHECK(label.find("2") != std::string::npos);
+	CHECK(label.find("3") != std::string::npos);
+}
+
+TEST_CASE("A measured distance of zero shows no numbers")
+{
+	Core::Branch branch = BranchNamed("main");
+	branch.Upstream = "origin/main";
+	branch.DistanceKnown = true;
+
+	// In sync is the ordinary state; a "0/0" beside every branch is noise.
+	CHECK(Graphite::RefLabel(branch) == "main");
+}
+
+TEST_CASE("An unmeasured distance shows no numbers even when they are not zero")
+{
+	Core::Branch branch = BranchNamed("main");
+	branch.Upstream = "origin/main";
+	branch.DistanceKnown = false;
+	branch.Ahead = 7;
+	branch.Behind = 9;
+
+	// This is the case Core::Branch's own comment warns about: Ahead and Behind hold
+	// whatever they were left at, and showing them would state a distance nobody measured.
+	const std::string label = Graphite::RefLabel(branch);
+
+	CHECK(label.find("7") == std::string::npos);
+	CHECK(label.find("9") == std::string::npos);
+}

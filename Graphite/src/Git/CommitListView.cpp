@@ -1,15 +1,14 @@
 #include "Git/CommitListView.h"
 
 #include "Git/CommitLabels.h"
+#include "Git/CommitRows.h"
 
 #include <imgui.h>
 
 #include <chrono>
 #include <cstddef>
 #include <format>
-#include <numeric>
 #include <string>
-#include <vector>
 
 namespace Graphite {
 
@@ -23,12 +22,51 @@ namespace Graphite {
 			metrics.DotRadius = metrics.LaneWidth * 0.22f;
 			return metrics;
 		}
+
+		// One letter for the badge beside a changed file. Unmodified never reaches a diff's
+		// file list in practice, but a blank is a safer default than a claim about a change
+		// that did not happen.
+		char ChangeLetter(Core::FileChange change)
+		{
+			switch (change)
+			{
+			case Core::FileChange::Added:
+				return 'A';
+			case Core::FileChange::Modified:
+				return 'M';
+			case Core::FileChange::Deleted:
+				return 'D';
+			case Core::FileChange::Renamed:
+				return 'R';
+			case Core::FileChange::Copied:
+				return 'C';
+			case Core::FileChange::TypeChanged:
+				return 'T';
+			case Core::FileChange::Unmodified:
+				return ' ';
+			}
+
+			return ' ';
+		}
+
+		// A deleted file has no new path, so the path shown must fall back to the old one.
+		const std::filesystem::path& DisplayPath(const Core::FileDiff& file)
+		{
+			return file.NewPath.empty() ? file.OldPath : file.NewPath;
+		}
 	}
 
-	void CommitListView::SelectFirst(const Core::LogPage& page)
+	bool CommitListView::IsExpanded(const Core::Oid& commit) const
 	{
-		m_Selected = page.Commits.empty() ? std::optional<Core::Oid>{}
-										  : std::optional<Core::Oid>{page.Commits.front().Id};
+		return m_Expanded.contains(commit);
+	}
+
+	void CommitListView::ToggleExpanded(const Core::Oid& commit)
+	{
+		if (!m_Expanded.erase(commit))
+		{
+			m_Expanded.insert(commit);
+		}
 	}
 
 	bool CommitListView::TakeLoadMoreRequest()
@@ -39,7 +77,8 @@ namespace Graphite {
 	}
 
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-								const GitPalette& palette)
+								const GitPalette& palette,
+								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf)
 	{
 		if (page.Commits.empty())
 		{
@@ -56,6 +95,19 @@ namespace Graphite {
 			return;
 		}
 
+		const CommitRows rows = BuildCommitRows(page.Commits.size(), [&](std::size_t commit) {
+			const Core::CommitSummary& summary = page.Commits[commit];
+
+			if (!IsExpanded(summary.Id))
+			{
+				return std::size_t{0};
+			}
+
+			const std::shared_ptr<const Core::Diff> diff = diffOf(summary.Id);
+
+			return diff ? diff->Files.size() : std::size_t{0};
+		});
+
 		// The graph is drawn once, under the whole list, from the list's own origin — so
 		// the two cannot disagree about where row N is.
 		const ImVec2 listOrigin = ImGui::GetCursorScreenPos();
@@ -63,11 +115,11 @@ namespace Graphite {
 		const auto now = std::chrono::floor<std::chrono::seconds>(
 			std::chrono::system_clock::now());
 
-		int firstDrawn = static_cast<int>(page.Commits.size());
+		int firstDrawn = static_cast<int>(rows.Rows.size());
 		int lastDrawn = 0;
 
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(page.Commits.size()), metrics.RowHeight);
+		clipper.Begin(static_cast<int>(rows.Rows.size()), metrics.RowHeight);
 
 		while (clipper.Step())
 		{
@@ -76,21 +128,61 @@ namespace Graphite {
 
 			for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
 			{
-				const Core::CommitSummary& commit = page.Commits[static_cast<std::size_t>(index)];
+				const CommitRow& row = rows.Rows[static_cast<std::size_t>(index)];
+				const Core::CommitSummary& commit = page.Commits[row.Commit];
 
 				ImGui::PushID(index);
 				ImGui::Indent(graphWidth);
 
-				const bool selected = m_Selected.has_value() && *m_Selected == commit.Id;
-
-				const std::string label =
-					std::format("{}  {}  {}  {}", commit.Id.ShortHex(),
-								AuthorInitials(commit.Author), RelativeAge(commit.Author.When, now),
-								commit.Summary);
-
-				if (ImGui::Selectable(label.c_str(), selected))
+				if (row.Kind == CommitRowKind::Commit)
 				{
-					m_Selected = commit.Id;
+					const bool expanded = IsExpanded(commit.Id);
+
+					if (ImGui::ArrowButton("##expand", expanded ? ImGuiDir_Down : ImGuiDir_Right))
+					{
+						ToggleExpanded(commit.Id);
+					}
+
+					ImGui::SameLine();
+
+					const std::string label =
+						std::format("{}  {}  {}  {}", commit.Id.ShortHex(),
+									AuthorInitials(commit.Author), RelativeAge(commit.Author.When, now),
+									commit.Summary);
+
+					if (ImGui::Selectable(label.c_str(), false))
+					{
+						ToggleExpanded(commit.Id);
+					}
+				}
+				else
+				{
+					const std::shared_ptr<const Core::Diff> diff = diffOf(commit.Id);
+
+					// The row layout was built from this same diffOf a moment ago; a file row
+					// only fails to resolve if the cache evicted the entry in between, which
+					// a fixed-size cache can do.
+					if (diff && row.File < diff->Files.size())
+					{
+						const Core::FileDiff& file = diff->Files[row.File];
+						const std::filesystem::path& path = DisplayPath(file);
+
+						const bool selected = m_SelectedFile.has_value() &&
+											  m_SelectedFile->Commit == commit.Id &&
+											  m_SelectedFile->Path == path;
+
+						const std::string label =
+							std::format("{}  {}", ChangeLetter(file.Change), path.string());
+
+						ImGui::Indent(ImGui::GetFrameHeight());
+
+						if (ImGui::Selectable(label.c_str(), selected))
+						{
+							m_SelectedFile = FileSelection{commit.Id, path};
+						}
+
+						ImGui::Unindent(ImGui::GetFrameHeight());
+					}
 				}
 
 				ImGui::Unindent(graphWidth);
@@ -115,12 +207,7 @@ namespace Graphite {
 
 		ImGui::SetCursorScreenPos(listOrigin);
 
-		// Files are not interleaved into this view yet — Task 3 builds the row layout and
-		// passes its mapping through. Until then a commit's row is still its own index.
-		std::vector<std::size_t> rowOfCommit(page.Commits.size());
-		std::iota(rowOfCommit.begin(), rowOfCommit.end(), std::size_t{0});
-
-		CommitGraphView{}.Render(graph, palette, metrics, rowOfCommit, firstDrawn, lastDrawn);
+		CommitGraphView{}.Render(graph, palette, metrics, rows.RowOfCommit, firstDrawn, lastDrawn);
 
 		ImGui::EndChild();
 	}
