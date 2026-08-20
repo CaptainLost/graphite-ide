@@ -160,7 +160,7 @@ namespace Core {
 		g_monoFont = LoadTextFont(io, executableDirectory);
 		MergeIconFont(io, executableDirectory);
 
-		Theme::ApplyDark();
+		Theme::Apply(Theme::DefaultPalette());
 
 		if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
 		{

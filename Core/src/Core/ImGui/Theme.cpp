@@ -21,14 +21,35 @@ namespace Core {
 		{
 			return ImVec4{color.R, color.G, color.B, color.A};
 		}
+
+		constexpr Color FromImVec4(const ImVec4& color)
+		{
+			return Color{color.x, color.y, color.z, color.w};
+		}
+	}
+
+	ChromePalette Theme::DefaultPalette()
+	{
+		ChromePalette palette;
+
+		palette.Background = FromImVec4(kBackground);
+		palette.Surface = FromImVec4(kSurface);
+		palette.SurfaceHovered = FromImVec4(kSurfaceHovered);
+		palette.SurfaceActive = FromImVec4(kSurfaceActive);
+		palette.Accent = FromImVec4(kAccent);
+		palette.Text = FromImVec4(kText);
+		palette.TextDisabled = FromImVec4(kTextDisabled);
+		palette.Border = kBorder;
+
+		return palette;
 	}
 
 	Color Theme::GetBorderColor()
 	{
-		return kBorder;
+		return DefaultPalette().Border;
 	}
 
-	void Theme::ApplyDark()
+	void Theme::Apply(const ChromePalette& palette)
 	{
 		ImGui::StyleColorsDark();
 
@@ -48,43 +69,50 @@ namespace Core {
 		style.ItemSpacing = ImVec2(8.0f, 5.0f);
 		style.WindowMenuButtonPosition = ImGuiDir_None;
 
+		const ImVec4 background = ToImVec4(palette.Background);
+		const ImVec4 surface = ToImVec4(palette.Surface);
+		const ImVec4 surfaceHovered = ToImVec4(palette.SurfaceHovered);
+		const ImVec4 surfaceActive = ToImVec4(palette.SurfaceActive);
+		const ImVec4 accent = ToImVec4(palette.Accent);
+		const ImVec4 border = ToImVec4(palette.Border);
+
 		ImVec4* colors = style.Colors;
-		colors[ImGuiCol_WindowBg] = kBackground;
-		colors[ImGuiCol_ChildBg] = kBackground;
-		colors[ImGuiCol_PopupBg] = kSurface;
-		colors[ImGuiCol_Border] = ToImVec4(kBorder);
-		colors[ImGuiCol_Text] = kText;
-		colors[ImGuiCol_TextDisabled] = kTextDisabled;
+		colors[ImGuiCol_WindowBg] = background;
+		colors[ImGuiCol_ChildBg] = background;
+		colors[ImGuiCol_PopupBg] = surface;
+		colors[ImGuiCol_Border] = border;
+		colors[ImGuiCol_Text] = ToImVec4(palette.Text);
+		colors[ImGuiCol_TextDisabled] = ToImVec4(palette.TextDisabled);
 
-		colors[ImGuiCol_FrameBg] = kSurface;
-		colors[ImGuiCol_FrameBgHovered] = kSurfaceHovered;
-		colors[ImGuiCol_FrameBgActive] = kSurfaceActive;
+		colors[ImGuiCol_FrameBg] = surface;
+		colors[ImGuiCol_FrameBgHovered] = surfaceHovered;
+		colors[ImGuiCol_FrameBgActive] = surfaceActive;
 
-		colors[ImGuiCol_TitleBg] = kSurface;
-		colors[ImGuiCol_TitleBgActive] = kSurface;
-		colors[ImGuiCol_TitleBgCollapsed] = kSurface;
-		colors[ImGuiCol_MenuBarBg] = kSurface;
+		colors[ImGuiCol_TitleBg] = surface;
+		colors[ImGuiCol_TitleBgActive] = surface;
+		colors[ImGuiCol_TitleBgCollapsed] = surface;
+		colors[ImGuiCol_MenuBarBg] = surface;
 
-		colors[ImGuiCol_Header] = kSurfaceHovered;
-		colors[ImGuiCol_HeaderHovered] = kSurfaceActive;
-		colors[ImGuiCol_HeaderActive] = kAccent;
+		colors[ImGuiCol_Header] = surfaceHovered;
+		colors[ImGuiCol_HeaderHovered] = surfaceActive;
+		colors[ImGuiCol_HeaderActive] = accent;
 
-		colors[ImGuiCol_Button] = kSurfaceHovered;
-		colors[ImGuiCol_ButtonHovered] = kSurfaceActive;
-		colors[ImGuiCol_ButtonActive] = kAccent;
+		colors[ImGuiCol_Button] = surfaceHovered;
+		colors[ImGuiCol_ButtonHovered] = surfaceActive;
+		colors[ImGuiCol_ButtonActive] = accent;
 
-		colors[ImGuiCol_Tab] = kSurface;
-		colors[ImGuiCol_TabHovered] = kSurfaceActive;
-		colors[ImGuiCol_TabSelected] = kBackground;
-		colors[ImGuiCol_TabDimmed] = kSurface;
-		colors[ImGuiCol_TabDimmedSelected] = kBackground;
+		colors[ImGuiCol_Tab] = surface;
+		colors[ImGuiCol_TabHovered] = surfaceActive;
+		colors[ImGuiCol_TabSelected] = background;
+		colors[ImGuiCol_TabDimmed] = surface;
+		colors[ImGuiCol_TabDimmedSelected] = background;
 
-		colors[ImGuiCol_Separator] = ToImVec4(kBorder);
-		colors[ImGuiCol_DockingPreview] = ImVec4(kAccent.x, kAccent.y, kAccent.z, 0.45f);
-		colors[ImGuiCol_DockingEmptyBg] = kBackground;
-		colors[ImGuiCol_CheckMark] = kAccent;
-		colors[ImGuiCol_SliderGrab] = kAccent;
-		colors[ImGuiCol_ResizeGrip] = kSurfaceActive;
-		colors[ImGuiCol_ResizeGripHovered] = kAccent;
+		colors[ImGuiCol_Separator] = border;
+		colors[ImGuiCol_DockingPreview] = ImVec4(accent.x, accent.y, accent.z, 0.45f);
+		colors[ImGuiCol_DockingEmptyBg] = background;
+		colors[ImGuiCol_CheckMark] = accent;
+		colors[ImGuiCol_SliderGrab] = accent;
+		colors[ImGuiCol_ResizeGrip] = surfaceActive;
+		colors[ImGuiCol_ResizeGripHovered] = accent;
 	}
 }
