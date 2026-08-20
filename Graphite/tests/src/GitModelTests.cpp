@@ -362,6 +362,22 @@ TEST_CASE("A sustained stream of change events still refreshes once the cap is r
 	CHECK(port.StatusCalls == 1);
 }
 
+TEST_CASE("A log is not requested without an open workspace")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+
+	// GitView's log-requested latch is reset by WorkspaceClosedEvent without knowing
+	// whether a new folder will open next, so the model - not the view - is what must
+	// refuse to fire a query for a folder that is not open. Mirrors MarkDirty's own guard.
+	model.RequestLog(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.LogCalls == 0);
+	CHECK(model.GetLog() == nullptr);
+}
+
 TEST_CASE("A requested diff becomes readable after the next update")
 {
 	FakePort port;
@@ -478,12 +494,27 @@ namespace {
 	}
 }
 
+TEST_CASE("A commit diff is not requested without an open workspace")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.DiffCalls == 0);
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+}
+
 TEST_CASE("A commit's diff is readable after the next update, under that commit's id")
 {
 	FakePort port;
 	port.Diff = DiffNaming("a.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
@@ -500,6 +531,7 @@ TEST_CASE("A commit nobody asked about has no diff")
 	port.Diff = DiffNaming("a.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -514,6 +546,7 @@ TEST_CASE("Two commits' diffs are held at the same time")
 	FakePort port;
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	port.Diff = DiffNaming("first.txt");
 	model.RequestDiffFor(IdOf(1));
@@ -537,6 +570,7 @@ TEST_CASE("Asking again for a commit already held does not ask the port again")
 	port.Diff = DiffNaming("a.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -557,6 +591,7 @@ TEST_CASE("Asking again while the first answer is still in flight does not ask t
 	port.Diff = DiffNaming("a.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	model.RequestDiffFor(IdOf(1));
@@ -572,6 +607,7 @@ TEST_CASE("A failed diff for a commit leaves no snapshot and reports the error")
 	port.FailDiff = true;
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -588,6 +624,7 @@ TEST_CASE("A failed diff is not asked for again on its own")
 	port.FailDiff = true;
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -610,6 +647,7 @@ TEST_CASE("A failed diff can be asked for again once forgotten")
 	port.FailDiff = true;
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -632,6 +670,7 @@ TEST_CASE("The cache holds a bounded number of commits")
 	port.Diff = DiffNaming("a.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	for (std::size_t index = 0; index < Graphite::GitModel::kCachedDiffs + 4; ++index)
 	{
@@ -660,6 +699,7 @@ TEST_CASE("Reading a commit's diff protects it from eviction")
 	port.Diff = DiffNaming("a.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	for (std::size_t index = 0; index < Graphite::GitModel::kCachedDiffs; ++index)
 	{
@@ -707,6 +747,7 @@ TEST_CASE("A stale answer from before a clear does not overwrite a fresh one aft
 	port.Diff = DiffNaming("before.txt");
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	// The inline submitter runs the job - and so the query - synchronously here, but the
 	// result only reaches the inbox; it is not applied until the OnUpdate below. So this

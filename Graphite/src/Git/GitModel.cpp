@@ -183,6 +183,15 @@ namespace Graphite {
 
 	void GitModel::RequestLog(Core::LogRequest request)
 	{
+		// Mirrors MarkDirty: nothing on screen has any business asking about a folder that
+		// is not open. WorkspaceClosedEvent's handler resets GitView's log-requested latch
+		// without knowing whether a new folder will open next, so without this a closed
+		// workspace would still fire one query for the folder it no longer has.
+		if (m_Root.empty())
+		{
+			return;
+		}
+
 		const std::uint64_t generation = ++m_LogRequested;
 
 		m_Submit([this, generation, request = std::move(request)]() {
@@ -279,6 +288,13 @@ namespace Graphite {
 
 	void GitModel::RequestDiffFor(const Core::Oid& commit)
 	{
+		// Mirrors MarkDirty and RequestLog: nothing on screen has any business asking about
+		// a commit's diff for a folder that is not open.
+		if (m_Root.empty())
+		{
+			return;
+		}
+
 		const auto existing = m_CommitDiffs.find(commit);
 
 		if (existing != m_CommitDiffs.end())
