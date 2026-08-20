@@ -5,8 +5,10 @@
 // different names cannot drift from one another again.
 //
 // The rule that no header under Core/Git may include <git2.h> still applies: the libgit2
-// types are forward-declared and only ever touched by reference or pointer here, with the
-// definitions living in the one .cpp that does include git2.h.
+// types stay forward-declared here, with the definitions living in the one .cpp that does
+// include git2.h. ToGitOid returns git_oid by value below - legal for an incomplete type
+// in a declaration - so "touched by reference or pointer" describes the other functions
+// here, not that one.
 
 #include "Core/Git/Oid.h"
 
