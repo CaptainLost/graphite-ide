@@ -91,13 +91,15 @@ TEST_CASE("A merge keeps its first parent on its own lane and opens a second")
 
 TEST_CASE("A lane is reused once the branch on it has been drawn")
 {
-	// 2 and 3 are unrelated roots. Once 3's line ends, the lane it held is free again.
+	// 3 and 2 are commit 4's two parents, both parentless — not branches of one
+	// another. Once 3's line ends its lane is freed, and the free-lane scan runs left
+	// to right, so commit 1 below reclaims lane 0, the one 3 held, rather than opening
+	// a third lane.
 	const CommitGraph graph =
 		Core::LayoutCommits({Commit(4, {3, 2}), Commit(3, {}), Commit(2, {}), Commit(1, {})});
 
-	// Lane 1 carried commit 2; commit 1, an unrelated root below it, may take that lane
-	// back rather than opening a third.
-	CHECK(graph.LaneCount <= 2);
+	CHECK(graph.LaneCount == 2);
+	CHECK(LaneOf(graph, 1) == 0);
 }
 
 TEST_CASE("An edge to a parent outside the loaded page is dropped")
@@ -112,10 +114,45 @@ TEST_CASE("An edge to a parent outside the loaded page is dropped")
 	CHECK(graph.Edges.front().ToRow == 1);
 }
 
+TEST_CASE("A parent outside the loaded page reserves no lane")
+{
+	// Commit 1 is a merge whose page ended before either parent — the common case for
+	// a page that stops mid-history. Neither 98 nor 99 will ever arrive to release a
+	// reservation, so no lane should be held open for them: LaneCount must stay at 1,
+	// not grow to 2 with a permanently blank column.
+	const CommitGraph graph = Core::LayoutCommits({Commit(2, {1}), Commit(1, {98, 99})});
+
+	CHECK(graph.LaneCount == 1);
+	CHECK(LaneOf(graph, 2) == 0);
+	CHECK(LaneOf(graph, 1) == 0);
+	CHECK(graph.Edges.size() == 1);
+	CHECK(graph.Edges.front().FromRow == 0);
+	CHECK(graph.Edges.front().ToRow == 1);
+}
+
+TEST_CASE("A filtered history whose parents are all off-page occupies one lane")
+{
+	// This is how file history looks: QueryLog drops the commits that did not touch
+	// the path but leaves each survivor's real Parents pointing at commits that were
+	// filtered out. None of those parents is ever loaded, so none should reserve a
+	// lane — a hundred-commit file history must not draw as a hundred-column diagonal.
+	const CommitGraph graph = Core::LayoutCommits(
+		{Commit(3, {100}), Commit(2, {101}), Commit(1, {102})});
+
+	REQUIRE(graph.Nodes.size() == 3);
+	CHECK(graph.LaneCount == 1);
+	CHECK(LaneOf(graph, 3) == 0);
+	CHECK(LaneOf(graph, 2) == 0);
+	CHECK(LaneOf(graph, 1) == 0);
+	CHECK(graph.Edges.empty());
+}
+
 TEST_CASE("Every edge names rows that exist")
 {
 	const CommitGraph graph = Core::LayoutCommits(
 		{Commit(5, {4, 3}), Commit(4, {2}), Commit(3, {2}), Commit(2, {1}), Commit(1, {})});
+
+	REQUIRE(graph.Edges.size() == 5);
 
 	for (const Core::GraphEdge& edge : graph.Edges)
 	{

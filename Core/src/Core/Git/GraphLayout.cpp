@@ -95,6 +95,14 @@ namespace Core {
 			{
 				const Oid& parent = commit.Parents[index];
 
+				// A parent outside the loaded page never arrives to release its own
+				// reservation, so reserving a lane for it would leak that lane for the
+				// rest of the layout. Skip both the reservation and the edge.
+				if (rowOf.find(parent) == rowOf.end())
+				{
+					continue;
+				}
+
 				std::size_t parentLane = 0;
 
 				if (index == 0)
@@ -115,11 +123,8 @@ namespace Core {
 
 					if (!reserved)
 					{
-						if (lane >= lanes.size())
-						{
-							lanes.resize(lane + 1);
-						}
-
+						// TakeLaneFor always returns an index inside lanes, and lanes
+						// never shrinks, so `lane` is guaranteed to be a valid slot here.
 						lanes[lane] = parent;
 						parentLane = lane;
 					}
