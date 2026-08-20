@@ -127,4 +127,22 @@ namespace Graphite {
 
 		return found == m_Lines.end() ? NoSpans() : found->second;
 	}
+
+	TokenKind ColourOf(const Token& token, const std::vector<SemanticSpan>& semantic)
+	{
+		if (token.Kind != TokenKind::Identifier)
+		{
+			return token.Kind;
+		}
+
+		for (const SemanticSpan& span : semantic)
+		{
+			if (span.From == token.From)
+			{
+				return span.Kind;
+			}
+		}
+
+		return token.Kind;
+	}
 }

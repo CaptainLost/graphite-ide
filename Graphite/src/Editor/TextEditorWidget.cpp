@@ -1306,32 +1306,6 @@ namespace Graphite {
 		// Positioned by column, not by byte: the text has had its tabs expanded, but a column is
 		// still one *cell* and a UTF-8 character is one to four bytes, so the x of a run is
 		// counted in cells from the row's first column with ColumnCount.
-		// Which palette entry a token is drawn in: the lexer's own kind, unless a server said what
-		// this identifier is.
-		//
-		// Identifiers only. A server names them and nothing else, and a span that reached a
-		// comment or a string would be recolouring something the lexer already knows better than
-		// it does. Matched on the token's start rather than by overlap, because the two agree on
-		// where an identifier begins - both measure the expanded line - and a start is one
-		// comparison where an overlap is four.
-		TokenKind ColourKindFor(const Token& token, const std::vector<SemanticSpan>& semantic)
-		{
-			if (token.Kind != TokenKind::Identifier)
-			{
-				return token.Kind;
-			}
-
-			for (const SemanticSpan& span : semantic)
-			{
-				if (span.From == token.From)
-				{
-					return span.Kind;
-				}
-			}
-
-			return token.Kind;
-		}
-
 		void DrawRowText(const RowCanvas& canvas, const RowSlice& slice,
 						 const VisibleLineCache& cache, const std::vector<Token>& tokens,
 						 const std::vector<SemanticSpan>& semantic, std::size_t tabWidth)
@@ -1389,7 +1363,7 @@ namespace Graphite {
 				// without special-casing it.
 				draw(std::max(token.From, slice.FromByte), canvas.Palette.Text);
 				draw(std::min(token.To, slice.ToByte),
-					 canvas.SyntaxColours.Of(ColourKindFor(token, semantic)));
+					 canvas.SyntaxColours.Of(ColourOf(token, semantic)));
 			}
 
 			draw(slice.ToByte, canvas.Palette.Text);

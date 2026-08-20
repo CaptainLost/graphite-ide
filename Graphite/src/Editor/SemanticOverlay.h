@@ -2,6 +2,7 @@
 
 #include "Lang/Api/LanguageService.h"
 #include "Lang/Api/TokenKind.h"
+#include "Lang/Syntax/Token.h"
 
 #include <cstddef>
 #include <map>
@@ -67,4 +68,14 @@ namespace Graphite {
 	private:
 		std::map<std::size_t, std::vector<SemanticSpan>> m_Lines;
 	};
+
+	// What colour a lexed token takes once the server has been heard from: its own kind unless
+	// it is an identifier a span starts at, in which case the span's.
+	//
+	// Identifiers only. A server names them and nothing else, and a span that reached a comment
+	// or a string would be recolouring something the lexer already knows better than it does.
+	// Matched on the token's start rather than by overlap, because the two agree on where an
+	// identifier begins — both measure the expanded line — and a start is one comparison where
+	// an overlap is four.
+	TokenKind ColourOf(const Token& token, const std::vector<SemanticSpan>& semantic);
 }

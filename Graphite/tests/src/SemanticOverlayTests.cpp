@@ -2,6 +2,7 @@
 
 #include "Core/Text/TextBuffer.h"
 #include "Editor/SemanticOverlay.h"
+#include "Lang/Syntax/Token.h"
 
 #include <string>
 #include <vector>
@@ -143,4 +144,43 @@ TEST_CASE("An overlay nothing was said about is empty, and one with a span is no
 	overlay.Set({{0, Graphite::Utf16Column{4}, 5, Graphite::SemanticKind::Member}}, buffer, 4);
 
 	CHECK_FALSE(overlay.IsEmpty());
+}
+
+TEST_CASE("An identifier takes the kind of the span that starts where it does")
+{
+	const Graphite::Token identifier{Graphite::TokenKind::Identifier, 4, 12};
+	const std::vector<Graphite::SemanticSpan> spans{
+		{4, 12, Graphite::TokenKind::SemanticType}};
+
+	CHECK(Graphite::ColourOf(identifier, spans) == Graphite::TokenKind::SemanticType);
+}
+
+TEST_CASE("An identifier no span starts at keeps the colour the lexer gave it")
+{
+	// A span that merely overlaps is not a match: both sides measure the same tab-expanded
+	// text, so two identifiers that begin at different offsets are different identifiers.
+	const Graphite::Token identifier{Graphite::TokenKind::Identifier, 4, 12};
+	const std::vector<Graphite::SemanticSpan> spans{
+		{5, 12, Graphite::TokenKind::SemanticType}};
+
+	CHECK(Graphite::ColourOf(identifier, spans) == Graphite::TokenKind::Identifier);
+}
+
+TEST_CASE("A token that is not an identifier is never recoloured")
+{
+	// The lexer knows a keyword is a keyword. A server names identifiers, so a span reaching
+	// one of these is a coordinate error, and taking its colour would spread that error onto
+	// the screen instead of ignoring it.
+	const Graphite::Token keyword{Graphite::TokenKind::Keyword, 0, 6};
+	const std::vector<Graphite::SemanticSpan> spans{
+		{0, 6, Graphite::TokenKind::SemanticFunction}};
+
+	CHECK(Graphite::ColourOf(keyword, spans) == Graphite::TokenKind::Keyword);
+}
+
+TEST_CASE("An identifier with nothing said about its line keeps the lexer's colour")
+{
+	const Graphite::Token identifier{Graphite::TokenKind::Identifier, 0, 3};
+
+	CHECK(Graphite::ColourOf(identifier, {}) == Graphite::TokenKind::Identifier);
 }
