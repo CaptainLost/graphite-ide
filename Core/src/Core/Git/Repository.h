@@ -4,6 +4,7 @@
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Requests.h"
+#include "Core/Git/Status.h"
 
 #include <filesystem>
 #include <vector>
@@ -34,6 +35,10 @@ namespace Core {
 		// Renames are detected rather than reported as a delete and an add. A binary file
 		// comes back flagged and with no hunks.
 		Result<Diff> QueryDiff(const DiffRequest& request) const;
+
+		// Ignored files are left out: the panel lists what can be acted on, and a build
+		// directory would bury everything else.
+		Result<WorkingTreeStatus> QueryStatus() const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
