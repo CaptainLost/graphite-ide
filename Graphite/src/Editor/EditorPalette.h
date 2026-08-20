@@ -21,5 +21,7 @@ namespace Graphite {
 		ImU32 FindMatch = 0;
 		ImU32 FindCurrentMatch = 0;
 		ImU32 Lens = 0;
+		ImU32 MatchingBracket = 0;
+		ImU32 UnmatchedBracket = 0;
 	};
 }

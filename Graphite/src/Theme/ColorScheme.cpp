@@ -43,6 +43,8 @@ namespace Graphite {
 			case EditorColor::FindMatch: return {"findMatch", "Find match"};
 			case EditorColor::FindCurrentMatch: return {"findCurrentMatch", "Current find match"};
 			case EditorColor::Lens: return {"lens", "Reference count"};
+			case EditorColor::MatchingBracket: return {"matchingBracket", "Matching bracket"};
+			case EditorColor::UnmatchedBracket: return {"unmatchedBracket", "Unmatched bracket"};
 			case EditorColor::Count: break;
 		}
 

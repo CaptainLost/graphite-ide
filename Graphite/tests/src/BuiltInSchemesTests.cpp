@@ -75,3 +75,19 @@ TEST_CASE("The light scheme's chrome is lighter than the dark scheme's")
 	CHECK(Graphite::DarkScheme().Chrome[background].R <
 		  Graphite::LightScheme().Chrome[background].R);
 }
+
+// Drawn as a box behind the glyph, so a fully opaque one would hide the bracket it is marking.
+TEST_CASE("Both bracket highlights are translucent in both built-ins")
+{
+	constexpr auto matching = static_cast<std::size_t>(Graphite::EditorColor::MatchingBracket);
+	constexpr auto unmatched = static_cast<std::size_t>(Graphite::EditorColor::UnmatchedBracket);
+
+	for (const Graphite::ResolvedScheme* base :
+		 {&Graphite::DarkScheme(), &Graphite::LightScheme()})
+	{
+		CHECK(base->Editor[matching].A > 0.0f);
+		CHECK(base->Editor[matching].A < 1.0f);
+		CHECK(base->Editor[unmatched].A > 0.0f);
+		CHECK(base->Editor[unmatched].A < 1.0f);
+	}
+}

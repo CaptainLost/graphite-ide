@@ -26,6 +26,12 @@ namespace Graphite {
 		// The reference count drawn on its own row above a declaration. Dimmed: it is a note
 		// about the code rather than code, and reading past it must cost nothing.
 		Lens,
+
+		// The pair the caret is sitting on, and a bracket that has no partner. Two colours,
+		// because "these belong together" and "this one is wrong" are opposite messages.
+		MatchingBracket,
+		UnmatchedBracket,
+
 		Count
 	};
 }
