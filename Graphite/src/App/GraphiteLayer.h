@@ -8,6 +8,7 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/PreviewSemantics.h"
 #include "App/TitleBar.h"
+#include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
 #include "Lang/Server/LanguageServices.h"
@@ -195,6 +196,11 @@ namespace Graphite {
 		GitModel m_Git{m_GitPort,
 					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::JobQueue m_Jobs;
+
+		// Holds no reference to m_Git or the queue above, so its place in this group is only
+		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be
+		// declared before m_Panels, which is where GitView is constructed.
+		DiffWindows m_DiffWindows;
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

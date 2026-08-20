@@ -110,6 +110,18 @@ namespace Graphite {
 														: DiffViewMode::SideBySide;
 		}
 
+		// Absent inside a tab: OnOpenAsTab is left unset there, so a diff already open as a
+		// tab offers no way to open a second copy of itself.
+		if (OnOpenAsTab)
+		{
+			ImGui::SameLine();
+
+			if (ImGui::SmallButton("Open as tab"))
+			{
+				OnOpenAsTab();
+			}
+		}
+
 		ImGui::Separator();
 	}
 

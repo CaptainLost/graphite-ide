@@ -2,6 +2,7 @@
 
 #include "Git/CommitListView.h"
 #include "Git/DiffView.h"
+#include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Theme/ActiveScheme.h"
 
@@ -30,13 +31,15 @@ namespace Graphite {
 	// The whole history in one panel: refs down the left, and on the right the commit list
 	// above the diff of whichever file is selected under an expanded commit.
 	//
-	// A panel rather than a document tab: DocumentWindows is keyed by filesystem path and
-	// has no way to hold a tab that is not a file on disk. Docked into the centre, it fills
-	// the same area a document would.
+	// A panel rather than a document tab: this view is keyed by selection state (ref,
+	// commit, file), not by a single path on disk, so it does not fit as one entry of
+	// DocumentSet the way a file does — a diff of one file in one commit can, though, which
+	// is what m_DiffWindows is for. Docked into the centre, it fills the same area a
+	// document would.
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, const ActiveScheme& scheme);
+		GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows);
 
 		void OnImGuiRender() override;
 
@@ -56,6 +59,11 @@ namespace Graphite {
 
 		GitModel& m_Model;
 		const ActiveScheme& m_Scheme;
+
+		// Referenced rather than owned: GraphiteLayer owns the one DiffWindows and renders
+		// it itself, beside m_DocumentWindows, so a tab opened from here keeps drawing after
+		// this panel closes or loses focus.
+		DiffWindows& m_DiffWindows;
 
 		CommitListView m_Commits;
 		DiffView m_Diff;

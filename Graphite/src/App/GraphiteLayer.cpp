@@ -7,6 +7,7 @@
 #include "Editor/TextEditorWidget.h"
 #include "Lang/Registry/LanguageRegistry.h"
 
+#include "Git/GitPalette.h"
 #include "Git/GitView.h"
 
 #include "Panels/ConsolePanel.h"
@@ -109,7 +110,7 @@ namespace Graphite {
 											   m_EditorSettings, m_PreviewSemantics)));
 
 		auto* gitView = static_cast<GitView*>(
-			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme)));
+			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows)));
 		gitView->SubscribeTo(m_Events);
 
 		m_Workspace.RegisterCommands(m_Commands);
@@ -291,6 +292,9 @@ namespace Graphite {
 			// port's cached repository handles outlive the folder they were opened on,
 			// which is exactly what blocks the user's own deletion of .git on Windows.
 			m_GitPort.SetRoot({});
+
+			// A diff of a commit in a folder that is no longer open is a tab about nothing.
+			m_DiffWindows.CloseAll();
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
@@ -486,6 +490,8 @@ namespace Graphite {
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
 								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get(),
 								 *m_ReferencesPanel);
+
+		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId());
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

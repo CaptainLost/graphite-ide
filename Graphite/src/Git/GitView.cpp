@@ -43,8 +43,9 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, const ActiveScheme& scheme)
-		: Core::Panel("git", "Git", false), m_Model(model), m_Scheme(scheme)
+	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows)
+		: Core::Panel("git", "Git", false), m_Model(model), m_Scheme(scheme),
+		  m_DiffWindows(diffWindows)
 	{
 	}
 
@@ -242,6 +243,13 @@ namespace Graphite {
 			ImGui::TextUnformatted("That file is not in this diff.");
 			return;
 		}
+
+		// Reassigned every frame rather than bound once in the constructor: the selection it
+		// captures changes with whichever file is selected now, and m_Diff is the one bottom
+		// pane shared across every selection.
+		const OpenDiff selection{selected->Commit, selected->Path};
+
+		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
 
 		m_Diff.Render(diff->Files[*index], palette);
 	}
