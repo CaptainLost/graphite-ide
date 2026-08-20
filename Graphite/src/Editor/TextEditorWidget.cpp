@@ -1,5 +1,6 @@
 #include "Editor/TextEditorWidget.h"
 
+#include "Editor/BracketMatch.h"
 #include "Editor/EditorPalette.h"
 #include "Editor/FindBar.h"
 #include "Editor/FindNavigation.h"
@@ -1084,6 +1085,12 @@ namespace Graphite {
 			// lands several cells out on any line holding a tab.
 			LineMatches Matches;
 
+			// The bracket columns on this line — none, one, or both when the pair is on one
+			// line. Converted in CacheLine for the same reason the matches above are: a raw byte
+			// offset lands several cells out on any line holding a tab.
+			LineMatches Brackets;
+			bool BracketsUnmatched = false;
+
 			// The byte the previous row ended at, and the row that follows it. Valid only for
 			// that one row: the clipper may jump, and a jump lands somewhere the carry says
 			// nothing about.
@@ -1106,6 +1113,9 @@ namespace Graphite {
 			std::pair<std::size_t, std::size_t> Selection;
 			std::size_t CurrentMatch = 0;
 			std::size_t TabWidth = Core::DefaultTabWidth;
+
+			// The pair the caret is on, in document bytes, or nothing when it is on no bracket.
+			std::optional<BracketPair> Brackets;
 		};
 
 		void CacheLine(VisibleLineCache& cache, const LineCacheInput& input, std::size_t line)
@@ -1134,6 +1144,34 @@ namespace Graphite {
 			matchInput.TabWidth = tabWidth;
 
 			cache.Matches = MatchColumnsOnLine(matchInput);
+
+			cache.Brackets.Columns.clear();
+			cache.Brackets.Current = 0;
+			cache.BracketsUnmatched = input.Brackets && !input.Brackets->Matched;
+
+			if (input.Brackets)
+			{
+				const std::size_t end = start + cache.Text.size();
+
+				for (const std::size_t offset : {input.Brackets->Open, input.Brackets->Close})
+				{
+					if (offset < start || offset >= end)
+						continue;
+
+					const std::size_t column =
+						Core::ColumnOfByte(cache.Text, offset - start, tabWidth);
+
+					cache.Brackets.Columns.push_back(MatchColumns{column, column + 1});
+				}
+
+				// An unmatched bracket reports the same offset twice; drawing the box twice over
+				// itself would show a darker square than the palette asked for.
+				if (cache.Brackets.Columns.size() == 2 &&
+					cache.Brackets.Columns[0].FromColumn == cache.Brackets.Columns[1].FromColumn)
+				{
+					cache.Brackets.Columns.pop_back();
+				}
+			}
 
 			cache.SelectionFromColumn = 0;
 			cache.SelectionToColumn = 0;
@@ -1268,6 +1306,40 @@ namespace Graphite {
 				const ImU32 color = index == cache.Matches.Current
 										? canvas.Palette.FindCurrentMatch
 										: canvas.Palette.FindMatch;
+
+				canvas.Draw->AddRectFilled(ImVec2(fromX, slice.Y),
+										   ImVec2(toX, slice.Y + canvas.Metrics.LineHeight),
+										   color);
+			}
+		}
+
+		// Drawn with the find matches, before the selection and the text: the box marks the
+		// bracket, and the glyph has to stay on top of it and keep its own syntax colour.
+		// Clipped to this row's own column span the same way the matches above are.
+		void DrawRowBrackets(const RowCanvas& canvas, const RowSlice& slice,
+							 const VisibleLineCache& cache)
+		{
+			const ImU32 color = cache.BracketsUnmatched ? canvas.Palette.UnmatchedBracket
+														: canvas.Palette.MatchingBracket;
+
+			for (const MatchColumns& bracket : cache.Brackets.Columns)
+			{
+				const std::size_t clippedFrom =
+					std::clamp(bracket.FromColumn, slice.FromColumn, slice.ToColumn);
+				const std::size_t clippedTo =
+					std::clamp(bracket.ToColumn, slice.FromColumn, slice.ToColumn);
+
+				if (clippedTo <= clippedFrom)
+				{
+					continue;
+				}
+
+				const float fromX =
+					canvas.TextOriginX +
+					static_cast<float>(clippedFrom - slice.FromColumn) * canvas.Metrics.CellWidth;
+				const float toX =
+					canvas.TextOriginX +
+					static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
 
 				canvas.Draw->AddRectFilled(ImVec2(fromX, slice.Y),
 										   ImVec2(toX, slice.Y + canvas.Metrics.LineHeight),
@@ -1655,6 +1727,7 @@ namespace Graphite {
 			DrawIndentGuides(canvas, slice, depth, item.TabWidth);
 
 			DrawRowMatches(canvas, slice, cache);
+			DrawRowBrackets(canvas, slice, cache);
 
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
@@ -1691,6 +1764,59 @@ namespace Graphite {
 			// clipper's rows below assume it starts.
 			ImGui::Dummy(ImVec2(contentWidth, documentHeight));
 			ImGui::SetCursorScreenPos(origin);
+		}
+
+		// What the last bracket search was asked, and what it answered. Finding a pair walks up
+		// to kBracketScanLines in each direction and re-lexes every line it reads, because the
+		// syntax cache holds exactly one line's tokens: cheap for a partner a few lines away,
+		// and the whole bound every time when the caret sits beside an unclosed brace — which is
+		// precisely the state a file is in while it is being typed into. So the answer is kept
+		// and only recomputed when one of its three inputs moved.
+		//
+		// Keyed on the path rather than the item's address, like the caret blink above, which a
+		// reallocation of the open-document list can hand to a different document. One value for
+		// the whole application: two splits showing the same file with carets in different places
+		// simply miss on each other, which costs what not memoising at all would have cost.
+		struct BracketMemo
+		{
+			std::filesystem::path Path;
+			std::size_t Caret = 0;
+			std::size_t Revision = 0;
+			bool Filled = false;
+			std::optional<BracketPair> Pair;
+		};
+
+		BracketMemo s_Brackets;
+
+		// The buffer revision is the same staleness signal RefreshFindMatchesIfStale compares
+		// against, and it is the only one an edit can arrive through; the caret offset covers
+		// every move that leaves the text alone.
+		const std::optional<BracketPair>& BracketPairFor(const Core::TextBuffer& buffer,
+														 const Core::OpenItem& item,
+														 SyntaxCache* syntax)
+		{
+			// No cache means no way to tell a bracket from one inside a string, so nothing is
+			// highlighted rather than the wrong thing.
+			static const std::optional<BracketPair> none;
+
+			if (syntax == nullptr)
+				return none;
+
+			const std::size_t revision = buffer.GetRevision();
+
+			if (s_Brackets.Filled && s_Brackets.Caret == item.Caret.Offset &&
+				s_Brackets.Revision == revision && s_Brackets.Path == item.Path)
+			{
+				return s_Brackets.Pair;
+			}
+
+			s_Brackets.Path = item.Path;
+			s_Brackets.Caret = item.Caret.Offset;
+			s_Brackets.Revision = revision;
+			s_Brackets.Filled = true;
+			s_Brackets.Pair = FindBracketPair(buffer, *syntax, item.Caret.Offset);
+
+			return s_Brackets.Pair;
 		}
 
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
@@ -1758,6 +1884,10 @@ namespace Graphite {
 			lineInput.Selection = Core::SelectionRange(item.Caret);
 			lineInput.CurrentMatch = item.Find.Current;
 			lineInput.TabWidth = item.TabWidth;
+
+			// Once for the frame, ahead of the rows: every visible line is asked about the same
+			// pair, and the search itself is memoised on the caret and the buffer revision.
+			lineInput.Brackets = BracketPairFor(buffer, item, syntax);
 
 			ReserveDocumentExtent(origin, canvas.ContentWidth,
 								  DocumentHeightOf(item, metrics, lenses));
