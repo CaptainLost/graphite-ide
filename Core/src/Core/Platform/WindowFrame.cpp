@@ -131,6 +131,18 @@ namespace Core {
 				m_Metrics = metrics;
 			}
 
+			void SetBorderColor(const Color& color) override
+			{
+				m_Border = static_cast<COLORREF>(PackBgr(color));
+
+				// Only once installed: before that, Install's own call is what puts the colour
+				// on, and DWM has no subclassed window to answer about yet.
+				if (IsInstalled())
+				{
+					ApplyBorderColour();
+				}
+			}
+
 		private:
 			// Install leaves nothing behind on any path that does not set m_Previous.
 			bool IsInstalled() const { return m_Previous != nullptr; }

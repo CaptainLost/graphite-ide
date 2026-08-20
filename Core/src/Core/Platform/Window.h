@@ -59,6 +59,8 @@ namespace Core {
 
 		virtual void SetCaptionMetrics(const CaptionMetrics& metrics) = 0;
 
+		virtual void SetBorderColor(const Color& color) = 0;
+
 		static Result<Scope<Window>> Create(const WindowSpec& spec);
 	};
 }

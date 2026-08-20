@@ -306,6 +306,16 @@ namespace Core {
 		}
 	}
 
+	void GlfwWindow::SetBorderColor(const Color& color)
+	{
+		// No frame means the caption was never reclaimed and the system owns the border. There
+		// is nothing to recolour, and that is the degraded-but-working state, not an error.
+		if (m_Frame != nullptr)
+		{
+			m_Frame->SetBorderColor(color);
+		}
+	}
+
 	Result<Scope<Window>> Window::Create(const WindowSpec& spec)
 	{
 		if (s_GlfwWindowCount == 0)

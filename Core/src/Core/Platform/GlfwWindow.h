@@ -41,6 +41,7 @@ namespace Core {
 		bool IsMaximized() const override;
 		bool HasCustomTitleBar() const override;
 		void SetCaptionMetrics(const CaptionMetrics& metrics) override;
+		void SetBorderColor(const Color& color) override;
 
 		void AdoptFrame(Scope<WindowFrame> frame) { m_Frame = std::move(frame); }
 

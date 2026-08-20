@@ -346,7 +346,10 @@ namespace Graphite {
 
 		m_AppliedSchemeVersion = m_ActiveScheme.GetVersion();
 
-		Core::Theme::Apply(ChromePaletteFor(m_ActiveScheme.Get()));
+		const Core::ChromePalette palette = ChromePaletteFor(m_ActiveScheme.Get());
+
+		Core::Theme::Apply(palette);
+		Core::Application::Get().GetWindow().SetBorderColor(palette.Border);
 	}
 
 	void GraphiteLayer::OnImGuiRender()
