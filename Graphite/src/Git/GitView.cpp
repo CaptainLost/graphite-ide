@@ -51,11 +51,15 @@ namespace Graphite {
 		// GitModel::Clear() drops the log on both events, and nothing else re-requests it,
 		// so without this a folder opened after another one leaves the history column
 		// loading forever - RenderCommits' own latch would stay set from the first folder.
-		events.Subscribe<WorkspaceOpenedEvent>(
-			[this](const WorkspaceOpenedEvent&) { m_LogRequested = false; });
+		events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent&) {
+			m_LogRequested = false;
+			m_Commits.Reset();
+		});
 
-		events.Subscribe<WorkspaceClosedEvent>(
-			[this](const WorkspaceClosedEvent&) { m_LogRequested = false; });
+		events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
+			m_LogRequested = false;
+			m_Commits.Reset();
+		});
 	}
 
 	void GitView::OnImGuiRender()

@@ -42,7 +42,11 @@ namespace Graphite {
 
 		// Resets the first-log latch on every open and close, so a folder opened after
 		// another one leaves - which drops the model's log the same way a close does -
-		// gets asked for again rather than leaving the history column loading forever.
+		// gets asked for again rather than leaving the history column loading forever. Also
+		// resets the commit list's own expansion, selection and load-more state, since
+		// GitModel::Clear() drops every cached diff on the same two events and a selection
+		// or expansion naming a commit from the old repository would otherwise point at
+		// nothing the new page ever re-requests.
 		void SubscribeTo(Core::EventBus& events);
 
 	private:

@@ -51,6 +51,13 @@ namespace Graphite {
 		}
 	}
 
+	void CommitListView::Reset()
+	{
+		m_Expanded.clear();
+		m_SelectedFile.reset();
+		m_LoadMoreRequestedAtCount = -1;
+	}
+
 	bool CommitListView::TakeLoadMoreRequest()
 	{
 		const bool requested = m_LoadMoreRequested;

@@ -43,6 +43,14 @@ namespace Graphite {
 
 		std::optional<FileSelection> GetSelectedFile() const { return m_SelectedFile; }
 
+		// Clears the expansion set, the file selection and the load-more latch. Called when
+		// the workspace opens or closes: GitModel::Clear() drops every cached diff on both,
+		// so an expansion or a selection naming a commit from the old repository would point
+		// at nothing the new page ever re-requests, and RenderDiff would show "Loading…"
+		// forever. The latch needs the same reset - a new repository whose first page happens
+		// to match the last armed commit count would otherwise never arm load-more.
+		void Reset();
+
 		// True on the first frame, after a page arrives, that finds the reader at the
 		// bottom of an incomplete page. Latched on the page's own commit count rather than
 		// merely consumed: consuming only stops one arming from being read twice, it does
