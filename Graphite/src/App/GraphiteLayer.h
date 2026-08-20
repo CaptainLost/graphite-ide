@@ -8,6 +8,8 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/PreviewSemantics.h"
 #include "App/TitleBar.h"
+#include "Git/GitModel.h"
+#include "Git/RepositoryGitPort.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
@@ -24,6 +26,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/DockSpaceHost.h"
+#include "Core/Jobs/JobQueue.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/PanelManager.h"
 
@@ -170,6 +173,22 @@ namespace Graphite {
 			"Open dropped folder##DropReplacesWorkspace";
 
 		ModalQuestion<DroppedWorkspace> m_DropQuestion;
+
+		// Declared before m_Panels for the same reason as m_Search: the git views will hold
+		// references to these.
+		//
+		// The order among these three is not the declaration order the naive reading suggests.
+		// Every job GitModel submits captures `this`, so the queue behind the submitter must
+		// be destroyed - and its workers joined - before the model goes away, and the port
+		// must outlive every query a worker might still be running against it. Members are
+		// destroyed in reverse declaration order, so m_Jobs is declared LAST of the three: its
+		// destructor runs FIRST, joining every worker before m_Git or m_GitPort can be torn
+		// down. Declaring m_Jobs first would compile without complaint and fail only under
+		// real threading, when a worker is mid-query as the model it points into disappears.
+		RepositoryGitPort m_GitPort{std::filesystem::path{}};
+		GitModel m_Git{m_GitPort,
+					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		Core::JobQueue m_Jobs;
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

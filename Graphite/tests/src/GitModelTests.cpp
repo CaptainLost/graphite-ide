@@ -2,6 +2,9 @@
 
 #include "Git/GitModel.h"
 
+#include "Core/Events/EventBus.h"
+#include "Workspace/Workspace.h"
+
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -192,4 +195,105 @@ TEST_CASE("An update with nothing pending asks nothing")
 	CHECK(port.StatusCalls == 0);
 	CHECK(port.BranchCalls == 0);
 	CHECK(port.LogCalls == 0);
+}
+
+TEST_CASE("A file-change event does not refresh until the debounce has elapsed")
+{
+	FakePort port;
+	Core::EventBus events;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+
+	model.OnUpdate(Core::Timestep{0.05f});
+	CHECK(port.StatusCalls == 0);
+
+	model.OnUpdate(Core::Timestep{0.05f});
+	CHECK(port.StatusCalls == 0);
+
+	// A save writes several files in a burst. Refreshing on each one would run the query
+	// four or five times for one action.
+	model.OnUpdate(Core::Timestep{0.1f});
+	CHECK(port.StatusCalls == 1);
+}
+
+TEST_CASE("A burst of file-change events causes one refresh")
+{
+	FakePort port;
+	Core::EventBus events;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	for (int index = 0; index < 5; ++index)
+	{
+		events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+		model.OnUpdate(Core::Timestep{0.02f});
+	}
+
+	CHECK(port.StatusCalls == 0);
+
+	model.OnUpdate(Core::Timestep{0.2f});
+	CHECK(port.StatusCalls == 1);
+	CHECK(port.BranchCalls == 1);
+}
+
+TEST_CASE("The timer does not keep firing once it has fired")
+{
+	FakePort port;
+	Core::EventBus events;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
+	REQUIRE(port.StatusCalls == 1);
+
+	model.OnUpdate(Core::Timestep{1.0f});
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	CHECK(port.StatusCalls == 1);
+}
+
+TEST_CASE("Closing the workspace drops the snapshots")
+{
+	FakePort port;
+	Core::EventBus events;
+	port.Status.Entries.push_back(Entry("a.txt"));
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetStatus() != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// Leaving the previous folder's changes on screen after it was closed would be a lie
+	// about the folder now open.
+	CHECK(model.GetStatus() == nullptr);
+	CHECK(model.GetBranches() == nullptr);
+}
+
+TEST_CASE("A file-change event outside a workspace refreshes nothing")
+{
+	FakePort port;
+	Core::EventBus events;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	CHECK(port.StatusCalls == 0);
 }

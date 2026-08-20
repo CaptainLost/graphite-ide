@@ -1,5 +1,7 @@
 #include "Git/GitModel.h"
 
+#include "Workspace/Workspace.h"
+
 #include <utility>
 
 namespace Graphite {
@@ -15,8 +17,74 @@ namespace Graphite {
 		m_Inbox.push_back(std::move(delivery));
 	}
 
-	void GitModel::OnUpdate(Core::Timestep)
+	void GitModel::SetRoot(std::filesystem::path root)
 	{
+		m_Root = std::move(root);
+	}
+
+	void GitModel::Clear()
+	{
+		// The generations move forward rather than resetting, so a query still in flight
+		// for the folder that was just closed is dropped when it lands.
+		m_StatusApplied = m_StatusRequested;
+		m_BranchesApplied = m_BranchesRequested;
+		m_LogApplied = m_LogRequested;
+
+		m_Status.reset();
+		m_Branches.reset();
+		m_Log.reset();
+
+		m_StatusError.reset();
+		m_BranchesError.reset();
+		m_LogError.reset();
+
+		m_Dirty = false;
+		m_DirtyFor = 0.0f;
+	}
+
+	void GitModel::MarkDirty()
+	{
+		if (m_Root.empty())
+		{
+			return;
+		}
+
+		m_Dirty = true;
+		m_DirtyFor = 0.0f;
+	}
+
+	void GitModel::SubscribeTo(Core::EventBus& events)
+	{
+		events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
+			SetRoot(event.Root);
+			MarkDirty();
+		});
+
+		events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
+			m_Root.clear();
+			Clear();
+		});
+
+		events.Subscribe<WorkspaceFilesChangedEvent>(
+			[this](const WorkspaceFilesChangedEvent&) { MarkDirty(); });
+	}
+
+	void GitModel::OnUpdate(Core::Timestep ts)
+	{
+		if (m_Dirty)
+		{
+			m_DirtyFor += ts.GetSeconds();
+
+			if (m_DirtyFor >= kDebounceSeconds)
+			{
+				m_Dirty = false;
+				m_DirtyFor = 0.0f;
+
+				RequestStatus();
+				RequestBranches();
+			}
+		}
+
 		std::vector<Delivery> ready;
 
 		{

@@ -2,9 +2,11 @@
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
+#include "Core/Events/EventBus.h"
 #include "Git/GitPort.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -67,10 +69,29 @@ namespace Graphite {
 			return m_LogError;
 		}
 
+		// Without a root the model answers nothing: a file-change event that arrives
+		// before a folder is open has no repository to ask about.
+		void SetRoot(std::filesystem::path root);
+		void Clear();
+
+		void SubscribeTo(Core::EventBus& events);
+
+		// How long a burst of file-change events is allowed to keep coalescing. A save
+		// touches several files, and refreshing per file would run the same query five
+		// times for one action.
+		static constexpr float kDebounceSeconds = 0.15f;
+
 	private:
 		using Delivery = std::function<void()>;
 
 		void Deliver(Delivery delivery);
+
+		void MarkDirty();
+
+		std::filesystem::path m_Root;
+
+		bool m_Dirty = false;
+		float m_DirtyFor = 0.0f;
 
 		GitPort& m_Port;
 		JobSubmitter m_Submit;

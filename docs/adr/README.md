@@ -520,4 +520,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0488](0488-ship-clangd-with-the-release.md) | Ship clangd with the release | proposed | 2026-08-16 |
 | [0489](0489-open-a-previewed-file-with-the-language-server.md) | Open a previewed file with the language server | proposed | 2026-08-20 |
 | [0490](0490-colour-the-application-chrome-from-the-active-scheme.md) | Colour the application chrome from the active scheme | proposed | 2026-08-20 |
+| [0491](0491-keep-git-data-in-core-and-git-freshness-in-graphite.md) | Keep git data in Core and git freshness in Graphite | proposed | 2026-08-20 |
+| [0492](0492-give-each-worker-thread-its-own-repository-handle.md) | Give each worker thread its own repository handle | proposed | 2026-08-20 |
 <!-- /adr-index -->

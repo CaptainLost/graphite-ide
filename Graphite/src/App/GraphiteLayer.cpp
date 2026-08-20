@@ -269,6 +269,11 @@ namespace Graphite {
 
 	void GraphiteLayer::SubscribeToWorkspaceEvents()
 	{
+		m_Git.SubscribeTo(m_Events);
+
+		m_Events.Subscribe<WorkspaceOpenedEvent>(
+			[this](const WorkspaceOpenedEvent& event) { m_GitPort.SetRoot(event.Root); });
+
 		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
 			m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
 		});
@@ -300,6 +305,12 @@ namespace Graphite {
 	void GraphiteLayer::OnUpdate(Core::Timestep ts)
 	{
 		m_Workspace.Update();
+
+		// Before the panels, so the model applies whatever a worker finished this frame -
+		// and picks up any workspace event just published - before any panel reads a
+		// snapshot this frame.
+		m_Git.OnUpdate(ts);
+
 		m_Panels.OnUpdate(ts);
 
 		m_SolutionLoaded = m_Workspace.LoadedSolution().has_value();
