@@ -98,6 +98,11 @@ TEST_CASE("A branch with no upstream reports no counts")
 	CHECK_FALSE(branches.GetValue().front().Upstream.has_value());
 	CHECK(branches.GetValue().front().Ahead == 0);
 	CHECK(branches.GetValue().front().Behind == 0);
+
+	// DistanceKnown also covers a resolved-but-unmeasurable upstream (a symbolic
+	// upstream, or a failed graph walk) — that case needs a remote to reach and the
+	// fixture has none, so only the no-upstream half of the contract is pinned here.
+	CHECK_FALSE(branches.GetValue().front().DistanceKnown);
 }
 
 TEST_CASE("Listing branches in a repository with no commits is empty rather than an error")

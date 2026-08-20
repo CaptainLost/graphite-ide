@@ -103,6 +103,7 @@ namespace Core {
 					{
 						branch.Ahead = ahead;
 						branch.Behind = behind;
+						branch.DistanceKnown = true;
 					}
 				}
 
