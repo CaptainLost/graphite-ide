@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Git/Oid.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <optional>
@@ -31,5 +33,38 @@ namespace Core {
 		bool FollowRenames = true;
 
 		std::size_t MaxCount = 500;
+	};
+
+	enum class DiffTarget
+	{
+		// What is edited but not staged.
+		WorkTreeToIndex,
+
+		// What is staged and would go into the next commit.
+		IndexToHead,
+
+		// Everything that differs from the last commit, staged or not. This is what the
+		// editor's change markers are drawn from.
+		WorkTreeToHead,
+
+		// One commit against its first parent. A root commit diffs against nothing, and
+		// every file comes out as added.
+		CommitToParent,
+
+		// Any two revisions, in either direction.
+		RevisionToRevision
+	};
+
+	struct DiffRequest
+	{
+		DiffTarget Target = DiffTarget::WorkTreeToHead;
+
+		// CommitToParent reads From as the commit. RevisionToRevision reads From as the
+		// older side and To as the newer. The working tree targets read neither.
+		std::optional<Oid> From;
+		std::optional<Oid> To;
+
+		// Relative to the working directory. Without it, the whole tree.
+		std::optional<std::filesystem::path> File;
 	};
 }

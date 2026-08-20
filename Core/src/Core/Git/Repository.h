@@ -2,6 +2,7 @@
 
 #include "Core/Base/Result.h"
 #include "Core/Git/Commit.h"
+#include "Core/Git/Diff.h"
 #include "Core/Git/Requests.h"
 
 #include <filesystem>
@@ -29,6 +30,10 @@ namespace Core {
 		// Newest first, in topological then date order — the order a history is read in.
 		// A repository whose HEAD is unborn answers with an empty list, not an error.
 		Result<std::vector<CommitSummary>> QueryLog(const LogRequest& request) const;
+
+		// Renames are detected rather than reported as a delete and an add. A binary file
+		// comes back flagged and with no hunks.
+		Result<Diff> QueryDiff(const DiffRequest& request) const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
