@@ -19,8 +19,10 @@ namespace Graphite {
 
 	// One drawable row. Carries indices rather than the text itself: the widget already
 	// holds the snapshot the diff came from, and copying every line into the rows would
-	// double a large diff in memory for no gain — while a pointer or a string_view would
-	// dangle the moment a newer snapshot replaced the one it pointed into.
+	// double a large diff in memory for no gain. A row is valid only against the exact
+	// FileDiff it was built from — a caller must rebuild its rows whenever its snapshot
+	// changes, because a stale row's indices can still be in range against a newer diff,
+	// in which case LineOf resolves it to the wrong line rather than to nothing.
 	struct DiffRow
 	{
 		DiffRowKind Kind = DiffRowKind::Context;

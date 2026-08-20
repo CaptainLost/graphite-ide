@@ -84,12 +84,36 @@ TEST_CASE("A row can find its own line back in the diff")
 	const Core::DiffLine* line = Graphite::LineOf(file, rows[1]);
 
 	// The rows carry indices rather than pointers or copies, so the widget reads the text
-	// straight out of the snapshot it is already holding and nothing can dangle.
+	// straight out of the snapshot it is already holding without copying every line.
 	REQUIRE(line != nullptr);
 	CHECK(line->Text == "new\n");
 
 	// A header row names no line of the file.
 	CHECK(Graphite::LineOf(file, rows[0]) == nullptr);
+}
+
+TEST_CASE("LineOf returns null when a row's hunk index no longer fits the file")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+
+	DiffRow row;
+	row.Kind = DiffRowKind::Context;
+	row.Hunk = 1; // The file has only one hunk, at index 0.
+	row.Line = 0;
+
+	CHECK(Graphite::LineOf(file, row) == nullptr);
+}
+
+TEST_CASE("LineOf returns null when a row's line index no longer fits its hunk")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+
+	DiffRow row;
+	row.Kind = DiffRowKind::Context;
+	row.Hunk = 0;
+	row.Line = 1; // The hunk has only one line, at index 0.
+
+	CHECK(Graphite::LineOf(file, row) == nullptr);
 }
 
 TEST_CASE("Side by side puts a context line on both halves")
@@ -112,13 +136,16 @@ TEST_CASE("Side by side pairs a removed line with the added line that replaced i
 
 	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
 
-	// One row, not two: an edited line is one change, and showing it as a deletion above
-	// an insertion is what the side-by-side view exists to stop doing.
+	// One content row, not two (plus the header row makes pairs.size() == 2): an edited
+	// line is one change, and showing it as a deletion above an insertion is what the
+	// side-by-side view exists to stop doing.
 	REQUIRE(pairs.size() == 2);
 	REQUIRE(pairs[1].Left.has_value());
 	REQUIRE(pairs[1].Right.has_value());
 	CHECK(pairs[1].Left->Kind == DiffRowKind::Removed);
 	CHECK(pairs[1].Right->Kind == DiffRowKind::Added);
+	CHECK(pairs[1].Left->OldLine == 2);
+	CHECK(pairs[1].Right->NewLine == 2);
 }
 
 TEST_CASE("Side by side leaves the other half empty when a line was only deleted")
@@ -134,8 +161,8 @@ TEST_CASE("Side by side leaves the other half empty when a line was only deleted
 	CHECK(pairs[1].Left.has_value());
 	CHECK(pairs[1].Right.has_value());
 
-	// Two lines went, one came back. The second removal has nothing to pair with, and its
-	// right half must be blank rather than borrowing the next hunk's first line.
+	// Two lines went, one came back. The second removal has nothing left in the added run
+	// to pair with, so its right half must stay empty rather than pairing with anything.
 	REQUIRE(pairs[2].Left.has_value());
 	CHECK(pairs[2].Left->OldLine == 3);
 	CHECK_FALSE(pairs[2].Right.has_value());
@@ -189,5 +216,69 @@ TEST_CASE("Rows from a second hunk name their own hunk")
 	CHECK(rows[3].Hunk == 1);
 
 	// Staging works by hunk, so a row that cannot name its hunk cannot be acted on.
-	CHECK(Graphite::LineOf(file, rows[3])->Text == "twenty\n");
+	const Core::DiffLine* line = Graphite::LineOf(file, rows[3]);
+	REQUIRE(line != nullptr);
+	CHECK(line->Text == "twenty\n");
+}
+
+TEST_CASE("Side by side rows from a second hunk name their own hunk")
+{
+	Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+
+	Core::Hunk second;
+	second.OldStart = 20;
+	second.NewStart = 20;
+	second.Header = "@@ -20 +20 @@\n";
+	second.Lines.push_back(Line(Core::DiffLineKind::Added, 0, 20, "twenty\n"));
+	file.Hunks.push_back(std::move(second));
+
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	// Header + context row for the first hunk, header + one insertion row for the second.
+	REQUIRE(pairs.size() == 4);
+	CHECK(pairs[0].Left->Hunk == 0);
+	CHECK(pairs[1].Left->Hunk == 0);
+	CHECK(pairs[2].Left->Hunk == 1);
+
+	REQUIRE(pairs[3].Right.has_value());
+	CHECK(pairs[3].Right->Hunk == 1);
+	CHECK_FALSE(pairs[3].Left.has_value());
+}
+
+TEST_CASE("Side by side pairs an added line with an empty left half when the hunk opens on an insertion")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Added, 0, 1, "new\n"),
+										  Line(Core::DiffLineKind::Context, 1, 2, "one\n")});
+
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	REQUIRE(pairs.size() == 3);
+	CHECK_FALSE(pairs[1].Left.has_value());
+	REQUIRE(pairs[1].Right.has_value());
+	CHECK(pairs[1].Right->Kind == DiffRowKind::Added);
+	CHECK(pairs[1].Right->NewLine == 1);
+}
+
+TEST_CASE("Side by side pairs alternating removed and added lines in order, not by kind")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Removed, 1, 0, "one\n"),
+										  Line(Core::DiffLineKind::Added, 0, 1, "ONE\n"),
+										  Line(Core::DiffLineKind::Removed, 2, 0, "two\n"),
+										  Line(Core::DiffLineKind::Added, 0, 2, "TWO\n")});
+
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	// Each Removed/Added pair is its own run, so this must come back as two paired rows,
+	// not as a four-long removed run zipped against a four-long added run.
+	REQUIRE(pairs.size() == 3);
+
+	REQUIRE(pairs[1].Left.has_value());
+	REQUIRE(pairs[1].Right.has_value());
+	CHECK(pairs[1].Left->OldLine == 1);
+	CHECK(pairs[1].Right->NewLine == 1);
+
+	REQUIRE(pairs[2].Left.has_value());
+	REQUIRE(pairs[2].Right.has_value());
+	CHECK(pairs[2].Left->OldLine == 2);
+	CHECK(pairs[2].Right->NewLine == 2);
 }
