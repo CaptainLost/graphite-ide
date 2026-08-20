@@ -55,8 +55,16 @@ namespace Graphite {
 		// and held afterwards: a commit's diff cannot change, so re-asking would be pure
 		// waste — and the list asks about every expanded commit on every frame it draws.
 		//
-		// Asking for a commit already held, or already in flight, does nothing.
+		// Asking for a commit already held, already in flight, or already failed, does
+		// nothing — a permanent failure must not turn the list's every-frame ask into a
+		// worker job every frame. ForgetDiffFor is what gives a failed entry a way back.
 		void RequestDiffFor(const Core::Oid& commit);
+
+		// Drops a cached entry, failed or not, so the next RequestDiffFor for that commit
+		// starts over. Called when a row collapses: it is the reader's recourse for a
+		// failure, obvious without being told, since expanding the row again is the same
+		// gesture that asked for the diff in the first place.
+		void ForgetDiffFor(const Core::Oid& commit);
 
 		// Null while the answer is in flight, after a failure, and for a commit that was
 		// evicted. In every case the caller's response is the same: draw nothing under
@@ -148,6 +156,11 @@ namespace Graphite {
 			std::uint64_t Applied = 0;
 
 			std::shared_ptr<const Core::Diff> Diff;
+
+			// Set when the query answered with an error rather than a diff. Checked by
+			// RequestDiffFor so a permanent failure does not turn the list's every-frame ask
+			// into a worker job every frame — only ForgetDiffFor clears it.
+			bool Failed = false;
 
 			// Counts up on every request and every read, so eviction can pick the entry
 			// nobody has looked at for longest. A counter rather than a clock: the model

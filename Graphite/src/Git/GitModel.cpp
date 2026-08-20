@@ -285,7 +285,11 @@ namespace Graphite {
 		{
 			const bool inFlight = existing->second.Requested != existing->second.Applied;
 
-			if (inFlight || existing->second.Diff != nullptr)
+			// A failed entry is suppressed the same way a held or in-flight one is: the list
+			// asks about every expanded commit every frame, and without this a permanent
+			// failure would resubmit a worker job that many times a second. ForgetDiffFor is
+			// the only way back in.
+			if (inFlight || existing->second.Diff != nullptr || existing->second.Failed)
 			{
 				Touch(existing->second);
 				return;
@@ -293,9 +297,10 @@ namespace Graphite {
 		}
 		else
 		{
-			// Only when the key is absent: this branch is the only one that grows the map,
-			// so evicting on the failed-retry path above - where the key is already present
-			// and nothing will grow - would drop an unrelated entry for no reason.
+			// Only when the key is absent: this is the only branch that grows the map. A
+			// held, in-flight or failed entry above returns before reaching here, so
+			// evicting there - where the key is already present and nothing will grow -
+			// would drop an unrelated entry for no reason.
 			EvictIfFull();
 		}
 
@@ -329,8 +334,11 @@ namespace Graphite {
 				if (!result.HasValue())
 				{
 					// No last-good snapshot to keep, unlike the volatile diff: a commit
-					// that failed has nothing older to fall back to.
+					// that failed has nothing older to fall back to. Marked rather than left
+					// to imply itself from a null Diff, so RequestDiffFor can tell "still
+					// waiting" from "already tried and lost" without a second lookup.
 					m_CommitDiffError = result.GetError();
+					entry->second.Failed = true;
 					return;
 				}
 
@@ -339,6 +347,11 @@ namespace Graphite {
 					std::make_shared<const Core::Diff>(std::move(result).GetValue());
 			});
 		});
+	}
+
+	void GitModel::ForgetDiffFor(const Core::Oid& commit)
+	{
+		m_CommitDiffs.erase(commit);
 	}
 
 	std::shared_ptr<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const

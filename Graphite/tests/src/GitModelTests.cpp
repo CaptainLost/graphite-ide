@@ -582,7 +582,29 @@ TEST_CASE("A failed diff for a commit leaves no snapshot and reports the error")
 	CHECK(model.GetLastError().has_value());
 }
 
-TEST_CASE("A failed diff can be asked for again")
+TEST_CASE("A failed diff is not asked for again on its own")
+{
+	FakePort port;
+	port.FailDiff = true;
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const int after = port.DiffCalls;
+
+	// The list asks about every expanded commit every frame. Without suppressing a
+	// failed entry the same way a held or in-flight one is suppressed, a permanent
+	// failure would resubmit a worker job every one of those frames.
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.DiffCalls == after);
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+}
+
+TEST_CASE("A failed diff can be asked for again once forgotten")
 {
 	FakePort port;
 	port.FailDiff = true;
@@ -595,11 +617,12 @@ TEST_CASE("A failed diff can be asked for again")
 	port.FailDiff = false;
 	port.Diff = DiffNaming("a.txt");
 
+	// A failure must not poison the entry forever: collapsing and expanding the row
+	// again is the reader's recourse, and ForgetDiffFor is what that gesture does.
+	model.ForgetDiffFor(IdOf(1));
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
 
-	// A failure must not poison the entry: the repository may have been busy, and the
-	// reader will simply collapse and expand the row again.
 	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
 }
 
