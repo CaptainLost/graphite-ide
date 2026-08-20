@@ -86,9 +86,9 @@ TEST_CASE("A bracket inside a string is not a bracket")
 {
 	Fixture fixture("const char* s = \"(\";");
 
-	CHECK_FALSE(fixture.At(18).has_value());
-	// 18 is the bracket itself: offset 17 is the opening quote, and a caret there is next to
-	// no bracket at all, so the case would pass without exercising the rule.
+	// The bytes are: `"` at 16, `(` at 17, `"` at 18. A caret at 17 is directly on the bracket,
+	// so the after-caret path is the one that has to refuse it.
+	CHECK_FALSE(fixture.At(17).has_value());
 }
 
 TEST_CASE("A bracket inside a comment is not a bracket")
@@ -109,6 +109,24 @@ TEST_CASE("A bracket in a string does not close one in code")
 	CHECK(pair->Matched);
 	CHECK(pair->Open == 1);
 	CHECK(pair->Close == 5);
+}
+
+// Token offsets are offsets into the tab-expanded line, which advances by a character's byte
+// length; a column count advances by one per character. The two agree on every ASCII line, so
+// only a multi-byte character can tell them apart. Here `ą` is two bytes: the closing bracket
+// is byte 6 and character 5, and character 5 still falls inside the string token that spans
+// bytes 2 to 5 — so a search mapping bytes to columns would call that bracket string text,
+// skip it, and report the pair unmatched.
+TEST_CASE("A multi-byte character before the bracket does not move it out of code")
+{
+	Fixture fixture("f(\"ą\");");
+
+	const std::optional<Graphite::BracketPair> pair = fixture.At(1);
+
+	REQUIRE(pair.has_value());
+	CHECK(pair->Matched);
+	CHECK(pair->Open == 1);
+	CHECK(pair->Close == 6);
 }
 
 TEST_CASE("A pair spanning several lines is found")
