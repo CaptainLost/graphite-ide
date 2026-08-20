@@ -54,17 +54,37 @@ namespace Graphite {
 
 		static thread_local std::unordered_map<std::string, CachedRepository> handles;
 
+		// SetRoot cannot reach into this map itself: it runs on the UI thread, and this
+		// cache is thread_local to whichever worker thread opened the handle - there is no
+		// pointer from there to here to erase through. Instead, every entry whose key is
+		// not the current root is dropped here, the next time this thread is asked
+		// anything at all, whether that call is for the new root, for no root at all
+		// (root.empty(), a closed workspace), or for a third root entirely. That closes a
+		// closed-folder-then-different-folder open and a same-thread switch from one root
+		// to another without an intervening close: either way, the entry left behind by the
+		// old root does not outlive this thread's next call.
+		//
+		// What it cannot close: a workspace that is closed and then never queried again on
+		// this thread. Nothing above ever calls back into a thread's own cache from
+		// outside it, so a handle opened here before the close stays open - and, on
+		// Windows, keeps the closed folder's packfiles mmapped - until this thread happens
+		// to be asked something else, or exits. Fixing that would mean a shared,
+		// mutex-guarded map reachable from the UI thread instead of one thread_local map
+		// per worker, which is a different design than the one this cache is.
+		for (auto it = handles.begin(); it != handles.end();)
+		{
+			if (it->first != root)
+			{
+				it = handles.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+
 		if (root.empty())
 		{
-			// SetRoot cannot reach into this map itself to erase the entry a closed
-			// workspace leaves behind: it runs on the UI thread, and this cache is
-			// thread_local to whichever worker thread opened the handle - there is no
-			// pointer from there to here to erase through. Instead, the empty root SetRoot
-			// leaves behind is treated as "nothing is open any more" the next time this
-			// thread is asked anything at all, and the whole cache - not just an entry
-			// keyed by the now-empty root, which would never match anything - is dropped
-			// here, on the thread that actually owns the handles.
-			handles.clear();
 			return nullptr;
 		}
 
@@ -87,6 +107,8 @@ namespace Graphite {
 		{
 			return nullptr;
 		}
+
+		++m_OpenCount;
 
 		const auto [inserted, wasInserted] =
 			handles.emplace(root, CachedRepository{std::move(opened).GetValue(), generation});
@@ -118,8 +140,7 @@ namespace Graphite {
 		return repository->QueryBranches();
 	}
 
-	Core::Result<std::vector<Core::CommitSummary>> RepositoryGitPort::QueryLog(
-		const Core::LogRequest& request)
+	Core::Result<Core::LogPage> RepositoryGitPort::QueryLog(const Core::LogRequest& request)
 	{
 		Core::Repository* repository = RepositoryForThisThread();
 

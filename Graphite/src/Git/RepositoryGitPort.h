@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 #include "Git/GitPort.h"
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -25,10 +26,17 @@ namespace Graphite {
 
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override;
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override;
-		Core::Result<std::vector<Core::CommitSummary>> QueryLog(
-			const Core::LogRequest& request) override;
+		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override;
 
 		void SetRoot(std::filesystem::path root);
+
+		// How many times this instance has opened a git_repository handle, across every
+		// worker thread. Exists for tests: the thread-local cache is otherwise invisible
+		// from outside the thread that owns it, so a filesystem assertion after a close
+		// cannot tell "the handle was released" from "the handle was never touched again" -
+		// counting opens can, because a stale-then-reopened root shows up as two opens
+		// where a silently reused handle would show up as one.
+		std::uint64_t GetOpenCount() const { return m_OpenCount.load(); }
 
 	private:
 		Core::Repository* RepositoryForThisThread();
@@ -44,5 +52,10 @@ namespace Graphite {
 		std::mutex m_RootMutex;
 		std::string m_Root;
 		std::uint64_t m_Generation = 0;
+
+		// Incremented from whichever worker thread just opened a handle, so it has to be
+		// atomic even though every other member here is only ever touched under
+		// m_RootMutex or from the UI thread.
+		std::atomic<std::uint64_t> m_OpenCount{0};
 	};
 }
