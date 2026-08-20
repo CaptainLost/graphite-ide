@@ -122,6 +122,22 @@ namespace Core {
 
 			return summary;
 		}
+
+		// The entry for one path in a commit's diff, or nothing when the commit left it
+		// alone. Both sides are checked because a rename names the file differently on
+		// each: the commit that renamed old.txt to new.txt is part of new.txt's history.
+		const FileDiff* FindPath(const Diff& diff, const std::filesystem::path& path)
+		{
+			for (const FileDiff& file : diff.Files)
+			{
+				if (file.NewPath == path || file.OldPath == path)
+				{
+					return &file;
+				}
+			}
+
+			return nullptr;
+		}
 	}
 
 	Result<std::vector<CommitSummary>> Repository::QueryLog(const LogRequest& request) const
@@ -167,6 +183,8 @@ namespace Core {
 		std::vector<CommitSummary> commits;
 		git_oid id{};
 
+		std::optional<std::filesystem::path> tracked = request.File;
+
 		while (commits.size() < request.MaxCount && git_revwalk_next(&id, walk) == 0)
 		{
 			git_commit* commit = nullptr;
@@ -177,8 +195,42 @@ namespace Core {
 				continue;
 			}
 
-			commits.push_back(ToSummary(commit));
+			CommitSummary summary = ToSummary(commit);
 			git_commit_free(commit);
+
+			if (!tracked.has_value())
+			{
+				commits.push_back(std::move(summary));
+				continue;
+			}
+
+			DiffRequest diffRequest;
+			diffRequest.Target = DiffTarget::CommitToParent;
+			diffRequest.From = summary.Id;
+
+			auto diff = QueryDiff(diffRequest);
+
+			if (!diff.HasValue())
+			{
+				continue;
+			}
+
+			const FileDiff* file = FindPath(diff.GetValue(), *tracked);
+
+			if (file == nullptr)
+			{
+				continue;
+			}
+
+			// A rename moves the name the older commits know this file by. Update the
+			// tracked path before the next iteration, or the history stops here.
+			if (request.FollowRenames && file->Change == FileChange::Renamed
+				&& !file->OldPath.empty())
+			{
+				tracked = file->OldPath;
+			}
+
+			commits.push_back(std::move(summary));
 		}
 
 		git_revwalk_free(walk);
