@@ -8,6 +8,7 @@ struct ImFont;
 
 namespace Core {
 
+	struct ChromePalette;
 	class Window;
 
 	// Deliberately not ImGui's WantCaptureKeyboard: with keyboard navigation enabled that
@@ -33,6 +34,11 @@ namespace Core {
 		void OnEvent(Event& event);
 
 		static ImFont* GetMonoFont();
+
+		// The way to put a palette on screen. Theme::Apply paints the colours; this also runs
+		// the style fixups that have to follow it, so applying a palette here means the same
+		// thing at startup and on every later change of scheme.
+		static void ApplyTheme(const ChromePalette& palette);
 
 	private:
 		bool m_Initialized = false;

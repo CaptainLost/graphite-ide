@@ -25,6 +25,7 @@
 
 #include "Core/Base/Log.h"
 
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/Theme.h"
 
 #include "Theme/ChromePalette.h"
@@ -348,7 +349,7 @@ namespace Graphite {
 
 		const Core::ChromePalette palette = ChromePaletteFor(m_ActiveScheme.Get());
 
-		Core::Theme::Apply(palette);
+		Core::ImGuiRenderer::ApplyTheme(palette);
 		Core::Application::Get().GetWindow().SetBorderColor(palette.Border);
 	}
 

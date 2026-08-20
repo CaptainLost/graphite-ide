@@ -134,6 +134,21 @@ namespace Core {
 		return g_monoFont;
 	}
 
+	// Exists because applying a palette is not a complete operation on its own: Theme::Apply
+	// paints the colours and sets the rounding it wants, and the viewport fixup above has to
+	// run after it or the rounded corners it just set survive onto the undocked windows. Every
+	// caller outside Core reaches for this rather than Theme::Apply, so a re-apply mid-run
+	// leaves the style where startup left it.
+	void ImGuiRenderer::ApplyTheme(const ChromePalette& palette)
+	{
+		Theme::Apply(palette);
+
+		if ((ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
+		{
+			SquareOffViewportWindows();
+		}
+	}
+
 	ImGuiRenderer::~ImGuiRenderer()
 	{
 		Shutdown();
@@ -160,12 +175,7 @@ namespace Core {
 		g_monoFont = LoadTextFont(io, executableDirectory);
 		MergeIconFont(io, executableDirectory);
 
-		Theme::Apply(Theme::DefaultPalette());
-
-		if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
-		{
-			SquareOffViewportWindows();
-		}
+		ApplyTheme(Theme::DefaultPalette());
 
 		auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
 		if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
