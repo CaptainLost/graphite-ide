@@ -132,13 +132,25 @@ namespace Graphite {
 				{
 					const bool expanded = IsExpanded(commit.Id);
 
+					// Sized to fit a typical two-word name such as "Alice Johnson" with a
+					// couple of characters to spare; longer names are cut with an ellipsis.
+					constexpr std::size_t AuthorColumnWidth = 16;
+
+					// Sized to fit "59 minutes ago", the longest string RelativeAge returns
+					// for the common case; the rarer multi-digit month/year ages get cut.
+					constexpr std::size_t AgeColumnWidth = 14;
+
 					// The arrow lives in the label rather than as its own ArrowButton, so a
 					// commit row stays a plain Selectable — see the note above the clipper.
+					//
+					// The author and age columns are padded to a fixed width so every
+					// summary starts at the same column in this monospace list, rather than
+					// reading as ragged text.
 					const std::string label = std::format(
 						"{}  {}  {}  {}  {}",
 						expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT,
-						commit.Id.ShortHex(), AuthorInitials(commit.Author),
-						RelativeAge(commit.Author.When, now), commit.Summary);
+						commit.Id.ShortHex(), PaddedAuthor(commit.Author, AuthorColumnWidth),
+						PaddedAge(commit.Author.When, now, AgeColumnWidth), commit.Summary);
 
 					if (ImGui::Selectable(label.c_str(), false))
 					{

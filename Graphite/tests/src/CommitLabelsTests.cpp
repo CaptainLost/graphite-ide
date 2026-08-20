@@ -113,6 +113,101 @@ TEST_CASE("A whitespace-only name falls back to the email like an empty one")
 	CHECK(Graphite::AuthorInitials(who) == "A");
 }
 
+TEST_CASE("A short name is padded to exactly the requested width")
+{
+	Core::Signature who;
+	who.Name = "Ada";
+
+	const std::string padded = Graphite::PaddedAuthor(who, 8);
+
+	CHECK(padded.size() == 8);
+	CHECK(padded == "Ada     ");
+}
+
+TEST_CASE("A long name is cut to exactly the requested width and ends in the ellipsis")
+{
+	Core::Signature who;
+	who.Name = "Augusta Ada King, Countess of Lovelace";
+
+	const std::string cut = Graphite::PaddedAuthor(who, 10);
+
+	CHECK(cut.size() == 10);
+	// U+2026, the single-character ellipsis, encoded as UTF-8: 7 kept bytes + 3 for it.
+	CHECK(cut == "Augusta\xE2\x80\xA6");
+}
+
+TEST_CASE("An empty name falls back to the email's local part")
+{
+	Core::Signature who;
+	who.Email = "ada@example.com";
+
+	CHECK(Graphite::PaddedAuthor(who, 6) == "ada   ");
+}
+
+TEST_CASE("Neither name nor email gives unknown")
+{
+	const std::string padded = Graphite::PaddedAuthor(Core::Signature{}, 9);
+
+	CHECK(padded.size() == 9);
+	CHECK(padded == "unknown  ");
+}
+
+TEST_CASE("A width smaller than the ellipsis itself degrades to a plain, padded cut")
+{
+	Core::Signature who;
+	who.Name = "Augusta Ada King";
+
+	// Too narrow to fit even the single ellipsis character (3 bytes in UTF-8), so this
+	// falls back to a plain prefix rather than emitting a truncated, meaningless ellipsis.
+	// It still returns exactly `width` bytes.
+	const std::string cut = Graphite::PaddedAuthor(who, 2);
+
+	CHECK(cut.size() == 2);
+	CHECK(cut == "Au");
+}
+
+TEST_CASE("A width of zero returns an empty string rather than underflowing")
+{
+	Core::Signature who;
+	who.Name = "Ada Lovelace";
+
+	CHECK(Graphite::PaddedAuthor(who, 0).empty());
+}
+
+TEST_CASE("Cutting a name never splits a multi-byte UTF-8 character")
+{
+	Core::Signature who;
+	// Each of these is a two-byte UTF-8 character (Latin-1 Supplement), so a byte-boundary
+	// cut that ignored character boundaries would land inside one and break it.
+	who.Name = "Ren\xC3\xA9 D\xC3\xA9j\xC3\xA0 Vu"; // "René Déjà Vu"
+
+	// At width 7 the naive cut point (width - ellipsis size = 4 bytes) lands on 0xA9, the
+	// second byte of "é" (0xC3 0xA9). A byte-blind cut would keep "Ren\xC3" — a lead byte
+	// with no continuation, i.e. a broken glyph. The safe cut instead backs up to the
+	// character boundary before "é" and keeps only "Ren", padding out the byte it gave up.
+	const std::string cut = Graphite::PaddedAuthor(who, 7);
+
+	CHECK(cut.size() == 7);
+	CHECK(cut == "Ren\xE2\x80\xA6 ");
+}
+
+TEST_CASE("PaddedAge cuts a long age string to exactly the requested width")
+{
+	const std::string cut = Graphite::PaddedAge(At(0), At(63072000), 6);
+
+	CHECK(cut.size() == 6);
+	// "2 years ago" cut to 3 kept bytes ("2 y") plus the 3-byte ellipsis.
+	CHECK(cut == "2 y\xE2\x80\xA6");
+}
+
+TEST_CASE("PaddedAge pads a short age string to exactly the requested width")
+{
+	const std::string padded = Graphite::PaddedAge(At(1000), At(1030), 12);
+
+	CHECK(padded.size() == 12);
+	CHECK(padded == "just now    ");
+}
+
 TEST_CASE("Every kind of file change has its own letter")
 {
 	CHECK(Graphite::ChangeLetter(Core::FileChange::Added) == 'A');
