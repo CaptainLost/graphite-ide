@@ -180,6 +180,68 @@ TEST_CASE("A line range's history skips commits that edited elsewhere in the fil
 	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"edit the top", "add a"});
 }
 
+TEST_CASE("A line range's history continues past a rename the rename commit did not touch")
+{
+	GitFixture fixture;
+
+	fixture.Write("old.txt", "one\ntwo\nthree\nfour\n");
+	fixture.Commit("add old");
+
+	// Renamed with no content change, so the rename commit's diff carries no hunks at
+	// all — TouchesRange has nothing to say yes to, which is exactly the case that used
+	// to make the walk mistake the rename for "not touching the range" and stop dead.
+	fixture.Rename("old.txt", "new.txt");
+	fixture.Commit("rename to new");
+
+	fixture.Write("new.txt", "ONE\ntwo\nthree\nfour\n");
+	fixture.Commit("edit the top");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.File = std::filesystem::path("new.txt");
+	request.Lines = Core::LineRange{4, 4};
+	request.FollowRenames = true;
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+
+	// Line four was never touched by the rename or by "edit the top", which only changed
+	// line one. Following the rename must still reach "add old", the commit that wrote
+	// line four under the file's old name.
+	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"add old"});
+}
+
+TEST_CASE("A file's history walk stops at MaxWalk even though nothing else limits it")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("touch a");
+
+	for (int index = 0; index < 20; ++index)
+	{
+		fixture.Write("noise.txt", std::to_string(index) + "\n");
+		fixture.Commit("noise " + std::to_string(index));
+	}
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.File = std::filesystem::path("a.txt");
+	request.MaxWalk = 5;
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+
+	// The commit that touched a.txt sits at the bottom of a 21-commit history, past the
+	// five-commit ceiling from HEAD. An unbounded walk finds it; a bounded one must not,
+	// which is what proves the ceiling is bounding the walk and not just the result.
+	CHECK(log.GetValue().empty());
+}
+
 TEST_CASE("A line range's history follows the lines as earlier commits move them")
 {
 	GitFixture fixture;

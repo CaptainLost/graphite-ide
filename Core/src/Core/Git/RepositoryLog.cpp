@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Git/LineRangeTracking.h"
+#include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
@@ -14,26 +15,6 @@
 namespace Core {
 
 	namespace {
-
-		std::string LastMessage()
-		{
-			const git_error* detail = git_error_last();
-
-			return detail != nullptr && detail->message != nullptr ? detail->message
-																   : "unknown error";
-		}
-
-		Oid ToOid(const git_oid& id)
-		{
-			Oid result;
-
-			for (std::size_t index = 0; index < result.Bytes.size(); ++index)
-			{
-				result.Bytes[index] = static_cast<std::uint8_t>(id.id[index]);
-			}
-
-			return result;
-		}
 
 		// Returns the offset immediately after the line terminator that starts at `pos` —
 		// "\r\n" or a bare "\n" — or npos if `pos` is not the start of one. Git does not
@@ -153,7 +134,7 @@ namespace Core {
 		if (git_revwalk_new(&walk, m_Handle) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("cannot walk the history: {}", LastMessage())};
+						 std::format("cannot walk the history: {}", LastLibgit2Message())};
 		}
 
 		// Topological first so a branch stays contiguous, date second so two unrelated
@@ -169,7 +150,7 @@ namespace Core {
 			// An unborn HEAD lands here, and so does a ref that was deleted between the
 			// panel listing it and this call. Neither is worth a failure the user has to
 			// read; both mean "there is nothing to show".
-			const std::string message = LastMessage();
+			const std::string message = LastLibgit2Message();
 			git_revwalk_free(walk);
 
 			if (request.Ref.has_value())
@@ -187,8 +168,17 @@ namespace Core {
 		std::optional<std::filesystem::path> tracked = request.File;
 		std::optional<LineRange> trackedRange = request.Lines;
 
-		while (commits.size() < request.MaxCount && git_revwalk_next(&id, walk) == 0)
+		// Bounds the work of the walk itself, independent of MaxCount above, which bounds
+		// only what is kept. File and line-range narrowing diff every commit they pass
+		// through, so a rarely-touched file in a huge history would otherwise walk and
+		// diff the whole thing looking for a handful of matches.
+		std::size_t walked = 0;
+
+		while (commits.size() < request.MaxCount && walked < request.MaxWalk
+			   && git_revwalk_next(&id, walk) == 0)
 		{
+			++walked;
+
 			git_commit* commit = nullptr;
 
 			if (git_commit_lookup(&commit, m_Handle, &id) != 0)
@@ -214,7 +204,15 @@ namespace Core {
 
 			if (!diff.HasValue())
 			{
-				continue;
+				// The diff failed, so nothing about this commit can be trusted: not whether
+				// it touched the tracked file, not how it would have moved the tracked
+				// range. Carrying on would risk mapping the range across a change that was
+				// never actually read, which is worse than stopping with what has already
+				// been found — the walk cannot tell a genuine end of history from a commit
+				// it simply could not read.
+				CORE_TRACE("Stopping the history walk: cannot diff commit {}: {}",
+						   summary.Id.ToHex(), diff.GetError().Message);
+				break;
 			}
 
 			const FileDiff* file = FindPath(diff.GetValue(), *tracked);
@@ -222,6 +220,18 @@ namespace Core {
 			if (file == nullptr)
 			{
 				continue;
+			}
+
+			// A rename moves the name older commits know this file by. The tracked path is
+			// updated before the keep/drop decision below, not after it: a commit that
+			// renames the file and also edits lines outside the tracked range touches no
+			// hunk in range, so the old code's early continue below would skip this block
+			// entirely and leave `tracked` holding a name only this commit and its
+			// descendants ever used, silently ending the walk one commit early.
+			if (request.FollowRenames && file->Change == FileChange::Renamed
+				&& !file->OldPath.empty())
+			{
+				tracked = file->OldPath;
 			}
 
 			std::optional<LineRange> nextRange = trackedRange;
@@ -244,14 +254,6 @@ namespace Core {
 				}
 
 				nextRange = MapRangeToParent(*file, *trackedRange);
-			}
-
-			// A rename moves the name the older commits know this file by. Update the
-			// tracked path before the next iteration, or the history stops here.
-			if (request.FollowRenames && file->Change == FileChange::Renamed
-				&& !file->OldPath.empty())
-			{
-				tracked = file->OldPath;
 			}
 
 			commits.push_back(std::move(summary));

@@ -32,6 +32,13 @@ namespace Core {
 
 		bool FollowRenames = true;
 
+		// Bounds how many commits the walk visits looking for matches, not how many it
+		// keeps — MaxCount below is what bounds the result. File and line-range narrowing
+		// diff every commit they pass through on the way to a match, so without this a
+		// file touched once in a huge history would walk and diff the whole thing. A plain
+		// branch log (no File) never diffs, so this rarely matters there.
+		std::size_t MaxWalk = 20000;
+
 		std::size_t MaxCount = 500;
 	};
 
