@@ -34,6 +34,26 @@ namespace Core {
 			return result;
 		}
 
+		// Returns the offset immediately after the line terminator that starts at `pos` —
+		// "\r\n" or a bare "\n" — or npos if `pos` is not the start of one. Git does not
+		// normalise line endings inside a commit message, so a message written with CRLF
+		// keeps it.
+		std::size_t SkipTerminator(std::string_view text, std::size_t pos)
+		{
+			if (pos < text.size() && text[pos] == '\r' && pos + 1 < text.size() &&
+				text[pos + 1] == '\n')
+			{
+				return pos + 2;
+			}
+
+			if (pos < text.size() && text[pos] == '\n')
+			{
+				return pos + 1;
+			}
+
+			return std::string_view::npos;
+		}
+
 		Signature ToSignature(const git_signature* who)
 		{
 			if (who == nullptr)
@@ -74,20 +94,28 @@ namespace Core {
 			if (const char* raw = git_commit_message(commit); raw != nullptr)
 			{
 				const std::string_view text(raw);
-				const std::size_t titleEnd = text.find('\n');
+				const std::size_t titleEnd = text.find_first_of("\r\n");
 
 				if (titleEnd != std::string_view::npos)
 				{
-					std::size_t bodyStart = titleEnd + 1;
+					std::size_t bodyStart = SkipTerminator(text, titleEnd);
 
-					if (bodyStart < text.size() && text[bodyStart] == '\n')
+					if (bodyStart != std::string_view::npos)
 					{
-						++bodyStart;
-					}
+						// Exactly one blank line separates the title from the body, per
+						// git convention — only that single separator is consumed here.
+						// A second blank line is the body's own leading content and must
+						// survive, matching what `git log --format=%b` shows.
+						if (const std::size_t afterBlank = SkipTerminator(text, bodyStart);
+							afterBlank != std::string_view::npos)
+						{
+							bodyStart = afterBlank;
+						}
 
-					if (bodyStart < text.size())
-					{
-						summary.Body = text.substr(bodyStart);
+						if (bodyStart < text.size())
+						{
+							summary.Body = text.substr(bodyStart);
+						}
 					}
 				}
 			}

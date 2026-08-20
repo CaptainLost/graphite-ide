@@ -171,3 +171,56 @@ TEST_CASE("A short id keeps the leading digits of the full one")
 	CHECK(log.GetValue().front().Id.ShortHex() == full.substr(0, 7));
 	CHECK(log.GetValue().front().Id.ShortHex(12) == full.substr(0, 12));
 }
+
+TEST_CASE("A CRLF message keeps its body without a leading blank line")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a\r\n\r\nA longer explanation.\r\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().size() == 1);
+
+	CHECK(log.GetValue().front().Body == "A longer explanation.\r\n");
+}
+
+TEST_CASE("A second blank line between title and body stays in the body")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a\n\n\nA longer explanation.\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().size() == 1);
+
+	// Only the single separator line is consumed; a second blank line is the body's own.
+	CHECK(log.GetValue().front().Body == "\nA longer explanation.\n");
+}
+
+TEST_CASE("Querying a ref that does not exist is an error")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Ref = "refs/heads/nope";
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE_FALSE(log.HasValue());
+	CHECK(log.GetError().Code == Core::ErrorCode::NotFound);
+}
