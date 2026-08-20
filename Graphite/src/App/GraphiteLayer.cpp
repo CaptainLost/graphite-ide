@@ -278,8 +278,14 @@ namespace Graphite {
 			m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
 		});
 
-		m_Events.Subscribe<WorkspaceClosedEvent>(
-			[this](const WorkspaceClosedEvent&) { m_Documents.CloseAll(); });
+		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
+			m_Documents.CloseAll();
+
+			// Without this, GitModel stops asking - it handles this same event - but the
+			// port's cached repository handles outlive the folder they were opened on,
+			// which is exactly what blocks the user's own deletion of .git on Windows.
+			m_GitPort.SetRoot({});
+		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
 			m_DocumentWindows.HandleRootMoved(event.From, event.To);

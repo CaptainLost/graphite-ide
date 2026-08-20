@@ -34,14 +34,18 @@ namespace Graphite {
 			generation = m_Generation;
 		}
 
-		if (root.empty())
-		{
-			return nullptr;
-		}
-
 		// The generation the entry was opened under travels with it, so a handle whose root
 		// text still matches but whose repository has since been recreated is recognised as
 		// stale and dropped, rather than answering queries against a repository that is gone.
+		//
+		// This map is function-local `static thread_local`, so it is shared by every
+		// RepositoryGitPort instance that happens to run on this thread, keyed by root text
+		// while the generation used to judge staleness comes from `this`. With the single
+		// instance the layer owns, that is harmless. Two instances pointed at the same root
+		// on the same thread would not be: each would see the other's entry as merely
+		// "some cached handle for this root", reuse or evict it based on its own
+		// generation counter, and the two would fight over one cache slot instead of each
+		// keeping its own.
 		struct CachedRepository
 		{
 			Core::Repository Repo;
@@ -49,6 +53,20 @@ namespace Graphite {
 		};
 
 		static thread_local std::unordered_map<std::string, CachedRepository> handles;
+
+		if (root.empty())
+		{
+			// SetRoot cannot reach into this map itself to erase the entry a closed
+			// workspace leaves behind: it runs on the UI thread, and this cache is
+			// thread_local to whichever worker thread opened the handle - there is no
+			// pointer from there to here to erase through. Instead, the empty root SetRoot
+			// leaves behind is treated as "nothing is open any more" the next time this
+			// thread is asked anything at all, and the whole cache - not just an entry
+			// keyed by the now-empty root, which would never match anything - is dropped
+			// here, on the thread that actually owns the handles.
+			handles.clear();
+			return nullptr;
+		}
 
 		if (const auto existing = handles.find(root); existing != handles.end())
 		{
