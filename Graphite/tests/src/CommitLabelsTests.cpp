@@ -37,6 +37,18 @@ TEST_CASE("A commit dated in the future reads as just now rather than negatively
 	CHECK(Graphite::RelativeAge(At(5000), At(1000)) == "just now");
 }
 
+TEST_CASE("An age of a couple of months reads in months")
+{
+	// Comfortably inside the branch rather than on its boundary: two months, not the
+	// threshold itself.
+	CHECK(Graphite::RelativeAge(At(0), At(5184000)) == "2 months ago");
+}
+
+TEST_CASE("An age of a couple of years reads in years")
+{
+	CHECK(Graphite::RelativeAge(At(0), At(63072000)) == "2 years ago");
+}
+
 TEST_CASE("Initials come from the first and last word of a name")
 {
 	Core::Signature who;
@@ -74,4 +86,29 @@ TEST_CASE("An empty name falls back to the email")
 TEST_CASE("A name with neither name nor email gives a placeholder")
 {
 	CHECK(Graphite::AuthorInitials(Core::Signature{}) == "?");
+}
+
+TEST_CASE("A trailing space on the name does not garble the initials")
+{
+	Core::Signature who;
+	who.Name = "Ada Lovelace ";
+
+	CHECK(Graphite::AuthorInitials(who) == "AL");
+}
+
+TEST_CASE("A leading space on the name does not garble the initials")
+{
+	Core::Signature who;
+	who.Name = " Ada Lovelace";
+
+	CHECK(Graphite::AuthorInitials(who) == "AL");
+}
+
+TEST_CASE("A whitespace-only name falls back to the email like an empty one")
+{
+	Core::Signature who;
+	who.Name = " ";
+	who.Email = "ada@example.com";
+
+	CHECK(Graphite::AuthorInitials(who) == "A");
 }

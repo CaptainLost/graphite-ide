@@ -5,6 +5,7 @@
 #include <imgui.h>
 
 #include <chrono>
+#include <cstddef>
 #include <format>
 #include <string>
 
@@ -64,7 +65,7 @@ namespace Graphite {
 		int lastDrawn = 0;
 
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(page.Commits.size()));
+		clipper.Begin(static_cast<int>(page.Commits.size()), metrics.RowHeight);
 
 		while (clipper.Step())
 		{
@@ -97,10 +98,17 @@ namespace Graphite {
 
 		// Asking is what makes the difference between "this is all of it" and "there is
 		// more, we just stopped looking" — the page says which, and a reader at the bottom
-		// of an incomplete page wants the rest.
-		if (!page.Complete && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+		// of an incomplete page wants the rest. Armed only once per page: the count is the
+		// thing that actually changes when a request is answered, so latching on it (rather
+		// than merely consuming the flag on read) stops the widget re-arming every frame the
+		// reader happens to stay at the bottom while the bigger page is still being fetched.
+		const std::ptrdiff_t commitCount = static_cast<std::ptrdiff_t>(page.Commits.size());
+
+		if (!page.Complete && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() &&
+			commitCount != m_LoadMoreRequestedAtCount)
 		{
 			m_LoadMoreRequested = true;
+			m_LoadMoreRequestedAtCount = commitCount;
 		}
 
 		ImGui::SetCursorScreenPos(listOrigin);
