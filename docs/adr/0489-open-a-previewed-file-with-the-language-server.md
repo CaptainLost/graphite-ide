@@ -136,6 +136,40 @@ every path that can make a pane stop being shown.
   candidate than one line, at which point "which file is being previewed"
   would have an answer again.
 
+## Alternatives Considered
+
+### Count by pane rather than by path
+
+Give every preview pane its own slot in `PreviewSemantics`, keyed by whatever
+identifies the pane rather than by the file it shows. Simpler to reason about
+in isolation — each pane's bookkeeping is entirely its own, with no lookup
+shared across panes. Rejected because two panes showing the same file would
+then send two `didOpen`s and run two requests for identical tokens, parsing
+the same translation unit twice for no reason a reader benefits from; and a
+single shared slot for "the currently previewed file" — the sketch that
+avoids that duplication without keying by path — would thrash `didOpen` and
+`didClose` every frame whenever two visible panes showed different files,
+since the one slot could only ever hold one of them at a time. Keying by path
+is what lets the sharing happen without either cost: two panes on one file
+collapse into the one entry that path already has, and two panes on two files
+simply get two entries, with no slot fighting over which file it currently
+means.
+
+### Acquire on first show, release when a pane stops showing the file
+
+Have a pane call an explicit `Acquire`/`Release` pair around the file it
+shows, opening the document the first time a pane displays it and closing it
+when the pane's selection changes or the pane itself closes — the ownership
+model a scoped resource would normally get, and the one that needs no `Tick`
+sweeping entries every frame. Rejected because a panel that is hidden or
+collapsed into a dock tab never reaches `OnImGuiRender` at all, so there is no
+frame in which its `Release` call would run: the document it opened would
+stay open with the server for the rest of the session, with nothing left to
+notice it should close. Declaring every frame turns "is anyone still showing
+this file" into a question `Tick` can answer from data every visible pane
+already supplied that frame, rather than a release call that depends on a
+pane getting one last frame to make it in.
+
 ## Related
 
 - [0485](0485-take-code-intelligence-from-external-language-servers.md) — the
