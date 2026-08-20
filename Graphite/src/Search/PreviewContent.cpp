@@ -113,10 +113,14 @@ namespace Graphite {
 
 	void PreviewContent::SetTabWidth(std::size_t width)
 	{
-		if (width != 0)
+		// A zero would leave m_TabWidth and the lexer measuring different text, so both are
+		// guarded by the same check rather than one being at the caller's mercy.
+		if (width == 0)
 		{
-			m_TabWidth = width;
+			return;
 		}
+
+		m_TabWidth = width;
 
 		// SyntaxCache::SetTabWidth already ignores a width it is holding, so this costs nothing
 		// to call every frame.

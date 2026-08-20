@@ -15,6 +15,13 @@ namespace Graphite {
 		void Open(const std::filesystem::path& path, LanguageId language,
 				  std::string text) override
 		{
+			// EnsureStarted before OpenDocument, in that order — the same order and the same
+			// reason DocumentWindows::LensFor uses: OpenDocument is a no-op while no server runs
+			// for this root, and server startup is asynchronous, so a preview declared the
+			// instant a folder opens would otherwise race it and lose. Kept here rather than in
+			// PreviewSemantics so the policy lives in one place and the bookkeeping class stays
+			// free of server-startup concerns.
+			m_Services.EnsureStarted(path, language);
 			m_Services.OpenDocument(path, language, std::move(text));
 		}
 

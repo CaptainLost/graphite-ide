@@ -72,14 +72,47 @@ namespace Graphite {
 
 		entry.LastDeclared = m_Frame;
 
+		// editorHolds can change under an entry that keeps being declared: a double-click opens
+		// a tab over a file this class was previewing, or the tab it was riding on gets closed.
+		// Both are reconciled before anything else below, because the staleness check that
+		// follows reads EditorHolds and would otherwise judge the edit against who owned the
+		// document a frame ago.
+		bool transitioned = false;
+
+		if (editorHolds && !entry.EditorHolds)
+		{
+			// A tab took over. It sent its own didOpen — LensFor's — so this class's didOpen, if
+			// it sent one, now describes a document a tab also holds open; closing here would
+			// pull the file out from under the tab, which is the bug this whole reconciliation
+			// exists to fix. The redundant didOpen the tab just sent for a file already open is
+			// left alone: fixing it means refcounting LanguageServices::OpenDocuments, which
+			// reaches into the editor's own document lifetime and is out of scope here.
+			entry.EditorHolds = true;
+			entry.Opened = false;
+			transitioned = true;
+		}
+		else if (!editorHolds && entry.EditorHolds)
+		{
+			// The tab that was carrying this document closed. PruneLensStates already sent its
+			// didClose, so the server has no copy of the file left — this class has to open one
+			// again before it can keep asking about it.
+			entry.EditorHolds = false;
+			entry.Opened = true;
+			m_Port.Open(path, LanguageOfPath(path), buffer.Materialize());
+			transitioned = true;
+		}
+
 		// Two things make the snapshot stop describing what is on screen: an edit to a document
 		// a tab holds, and a tab width change, since the overlay's offsets are measured in
 		// tab-expanded text. Both drop the colours rather than shifting them — OnLinesChanged
 		// exists for the editor, which knows where the edit landed, and a preview does not. A
-		// moment without semantic colours is cheap; a colour on the wrong word is not.
+		// moment without semantic colours is cheap; a colour on the wrong word is not. A
+		// transition is a third reason: the snapshot the outstanding request (if any) was made
+		// against may belong to the wrong side of the handoff, so it is retaken unconditionally
+		// rather than trusted because the revision happens to match.
 		const bool moved = entry.EditorHolds && buffer.GetRevision() != entry.Revision;
 
-		if (!moved && tabWidth == entry.TabWidth)
+		if (!moved && !transitioned && tabWidth == entry.TabWidth)
 		{
 			return;
 		}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Editor/SemanticOverlay.h"
 #include "Lang/Syntax/SyntaxCache.h"

@@ -302,6 +302,69 @@ TEST_CASE("A failed request is tried again, but only after its retry clock")
 	CHECK(port.CountOf("ask") == 2);
 }
 
+TEST_CASE("A tab taking over a previewed file does not close it, and stays quiet after")
+{
+	// The gesture double-clicking a hit produces: the pane keeps declaring the same path, but
+	// editorHolds flips true once OpenAndSelect gives it a tab. Before Declare reconciled the
+	// flag, the entry kept Opened == true from the preview's own didOpen, and the next Tick
+	// with nothing declaring it would send a didClose for a file the tab is still drawing.
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Tick(2, 0.1);
+	semantics.Declare("a.cpp", buffer, 4, true);
+
+	// Nothing declares it any more — the same as the tab keeping it alive and the pane moving
+	// its selection elsewhere. The grace frame and the frame after it both have to stay quiet:
+	// this class must not believe it still owns a didOpen it handed off to the tab.
+	semantics.Tick(3, 0.2);
+	semantics.Tick(4, 0.3);
+
+	CHECK(port.CountOf("close") == 0);
+}
+
+TEST_CASE("A tab closing over a previewed file reopens it here")
+{
+	// The reverse gesture: a file with a tab is previewed (editorHolds == true, so this class
+	// never opened it), the tab closes, PruneLensStates sends its own didClose, and the pane
+	// keeps declaring the same path with editorHolds now false. Before the fix the entry
+	// ignored the flip, so the server was asked about a document it no longer had.
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Tick(2, 0.1);
+	semantics.Declare("a.cpp", buffer, 4, false);
+
+	CHECK(port.CountOf("open") == 1);
+	CHECK(port.CountOf("ask") == 2);
+}
+
+TEST_CASE("Destruction after a tab takes over a previewed file closes nothing")
+{
+	// Same handoff as above, but torn down instead of ticked forward: the destructor closes
+	// every entry with Opened == true, so if Declare left that flag stuck from the preview's
+	// own didOpen, the destructor would send a didClose for a file the tab still holds.
+	FakePort port;
+
+	{
+		PreviewSemantics semantics{port};
+		const Core::TextBuffer buffer{"Renderer r;\n"};
+
+		semantics.Tick(1, 0.0);
+		semantics.Declare("a.cpp", buffer, 4, false);
+		semantics.Tick(2, 0.1);
+		semantics.Declare("a.cpp", buffer, 4, true);
+	}
+
+	CHECK(port.CountOf("close") == 0);
+}
+
 TEST_CASE("Destruction closes what was opened here and nothing else")
 {
 	FakePort port;

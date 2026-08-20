@@ -270,7 +270,7 @@ namespace {
 	};
 }
 
-TEST_CASE("A preview with no mediator has no spans and asks nothing")
+TEST_CASE("A preview with no mediator has no spans")
 {
 	TempDirectory temp;
 	const std::filesystem::path file = temp.MakeFile("a.cpp", "int x;\n");

@@ -242,6 +242,12 @@ namespace Graphite {
 
 		const SearchHit& hit = group->Hits[m_Selected->Hit];
 
+		// Before Show, not after: Show is what declares the file to the server, and the first
+		// declaration of a newly previewed file has to carry the user's tab width rather than
+		// Core::DefaultTabWidth — DrawSearchPreview's own SetTabWidth runs too late for that
+		// first frame, so it would go out at the wrong width and be discarded next frame anyway.
+		m_Preview.SetTabWidth(m_Editor.GetIndentStyle().Width);
+
 		// Every frame, not only when the selection changes: the file may have been opened,
 		// closed or edited since the last one, and Show is cheap when nothing moved.
 		m_Preview.Show(hit.File, m_Documents);
