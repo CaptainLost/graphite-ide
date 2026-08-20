@@ -294,7 +294,6 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, const ResolvedScheme& scheme,
-								   const std::optional<std::filesystem::path>& focusRequest,
 								   ReferencesPanel& referencesPanel);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
@@ -356,8 +355,6 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
 		ModalQuestion<std::filesystem::path> m_OverwriteConfirm;
-
-		std::optional<std::filesystem::path> m_FocusRequest;
 
 		ModalQuestion<std::filesystem::path> m_CloseConfirm;
 

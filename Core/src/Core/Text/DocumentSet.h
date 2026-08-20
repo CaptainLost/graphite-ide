@@ -82,6 +82,14 @@ namespace Core {
 		// processing. This flag says "scroll anyway", and the editor clears it once it has.
 		bool PendingScroll = false;
 
+		// Set by every open that lands on this item, and cleared by whatever draws it once it
+		// has brought its window forward. Activating an item moves nothing on screen by itself:
+		// the set records which item is active, and the tab bar goes on showing whichever tab it
+		// last drew. Without this, opening a file that already had a tab — a definition jumped
+		// to a second time, a reference clicked in a file still open from the first — moved the
+		// caret in a tab nobody could see.
+		bool PendingFocus = false;
+
 		std::vector<std::size_t> IndentDepths;
 
 		// How many columns a tab character occupies in this document. A layout input like the

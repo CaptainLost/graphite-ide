@@ -2,6 +2,10 @@
 
 #include "Editor/DefinitionNavigation.h"
 
+#include "Core/Text/DocumentSet.h"
+
+#include "TempDirectory.h"
+
 namespace {
 
 	// The brief this test was drafted from predates Utf16Column: a bare 0 for the column no
@@ -109,4 +113,28 @@ TEST_CASE("Duplicate locations collapse before they become a choice")
 
 	CHECK(Graphite::ResolveDefinition({At("D:/a.cpp", 4), At("D:/a.cpp", 4)}, {}, candidates) ==
 		  Graphite::DefinitionOutcome::Jumped);
+}
+
+TEST_CASE("Jumping into a file already open asks for that file's window")
+{
+	TempDirectory directory;
+	const auto header = directory.MakeFile("header.h", "void Draw();\n");
+	const auto source = directory.MakeFile("source.cpp", "void Draw() {}\n");
+
+	Core::DocumentSet documents;
+	documents.Open(header, true);
+	documents.Open(source, true);
+
+	// The state a second Ctrl+click starts from: both files open, the caller reading the one
+	// holding the reference. Nothing about this jump adds a tab, so nothing about it reaches
+	// the tab bar either unless the jump itself says so.
+	documents.At(0).PendingFocus = false;
+	documents.At(1).PendingFocus = false;
+
+	Graphite::Jump(documents, Graphite::Location{header, 0, Graphite::Utf16Column(0)});
+
+	const auto index = documents.Find(header);
+	REQUIRE(index.has_value());
+	CHECK(documents.At(*index).PendingFocus);
+	CHECK(documents.At(*index).PendingScroll);
 }

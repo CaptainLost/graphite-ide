@@ -132,12 +132,9 @@ namespace Graphite {
 
 	void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
 	{
+		// Whether this opened a tab or landed on one already there, the item now carries
+		// OpenItem::PendingFocus and the render pass below is what spends it.
 		const Core::OpenOutcome outcome = m_Documents.Open(path, permanent);
-
-		// The set has activated it, but nothing about that reaches ImGui, which goes on
-		// showing whichever tab it last focused.
-		if (outcome == Core::OpenOutcome::Activated)
-			m_FocusRequest = path;
 
 		if (outcome != Core::OpenOutcome::NeedsConfirmation)
 			return;
@@ -1673,7 +1670,7 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, const ResolvedScheme& scheme,
-		const std::optional<std::filesystem::path>& focusRequest, ReferencesPanel& referencesPanel)
+		ReferencesPanel& referencesPanel)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -1711,9 +1708,10 @@ namespace Graphite {
 				modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
 
 			// Begin() is what turns this into the selected tab of a docked window, which
-			// SetWindowFocus called from RequestOpen could not do against a window not yet
-			// submitted this frame.
-			if (focusRequest == item.Path)
+			// SetWindowFocus called from outside a frame could not do against a window not yet
+			// submitted. Taken and cleared in one step, so a focus asked for once is given once
+			// and the user's own clicking of another tab is not undone on the next frame.
+			if (std::exchange(item.PendingFocus, false))
 				ImGui::SetNextWindowFocus();
 
 			bool open = true;
@@ -1828,12 +1826,6 @@ namespace Graphite {
 		// the servers' replies into the queue this drains.
 		CollectServerAnswers(referencesPanel);
 
-		// Taken and cleared in one step: whatever asked for this focus did so earlier in this
-		// same pass, so a request that matches no document this frame never will, and leaving
-		// it set would hand a stolen focus to whichever document next claims that path.
-		const std::optional<std::filesystem::path> focusRequest =
-			std::exchange(m_FocusRequest, std::nullopt);
-
 		// Every question is drawn here, before the per-document loop, because OpenPopup and
 		// BeginPopupModal must not run from inside a Begin/BeginChild pair that may not be
 		// current when the popup needs to draw. The loop below only ever asks them.
@@ -1844,7 +1836,7 @@ namespace Graphite {
 		RenderDefinitionChoices(scheme, indentStyle.Width);
 
 		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap, scheme,
-							  focusRequest, referencesPanel);
+							  referencesPanel);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
 		// above would cost a walk of m_Syntax for every open document instead of one for the

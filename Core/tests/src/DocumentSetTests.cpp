@@ -793,3 +793,38 @@ TEST_CASE("Loading a large file asks before reading it, and reads it once confir
 	CHECK(documents.At(0).Document.has_value());
 	CHECK(documents.At(0).Failure == OpenFailure::None);
 }
+
+TEST_CASE("An open that lands on an existing item asks for its window to be brought forward")
+{
+	TempDirectory directory;
+	const auto first = directory.GetPath() / "a.txt";
+	const auto second = directory.GetPath() / "b.txt";
+	WriteBytes(first, "a");
+	WriteBytes(second, "b");
+
+	DocumentSet documents;
+	documents.Open(first, true);
+	documents.Open(second, true);
+
+	// The set's own record of which item is active says nothing to whatever draws the tabs,
+	// which goes on showing the one it last drew. The flag is what says "show this one" -
+	// without it, opening a file already open moved the caret in a tab nobody could see.
+	documents.At(0).PendingFocus = false;
+	documents.At(1).PendingFocus = false;
+
+	REQUIRE(documents.Open(first, true) == OpenOutcome::Activated);
+	CHECK(documents.At(0).PendingFocus);
+	CHECK_FALSE(documents.At(1).PendingFocus);
+}
+
+TEST_CASE("A newly opened item asks for its window too")
+{
+	TempDirectory directory;
+	const auto path = directory.GetPath() / "a.txt";
+	WriteBytes(path, "a");
+
+	DocumentSet documents;
+
+	REQUIRE(documents.Open(path, true) == OpenOutcome::Opened);
+	CHECK(documents.At(0).PendingFocus);
+}

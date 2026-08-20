@@ -137,6 +137,7 @@ namespace Core {
 		if (const auto existing = Find(path))
 		{
 			Activate(*existing);
+			m_Items[*existing].PendingFocus = true;
 
 			if (permanent)
 				m_Items[*existing].Preview = false;
@@ -157,6 +158,7 @@ namespace Core {
 		OpenItem item;
 		item.Path = path;
 		item.Preview = !permanent;
+		item.PendingFocus = true;
 
 		// Asked before anything is added and before evictPreview runs, so answering "no"
 		// leaves no trace of the question — not even the loss of the existing preview slot.
