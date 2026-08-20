@@ -134,7 +134,7 @@ TEST_CASE("A modified file is shown under its new path")
 	file.NewPath = "a.txt";
 	file.Change = Core::FileChange::Modified;
 
-	CHECK(Graphite::DisplayPath(file) == std::filesystem::path("a.txt"));
+	CHECK(Graphite::ShownPath(file) == std::filesystem::path("a.txt"));
 }
 
 TEST_CASE("A deleted file is shown under its old path")
@@ -145,5 +145,5 @@ TEST_CASE("A deleted file is shown under its old path")
 
 	// A deleted delta carries no new path at all, so falling back to NewPath would show
 	// nothing for exactly the change a reader most wants to find by name.
-	CHECK(Graphite::DisplayPath(file) == std::filesystem::path("gone.txt"));
+	CHECK(Graphite::ShownPath(file) == std::filesystem::path("gone.txt"));
 }

@@ -117,7 +117,7 @@ namespace Graphite {
 		return ' ';
 	}
 
-	const std::filesystem::path& DisplayPath(const Core::FileDiff& file)
+	const std::filesystem::path& ShownPath(const Core::FileDiff& file)
 	{
 		return file.NewPath.empty() ? file.OldPath : file.NewPath;
 	}

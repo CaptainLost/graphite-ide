@@ -28,5 +28,8 @@ namespace Graphite {
 	// The path a changed file is shown under. A deleted file has no new path, so this falls
 	// back to the old one — a deletion is exactly the change a reader most wants to find by
 	// name.
-	const std::filesystem::path& DisplayPath(const Core::FileDiff& file);
+	//
+	// Not DisplayPath: that name is already a struct in Graphite::Search (HitDisplay.h), and
+	// a translation unit that ever includes both would have the function hide the type.
+	const std::filesystem::path& ShownPath(const Core::FileDiff& file);
 }
