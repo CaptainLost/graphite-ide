@@ -42,6 +42,8 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.h",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.cpp",
+        "%{wks.location}/Graphite/src/Editor/PreviewSemantics.h",
+        "%{wks.location}/Graphite/src/Editor/PreviewSemantics.cpp",
         "%{wks.location}/Graphite/src/Editor/LensModel.h",
         "%{wks.location}/Graphite/src/Editor/LensModel.cpp",
         "%{wks.location}/Graphite/src/Editor/SemanticOverlay.h",
