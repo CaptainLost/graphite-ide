@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/CommitLabels.h"
 #include "Git/CommitListView.h"
 #include "Git/DiffView.h"
 #include "Git/DiffWindows.h"
@@ -17,11 +18,6 @@
 #include <unordered_set>
 
 namespace Graphite {
-
-	// Which file in a diff carries this path, on either side. Matching by path rather than
-	// by index is what lets a selection survive a refresh that reorders the list.
-	std::optional<std::size_t> IndexOfFile(const Core::Diff& diff,
-										   const std::filesystem::path& path);
 
 	// "main", "* main  2/3" for the checked-out branch with a measured distance from its
 	// upstream. A pure function of the branch, pulled out of the draw loop so it can be

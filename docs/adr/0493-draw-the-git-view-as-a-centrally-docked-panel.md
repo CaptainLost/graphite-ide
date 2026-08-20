@@ -85,3 +85,7 @@ that rework is a decision for when one exists.
 
 - The commit list, diff widgets, and colour palette this panel assembles come
   from the same plan and live in `Graphite/src/Git/`.
+- [0494](0494-correct-adr-0493-s-premise-about-document-tabs.md) — withdraws
+  this record's claim that `DocumentWindows` being keyed by filesystem path
+  rules out a document tab for anything not backed by `Core::DocumentSet`,
+  without superseding the decision above.

@@ -12,22 +12,6 @@
 
 namespace Graphite {
 
-	std::optional<std::size_t> IndexOfFile(const Core::Diff& diff,
-										   const std::filesystem::path& path)
-	{
-		for (std::size_t index = 0; index < diff.Files.size(); ++index)
-		{
-			const Core::FileDiff& file = diff.Files[index];
-
-			if (file.NewPath == path || file.OldPath == path)
-			{
-				return index;
-			}
-		}
-
-		return std::nullopt;
-	}
-
 	std::string RefLabel(const Core::Branch& branch)
 	{
 		std::string label = branch.IsHead ? "* " + branch.Name : branch.Name;
@@ -224,9 +208,23 @@ namespace Graphite {
 
 		if (!selected.has_value())
 		{
+			// Cleared rather than left standing: without a selection there is nothing a
+			// button drawn later this frame could open, and a stale callback captured from
+			// whatever was selected last frame is a thing the next reader would have to
+			// reason is unreachable rather than something that is simply not there.
+			m_Diff.OnOpenAsTab = nullptr;
 			ImGui::TextUnformatted("Select a file to see its changes.");
 			return;
 		}
+
+		// Reassigned every frame rather than bound once in the constructor: the selection it
+		// captures changes with whichever file is selected now, and m_Diff is the one bottom
+		// pane shared across every selection. Set as soon as the selection is known, ahead of
+		// the two returns below, so OnOpenAsTab is never left holding a previous frame's
+		// selection while this one's diff is still loading or excludes the file.
+		const OpenDiff selection{selected->Commit, selected->Path};
+
+		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
 
 		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
@@ -243,13 +241,6 @@ namespace Graphite {
 			ImGui::TextUnformatted("That file is not in this diff.");
 			return;
 		}
-
-		// Reassigned every frame rather than bound once in the constructor: the selection it
-		// captures changes with whichever file is selected now, and m_Diff is the one bottom
-		// pane shared across every selection.
-		const OpenDiff selection{selected->Commit, selected->Path};
-
-		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
 
 		m_Diff.Render(diff->Files[*index], palette);
 	}

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 namespace Graphite {
@@ -49,4 +50,15 @@ namespace Graphite {
 	// Not DisplayPath: that name is already a struct in Graphite::Search (HitDisplay.h), and
 	// a translation unit that ever includes both would have the function hide the type.
 	const std::filesystem::path& ShownPath(const Core::FileDiff& file);
+
+	// Which file in a diff carries this path, on either side — a deleted file has no new
+	// path, which is why both sides are checked rather than only NewPath, the same rule
+	// ShownPath above states for the same reason. Matching by path rather than by index is
+	// what lets a selection survive a refresh that reorders the list.
+	//
+	// Lives here rather than beside either of its two callers (GitView, which shows a
+	// selected file's diff, and DiffWindows, which shows one reopened as a tab) so that
+	// neither has to depend on the other to reach it.
+	std::optional<std::size_t> IndexOfFile(const Core::Diff& diff,
+										   const std::filesystem::path& path);
 }

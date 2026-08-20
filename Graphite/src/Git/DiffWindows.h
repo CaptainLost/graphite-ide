@@ -6,6 +6,7 @@
 
 #include "Core/Git/Oid.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>

@@ -1,5 +1,7 @@
 #include "Git/DiffWindows.h"
 
+#include "Git/CommitLabels.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 
@@ -7,38 +9,25 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <utility>
 
 namespace Graphite {
-
-	namespace {
-
-		// Which file in a diff carries this path, on either side. Kept local rather than
-		// shared with GitView::IndexOfFile: DiffWindows must not depend on GitView for the
-		// same reason DiffView must not know about DiffWindows — it is drawn inside one.
-		std::optional<std::size_t> IndexOfDiffFile(const Core::Diff& diff,
-													const std::filesystem::path& path)
-		{
-			for (std::size_t index = 0; index < diff.Files.size(); ++index)
-			{
-				const Core::FileDiff& file = diff.Files[index];
-
-				if (file.NewPath == path || file.OldPath == path)
-				{
-					return index;
-				}
-			}
-
-			return std::nullopt;
-		}
-	}
 
 	std::string DiffWindowIdentity(const OpenDiff& diff)
 	{
 		// Commit first, path second, no separator: Core::Oid::ToHex() is always forty
 		// characters, so a fixed-length prefix cannot be split two ways, and no separator
 		// means no character a path might itself contain to collide on.
+		//
+		// One gap this does not close: ImGui restarts its window-id hash at every "###" in
+		// a name, so two paths that both contain "###" and agree on everything after the
+		// last one would still collide once this identity is embedded in DiffWindowName.
+		// "#" is legal in a Windows filename. DocumentWindows carries the identical
+		// exposure through its own window name (see WindowName in DocumentWindows.cpp), so
+		// this is a property of the scheme both share rather than something particular to
+		// diffs.
 		return diff.Commit.ToHex() + Core::ToUtf8(diff.Path);
 	}
 
@@ -137,7 +126,7 @@ namespace Graphite {
 				else
 				{
 					const std::optional<std::size_t> fileIndex =
-						IndexOfDiffFile(*diff, entry.Diff.Path);
+						IndexOfFile(*diff, entry.Diff.Path);
 
 					if (!fileIndex.has_value())
 					{

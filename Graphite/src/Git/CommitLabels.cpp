@@ -239,4 +239,20 @@ namespace Graphite {
 	{
 		return file.NewPath.empty() ? file.OldPath : file.NewPath;
 	}
+
+	std::optional<std::size_t> IndexOfFile(const Core::Diff& diff,
+										   const std::filesystem::path& path)
+	{
+		for (std::size_t index = 0; index < diff.Files.size(); ++index)
+		{
+			const Core::FileDiff& file = diff.Files[index];
+
+			if (file.NewPath == path || file.OldPath == path)
+			{
+				return index;
+			}
+		}
+
+		return std::nullopt;
+	}
 }

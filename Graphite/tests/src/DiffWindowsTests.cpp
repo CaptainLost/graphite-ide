@@ -39,15 +39,16 @@ TEST_CASE("An identity is the same every time it is asked for")
 		  == Graphite::DiffWindowIdentity(Diff(1, "a.txt")));
 }
 
-TEST_CASE("An identity begins with the commit's full id")
+TEST_CASE("An identity is the commit's full id immediately followed by the path")
 {
 	const std::string identity = Graphite::DiffWindowIdentity(Diff(1, "a.txt"));
 
-	// A full object name is always forty characters, so a commit and a path concatenated
-	// in that order cannot be split two ways — which is what makes the identity unique
-	// without a separator that a path might itself contain.
-	CHECK(identity.starts_with(IdOf(1).ToHex()));
-	CHECK(identity.size() > IdOf(1).ToHex().size());
+	// Pinned as an exact equality, not merely a prefix check: a scheme that joined the two
+	// with a separator (say "|") would also start with the hex id and be longer than it,
+	// so those two assertions alone would not catch the very design the no-separator
+	// scheme exists to avoid. A full object name is always forty characters, so this
+	// concatenation cannot be split two ways.
+	CHECK(identity == IdOf(1).ToHex() + "a.txt");
 }
 
 TEST_CASE("Paths that differ only in their separators are told apart")

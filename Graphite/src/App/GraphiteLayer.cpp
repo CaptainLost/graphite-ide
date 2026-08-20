@@ -278,8 +278,16 @@ namespace Graphite {
 	{
 		m_Git.SubscribeTo(m_Events);
 
-		m_Events.Subscribe<WorkspaceOpenedEvent>(
-			[this](const WorkspaceOpenedEvent& event) { m_GitPort.SetRoot(event.Root); });
+		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
+			m_GitPort.SetRoot(event.Root);
+
+			// A drop that replaces the workspace publishes no WorkspaceClosedEvent for the
+			// folder it replaces - GitModel.cpp documents the same trap and clears on both
+			// events for the same reason. Without this, a diff tab opened against the old
+			// repository survives into the new one, showing "no longer loaded" and offering
+			// a Reload that would ask the new repository for a commit it never had.
+			m_DiffWindows.CloseAll();
+		});
 
 		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
 			m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
