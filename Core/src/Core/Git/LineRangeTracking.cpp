@@ -9,7 +9,9 @@ namespace Core {
 	namespace {
 
 		// One past the last line a hunk covers on the new side. A hunk with no new lines
-		// is an insertion point, so it still covers the position it sits at.
+		// (a pure deletion) has `NewEnd == NewStart`, so it covers no new-side line at
+		// all — `Overlaps` requires a strict `<` against this value, and `NewStart` itself
+		// is excluded too.
 		std::size_t NewEnd(const Hunk& hunk)
 		{
 			return static_cast<std::size_t>(hunk.NewStart)
@@ -152,6 +154,30 @@ namespace Core {
 		LineRange mapped;
 		mapped.First = MapPosition(file.Hunks, range.First);
 		mapped.Last = MapPosition(file.Hunks, range.Last);
+
+		// A hunk that actually changes the range may have consumed old lines past what
+		// `Last` mapped to — replacing three lines with one still means the two extra old
+		// lines belong to this range's history. Only a hunk's removed lines can extend it:
+		// a pure insertion contributed nothing on the old side to widen towards.
+		std::size_t floorLast = 0;
+
+		for (const Hunk& hunk : file.Hunks)
+		{
+			if (!Overlaps(hunk, range) || !HunkChangesRange(hunk, range))
+			{
+				continue;
+			}
+
+			for (const DiffLine& line : hunk.Lines)
+			{
+				if (line.Kind == DiffLineKind::Removed)
+				{
+					floorLast = std::max(floorLast, static_cast<std::size_t>(line.OldLine));
+				}
+			}
+		}
+
+		mapped.Last = std::max(mapped.Last, floorLast);
 
 		if (mapped.Last < mapped.First)
 		{
