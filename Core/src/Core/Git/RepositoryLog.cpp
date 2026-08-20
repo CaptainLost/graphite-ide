@@ -179,8 +179,20 @@ namespace Core {
 		// its own, so the caller can tell a short page from a finished one.
 		bool complete = true;
 
-		while (commits.size() < request.MaxCount)
+		while (true)
 		{
+			if (commits.size() >= request.MaxCount)
+			{
+				// The caller asked for this many and no more, but that says nothing about
+				// whether history continues past them - the walk simply stopped looking,
+				// the same as it does at the MaxWalk ceiling below. A history exactly
+				// MaxCount long and one that keeps going past it look identical here, and
+				// only Complete tells a caller which one it got, letting it offer "load
+				// more" rather than presenting a full-length page as the end of the story.
+				complete = false;
+				break;
+			}
+
 			if (walked >= request.MaxWalk)
 			{
 				// Reaching the ceiling does not mean history continues past it - only that

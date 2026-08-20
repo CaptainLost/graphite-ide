@@ -83,6 +83,28 @@ TEST_CASE("MaxCount stops the walk early")
 
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().Commits.size() == 2);
+
+	// Five commits exist and only two were kept: the page cannot be the whole history,
+	// whether or not a caller happens to compare the count against MaxCount itself.
+	CHECK_FALSE(log.GetValue().Complete);
+}
+
+TEST_CASE("A log that runs out of history on its own reports the page as complete")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+
+	// The walk reached the end of history on its own, well short of MaxCount and MaxWalk:
+	// nothing was stopped early, so the page is the whole answer.
+	CHECK(log.GetValue().Complete);
 }
 
 TEST_CASE("A merge commit reports both parents in order")
