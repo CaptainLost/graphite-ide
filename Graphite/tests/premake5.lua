@@ -77,6 +77,8 @@ project "GraphiteTests"
         -- watcher and libgit2, so it is named here rather than globbed.
         "%{wks.location}/Graphite/src/Workspace/DroppedPaths.h",
         "%{wks.location}/Graphite/src/Workspace/DroppedPaths.cpp",
+        "%{wks.location}/Graphite/src/Git/**.h",
+        "%{wks.location}/Graphite/src/Git/**.cpp",
     }
 
     includedirs
