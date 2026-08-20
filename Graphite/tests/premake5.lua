@@ -65,6 +65,10 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Theme/**.cpp",
         "%{wks.location}/Graphite/src/Search/**.h",
         "%{wks.location}/Graphite/src/Search/**.cpp",
+        -- SplitResults now lives here rather than under Search, and Git needs it for the same
+        -- layout the panels above already draw.
+        "%{wks.location}/Graphite/src/UI/**.h",
+        "%{wks.location}/Graphite/src/UI/**.cpp",
         -- ReferencesPanel carries AsHits, the pure function this project tests; it and
         -- SearchPreview - the pane it draws through - are named individually rather than
         -- globbing all of Panels, which drags in the rest of the application's windows.

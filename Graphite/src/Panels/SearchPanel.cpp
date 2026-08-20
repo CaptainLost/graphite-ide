@@ -3,7 +3,7 @@
 #include "Panels/SearchPreview.h"
 #include "Search/FileEnumerator.h"
 #include "Search/HitList.h"
-#include "Search/SplitResults.h"
+#include "UI/SplitResults.h"
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/Text/Caret.h"

@@ -1,7 +1,7 @@
 #include "Panels/ReferencesPanel.h"
 
 #include "Panels/SearchPreview.h"
-#include "Search/SplitResults.h"
+#include "UI/SplitResults.h"
 
 #include "Lang/Server/LspClient.h"
 

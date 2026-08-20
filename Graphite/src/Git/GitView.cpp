@@ -1,11 +1,13 @@
 #include "Git/GitView.h"
 
 #include "Git/GitPalette.h"
+#include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
 
 #include <imgui.h>
 
 #include <format>
+#include <functional>
 #include <unordered_set>
 
 namespace Graphite {
@@ -80,7 +82,17 @@ namespace Graphite {
 			RenderRefs(branches ? *branches : std::vector<Core::Branch>{});
 
 			ImGui::TableSetColumnIndex(1);
-			RenderCommits(palette);
+
+			const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
+			const std::function<void()> drawDiff = [this, &palette] { RenderDiff(palette); };
+
+			DrawSplitResults(SplitResultsInput{.HasSelection = m_Commits.GetSelectedFile().has_value(),
+											   .ResultsHeight = m_ListHeight,
+											   .DrawResults = drawList,
+											   .DrawPreview = drawDiff,
+											   .ResultsChildId = "##gitCommits",
+											   .PreviewChildId = "##gitDiff",
+											   .SplitterId = "##gitSplit"});
 
 			ImGui::EndTable();
 		}
@@ -136,14 +148,11 @@ namespace Graphite {
 			m_Model.RequestLog({});
 		}
 
-		const float commitsHeight = ImGui::GetContentRegionAvail().y * 0.6f;
-
-		if (!ImGui::BeginChild("commitList", ImVec2{0.0f, commitsHeight}))
-		{
-			ImGui::EndChild();
-			return;
-		}
-
+		// No child of its own: this is called as DrawSplitResults's DrawResults callback, which
+		// already opened one sized to the split the user dragged. Opening a second here would
+		// nest a child inside a child, each with its own scrollbar and its own scroll position —
+		// and CommitListView::Render's load-more latch reads ImGui::GetScrollY() against
+		// whichever window is current when it runs, so it has to be this one.
 		if (!page)
 		{
 			ImGui::TextUnformatted("Loading history…");
@@ -206,10 +215,6 @@ namespace Graphite {
 				m_Model.RequestLog(request);
 			}
 		}
-
-		ImGui::EndChild();
-
-		RenderDiff(palette);
 	}
 
 	void GitView::RenderDiff(const GitPalette& palette)

@@ -1,4 +1,4 @@
-#include "Search/SplitResults.h"
+#include "UI/SplitResults.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>

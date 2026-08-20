@@ -75,14 +75,14 @@ namespace Graphite {
 			return;
 		}
 
+		// Draws into whatever window is already current rather than opening a child of its own:
+		// the Git view calls this as DrawSplitResults's DrawResults callback, which opens one
+		// sized to the split the user dragged. A second child here would nest inside that one,
+		// with its own scrollbar and its own scroll position — and the load-more check below
+		// reads ImGui::GetScrollY()/GetScrollMaxY() against whichever window is current, so it
+		// has to be the caller's.
 		const GraphMetrics metrics = MetricsForCurrentFont();
 		const float graphWidth = GraphWidth(metrics, graph.LaneCount);
-
-		if (!ImGui::BeginChild("commits", ImVec2{0.0f, 0.0f}))
-		{
-			ImGui::EndChild();
-			return;
-		}
 
 		const CommitRows rows = BuildCommitRows(page.Commits.size(), [&](std::size_t commit) {
 			const Core::CommitSummary& summary = page.Commits[commit];
@@ -209,7 +209,5 @@ namespace Graphite {
 		ImGui::SetCursorScreenPos(listOrigin);
 
 		CommitGraphView{}.Render(graph, palette, metrics, rows.RowOfCommit, firstDrawn, lastDrawn);
-
-		ImGui::EndChild();
 	}
 }

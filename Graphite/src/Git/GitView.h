@@ -62,6 +62,11 @@ namespace Graphite {
 
 		std::optional<std::string> m_SelectedRef;
 
+		// How tall the commit list is; the diff takes what is left. Persisted across frames by
+		// DrawSplitResults's own contract — see SplitResults.h for why it starts at zero and
+		// survives the diff pane being dismissed and brought back.
+		float m_ListHeight = 0.0f;
+
 		// Set once per workspace, the first frame the panel draws with no log snapshot yet
 		// — an empty Ref means HEAD. Guards RequestLog so it fires once rather than every
 		// frame the log is still in flight. Reset by SubscribeTo's handlers whenever the

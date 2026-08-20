@@ -4,12 +4,13 @@
 
 namespace Graphite {
 
-	// The stacked, splitter-divided layout the search panel and the references panel both draw:
-	// results on top, a preview pane below once something is selected, with a draggable divider
-	// between them. Stacked rather than side by side because the query field and its row of
-	// toggles — or, for the references panel, the summary line — run the full width above both,
-	// and a preview beside the results would make three columns of a panel that reads top to
-	// bottom.
+	// The stacked, splitter-divided layout used wherever a list sits above a detail pane: the
+	// search panel, the references panel, and the git view's commit list above its diff all draw
+	// it. Results on top, a preview pane below once something is selected, with a draggable
+	// divider between them. Stacked rather than side by side because the query field and its row
+	// of toggles — or, for the references panel, the summary line — run the full width above
+	// both, and a preview beside the results would make three columns of a panel that reads top
+	// to bottom.
 	//
 	// Draws only the results, filling the whole space, when `HasSelection` is false: this panel
 	// is used to read a list far more often than to look at one hit, and a pane reserving half
