@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
@@ -13,14 +14,6 @@
 namespace Core {
 
 	namespace {
-
-		std::string LastMessage()
-		{
-			const git_error* detail = git_error_last();
-
-			return detail != nullptr && detail->message != nullptr ? detail->message
-																   : "unknown error";
-		}
 
 		StatusFlags IndexFlagsOf(unsigned int status)
 		{
@@ -68,7 +61,7 @@ namespace Core {
 		if (git_status_list_new(&list, m_Handle, &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("cannot read the working tree status: {}", LastMessage())};
+						 std::format("cannot read the working tree status: {}", LastLibgit2Message())};
 		}
 
 		WorkingTreeStatus status;

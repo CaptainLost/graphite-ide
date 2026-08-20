@@ -2,6 +2,8 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/Git/Libgit2Support.h"
+
 #include <git2.h>
 
 #include <algorithm>
@@ -9,29 +11,6 @@
 #include <string>
 
 namespace Core {
-
-	namespace {
-
-		std::string LastMessage()
-		{
-			const git_error* detail = git_error_last();
-
-			return detail != nullptr && detail->message != nullptr ? detail->message
-																   : "unknown error";
-		}
-
-		Oid ToOid(const git_oid& id)
-		{
-			Oid result;
-
-			for (std::size_t index = 0; index < result.Bytes.size(); ++index)
-			{
-				result.Bytes[index] = static_cast<std::uint8_t>(id.id[index]);
-			}
-
-			return result;
-		}
-	}
 
 	Result<std::vector<Branch>> Repository::QueryBranches() const
 	{
@@ -45,7 +24,7 @@ namespace Core {
 		if (git_branch_iterator_new(&iterator, m_Handle, GIT_BRANCH_ALL) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("cannot list the branches: {}", LastMessage())};
+						 std::format("cannot list the branches: {}", LastLibgit2Message())};
 		}
 
 		std::vector<Branch> branches;

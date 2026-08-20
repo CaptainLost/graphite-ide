@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
@@ -25,31 +26,6 @@ namespace Core {
 		bool LeadsOutOfTree(const std::filesystem::path& relative)
 		{
 			return relative.begin() != relative.end() && *relative.begin() == "..";
-		}
-
-		// git speaks forward slashes on every platform; a relative path may carry native
-		// separators.
-		std::string ToGitPath(const std::filesystem::path& relative)
-		{
-			std::string text = ToUtf8(relative);
-
-			for (char& character : text)
-			{
-				if (character == '\\')
-					character = '/';
-			}
-
-			return text;
-		}
-
-		// libgit2's own message names the real cause — a .git file pointing at a deleted
-		// worktree reads very differently from an unreadable directory.
-		std::string LastLibgit2Message()
-		{
-			const git_error* detail = git_error_last();
-
-			return detail != nullptr && detail->message != nullptr ? detail->message
-																   : "unknown error";
 		}
 	}
 

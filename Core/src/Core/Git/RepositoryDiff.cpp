@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
@@ -12,31 +13,6 @@
 namespace Core {
 
 	namespace {
-
-		std::string LastMessage()
-		{
-			const git_error* detail = git_error_last();
-
-			return detail != nullptr && detail->message != nullptr ? detail->message
-																   : "unknown error";
-		}
-
-		// git speaks forward slashes on every platform; a relative path may carry native
-		// separators.
-		std::string ToGitPath(const std::filesystem::path& relative)
-		{
-			std::string text = ToUtf8(relative);
-
-			for (char& character : text)
-			{
-				if (character == '\\')
-				{
-					character = '/';
-				}
-			}
-
-			return text;
-		}
 
 		FileChange ToChange(git_delta_t status)
 		{
@@ -160,11 +136,7 @@ namespace Core {
 				return nullptr;
 			}
 
-			git_oid raw{};
-			for (std::size_t index = 0; index < id->Bytes.size(); ++index)
-			{
-				raw.id[index] = id->Bytes[index];
-			}
+			git_oid raw = ToGitOid(*id);
 
 			git_commit* commit = nullptr;
 			if (git_commit_lookup(&commit, m_Handle, &raw) != 0)
@@ -237,11 +209,7 @@ namespace Core {
 
 				right = treeOf(request.From);
 
-				git_oid raw{};
-				for (std::size_t index = 0; index < request.From->Bytes.size(); ++index)
-				{
-					raw.id[index] = request.From->Bytes[index];
-				}
+				git_oid raw = ToGitOid(*request.From);
 
 				git_commit* commit = nullptr;
 				if (git_commit_lookup(&commit, m_Handle, &raw) == 0)
@@ -279,7 +247,7 @@ namespace Core {
 
 		if (created != 0 || diff == nullptr)
 		{
-			const std::string message = LastMessage();
+			const std::string message = LastLibgit2Message();
 
 			git_tree_free(right);
 			git_tree_free(left);
@@ -301,7 +269,7 @@ namespace Core {
 		if (walked != 0)
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("cannot read the diff: {}", LastMessage())};
+						 std::format("cannot read the diff: {}", LastLibgit2Message())};
 		}
 
 		return std::move(collector.Result);
