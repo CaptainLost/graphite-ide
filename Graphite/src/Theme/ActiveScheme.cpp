@@ -28,6 +28,6 @@ namespace Graphite {
 	void ActiveScheme::Load()
 	{
 		const std::string name = AppSettings::LoadColorScheme();
-		m_Resolved = ResolveNamed(name, AppSettings::ThemesDirectory());
+		Set(ResolveNamed(name, AppSettings::ThemesDirectory()));
 	}
 }

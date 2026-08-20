@@ -25,6 +25,10 @@
 
 #include "Core/Base/Log.h"
 
+#include "Core/ImGui/Theme.h"
+
+#include "Theme/ChromePalette.h"
+
 #include "Core/Events/ApplicationEvent.h"
 
 #include "Settings/EditorSection.h"
@@ -333,8 +337,24 @@ namespace Graphite {
 		}
 	}
 
+	void GraphiteLayer::ApplyChromeIfSchemeChanged()
+	{
+		if (m_AppliedSchemeVersion == m_ActiveScheme.GetVersion())
+		{
+			return;
+		}
+
+		m_AppliedSchemeVersion = m_ActiveScheme.GetVersion();
+
+		Core::Theme::Apply(ChromePaletteFor(m_ActiveScheme.Get()));
+	}
+
 	void GraphiteLayer::OnImGuiRender()
 	{
+		// First statement, before any window is begun: ImGuiStyle::Colors must not change
+		// between a Begin and its End.
+		ApplyChromeIfSchemeChanged();
+
 		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
 								 m_SearchPanel->GetStatusMessage()};
 

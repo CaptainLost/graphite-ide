@@ -3,6 +3,7 @@
 #include "Theme/BuiltInSchemes.h"
 #include "Theme/ColorScheme.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string_view>
 
@@ -31,9 +32,21 @@ namespace Graphite {
 		// The settings section previews by writing here: GraphiteLayer already hands Get() to the
 		// editor every frame, so the next frame draws whatever was last set. There is no preview
 		// mode to leave switched on — this holds one resolved scheme and always has.
-		void Set(const ResolvedScheme& resolved) { m_Resolved = resolved; }
+		void Set(const ResolvedScheme& resolved)
+		{
+			m_Resolved = resolved;
+			++m_Version;
+		}
+
+		// Bumped by every write, so a reader can tell "the colours changed" from "the colours
+		// happen to compare equal". A counter rather than a comparison: ResolvedScheme is two
+		// arrays and a third, and comparing them per frame to answer a question a counter
+		// answers for free is work nobody asked for.
+		std::uint32_t GetVersion() const { return m_Version; }
 
 	private:
 		ResolvedScheme m_Resolved = DarkScheme();
+
+		std::uint32_t m_Version = 1;
 	};
 }

@@ -27,6 +27,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/PanelManager.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <vector>
@@ -98,6 +99,8 @@ namespace Graphite {
 
 		void UpdateFocusReload(Core::Timestep ts);
 
+		void ApplyChromeIfSchemeChanged();
+
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
 		bool m_CustomTitleBar = false;
@@ -154,6 +157,10 @@ namespace Graphite {
 		// destroyed while the panel still held it.
 		EditorSettings m_EditorSettings;
 		ActiveScheme m_ActiveScheme;
+
+		// The scheme version the chrome was last painted from. Zero is "never", and
+		// ActiveScheme starts at one, so the first frame always applies.
+		std::uint32_t m_AppliedSchemeVersion = 0;
 
 		static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 

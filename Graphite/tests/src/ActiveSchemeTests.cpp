@@ -55,3 +55,21 @@ TEST_CASE("A built-in name resolves to that built-in without reading a file")
 	CHECK(resolved.Editor[background].R ==
 		  doctest::Approx(Graphite::LightScheme().Editor[background].R));
 }
+
+// The version is what tells the layer to re-apply the chrome. Applying every frame would work
+// by accident and break the moment anything pushes a style colour around a widget.
+TEST_CASE("The active scheme's version moves whenever the colours do")
+{
+	Graphite::ActiveScheme active;
+
+	const std::uint32_t initial = active.GetVersion();
+
+	active.Set(Graphite::LightScheme());
+
+	const std::uint32_t afterSet = active.GetVersion();
+	CHECK(afterSet != initial);
+
+	active.Set(Graphite::DarkScheme());
+
+	CHECK(active.GetVersion() != afterSet);
+}
