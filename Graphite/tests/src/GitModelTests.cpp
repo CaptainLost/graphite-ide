@@ -391,15 +391,15 @@ TEST_CASE("A requested diff becomes readable after the next update")
 
 	Core::DiffRequest request;
 	request.Target = Core::DiffTarget::WorkTreeToHead;
-	model.RequestDiff(request);
+	model.RequestWorkingTreeDiff(request);
 
-	CHECK(model.GetDiff() == nullptr);
+	CHECK(model.GetWorkingTreeDiff() == nullptr);
 
 	model.OnUpdate(Core::Timestep{0.016f});
 
-	REQUIRE(model.GetDiff() != nullptr);
-	REQUIRE(model.GetDiff()->Files.size() == 1);
-	CHECK(model.GetDiff()->Files.front().NewPath == std::filesystem::path("a.txt"));
+	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff()->Files.size() == 1);
+	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("a.txt"));
 }
 
 TEST_CASE("A superseded diff is discarded rather than shown")
@@ -411,21 +411,21 @@ TEST_CASE("A superseded diff is discarded rather than shown")
 	port.Diff.Files.push_back(stale);
 
 	Graphite::GitModel model{port, Inline()};
-	model.RequestDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 
 	port.Diff.Files.clear();
 	Core::FileDiff fresh;
 	fresh.NewPath = "fresh.txt";
 	port.Diff.Files.push_back(fresh);
-	model.RequestDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	// Selecting one commit and then another before the first diff lands must not leave
 	// the first commit's diff under the second commit's heading.
-	REQUIRE(model.GetDiff() != nullptr);
-	REQUIRE(model.GetDiff()->Files.size() == 1);
-	CHECK(model.GetDiff()->Files.front().NewPath == std::filesystem::path("fresh.txt"));
+	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff()->Files.size() == 1);
+	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("fresh.txt"));
 }
 
 TEST_CASE("A failed diff keeps the last good one and reports the error")
@@ -437,15 +437,15 @@ TEST_CASE("A failed diff keeps the last good one and reports the error")
 	port.Diff.Files.push_back(file);
 
 	Graphite::GitModel model{port, Inline()};
-	model.RequestDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	port.FailDiff = true;
-	model.RequestDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
 
-	REQUIRE(model.GetDiff() != nullptr);
-	CHECK(model.GetDiff()->Files.size() == 1);
+	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(model.GetWorkingTreeDiff()->Files.size() == 1);
 	CHECK(model.GetLastError().has_value());
 }
 
@@ -462,14 +462,14 @@ TEST_CASE("Closing the workspace drops the diff too")
 	model.SetRoot("C:/repo");
 	model.SubscribeTo(events);
 
-	model.RequestDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
-	REQUIRE(model.GetDiff() != nullptr);
+	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
 
 	events.Publish(Graphite::WorkspaceClosedEvent{});
 	model.OnUpdate(Core::Timestep{0.016f});
 
-	CHECK(model.GetDiff() == nullptr);
+	CHECK(model.GetWorkingTreeDiff() == nullptr);
 }
 
 namespace {
@@ -656,12 +656,59 @@ TEST_CASE("A failed diff can be asked for again once forgotten")
 	port.Diff = DiffNaming("a.txt");
 
 	// A failure must not poison the entry forever: collapsing and expanding the row
-	// again is the reader's recourse, and ForgetDiffFor is what that gesture does.
-	model.ForgetDiffFor(IdOf(1));
+	// again is the reader's recourse, and ForgetFailedDiffFor is what that gesture does.
+	model.ForgetFailedDiffFor(IdOf(1));
 	model.RequestDiffFor(IdOf(1));
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+}
+
+TEST_CASE("Forgetting a failed diff clears the error it left behind")
+{
+	FakePort port;
+	port.FailDiff = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetLastError().has_value());
+
+	// The error line must not outlive the row it described: collapsing the row that
+	// failed is what erases the entry, and the error should go with it.
+	model.ForgetFailedDiffFor(IdOf(1));
+
+	CHECK(!model.GetLastError().has_value());
+}
+
+TEST_CASE("Forgetting a successful diff leaves it cached")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+
+	const int after = port.DiffCalls;
+
+	// Only a failed entry is what collapsing a row is meant to undo. A successful one
+	// staying cached is what makes this an LRU cache of recently-seen commits rather
+	// than a holder for only the currently-expanded ones.
+	model.ForgetFailedDiffFor(IdOf(1));
+
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+
+	// Re-expanding the same row must not re-query git either.
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.DiffCalls == after);
 }
 
 TEST_CASE("The cache holds a bounded number of commits")

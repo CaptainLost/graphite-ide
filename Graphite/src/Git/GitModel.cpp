@@ -29,18 +29,18 @@ namespace Graphite {
 		m_StatusApplied = m_StatusRequested;
 		m_BranchesApplied = m_BranchesRequested;
 		m_LogApplied = m_LogRequested;
-		m_DiffApplied = m_DiffRequested;
+		m_WorkingTreeDiffApplied = m_WorkingTreeDiffRequested;
 
 		m_Status.reset();
 		m_Branches.reset();
 		m_Log.reset();
-		m_Diff.reset();
+		m_WorkingTreeDiff.reset();
 		m_CommitDiffs.clear();
 
 		m_StatusError.reset();
 		m_BranchesError.reset();
 		m_LogError.reset();
-		m_DiffError.reset();
+		m_WorkingTreeDiffError.reset();
 		m_CommitDiffError.reset();
 
 		m_Dirty = false;
@@ -217,29 +217,30 @@ namespace Graphite {
 		});
 	}
 
-	void GitModel::RequestDiff(Core::DiffRequest request)
+	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)
 	{
-		const std::uint64_t generation = ++m_DiffRequested;
+		const std::uint64_t generation = ++m_WorkingTreeDiffRequested;
 
 		m_Submit([this, generation, request = std::move(request)]() {
 			auto result = m_Port.QueryDiff(request);
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
-				if (generation <= m_DiffApplied)
+				if (generation <= m_WorkingTreeDiffApplied)
 				{
 					return;
 				}
 
-				m_DiffApplied = generation;
+				m_WorkingTreeDiffApplied = generation;
 
 				if (!result.HasValue())
 				{
-					m_DiffError = result.GetError();
+					m_WorkingTreeDiffError = result.GetError();
 					return;
 				}
 
-				m_DiffError.reset();
-				m_Diff = std::make_shared<const Core::Diff>(std::move(result).GetValue());
+				m_WorkingTreeDiffError.reset();
+				m_WorkingTreeDiff =
+					std::make_shared<const Core::Diff>(std::move(result).GetValue());
 			});
 		});
 	}
@@ -303,8 +304,8 @@ namespace Graphite {
 
 			// A failed entry is suppressed the same way a held or in-flight one is: the list
 			// asks about every expanded commit every frame, and without this a permanent
-			// failure would resubmit a worker job that many times a second. ForgetDiffFor is
-			// the only way back in.
+			// failure would resubmit a worker job that many times a second.
+			// ForgetFailedDiffFor is the only way back in.
 			if (inFlight || existing->second.Diff != nullptr || existing->second.Failed)
 			{
 				Touch(existing->second);
@@ -365,9 +366,22 @@ namespace Graphite {
 		});
 	}
 
-	void GitModel::ForgetDiffFor(const Core::Oid& commit)
+	void GitModel::ForgetFailedDiffFor(const Core::Oid& commit)
 	{
-		m_CommitDiffs.erase(commit);
+		const auto entry = m_CommitDiffs.find(commit);
+
+		// A successful entry stays: this is what makes the cache hold recently-seen commits
+		// rather than only the currently-expanded ones. Only a failed entry is dropped, so
+		// collapsing and re-expanding the row is the reader's way to retry it.
+		if (entry == m_CommitDiffs.end() || !entry->second.Failed)
+		{
+			return;
+		}
+
+		m_CommitDiffs.erase(entry);
+
+		// The error line must not outlive the row it described.
+		m_CommitDiffError.reset();
 	}
 
 	std::shared_ptr<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const

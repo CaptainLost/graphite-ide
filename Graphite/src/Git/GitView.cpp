@@ -179,15 +179,17 @@ namespace Graphite {
 				}
 			}
 
-			// A commit expanded last frame but not this one was just collapsed. Forgetting
-			// its cached diff here, rather than leaving a failed one to keep being
-			// suppressed forever, is what gives a failure a way back: expanding the row
-			// again is the same gesture that asks for the diff in the first place.
+			// A commit expanded last frame but not this one was just collapsed. Only a failed
+			// entry is actually forgotten here - the model decides that, since it is the only
+			// thing that knows an entry failed - which is what gives a failure a way back:
+			// expanding the row again is the same gesture that asks for the diff in the first
+			// place. A successful diff stays cached, so collapsing and re-expanding a row does
+			// not re-query git.
 			for (const Core::Oid& commit : m_PreviouslyExpanded)
 			{
 				if (!currentlyExpanded.contains(commit))
 				{
-					m_Model.ForgetDiffFor(commit);
+					m_Model.ForgetFailedDiffFor(commit);
 				}
 			}
 

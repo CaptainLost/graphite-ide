@@ -46,25 +46,31 @@ namespace Graphite {
 		void RequestBranches();
 		void RequestLog(Core::LogRequest request);
 
-		// A diff is requested by an explicit selection rather than by the debounce: it
-		// answers "what changed in the thing I just clicked", and nothing on disk can
-		// change which thing that is.
-		void RequestDiff(Core::DiffRequest request);
+		// The working tree against HEAD: a diff that changes on every keystroke, so there is
+		// nothing to hold past the next refresh. One slot, replaced whenever a fresher answer
+		// lands, the same way m_Status and m_Branches are - unlike a commit's diff, which
+		// never changes and is therefore kept in the keyed cache below (RequestDiffFor).
+		void RequestWorkingTreeDiff(Core::DiffRequest request);
 
 		// The diff of one commit against its first parent. Requested by expanding a row,
 		// and held afterwards: a commit's diff cannot change, so re-asking would be pure
 		// waste — and the list asks about every expanded commit on every frame it draws.
+		// For the working tree's own diff, which does change and is therefore not cached
+		// this way, see RequestWorkingTreeDiff.
 		//
 		// Asking for a commit already held, already in flight, or already failed, does
 		// nothing — a permanent failure must not turn the list's every-frame ask into a
-		// worker job every frame. ForgetDiffFor is what gives a failed entry a way back.
+		// worker job every frame. ForgetFailedDiffFor is what gives a failed entry a way back.
 		void RequestDiffFor(const Core::Oid& commit);
 
-		// Drops a cached entry, failed or not, so the next RequestDiffFor for that commit
-		// starts over. Called when a row collapses: it is the reader's recourse for a
-		// failure, obvious without being told, since expanding the row again is the same
-		// gesture that asked for the diff in the first place.
-		void ForgetDiffFor(const Core::Oid& commit);
+		// Drops a cached entry, but only if it is marked failed - a successful diff stays,
+		// which is what makes this a cache of recently-seen commits rather than a holder for
+		// only the currently-expanded ones. Called when a row collapses: for a failed entry
+		// it is the reader's recourse, obvious without being told, since expanding the row
+		// again is the same gesture that asked for the diff in the first place. Clears
+		// m_CommitDiffError together with the entry, so the error line does not outlive the
+		// row it described.
+		void ForgetFailedDiffFor(const Core::Oid& commit);
 
 		// Null while the answer is in flight, after a failure, and for a commit that was
 		// evicted. In every case the caller's response is the same: draw nothing under
@@ -81,15 +87,15 @@ namespace Graphite {
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
 		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
-		std::shared_ptr<const Core::Diff> GetDiff() const { return m_Diff; }
+		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const { return m_WorkingTreeDiff; }
 
 		// The failure a panel should show, if any. Each query kind keeps its own error, set
 		// by its own failure and cleared only by its own success, so a branches refresh
 		// that succeeds can never hide a status refresh that is still failing. When more
-		// than one is set this returns the first in the order status, branches, log, diff,
-		// commit diff - status is checked most often and is the one a user most needs to
-		// see fail, and a commit diff failure is the least likely of the five to be what a
-		// user needs told first.
+		// than one is set this returns the first in the order status, branches, log,
+		// working-tree diff, commit diff - status is checked most often and is the one a
+		// user most needs to see fail, and a commit diff failure is the least likely of the
+		// five to be what a user needs told first.
 		const std::optional<Core::Error>& GetLastError() const
 		{
 			if (m_StatusError.has_value())
@@ -107,9 +113,9 @@ namespace Graphite {
 				return m_LogError;
 			}
 
-			if (m_DiffError.has_value())
+			if (m_WorkingTreeDiffError.has_value())
 			{
-				return m_DiffError;
+				return m_WorkingTreeDiffError;
 			}
 
 			return m_CommitDiffError;
@@ -159,7 +165,7 @@ namespace Graphite {
 
 			// Set when the query answered with an error rather than a diff. Checked by
 			// RequestDiffFor so a permanent failure does not turn the list's every-frame ask
-			// into a worker job every frame — only ForgetDiffFor clears it.
+			// into a worker job every frame — only ForgetFailedDiffFor clears it.
 			bool Failed = false;
 
 			// Counts up on every request and every read, so eviction can pick the entry
@@ -193,13 +199,13 @@ namespace Graphite {
 		std::uint64_t m_BranchesApplied = 0;
 		std::uint64_t m_LogRequested = 0;
 		std::uint64_t m_LogApplied = 0;
-		std::uint64_t m_DiffRequested = 0;
-		std::uint64_t m_DiffApplied = 0;
+		std::uint64_t m_WorkingTreeDiffRequested = 0;
+		std::uint64_t m_WorkingTreeDiffApplied = 0;
 
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
 		std::shared_ptr<const Core::LogPage> m_Log;
-		std::shared_ptr<const Core::Diff> m_Diff;
+		std::shared_ptr<const Core::Diff> m_WorkingTreeDiff;
 
 		// Mutable because GetDiffFor is const and still counts as a use — an entry the
 		// reader is looking at every frame must not be the one evicted.
@@ -213,10 +219,11 @@ namespace Graphite {
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;
 		std::optional<Core::Error> m_LogError;
-		std::optional<Core::Error> m_DiffError;
+		std::optional<Core::Error> m_WorkingTreeDiffError;
 
-		// Kept apart from m_DiffError: a commit diff and the volatile working-tree diff are
-		// different query kinds, and one succeeding must not hide the other still failing.
+		// Kept apart from m_WorkingTreeDiffError: a commit diff and the volatile working-tree
+		// diff are different query kinds, and one succeeding must not hide the other still
+		// failing.
 		std::optional<Core::Error> m_CommitDiffError;
 	};
 }
