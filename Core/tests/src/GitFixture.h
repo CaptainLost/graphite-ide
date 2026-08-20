@@ -27,7 +27,13 @@ public:
 	{
 		git_libgit2_init();
 
-		REQUIRE(git_repository_init(&m_Repository, Core::ToUtf8(m_Temp.GetPath()).c_str(), 0) == 0);
+		// Pinned so the suite does not depend on the developer's init.defaultBranch:
+		// left to the ambient config, the initial branch name would vary machine to
+		// machine and so would every test that checks it out.
+		git_repository_init_options options = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+		options.initial_head = "master";
+
+		REQUIRE(git_repository_init_ext(&m_Repository, Core::ToUtf8(m_Temp.GetPath()).c_str(), &options) == 0);
 	}
 
 	~GitFixture()

@@ -64,7 +64,7 @@ TEST_CASE("The fixture builds a merge commit with two parents")
 	fixture.Write("side.txt", "side\n");
 	const std::string sideTip = fixture.Commit("add side");
 
-	fixture.Checkout("main");
+	fixture.Checkout("master");
 	fixture.Write("main.txt", "main\n");
 	const std::string mainTip = fixture.Commit("add main");
 
