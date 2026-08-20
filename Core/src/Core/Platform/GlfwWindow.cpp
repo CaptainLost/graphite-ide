@@ -5,6 +5,7 @@
 #include "Core/Platform/GlfwWindow.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Events/ApplicationEvent.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/Events/MouseEvent.h"
@@ -194,6 +195,29 @@ namespace Core {
 									 MouseMovedEvent event{static_cast<float>(x), static_cast<float>(y)};
 									 self->m_EventCallback(event);
 								 });
+
+		// GLFW hands the dropped paths over as UTF-8 whatever the platform stores them as, so
+		// they go back through FromUtf8 rather than std::filesystem::path's own constructor -
+		// which would read them in the machine's ANSI codepage and mangle every path outside it.
+		//
+		// The ImGui GLFW backend installs no drop callback of its own, so this one survives its
+		// initialisation even though it runs after the window is built.
+		glfwSetDropCallback(m_Handle,
+							[](GLFWwindow* handle, int count, const char** paths)
+							{
+								GlfwWindow* self = WindowFrom(handle);
+								if (self == nullptr || !self->m_EventCallback)
+									return;
+
+								std::vector<std::filesystem::path> dropped;
+								dropped.reserve(static_cast<std::size_t>(count));
+
+								for (int index = 0; index < count; ++index)
+									dropped.push_back(FromUtf8(paths[index]));
+
+								FileDropEvent event{std::move(dropped)};
+								self->m_EventCallback(event);
+							});
 	}
 
 	GlfwWindow::~GlfwWindow()

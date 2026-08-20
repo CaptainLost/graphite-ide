@@ -10,6 +10,7 @@
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Theme/ActiveScheme.h"
+#include "Workspace/DroppedPaths.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/App/Layer.h"
@@ -52,6 +53,17 @@ namespace Graphite {
 			CloseWorkspace
 		};
 
+		// The part of a drop that replaces the workspace, kept while the user is asked
+		// whether it may. Comparable because ModalQuestion refuses to queue a question it is
+		// already asking, and dropping the same folder twice is one question.
+		struct DroppedWorkspace
+		{
+			DropTarget Target = DropTarget::None;
+			std::filesystem::path Root;
+
+			bool operator==(const DroppedWorkspace&) const = default;
+		};
+
 		void RegisterApplicationCommands();
 
 		void ReportConflictingKeyBindings();
@@ -61,6 +73,12 @@ namespace Graphite {
 		void OpenStartupFolder();
 
 		void RouteShortcuts(Core::Event& event);
+
+		void HandleFileDrop(Core::Event& event);
+
+		void OpenDropped(const DroppedWorkspace& dropped);
+
+		void RenderDropConfirm();
 
 		void QueueForFocusedEditor(Core::Event& event);
 
@@ -131,6 +149,11 @@ namespace Graphite {
 		static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 
 		ModalQuestion<ClosePurpose> m_CloseQuestion;
+
+		static constexpr const char* kReplaceWorkspaceTitle =
+			"Open dropped folder##DropReplacesWorkspace";
+
+		ModalQuestion<DroppedWorkspace> m_DropQuestion;
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

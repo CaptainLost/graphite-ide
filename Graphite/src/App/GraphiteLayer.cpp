@@ -25,6 +25,8 @@
 
 #include "Core/Base/Log.h"
 
+#include "Core/Events/ApplicationEvent.h"
+
 #include "Settings/EditorSection.h"
 #include "Settings/KeyBindingsSection.h"
 #include "Settings/SchemeSection.h"
@@ -62,7 +64,8 @@ namespace Graphite {
 	GraphiteLayer::GraphiteLayer(Core::Ref<Core::RingBufferSink> sink,
 								 std::filesystem::path initialFolder)
 		: Core::Layer("Ide"), m_Sink(std::move(sink)), m_InitialFolder(std::move(initialFolder)),
-		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle)
+		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
+		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle)
 	{
 		m_Layout.Left = {"files"};
 
@@ -418,6 +421,7 @@ namespace Graphite {
 		// modal popup must not be opened from inside a window that may not be current when
 		// the popup needs to draw.
 		RenderCloseConfirm();
+		RenderDropConfirm();
 
 		// Panels render outside the host window — inside it they would dock as ordinary child
 		// windows instead of landing in the dockspace nodes.
@@ -437,6 +441,15 @@ namespace Graphite {
 
 	void GraphiteLayer::OnEvent(Core::Event& event)
 	{
+		// Before the panels: a drop is not input anybody is competing for, and routing it
+		// through the shortcut path would only give the panels a chance to swallow it.
+		HandleFileDrop(event);
+
+		if (event.Handled)
+		{
+			return;
+		}
+
 		// The panels first, and only those that drew: a chord being recorded is consumed
 		// there, so the router never sees it. Capturing Ctrl+Shift+S would otherwise bind it
 		// and save everything in the same keystroke.
@@ -455,6 +468,99 @@ namespace Graphite {
 		}
 
 		QueueForFocusedEditor(event);
+	}
+
+	void GraphiteLayer::HandleFileDrop(Core::Event& event)
+	{
+		Core::EventDispatcher dispatcher{event};
+
+		dispatcher.Dispatch<Core::FileDropEvent>([this](Core::FileDropEvent& dropped) {
+			const DropRouting routing =
+				ClassifyDrop(dropped.GetPaths(), [](const std::filesystem::path& path) {
+					std::error_code code;
+					return std::filesystem::is_directory(path, code);
+				});
+
+			// The workspace before the files, so a file dropped along with the folder it
+			// lives in opens into that folder rather than the one being replaced. Waiting
+			// for an answer is the exception: the question is not worth holding the files
+			// hostage, and opening a folder leaves open documents where they are.
+			if (routing.Target != DropTarget::None)
+			{
+				const DroppedWorkspace workspace{routing.Target, routing.Root};
+
+				if (ReplacesWorkspace(routing, m_Workspace.GetRoot()))
+				{
+					m_DropQuestion.Ask(workspace);
+				}
+				else
+				{
+					OpenDropped(workspace);
+				}
+			}
+
+			// Permanently, not as a preview: dragging a file onto the window is as deliberate
+			// as double-clicking one in the tree.
+			for (const std::filesystem::path& file : routing.Files)
+			{
+				m_Workspace.RequestOpenFile(file, true);
+			}
+
+			return true;
+		});
+	}
+
+	void GraphiteLayer::OpenDropped(const DroppedWorkspace& dropped)
+	{
+		switch (dropped.Target)
+		{
+		case DropTarget::None:
+			break;
+
+		case DropTarget::Folder:
+			// OpenFolder reports its own failures, the way the folder picker's caller leaves
+			// them to it.
+			(void)m_Workspace.OpenFolder(dropped.Root);
+			break;
+
+		case DropTarget::Solution:
+			if (const auto opened = m_Workspace.OpenSolution(dropped.Root); !opened)
+				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+			break;
+		}
+	}
+
+	void GraphiteLayer::RenderDropConfirm()
+	{
+		if (!m_DropQuestion.Begin())
+		{
+			return;
+		}
+
+		// Copied out before anything is opened: Answer clears what GetCurrent points at, and
+		// opening a workspace is not something to do with a dangling pointer to its path.
+		const DroppedWorkspace* asked = m_DropQuestion.GetCurrent();
+		const DroppedWorkspace dropped = asked != nullptr ? *asked : DroppedWorkspace{};
+
+		ImGui::TextUnformatted("Open this in place of the workspace now open?");
+		ImGui::Separator();
+		ImGui::TextUnformatted(Core::ToUtf8(dropped.Root).c_str());
+		ImGui::Separator();
+
+		if (ImGui::Button("Open"))
+		{
+			OpenDropped(dropped);
+			m_DropQuestion.Answer();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Cancel"))
+		{
+			m_DropQuestion.Answer();
+		}
+
+		m_DropQuestion.End();
 	}
 
 	void GraphiteLayer::RouteShortcuts(Core::Event& event)

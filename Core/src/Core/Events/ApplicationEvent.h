@@ -2,7 +2,10 @@
 
 #include "Core/Events/Event.h"
 
+#include <filesystem>
 #include <format>
+#include <utility>
+#include <vector>
 
 namespace Core {
 
@@ -46,6 +49,32 @@ namespace Core {
 	public:
 		EVENT_CLASS_TYPE(WindowLostFocus)
 		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+	};
+
+	// What the window manager handed over when something was dropped on the window: whole
+	// paths, already decoded from the platform's own encoding. The paths exist on disk at the
+	// moment they arrive and can be anything - a file, a directory - so it is the handler that
+	// decides what each of them means.
+	class FileDropEvent final : public Event
+	{
+	public:
+		explicit FileDropEvent(std::vector<std::filesystem::path> paths)
+			: m_Paths(std::move(paths))
+		{
+		}
+
+		const std::vector<std::filesystem::path>& GetPaths() const { return m_Paths; }
+
+		std::string ToString() const override
+		{
+			return std::format("FileDropEvent: {} path(s)", m_Paths.size());
+		}
+
+		EVENT_CLASS_TYPE(FileDrop)
+		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+
+	private:
+		std::vector<std::filesystem::path> m_Paths;
 	};
 
 	class WindowMovedEvent final : public Event

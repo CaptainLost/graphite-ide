@@ -17,6 +17,7 @@ namespace Core {
 		WindowFocus,
 		WindowLostFocus,
 		WindowMoved,
+		FileDrop,
 		KeyPressed,
 		KeyReleased,
 		KeyTyped,

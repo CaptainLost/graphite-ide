@@ -68,6 +68,11 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Panels/ReferencesPanel.cpp",
         "%{wks.location}/Graphite/src/Panels/SearchPreview.h",
         "%{wks.location}/Graphite/src/Panels/SearchPreview.cpp",
+        -- DroppedPaths is the rule a drag and drop is routed by, and reaches no further
+        -- than the standard library; the rest of Workspace drags in the file tree, the
+        -- watcher and libgit2, so it is named here rather than globbed.
+        "%{wks.location}/Graphite/src/Workspace/DroppedPaths.h",
+        "%{wks.location}/Graphite/src/Workspace/DroppedPaths.cpp",
     }
 
     includedirs
