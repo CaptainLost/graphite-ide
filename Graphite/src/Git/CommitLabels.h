@@ -21,16 +21,19 @@ namespace Graphite {
 	// letter when there is no name, and to "?" when there is neither.
 	std::string AuthorInitials(const Core::Signature& who);
 
-	// The author's name in exactly `width` characters: padded with spaces when short,
-	// and cut with a single-character ellipsis when long, so every summary in the list
-	// starts at the same column and the list reads as a table rather than as ragged text.
+	// The author's name in exactly `width` display columns: padded with spaces when
+	// short, and cut with a single-character ellipsis when long, so every summary in the
+	// list starts at the same column and the list reads as a table rather than as ragged
+	// text. Width is code points, not bytes, so a multi-byte UTF-8 name still lines up —
+	// except for a code point a font renders double-wide (CJK, most emoji), which still
+	// counts as one column here and will shift what follows it; that case is out of scope.
 	//
 	// Falls back to the part of the email before the '@' when there is no name, and to
 	// "unknown" when there is neither — a commit with no author is malformed but real,
 	// and a blank column tells the reader nothing.
 	std::string PaddedAuthor(const Core::Signature& who, std::size_t width);
 
-	// RelativeAge in exactly `width` characters, padded or cut the same way.
+	// RelativeAge in exactly `width` display columns, padded or cut the same way.
 	std::string PaddedAge(std::chrono::sys_seconds when, std::chrono::sys_seconds now,
 						  std::size_t width);
 

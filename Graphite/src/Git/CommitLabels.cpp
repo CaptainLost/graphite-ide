@@ -39,69 +39,93 @@ namespace Graphite {
 		}
 
 		// The single-character ellipsis (U+2026), as the three bytes its UTF-8 encoding
-		// takes. Used whole or not at all — never split — so a cut result is never left
-		// with a broken glyph of its own making.
+		// takes. One code point, and — in every ordinary monospace face — one display
+		// column, which is the unit PadOrCut below has to work in.
 		constexpr std::string_view Ellipsis = "\xE2\x80\xA6";
 
-		// A UTF-8 continuation byte has the top two bits `10`. Stopping a cut on one of
-		// these would split a multi-byte character in half and produce a broken glyph, so
-		// every cut backs up to the nearest byte that is not one.
+		// A UTF-8 continuation byte has the top two bits `10`. A code point is one lead
+		// byte followed by zero or more of these, so counting the non-continuation bytes
+		// counts code points without decoding anything.
 		bool IsUtf8Continuation(char byte)
 		{
 			return (static_cast<unsigned char>(byte) & 0xC0) == 0x80;
 		}
 
-		// The largest prefix length, no greater than maxBytes, that does not end inside a
-		// multi-byte UTF-8 sequence. Plain ASCII text (the common case for both callers)
-		// always gets maxBytes back unchanged.
-		std::size_t Utf8SafeLength(std::string_view text, std::size_t maxBytes)
+		// How many UTF-8 code points `text` holds. This is what PadOrCut treats as the
+		// display width: correct for the common case (ASCII, and any font that renders
+		// every code point in one column), wrong for a character a font draws double-wide
+		// (CJK, most emoji) — those still count as one here and will shift the column that
+		// follows. That gap is real and out of scope for this change.
+		std::size_t Utf8CodePointCount(std::string_view text)
 		{
-			std::size_t length = maxBytes < text.size() ? maxBytes : text.size();
+			std::size_t count = 0;
 
-			// length == text.size() is the untouched, full string — always a safe boundary —
-			// so the continuation check only runs, and only indexes text[length], while
-			// length is still a valid in-range index.
-			while (length > 0 && length < text.size() && IsUtf8Continuation(text[length]))
+			for (const char byte : text)
 			{
-				--length;
+				if (!IsUtf8Continuation(byte))
+				{
+					++count;
+				}
 			}
 
-			return length;
+			return count;
 		}
 
-		// Pads `text` with trailing spaces to exactly `width` bytes, or cuts it to `width`
-		// bytes ending in the ellipsis, so every caller's column lines up regardless of how
-		// long the underlying string is.
+		// The shortest byte-prefix of `text` that holds exactly `count` code points (or all
+		// of `text`, if it holds fewer). Built by walking whole code points — a lead byte
+		// plus its continuation bytes — one at a time, so the result never ends mid-sequence
+		// the way a byte-offset cut could.
+		std::string TakeCodePoints(std::string_view text, std::size_t count)
+		{
+			std::size_t index = 0;
+			std::size_t taken = 0;
+
+			while (index < text.size() && taken < count)
+			{
+				++index;
+
+				while (index < text.size() && IsUtf8Continuation(text[index]))
+				{
+					++index;
+				}
+
+				++taken;
+			}
+
+			return std::string{text.substr(0, index)};
+		}
+
+		// Pads `text` with trailing spaces to exactly `width` display columns, or cuts it
+		// to `width` columns ending in the ellipsis, so every caller's column lines up in
+		// the monospace commit list regardless of how long or how encoded the underlying
+		// string is.
 		//
-		// `width` counts bytes, not display columns — a UTF-8 name that is cut still lands
-		// on a whole-character boundary (see Utf8SafeLength), but a name that is merely
-		// padded and contains multi-byte characters may occupy fewer display columns than
-		// `width` suggests. Byte width is what the doctest suite pins, and is enough to
-		// keep the monospace commit list aligned for the overwhelmingly common ASCII case.
+		// Width is counted in code points, not bytes: an all-ASCII name has one byte per
+		// code point so the two coincide, but a cut that instead reserved bytes for the
+		// (3-byte, 1-column) ellipsis rendered two columns short on any ordinary long name,
+		// and padding a multi-byte name to a byte count left it short by one column per
+		// accented character. Both are display-column bugs a byte-based test cannot see.
 		std::string PadOrCut(std::string_view text, std::size_t width)
 		{
-			if (text.size() <= width)
+			const std::size_t codePoints = Utf8CodePointCount(text);
+
+			if (codePoints <= width)
 			{
 				std::string result{text};
-				result.append(width - text.size(), ' ');
+				result.append(width - codePoints, ' ');
 				return result;
 			}
 
-			// Too narrow even for the ellipsis alone: emit a plain, UTF-8-safe prefix
-			// instead of a partial ellipsis, which would be meaningless on its own. This
-			// still returns exactly `width` bytes, padding out whatever the boundary search
-			// gave up to reach it.
-			if (width <= Ellipsis.size())
+			if (width == 0)
 			{
-				std::string result{text.substr(0, Utf8SafeLength(text, width))};
-				result.append(width - result.size(), ' ');
-				return result;
+				return {};
 			}
 
-			const std::size_t keep = Utf8SafeLength(text, width - Ellipsis.size());
-			std::string result = std::string{text.substr(0, keep)} + std::string{Ellipsis};
-			result.append(width - result.size(), ' ');
-			return result;
+			// The ellipsis is exactly one column, so the prefix gets the rest of the
+			// budget. TakeCodePoints(text, width - 1) always returns exactly width - 1
+			// code points here (codePoints > width implies text has at least that many),
+			// so the result is exactly width code points — no padding remainder to fill.
+			return TakeCodePoints(text, width - 1) + std::string{Ellipsis};
 		}
 
 		// The name, or the email's local part, or "unknown" — never blank, since a blank

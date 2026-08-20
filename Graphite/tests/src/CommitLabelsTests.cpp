@@ -2,6 +2,10 @@
 
 #include "Git/CommitLabels.h"
 
+#include <cstddef>
+#include <string>
+#include <string_view>
+
 using namespace std::chrono_literals;
 
 namespace {
@@ -9,6 +13,25 @@ namespace {
 	std::chrono::sys_seconds At(long long seconds)
 	{
 		return std::chrono::sys_seconds{std::chrono::seconds{seconds}};
+	}
+
+	// Mirrors the production code-point counting in CommitLabels.cpp: a UTF-8 continuation
+	// byte has the top two bits `10`, so counting the bytes that are not one counts code
+	// points without decoding anything. PaddedAuthor/PaddedAge promise `width` in this
+	// unit, not in bytes, so this is what the tests below must assert against.
+	std::size_t CodePointCount(std::string_view text)
+	{
+		std::size_t count = 0;
+
+		for (const char byte : text)
+		{
+			if ((static_cast<unsigned char>(byte) & 0xC0) != 0x80)
+			{
+				++count;
+			}
+		}
+
+		return count;
 	}
 }
 
@@ -120,7 +143,7 @@ TEST_CASE("A short name is padded to exactly the requested width")
 
 	const std::string padded = Graphite::PaddedAuthor(who, 8);
 
-	CHECK(padded.size() == 8);
+	CHECK(CodePointCount(padded) == 8);
 	CHECK(padded == "Ada     ");
 }
 
@@ -131,9 +154,40 @@ TEST_CASE("A long name is cut to exactly the requested width and ends in the ell
 
 	const std::string cut = Graphite::PaddedAuthor(who, 10);
 
-	CHECK(cut.size() == 10);
-	// U+2026, the single-character ellipsis, encoded as UTF-8: 7 kept bytes + 3 for it.
-	CHECK(cut == "Augusta\xE2\x80\xA6");
+	CHECK(CodePointCount(cut) == 10);
+	// U+2026, the single-character ellipsis, encoded as UTF-8: 9 kept code points
+	// ("Augusta A") + the ellipsis as the 10th.
+	CHECK(cut == "Augusta A\xE2\x80\xA6");
+}
+
+TEST_CASE("An ASCII name long enough to be cut occupies exactly width columns, not fewer")
+{
+	// This is the case a byte-based contract got wrong: reserving 3 *bytes* for the
+	// (1-column) ellipsis threw away two columns of budget on any ASCII name long enough
+	// to be cut, so a cut row's summary started two characters left of a short row's.
+	Core::Signature who;
+	who.Name = "Alexandria Ocasio-Cortez";
+
+	const std::string cut = Graphite::PaddedAuthor(who, 12);
+
+	CHECK(CodePointCount(cut) == 12);
+	// 11 kept code points ("Alexandria ") + the ellipsis as the 12th — 14 bytes, since the
+	// ellipsis alone is 3 bytes for 1 column; byte count is deliberately not asserted here.
+	CHECK(cut == "Alexandria \xE2\x80\xA6");
+}
+
+TEST_CASE("A padded multi-byte name occupies exactly width columns")
+{
+	// The other case a byte-based contract got wrong: padding a name with an accented
+	// character to a byte count left it one column short per multi-byte character, since
+	// each accented letter here is 2 bytes but only 1 column.
+	Core::Signature who;
+	who.Name = "Ren\xC3\xA9"; // "René": 4 code points, 5 bytes.
+
+	const std::string padded = Graphite::PaddedAuthor(who, 8);
+
+	CHECK(CodePointCount(padded) == 8);
+	CHECK(padded == "Ren\xC3\xA9    "); // 5 bytes of "René" + 4 spaces = 8 columns.
 }
 
 TEST_CASE("An empty name falls back to the email's local part")
@@ -148,22 +202,21 @@ TEST_CASE("Neither name nor email gives unknown")
 {
 	const std::string padded = Graphite::PaddedAuthor(Core::Signature{}, 9);
 
-	CHECK(padded.size() == 9);
+	CHECK(CodePointCount(padded) == 9);
 	CHECK(padded == "unknown  ");
 }
 
-TEST_CASE("A width smaller than the ellipsis itself degrades to a plain, padded cut")
+TEST_CASE("A width of one is too small for anything but the ellipsis itself")
 {
 	Core::Signature who;
 	who.Name = "Augusta Ada King";
 
-	// Too narrow to fit even the single ellipsis character (3 bytes in UTF-8), so this
-	// falls back to a plain prefix rather than emitting a truncated, meaningless ellipsis.
-	// It still returns exactly `width` bytes.
-	const std::string cut = Graphite::PaddedAuthor(who, 2);
+	// One column is exactly the ellipsis's own width, so the cut prefix is empty rather
+	// than underflowing or omitting the ellipsis. Still exactly `width` columns.
+	const std::string cut = Graphite::PaddedAuthor(who, 1);
 
-	CHECK(cut.size() == 2);
-	CHECK(cut == "Au");
+	CHECK(CodePointCount(cut) == 1);
+	CHECK(cut == "\xE2\x80\xA6");
 }
 
 TEST_CASE("A width of zero returns an empty string rather than underflowing")
@@ -177,34 +230,34 @@ TEST_CASE("A width of zero returns an empty string rather than underflowing")
 TEST_CASE("Cutting a name never splits a multi-byte UTF-8 character")
 {
 	Core::Signature who;
-	// Each of these is a two-byte UTF-8 character (Latin-1 Supplement), so a byte-boundary
-	// cut that ignored character boundaries would land inside one and break it.
+	// Each of these is a two-byte UTF-8 character (Latin-1 Supplement). Cutting by code
+	// point rather than by byte offset makes splitting one structurally impossible: the
+	// cut always keeps or drops a whole lead-byte-plus-continuation-bytes group.
 	who.Name = "Ren\xC3\xA9 D\xC3\xA9j\xC3\xA0 Vu"; // "René Déjà Vu"
 
-	// At width 7 the naive cut point (width - ellipsis size = 4 bytes) lands on 0xA9, the
-	// second byte of "é" (0xC3 0xA9). A byte-blind cut would keep "Ren\xC3" — a lead byte
-	// with no continuation, i.e. a broken glyph. The safe cut instead backs up to the
-	// character boundary before "é" and keeps only "Ren", padding out the byte it gave up.
-	const std::string cut = Graphite::PaddedAuthor(who, 7);
+	// Width 5 keeps 4 code points — "René" ("Ren" plus the whole 2-byte "é") — then adds
+	// the ellipsis as the 5th. A byte-blind cut at the equivalent byte offset would have
+	// kept "Ren\xC3" instead: a lead byte with no continuation, i.e. a broken glyph.
+	const std::string cut = Graphite::PaddedAuthor(who, 5);
 
-	CHECK(cut.size() == 7);
-	CHECK(cut == "Ren\xE2\x80\xA6 ");
+	CHECK(CodePointCount(cut) == 5);
+	CHECK(cut == "Ren\xC3\xA9\xE2\x80\xA6");
 }
 
 TEST_CASE("PaddedAge cuts a long age string to exactly the requested width")
 {
 	const std::string cut = Graphite::PaddedAge(At(0), At(63072000), 6);
 
-	CHECK(cut.size() == 6);
-	// "2 years ago" cut to 3 kept bytes ("2 y") plus the 3-byte ellipsis.
-	CHECK(cut == "2 y\xE2\x80\xA6");
+	CHECK(CodePointCount(cut) == 6);
+	// "2 years ago" cut to 5 kept code points ("2 yea") plus the ellipsis as the 6th.
+	CHECK(cut == "2 yea\xE2\x80\xA6");
 }
 
 TEST_CASE("PaddedAge pads a short age string to exactly the requested width")
 {
 	const std::string padded = Graphite::PaddedAge(At(1000), At(1030), 12);
 
-	CHECK(padded.size() == 12);
+	CHECK(CodePointCount(padded) == 12);
 	CHECK(padded == "just now    ");
 }
 
