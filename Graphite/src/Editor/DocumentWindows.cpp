@@ -784,21 +784,6 @@ namespace Graphite {
 			}
 		}
 
-		// Same map, same reason - and this one needs the sweep even though PruneLensStates erases
-		// from it too: SemanticFor is called for every drawn document, including those no server
-		// serves, so m_Semantic collects entries m_Lenses never had and that prune never reaches.
-		for (auto it = m_Semantic.begin(); it != m_Semantic.end();)
-		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_Semantic.erase(it);
-			}
-		}
-
 		// Same map, same reason: m_CaretScreen is keyed on a path DocumentSet can rewrite without
 		// telling it, and an entry orphaned that way would otherwise sit here for good.
 		for (auto it = m_CaretScreen.begin(); it != m_CaretScreen.end();)
@@ -868,6 +853,25 @@ namespace Graphite {
 
 				m_Semantic.erase(it->first);
 				it = m_Lenses.erase(it);
+			}
+		}
+
+		// After the loop above, never before it: KeepAnalysis reads a closing document's colours
+		// out of m_Semantic, so a sweep that ran first would take them out from under it and the
+		// document would come back with its reference counts and none of its colours.
+		//
+		// Needed on top of the erase above because SemanticFor is called for every drawn document,
+		// including those no server serves, so m_Semantic collects entries m_Lenses never had and
+		// that the loop above therefore never visits.
+		for (auto it = m_Semantic.begin(); it != m_Semantic.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_Semantic.erase(it);
 			}
 		}
 	}
