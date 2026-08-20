@@ -163,3 +163,39 @@ TEST_CASE("A deleted scheme stops being listed")
 
 	CHECK(Graphite::ListSchemes(temp.GetPath()).empty());
 }
+
+TEST_CASE("A chrome override survives the round trip")
+{
+	const TempDirectory temp;
+
+	Graphite::ColorScheme scheme;
+	scheme.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)] =
+		Core::Color{1.0f, 0.5f, 0.0f, 1.0f};
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "mine", scheme));
+
+	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "mine.json");
+
+	REQUIRE(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)].has_value());
+	CHECK(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)]->R ==
+		  doctest::Approx(1.0f));
+	CHECK(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)]->G ==
+		  doctest::Approx(0.5f).epsilon(0.01));
+
+	// Sparse, as the other two categories are: a scheme that sets one chrome colour must not
+	// come back having claimed the other seven.
+	CHECK_FALSE(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)].has_value());
+}
+
+TEST_CASE("A chrome colour is read from the ui prefix a hand-written file uses")
+{
+	const TempDirectory temp;
+
+	WriteFile(temp.GetPath() / "hand.json", R"({"base":"dark","ui.border":"504945"})");
+
+	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "hand.json");
+
+	REQUIRE(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)].has_value());
+	CHECK(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)]->R ==
+		  doctest::Approx(80.0f / 255.0f).epsilon(0.01));
+}

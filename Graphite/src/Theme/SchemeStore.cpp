@@ -15,6 +15,7 @@ namespace Graphite {
 
 		constexpr std::string_view kSyntaxPrefix = "syntax.";
 		constexpr std::string_view kEditorPrefix = "editor.";
+		constexpr std::string_view kChromePrefix = "ui.";
 
 		std::optional<std::size_t> IndexOfSyntax(std::string_view name)
 		{
@@ -35,6 +36,20 @@ namespace Graphite {
 				 ++color)
 			{
 				if (NameOf(static_cast<EditorColor>(color)) == name)
+				{
+					return color;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<std::size_t> IndexOfChrome(std::string_view name)
+		{
+			for (std::size_t color = 0; color < static_cast<std::size_t>(ChromeColor::Count);
+				 ++color)
+			{
+				if (NameOf(static_cast<ChromeColor>(color)) == name)
 				{
 					return color;
 				}
@@ -108,6 +123,14 @@ namespace Graphite {
 					continue;
 				}
 			}
+			else if (name.starts_with(kChromePrefix))
+			{
+				if (const auto index = IndexOfChrome(name.substr(kChromePrefix.size())))
+				{
+					scheme.Chrome[*index] = *color;
+					continue;
+				}
+			}
 
 			// A scheme written against a newer version, naming a colour this one does not have.
 			APP_WARN("Colour scheme '{}' names an unknown colour '{}'", file.string(), key);
@@ -158,6 +181,16 @@ namespace Graphite {
 				json.Set(std::string(kEditorPrefix) +
 							 std::string(NameOf(static_cast<EditorColor>(color))),
 						 Core::ToHexColor(*scheme.Editor[color]));
+			}
+		}
+
+		for (std::size_t color = 0; color < scheme.Chrome.size(); ++color)
+		{
+			if (scheme.Chrome[color].has_value())
+			{
+				json.Set(std::string(kChromePrefix) +
+							 std::string(NameOf(static_cast<ChromeColor>(color))),
+						 Core::ToHexColor(*scheme.Chrome[color]));
 			}
 		}
 
