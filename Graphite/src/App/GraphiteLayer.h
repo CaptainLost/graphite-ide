@@ -4,7 +4,9 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorSettings.h"
+#include "Editor/LanguageServicesPort.h"
 #include "Editor/ModalQuestion.h"
+#include "Editor/PreviewSemantics.h"
 #include "App/TitleBar.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
@@ -123,9 +125,16 @@ namespace Graphite {
 		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
 
 		ModalGate m_Modals;
+
+		// Declared after m_LanguageServices, which the port forwards to, and before
+		// m_DocumentWindows and m_Panels, both of which hold this by reference.
+		LanguageServicesPort m_PreviewPort{m_LanguageServices};
+		PreviewSemantics m_PreviewSemantics{m_PreviewPort};
+
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers.
-		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices};
+		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices,
+										  m_PreviewSemantics};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.

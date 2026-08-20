@@ -95,11 +95,11 @@ namespace Graphite {
 
 		m_SearchPanel = static_cast<SearchPanel*>(m_Panels.Add(Core::CreateScope<SearchPanel>(
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
-			m_EditorSettings)));
+			m_EditorSettings, m_PreviewSemantics)));
 
 		m_ReferencesPanel = static_cast<ReferencesPanel*>(m_Panels.Add(
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
-											   m_EditorSettings)));
+											   m_EditorSettings, m_PreviewSemantics)));
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
@@ -358,6 +358,12 @@ namespace Graphite {
 		// status read ahead of it is always one frame stale, and on the frame a server first
 		// appears there is nothing to read at all.
 		m_LanguageServices.Poll();
+
+		// Before the panels draw, so what they declare this frame is stamped with this frame's
+		// number, and so an entry nothing declared last frame is closed before anything asks
+		// about it again.
+		m_PreviewSemantics.Tick(static_cast<std::size_t>(ImGui::GetFrameCount()),
+								ImGui::GetTime());
 
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup.

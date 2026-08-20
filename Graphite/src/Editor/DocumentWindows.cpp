@@ -1623,6 +1623,14 @@ namespace Graphite {
 				continue;
 			}
 
+			// The preview panes ask for their own colours, on their own tickets. Offered here
+			// because TakeAnswers is the single drain point, and answered by return value so an
+			// answer nobody here recognises still falls through to the counts below.
+			if (m_PreviewSemantics.Apply(answer))
+			{
+				continue;
+			}
+
 			const auto count = m_PendingCounts.find(answer.For);
 
 			if (count == m_PendingCounts.end())

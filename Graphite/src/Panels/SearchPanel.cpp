@@ -17,7 +17,8 @@ namespace Graphite {
 
 	SearchPanel::SearchPanel(SearchService& service, const SearchSettings& settings,
 							 Workspace& workspace, Core::DocumentSet& documents,
-							 const ActiveScheme& scheme, const EditorSettings& editor)
+							 const ActiveScheme& scheme, const EditorSettings& editor,
+							 PreviewSemantics& semantics)
 		// Hidden until asked for, like the settings panel. Panel's third parameter defaults to
 		// visible, which suits the explorer and the console — a window you want on screen from
 		// the first frame. A search panel is not that: it opens with an empty query and nothing
@@ -26,7 +27,8 @@ namespace Graphite {
 		// layout on and what the panel's command is named after, so renaming it would move
 		// everyone's panel back to where it started.
 		: Core::Panel("search", "Find in Files", false), m_Service(service), m_Settings(settings),
-		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor)
+		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
+		  m_Preview(&semantics)
 	{
 	}
 

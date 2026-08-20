@@ -162,11 +162,12 @@ namespace Graphite {
 	}
 
 	ReferencesPanel::ReferencesPanel(const Workspace& workspace, Core::DocumentSet& documents,
-									 const ActiveScheme& scheme, const EditorSettings& editor)
+									 const ActiveScheme& scheme, const EditorSettings& editor,
+									 PreviewSemantics& semantics)
 		// Hidden until asked for, like the search panel: it opens with nothing to show, so it
 		// costs no space until Shift+F12 or a lens click first fills it.
 		: Core::Panel("references", "References", false), m_Workspace(workspace),
-		  m_Documents(documents), m_Scheme(scheme), m_Editor(editor)
+		  m_Documents(documents), m_Scheme(scheme), m_Editor(editor), m_Preview(&semantics)
 	{
 	}
 

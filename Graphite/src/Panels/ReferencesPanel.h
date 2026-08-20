@@ -24,6 +24,7 @@ namespace Core {
 namespace Graphite {
 
 	class Workspace;
+	class PreviewSemantics;
 
 	// Answers the whole text of one line, however the caller can. Passed in rather than reached
 	// for so AsHits stays a pure function and its tests need no files on disk.
@@ -57,7 +58,8 @@ namespace Graphite {
 	{
 	public:
 		ReferencesPanel(const Workspace& workspace, Core::DocumentSet& documents,
-						const ActiveScheme& scheme, const EditorSettings& editor);
+						const ActiveScheme& scheme, const EditorSettings& editor,
+						PreviewSemantics& semantics);
 
 		void OnImGuiRender() override;
 
@@ -114,6 +116,9 @@ namespace Graphite {
 		HitGroups m_Groups;
 
 		std::optional<HitSelection> m_Selected;
+
+		// Initialised in the constructor's list rather than in place, so it can be built with
+		// the mediator that gives it a server's colours.
 		PreviewContent m_Preview;
 
 		// How tall the results are; the preview takes what is left. See SearchPanel's own field

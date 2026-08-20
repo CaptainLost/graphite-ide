@@ -18,6 +18,8 @@
 
 namespace Graphite {
 
+	class PreviewSemantics;
+
 	// A window of its own, unlike SearchSection in the settings panel: this is where a query is
 	// typed and run, not where its two persisted toggles are edited.
 	class SearchPanel final : public Core::Panel
@@ -25,7 +27,7 @@ namespace Graphite {
 	public:
 		SearchPanel(SearchService& service, const SearchSettings& settings, Workspace& workspace,
 					Core::DocumentSet& documents, const ActiveScheme& scheme,
-					const EditorSettings& editor);
+					const EditorSettings& editor, PreviewSemantics& semantics);
 
 		// Drains every frame regardless of visibility — PanelManager::OnUpdate runs for every
 		// panel, PanelManager::OnImGuiRender does not (a hidden panel, or one behind another tab
@@ -94,6 +96,8 @@ namespace Graphite {
 		// selection means the same thing in both.
 		std::optional<HitSelection> m_Selected;
 
+		// Initialised in the constructor's list rather than in place, so it can be built with
+		// the mediator that gives it a server's colours.
 		PreviewContent m_Preview;
 
 		// How tall the results are; the preview takes what is left. Zero until the first frame

@@ -4,6 +4,7 @@
 #include "Editor/FindBar.h"
 #include "Editor/AnalysisCache.h"
 #include "Editor/LensModel.h"
+#include "Editor/PreviewSemantics.h"
 #include "Editor/SemanticOverlay.h"
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
@@ -43,9 +44,10 @@ namespace Graphite {
 	{
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
-						LanguageServices& languageServices)
+						LanguageServices& languageServices, PreviewSemantics& previewSemantics)
 			: m_Documents(documents),
 			  m_LanguageServices(languageServices),
+			  m_PreviewSemantics(previewSemantics),
 			  m_Modals(modals),
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
 			  m_ReloadConflict(modals, kReloadConflictTitle),
@@ -329,6 +331,11 @@ namespace Graphite {
 		Core::DocumentSet& m_Documents;
 
 		LanguageServices& m_LanguageServices;
+
+		// The preview panes' own mediator to the language servers, held by reference like
+		// m_LanguageServices above and declared right after it for the same reason: this class
+		// does not own it, GraphiteLayer does, and it must outlive every document window.
+		PreviewSemantics& m_PreviewSemantics;
 
 		// Held as well as handed to the questions below: the definition picker is an ordinary
 		// popup rather than a ModalQuestion, and it still has to take the same gate — ImGui
