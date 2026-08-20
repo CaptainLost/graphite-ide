@@ -78,9 +78,10 @@ namespace Graphite {
 		// The failure a panel should show, if any. Each query kind keeps its own error, set
 		// by its own failure and cleared only by its own success, so a branches refresh
 		// that succeeds can never hide a status refresh that is still failing. When more
-		// than one is set this returns the first in the order status, branches, log, diff -
-		// status is checked most often and is the one a user most needs to see fail, and a
-		// diff failure is the least likely of the four to be what a user needs told first.
+		// than one is set this returns the first in the order status, branches, log, diff,
+		// commit diff - status is checked most often and is the one a user most needs to
+		// see fail, and a commit diff failure is the least likely of the five to be what a
+		// user needs told first.
 		const std::optional<Core::Error>& GetLastError() const
 		{
 			if (m_StatusError.has_value())
@@ -98,7 +99,12 @@ namespace Graphite {
 				return m_LogError;
 			}
 
-			return m_DiffError;
+			if (m_DiffError.has_value())
+			{
+				return m_DiffError;
+			}
+
+			return m_CommitDiffError;
 		}
 
 		// Without a root the model answers nothing: a file-change event that arrives
@@ -130,7 +136,14 @@ namespace Graphite {
 
 		struct CachedDiff
 		{
-			// Zero until an answer lands. Non-zero with a null Diff means "in flight".
+			// Generations from the model-wide m_CommitDiffGeneration counter, never from a
+			// counter local to the entry: Clear() erases the entry itself, and an entry
+			// recreated after a clear starts its Applied back at zero. If Requested also
+			// restarted at a small number local to the entry, a delivery from before the
+			// clear could out-rank a delivery from after it. Reusing the shared counter
+			// means every generation ever handed out is unique for the model's lifetime, so
+			// whichever delivery actually carries the larger generation is the newer one,
+			// clear or no clear.
 			std::uint64_t Requested = 0;
 			std::uint64_t Applied = 0;
 
@@ -180,9 +193,17 @@ namespace Graphite {
 		mutable std::unordered_map<Core::Oid, CachedDiff> m_CommitDiffs;
 		mutable std::uint64_t m_DiffClock = 0;
 
+		// Shared by every commit-diff request, never reset by Clear() - see the comment on
+		// CachedDiff::Requested for why a counter local to the entry cannot do this job.
+		std::uint64_t m_CommitDiffGeneration = 0;
+
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;
 		std::optional<Core::Error> m_LogError;
 		std::optional<Core::Error> m_DiffError;
+
+		// Kept apart from m_DiffError: a commit diff and the volatile working-tree diff are
+		// different query kinds, and one succeeding must not hide the other still failing.
+		std::optional<Core::Error> m_CommitDiffError;
 	};
 }

@@ -41,6 +41,7 @@ namespace Graphite {
 		m_BranchesError.reset();
 		m_LogError.reset();
 		m_DiffError.reset();
+		m_CommitDiffError.reset();
 
 		m_Dirty = false;
 		m_DirtyFor = 0.0f;
@@ -241,38 +242,46 @@ namespace Graphite {
 
 	void GitModel::EvictIfFull()
 	{
-		if (m_CommitDiffs.size() < kCachedDiffs)
+		// A loop, not one shot: a single eviction only ever drops one entry, so once the
+		// map is above the bound - which a run of requests that are all still in flight can
+		// leave it at, since none of them were evictable at the time - one-in-one-out on
+		// every later request would hold it there forever instead of bringing it back down.
+		while (m_CommitDiffs.size() >= kCachedDiffs)
 		{
-			return;
-		}
+			auto oldest = m_CommitDiffs.end();
 
-		auto oldest = m_CommitDiffs.end();
-
-		for (auto entry = m_CommitDiffs.begin(); entry != m_CommitDiffs.end(); ++entry)
-		{
-			// An entry still in flight is never evicted: its delivery would then arrive
-			// for a key nobody holds and be dropped, and the reader would sit looking at
-			// a row that never fills in.
-			if (entry->second.Requested != entry->second.Applied)
+			for (auto entry = m_CommitDiffs.begin(); entry != m_CommitDiffs.end(); ++entry)
 			{
-				continue;
+				// An entry still in flight is never evicted: its delivery would then arrive
+				// for a key nobody holds and be dropped, and the reader would sit looking
+				// at a row that never fills in.
+				if (entry->second.Requested != entry->second.Applied)
+				{
+					continue;
+				}
+
+				if (oldest == m_CommitDiffs.end() || entry->second.LastTouched < oldest->second.LastTouched)
+				{
+					oldest = entry;
+				}
 			}
 
-			if (oldest == m_CommitDiffs.end() || entry->second.LastTouched < oldest->second.LastTouched)
+			// Nothing evictable this pass - every remaining entry is in flight. Stop rather
+			// than spin: the map stays over the bound until one of them lands.
+			if (oldest == m_CommitDiffs.end())
 			{
-				oldest = entry;
+				break;
 			}
-		}
 
-		if (oldest != m_CommitDiffs.end())
-		{
 			m_CommitDiffs.erase(oldest);
 		}
 	}
 
 	void GitModel::RequestDiffFor(const Core::Oid& commit)
 	{
-		if (const auto existing = m_CommitDiffs.find(commit); existing != m_CommitDiffs.end())
+		const auto existing = m_CommitDiffs.find(commit);
+
+		if (existing != m_CommitDiffs.end())
 		{
 			const bool inFlight = existing->second.Requested != existing->second.Applied;
 
@@ -282,13 +291,21 @@ namespace Graphite {
 				return;
 			}
 		}
-
-		EvictIfFull();
+		else
+		{
+			// Only when the key is absent: this branch is the only one that grows the map,
+			// so evicting on the failed-retry path above - where the key is already present
+			// and nothing will grow - would drop an unrelated entry for no reason.
+			EvictIfFull();
+		}
 
 		CachedDiff& entry = m_CommitDiffs[commit];
 		Touch(entry);
 
-		const std::uint64_t generation = ++entry.Requested;
+		// From the model-wide counter, not a counter local to the entry - see the comment
+		// on CachedDiff::Requested.
+		const std::uint64_t generation = ++m_CommitDiffGeneration;
+		entry.Requested = generation;
 
 		Core::DiffRequest request;
 		request.Target = Core::DiffTarget::CommitToParent;
@@ -313,11 +330,11 @@ namespace Graphite {
 				{
 					// No last-good snapshot to keep, unlike the volatile diff: a commit
 					// that failed has nothing older to fall back to.
-					m_DiffError = result.GetError();
+					m_CommitDiffError = result.GetError();
 					return;
 				}
 
-				m_DiffError.reset();
+				m_CommitDiffError.reset();
 				entry->second.Diff =
 					std::make_shared<const Core::Diff>(std::move(result).GetValue());
 			});

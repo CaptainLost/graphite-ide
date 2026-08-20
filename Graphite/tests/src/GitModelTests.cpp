@@ -616,11 +616,46 @@ TEST_CASE("The cache holds a bounded number of commits")
 		model.OnUpdate(Core::Timestep{0.016f});
 	}
 
-	// The most recently asked for must still be there, and the oldest must have gone —
-	// otherwise a reader who scrolls a long history holds every diff they passed.
+	// Every request here both inserts and is immediately read by nothing else, so eviction
+	// picks in strict request order: the four oldest (0-3) are the ones that fall out of a
+	// bound of kCachedDiffs once four more than that have been asked for, and everything
+	// from 4 onward - a full window of kCachedDiffs entries - survives. Pinning the exact
+	// boundary, not just "something was evicted", is what would have caught EvictIfFull
+	// dropping only one entry per request and letting the map settle above the bound.
+	CHECK(model.GetDiffFor(IdOf(0)) == nullptr);
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+	CHECK(model.GetDiffFor(IdOf(2)) == nullptr);
+	CHECK(model.GetDiffFor(IdOf(3)) == nullptr);
+	CHECK(model.GetDiffFor(IdOf(4)) != nullptr);
 	CHECK(model.GetDiffFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedDiffs + 3)))
 		  != nullptr);
-	CHECK(model.GetDiffFor(IdOf(0)) == nullptr);
+}
+
+TEST_CASE("Reading a commit's diff protects it from eviction")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	for (std::size_t index = 0; index < Graphite::GitModel::kCachedDiffs; ++index)
+	{
+		model.RequestDiffFor(IdOf(static_cast<std::uint8_t>(index)));
+		model.OnUpdate(Core::Timestep{0.016f});
+	}
+
+	// The cache is now exactly full. Reading the oldest entry - which eviction would
+	// otherwise pick first - must count as a use, or GetDiffFor's constness over a mutable
+	// cache would be lying about what it does.
+	REQUIRE(model.GetDiffFor(IdOf(0)) != nullptr);
+
+	model.RequestDiffFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedDiffs)));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// The entry just read survived; the next-oldest, never read again after its request,
+	// is the one that made room instead.
+	CHECK(model.GetDiffFor(IdOf(0)) != nullptr);
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
 }
 
 TEST_CASE("Closing the workspace drops every cached diff")
@@ -641,4 +676,37 @@ TEST_CASE("Closing the workspace drops every cached diff")
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+}
+
+TEST_CASE("A stale answer from before a clear does not overwrite a fresh one after it")
+{
+	FakePort port;
+	port.Diff = DiffNaming("before.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	// The inline submitter runs the job - and so the query - synchronously here, but the
+	// result only reaches the inbox; it is not applied until the OnUpdate below. So this
+	// queues the pre-clear delivery without letting it land yet.
+	model.RequestDiffFor(IdOf(1));
+
+	// The ordinary reopen path: WorkspaceOpenedEvent's handler calls Clear() before
+	// re-requesting, same as the plain "closed" path does.
+	model.Clear();
+
+	port.Diff = DiffNaming("after.txt");
+
+	// A fresh entry for the same commit, queuing a second delivery behind the first.
+	model.RequestDiffFor(IdOf(1));
+
+	// Both deliveries apply here, in the order they were queued: the pre-clear answer
+	// first, then the post-clear one. A generation counted from zero inside the entry -
+	// which starts fresh after Clear() erases it - would let the stale delivery win,
+	// because it would out-rank the fresh one's own from-zero count. The model-wide
+	// counter this cache uses instead never resets, so the fresh request's generation is
+	// unconditionally the larger one.
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+	CHECK(model.GetDiffFor(IdOf(1))->Files.front().NewPath == std::filesystem::path("after.txt"));
 }
