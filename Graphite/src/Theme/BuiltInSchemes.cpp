@@ -30,6 +30,15 @@ namespace Graphite {
 			int A = 255;
 		};
 
+		struct ChromeEntry
+		{
+			ChromeColor Color;
+			int R;
+			int G;
+			int B;
+			int A = 255;
+		};
+
 		constexpr SyntaxEntry kDarkSyntax[] = {
 			{TokenKind::Keyword, 197, 134, 192},
 			{TokenKind::Number, 181, 206, 168},
@@ -52,16 +61,6 @@ namespace Graphite {
 			{TokenKind::SemanticNamespace, 106, 190, 180},
 		};
 
-		// Mirrors Core::Theme::ApplyDark — Text, TextDisabled, WindowBg and FrameBg — plus
-		// ImGui's own dark default for TextSelectedBg, which ApplyDark leaves alone. Nothing
-		// checks that these still agree: Theme/ is deliberately free of ImGui, so the values
-		// are copied rather than read, and an edit to ApplyDark's palette will not fail here.
-		//
-		// Background and GutterFill are WindowBg. Guide and LineNumber are both TextDisabled;
-		// Guide is TextDisabled at 35% and LineNumber is TextDisabled at full strength, so the
-		// guide reads clearly dimmer than the numbers next to it rather than the same weight by
-		// coincidence. CurrentLine is FrameBg at 45% — structure, not content: dimmer again than
-		// either.
 		constexpr EditorEntry kDarkEditor[] = {
 			{EditorColor::Background, 27, 29, 33},
 			{EditorColor::Text, 214, 219, 226},
@@ -80,6 +79,23 @@ namespace Graphite {
 		// drawn as itself, so a gap here must fail to build rather than silently paint that
 		// region of the editor in the text colour.
 		static_assert(std::size(kDarkEditor) == static_cast<std::size_t>(EditorColor::Count));
+
+		// These are Core::Theme's own default palette, transcribed once. From here the
+		// application runs on this table and Core's default is only what an application built
+		// on Core alone falls back to — which is what ends the silent-drift problem the editor
+		// colours above used to have.
+		constexpr ChromeEntry kDarkChrome[] = {
+			{ChromeColor::Background, 27, 29, 33},
+			{ChromeColor::Surface, 37, 40, 45},
+			{ChromeColor::SurfaceHovered, 50, 54, 61},
+			{ChromeColor::SurfaceActive, 62, 67, 76},
+			{ChromeColor::Accent, 66, 133, 244},
+			{ChromeColor::Text, 214, 219, 226},
+			{ChromeColor::TextDisabled, 123, 130, 141},
+			{ChromeColor::Border, 52, 56, 63},
+		};
+
+		static_assert(std::size(kDarkChrome) == static_cast<std::size_t>(ChromeColor::Count));
 
 		constexpr SyntaxEntry kLightSyntax[] = {
 			{TokenKind::Keyword, 0, 0, 255},
@@ -114,11 +130,33 @@ namespace Graphite {
 
 		static_assert(std::size(kLightEditor) == static_cast<std::size_t>(EditorColor::Count));
 
-		template <std::size_t SyntaxCount, std::size_t EditorCount>
+		// Neutral greys, and the dark scheme's blue accent darkened to hold contrast against
+		// them.
+		constexpr ChromeEntry kLightChrome[] = {
+			{ChromeColor::Background, 243, 243, 243},
+			{ChromeColor::Surface, 255, 255, 255},
+			{ChromeColor::SurfaceHovered, 229, 229, 229},
+			{ChromeColor::SurfaceActive, 214, 214, 214},
+			{ChromeColor::Accent, 10, 98, 208},
+			{ChromeColor::Text, 36, 36, 36},
+			{ChromeColor::TextDisabled, 110, 110, 110},
+			{ChromeColor::Border, 200, 200, 200},
+		};
+
+		static_assert(std::size(kLightChrome) == static_cast<std::size_t>(ChromeColor::Count));
+
+		template <std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount>
 		ResolvedScheme Build(const SyntaxEntry (&syntax)[SyntaxCount],
-							  const EditorEntry (&editor)[EditorCount])
+							  const EditorEntry (&editor)[EditorCount],
+							  const ChromeEntry (&chrome)[ChromeCount])
 		{
 			ResolvedScheme scheme;
+
+			for (const ChromeEntry& entry : chrome)
+			{
+				scheme.Chrome[static_cast<std::size_t>(entry.Color)] =
+					FromBytes(entry.R, entry.G, entry.B, entry.A);
+			}
 
 			for (const EditorEntry& entry : editor)
 			{
@@ -142,12 +180,12 @@ namespace Graphite {
 
 		ResolvedScheme MakeDark()
 		{
-			return Build(kDarkSyntax, kDarkEditor);
+			return Build(kDarkSyntax, kDarkEditor, kDarkChrome);
 		}
 
 		ResolvedScheme MakeLight()
 		{
-			return Build(kLightSyntax, kLightEditor);
+			return Build(kLightSyntax, kLightEditor, kLightChrome);
 		}
 	}
 

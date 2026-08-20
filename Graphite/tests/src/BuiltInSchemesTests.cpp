@@ -50,3 +50,28 @@ TEST_CASE("The two bases differ where it matters")
 	CHECK(Graphite::DarkScheme().Editor[background].R <
 		  Graphite::LightScheme().Editor[background].R);
 }
+
+// The same rule the syntax and editor tables are held to: a base with a gap in it is a colour
+// nobody can see and nobody can set.
+TEST_CASE("Neither base leaves a chrome colour unset")
+{
+	for (const Graphite::ResolvedScheme* base :
+		 {&Graphite::DarkScheme(), &Graphite::LightScheme()})
+	{
+		for (const Core::Color& color : base->Chrome)
+		{
+			CHECK(color.A > 0.0f);
+		}
+	}
+}
+
+// Chrome and editor backgrounds are separate colours on purpose — the panels are a shade off
+// the page. What must hold is the direction: the light scheme's chrome cannot be darker than
+// the dark scheme's.
+TEST_CASE("The light scheme's chrome is lighter than the dark scheme's")
+{
+	constexpr auto background = static_cast<std::size_t>(Graphite::ChromeColor::Background);
+
+	CHECK(Graphite::DarkScheme().Chrome[background].R <
+		  Graphite::LightScheme().Chrome[background].R);
+}
