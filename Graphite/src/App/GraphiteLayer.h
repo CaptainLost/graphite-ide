@@ -6,6 +6,7 @@
 #include "Editor/EditorSettings.h"
 #include "Editor/ModalQuestion.h"
 #include "App/TitleBar.h"
+#include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Theme/ActiveScheme.h"
@@ -30,6 +31,7 @@
 namespace Graphite {
 
 	class SearchPanel;
+	class ReferencesPanel;
 
 	class GraphiteLayer final : public Core::Layer
 	{
@@ -96,8 +98,16 @@ namespace Graphite {
 		Workspace m_Workspace{m_Events};
 		Core::DocumentSet m_Documents;
 
+		// Declared after m_Workspace so its fallback root can read m_Workspace's — member
+		// initialisers run in declaration order regardless of the order they are listed in.
+		// Owns every language server the editor talks to; the status bar reads its state each
+		// frame through StatusFor.
+		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
+
 		ModalGate m_Modals;
-		DocumentWindows m_DocumentWindows{m_Documents, m_Modals};
+		// Declared after m_LanguageServices, which it holds by reference: it opens each document
+		// with the matching server and feeds the reference-count rows from the answers.
+		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.
@@ -135,5 +145,10 @@ namespace Graphite {
 		std::vector<Core::MenuItem> m_MenuTree;
 
 		SearchPanel* m_SearchPanel = nullptr;
+		ReferencesPanel* m_ReferencesPanel = nullptr;
+
+		// The root the language servers were last warmed for, so the comparison in OnImGuiRender
+		// fires once per folder rather than once per frame.
+		std::filesystem::path m_WarmedRoot;
 	};
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace Graphite {
@@ -14,4 +16,14 @@ namespace Graphite {
 		CSharp,
 		TypeScript
 	};
+
+	// Every value above, so anything that has to consider all of them - which server serves
+	// which, which have lexers - can iterate rather than repeat the list. An enum has no
+	// iteration order of its own, and a second hand-written list is a second thing to forget
+	// when a language is added.
+	inline constexpr std::array<LanguageId, 4> kAllLanguages{
+		LanguageId::PlainText, LanguageId::Cpp, LanguageId::CSharp, LanguageId::TypeScript};
+
+	static_assert(kAllLanguages.size() == static_cast<std::size_t>(LanguageId::TypeScript) + 1,
+				  "A language was added to LanguageId without being added to kAllLanguages");
 }

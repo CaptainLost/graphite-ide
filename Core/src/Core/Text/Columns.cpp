@@ -66,6 +66,38 @@ namespace Core {
 		return ColumnOfByte(line, line.size(), tabWidth);
 	}
 
+	std::size_t ExpandedOffsetOfByte(std::string_view line, std::size_t byte, std::size_t tabWidth)
+	{
+		const std::size_t target = std::min(byte, line.size());
+
+		std::size_t expanded = 0;
+		std::size_t column = 0;
+		std::size_t at = 0;
+
+		while (at < target)
+		{
+			if (line[at] == '	')
+			{
+				const std::size_t next = ColumnAfterTab(column, tabWidth);
+
+				expanded += next - column;
+				column = next;
+				++at;
+				continue;
+			}
+
+			// Byte for byte, and one column for the character they make up: the two counts move
+			// at different rates, which is the whole distinction this function draws.
+			const std::size_t next = NextCharacter(line, at);
+
+			expanded += next - at;
+			++column;
+			at = next;
+		}
+
+		return expanded;
+	}
+
 	std::string ExpandTabs(std::string_view line, std::size_t tabWidth)
 	{
 		std::string expanded;

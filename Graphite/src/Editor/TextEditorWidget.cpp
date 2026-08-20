@@ -3,8 +3,10 @@
 #include "Editor/EditorPalette.h"
 #include "Editor/FindBar.h"
 #include "Editor/FindNavigation.h"
+#include "Editor/LensModel.h"
 #include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
+#include "Editor/SemanticOverlay.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
 
@@ -61,6 +63,22 @@ namespace Graphite {
 			static const std::vector<Token> tokens;
 
 			return tokens;
+		}
+
+		// Handed to the translation sites for a document no language server serves, so they never
+		// have to branch on whether a LensModel exists — an empty anchor set makes every screen
+		// row a document row and TotalScreenRows the row count itself. Function-local rather than
+		// a file scope object, per ADR 0033 on complex initialization of globals.
+		const LensRows& NoLenses()
+		{
+			static const LensRows rows;
+
+			return rows;
+		}
+
+		const LensRows& LensRowsOf(const LensModel* model)
+		{
+			return model != nullptr ? model->GetRows() : NoLenses();
 		}
 
 		double s_CaretMovedAt = 0.0;
@@ -291,15 +309,26 @@ namespace Graphite {
 				   static_cast<float>(item.WidestColumn + 1) * metrics.CellWidth;
 		}
 
-		// Rows, not lines: a wrapped line occupies as many of them as it needs, and with wrapping
-		// off the map gives one row per line.
-		float DocumentHeightOf(const Core::OpenItem& item, const EditorMetrics& metrics)
+		// Screen rows, not document rows and not lines: a wrapped line occupies as many document
+		// rows as it needs, and every lens adds one more row that no line owns. Asking LensRows
+		// rather than RowMap is what keeps the scrollbar reaching the true end of the file — the
+		// first of ADR 0486's seven translation sites.
+		float DocumentHeightOf(const Core::OpenItem& item, const EditorMetrics& metrics,
+							   const LensRows& lenses)
 		{
-			return static_cast<float>(item.Rows.TotalRows()) * metrics.LineHeight;
+			return static_cast<float>(lenses.TotalScreenRows(item.Rows.TotalRows())) *
+				   metrics.LineHeight;
 		}
 
 		// Rows, not lines: Page Up and Page Down move by what fits on screen, and what fits on
 		// screen is rows once a line can occupy several of them.
+		//
+		// Deliberately NOT translated through LensRows, and this is the seventh of ADR 0486's
+		// seven sites. What comes back is a count of rows to move by, not a row to look up: it is handed
+		// to MoveByRows, which works entirely in document rows through CaretToVisual. A page down
+		// therefore overshoots by however many lens rows fell in the range it crossed — a row or
+		// two — and correcting it here would be pushing screen-row arithmetic into caret motion,
+		// which is exactly what that record refuses. Leave it alone.
 		std::size_t RowsPerPage(const EditorMetrics& metrics)
 		{
 			return static_cast<std::size_t>(
@@ -366,7 +395,8 @@ namespace Graphite {
 
 		void ApplyMouseToCaret(const PointerState& pointer, const Core::TextBuffer& buffer,
 							   Core::OpenItem& item, const EditorMetrics& metrics,
-							   const ImVec2& origin, float textOriginX)
+							   const ImVec2& origin, float textOriginX, const LensRows& lenses,
+							   EditorFrameResult& result)
 		{
 			if (!pointer.PressedThisFrame && !pointer.Dragging)
 				return;
@@ -381,8 +411,32 @@ namespace Graphite {
 			// worse still, because VisualToCaret adds the row's own start column to it, which
 			// wraps around and clamps to some arbitrary column mid-row instead of the row's
 			// beginning.
-			const auto row = static_cast<std::size_t>(
+			const auto screenRow = static_cast<std::size_t>(
 				std::max(0.0f, (mouse.y - origin.y) / metrics.LineHeight));
+
+			// The third of ADR 0486's seven sites: the division above yields a SCREEN row, and
+			// everything below it — VisualToCaret, SelectLineAt — speaks document rows only. The
+			// translation happens here, before the caret arithmetic ever sees the number.
+			const LensRows::Row hit = lenses.At(screenRow);
+
+			// There is no text on a lens row to put a caret in, so a PRESS on one cannot become a
+			// caret position: it reports the declaration the lens sits above and leaves the caret
+			// where it was.
+			//
+			// A drag is a different gesture and must not return here. It reports nothing — a drag
+			// across a lens is not a click on it, and opening a references panel mid-selection
+			// would be absurd — but it must still extend, and it extends to the row the lens
+			// names, which is the row under the pointer. Returning early for a drag as well meant
+			// the extend was dropped on every frame the pointer sat over a lens: the selection
+			// stopped a row short of the pointer and caught up once it moved clear, which reads as
+			// the editor stuttering rather than as anything to do with lenses.
+			if (hit.IsLens && pointer.PressedThisFrame)
+			{
+				result.LensClicked = hit.DocumentRow;
+				return;
+			}
+
+			const std::size_t row = hit.DocumentRow;
 
 			// The half cell is the rounding this has always used: a click past a cell's middle
 			// belongs to the boundary on its right, not to the one on its left.
@@ -415,8 +469,18 @@ namespace Graphite {
 			else if (clicks == 2)
 				item.Caret = Core::SelectWordAt(buffer, offset);
 			else
+			{
 				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, ImGui::GetIO().KeyShift,
 										   item.TabWidth);
+
+				// Ctrl+click asks the same question F12 does, from wherever this click just put
+				// the caret — a single click only, the same restriction a double or triple click
+				// already has on meaning something else entirely.
+				if (ImGui::GetIO().KeyCtrl)
+				{
+					result.DefinitionRequested = true;
+				}
+			}
 		}
 
 		void RouteMouseWheel(const CommandContext& context)
@@ -644,37 +708,93 @@ namespace Graphite {
 			ImGui::SetClipboardText(clipboard.c_str());
 		}
 
+		// Everything that has to be told an edit happened. Bundled rather than passed one pointer
+		// at a time: they are notified together at every site, and a second bare pointer beside
+		// the first is one a call site can transpose.
+		struct EditSinks
+		{
+			SyntaxCache* Syntax = nullptr;
+
+			// Null when no language server serves this document; the lens notification is then a
+			// no-op rather than a branch at every edit site.
+			LensModel* Lens = nullptr;
+			SemanticOverlay* Semantic = nullptr;
+		};
+
+		// What has to be read BEFORE an edit runs to be able to describe it afterwards. The line
+		// count is here for the same reason the line is: after the edit, neither can be recovered.
+		struct EditMark
+		{
+			std::size_t Line = 0;
+			std::size_t LineCount = 0;
+		};
+
+		// The topmost line the edit is about to touch, and the document's size before it. The
+		// caret is only one END of a selection — the anchor can sit above it — so the line the
+		// edit actually BEGINS on is the selection's start, not the caret's line.
+		EditMark MarkBeforeEdit(const Core::TextBuffer& buffer, const Core::Caret& caret)
+		{
+			return EditMark{buffer.ToPosition(Core::SelectionRange(caret).first).Line,
+							buffer.GetLineCount()};
+		}
+
 		// Called after every mutation that actually changed the buffer, never on one that
 		// merely tried to — an Invalidate on a no-op edit would arm SyntaxCache's revision
 		// backstop and leave it primed to swallow the next genuine edit that forgets to call
 		// this.
 		//
 		// Invalidated from the topmost line the edit touched, not simply from where the caret
-		// ended up. The caret is only one END of a selection — the anchor can sit above it —
-		// so the line the edit actually BEGAN on is the selection's start, not the caret's
-		// line: with the anchor above the caret, replacing a multi-line selection with text
+		// ended up: with the anchor above the caret, replacing a multi-line selection with text
 		// that grows the line count leaves both the pre-edit and the post-edit caret lines
 		// below where the edit started, and invalidating from either of those would keep stale
 		// entry states for the lines in between. `Invalidate(n)` keeps the entry states for
-		// lines 0..n and drops the rest, so `lineBefore` has to be the line the edit started
+		// lines 0..n and drops the rest, so `before.Line` has to be the line the edit started
 		// on; the lower of it and the post-edit caret line is the one every case agrees was
 		// affected.
-		void InvalidateSyntaxAfterEdit(SyntaxCache* syntax, const Core::TextBuffer& buffer,
-									   const Core::OpenItem& item, std::size_t lineBefore,
-									   bool changed)
+		//
+		// This is also the one site in the file that knows an edit really happened rather than
+		// was merely attempted, which is why the lens model is shifted from here as well: its
+		// anchors are document rows, and an edit that added or removed lines has moved every row
+		// below it. The shift is a stopgap for the gap before the server answers again, not a
+		// source of truth — see LensModel::OnLinesChanged.
+		void NotifyAfterEdit(const EditSinks& sinks, const Core::TextBuffer& buffer,
+							 const Core::OpenItem& item, const EditMark& before, bool changed)
 		{
-			if (!changed || syntax == nullptr)
+			if (!changed)
 			{
 				return;
 			}
 
-			const std::size_t lineAfter = buffer.ToPosition(item.Caret.Offset).Line;
+			if (sinks.Syntax != nullptr)
+			{
+				const std::size_t lineAfter = buffer.ToPosition(item.Caret.Offset).Line;
 
-			syntax->Invalidate(std::min(lineBefore, lineAfter));
+				sinks.Syntax->Invalidate(std::min(before.Line, lineAfter));
+			}
+
+			if (sinks.Lens != nullptr)
+			{
+				// item.Rows is already current: Core::Editing keeps the row map in step through
+				// every edit, so FirstRowOf inside OnLinesChanged reads the post-edit geometry.
+				const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
+											 static_cast<std::ptrdiff_t>(before.LineCount);
+
+				sinks.Lens->OnLinesChanged(before.Line, delta, item.Rows);
+			}
+
+			if (sinks.Semantic != nullptr)
+			{
+				const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
+											 static_cast<std::ptrdiff_t>(before.LineCount);
+
+				// Lines, not rows: a semantic span belongs to a line of the document, and wrapping
+				// is nothing the server ever spoke about.
+				sinks.Semantic->OnLinesChanged(before.Line, delta);
+			}
 		}
 
 		bool InsertTypedCharacters(const Core::FrameInput& input, Core::OpenItem& item,
-								   SyntaxCache* syntax)
+								   const EditSinks& sinks)
 		{
 			bool edited = false;
 
@@ -695,13 +815,12 @@ namespace Graphite {
 
 				if (length > 0)
 				{
-					const std::size_t lineBefore =
-						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed = Core::InsertText(
 						item, std::string_view(utf8, static_cast<std::size_t>(length)));
 
 					edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 			}
 
@@ -710,7 +829,7 @@ namespace Graphite {
 
 		void ApplyEditKeys(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   SyntaxCache* syntax, EditorFrameResult& result)
+						   const EditSinks& sinks, EditorFrameResult& result)
 		{
 			for (const Core::KeyStroke& stroke : input.GetStrokes())
 			{
@@ -719,31 +838,28 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KPEnter)
 				{
-					const std::size_t lineBefore =
-						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed = Core::InsertNewline(item, indentStyle);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
 				if (stroke.Key == Core::KeyCode::Backspace)
 				{
-					const std::size_t lineBefore =
-						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed =
 						control ? Core::DeleteWordBackward(item) : Core::DeleteBackward(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
 				if (stroke.Key == Core::KeyCode::Delete)
 				{
-					const std::size_t lineBefore =
-						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed =
 						control ? Core::DeleteWordForward(item) : Core::DeleteForward(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
 				// Consumed here rather than left for ImGui's own focus navigation, which is
@@ -756,12 +872,11 @@ namespace Graphite {
 				// and quietly editing the document behind it.
 				if (!control && stroke.Key == Core::KeyCode::Tab)
 				{
-					const std::size_t lineBefore =
-						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed =
 						shift ? Core::Outdent(item, indentStyle) : Core::Indent(item, indentStyle);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
 				const bool undoPressed = control && !shift && stroke.Key == Core::KeyCode::Z;
@@ -780,10 +895,14 @@ namespace Graphite {
 					// invalidates from line 0 unconditionally — a full re-lex is cheap next to
 					// colouring the file wrongly until the next edit, and undo/redo already
 					// breaks the undo group, so it is rare enough that the blunt instrument
-					// costs nothing worth optimising away.
+					// costs nothing worth optimising away. Line 0 is the same blunt instrument for
+					// the lenses: shifting every anchor from the top of the file by the change in
+					// line count is as close as this can get without the group's own span, and the
+					// server's next reply replaces the guess outright.
+					const EditMark before{0, buffer.GetLineCount()};
 					const bool changed = undoPressed ? Core::Undo(item) : Core::Redo(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, 0, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
 				// What follows are commands rather than edits, and holding one of them would
@@ -798,11 +917,10 @@ namespace Graphite {
 					// null pointer rather than an empty string.
 					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
 					{
-						const std::size_t lineBefore =
-							buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+						const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 						const bool changed = Core::InsertText(item, clipboard);
 						result.Edited |= changed;
-						InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+						NotifyAfterEdit(sinks, buffer, item, before, changed);
 					}
 				}
 
@@ -812,11 +930,10 @@ namespace Graphite {
 				if (control && stroke.Key == Core::KeyCode::X && Core::HasSelection(item.Caret))
 				{
 					CopySelectionToClipboard(buffer, item.Caret);
-					const std::size_t lineBefore =
-						buffer.ToPosition(Core::SelectionRange(item.Caret).first).Line;
+					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed = Core::DeleteBackward(item);
 					result.Edited |= changed;
-					InvalidateSyntaxAfterEdit(syntax, buffer, item, lineBefore, changed);
+					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
 				// Saving is not this widget's decision: a stale document on disk needs confirming
@@ -835,7 +952,7 @@ namespace Graphite {
 
 		void ApplyKeyboard(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   SyntaxCache* syntax, std::size_t pageRows,
+						   const EditSinks& sinks, std::size_t pageRows,
 						   std::size_t caretAtFrameStart, EditorFrameResult& result)
 		{
 			// Movement first, in its own pass over the queue, and the edits in a second one after
@@ -853,24 +970,29 @@ namespace Graphite {
 			if (item.Caret.Offset != caretAtFrameStart)
 				item.Document->GetBuffer().BreakUndoGroup();
 
-			result.Edited |= InsertTypedCharacters(input, item, syntax);
+			result.Edited |= InsertTypedCharacters(input, item, sinks);
 
-			ApplyEditKeys(input, buffer, item, indentStyle, syntax, result);
+			ApplyEditKeys(input, buffer, item, indentStyle, sinks, result);
 		}
 
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
-						   const EditorMetrics& metrics, bool wordWrap)
+						   const EditorMetrics& metrics, bool wordWrap, const LensRows& lenses)
 		{
 			const Core::Position where = buffer.ToPosition(item.Caret.Offset);
 
 			// The row the caret is on, which is its line only while nothing wraps. Scrolling to
 			// the line number in a wrapped document would land wherever that many rows happen to
 			// reach, which is short of the caret by however much the text above it wrapped.
-			const float caretY = static_cast<float>(Core::CaretToVisual(buffer, item.Rows,
-																		item.Caret.Offset,
-																		item.TabWidth)
-														.Row) *
-								 metrics.LineHeight;
+			//
+			// The fourth of ADR 0486's seven sites. CaretToVisual is called unchanged and answers
+			// in document rows — the caret's own position is never computed in screen-row terms —
+			// and only its answer is wrapped in ScreenRowOf, because the pixel it is about to be
+			// multiplied into is a screen offset. Without that wrap the view scrolls short by
+			// however many lens rows sit above the caret.
+			const float caretY =
+				static_cast<float>(lenses.ScreenRowOf(
+					Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset, item.TabWidth).Row)) *
+				metrics.LineHeight;
 
 			// No correction for the find bar in either edge. The bar is a compact overlay in the
 			// top-right corner: it takes no room out of the content and covers only the tail of
@@ -1184,9 +1306,35 @@ namespace Graphite {
 		// Positioned by column, not by byte: the text has had its tabs expanded, but a column is
 		// still one *cell* and a UTF-8 character is one to four bytes, so the x of a run is
 		// counted in cells from the row's first column with ColumnCount.
+		// Which palette entry a token is drawn in: the lexer's own kind, unless a server said what
+		// this identifier is.
+		//
+		// Identifiers only. A server names them and nothing else, and a span that reached a
+		// comment or a string would be recolouring something the lexer already knows better than
+		// it does. Matched on the token's start rather than by overlap, because the two agree on
+		// where an identifier begins - both measure the expanded line - and a start is one
+		// comparison where an overlap is four.
+		TokenKind ColourKindFor(const Token& token, const std::vector<SemanticSpan>& semantic)
+		{
+			if (token.Kind != TokenKind::Identifier)
+			{
+				return token.Kind;
+			}
+
+			for (const SemanticSpan& span : semantic)
+			{
+				if (span.From == token.From)
+				{
+					return span.Kind;
+				}
+			}
+
+			return token.Kind;
+		}
+
 		void DrawRowText(const RowCanvas& canvas, const RowSlice& slice,
 						 const VisibleLineCache& cache, const std::vector<Token>& tokens,
-						 std::size_t tabWidth)
+						 const std::vector<SemanticSpan>& semantic, std::size_t tabWidth)
 		{
 			if (slice.FromByte >= slice.ToByte)
 			{
@@ -1240,7 +1388,8 @@ namespace Graphite {
 				// The gap before this token is whitespace; drawing it keeps `column` advancing
 				// without special-casing it.
 				draw(std::max(token.From, slice.FromByte), canvas.Palette.Text);
-				draw(std::min(token.To, slice.ToByte), canvas.SyntaxColours.Of(token.Kind));
+				draw(std::min(token.To, slice.ToByte),
+					 canvas.SyntaxColours.Of(ColourKindFor(token, semantic)));
 			}
 
 			draw(slice.ToByte, canvas.Palette.Text);
@@ -1259,15 +1408,24 @@ namespace Graphite {
 		// The fill is drawn on every row, but the number itself only on a line's first row. A
 		// continuation row is the same line of the file, and repeating its number would say the
 		// file has more lines than it does.
-		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine)
+		// Split out from DrawGutter because a lens row wants the fill and nothing else: the fill
+		// runs the full height of the file and a row that skipped it would show as a hole in the
+		// gutter, while a number on it would claim the file has a line it does not.
+		void DrawGutterFill(const RowCanvas& canvas, float y)
 		{
 			const float gutterX = canvas.Origin.x + canvas.ScrollX;
 
 			canvas.Draw->AddRectFilled(
-				ImVec2(gutterX, slice.Y),
-				ImVec2(gutterX + canvas.Metrics.Gutter.TotalWidth,
-					   slice.Y + canvas.Metrics.LineHeight),
+				ImVec2(gutterX, y),
+				ImVec2(gutterX + canvas.Metrics.Gutter.TotalWidth, y + canvas.Metrics.LineHeight),
 				canvas.Palette.GutterFill);
+		}
+
+		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine)
+		{
+			const float gutterX = canvas.Origin.x + canvas.ScrollX;
+
+			DrawGutterFill(canvas, slice.Y);
 
 			if (slice.SubRow != 0)
 				return;
@@ -1281,6 +1439,85 @@ namespace Graphite {
 			canvas.Draw->AddText(ImVec2(numberX, slice.Y),
 								 onCaretLine ? canvas.Palette.Text : canvas.Palette.Number,
 								 number.c_str());
+		}
+
+		// Whether a selection running through the file passes THROUGH the lens anchored at
+		// documentRow, as opposed to merely starting or ending near it. True when the selection
+		// covers the boundary between the document row above and the one the lens anchors to,
+		// which is exactly the case where a band drawn on the rows either side would show a hole
+		// at the lens if the lens row painted nothing.
+		//
+		// Asked of the boundary rather than of the two rows separately: one offset test says what
+		// two row-coverage tests would, and it cannot disagree with itself about the row in
+		// between. A lens on the very first row has no row above and so is never passed through.
+		bool SelectionPassesThroughLens(const Core::TextBuffer& buffer, const Core::OpenItem& item,
+										std::size_t documentRow)
+		{
+			if (documentRow == 0)
+			{
+				return false;
+			}
+
+			const auto [from, to] = Core::SelectionRange(item.Caret);
+
+			if (from == to)
+			{
+				return false;
+			}
+
+			const std::size_t boundary = Core::VisualToCaret(
+				buffer, item.Rows, Core::VisualPosition{documentRow, 0}, item.TabWidth);
+
+			return boundary > from && boundary < to;
+		}
+
+		// A lens row is not a document row, so almost nothing in the row painting has anything to
+		// say about it. Three things do.
+		//
+		// The count itself: nothing at all until it is known, because a "loading" placeholder on
+		// every declaration would flicker across the file on each reply, and a row that stays
+		// blank for a moment reads as the blank line it already looks like. "0 references" does
+		// draw — knowing a declaration is dead is worth more than a blank row. It is indented to
+		// the declaration's own visual column, so it sits over the thing it counts.
+		//
+		// A selection passing through, which would otherwise show a one-row gap in a band the eye
+		// expects to be continuous, and read as a rendering bug rather than a deliberate absence.
+		//
+		// The gutter fill, last, for the same reason DrawRow draws it last: it is pinned against
+		// the horizontal scroll and has to cover whatever scrolled under it.
+		//
+		// Not the current-line highlight: a lens is not the caret's line, and drawing it there
+		// would say the caret was on a row it can never reach.
+		void DrawLensRow(const RowCanvas& canvas, const Lens* lens, float y, bool selected)
+		{
+			if (selected)
+			{
+				// One cell, at the row's own column zero — precisely what an empty document line
+				// inside a selection already draws for its newline. Enough to keep the band
+				// continuous, and no wider than a convention this file already follows, which is
+				// what stops a lens row reading as a longer line than its neighbours.
+				canvas.Draw->AddRectFilled(ImVec2(canvas.TextOriginX, y),
+										   ImVec2(canvas.TextOriginX + canvas.Metrics.CellWidth,
+												  y + canvas.Metrics.LineHeight),
+										   canvas.Palette.Selection);
+			}
+
+			if (lens != nullptr && lens->CountKnown)
+			{
+				const std::string text = std::to_string(lens->Count) +
+										 (lens->Count == 1 ? " reference" : " references");
+				// No ScrollX term, and that is not an omission: TextOriginX is derived from the
+				// origin, which already carries the horizontal scroll. Subtracting ScrollX here
+				// would apply it twice and slide every lens away from its declaration the moment
+				// the view scrolls sideways. Only DrawGutterFill adds it back, to pin the gutter
+				// against the scroll — the opposite intent.
+				const float x = canvas.TextOriginX +
+								static_cast<float>(lens->Column) * canvas.Metrics.CellWidth;
+
+				canvas.Draw->AddText(ImVec2(x, y), canvas.Palette.Lens, text.c_str());
+			}
+
+			DrawGutterFill(canvas, y);
 		}
 
 		void DrawCaret(const RowCanvas& canvas, const RowSlice& slice, std::size_t column)
@@ -1301,6 +1538,122 @@ namespace Graphite {
 			}
 		}
 
+		// The identifier token, if any, under the mouse while Ctrl is held — an absolute column
+		// range within its document row, the same coordinate system SliceRow already draws in.
+		struct HoverIdentifier
+		{
+			bool Valid = false;
+			std::size_t Row = 0;
+			std::size_t FromColumn = 0;
+			std::size_t ToColumn = 0;
+		};
+
+		// Finds the identifier token under the mouse using the same row/column arithmetic
+		// ApplyMouseToCaret uses for a click, so the underline this feeds lines up with wherever
+		// a Ctrl+click would actually land the caret. A look only — nothing here moves the caret
+		// or asks a server; syntax is non-null because TokensOf lexes on demand.
+		HoverIdentifier ComputeHoverIdentifier(const Core::TextBuffer& buffer,
+											   const Core::OpenItem& item,
+											   const EditorMetrics& metrics, const ImVec2& origin,
+											   float textOriginX, const LensRows& lenses,
+											   SyntaxCache* syntax)
+		{
+			HoverIdentifier hover;
+
+			if (syntax == nullptr || !ImGui::GetIO().KeyCtrl || !ImGui::IsWindowHovered())
+			{
+				return hover;
+			}
+
+			const ImVec2 mouse = ImGui::GetMousePos();
+
+			if (mouse.y < origin.y || mouse.x < textOriginX)
+			{
+				return hover;
+			}
+
+			const auto screenRow =
+				static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
+			// The fifth of ADR 0486's seven sites, and the mouse hit test's twin: the same
+			// division, for the pointer rather than for a click, translated before anything
+			// downstream is told about the row.
+			const LensRows::Row hit = lenses.At(screenRow);
+
+			// There is no text on a lens row for an identifier to sit in.
+			if (hit.IsLens)
+			{
+				return hover;
+			}
+
+			const std::size_t row = hit.DocumentRow;
+			const float relativeX = mouse.x - textOriginX;
+			const auto column = static_cast<std::size_t>(
+				(relativeX + metrics.CellWidth * 0.5f) / metrics.CellWidth);
+
+			const Core::RowRef ref = item.Rows.RowAt(row);
+			const std::vector<std::size_t>& breaks = item.Rows.BreaksOf(ref.Line);
+			const std::size_t fromColumn =
+				ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0 : breaks[ref.SubRow - 1];
+
+			// The exact arithmetic SliceRow uses: a column, measured from the row's own left
+			// edge, converted to a byte offset in the tab-expanded line the tokens are ranges of.
+			const std::string expanded = Core::ExpandTabs(buffer.LineText(ref.Line), item.TabWidth);
+			const std::size_t byteInLine = AdvanceColumns(expanded, 0, fromColumn + column);
+
+			for (const Token& token : syntax->TokensOf(buffer, ref.Line))
+			{
+				if (token.Kind != TokenKind::Identifier)
+				{
+					continue;
+				}
+
+				if (byteInLine < token.From || byteInLine >= token.To)
+				{
+					continue;
+				}
+
+				hover.Valid = true;
+				hover.Row = row;
+				hover.FromColumn = Core::ColumnOfByte(expanded, token.From, item.TabWidth);
+				hover.ToColumn = Core::ColumnOfByte(expanded, token.To, item.TabWidth);
+				break;
+			}
+
+			return hover;
+		}
+
+		// Drawn under the same row math as a find match, clipped to this row's own column span
+		// for the same reason: a token spanning a wrap boundary would otherwise be drawn in full
+		// on every row it touches.
+		void DrawHoverUnderline(const RowCanvas& canvas, const RowSlice& slice,
+								const HoverIdentifier& hover)
+		{
+			if (!hover.Valid || hover.Row != slice.Index)
+			{
+				return;
+			}
+
+			const std::size_t clippedFrom =
+				std::clamp(hover.FromColumn, slice.FromColumn, slice.ToColumn);
+			const std::size_t clippedTo =
+				std::clamp(hover.ToColumn, slice.FromColumn, slice.ToColumn);
+
+			if (clippedTo <= clippedFrom)
+			{
+				return;
+			}
+
+			const float fromX =
+				canvas.TextOriginX +
+				static_cast<float>(clippedFrom - slice.FromColumn) * canvas.Metrics.CellWidth;
+			const float toX =
+				canvas.TextOriginX +
+				static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
+			const float y = slice.Y + canvas.Metrics.LineHeight - 1.0f;
+
+			canvas.Draw->AddLine(ImVec2(fromX, y), ImVec2(toX, y), canvas.Palette.Text, 1.0f);
+		}
+
 		struct CaretPaint
 		{
 			std::size_t Line = 0;
@@ -1316,7 +1669,8 @@ namespace Graphite {
 
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
 					 const VisibleLineCache& cache, const RowSlice& slice,
-					 const std::vector<Token>& tokens, const CaretPaint& caret)
+					 const std::vector<Token>& tokens, const std::vector<SemanticSpan>& semantic,
+					 const CaretPaint& caret, const HoverIdentifier& hover)
 		{
 			if (slice.Line == caret.Line)
 				DrawCurrentLineHighlight(canvas, slice);
@@ -1331,8 +1685,9 @@ namespace Graphite {
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
 
-			DrawRowText(canvas, slice, cache, tokens, item.TabWidth);
+			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
 			DrawGutter(canvas, slice, slice.Line == caret.Line);
+			DrawHoverUnderline(canvas, slice, hover);
 
 			// Tested against the caret's *row*, not its line: a wrapped line occupies several rows
 			// and the caret is on exactly one of them, so comparing lines would draw it once per
@@ -1367,8 +1722,11 @@ namespace Graphite {
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
 							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
-							 const ResolvedScheme& scheme)
+							 const ResolvedScheme& scheme, const LensModel* lensModel,
+							 const SemanticOverlay* semanticOverlay, EditorFrameResult& result)
 		{
+			const LensRows& lenses = LensRowsOf(lensModel);
+
 			RowCanvas canvas;
 
 			canvas.Draw = ImGui::GetWindowDrawList();
@@ -1388,7 +1746,7 @@ namespace Graphite {
 			canvas.Draw->AddRectFilled(
 				canvas.Origin,
 				ImVec2(canvas.Origin.x + std::max(canvas.ContentWidth, canvas.WindowWidth),
-					   canvas.Origin.y + std::max(DocumentHeightOf(item, metrics),
+					   canvas.Origin.y + std::max(DocumentHeightOf(item, metrics, lenses),
 												  ImGui::GetWindowHeight())),
 				canvas.Palette.Background);
 
@@ -1401,26 +1759,78 @@ namespace Graphite {
 											   item.TabWidth);
 			caret.Focused = focused;
 
+			// The same conversion DrawCaret uses to place the blinking line, computed here
+			// unconditionally — including on a frame nothing asked for it — so a request made
+			// from the keyboard, which never touches the mouse, still has somewhere on screen to
+			// open a popup near.
+			//
+			// The sixth of ADR 0486's seven sites, and scroll-to-caret's twin: the caret's row is
+			// computed in document rows and only wrapped through ScreenRowOf where it turns into
+			// a pixel offset.
+			result.CaretScreenX =
+				canvas.TextOriginX + static_cast<float>(caret.Visual.Column) * metrics.CellWidth;
+			result.CaretScreenY =
+				origin.y +
+				static_cast<float>(lenses.ScreenRowOf(caret.Visual.Row)) * metrics.LineHeight;
+
+			// Computed once here rather than per row, exactly like the caret above: the loop
+			// below only compares each row against it.
+			const HoverIdentifier hover =
+				ComputeHoverIdentifier(buffer, item, metrics, origin, canvas.TextOriginX, lenses,
+									   syntax);
+
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
 			lineInput.Selection = Core::SelectionRange(item.Caret);
 			lineInput.CurrentMatch = item.Find.Current;
 			lineInput.TabWidth = item.TabWidth;
 
-			ReserveDocumentExtent(origin, canvas.ContentWidth, DocumentHeightOf(item, metrics));
+			ReserveDocumentExtent(origin, canvas.ContentWidth,
+								  DocumentHeightOf(item, metrics, lenses));
 
 			VisibleLineCache cache;
 
+			// The second of ADR 0486's seven sites. The clipper counts SCREEN rows — every lens
+			// occupies one — and LensRows::At says, for each row it hands back, whether it is a
+			// lens to draw a count on or a document row to take through RowMap exactly as before.
+			// Everything past that translation is unchanged document-row code.
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(item.Rows.TotalRows()), metrics.LineHeight);
+			clipper.Begin(static_cast<int>(lenses.TotalScreenRows(item.Rows.TotalRows())),
+						  metrics.LineHeight);
+
+			bool anyDrawn = false;
 
 			while (clipper.Step())
 			{
 				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 				{
-					const std::size_t rowIndex = static_cast<std::size_t>(row);
-					const Core::RowRef ref = item.Rows.RowAt(rowIndex);
+					const LensRows::Row screen = lenses.At(static_cast<std::size_t>(row));
 					const float y = origin.y + static_cast<float>(row) * metrics.LineHeight;
+
+					if (screen.IsLens)
+					{
+						// A lens row can only exist where a model supplied its anchor, so
+						// lensModel is non-null here by construction — NoLenses has no anchors.
+						// Tested anyway rather than reasoned about at the dereference.
+						const Lens* const lens =
+							lensModel != nullptr ? lensModel->LensAt(screen.DocumentRow) : nullptr;
+
+						DrawLensRow(canvas, lens, y,
+									SelectionPassesThroughLens(buffer, item, screen.DocumentRow));
+
+						continue;
+					}
+
+					const std::size_t rowIndex = screen.DocumentRow;
+					const Core::RowRef ref = item.Rows.RowAt(rowIndex);
+
+					// Reported in document rows, which is what LensModel::RowsNeedingCounts asks
+					// in. Widened rather than assigned, because the clipper steps more than once.
+					result.FirstVisibleRow = anyDrawn ? std::min(result.FirstVisibleRow, rowIndex)
+													  : rowIndex;
+					result.LastVisibleRow = anyDrawn ? std::max(result.LastVisibleRow, rowIndex)
+													 : rowIndex;
+					anyDrawn = true;
 
 					CacheLine(cache, lineInput, ref.Line);
 
@@ -1435,7 +1845,13 @@ namespace Graphite {
 
 					const RowSlice slice = SliceRow(cache, item.Rows, ref, rowIndex, y);
 
-					DrawRow(canvas, item, cache, slice, tokens, caret);
+					// Empty for a line no server has spoken about, and for every line when none is
+					// running - which is what lets the call below need no branch of its own.
+					static const std::vector<SemanticSpan> kNoSpans;
+					const std::vector<SemanticSpan>& semantic =
+						semanticOverlay != nullptr ? semanticOverlay->SpansOn(ref.Line) : kNoSpans;
+
+					DrawRow(canvas, item, cache, slice, tokens, semantic, caret, hover);
 				}
 			}
 
@@ -1523,12 +1939,14 @@ namespace Graphite {
 			// document before the frame is over. The interactive rectangle is allowed to
 			// hit-test against a size one frame stale; the reservation the scrollbars and the
 			// clipper read is computed fresh, inside DrawVisibleRows.
+			const LensRows& lenses = LensRowsOf(view.Lens);
+
 			const PointerState pointer = AddInteractiveSurface(
 				origin, ContentWidthOf(item, metrics, available, view.WordWrap),
-				DocumentHeightOf(item, metrics));
+				DocumentHeightOf(item, metrics, lenses));
 
 			ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
-							  origin.x + metrics.Gutter.TotalWidth);
+							  origin.x + metrics.Gutter.TotalWidth, lenses, result);
 			RouteMouseWheel(context);
 
 			// The keyboard is scoped to this document's own child window, not merely to the
@@ -1553,7 +1971,9 @@ namespace Graphite {
 			// error: this document then simply draws, exactly as an unfocused one does.
 			if (focused && context.Input != nullptr)
 			{
-				ApplyKeyboard(*context.Input, buffer, item, view.Indent, view.Syntax,
+				const EditSinks sinks{view.Syntax, view.Lens, view.Semantic};
+
+				ApplyKeyboard(*context.Input, buffer, item, view.Indent, sinks,
 							  RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 
@@ -1573,7 +1993,7 @@ namespace Graphite {
 
 			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
-				ScrollToCaret(buffer, item, metrics, view.WordWrap);
+				ScrollToCaret(buffer, item, metrics, view.WordWrap, lenses);
 				s_CaretMovedAt = ImGui::GetTime();
 				item.PendingScroll = false;
 			}
@@ -1582,7 +2002,9 @@ namespace Graphite {
 			// from the ActiveScheme GraphiteLayer loads at startup, the same guard the syntax
 			// cache above gets.
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
-							focused, view.Syntax, view.Scheme != nullptr ? *view.Scheme : DarkScheme());
+							focused, view.Syntax,
+							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
+							view.Semantic, result);
 
 			// After the rows, so a click on the bar is a click on the bar: the surface's own
 			// hit test has already run against a rectangle the bar now sits on top of, and a

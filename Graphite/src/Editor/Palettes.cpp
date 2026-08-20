@@ -46,6 +46,7 @@ namespace Graphite {
 		palette.FindMatch = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::FindMatch)]);
 		palette.FindCurrentMatch =
 			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::FindCurrentMatch)]);
+		palette.Lens = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Lens)]);
 
 		return palette;
 	}

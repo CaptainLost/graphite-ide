@@ -32,6 +32,20 @@ distribution is the interesting part:
 The convention is therefore not new. It is what the recent code already does;
 the older parts of Core predate it.
 
+**Correction (2026-08-16).** "0 in Graphite" was wrong when it was written, and
+the inventory at the end of this record — which lists Core files only — inherits
+the same mistake. `Graphite/src/Editor/TextEditorWidget.cpp` alone holds dozens
+of unbraced bodies, and it is not the worst offender: a rescan of `Graphite/src`
+by the same method finds them spread across most of its files. Nothing about the
+decision changes. The rule stands, existing sites are still fixed when the
+surrounding code is touched rather than in a sweep, and everything written since
+this record was accepted is braced. What changes is the claim that Graphite was
+already conforming, which it never was. The Core inventory at the end is left as
+it is: it is accurate about Core, and growing it into a second list of several
+hundred Graphite sites would produce a table nobody keeps current. The honest
+statement is that this rule is unenforced and both projects carry a backlog
+against it.
+
 ## Decision
 
 Wrap the body of every `if`, `else`, `else if`, `for`, `while` and `do` in
@@ -74,8 +88,10 @@ the substance.
 
 - A body can gain a statement without gaining a bug.
 - Diffs stay about their subject rather than about bracing.
-- It matches what `Core/Text` and all of Graphite already do, so the rule is
-  descriptive of current practice rather than imposed on it.
+- It matches what `Core/Text` and the newest Graphite code already do, so the
+  rule is descriptive of recent practice rather than imposed on it. It does not
+  match older Graphite, contrary to what the first version of this record said —
+  see the correction under Context.
 
 ### Negative
 
@@ -85,8 +101,9 @@ the substance.
 - Not machine-enforced. Until a clang-tidy configuration exists, this rule
   holds by review alone, which is the weakest kind of rule this directory can
   contain.
-- 120 known-nonconforming sites remain in the tree, so the codebase does not
-  match its own written rule and will not for some time.
+- The 120 Core sites inventoried below, and several hundred more in Graphite
+  that are not inventoried, remain in the tree; the codebase does not match its
+  own written rule and will not for some time.
 
 ### Neutral
 
@@ -97,8 +114,9 @@ the substance.
 
 ## Deviations to fix
 
-The 120 sites, by file. They are worked off opportunistically, not in a sweep;
-this table is the checklist and should shrink over time.
+The 120 Core sites, by file. They are worked off opportunistically, not in a
+sweep; this table is the checklist and should shrink over time. Graphite's own
+sites are deliberately not enumerated here — see the correction under Context.
 
 | File | Sites |
 |---|---|

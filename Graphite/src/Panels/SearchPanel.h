@@ -4,6 +4,7 @@
 #include "Core/UI/Panel.h"
 #include "Editor/EditorSettings.h"
 #include "Search/HitGroups.h"
+#include "Search/HitList.h"
 #include "Search/PreviewContent.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
@@ -88,16 +89,10 @@ namespace Graphite {
 		// reads exactly as it does in a tab.
 		const EditorSettings& m_Editor;
 
-		// Which hit the preview is showing. Keyed on the group's id — the file's full path —
-		// and the hit's index within that group, not on a pointer: hits are appended to groups
-		// as a search runs, and the vector holding them reallocates.
-		struct Selection
-		{
-			std::string Group;
-			std::size_t Hit = 0;
-		};
-
-		std::optional<Selection> m_Selected;
+		// Which hit the preview is showing. HitSelection rather than a struct of its own: this
+		// panel and ReferencesPanel show the same shape of results, through DrawHitList, and a
+		// selection means the same thing in both.
+		std::optional<HitSelection> m_Selected;
 
 		PreviewContent m_Preview;
 

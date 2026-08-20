@@ -26,6 +26,7 @@ namespace Graphite {
 		constexpr const char* kIndentWidthKey = "indentWidth";
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kColorSchemeKey = "colorScheme";
+		constexpr const char* kLanguageServerBinaryKey = "languageServerBinary";
 
 		constexpr const char* kSearchRespectGitIgnoreKey = "searchRespectGitIgnore";
 		constexpr const char* kSearchProjectsOnlyKey = "searchProjectsOnly";
@@ -189,6 +190,18 @@ namespace Graphite {
 	void AppSettings::SaveColorScheme(std::string_view name)
 	{
 		WriteValue(kColorSchemeKey, std::string{name});
+	}
+
+	std::filesystem::path AppSettings::LoadLanguageServerBinary()
+	{
+		// Through FromUtf8, like the folder above it: the settings file is UTF-8 and a path on
+		// this platform is not.
+		return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kLanguageServerBinaryKey));
+	}
+
+	void AppSettings::SaveLanguageServerBinary(const std::filesystem::path& binary)
+	{
+		WriteValue(kLanguageServerBinaryKey, Core::ToUtf8(binary));
 	}
 
 	std::filesystem::path AppSettings::ThemesDirectory()

@@ -2,12 +2,18 @@
 
 #include "App/GraphiteLayer.h"
 
+#include "Editor/ServerStatusText.h"
 #include "Editor/StatusBar.h"
 #include "Editor/TextEditorWidget.h"
+#include "Lang/Registry/LanguageRegistry.h"
 
 #include "Panels/ConsolePanel.h"
 
 #include "Panels/ExplorerPanel.h"
+
+#include "Panels/ReferencesPanel.h"
+
+#include <optional>
 
 #include "Panels/SearchPanel.h"
 
@@ -63,7 +69,7 @@ namespace Graphite {
 		// Beside the console rather than floating: a results list is something you read while
 		// looking at the code it points into, which is what the bottom row is for. Without an
 		// entry here a panel has nowhere to land and opens as a window of its own.
-		m_Layout.Bottom = {"console", "search"};
+		m_Layout.Bottom = {"console", "search", "references"};
 		m_Layout.Center = {"settings"};
 
 		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
@@ -88,6 +94,10 @@ namespace Graphite {
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
 			m_EditorSettings)));
 
+		m_ReferencesPanel = static_cast<ReferencesPanel*>(m_Panels.Add(
+			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
+											   m_EditorSettings)));
+
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
@@ -98,6 +108,15 @@ namespace Graphite {
 		// After every default registered above, so an override shadows the binding it
 		// replaces rather than being shadowed by it.
 		AppSettings::LoadKeyBindings(m_Keys);
+
+		// Before any document opens, which is when the first server is started: SetConfiguredBinary
+		// deliberately does not touch a server already running, so a setting read after that point
+		// would not take effect until the next session.
+		if (std::filesystem::path binary = AppSettings::LoadLanguageServerBinary();
+			!binary.empty())
+		{
+			m_LanguageServices.SetConfiguredBinary(LanguageId::Cpp, std::move(binary));
+		}
 
 		std::vector<Core::Scope<SettingsSection>> sections;
 
@@ -178,6 +197,45 @@ namespace Graphite {
 						}});
 
 		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
+
+		// The active document, for the same reason find.open above reads it rather than whatever
+		// holds the keyboard: F12 runs before anything has drawn this frame, and activating a tab
+		// is what makes it the document a command means either way.
+		m_Commands.Add({.Id = "editor.goToDefinition",
+						.Label = "Go to Definition",
+						.Run = [this] {
+							if (const auto active = m_Documents.GetActive())
+							{
+								m_DocumentWindows.RequestDefinition(*active);
+							}
+						},
+						.Enabled = [this] {
+							const auto active = m_Documents.GetActive();
+
+							return active && m_Documents.At(*active).Document.has_value();
+						}});
+
+		m_Keys.SetDefault("editor.goToDefinition", {.Primary = Core::Chord::Key(ImGuiKey_F12)});
+
+		// The active document, for the same reason editor.goToDefinition reads it rather than
+		// whatever holds the keyboard: Shift+F12 runs before anything has drawn this frame, and
+		// activating a tab is what makes it the document a command means either way.
+		m_Commands.Add({.Id = "editor.findReferences",
+						.Label = "Find All References",
+						.Run = [this] {
+							if (const auto active = m_Documents.GetActive())
+							{
+								m_DocumentWindows.RequestReferences(*active, *m_ReferencesPanel);
+							}
+						},
+						.Enabled = [this] {
+							const auto active = m_Documents.GetActive();
+
+							return active && m_Documents.At(*active).Document.has_value();
+						}});
+
+		m_Keys.SetDefault("editor.findReferences",
+						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
 
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
@@ -274,9 +332,82 @@ namespace Graphite {
 
 	void GraphiteLayer::OnImGuiRender()
 	{
-		DrawStatusBar(m_Documents, m_Workspace.GetRoot(),
-					 StatusMessages{m_DocumentWindows.GetStatusMessage(),
-									 m_SearchPanel->GetStatusMessage()});
+		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
+								 m_SearchPanel->GetStatusMessage()};
+
+		// Noticed here rather than hooked onto the two places a folder can be opened from: a
+		// root comparison per frame catches every way it can change, including ones added later,
+		// and costs a path compare against a path that almost never differs.
+		if (m_Workspace.GetRoot() != m_WarmedRoot)
+		{
+			m_WarmedRoot = m_Workspace.GetRoot();
+
+			if (!m_WarmedRoot.empty())
+			{
+				// Ignored trees skipped: this walk exists to find one source file per language as
+				// cheaply as it can, and build outputs hold plenty of files that answer nothing.
+				m_LanguageServices.WarmUp(m_WarmedRoot, true);
+			}
+		}
+
+		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
+		// started servers and what moves a running one from Starting to Indexing to Ready — so a
+		// status read ahead of it is always one frame stale, and on the frame a server first
+		// appears there is nothing to read at all.
+		m_LanguageServices.Poll();
+
+		// EnsureStarted is safe to call every frame the document stays active — see its own
+		// comment; the common case is a single map lookup.
+		ServerStatus status;
+		LanguageId activeLanguage = LanguageId::PlainText;
+
+		if (const auto active = m_Documents.GetActive();
+			active && m_Documents.At(*active).Document)
+		{
+			const std::filesystem::path& path = m_Documents.At(*active).Path;
+
+			activeLanguage = LanguageOfPath(path);
+
+			m_LanguageServices.EnsureStarted(path, activeLanguage);
+
+			status = m_LanguageServices.StatusFor(activeLanguage);
+		}
+
+		if (status.State != ServerState::NotConfigured)
+		{
+			// The active document's own language has something to say, and it outranks everything
+			// else: it is the one whose answers are about what is on screen.
+			//
+			// Named while its answers are still coming, because a ready server and a file whose
+			// colours have not arrived look identical from here otherwise - and that gap is
+			// exactly when someone wonders whether anything is happening at all.
+			const std::filesystem::path& path = m_Documents.At(*m_Documents.GetActive()).Path;
+
+			messages.Server = m_DocumentWindows.IsAnalysing(path)
+								  ? AnalysingText(status, Core::ToUtf8(path.filename()))
+								  : ServerStatusText(status);
+
+			messages.ServerDetail = ServerStatusDetail(status);
+		}
+		else if (std::string unserved = NoServerText(activeLanguage); !unserved.empty())
+		{
+			// A language recognised but unserved - a C# file with no OmniSharp. Said out loud,
+			// because the expectation of go to definition is reasonable here and silence would
+			// read as something broken rather than something absent.
+			messages.Server = std::move(unserved);
+			messages.ServerDetail = NoServerDetail(activeLanguage);
+		}
+		else if (const std::optional<ServerStatus> overall = m_LanguageServices.OverallStatus())
+		{
+			// Nothing to say about what is open - plain text, or no document at all - so the
+			// workspace's servers as a whole. This is what makes a server started by opening the
+			// folder visible at all: without it the bar stays blank until a file of its language
+			// is opened, which looks like the feature is not working.
+			messages.Server = ServerStatusText(*overall);
+			messages.ServerDetail = ServerStatusDetail(*overall);
+		}
+
+		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
 
 		m_DockSpace.Begin(m_Layout);
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
@@ -296,7 +427,8 @@ namespace Graphite {
 
 		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
 								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
-								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get());
+								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get(),
+								 *m_ReferencesPanel);
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

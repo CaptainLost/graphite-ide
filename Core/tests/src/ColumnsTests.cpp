@@ -246,3 +246,27 @@ TEST_CASE("A tab width of zero advances one column at a time")
 	// has to survive the same input the rest of Columns.h does.
 	CHECK(ExpandTabs("a\tb", 0) == "a b");
 }
+
+// Where a byte of the raw line lands in the string ExpandTabs produces. Not the same thing as
+// ColumnOfByte, and the difference is the whole reason this exists: ColumnOfByte counts one
+// column per character, while the expanded string advances by a character's byte length, so the
+// two agree only while a line is pure ASCII. Anything mapping a position onto the tokens a lexer
+// produced - which are offsets into the expanded text - needs this one.
+TEST_CASE("A byte's offset in expanded text accounts for tabs but not for character width")
+{
+	// One tab at column 0 becomes four spaces, so byte 1 ("a") sits at offset 4.
+	CHECK(Core::ExpandedOffsetOfByte("\tabc", 0, 4) == 0);
+	CHECK(Core::ExpandedOffsetOfByte("\tabc", 1, 4) == 4);
+	CHECK(Core::ExpandedOffsetOfByte("\tabc", 2, 4) == 5);
+
+	// A tab mid-line runs to the next stop, not a fixed four.
+	CHECK(Core::ExpandedOffsetOfByte("ab\tc", 3, 4) == 4);
+
+	// Two bytes of "ą" stay two bytes in the expanded text: only tabs change length.
+	CHECK(Core::ExpandedOffsetOfByte("\xC4\x85""b", 2, 4) == 2);
+	CHECK(Core::ExpandedOffsetOfByte("\t\xC4\x85""b", 3, 4) == 6);
+
+	// Past the end clamps, like every other conversion in this header.
+	CHECK(Core::ExpandedOffsetOfByte("ab", 99, 4) == 2);
+	CHECK(Core::ExpandedOffsetOfByte("", 0, 4) == 0);
+}

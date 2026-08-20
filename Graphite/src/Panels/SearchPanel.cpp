@@ -2,17 +2,15 @@
 
 #include "Panels/SearchPreview.h"
 #include "Search/FileEnumerator.h"
-#include "Search/HitDisplay.h"
+#include "Search/HitList.h"
+#include "Search/SplitResults.h"
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/Text/Caret.h"
 
 #include <imgui.h>
-#include <imgui_internal.h>
 
-#include <algorithm>
-#include <cmath>
-#include <map>
+#include <functional>
 #include <string>
 
 namespace Graphite {
@@ -57,118 +55,16 @@ namespace Graphite {
 		RenderSummary();
 		ImGui::Separator();
 
-		// Nothing selected, no pane at all — not an empty one with a prompt in it. This panel
-		// is used to read a list far more often than to look at one hit, and a pane reserving
-		// half the height for a message is half a panel spent saying nothing.
-		//
-		// The results are then the whole panel, and the preview costs nothing until it is
-		// asked for.
-		if (!m_Selected)
-		{
-			if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-								  ImGuiWindowFlags_HorizontalScrollbar))
-			{
-				RenderResults();
-			}
+		const std::function<void()> drawResults = [this] { RenderResults(); };
+		const std::function<void()> drawPreview = [this] { RenderPreview(); };
 
-			ImGui::EndChild();
-			return;
-		}
-
-		// Stacked, not side by side: the query field and its row of toggles run the full width
-		// above both, so a preview beside the results made three columns of a panel that reads
-		// top to bottom.
-		const float available = ImGui::GetContentRegionAvail().y;
-
-		// The thickness ImGui gives the resizing border between docked windows, read from the
-		// same style field because this divider does the same job. At ItemSpacing.y, which is
-		// what this first used, it was five pixels against the docking separators' two and read
-		// as a heavier rule than anything else in the application.
-		const float thickness = std::max(1.0f, ImGui::GetStyle().DockingSeparatorSize);
-
-		// Air either side of the line, and the whole band is what the two panes have to share
-		// the panel with. The line sat tight against both at first, like a docking separator —
-		// but that separates panes with no frame of their own, and the preview has a border:
-		// a box touching the divider reads as wedged against it.
-		const float spacing = ImGui::GetStyle().ItemSpacing.y;
-		const float divider = thickness + spacing * 2.0f;
-
-		// A quarter of the panel each at the tightest, and two rows each when there is room for
-		// more than that — scaled rather than fixed, because this panel docks at the bottom
-		// where it is wide and short, and a fixed minimum taller than half of it would leave
-		// the splitter nothing to travel through.
-		const float minimum = std::min(ImGui::GetFrameHeight() * 2.0f, available * 0.25f);
-
-		if (m_ResultsHeight <= 0.0f)
-		{
-			m_ResultsHeight = (available - divider) * 0.5f;
-		}
-
-		float previewHeight = available - divider - m_ResultsHeight;
-
-		// The dock node resizes under us, which moves `available` without touching the split
-		// the user dragged. Clamped here rather than rescaled: a split is a position the user
-		// chose, and the pane that gives way when there is less room is the one they are not
-		// looking at.
-		if (previewHeight < minimum)
-		{
-			previewHeight = minimum;
-			m_ResultsHeight = available - divider - previewHeight;
-		}
-
-		if (m_ResultsHeight < minimum)
-		{
-			m_ResultsHeight = minimum;
-			previewHeight = available - divider - m_ResultsHeight;
-		}
-
-		if (ImGui::BeginChild("##searchResults", ImVec2(0.0f, m_ResultsHeight),
-							  ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
-		{
-			RenderResults();
-		}
-
-		ImGui::EndChild();
-
-		// A short delay before the divider lights up and the cursor changes, so sweeping the
-		// mouse across the panel does not flash it. The same 0.04s ImGui waits before
-		// highlighting a window's resize border (WINDOWS_RESIZE_FROM_EDGES_FEEDBACK_TIMER in
-		// imgui.cpp) — copied as a value because that one is file-static.
-		constexpr float kSplitterHoverDelay = 0.04f;
-
-		// EndChild already left the cursor an item's spacing below the results, which is the
-		// air above the line. The matching air below it is added after the bar.
-		const ImVec2 at = ImGui::GetCursorScreenPos();
-		const ImRect bar(at, ImVec2(at.x + ImGui::GetContentRegionAvail().x, at.y + thickness));
-
-		// ImGui's own splitter rather than a line and a hand-rolled drag: it carries the
-		// ResizeNS cursor, a grab zone wider than the line it draws, the minimum sizes above
-		// and the Separator colours every other divider in the application uses. The grab zone
-		// is the same padding ImGui gives a window's own border, so this divider is no harder
-		// to catch than the ones around it.
-		ImGui::SplitterBehavior(bar, ImGui::GetID("##searchSplit"), ImGuiAxis_Y, &m_ResultsHeight,
-								&previewHeight, minimum, minimum,
-								ImGui::GetCurrentContext()->WindowsBorderHoverPadding,
-								kSplitterHoverDelay);
-
-		// SplitterBehavior hit-tests and draws but never calls ItemSize, so the cursor is still
-		// where the bar starts. Moved past the bar and its lower air in one step: a Dummy would
-		// claim the bar's height and then have ImGui add the spacing, which is the same sum by
-		// a longer route and leaves the bar's height in the layout for the next item to trip on.
-		ImGui::SetCursorScreenPos(ImVec2(at.x, at.y + thickness + spacing));
-
-		// AlwaysUseWindowPadding, because a child's padding is otherwise conditional: ImGui
-		// zeroes it for any bordered-looking child whose border size resolves to zero, and the
-		// first line of the preview then sat against the divider with its top clipped. The
-		// padding is wanted here whatever the border turns out to be, so it is asked for.
-		if (ImGui::BeginChild("##searchPreview", ImVec2(0.0f, 0.0f),
-							  ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_HorizontalScrollbar))
-		{
-			RenderPreview();
-		}
-
-		ImGui::EndChild();
+		DrawSplitResults(SplitResultsInput{.HasSelection = m_Selected.has_value(),
+										   .ResultsHeight = m_ResultsHeight,
+										   .DrawResults = drawResults,
+										   .DrawPreview = drawPreview,
+										   .ResultsChildId = "##searchResults",
+										   .PreviewChildId = "##searchPreview",
+										   .SplitterId = "##searchSplit"});
 	}
 
 	SearchStart SearchPanel::BuildRequest() const
@@ -308,110 +204,13 @@ namespace Graphite {
 
 	void SearchPanel::RenderResults()
 	{
-		// Already grouped, in OnUpdate, as the hits arrived. This loop walks groups; it never
+		// Already grouped, in OnUpdate, as the hits arrived. DrawHitList walks groups; it never
 		// touches a hit belonging to a file it is not drawing.
-		// The accent the theme already uses for a tick, so the match reads as marked rather than
-		// as a second colour nobody chose. When sub-project D makes the chrome data-driven this
-		// follows it without a setting of its own.
-		const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit)
+		{ OpenAndSelect(hit); };
 
-		for (const HitGroup& group : m_Groups.Get())
-		{
-			// The node's id is the full path and never changes while a search runs. Its label is
-			// drawn separately, below, because the count in it changes on every new hit — passing
-			// the two combined as the id, an earlier mistake here, made ImGui see a new node each
-			// time and close whatever the user had just opened.
-			const bool open = ImGui::TreeNodeEx(group.Id.c_str(),
-												ImGuiTreeNodeFlags_SpanAvailWidth |
-													ImGuiTreeNodeFlags_AllowOverlap,
-												"");
-
-			ImGui::SameLine(0.0f, 0.0f);
-
-			// Dimmed, because the directory is the same for run after run of neighbouring rows
-			// and the eye is looking for the file name.
-			if (!group.Directory.empty())
-			{
-				ImGui::TextDisabled("%s", group.Directory.c_str());
-				ImGui::SameLine(0.0f, 0.0f);
-			}
-
-			ImGui::TextUnformatted(group.Name.c_str());
-			ImGui::SameLine(0.0f, 0.0f);
-			ImGui::TextDisabled("  (%d)", static_cast<int>(group.Hits.size()));
-
-			if (!open)
-				continue;
-
-			// One expanded file can hold thousands of hits, and every row costs a string built to
-			// draw it. The clipper submits only the rows the scroll actually shows, so an expanded
-			// file costs what is on screen rather than what is in it.
-			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(group.Hits.size()));
-
-			while (clipper.Step())
-			{
-				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
-				{
-					const SearchHit& hit = group.Hits[static_cast<std::size_t>(row)];
-
-					ImGui::PushID(row);
-
-					const ImVec2 rowStart = ImGui::GetCursorPos();
-
-					const bool selected = m_Selected && m_Selected->Group == group.Id &&
-										  m_Selected->Hit == static_cast<std::size_t>(row);
-
-					// An empty label, drawn first, so the whole row is the click target and the
-					// text can be laid over it in pieces. AllowOverlap keeps the click reaching
-					// this rather than being swallowed by the text items on top;
-					// AllowDoubleClick is what lets one row answer both gestures.
-					if (ImGui::Selectable("##hit", selected,
-										  ImGuiSelectableFlags_AllowOverlap |
-											  ImGuiSelectableFlags_AllowDoubleClick))
-					{
-						m_Selected = Selection{group.Id, static_cast<std::size_t>(row)};
-
-						// Single click previews, double click opens. That is the whole point:
-						// arrow through fifty hits without leaving fifty tabs behind.
-						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-							OpenAndSelect(hit);
-					}
-
-					// The preview follows the selection when it moves by keyboard too, which
-					// arrives as nav focus rather than as a click.
-					if (!selected && ImGui::IsItemFocused())
-						m_Selected = Selection{group.Id, static_cast<std::size_t>(row)};
-
-					ImGui::SetCursorPos(rowStart);
-
-					// Three pieces rather than one string with a coloured rectangle behind it:
-					// positioning that rectangle means measuring the text myself, and
-					// CalcTextSize rounds up — the same drift that made the editor count whole
-					// cells instead. Letting ImGui advance between pieces is exact by
-					// construction.
-					const HitLine line = SplitForDisplay(hit);
-
-					ImGui::TextDisabled("%d: ", static_cast<int>(hit.Line + 1));
-					ImGui::SameLine(0.0f, 0.0f);
-
-					ImGui::TextUnformatted(line.Before.data(),
-										   line.Before.data() + line.Before.size());
-					ImGui::SameLine(0.0f, 0.0f);
-
-					ImGui::TextColored(accent, "%.*s", static_cast<int>(line.Match.size()),
-									   line.Match.data());
-					ImGui::SameLine(0.0f, 0.0f);
-
-					ImGui::TextUnformatted(line.After.data(),
-										   line.After.data() + line.After.size());
-
-					ImGui::PopID();
-				}
-			}
-
-			ImGui::TreePop();
-		}
+		DrawHitList(HitListInput{
+			.Groups = m_Groups.Get(), .Selected = m_Selected, .OnOpen = onOpen});
 	}
 
 	// Only reached with a selection: OnImGuiRender draws no pane at all without one.

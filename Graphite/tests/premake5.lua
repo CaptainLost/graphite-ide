@@ -34,16 +34,40 @@ project "GraphiteTests"
         -- drags in ImGui and the application's own layers. The units named here are the parts
         -- that are only logic, drawing nothing and reaching no further than Core and the
         -- search modules already listed below.
+        "%{wks.location}/Graphite/src/Editor/AnalysisCache.h",
+        "%{wks.location}/Graphite/src/Editor/AnalysisCache.cpp",
+        "%{wks.location}/Graphite/src/Editor/DefinitionNavigation.h",
+        "%{wks.location}/Graphite/src/Editor/DefinitionNavigation.cpp",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.cpp",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.h",
         "%{wks.location}/Graphite/src/Editor/FindNavigation.cpp",
+        "%{wks.location}/Graphite/src/Editor/LensModel.h",
+        "%{wks.location}/Graphite/src/Editor/LensModel.cpp",
+        "%{wks.location}/Graphite/src/Editor/SemanticOverlay.h",
+        "%{wks.location}/Graphite/src/Editor/SemanticOverlay.cpp",
+        "%{wks.location}/Graphite/src/Editor/LensRows.h",
+        "%{wks.location}/Graphite/src/Editor/LensRows.cpp",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.h",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.cpp",
+        "%{wks.location}/Graphite/src/Editor/ServerStatusText.h",
+        "%{wks.location}/Graphite/src/Editor/ServerStatusText.cpp",
+        -- Palettes is the one conversion from a scheme to what ImGui draws with; SearchPreview
+        -- draws the references panel's preview pane through it, and needs both here for the
+        -- same reason it needs Search below.
+        "%{wks.location}/Graphite/src/Editor/Palettes.h",
+        "%{wks.location}/Graphite/src/Editor/Palettes.cpp",
         "%{wks.location}/Graphite/src/Theme/**.h",
         "%{wks.location}/Graphite/src/Theme/**.cpp",
         "%{wks.location}/Graphite/src/Search/**.h",
         "%{wks.location}/Graphite/src/Search/**.cpp",
+        -- ReferencesPanel carries AsHits, the pure function this project tests; it and
+        -- SearchPreview - the pane it draws through - are named individually rather than
+        -- globbing all of Panels, which drags in the rest of the application's windows.
+        "%{wks.location}/Graphite/src/Panels/ReferencesPanel.h",
+        "%{wks.location}/Graphite/src/Panels/ReferencesPanel.cpp",
+        "%{wks.location}/Graphite/src/Panels/SearchPreview.h",
+        "%{wks.location}/Graphite/src/Panels/SearchPreview.cpp",
     }
 
     includedirs
@@ -59,7 +83,8 @@ project "GraphiteTests"
         "%{IncludeDir.pugixml}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.MdiIcons}",
-        "%{IncludeDir.spdlog}"
+        "%{IncludeDir.spdlog}",
+        "%{IncludeDir.json}"
     }
 
     externalwarnings "Off"
