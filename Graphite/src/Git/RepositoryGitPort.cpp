@@ -173,4 +173,16 @@ namespace Graphite {
 
 		return repository->QueryLog(request);
 	}
+
+	Core::Result<Core::Diff> RepositoryGitPort::QueryDiff(const Core::DiffRequest& request)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->QueryDiff(request);
+	}
 }

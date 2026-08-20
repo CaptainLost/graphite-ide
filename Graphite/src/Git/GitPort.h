@@ -2,6 +2,7 @@
 
 #include "Core/Base/Result.h"
 #include "Core/Git/Commit.h"
+#include "Core/Git/Diff.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
@@ -24,5 +25,6 @@ namespace Graphite {
 		virtual Core::Result<Core::WorkingTreeStatus> QueryStatus() = 0;
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
+		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;
 	};
 }

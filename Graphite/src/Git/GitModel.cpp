@@ -29,14 +29,17 @@ namespace Graphite {
 		m_StatusApplied = m_StatusRequested;
 		m_BranchesApplied = m_BranchesRequested;
 		m_LogApplied = m_LogRequested;
+		m_DiffApplied = m_DiffRequested;
 
 		m_Status.reset();
 		m_Branches.reset();
 		m_Log.reset();
+		m_Diff.reset();
 
 		m_StatusError.reset();
 		m_BranchesError.reset();
 		m_LogError.reset();
+		m_DiffError.reset();
 
 		m_Dirty = false;
 		m_DirtyFor = 0.0f;
@@ -199,6 +202,33 @@ namespace Graphite {
 
 				m_LogError.reset();
 				m_Log = std::make_shared<const Core::LogPage>(std::move(result).GetValue());
+			});
+		});
+	}
+
+	void GitModel::RequestDiff(Core::DiffRequest request)
+	{
+		const std::uint64_t generation = ++m_DiffRequested;
+
+		m_Submit([this, generation, request = std::move(request)]() {
+			auto result = m_Port.QueryDiff(request);
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				if (generation <= m_DiffApplied)
+				{
+					return;
+				}
+
+				m_DiffApplied = generation;
+
+				if (!result.HasValue())
+				{
+					m_DiffError = result.GetError();
+					return;
+				}
+
+				m_DiffError.reset();
+				m_Diff = std::make_shared<const Core::Diff>(std::move(result).GetValue());
 			});
 		});
 	}

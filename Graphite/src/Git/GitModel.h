@@ -44,16 +44,23 @@ namespace Graphite {
 		void RequestBranches();
 		void RequestLog(Core::LogRequest request);
 
+		// A diff is requested by an explicit selection rather than by the debounce: it
+		// answers "what changed in the thing I just clicked", and nothing on disk can
+		// change which thing that is.
+		void RequestDiff(Core::DiffRequest request);
+
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
 		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
+		std::shared_ptr<const Core::Diff> GetDiff() const { return m_Diff; }
 
 		// The failure a panel should show, if any. Each query kind keeps its own error, set
 		// by its own failure and cleared only by its own success, so a branches refresh
 		// that succeeds can never hide a status refresh that is still failing. When more
-		// than one is set this returns the first in the order status, branches, log -
-		// status is checked most often and is the one a user most needs to see fail.
+		// than one is set this returns the first in the order status, branches, log, diff -
+		// status is checked most often and is the one a user most needs to see fail, and a
+		// diff failure is the least likely of the four to be what a user needs told first.
 		const std::optional<Core::Error>& GetLastError() const
 		{
 			if (m_StatusError.has_value())
@@ -66,7 +73,12 @@ namespace Graphite {
 				return m_BranchesError;
 			}
 
-			return m_LogError;
+			if (m_LogError.has_value())
+			{
+				return m_LogError;
+			}
+
+			return m_DiffError;
 		}
 
 		// Without a root the model answers nothing: a file-change event that arrives
@@ -118,13 +130,17 @@ namespace Graphite {
 		std::uint64_t m_BranchesApplied = 0;
 		std::uint64_t m_LogRequested = 0;
 		std::uint64_t m_LogApplied = 0;
+		std::uint64_t m_DiffRequested = 0;
+		std::uint64_t m_DiffApplied = 0;
 
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
 		std::shared_ptr<const Core::LogPage> m_Log;
+		std::shared_ptr<const Core::Diff> m_Diff;
 
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;
 		std::optional<Core::Error> m_LogError;
+		std::optional<Core::Error> m_DiffError;
 	};
 }

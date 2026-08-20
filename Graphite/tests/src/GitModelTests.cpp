@@ -41,15 +41,30 @@ namespace {
 			return Log;
 		}
 
+		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override
+		{
+			++DiffCalls;
+
+			if (FailDiff)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Diff;
+		}
+
 		Core::WorkingTreeStatus Status;
 		std::vector<Core::Branch> Branches;
 		Core::LogPage Log;
+		Core::Diff Diff;
 
 		bool FailStatus = false;
+		bool FailDiff = false;
 
 		int StatusCalls = 0;
 		int BranchCalls = 0;
 		int LogCalls = 0;
+		int DiffCalls = 0;
 	};
 
 	// Runs the job where it was submitted. The model still has to hand the result back
@@ -345,4 +360,98 @@ TEST_CASE("A sustained stream of change events still refreshes once the cap is r
 	model.OnUpdate(Core::Timestep{0.1f});
 
 	CHECK(port.StatusCalls == 1);
+}
+
+TEST_CASE("A requested diff becomes readable after the next update")
+{
+	FakePort port;
+
+	Core::FileDiff file;
+	file.NewPath = "a.txt";
+	file.Change = Core::FileChange::Modified;
+	port.Diff.Files.push_back(file);
+
+	Graphite::GitModel model{port, Inline()};
+
+	Core::DiffRequest request;
+	request.Target = Core::DiffTarget::WorkTreeToHead;
+	model.RequestDiff(request);
+
+	CHECK(model.GetDiff() == nullptr);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetDiff() != nullptr);
+	REQUIRE(model.GetDiff()->Files.size() == 1);
+	CHECK(model.GetDiff()->Files.front().NewPath == std::filesystem::path("a.txt"));
+}
+
+TEST_CASE("A superseded diff is discarded rather than shown")
+{
+	FakePort port;
+
+	Core::FileDiff stale;
+	stale.NewPath = "stale.txt";
+	port.Diff.Files.push_back(stale);
+
+	Graphite::GitModel model{port, Inline()};
+	model.RequestDiff(Core::DiffRequest{});
+
+	port.Diff.Files.clear();
+	Core::FileDiff fresh;
+	fresh.NewPath = "fresh.txt";
+	port.Diff.Files.push_back(fresh);
+	model.RequestDiff(Core::DiffRequest{});
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// Selecting one commit and then another before the first diff lands must not leave
+	// the first commit's diff under the second commit's heading.
+	REQUIRE(model.GetDiff() != nullptr);
+	REQUIRE(model.GetDiff()->Files.size() == 1);
+	CHECK(model.GetDiff()->Files.front().NewPath == std::filesystem::path("fresh.txt"));
+}
+
+TEST_CASE("A failed diff keeps the last good one and reports the error")
+{
+	FakePort port;
+
+	Core::FileDiff file;
+	file.NewPath = "a.txt";
+	port.Diff.Files.push_back(file);
+
+	Graphite::GitModel model{port, Inline()};
+	model.RequestDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	port.FailDiff = true;
+	model.RequestDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetDiff() != nullptr);
+	CHECK(model.GetDiff()->Files.size() == 1);
+	CHECK(model.GetLastError().has_value());
+}
+
+TEST_CASE("Closing the workspace drops the diff too")
+{
+	FakePort port;
+	Core::EventBus events;
+
+	Core::FileDiff file;
+	file.NewPath = "a.txt";
+	port.Diff.Files.push_back(file);
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetDiff() != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(model.GetDiff() == nullptr);
 }
