@@ -61,6 +61,12 @@ namespace Graphite {
 			{TokenKind::SemanticNamespace, 106, 190, 180},
 		};
 
+		// Background and GutterFill are the window background, so the gutter reads as part of
+		// the same surface as the text rather than as a strip beside it. Guide and LineNumber
+		// are both the disabled-text colour; Guide takes it at 35% and LineNumber at full
+		// strength, so the guide reads clearly dimmer than the numbers next to it rather than
+		// the same weight by coincidence. CurrentLine is the frame background at 45% —
+		// structure, not content: dimmer again than either.
 		constexpr EditorEntry kDarkEditor[] = {
 			{EditorColor::Background, 27, 29, 33},
 			{EditorColor::Text, 214, 219, 226},
