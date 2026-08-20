@@ -24,4 +24,15 @@ namespace Core {
 		std::string Summary;
 		std::string Body;
 	};
+
+	// A page of history, and whether it is all of it. The walk stops early for three
+	// reasons — a diff that could not be read, the walk-length ceiling, and a line range
+	// that cannot be carried further back — and a caller that cannot tell a short page
+	// from a finished one would present "no more history" where the truth is "we stopped
+	// looking".
+	struct LogPage
+	{
+		std::vector<CommitSummary> Commits;
+		bool Complete = true;
+	};
 }

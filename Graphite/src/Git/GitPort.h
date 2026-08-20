@@ -23,7 +23,6 @@ namespace Graphite {
 
 		virtual Core::Result<Core::WorkingTreeStatus> QueryStatus() = 0;
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
-		virtual Core::Result<std::vector<Core::CommitSummary>> QueryLog(
-			const Core::LogRequest& request) = 0;
+		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 	};
 }

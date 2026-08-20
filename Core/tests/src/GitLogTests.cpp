@@ -36,9 +36,9 @@ TEST_CASE("The log lists commits newest first")
 	auto log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-	REQUIRE(log.GetValue().size() == 2);
-	CHECK(log.GetValue()[0].Id.ToHex() == second);
-	CHECK(log.GetValue()[1].Id.ToHex() == first);
+	REQUIRE(log.GetValue().Commits.size() == 2);
+	CHECK(log.GetValue().Commits[0].Id.ToHex() == second);
+	CHECK(log.GetValue().Commits[1].Id.ToHex() == first);
 }
 
 TEST_CASE("A commit carries its author, summary and body")
@@ -53,9 +53,9 @@ TEST_CASE("A commit carries its author, summary and body")
 	auto log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-	REQUIRE(log.GetValue().size() == 1);
+	REQUIRE(log.GetValue().Commits.size() == 1);
 
-	const CommitSummary& commit = log.GetValue().front();
+	const CommitSummary& commit = log.GetValue().Commits.front();
 
 	CHECK(commit.Author.Name == "Test Author");
 	CHECK(commit.Author.Email == "test@example.com");
@@ -82,7 +82,7 @@ TEST_CASE("MaxCount stops the walk early")
 	auto log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
-	CHECK(log.GetValue().size() == 2);
+	CHECK(log.GetValue().Commits.size() == 2);
 }
 
 TEST_CASE("A merge commit reports both parents in order")
@@ -105,9 +105,9 @@ TEST_CASE("A merge commit reports both parents in order")
 	auto log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-	REQUIRE_FALSE(log.GetValue().empty());
+	REQUIRE_FALSE(log.GetValue().Commits.empty());
 
-	const CommitSummary& merge = log.GetValue().front();
+	const CommitSummary& merge = log.GetValue().Commits.front();
 
 	REQUIRE(merge.Parents.size() == 2);
 	CHECK(merge.Parents[0].ToHex() == mainTip);
@@ -136,8 +136,8 @@ TEST_CASE("A named ref limits the walk to that branch")
 	auto log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
-	REQUIRE(log.GetValue().size() == 2);
-	CHECK(log.GetValue()[0].Summary == "add side");
+	REQUIRE(log.GetValue().Commits.size() == 2);
+	CHECK(log.GetValue().Commits[0].Summary == "add side");
 }
 
 TEST_CASE("The log of a repository with no commits is empty rather than an error")
@@ -151,7 +151,7 @@ TEST_CASE("The log of a repository with no commits is empty rather than an error
 	// An unborn HEAD is a state a fresh repository is legitimately in. Reporting it as
 	// an error would make the panel show a failure for a repository that is merely new.
 	REQUIRE(log.HasValue());
-	CHECK(log.GetValue().empty());
+	CHECK(log.GetValue().Commits.empty());
 }
 
 TEST_CASE("A short id keeps the leading digits of the full one")
@@ -166,10 +166,10 @@ TEST_CASE("A short id keeps the leading digits of the full one")
 	auto log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-	REQUIRE(log.GetValue().size() == 1);
+	REQUIRE(log.GetValue().Commits.size() == 1);
 
-	CHECK(log.GetValue().front().Id.ShortHex() == full.substr(0, 7));
-	CHECK(log.GetValue().front().Id.ShortHex(12) == full.substr(0, 12));
+	CHECK(log.GetValue().Commits.front().Id.ShortHex() == full.substr(0, 7));
+	CHECK(log.GetValue().Commits.front().Id.ShortHex(12) == full.substr(0, 12));
 }
 
 TEST_CASE("A CRLF message keeps its body without a leading blank line")
@@ -184,9 +184,9 @@ TEST_CASE("A CRLF message keeps its body without a leading blank line")
 	auto log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-	REQUIRE(log.GetValue().size() == 1);
+	REQUIRE(log.GetValue().Commits.size() == 1);
 
-	CHECK(log.GetValue().front().Body == "A longer explanation.\r\n");
+	CHECK(log.GetValue().Commits.front().Body == "A longer explanation.\r\n");
 }
 
 TEST_CASE("A second blank line between title and body stays in the body")
@@ -201,10 +201,10 @@ TEST_CASE("A second blank line between title and body stays in the body")
 	auto log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-	REQUIRE(log.GetValue().size() == 1);
+	REQUIRE(log.GetValue().Commits.size() == 1);
 
 	// Only the single separator line is consumed; a second blank line is the body's own.
-	CHECK(log.GetValue().front().Body == "\nA longer explanation.\n");
+	CHECK(log.GetValue().Commits.front().Body == "\nA longer explanation.\n");
 }
 
 TEST_CASE("Querying a ref that does not exist is an error")

@@ -35,7 +35,7 @@ namespace {
 			return Branches;
 		}
 
-		Core::Result<std::vector<Core::CommitSummary>> QueryLog(const Core::LogRequest&) override
+		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override
 		{
 			++LogCalls;
 			return Log;
@@ -43,7 +43,7 @@ namespace {
 
 		Core::WorkingTreeStatus Status;
 		std::vector<Core::Branch> Branches;
-		std::vector<Core::CommitSummary> Log;
+		Core::LogPage Log;
 
 		bool FailStatus = false;
 

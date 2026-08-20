@@ -198,8 +198,7 @@ namespace Graphite {
 				}
 
 				m_LogError.reset();
-				m_Log = std::make_shared<const std::vector<Core::CommitSummary>>(
-					std::move(result).GetValue());
+				m_Log = std::make_shared<const Core::LogPage>(std::move(result).GetValue());
 			});
 		});
 	}

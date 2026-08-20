@@ -52,7 +52,7 @@ TEST_CASE("A file's history skips commits that did not touch it")
 	auto log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
-	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"edit a", "add a"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"edit a", "add a"});
 }
 
 TEST_CASE("A file's history continues through a rename when following is on")
@@ -78,7 +78,7 @@ TEST_CASE("A file's history continues through a rename when following is on")
 
 	// Without following, the history would stop at "rename to new" and the commit that
 	// created the file would be invisible — which is the case this whole feature exists for.
-	CHECK(Summaries(log.GetValue())
+	CHECK(Summaries(log.GetValue().Commits)
 		  == std::vector<std::string>{"edit new", "rename to new", "add old"});
 }
 
@@ -100,7 +100,7 @@ TEST_CASE("A file's history stops at the rename when following is off")
 	auto log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
-	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"rename to new"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"rename to new"});
 }
 
 TEST_CASE("A file's history counts MaxCount in kept commits, not in walked ones")
@@ -131,7 +131,7 @@ TEST_CASE("A file's history counts MaxCount in kept commits, not in walked ones"
 
 	// A limit applied to the walk instead of to the result would return nothing here:
 	// the ten noise commits sit between the two that matter.
-	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"touch a again", "touch a once"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"touch a again", "touch a once"});
 }
 
 TEST_CASE("The history of a path that never existed is empty rather than an error")
@@ -149,7 +149,7 @@ TEST_CASE("The history of a path that never existed is empty rather than an erro
 	auto log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
-	CHECK(log.GetValue().empty());
+	CHECK(log.GetValue().Commits.empty());
 }
 
 TEST_CASE("A line range's history skips commits that edited elsewhere in the file")
@@ -177,7 +177,7 @@ TEST_CASE("A line range's history skips commits that edited elsewhere in the fil
 
 	// "edit the bottom" changed the same file and must not appear: the question was about
 	// line one, and that is the whole point of asking by range rather than by file.
-	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"edit the top", "add a"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"edit the top", "add a"});
 }
 
 TEST_CASE("A line range's history continues past a rename the rename commit did not touch")
@@ -210,7 +210,7 @@ TEST_CASE("A line range's history continues past a rename the rename commit did 
 	// Line four was never touched by the rename or by "edit the top", which only changed
 	// line one. Following the rename must still reach "add old", the commit that wrote
 	// line four under the file's old name.
-	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"add old"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"add old"});
 }
 
 TEST_CASE("A file's history walk stops at MaxWalk even though nothing else limits it")
@@ -239,7 +239,33 @@ TEST_CASE("A file's history walk stops at MaxWalk even though nothing else limit
 	// The commit that touched a.txt sits at the bottom of a 21-commit history, past the
 	// five-commit ceiling from HEAD. An unbounded walk finds it; a bounded one must not,
 	// which is what proves the ceiling is bounding the walk and not just the result.
-	CHECK(log.GetValue().empty());
+	CHECK(log.GetValue().Commits.empty());
+
+	// An empty page and a finished page look identical unless the flag says otherwise -
+	// without it, a caller would tell the user this file has no history, which is false.
+	CHECK_FALSE(log.GetValue().Complete);
+}
+
+TEST_CASE("A file's history that runs out on its own reports the page as complete")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("touch a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.File = std::filesystem::path("a.txt");
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"touch a"});
+
+	// The walk reached the end of history on its own, well inside every ceiling: nothing
+	// was stopped early, so the page is the whole answer.
+	CHECK(log.GetValue().Complete);
 }
 
 TEST_CASE("A line range's history follows the lines as earlier commits move them")
@@ -268,6 +294,6 @@ TEST_CASE("A line range's history follows the lines as earlier commits move them
 	// The line is number four today and was number one when it was written. Without
 	// mapping the range backwards, the walk would look at line four of a one-line file
 	// and lose the commit that created it.
-	CHECK(Summaries(log.GetValue())
+	CHECK(Summaries(log.GetValue().Commits)
 		  == std::vector<std::string>{"edit the target line", "add the target line"});
 }

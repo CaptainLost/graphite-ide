@@ -25,8 +25,8 @@ namespace {
 	{
 		auto log = repository.QueryLog(LogRequest{});
 		REQUIRE(log.HasValue());
-		REQUIRE_FALSE(log.GetValue().empty());
-		return log.GetValue().front().Id;
+		REQUIRE_FALSE(log.GetValue().Commits.empty());
+		return log.GetValue().Commits.front().Id;
 	}
 }
 

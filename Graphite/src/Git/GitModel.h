@@ -47,7 +47,7 @@ namespace Graphite {
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
-		std::shared_ptr<const std::vector<Core::CommitSummary>> GetLog() const { return m_Log; }
+		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
 
 		// The failure a panel should show, if any. Each query kind keeps its own error, set
 		// by its own failure and cleared only by its own success, so a branches refresh
@@ -121,7 +121,7 @@ namespace Graphite {
 
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
-		std::shared_ptr<const std::vector<Core::CommitSummary>> m_Log;
+		std::shared_ptr<const Core::LogPage> m_Log;
 
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;

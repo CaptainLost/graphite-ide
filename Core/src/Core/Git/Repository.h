@@ -30,8 +30,9 @@ namespace Core {
 		bool IsIgnored(const std::filesystem::path& path) const;
 
 		// Newest first, in topological then date order — the order a history is read in.
-		// A repository whose HEAD is unborn answers with an empty list, not an error.
-		Result<std::vector<CommitSummary>> QueryLog(const LogRequest& request) const;
+		// A repository whose HEAD is unborn answers with an empty, complete page, not an
+		// error.
+		Result<LogPage> QueryLog(const LogRequest& request) const;
 
 		// Renames are detected rather than reported as a delete and an add. A binary file
 		// comes back flagged and with no hunks.

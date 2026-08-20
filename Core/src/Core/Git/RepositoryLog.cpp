@@ -122,7 +122,7 @@ namespace Core {
 		}
 	}
 
-	Result<std::vector<CommitSummary>> Repository::QueryLog(const LogRequest& request) const
+	Result<LogPage> Repository::QueryLog(const LogRequest& request) const
 	{
 		if (m_Handle == nullptr)
 		{
@@ -159,7 +159,8 @@ namespace Core {
 							 std::format("no such ref '{}': {}", *request.Ref, message)};
 			}
 
-			return std::vector<CommitSummary>{};
+			// Nothing was walked, so there is nothing this answer could be missing.
+			return LogPage{{}, true};
 		}
 
 		std::vector<CommitSummary> commits;
@@ -168,15 +169,33 @@ namespace Core {
 		std::optional<std::filesystem::path> tracked = request.File;
 		std::optional<LineRange> trackedRange = request.Lines;
 
-		// Bounds the work of the walk itself, independent of MaxCount above, which bounds
-		// only what is kept. File and line-range narrowing diff every commit they pass
-		// through, so a rarely-touched file in a huge history would otherwise walk and
+		// Bounds the work of the walk itself, independent of request.MaxCount below, which
+		// bounds only what is kept. File and line-range narrowing diff every commit they
+		// pass through, so a rarely-touched file in a huge history would otherwise walk and
 		// diff the whole thing looking for a handful of matches.
 		std::size_t walked = 0;
 
-		while (commits.size() < request.MaxCount && walked < request.MaxWalk
-			   && git_revwalk_next(&id, walk) == 0)
+		// Set to false on every path that stops the walk before it runs out of history on
+		// its own, so the caller can tell a short page from a finished one.
+		bool complete = true;
+
+		while (commits.size() < request.MaxCount)
 		{
+			if (walked >= request.MaxWalk)
+			{
+				// Reaching the ceiling does not mean history continues past it - only that
+				// the walk stopped checking. Either way, the page in hand is not the whole
+				// answer.
+				complete = false;
+				break;
+			}
+
+			if (git_revwalk_next(&id, walk) != 0)
+			{
+				// The walk ran out of commits on its own: this page is the whole history.
+				break;
+			}
+
 			++walked;
 
 			git_commit* commit = nullptr;
@@ -212,6 +231,7 @@ namespace Core {
 				// it simply could not read.
 				CORE_TRACE("Stopping the history walk: cannot diff commit {}: {}",
 						   summary.Id.ToHex(), diff.GetError().Message);
+				complete = false;
 				break;
 			}
 
@@ -246,6 +266,7 @@ namespace Core {
 
 					if (!nextRange.has_value())
 					{
+						complete = false;
 						break;
 					}
 
@@ -262,6 +283,7 @@ namespace Core {
 			{
 				if (!nextRange.has_value())
 				{
+					complete = false;
 					break;
 				}
 
@@ -270,6 +292,6 @@ namespace Core {
 		}
 
 		git_revwalk_free(walk);
-		return commits;
+		return LogPage{std::move(commits), complete};
 	}
 }
