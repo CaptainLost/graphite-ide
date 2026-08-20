@@ -157,3 +157,164 @@ TEST_CASE("Spans are empty for a file that was never declared")
 
 	CHECK(semantics.SpansOn("nowhere.cpp", 0).empty());
 }
+
+TEST_CASE("A file nobody declares is closed, but not in the frame the declarations stop")
+{
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, false);
+
+	// The frame after the last declaration: the grace frame, and nothing closes in it.
+	semantics.Tick(2, 0.1);
+	CHECK(port.CountOf("close") == 0);
+
+	semantics.Tick(3, 0.2);
+	CHECK(port.CountOf("close") == 1);
+}
+
+TEST_CASE("A declaration inside the grace frame closes nothing and asks nothing again")
+{
+	// A pane's selection can drop for one frame while its groups are rebuilt. Paying a full
+	// re-parse for that blink is exactly what the grace frame exists to prevent.
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, false);
+
+	// The redeclare lands inside the grace frame itself (between Tick(2) and Tick(3)) — that is
+	// the blink this case is about. A redeclare arriving only once frame 3's Tick has already
+	// run the close check would be a frame too late to save anything: closing is decided
+	// synchronously inside that Tick, from the call history alone, the same way the previous
+	// case proves it.
+	semantics.Tick(2, 0.1);
+	semantics.Declare("a.cpp", buffer, 4, false);
+
+	semantics.Tick(3, 0.2);
+
+	CHECK(port.CountOf("close") == 0);
+	CHECK(port.CountOf("open") == 1);
+	CHECK(port.CountOf("ask") == 1);
+}
+
+TEST_CASE("A file a tab holds is never closed from here")
+{
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, true);
+
+	semantics.Tick(2, 0.1);
+	semantics.Tick(3, 0.2);
+
+	CHECK(port.CountOf("close") == 0);
+}
+
+TEST_CASE("An edit to a document with a tab drops its colours and asks again")
+{
+	FakePort port;
+	PreviewSemantics semantics{port};
+	Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, true);
+	REQUIRE(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
+								   {At(0, 0, 8, SemanticKind::Type)})));
+
+	buffer.Insert(0, "const ");
+
+	semantics.Tick(2, 0.1);
+	semantics.Declare("a.cpp", buffer, 4, true);
+
+	CHECK(port.CountOf("ask") == 2);
+	CHECK(semantics.SpansOn("a.cpp", 0).empty());
+}
+
+TEST_CASE("A tab width change drops the colours and asks again")
+{
+	// The overlay's offsets are measured in tab-expanded text, so every span on a line holding a
+	// tab moves when the width does.
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"\tRenderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, false);
+	REQUIRE(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
+								   {At(0, 1, 8, SemanticKind::Type)})));
+
+	semantics.Tick(2, 0.1);
+	semantics.Declare("a.cpp", buffer, 8, false);
+
+	CHECK(port.CountOf("ask") == 2);
+	CHECK(port.CountOf("open") == 1);
+	CHECK(semantics.SpansOn("a.cpp", 0).empty());
+}
+
+TEST_CASE("An answer whose ticket has been superseded is dropped")
+{
+	FakePort port;
+	PreviewSemantics semantics{port};
+	Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, true);
+
+	buffer.Insert(0, "const ");
+
+	semantics.Tick(2, 0.1);
+	semantics.Declare("a.cpp", buffer, 4, true);
+
+	// The first request's answer, arriving after the edit made it obsolete. Applying it would
+	// colour words that have moved six characters to the right.
+	CHECK_FALSE(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
+									   {At(0, 0, 8, SemanticKind::Type)})));
+	CHECK(semantics.SpansOn("a.cpp", 0).empty());
+}
+
+TEST_CASE("A failed request is tried again, but only after its retry clock")
+{
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, false);
+
+	LanguageServices::Answer failed;
+	failed.For = static_cast<LanguageServices::Ticket>(1);
+	failed.Failed = true;
+
+	REQUIRE(semantics.Apply(failed));
+
+	semantics.Tick(2, 0.5);
+	semantics.Declare("a.cpp", buffer, 4, false);
+	CHECK(port.CountOf("ask") == 1);
+
+	semantics.Tick(3, 2.5);
+	semantics.Declare("a.cpp", buffer, 4, false);
+	CHECK(port.CountOf("ask") == 2);
+}
+
+TEST_CASE("Destruction closes what was opened here and nothing else")
+{
+	FakePort port;
+
+	{
+		PreviewSemantics semantics{port};
+		const Core::TextBuffer buffer{"Renderer r;\n"};
+
+		semantics.Tick(1, 0.0);
+		semantics.Declare("a.cpp", buffer, 4, false);
+		semantics.Declare("b.cpp", buffer, 4, true);
+	}
+
+	REQUIRE(port.CountOf("close") == 1);
+	CHECK(port.Calls.back().Path == std::filesystem::path{"a.cpp"});
+}
