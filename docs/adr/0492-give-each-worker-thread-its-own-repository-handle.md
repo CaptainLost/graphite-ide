@@ -21,9 +21,14 @@ refresh landing behind it would make the status bar visibly lag.
 `RepositoryGitPort` opens one `Core::Repository` per worker thread, cached in
 a `thread_local` map keyed by the repository root, and opened lazily the
 first time that thread needs it. No handle is ever touched from a thread
-other than the one that opened it. A handle is not closed when the workspace
-changes; it stays in its thread's cache and a later query against the same
-root reopens nothing.
+other than the one that opened it. A handle is not closed merely because the
+UI thread moved on to a different query; it stays in its thread's cache and a
+later query against the same root reopens nothing — unless the root was set
+again in the meantime, which invalidates it. `SetRoot` bumps a generation
+counter every time it runs, including a call that repeats the same path, and
+a cached handle carries the generation it was opened under: a lookup whose
+generation no longer matches the current one is dropped and reopened rather
+than reused.
 
 ## Rationale
 
@@ -47,13 +52,16 @@ than upfront for every worker `JobQueue` happens to have started.
 
 ### Negative
 
-- A handle lives until its thread ends, not until the workspace closes, so a
-  worker that queried an old root before the workspace changed keeps that
-  root's handle open in its cache for the rest of its life. This is
-  deliberate — `JobQueue` runs a handful of long-lived workers and this
-  application has one open root at a time, so the wasted handle is one per
-  worker, not one per folder ever opened — but it means the cache does not
-  shrink on its own.
+- A handle for a root that is no longer current lives until its thread ends
+  or that same key is looked up again, whichever comes first — it is not
+  proactively closed the moment the workspace moves on. A worker that queried
+  an old root before the workspace changed keeps that root's handle open in
+  its cache until something asks for that key again, at which point the
+  generation check finds it stale and erases it. This is deliberate —
+  `JobQueue` runs a handful of long-lived workers and this application has
+  one open root at a time, so the wasted handle is at most one per worker,
+  not one per folder ever opened — but it means the cache does not shrink on
+  its own between lookups.
 - `GitModel` requires, as a consequence of how it submits work, that the
   `Core::JobQueue` behind its submitter be destroyed — and its workers
   joined — before `GitModel` itself is, because every job it submits
@@ -68,9 +76,16 @@ than upfront for every worker `JobQueue` happens to have started.
 
 - The map is keyed by root as a string rather than by nothing, even though
   there is only one root open at a time: a worker still holding a stale
-  handle for the previous root when the workspace changes falls through to
-  opening a second entry rather than reusing a handle that points at the
-  wrong repository.
+  handle for a previous, *different* root when the workspace changes falls
+  through to opening a second entry under the new key, rather than reusing a
+  handle that points at the wrong repository. Across different roots that is
+  the whole story. Across the *same* root — the folder is closed and
+  reopened after its repository was recreated, such as deleting and
+  recreating `.git`, or re-cloning in place — the key alone would not have
+  been enough: the string matches, so without the generation check the stale
+  handle would have been reused for the rest of that thread's life, silently
+  answering every later query against a repository that no longer exists.
+  The generation counter is what actually prevents that case.
 
 ## Alternatives Considered
 

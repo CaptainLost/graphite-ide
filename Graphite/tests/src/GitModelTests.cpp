@@ -297,3 +297,52 @@ TEST_CASE("A file-change event outside a workspace refreshes nothing")
 
 	CHECK(port.StatusCalls == 0);
 }
+
+TEST_CASE("Opening a different folder drops the previous folder's snapshot")
+{
+	FakePort port;
+	Core::EventBus events;
+	port.Status.Entries.push_back(Entry("a.txt"));
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetStatus() != nullptr);
+
+	// Workspace::OpenFolder does not always publish WorkspaceClosedEvent first - dropping a
+	// second folder onto the window replaces the workspace directly - so the opened handler
+	// itself must not leave the previous folder's data looking current.
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(model.GetStatus() == nullptr);
+	CHECK(model.GetBranches() == nullptr);
+}
+
+TEST_CASE("A sustained stream of change events still refreshes once the cap is reached")
+{
+	FakePort port;
+	Core::EventBus events;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	// Each mark arrives inside the debounce window and resets the quiet timer, so without a
+	// ceiling measured from the first mark this stream would postpone the refresh forever.
+	for (int index = 0; index < 9; ++index)
+	{
+		events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+		model.OnUpdate(Core::Timestep{0.1f});
+	}
+
+	CHECK(port.StatusCalls == 0);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.1f});
+
+	CHECK(port.StatusCalls == 1);
+}

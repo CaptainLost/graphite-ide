@@ -185,6 +185,12 @@ namespace Graphite {
 		// destructor runs FIRST, joining every worker before m_Git or m_GitPort can be torn
 		// down. Declaring m_Jobs first would compile without complaint and fail only under
 		// real threading, when a worker is mid-query as the model it points into disappears.
+		//
+		// m_Events, declared far above, is a related trap: it is destroyed AFTER m_Git even
+		// though m_Git subscribes handlers into it that capture `this`. That is not reachable
+		// today - nothing publishes from a destructor and EventBus has no unsubscribe - but a
+		// member declared between m_Events and this group must not change that, so it is
+		// recorded here rather than left for the next reader to rediscover.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort,
 					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};

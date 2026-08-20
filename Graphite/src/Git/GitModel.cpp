@@ -40,6 +40,7 @@ namespace Graphite {
 
 		m_Dirty = false;
 		m_DirtyFor = 0.0f;
+		m_DirtySince = 0.0f;
 	}
 
 	void GitModel::MarkDirty()
@@ -49,6 +50,14 @@ namespace Graphite {
 			return;
 		}
 
+		// The burst's start is only reset when it was not already dirty: a mark that arrives
+		// mid-burst extends the quiet timer but must not push the cap out further, or a
+		// sustained stream of events would never hit it.
+		if (!m_Dirty)
+		{
+			m_DirtySince = 0.0f;
+		}
+
 		m_Dirty = true;
 		m_DirtyFor = 0.0f;
 	}
@@ -56,6 +65,13 @@ namespace Graphite {
 	void GitModel::SubscribeTo(Core::EventBus& events)
 	{
 		events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
+			// Opening a folder does not always follow a WorkspaceClosedEvent - dropping a
+			// second folder onto the window replaces the workspace directly. Without Clear()
+			// here, GetStatus()/GetBranches() would keep answering with the previous folder's
+			// snapshot for the debounce window plus one query: a lie about the folder now
+			// open. Clear() before SetRoot and MarkDirty, since Clear() sets m_Dirty = false
+			// and would otherwise undo the mark.
+			Clear();
 			SetRoot(event.Root);
 			MarkDirty();
 		});
@@ -74,11 +90,13 @@ namespace Graphite {
 		if (m_Dirty)
 		{
 			m_DirtyFor += ts.GetSeconds();
+			m_DirtySince += ts.GetSeconds();
 
-			if (m_DirtyFor >= kDebounceSeconds)
+			if (m_DirtyFor >= kDebounceSeconds || m_DirtySince >= kMaxDebounceSeconds)
 			{
 				m_Dirty = false;
 				m_DirtyFor = 0.0f;
+				m_DirtySince = 0.0f;
 
 				RequestStatus();
 				RequestBranches();

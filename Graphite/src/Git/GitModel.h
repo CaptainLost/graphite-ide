@@ -81,6 +81,14 @@ namespace Graphite {
 		// times for one action.
 		static constexpr float kDebounceSeconds = 0.15f;
 
+		// A ceiling on how long coalescing can postpone the refresh, measured from the first
+		// event of the burst rather than the most recent one. Without this, a sustained
+		// stream of change events - a build writing into an output directory, which
+		// Workspace::Update republishes per settled batch - would keep resetting the quiet
+		// timer and starve the refresh for as long as the stream continues, rather than
+		// coalescing to one refresh per quiet period.
+		static constexpr float kMaxDebounceSeconds = 1.0f;
+
 	private:
 		using Delivery = std::function<void()>;
 
@@ -92,6 +100,9 @@ namespace Graphite {
 
 		bool m_Dirty = false;
 		float m_DirtyFor = 0.0f;
+
+		// Time since the burst's first mark, not its most recent one - see kMaxDebounceSeconds.
+		float m_DirtySince = 0.0f;
 
 		GitPort& m_Port;
 		JobSubmitter m_Submit;
