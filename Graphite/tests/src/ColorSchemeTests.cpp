@@ -145,3 +145,35 @@ TEST_CASE("Keys keep their file spelling after gaining labels")
 	CHECK(Graphite::NameOf(Graphite::EditorColor::LineNumber) == "lineNumber");
 	CHECK(Graphite::LabelOf(Graphite::EditorColor::CurrentLine) == "Current line");
 }
+
+TEST_CASE("Resolve takes a chrome override and leaves the rest to the base")
+{
+	Graphite::ResolvedScheme base;
+	base.Chrome.fill(Core::Color{0.0f, 0.0f, 0.0f, 1.0f});
+
+	Graphite::ColorScheme scheme;
+	scheme.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)] =
+		Core::Color{1.0f, 0.0f, 0.0f, 1.0f};
+
+	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
+
+	CHECK(resolved.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)].R ==
+		  doctest::Approx(1.0f));
+	CHECK(resolved.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)].R ==
+		  doctest::Approx(0.0f));
+}
+
+// The key is what the file stores and the label is what the settings row shows. A colour
+// missing either is a colour that is either unwritable or invisible.
+TEST_CASE("Every chrome colour has a key and a label")
+{
+	for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::ChromeColor::Count);
+		 ++index)
+	{
+		const Graphite::ColorNames names =
+			Graphite::NamesOf(static_cast<Graphite::ChromeColor>(index));
+
+		CHECK_FALSE(names.Key.empty());
+		CHECK_FALSE(names.Label.empty());
+	}
+}
