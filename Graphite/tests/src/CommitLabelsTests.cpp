@@ -112,3 +112,38 @@ TEST_CASE("A whitespace-only name falls back to the email like an empty one")
 
 	CHECK(Graphite::AuthorInitials(who) == "A");
 }
+
+TEST_CASE("Every kind of file change has its own letter")
+{
+	CHECK(Graphite::ChangeLetter(Core::FileChange::Added) == 'A');
+	CHECK(Graphite::ChangeLetter(Core::FileChange::Modified) == 'M');
+	CHECK(Graphite::ChangeLetter(Core::FileChange::Deleted) == 'D');
+	CHECK(Graphite::ChangeLetter(Core::FileChange::Renamed) == 'R');
+	CHECK(Graphite::ChangeLetter(Core::FileChange::Copied) == 'C');
+	CHECK(Graphite::ChangeLetter(Core::FileChange::TypeChanged) == 'T');
+
+	// Never reaches a diff's file list in practice, but a blank is a safer default than a
+	// claim about a change that did not happen.
+	CHECK(Graphite::ChangeLetter(Core::FileChange::Unmodified) == ' ');
+}
+
+TEST_CASE("A modified file is shown under its new path")
+{
+	Core::FileDiff file;
+	file.OldPath = "a.txt";
+	file.NewPath = "a.txt";
+	file.Change = Core::FileChange::Modified;
+
+	CHECK(Graphite::DisplayPath(file) == std::filesystem::path("a.txt"));
+}
+
+TEST_CASE("A deleted file is shown under its old path")
+{
+	Core::FileDiff file;
+	file.OldPath = "gone.txt";
+	file.Change = Core::FileChange::Deleted;
+
+	// A deleted delta carries no new path at all, so falling back to NewPath would show
+	// nothing for exactly the change a reader most wants to find by name.
+	CHECK(Graphite::DisplayPath(file) == std::filesystem::path("gone.txt"));
+}

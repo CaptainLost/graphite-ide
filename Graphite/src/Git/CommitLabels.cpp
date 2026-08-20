@@ -93,4 +93,32 @@ namespace Graphite {
 
 		return std::string{UpperFirst(name)} + std::string{UpperFirst(name.substr(lastStart))};
 	}
+
+	char ChangeLetter(Core::FileChange change)
+	{
+		switch (change)
+		{
+		case Core::FileChange::Added:
+			return 'A';
+		case Core::FileChange::Modified:
+			return 'M';
+		case Core::FileChange::Deleted:
+			return 'D';
+		case Core::FileChange::Renamed:
+			return 'R';
+		case Core::FileChange::Copied:
+			return 'C';
+		case Core::FileChange::TypeChanged:
+			return 'T';
+		case Core::FileChange::Unmodified:
+			return ' ';
+		}
+
+		return ' ';
+	}
+
+	const std::filesystem::path& DisplayPath(const Core::FileDiff& file)
+	{
+		return file.NewPath.empty() ? file.OldPath : file.NewPath;
+	}
 }
