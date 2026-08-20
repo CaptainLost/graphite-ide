@@ -7,7 +7,9 @@
 #include <chrono>
 #include <cstddef>
 #include <format>
+#include <numeric>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -112,7 +114,13 @@ namespace Graphite {
 		}
 
 		ImGui::SetCursorScreenPos(listOrigin);
-		CommitGraphView{}.Render(graph, palette, metrics, firstDrawn, lastDrawn);
+
+		// Files are not interleaved into this view yet — Task 3 builds the row layout and
+		// passes its mapping through. Until then a commit's row is still its own index.
+		std::vector<std::size_t> rowOfCommit(page.Commits.size());
+		std::iota(rowOfCommit.begin(), rowOfCommit.end(), std::size_t{0});
+
+		CommitGraphView{}.Render(graph, palette, metrics, rowOfCommit, firstDrawn, lastDrawn);
 
 		ImGui::EndChild();
 	}

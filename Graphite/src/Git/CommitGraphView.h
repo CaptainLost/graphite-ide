@@ -5,6 +5,9 @@
 
 #include "Core/Git/GraphLayout.h"
 
+#include <cstddef>
+#include <vector>
+
 namespace Graphite {
 
 	// Draws the lane column beside a list of commits. Stateless: the caller owns the graph,
@@ -13,10 +16,13 @@ namespace Graphite {
 	class CommitGraphView
 	{
 	public:
-		// firstRow and lastRow bound the rows the list is drawing this frame. Edges that
-		// leave the range are still drawn, clipped by the child window, so a line entering
-		// from above does not appear out of nowhere.
+		// rowOfCommit maps a commit's index in the graph to its display row — with files
+		// interleaved between commits, those are no longer the same number. firstRow and
+		// lastRow bound the display rows the list is drawing this frame. Edges that leave
+		// the range are still drawn, clipped by the child window, so a line entering from
+		// above does not appear out of nowhere.
 		void Render(const Core::CommitGraph& graph, const GitPalette& palette,
-					const GraphMetrics& metrics, int firstRow, int lastRow);
+					const GraphMetrics& metrics, const std::vector<std::size_t>& rowOfCommit,
+					int firstRow, int lastRow);
 	};
 }

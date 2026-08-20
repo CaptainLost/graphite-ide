@@ -3,11 +3,13 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <optional>
 
 namespace Graphite {
 
 	void CommitGraphView::Render(const Core::CommitGraph& graph, const GitPalette& palette,
-								 const GraphMetrics& metrics, int firstRow, int lastRow)
+								 const GraphMetrics& metrics, const std::vector<std::size_t>& rowOfCommit,
+								 int firstRow, int lastRow)
 	{
 		if (graph.Nodes.empty())
 		{
@@ -21,16 +23,36 @@ namespace Graphite {
 			return ImVec2{origin.x + LaneCentreX(metrics, lane), origin.y + RowCentreY(metrics, row)};
 		};
 
+		// A commit's display row, or nothing when the layout and the mapping disagree
+		// about how many commits there are — which means the caller built one from a page
+		// and the other from a different one.
+		const auto displayRow = [&rowOfCommit](std::size_t commit) -> std::optional<std::size_t> {
+			if (commit >= rowOfCommit.size())
+			{
+				return std::nullopt;
+			}
+
+			return rowOfCommit[commit];
+		};
+
 		for (const Core::GraphEdge& edge : graph.Edges)
 		{
-			// An edge wholly above or below the drawn range contributes nothing.
-			if (static_cast<int>(edge.ToRow) < firstRow || static_cast<int>(edge.FromRow) > lastRow)
+			const std::optional<std::size_t> fromRow = displayRow(edge.FromRow);
+			const std::optional<std::size_t> toRow = displayRow(edge.ToRow);
+
+			if (!fromRow.has_value() || !toRow.has_value())
 			{
 				continue;
 			}
 
-			const ImVec2 from = centre(edge.FromRow, edge.FromLane);
-			const ImVec2 to = centre(edge.ToRow, edge.ToLane);
+			// An edge wholly above or below the drawn range contributes nothing.
+			if (static_cast<int>(*toRow) < firstRow || static_cast<int>(*fromRow) > lastRow)
+			{
+				continue;
+			}
+
+			const ImVec2 from = centre(*fromRow, edge.FromLane);
+			const ImVec2 to = centre(*toRow, edge.ToLane);
 
 			// A connector belongs to the branch that occupies the outer lane: for a fork
 			// that is the side branch's tip, for a merge it is the branch reaching back to
@@ -54,12 +76,19 @@ namespace Graphite {
 
 		for (const Core::GraphNode& node : graph.Nodes)
 		{
-			if (static_cast<int>(node.Row) < firstRow || static_cast<int>(node.Row) > lastRow)
+			const std::optional<std::size_t> row = displayRow(node.Row);
+
+			if (!row.has_value())
 			{
 				continue;
 			}
 
-			draw->AddCircleFilled(centre(node.Row, node.Lane), metrics.DotRadius,
+			if (static_cast<int>(*row) < firstRow || static_cast<int>(*row) > lastRow)
+			{
+				continue;
+			}
+
+			draw->AddCircleFilled(centre(*row, node.Lane), metrics.DotRadius,
 								  palette.LaneOf(node.Lane));
 		}
 	}
