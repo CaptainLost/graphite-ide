@@ -46,8 +46,8 @@ gets a document-sized home for free.
 - No change to `DocumentWindows` or `Core::DocumentSet`; both keep their
   single, simple meaning of "a tab is a file that exists on disk."
 - The git view participates in the same show/hide, layout, and command
-  infrastructure every other panel already uses — `PanelManager::ResetVisibility`,
-  the panels menu, the command palette — with no bespoke plumbing.
+  infrastructure every other panel already uses — `PanelManager::ResetVisibility`
+  and the panels menu — with no bespoke plumbing.
 
 ### Negative
 
