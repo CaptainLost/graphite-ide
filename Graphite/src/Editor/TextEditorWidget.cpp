@@ -1766,17 +1766,15 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(origin);
 		}
 
-		// What the last bracket search was asked, and what it answered. Finding a pair walks up
-		// to kBracketScanLines in each direction and re-lexes every line it reads, because the
-		// syntax cache holds exactly one line's tokens: cheap for a partner a few lines away,
-		// and the whole bound every time when the caret sits beside an unclosed brace — which is
-		// precisely the state a file is in while it is being typed into. So the answer is kept
-		// and only recomputed when one of its three inputs moved.
+		// What the last bracket search was asked for one document, and what it answered. Finding
+		// a pair walks up to kBracketScanLines in each direction and re-lexes every line it
+		// reads, because the syntax cache holds exactly one line's tokens: cheap for a partner a
+		// few lines away, and the whole bound every time when the caret sits beside an unclosed
+		// brace — which is precisely the state a file is in while it is being typed into. So the
+		// answer is kept and only recomputed when one of its three inputs moved.
 		//
 		// Keyed on the path rather than the item's address, like the caret blink above, which a
-		// reallocation of the open-document list can hand to a different document. One value for
-		// the whole application: two splits showing the same file with carets in different places
-		// simply miss on each other, which costs what not memoising at all would have cost.
+		// reallocation of the open-document list can hand to a different document.
 		struct BracketMemo
 		{
 			std::filesystem::path Path;
@@ -1786,37 +1784,67 @@ namespace Graphite {
 			std::optional<BracketPair> Pair;
 		};
 
-		BracketMemo s_Brackets;
+		// One slot per document on screen, because every visible document draws every frame:
+		// with a single slot two editors side by side — two splits of one file, or two different
+		// files in two dock nodes — would overwrite each other's answer and each pay the full
+		// scan on every frame, which is the cost this exists to remove.
+		//
+		// A fixed set of slots rather than a map, and bounded by construction rather than
+		// pruned: nothing tells this file when a document closes — the map of syntax caches is
+		// pruned by DocumentWindows, which owns it and can see the open list — so a map here
+		// could only ever grow. Eight is well past any dock layout a screen has room for, and
+		// the worst a ninth visible editor can do is take the oldest slot and recompute.
+		constexpr std::size_t kBracketMemoSlots = 8;
 
+		std::array<BracketMemo, kBracketMemoSlots> s_Brackets;
+
+		// Which slot the next document not already held takes. Round robin, so a layout that
+		// somehow exceeds the slots degrades to recomputing rather than to anything worse.
+		std::size_t s_NextBracketMemo = 0;
+
+		// Returned by value: three words, and a reference into the store above would be left
+		// dangling-in-meaning by the next document's claim on the same slot.
+		//
 		// The buffer revision is the same staleness signal RefreshFindMatchesIfStale compares
 		// against, and it is the only one an edit can arrive through; the caret offset covers
 		// every move that leaves the text alone.
-		const std::optional<BracketPair>& BracketPairFor(const Core::TextBuffer& buffer,
-														 const Core::OpenItem& item,
-														 SyntaxCache* syntax)
+		std::optional<BracketPair> BracketPairFor(const Core::TextBuffer& buffer,
+												  const Core::OpenItem& item, SyntaxCache* syntax)
 		{
 			// No cache means no way to tell a bracket from one inside a string, so nothing is
 			// highlighted rather than the wrong thing.
-			static const std::optional<BracketPair> none;
-
 			if (syntax == nullptr)
-				return none;
+				return std::nullopt;
 
 			const std::size_t revision = buffer.GetRevision();
 
-			if (s_Brackets.Filled && s_Brackets.Caret == item.Caret.Offset &&
-				s_Brackets.Revision == revision && s_Brackets.Path == item.Path)
+			BracketMemo* slot = nullptr;
+
+			for (BracketMemo& candidate : s_Brackets)
 			{
-				return s_Brackets.Pair;
+				if (candidate.Filled && candidate.Path == item.Path)
+				{
+					slot = &candidate;
+					break;
+				}
 			}
 
-			s_Brackets.Path = item.Path;
-			s_Brackets.Caret = item.Caret.Offset;
-			s_Brackets.Revision = revision;
-			s_Brackets.Filled = true;
-			s_Brackets.Pair = FindBracketPair(buffer, *syntax, item.Caret.Offset);
+			if (slot != nullptr && slot->Caret == item.Caret.Offset && slot->Revision == revision)
+				return slot->Pair;
 
-			return s_Brackets.Pair;
+			if (slot == nullptr)
+			{
+				slot = &s_Brackets[s_NextBracketMemo];
+				s_NextBracketMemo = (s_NextBracketMemo + 1) % kBracketMemoSlots;
+			}
+
+			slot->Path = item.Path;
+			slot->Caret = item.Caret.Offset;
+			slot->Revision = revision;
+			slot->Filled = true;
+			slot->Pair = FindBracketPair(buffer, *syntax, item.Caret.Offset);
+
+			return slot->Pair;
 		}
 
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
