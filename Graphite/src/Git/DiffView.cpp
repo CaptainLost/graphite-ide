@@ -1,5 +1,7 @@
 #include "Git/DiffView.h"
 
+#include "Git/CommitLabels.h"
+
 #include "Core/ImGui/ImGuiRenderer.h"
 
 #include <imgui.h>
@@ -97,7 +99,7 @@ namespace Graphite {
 
 	void DiffView::RenderToolbar(const Core::FileDiff& file)
 	{
-		const std::filesystem::path& path = file.NewPath.empty() ? file.OldPath : file.NewPath;
+		const std::filesystem::path& path = ShownPath(file);
 		ImGui::TextUnformatted(path.string().c_str());
 
 		ImGui::SameLine();
