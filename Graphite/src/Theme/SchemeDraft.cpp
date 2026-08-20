@@ -96,6 +96,11 @@ namespace Graphite {
 		return m_Scheme.Editor[static_cast<std::size_t>(color)].has_value();
 	}
 
+	bool SchemeDraft::IsOverridden(ChromeColor color) const
+	{
+		return m_Scheme.Chrome[static_cast<std::size_t>(color)].has_value();
+	}
+
 	void SchemeDraft::SetColor(TokenKind kind, const Core::Color& color)
 	{
 		if (IsReadOnly())
@@ -118,6 +123,18 @@ namespace Graphite {
 		Resolve();
 	}
 
+	void SchemeDraft::SetColor(ChromeColor which, const Core::Color& color)
+	{
+		if (IsReadOnly())
+		{
+			return;
+		}
+
+		m_Scheme.Chrome[static_cast<std::size_t>(which)] = color;
+
+		Resolve();
+	}
+
 	void SchemeDraft::Revert(TokenKind kind)
 	{
 		if (IsReadOnly())
@@ -137,6 +154,18 @@ namespace Graphite {
 		}
 
 		m_Scheme.Editor[static_cast<std::size_t>(which)].reset();
+		Resolve();
+	}
+
+	void SchemeDraft::Revert(ChromeColor which)
+	{
+		if (IsReadOnly())
+		{
+			return;
+		}
+
+		m_Scheme.Chrome[static_cast<std::size_t>(which)].reset();
+
 		Resolve();
 	}
 

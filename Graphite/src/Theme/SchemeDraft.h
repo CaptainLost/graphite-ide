@@ -36,17 +36,20 @@ namespace Graphite {
 
 		bool IsOverridden(TokenKind kind) const;
 		bool IsOverridden(EditorColor color) const;
+		bool IsOverridden(ChromeColor color) const;
 
 		// No-ops on a built-in. Writing through a read-only selection is a caller's mistake, and
 		// silently ignoring it beats leaving an edit that the next Select would discard anyway.
 		void SetColor(TokenKind kind, const Core::Color& color);
 		void SetColor(EditorColor which, const Core::Color& color);
+		void SetColor(ChromeColor which, const Core::Color& color);
 
 		// Clears the override rather than assigning the base value. The two look identical on
 		// screen and behave differently forever after: an assigned value stops tracking the base,
 		// so a colour added in a later version would never reach this scheme.
 		void Revert(TokenKind kind);
 		void Revert(EditorColor which);
+		void Revert(ChromeColor which);
 
 		bool Save();
 

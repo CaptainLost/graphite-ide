@@ -207,3 +207,26 @@ TEST_CASE("Deleting a built-in is refused")
 	CHECK(draft.GetSelected() == "dark");
 	CHECK(std::filesystem::exists(shadow));
 }
+
+TEST_CASE("A chrome colour can be overridden and reverted in a draft")
+{
+	const TempDirectory temp;
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+	REQUIRE(draft.Duplicate());
+
+	constexpr auto accent = static_cast<std::size_t>(Graphite::ChromeColor::Accent);
+
+	CHECK_FALSE(draft.IsOverridden(Graphite::ChromeColor::Accent));
+
+	draft.SetColor(Graphite::ChromeColor::Accent, Core::Color{1.0f, 0.5f, 0.0f, 1.0f});
+
+	CHECK(draft.IsOverridden(Graphite::ChromeColor::Accent));
+	CHECK(draft.GetPreview().Chrome[accent].R == doctest::Approx(1.0f));
+
+	draft.Revert(Graphite::ChromeColor::Accent);
+
+	CHECK_FALSE(draft.IsOverridden(Graphite::ChromeColor::Accent));
+	CHECK(draft.GetPreview().Chrome[accent].R ==
+		  doctest::Approx(Graphite::DarkScheme().Chrome[accent].R));
+}
