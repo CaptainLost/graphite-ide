@@ -522,4 +522,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0490](0490-colour-the-application-chrome-from-the-active-scheme.md) | Colour the application chrome from the active scheme | proposed | 2026-08-20 |
 | [0491](0491-keep-git-data-in-core-and-git-freshness-in-graphite.md) | Keep git data in Core and git freshness in Graphite | proposed | 2026-08-20 |
 | [0492](0492-give-each-worker-thread-its-own-repository-handle.md) | Give each worker thread its own repository handle | proposed | 2026-08-20 |
+| [0493](0493-draw-the-git-view-as-a-centrally-docked-panel.md) | Draw the git view as a centrally docked panel | proposed | 2026-08-20 |
 <!-- /adr-index -->

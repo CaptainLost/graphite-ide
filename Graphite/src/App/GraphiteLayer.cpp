@@ -78,7 +78,7 @@ namespace Graphite {
 		// looking at the code it points into, which is what the bottom row is for. Without an
 		// entry here a panel has nowhere to land and opens as a window of its own.
 		m_Layout.Bottom = {"console", "search", "references"};
-		m_Layout.Center = {"settings"};
+		m_Layout.Center = {"settings", "git"};
 
 		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
 		// system one, and then TitleBar::Render draws nothing and the taller row would be
@@ -106,11 +106,15 @@ namespace Graphite {
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
 											   m_EditorSettings, m_PreviewSemantics)));
 
+		m_GitView = static_cast<GitView*>(
+			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme)));
+
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		explorer->RegisterCommands(m_Commands);
 		m_Panels.RegisterCommands(m_Commands);
+		m_GitView->RegisterCommands(m_Commands);
 		RegisterApplicationCommands();
 
 		// After every default registered above, so an override shadows the binding it
