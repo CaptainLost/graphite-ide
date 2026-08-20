@@ -39,6 +39,15 @@ namespace Graphite {
 			int A = 255;
 		};
 
+		struct GitEntry
+		{
+			GitColor Color;
+			int R;
+			int G;
+			int B;
+			int A = 255;
+		};
+
 		constexpr SyntaxEntry kDarkSyntax[] = {
 			{TokenKind::Keyword, 197, 134, 192},
 			{TokenKind::Number, 181, 206, 168},
@@ -105,6 +114,26 @@ namespace Graphite {
 
 		static_assert(std::size(kDarkChrome) == static_cast<std::size_t>(ChromeColor::Count));
 
+		// The line bands are deliberately translucent: they sit behind text the syntax
+		// palette has already coloured, and an opaque band would hide it.
+		constexpr GitEntry kDarkGit[] = {
+			{GitColor::DiffAddedLine, 46, 80, 46, 90},
+			{GitColor::DiffRemovedLine, 90, 46, 46, 90},
+			{GitColor::DiffAddedText, 152, 195, 121},
+			{GitColor::DiffRemovedText, 224, 108, 117},
+			{GitColor::GutterAdded, 106, 153, 85},
+			{GitColor::GutterModified, 97, 175, 239},
+			{GitColor::GutterRemoved, 224, 108, 117},
+			{GitColor::GraphLane1, 97, 175, 239},
+			{GitColor::GraphLane2, 152, 195, 121},
+			{GitColor::GraphLane3, 229, 192, 123},
+			{GitColor::GraphLane4, 198, 120, 221},
+			{GitColor::GraphLane5, 86, 182, 194},
+			{GitColor::GraphLane6, 224, 108, 117},
+		};
+
+		static_assert(std::size(kDarkGit) == static_cast<std::size_t>(GitColor::Count));
+
 		constexpr SyntaxEntry kLightSyntax[] = {
 			{TokenKind::Keyword, 0, 0, 255},
 			{TokenKind::Number, 9, 134, 88},
@@ -155,16 +184,42 @@ namespace Graphite {
 
 		static_assert(std::size(kLightChrome) == static_cast<std::size_t>(ChromeColor::Count));
 
-		template <std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount>
+		constexpr GitEntry kLightGit[] = {
+			{GitColor::DiffAddedLine, 200, 235, 200, 140},
+			{GitColor::DiffRemovedLine, 245, 200, 200, 140},
+			{GitColor::DiffAddedText, 34, 102, 34},
+			{GitColor::DiffRemovedText, 150, 30, 30},
+			{GitColor::GutterAdded, 40, 120, 40},
+			{GitColor::GutterModified, 30, 100, 180},
+			{GitColor::GutterRemoved, 170, 40, 40},
+			{GitColor::GraphLane1, 30, 100, 180},
+			{GitColor::GraphLane2, 40, 120, 40},
+			{GitColor::GraphLane3, 170, 120, 20},
+			{GitColor::GraphLane4, 130, 60, 170},
+			{GitColor::GraphLane5, 20, 130, 140},
+			{GitColor::GraphLane6, 170, 40, 40},
+		};
+
+		static_assert(std::size(kLightGit) == static_cast<std::size_t>(GitColor::Count));
+
+		template <std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount,
+				  std::size_t GitCount>
 		ResolvedScheme Build(const SyntaxEntry (&syntax)[SyntaxCount],
 							  const EditorEntry (&editor)[EditorCount],
-							  const ChromeEntry (&chrome)[ChromeCount])
+							  const ChromeEntry (&chrome)[ChromeCount],
+							  const GitEntry (&git)[GitCount])
 		{
 			ResolvedScheme scheme;
 
 			for (const ChromeEntry& entry : chrome)
 			{
 				scheme.Chrome[static_cast<std::size_t>(entry.Color)] =
+					FromBytes(entry.R, entry.G, entry.B, entry.A);
+			}
+
+			for (const GitEntry& entry : git)
+			{
+				scheme.Git[static_cast<std::size_t>(entry.Color)] =
 					FromBytes(entry.R, entry.G, entry.B, entry.A);
 			}
 
@@ -190,12 +245,12 @@ namespace Graphite {
 
 		ResolvedScheme MakeDark()
 		{
-			return Build(kDarkSyntax, kDarkEditor, kDarkChrome);
+			return Build(kDarkSyntax, kDarkEditor, kDarkChrome, kDarkGit);
 		}
 
 		ResolvedScheme MakeLight()
 		{
-			return Build(kLightSyntax, kLightEditor, kLightChrome);
+			return Build(kLightSyntax, kLightEditor, kLightChrome, kLightGit);
 		}
 	}
 

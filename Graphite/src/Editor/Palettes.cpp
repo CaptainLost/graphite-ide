@@ -54,4 +54,28 @@ namespace Graphite {
 
 		return palette;
 	}
+
+	GitPalette ReadGitPalette(const ResolvedScheme& scheme)
+	{
+		const auto of = [&scheme](GitColor color) {
+			return ToImU32(scheme.Git[static_cast<std::size_t>(color)]);
+		};
+
+		GitPalette palette;
+		palette.DiffAddedLine = of(GitColor::DiffAddedLine);
+		palette.DiffRemovedLine = of(GitColor::DiffRemovedLine);
+		palette.DiffAddedText = of(GitColor::DiffAddedText);
+		palette.DiffRemovedText = of(GitColor::DiffRemovedText);
+		palette.GutterAdded = of(GitColor::GutterAdded);
+		palette.GutterModified = of(GitColor::GutterModified);
+		palette.GutterRemoved = of(GitColor::GutterRemoved);
+
+		// Read through the enum rather than by arithmetic on GraphLane1, so adding a lane
+		// to the enum without adding it here fails to compile instead of drawing black.
+		palette.Lanes = {of(GitColor::GraphLane1), of(GitColor::GraphLane2),
+						 of(GitColor::GraphLane3), of(GitColor::GraphLane4),
+						 of(GitColor::GraphLane5), of(GitColor::GraphLane6)};
+
+		return palette;
+	}
 }

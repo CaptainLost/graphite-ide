@@ -23,6 +23,11 @@ namespace Graphite {
 		{
 			return scheme.Chrome[static_cast<std::size_t>(color)];
 		}
+
+		const Core::Color& ColorIn(const ResolvedScheme& scheme, GitColor color)
+		{
+			return scheme.Git[static_cast<std::size_t>(color)];
+		}
 	}
 
 	SchemeSection::SchemeSection(ActiveScheme& scheme, ModalGate& modals)
@@ -189,6 +194,7 @@ namespace Graphite {
 		RenderGroup<TokenKind>("Syntax", static_cast<std::size_t>(TokenKind::Count));
 		RenderGroup<EditorColor>("Editor", static_cast<std::size_t>(EditorColor::Count));
 		RenderGroup<ChromeColor>("Application", static_cast<std::size_t>(ChromeColor::Count));
+		RenderGroup<GitColor>("Git", static_cast<std::size_t>(GitColor::Count));
 
 		// Asked before deleting because the file is the user's own work and there is no undo.
 		// A scheme that was renamed or deleted between the ask and the answer is no longer worth

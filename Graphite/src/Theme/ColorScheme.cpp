@@ -69,17 +69,44 @@ namespace Graphite {
 		return {};
 	}
 
+	ColorNames NamesOf(GitColor color)
+	{
+		switch (color)
+		{
+			case GitColor::DiffAddedLine: return {"diffAddedLine", "Diff added line"};
+			case GitColor::DiffRemovedLine: return {"diffRemovedLine", "Diff removed line"};
+			case GitColor::DiffAddedText: return {"diffAddedText", "Diff added text"};
+			case GitColor::DiffRemovedText: return {"diffRemovedText", "Diff removed text"};
+			case GitColor::GutterAdded: return {"gutterAdded", "Gutter added"};
+			case GitColor::GutterModified: return {"gutterModified", "Gutter modified"};
+			case GitColor::GutterRemoved: return {"gutterRemoved", "Gutter removed"};
+			case GitColor::GraphLane1: return {"graphLane1", "Graph lane 1"};
+			case GitColor::GraphLane2: return {"graphLane2", "Graph lane 2"};
+			case GitColor::GraphLane3: return {"graphLane3", "Graph lane 3"};
+			case GitColor::GraphLane4: return {"graphLane4", "Graph lane 4"};
+			case GitColor::GraphLane5: return {"graphLane5", "Graph lane 5"};
+			case GitColor::GraphLane6: return {"graphLane6", "Graph lane 6"};
+			case GitColor::Count: break;
+		}
+
+		return {};
+	}
+
 	std::string_view NameOf(TokenKind kind) { return NamesOf(kind).Key; }
 
 	std::string_view NameOf(EditorColor color) { return NamesOf(color).Key; }
 
 	std::string_view NameOf(ChromeColor color) { return NamesOf(color).Key; }
 
+	std::string_view NameOf(GitColor color) { return NamesOf(color).Key; }
+
 	std::string_view LabelOf(TokenKind kind) { return NamesOf(kind).Label; }
 
 	std::string_view LabelOf(EditorColor color) { return NamesOf(color).Label; }
 
 	std::string_view LabelOf(ChromeColor color) { return NamesOf(color).Label; }
+
+	std::string_view LabelOf(GitColor color) { return NamesOf(color).Label; }
 
 	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base)
 	{
@@ -106,6 +133,14 @@ namespace Graphite {
 			if (scheme.Chrome[index])
 			{
 				resolved.Chrome[index] = *scheme.Chrome[index];
+			}
+		}
+
+		for (std::size_t index = 0; index < scheme.Git.size(); ++index)
+		{
+			if (scheme.Git[index])
+			{
+				resolved.Git[index] = *scheme.Git[index];
 			}
 		}
 

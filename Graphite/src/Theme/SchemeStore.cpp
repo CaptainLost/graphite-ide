@@ -16,6 +16,7 @@ namespace Graphite {
 		constexpr std::string_view kSyntaxPrefix = "syntax.";
 		constexpr std::string_view kEditorPrefix = "editor.";
 		constexpr std::string_view kChromePrefix = "ui.";
+		constexpr std::string_view kGitPrefix = "git.";
 
 		std::optional<std::size_t> IndexOfSyntax(std::string_view name)
 		{
@@ -50,6 +51,19 @@ namespace Graphite {
 				 ++color)
 			{
 				if (NameOf(static_cast<ChromeColor>(color)) == name)
+				{
+					return color;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<std::size_t> IndexOfGit(std::string_view name)
+		{
+			for (std::size_t color = 0; color < static_cast<std::size_t>(GitColor::Count); ++color)
+			{
+				if (NameOf(static_cast<GitColor>(color)) == name)
 				{
 					return color;
 				}
@@ -131,6 +145,14 @@ namespace Graphite {
 					continue;
 				}
 			}
+			else if (name.starts_with(kGitPrefix))
+			{
+				if (const auto index = IndexOfGit(name.substr(kGitPrefix.size())))
+				{
+					scheme.Git[*index] = *color;
+					continue;
+				}
+			}
 
 			// A scheme written against a newer version, naming a colour this one does not have.
 			APP_WARN("Colour scheme '{}' names an unknown colour '{}'", file.string(), key);
@@ -191,6 +213,15 @@ namespace Graphite {
 				json.Set(std::string(kChromePrefix) +
 							 std::string(NameOf(static_cast<ChromeColor>(color))),
 						 Core::ToHexColor(*scheme.Chrome[color]));
+			}
+		}
+
+		for (std::size_t color = 0; color < scheme.Git.size(); ++color)
+		{
+			if (scheme.Git[color].has_value())
+			{
+				json.Set(std::string(kGitPrefix) + std::string(NameOf(static_cast<GitColor>(color))),
+						 Core::ToHexColor(*scheme.Git[color]));
 			}
 		}
 

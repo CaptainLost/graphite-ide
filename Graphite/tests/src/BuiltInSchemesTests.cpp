@@ -91,3 +91,36 @@ TEST_CASE("Both bracket highlights are translucent in both built-ins")
 		CHECK(base->Editor[unmatched].A < 1.0f);
 	}
 }
+
+TEST_CASE("Both built-in schemes define every git colour")
+{
+	for (const Graphite::ResolvedScheme& scheme : {Graphite::DarkScheme(), Graphite::LightScheme()})
+	{
+		for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::GitColor::Count);
+			 ++index)
+		{
+			// A colour left at its default is fully transparent black, which draws as
+			// nothing at all — the row simply disappears rather than looking wrong.
+			CHECK(scheme.Git[index].A > 0.0f);
+		}
+	}
+}
+
+TEST_CASE("The graph lanes are visibly different from one another")
+{
+	const Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
+
+	const auto lane = [&scheme](Graphite::GitColor color) {
+		return scheme.Git[static_cast<std::size_t>(color)];
+	};
+
+	// Adjacent lanes carry adjacent branches. Two lanes that read the same defeat the
+	// entire point of drawing lanes. Core::Color has no operator==, so the channels are
+	// compared one at a time.
+	const auto differ = [](const Core::Color& a, const Core::Color& b) {
+		return a.R != b.R || a.G != b.G || a.B != b.B || a.A != b.A;
+	};
+
+	CHECK(differ(lane(Graphite::GitColor::GraphLane1), lane(Graphite::GitColor::GraphLane2)));
+	CHECK(differ(lane(Graphite::GitColor::GraphLane2), lane(Graphite::GitColor::GraphLane3)));
+}
