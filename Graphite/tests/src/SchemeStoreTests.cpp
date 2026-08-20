@@ -2,6 +2,7 @@
 
 #include "TempDirectory.h"
 #include "Theme/BuiltInSchemes.h"
+#include "Theme/ColorScheme.h"
 #include "Theme/SchemeStore.h"
 
 #include <algorithm>
@@ -13,6 +14,84 @@ namespace {
 	{
 		std::ofstream out(path, std::ios::binary);
 		out << contents;
+	}
+
+	// A colour nothing else in the scheme has. Whole bytes, because a scheme file stores hex
+	// pairs and anything finer would come back rounded.
+	Core::Color DistinctColor(std::size_t index)
+	{
+		const float channel = static_cast<float>(index + 1) / 255.0f;
+
+		return Core::Color{channel, channel, channel, 1.0f};
+	}
+
+	constexpr std::size_t kSyntaxCount = static_cast<std::size_t>(Graphite::TokenKind::Count);
+	constexpr std::size_t kEditorCount = static_cast<std::size_t>(Graphite::EditorColor::Count);
+	constexpr std::size_t kChromeCount = static_cast<std::size_t>(Graphite::ChromeColor::Count);
+
+	// The three categories are numbered end to end so that no two colours anywhere in the
+	// scheme share a value: a category wired to another one's names or prefix would then show
+	// up as the wrong colour rather than as the right one by accident.
+	constexpr std::size_t kEditorBase = kSyntaxCount;
+	constexpr std::size_t kChromeBase = kSyntaxCount + kEditorCount;
+}
+
+// Three categories with parallel but separate machinery — a sparse array, a resolve loop, a
+// name, a store prefix with its load branch and its save loop. Missing one of those for one
+// category compiles and half-works: an override that loads but never applies, or applies but
+// never persists. Saturating all three and running the whole path is what catches that; the
+// static_asserts on the built-in tables only guard completeness, not the wiring.
+TEST_CASE("Every colour of every category survives save, load and resolve")
+{
+	const TempDirectory temp;
+
+	Graphite::ColorScheme scheme;
+	scheme.Base = Graphite::BuiltInScheme::Dark;
+
+	for (std::size_t index = 0; index < kSyntaxCount; ++index)
+	{
+		scheme.Syntax[index] = DistinctColor(index);
+	}
+
+	for (std::size_t index = 0; index < kEditorCount; ++index)
+	{
+		scheme.Editor[index] = DistinctColor(kEditorBase + index);
+	}
+
+	for (std::size_t index = 0; index < kChromeCount; ++index)
+	{
+		scheme.Chrome[index] = DistinctColor(kChromeBase + index);
+	}
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "saturated", scheme));
+
+	const Graphite::ColorScheme loaded =
+		Graphite::LoadScheme(temp.GetPath() / "saturated.json");
+
+	const Graphite::ResolvedScheme resolved =
+		Graphite::Resolve(loaded, Graphite::SchemeFor(loaded.Base));
+
+	for (std::size_t index = 0; index < kSyntaxCount; ++index)
+	{
+		CAPTURE(index);
+		REQUIRE(loaded.Syntax[index].has_value());
+		CHECK(resolved.Syntax[index].R == doctest::Approx(DistinctColor(index).R).epsilon(0.001));
+	}
+
+	for (std::size_t index = 0; index < kEditorCount; ++index)
+	{
+		CAPTURE(index);
+		REQUIRE(loaded.Editor[index].has_value());
+		CHECK(resolved.Editor[index].R ==
+			  doctest::Approx(DistinctColor(kEditorBase + index).R).epsilon(0.001));
+	}
+
+	for (std::size_t index = 0; index < kChromeCount; ++index)
+	{
+		CAPTURE(index);
+		REQUIRE(loaded.Chrome[index].has_value());
+		CHECK(resolved.Chrome[index].R ==
+			  doctest::Approx(DistinctColor(kChromeBase + index).R).epsilon(0.001));
 	}
 }
 
