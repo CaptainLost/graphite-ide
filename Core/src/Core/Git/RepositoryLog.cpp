@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Git/LineRangeTracking.h"
 
 #include <git2.h>
 
@@ -184,6 +185,7 @@ namespace Core {
 		git_oid id{};
 
 		std::optional<std::filesystem::path> tracked = request.File;
+		std::optional<LineRange> trackedRange = request.Lines;
 
 		while (commits.size() < request.MaxCount && git_revwalk_next(&id, walk) == 0)
 		{
@@ -222,6 +224,28 @@ namespace Core {
 				continue;
 			}
 
+			std::optional<LineRange> nextRange = trackedRange;
+
+			if (trackedRange.has_value())
+			{
+				if (!TouchesRange(*file, *trackedRange))
+				{
+					// The commit changed the file but not these lines. Its edits still move
+					// them, so the range is mapped even though the commit is dropped.
+					nextRange = MapRangeToParent(*file, *trackedRange);
+
+					if (!nextRange.has_value())
+					{
+						break;
+					}
+
+					trackedRange = nextRange;
+					continue;
+				}
+
+				nextRange = MapRangeToParent(*file, *trackedRange);
+			}
+
 			// A rename moves the name the older commits know this file by. Update the
 			// tracked path before the next iteration, or the history stops here.
 			if (request.FollowRenames && file->Change == FileChange::Renamed
@@ -231,6 +255,16 @@ namespace Core {
 			}
 
 			commits.push_back(std::move(summary));
+
+			if (trackedRange.has_value())
+			{
+				if (!nextRange.has_value())
+				{
+					break;
+				}
+
+				trackedRange = nextRange;
+			}
 		}
 
 		git_revwalk_free(walk);

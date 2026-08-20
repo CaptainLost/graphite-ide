@@ -151,3 +151,61 @@ TEST_CASE("The history of a path that never existed is empty rather than an erro
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().empty());
 }
+
+TEST_CASE("A line range's history skips commits that edited elsewhere in the file")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\ntwo\nthree\nfour\nfive\n");
+	fixture.Commit("add a");
+
+	fixture.Write("a.txt", "one\ntwo\nthree\nfour\nFIVE\n");
+	fixture.Commit("edit the bottom");
+
+	fixture.Write("a.txt", "ONE\ntwo\nthree\nfour\nFIVE\n");
+	fixture.Commit("edit the top");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.File = std::filesystem::path("a.txt");
+	request.Lines = Core::LineRange{1, 1};
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+
+	// "edit the bottom" changed the same file and must not appear: the question was about
+	// line one, and that is the whole point of asking by range rather than by file.
+	CHECK(Summaries(log.GetValue()) == std::vector<std::string>{"edit the top", "add a"});
+}
+
+TEST_CASE("A line range's history follows the lines as earlier commits move them")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "target\n");
+	fixture.Commit("add the target line");
+
+	fixture.Write("a.txt", "header\nheader\nheader\ntarget\n");
+	fixture.Commit("insert three lines above");
+
+	fixture.Write("a.txt", "header\nheader\nheader\nTARGET\n");
+	fixture.Commit("edit the target line");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.File = std::filesystem::path("a.txt");
+	request.Lines = Core::LineRange{4, 4};
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+
+	// The line is number four today and was number one when it was written. Without
+	// mapping the range backwards, the walk would look at line four of a one-line file
+	// and lose the commit that created it.
+	CHECK(Summaries(log.GetValue())
+		  == std::vector<std::string>{"edit the target line", "add the target line"});
+}
