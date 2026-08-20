@@ -7,6 +7,8 @@
 #include "Editor/TextEditorWidget.h"
 #include "Lang/Registry/LanguageRegistry.h"
 
+#include "Git/GitView.h"
+
 #include "Panels/ConsolePanel.h"
 
 #include "Panels/ExplorerPanel.h"
@@ -106,8 +108,9 @@ namespace Graphite {
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
 											   m_EditorSettings, m_PreviewSemantics)));
 
-		m_GitView = static_cast<GitView*>(
+		auto* gitView = static_cast<GitView*>(
 			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme)));
+		gitView->SubscribeTo(m_Events);
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);

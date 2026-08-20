@@ -5,6 +5,7 @@
 #include "Git/GitModel.h"
 #include "Theme/ActiveScheme.h"
 
+#include "Core/Events/EventBus.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Ref.h"
 #include "Core/UI/Panel.h"
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <unordered_set>
 
 namespace Graphite {
 
@@ -38,6 +40,11 @@ namespace Graphite {
 
 		void OnImGuiRender() override;
 
+		// Resets the first-log latch on every open and close, so a folder opened after
+		// another one leaves - which drops the model's log the same way a close does -
+		// gets asked for again rather than leaving the history column loading forever.
+		void SubscribeTo(Core::EventBus& events);
+
 	private:
 		void RenderRefs(const std::vector<Core::Branch>& branches);
 		void RenderCommits(const GitPalette& palette);
@@ -51,9 +58,15 @@ namespace Graphite {
 
 		std::optional<std::string> m_SelectedRef;
 
-		// Set once, the first frame the panel draws with no log snapshot yet — an empty Ref
-		// means HEAD. Guards RequestLog so it fires once rather than every frame the log is
-		// still in flight.
+		// Set once per workspace, the first frame the panel draws with no log snapshot yet
+		// — an empty Ref means HEAD. Guards RequestLog so it fires once rather than every
+		// frame the log is still in flight. Reset by SubscribeTo's handlers whenever the
+		// workspace opens or closes, since GitModel::Clear() drops the log on both.
 		bool m_LogRequested = false;
+
+		// Which commits were expanded as of last frame, so a commit dropped from this set
+		// this frame was just collapsed. Compared rather than driven by a callback out of
+		// CommitListView, which must not know the model it would otherwise call into.
+		std::unordered_set<Core::Oid> m_PreviouslyExpanded;
 	};
 }

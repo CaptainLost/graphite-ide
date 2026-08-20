@@ -9,7 +9,6 @@
 #include "Editor/PreviewSemantics.h"
 #include "App/TitleBar.h"
 #include "Git/GitModel.h"
-#include "Git/GitView.h"
 #include "Git/RepositoryGitPort.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
@@ -211,7 +210,6 @@ namespace Graphite {
 
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
-		GitView* m_GitView = nullptr;
 
 		// The root the language servers were last warmed for, so the comparison in OnImGuiRender
 		// fires once per folder rather than once per frame.

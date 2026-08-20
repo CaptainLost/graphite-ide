@@ -1,10 +1,12 @@
 #include "Git/GitView.h"
 
 #include "Git/GitPalette.h"
+#include "Workspace/Workspace.h"
 
 #include <imgui.h>
 
 #include <format>
+#include <unordered_set>
 
 namespace Graphite {
 
@@ -42,6 +44,18 @@ namespace Graphite {
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme)
 		: Core::Panel("git", "Git", false), m_Model(model), m_Scheme(scheme)
 	{
+	}
+
+	void GitView::SubscribeTo(Core::EventBus& events)
+	{
+		// GitModel::Clear() drops the log on both events, and nothing else re-requests it,
+		// so without this a folder opened after another one leaves the history column
+		// loading forever - RenderCommits' own latch would stay set from the first folder.
+		events.Subscribe<WorkspaceOpenedEvent>(
+			[this](const WorkspaceOpenedEvent&) { m_LogRequested = false; });
+
+		events.Subscribe<WorkspaceClosedEvent>(
+			[this](const WorkspaceClosedEvent&) { m_LogRequested = false; });
 	}
 
 	void GitView::OnImGuiRender()
@@ -141,15 +155,39 @@ namespace Graphite {
 			m_Commits.Render(*page, graph, palette, diffOf);
 
 			// Driven from here, not from inside the list: the widget must not know the
-			// model. Asking for a diff already held, or already in flight, costs nothing,
-			// which is what makes it safe to ask about every expanded commit every frame.
+			// model. Asking for a diff already held, in flight, or previously failed costs
+			// nothing on the model side, which is what makes it safe to ask about every
+			// expanded commit every frame.
+			std::unordered_set<Core::Oid> currentlyExpanded;
+
 			for (const Core::CommitSummary& commit : page->Commits)
 			{
-				if (m_Commits.IsExpanded(commit.Id) && !m_Model.GetDiffFor(commit.Id))
+				if (!m_Commits.IsExpanded(commit.Id))
+				{
+					continue;
+				}
+
+				currentlyExpanded.insert(commit.Id);
+
+				if (!m_Model.GetDiffFor(commit.Id))
 				{
 					m_Model.RequestDiffFor(commit.Id);
 				}
 			}
+
+			// A commit expanded last frame but not this one was just collapsed. Forgetting
+			// its cached diff here, rather than leaving a failed one to keep being
+			// suppressed forever, is what gives a failure a way back: expanding the row
+			// again is the same gesture that asks for the diff in the first place.
+			for (const Core::Oid& commit : m_PreviouslyExpanded)
+			{
+				if (!currentlyExpanded.contains(commit))
+				{
+					m_Model.ForgetDiffFor(commit);
+				}
+			}
+
+			m_PreviouslyExpanded = std::move(currentlyExpanded);
 
 			if (m_Commits.TakeLoadMoreRequest())
 			{
