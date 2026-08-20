@@ -518,4 +518,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0486](0486-insert-non-document-rows-above-rowmap-rather-than-inside-it.md) | Insert non-document rows above RowMap rather than inside it | proposed | 2026-08-16 |
 | [0487](0487-correct-adr-0482s-premise-about-project-data.md) | Correct ADR 0482's premise about project data | proposed | 2026-08-16 |
 | [0488](0488-ship-clangd-with-the-release.md) | Ship clangd with the release | proposed | 2026-08-16 |
+| [0489](0489-open-a-previewed-file-with-the-language-server.md) | Open a previewed file with the language server | proposed | 2026-08-20 |
 <!-- /adr-index -->
