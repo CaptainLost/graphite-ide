@@ -3,6 +3,7 @@
 #include "Git/CommitLabels.h"
 #include "Git/CommitRows.h"
 
+#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 #include <chrono>
@@ -21,38 +22,6 @@ namespace Graphite {
 			metrics.RowHeight = ImGui::GetTextLineHeightWithSpacing();
 			metrics.DotRadius = metrics.LaneWidth * 0.22f;
 			return metrics;
-		}
-
-		// One letter for the badge beside a changed file. Unmodified never reaches a diff's
-		// file list in practice, but a blank is a safer default than a claim about a change
-		// that did not happen.
-		char ChangeLetter(Core::FileChange change)
-		{
-			switch (change)
-			{
-			case Core::FileChange::Added:
-				return 'A';
-			case Core::FileChange::Modified:
-				return 'M';
-			case Core::FileChange::Deleted:
-				return 'D';
-			case Core::FileChange::Renamed:
-				return 'R';
-			case Core::FileChange::Copied:
-				return 'C';
-			case Core::FileChange::TypeChanged:
-				return 'T';
-			case Core::FileChange::Unmodified:
-				return ' ';
-			}
-
-			return ' ';
-		}
-
-		// A deleted file has no new path, so the path shown must fall back to the old one.
-		const std::filesystem::path& DisplayPath(const Core::FileDiff& file)
-		{
-			return file.NewPath.empty() ? file.OldPath : file.NewPath;
 		}
 	}
 
@@ -118,6 +87,11 @@ namespace Graphite {
 		int firstDrawn = static_cast<int>(rows.Rows.size());
 		int lastDrawn = 0;
 
+		// Every row here is a plain Selectable at the font's own line height — the same
+		// height metrics.RowHeight uses to seek the clipper and CommitGraphView uses to
+		// place the graph. A control with its own fixed height, such as an ArrowButton,
+		// would advance a commit row past that height and drift the graph away from the
+		// row it labels, a pixel or more per row.
 		ImGuiListClipper clipper;
 		clipper.Begin(static_cast<int>(rows.Rows.size()), metrics.RowHeight);
 
@@ -138,17 +112,13 @@ namespace Graphite {
 				{
 					const bool expanded = IsExpanded(commit.Id);
 
-					if (ImGui::ArrowButton("##expand", expanded ? ImGuiDir_Down : ImGuiDir_Right))
-					{
-						ToggleExpanded(commit.Id);
-					}
-
-					ImGui::SameLine();
-
-					const std::string label =
-						std::format("{}  {}  {}  {}", commit.Id.ShortHex(),
-									AuthorInitials(commit.Author), RelativeAge(commit.Author.When, now),
-									commit.Summary);
+					// The arrow lives in the label rather than as its own ArrowButton, so a
+					// commit row stays a plain Selectable — see the note above the clipper.
+					const std::string label = std::format(
+						"{}  {}  {}  {}  {}",
+						expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT,
+						commit.Id.ShortHex(), AuthorInitials(commit.Author),
+						RelativeAge(commit.Author.When, now), commit.Summary);
 
 					if (ImGui::Selectable(label.c_str(), false))
 					{
@@ -159,30 +129,41 @@ namespace Graphite {
 				{
 					const std::shared_ptr<const Core::Diff> diff = diffOf(commit.Id);
 
-					// The row layout was built from this same diffOf a moment ago; a file row
-					// only fails to resolve if the cache evicted the entry in between, which
-					// a fixed-size cache can do.
-					if (diff && row.File < diff->Files.size())
+					// The row layout was built from this same diffOf a moment ago; a file
+					// row only fails to resolve if the cache evicted the entry in between,
+					// which a fixed-size cache can do.
+					const Core::FileDiff* file =
+						(diff && row.File < diff->Files.size()) ? &diff->Files[row.File] : nullptr;
+
+					ImGui::Indent(ImGui::GetFrameHeight());
+
+					if (file != nullptr)
 					{
-						const Core::FileDiff& file = diff->Files[row.File];
-						const std::filesystem::path& path = DisplayPath(file);
+						const std::filesystem::path& path = DisplayPath(*file);
 
 						const bool selected = m_SelectedFile.has_value() &&
 											  m_SelectedFile->Commit == commit.Id &&
 											  m_SelectedFile->Path == path;
 
 						const std::string label =
-							std::format("{}  {}", ChangeLetter(file.Change), path.string());
-
-						ImGui::Indent(ImGui::GetFrameHeight());
+							std::format("{}  {}", ChangeLetter(file->Change), path.string());
 
 						if (ImGui::Selectable(label.c_str(), selected))
 						{
 							m_SelectedFile = FileSelection{commit.Id, path};
 						}
-
-						ImGui::Unindent(ImGui::GetFrameHeight());
 					}
+					else
+					{
+						// Drawn disabled but still one row tall: a row that drew nothing
+						// would consume no height, shifting every row below it and
+						// desynchronising the graph from the list for this frame.
+						ImGui::BeginDisabled();
+						ImGui::Selectable("…", false);
+						ImGui::EndDisabled();
+					}
+
+					ImGui::Unindent(ImGui::GetFrameHeight());
 				}
 
 				ImGui::Unindent(graphWidth);
