@@ -1,8 +1,11 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Git/Commit.h"
+#include "Core/Git/Requests.h"
 
 #include <filesystem>
+#include <vector>
 
 struct git_repository;
 
@@ -22,6 +25,10 @@ namespace Core {
 		Repository& operator=(const Repository&) = delete;
 
 		bool IsIgnored(const std::filesystem::path& path) const;
+
+		// Newest first, in topological then date order — the order a history is read in.
+		// A repository whose HEAD is unborn answers with an empty list, not an error.
+		Result<std::vector<CommitSummary>> QueryLog(const LogRequest& request) const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
