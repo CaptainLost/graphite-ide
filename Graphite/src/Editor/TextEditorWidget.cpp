@@ -1792,15 +1792,11 @@ namespace Graphite {
 		// A fixed set of slots rather than a map, and bounded by construction rather than
 		// pruned: nothing tells this file when a document closes — the map of syntax caches is
 		// pruned by DocumentWindows, which owns it and can see the open list — so a map here
-		// could only ever grow. Eight is well past any dock layout a screen has room for, and
-		// the worst a ninth visible editor can do is take the oldest slot and recompute.
+		// could only ever grow. Eight is well past any dock layout a screen has room for, but
+		// the bound is not free: with more visible editors than slots the round-robin eviction
+		// walks the ring and every one of them misses and recomputes each frame, not merely the
+		// ones past the eighth. Nine is the number to keep an eye on, not the ninth editor.
 		constexpr std::size_t kBracketMemoSlots = 8;
-
-		std::array<BracketMemo, kBracketMemoSlots> s_Brackets;
-
-		// Which slot the next document not already held takes. Round robin, so a layout that
-		// somehow exceeds the slots degrades to recomputing rather than to anything worse.
-		std::size_t s_NextBracketMemo = 0;
 
 		// Returned by value: three words, and a reference into the store above would be left
 		// dangling-in-meaning by the next document's claim on the same slot.
@@ -1815,6 +1811,16 @@ namespace Graphite {
 			// highlighted rather than the wrong thing.
 			if (syntax == nullptr)
 				return std::nullopt;
+
+			// Function-local rather than namespace-scope, per ADR 0033 on complex initialization
+			// of global objects: BracketMemo holds a std::filesystem::path, so the array cannot
+			// be constant-initialised and a namespace-scope definition would be built at an
+			// order nothing here decides.
+			static std::array<BracketMemo, kBracketMemoSlots> s_Brackets;
+
+			// Which slot the next document not already held takes. Round robin, so a layout that
+			// exceeds the slots degrades to recomputing rather than to anything worse.
+			static std::size_t s_NextBracketMemo = 0;
 
 			const std::size_t revision = buffer.GetRevision();
 
