@@ -4,6 +4,7 @@
 #include "Git/GitPort.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -37,6 +38,15 @@ namespace Graphite {
 		// counting opens can, because a stale-then-reopened root shows up as two opens
 		// where a silently reused handle would show up as one.
 		std::uint64_t GetOpenCount() const { return m_OpenCount.load(); }
+
+		// How many handles this thread currently has cached, for this port's root or any
+		// other. Where GetOpenCount only ever grows, this can shrink: a switch from one
+		// root to another has to leave the old root's entry evicted, not merely open a
+		// second one for the new root, and an open count cannot tell "evicted" from "left
+		// behind" - both look the same from the outside once something has been opened for
+		// the new root. This can, because a leaked entry keeps the count up. Must be
+		// called from the thread whose cache is in question.
+		std::size_t GetLiveHandleCountForThisThread() const;
 
 	private:
 		Core::Repository* RepositoryForThisThread();

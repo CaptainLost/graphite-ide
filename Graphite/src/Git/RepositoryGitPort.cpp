@@ -7,6 +7,26 @@
 
 namespace Graphite {
 
+	namespace {
+
+		struct CachedRepository
+		{
+			Core::Repository Repo;
+			std::uint64_t Generation;
+		};
+
+		// One map per thread, shared by every RepositoryGitPort instance that happens to
+		// run on that thread - see the hazard this creates, described where
+		// RepositoryForThisThread reads from it below. Factored out of that function so
+		// GetLiveHandleCountForThisThread can read the same storage without duplicating
+		// the thread_local declaration.
+		std::unordered_map<std::string, CachedRepository>& HandlesForThisThread()
+		{
+			static thread_local std::unordered_map<std::string, CachedRepository> handles;
+			return handles;
+		}
+	}
+
 	RepositoryGitPort::RepositoryGitPort(std::filesystem::path root)
 		: m_Root(Core::ToUtf8(root))
 	{
@@ -38,21 +58,18 @@ namespace Graphite {
 		// text still matches but whose repository has since been recreated is recognised as
 		// stale and dropped, rather than answering queries against a repository that is gone.
 		//
-		// This map is function-local `static thread_local`, so it is shared by every
-		// RepositoryGitPort instance that happens to run on this thread, keyed by root text
-		// while the generation used to judge staleness comes from `this`. With the single
-		// instance the layer owns, that is harmless. Two instances pointed at the same root
-		// on the same thread would not be: each would see the other's entry as merely
-		// "some cached handle for this root", reuse or evict it based on its own
-		// generation counter, and the two would fight over one cache slot instead of each
-		// keeping its own.
-		struct CachedRepository
-		{
-			Core::Repository Repo;
-			std::uint64_t Generation;
-		};
-
-		static thread_local std::unordered_map<std::string, CachedRepository> handles;
+		// This map is `thread_local`, shared by every RepositoryGitPort instance that
+		// happens to run on this thread, keyed by root text while the generation used to
+		// judge staleness comes from `this`. With the single instance the layer owns, that
+		// is harmless. Two instances on the same thread would not be, and the unconditional
+		// sweep below makes that worse than it used to be: two instances at the *same* root
+		// would fight over one slot, each reusing or evicting it by its own generation
+		// counter as before, but two instances at *different* roots now also collide - each
+		// call's sweep sees the other instance's root as "not the current one" and evicts
+		// it, so the two would take turns evicting and reopening each other's handle on
+		// every query instead of each keeping its own. Not reachable today: the layer owns
+		// exactly one instance.
+		auto& handles = HandlesForThisThread();
 
 		// SetRoot cannot reach into this map itself: it runs on the UI thread, and this
 		// cache is thread_local to whichever worker thread opened the handle - there is no
@@ -114,6 +131,11 @@ namespace Graphite {
 			handles.emplace(root, CachedRepository{std::move(opened).GetValue(), generation});
 		(void)wasInserted;
 		return &inserted->second.Repo;
+	}
+
+	std::size_t RepositoryGitPort::GetLiveHandleCountForThisThread() const
+	{
+		return HandlesForThisThread().size();
 	}
 
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryStatus()

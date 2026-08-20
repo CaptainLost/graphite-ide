@@ -56,9 +56,14 @@ namespace {
 // The cache RepositoryGitPort keeps is thread_local, so nothing outside the thread that
 // opened a handle can observe whether it is still open - a filesystem assertion after a
 // close would pass whether or not the handle was actually released, because a loose-object
-// test repository holds no lock either way. GetOpenCount is the observable that can
-// actually tell the two apart: a handle reused silently leaves the count unchanged, while a
-// fresh Open() bumps it.
+// test repository holds no lock either way.
+//
+// GetOpenCount only ever grows, so it can tell a handle that was silently reused (count
+// unchanged) from one that was reopened fresh (count bumped) - useful as a regression guard
+// against over-caching, but it cannot tell "the old entry was evicted" from "a second entry
+// was opened alongside it": both look like one more open. GetLiveHandleCountForThisThread
+// is the one that can, because a leaked entry keeps the live count up even after the new
+// root's handle exists - that is what actually proves the fix below.
 
 TEST_CASE("Reopening the same root after a close opens a fresh handle")
 {
@@ -88,4 +93,36 @@ TEST_CASE("Switching to a different root opens a fresh handle for it")
 
 	REQUIRE(port.QueryStatus().HasValue());
 	CHECK(port.GetOpenCount() == 2);
+}
+
+TEST_CASE("Switching to a different root does not leave the old root's handle live")
+{
+	TempRepo repoA;
+	TempRepo repoB;
+	Graphite::RepositoryGitPort port{repoA.GetPath()};
+
+	REQUIRE(port.QueryStatus().HasValue());
+
+	port.SetRoot(repoB.GetPath());
+	REQUIRE(port.QueryStatus().HasValue());
+
+	// Two opens happened (repoA, then repoB), but only one handle should still be alive:
+	// repoA's must have been evicted, not merely left behind alongside repoB's.
+	CHECK(port.GetLiveHandleCountForThisThread() == 1);
+}
+
+TEST_CASE("Closing the workspace does not leave the last root's handle live")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	REQUIRE(port.QueryStatus().HasValue());
+	REQUIRE(port.GetLiveHandleCountForThisThread() == 1);
+
+	port.SetRoot({});
+
+	// A query against an empty root cannot open anything, but it is still this thread's
+	// next chance to sweep the entry the closed root left behind.
+	CHECK_FALSE(port.QueryStatus().HasValue());
+	CHECK(port.GetLiveHandleCountForThisThread() == 0);
 }
