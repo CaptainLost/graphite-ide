@@ -455,3 +455,190 @@ TEST_CASE("Closing the workspace drops the diff too")
 
 	CHECK(model.GetDiff() == nullptr);
 }
+
+namespace {
+
+	Core::Oid IdOf(std::uint8_t value)
+	{
+		Core::Oid id;
+		id.Bytes[0] = value;
+		return id;
+	}
+
+	Core::Diff DiffNaming(const char* path)
+	{
+		Core::Diff diff;
+
+		Core::FileDiff file;
+		file.NewPath = path;
+		file.Change = Core::FileChange::Modified;
+		diff.Files.push_back(std::move(file));
+
+		return diff;
+	}
+}
+
+TEST_CASE("A commit's diff is readable after the next update, under that commit's id")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+	CHECK(model.GetDiffFor(IdOf(1))->Files.size() == 1);
+}
+
+TEST_CASE("A commit nobody asked about has no diff")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// The whole point of keying by commit: an answer can never be shown under a commit
+	// it does not belong to.
+	CHECK(model.GetDiffFor(IdOf(2)) == nullptr);
+}
+
+TEST_CASE("Two commits' diffs are held at the same time")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+
+	port.Diff = DiffNaming("first.txt");
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	port.Diff = DiffNaming("second.txt");
+	model.RequestDiffFor(IdOf(2));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// Expanding a second commit must not collapse the first — that is the difference
+	// between this cache and the single slot it replaces.
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+	REQUIRE(model.GetDiffFor(IdOf(2)) != nullptr);
+	CHECK(model.GetDiffFor(IdOf(1))->Files.front().NewPath == std::filesystem::path("first.txt"));
+	CHECK(model.GetDiffFor(IdOf(2))->Files.front().NewPath == std::filesystem::path("second.txt"));
+}
+
+TEST_CASE("Asking again for a commit already held does not ask the port again")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const int after = port.DiffCalls;
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// A commit's diff cannot change, so re-asking is pure waste — and the list asks for
+	// every expanded commit on every frame it draws.
+	CHECK(port.DiffCalls == after);
+}
+
+TEST_CASE("Asking again while the first answer is still in flight does not ask twice")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.RequestDiffFor(IdOf(1));
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.DiffCalls == 1);
+}
+
+TEST_CASE("A failed diff for a commit leaves no snapshot and reports the error")
+{
+	FakePort port;
+	port.FailDiff = true;
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// Unlike the volatile diff, there is no last-good snapshot to keep here: a commit
+	// that failed has nothing older to fall back to.
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+	CHECK(model.GetLastError().has_value());
+}
+
+TEST_CASE("A failed diff can be asked for again")
+{
+	FakePort port;
+	port.FailDiff = true;
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	port.FailDiff = false;
+	port.Diff = DiffNaming("a.txt");
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// A failure must not poison the entry: the repository may have been busy, and the
+	// reader will simply collapse and expand the row again.
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+}
+
+TEST_CASE("The cache holds a bounded number of commits")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+
+	for (std::size_t index = 0; index < Graphite::GitModel::kCachedDiffs + 4; ++index)
+	{
+		model.RequestDiffFor(IdOf(static_cast<std::uint8_t>(index)));
+		model.OnUpdate(Core::Timestep{0.016f});
+	}
+
+	// The most recently asked for must still be there, and the oldest must have gone —
+	// otherwise a reader who scrolls a long history holds every diff they passed.
+	CHECK(model.GetDiffFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedDiffs + 3)))
+		  != nullptr);
+	CHECK(model.GetDiffFor(IdOf(0)) == nullptr);
+}
+
+TEST_CASE("Closing the workspace drops every cached diff")
+{
+	FakePort port;
+	Core::EventBus events;
+	port.Diff = DiffNaming("a.txt");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(model.GetDiffFor(IdOf(1)) == nullptr);
+}

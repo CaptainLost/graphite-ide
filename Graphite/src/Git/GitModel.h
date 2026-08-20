@@ -5,12 +5,14 @@
 #include "Core/Events/EventBus.h"
 #include "Git/GitPort.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 namespace Graphite {
@@ -48,6 +50,24 @@ namespace Graphite {
 		// answers "what changed in the thing I just clicked", and nothing on disk can
 		// change which thing that is.
 		void RequestDiff(Core::DiffRequest request);
+
+		// The diff of one commit against its first parent. Requested by expanding a row,
+		// and held afterwards: a commit's diff cannot change, so re-asking would be pure
+		// waste — and the list asks about every expanded commit on every frame it draws.
+		//
+		// Asking for a commit already held, or already in flight, does nothing.
+		void RequestDiffFor(const Core::Oid& commit);
+
+		// Null while the answer is in flight, after a failure, and for a commit that was
+		// evicted. In every case the caller's response is the same: draw nothing under
+		// that row yet.
+		std::shared_ptr<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
+
+		// Thirty-two is well past any number of rows a reader expands at once, and bounds
+		// the memory a long scroll can accumulate. Evicting the least recently asked for
+		// costs a re-query if the reader scrolls back, which is a worker-thread walk they
+		// will not notice, against holding every diff they ever passed.
+		static constexpr std::size_t kCachedDiffs = 32;
 
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
@@ -108,6 +128,23 @@ namespace Graphite {
 
 		void MarkDirty();
 
+		struct CachedDiff
+		{
+			// Zero until an answer lands. Non-zero with a null Diff means "in flight".
+			std::uint64_t Requested = 0;
+			std::uint64_t Applied = 0;
+
+			std::shared_ptr<const Core::Diff> Diff;
+
+			// Counts up on every request and every read, so eviction can pick the entry
+			// nobody has looked at for longest. A counter rather than a clock: the model
+			// must stay testable without one.
+			std::uint64_t LastTouched = 0;
+		};
+
+		void Touch(CachedDiff& entry) const;
+		void EvictIfFull();
+
 		std::filesystem::path m_Root;
 
 		bool m_Dirty = false;
@@ -137,6 +174,11 @@ namespace Graphite {
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
 		std::shared_ptr<const Core::LogPage> m_Log;
 		std::shared_ptr<const Core::Diff> m_Diff;
+
+		// Mutable because GetDiffFor is const and still counts as a use — an entry the
+		// reader is looking at every frame must not be the one evicted.
+		mutable std::unordered_map<Core::Oid, CachedDiff> m_CommitDiffs;
+		mutable std::uint64_t m_DiffClock = 0;
 
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;

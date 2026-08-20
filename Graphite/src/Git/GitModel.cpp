@@ -35,6 +35,7 @@ namespace Graphite {
 		m_Branches.reset();
 		m_Log.reset();
 		m_Diff.reset();
+		m_CommitDiffs.clear();
 
 		m_StatusError.reset();
 		m_BranchesError.reset();
@@ -231,5 +232,108 @@ namespace Graphite {
 				m_Diff = std::make_shared<const Core::Diff>(std::move(result).GetValue());
 			});
 		});
+	}
+
+	void GitModel::Touch(CachedDiff& entry) const
+	{
+		entry.LastTouched = ++m_DiffClock;
+	}
+
+	void GitModel::EvictIfFull()
+	{
+		if (m_CommitDiffs.size() < kCachedDiffs)
+		{
+			return;
+		}
+
+		auto oldest = m_CommitDiffs.end();
+
+		for (auto entry = m_CommitDiffs.begin(); entry != m_CommitDiffs.end(); ++entry)
+		{
+			// An entry still in flight is never evicted: its delivery would then arrive
+			// for a key nobody holds and be dropped, and the reader would sit looking at
+			// a row that never fills in.
+			if (entry->second.Requested != entry->second.Applied)
+			{
+				continue;
+			}
+
+			if (oldest == m_CommitDiffs.end() || entry->second.LastTouched < oldest->second.LastTouched)
+			{
+				oldest = entry;
+			}
+		}
+
+		if (oldest != m_CommitDiffs.end())
+		{
+			m_CommitDiffs.erase(oldest);
+		}
+	}
+
+	void GitModel::RequestDiffFor(const Core::Oid& commit)
+	{
+		if (const auto existing = m_CommitDiffs.find(commit); existing != m_CommitDiffs.end())
+		{
+			const bool inFlight = existing->second.Requested != existing->second.Applied;
+
+			if (inFlight || existing->second.Diff != nullptr)
+			{
+				Touch(existing->second);
+				return;
+			}
+		}
+
+		EvictIfFull();
+
+		CachedDiff& entry = m_CommitDiffs[commit];
+		Touch(entry);
+
+		const std::uint64_t generation = ++entry.Requested;
+
+		Core::DiffRequest request;
+		request.Target = Core::DiffTarget::CommitToParent;
+		request.From = commit;
+
+		m_Submit([this, commit, generation, request]() {
+			auto result = m_Port.QueryDiff(request);
+
+			Deliver([this, commit, generation, result = std::move(result)]() mutable {
+				const auto entry = m_CommitDiffs.find(commit);
+
+				// Evicted, or the workspace closed, while the query was running. Dropping
+				// it is right: nothing on screen is waiting for it.
+				if (entry == m_CommitDiffs.end() || generation <= entry->second.Applied)
+				{
+					return;
+				}
+
+				entry->second.Applied = generation;
+
+				if (!result.HasValue())
+				{
+					// No last-good snapshot to keep, unlike the volatile diff: a commit
+					// that failed has nothing older to fall back to.
+					m_DiffError = result.GetError();
+					return;
+				}
+
+				m_DiffError.reset();
+				entry->second.Diff =
+					std::make_shared<const Core::Diff>(std::move(result).GetValue());
+			});
+		});
+	}
+
+	std::shared_ptr<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
+	{
+		const auto entry = m_CommitDiffs.find(commit);
+
+		if (entry == m_CommitDiffs.end())
+		{
+			return nullptr;
+		}
+
+		Touch(entry->second);
+		return entry->second.Diff;
 	}
 }
