@@ -55,7 +55,7 @@ namespace Graphite {
 			return text;
 		}
 
-		void DrawNumber(float x, float width, int number)
+		void DrawNumber(float x, float y, float width, int number)
 		{
 			if (number <= 0)
 			{
@@ -65,7 +65,7 @@ namespace Graphite {
 			const std::string text = std::to_string(number);
 			const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
 
-			ImGui::SetCursorPosX(x + width - textWidth - kNumberPaddingX);
+			ImGui::SetCursorPos(ImVec2(x + width - textWidth - kNumberPaddingX, y));
 			ImGui::TextUnformatted(text.c_str());
 		}
 	}
@@ -130,11 +130,14 @@ namespace Graphite {
 
 		const float numberWidth =
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
+		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
 		// Only the visible rows are laid out. A diff of a generated file runs to tens of
-		// thousands of lines and drawing them all costs the frame.
+		// thousands of lines and drawing them all costs the frame. The clipper is told the
+		// row height explicitly rather than measuring it from a first item, because that
+		// first item's own layout is exactly what a cursor-rewind bug would corrupt.
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(rows.size()));
+		clipper.Begin(static_cast<int>(rows.size()), rowHeight);
 
 		while (clipper.Step())
 		{
@@ -142,6 +145,10 @@ namespace Graphite {
 			{
 				const DiffRow& row = rows[static_cast<std::size_t>(index)];
 
+				// Each column is positioned explicitly from the row's own start rather than
+				// with SameLine(), so a column that draws nothing (a blank line number) never
+				// leaves a later column depending on it having existed.
+				const ImVec2 rowPos = ImGui::GetCursorPos();
 				const ImVec2 start = ImGui::GetCursorScreenPos();
 				const float height = ImGui::GetTextLineHeight();
 
@@ -154,16 +161,14 @@ namespace Graphite {
 
 				if (row.Kind == DiffRowKind::HunkHeader)
 				{
+					ImGui::SetCursorPos(rowPos);
 					ImGui::TextUnformatted(file.Hunks[row.Hunk].Header.c_str());
 					continue;
 				}
 
-				const float left = ImGui::GetCursorPosX();
-				DrawNumber(left, numberWidth, row.OldLine);
-				ImGui::SameLine();
-				DrawNumber(left + numberWidth, numberWidth, row.NewLine);
-				ImGui::SameLine();
-				ImGui::SetCursorPosX(left + numberWidth * 2.0f);
+				DrawNumber(rowPos.x, rowPos.y, numberWidth, row.OldLine);
+				DrawNumber(rowPos.x + numberWidth, rowPos.y, numberWidth, row.NewLine);
+				ImGui::SetCursorPos(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y));
 
 				if (const Core::DiffLine* line = LineOf(file, row); line != nullptr)
 				{
@@ -203,9 +208,13 @@ namespace Graphite {
 
 			const float numberWidth =
 				ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
+			const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
+			// Told the row height explicitly for the same reason as the unified view's
+			// clipper: measuring it from a first item is exactly what a cursor-rewind bug
+			// would corrupt.
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(pairs.size()));
+			clipper.Begin(static_cast<int>(pairs.size()), rowHeight);
 
 			while (clipper.Step())
 			{
@@ -222,6 +231,10 @@ namespace Graphite {
 						continue;
 					}
 
+					// Positioned explicitly from the row's own start rather than with
+					// SameLine(), matching the unified view — a blank line number then costs
+					// nothing instead of leaving the text column's position dependent on it.
+					const ImVec2 rowPos = ImGui::GetCursorPos();
 					const ImVec2 start = ImGui::GetCursorScreenPos();
 					const float height = ImGui::GetTextLineHeight();
 
@@ -235,14 +248,14 @@ namespace Graphite {
 
 					if (row->Kind == DiffRowKind::HunkHeader)
 					{
+						ImGui::SetCursorPos(rowPos);
 						ImGui::TextUnformatted(file.Hunks[row->Hunk].Header.c_str());
 						continue;
 					}
 
-					const float left = ImGui::GetCursorPosX();
-					DrawNumber(left, numberWidth, leftSide ? row->OldLine : row->NewLine);
-					ImGui::SameLine();
-					ImGui::SetCursorPosX(left + numberWidth);
+					DrawNumber(rowPos.x, rowPos.y, numberWidth,
+							   leftSide ? row->OldLine : row->NewLine);
+					ImGui::SetCursorPos(ImVec2(rowPos.x + numberWidth, rowPos.y));
 
 					if (const Core::DiffLine* line = LineOf(file, *row); line != nullptr)
 					{
