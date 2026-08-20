@@ -31,6 +31,11 @@ namespace Graphite {
 		// resets rather than invalidating from a line.
 		void SetTabWidth(std::size_t width);
 
+		// The width the tokens below were produced with. Anything mapping a raw byte of a line
+		// onto a token range has to expand tabs by exactly this width, so it is read from here
+		// rather than carried alongside the cache where the two could drift apart.
+		std::size_t GetTabWidth() const { return m_TabWidth; }
+
 		// Drops the entry states from `fromLine` down. Called after every edit with the line the
 		// edit touched: an edit cannot change what a line above it starts in.
 		void Invalidate(std::size_t fromLine);

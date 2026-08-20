@@ -36,6 +36,8 @@ project "GraphiteTests"
         -- search modules already listed below.
         "%{wks.location}/Graphite/src/Editor/AnalysisCache.h",
         "%{wks.location}/Graphite/src/Editor/AnalysisCache.cpp",
+        "%{wks.location}/Graphite/src/Editor/BracketMatch.h",
+        "%{wks.location}/Graphite/src/Editor/BracketMatch.cpp",
         "%{wks.location}/Graphite/src/Editor/DefinitionNavigation.h",
         "%{wks.location}/Graphite/src/Editor/DefinitionNavigation.cpp",
         "%{wks.location}/Graphite/src/Editor/EditorSettings.h",
