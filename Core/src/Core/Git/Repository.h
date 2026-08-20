@@ -3,6 +3,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
 
@@ -39,6 +40,9 @@ namespace Core {
 		// Ignored files are left out: the panel lists what can be acted on, and a build
 		// directory would bury everything else.
 		Result<WorkingTreeStatus> QueryStatus() const;
+
+		// Local branches first, then remote-tracking ones, each group in name order.
+		Result<std::vector<Branch>> QueryBranches() const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
