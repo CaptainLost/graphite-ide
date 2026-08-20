@@ -160,6 +160,27 @@ TEST_CASE("A failed query leaves the last good snapshot in place")
 	CHECK(model.GetLastError().has_value());
 }
 
+TEST_CASE("A branches success does not hide a status failure")
+{
+	FakePort port;
+	port.FailStatus = true;
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetLastError().has_value());
+
+	// A different query succeeding must not clear the error a still-failing one left
+	// behind - each query kind owns its own error slot.
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetLastError().has_value());
+	CHECK(model.GetLastError()->Message == "no");
+}
+
 TEST_CASE("An update with nothing pending asks nothing")
 {
 	FakePort port;

@@ -23,6 +23,12 @@ namespace Graphite {
 	// shared pointer, so a view that took one keeps drawing a consistent list even as the
 	// next refresh lands. And every request carries a generation, so a slow query that
 	// finishes after a newer one is dropped instead of putting old data back on screen.
+	// Every job submitted below captures `this`, so the model requires that the queue
+	// behind its submitter is destroyed - and its workers joined - before the model
+	// itself is. An owner holding both the model and the queue must declare the model
+	// BEFORE the queue, so reverse member destruction tears the queue down first, before
+	// this object goes away. Getting the order backwards is a use-after-free that will
+	// not show up under the inline submitter the tests use.
 	class GitModel : Core::NonCopyable
 	{
 	public:
@@ -41,9 +47,25 @@ namespace Graphite {
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
 		std::shared_ptr<const std::vector<Core::CommitSummary>> GetLog() const { return m_Log; }
 
-		// The last failure, kept so a panel can show one line about it. Cleared by the
-		// next query of any kind that succeeds.
-		const std::optional<Core::Error>& GetLastError() const { return m_LastError; }
+		// The failure a panel should show, if any. Each query kind keeps its own error, set
+		// by its own failure and cleared only by its own success, so a branches refresh
+		// that succeeds can never hide a status refresh that is still failing. When more
+		// than one is set this returns the first in the order status, branches, log -
+		// status is checked most often and is the one a user most needs to see fail.
+		const std::optional<Core::Error>& GetLastError() const
+		{
+			if (m_StatusError.has_value())
+			{
+				return m_StatusError;
+			}
+
+			if (m_BranchesError.has_value())
+			{
+				return m_BranchesError;
+			}
+
+			return m_LogError;
+		}
 
 	private:
 		using Delivery = std::function<void()>;
@@ -69,6 +91,8 @@ namespace Graphite {
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
 		std::shared_ptr<const std::vector<Core::CommitSummary>> m_Log;
 
-		std::optional<Core::Error> m_LastError;
+		std::optional<Core::Error> m_StatusError;
+		std::optional<Core::Error> m_BranchesError;
+		std::optional<Core::Error> m_LogError;
 	};
 }

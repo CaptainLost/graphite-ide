@@ -51,11 +51,11 @@ namespace Graphite {
 				{
 					// The last good snapshot stays. A panel that blanks itself because one
 					// refresh failed is worse than one showing data a second out of date.
-					m_LastError = result.GetError();
+					m_StatusError = result.GetError();
 					return;
 				}
 
-				m_LastError.reset();
+				m_StatusError.reset();
 				m_Status = std::make_shared<const Core::WorkingTreeStatus>(
 					std::move(result).GetValue());
 			});
@@ -79,11 +79,11 @@ namespace Graphite {
 
 				if (!result.HasValue())
 				{
-					m_LastError = result.GetError();
+					m_BranchesError = result.GetError();
 					return;
 				}
 
-				m_LastError.reset();
+				m_BranchesError.reset();
 				m_Branches = std::make_shared<const std::vector<Core::Branch>>(
 					std::move(result).GetValue());
 			});
@@ -107,11 +107,11 @@ namespace Graphite {
 
 				if (!result.HasValue())
 				{
-					m_LastError = result.GetError();
+					m_LogError = result.GetError();
 					return;
 				}
 
-				m_LastError.reset();
+				m_LogError.reset();
 				m_Log = std::make_shared<const std::vector<Core::CommitSummary>>(
 					std::move(result).GetValue());
 			});
