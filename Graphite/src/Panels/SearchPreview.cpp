@@ -2,6 +2,7 @@
 
 #include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
+#include "Editor/SemanticOverlay.h"
 #include "Search/PreviewContent.h"
 #include "Search/PreviewWindow.h"
 
@@ -179,8 +180,11 @@ namespace Graphite {
 
 			// Tokens are byte ranges of the expanded text — SyntaxCache feeds the lexer
 			// tab-expanded lines — so they index `expanded` directly. The gaps between them are
-			// whitespace and punctuation, drawn in the plain text colour.
+			// whitespace and punctuation, drawn in the plain text colour. An identifier the
+			// server named takes its colour instead; ColourOf is the same rule the editor
+			// applies, so a file reads the same here as it does in a tab.
 			const std::vector<Token>& tokens = content.TokensOf(line);
+			const std::vector<SemanticSpan>& spans = content.SpansOn(line);
 
 			std::size_t drawn = 0;
 
@@ -200,7 +204,7 @@ namespace Graphite {
 			for (const Token& token : tokens)
 			{
 				drawRun(drawn, token.From, palette.Text);
-				drawRun(token.From, token.To, syntax.Of(token.Kind));
+				drawRun(token.From, token.To, syntax.Of(ColourOf(token, spans)));
 				drawn = token.To;
 			}
 
