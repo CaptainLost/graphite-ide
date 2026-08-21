@@ -528,4 +528,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0496](0496-filter-the-history-in-the-walk-not-in-the-page.md) | Filter the history in the walk, not in the page | proposed | 2026-08-21 |
 | [0497](0497-name-a-file-in-a-history-filter-by-name-or-pattern-not-by-path.md) | Name a file in a history filter by name or pattern, not by path | proposed | 2026-08-21 |
 | [0498](0498-tell-the-application-when-the-repository-s-own-state-changes.md) | Tell the application when the repository's own state changes | proposed | 2026-08-21 |
+| [0499](0499-let-core-repository-write-not-only-read.md) | Let Core::Repository write, not only read | proposed | 2026-08-21 |
+| [0500](0500-serialise-git-writes-in-one-queue.md) | Serialise git writes in one queue | proposed | 2026-08-21 |
+| [0501](0501-announce-a-write-before-the-editor-sees-it.md) | Announce a write before the editor sees it | proposed | 2026-08-21 |
 <!-- /adr-index -->
