@@ -3,6 +3,7 @@
 #include "Core/Git/CommitFilter.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Glob.h"
 
 #include <string_view>
 
@@ -51,5 +52,24 @@ namespace Core {
 		// the message first costs nothing, since a text that really is a hash prefix will
 		// not be found in any of the fields above.
 		return IsHex(text) && commit.Id.ToHex().starts_with(text);
+	}
+
+	bool NamesPath(std::string_view pattern, const std::filesystem::path& path)
+	{
+		if (pattern.empty())
+		{
+			return false;
+		}
+
+		// Git writes its paths with forward slashes whatever the platform, and so must
+		// whichever side of this comparison came from a filesystem::path.
+		const std::string text = path.generic_string();
+
+		if (pattern.find('/') != std::string_view::npos)
+		{
+			return GlobMatches(pattern, text);
+		}
+
+		return GlobMatches(pattern, std::filesystem::path{text}.filename().generic_string());
 	}
 }

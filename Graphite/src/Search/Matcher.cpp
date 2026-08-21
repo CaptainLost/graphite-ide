@@ -1,5 +1,7 @@
 #include "Search/Matcher.h"
 
+#include "Core/Base/Glob.h"
+
 #include <cctype>
 
 namespace Graphite {
@@ -24,52 +26,6 @@ namespace Graphite {
 			return c == '_' || std::isalnum(static_cast<unsigned char>(c)) != 0;
 		}
 
-		// One pattern, * matching any run and ? matching one character. Iterative with a
-		// backtrack point rather than recursive: "*a*b*c" against a long name recurses deeply
-		// enough to matter, and the loop is no harder to read.
-		bool NameMatches(std::string_view pattern, std::string_view name)
-		{
-			std::size_t p = 0;
-			std::size_t n = 0;
-			std::size_t star = std::string_view::npos;
-			std::size_t afterStar = 0;
-
-			while (n < name.size())
-			{
-				if (p < pattern.size() && pattern[p] == '*')
-				{
-					star = p;
-					++p;
-					afterStar = n;
-					continue;
-				}
-
-				if (p < pattern.size() &&
-					(pattern[p] == '?' || SameChar(pattern[p], name[n], false)))
-				{
-					++p;
-					++n;
-					continue;
-				}
-
-				if (star == std::string_view::npos)
-				{
-					return false;
-				}
-
-				// The star swallows one more character and we try again from just after it.
-				p = star + 1;
-				++afterStar;
-				n = afterStar;
-			}
-
-			while (p < pattern.size() && pattern[p] == '*')
-			{
-				++p;
-			}
-
-			return p == pattern.size();
-		}
 	}
 
 	bool MaskAccepts(std::string_view mask, std::string_view fileName)
@@ -88,7 +44,7 @@ namespace Graphite {
 
 			const std::string_view pattern = mask.substr(at, stop - at);
 
-			if (!pattern.empty() && NameMatches(pattern, fileName))
+			if (!pattern.empty() && Core::GlobMatches(pattern, fileName))
 			{
 				return true;
 			}

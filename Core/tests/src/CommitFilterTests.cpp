@@ -2,6 +2,7 @@
 
 #include "Core/Git/CommitFilter.h"
 
+#include <filesystem>
 #include <string>
 
 using Core::CommitFilter;
@@ -114,4 +115,36 @@ TEST_CASE("Surrounding whitespace is not part of the text")
 TEST_CASE("A filter of nothing but whitespace accepts every commit")
 {
 	CHECK(Matches(CommitFilter{"   "}, Sample()));
+}
+
+TEST_CASE("A pattern with no separator names the file, wherever it sits")
+{
+	// What a reader types when they know the file and not the tree it lives in — which is
+	// nearly always, since the tree is what they opened the history to be told.
+	CHECK(Core::NamesPath("Application.cpp", "Core/src/Core/App/Application.cpp"));
+	CHECK(Core::NamesPath("*.cpp", "Core/src/Core/App/Application.cpp"));
+	CHECK_FALSE(Core::NamesPath("Application.h", "Core/src/Core/App/Application.cpp"));
+}
+
+TEST_CASE("A pattern naming part of the file name does not name the file")
+{
+	// Half a name is a substring search, and this box is not one: "Layer.cpp" naming
+	// GraphiteLayer.cpp would make every pattern quietly wider than it reads.
+	CHECK_FALSE(Core::NamesPath("Layer.cpp", "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK(Core::NamesPath("*Layer.cpp", "Graphite/src/App/GraphiteLayer.cpp"));
+}
+
+TEST_CASE("A pattern with a separator is matched against the whole path")
+{
+	// The form the file and line histories pass, and the form a reader falls back to when
+	// a bare name names more files than they meant.
+	CHECK(Core::NamesPath("Graphite/src/App/GraphiteLayer.cpp",
+						  "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK_FALSE(Core::NamesPath("src/App/GraphiteLayer.cpp",
+								"Graphite/src/App/GraphiteLayer.cpp"));
+}
+
+TEST_CASE("An empty pattern names nothing")
+{
+	CHECK_FALSE(Core::NamesPath("", "Core/src/Core/App/Application.cpp"));
 }

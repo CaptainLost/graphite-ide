@@ -2,7 +2,9 @@
 
 #include "Core/Git/Commit.h"
 
+#include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Core {
 
@@ -29,4 +31,19 @@ namespace Core {
 	// knows nothing about commits, a commit knows nothing about being searched, and the
 	// walk that uses this needs neither of them to grow a dependency on the other.
 	bool Matches(const CommitFilter& filter, const CommitSummary& commit);
+
+	// Whether `pattern` names `path`. A pattern with no separator is matched against the
+	// file name alone, so "Application.cpp" and "*.cpp" name a file wherever it sits in the
+	// tree — which is what a reader knows when they open a history: the file, not the
+	// directories above it. A pattern with a separator is matched against the whole path,
+	// which is the form the file and line histories pass and the form a reader falls back
+	// to when a bare name names more files than they meant.
+	//
+	// Matching is whole either way, never a substring: "Layer.cpp" does not name
+	// GraphiteLayer.cpp, because a pattern that quietly matched part of a name would be
+	// wider than it reads. "*Layer.cpp" says that on purpose.
+	//
+	// An empty pattern names nothing. Callers that mean "every file" leave the request's
+	// path unset rather than passing one of these.
+	bool NamesPath(std::string_view pattern, const std::filesystem::path& path);
 }

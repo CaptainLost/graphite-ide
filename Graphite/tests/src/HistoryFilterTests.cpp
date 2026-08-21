@@ -69,7 +69,7 @@ TEST_CASE("A log request carries the typed path")
 
 TEST_CASE("A path box holding nothing but whitespace narrows nothing")
 {
-	// File narrowing diffs every commit the walk passes, so an empty box that still set
+	// Narrowing by file diffs every commit the walk passes, so an empty box that still set
 	// File would turn the ordinary branch log into the most expensive query there is.
 	HistoryFilter filter;
 	filter.Path = "   ";

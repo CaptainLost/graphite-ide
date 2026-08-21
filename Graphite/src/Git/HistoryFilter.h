@@ -17,9 +17,10 @@ namespace Graphite {
 	{
 		std::string Text;
 
-		// Relative to the working directory. Whitespace alone means no narrowing, which is
-		// not a nicety: narrowing by path diffs every commit the walk passes, so a box the
-		// reader has cleared must leave the query as cheap as it was before they typed.
+		// A file name, a pattern, or a whole path — Core::NamesPath decides which by whether
+		// there is a separator in it. Whitespace alone means no narrowing, which is not a
+		// nicety: narrowing by file diffs every commit the walk passes, so a box the reader
+		// has cleared must leave the query as cheap as it was before they typed.
 		std::string Path;
 
 		friend bool operator==(const HistoryFilter&, const HistoryFilter&) = default;

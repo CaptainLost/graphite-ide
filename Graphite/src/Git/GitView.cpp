@@ -207,11 +207,11 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(pathWidth);
-		// An example rather than the word "Path", because the box wants something more
-		// specific than a path: the whole path, from the working directory down, with the
-		// separators git wrote it with. A reader who types the file's own name gets an
-		// empty history and no hint as to why.
-		ImGui::InputTextWithHint("##commitPath", ICON_MDI_FILE_OUTLINE "  src/App/Main.cpp",
+		// Two examples rather than one word: the box takes a file name or a pattern, and
+		// naming both is what says the second is allowed. Neither example names a file that
+		// has to exist, which the previous hint's full path did — and did not, in most
+		// repositories this ever opens.
+		ImGui::InputTextWithHint("##commitPath", ICON_MDI_FILE_OUTLINE "  Main.cpp or *.cpp",
 								 m_FilterPathBuffer.data(), m_FilterPathBuffer.size());
 
 		m_Filter.Set(HistoryFilter{std::string(m_FilterBuffer.data()),

@@ -106,20 +106,49 @@ namespace Core {
 			return summary;
 		}
 
-		// The entry for one path in a commit's diff, or nothing when the commit left it
-		// alone. Both sides are checked because a rename names the file differently on
-		// each: the commit that renamed old.txt to new.txt is part of new.txt's history.
-		const FileDiff* FindPath(const Diff& diff, const std::filesystem::path& path)
+		// What one commit's diff has to say about a pattern: the first file the pattern
+		// names, and whether it named more than one of them. Both sides of each file are
+		// checked because a rename names the file differently on each: the commit that
+		// renamed old.txt to new.txt is part of new.txt's history.
+		struct PathMatch
 		{
+			const FileDiff* File = nullptr;
+
+			// Set when the pattern named more than one file in this commit. Only the rename
+			// decision below reads it — for keeping the commit, one match is as good as six.
+			bool Several = false;
+		};
+
+		PathMatch FindPath(const Diff& diff, const std::filesystem::path& pattern)
+		{
+			const std::string text = pattern.generic_string();
+
+			PathMatch match;
+
 			for (const FileDiff& file : diff.Files)
 			{
-				if (file.NewPath == path || file.OldPath == path)
+				if (!NamesPath(text, file.NewPath) && !NamesPath(text, file.OldPath))
 				{
-					return &file;
+					continue;
 				}
+
+				if (match.File == nullptr)
+				{
+					match.File = &file;
+					continue;
+				}
+
+				match.Several = true;
+				break;
 			}
 
-			return nullptr;
+			return match;
+		}
+
+		bool HasWildcard(const std::filesystem::path& pattern)
+		{
+			const std::string text = pattern.generic_string();
+			return text.find('*') != std::string::npos || text.find('?') != std::string::npos;
 		}
 	}
 
@@ -252,7 +281,8 @@ namespace Core {
 				break;
 			}
 
-			const FileDiff* file = FindPath(diff.GetValue(), *tracked);
+			const PathMatch match = FindPath(diff.GetValue(), *tracked);
+			const FileDiff* file = match.File;
 
 			if (file == nullptr)
 			{
@@ -265,8 +295,13 @@ namespace Core {
 			// hunk in range, so the old code's early continue below would skip this block
 			// entirely and leave `tracked` holding a name only this commit and its
 			// descendants ever used, silently ending the walk one commit early.
+			// Only for a pattern that names one file and says so exactly. A pattern with a
+			// wildcard names a set, and a set has no one identity for a rename to carry:
+			// swapping "*.txt" for the renamed file's old path would drop every other .txt
+			// from a question that plainly included them. The same holds when the pattern
+			// named several files in this commit, wildcard or not.
 			if (request.FollowRenames && file->Change == FileChange::Renamed
-				&& !file->OldPath.empty())
+				&& !file->OldPath.empty() && !match.Several && !HasWildcard(*tracked))
 			{
 				tracked = file->OldPath;
 			}
