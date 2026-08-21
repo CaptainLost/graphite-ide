@@ -40,3 +40,40 @@ TEST_CASE("Any other error stays an error")
 	REQUIRE(!side.HasValue());
 	CHECK(side.GetError().Code == Core::ErrorCode::IoFailure);
 }
+
+TEST_CASE("Unstaged changes compare the index against the disk")
+{
+	const Graphite::WorkingTreeSides sides = Graphite::SidesFor(Core::DiffTarget::WorkTreeToIndex);
+
+	CHECK(sides.Old == Graphite::TextSide::Index);
+	CHECK(sides.New == Graphite::TextSide::WorkingTree);
+}
+
+TEST_CASE("Staged changes compare HEAD against the index")
+{
+	const Graphite::WorkingTreeSides sides = Graphite::SidesFor(Core::DiffTarget::IndexToHead);
+
+	CHECK(sides.Old == Graphite::TextSide::Head);
+	CHECK(sides.New == Graphite::TextSide::Index);
+}
+
+TEST_CASE("Everything since the last commit compares HEAD against the disk")
+{
+	const Graphite::WorkingTreeSides sides = Graphite::SidesFor(Core::DiffTarget::WorkTreeToHead);
+
+	CHECK(sides.Old == Graphite::TextSide::Head);
+	CHECK(sides.New == Graphite::TextSide::WorkingTree);
+}
+
+TEST_CASE("A target that names no working tree has no side to read")
+{
+	const Graphite::WorkingTreeSides commit = Graphite::SidesFor(Core::DiffTarget::CommitToParent);
+
+	CHECK(commit.Old == Graphite::TextSide::Absent);
+	CHECK(commit.New == Graphite::TextSide::Absent);
+
+	const Graphite::WorkingTreeSides range = Graphite::SidesFor(Core::DiffTarget::RevisionToRevision);
+
+	CHECK(range.Old == Graphite::TextSide::Absent);
+	CHECK(range.New == Graphite::TextSide::Absent);
+}

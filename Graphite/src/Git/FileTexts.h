@@ -5,6 +5,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Oid.h"
+#include "Core/Git/Requests.h"
 
 #include <filesystem>
 #include <memory>
@@ -48,6 +49,30 @@ namespace Graphite {
 	// task adds, as opposed to the port plumbing around it - can be tested without a
 	// repository on disk.
 	Core::Result<SideText> ReadSideText(Core::Result<std::string> read);
+
+	// Where one side of a working-tree diff's text comes from. A commit is the one thing
+	// neither side of such a diff is, which is why ReadBlob alone cannot serve them.
+	enum class TextSide
+	{
+		// Not a working-tree diff at all, so there is nothing here to read.
+		Absent,
+
+		Head,
+		Index,
+		WorkingTree
+	};
+
+	struct WorkingTreeSides
+	{
+		TextSide Old = TextSide::Absent;
+		TextSide New = TextSide::Absent;
+	};
+
+	// Which two sources a target compares. Pulled out of the port as a function of the
+	// target alone, because this is the actual new reasoning - "unstaged means the index
+	// against the disk" - as opposed to the reading around it, and it is checkable without a
+	// repository, a thread or a file.
+	WorkingTreeSides SidesFor(Core::DiffTarget target);
 
 	// One owner's hold on a file's whole-file texts and the tokens lexed from them, plus the
 	// rules for keeping the two in step with whichever file is on screen.

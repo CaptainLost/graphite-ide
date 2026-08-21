@@ -90,4 +90,26 @@ namespace Graphite {
 		Tokens.New = texts && texts->HasNew ? LexFileText(texts->New, file.NewPath)
 										    : std::vector<std::vector<Token>>{};
 	}
+
+	WorkingTreeSides SidesFor(Core::DiffTarget target)
+	{
+		switch (target)
+		{
+		case Core::DiffTarget::WorkTreeToIndex:
+			return {.Old = TextSide::Index, .New = TextSide::WorkingTree};
+
+		case Core::DiffTarget::IndexToHead:
+			return {.Old = TextSide::Head, .New = TextSide::Index};
+
+		case Core::DiffTarget::WorkTreeToHead:
+			return {.Old = TextSide::Head, .New = TextSide::WorkingTree};
+
+		case Core::DiffTarget::CommitToParent:
+		case Core::DiffTarget::RevisionToRevision:
+			break;
+		}
+
+		// Both targets above name commits on both sides, which ReadFileTexts already serves.
+		return {};
+	}
 }

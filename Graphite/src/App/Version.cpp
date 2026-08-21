@@ -4,6 +4,6 @@ namespace Graphite {
 
 	const char* Version::String()
 	{
-		return "0.1.0";
+		return "10.1.0";
 	}
 }
