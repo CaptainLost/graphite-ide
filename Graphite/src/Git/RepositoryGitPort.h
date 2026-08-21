@@ -27,6 +27,7 @@ namespace Graphite {
 		explicit RepositoryGitPort(std::filesystem::path root);
 
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override;
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override;
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override;
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override;
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override;

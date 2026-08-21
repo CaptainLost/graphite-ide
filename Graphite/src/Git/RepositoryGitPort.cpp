@@ -150,6 +150,18 @@ namespace Graphite {
 		return repository->QueryStatus();
 	}
 
+	Core::Result<std::filesystem::path> RepositoryGitPort::GetWorkingDirectory()
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->GetWorkingDirectory();
+	}
+
 	Core::Result<std::vector<Core::Branch>> RepositoryGitPort::QueryBranches()
 	{
 		Core::Repository* repository = RepositoryForThisThread();

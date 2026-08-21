@@ -130,6 +130,14 @@ namespace Graphite {
 		// tying their bounds together would be a coincidence, not a decision.
 		static constexpr std::size_t kCachedTexts = 32;
 
+		// The directory status paths are relative to, which is not always GetRoot(): opening a
+		// subdirectory of a repository still resolves upward to the repository's own working
+		// directory (see GitPort::GetWorkingDirectory), and a caller joining a status path onto
+		// GetRoot() instead would build a path that does not exist. Fetched alongside the
+		// status query and delivered with it, so this is always in step with whatever
+		// GetStatus() currently returns - empty until the first status has landed.
+		const std::filesystem::path& GetWorkingDirectory() const { return m_WorkingDirectory; }
+
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
@@ -385,6 +393,9 @@ namespace Graphite {
 		std::uint64_t m_LogApplied = 0;
 		std::uint64_t m_WorkingTreeDiffRequested = 0;
 		std::uint64_t m_WorkingTreeDiffApplied = 0;
+
+		// See GetWorkingDirectory(): fetched and applied alongside m_Status, never lazily.
+		std::filesystem::path m_WorkingDirectory;
 
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;

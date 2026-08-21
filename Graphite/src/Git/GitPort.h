@@ -26,6 +26,14 @@ namespace Graphite {
 		virtual ~GitPort() = default;
 
 		virtual Core::Result<Core::WorkingTreeStatus> QueryStatus() = 0;
+
+		// The directory libgit2 actually resolved against, which is not always the folder the
+		// user opened: Core::Repository::Open searches upward for a .git, so opening a
+		// subdirectory of a repository yields a working directory above it. Every path a
+		// status query names is relative to this, never to the folder that was opened -
+		// callers that need to turn one of those paths into an absolute one must join it here.
+		virtual Core::Result<std::filesystem::path> GetWorkingDirectory() = 0;
+
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;

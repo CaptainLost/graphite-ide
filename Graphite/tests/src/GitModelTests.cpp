@@ -33,6 +33,11 @@ namespace {
 			return Status;
 		}
 
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override
+		{
+			return WorkingDirectory;
+		}
+
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override
 		{
 			++BranchCalls;
@@ -131,6 +136,7 @@ namespace {
 		Core::Oid CommittedOid{};
 
 		Core::WorkingTreeStatus Status;
+		std::filesystem::path WorkingDirectory = "C:/repo";
 		std::vector<Core::Branch> Branches;
 		Core::LogPage Log;
 		Core::Diff Diff;

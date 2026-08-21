@@ -19,9 +19,8 @@ namespace Core {
 
 namespace Graphite {
 
-	// Not used by this task, forward-declared rather than included: DocumentWindows.h pulls in
-	// most of the editor, and ChangesPanel only needs a reference to hand to Task 10, which
-	// wires the discard confirmation to it.
+	// Forward-declared rather than included: DocumentWindows.h pulls in most of the editor,
+	// and this header only needs a reference to it.
 	class DocumentWindows;
 
 	// The working tree: what is conflicted, what is staged, what is not, and the box that
@@ -79,8 +78,8 @@ namespace Graphite {
 		GitModel& m_Model;
 		const Core::DocumentSet& m_Documents;
 
-		// Held for Task 10, which tells the editor about files a confirmed discard just
-		// touched. Not read by this task.
+		// Told which files a confirmed discard just touched, so the editor reloads them
+		// without asking - see the ExpectExternalWrite call in OnImGuiRender.
 		DocumentWindows& m_DocumentWindows;
 
 		const ActiveScheme& m_Scheme;

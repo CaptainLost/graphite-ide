@@ -84,16 +84,17 @@ namespace Graphite {
 		// behind by a discard that failed - and so its short life starts as late as possible.
 		if (std::vector<std::filesystem::path> discarded = m_Model.TakeDiscarded(); !discarded.empty())
 		{
-			// TakeDiscarded hands back paths relative to the working directory, but
-			// ExpectExternalWrite requires absolute ones - see ExpectedWrites::Expect. This is
-			// the one place that knows both the repository root and the paths to absolutise
-			// against it.
+			// TakeDiscarded hands back paths relative to the repository's working directory,
+			// but ExpectExternalWrite requires absolute ones - see ExpectedWrites::Expect.
+			// Joined onto GetWorkingDirectory(), not GetRoot(): Core::Repository::Open
+			// searches upward for a .git, so the folder the user opened and the directory
+			// status paths are relative to are not always the same one.
 			std::vector<std::filesystem::path> absolute;
 			absolute.reserve(discarded.size());
 
 			for (const std::filesystem::path& path : discarded)
 			{
-				absolute.push_back(m_Model.GetRoot() / path);
+				absolute.push_back(m_Model.GetWorkingDirectory() / path);
 			}
 
 			m_DocumentWindows.ExpectExternalWrite(absolute);
@@ -423,11 +424,14 @@ namespace Graphite {
 			for (const std::filesystem::path& path : paths)
 			{
 				// `path` is git-relative; a document's path is absolute. Absolutised against
-				// the repository root before comparing whole normalised paths - the same rule
-				// ExpectedWrites uses, and not the filename-and-ends_with shortcut that was
-				// already withdrawn from ExpectedWrites for making a root-level file match
-				// anywhere in the tree while never matching a nested one at all.
-				const std::filesystem::path normalizedPath = Normalize(m_Model.GetRoot() / path);
+				// the repository's working directory - not GetRoot(), the folder the user
+				// opened, which Core::Repository::Open may have resolved upward from - before
+				// comparing whole normalised paths. The same rule ExpectedWrites uses, and not
+				// the filename-and-ends_with shortcut that was already withdrawn from
+				// ExpectedWrites for making a root-level file match anywhere in the tree while
+				// never matching a nested one at all.
+				const std::filesystem::path normalizedPath =
+					Normalize(m_Model.GetWorkingDirectory() / path);
 
 				if (SamePath(normalizedItem, normalizedPath))
 				{
@@ -484,17 +488,27 @@ namespace Graphite {
 
 			for (const std::filesystem::path& path : m_PendingDirty)
 			{
-				ImGui::BulletText("%s", Core::ToUtf8(path.filename()).c_str());
+				// The full path, not just the filename: two same-named files open from
+				// different directories would otherwise make this warning ambiguous exactly
+				// where precision matters.
+				ImGui::BulletText("%s", Core::ToUtf8(path).c_str());
 			}
 		}
 
 		ImGui::Spacing();
+
+		// The same guard every other write control in this panel takes: harmless today, since
+		// the popup closes on press and the model serialises writes, but a reader should not
+		// have to notice that to trust it.
+		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 		if (ImGui::Button("Discard"))
 		{
 			m_Model.RequestDiscard(m_PendingDiscard);
 			ImGui::CloseCurrentPopup();
 		}
+
+		ImGui::EndDisabled();
 
 		ImGui::SameLine();
 

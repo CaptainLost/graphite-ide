@@ -18,6 +18,11 @@ namespace {
 	{
 	public:
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Core::WorkingTreeStatus{}; }
+
+		Core::Result<std::filesystem::path> GetWorkingDirectory() override
+		{
+			return WorkingDirectory;
+		}
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override { return Core::Diff{}; }
@@ -62,6 +67,11 @@ namespace {
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
+
+		// Deliberately distinct from the "C:/repo" OpenA() gives GitModel::SetRoot(), so a
+		// test can tell GitModel::GetWorkingDirectory() apart from GetRoot() - see "GetWorkingDirectory
+		// reports the repository's working directory, not the folder that was opened" below.
+		std::filesystem::path WorkingDirectory = "C:/repo";
 
 		// Pins the CRITICAL fix: JobQueue abandons a job that throws, so RunWrite must
 		// convert this into a failure outcome rather than let it escape and strand
@@ -216,6 +226,29 @@ TEST_CASE("TakeDiscarded names every path the discard touched")
 	const std::vector<std::filesystem::path> touched = model.TakeDiscarded();
 	CHECK(touched.size() == 2);
 	CHECK(model.TakeDiscarded().empty());
+}
+
+TEST_CASE("GetWorkingDirectory reports the repository's working directory, not the folder that was opened")
+{
+	WritePort port;
+	port.WorkingDirectory = "C:/repo/nested";
+
+	Graphite::GitModel model{port, Inline()};
+
+	// OpenA() sets the root GitModel was told to open. GitPort::GetWorkingDirectory can
+	// answer differently - Core::Repository::Open searches upward for a .git, so opening a
+	// subdirectory of a repository resolves to a working directory above it. A caller that
+	// joined a status path onto the opened root instead of this would build a path that
+	// does not exist.
+	OpenA(model);
+	CHECK(model.GetWorkingDirectory().empty());
+
+	// The working directory is fetched alongside the status query and delivered with it -
+	// nothing is known until the first status has landed.
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.GetWorkingDirectory() == std::filesystem::path{"C:/repo/nested"});
 }
 
 TEST_CASE("Closing the folder drops a write that had not started")

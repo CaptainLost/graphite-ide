@@ -32,6 +32,7 @@ namespace Graphite {
 		m_WorkingTreeDiffApplied = m_WorkingTreeDiffRequested;
 
 		m_Status.reset();
+		m_WorkingDirectory.clear();
 		m_Branches.reset();
 		m_Log.reset();
 
@@ -162,7 +163,16 @@ namespace Graphite {
 		m_Submit([this, generation]() {
 			auto result = m_Port.QueryStatus();
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
+			// Fetched on the same worker job as the status itself, and delivered together, so
+			// a panel that has a status snapshot always has the working directory that snapshot's
+			// paths are relative to. Fetching this lazily on a separate path would leave a window
+			// where a status exists but GetWorkingDirectory() still answers the previous folder's
+			// - or, on the first refresh, the empty one - which is exactly the wrong-directory
+			// join this exists to prevent.
+			auto workingDirectory = m_Port.GetWorkingDirectory();
+
+			Deliver([this, generation, result = std::move(result),
+					 workingDirectory = std::move(workingDirectory)]() mutable {
 				// A query that started earlier and finished later would otherwise put a
 				// stale list back on screen.
 				if (generation <= m_StatusApplied)
@@ -183,6 +193,14 @@ namespace Graphite {
 				m_StatusError.reset();
 				m_Status = std::make_shared<const Core::WorkingTreeStatus>(
 					std::move(result).GetValue());
+
+				// A failure here is not folded into m_StatusError: the status itself is good,
+				// and the previous working directory - correct for the same repository - is a
+				// safer answer than discarding it over an unrelated, transient failure.
+				if (workingDirectory.HasValue())
+				{
+					m_WorkingDirectory = std::move(workingDirectory).GetValue();
+				}
 			});
 		});
 	}
