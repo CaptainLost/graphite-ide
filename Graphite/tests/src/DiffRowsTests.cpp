@@ -701,3 +701,138 @@ TEST_CASE("A line count smaller than the hunk's own numbers does not blow up the
 	CHECK(rows.SideBySide[3].Left->OldLine == 3);
 	CHECK(rows.SideBySide[3].Right->NewLine == 3);
 }
+
+namespace {
+
+	DiffRow UnchangedRow(int oldLine, int newLine)
+	{
+		DiffRow row;
+		row.Kind = DiffRowKind::Unchanged;
+		row.OldLine = oldLine;
+		row.NewLine = newLine;
+		return row;
+	}
+
+	// One token covering a whole line, so a test can tell which side's tokens came back by
+	// the kind alone.
+	std::vector<Graphite::Token> OneToken(Graphite::TokenKind kind, std::size_t length)
+	{
+		return {Graphite::Token{kind, 0, length}};
+	}
+}
+
+TEST_CASE("An Unchanged row past the end of both sides resolves to nothing")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+	const std::vector<std::string_view> lines{"one"};
+
+	// The rows outlived the texts they were built against - the only way this happens - and
+	// the answer is to draw nothing rather than to read past either vector.
+	const Graphite::ResolvedLine resolved = Graphite::ResolveRow(
+		file, UnchangedRow(9, 9), Graphite::DiffSide::New, lines, lines, Graphite::FileTokens{});
+
+	CHECK_FALSE(resolved.Text.has_value());
+	CHECK(resolved.Tokens == nullptr);
+}
+
+TEST_CASE("An Unchanged row resolves against the side it is drawn for")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "same\n")});
+	const std::vector<std::string_view> oldLines{"old"};
+	const std::vector<std::string_view> newLines{"new"};
+
+	Graphite::FileTokens tokens;
+	tokens.Old.push_back(OneToken(Graphite::TokenKind::Comment, 3));
+	tokens.New.push_back(OneToken(Graphite::TokenKind::Keyword, 3));
+
+	const Graphite::ResolvedLine left = Graphite::ResolveRow(
+		file, UnchangedRow(1, 1), Graphite::DiffSide::Old, oldLines, newLines, tokens);
+	const Graphite::ResolvedLine right = Graphite::ResolveRow(
+		file, UnchangedRow(1, 1), Graphite::DiffSide::New, oldLines, newLines, tokens);
+
+	// The two halves say the same thing by construction, but they are not lexed the same
+	// way: a rename from foo.txt to foo.cpp has a different language on each side, and the
+	// old half must not be coloured by the new file's lexer.
+	REQUIRE(left.Text.has_value());
+	CHECK(*left.Text == "old");
+	REQUIRE(left.Tokens != nullptr);
+	CHECK(left.Tokens->front().Kind == Graphite::TokenKind::Comment);
+
+	REQUIRE(right.Text.has_value());
+	CHECK(*right.Text == "new");
+	REQUIRE(right.Tokens != nullptr);
+	CHECK(right.Tokens->front().Kind == Graphite::TokenKind::Keyword);
+}
+
+TEST_CASE("An Unchanged row falls back to the other side when its own has no line")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Removed, 1, 0, "gone\n")});
+	const std::vector<std::string_view> oldLines{"only-old"};
+
+	// A deleted file has no new side at all, so its rows carry no new line number. The half
+	// being drawn still has to show something.
+	const Graphite::ResolvedLine resolved =
+		Graphite::ResolveRow(file, UnchangedRow(1, 0), Graphite::DiffSide::New, oldLines,
+							 std::vector<std::string_view>{}, Graphite::FileTokens{});
+
+	REQUIRE(resolved.Text.has_value());
+	CHECK(*resolved.Text == "only-old");
+}
+
+TEST_CASE("A token vector shorter than the file leaves the later lines uncoloured")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+	const std::vector<std::string_view> lines{"one", "two"};
+
+	Graphite::FileTokens tokens;
+	tokens.New.push_back(OneToken(Graphite::TokenKind::Keyword, 3));
+
+	const Graphite::ResolvedLine first = Graphite::ResolveRow(
+		file, UnchangedRow(1, 1), Graphite::DiffSide::New, lines, lines, tokens);
+	const Graphite::ResolvedLine second = Graphite::ResolveRow(
+		file, UnchangedRow(2, 2), Graphite::DiffSide::New, lines, lines, tokens);
+
+	// The lines and the tokens are bounded separately: a lexer that produced fewer lines than
+	// the split did must leave the tail plain, not read past its own end.
+	CHECK(first.Tokens != nullptr);
+	REQUIRE(second.Text.has_value());
+	CHECK(*second.Text == "two");
+	CHECK(second.Tokens == nullptr);
+}
+
+TEST_CASE("A changed row draws its own text without the line terminator")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Added, 0, 1, "added\r\n")});
+
+	DiffRow row;
+	row.Kind = DiffRowKind::Added;
+	row.NewLine = 1;
+	row.Hunk = 0;
+	row.Line = 0;
+
+	const Graphite::ResolvedLine resolved =
+		Graphite::ResolveRow(file, row, Graphite::DiffSide::New, std::vector<std::string_view>{},
+							 std::vector<std::string_view>{}, Graphite::FileTokens{});
+
+	// Stripped by the same rule SplitTextLines uses, so a whole-file row and a hunk row of
+	// the same line agree on exactly which bytes a token's From/To index.
+	REQUIRE(resolved.Text.has_value());
+	CHECK(*resolved.Text == "added");
+}
+
+TEST_CASE("A changed row whose indices no longer fit resolves to nothing")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Added, 0, 1, "added\n")});
+
+	DiffRow row;
+	row.Kind = DiffRowKind::Added;
+	row.NewLine = 1;
+	row.Hunk = 0;
+	row.Line = 7;
+
+	const Graphite::ResolvedLine resolved =
+		Graphite::ResolveRow(file, row, Graphite::DiffSide::New, std::vector<std::string_view>{},
+							 std::vector<std::string_view>{}, Graphite::FileTokens{});
+
+	CHECK_FALSE(resolved.Text.has_value());
+}

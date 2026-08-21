@@ -44,20 +44,6 @@ namespace Graphite {
 			return ImGui::GetColorU32(ImGuiCol_Text);
 		}
 
-		// The text without its line terminator. Drawing the terminator puts a stray glyph
-		// at the end of every line in fonts that have one.
-		std::string_view Trimmed(const Core::DiffLine& line)
-		{
-			std::string_view text = line.Text;
-
-			while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
-			{
-				text.remove_suffix(1);
-			}
-
-			return text;
-		}
-
 		void DrawNumber(float x, float y, float width, int number)
 		{
 			if (number <= 0)
@@ -72,14 +58,15 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.c_str());
 		}
 
-		// Draws one line as a run per token plus the whitespace between them, or as a single
-		// run when there is nothing to colour it with. Every run is positioned explicitly from
-		// `origin` rather than with SameLine() — a run that draws nothing (an empty gap before
-		// two adjacent tokens) would otherwise rewind the cursor and overwrite the row above,
-		// which is the exact bug this file's history records.
+		// Draws the runs RunsFor works out for the line — which of them there are, and that
+		// there is always at least one, is that function's business and is tested there; this
+		// only puts them on screen. Every run is positioned explicitly from `origin` rather
+		// than with SameLine(): a run that draws nothing (an empty gap before two adjacent
+		// tokens) would otherwise rewind the cursor and overwrite the row above, which is the
+		// exact bug this file's history records.
 		void DrawLine(const ImVec2& origin, std::string_view text,
 					  const std::vector<Token>* tokens, ImU32 ordinaryColour,
-					  const SyntaxPalette& syntax, bool colourOn)
+					  const SyntaxPalette& syntax)
 		{
 			// Each run's x is measured from `origin` against the whole prefix up to it, not
 			// accumulated from the previous run's width: CalcTextSize rounds its result up to a
@@ -98,59 +85,10 @@ namespace Graphite {
 				ImGui::PopStyleColor();
 			};
 
-			if (!colourOn || tokens == nullptr || tokens->empty())
+			for (const SyntaxRun& run : RunsFor(text, tokens))
 			{
-				drawRun(0, text.size(), ordinaryColour);
-				return;
-			}
-
-			std::size_t cursor = 0;
-			bool drewAnything = false;
-
-			for (const Token& token : *tokens)
-			{
-				if (cursor >= text.size())
-				{
-					break;
-				}
-
-				// Clamped rather than trusted: the token came from lexing `text` in the first
-				// place, so From/To should already fit, but a defensive clamp turns a mismatch
-				// into a truncated colouring instead of a substr throwing mid-frame.
-				const std::size_t from = std::min(token.From, text.size());
-				const std::size_t to = std::min(token.To, text.size());
-
-				if (from > cursor)
-				{
-					drawRun(cursor, from, ordinaryColour);
-					drewAnything = true;
-				}
-
-				if (to > from)
-				{
-					drawRun(from, to, syntax.Of(token.Kind));
-					drewAnything = true;
-				}
-
-				cursor = to;
-			}
-
-			if (cursor < text.size())
-			{
-				drawRun(cursor, text.size(), ordinaryColour);
-				drewAnything = true;
-			}
-
-			// Unreachable today — CppLexer::Emit rejects an empty span, so an empty line always
-			// yields an empty token vector, which the branch above already catches — but if a
-			// future lexer ever emitted only zero-length tokens for a non-empty line, or ran
-			// against an empty line without one, every branch above would draw nothing at all:
-			// no ItemSize, so the cursor never advances and the next row draws on top of this
-			// one. The same defect class the brief's SameLine() warning is about, reached by a
-			// different route; guaranteeing at least one run closes it.
-			if (!drewAnything)
-			{
-				drawRun(0, text.size(), ordinaryColour);
+				drawRun(run.From, run.To,
+						run.Kind.has_value() ? syntax.Of(*run.Kind) : ordinaryColour);
 			}
 		}
 	}
@@ -273,60 +211,6 @@ namespace Graphite {
 		m_NewLines = texts->HasNew ? SplitTextLines(texts->New) : std::vector<std::string_view>{};
 	}
 
-	DiffView::ResolvedLine DiffView::Resolve(const Core::FileDiff& file, const DiffRow& row,
-											 const FileTokens& tokens) const
-	{
-		if (row.Kind == DiffRowKind::Unchanged)
-		{
-			// Both sides carry identical content for an Unchanged row — it exists only where
-			// the diff left a line alone — so New is preferred simply because it is always
-			// present whenever an Unchanged row is: a file with no new side is entirely one
-			// "added" hunk and produces no Unchanged rows for this branch to see.
-			if (row.NewLine > 0 && static_cast<std::size_t>(row.NewLine) <= m_NewLines.size())
-			{
-				const std::size_t line = static_cast<std::size_t>(row.NewLine) - 1;
-				const std::vector<Token>* lineTokens =
-					line < tokens.New.size() ? &tokens.New[line] : nullptr;
-				return ResolvedLine{m_NewLines[line], lineTokens};
-			}
-
-			if (row.OldLine > 0 && static_cast<std::size_t>(row.OldLine) <= m_OldLines.size())
-			{
-				const std::size_t line = static_cast<std::size_t>(row.OldLine) - 1;
-				const std::vector<Token>* lineTokens =
-					line < tokens.Old.size() ? &tokens.Old[line] : nullptr;
-				return ResolvedLine{m_OldLines[line], lineTokens};
-			}
-
-			return ResolvedLine{};
-		}
-
-		const Core::DiffLine* line = LineOf(file, row);
-
-		if (line == nullptr)
-		{
-			return ResolvedLine{};
-		}
-
-		const std::string_view text = Trimmed(*line);
-
-		// A removed line exists only on the old side and an added line only on the new, so
-		// this picks whichever side the diff itself says has the line; a context line has both
-		// and prefers New for the same reason an Unchanged row does.
-		const std::vector<Token>* lineTokens = nullptr;
-
-		if (row.NewLine > 0 && static_cast<std::size_t>(row.NewLine) <= tokens.New.size())
-		{
-			lineTokens = &tokens.New[static_cast<std::size_t>(row.NewLine) - 1];
-		}
-		else if (row.OldLine > 0 && static_cast<std::size_t>(row.OldLine) <= tokens.Old.size())
-		{
-			lineTokens = &tokens.Old[static_cast<std::size_t>(row.OldLine) - 1];
-		}
-
-		return ResolvedLine{text, lineTokens};
-	}
-
 	void DiffView::RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 								 const GitPalette& palette, const SyntaxPalette& syntax,
 								 const FileTokens& tokens)
@@ -383,12 +267,16 @@ namespace Graphite {
 				DrawNumber(rowPos.x, rowPos.y, numberWidth, row.OldLine);
 				DrawNumber(rowPos.x + numberWidth, rowPos.y, numberWidth, row.NewLine);
 
-				const ResolvedLine resolved = Resolve(file, row, tokens);
+				// One text column standing for both sides, so it resolves for New — which is
+				// what this view drew before the two halves could differ.
+				const ResolvedLine resolved =
+					ResolveRow(file, row, DiffSide::New, m_OldLines, m_NewLines, tokens);
 
 				if (resolved.Text.has_value())
 				{
 					DrawLine(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y), *resolved.Text,
-							 resolved.Tokens, TextFor(row.Kind, palette), syntax, m_ColourSyntax);
+							 m_ColourSyntax ? resolved.Tokens : nullptr,
+							 TextFor(row.Kind, palette), syntax);
 				}
 				else
 				{
@@ -470,13 +358,15 @@ namespace Graphite {
 					DrawNumber(rowPos.x, rowPos.y, numberWidth,
 							   leftSide ? row->OldLine : row->NewLine);
 
-					const ResolvedLine resolved = Resolve(file, *row, tokens);
+					const ResolvedLine resolved =
+						ResolveRow(file, *row, leftSide ? DiffSide::Old : DiffSide::New,
+								   m_OldLines, m_NewLines, tokens);
 
 					if (resolved.Text.has_value())
 					{
 						DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
-								 resolved.Tokens, TextFor(row->Kind, palette), syntax,
-								 m_ColourSyntax);
+								 m_ColourSyntax ? resolved.Tokens : nullptr,
+								 TextFor(row->Kind, palette), syntax);
 					}
 					else
 					{

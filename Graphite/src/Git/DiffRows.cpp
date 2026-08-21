@@ -280,4 +280,91 @@ namespace Graphite {
 
 		return result;
 	}
+
+	namespace {
+
+		// One whole-file line by its one-based number, with the tokens lexed for it. Absent
+		// when the number names no line on that side — a side the file does not have leaves an
+		// empty span, and a texts/rows disagreement about the file's length lands here rather
+		// than out of bounds.
+		ResolvedLine WholeFileLine(int number, std::span<const std::string_view> lines,
+								   const std::vector<std::vector<Token>>& tokens)
+		{
+			if (number <= 0 || static_cast<std::size_t>(number) > lines.size())
+			{
+				return ResolvedLine{};
+			}
+
+			const std::size_t index = static_cast<std::size_t>(number) - 1;
+
+			// The token vector is bounded separately: a lexer that produced fewer lines than
+			// the split did leaves the tail uncoloured rather than reading past its end.
+			return ResolvedLine{lines[index],
+								index < tokens.size() ? &tokens[index] : nullptr};
+		}
+
+		const std::vector<Token>* TokensAt(int number,
+										   const std::vector<std::vector<Token>>& tokens)
+		{
+			if (number <= 0 || static_cast<std::size_t>(number) > tokens.size())
+			{
+				return nullptr;
+			}
+
+			return &tokens[static_cast<std::size_t>(number) - 1];
+		}
+	}
+
+	ResolvedLine ResolveRow(const Core::FileDiff& file, const DiffRow& row, DiffSide side,
+							std::span<const std::string_view> oldLines,
+							std::span<const std::string_view> newLines,
+							const FileTokens& tokens)
+	{
+		const bool newSide = side == DiffSide::New;
+
+		if (row.Kind == DiffRowKind::Unchanged)
+		{
+			// Both halves of an Unchanged row carry identical content — the row exists only
+			// where the diff left a line alone — so either side's text says the same thing. The
+			// side being drawn still wins, because its tokens do not: a rename from foo.txt to
+			// foo.cpp lexes each side with its own language, and colouring the old half from
+			// the new file's lexer would claim a plain-text file was C++. The other side is the
+			// fallback for a row only one side has a line for, which is how a file with no old
+			// side (an add) or no new side (a delete) still resolves.
+			const ResolvedLine preferred = newSide
+											   ? WholeFileLine(row.NewLine, newLines, tokens.New)
+											   : WholeFileLine(row.OldLine, oldLines, tokens.Old);
+
+			if (preferred.Text.has_value())
+			{
+				return preferred;
+			}
+
+			return newSide ? WholeFileLine(row.OldLine, oldLines, tokens.Old)
+						   : WholeFileLine(row.NewLine, newLines, tokens.New);
+		}
+
+		const Core::DiffLine* line = LineOf(file, row);
+
+		if (line == nullptr)
+		{
+			return ResolvedLine{};
+		}
+
+		// A removed line exists only on the old side and an added line only on the new, so this
+		// picks whichever side the diff itself says has the line; a context line has both, and
+		// the side being drawn wins for the same reason as above.
+		const std::vector<Token>* lineTokens =
+			newSide ? TokensAt(row.NewLine, tokens.New) : TokensAt(row.OldLine, tokens.Old);
+
+		if (lineTokens == nullptr)
+		{
+			lineTokens = newSide ? TokensAt(row.OldLine, tokens.Old)
+								 : TokensAt(row.NewLine, tokens.New);
+		}
+
+		// The terminator comes off by the same rule SplitTextLines uses, so the bytes drawn for
+		// a changed row and the bytes drawn for an Unchanged one are stripped identically.
+		return ResolvedLine{StripLineTerminator(line->Text), lineTokens};
+	}
 }

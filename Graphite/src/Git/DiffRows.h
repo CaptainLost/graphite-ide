@@ -1,9 +1,13 @@
 #pragma once
 
+#include "Git/SyntaxRuns.h"
+
 #include "Core/Git/Diff.h"
 
 #include <cstddef>
 #include <optional>
+#include <span>
+#include <string_view>
 #include <vector>
 
 namespace Graphite {
@@ -82,4 +86,37 @@ namespace Graphite {
 	// index.
 	WholeFileRows BuildWholeFileRows(const Core::FileDiff& file, std::size_t oldLineCount,
 									  std::size_t newLineCount);
+
+	// Which half of the side-by-side view a row is being resolved for. The unified view has one
+	// text column standing for both sides and asks for New, which is what it drew before this
+	// distinction existed.
+	enum class DiffSide
+	{
+		Old,
+		New
+	};
+
+	// What a row draws: the text — absent for a row whose indices no longer fit the file,
+	// matching LineOf — and the tokens that colour it, null when there is nothing to colour it
+	// with.
+	struct ResolvedLine
+	{
+		std::optional<std::string_view> Text;
+		const std::vector<Token>* Tokens = nullptr;
+	};
+
+	// Where the whole file's texts, the tokens lexed from them and the rows built over them
+	// finally meet: side selection, the one-based row numbers turned into zero-based indices,
+	// and a bounds check against each of the four vectors that can disagree about how long the
+	// file is. A free function taking plain arguments rather than a widget's private method,
+	// because this arithmetic decides what gets drawn and has to be reachable by a test.
+	//
+	// `oldLines`/`newLines` are the file's lines as SplitTextLines produced them, empty for a
+	// side the file does not have; `tokens` are the tokens lexed from those same lines. `side`
+	// is preferred whenever it has the line, so each half of a rename that changes the
+	// extension is coloured by its own language's lexer rather than by the new file's.
+	ResolvedLine ResolveRow(const Core::FileDiff& file, const DiffRow& row, DiffSide side,
+							std::span<const std::string_view> oldLines,
+							std::span<const std::string_view> newLines,
+							const FileTokens& tokens);
 }

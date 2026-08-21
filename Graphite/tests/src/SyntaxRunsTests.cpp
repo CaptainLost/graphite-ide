@@ -2,6 +2,7 @@
 
 #include "Git/SyntaxRuns.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,4 +70,87 @@ TEST_CASE("LexFileText returns no lines for a path with no lexer")
 	const auto lines = Graphite::LexFileText("some text\nmore text", "README.md");
 
 	CHECK(lines.empty());
+}
+
+TEST_CASE("StripLineTerminator takes one CRLF and no more")
+{
+	CHECK(Graphite::StripLineTerminator("line\r\n") == "line");
+	CHECK(Graphite::StripLineTerminator("line\n") == "line");
+	CHECK(Graphite::StripLineTerminator("line\r") == "line");
+	CHECK(Graphite::StripLineTerminator("line") == "line");
+
+	// The one case that told the two old copies of this rule apart: a doubled carriage
+	// return is content, not a second terminator, and both callers now agree it is.
+	CHECK(Graphite::StripLineTerminator("line\r\r\n") == "line\r");
+	CHECK(Graphite::StripLineTerminator("").empty());
+	CHECK(Graphite::StripLineTerminator("\n").empty());
+}
+
+TEST_CASE("A line with no tokens draws as one plain run")
+{
+	const auto runs = Graphite::RunsFor("plain text", nullptr);
+
+	REQUIRE(runs.size() == 1);
+	CHECK(runs.front() == Graphite::SyntaxRun{0, 10, std::nullopt});
+}
+
+TEST_CASE("An empty token vector draws as one plain run")
+{
+	const std::vector<Graphite::Token> tokens;
+	const auto runs = Graphite::RunsFor("plain text", &tokens);
+
+	REQUIRE(runs.size() == 1);
+	CHECK_FALSE(runs.front().Kind.has_value());
+}
+
+TEST_CASE("The gap before a token and the tail after the last one are plain")
+{
+	const std::vector<Graphite::Token> tokens{Graphite::Token{Graphite::TokenKind::Keyword, 2, 5}};
+	const auto runs = Graphite::RunsFor("  int x;", &tokens);
+
+	REQUIRE(runs.size() == 3);
+	CHECK(runs[0] == Graphite::SyntaxRun{0, 2, std::nullopt});
+	CHECK(runs[1] == Graphite::SyntaxRun{2, 5, Graphite::TokenKind::Keyword});
+	CHECK(runs[2] == Graphite::SyntaxRun{5, 8, std::nullopt});
+}
+
+TEST_CASE("A token reaching exactly the end of the line leaves no tail run")
+{
+	const std::vector<Graphite::Token> tokens{Graphite::Token{Graphite::TokenKind::Keyword, 0, 3}};
+	const auto runs = Graphite::RunsFor("int", &tokens);
+
+	REQUIRE(runs.size() == 1);
+	CHECK(runs.front() == Graphite::SyntaxRun{0, 3, Graphite::TokenKind::Keyword});
+}
+
+TEST_CASE("A token reaching past the end of the line is clamped to it")
+{
+	const std::vector<Graphite::Token> tokens{Graphite::Token{Graphite::TokenKind::String, 0, 99}};
+	const auto runs = Graphite::RunsFor("abc", &tokens);
+
+	// A mismatch between the tokens and the line they were supposedly lexed from becomes
+	// truncated colouring, not a read past the end of the line mid-frame.
+	REQUIRE(runs.size() == 1);
+	CHECK(runs.front() == Graphite::SyntaxRun{0, 3, Graphite::TokenKind::String});
+}
+
+TEST_CASE("An empty line with a token vector still draws one run")
+{
+	const std::vector<Graphite::Token> tokens{Graphite::Token{Graphite::TokenKind::Comment, 0, 4}};
+	const auto runs = Graphite::RunsFor("", &tokens);
+
+	// A row that draws no run at all sizes no item, so the cursor never advances and the
+	// next row lands on top of it. One empty run is what keeps the row's height.
+	REQUIRE(runs.size() == 1);
+	CHECK(runs.front() == Graphite::SyntaxRun{0, 0, std::nullopt});
+}
+
+TEST_CASE("Tokens that all cover nothing still leave one run for the line")
+{
+	const std::vector<Graphite::Token> tokens{Graphite::Token{Graphite::TokenKind::Comment, 0, 0},
+											  Graphite::Token{Graphite::TokenKind::Comment, 0, 0}};
+	const auto runs = Graphite::RunsFor("abc", &tokens);
+
+	REQUIRE_FALSE(runs.empty());
+	CHECK(runs.back().To == 3);
 }

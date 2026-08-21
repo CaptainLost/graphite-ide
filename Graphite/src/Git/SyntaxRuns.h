@@ -2,11 +2,23 @@
 
 #include "Lang/Syntax/Token.h"
 
+#include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string_view>
 #include <vector>
 
 namespace Graphite {
+
+	// Both sides' tokens for one file's texts, one entry per line, indexed the same way the
+	// texts themselves are: line number minus one. Held by whoever owns the texts and rebuilt
+	// only when those texts change, never lexed inside a draw call — see the header comment on
+	// LexFileText for why lexing there, once a frame, would be the mistake.
+	struct FileTokens
+	{
+		std::vector<std::vector<Token>> Old;
+		std::vector<std::vector<Token>> New;
+	};
 
 	// Lexes a whole text in one top-to-bottom pass, carrying `LineState` from each line into
 	// the next so a construct that opens on line 0 still colours line 40 000 correctly. This is
@@ -36,4 +48,34 @@ namespace Graphite {
 	// plain text, which is the correct answer rather than a failure.
 	std::vector<std::vector<Token>> LexFileText(std::string_view text,
 												 const std::filesystem::path& path);
+
+	// One line's terminator removed: at most one '\n', and at most one '\r' before it. The
+	// single rule for this in the application — SplitTextLines strips exactly this from every
+	// line it produces, and a Core::DiffLine carries its own terminator in its text — so the
+	// bytes a token's From/To index and the bytes a changed row draws cannot disagree.
+	std::string_view StripLineTerminator(std::string_view line);
+
+	// One span of a line drawn in one colour. Kind is unset for text no token covers: the
+	// whitespace between two tokens, and the whole line when there is nothing to colour it
+	// with.
+	struct SyntaxRun
+	{
+		std::size_t From = 0;
+		std::size_t To = 0;
+		std::optional<TokenKind> Kind;
+
+		friend bool operator==(const SyntaxRun&, const SyntaxRun&) = default;
+	};
+
+	// The runs `line` draws as, given the tokens lexed from it — null for a line that has none,
+	// and for a caller that has colouring switched off.
+	//
+	// Always at least one run, even for an empty line and even for a token vector that covers
+	// nothing: a row that draws no run at all sizes no item, so the cursor never advances and
+	// the next row lands on top of it.
+	//
+	// Token offsets are clamped to the line rather than trusted. They came from lexing this
+	// same line, so they should already fit, but a clamp turns a mismatch into truncated
+	// colouring instead of a substring throwing mid-frame.
+	std::vector<SyntaxRun> RunsFor(std::string_view line, const std::vector<Token>* tokens);
 }

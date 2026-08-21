@@ -22,16 +22,6 @@ namespace Graphite {
 		Unified
 	};
 
-	// Both sides' tokens for one file's texts, one entry per line, indexed the same way the
-	// texts themselves are: line number minus one. Held by the owner and rebuilt only when the
-	// FileTexts they came from changes, never lexed inside Render itself — see the header
-	// comment on LexFileText for why lexing here, once a frame, would be the mistake.
-	struct FileTokens
-	{
-		std::vector<std::vector<Token>> Old;
-		std::vector<std::vector<Token>> New;
-	};
-
 	// Draws one file's diff. Holds the mode and the two toggles below, plus a small cache of
 	// the file's own lines split out of its texts — rebuilt only when the FileTexts pointer
 	// changes, for the same reason the caller's token cache is: splitting a whole file's text
@@ -83,18 +73,6 @@ namespace Graphite {
 		// cache itself when the owner hands it one, rather than leaving the previous file's
 		// full text referenced until the next whole-file render happens to replace it.
 		void RebuildLineCache(const std::shared_ptr<const FileTexts>& texts);
-
-		// What a row draws, resolved once so RenderUnified and RenderSideBySide agree on it:
-		// the text (absent for a row whose indices no longer fit, matching LineOf), and the
-		// tokens that colour it (null when there is nothing to colour it with).
-		struct ResolvedLine
-		{
-			std::optional<std::string_view> Text;
-			const std::vector<Token>* Tokens = nullptr;
-		};
-
-		ResolvedLine Resolve(const Core::FileDiff& file, const DiffRow& row,
-							 const FileTokens& tokens) const;
 
 		DiffViewMode m_Mode = DiffViewMode::SideBySide;
 		bool m_ShowWholeFile = false;
