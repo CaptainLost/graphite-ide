@@ -212,10 +212,6 @@ namespace Graphite {
 		// before a folder is open has no repository to ask about.
 		void SetRoot(std::filesystem::path root);
 
-		// So a caller holding a git-relative path — a status entry, a discard result — can
-		// absolutise it before comparing it against a document's absolute one.
-		const std::filesystem::path& GetRoot() const { return m_Root; }
-
 		void Clear();
 
 		void SubscribeTo(Core::EventBus& events);
