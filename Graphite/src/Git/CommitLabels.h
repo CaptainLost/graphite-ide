@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Git/GitPalette.h"
+
 #include "Core/Git/Diff.h"
 #include "Core/Git/Signature.h"
 
@@ -42,6 +44,15 @@ namespace Graphite {
 	// a diff's file list in practice, and gets a blank rather than a claim about a change
 	// that did not happen.
 	char ChangeLetter(Core::FileChange change);
+
+	// The colour that letter is drawn in: the gutter colours the editor already marks
+	// changes with, so a file added in a commit and a line added in the working tree read
+	// as the same event. A rename, a copy and a type change all leave the file where it was
+	// with something about it different, which is what the modified colour says.
+	//
+	// Zero for a file the commit left alone, whose letter is a space — colouring nothing
+	// would tint the row's spacing with a colour that means nothing.
+	ImU32 ChangeColor(Core::FileChange change, const GitPalette& palette);
 
 	// The path a changed file is shown under. A deleted file has no new path, so this falls
 	// back to the old one — a deletion is exactly the change a reader most wants to find by

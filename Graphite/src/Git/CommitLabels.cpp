@@ -235,6 +235,26 @@ namespace Graphite {
 		return ' ';
 	}
 
+	ImU32 ChangeColor(Core::FileChange change, const GitPalette& palette)
+	{
+		switch (change)
+		{
+		case Core::FileChange::Added:
+			return palette.GutterAdded;
+		case Core::FileChange::Deleted:
+			return palette.GutterRemoved;
+		case Core::FileChange::Modified:
+		case Core::FileChange::Renamed:
+		case Core::FileChange::Copied:
+		case Core::FileChange::TypeChanged:
+			return palette.GutterModified;
+		case Core::FileChange::Unmodified:
+			return 0;
+		}
+
+		return 0;
+	}
+
 	const std::filesystem::path& ShownPath(const Core::FileDiff& file)
 	{
 		return file.NewPath.empty() ? file.OldPath : file.NewPath;

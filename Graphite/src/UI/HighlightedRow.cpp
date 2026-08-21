@@ -31,6 +31,47 @@ namespace Graphite {
 								label.substr(at + wanted.size())};
 	}
 
+	namespace {
+
+		// Both row drawers lay text over an empty Selectable, and both have to put the
+		// cursor back where the row started to do it. The last piece each draws advances the
+		// cursor exactly one line, which is what the Selectable advanced it by — so the row
+		// is one line tall either way, and a clipper counting rows stays right.
+		bool OverlaidSelectable(const char* id, bool selected, ImVec2& rowStart)
+		{
+			rowStart = ImGui::GetCursorPos();
+
+			// AllowOverlap keeps the click reaching this rather than being swallowed by the
+			// text items drawn on top of it.
+			const bool clicked =
+				ImGui::Selectable(id, selected, ImGuiSelectableFlags_AllowOverlap);
+
+			ImGui::SetCursorPos(rowStart);
+			return clicked;
+		}
+	}
+
+	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
+						  ImU32 markerColor, std::string_view text)
+	{
+		if (marker.empty() || markerColor == 0)
+		{
+			return ImGui::Selectable((std::string(marker) + std::string(text)).c_str(),
+									 selected);
+		}
+
+		ImVec2 rowStart;
+		const bool clicked = OverlaidSelectable(id, selected, rowStart);
+
+		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(markerColor), "%.*s",
+						   static_cast<int>(marker.size()), marker.data());
+		ImGui::SameLine(0.0f, 0.0f);
+
+		ImGui::TextUnformatted(text.data(), text.data() + text.size());
+
+		return clicked;
+	}
+
 	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
 							   std::string_view needle)
 	{
@@ -43,19 +84,10 @@ namespace Graphite {
 			return ImGui::Selectable(std::string(label).c_str(), selected);
 		}
 
-		const ImVec2 rowStart = ImGui::GetCursorPos();
-
 		// An empty label, drawn first, so the whole row is the click target and the text can
-		// be laid over it in pieces. AllowOverlap keeps the click reaching this rather than
-		// being swallowed by the text items on top.
-		const bool clicked =
-			ImGui::Selectable(id, selected, ImGuiSelectableFlags_AllowOverlap);
-
-		// Back to where the row started, so the pieces are drawn over the Selectable rather
-		// than under it. The last piece advances the cursor exactly one line, which is what
-		// the Selectable advanced it by — so the row is one line tall either way, and a
-		// clipper counting rows stays right.
-		ImGui::SetCursorPos(rowStart);
+		// be laid over it in pieces.
+		ImVec2 rowStart;
+		const bool clicked = OverlaidSelectable(id, selected, rowStart);
 
 		// The accent the theme already uses for a tick, so the match reads as marked rather
 		// than as a second colour of text.

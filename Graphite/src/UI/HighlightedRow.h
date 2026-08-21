@@ -1,5 +1,7 @@
 #pragma once
 
+#include <imgui.h>
+
 #include <string>
 #include <string_view>
 
@@ -39,4 +41,17 @@ namespace Graphite {
 	// measuring text, and CalcTextSize rounds up.
 	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
 							   std::string_view needle);
+
+	// One row whose leading marker carries a colour and whose text does not — a file row's
+	// change letter against its path. `text` is the rest of the label exactly as it should
+	// appear, spacing included, because how far the text sits from the marker is the
+	// caller's layout and not this function's.
+	//
+	// A marker with no colour, or no marker at all, draws as one plain Selectable: there is
+	// nothing to lay over anything, and tinting the row's spacing with a colour that means
+	// nothing is worse than not tinting it.
+	//
+	// `id` must start with "##", for the reason HighlightedSelectable's does.
+	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
+						  ImU32 markerColor, std::string_view text);
 }

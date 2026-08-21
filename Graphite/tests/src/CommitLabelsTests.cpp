@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/CommitLabels.h"
+#include "Git/GitPalette.h"
 
 #include <cstddef>
 #include <string>
@@ -294,4 +295,42 @@ TEST_CASE("A deleted file is shown under its old path")
 	// A deleted delta carries no new path at all, so falling back to NewPath would show
 	// nothing for exactly the change a reader most wants to find by name.
 	CHECK(Graphite::ShownPath(file) == std::filesystem::path("gone.txt"));
+}
+
+TEST_CASE("A change letter takes the colour that change has everywhere else")
+{
+	// The gutter colours, not new ones: a file added in a commit and a line added in the
+	// editor are the same event to a reader, and two greens would say they are not.
+	Graphite::GitPalette palette;
+	palette.GutterAdded = 0x11111111;
+	palette.GutterModified = 0x22222222;
+	palette.GutterRemoved = 0x33333333;
+
+	CHECK(Graphite::ChangeColor(Core::FileChange::Added, palette) == palette.GutterAdded);
+	CHECK(Graphite::ChangeColor(Core::FileChange::Modified, palette) == palette.GutterModified);
+	CHECK(Graphite::ChangeColor(Core::FileChange::Deleted, palette) == palette.GutterRemoved);
+}
+
+TEST_CASE("A change that neither adds nor deletes the file reads as a modification")
+{
+	// A rename, a copy and a type change all leave a file where it was with something about
+	// it different, which is what the modified colour says.
+	Graphite::GitPalette palette;
+	palette.GutterModified = 0x22222222;
+
+	CHECK(Graphite::ChangeColor(Core::FileChange::Renamed, palette) == palette.GutterModified);
+	CHECK(Graphite::ChangeColor(Core::FileChange::Copied, palette) == palette.GutterModified);
+	CHECK(Graphite::ChangeColor(Core::FileChange::TypeChanged, palette) == palette.GutterModified);
+}
+
+TEST_CASE("A file the commit left alone is not coloured at all")
+{
+	// Its letter is a space. Colouring nothing would still tint the row's spacing, which is
+	// a colour with no meaning attached to it.
+	Graphite::GitPalette palette;
+	palette.GutterAdded = 0x11111111;
+	palette.GutterModified = 0x22222222;
+	palette.GutterRemoved = 0x33333333;
+
+	CHECK(Graphite::ChangeColor(Core::FileChange::Unmodified, palette) == 0u);
 }

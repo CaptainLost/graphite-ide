@@ -182,10 +182,14 @@ namespace Graphite {
 											  m_SelectedFile->Commit == commit.Id &&
 											  m_SelectedFile->Path == path;
 
-						const std::string label =
-							std::format("{}  {}", ChangeLetter(file->Change), path.string());
+						// The letter carries the colour the editor's gutter gives that same
+						// change, so a glance down the column says what happened without
+						// reading a letter per row.
+						const std::string letter(1, ChangeLetter(file->Change));
+						const std::string rest = std::format("  {}", path.string());
 
-						if (ImGui::Selectable(label.c_str(), selected))
+						if (MarkedSelectable("##file", selected, letter,
+											 ChangeColor(file->Change, palette), rest))
 						{
 							m_SelectedFile = FileSelection{commit.Id, path};
 						}
