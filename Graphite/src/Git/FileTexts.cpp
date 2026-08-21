@@ -112,4 +112,62 @@ namespace Graphite {
 		// Both targets above name commits on both sides, which ReadFileTexts already serves.
 		return {};
 	}
+
+	bool TokensStillGood(const FileTexts* held, const FileTexts& fresh)
+	{
+		if (held == nullptr)
+		{
+			return false;
+		}
+
+		return held->HasOld == fresh.HasOld && held->HasNew == fresh.HasNew
+			   && held->Old == fresh.Old && held->New == fresh.New;
+	}
+
+	void FileTextsBinding::UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file)
+	{
+		const std::filesystem::path& key = ShownPath(file);
+
+		// No commit keys this text, so Commit stays unset - and ForgetFailure, which needs one,
+		// has nothing to forget here: the model holds one working-tree slot rather than a cache
+		// of failed entries.
+		if (Key != key)
+		{
+			Key = key;
+			Texts.reset();
+			Tokens = FileTokens{};
+		}
+
+		if (file.IsBinary)
+		{
+			Texts.reset();
+			Tokens = FileTokens{};
+			return;
+		}
+
+		const std::shared_ptr<const FileTexts> texts = model.GetWorkingTreeTexts();
+
+		if (texts == nullptr)
+		{
+			// Not yet fetched, or refused as too large to lex. Either way the pane draws its
+			// hunks without the text behind them.
+			Texts.reset();
+			Tokens = FileTokens{};
+			return;
+		}
+
+		if (TokensStillGood(Texts.get(), *texts))
+		{
+			// Hold the newer object anyway, so the next comparison is against what is on screen.
+			Texts = texts;
+			return;
+		}
+
+		Texts = texts;
+
+		Tokens.Old = texts->HasOld ? LexFileText(texts->Old, file.OldPath)
+								   : std::vector<std::vector<Token>>{};
+		Tokens.New = texts->HasNew ? LexFileText(texts->New, file.NewPath)
+								   : std::vector<std::vector<Token>>{};
+	}
 }

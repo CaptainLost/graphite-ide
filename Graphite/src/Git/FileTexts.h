@@ -74,6 +74,17 @@ namespace Graphite {
 	// repository, a thread or a file.
 	WorkingTreeSides SidesFor(Core::DiffTarget target);
 
+	// Whether tokens lexed from `held` are still good for `fresh`.
+	//
+	// A commit's text is immutable, so there the pointer alone answers this - a different
+	// object means different text. The working tree's text is fetched afresh on every
+	// refresh, so its pointer changes even when the file has not, and comparing the bytes is
+	// what stops the file being re-lexed sixty times a second while it sits untouched.
+	//
+	// Both sides' presence is compared as well as their content: a side appearing or
+	// disappearing changes what must be lexed even when the text that remains is identical.
+	bool TokensStillGood(const FileTexts* held, const FileTexts& fresh);
+
 	// One owner's hold on a file's whole-file texts and the tokens lexed from them, plus the
 	// rules for keeping the two in step with whichever file is on screen.
 	//
@@ -107,6 +118,11 @@ namespace Graphite {
 		// as text, nothing on this path caps how many of them there are, and the pane says so
 		// without needing any of them.
 		void Update(GitModel& model, const Core::Oid& commit, const Core::FileDiff& file);
+
+		// The same job for the working tree's own text, which has no commit to be keyed by and
+		// arrives as a single slot the model replaces. Re-lexes only when the text actually
+		// differs - see TokensStillGood.
+		void UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file);
 
 		// Drops the model's entry for the file this binding points at, but only if that entry
 		// failed — GitModel::ForgetFailedTextsFor is a no-op otherwise. Called by Update when

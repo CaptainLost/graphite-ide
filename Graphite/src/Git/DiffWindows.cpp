@@ -201,12 +201,6 @@ namespace Graphite {
 					{
 						const Core::FileDiff& file = diff->Files[*fileIndex];
 
-						// A working-tree tab has no commit to key texts by, and ReadFileTexts
-						// reads both sides out of commits — it has no way to name "the file on
-						// disk". So this tab's hunks, added and removed lines and change bands
-						// draw normally, but without the whole-file text that gives a commit's
-						// diff its syntax colouring; View.Render already accepts no texts while
-						// they are unavailable.
 						if (entry.Diff.Commit.has_value())
 						{
 							// Every rule about which path keys the texts, when the tokens are
@@ -214,6 +208,13 @@ namespace Graphite {
 							// shared with the docked panel - the same steps written out twice
 							// were wrong the same way in both copies.
 							entry.Texts.Update(model, *entry.Diff.Commit, file);
+						}
+						else
+						{
+							// The working tree's own text, which the model fetched on the same job
+							// as the diff above - so the colouring and the whole-file view describe
+							// the same moment of a file the reader may still be typing in.
+							entry.Texts.UpdateFromWorkingTree(model, file);
 						}
 
 						entry.View.Render(file, palette, syntax, entry.Texts.Texts,

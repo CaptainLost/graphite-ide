@@ -77,3 +77,37 @@ TEST_CASE("A target that names no working tree has no side to read")
 	CHECK(range.Old == Graphite::TextSide::Absent);
 	CHECK(range.New == Graphite::TextSide::Absent);
 }
+
+TEST_CASE("Tokens are stale when nothing has been lexed yet")
+{
+	const Graphite::FileTexts fresh{.Old = "a", .New = "b", .HasOld = true, .HasNew = true};
+
+	CHECK_FALSE(Graphite::TokensStillGood(nullptr, fresh));
+}
+
+TEST_CASE("Tokens survive a refresh that brought the same text back")
+{
+	const Graphite::FileTexts held{.Old = "a", .New = "b", .HasOld = true, .HasNew = true};
+	const Graphite::FileTexts fresh{.Old = "a", .New = "b", .HasOld = true, .HasNew = true};
+
+	CHECK(Graphite::TokensStillGood(&held, fresh));
+}
+
+TEST_CASE("Tokens are stale once either side's text differs")
+{
+	const Graphite::FileTexts held{.Old = "a", .New = "b", .HasOld = true, .HasNew = true};
+
+	const Graphite::FileTexts newerChanged{.Old = "a", .New = "typed", .HasOld = true, .HasNew = true};
+	CHECK_FALSE(Graphite::TokensStillGood(&held, newerChanged));
+
+	const Graphite::FileTexts olderChanged{.Old = "staged", .New = "b", .HasOld = true, .HasNew = true};
+	CHECK_FALSE(Graphite::TokensStillGood(&held, olderChanged));
+}
+
+TEST_CASE("Tokens are stale when a side appears or disappears")
+{
+	const Graphite::FileTexts held{.Old = "", .New = "b", .HasOld = false, .HasNew = true};
+	const Graphite::FileTexts fresh{.Old = "", .New = "b", .HasOld = true, .HasNew = true};
+
+	CHECK_FALSE(Graphite::TokensStillGood(&held, fresh));
+}
