@@ -41,7 +41,7 @@ TEST_CASE("A conflicted file is only conflicted")
 	CHECK(sections.Unstaged.empty());
 }
 
-TEST_CASE("An untracked file is unstaged and nothing else")
+TEST_CASE("An entry changed only in the working tree is unstaged and nothing else")
 {
 	Core::WorkingTreeStatus status;
 	Core::FileStatus file = Entry("new.txt", Core::StatusFlags::None, Core::StatusFlags::New);
@@ -75,7 +75,10 @@ TEST_CASE("The change letter names the most consequential flag")
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Modified, false) == 'M');
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::TypeChanged, false) == 'T');
 
-	// A rename that also changed the file is a rename first: that is the fact a reader
-	// cannot work out from the path alone.
+	// libgit2 can produce certain flag combinations within a single field. New and Deleted
+	// cannot combine with other flags: a new file is just new, and a deleted file is just
+	// deleted. Combinations that can occur are tested below to pin the precedence order.
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::Modified, false) == 'R');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::TypeChanged, false) == 'R');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Modified | Core::StatusFlags::TypeChanged, false) == 'T');
 }
