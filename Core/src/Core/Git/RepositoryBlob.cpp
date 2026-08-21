@@ -6,9 +6,12 @@
 
 #include <git2.h>
 
+#include <cstdint>
 #include <format>
+#include <fstream>
 #include <optional>
 #include <string>
+#include <system_error>
 
 namespace Core {
 
@@ -138,5 +141,113 @@ namespace Core {
 		git_commit_free(handle);
 
 		return std::optional<Oid>{parentId};
+	}
+
+	Result<std::string> Repository::ReadIndexBlob(const std::filesystem::path& path) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		git_index* index = nullptr;
+
+		if (git_repository_index(&index, m_Handle) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read the index: {}", LastLibgit2Message())};
+		}
+
+		const std::string gitPath = ToGitPath(path);
+
+		// Stage zero is the settled entry. A path in conflict has stages one to three
+		// instead, so this finds nothing for it - which is the answer, not a failure.
+		const git_index_entry* entry = git_index_get_bypath(index, gitPath.c_str(), 0);
+
+		if (entry == nullptr)
+		{
+			git_index_free(index);
+			return Error{ErrorCode::NotFound,
+						 std::format("'{}' has nothing staged", gitPath)};
+		}
+
+		// Copied before the index goes away: the entry points into the index's own storage.
+		const git_oid id = entry->id;
+		git_index_free(index);
+
+		git_blob* blob = nullptr;
+
+		if (git_blob_lookup(&blob, m_Handle, &id) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read the staged blob for '{}': {}", gitPath,
+									 LastLibgit2Message())};
+		}
+
+		const git_object_size_t size = git_blob_rawsize(blob);
+
+		if (size > MaximumDiffTextSize)
+		{
+			git_blob_free(blob);
+			return Error{ErrorCode::InvalidArgument,
+						 std::format("'{}' is too large to show as text ({} bytes)", gitPath, size)};
+		}
+
+		std::string bytes{static_cast<const char*>(git_blob_rawcontent(blob)),
+						  static_cast<std::size_t>(size)};
+
+		git_blob_free(blob);
+		return bytes;
+	}
+
+	Result<std::string> Repository::ReadWorkingTreeFile(const std::filesystem::path& path) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		const std::filesystem::path full = m_WorkingDirectory / path;
+		const std::string gitPath = ToGitPath(path);
+
+		std::error_code code;
+
+		if (!std::filesystem::is_regular_file(full, code))
+		{
+			return Error{ErrorCode::NotFound,
+						 std::format("'{}' is not a file in the working tree", gitPath)};
+		}
+
+		const std::uintmax_t size = std::filesystem::file_size(full, code);
+
+		if (code)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot measure '{}': {}", gitPath, code.message())};
+		}
+
+		// Refused before anything is allocated, so an enormous file cannot force the
+		// allocation first and fail afterwards.
+		if (size > MaximumDiffTextSize)
+		{
+			return Error{ErrorCode::InvalidArgument,
+						 std::format("'{}' is too large to show as text ({} bytes)", gitPath, size)};
+		}
+
+		std::ifstream stream{full, std::ios::binary};
+
+		if (!stream.is_open())
+		{
+			return Error{ErrorCode::AccessDenied, std::format("cannot open '{}'", gitPath)};
+		}
+
+		std::string bytes(static_cast<std::size_t>(size), '\0');
+		stream.read(bytes.data(), static_cast<std::streamsize>(size));
+
+		// The file can shrink between the measurement and the read; keeping only what was
+		// actually read is what stops the tail being a run of nul bytes nobody wrote.
+		bytes.resize(static_cast<std::size_t>(stream.gcount()));
+
+		return bytes;
 	}
 }

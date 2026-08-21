@@ -262,3 +262,78 @@ TEST_CASE("A merge commit reports its first parent")
 	REQUIRE(parent.GetValue().has_value());
 	CHECK(parent.GetValue()->ToHex() == mainline);
 }
+
+TEST_CASE("The index side of a file is read as it was staged")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	fixture.Write("a.txt", "staged\n");
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
+	fixture.Write("a.txt", "edited again\n");
+
+	const auto staged = repository.ReadIndexBlob("a.txt");
+	REQUIRE(staged.HasValue());
+	CHECK(staged.GetValue() == "staged\n");
+}
+
+TEST_CASE("The index has nothing to say about a file that was never staged")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+	fixture.Write("new.txt", "untracked\n");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	const auto staged = repository.ReadIndexBlob("new.txt");
+	REQUIRE_FALSE(staged.HasValue());
+	CHECK(staged.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("The working-tree side of a file is read as it stands on disk")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	fixture.Write("a.txt", "edited but not staged\n");
+
+	const auto onDisk = repository.ReadWorkingTreeFile("a.txt");
+	REQUIRE(onDisk.HasValue());
+	CHECK(onDisk.GetValue() == "edited but not staged\n");
+}
+
+TEST_CASE("A working-tree file that is gone answers NotFound rather than failing")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+	fixture.Remove("a.txt");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	const auto onDisk = repository.ReadWorkingTreeFile("a.txt");
+	REQUIRE_FALSE(onDisk.HasValue());
+	CHECK(onDisk.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("A working-tree file too large to lex is refused before it is read")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	fixture.Write("huge.txt", std::string(Core::MaximumDiffTextSize + 1, 'x'));
+
+	const auto onDisk = repository.ReadWorkingTreeFile("huge.txt");
+	REQUIRE_FALSE(onDisk.HasValue());
+	CHECK(onDisk.GetError().Code == Core::ErrorCode::InvalidArgument);
+}

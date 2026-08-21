@@ -7,13 +7,22 @@
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <vector>
 
 struct git_repository;
 
 namespace Core {
+
+	// The ceiling on a file read for a diff's whole-file view. Far smaller than
+	// MaximumFileSize, which bounds a document the user asked to open: this text is re-read
+	// whenever the working tree changes and lexed again when it differs, so its cost is paid
+	// repeatedly rather than once. Two megabytes is past any file that is read as source and
+	// small enough that re-reading it does not show.
+	inline constexpr std::uint64_t MaximumDiffTextSize = 2ull * 1024 * 1024;
 
 	class Repository
 	{
@@ -52,6 +61,24 @@ namespace Core {
 		// NotFound when that commit's tree has no such path — which is the ordinary answer
 		// for the older side of an added file, not a failure worth reporting to anyone.
 		Result<std::string> ReadBlob(const std::filesystem::path& path, const Oid& revision) const;
+
+		// The file's bytes as they are staged. The two sides of a working-tree diff cannot
+		// both come from ReadBlob: a commit is the one thing neither of them is.
+		//
+		// Only a settled entry answers. A path in conflict has no single staged content —
+		// it has one per side of the merge — so this reports NotFound for it rather than
+		// picking one and calling it "the" staged version.
+		//
+		// NotFound is also the ordinary answer for a path that was never staged, which is
+		// what the older side of a newly added file looks like.
+		Result<std::string> ReadIndexBlob(const std::filesystem::path& path) const;
+
+		// The file's bytes as they are on disk right now, unsaved edits and all. Relative to
+		// the working directory, like every other path here.
+		//
+		// NotFound for a path that is gone or is not a regular file — a deleted file's newer
+		// side, which is an answer rather than a failure.
+		Result<std::string> ReadWorkingTreeFile(const std::filesystem::path& path) const;
 
 		// The commit this one's diff is taken against. Empty for a root commit, which has
 		// nothing before it — not an error, and the caller's answer is the same as for a
