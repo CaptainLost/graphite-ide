@@ -48,6 +48,18 @@ namespace Graphite {
 			const std::filesystem::path& oldPath,
 			const std::filesystem::path& newPath) = 0;
 
+		// Both sides of one file's text for a working-tree diff. Which two sources those
+		// sides come from depends on the target - see SidesFor - and a commit is not one of
+		// them, which is why ReadFileTexts above cannot answer this.
+		//
+		// A side that is absent comes back with its Has flag false rather than as an error:
+		// an untracked file has no older side, a deleted one has no newer side, and both are
+		// answers.
+		virtual Core::Result<FileTexts> ReadWorkingTreeTexts(
+			Core::DiffTarget target,
+			const std::filesystem::path& oldPath,
+			const std::filesystem::path& newPath) = 0;
+
 		// The writes. Called on a worker thread like everything above, and serialised by
 		// GitModel rather than here: this interface answers one call at a time and knows
 		// nothing about the others.

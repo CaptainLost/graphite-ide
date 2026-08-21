@@ -308,4 +308,86 @@ namespace Graphite {
 
 		return repository->Commit(request);
 	}
+
+	namespace {
+
+		// One side, read from wherever the target says it lives. An Absent side is not read at
+		// all and comes back empty, which is the same shape a missing file produces.
+		Core::Result<SideText> ReadOneSide(Core::Repository& repository, TextSide side,
+										   const std::filesystem::path& path)
+		{
+			if (side == TextSide::Absent || path.empty())
+			{
+				return SideText{};
+			}
+
+			switch (side)
+			{
+			case TextSide::Head:
+			{
+				auto head = repository.HeadCommit();
+
+				// An unborn HEAD is a repository with no commit yet, so there is no older
+				// side - the same answer as a file that did not exist then.
+				if (!head.HasValue())
+				{
+					return SideText{};
+				}
+
+				return ReadSideText(repository.ReadBlob(path, head.GetValue()));
+			}
+
+			case TextSide::Index:
+				return ReadSideText(repository.ReadIndexBlob(path));
+
+			case TextSide::WorkingTree:
+				return ReadSideText(repository.ReadWorkingTreeFile(path));
+
+			case TextSide::Absent:
+				break;
+			}
+
+			return SideText{};
+		}
+	}
+
+	Core::Result<FileTexts> RepositoryGitPort::ReadWorkingTreeTexts(
+		Core::DiffTarget target,
+		const std::filesystem::path& oldPath,
+		const std::filesystem::path& newPath)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		const WorkingTreeSides sides = SidesFor(target);
+
+		auto oldSide = ReadOneSide(*repository, sides.Old, oldPath);
+
+		if (!oldSide.HasValue())
+		{
+			return oldSide.GetError();
+		}
+
+		auto newSide = ReadOneSide(*repository, sides.New, newPath);
+
+		if (!newSide.HasValue())
+		{
+			return newSide.GetError();
+		}
+
+		SideText oldText = std::move(oldSide).GetValue();
+		SideText newText = std::move(newSide).GetValue();
+
+		FileTexts texts;
+		texts.HasOld = oldText.Present;
+		texts.Old = std::move(oldText.Text);
+		texts.HasNew = newText.Present;
+		texts.New = std::move(newText.Text);
+
+		return texts;
+	}
 }

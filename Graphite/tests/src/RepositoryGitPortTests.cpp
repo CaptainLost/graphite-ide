@@ -155,3 +155,70 @@ TEST_CASE("RepositoryGitPort stages through the same handle it queries with")
 	// One handle for this thread, reused by the write — the write must not open a second.
 	CHECK(port.GetOpenCount() == 1);
 }
+
+TEST_CASE("The unstaged texts are the index against the disk")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		file << "staged\n";
+	}
+
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		file << "edited since\n";
+	}
+
+	const auto texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "a.txt", "a.txt");
+	REQUIRE(texts.HasValue());
+
+	CHECK(texts.GetValue().HasOld);
+	CHECK(texts.GetValue().Old == "staged\n");
+	CHECK(texts.GetValue().HasNew);
+	CHECK(texts.GetValue().New == "edited since\n");
+}
+
+TEST_CASE("An untracked file has no older side to show")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "new.txt", std::ios::binary};
+		file << "brand new\n";
+	}
+
+	const auto texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "new.txt", "new.txt");
+	REQUIRE(texts.HasValue());
+
+	CHECK_FALSE(texts.GetValue().HasOld);
+	CHECK(texts.GetValue().HasNew);
+	CHECK(texts.GetValue().New == "brand new\n");
+}
+
+TEST_CASE("A file deleted from the working tree has no newer side to show")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		file << "staged\n";
+	}
+
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	std::error_code code;
+	std::filesystem::remove(repo.GetPath() / "a.txt", code);
+	REQUIRE_FALSE(code);
+
+	const auto texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "a.txt", "a.txt");
+	REQUIRE(texts.HasValue());
+
+	CHECK(texts.GetValue().HasOld);
+	CHECK_FALSE(texts.GetValue().HasNew);
+}

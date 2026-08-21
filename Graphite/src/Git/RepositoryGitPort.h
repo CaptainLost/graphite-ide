@@ -42,6 +42,11 @@ namespace Graphite {
 		Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) override;
 		Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) override;
 
+		Core::Result<FileTexts> ReadWorkingTreeTexts(
+			Core::DiffTarget target,
+			const std::filesystem::path& oldPath,
+			const std::filesystem::path& newPath) override;
+
 		void SetRoot(std::filesystem::path root);
 
 		// How many times this instance has opened a git_repository handle, across every

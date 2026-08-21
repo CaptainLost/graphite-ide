@@ -96,6 +96,16 @@ namespace {
 			return oldPath.string() + ">" + newPath.string();
 		}
 
+		Core::Result<Graphite::FileTexts> ReadWorkingTreeTexts(
+			Core::DiffTarget, const std::filesystem::path&, const std::filesystem::path&) override
+		{
+			++WorkingTreeTextCalls;
+			return WorkingTreeTexts;
+		}
+
+		Graphite::FileTexts WorkingTreeTexts;
+		int WorkingTreeTextCalls = 0;
+
 		Core::Result<void> Stage(const std::vector<std::filesystem::path>& paths) override
 		{
 			return Record("stage", paths);
