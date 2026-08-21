@@ -132,3 +132,66 @@ TEST_CASE("Staging many paths at once writes the index once")
 	CHECK(Has(StatusOf(repository.GetValue(), "a.txt").Index, Core::StatusFlags::Modified));
 	CHECK(Has(StatusOf(repository.GetValue(), "b.txt").Index, Core::StatusFlags::New));
 }
+
+TEST_CASE("DiscardWorkTree restores a modified file from the index")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("a.txt", "changed\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().DiscardWorkTree({"a.txt"}).HasValue());
+
+	CHECK(StatusOf(repository.GetValue(), "a.txt").WorkTree == Core::StatusFlags::None);
+}
+
+TEST_CASE("DiscardWorkTree leaves untracked files alone")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("new.txt", "fresh\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().DiscardWorkTree({"new.txt"}).HasValue());
+
+	CHECK(std::filesystem::exists(fixture.GetPath() / "new.txt"));
+	CHECK(StatusOf(repository.GetValue(), "new.txt").IsUntracked);
+}
+
+TEST_CASE("DeleteUntracked removes the file from disk")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("new.txt", "fresh\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().DeleteUntracked({"new.txt"}).HasValue());
+
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "new.txt"));
+}
+
+TEST_CASE("DeleteUntracked reports a path it cannot remove")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	// A directory with a file in it is not removed by std::filesystem::remove, so this is
+	// a failure the caller must be told about rather than a silent no-op.
+	fixture.Write("folder/inside.txt", "x\n");
+
+	const auto result = repository.GetValue().DeleteUntracked({"folder"});
+	CHECK_FALSE(result.HasValue());
+}

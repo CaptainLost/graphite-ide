@@ -136,4 +136,58 @@ namespace Core {
 
 		return Result<void>::Ok();
 	}
+
+	Result<void> Repository::DiscardWorkTree(const std::vector<std::filesystem::path>& paths)
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		if (paths.empty())
+		{
+			return Result<void>::Ok();
+		}
+
+		PathSpec spec{paths};
+
+		git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
+
+		// FORCE is the point of the call: the working tree is being overwritten on purpose,
+		// so a checkout that politely refuses because the file differs would do nothing.
+		// DISABLE_PATHSPEC_MATCH makes the paths literal rather than glob patterns, so a
+		// file whose name contains a bracket is not read as a character class.
+		options.checkout_strategy = GIT_CHECKOUT_FORCE | GIT_CHECKOUT_DISABLE_PATHSPEC_MATCH;
+		options.paths = spec.Array;
+
+		if (git_checkout_index(m_Handle, nullptr, &options) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot discard changes: {}", LastLibgit2Message())};
+		}
+
+		return Result<void>::Ok();
+	}
+
+	Result<void> Repository::DeleteUntracked(const std::vector<std::filesystem::path>& paths)
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		for (const std::filesystem::path& path : paths)
+		{
+			std::error_code code;
+			std::filesystem::remove(m_WorkingDirectory / path, code);
+
+			if (code)
+			{
+				return Error{ErrorCode::IoFailure,
+							 std::format("cannot delete '{}': {}", ToGitPath(path), code.message())};
+			}
+		}
+
+		return Result<void>::Ok();
+	}
 }

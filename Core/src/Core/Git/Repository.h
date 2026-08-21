@@ -75,6 +75,20 @@ namespace Core {
 		// instead — the same answer git gives, and not an error.
 		Result<void> Unstage(const std::vector<std::filesystem::path>& paths);
 
+		// Overwrites the working tree from the index. Irreversible: what it discards was
+		// never in git, so there is nothing to recover it from.
+		//
+		// Untracked paths are not touched — a path git has never seen has nothing in the
+		// index to be restored from. Deleting those is DeleteUntracked, deliberately a
+		// separate call: one restores a state git knows, the other destroys a file git
+		// does not, and a caller that means one rarely means both.
+		Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths);
+
+		// Deletes untracked files outright. A path that cannot be removed — a non-empty
+		// directory, a file held open by another process — is reported rather than
+		// skipped.
+		Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths);
+
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
 			return m_WorkingDirectory;
