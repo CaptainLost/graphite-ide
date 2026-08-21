@@ -3,6 +3,7 @@
 #include "Editor/ModalGate.h"
 #include "Editor/FindBar.h"
 #include "Editor/AnalysisCache.h"
+#include "Editor/ExpectedWrites.h"
 #include "Editor/LensModel.h"
 #include "Editor/PreviewSemantics.h"
 #include "Editor/SemanticOverlay.h"
@@ -15,6 +16,7 @@
 #include "Panels/ReferencesPanel.h"
 #include "Search/PreviewContent.h"
 
+#include "Core/Base/Timestep.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
@@ -94,6 +96,23 @@ namespace Graphite {
 		// because the bar belongs to whatever draws the documents and the command that binds
 		// Ctrl+F to it has no business knowing where that is.
 		void OpenFind(Core::OpenItem& item) { m_FindBar.Open(item); }
+
+		// Says that a change about to arrive for these paths was made by this application,
+		// so the file should be reloaded rather than asked about. Called after the write has
+		// succeeded, never before it is sent. See ExpectedWrites for what bounds it.
+		void ExpectExternalWrite(const std::vector<std::filesystem::path>& paths)
+		{
+			m_ExpectedWrites.Expect(paths);
+		}
+
+		// Ages the expectations, so one whose event never arrives cannot silence a genuine
+		// external change later.
+		void TickExpectedWrites(Core::Timestep ts) { m_ExpectedWrites.Tick(ts.GetSeconds()); }
+
+		// Forgets every outstanding expectation. Called when the folder closes: an
+		// expectation registered against one repository has no business claiming a path in
+		// whatever folder opens next.
+		void ClearExpectedWrites() { m_ExpectedWrites.Clear(); }
 
 	private:
 		// Everything the reference-count rows need for one document. LensModel alone is not
@@ -449,5 +468,9 @@ namespace Graphite {
 		// One for every document rather than one each: what it holds is which document wants the
 		// keyboard next, and only one can.
 		FindBar m_FindBar;
+
+		// Paths a write this application made is about to touch, so the reload conflict does
+		// not ask about a change the user already confirmed once. See ExpectedWrites.
+		ExpectedWrites m_ExpectedWrites;
 	};
 }

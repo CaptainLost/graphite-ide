@@ -304,6 +304,12 @@ namespace Graphite {
 
 			// A diff of a commit in a folder that is no longer open is a tab about nothing.
 			m_DiffWindows.CloseAll();
+
+			// An expectation registered against one repository has no business claiming a
+			// path in whatever folder opens next. DocumentWindows has no closed-handler of
+			// its own to put this in - this event handler is where the rest of the per-folder
+			// state above is already dropped, so the expectations join it here.
+			m_DocumentWindows.ClearExpectedWrites();
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
@@ -341,6 +347,8 @@ namespace Graphite {
 		m_SolutionLoaded = m_Workspace.LoadedSolution().has_value();
 
 		UpdateFocusReload(ts);
+
+		m_DocumentWindows.TickExpectedWrites(ts);
 
 		// Watchers drop events — buffer overflow, or a tool touching many files at once — and
 		// returning from another application is exactly when that matters.

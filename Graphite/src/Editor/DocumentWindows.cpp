@@ -273,11 +273,19 @@ namespace Graphite {
 		{
 		case Core::FileSyncOutcome::NeedsDecision:
 		{
+			const std::filesystem::path path = m_Documents.At(index).Path;
+
+			// A change this application made itself, which the user has already been asked
+			// about once, by whatever asked for the write.
+			if (m_ExpectedWrites.TakeFor(path))
+			{
+				ReloadOne(index);
+				break;
+			}
+
 			// Asked rather than reloaded, and queued, so several files changing in one batch
 			// (a git checkout) are asked about one at a time instead of every modal fighting
 			// to open this frame.
-			const std::filesystem::path path = m_Documents.At(index).Path;
-
 			if (!m_ReloadConflict.Asked(path))
 			{
 				m_ReloadConflict.Ask(path);

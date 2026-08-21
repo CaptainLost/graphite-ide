@@ -61,6 +61,8 @@ project "GraphiteTests"
         -- same reason it needs Search below.
         "%{wks.location}/Graphite/src/Editor/Palettes.h",
         "%{wks.location}/Graphite/src/Editor/Palettes.cpp",
+        "%{wks.location}/Graphite/src/Editor/ExpectedWrites.h",
+        "%{wks.location}/Graphite/src/Editor/ExpectedWrites.cpp",
         "%{wks.location}/Graphite/src/Theme/**.h",
         "%{wks.location}/Graphite/src/Theme/**.cpp",
         "%{wks.location}/Graphite/src/Search/**.h",
