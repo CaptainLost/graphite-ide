@@ -419,10 +419,14 @@ namespace Graphite {
 				drawSide(pair.Left, true);
 				drawSide(pair.Right, false);
 
-				// Set rather than left to whatever the two halves drew: neither half's items
-				// decide where the next row starts, so a row with nothing on either side is
-				// exactly as tall as one with text on both.
-				ImGui::SetCursorPos(ImVec2(rowPos.x, rowPos.y + rowHeight));
+				// The row's height, reserved as an item rather than by moving the cursor: a
+				// bare SetCursorPos past the last item is how the region gets extended behind
+				// ImGui's back, and it asserts on the last row of the frame for exactly that.
+				// Submitting it decides the row's height outright, so a row with nothing on
+				// either side is as tall as one with text on both, and it leaves the cursor
+				// where the next row starts — ItemSize adds the spacing this height omits.
+				ImGui::SetCursorPos(rowPos);
+				ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
 			}
 		}
 
