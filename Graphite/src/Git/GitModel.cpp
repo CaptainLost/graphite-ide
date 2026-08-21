@@ -507,6 +507,23 @@ namespace Graphite {
 		});
 	}
 
+	void GitModel::ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& newPath)
+	{
+		const auto entry = m_Texts.find(TextsKey{commit, newPath});
+
+		// Mirrors ForgetFailedDiffFor: a successful entry stays, only a failed one is
+		// dropped, so asking again for the same file is the reader's way to retry it.
+		if (entry == m_Texts.end() || !entry->second.Failed)
+		{
+			return;
+		}
+
+		m_Texts.erase(entry);
+
+		// The error line must not outlive the entry it described.
+		m_TextsError.reset();
+	}
+
 	std::shared_ptr<const FileTexts> GitModel::GetTextsFor(
 		const Core::Oid& commit, const std::filesystem::path& newPath) const
 	{

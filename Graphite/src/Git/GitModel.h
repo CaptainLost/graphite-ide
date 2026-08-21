@@ -88,11 +88,19 @@ namespace Graphite {
 		// lexer. Keyed by commit and new path - not by commit alone, as RequestDiffFor is -
 		// because one commit touches many files and each needs its own entry. Mirrors
 		// RequestDiffFor in every other respect: held once fetched, since a commit's text
-		// cannot change either.
+		// cannot change either, and a failed entry is suppressed until ForgetFailedTextsFor
+		// gives it a way back.
 		void RequestTextsFor(
 			const Core::Oid& commit,
 			const std::filesystem::path& oldPath,
 			const std::filesystem::path& newPath);
+
+		// Drops a cached entry, but only if it is marked failed - mirrors ForgetFailedDiffFor
+		// exactly, including clearing m_TextsError together with the entry. A transient read
+		// failure must not poison a file forever: without this, Failed would suppress every
+		// re-request until the LRU happens to evict the entry, which for a small,
+		// frequently-revisited set of files may be never.
+		void ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& newPath);
 
 		// Null while the answer is in flight, after a failure, and for a file that was
 		// evicted. As with GetDiffFor, the caller's response is the same in every case: draw
@@ -233,9 +241,8 @@ namespace Graphite {
 
 			std::shared_ptr<const FileTexts> Texts;
 
-			// Suppresses a re-request the same way CachedDiff::Failed does. There is no
-			// texts equivalent of ForgetFailedDiffFor: nothing collapses a texts view the
-			// way a commit row collapses, so nothing yet needs a way back in.
+			// Suppresses a re-request the same way CachedDiff::Failed does.
+			// ForgetFailedTextsFor is what gives a failed entry a way back.
 			bool Failed = false;
 
 			// Same purpose as CachedDiff::LastTouched: lets eviction pick the entry nobody

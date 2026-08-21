@@ -1028,3 +1028,149 @@ TEST_CASE("Closing the workspace drops every cached file's texts")
 
 	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
 }
+
+TEST_CASE("A file's texts are not requested without an open workspace")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.TextCalls == 0);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
+}
+
+TEST_CASE("Reading a file's texts protects it from eviction")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	for (std::size_t index = 0; index < Graphite::GitModel::kCachedTexts; ++index)
+	{
+		model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(index)), "a.txt", "a.txt");
+		model.OnUpdate(Core::Timestep{0.016f});
+	}
+
+	// The cache is now exactly full. Reading the oldest entry - which eviction would
+	// otherwise pick first - must count as a use, or GetTextsFor's constness over a
+	// mutable cache would be lying about what it does.
+	REQUIRE(model.GetTextsFor(IdOf(0), "a.txt") != nullptr);
+
+	model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedTexts)), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// The entry just read survived; the next-oldest, never read again after its request,
+	// is the one that made room instead.
+	CHECK(model.GetTextsFor(IdOf(0), "a.txt") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
+}
+
+TEST_CASE("A stale texts answer from before a clear does not overwrite a fresh one after it")
+{
+	FakePort port;
+	port.Texts = TextsNaming("before");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	// The inline submitter runs the job - and so the query - synchronously here, but the
+	// result only reaches the inbox; it is not applied until the OnUpdate below. So this
+	// queues the pre-clear delivery without letting it land yet.
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+
+	// The ordinary reopen path: WorkspaceOpenedEvent's handler calls Clear() before
+	// re-requesting, same as the plain "closed" path does.
+	model.Clear();
+
+	port.Texts = TextsNaming("after");
+
+	// A fresh entry for the same commit and path, queuing a second delivery behind the
+	// first.
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+
+	// Both deliveries apply here, in the order they were queued: the pre-clear answer
+	// first, then the post-clear one. A generation counted from zero inside the entry -
+	// which starts fresh after Clear() erases it - would let the stale delivery win,
+	// because it would out-rank the fresh one's own from-zero count. The model-wide
+	// counter this cache uses instead never resets, so the fresh request's generation is
+	// unconditionally the larger one.
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt")->Old == "after");
+}
+
+TEST_CASE("A failed texts request can be asked for again once forgotten")
+{
+	FakePort port;
+	port.FailTexts = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	port.FailTexts = false;
+	port.Texts = TextsNaming("a");
+
+	// A failure must not poison the entry forever: asking for it again is the reader's
+	// recourse, and ForgetFailedTextsFor is what that gesture does.
+	model.ForgetFailedTextsFor(IdOf(1), "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+}
+
+TEST_CASE("Forgetting a failed texts request clears the error it left behind")
+{
+	FakePort port;
+	port.FailTexts = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetLastError().has_value());
+
+	// The error line must not outlive the entry it described.
+	model.ForgetFailedTextsFor(IdOf(1), "a.txt");
+
+	CHECK(!model.GetLastError().has_value());
+}
+
+TEST_CASE("Forgetting a successful texts request leaves it cached")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+
+	const int after = port.TextCalls;
+
+	// Only a failed entry is what forgetting is meant to undo. A successful one staying
+	// cached is what makes this an LRU cache of recently-seen files rather than a holder
+	// for only the currently-viewed one.
+	model.ForgetFailedTextsFor(IdOf(1), "a.txt");
+
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+
+	// Asking again for the same file must not re-query git either.
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.TextCalls == after);
+}

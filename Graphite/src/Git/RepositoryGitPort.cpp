@@ -200,17 +200,16 @@ namespace Graphite {
 
 		FileTexts texts;
 
-		auto newBlob = repository->ReadBlob(newPath, commit);
+		auto newSide = ReadSideText(repository->ReadBlob(newPath, commit));
 
-		if (newBlob.HasValue())
+		if (!newSide.HasValue())
 		{
-			texts.HasNew = true;
-			texts.New = std::move(newBlob).GetValue();
+			return newSide.GetError();
 		}
-		else if (newBlob.GetError().Code != Core::ErrorCode::NotFound)
-		{
-			return newBlob.GetError();
-		}
+
+		SideText newText = std::move(newSide).GetValue();
+		texts.HasNew = newText.Present;
+		texts.New = std::move(newText.Text);
 
 		auto parent = repository->FirstParentOf(commit);
 
@@ -220,22 +219,20 @@ namespace Graphite {
 		}
 
 		// A root commit has no parent, and FirstParentOf says so with an empty optional
-		// rather than an error - the old side is then simply absent, the same answer an
-		// added file gives.
-		if (parent.GetValue().has_value())
-		{
-			auto oldBlob = repository->ReadBlob(oldPath, *parent.GetValue());
+		// rather than an error - the old side is then simply absent, the same SideText{}
+		// an absent file's NotFound produces.
+		Core::Result<SideText> oldSide = parent.GetValue().has_value()
+			? ReadSideText(repository->ReadBlob(oldPath, *parent.GetValue()))
+			: Core::Result<SideText>{SideText{}};
 
-			if (oldBlob.HasValue())
-			{
-				texts.HasOld = true;
-				texts.Old = std::move(oldBlob).GetValue();
-			}
-			else if (oldBlob.GetError().Code != Core::ErrorCode::NotFound)
-			{
-				return oldBlob.GetError();
-			}
+		if (!oldSide.HasValue())
+		{
+			return oldSide.GetError();
 		}
+
+		SideText oldText = std::move(oldSide).GetValue();
+		texts.HasOld = oldText.Present;
+		texts.Old = std::move(oldText.Text);
 
 		return texts;
 	}
