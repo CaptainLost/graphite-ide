@@ -15,7 +15,8 @@ namespace {
 
 	Graphite::OpenDiff Diff(std::uint8_t commit, const char* path)
 	{
-		return Graphite::OpenDiff{IdOf(commit), path};
+		return Graphite::OpenDiff{
+			.Commit = IdOf(commit), .Target = Core::DiffTarget::CommitToParent, .Path = path};
 	}
 }
 
@@ -85,4 +86,60 @@ TEST_CASE("A window name shows the title and identifies by the identity")
 	REQUIRE(marker != std::string::npos);
 	CHECK(name.substr(marker + 3) == Graphite::DiffWindowIdentity(diff));
 	CHECK(name.find(Graphite::DiffWindowTitle(diff)) < marker);
+}
+
+TEST_CASE("A working-tree diff and a commit's diff of the same file are different tabs")
+{
+	const Graphite::OpenDiff fromCommit{
+		.Commit = Core::Oid{}, .Target = Core::DiffTarget::CommitToParent, .Path = "a.txt"};
+
+	const Graphite::OpenDiff fromWorkTree{
+		.Commit = std::nullopt, .Target = Core::DiffTarget::WorkTreeToIndex, .Path = "a.txt"};
+
+	CHECK(Graphite::DiffWindowIdentity(fromCommit) != Graphite::DiffWindowIdentity(fromWorkTree));
+}
+
+TEST_CASE("The staged and unstaged views of one file are different tabs")
+{
+	const Graphite::OpenDiff unstaged{
+		.Commit = std::nullopt, .Target = Core::DiffTarget::WorkTreeToIndex, .Path = "a.txt"};
+
+	const Graphite::OpenDiff staged{
+		.Commit = std::nullopt, .Target = Core::DiffTarget::IndexToHead, .Path = "a.txt"};
+
+	CHECK(Graphite::DiffWindowIdentity(unstaged) != Graphite::DiffWindowIdentity(staged));
+}
+
+TEST_CASE("A working-tree tab is titled by its file and what it compares")
+{
+	const Graphite::OpenDiff unstaged{
+		.Commit = std::nullopt, .Target = Core::DiffTarget::WorkTreeToIndex, .Path = "src/a.txt"};
+
+	const std::string title = Graphite::DiffWindowTitle(unstaged);
+
+	CHECK(title.find("a.txt") != std::string::npos);
+	CHECK(title.find("src") == std::string::npos);
+}
+
+TEST_CASE("A commit tab's identity is unchanged from before OpenDiff could name the working tree")
+{
+	// Pins the byte-for-byte compatibility this task promises: an already-docked commit tab
+	// must keep the same imgui.ini entry, so its identity must still be exactly the commit's
+	// full hex id immediately followed by the path.
+	const Graphite::OpenDiff diff = Diff(1, "a.txt");
+
+	CHECK(Graphite::DiffWindowIdentity(diff) == IdOf(1).ToHex() + "a.txt");
+}
+
+TEST_CASE("Opening the same working-tree diff twice adds one tab")
+{
+	Graphite::DiffWindows windows;
+
+	const Graphite::OpenDiff unstaged{
+		.Commit = std::nullopt, .Target = Core::DiffTarget::WorkTreeToIndex, .Path = "a.txt"};
+
+	windows.Open(unstaged);
+	windows.Open(unstaged);
+
+	CHECK(windows.GetCount() == 1);
 }

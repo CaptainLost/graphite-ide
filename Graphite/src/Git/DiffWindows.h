@@ -5,18 +5,28 @@
 #include "Git/GitPalette.h"
 
 #include "Core/Git/Oid.h"
+#include "Core/Git/Requests.h"
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace Graphite {
 
-	// One diff open as a tab: a file, as it stood in one commit against its parent.
+	// One diff open as a tab. Either a file as it stood in one commit against its parent,
+	// or a file in the working tree against the index or HEAD.
+	//
+	// The commit is optional rather than a zero Oid standing in for "the working tree",
+	// because a zero Oid is a value a real commit could in principle collide with and
+	// because "no commit" is exactly what is meant. Target is part of the identity, not
+	// only of the query: the staged and unstaged views of one file are two things a reader
+	// compares against each other, so they are two tabs.
 	struct OpenDiff
 	{
-		Core::Oid Commit;
+		std::optional<Core::Oid> Commit;
+		Core::DiffTarget Target = Core::DiffTarget::CommitToParent;
 		std::filesystem::path Path;
 
 		friend bool operator==(const OpenDiff&, const OpenDiff&) = default;

@@ -13,30 +13,75 @@
 #include <optional>
 #include <utility>
 
+namespace {
+
+	// A short, stable word per target, used in both the identity and the title. Stable
+	// matters more than pretty: the identity is what imgui.ini keys a window's dock
+	// position by, so changing these strings moves every open tab back to the default.
+	const char* NameOfTarget(Core::DiffTarget target)
+	{
+		switch (target)
+		{
+		case Core::DiffTarget::WorkTreeToIndex: return "unstaged";
+		case Core::DiffTarget::IndexToHead: return "staged";
+		case Core::DiffTarget::WorkTreeToHead: return "working";
+		case Core::DiffTarget::CommitToParent: return "commit";
+		case Core::DiffTarget::RevisionToRevision: return "range";
+		}
+
+		return "diff";
+	}
+}
+
 namespace Graphite {
 
 	std::string DiffWindowIdentity(const OpenDiff& diff)
 	{
-		// Commit first, path second, no separator: Core::Oid::ToHex() is always forty
-		// characters, so a fixed-length prefix cannot be split two ways, and no separator
-		// means no character a path might itself contain to collide on.
-		//
-		// One gap this does not close: ImGui restarts its window-id hash at every "###" in
-		// a name, so two paths that both contain "###" and agree on everything after the
-		// last one would still collide once this identity is embedded in DiffWindowName.
-		// "#" is legal in a Windows filename. DocumentWindows carries the identical
-		// exposure through its own window name (see WindowName in DocumentWindows.cpp), so
-		// this is a property of the scheme both share rather than something particular to
-		// diffs.
-		return diff.Commit.ToHex() + Core::ToUtf8(diff.Path);
+		if (diff.Commit.has_value())
+		{
+			// Unchanged from before OpenDiff grew a Target and an optional Commit: this is
+			// exactly what a commit's tab hashed to before, byte for byte. imgui.ini keys an
+			// already-docked window by this string, so keeping it verbatim is what keeps that
+			// window from jumping back to its default position the next time this runs.
+			//
+			// Commit first, path second, no separator: Core::Oid::ToHex() is always forty
+			// characters, so a fixed-length prefix cannot be split two ways, and no separator
+			// means no character a path might itself contain to collide on.
+			//
+			// One gap this does not close: ImGui restarts its window-id hash at every "###" in
+			// a name, so two paths that both contain "###" and agree on everything after the
+			// last one would still collide once this identity is embedded in DiffWindowName.
+			// "#" is legal in a Windows filename. DocumentWindows carries the identical
+			// exposure through its own window name (see WindowName in DocumentWindows.cpp), so
+			// this is a property of the scheme both share rather than something particular to
+			// diffs.
+			return diff.Commit->ToHex() + Core::ToUtf8(diff.Path);
+		}
+
+		// A working-tree tab is new, so nothing depends on its identity's shape yet: no window
+		// has ever been docked under one, and no imgui.ini entry exists to disturb. "worktree"
+		// can never collide with the commit case above, whose identity always begins with a
+		// forty-character hex id, and the target is included because the staged and unstaged
+		// views of one file are two things a reader compares against each other, so they must
+		// be two tabs.
+		return std::string{"worktree##"} + NameOfTarget(diff.Target) + "##" + Core::ToUtf8(diff.Path);
 	}
 
 	std::string DiffWindowTitle(const OpenDiff& diff)
 	{
-		// The file's name and the commit's short id, without the directory — which would
-		// push the identifying part off the end of a narrow tab strip, and the same file's
-		// diff in two commits is told apart by the id, not by the path.
-		return Core::ToUtf8(diff.Path.filename()) + " (" + diff.Commit.ShortHex() + ")";
+		// The file's name and, for a commit's tab, the commit's short id; for a working-tree
+		// tab, the word for what it compares instead — there is no commit id to show. Neither
+		// carries the directory, which would push the identifying part off the end of a narrow
+		// tab strip, and the same file's diff in two commits is told apart by the id, not by
+		// the path.
+		const std::string name = Core::ToUtf8(diff.Path.filename());
+
+		if (!diff.Commit.has_value())
+		{
+			return name + " (" + NameOfTarget(diff.Target) + ")";
+		}
+
+		return name + " (" + diff.Commit->ShortHex() + ")";
 	}
 
 	std::string DiffWindowName(const OpenDiff& diff)
@@ -110,7 +155,20 @@ namespace Graphite {
 			// unlike BeginTable, which must not be ended when it returns false.
 			if (ImGui::Begin(name.c_str(), &open))
 			{
-				const std::shared_ptr<const Core::Diff> diff = model.GetDiffFor(entry.Diff.Commit);
+				std::shared_ptr<const Core::Diff> diff;
+
+				if (entry.Diff.Commit.has_value())
+				{
+					model.RequestDiffFor(*entry.Diff.Commit);
+					diff = model.GetDiffFor(*entry.Diff.Commit);
+				}
+				else
+				{
+					// Not cached by key the way a commit's diff is: this one changes on every
+					// keystroke, so the model holds exactly one and replaces it.
+					model.RequestWorkingTreeDiff({.Target = entry.Diff.Target, .File = entry.Diff.Path});
+					diff = model.GetWorkingTreeDiff();
+				}
 
 				if (!diff)
 				{
@@ -119,9 +177,9 @@ namespace Graphite {
 					// one call.
 					ImGui::TextUnformatted("This diff is no longer loaded.");
 
-					if (ImGui::SmallButton("Reload"))
+					if (entry.Diff.Commit.has_value() && ImGui::SmallButton("Reload"))
 					{
-						model.RequestDiffFor(entry.Diff.Commit);
+						model.RequestDiffFor(*entry.Diff.Commit);
 					}
 				}
 				else
@@ -137,11 +195,20 @@ namespace Graphite {
 					{
 						const Core::FileDiff& file = diff->Files[*fileIndex];
 
-						// Every rule about which path keys the texts, when the tokens are still
-						// valid and when a failed entry is forgiven lives in Update, shared
-						// with the docked panel - the same steps written out twice were wrong
-						// the same way in both copies.
-						entry.Texts.Update(model, entry.Diff.Commit, file);
+						// A working-tree tab has no commit to key texts by, and ReadFileTexts
+						// reads both sides out of commits — it has no way to name "the file on
+						// disk". So this tab's hunks, added and removed lines and change bands
+						// draw normally, but without the whole-file text that gives a commit's
+						// diff its syntax colouring; View.Render already accepts no texts while
+						// they are unavailable.
+						if (entry.Diff.Commit.has_value())
+						{
+							// Every rule about which path keys the texts, when the tokens are
+							// still valid and when a failed entry is forgiven lives in Update,
+							// shared with the docked panel - the same steps written out twice
+							// were wrong the same way in both copies.
+							entry.Texts.Update(model, *entry.Diff.Commit, file);
+						}
 
 						entry.View.Render(file, palette, syntax, entry.Texts.Texts,
 										  entry.Texts.Tokens);

@@ -384,7 +384,8 @@ namespace Graphite {
 		// pane shared across every selection. Set as soon as the selection is known, ahead of
 		// the two returns below, so OnOpenAsTab is never left holding a previous frame's
 		// selection while this one's diff is still loading or excludes the file.
-		const OpenDiff selection{selected->Commit, selected->Path};
+		const OpenDiff selection{
+			.Commit = selected->Commit, .Target = Core::DiffTarget::CommitToParent, .Path = selected->Path};
 
 		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
 
