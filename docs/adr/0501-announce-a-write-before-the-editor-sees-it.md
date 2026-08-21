@@ -110,6 +110,12 @@ when a status is held without the directory it is relative to.
 - `GitModel` gained the repository's working directory as state it did not
   previously carry. Anything else that needs to turn a status path into an
   absolute one now has one place to ask.
+- The suppression covers a file that was rewritten, not one that was deleted.
+  Deleting an untracked file yields `Core::FileSyncOutcome::WentMissing`, which
+  never reaches the `NeedsDecision` branch where `TakeFor` is called — a
+  deletion takes a different path through the editor's sync than a rewrite
+  does. An expectation registered for a deleted file is simply never consumed;
+  it ages out instead, which is harmless but worth stating plainly.
 
 ## Alternatives Considered
 
