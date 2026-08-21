@@ -40,6 +40,7 @@ namespace Graphite {
 		// not re-ask the previous folder's question, ref and filter and all.
 		m_LastLogRequest.reset();
 		m_WorkingTreeDiff.reset();
+		m_WorkingTreeTexts.reset();
 		m_CommitDiffs.clear();
 		m_Texts.clear();
 
@@ -297,7 +298,33 @@ namespace Graphite {
 		m_Submit([this, generation, request = std::move(request)]() {
 			auto result = m_Port.QueryDiff(request);
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
+			// Read on the same job as the diff, and from the paths the diff itself reports, so
+			// the whole-file text and the hunks drawn over it can never describe two different
+			// moments of a file the user is still typing in - nor two different names, when the
+			// working tree holds a rename.
+			std::optional<FileTexts> texts;
+
+			if (result.HasValue() && result.GetValue().Files.size() == 1)
+			{
+				const Core::FileDiff& file = result.GetValue().Files.front();
+
+				// A binary file has no text to show and can be arbitrarily large; the pane says
+				// so without needing any of its bytes.
+				if (!file.IsBinary)
+				{
+					auto read = m_Port.ReadWorkingTreeTexts(request.Target, file.OldPath, file.NewPath);
+
+					// A text that cannot be read - too large to lex, or gone between the diff and
+					// the read - costs the pane its colouring and its whole-file view, and nothing
+					// else. The diff itself still draws, so this is not the diff's failure to report.
+					if (read.HasValue())
+					{
+						texts = std::move(read).GetValue();
+					}
+				}
+			}
+
+			Deliver([this, generation, result = std::move(result), texts = std::move(texts)]() mutable {
 				if (generation <= m_WorkingTreeDiffApplied)
 				{
 					return;
@@ -314,6 +341,13 @@ namespace Graphite {
 				m_WorkingTreeDiffError.reset();
 				m_WorkingTreeDiff =
 					std::make_shared<const Core::Diff>(std::move(result).GetValue());
+
+				// Replaced rather than kept: unlike a commit's text, which cannot change, this one
+				// is different every time the file is touched. Cleared when there is none, so a
+				// file too large to lex does not go on showing the last file's text.
+				m_WorkingTreeTexts = texts.has_value()
+					? std::make_shared<const FileTexts>(std::move(*texts))
+					: nullptr;
 			});
 		});
 	}

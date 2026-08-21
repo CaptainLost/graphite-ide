@@ -144,6 +144,12 @@ namespace Graphite {
 		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
 		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const { return m_WorkingTreeDiff; }
 
+		// The whole file's text on both sides of the working-tree diff above, fetched with it
+		// and replaced with it. Null while none has arrived, and null for a file that is binary
+		// or too large to lex - in every case the caller's answer is the same: draw the diff
+		// without the colouring and the whole-file view that this text feeds.
+		std::shared_ptr<const FileTexts> GetWorkingTreeTexts() const { return m_WorkingTreeTexts; }
+
 		// The failure a panel should show, if any. Each query kind keeps its own error, set
 		// by its own failure and cleared only by its own success, so a branches refresh
 		// that succeeds can never hide a status refresh that is still failing. When more
@@ -402,6 +408,7 @@ namespace Graphite {
 		// folder's state - see RequestLog and OnUpdate for both halves of the reasoning.
 		std::optional<Core::LogRequest> m_LastLogRequest;
 		std::shared_ptr<const Core::Diff> m_WorkingTreeDiff;
+		std::shared_ptr<const FileTexts> m_WorkingTreeTexts;
 
 		// Mutable because GetDiffFor is const and still counts as a use — an entry the
 		// reader is looking at every frame must not be the one evicted.

@@ -97,14 +97,21 @@ namespace {
 		}
 
 		Core::Result<Graphite::FileTexts> ReadWorkingTreeTexts(
-			Core::DiffTarget, const std::filesystem::path&, const std::filesystem::path&) override
+			Core::DiffTarget, const std::filesystem::path& oldPath,
+			const std::filesystem::path& newPath) override
 		{
 			++WorkingTreeTextCalls;
+
+			// Both sides joined, so a test can say which paths were asked about without
+			// caring which of them the fake stored first.
+			LastTextPaths = Core::ToUtf8(oldPath) + "|" + Core::ToUtf8(newPath);
+
 			return WorkingTreeTexts;
 		}
 
 		Graphite::FileTexts WorkingTreeTexts;
 		int WorkingTreeTextCalls = 0;
+		std::string LastTextPaths;
 
 		Core::Result<void> Stage(const std::vector<std::filesystem::path>& paths) override
 		{
@@ -1681,4 +1688,46 @@ TEST_CASE("A repository change outside a workspace refreshes nothing")
 	model.OnUpdate(Core::Timestep{0.2f});
 
 	CHECK(port.StatusCalls == 0);
+}
+
+TEST_CASE("A working-tree diff brings its file's text with it")
+{
+	FakePort port;
+
+	// Renamed, so the two sides carry different paths and a test can tell which one each
+	// side was read under.
+	Core::FileDiff file;
+	file.OldPath = "old.txt";
+	file.NewPath = "new.txt";
+	port.Diff.Files.push_back(file);
+
+	port.WorkingTreeTexts.HasNew = true;
+	port.WorkingTreeTexts.New = "on disk";
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	CHECK(model.GetWorkingTreeTexts() == nullptr);
+
+	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "new.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.GetWorkingTreeTexts() != nullptr);
+	CHECK(model.GetWorkingTreeTexts()->New == "on disk");
+	CHECK(port.WorkingTreeTextCalls == 1);
+	CHECK(port.LastTextPaths == "old.txt|new.txt");
+}
+
+TEST_CASE("A working-tree diff that names no file reads no text")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "gone.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.WorkingTreeTextCalls == 0);
+	CHECK(model.GetWorkingTreeTexts() == nullptr);
 }
