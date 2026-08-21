@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <optional>
 #include <string>
 
 namespace Graphite {
@@ -99,14 +100,6 @@ namespace Graphite {
 	{
 		RenderToolbar(file);
 
-		if (file.IsBinary)
-		{
-			// libgit2 emits no hunks for a binary delta, so there is nothing to lay out.
-			// Saying so is better than an empty pane that looks like a failure.
-			ImGui::TextUnformatted("Binary file — no textual diff.");
-			return;
-		}
-
 		if (texts == nullptr)
 		{
 			// The owner's file changed to one whose texts are not ready (or not asked for), or
@@ -118,6 +111,17 @@ namespace Graphite {
 			m_CachedTexts.reset();
 			m_OldLines.clear();
 			m_NewLines.clear();
+		}
+
+		// After the clear above, never before it: a binary file's owner hands us no texts, so
+		// returning first would leave the previous file's cache in place for as long as the
+		// reader stayed on binary files.
+		if (file.IsBinary)
+		{
+			// libgit2 emits no hunks for a binary delta, so there is nothing to lay out.
+			// Saying so is better than an empty pane that looks like a failure.
+			ImGui::TextUnformatted("Binary file — no textual diff.");
+			return;
 		}
 
 		// Whole-file mode needs the texts to know how many lines the file has and what an
