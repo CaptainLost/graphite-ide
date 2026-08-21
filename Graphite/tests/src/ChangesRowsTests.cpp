@@ -75,10 +75,11 @@ TEST_CASE("The change letter names the most consequential flag")
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Modified, false) == 'M');
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::TypeChanged, false) == 'T');
 
-	// libgit2 can produce certain flag combinations within a single field. New and Deleted
-	// cannot combine with other flags: a new file is just new, and a deleted file is just
-	// deleted. Combinations that can occur are tested below to pin the precedence order.
+	// libgit2's status.c (index_delta2status and workdir_delta2status) sets each delta
+	// status to exactly one bit, except GIT_DELTA_RENAMED which may also set MODIFIED
+	// when the old and new blob OIDs differ. diff_tform.c's rename detection rewrites
+	// typechange deltas matched to renames as purely RENAMED before status conversion.
+	// Thus Renamed+Modified is the only multi-bit combination ever produced. See:
+	// vendor/libgit2/src/libgit2/status.c (~lines 25-118) and diff_tform.c (~lines 980-1075).
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::Modified, false) == 'R');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::TypeChanged, false) == 'R');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Modified | Core::StatusFlags::TypeChanged, false) == 'T');
 }
