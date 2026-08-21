@@ -37,6 +37,7 @@ namespace Graphite {
 					DocumentWindows& documentWindows, const ActiveScheme& scheme,
 					DiffWindows& diffWindows);
 
+		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;
 
 	private:
@@ -69,9 +70,10 @@ namespace Graphite {
 		void RenderDiscardConfirm();
 
 		// Every open document with unsaved changes among these git-relative paths. Absolutises
-		// each one against the repository root before comparing, the same way ExpectedWrites
-		// does it - see DirtyAmong's definition for why a filename or a raw ends_with check is
-		// not safe here.
+		// each one against GetWorkingDirectory(), not the repository root Core::Repository::Open
+		// may have resolved upward from, before comparing - the same way ExpectedWrites does it.
+		// See DirtyAmong's definition for why a filename or a raw ends_with check is not safe
+		// here.
 		std::vector<std::filesystem::path> DirtyAmong(
 			const std::vector<std::filesystem::path>& paths) const;
 

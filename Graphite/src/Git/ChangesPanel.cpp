@@ -37,27 +37,6 @@ namespace Graphite {
 
 			return 0;
 		}
-
-		// lexically_normal collapses "a/../b" without touching the filesystem, and
-		// make_preferred turns git's forward slashes and a document's native separators into
-		// the same spelling - the same normalisation ExpectedWrites applies before comparing,
-		// and for the same reason: the two paths being compared come from different sources.
-		std::filesystem::path Normalize(const std::filesystem::path& path)
-		{
-			std::filesystem::path normalized = path.lexically_normal();
-			normalized.make_preferred();
-			return normalized;
-		}
-
-		// Whole-path equality, case-folded, exactly what SamePath in ExpectedWrites.cpp does.
-		// A filename or a suffix match is not safe here: a repository-root file has an empty
-		// parent_path, so matching on "ends with" degenerates into "same name anywhere in the
-		// tree" and would report an unrelated file elsewhere in the tree as dirty - or, worse,
-		// fail to fire at all and let a real dirty buffer go unwarned.
-		bool SamePath(const std::filesystem::path& left, const std::filesystem::path& right)
-		{
-			return Core::CompareNames(Core::ToUtf8(left), Core::ToUtf8(right)) == 0;
-		}
 	}
 
 	ChangesPanel::ChangesPanel(GitModel& model, const Core::DocumentSet& documents,
@@ -68,22 +47,35 @@ namespace Graphite {
 	{
 	}
 
-	void ChangesPanel::OnImGuiRender()
+	void ChangesPanel::OnUpdate(Core::Timestep)
 	{
-		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
-
-		// A commit that landed clears the box. Taken rather than inferred from the status
-		// changing, which would also fire for a commit made in a terminal.
+		// Drained here, not in OnImGuiRender: Core::PanelManager calls OnUpdate on every
+		// panel every frame regardless of visibility, dock state or collapse, but skips
+		// OnImGuiRender for a panel that is hidden, collapsed, or behind another dock tab.
+		// TakeDiscarded's registration is only safe while it stays close to the write that
+		// produced it - ADR 0501 narrows the window to the milliseconds between the write
+		// landing and the watcher noticing it - and a one-shot left undrained for however
+		// long the panel happens to stay off-screen would register as a fresh expectation
+		// far outside that window instead.
 		if (m_Model.TakeCommitted().has_value())
 		{
 			m_Message.clear();
 			m_Amend = false;
 		}
 
-		// Registered only now, after the write has succeeded, so an expectation cannot be left
-		// behind by a discard that failed - and so its short life starts as late as possible.
 		if (std::vector<std::filesystem::path> discarded = m_Model.TakeDiscarded(); !discarded.empty())
 		{
+			// A discard can only have been requested from a panel that already had a status,
+			// and a status is only ever delivered together with a working directory - so a
+			// non-empty `discarded` here already implies GetWorkingDirectory() is not empty.
+			// Checked anyway, structurally rather than by that inference, because an empty
+			// working directory would otherwise join into a path relative to nothing and
+			// register an expectation for the wrong file.
+			if (m_Model.GetWorkingDirectory().empty())
+			{
+				return;
+			}
+
 			// TakeDiscarded hands back paths relative to the repository's working directory,
 			// but ExpectExternalWrite requires absolute ones - see ExpectedWrites::Expect.
 			// Joined onto GetWorkingDirectory(), not GetRoot(): Core::Repository::Open
@@ -99,6 +91,11 @@ namespace Graphite {
 
 			m_DocumentWindows.ExpectExternalWrite(absolute);
 		}
+	}
+
+	void ChangesPanel::OnImGuiRender()
+	{
+		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
 		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 
@@ -419,21 +416,21 @@ namespace Graphite {
 				continue;
 			}
 
-			const std::filesystem::path normalizedItem = Normalize(item.Path);
+			const std::filesystem::path normalizedItem = Core::NormalizePath(item.Path);
 
 			for (const std::filesystem::path& path : paths)
 			{
 				// `path` is git-relative; a document's path is absolute. Absolutised against
-				// the repository's working directory - not GetRoot(), the folder the user
-				// opened, which Core::Repository::Open may have resolved upward from - before
-				// comparing whole normalised paths. The same rule ExpectedWrites uses, and not
-				// the filename-and-ends_with shortcut that was already withdrawn from
-				// ExpectedWrites for making a root-level file match anywhere in the tree while
-				// never matching a nested one at all.
+				// the repository's working directory - not the folder the user opened, which
+				// Core::Repository::Open may have resolved upward from - before comparing whole
+				// normalised paths. The same rule ExpectedWrites uses, and not the
+				// filename-and-ends_with shortcut that was already withdrawn from ExpectedWrites
+				// for making a root-level file match anywhere in the tree while never matching a
+				// nested one at all.
 				const std::filesystem::path normalizedPath =
-					Normalize(m_Model.GetWorkingDirectory() / path);
+					Core::NormalizePath(m_Model.GetWorkingDirectory() / path);
 
-				if (SamePath(normalizedItem, normalizedPath))
+				if (Core::SamePath(normalizedItem, normalizedPath))
 				{
 					dirty.push_back(item.Path);
 					break;
