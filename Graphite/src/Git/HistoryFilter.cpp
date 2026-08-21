@@ -58,6 +58,12 @@ namespace Graphite {
 		return true;
 	}
 
+	void SettlingFilter::Accept()
+	{
+		m_Requested = m_Pending;
+		m_Since = 0.0f;
+	}
+
 	void SettlingFilter::Reset()
 	{
 		m_Pending = HistoryFilter{};

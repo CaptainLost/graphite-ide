@@ -199,3 +199,28 @@ TEST_CASE("A reset filter is empty and has nothing pending")
 	CHECK(settling.Get().Text.empty());
 	CHECK_FALSE(settling.Advance(kSettled));
 }
+
+TEST_CASE("A filter somebody else already asked for does not ask again")
+{
+	SettlingFilter settling;
+	settling.Set(TextOf("enc"));
+
+	// What picking a branch mid-typing does: it queries with the text as it stands now,
+	// filter and all. Without being told, the wait would run out a moment later and send
+	// the same query a second time — two walks of the history for one gesture.
+	settling.Accept();
+
+	CHECK_FALSE(settling.Advance(kSettled));
+}
+
+TEST_CASE("A filter changed after being asked for still settles")
+{
+	SettlingFilter settling;
+	settling.Set(TextOf("enc"));
+	settling.Accept();
+
+	settling.Set(TextOf("encoding"));
+
+	CHECK(settling.Advance(kSettled));
+	CHECK(settling.Get().Text == "encoding");
+}

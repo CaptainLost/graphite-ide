@@ -166,8 +166,11 @@ namespace Graphite {
 		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount));
 
 		// Latched here rather than at each call site, so the first-page latch cannot fire a
-		// second query over the top of one this just sent.
+		// second query over the top of one this just sent. Accept does the same job for the
+		// settling filter: this query already carries whatever is typed, so the wait must
+		// not run out afterwards and send it a second time.
 		m_LogRequested = true;
+		m_Filter.Accept();
 
 		m_PageWhenAsked = m_Model.GetLog();
 		m_Searching = true;

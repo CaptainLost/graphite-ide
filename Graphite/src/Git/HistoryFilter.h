@@ -51,6 +51,12 @@ namespace Graphite {
 
 		const HistoryFilter& Get() const { return m_Pending; }
 
+		// Records that the filter as it stands has been queried by someone other than
+		// Advance — picking a branch and reaching the bottom of a page both query with
+		// whatever is typed, filter included. Without this the wait would run out a moment
+		// later and send the same query again, walking the history twice for one gesture.
+		void Accept();
+
 		// Back to no filter, with nothing pending and nothing remembered as asked for.
 		// Called when the workspace opens or closes, alongside the rest of the view's
 		// per-repository state: a change left pending from the previous repository would
