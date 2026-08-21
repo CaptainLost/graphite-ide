@@ -62,6 +62,11 @@ namespace Core {
 		// for the older side of an added file, not a failure worth reporting to anyone.
 		Result<std::string> ReadBlob(const std::filesystem::path& path, const Oid& revision) const;
 
+		// The commit HEAD points at. NotFound on an unborn HEAD, which is a repository with
+		// no commit yet rather than a broken one - the same answer, and the same meaning, as
+		// asking a commit for a parent it does not have.
+		Result<Oid> HeadCommit() const;
+
 		// The file's bytes as they are staged. The two sides of a working-tree diff cannot
 		// both come from ReadBlob: a commit is the one thing neither of them is.
 		//

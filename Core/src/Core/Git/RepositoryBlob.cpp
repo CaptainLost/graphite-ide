@@ -250,4 +250,22 @@ namespace Core {
 
 		return bytes;
 	}
+
+	Result<Oid> Repository::HeadCommit() const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		git_oid id{};
+
+		if (git_reference_name_to_id(&id, m_Handle, "HEAD") != 0)
+		{
+			return Error{ErrorCode::NotFound,
+						 std::format("HEAD names no commit: {}", LastLibgit2Message())};
+		}
+
+		return ToOid(id);
+	}
 }

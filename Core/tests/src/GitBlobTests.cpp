@@ -337,3 +337,30 @@ TEST_CASE("A working-tree file too large to lex is refused before it is read")
 	REQUIRE_FALSE(onDisk.HasValue());
 	CHECK(onDisk.GetError().Code == Core::ErrorCode::InvalidArgument);
 }
+
+TEST_CASE("HEAD names the commit the log puts first")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("a.txt", "two\n");
+	fixture.Commit("second");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	const auto head = repository.HeadCommit();
+	REQUIRE(head.HasValue());
+	CHECK(head.GetValue() == HeadId(repository));
+}
+
+TEST_CASE("An unborn HEAD names no commit")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	const auto head = repository.HeadCommit();
+	REQUIRE_FALSE(head.HasValue());
+	CHECK(head.GetError().Code == Core::ErrorCode::NotFound);
+}
