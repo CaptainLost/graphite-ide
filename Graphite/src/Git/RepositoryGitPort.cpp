@@ -236,4 +236,64 @@ namespace Graphite {
 
 		return texts;
 	}
+
+	Core::Result<void> RepositoryGitPort::Stage(const std::vector<std::filesystem::path>& paths)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->Stage(paths);
+	}
+
+	Core::Result<void> RepositoryGitPort::Unstage(const std::vector<std::filesystem::path>& paths)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->Unstage(paths);
+	}
+
+	Core::Result<void> RepositoryGitPort::DiscardWorkTree(const std::vector<std::filesystem::path>& paths)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->DiscardWorkTree(paths);
+	}
+
+	Core::Result<void> RepositoryGitPort::DeleteUntracked(const std::vector<std::filesystem::path>& paths)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->DeleteUntracked(paths);
+	}
+
+	Core::Result<Core::Oid> RepositoryGitPort::Commit(const Core::CommitRequest& request)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->Commit(request);
+	}
 }

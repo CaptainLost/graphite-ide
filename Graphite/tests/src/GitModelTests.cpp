@@ -3,6 +3,7 @@
 #include "Git/GitModel.h"
 
 #include "Core/Events/EventBus.h"
+#include "Core/Fs/FileSystem.h"
 #include "Workspace/Workspace.h"
 
 #include <filesystem>
@@ -90,6 +91,45 @@ namespace {
 			return oldPath.string() + ">" + newPath.string();
 		}
 
+		Core::Result<void> Stage(const std::vector<std::filesystem::path>& paths) override
+		{
+			return Record("stage", paths);
+		}
+
+		Core::Result<void> Unstage(const std::vector<std::filesystem::path>& paths) override
+		{
+			return Record("unstage", paths);
+		}
+
+		Core::Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths) override
+		{
+			return Record("discard", paths);
+		}
+
+		Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) override
+		{
+			return Record("delete", paths);
+		}
+
+		Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) override
+		{
+			WriteCalls.push_back("commit:" + request.Message);
+
+			if (FailWrites)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return CommittedOid;
+		}
+
+		// Every write in the order it was asked for, as "kind:path,path". A vector of
+		// strings rather than of structures: a test asserting order reads better as a
+		// literal list than as five constructed objects.
+		std::vector<std::string> WriteCalls;
+		bool FailWrites = false;
+		Core::Oid CommittedOid{};
+
 		Core::WorkingTreeStatus Status;
 		std::vector<Core::Branch> Branches;
 		Core::LogPage Log;
@@ -110,6 +150,27 @@ namespace {
 		std::optional<Core::LogRequest> LastLogRequest;
 		int DiffCalls = 0;
 		int TextCalls = 0;
+
+	private:
+		Core::Result<void> Record(const std::string& kind,
+								  const std::vector<std::filesystem::path>& paths)
+		{
+			std::string line = kind + ":";
+
+			for (std::size_t index = 0; index < paths.size(); ++index)
+			{
+				line += (index == 0 ? "" : ",") + Core::ToUtf8(paths[index]);
+			}
+
+			WriteCalls.push_back(line);
+
+			if (FailWrites)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Core::Result<void>::Ok();
+		}
 	};
 
 	// Runs the job where it was submitted. The model still has to hand the result back

@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <fstream>
 #include <process.h>
 #include <string>
 #include <system_error>
@@ -131,4 +132,26 @@ TEST_CASE("Closing the workspace does not leave the last root's handle live")
 	// next chance to sweep the entry the closed root left behind.
 	CHECK_FALSE(port.QueryStatus().HasValue());
 	CHECK(port.GetLiveHandleCountForThisThread() == 0);
+}
+
+TEST_CASE("RepositoryGitPort stages through the same handle it queries with")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt"};
+		file << "one\n";
+	}
+
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	const auto status = port.QueryStatus();
+	REQUIRE(status.HasValue());
+	REQUIRE(status.GetValue().Entries.size() == 1);
+	CHECK(status.GetValue().Entries.front().Path == std::filesystem::path{"a.txt"});
+	CHECK_FALSE(status.GetValue().Entries.front().IsUntracked);
+
+	// One handle for this thread, reused by the write — the write must not open a second.
+	CHECK(port.GetOpenCount() == 1);
 }

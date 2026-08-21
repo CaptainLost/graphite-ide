@@ -39,5 +39,14 @@ namespace Graphite {
 			const Core::Oid& commit,
 			const std::filesystem::path& oldPath,
 			const std::filesystem::path& newPath) = 0;
+
+		// The writes. Called on a worker thread like everything above, and serialised by
+		// GitModel rather than here: this interface answers one call at a time and knows
+		// nothing about the others.
+		virtual Core::Result<void> Stage(const std::vector<std::filesystem::path>& paths) = 0;
+		virtual Core::Result<void> Unstage(const std::vector<std::filesystem::path>& paths) = 0;
+		virtual Core::Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths) = 0;
+		virtual Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) = 0;
+		virtual Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) = 0;
 	};
 }

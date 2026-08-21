@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -33,6 +34,12 @@ namespace Graphite {
 			const Core::Oid& commit,
 			const std::filesystem::path& oldPath,
 			const std::filesystem::path& newPath) override;
+
+		Core::Result<void> Stage(const std::vector<std::filesystem::path>& paths) override;
+		Core::Result<void> Unstage(const std::vector<std::filesystem::path>& paths) override;
+		Core::Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths) override;
+		Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) override;
+		Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) override;
 
 		void SetRoot(std::filesystem::path root);
 
