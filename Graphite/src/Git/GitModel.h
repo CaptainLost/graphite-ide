@@ -3,6 +3,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
+#include "Git/FileTexts.h"
 #include "Git/GitPort.h"
 
 #include <cstddef>
@@ -83,6 +84,27 @@ namespace Graphite {
 		// will not notice, against holding every diff they ever passed.
 		static constexpr std::size_t kCachedDiffs = 32;
 
+		// Both sides of one file's text around a commit, for the diff view to hand to the
+		// lexer. Keyed by commit and new path - not by commit alone, as RequestDiffFor is -
+		// because one commit touches many files and each needs its own entry. Mirrors
+		// RequestDiffFor in every other respect: held once fetched, since a commit's text
+		// cannot change either.
+		void RequestTextsFor(
+			const Core::Oid& commit,
+			const std::filesystem::path& oldPath,
+			const std::filesystem::path& newPath);
+
+		// Null while the answer is in flight, after a failure, and for a file that was
+		// evicted. As with GetDiffFor, the caller's response is the same in every case: draw
+		// nothing yet.
+		std::shared_ptr<const FileTexts> GetTextsFor(
+			const Core::Oid& commit, const std::filesystem::path& newPath) const;
+
+		// Same bound and the same reasoning as kCachedDiffs, kept as its own constant
+		// because the two caches are keyed differently and hold different-sized entries -
+		// tying their bounds together would be a coincidence, not a decision.
+		static constexpr std::size_t kCachedTexts = 32;
+
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
@@ -93,9 +115,9 @@ namespace Graphite {
 		// by its own failure and cleared only by its own success, so a branches refresh
 		// that succeeds can never hide a status refresh that is still failing. When more
 		// than one is set this returns the first in the order status, branches, log,
-		// working-tree diff, commit diff - status is checked most often and is the one a
-		// user most needs to see fail, and a commit diff failure is the least likely of the
-		// five to be what a user needs told first.
+		// working-tree diff, commit diff, file texts - status is checked most often and is
+		// the one a user most needs to see fail, and a file-texts failure is the least
+		// likely of the six to be what a user needs told first.
 		const std::optional<Core::Error>& GetLastError() const
 		{
 			if (m_StatusError.has_value())
@@ -118,7 +140,12 @@ namespace Graphite {
 				return m_WorkingTreeDiffError;
 			}
 
-			return m_CommitDiffError;
+			if (m_CommitDiffError.has_value())
+			{
+				return m_CommitDiffError;
+			}
+
+			return m_TextsError;
 		}
 
 		// Without a root the model answers nothing: a file-change event that arrives
@@ -177,6 +204,48 @@ namespace Graphite {
 		void Touch(CachedDiff& entry) const;
 		void EvictIfFull();
 
+		// One commit touches many files, so the texts cache is keyed by commit and new
+		// path together - the diff cache above needs only the commit, since it holds one
+		// entry per commit rather than one per file.
+		struct TextsKey
+		{
+			Core::Oid Commit;
+			std::filesystem::path NewPath;
+
+			friend bool operator==(const TextsKey&, const TextsKey&) = default;
+		};
+
+		struct TextsKeyHash
+		{
+			std::size_t operator()(const TextsKey& key) const noexcept
+			{
+				return std::hash<Core::Oid>{}(key.Commit) ^
+					(std::hash<std::filesystem::path>{}(key.NewPath) << 1);
+			}
+		};
+
+		struct CachedTexts
+		{
+			// From the model-wide m_TextsGeneration counter, for the same reason
+			// CachedDiff::Requested is - see that comment.
+			std::uint64_t Requested = 0;
+			std::uint64_t Applied = 0;
+
+			std::shared_ptr<const FileTexts> Texts;
+
+			// Suppresses a re-request the same way CachedDiff::Failed does. There is no
+			// texts equivalent of ForgetFailedDiffFor: nothing collapses a texts view the
+			// way a commit row collapses, so nothing yet needs a way back in.
+			bool Failed = false;
+
+			// Same purpose as CachedDiff::LastTouched: lets eviction pick the entry nobody
+			// has looked at for longest.
+			std::uint64_t LastTouched = 0;
+		};
+
+		void Touch(CachedTexts& entry) const;
+		void EvictTextsIfFull();
+
 		std::filesystem::path m_Root;
 
 		bool m_Dirty = false;
@@ -216,6 +285,14 @@ namespace Graphite {
 		// CachedDiff::Requested for why a counter local to the entry cannot do this job.
 		std::uint64_t m_CommitDiffGeneration = 0;
 
+		// Mirrors m_CommitDiffs in every respect described on CachedTexts above.
+		mutable std::unordered_map<TextsKey, CachedTexts, TextsKeyHash> m_Texts;
+		mutable std::uint64_t m_TextsClock = 0;
+
+		// Shared by every texts request, never reset by Clear() - see the comment on
+		// CachedDiff::Requested for why a counter local to the entry cannot do this job.
+		std::uint64_t m_TextsGeneration = 0;
+
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;
 		std::optional<Core::Error> m_LogError;
@@ -225,5 +302,9 @@ namespace Graphite {
 		// diff are different query kinds, and one succeeding must not hide the other still
 		// failing.
 		std::optional<Core::Error> m_CommitDiffError;
+
+		// Kept apart from m_CommitDiffError for the same reason: a file's texts and a
+		// commit's diff are different query kinds, each with its own slot.
+		std::optional<Core::Error> m_TextsError;
 	};
 }

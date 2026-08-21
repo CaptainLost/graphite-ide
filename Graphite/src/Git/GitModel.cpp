@@ -36,12 +36,14 @@ namespace Graphite {
 		m_Log.reset();
 		m_WorkingTreeDiff.reset();
 		m_CommitDiffs.clear();
+		m_Texts.clear();
 
 		m_StatusError.reset();
 		m_BranchesError.reset();
 		m_LogError.reset();
 		m_WorkingTreeDiffError.reset();
 		m_CommitDiffError.reset();
+		m_TextsError.reset();
 
 		m_Dirty = false;
 		m_DirtyFor = 0.0f;
@@ -395,5 +397,127 @@ namespace Graphite {
 
 		Touch(entry->second);
 		return entry->second.Diff;
+	}
+
+	void GitModel::Touch(CachedTexts& entry) const
+	{
+		entry.LastTouched = ++m_TextsClock;
+	}
+
+	void GitModel::EvictTextsIfFull()
+	{
+		// Mirrors EvictIfFull exactly - see its comments for why this is a loop rather than
+		// one shot, and why an in-flight entry is never a candidate.
+		while (m_Texts.size() >= kCachedTexts)
+		{
+			auto oldest = m_Texts.end();
+
+			for (auto entry = m_Texts.begin(); entry != m_Texts.end(); ++entry)
+			{
+				if (entry->second.Requested != entry->second.Applied)
+				{
+					continue;
+				}
+
+				if (oldest == m_Texts.end() || entry->second.LastTouched < oldest->second.LastTouched)
+				{
+					oldest = entry;
+				}
+			}
+
+			if (oldest == m_Texts.end())
+			{
+				break;
+			}
+
+			m_Texts.erase(oldest);
+		}
+	}
+
+	void GitModel::RequestTextsFor(
+		const Core::Oid& commit,
+		const std::filesystem::path& oldPath,
+		const std::filesystem::path& newPath)
+	{
+		// Mirrors RequestDiffFor: nothing on screen has any business asking about a file's
+		// text for a folder that is not open.
+		if (m_Root.empty())
+		{
+			return;
+		}
+
+		const TextsKey key{commit, newPath};
+		const auto existing = m_Texts.find(key);
+
+		if (existing != m_Texts.end())
+		{
+			const bool inFlight = existing->second.Requested != existing->second.Applied;
+
+			// Suppresses a failed entry the same way RequestDiffFor does - see its comment.
+			if (inFlight || existing->second.Texts != nullptr || existing->second.Failed)
+			{
+				Touch(existing->second);
+				return;
+			}
+		}
+		else
+		{
+			// Only when the key is absent - see EvictIfFull's comment for why evicting on
+			// any other branch would drop an unrelated entry for no reason.
+			EvictTextsIfFull();
+		}
+
+		CachedTexts& entry = m_Texts[key];
+		Touch(entry);
+
+		// From the model-wide counter, not a counter local to the entry - see the comment
+		// on CachedTexts::Requested.
+		const std::uint64_t generation = ++m_TextsGeneration;
+		entry.Requested = generation;
+
+		m_Submit([this, commit, oldPath, newPath, generation]() {
+			auto result = m_Port.ReadFileTexts(commit, oldPath, newPath);
+
+			Deliver([this, commit, newPath, generation, result = std::move(result)]() mutable {
+				const TextsKey key{commit, newPath};
+				const auto entry = m_Texts.find(key);
+
+				// Evicted, or the workspace closed, while the query was running. Dropping
+				// it is right: nothing on screen is waiting for it.
+				if (entry == m_Texts.end() || generation <= entry->second.Applied)
+				{
+					return;
+				}
+
+				entry->second.Applied = generation;
+
+				if (!result.HasValue())
+				{
+					// No last-good snapshot to keep, unlike the volatile working-tree diff:
+					// a file whose texts failed has nothing older to fall back to.
+					m_TextsError = result.GetError();
+					entry->second.Failed = true;
+					return;
+				}
+
+				m_TextsError.reset();
+				entry->second.Texts =
+					std::make_shared<const FileTexts>(std::move(result).GetValue());
+			});
+		});
+	}
+
+	std::shared_ptr<const FileTexts> GitModel::GetTextsFor(
+		const Core::Oid& commit, const std::filesystem::path& newPath) const
+	{
+		const auto entry = m_Texts.find(TextsKey{commit, newPath});
+
+		if (entry == m_Texts.end())
+		{
+			return nullptr;
+		}
+
+		Touch(entry->second);
+		return entry->second.Texts;
 	}
 }

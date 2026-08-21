@@ -3,10 +3,13 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
+#include "Git/FileTexts.h"
 
+#include <filesystem>
 #include <vector>
 
 namespace Graphite {
@@ -26,5 +29,15 @@ namespace Graphite {
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;
+
+		// Both sides of one file as they stood around a commit: the new side from that
+		// commit, the old side from its first parent. Both paths are taken because a
+		// renamed file has a different name on each side, and the diff calling this
+		// already knows both - working it out again here would put a second copy of that
+		// knowledge somewhere it does not belong.
+		virtual Core::Result<FileTexts> ReadFileTexts(
+			const Core::Oid& commit,
+			const std::filesystem::path& oldPath,
+			const std::filesystem::path& newPath) = 0;
 	};
 }

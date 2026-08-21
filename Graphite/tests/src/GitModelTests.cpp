@@ -53,18 +53,34 @@ namespace {
 			return Diff;
 		}
 
+		Core::Result<Graphite::FileTexts> ReadFileTexts(
+			const Core::Oid&, const std::filesystem::path&, const std::filesystem::path&) override
+		{
+			++TextCalls;
+
+			if (FailTexts)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Texts;
+		}
+
 		Core::WorkingTreeStatus Status;
 		std::vector<Core::Branch> Branches;
 		Core::LogPage Log;
 		Core::Diff Diff;
+		Graphite::FileTexts Texts;
 
 		bool FailStatus = false;
 		bool FailDiff = false;
+		bool FailTexts = false;
 
 		int StatusCalls = 0;
 		int BranchCalls = 0;
 		int LogCalls = 0;
 		int DiffCalls = 0;
+		int TextCalls = 0;
 	};
 
 	// Runs the job where it was submitted. The model still has to hand the result back
@@ -820,4 +836,195 @@ TEST_CASE("A stale answer from before a clear does not overwrite a fresh one aft
 
 	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
 	CHECK(model.GetDiffFor(IdOf(1))->Files.front().NewPath == std::filesystem::path("after.txt"));
+}
+
+namespace {
+
+	Graphite::FileTexts TextsNaming(const char* text)
+	{
+		Graphite::FileTexts texts;
+		texts.Old = text;
+		texts.New = text;
+		texts.HasOld = true;
+		texts.HasNew = true;
+		return texts;
+	}
+}
+
+TEST_CASE("A requested file's texts become readable after the next update")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt")->Old == "a");
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt")->New == "a");
+}
+
+TEST_CASE("A commit nobody asked about has no texts")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// The whole point of keying by commit and path: an answer can never be shown under a
+	// file it does not belong to.
+	CHECK(model.GetTextsFor(IdOf(2), "a.txt") == nullptr);
+}
+
+TEST_CASE("Two commits' texts are held at the same time")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	port.Texts = TextsNaming("first");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	port.Texts = TextsNaming("second");
+	model.RequestTextsFor(IdOf(2), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// Asking about a second commit must not collapse the first.
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+	REQUIRE(model.GetTextsFor(IdOf(2), "a.txt") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt")->Old == "first");
+	CHECK(model.GetTextsFor(IdOf(2), "a.txt")->Old == "second");
+}
+
+TEST_CASE("Asking again for texts already held does not ask the port again")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const int after = port.TextCalls;
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// A commit's texts cannot change, so re-asking is pure waste - and the view asks for
+	// the same file on every frame it draws.
+	CHECK(port.TextCalls == after);
+}
+
+TEST_CASE("Asking again for texts while the first answer is still in flight does not ask twice")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.TextCalls == 1);
+}
+
+TEST_CASE("A failed texts request for a file leaves no snapshot and reports the error")
+{
+	FakePort port;
+	port.FailTexts = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	// There is no last-good snapshot to keep: a file whose texts failed has nothing older
+	// to fall back to.
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
+	CHECK(model.GetLastError().has_value());
+}
+
+TEST_CASE("A failed texts request is not asked for again on its own")
+{
+	FakePort port;
+	port.FailTexts = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const int after = port.TextCalls;
+
+	// A permanent failure must not turn the view's every-frame ask into a worker job
+	// every frame.
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.TextCalls == after);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
+}
+
+TEST_CASE("The texts cache holds a bounded number of files")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	for (std::size_t index = 0; index < Graphite::GitModel::kCachedTexts + 4; ++index)
+	{
+		model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(index)), "a.txt", "a.txt");
+		model.OnUpdate(Core::Timestep{0.016f});
+	}
+
+	// Same reasoning as the commit-diff cache's boundary test: strict request order means
+	// exactly the four oldest fall out of a bound of kCachedTexts once four more than that
+	// have been asked for.
+	CHECK(model.GetTextsFor(IdOf(0), "a.txt") == nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
+	CHECK(model.GetTextsFor(IdOf(2), "a.txt") == nullptr);
+	CHECK(model.GetTextsFor(IdOf(3), "a.txt") == nullptr);
+	CHECK(model.GetTextsFor(IdOf(4), "a.txt") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedTexts + 3)),
+		"a.txt") != nullptr);
+}
+
+TEST_CASE("Closing the workspace drops every cached file's texts")
+{
+	FakePort port;
+	Core::EventBus events;
+	port.Texts = TextsNaming("a");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
 }

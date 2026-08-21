@@ -185,4 +185,58 @@ namespace Graphite {
 
 		return repository->QueryDiff(request);
 	}
+
+	Core::Result<FileTexts> RepositoryGitPort::ReadFileTexts(
+		const Core::Oid& commit,
+		const std::filesystem::path& oldPath,
+		const std::filesystem::path& newPath)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		FileTexts texts;
+
+		auto newBlob = repository->ReadBlob(newPath, commit);
+
+		if (newBlob.HasValue())
+		{
+			texts.HasNew = true;
+			texts.New = std::move(newBlob).GetValue();
+		}
+		else if (newBlob.GetError().Code != Core::ErrorCode::NotFound)
+		{
+			return newBlob.GetError();
+		}
+
+		auto parent = repository->FirstParentOf(commit);
+
+		if (!parent.HasValue())
+		{
+			return parent.GetError();
+		}
+
+		// A root commit has no parent, and FirstParentOf says so with an empty optional
+		// rather than an error - the old side is then simply absent, the same answer an
+		// added file gives.
+		if (parent.GetValue().has_value())
+		{
+			auto oldBlob = repository->ReadBlob(oldPath, *parent.GetValue());
+
+			if (oldBlob.HasValue())
+			{
+				texts.HasOld = true;
+				texts.Old = std::move(oldBlob).GetValue();
+			}
+			else if (oldBlob.GetError().Code != Core::ErrorCode::NotFound)
+			{
+				return oldBlob.GetError();
+			}
+		}
+
+		return texts;
+	}
 }
