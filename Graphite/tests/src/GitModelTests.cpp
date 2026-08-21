@@ -500,6 +500,7 @@ TEST_CASE("A requested diff becomes readable after the next update")
 	port.Diff.Files.push_back(file);
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 
 	Core::DiffRequest request;
 	request.Target = Core::DiffTarget::WorkTreeToHead;
@@ -514,7 +515,7 @@ TEST_CASE("A requested diff becomes readable after the next update")
 	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("a.txt"));
 }
 
-TEST_CASE("A superseded diff is discarded rather than shown")
+TEST_CASE("A request made while one is already in flight is not resubmitted")
 {
 	FakePort port;
 
@@ -523,21 +524,26 @@ TEST_CASE("A superseded diff is discarded rather than shown")
 	port.Diff.Files.push_back(stale);
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 
+	// The diff window asks again on the very next frame, before OnUpdate has had a chance
+	// to apply the first answer. That second ask must not reach the port - see
+	// GitModel::RequestWorkingTreeDiff's in-flight guard - so changing what the port would
+	// answer here must not change what the model eventually shows.
 	port.Diff.Files.clear();
 	Core::FileDiff fresh;
 	fresh.NewPath = "fresh.txt";
 	port.Diff.Files.push_back(fresh);
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 
+	CHECK(port.DiffCalls == 1);
+
 	model.OnUpdate(Core::Timestep{0.016f});
 
-	// Selecting one commit and then another before the first diff lands must not leave
-	// the first commit's diff under the second commit's heading.
 	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
 	REQUIRE(model.GetWorkingTreeDiff()->Files.size() == 1);
-	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("fresh.txt"));
+	CHECK(model.GetWorkingTreeDiff()->Files.front().NewPath == std::filesystem::path("stale.txt"));
 }
 
 TEST_CASE("A failed diff keeps the last good one and reports the error")
@@ -549,6 +555,7 @@ TEST_CASE("A failed diff keeps the last good one and reports the error")
 	port.Diff.Files.push_back(file);
 
 	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
 

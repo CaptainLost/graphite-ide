@@ -276,6 +276,22 @@ namespace Graphite {
 
 	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)
 	{
+		// Mirrors MarkDirty and RequestLog: nothing on screen has any business asking about
+		// a working tree for a folder that is not open.
+		if (m_Root.empty())
+		{
+			return;
+		}
+
+		// The diff window's Render calls this every frame it is open, the same way the log
+		// list asks RequestDiffFor about every expanded commit every frame. Without this
+		// guard a diff that takes longer than a frame would resubmit a worker job many
+		// times a second and never drain while the tab stayed open.
+		if (m_WorkingTreeDiffRequested != m_WorkingTreeDiffApplied)
+		{
+			return;
+		}
+
 		const std::uint64_t generation = ++m_WorkingTreeDiffRequested;
 
 		m_Submit([this, generation, request = std::move(request)]() {

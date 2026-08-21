@@ -25,7 +25,11 @@ namespace {
 		}
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
-		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override { return Core::Diff{}; }
+		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override
+		{
+			++DiffCalls;
+			return Core::Diff{};
+		}
 
 		Core::Result<Graphite::FileTexts> ReadFileTexts(
 			const Core::Oid&, const std::filesystem::path&, const std::filesystem::path&) override
@@ -67,6 +71,7 @@ namespace {
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
+		int DiffCalls = 0;
 
 		// Deliberately distinct from the "C:/repo" OpenA() gives GitModel::SetRoot(), so a
 		// test can tell GitModel::GetWorkingDirectory() apart from GetRoot() - see "GetWorkingDirectory
@@ -323,4 +328,29 @@ TEST_CASE("A write that throws frees the queue instead of stranding it")
 	// The assertion that actually pins the bug: a write requested after the one that threw
 	// must still reach the port, which it cannot if m_WriteInFlight was left stuck at true.
 	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt", "unstage:b.txt"});
+}
+
+TEST_CASE("Requesting the working tree diff repeatedly submits only one query")
+{
+	// The diff window calls RequestWorkingTreeDiff every frame it is open (DiffWindows.cpp),
+	// the same way the log list calls RequestDiffFor for every expanded commit every frame.
+	// Without an in-flight guard this would submit a worker job every frame forever, and the
+	// backlog would never drain while the tab stayed open - see RequestDiffFor's own guard
+	// for the sibling case this mirrors.
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+
+	CHECK(port.DiffCalls == 1);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	CHECK(port.DiffCalls == 1);
+
+	// Once the first answer has landed, a fresh request is free to submit again.
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	CHECK(port.DiffCalls == 2);
 }
