@@ -8,6 +8,7 @@
 #include "Editor/TextEditorWidget.h"
 #include "Lang/Registry/LanguageRegistry.h"
 
+#include "Git/ChangesPanel.h"
 #include "Git/GitPalette.h"
 #include "Git/GitView.h"
 
@@ -76,7 +77,7 @@ namespace Graphite {
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
 		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle)
 	{
-		m_Layout.Left = {"files"};
+		m_Layout.Left = {"files", "changes"};
 
 		// Beside the console rather than floating: a results list is something you read while
 		// looking at the code it points into, which is what the bottom row is for. Without an
@@ -113,6 +114,9 @@ namespace Graphite {
 		auto* gitView = static_cast<GitView*>(
 			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows)));
 		gitView->SubscribeTo(m_Events);
+
+		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Documents, m_DocumentWindows,
+													  m_ActiveScheme, m_DiffWindows));
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);

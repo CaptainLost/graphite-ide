@@ -61,6 +61,13 @@ namespace Graphite {
 
 		void CloseAll();
 
+		// Closes whichever working-tree tab is open, if any — there can be at most one,
+		// since GitModel keeps a single slot for the working-tree diff rather than a cache
+		// per file (see RequestWorkingTreeDiff). A caller that opens a new working-tree tab
+		// calls this immediately before Open() so the previous tab does not linger, asking
+		// into the same slot the new tab now owns. Commit tabs are untouched.
+		void CloseWorkingTree();
+
 		// centreNode is where a window is placed the first time its identity appears —
 		// after that ImGui remembers, including across a restart through imgui.ini.
 		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,

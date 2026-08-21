@@ -120,6 +120,11 @@ namespace Graphite {
 		m_Open.clear();
 	}
 
+	void DiffWindows::CloseWorkingTree()
+	{
+		std::erase_if(m_Open, [](const Entry& entry) { return !entry.Diff.Commit.has_value(); });
+	}
+
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
 							 unsigned int centreNode)
 	{
