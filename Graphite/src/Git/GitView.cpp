@@ -1,6 +1,8 @@
 #include "Git/GitView.h"
 
+#include "Editor/Palettes.h"
 #include "Git/GitPalette.h"
+#include "Git/SyntaxRuns.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
 
@@ -242,6 +244,45 @@ namespace Graphite {
 			return;
 		}
 
-		m_Diff.Render(diff->Files[*index], palette);
+		const Core::FileDiff& file = diff->Files[*index];
+
+		// A different (commit, new path) than the one m_Texts was fetched for means the
+		// selection moved to a different file. Forget the previous file's entry first, but
+		// only if it failed - ForgetFailedTextsFor is itself a no-op otherwise - so a
+		// transient read failure does not go on suppressing a retry forever, the same reason
+		// RenderCommits calls ForgetFailedDiffFor when a row collapses.
+		if (!m_TextsCommit.has_value() || *m_TextsCommit != selected->Commit ||
+			m_TextsNewPath != file.NewPath)
+		{
+			if (m_TextsCommit.has_value())
+			{
+				m_Model.ForgetFailedTextsFor(*m_TextsCommit, m_TextsNewPath);
+			}
+
+			m_TextsCommit = selected->Commit;
+			m_TextsNewPath = file.NewPath;
+			m_Texts.reset();
+			m_Tokens = FileTokens{};
+		}
+
+		m_Model.RequestTextsFor(selected->Commit, file.OldPath, file.NewPath);
+		const std::shared_ptr<const FileTexts> texts =
+			m_Model.GetTextsFor(selected->Commit, file.NewPath);
+
+		// Lexed only when GetTextsFor hands back a different object than last frame's - the
+		// text is immutable once fetched, so comparing the pointer is enough to know the
+		// tokens are still good, and re-lexing every frame is the mistake LexFileText's own
+		// header warns against.
+		if (texts.get() != m_Texts.get())
+		{
+			m_Texts = texts;
+			m_Tokens.Old =
+				texts && texts->HasOld ? LexFileText(texts->Old, file.OldPath) : std::vector<std::vector<Token>>{};
+			m_Tokens.New =
+				texts && texts->HasNew ? LexFileText(texts->New, file.NewPath) : std::vector<std::vector<Token>>{};
+		}
+
+		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
+		m_Diff.Render(file, palette, syntax, m_Texts, m_Tokens);
 	}
 }

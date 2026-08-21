@@ -1,6 +1,7 @@
 #include "Git/DiffWindows.h"
 
 #include "Git/CommitLabels.h"
+#include "Git/SyntaxRuns.h"
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
@@ -75,7 +76,8 @@ namespace Graphite {
 		m_Open.clear();
 	}
 
-	void DiffWindows::Render(GitModel& model, const GitPalette& palette, unsigned int centreNode)
+	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
+							  unsigned int centreNode)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
@@ -134,7 +136,30 @@ namespace Graphite {
 					}
 					else
 					{
-						entry.View.Render(diff->Files[*fileIndex], palette);
+						const Core::FileDiff& file = diff->Files[*fileIndex];
+
+						entry.TextsNewPath = file.NewPath;
+						model.RequestTextsFor(entry.Diff.Commit, file.OldPath, file.NewPath);
+
+						const std::shared_ptr<const FileTexts> texts =
+							model.GetTextsFor(entry.Diff.Commit, file.NewPath);
+
+						// Lexed only when GetTextsFor hands back a different object than last
+						// frame's - the text is immutable once fetched, so the pointer alone
+						// says whether the tokens are still good, and re-lexing every frame is
+						// the mistake LexFileText's own header warns against.
+						if (texts.get() != entry.Texts.get())
+						{
+							entry.Texts = texts;
+							entry.Tokens.Old = texts && texts->HasOld
+													? LexFileText(texts->Old, file.OldPath)
+													: std::vector<std::vector<Token>>{};
+							entry.Tokens.New = texts && texts->HasNew
+													? LexFileText(texts->New, file.NewPath)
+													: std::vector<std::vector<Token>>{};
+						}
+
+						entry.View.Render(file, palette, syntax, entry.Texts, entry.Tokens);
 					}
 				}
 			}
@@ -143,6 +168,11 @@ namespace Graphite {
 
 			if (!open)
 			{
+				// A closed tab forgets its own failed texts entry, mirroring GitView's call
+				// on a collapsed commit row - ForgetFailedTextsFor is a no-op for anything but
+				// a failed entry, so this costs nothing when the tab closed clean.
+				model.ForgetFailedTextsFor(entry.Diff.Commit, entry.TextsNewPath);
+
 				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
 				continue;
 			}

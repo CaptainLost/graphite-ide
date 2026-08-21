@@ -2,6 +2,7 @@
 
 #include "App/GraphiteLayer.h"
 
+#include "Editor/Palettes.h"
 #include "Editor/ServerStatusText.h"
 #include "Editor/StatusBar.h"
 #include "Editor/TextEditorWidget.h"
@@ -499,7 +500,8 @@ namespace Graphite {
 								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get(),
 								 *m_ReferencesPanel);
 
-		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId());
+		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
+							 ReadSyntaxPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId());
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

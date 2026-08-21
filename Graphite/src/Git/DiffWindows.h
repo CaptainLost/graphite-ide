@@ -53,7 +53,8 @@ namespace Graphite {
 
 		// centreNode is where a window is placed the first time its identity appears —
 		// after that ImGui remembers, including across a restart through imgui.ini.
-		void Render(GitModel& model, const GitPalette& palette, unsigned int centreNode);
+		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
+					unsigned int centreNode);
 
 	private:
 		struct Entry
@@ -65,6 +66,20 @@ namespace Graphite {
 			// that already has a tab must raise that tab, not silently do nothing.
 			bool Fresh = true;
 			bool Focus = false;
+
+			// The whole-file texts for this tab's file, and the tokens lexed from them. Held
+			// here rather than inside DiffView, which must not reach for the model: Render is
+			// what asks GitModel::RequestTextsFor/GetTextsFor, rebuilds Tokens only when
+			// GetTextsFor hands back a different object than Texts already holds, and passes
+			// both down to View.Render.
+			std::shared_ptr<const FileTexts> Texts;
+			FileTokens Tokens;
+
+			// The new path Texts was fetched against - not always Diff.Path, which falls back
+			// to the old path for a deleted file. Kept so a closed tab can forget its own
+			// failed entry with the same key it was requested under, mirroring GitView's
+			// ForgetFailedTextsFor call for the same reason.
+			std::filesystem::path TextsNewPath;
 		};
 
 		std::vector<Entry> m_Open;

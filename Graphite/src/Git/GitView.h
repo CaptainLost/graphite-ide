@@ -81,5 +81,21 @@ namespace Graphite {
 		// this frame was just collapsed. Compared rather than driven by a callback out of
 		// CommitListView, which must not know the model it would otherwise call into.
 		std::unordered_set<Core::Oid> m_PreviouslyExpanded;
+
+		// Which (commit, new path) the texts below were last fetched for. Compared against
+		// the current selection each frame so a selection change forgets a previous file's
+		// failed entry — mirroring m_PreviouslyExpanded/ForgetFailedDiffFor above, but for
+		// GetTextsFor/ForgetFailedTextsFor, which are keyed by new path rather than by commit
+		// alone. Unset until the first file is shown.
+		std::optional<Core::Oid> m_TextsCommit;
+		std::filesystem::path m_TextsNewPath;
+
+		// The whole-file texts for whichever file is currently selected, and the tokens lexed
+		// from them. Held here rather than inside DiffView because DiffView must not reach for
+		// the model — RenderDiff is what asks GitModel::RequestTextsFor/GetTextsFor, rebuilds
+		// the tokens only when GetTextsFor hands back a different object than m_Texts already
+		// holds, and passes both down to DiffView::Render.
+		std::shared_ptr<const FileTexts> m_Texts;
+		FileTokens m_Tokens;
 	};
 }

@@ -6,6 +6,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <string>
 
 namespace Graphite {
@@ -57,6 +58,54 @@ namespace Graphite {
 			return text;
 		}
 
+		// Splits a whole text into raw lines exactly the way LexAllLines (Git/SyntaxRuns.cpp)
+		// does — split on '\n', a trailing '\r' stripped, no phantom line after a final
+		// newline — so a token's From/To, which are byte offsets into the line the lexer saw,
+		// land on the identical bytes this draws. The split itself is duplicated rather than
+		// shared because LexAllLines always lexes; there is no lexer-free variant to call, and
+		// this task's file list does not include Git/SyntaxRuns.*.
+		std::vector<std::string_view> SplitLines(std::string_view text)
+		{
+			std::vector<std::string_view> lines;
+
+			if (text.empty())
+			{
+				return lines;
+			}
+
+			std::size_t start = 0;
+
+			while (start <= text.size())
+			{
+				const std::size_t newline = text.find('\n', start);
+				std::string_view line = newline == std::string_view::npos
+											 ? text.substr(start)
+											 : text.substr(start, newline - start);
+
+				if (!line.empty() && line.back() == '\r')
+				{
+					line.remove_suffix(1);
+				}
+
+				lines.push_back(line);
+
+				if (newline == std::string_view::npos)
+				{
+					break;
+				}
+
+				start = newline + 1;
+
+				// A trailing newline ends the text, not a further empty line after it.
+				if (start == text.size())
+				{
+					break;
+				}
+			}
+
+			return lines;
+		}
+
 		void DrawNumber(float x, float y, float width, int number)
 		{
 			if (number <= 0)
@@ -70,9 +119,69 @@ namespace Graphite {
 			ImGui::SetCursorPos(ImVec2(x + width - textWidth - kNumberPaddingX, y));
 			ImGui::TextUnformatted(text.c_str());
 		}
+
+		// Draws one line as a run per token plus the whitespace between them, or as a single
+		// run when there is nothing to colour it with. Every run is positioned explicitly from
+		// `origin` rather than with SameLine() — a run that draws nothing (an empty gap before
+		// two adjacent tokens) would otherwise rewind the cursor and overwrite the row above,
+		// which is the exact bug this file's history records.
+		void DrawLine(const ImVec2& origin, std::string_view text,
+					  const std::vector<Token>* tokens, ImU32 ordinaryColour,
+					  const SyntaxPalette& syntax, bool colourOn)
+		{
+			const auto drawRun = [&](std::string_view run, ImU32 colour, float x) {
+				ImGui::SetCursorPos(ImVec2(x, origin.y));
+				ImGui::PushStyleColor(ImGuiCol_Text, colour);
+				ImGui::TextUnformatted(run.data(), run.data() + run.size());
+				ImGui::PopStyleColor();
+				return ImGui::CalcTextSize(run.data(), run.data() + run.size()).x;
+			};
+
+			if (!colourOn || tokens == nullptr || tokens->empty())
+			{
+				drawRun(text, ordinaryColour, origin.x);
+				return;
+			}
+
+			float x = origin.x;
+			std::size_t cursor = 0;
+
+			for (const Token& token : *tokens)
+			{
+				if (cursor >= text.size())
+				{
+					break;
+				}
+
+				// Clamped rather than trusted: the token came from lexing `text` in the first
+				// place, so From/To should already fit, but a defensive clamp turns a mismatch
+				// into a truncated colouring instead of a substr throwing mid-frame.
+				const std::size_t from = std::min(token.From, text.size());
+				const std::size_t to = std::min(token.To, text.size());
+
+				if (from > cursor)
+				{
+					x += drawRun(text.substr(cursor, from - cursor), ordinaryColour, x);
+				}
+
+				if (to > from)
+				{
+					x += drawRun(text.substr(from, to - from), syntax.Of(token.Kind), x);
+				}
+
+				cursor = to;
+			}
+
+			if (cursor < text.size())
+			{
+				drawRun(text.substr(cursor), ordinaryColour, x);
+			}
+		}
 	}
 
-	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette)
+	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
+						   const SyntaxPalette& syntax, const std::shared_ptr<const FileTexts>& texts,
+						   const FileTokens& tokens)
 	{
 		RenderToolbar(file);
 
@@ -84,6 +193,28 @@ namespace Graphite {
 			return;
 		}
 
+		// Whole-file mode needs the texts to know how many lines the file has and what an
+		// Unchanged row says; while they are still in flight (or the owner has not asked for
+		// them at all) this draws the hunks-only view instead, which needs no text and is what
+		// the reader already had — so nothing on screen blinks once the texts land.
+		if (m_ShowWholeFile && texts != nullptr)
+		{
+			RebuildLineCache(texts);
+
+			const WholeFileRows rows = BuildWholeFileRows(file, m_OldLines.size(), m_NewLines.size());
+
+			if (m_Mode == DiffViewMode::Unified)
+			{
+				RenderUnified(rows.Unified, file, palette, syntax, tokens);
+			}
+			else
+			{
+				RenderSideBySide(rows.SideBySide, file, palette, syntax, tokens);
+			}
+
+			return;
+		}
+
 		if (file.Hunks.empty())
 		{
 			ImGui::TextUnformatted("No changes in this file.");
@@ -92,11 +223,11 @@ namespace Graphite {
 
 		if (m_Mode == DiffViewMode::Unified)
 		{
-			RenderUnified(file, palette);
+			RenderUnified(BuildUnifiedRows(file), file, palette, syntax, tokens);
 			return;
 		}
 
-		RenderSideBySide(file, palette);
+		RenderSideBySide(BuildSideBySideRows(file), file, palette, syntax, tokens);
 	}
 
 	void DiffView::RenderToolbar(const Core::FileDiff& file)
@@ -110,6 +241,20 @@ namespace Graphite {
 		{
 			m_Mode = m_Mode == DiffViewMode::SideBySide ? DiffViewMode::Unified
 														: DiffViewMode::SideBySide;
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::SmallButton(m_ShowWholeFile ? "Changes only" : "Whole file"))
+		{
+			m_ShowWholeFile = !m_ShowWholeFile;
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::SmallButton(m_ColourSyntax ? "Plain text" : "Colour syntax"))
+		{
+			m_ColourSyntax = !m_ColourSyntax;
 		}
 
 		// Absent inside a tab: OnOpenAsTab is left unset there, so a diff already open as a
@@ -127,10 +272,76 @@ namespace Graphite {
 		ImGui::Separator();
 	}
 
-	void DiffView::RenderUnified(const Core::FileDiff& file, const GitPalette& palette)
+	void DiffView::RebuildLineCache(const std::shared_ptr<const FileTexts>& texts)
 	{
-		const std::vector<DiffRow> rows = BuildUnifiedRows(file);
+		if (texts.get() == m_CachedTexts.get())
+		{
+			return;
+		}
 
+		m_CachedTexts = texts;
+		m_OldLines = texts->HasOld ? SplitLines(texts->Old) : std::vector<std::string_view>{};
+		m_NewLines = texts->HasNew ? SplitLines(texts->New) : std::vector<std::string_view>{};
+	}
+
+	DiffView::ResolvedLine DiffView::Resolve(const Core::FileDiff& file, const DiffRow& row,
+											 const FileTokens& tokens) const
+	{
+		if (row.Kind == DiffRowKind::Unchanged)
+		{
+			// Both sides carry identical content for an Unchanged row — it exists only where
+			// the diff left a line alone — so New is preferred simply because it is always
+			// present whenever an Unchanged row is: a file with no new side is entirely one
+			// "added" hunk and produces no Unchanged rows for this branch to see.
+			if (row.NewLine > 0 && static_cast<std::size_t>(row.NewLine) <= m_NewLines.size())
+			{
+				const std::size_t line = static_cast<std::size_t>(row.NewLine) - 1;
+				const std::vector<Token>* lineTokens =
+					line < tokens.New.size() ? &tokens.New[line] : nullptr;
+				return ResolvedLine{m_NewLines[line], lineTokens};
+			}
+
+			if (row.OldLine > 0 && static_cast<std::size_t>(row.OldLine) <= m_OldLines.size())
+			{
+				const std::size_t line = static_cast<std::size_t>(row.OldLine) - 1;
+				const std::vector<Token>* lineTokens =
+					line < tokens.Old.size() ? &tokens.Old[line] : nullptr;
+				return ResolvedLine{m_OldLines[line], lineTokens};
+			}
+
+			return ResolvedLine{};
+		}
+
+		const Core::DiffLine* line = LineOf(file, row);
+
+		if (line == nullptr)
+		{
+			return ResolvedLine{};
+		}
+
+		const std::string_view text = Trimmed(*line);
+
+		// A removed line exists only on the old side and an added line only on the new, so
+		// this picks whichever side the diff itself says has the line; a context line has both
+		// and prefers New for the same reason an Unchanged row does.
+		const std::vector<Token>* lineTokens = nullptr;
+
+		if (row.NewLine > 0 && static_cast<std::size_t>(row.NewLine) <= tokens.New.size())
+		{
+			lineTokens = &tokens.New[static_cast<std::size_t>(row.NewLine) - 1];
+		}
+		else if (row.OldLine > 0 && static_cast<std::size_t>(row.OldLine) <= tokens.Old.size())
+		{
+			lineTokens = &tokens.Old[static_cast<std::size_t>(row.OldLine) - 1];
+		}
+
+		return ResolvedLine{text, lineTokens};
+	}
+
+	void DiffView::RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
+								  const GitPalette& palette, const SyntaxPalette& syntax,
+								  const FileTokens& tokens)
+	{
 		if (!ImGui::BeginChild("unified", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							   ImGuiWindowFlags_HorizontalScrollbar))
 		{
@@ -182,17 +393,17 @@ namespace Graphite {
 
 				DrawNumber(rowPos.x, rowPos.y, numberWidth, row.OldLine);
 				DrawNumber(rowPos.x + numberWidth, rowPos.y, numberWidth, row.NewLine);
-				ImGui::SetCursorPos(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y));
 
-				if (const Core::DiffLine* line = LineOf(file, row); line != nullptr)
+				const ResolvedLine resolved = Resolve(file, row, tokens);
+
+				if (resolved.Text.has_value())
 				{
-					const std::string_view text = Trimmed(*line);
-					ImGui::PushStyleColor(ImGuiCol_Text, TextFor(row.Kind, palette));
-					ImGui::TextUnformatted(text.data(), text.data() + text.size());
-					ImGui::PopStyleColor();
+					DrawLine(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y), *resolved.Text,
+							 resolved.Tokens, TextFor(row.Kind, palette), syntax, m_ColourSyntax);
 				}
 				else
 				{
+					ImGui::SetCursorPos(rowPos);
 					ImGui::NewLine();
 				}
 			}
@@ -202,10 +413,10 @@ namespace Graphite {
 		ImGui::EndChild();
 	}
 
-	void DiffView::RenderSideBySide(const Core::FileDiff& file, const GitPalette& palette)
+	void DiffView::RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
+									 const GitPalette& palette, const SyntaxPalette& syntax,
+									 const FileTokens& tokens)
 	{
-		const std::vector<DiffPair> pairs = BuildSideBySideRows(file);
-
 		const float half = ImGui::GetContentRegionAvail().x * 0.5f;
 
 		// One child per side, both scrolled by the same clipper over the same row list, so
@@ -269,17 +480,18 @@ namespace Graphite {
 
 					DrawNumber(rowPos.x, rowPos.y, numberWidth,
 							   leftSide ? row->OldLine : row->NewLine);
-					ImGui::SetCursorPos(ImVec2(rowPos.x + numberWidth, rowPos.y));
 
-					if (const Core::DiffLine* line = LineOf(file, *row); line != nullptr)
+					const ResolvedLine resolved = Resolve(file, *row, tokens);
+
+					if (resolved.Text.has_value())
 					{
-						const std::string_view text = Trimmed(*line);
-						ImGui::PushStyleColor(ImGuiCol_Text, TextFor(row->Kind, palette));
-						ImGui::TextUnformatted(text.data(), text.data() + text.size());
-						ImGui::PopStyleColor();
+						DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
+								 resolved.Tokens, TextFor(row->Kind, palette), syntax,
+								 m_ColourSyntax);
 					}
 					else
 					{
+						ImGui::SetCursorPos(rowPos);
 						ImGui::NewLine();
 					}
 				}
