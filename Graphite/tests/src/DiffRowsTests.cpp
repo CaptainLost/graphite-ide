@@ -652,3 +652,52 @@ TEST_CASE("A pure deletion inside a two-sided file resumes both sides at the rig
 	CHECK(rows.SideBySide[6].Left->OldLine == 6);
 	CHECK(rows.SideBySide[6].Right->NewLine == 4);
 }
+
+// DiffRows.h warns that a caller can hand in line counts from a different snapshot than the
+// diff. Here the hunk covers old/new lines 1-3, but the counts passed in claim the file has
+// only 1 line on each side — the exact skew that warning describes. Without ClampedGap, the
+// tail computation `newLineCount + 1 - newNext` becomes `2 - 4` as an unsigned subtraction,
+// wrapping to roughly 1.8e19 and driving emitGap's loop until the process runs out of memory
+// (or hangs first) rather than failing fast. This test cannot be run against that unclamped
+// arithmetic to watch it fail — doing so would hang or exhaust memory rather than report a
+// wrong number, which is the whole point of the clamp — so it is verified only against the
+// delivered, clamped code, asserting an exact small row count rather than merely "not huge".
+TEST_CASE("A line count smaller than the hunk's own numbers does not blow up the tail gap")
+{
+	Core::Hunk hunk;
+	hunk.OldStart = 1;
+	hunk.OldCount = 3;
+	hunk.NewStart = 1;
+	hunk.NewCount = 3;
+	hunk.Header = "@@ -1,3 +1,3 @@\n";
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Context, 1, 1, "one\n"));
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Context, 2, 2, "two\n"));
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Context, 3, 3, "three\n"));
+
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.NewPath = "a.txt";
+	file.Hunks.push_back(std::move(hunk));
+
+	// The hunk's own OldStart+OldCount and NewStart+NewCount both reach line 4; these counts
+	// say the file has only 1 line per side, so the tail gap the hunk leaves open behind it
+	// would go negative if computed without a clamp.
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 1, 1);
+
+	// No leading gap (the hunk starts at line 1) and no tail (the clamp floors it at zero):
+	// just the header and the hunk's own 3 lines, exactly.
+	REQUIRE(rows.Unified.size() == 4);
+	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[1].Kind == DiffRowKind::Context);
+	CHECK(rows.Unified[1].OldLine == 1);
+	CHECK(rows.Unified[1].NewLine == 1);
+	CHECK(rows.Unified[2].OldLine == 2);
+	CHECK(rows.Unified[2].NewLine == 2);
+	CHECK(rows.Unified[3].OldLine == 3);
+	CHECK(rows.Unified[3].NewLine == 3);
+
+	REQUIRE(rows.SideBySide.size() == 4);
+	CHECK(rows.SideBySide[0].Left->Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.SideBySide[3].Left->OldLine == 3);
+	CHECK(rows.SideBySide[3].Right->NewLine == 3);
+}
