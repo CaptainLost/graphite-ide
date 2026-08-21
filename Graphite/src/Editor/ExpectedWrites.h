@@ -25,12 +25,20 @@ namespace Graphite {
 		// competing idea of how long the application waits for the filesystem to settle.
 		static constexpr float kExpectedWriteSeconds = 2.0f;
 
+		// Every path handed in here MUST already be absolute. A relative path cannot be
+		// matched safely against a document's absolute one: TakeFor compares whole paths, and
+		// a relative expectation would either never match anything (if compared as given) or,
+		// if resolved against the wrong base, could match that name anywhere in the tree - the
+		// same danger a bare-filename match has. The caller absolutises, deliberately: it is
+		// the caller (with the repository root in hand) that knows how to make a git-relative
+		// path absolute, not this class.
 		void Expect(const std::vector<std::filesystem::path>& paths);
 
-		// True once per registration, and never after the entry has expired. Matches by
-		// filename and a native-path suffix rather than exact equality: a git status names a
-		// path relative to the working directory ("src/a.txt") while an open document names
-		// an absolute one ("D:/repo/src/a.txt"), and the two never compare equal outright.
+		// True once per registration, and never after the entry has expired. Compares whole
+		// paths - lexically normalised and folded case-insensitively, since Windows paths are
+		// - rather than a filename or a suffix: either of those can be satisfied by a
+		// different file of the same name elsewhere in the tree, which would silence a
+		// genuine external change to a dirty buffer the user never asked to discard.
 		bool TakeFor(const std::filesystem::path& path);
 
 		void Tick(float seconds);
@@ -42,6 +50,8 @@ namespace Graphite {
 	private:
 		struct Entry
 		{
+			// Stored already normalised (lexically_normal, native separators) so TakeFor
+			// compares like for like without renormalising every entry on every query.
 			std::filesystem::path Path;
 
 			// Counts up rather than down so the comparison reads as "older than the
