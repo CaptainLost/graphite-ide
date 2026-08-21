@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <process.h>
 #include <string>
 #include <system_error>
 
@@ -22,9 +23,14 @@ namespace {
 		TempRepo()
 		{
 			static std::atomic<int> counter{0};
+			const int id = counter.fetch_add(1);
 
+			// Include the process ID to ensure uniqueness across concurrent test runs.
+			// Without it, two concurrent GraphiteTests processes use the same directory names,
+			// and each deletes the other's repository out from under it, causing transient
+			// failures that pass on a solo rerun.
 			m_Path = std::filesystem::temp_directory_path() /
-					 ("graphite-tests-repogitport-" + std::to_string(counter.fetch_add(1)));
+					 ("graphite-tests-repogitport-" + std::to_string(id) + "-" + std::to_string(::_getpid()));
 
 			std::error_code code;
 			std::filesystem::remove_all(m_Path, code);
