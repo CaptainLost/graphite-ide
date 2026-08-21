@@ -128,6 +128,18 @@ namespace Core {
 		return left.size() < right.size() ? -1 : 1;
 	}
 
+	std::filesystem::path NormalizePath(const std::filesystem::path& path)
+	{
+		std::filesystem::path normalized = path.lexically_normal();
+		normalized.make_preferred();
+		return normalized;
+	}
+
+	bool SamePath(const std::filesystem::path& left, const std::filesystem::path& right)
+	{
+		return CompareNames(ToUtf8(left), ToUtf8(right)) == 0;
+	}
+
 	std::filesystem::path NormalizeDirectory(const std::filesystem::path& path)
 	{
 		std::filesystem::path normalized = path.lexically_normal();

@@ -28,6 +28,22 @@ namespace Core {
 
 	int CompareNames(std::string_view left, std::string_view right);
 
+	// lexically_normal collapses "a/../b" into "b" without touching the filesystem - safe for
+	// a path naming a file that may no longer exist, unlike equivalent(). make_preferred
+	// converts forward and native separators to the same spelling, so two paths that name the
+	// same file byte-for-byte compare equal regardless of which convention either came from.
+	// Unlike NormalizeDirectory, a trailing separator's empty final element is left alone: a
+	// file path never carries one to begin with.
+	std::filesystem::path NormalizePath(const std::filesystem::path& path);
+
+	// Whole-path equality on two already-normalized paths, case-folded through CompareNames:
+	// Windows paths are case-insensitive, and this is the same comparison the rest of the
+	// codebase already uses for names (FileTree, CsprojReader, VcxprojReader, SolutionReader
+	// all sort and match through it). A filename or suffix match is not safe here: a
+	// repository-root file has an empty parent_path, so matching on "ends with" degenerates
+	// into "same name anywhere in the tree".
+	bool SamePath(const std::filesystem::path& left, const std::filesystem::path& right);
+
 	std::filesystem::path NormalizeDirectory(const std::filesystem::path& path);
 
 	std::optional<std::filesystem::path> RelativeTo(
