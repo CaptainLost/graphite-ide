@@ -176,6 +176,11 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
+		if (paths.empty())
+		{
+			return Result<void>::Ok();
+		}
+
 		for (const std::filesystem::path& path : paths)
 		{
 			std::error_code code;

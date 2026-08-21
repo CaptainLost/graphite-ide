@@ -194,6 +194,11 @@ TEST_CASE("DeleteUntracked reports a path it cannot remove")
 
 	const auto result = repository.GetValue().DeleteUntracked({"folder"});
 	CHECK_FALSE(result.HasValue());
+
+	// The assertion that actually guards the destructive path: a future change to
+	// std::filesystem::remove (or a switch to remove_all) must not make this call quietly
+	// succeed at deleting a directory it was told it could not.
+	CHECK(std::filesystem::exists(fixture.GetPath() / "folder" / "inside.txt"));
 }
 
 TEST_CASE("Commit writes the index as a commit the log then finds")
