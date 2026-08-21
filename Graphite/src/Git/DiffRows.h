@@ -62,9 +62,9 @@ namespace Graphite {
 	// it, so an edit reads as one row rather than as a deletion above an insertion.
 	std::vector<DiffPair> BuildSideBySideRows(const Core::FileDiff& file);
 
-	// The line a row draws, or null for a hunk header and for a row whose indices no longer
-	// fit the file — which can only happen if a caller keeps rows past the snapshot they
-	// were built from.
+	// The line a row draws, or null for a hunk header, for an Unchanged row (which names no
+	// hunk to look a line up in), and for a row whose indices no longer fit the file — which
+	// can only happen if a caller keeps rows past the snapshot they were built from.
 	const Core::DiffLine* LineOf(const Core::FileDiff& file, const DiffRow& row);
 
 	// Both views of a whole file, hunks in place and Unchanged rows filling every gap.

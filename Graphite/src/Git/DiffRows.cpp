@@ -123,6 +123,18 @@ namespace Graphite {
 			row.NewLine = newLine;
 			return row;
 		}
+
+		// `end - next` as an unsigned difference, but clamped to zero rather than wrapping
+		// when `next` has already passed `end`. That skew is only possible when a caller
+		// hands in a line count from a different snapshot than the diff, or hunks that are
+		// not in ascending order — DiffRows.h already warns a stale count can happen. Every
+		// other place in this file degrades gracefully under that skew (LineOf just returns
+		// null); an unclamped subtraction here would instead wrap to roughly 2^64 and have
+		// emitGap push rows until memory runs out, turning a wrong picture into a hang.
+		std::size_t ClampedGap(std::size_t end, std::size_t next)
+		{
+			return end > next ? end - next : 0;
+		}
 	}
 
 	std::vector<DiffRow> BuildUnifiedRows(const Core::FileDiff& file)
@@ -151,7 +163,11 @@ namespace Graphite {
 
 	const Core::DiffLine* LineOf(const Core::FileDiff& file, const DiffRow& row)
 	{
-		if (row.Kind == DiffRowKind::HunkHeader || row.Hunk >= file.Hunks.size())
+		// A header names no line, and an Unchanged row names no hunk at all — its Hunk and
+		// Line fields are left at their default zero, which would otherwise resolve to
+		// file.Hunks[0].Lines[0] for any file whose first hunk is non-empty.
+		if (row.Kind == DiffRowKind::HunkHeader || row.Kind == DiffRowKind::Unchanged
+			|| row.Hunk >= file.Hunks.size())
 		{
 			return nullptr;
 		}
@@ -228,11 +244,11 @@ namespace Graphite {
 
 			if (current.NewCount > 0)
 			{
-				gapLength = static_cast<std::size_t>(current.NewStart) - newNext;
+				gapLength = ClampedGap(static_cast<std::size_t>(current.NewStart), newNext);
 			}
 			else if (current.OldCount > 0)
 			{
-				gapLength = static_cast<std::size_t>(current.OldStart) - oldNext;
+				gapLength = ClampedGap(static_cast<std::size_t>(current.OldStart), oldNext);
 			}
 
 			emitGap(gapLength);
@@ -256,8 +272,9 @@ namespace Graphite {
 		// The tail of the file past the last hunk (or the whole file, when there are none).
 		// Both counts here come straight from the caller rather than a hunk header, so there
 		// is no zero-count ambiguity to prefer one side over the other for.
-		const std::size_t tailLength = hasNew ? (newLineCount + 1 - newNext)
-											   : (hasOld ? (oldLineCount + 1 - oldNext) : 0);
+		const std::size_t tailLength = hasNew ? ClampedGap(newLineCount + 1, newNext)
+											   : (hasOld ? ClampedGap(oldLineCount + 1, oldNext)
+														  : 0);
 
 		emitGap(tailLength);
 

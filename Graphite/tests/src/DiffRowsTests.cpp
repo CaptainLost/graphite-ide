@@ -430,11 +430,12 @@ TEST_CASE("Two hunks with a gap between them get Unchanged rows in the gap")
 	// ahead of the old side by the end of the file.
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 12, 14);
 
-	// Hunk 1: header + 3 lines. Gap: old lines 3..9 (7 lines), new lines 4..10 (7 lines).
-	// Hunk 2: header + 3 lines. Tail: old lines 11..12, new lines 13..14 (2 lines).
+	// Leading gap: old/new line 1 (1 line). Hunk 1: header + 3 lines. Gap between the hunks:
+	// old lines 3..9 (7 lines), new lines 4..10 (7 lines). Hunk 2: header + 3 lines. Tail:
+	// old lines 11..12, new lines 13..14 (2 lines).
 	REQUIRE(rows.Unified.size() == 1 + 4 + 7 + 4 + 2);
 
-	std::size_t index = 1 + 4; // Past the leading (empty) gap and the first hunk.
+	std::size_t index = 1 + 4; // Past the one-line leading gap and the first hunk.
 
 	for (int oldLine = 3; oldLine <= 9; ++oldLine, ++index)
 	{
@@ -507,4 +508,147 @@ TEST_CASE("A deleted file has no new side in its whole-file rows")
 	CHECK_FALSE(rows.SideBySide[2].Right.has_value());
 	REQUIRE(rows.SideBySide[1].Left.has_value());
 	REQUIRE(rows.SideBySide[2].Left.has_value());
+}
+
+TEST_CASE("LineOf returns null for an Unchanged row, which names no hunk to look a line up in")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+
+	// Hunk and Line are left at their default zero, which is a real index into this file's
+	// first hunk — LineOf must recognise the kind rather than trust the indices.
+	DiffRow row;
+	row.Kind = DiffRowKind::Unchanged;
+	row.OldLine = 5;
+	row.NewLine = 5;
+
+	CHECK(Graphite::LineOf(file, row) == nullptr);
+}
+
+// A pure insertion, which git writes as "@@ -3,0 +4,2 @@": the old side contributes no line
+// of its own, so OldStart names the last old line before the insertion rather than a line in
+// the hunk. Sitting inside an otherwise two-sided file (both oldLineCount and newLineCount
+// are positive), this is what tells apart choosing the gap length from this hunk's own
+// NewCount (correct, since it is positive) from trusting OldStart because the file has an
+// old side at all (wrong, since this hunk's OldCount is zero) — every earlier fixture had
+// both counts positive, where either choice gives the same answer.
+TEST_CASE("A pure insertion inside a two-sided file resumes both sides at the right numbers")
+{
+	Core::Hunk hunk;
+	hunk.OldStart = 3;
+	hunk.OldCount = 0;
+	hunk.NewStart = 4;
+	hunk.NewCount = 2;
+	hunk.Header = "@@ -3,0 +4,2 @@\n";
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Added, 0, 4, "ins-1\n"));
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Added, 0, 5, "ins-2\n"));
+
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.NewPath = "a.txt";
+	file.Hunks.push_back(std::move(hunk));
+
+	// Old file: 6 lines. New file: 8, since 2 were inserted after old line 3 / new line 3.
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 6, 8);
+
+	REQUIRE(rows.Unified.size() == 9);
+
+	CHECK(rows.Unified[0].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[0].OldLine == 1);
+	CHECK(rows.Unified[0].NewLine == 1);
+	CHECK(rows.Unified[1].OldLine == 2);
+	CHECK(rows.Unified[1].NewLine == 2);
+	CHECK(rows.Unified[2].OldLine == 3);
+	CHECK(rows.Unified[2].NewLine == 3);
+
+	CHECK(rows.Unified[3].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[4].Kind == DiffRowKind::Added);
+	CHECK(rows.Unified[4].NewLine == 4);
+	CHECK(rows.Unified[5].Kind == DiffRowKind::Added);
+	CHECK(rows.Unified[5].NewLine == 5);
+
+	// The old side did not move at all — it resumes at old line 4, right where it left off —
+	// while the new side has jumped ahead by the two inserted lines.
+	CHECK(rows.Unified[6].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[6].OldLine == 4);
+	CHECK(rows.Unified[6].NewLine == 6);
+	CHECK(rows.Unified[7].OldLine == 5);
+	CHECK(rows.Unified[7].NewLine == 7);
+	CHECK(rows.Unified[8].OldLine == 6);
+	CHECK(rows.Unified[8].NewLine == 8);
+
+	REQUIRE(rows.SideBySide.size() == 9);
+	CHECK_FALSE(rows.SideBySide[4].Left.has_value());
+	REQUIRE(rows.SideBySide[4].Right.has_value());
+	CHECK(rows.SideBySide[4].Right->NewLine == 4);
+	CHECK_FALSE(rows.SideBySide[5].Left.has_value());
+	REQUIRE(rows.SideBySide[5].Right.has_value());
+	CHECK(rows.SideBySide[5].Right->NewLine == 5);
+
+	REQUIRE(rows.SideBySide[6].Left.has_value());
+	REQUIRE(rows.SideBySide[6].Right.has_value());
+	CHECK(rows.SideBySide[6].Left->OldLine == 4);
+	CHECK(rows.SideBySide[6].Right->NewLine == 6);
+}
+
+// The symmetric case: a pure deletion, which git writes as "@@ -4,2 +3,0 @@". Here NewStart
+// names the last new line before the deletion rather than a line the hunk covers, so the gap
+// length must come from OldCount (positive) rather than from the file having a new side at
+// all (this hunk's NewCount is zero).
+TEST_CASE("A pure deletion inside a two-sided file resumes both sides at the right numbers")
+{
+	Core::Hunk hunk;
+	hunk.OldStart = 4;
+	hunk.OldCount = 2;
+	hunk.NewStart = 3;
+	hunk.NewCount = 0;
+	hunk.Header = "@@ -4,2 +3,0 @@\n";
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Removed, 4, 0, "del-1\n"));
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Removed, 5, 0, "del-2\n"));
+
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.NewPath = "a.txt";
+	file.Hunks.push_back(std::move(hunk));
+
+	// Old file: 8 lines. New file: 6, since old lines 4-5 were deleted with nothing added.
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 8, 6);
+
+	REQUIRE(rows.Unified.size() == 9);
+
+	CHECK(rows.Unified[0].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[0].OldLine == 1);
+	CHECK(rows.Unified[0].NewLine == 1);
+	CHECK(rows.Unified[1].OldLine == 2);
+	CHECK(rows.Unified[1].NewLine == 2);
+	CHECK(rows.Unified[2].OldLine == 3);
+	CHECK(rows.Unified[2].NewLine == 3);
+
+	CHECK(rows.Unified[3].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[4].Kind == DiffRowKind::Removed);
+	CHECK(rows.Unified[4].OldLine == 4);
+	CHECK(rows.Unified[5].Kind == DiffRowKind::Removed);
+	CHECK(rows.Unified[5].OldLine == 5);
+
+	// The new side did not move — it resumes at new line 4 — while the old side has jumped
+	// ahead by the two deleted lines.
+	CHECK(rows.Unified[6].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[6].OldLine == 6);
+	CHECK(rows.Unified[6].NewLine == 4);
+	CHECK(rows.Unified[7].OldLine == 7);
+	CHECK(rows.Unified[7].NewLine == 5);
+	CHECK(rows.Unified[8].OldLine == 8);
+	CHECK(rows.Unified[8].NewLine == 6);
+
+	REQUIRE(rows.SideBySide.size() == 9);
+	REQUIRE(rows.SideBySide[4].Left.has_value());
+	CHECK_FALSE(rows.SideBySide[4].Right.has_value());
+	CHECK(rows.SideBySide[4].Left->OldLine == 4);
+	REQUIRE(rows.SideBySide[5].Left.has_value());
+	CHECK_FALSE(rows.SideBySide[5].Right.has_value());
+	CHECK(rows.SideBySide[5].Left->OldLine == 5);
+
+	REQUIRE(rows.SideBySide[6].Left.has_value());
+	REQUIRE(rows.SideBySide[6].Right.has_value());
+	CHECK(rows.SideBySide[6].Left->OldLine == 6);
+	CHECK(rows.SideBySide[6].Right->NewLine == 4);
 }
