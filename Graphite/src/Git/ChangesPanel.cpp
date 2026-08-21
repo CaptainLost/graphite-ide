@@ -1,7 +1,10 @@
 #include "Git/ChangesPanel.h"
 
+#include "Editor/DocumentWindows.h"
+
 #include "Core/Base/Ascii.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Text/DocumentSet.h"
 
 #include <imgui.h>
 
@@ -34,6 +37,27 @@ namespace Graphite {
 
 			return 0;
 		}
+
+		// lexically_normal collapses "a/../b" without touching the filesystem, and
+		// make_preferred turns git's forward slashes and a document's native separators into
+		// the same spelling - the same normalisation ExpectedWrites applies before comparing,
+		// and for the same reason: the two paths being compared come from different sources.
+		std::filesystem::path Normalize(const std::filesystem::path& path)
+		{
+			std::filesystem::path normalized = path.lexically_normal();
+			normalized.make_preferred();
+			return normalized;
+		}
+
+		// Whole-path equality, case-folded, exactly what SamePath in ExpectedWrites.cpp does.
+		// A filename or a suffix match is not safe here: a repository-root file has an empty
+		// parent_path, so matching on "ends with" degenerates into "same name anywhere in the
+		// tree" and would report an unrelated file elsewhere in the tree as dirty - or, worse,
+		// fail to fire at all and let a real dirty buffer go unwarned.
+		bool SamePath(const std::filesystem::path& left, const std::filesystem::path& right)
+		{
+			return Core::CompareNames(Core::ToUtf8(left), Core::ToUtf8(right)) == 0;
+		}
 	}
 
 	ChangesPanel::ChangesPanel(GitModel& model, const Core::DocumentSet& documents,
@@ -54,6 +78,25 @@ namespace Graphite {
 		{
 			m_Message.clear();
 			m_Amend = false;
+		}
+
+		// Registered only now, after the write has succeeded, so an expectation cannot be left
+		// behind by a discard that failed - and so its short life starts as late as possible.
+		if (std::vector<std::filesystem::path> discarded = m_Model.TakeDiscarded(); !discarded.empty())
+		{
+			// TakeDiscarded hands back paths relative to the working directory, but
+			// ExpectExternalWrite requires absolute ones - see ExpectedWrites::Expect. This is
+			// the one place that knows both the repository root and the paths to absolutise
+			// against it.
+			std::vector<std::filesystem::path> absolute;
+			absolute.reserve(discarded.size());
+
+			for (const std::filesystem::path& path : discarded)
+			{
+				absolute.push_back(m_Model.GetRoot() / path);
+			}
+
+			m_DocumentWindows.ExpectExternalWrite(absolute);
 		}
 
 		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
@@ -88,6 +131,7 @@ namespace Graphite {
 
 		RenderWriteError();
 		RenderCommitBox();
+		RenderDiscardConfirm();
 	}
 
 	void ChangesPanel::RenderSection(const char* heading, const std::vector<std::size_t>& rows,
@@ -192,9 +236,7 @@ namespace Graphite {
 			{
 				if (ImGui::MenuItem("Discard changes..."))
 				{
-					// Task 10 turns this into a pending confirmation and only then calls
-					// RequestDiscard — never straight from the menu, since a discard is
-					// irreversible and the confirmation is what guards it.
+					AskAboutDiscard(file);
 				}
 
 				ImGui::EndPopup();
@@ -338,5 +380,129 @@ namespace Graphite {
 		}
 
 		return palette.GutterModified;
+	}
+
+	void ChangesPanel::AskAboutDiscard(const Core::FileStatus& file)
+	{
+		m_PendingDiscard = {};
+
+		// An untracked file has nothing in the index to be restored from, so discarding it can
+		// only mean deleting it - a different outcome, named separately in the dialog.
+		if (file.IsUntracked)
+		{
+			m_PendingDiscard.Delete.push_back(file.Path);
+		}
+		else
+		{
+			m_PendingDiscard.Restore.push_back(file.Path);
+		}
+
+		std::vector<std::filesystem::path> every = m_PendingDiscard.Restore;
+		every.insert(every.end(), m_PendingDiscard.Delete.begin(), m_PendingDiscard.Delete.end());
+
+		m_PendingDirty = DirtyAmong(every);
+		m_AskingAboutDiscard = true;
+	}
+
+	std::vector<std::filesystem::path> ChangesPanel::DirtyAmong(
+		const std::vector<std::filesystem::path>& paths) const
+	{
+		std::vector<std::filesystem::path> dirty;
+
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			const Core::OpenItem& item = m_Documents.At(index);
+
+			if (!item.Document || !item.Document->IsModified())
+			{
+				continue;
+			}
+
+			const std::filesystem::path normalizedItem = Normalize(item.Path);
+
+			for (const std::filesystem::path& path : paths)
+			{
+				// `path` is git-relative; a document's path is absolute. Absolutised against
+				// the repository root before comparing whole normalised paths - the same rule
+				// ExpectedWrites uses, and not the filename-and-ends_with shortcut that was
+				// already withdrawn from ExpectedWrites for making a root-level file match
+				// anywhere in the tree while never matching a nested one at all.
+				const std::filesystem::path normalizedPath = Normalize(m_Model.GetRoot() / path);
+
+				if (SamePath(normalizedItem, normalizedPath))
+				{
+					dirty.push_back(item.Path);
+					break;
+				}
+			}
+		}
+
+		return dirty;
+	}
+
+	void ChangesPanel::RenderDiscardConfirm()
+	{
+		if (m_AskingAboutDiscard)
+		{
+			ImGui::OpenPopup("Discard changes##changesPanelDiscard");
+			m_AskingAboutDiscard = false;
+		}
+
+		if (!ImGui::BeginPopupModal("Discard changes##changesPanelDiscard", nullptr,
+									ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			return;
+		}
+
+		if (!m_PendingDiscard.Restore.empty())
+		{
+			ImGui::TextUnformatted("These will go back to the state in the index:");
+
+			for (const std::filesystem::path& path : m_PendingDiscard.Restore)
+			{
+				ImGui::BulletText("%s", Core::ToUtf8(path).c_str());
+			}
+		}
+
+		if (!m_PendingDiscard.Delete.empty())
+		{
+			ImGui::TextUnformatted("These will be deleted:");
+
+			const GitPalette palette = ReadGitPalette(m_Scheme.Get());
+			const ImVec4 deleteColor = ImGui::ColorConvertU32ToFloat4(palette.GutterRemoved);
+
+			for (const std::filesystem::path& path : m_PendingDiscard.Delete)
+			{
+				ImGui::TextColored(deleteColor, "-  %s", Core::ToUtf8(path).c_str());
+			}
+		}
+
+		if (!m_PendingDirty.empty())
+		{
+			ImGui::Spacing();
+			ImGui::TextUnformatted("Open with unsaved changes - those changes will be lost:");
+
+			for (const std::filesystem::path& path : m_PendingDirty)
+			{
+				ImGui::BulletText("%s", Core::ToUtf8(path.filename()).c_str());
+			}
+		}
+
+		ImGui::Spacing();
+
+		if (ImGui::Button("Discard"))
+		{
+			m_Model.RequestDiscard(m_PendingDiscard);
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Cancel"))
+		{
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
 	}
 }

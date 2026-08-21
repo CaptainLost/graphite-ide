@@ -63,6 +63,19 @@ namespace Graphite {
 		// colour schemes.
 		unsigned int ColourOfLetter(char letter, const GitPalette& palette) const;
 
+		// Opens the confirmation for discarding `file`. Never issues the discard itself -
+		// that only happens once the confirmation's own Discard button is pressed.
+		void AskAboutDiscard(const Core::FileStatus& file);
+
+		void RenderDiscardConfirm();
+
+		// Every open document with unsaved changes among these git-relative paths. Absolutises
+		// each one against the repository root before comparing, the same way ExpectedWrites
+		// does it - see DirtyAmong's definition for why a filename or a raw ends_with check is
+		// not safe here.
+		std::vector<std::filesystem::path> DirtyAmong(
+			const std::vector<std::filesystem::path>& paths) const;
+
 		GitModel& m_Model;
 		const Core::DocumentSet& m_Documents;
 
@@ -86,5 +99,15 @@ namespace Graphite {
 
 		std::string m_Message;
 		bool m_Amend = false;
+
+		// What the confirmation is asking about. Two lists because they are two outcomes:
+		// restored from the index, and deleted from disk for good.
+		DiscardRequest m_PendingDiscard;
+
+		// Named separately from the request so the dialog can warn about them without working
+		// the answer out again while it draws.
+		std::vector<std::filesystem::path> m_PendingDirty;
+
+		bool m_AskingAboutDiscard = false;
 	};
 }
