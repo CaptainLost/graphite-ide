@@ -35,6 +35,22 @@ namespace {
 		file.Hunks.push_back(std::move(hunk));
 		return file;
 	}
+
+	// A hunk that swaps one old line for two new ones, starting at the given position on
+	// each side. Used to build whole-file fixtures where a hunk shifts the two sides apart.
+	Core::Hunk ExpandingHunk(int oldStart, int newStart)
+	{
+		Core::Hunk hunk;
+		hunk.OldStart = oldStart;
+		hunk.OldCount = 1;
+		hunk.NewStart = newStart;
+		hunk.NewCount = 2;
+		hunk.Header = "@@ hunk @@\n";
+		hunk.Lines.push_back(Line(Core::DiffLineKind::Removed, oldStart, 0, "old\n"));
+		hunk.Lines.push_back(Line(Core::DiffLineKind::Added, 0, newStart, "new-1\n"));
+		hunk.Lines.push_back(Line(Core::DiffLineKind::Added, 0, newStart + 1, "new-2\n"));
+		return hunk;
+	}
 }
 
 TEST_CASE("A file with no hunks produces no rows")
@@ -281,4 +297,214 @@ TEST_CASE("Side by side pairs alternating removed and added lines in order, not 
 	REQUIRE(pairs[2].Right.has_value());
 	CHECK(pairs[2].Left->OldLine == 2);
 	CHECK(pairs[2].Right->NewLine == 2);
+}
+
+TEST_CASE("A whole file with no hunks is entirely Unchanged")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 3, 3);
+
+	REQUIRE(rows.Unified.size() == 3);
+	REQUIRE(rows.SideBySide.size() == 3);
+
+	for (std::size_t i = 0; i < 3; ++i)
+	{
+		CAPTURE(i);
+		CHECK(rows.Unified[i].Kind == DiffRowKind::Unchanged);
+		CHECK(rows.Unified[i].OldLine == static_cast<int>(i) + 1);
+		CHECK(rows.Unified[i].NewLine == static_cast<int>(i) + 1);
+
+		REQUIRE(rows.SideBySide[i].Left.has_value());
+		REQUIRE(rows.SideBySide[i].Right.has_value());
+		CHECK(rows.SideBySide[i].Left->OldLine == static_cast<int>(i) + 1);
+		CHECK(rows.SideBySide[i].Right->NewLine == static_cast<int>(i) + 1);
+	}
+}
+
+TEST_CASE("A hunk in the middle leaves Unchanged rows before and after it, resuming at the "
+		  "right number on each side once the hunk has shifted them apart")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	// Old file: 6 lines, one of which (line 3) the hunk removes. New file: 7 lines, since
+	// the hunk replaces that one line with two.
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 6, 7);
+
+	// Two Unchanged rows before the hunk, a header plus three hunk lines, three Unchanged
+	// rows after: 2 + 4 + 3 = 9.
+	REQUIRE(rows.Unified.size() == 9);
+
+	CHECK(rows.Unified[0].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[0].OldLine == 1);
+	CHECK(rows.Unified[0].NewLine == 1);
+	CHECK(rows.Unified[1].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[1].OldLine == 2);
+	CHECK(rows.Unified[1].NewLine == 2);
+
+	CHECK(rows.Unified[2].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[3].Kind == DiffRowKind::Removed);
+	CHECK(rows.Unified[4].Kind == DiffRowKind::Added);
+	CHECK(rows.Unified[5].Kind == DiffRowKind::Added);
+
+	// The old side resumes at 4, the new side at 5 — the hunk turned one old line into two
+	// new ones, so the two sides have drifted a line apart from here on.
+	CHECK(rows.Unified[6].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[6].OldLine == 4);
+	CHECK(rows.Unified[6].NewLine == 5);
+	CHECK(rows.Unified[7].OldLine == 5);
+	CHECK(rows.Unified[7].NewLine == 6);
+	CHECK(rows.Unified[8].OldLine == 6);
+	CHECK(rows.Unified[8].NewLine == 7);
+}
+
+TEST_CASE("Side by side keeps an Unchanged row's two halves in step before a hunk and drifts "
+		  "them apart after it")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 6, 7);
+
+	// Header + 2 zipped rows for the hunk (1 removal against 2 insertions), not 4: the
+	// side-by-side view zips a hunk's runs exactly as BuildSideBySideRows does.
+	REQUIRE(rows.SideBySide.size() == 8);
+
+	// Before the hunk, nothing has shifted yet: both halves name the same line number.
+	REQUIRE(rows.SideBySide[0].Left.has_value());
+	REQUIRE(rows.SideBySide[0].Right.has_value());
+	CHECK(rows.SideBySide[0].Left->OldLine == 1);
+	CHECK(rows.SideBySide[0].Right->NewLine == 1);
+
+	// After the hunk, the insertion has pushed the new side one line further along.
+	REQUIRE(rows.SideBySide[5].Left.has_value());
+	REQUIRE(rows.SideBySide[5].Right.has_value());
+	CHECK(rows.SideBySide[5].Left->OldLine == 4);
+	CHECK(rows.SideBySide[5].Right->NewLine == 5);
+}
+
+TEST_CASE("A hunk at the very first line leaves no Unchanged row ahead of it")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(1, 1));
+
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 4, 5);
+
+	// A header plus three hunk lines, then Unchanged rows to the end of each side.
+	REQUIRE(rows.Unified.size() == 4 + 3);
+	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+
+	CHECK(rows.Unified[4].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[4].OldLine == 2);
+	CHECK(rows.Unified[4].NewLine == 3);
+}
+
+TEST_CASE("A hunk at the very last line leaves no Unchanged row after it")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	// Old file ends at line 3, new file ends at line 4: the hunk covers every line from
+	// where it starts to the end of both sides.
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 3, 4);
+
+	REQUIRE(rows.Unified.size() == 2 + 4);
+	CHECK(rows.Unified.back().Kind == DiffRowKind::Added);
+	CHECK(rows.Unified.back().NewLine == 4);
+}
+
+TEST_CASE("Two hunks with a gap between them get Unchanged rows in the gap")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(2, 2));
+	file.Hunks.push_back(ExpandingHunk(10, 11));
+
+	// Each hunk turns one old line into two new ones, so the new side ends up two lines
+	// ahead of the old side by the end of the file.
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 12, 14);
+
+	// Hunk 1: header + 3 lines. Gap: old lines 3..9 (7 lines), new lines 4..10 (7 lines).
+	// Hunk 2: header + 3 lines. Tail: old lines 11..12, new lines 13..14 (2 lines).
+	REQUIRE(rows.Unified.size() == 1 + 4 + 7 + 4 + 2);
+
+	std::size_t index = 1 + 4; // Past the leading (empty) gap and the first hunk.
+
+	for (int oldLine = 3; oldLine <= 9; ++oldLine, ++index)
+	{
+		CAPTURE(oldLine);
+		CHECK(rows.Unified[index].Kind == DiffRowKind::Unchanged);
+		CHECK(rows.Unified[index].OldLine == oldLine);
+		CHECK(rows.Unified[index].NewLine == oldLine + 1);
+	}
+
+	CHECK(rows.Unified[index].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[index].Hunk == 1);
+}
+
+TEST_CASE("An added file has no old side in its whole-file rows")
+{
+	Core::Hunk hunk;
+	hunk.OldStart = 0;
+	hunk.OldCount = 0;
+	hunk.NewStart = 1;
+	hunk.NewCount = 2;
+	hunk.Header = "@@ -0,0 +1,2 @@\n";
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Added, 0, 1, "one\n"));
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Added, 0, 2, "two\n"));
+
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Added;
+	file.NewPath = "new.txt";
+	file.Hunks.push_back(std::move(hunk));
+
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 0, 2);
+
+	// No gap on either side: the whole file is the one hunk's added lines.
+	REQUIRE(rows.Unified.size() == 3);
+	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[1].OldLine == 0);
+	CHECK(rows.Unified[2].OldLine == 0);
+
+	REQUIRE(rows.SideBySide.size() == 3);
+	CHECK_FALSE(rows.SideBySide[1].Left.has_value());
+	CHECK_FALSE(rows.SideBySide[2].Left.has_value());
+	REQUIRE(rows.SideBySide[1].Right.has_value());
+	REQUIRE(rows.SideBySide[2].Right.has_value());
+}
+
+TEST_CASE("A deleted file has no new side in its whole-file rows")
+{
+	Core::Hunk hunk;
+	hunk.OldStart = 1;
+	hunk.OldCount = 2;
+	hunk.NewStart = 0;
+	hunk.NewCount = 0;
+	hunk.Header = "@@ -1,2 +0,0 @@\n";
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Removed, 1, 0, "one\n"));
+	hunk.Lines.push_back(Line(Core::DiffLineKind::Removed, 2, 0, "two\n"));
+
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Deleted;
+	file.OldPath = "old.txt";
+	file.Hunks.push_back(std::move(hunk));
+
+	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 2, 0);
+
+	REQUIRE(rows.Unified.size() == 3);
+	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[1].NewLine == 0);
+	CHECK(rows.Unified[2].NewLine == 0);
+
+	REQUIRE(rows.SideBySide.size() == 3);
+	CHECK_FALSE(rows.SideBySide[1].Right.has_value());
+	CHECK_FALSE(rows.SideBySide[2].Right.has_value());
+	REQUIRE(rows.SideBySide[1].Left.has_value());
+	REQUIRE(rows.SideBySide[2].Left.has_value());
 }

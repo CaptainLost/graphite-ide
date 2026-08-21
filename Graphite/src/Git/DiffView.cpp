@@ -22,7 +22,8 @@ namespace Graphite {
 				case DiffRowKind::Added: return palette.DiffAddedLine;
 				case DiffRowKind::Removed: return palette.DiffRemovedLine;
 				case DiffRowKind::HunkHeader:
-				case DiffRowKind::Context: break;
+				case DiffRowKind::Context:
+				case DiffRowKind::Unchanged: break;
 			}
 
 			return 0;
@@ -35,7 +36,8 @@ namespace Graphite {
 				case DiffRowKind::Added: return palette.DiffAddedText;
 				case DiffRowKind::Removed: return palette.DiffRemovedText;
 				case DiffRowKind::HunkHeader:
-				case DiffRowKind::Context: break;
+				case DiffRowKind::Context:
+				case DiffRowKind::Unchanged: break;
 			}
 
 			return ImGui::GetColorU32(ImGuiCol_Text);

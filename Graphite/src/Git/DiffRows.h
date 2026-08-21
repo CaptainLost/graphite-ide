@@ -14,7 +14,12 @@ namespace Graphite {
 		HunkHeader,
 		Context,
 		Added,
-		Removed
+		Removed,
+
+		// A line the diff never mentioned at all: outside every hunk, so it belongs to
+		// no hunk index and is never offered for staging. Distinct from Context, which
+		// is a line the diff chose to show around a change and does belong to one.
+		Unchanged
 	};
 
 	// One drawable row. Carries indices rather than the text itself: the widget already
@@ -31,12 +36,13 @@ namespace Graphite {
 		int OldLine = 0;
 		int NewLine = 0;
 
-		// Index into FileDiff::Hunks. Meaningful for every kind, including the header,
-		// because staging acts on a whole hunk.
+		// Index into FileDiff::Hunks. Meaningful for every kind but Unchanged, including the
+		// header, because staging acts on a whole hunk. An Unchanged row belongs to no hunk
+		// at all, so this is left at its default and must not be read.
 		std::size_t Hunk = 0;
 
-		// Index into Hunk::Lines. Meaningless for a header row; use LineOf rather than
-		// indexing with it directly.
+		// Index into Hunk::Lines. Meaningless for a header row and for Unchanged; use LineOf
+		// rather than indexing with it directly.
 		std::size_t Line = 0;
 	};
 
@@ -60,4 +66,20 @@ namespace Graphite {
 	// fit the file — which can only happen if a caller keeps rows past the snapshot they
 	// were built from.
 	const Core::DiffLine* LineOf(const Core::FileDiff& file, const DiffRow& row);
+
+	// Both views of a whole file, hunks in place and Unchanged rows filling every gap.
+	struct WholeFileRows
+	{
+		std::vector<DiffRow> Unified;
+		std::vector<DiffPair> SideBySide;
+	};
+
+	// Lays out every line of the file, not just the hunks: the lines a hunk covers keep the
+	// rows BuildUnifiedRows/BuildSideBySideRows would give them, and every line outside a hunk
+	// becomes an Unchanged row. Takes line counts rather than the texts themselves — the
+	// builder only decides which lines exist and how they pair, never what they say — so the
+	// widget looks a line's text up by number exactly as it already looks a diff line up by
+	// index.
+	WholeFileRows BuildWholeFileRows(const Core::FileDiff& file, std::size_t oldLineCount,
+									  std::size_t newLineCount);
 }
