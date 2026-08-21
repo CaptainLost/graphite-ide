@@ -1,7 +1,6 @@
 #include "Git/DiffWindows.h"
 
 #include "Git/CommitLabels.h"
-#include "Git/SyntaxRuns.h"
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
@@ -138,28 +137,14 @@ namespace Graphite {
 					{
 						const Core::FileDiff& file = diff->Files[*fileIndex];
 
-						entry.TextsNewPath = file.NewPath;
-						model.RequestTextsFor(entry.Diff.Commit, file.OldPath, file.NewPath);
+						// Every rule about which path keys the texts, when the tokens are still
+						// valid and when a failed entry is forgiven lives in Update, shared
+						// with the docked panel - the same steps written out twice were wrong
+						// the same way in both copies.
+						entry.Texts.Update(model, entry.Diff.Commit, file);
 
-						const std::shared_ptr<const FileTexts> texts =
-							model.GetTextsFor(entry.Diff.Commit, file.NewPath);
-
-						// Lexed only when GetTextsFor hands back a different object than last
-						// frame's - the text is immutable once fetched, so the pointer alone
-						// says whether the tokens are still good, and re-lexing every frame is
-						// the mistake LexFileText's own header warns against.
-						if (texts.get() != entry.Texts.get())
-						{
-							entry.Texts = texts;
-							entry.Tokens.Old = texts && texts->HasOld
-													? LexFileText(texts->Old, file.OldPath)
-													: std::vector<std::vector<Token>>{};
-							entry.Tokens.New = texts && texts->HasNew
-													? LexFileText(texts->New, file.NewPath)
-													: std::vector<std::vector<Token>>{};
-						}
-
-						entry.View.Render(file, palette, syntax, entry.Texts, entry.Tokens);
+						entry.View.Render(file, palette, syntax, entry.Texts.Texts,
+										  entry.Texts.Tokens);
 					}
 				}
 			}
@@ -168,10 +153,10 @@ namespace Graphite {
 
 			if (!open)
 			{
-				// A closed tab forgets its own failed texts entry, mirroring GitView's call
-				// on a collapsed commit row - ForgetFailedTextsFor is a no-op for anything but
-				// a failed entry, so this costs nothing when the tab closed clean.
-				model.ForgetFailedTextsFor(entry.Diff.Commit, entry.TextsNewPath);
+				// A closed tab forgets its own failed texts entry, mirroring the model's
+				// ForgetFailedDiffFor on a collapsed commit row - ForgetFailure is a no-op for
+				// anything but a failed entry, so this costs nothing when the tab closed clean.
+				entry.Texts.ForgetFailure(model);
 
 				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
 				continue;

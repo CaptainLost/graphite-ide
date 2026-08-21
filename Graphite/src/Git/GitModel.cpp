@@ -436,6 +436,7 @@ namespace Graphite {
 
 	void GitModel::RequestTextsFor(
 		const Core::Oid& commit,
+		const std::filesystem::path& path,
 		const std::filesystem::path& oldPath,
 		const std::filesystem::path& newPath)
 	{
@@ -446,7 +447,7 @@ namespace Graphite {
 			return;
 		}
 
-		const TextsKey key{commit, newPath};
+		const TextsKey key{commit, path};
 		const auto existing = m_Texts.find(key);
 
 		if (existing != m_Texts.end())
@@ -475,11 +476,11 @@ namespace Graphite {
 		const std::uint64_t generation = ++m_TextsGeneration;
 		entry.Requested = generation;
 
-		m_Submit([this, commit, oldPath, newPath, generation]() {
+		m_Submit([this, commit, path, oldPath, newPath, generation]() {
 			auto result = m_Port.ReadFileTexts(commit, oldPath, newPath);
 
-			Deliver([this, commit, newPath, generation, result = std::move(result)]() mutable {
-				const TextsKey key{commit, newPath};
+			Deliver([this, commit, path, generation, result = std::move(result)]() mutable {
+				const TextsKey key{commit, path};
 				const auto entry = m_Texts.find(key);
 
 				// Evicted, or the workspace closed, while the query was running. Dropping
@@ -507,9 +508,9 @@ namespace Graphite {
 		});
 	}
 
-	void GitModel::ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& newPath)
+	void GitModel::ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& path)
 	{
-		const auto entry = m_Texts.find(TextsKey{commit, newPath});
+		const auto entry = m_Texts.find(TextsKey{commit, path});
 
 		// Mirrors ForgetFailedDiffFor: a successful entry stays, only a failed one is
 		// dropped, so asking again for the same file is the reader's way to retry it.
@@ -525,9 +526,9 @@ namespace Graphite {
 	}
 
 	std::shared_ptr<const FileTexts> GitModel::GetTextsFor(
-		const Core::Oid& commit, const std::filesystem::path& newPath) const
+		const Core::Oid& commit, const std::filesystem::path& path) const
 	{
-		const auto entry = m_Texts.find(TextsKey{commit, newPath});
+		const auto entry = m_Texts.find(TextsKey{commit, path});
 
 		if (entry == m_Texts.end())
 		{

@@ -7,7 +7,9 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace {
@@ -54,7 +56,8 @@ namespace {
 		}
 
 		Core::Result<Graphite::FileTexts> ReadFileTexts(
-			const Core::Oid&, const std::filesystem::path&, const std::filesystem::path&) override
+			const Core::Oid&, const std::filesystem::path& oldPath,
+			const std::filesystem::path& newPath) override
 		{
 			++TextCalls;
 
@@ -63,7 +66,22 @@ namespace {
 				return Core::Error{Core::ErrorCode::IoFailure, "no"};
 			}
 
+			// Keyed by both paths joined, so the fake never has to decide which of them names
+			// the file - that decision is what the tests using this are about.
+			const auto named = TextsByPaths.find(PathsKey(oldPath, newPath));
+
+			if (named != TextsByPaths.end())
+			{
+				return named->second;
+			}
+
 			return Texts;
+		}
+
+		static std::string PathsKey(const std::filesystem::path& oldPath,
+									const std::filesystem::path& newPath)
+		{
+			return oldPath.string() + ">" + newPath.string();
 		}
 
 		Core::WorkingTreeStatus Status;
@@ -71,6 +89,10 @@ namespace {
 		Core::LogPage Log;
 		Core::Diff Diff;
 		Graphite::FileTexts Texts;
+
+		// What to answer for one particular pair of blob paths, keyed by PathsKey. Anything
+		// not listed gets Texts.
+		std::map<std::string, Graphite::FileTexts> TextsByPaths;
 
 		bool FailStatus = false;
 		bool FailDiff = false;
@@ -859,7 +881,7 @@ TEST_CASE("A requested file's texts become readable after the next update")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	CHECK(model.GetTextsFor(IdOf(1), "a.txt") == nullptr);
 
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -877,7 +899,7 @@ TEST_CASE("A commit nobody asked about has no texts")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	// The whole point of keying by commit and path: an answer can never be shown under a
@@ -893,11 +915,11 @@ TEST_CASE("Two commits' texts are held at the same time")
 	model.SetRoot("C:/repo");
 
 	port.Texts = TextsNaming("first");
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	port.Texts = TextsNaming("second");
-	model.RequestTextsFor(IdOf(2), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(2), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	// Asking about a second commit must not collapse the first.
@@ -915,12 +937,12 @@ TEST_CASE("Asking again for texts already held does not ask the port again")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	const int after = port.TextCalls;
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	// A commit's texts cannot change, so re-asking is pure waste - and the view asks for
@@ -936,8 +958,8 @@ TEST_CASE("Asking again for texts while the first answer is still in flight does
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 
 	model.OnUpdate(Core::Timestep{0.016f});
 
@@ -952,7 +974,7 @@ TEST_CASE("A failed texts request for a file leaves no snapshot and reports the 
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	// There is no last-good snapshot to keep: a file whose texts failed has nothing older
@@ -969,14 +991,14 @@ TEST_CASE("A failed texts request is not asked for again on its own")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	const int after = port.TextCalls;
 
 	// A permanent failure must not turn the view's every-frame ask into a worker job
 	// every frame.
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	CHECK(port.TextCalls == after);
@@ -993,7 +1015,7 @@ TEST_CASE("The texts cache holds a bounded number of files")
 
 	for (std::size_t index = 0; index < Graphite::GitModel::kCachedTexts + 4; ++index)
 	{
-		model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(index)), "a.txt", "a.txt");
+		model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(index)), "a.txt", "a.txt", "a.txt");
 		model.OnUpdate(Core::Timestep{0.016f});
 	}
 
@@ -1019,7 +1041,7 @@ TEST_CASE("Closing the workspace drops every cached file's texts")
 	model.SetRoot("C:/repo");
 	model.SubscribeTo(events);
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
 
@@ -1036,7 +1058,7 @@ TEST_CASE("A file's texts are not requested without an open workspace")
 
 	Graphite::GitModel model{port, Inline()};
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	CHECK(port.TextCalls == 0);
@@ -1053,7 +1075,7 @@ TEST_CASE("Reading a file's texts protects it from eviction")
 
 	for (std::size_t index = 0; index < Graphite::GitModel::kCachedTexts; ++index)
 	{
-		model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(index)), "a.txt", "a.txt");
+		model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(index)), "a.txt", "a.txt", "a.txt");
 		model.OnUpdate(Core::Timestep{0.016f});
 	}
 
@@ -1062,7 +1084,7 @@ TEST_CASE("Reading a file's texts protects it from eviction")
 	// mutable cache would be lying about what it does.
 	REQUIRE(model.GetTextsFor(IdOf(0), "a.txt") != nullptr);
 
-	model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedTexts)), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedTexts)), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	// The entry just read survived; the next-oldest, never read again after its request,
@@ -1082,7 +1104,7 @@ TEST_CASE("A stale texts answer from before a clear does not overwrite a fresh o
 	// The inline submitter runs the job - and so the query - synchronously here, but the
 	// result only reaches the inbox; it is not applied until the OnUpdate below. So this
 	// queues the pre-clear delivery without letting it land yet.
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 
 	// The ordinary reopen path: WorkspaceOpenedEvent's handler calls Clear() before
 	// re-requesting, same as the plain "closed" path does.
@@ -1092,7 +1114,7 @@ TEST_CASE("A stale texts answer from before a clear does not overwrite a fresh o
 
 	// A fresh entry for the same commit and path, queuing a second delivery behind the
 	// first.
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 
 	// Both deliveries apply here, in the order they were queued: the pre-clear answer
 	// first, then the post-clear one. A generation counted from zero inside the entry -
@@ -1114,7 +1136,7 @@ TEST_CASE("A failed texts request can be asked for again once forgotten")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	port.FailTexts = false;
@@ -1123,7 +1145,7 @@ TEST_CASE("A failed texts request can be asked for again once forgotten")
 	// A failure must not poison the entry forever: asking for it again is the reader's
 	// recourse, and ForgetFailedTextsFor is what that gesture does.
 	model.ForgetFailedTextsFor(IdOf(1), "a.txt");
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
@@ -1137,7 +1159,7 @@ TEST_CASE("Forgetting a failed texts request clears the error it left behind")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 	REQUIRE(model.GetLastError().has_value());
 
@@ -1155,7 +1177,7 @@ TEST_CASE("Forgetting a successful texts request leaves it cached")
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
 
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
 
@@ -1169,8 +1191,270 @@ TEST_CASE("Forgetting a successful texts request leaves it cached")
 	REQUIRE(model.GetTextsFor(IdOf(1), "a.txt") != nullptr);
 
 	// Asking again for the same file must not re-query git either.
-	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt");
+	model.RequestTextsFor(IdOf(1), "a.txt", "a.txt", "a.txt");
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	CHECK(port.TextCalls == after);
+}
+
+namespace {
+
+	Core::FileDiff DeletedFile(const char* path)
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Deleted;
+		file.OldPath = path;
+		return file;
+	}
+
+	Core::FileDiff AddedFile(const char* path)
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Added;
+		file.NewPath = path;
+		return file;
+	}
+
+	Core::FileDiff ModifiedFile(const char* path)
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Modified;
+		file.OldPath = path;
+		file.NewPath = path;
+		return file;
+	}
+
+	Core::FileDiff RenamedFile(const char* oldPath, const char* newPath)
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Renamed;
+		file.OldPath = oldPath;
+		file.NewPath = newPath;
+		return file;
+	}
+
+	Graphite::FileTexts OldSideOnly(const char* text)
+	{
+		Graphite::FileTexts texts;
+		texts.Old = text;
+		texts.HasOld = true;
+		return texts;
+	}
+
+	Graphite::FileTexts NewSideOnly(const char* text)
+	{
+		Graphite::FileTexts texts;
+		texts.New = text;
+		texts.HasNew = true;
+		return texts;
+	}
+
+	// One frame of what an owner does: ask, let the worker's answer be applied, then ask
+	// again so the binding picks the answer up. Two calls because delivery is deliberately
+	// two-step - the model only makes a result visible from OnUpdate.
+	void Settle(Graphite::FileTextsBinding& binding, Graphite::GitModel& model,
+				const Core::Oid& commit, const Core::FileDiff& file)
+	{
+		binding.Update(model, commit, file);
+		model.OnUpdate(Core::Timestep{0.016f});
+		binding.Update(model, commit, file);
+	}
+}
+
+TEST_CASE("Two files deleted in one commit do not share one texts entry")
+{
+	FakePort port;
+	port.TextsByPaths[FakePort::PathsKey("a.cpp", "")] = OldSideOnly("a");
+	port.TextsByPaths[FakePort::PathsKey("b.cpp", "")] = OldSideOnly("b");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), DeletedFile("a.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK(binding.Texts->Old == "a");
+
+	// Neither file has a new path at all - that is what "deleted" means - so a cache keyed
+	// by the new path would hand the second file the first one's text under the key {commit,
+	// ""}, and the unchanged pointer would leave its tokens alone too.
+	Settle(binding, model, IdOf(1), DeletedFile("b.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK(binding.Texts->Old == "b");
+
+	CHECK(model.GetTextsFor(IdOf(1), "a.cpp") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "b.cpp") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "") == nullptr);
+}
+
+TEST_CASE("A deleted file and an added file in one commit do not collide")
+{
+	FakePort port;
+	port.TextsByPaths[FakePort::PathsKey("gone.cpp", "")] = OldSideOnly("gone");
+	port.TextsByPaths[FakePort::PathsKey("", "fresh.cpp")] = NewSideOnly("fresh");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), DeletedFile("gone.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK(binding.Texts->HasOld);
+	CHECK(binding.Texts->Old == "gone");
+
+	// The mirror image: an added file has no old path, so the two together are the pair that
+	// only a key naming the file - rather than one side of it - keeps apart.
+	Settle(binding, model, IdOf(1), AddedFile("fresh.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK(binding.Texts->HasNew);
+	CHECK(binding.Texts->New == "fresh");
+}
+
+TEST_CASE("A renamed file's texts are keyed by its new path")
+{
+	FakePort port;
+	port.TextsByPaths[FakePort::PathsKey("old.cpp", "new.cpp")] = TextsNaming("renamed");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), RenamedFile("old.cpp", "new.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK(binding.Key == std::filesystem::path{"new.cpp"});
+	CHECK(model.GetTextsFor(IdOf(1), "new.cpp") != nullptr);
+	CHECK(model.GetTextsFor(IdOf(1), "old.cpp") == nullptr);
+}
+
+TEST_CASE("A binary file's texts are never fetched")
+{
+	FakePort port;
+	port.Texts = TextsNaming("bytes");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Core::FileDiff file = ModifiedFile("image.png");
+	file.IsBinary = true;
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), file);
+
+	// The pane can only ever say "Binary file - no textual diff.", so reading both blobs
+	// would retain them for nothing, and nothing on this path caps how large they are.
+	CHECK(port.TextCalls == 0);
+	CHECK(binding.Texts == nullptr);
+	CHECK(binding.Tokens.Old.empty());
+	CHECK(binding.Tokens.New.empty());
+	CHECK(model.GetTextsFor(IdOf(1), "image.png") == nullptr);
+}
+
+TEST_CASE("Turning to a binary file drops the texts the previous one left")
+{
+	FakePort port;
+	port.Texts = TextsNaming("text");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), ModifiedFile("a.cpp"));
+	REQUIRE(binding.Texts != nullptr);
+
+	Core::FileDiff binary = ModifiedFile("image.png");
+	binary.IsBinary = true;
+
+	Settle(binding, model, IdOf(1), binary);
+
+	CHECK(binding.Texts == nullptr);
+	CHECK(port.TextCalls == 1);
+}
+
+TEST_CASE("Moving to another file forgets the one just left, if its read failed")
+{
+	FakePort port;
+	port.Texts = TextsNaming("a");
+	port.FailTexts = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), ModifiedFile("a.cpp"));
+	REQUIRE(binding.Texts == nullptr);
+	REQUIRE(port.TextCalls == 1);
+
+	// A failed entry suppresses its own re-request, so asking again while still on the same
+	// file must not queue a second read.
+	binding.Update(model, IdOf(1), ModifiedFile("a.cpp"));
+	CHECK(port.TextCalls == 1);
+
+	Settle(binding, model, IdOf(1), ModifiedFile("b.cpp"));
+
+	port.FailTexts = false;
+
+	// Returning to the first file asks again, because leaving it dropped its failed entry -
+	// a transient read failure must not suppress a file forever.
+	Settle(binding, model, IdOf(1), ModifiedFile("a.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK(binding.Texts->Old == "a");
+}
+
+TEST_CASE("Each side is lexed with its own path's language")
+{
+	FakePort port;
+	port.TextsByPaths[FakePort::PathsKey("foo.txt", "foo.cpp")] = TextsNaming("int x;");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), RenamedFile("foo.txt", "foo.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+
+	// A rename that changes the extension really is two languages. The old side was plain
+	// text and has no lexer; lexing it with the new side's would claim it was C++.
+	CHECK(binding.Tokens.Old.empty());
+	CHECK_FALSE(binding.Tokens.New.empty());
+}
+
+TEST_CASE("The tokens are not rebuilt while the texts stay the same")
+{
+	FakePort port;
+	port.Texts = TextsNaming("int x;");
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), ModifiedFile("a.cpp"));
+
+	REQUIRE(binding.Texts != nullptr);
+	REQUIRE_FALSE(binding.Tokens.New.empty());
+
+	const Graphite::FileTexts* held = binding.Texts.get();
+	const std::vector<Graphite::Token>* firstLine = binding.Tokens.New.data();
+
+	binding.Update(model, IdOf(1), ModifiedFile("a.cpp"));
+	binding.Update(model, IdOf(1), ModifiedFile("a.cpp"));
+
+	// The text is immutable once fetched, so an unchanged pointer means the tokens are still
+	// good. Re-lexing a whole file every frame is the waste LexFileText's header warns of.
+	CHECK(binding.Texts.get() == held);
+	CHECK(binding.Tokens.New.data() == firstLine);
 }

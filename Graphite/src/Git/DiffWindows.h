@@ -67,19 +67,13 @@ namespace Graphite {
 			bool Fresh = true;
 			bool Focus = false;
 
-			// The whole-file texts for this tab's file, and the tokens lexed from them. Held
-			// here rather than inside DiffView, which must not reach for the model: Render is
-			// what asks GitModel::RequestTextsFor/GetTextsFor, rebuilds Tokens only when
-			// GetTextsFor hands back a different object than Texts already holds, and passes
-			// both down to View.Render.
-			std::shared_ptr<const FileTexts> Texts;
-			FileTokens Tokens;
-
-			// The new path Texts was fetched against - not always Diff.Path, which falls back
-			// to the old path for a deleted file. Kept so a closed tab can forget its own
-			// failed entry with the same key it was requested under, mirroring GitView's
-			// ForgetFailedTextsFor call for the same reason.
-			std::filesystem::path TextsNewPath;
+			// The whole-file texts for this tab's file, the tokens lexed from them, and which
+			// file they are for. Held here rather than inside DiffView, which must not reach
+			// for the model: Render calls Update, which does the asking, and hands the texts
+			// and tokens down to View.Render as plain data. It also carries the key a closed
+			// tab forgets its own failed entry under, which is why the tab does not have to
+			// track that path itself.
+			FileTextsBinding Texts;
 		};
 
 		std::vector<Entry> m_Open;

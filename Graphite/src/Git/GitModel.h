@@ -85,13 +85,20 @@ namespace Graphite {
 		static constexpr std::size_t kCachedDiffs = 32;
 
 		// Both sides of one file's text around a commit, for the diff view to hand to the
-		// lexer. Keyed by commit and new path - not by commit alone, as RequestDiffFor is -
-		// because one commit touches many files and each needs its own entry. Mirrors
+		// lexer. Keyed by commit and `key` together - not by commit alone, as RequestDiffFor
+		// is - because one commit touches many files and each needs its own entry. Mirrors
 		// RequestDiffFor in every other respect: held once fetched, since a commit's text
 		// cannot change either, and a failed entry is suppressed until ForgetFailedTextsFor
 		// gives it a way back.
+		//
+		// `key` is the path that names the file, which the caller works out with ShownPath
+		// and which is never empty. `oldPath` and `newPath` are the blob paths to read, and
+		// either may be empty - that is how a side is said to be absent - which is exactly
+		// why neither can serve as the key: every file deleted in one commit has the same
+		// empty new path, and every file added has the same empty old one.
 		void RequestTextsFor(
 			const Core::Oid& commit,
+			const std::filesystem::path& key,
 			const std::filesystem::path& oldPath,
 			const std::filesystem::path& newPath);
 
@@ -100,13 +107,13 @@ namespace Graphite {
 		// failure must not poison a file forever: without this, Failed would suppress every
 		// re-request until the LRU happens to evict the entry, which for a small,
 		// frequently-revisited set of files may be never.
-		void ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& newPath);
+		void ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& key);
 
 		// Null while the answer is in flight, after a failure, and for a file that was
 		// evicted. As with GetDiffFor, the caller's response is the same in every case: draw
-		// nothing yet.
+		// nothing yet. Keyed the same way RequestTextsFor is - see its comment on `key`.
 		std::shared_ptr<const FileTexts> GetTextsFor(
-			const Core::Oid& commit, const std::filesystem::path& newPath) const;
+			const Core::Oid& commit, const std::filesystem::path& key) const;
 
 		// Same bound and the same reasoning as kCachedDiffs, kept as its own constant
 		// because the two caches are keyed differently and hold different-sized entries -
@@ -212,13 +219,14 @@ namespace Graphite {
 		void Touch(CachedDiff& entry) const;
 		void EvictIfFull();
 
-		// One commit touches many files, so the texts cache is keyed by commit and new
-		// path together - the diff cache above needs only the commit, since it holds one
-		// entry per commit rather than one per file.
+		// One commit touches many files, so the texts cache is keyed by commit and the path
+		// that names the file together - the diff cache above needs only the commit, since it
+		// holds one entry per commit rather than one per file. See RequestTextsFor for why
+		// that path is not the new path.
 		struct TextsKey
 		{
 			Core::Oid Commit;
-			std::filesystem::path NewPath;
+			std::filesystem::path Path;
 
 			friend bool operator==(const TextsKey&, const TextsKey&) = default;
 		};
@@ -228,7 +236,7 @@ namespace Graphite {
 			std::size_t operator()(const TextsKey& key) const noexcept
 			{
 				return std::hash<Core::Oid>{}(key.Commit) ^
-					(std::hash<std::filesystem::path>{}(key.NewPath) << 1);
+					(std::hash<std::filesystem::path>{}(key.Path) << 1);
 			}
 		};
 
