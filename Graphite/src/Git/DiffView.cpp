@@ -310,9 +310,20 @@ namespace Graphite {
 		// alone; the split between the panes is measured exactly, below.
 		const float outerWidth =
 			m_SideInnerWidth > 0.0f ? m_SideInnerWidth : ImGui::GetContentRegionAvail().x;
+		const float padding = ImGui::GetStyle().WindowPadding.x;
+
+		// Kept from frame to frame within one file, and only ever grown: rebuilding it from
+		// the visible rows alone would shrink the scroll range the moment the reader scrolled
+		// past the widest line, and ImGui would clamp their position back to the left.
+		if (m_WidestPath != ShownPath(file) || m_WidestWholeFile != m_ShowWholeFile)
+		{
+			m_WidestPath = ShownPath(file);
+			m_WidestWholeFile = m_ShowWholeFile;
+			m_WidestSideLine = 0.0f;
+		}
 
 		ImGui::SetNextWindowContentSize(
-			ImVec2(LayoutSideBySide(outerWidth, m_WidestSideLine).ContentWidth, 0.0f));
+			ImVec2(LayoutSideBySide(outerWidth, m_WidestSideLine, padding).ContentWidth, 0.0f));
 
 		// One region for both halves, so there is one scroll position rather than two that have
 		// to be kept equal; see SideBySideLayout for why that is worth the shared scrollbar.
@@ -329,9 +340,12 @@ namespace Graphite {
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
-		// The region's own clip rectangle is what it really has room for — border, padding and
-		// any scrollbar already taken off — so the split lands halfway across what the reader
-		// can see rather than halfway across what this was asked to fit into.
+		// The region's own clip rectangle is what it really has room for — border and any
+		// scrollbar already taken off — so the split lands halfway across what the reader can
+		// see rather than halfway across what this was asked to fit into. It measures the
+		// visible area, so a region the parent had clipped would be measured as the sliver
+		// that showed; nothing lays this one out that way, and BeginChild sizing it to fit is
+		// what keeps that true.
 		const ImVec2 innerMin = ImGui::GetWindowDrawList()->GetClipRectMin();
 		const ImVec2 innerMax = ImGui::GetWindowDrawList()->GetClipRectMax();
 
@@ -339,7 +353,7 @@ namespace Graphite {
 
 		// The panes are pinned to the region rather than to the content: the text inside them
 		// slides as the reader scrolls across, while the split between them stays where it is.
-		const SideBySideLayout layout = LayoutSideBySide(m_SideInnerWidth, m_WidestSideLine);
+		const SideBySideLayout layout = LayoutSideBySide(m_SideInnerWidth, m_WidestSideLine, padding);
 
 		float widest = 0.0f;
 
@@ -384,8 +398,17 @@ namespace Graphite {
 
 					if (row->Kind == DiffRowKind::HunkHeader)
 					{
+						const std::string& header = file.Hunks[row->Hunk].Header;
+
 						ImGui::SetCursorPos(ImVec2(rowPos.x + paneX, rowPos.y));
-						ImGui::TextUnformatted(file.Hunks[row->Hunk].Header.c_str());
+						ImGui::TextUnformatted(header.c_str());
+
+						// Measured like any other line: libgit2 puts the enclosing function's
+						// signature in the header, which is routinely the widest thing here,
+						// and leaving it out would put its tail beyond anything scrolling
+						// could reach. It starts at the pane rather than past the numbers.
+						widest = std::max(widest, ImGui::CalcTextSize(header.c_str()).x);
+
 						ImGui::PopClipRect();
 						return;
 					}
@@ -430,13 +453,16 @@ namespace Graphite {
 			}
 		}
 
-		m_WidestSideLine = widest;
+		m_WidestSideLine = std::max(m_WidestSideLine, widest);
 
 		// Drawn after the panes and outside their clip rects, so it is not cut off by either
 		// and does not slide when the reader scrolls across.
-		ImGui::GetWindowDrawList()->AddLine(ImVec2(innerMin.x + layout.RightPaneX, innerMin.y),
-										   ImVec2(innerMin.x + layout.RightPaneX, innerMax.y),
-										   ImGui::GetColorU32(ImGuiCol_Border));
+		// A filled rectangle rather than a line, which AddLine would centre on the split and
+		// so lay half of over the right pane's first pixel.
+		ImGui::GetWindowDrawList()->AddRectFilled(
+			ImVec2(innerMin.x + layout.RightPaneX, innerMin.y),
+			ImVec2(innerMin.x + layout.RightPaneX + 1.0f, innerMax.y),
+			ImGui::GetColorU32(ImGuiCol_Border));
 
 		ImGui::PopFont();
 		ImGui::EndChild();

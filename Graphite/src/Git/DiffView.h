@@ -9,6 +9,7 @@
 
 #include "Core/Git/Diff.h"
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string_view>
@@ -84,14 +85,18 @@ namespace Graphite {
 		std::vector<std::string_view> m_OldLines;
 		std::vector<std::string_view> m_NewLines;
 
-		// The widest line the side-by-side view drew last frame, which is how far its shared
-		// horizontal scrollbar reaches this one. Only the rows on screen are measured, because
-		// only those are laid out — see RenderSideBySide for why a frame's lag is the right
-		// price for not walking the whole file every frame.
+		// The widest line the side-by-side view has drawn so far, which is how far its shared
+		// horizontal scrollbar reaches. Only the rows that have been on screen are measured,
+		// because only those are laid out — see RenderSideBySide for why a frame's lag is the
+		// right price for not walking the whole file every frame. It only grows, and the two
+		// below are what it is grown for: when either changes, the rows are a different set
+		// and the width starts again.
 		float m_WidestSideLine = 0.0f;
+		std::filesystem::path m_WidestPath;
+		bool m_WidestWholeFile = false;
 
-		// What the side-by-side region measured across inside its own border, padding and
-		// scrollbar last frame. Only the scrollbar's range is set from it — that has to be
+		// What the side-by-side region measured across inside its own border and scrollbar
+		// last frame. Only the scrollbar's range is set from it — that has to be
 		// declared before the region opens, which is before anything can be measured — while
 		// the split between the panes is measured afresh each frame and does not lag.
 		float m_SideInnerWidth = 0.0f;

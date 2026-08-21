@@ -22,14 +22,24 @@ namespace Graphite {
 		// Where the right half's first column starts.
 		float RightPaneX = 0.0f;
 
-		// What the region is told its content measures across. Sized so the scrollbar reveals
-		// exactly the widest line and stops: the right half already starts a pane in, so the
-		// content runs one pane plus the widest line either half needs.
+		// What the region is told its content measures across, which is what decides whether a
+		// horizontal scrollbar appears at all and how far it reaches.
+		//
+		// The padding is why this is not simply a width plus a line. ImGui measures content
+		// from the padded top-left corner but compares it against the unpadded inner width,
+		// adding the padding back on both sides to decide the scroll range. A content width
+		// equal to the visible width therefore leaves a scrollbar with two paddings of travel
+		// and no content to reveal — a scrollbar on every diff, however short its lines. Taking
+		// the padding off here is what makes a diff that fits have nothing to scroll.
 		float ContentWidth = 0.0f;
 	};
 
-	// `widestLine` is the widest line either half needs to draw, measured from the pane's own
-	// left edge. Passing a width no wider than a pane yields a content width equal to the
-	// visible width, so no horizontal scrollbar appears at all.
-	SideBySideLayout LayoutSideBySide(float availableWidth, float widestLine);
+	// `widestLine` is the widest line either half must draw, measured from where its text
+	// starts. `padding` is what the region insets its content by on each side.
+	//
+	// A line that fits within its pane yields a content width equal to the visible width less
+	// its two paddings, so no horizontal scrollbar appears. A longer one yields exactly enough
+	// for its last pixel to reach the inner edge of its own pane, and no more: scrolling stops
+	// where the widest line ends rather than running on into blank space.
+	SideBySideLayout LayoutSideBySide(float availableWidth, float widestLine, float padding);
 }
