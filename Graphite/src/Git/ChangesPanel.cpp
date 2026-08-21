@@ -1,5 +1,6 @@
 #include "Git/ChangesPanel.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Fs/FileSystem.h"
 
 #include <imgui.h>
@@ -22,6 +23,11 @@ namespace Graphite {
 			if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
 			{
 				auto* message = static_cast<std::string*>(data->UserData);
+
+				// Catches a future second call site binding this callback to the wrong
+				// string - the same assertion imgui_stdlib itself carries here.
+				IM_ASSERT(data->Buf == message->data());
+
 				message->resize(static_cast<std::size_t>(data->BufTextLen));
 				data->Buf = message->data();
 			}
@@ -161,17 +167,28 @@ namespace Graphite {
 		// every click reaching whichever of those three actually sits under the mouse.
 		if (ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap))
 		{
+			const OpenDiff diff{
+				.Commit = std::nullopt, .Target = TargetForSection(), .Path = file.Path};
+
 			// Exactly one working-tree tab at a time: GitModel keeps a single slot for this
 			// diff, so a second tab would intermittently show "that file is not in this
-			// diff" as the two took turns asking into it.
-			m_DiffWindows.CloseWorkingTree();
-			m_DiffWindows.Open(
-				OpenDiff{.Commit = std::nullopt, .Target = TargetForSection(), .Path = file.Path});
+			// diff" as the two took turns asking into it. Only closed when this click asks
+			// for a *different* diff than the one already open — Open() already re-docks and
+			// re-raises an exact match, and closing first would throw that away, yanking a
+			// tab the user dragged elsewhere back to the centre node on every click.
+			if (!m_DiffWindows.IsOpen(diff))
+			{
+				m_DiffWindows.CloseWorkingTree();
+			}
+
+			m_DiffWindows.Open(diff);
 		}
 
-		if (ImGui::BeginPopupContextItem("##rowContext"))
+		// No popup at all outside Changes: BeginPopupContextItem would otherwise open an
+		// empty box on a right-click over a staged or conflicted row.
+		if (m_Section == Section::Unstaged)
 		{
-			if (m_Section == Section::Unstaged)
+			if (ImGui::BeginPopupContextItem("##rowContext"))
 			{
 				if (ImGui::MenuItem("Discard changes..."))
 				{
@@ -179,9 +196,9 @@ namespace Graphite {
 					// RequestDiscard — never straight from the menu, since a discard is
 					// irreversible and the confirmation is what guards it.
 				}
-			}
 
-			ImGui::EndPopup();
+				ImGui::EndPopup();
+			}
 		}
 
 		ImGui::SetCursorPos(rowStart);
@@ -218,7 +235,13 @@ namespace Graphite {
 		}
 
 		const char* buttonLabel = m_Section == Section::Staged ? "-" : "+";
-		const float buttonWidth = ImGui::GetFrameHeight();
+
+		// The same measurement RenderSection uses for its own right-aligned button - a
+		// SmallButton's width is CalcTextSize(label).x + FramePadding.x * 2, not a frame's
+		// height, and the two must agree or the row and the header disagree about where the
+		// right edge is.
+		const float buttonWidth =
+			ImGui::CalcTextSize(buttonLabel).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 
 		ImGui::SameLine(rowStart.x + rowWidth - buttonWidth);
 		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
@@ -262,7 +285,9 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		const bool canCommit = !inFlight && (!m_Message.empty() || m_Amend);
+		// Whitespace-only counts as empty here - git would reject it the same way - but the
+		// message sent to RequestCommit below is never trimmed; only this enablement test is.
+		const bool canCommit = !inFlight && (!Core::Trimmed(m_Message).empty() || m_Amend);
 
 		ImGui::BeginDisabled(!canCommit);
 
