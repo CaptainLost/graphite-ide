@@ -4,16 +4,15 @@
 
 namespace Graphite {
 
-	std::vector<std::vector<Token>> LexAllLines(std::string_view text, const Lexer& lexer)
+	std::vector<std::string_view> SplitTextLines(std::string_view text)
 	{
-		std::vector<std::vector<Token>> result;
+		std::vector<std::string_view> lines;
 
 		if (text.empty())
 		{
-			return result;
+			return lines;
 		}
 
-		LineState state;
 		std::size_t start = 0;
 
 		while (start <= text.size())
@@ -30,9 +29,7 @@ namespace Graphite {
 				line.remove_suffix(1);
 			}
 
-			std::vector<Token> tokens;
-			state = lexer.LexLine(line, state, tokens);
-			result.push_back(std::move(tokens));
+			lines.push_back(line);
 
 			if (newline == std::string_view::npos)
 			{
@@ -46,6 +43,21 @@ namespace Graphite {
 			{
 				break;
 			}
+		}
+
+		return lines;
+	}
+
+	std::vector<std::vector<Token>> LexAllLines(std::string_view text, const Lexer& lexer)
+	{
+		std::vector<std::vector<Token>> result;
+		LineState state;
+
+		for (std::string_view line : SplitTextLines(text))
+		{
+			std::vector<Token> tokens;
+			state = lexer.LexLine(line, state, tokens);
+			result.push_back(std::move(tokens));
 		}
 
 		return result;

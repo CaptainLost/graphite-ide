@@ -23,6 +23,14 @@ namespace Graphite {
 	// expanded text here would land every token after a tab in the wrong place.
 	std::vector<std::vector<Token>> LexAllLines(std::string_view text, const Lexer& lexer);
 
+	// Splits `text` into raw lines: split on '\n', a trailing '\r' stripped from each line, and
+	// no phantom line after a final newline. What LexAllLines lexes each line of, and also what
+	// DiffView draws for a line it has no diff hunk to look up — both callers must agree on
+	// exactly the same bytes a token's From/To are offsets into, which is what sharing this one
+	// split, rather than each keeping its own copy, guarantees. A caller lexing every line asks
+	// LexAllLines directly; this is for a caller that only needs the raw lines themselves.
+	std::vector<std::string_view> SplitTextLines(std::string_view text);
+
 	// Looks up the language and lexer for `path` and runs `LexAllLines` over `text`. Returns an
 	// empty vector when the language has no lexer: a file the application cannot lex draws in
 	// plain text, which is the correct answer rather than a failure.
