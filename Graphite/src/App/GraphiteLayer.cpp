@@ -152,7 +152,7 @@ namespace Graphite {
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
 
-		APP_INFO("1Registered panels: {}", m_Panels.GetCount());
+		APP_INFO("Registered panels: {}", m_Panels.GetCount());
 
 		explorer->LoadSettings();
 
