@@ -9,6 +9,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,9 +38,14 @@ namespace {
 			return Branches;
 		}
 
-		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override
+		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
 		{
 			++LogCalls;
+
+			// Kept so a test can ask what was queried, not merely how often — a refresh that
+			// re-asks the wrong question counts the same as one that asks the right one.
+			LastLogRequest = request;
+
 			return Log;
 		}
 
@@ -101,6 +107,7 @@ namespace {
 		int StatusCalls = 0;
 		int BranchCalls = 0;
 		int LogCalls = 0;
+		std::optional<Core::LogRequest> LastLogRequest;
 		int DiffCalls = 0;
 		int TextCalls = 0;
 	};
@@ -1457,4 +1464,137 @@ TEST_CASE("The tokens are not rebuilt while the texts stay the same")
 	// good. Re-lexing a whole file every frame is the waste LexFileText's header warns of.
 	CHECK(binding.Texts.get() == held);
 	CHECK(binding.Tokens.New.data() == firstLine);
+}
+
+TEST_CASE("A refresh asks about the history again, not only the status")
+{
+	// The bug this was written for: a commit made outside the application never appeared,
+	// because a refresh re-queried the status and the branches and left the log alone.
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog({});
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(port.LogCalls == 1);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	CHECK(port.LogCalls == 2);
+}
+
+TEST_CASE("A refresh repeats the query the view is showing, not a default one")
+{
+	// The reader's ref and filter are still typed into the boxes above the list, so a
+	// refresh that asked a plain question would answer one nobody is looking at.
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/topic";
+	request.Filter.Text = "encoding";
+	request.MaxCount = 40;
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	// Checked as well as the contents, so this cannot pass by the refresh never happening
+	// and LastLogRequest still holding the first query.
+	REQUIRE(port.LogCalls == 2);
+
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Ref == request.Ref);
+	CHECK(port.LastLogRequest->Filter.Text == "encoding");
+	CHECK(port.LastLogRequest->MaxCount == 40);
+}
+
+TEST_CASE("A refresh before anything asked for a log asks for none")
+{
+	// Nothing is on screen to keep fresh. Asking anyway would walk the history for a panel
+	// the reader may never open.
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	CHECK(port.StatusCalls == 1);
+	CHECK(port.LogCalls == 0);
+}
+
+TEST_CASE("Closing the workspace forgets which query to repeat")
+{
+	// Otherwise the first refresh in the next folder would re-ask the previous folder's
+	// question, filter and ref and all.
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog({});
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(port.LogCalls == 1);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	CHECK(port.LogCalls == 1);
+}
+
+TEST_CASE("A commit made outside the application refreshes what is on screen")
+{
+	// The working tree does not change when someone commits in a terminal, so no file-change
+	// event follows it. Without hearing about the repository itself, the panel would keep
+	// showing the commit list and the status from before.
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog({});
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(port.LogCalls == 1);
+
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	CHECK(port.StatusCalls == 1);
+	CHECK(port.BranchCalls == 1);
+	CHECK(port.LogCalls == 2);
+}
+
+TEST_CASE("A repository change outside a workspace refreshes nothing")
+{
+	// Mirrors the file-change rule beside it: nothing on screen has any business asking
+	// about a folder that is not open.
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SubscribeTo(events);
+
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	CHECK(port.StatusCalls == 0);
 }

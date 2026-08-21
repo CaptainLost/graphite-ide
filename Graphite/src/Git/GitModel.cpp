@@ -34,6 +34,10 @@ namespace Graphite {
 		m_Status.reset();
 		m_Branches.reset();
 		m_Log.reset();
+
+		// Forgotten with the snapshot it belongs to: the next folder's first refresh must
+		// not re-ask the previous folder's question, ref and filter and all.
+		m_LastLogRequest.reset();
 		m_WorkingTreeDiff.reset();
 		m_CommitDiffs.clear();
 		m_Texts.clear();
@@ -90,6 +94,12 @@ namespace Graphite {
 
 		events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent&) { MarkDirty(); });
+
+		// The same response as a file change, and deliberately so: what is stale is the same
+		// set of answers, and the debounce that keeps a save from querying five times keeps
+		// a rebase from querying once per rewritten commit.
+		events.Subscribe<RepositoryChangedEvent>(
+			[this](const RepositoryChangedEvent&) { MarkDirty(); });
 	}
 
 	void GitModel::OnUpdate(Core::Timestep ts)
@@ -107,6 +117,17 @@ namespace Graphite {
 
 				RequestStatus();
 				RequestBranches();
+
+				// A commit, an amend, a rebase or a fetch all change the history, and
+				// nothing else re-asks for it: without this the list keeps showing what it
+				// showed when the panel was opened. Only when something has already asked
+				// for a log - with no list on screen there is nothing to keep fresh, and
+				// walking the history for a panel the reader may never open is work spent
+				// on nobody.
+				if (m_LastLogRequest.has_value())
+				{
+					RequestLog(*m_LastLogRequest);
+				}
 			}
 		}
 
@@ -195,6 +216,11 @@ namespace Graphite {
 		}
 
 		const std::uint64_t generation = ++m_LogRequested;
+
+		// Kept so a refresh can ask the same question again. The ref, the filter and the
+		// page size are all the reader's, and a refresh that dropped them would replace the
+		// list they are reading with an answer to a question nobody asked.
+		m_LastLogRequest = request;
 
 		m_Submit([this, generation, request = std::move(request)]() {
 			auto result = m_Port.QueryLog(request);

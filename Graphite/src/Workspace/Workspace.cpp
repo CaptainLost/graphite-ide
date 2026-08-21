@@ -231,6 +231,12 @@ namespace Graphite {
 			return;
 		}
 
+		// Published before the tree work below, and on its own path: a branch moving is
+		// nothing for the file tree to refresh, and the subscribers that care re-ask git
+		// rather than reading anything this function touches.
+		if (changed.RepositoryState)
+			m_Events.Publish(RepositoryChangedEvent{});
+
 		if (changed.Directories.empty() && !changed.Overflowed)
 			return;
 

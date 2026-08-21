@@ -56,6 +56,17 @@ namespace Graphite {
 		bool Everything = false;
 	};
 
+	// The repository's own state changed under the application - a commit, a checkout, a
+	// fetch or a rebase run in a terminal beside it. Carried apart from
+	// WorkspaceFilesChangedEvent because the working tree did not change: nothing in the
+	// file tree has anything to redraw, and everything that draws git data is stale.
+	//
+	// Empty on purpose. What moved is a question every subscriber answers by asking git
+	// again, and naming the file that moved would invite a subscriber to guess instead.
+	struct RepositoryChangedEvent
+	{
+	};
+
 	class Workspace final
 	{
 	public:

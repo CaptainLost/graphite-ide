@@ -428,6 +428,39 @@ namespace Core {
 		CheckForMove();
 	}
 
+	bool NamesRepositoryState(const std::filesystem::path& relative)
+	{
+		auto component = relative.begin();
+
+		if (component == relative.end() || *component != ".git")
+		{
+			return false;
+		}
+
+		++component;
+
+		if (component == relative.end())
+		{
+			return false;
+		}
+
+		// Everything under refs: a branch, a tag or a remote-tracking branch moving is the
+		// commonest way history changes under an application that is already open.
+		if (*component == "refs")
+		{
+			return true;
+		}
+
+		// The rest are single files directly inside .git, so a deeper path of the same name
+		// - logs/HEAD, which git appends to on every operation - is not one of them.
+		if (std::next(component) != relative.end())
+		{
+			return false;
+		}
+
+		return *component == "HEAD" || *component == "index" || *component == "packed-refs";
+	}
+
 	void DirectoryWatcher::RecordChange(const std::filesystem::path& path)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
@@ -440,6 +473,17 @@ namespace Core {
 		{
 			std::scoped_lock lock{m_Mutex};
 			m_Collector.Add(m_Root, ChangeCollector::Clock::now());
+			return;
+		}
+
+		// Checked before the blanket .git filter below, which would otherwise drop it: this
+		// is the one class of change under .git that says the answers on screen are stale.
+		// Recorded as a flag rather than as a directory, because no directory of the working
+		// tree changed and refreshing one would be work with no reason behind it.
+		if (NamesRepositoryState(relative))
+		{
+			std::scoped_lock lock{m_Mutex};
+			m_RepositoryState = true;
 			return;
 		}
 
@@ -466,6 +510,7 @@ namespace Core {
 		Changes changes;
 		changes.Directories = m_Collector.TakeSettled(ChangeCollector::Clock::now(), kQuietPeriod);
 		changes.Overflowed = m_Collector.HasOverflowed();
+		changes.RepositoryState = std::exchange(m_RepositoryState, false);
 		changes.MovedTo = std::exchange(m_MovedTo, std::nullopt);
 
 		return changes;

@@ -19,6 +19,16 @@
 
 namespace Core {
 
+	// Whether a path, relative to the watched root, is one of the few files that say what a
+	// repository is rather than what it holds: HEAD, the index, packed-refs, and everything
+	// under refs. Those change exactly when the answer to "what is in this repository"
+	// changes, which is what makes them worth hearing about when the rest of .git - objects
+	// rewritten on every operation, lock files, edit messages, reflogs - is not.
+	//
+	// Only inside the repository's own directory. A project with its own file called HEAD
+	// has an ordinary file, and editing it is an edit to the working tree like any other.
+	bool NamesRepositoryState(const std::filesystem::path& relative);
+
 	class DirectoryWatcher final : NonCopyable
 	{
 	public:
@@ -39,6 +49,12 @@ namespace Core {
 
 			bool Overflowed = false;
 
+			// Something a commit, a checkout, a fetch or a rebase rewrote - see
+			// NamesRepositoryState. Carried apart from Directories because the working tree
+			// did not change: a branch moving is nothing for the file tree to redraw, and
+			// everything for whatever draws the history.
+			bool RepositoryState = false;
+
 			std::optional<std::filesystem::path> MovedTo;
 		};
 
@@ -54,6 +70,12 @@ namespace Core {
 		std::filesystem::path QueryHandlePath() const;
 
 		void CheckForMove();
+
+		// Set by the watcher thread, taken by TakeSettled. Under the same mutex as the
+		// collector beside it: they describe the same batch, and a take that read one
+		// without the other could report a repository change in a batch that no longer
+		// carries it.
+		bool m_RepositoryState = false;
 
 		void CheckForMoveIfDue();
 		void RecordChange(const std::filesystem::path& path);

@@ -289,6 +289,11 @@ namespace Graphite {
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
 		std::shared_ptr<const Core::LogPage> m_Log;
+
+		// The last question asked about the history, so a refresh can ask it again. Unset
+		// until something asks for a log, and dropped by Clear() with the rest of the
+		// folder's state - see RequestLog and OnUpdate for both halves of the reasoning.
+		std::optional<Core::LogRequest> m_LastLogRequest;
 		std::shared_ptr<const Core::Diff> m_WorkingTreeDiff;
 
 		// Mutable because GetDiffFor is const and still counts as a use — an entry the

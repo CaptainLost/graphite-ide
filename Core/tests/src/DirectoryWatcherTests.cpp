@@ -189,10 +189,15 @@ TEST_CASE("Changes inside a .git directory are not reported")
 	auto watcher = DirectoryWatcher::Start(temp.GetPath());
 	REQUIRE(watcher.HasValue());
 
-	temp.MakeFile(".git/index", "x");
+	// Written directly inside .git rather than deeper: creating a directory chain under it
+	// makes Windows report .git itself, which passes the filter on purpose - that is how
+	// `git init` becomes visible, and it is the next test's subject, not this one's.
+	temp.MakeFile(".git/COMMIT_EDITMSG", "a commit message");
 
 	// Git rewrites files under .git on every operation, and refreshing for each one
-	// would be a storm of no-op work.
+	// would be a storm of no-op work. The few that say what the repository is are the
+	// exception, and they are reported apart from the tree - see the repository-state
+	// tests below.
 	CHECK(WaitForChanges(*watcher.GetValue(), std::chrono::seconds{2}).empty());
 }
 
@@ -404,4 +409,68 @@ TEST_CASE("A move is noticed even while the directory is busy")
 
 	REQUIRE(moved.has_value());
 	CHECK(*moved == temp.GetPath() / "busy-moved");
+}
+
+TEST_CASE("The files that say what a repository is are named as such")
+{
+	// What a commit, a checkout, a fetch or a rebase rewrites. Few, and each changes
+	// exactly when the answer to "what does this repository contain" changes.
+	CHECK(Core::NamesRepositoryState(std::filesystem::path{".git"} / "HEAD"));
+	CHECK(Core::NamesRepositoryState(std::filesystem::path{".git"} / "index"));
+	CHECK(Core::NamesRepositoryState(std::filesystem::path{".git"} / "packed-refs"));
+	CHECK(Core::NamesRepositoryState(std::filesystem::path{".git"} / "refs" / "heads" / "main"));
+	CHECK(Core::NamesRepositoryState(std::filesystem::path{".git"} / "refs" / "remotes" /
+									 "origin" / "main"));
+}
+
+TEST_CASE("The rest of a repository's private directory says nothing")
+{
+	// Git rewrites these constantly and none of them changes what is on screen. Letting
+	// them through would be the storm of no-op work the .git filter exists to prevent.
+	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{".git"} / "objects" / "ab" /
+										   "cdef"));
+	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{".git"} / "index.lock"));
+	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{".git"} / "COMMIT_EDITMSG"));
+	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{".git"} / "logs" / "HEAD"));
+}
+
+TEST_CASE("A file of the same name outside the repository's directory says nothing")
+{
+	// A project with its own HEAD or index file is a project with two ordinary files, and
+	// editing them is an edit to the working tree like any other.
+	CHECK_FALSE(Core::NamesRepositoryState("HEAD"));
+	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{"src"} / "index"));
+	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{"refs"} / "heads" / "main"));
+}
+
+TEST_CASE("A commit made outside the application is reported as a repository change")
+{
+	TempDirectory temp;
+	temp.MakeDir(".git/refs/heads");
+
+	auto watcher = DirectoryWatcher::Start(temp.GetPath());
+	REQUIRE(watcher.HasValue());
+
+	// What `git commit` in a terminal leaves behind: the branch points somewhere new.
+	temp.MakeFile(".git/refs/heads/main", "0123456789abcdef0123456789abcdef01234567\n");
+
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+	bool reported = false;
+
+	while (std::chrono::steady_clock::now() < deadline && !reported)
+	{
+		const DirectoryWatcher::Changes changes = watcher.GetValue()->TakeSettled();
+		reported = changes.RepositoryState;
+
+		// The file tree has nothing to redraw for this: no directory of the working tree
+		// changed, and refreshing one would be work with no reason behind it.
+		CHECK(changes.Directories.empty());
+
+		if (!reported)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds{50});
+		}
+	}
+
+	CHECK(reported);
 }

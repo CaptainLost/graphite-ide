@@ -527,4 +527,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0495](0495-draw-a-side-by-side-diff-in-one-scrolling-region.md) | Draw a side-by-side diff in one scrolling region | proposed | 2026-08-21 |
 | [0496](0496-filter-the-history-in-the-walk-not-in-the-page.md) | Filter the history in the walk, not in the page | proposed | 2026-08-21 |
 | [0497](0497-name-a-file-in-a-history-filter-by-name-or-pattern-not-by-path.md) | Name a file in a history filter by name or pattern, not by path | proposed | 2026-08-21 |
+| [0498](0498-tell-the-application-when-the-repository-s-own-state-changes.md) | Tell the application when the repository's own state changes | proposed | 2026-08-21 |
 <!-- /adr-index -->
