@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/Palettes.h"
+#include "Git/DiffPanes.h"
 #include "Git/DiffRows.h"
 #include "Git/FileTexts.h"
 #include "Git/GitPalette.h"
@@ -82,5 +83,17 @@ namespace Graphite {
 		std::shared_ptr<const FileTexts> m_CachedTexts;
 		std::vector<std::string_view> m_OldLines;
 		std::vector<std::string_view> m_NewLines;
+
+		// The widest line the side-by-side view drew last frame, which is how far its shared
+		// horizontal scrollbar reaches this one. Only the rows on screen are measured, because
+		// only those are laid out — see RenderSideBySide for why a frame's lag is the right
+		// price for not walking the whole file every frame.
+		float m_WidestSideLine = 0.0f;
+
+		// What the side-by-side region measured across inside its own border, padding and
+		// scrollbar last frame. Only the scrollbar's range is set from it — that has to be
+		// declared before the region opens, which is before anything can be measured — while
+		// the split between the panes is measured afresh each frame and does not lag.
+		float m_SideInnerWidth = 0.0f;
 	};
 }
