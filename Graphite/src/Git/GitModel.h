@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -21,6 +22,15 @@ namespace Graphite {
 	// How a query reaches a worker. Injected rather than taken as a Core::JobQueue so the
 	// tests can run a job where they submitted it and stay free of threads.
 	using JobSubmitter = std::function<void(std::function<void()>)>;
+
+	// What a discard is asked to do, as two lists rather than one. They are two different
+	// outcomes — restored from the index, and deleted from disk — and merging them would
+	// make the effect depend on something the caller did not check.
+	struct DiscardRequest
+	{
+		std::vector<std::filesystem::path> Restore;
+		std::vector<std::filesystem::path> Delete;
+	};
 
 	// Holds what the git views draw and decides when it is stale.
 	//
@@ -163,6 +173,33 @@ namespace Graphite {
 			return m_TextsError;
 		}
 
+		// The writes. Each one queues; see the write queue's comment below for why they are
+		// never sent concurrently.
+		void RequestStage(std::vector<std::filesystem::path> paths);
+		void RequestUnstage(std::vector<std::filesystem::path> paths);
+		void RequestDiscard(DiscardRequest request);
+		void RequestCommit(Core::CommitRequest request);
+
+		// For a panel that greys its buttons out. False does not mean nothing is pending —
+		// it means nothing is happening at this instant.
+		bool IsWriteInFlight() const { return m_WriteInFlight; }
+
+		// Kept apart from GetLastError(): a write is the direct answer to a click, so it
+		// belongs to the panel that issued it rather than to the list of refresh failures,
+		// and a refresh succeeding must never clear it.
+		const std::optional<Core::Error>& GetWriteError() const { return m_WriteError; }
+		void DismissWriteError() { m_WriteError.reset(); }
+
+		// One-shot: answers once after a successful commit and forgets. This is how a panel
+		// learns to clear its message box, rather than inferring it from the status having
+		// changed — which would also fire for a commit made in a terminal.
+		std::optional<Core::Oid> TakeCommitted();
+
+		// One-shot, mirroring TakeCommitted: every path the last successful discard touched,
+		// restored and deleted together. The caller uses it to tell the editor that a change
+		// it is about to see came from here.
+		std::vector<std::filesystem::path> TakeDiscarded();
+
 		// Without a root the model answers nothing: a file-change event that arrives
 		// before a folder is open has no repository to ask about.
 		void SetRoot(std::filesystem::path root);
@@ -260,6 +297,63 @@ namespace Graphite {
 
 		void Touch(CachedTexts& entry) const;
 		void EvictTextsIfFull();
+
+		enum class WriteKind
+		{
+			Stage,
+			Unstage,
+			Discard,
+			Commit
+		};
+
+		// One queued write. Carries every kind's payload rather than a variant: there are
+		// four kinds and two payloads, and a variant here would cost more to read than the
+		// two fields it would save.
+		struct WriteJob
+		{
+			WriteKind Kind = WriteKind::Stage;
+			std::vector<std::filesystem::path> Paths;
+			DiscardRequest Discard;
+			Core::CommitRequest Commit;
+
+			// The generation this was queued under. Unlike a query's generation this never
+			// orders two results — there is no such thing as a stale commit — it only says
+			// whether the folder it was meant for is still open.
+			std::uint64_t Generation = 0;
+		};
+
+		// What a write came back with. An error or, for a commit, an id; never both.
+		struct WriteOutcome
+		{
+			std::optional<Core::Error> Failure;
+			std::optional<Core::Oid> Committed;
+		};
+
+		void Enqueue(WriteJob job);
+
+		// Starts the next queued write if none is running. Called after every enqueue and
+		// after every completion, which is what keeps the queue moving without a timer.
+		void PumpWrites();
+
+		// Runs on a worker thread. Touches m_Port and nothing else on this object.
+		WriteOutcome RunWrite(const WriteJob& job);
+
+		// Runs on the UI thread, out of the inbox, like every other delivery.
+		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
+
+		// Queued rather than concurrent, because a user clicking stage on three rows must
+		// get three writes rather than one and two dropped clicks — and because two writes
+		// at once would contend for the same index lock for no gain.
+		std::deque<WriteJob> m_WriteQueue;
+		bool m_WriteInFlight = false;
+
+		// Bumped by Clear(), so a write in flight when the folder closes is recognised as
+		// belonging to the folder that is gone.
+		std::uint64_t m_WriteGeneration = 0;
+
+		std::optional<Core::Error> m_WriteError;
+		std::optional<Core::Oid> m_Committed;
+		std::vector<std::filesystem::path> m_Discarded;
 
 		std::filesystem::path m_Root;
 

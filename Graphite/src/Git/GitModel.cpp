@@ -49,6 +49,17 @@ namespace Graphite {
 		m_CommitDiffError.reset();
 		m_TextsError.reset();
 
+		// Moves forward rather than resetting, for the same reason the query generations do:
+		// a write already in flight must be recognised as belonging to the folder that just
+		// closed. m_WriteInFlight is deliberately left alone — that write is still running,
+		// and claiming otherwise would let a second start beside it.
+		++m_WriteGeneration;
+		m_WriteQueue.clear();
+
+		m_WriteError.reset();
+		m_Committed.reset();
+		m_Discarded.clear();
+
 		m_Dirty = false;
 		m_DirtyFor = 0.0f;
 		m_DirtySince = 0.0f;
