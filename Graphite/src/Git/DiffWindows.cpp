@@ -77,7 +77,7 @@ namespace Graphite {
 	}
 
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-							  unsigned int centreNode)
+							 unsigned int centreNode)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{

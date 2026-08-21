@@ -58,54 +58,6 @@ namespace Graphite {
 			return text;
 		}
 
-		// Splits a whole text into raw lines exactly the way LexAllLines (Git/SyntaxRuns.cpp)
-		// does — split on '\n', a trailing '\r' stripped, no phantom line after a final
-		// newline — so a token's From/To, which are byte offsets into the line the lexer saw,
-		// land on the identical bytes this draws. The split itself is duplicated rather than
-		// shared because LexAllLines always lexes; there is no lexer-free variant to call, and
-		// this task's file list does not include Git/SyntaxRuns.*.
-		std::vector<std::string_view> SplitLines(std::string_view text)
-		{
-			std::vector<std::string_view> lines;
-
-			if (text.empty())
-			{
-				return lines;
-			}
-
-			std::size_t start = 0;
-
-			while (start <= text.size())
-			{
-				const std::size_t newline = text.find('\n', start);
-				std::string_view line = newline == std::string_view::npos
-											 ? text.substr(start)
-											 : text.substr(start, newline - start);
-
-				if (!line.empty() && line.back() == '\r')
-				{
-					line.remove_suffix(1);
-				}
-
-				lines.push_back(line);
-
-				if (newline == std::string_view::npos)
-				{
-					break;
-				}
-
-				start = newline + 1;
-
-				// A trailing newline ends the text, not a further empty line after it.
-				if (start == text.size())
-				{
-					break;
-				}
-			}
-
-			return lines;
-		}
-
 		void DrawNumber(float x, float y, float width, int number)
 		{
 			if (number <= 0)
@@ -129,22 +81,31 @@ namespace Graphite {
 					  const std::vector<Token>* tokens, ImU32 ordinaryColour,
 					  const SyntaxPalette& syntax, bool colourOn)
 		{
-			const auto drawRun = [&](std::string_view run, ImU32 colour, float x) {
-				ImGui::SetCursorPos(ImVec2(x, origin.y));
+			// Each run's x is measured from `origin` against the whole prefix up to it, not
+			// accumulated from the previous run's width: CalcTextSize rounds its result up to a
+			// whole pixel, and summing that rounding error run by run drifts the tail of a long,
+			// densely tokenised line several pixels right of where the monospaced grid puts it —
+			// the same trap already recorded against the editor's own caret, reached here by
+			// accumulation instead of by caret math.
+			const auto xAt = [&](std::size_t offset) {
+				return origin.x + ImGui::CalcTextSize(text.data(), text.data() + offset).x;
+			};
+
+			const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour) {
+				ImGui::SetCursorPos(ImVec2(xAt(from), origin.y));
 				ImGui::PushStyleColor(ImGuiCol_Text, colour);
-				ImGui::TextUnformatted(run.data(), run.data() + run.size());
+				ImGui::TextUnformatted(text.data() + from, text.data() + to);
 				ImGui::PopStyleColor();
-				return ImGui::CalcTextSize(run.data(), run.data() + run.size()).x;
 			};
 
 			if (!colourOn || tokens == nullptr || tokens->empty())
 			{
-				drawRun(text, ordinaryColour, origin.x);
+				drawRun(0, text.size(), ordinaryColour);
 				return;
 			}
 
-			float x = origin.x;
 			std::size_t cursor = 0;
+			bool drewAnything = false;
 
 			for (const Token& token : *tokens)
 			{
@@ -161,12 +122,14 @@ namespace Graphite {
 
 				if (from > cursor)
 				{
-					x += drawRun(text.substr(cursor, from - cursor), ordinaryColour, x);
+					drawRun(cursor, from, ordinaryColour);
+					drewAnything = true;
 				}
 
 				if (to > from)
 				{
-					x += drawRun(text.substr(from, to - from), syntax.Of(token.Kind), x);
+					drawRun(from, to, syntax.Of(token.Kind));
+					drewAnything = true;
 				}
 
 				cursor = to;
@@ -174,14 +137,27 @@ namespace Graphite {
 
 			if (cursor < text.size())
 			{
-				drawRun(text.substr(cursor), ordinaryColour, x);
+				drawRun(cursor, text.size(), ordinaryColour);
+				drewAnything = true;
+			}
+
+			// Unreachable today — CppLexer::Emit rejects an empty span, so an empty line always
+			// yields an empty token vector, which the branch above already catches — but if a
+			// future lexer ever emitted only zero-length tokens for a non-empty line, or ran
+			// against an empty line without one, every branch above would draw nothing at all:
+			// no ItemSize, so the cursor never advances and the next row draws on top of this
+			// one. The same defect class the brief's SameLine() warning is about, reached by a
+			// different route; guaranteeing at least one run closes it.
+			if (!drewAnything)
+			{
+				drawRun(0, text.size(), ordinaryColour);
 			}
 		}
 	}
 
 	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
-						   const SyntaxPalette& syntax, const std::shared_ptr<const FileTexts>& texts,
-						   const FileTokens& tokens)
+						  const SyntaxPalette& syntax, const std::shared_ptr<const FileTexts>& texts,
+						  const FileTokens& tokens)
 	{
 		RenderToolbar(file);
 
@@ -191,6 +167,19 @@ namespace Graphite {
 			// Saying so is better than an empty pane that looks like a failure.
 			ImGui::TextUnformatted("Binary file — no textual diff.");
 			return;
+		}
+
+		if (texts == nullptr)
+		{
+			// The owner's file changed to one whose texts are not ready (or not asked for), or
+			// the previous file's entry was evicted. Either way the cache below is for a file
+			// nobody is looking at any more; clearing it here, rather than only inside
+			// RebuildLineCache on the next whole-file render, means a large file's texts are
+			// not kept alive for the rest of however long it takes the reader to come back to
+			// whole-file mode — or forever, if they never do.
+			m_CachedTexts.reset();
+			m_OldLines.clear();
+			m_NewLines.clear();
 		}
 
 		// Whole-file mode needs the texts to know how many lines the file has and what an
@@ -280,8 +269,8 @@ namespace Graphite {
 		}
 
 		m_CachedTexts = texts;
-		m_OldLines = texts->HasOld ? SplitLines(texts->Old) : std::vector<std::string_view>{};
-		m_NewLines = texts->HasNew ? SplitLines(texts->New) : std::vector<std::string_view>{};
+		m_OldLines = texts->HasOld ? SplitTextLines(texts->Old) : std::vector<std::string_view>{};
+		m_NewLines = texts->HasNew ? SplitTextLines(texts->New) : std::vector<std::string_view>{};
 	}
 
 	DiffView::ResolvedLine DiffView::Resolve(const Core::FileDiff& file, const DiffRow& row,
@@ -339,8 +328,8 @@ namespace Graphite {
 	}
 
 	void DiffView::RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
-								  const GitPalette& palette, const SyntaxPalette& syntax,
-								  const FileTokens& tokens)
+								 const GitPalette& palette, const SyntaxPalette& syntax,
+								 const FileTokens& tokens)
 	{
 		if (!ImGui::BeginChild("unified", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							   ImGuiWindowFlags_HorizontalScrollbar))
@@ -414,8 +403,8 @@ namespace Graphite {
 	}
 
 	void DiffView::RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
-									 const GitPalette& palette, const SyntaxPalette& syntax,
-									 const FileTokens& tokens)
+									const GitPalette& palette, const SyntaxPalette& syntax,
+									const FileTokens& tokens)
 	{
 		const float half = ImGui::GetContentRegionAvail().x * 0.5f;
 

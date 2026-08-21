@@ -71,14 +71,17 @@ namespace Graphite {
 	private:
 		void RenderToolbar(const Core::FileDiff& file);
 		void RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
-							const GitPalette& palette, const SyntaxPalette& syntax,
-							const FileTokens& tokens);
+						   const GitPalette& palette, const SyntaxPalette& syntax,
+						   const FileTokens& tokens);
 		void RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
-							   const GitPalette& palette, const SyntaxPalette& syntax,
-							   const FileTokens& tokens);
+							  const GitPalette& palette, const SyntaxPalette& syntax,
+							  const FileTokens& tokens);
 
-		// Splits `texts` into raw lines the same way LexAllLines does, but only when `texts`
-		// is a different object than the one already cached — see the class comment.
+		// Splits `texts` into raw lines via SplitTextLines — the same split LexAllLines lexes
+		// each line of — but only when `texts` is a different object than the one already
+		// cached; see the class comment. Never called with a null `texts`: Render clears the
+		// cache itself when the owner hands it one, rather than leaving the previous file's
+		// full text referenced until the next whole-file render happens to replace it.
 		void RebuildLineCache(const std::shared_ptr<const FileTexts>& texts);
 
 		// What a row draws, resolved once so RenderUnified and RenderSideBySide agree on it:
