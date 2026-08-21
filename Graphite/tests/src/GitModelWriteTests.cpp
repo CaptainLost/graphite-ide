@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -61,6 +62,12 @@ namespace {
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
+
+		// Pins the CRITICAL fix: JobQueue abandons a job that throws, so RunWrite must
+		// convert this into a failure outcome rather than let it escape and strand
+		// m_WriteInFlight forever.
+		bool Throw = false;
+
 		Core::Oid Committed{};
 
 	private:
@@ -75,6 +82,12 @@ namespace {
 			}
 
 			Calls.push_back(line);
+
+			if (Throw)
+			{
+				throw std::runtime_error("write port exploded");
+			}
+
 			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
 						: Core::Result<void>::Ok();
 		}
@@ -147,6 +160,10 @@ TEST_CASE("A successful write refreshes the model")
 	model.OnUpdate(Core::Timestep{1.0f});
 
 	CHECK(model.GetStatus() != nullptr);
+
+	// A stage is not a commit: it must never leave a commit id behind for TakeCommitted
+	// to hand out.
+	CHECK_FALSE(model.TakeCommitted().has_value());
 }
 
 TEST_CASE("A failed write reports itself and refreshes nothing")
@@ -164,6 +181,11 @@ TEST_CASE("A failed write reports itself and refreshes nothing")
 	REQUIRE(model.GetWriteError().has_value());
 	CHECK_FALSE(model.GetLastError().has_value());
 	CHECK(model.GetStatus() == nullptr);
+
+	// A failure must leave neither a commit id nor discarded paths behind - both are the
+	// answer to a write that succeeded, and this one did not.
+	CHECK_FALSE(model.TakeCommitted().has_value());
+	CHECK(model.TakeDiscarded().empty());
 
 	model.DismissWriteError();
 	CHECK_FALSE(model.GetWriteError().has_value());
@@ -226,6 +248,12 @@ TEST_CASE("A write for a closed folder neither reports nor refreshes")
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK_FALSE(model.GetWriteError().has_value());
+
+	// Pins the bug the name describes: an implementation that called MarkDirty() before
+	// checking the generation would still pass every assertion above, since the mark is
+	// debounced and nothing here advances the clock past it - until this line does.
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(model.GetStatus() == nullptr);
 }
 
 TEST_CASE("A write is dropped when no folder is open")
@@ -237,4 +265,29 @@ TEST_CASE("A write is dropped when no folder is open")
 
 	CHECK(port.Calls.empty());
 	CHECK_FALSE(model.IsWriteInFlight());
+}
+
+TEST_CASE("A write that throws frees the queue instead of stranding it")
+{
+	WritePort port;
+	port.Throw = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	// JobQueue abandons a job that throws before it ever reaches Deliver. If RunWrite let
+	// the exception escape, ApplyWrite - the only place that clears m_WriteInFlight - would
+	// never run, and the queue would be wedged for the life of the application.
+	CHECK_FALSE(model.IsWriteInFlight());
+	CHECK(model.GetWriteError().has_value());
+
+	port.Throw = false;
+	model.RequestUnstage({"b.txt"});
+
+	// The assertion that actually pins the bug: a write requested after the one that threw
+	// must still reach the port, which it cannot if m_WriteInFlight was left stuck at true.
+	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt", "unstage:b.txt"});
 }

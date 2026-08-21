@@ -341,6 +341,23 @@ namespace Graphite {
 		// Runs on the UI thread, out of the inbox, like every other delivery.
 		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
 
+		std::filesystem::path m_Root;
+
+		bool m_Dirty = false;
+		float m_DirtyFor = 0.0f;
+
+		// Time since the burst's first mark, not its most recent one - see kMaxDebounceSeconds.
+		float m_DirtySince = 0.0f;
+
+		GitPort& m_Port;
+		JobSubmitter m_Submit;
+
+		// Written by workers, drained by OnUpdate. The mutex covers this and nothing else:
+		// every snapshot below is only ever touched on the UI thread — the write queue's
+		// state included, since PumpWrites, ApplyWrite and Enqueue all run there too.
+		std::mutex m_InboxMutex;
+		std::vector<Delivery> m_Inbox;
+
 		// Queued rather than concurrent, because a user clicking stage on three rows must
 		// get three writes rather than one and two dropped clicks — and because two writes
 		// at once would contend for the same index lock for no gain.
@@ -354,22 +371,6 @@ namespace Graphite {
 		std::optional<Core::Error> m_WriteError;
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;
-
-		std::filesystem::path m_Root;
-
-		bool m_Dirty = false;
-		float m_DirtyFor = 0.0f;
-
-		// Time since the burst's first mark, not its most recent one - see kMaxDebounceSeconds.
-		float m_DirtySince = 0.0f;
-
-		GitPort& m_Port;
-		JobSubmitter m_Submit;
-
-		// Written by workers, drained by OnUpdate. The mutex covers this and nothing else:
-		// every snapshot below is only ever touched on the UI thread.
-		std::mutex m_InboxMutex;
-		std::vector<Delivery> m_Inbox;
 
 		std::uint64_t m_StatusRequested = 0;
 		std::uint64_t m_StatusApplied = 0;

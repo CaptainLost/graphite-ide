@@ -1,5 +1,7 @@
 #include "Git/GitModel.h"
 
+#include <exception>
+#include <string>
 #include <utility>
 
 namespace Graphite {
@@ -76,67 +78,86 @@ namespace Graphite {
 	{
 		WriteOutcome outcome;
 
-		switch (job.Kind)
+		// JobQueue catches a job that throws and abandons it - see JobQueue.cpp - which for
+		// a query is harmless because the next debounce re-asks, but for a write would never
+		// reach Deliver at all. Without this try/catch, m_WriteInFlight would stay true
+		// forever: ApplyWrite is the only place that clears it, and an abandoned job never
+		// gets there. Every path through m_Port must therefore end in an outcome, never an
+		// escaping exception.
+		try
 		{
-		case WriteKind::Stage:
-		{
-			if (const auto result = m_Port.Stage(job.Paths); !result.HasValue())
+			switch (job.Kind)
 			{
-				outcome.Failure = result.GetError();
-			}
-
-			break;
-		}
-
-		case WriteKind::Unstage:
-		{
-			if (const auto result = m_Port.Unstage(job.Paths); !result.HasValue())
+			case WriteKind::Stage:
 			{
-				outcome.Failure = result.GetError();
-			}
-
-			break;
-		}
-
-		case WriteKind::Discard:
-		{
-			// Restoring first, so a failure to delete leaves the tracked files already put
-			// back rather than leaving both halves half-done in an order nobody chose.
-			if (!job.Discard.Restore.empty())
-			{
-				if (const auto result = m_Port.DiscardWorkTree(job.Discard.Restore); !result.HasValue())
-				{
-					outcome.Failure = result.GetError();
-					break;
-				}
-			}
-
-			if (!job.Discard.Delete.empty())
-			{
-				if (const auto result = m_Port.DeleteUntracked(job.Discard.Delete); !result.HasValue())
+				if (const auto result = m_Port.Stage(job.Paths); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
+
+				break;
 			}
 
-			break;
-		}
+			case WriteKind::Unstage:
+			{
+				if (const auto result = m_Port.Unstage(job.Paths); !result.HasValue())
+				{
+					outcome.Failure = result.GetError();
+				}
 
-		case WriteKind::Commit:
+				break;
+			}
+
+			case WriteKind::Discard:
+			{
+				// Restoring first, so a failure to delete leaves the tracked files already put
+				// back rather than leaving both halves half-done in an order nobody chose.
+				if (!job.Discard.Restore.empty())
+				{
+					if (const auto result = m_Port.DiscardWorkTree(job.Discard.Restore); !result.HasValue())
+					{
+						outcome.Failure = result.GetError();
+						break;
+					}
+				}
+
+				if (!job.Discard.Delete.empty())
+				{
+					if (const auto result = m_Port.DeleteUntracked(job.Discard.Delete); !result.HasValue())
+					{
+						outcome.Failure = result.GetError();
+					}
+				}
+
+				break;
+			}
+
+			case WriteKind::Commit:
+			{
+				auto result = m_Port.Commit(job.Commit);
+
+				if (result.HasValue())
+				{
+					outcome.Committed = result.GetValue();
+				}
+				else
+				{
+					outcome.Failure = result.GetError();
+				}
+
+				break;
+			}
+			}
+		}
+		catch (const std::exception& exception)
 		{
-			auto result = m_Port.Commit(job.Commit);
-
-			if (result.HasValue())
-			{
-				outcome.Committed = result.GetValue();
-			}
-			else
-			{
-				outcome.Failure = result.GetError();
-			}
-
-			break;
+			outcome.Failure = Core::Error{
+				Core::ErrorCode::IoFailure,
+				std::string{"a write threw: "} + exception.what()};
 		}
+		catch (...)
+		{
+			outcome.Failure = Core::Error{Core::ErrorCode::IoFailure, "a write threw"};
 		}
 
 		return outcome;
@@ -170,6 +191,9 @@ namespace Graphite {
 
 		if (job.Kind == WriteKind::Discard)
 		{
+			// Replaced rather than appended: safe only because at most one write is applied
+			// per OnUpdate, so a second discard's Deliver cannot land until this one's inbox
+			// entry has already been drained and TakeDiscarded has had its chance to read it.
 			m_Discarded = job.Discard.Restore;
 			m_Discarded.insert(m_Discarded.end(), job.Discard.Delete.begin(), job.Discard.Delete.end());
 		}
