@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Editor/Palettes.h"
-#include "Git/DiffPanes.h"
 #include "Git/DiffRows.h"
 #include "Git/FileTexts.h"
 #include "Git/GitPalette.h"
@@ -9,7 +8,6 @@
 
 #include "Core/Git/Diff.h"
 
-#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string_view>
@@ -92,8 +90,7 @@ namespace Graphite {
 		// below are what it is grown for: when either changes, the rows are a different set
 		// and the width starts again.
 		float m_WidestSideLine = 0.0f;
-		std::filesystem::path m_WidestPath;
-		bool m_WidestWholeFile = false;
+		DiffMeasurement m_WidestFor;
 
 		// What the side-by-side region measured across inside its own border and scrollbar
 		// last frame. Only the scrollbar's range is set from it — that has to be

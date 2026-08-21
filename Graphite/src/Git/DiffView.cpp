@@ -1,6 +1,7 @@
 #include "Git/DiffView.h"
 
 #include "Git/CommitLabels.h"
+#include "Git/DiffPanes.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
 
@@ -298,35 +299,36 @@ namespace Graphite {
 									const GitPalette& palette, const SyntaxPalette& syntax,
 									const FileTokens& tokens)
 	{
-		// Measured from the rows that were on screen last frame, for the reason ImGui itself
-		// derives a window's content size from the items it saw: the widest line among the rows
-		// nobody has scrolled to is not known without laying the whole file out, which is the
-		// work the clipper exists to avoid. A frame's lag in the scrollbar's range is invisible;
-		// laying out a hundred thousand rows to avoid it would not be.
+		// The widest line is measured from the rows that have been on screen, for the reason
+		// ImGui itself derives a window's content size from the items it saw: the widest line
+		// among the rows nobody has scrolled to is not known without laying the whole file out,
+		// which is the work the clipper exists to avoid.
 		//
-		// The width is last frame's too, and for a plainer reason: the region takes a border, a
-		// padding and — once the rows stop fitting — a scrollbar off what it was given, so the
-		// only honest measure of it comes from inside. This one governs the scrollbar's range
-		// alone; the split between the panes is measured exactly, below.
-		const float outerWidth =
-			m_SideInnerWidth > 0.0f ? m_SideInnerWidth : ImGui::GetContentRegionAvail().x;
-		const float padding = ImGui::GetStyle().WindowPadding.x;
-
-		// Kept from frame to frame within one file, and only ever grown: rebuilding it from
-		// the visible rows alone would shrink the scroll range the moment the reader scrolled
-		// past the widest line, and ImGui would clamp their position back to the left.
-		if (m_WidestPath != ShownPath(file) || m_WidestWholeFile != m_ShowWholeFile)
+		// It is kept and only ever grown, rather than rebuilt each frame from what is visible,
+		// because rebuilding shrinks the scroll range the moment the reader scrolls down past
+		// the long line they came to read — and ImGui then clamps their position back to the
+		// left. Keeping it means knowing when it stops applying, which is what the measurement
+		// answers; see its own comment for why the path alone does not.
+		if (const DiffMeasurement measurement = MeasurementOf(file, m_ShowWholeFile);
+			measurement != m_WidestFor)
 		{
-			m_WidestPath = ShownPath(file);
-			m_WidestWholeFile = m_ShowWholeFile;
+			m_WidestFor = measurement;
 			m_WidestSideLine = 0.0f;
 		}
 
+		// Last frame's width, because the content size has to be declared before the region
+		// opens and the region's own width is not known until it has: it takes a border and,
+		// once the rows stop fitting, a scrollbar off whatever it was given.
+		const float innerWidth = m_SideInnerWidth > 0.0f
+									 ? m_SideInnerWidth + ImGui::GetStyle().ChildBorderSize * 2.0f
+									 : ImGui::GetContentRegionAvail().x;
+		const float padding = ImGui::GetStyle().WindowPadding.x;
+
 		ImGui::SetNextWindowContentSize(
-			ImVec2(LayoutSideBySide(outerWidth, m_WidestSideLine, padding).ContentWidth, 0.0f));
+			ImVec2(SideBySideContentWidth(innerWidth, m_WidestSideLine, padding), 0.0f));
 
 		// One region for both halves, so there is one scroll position rather than two that have
-		// to be kept equal; see SideBySideLayout for why that is worth the shared scrollbar.
+		// to be kept equal; see SideBySidePanes for why that is worth the shared scrollbar.
 		if (!ImGui::BeginChild("pairs", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders,
 							   ImGuiWindowFlags_HorizontalScrollbar))
 		{
@@ -340,12 +342,11 @@ namespace Graphite {
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 
-		// The region's own clip rectangle is what it really has room for — border and any
-		// scrollbar already taken off — so the split lands halfway across what the reader can
-		// see rather than halfway across what this was asked to fit into. It measures the
-		// visible area, so a region the parent had clipped would be measured as the sliver
-		// that showed; nothing lays this one out that way, and BeginChild sizing it to fit is
-		// what keeps that true.
+		// The region's own clipping rectangle is what the reader can actually see — the border
+		// and any scrollbar already taken off — so the split lands halfway across that rather
+		// than halfway across what this was asked to fit into. It measures the visible area, so
+		// a region the parent had clipped would be measured as the sliver that showed; nothing
+		// lays this one out that way, and BeginChild sizing it to fit is what keeps that true.
 		const ImVec2 innerMin = ImGui::GetWindowDrawList()->GetClipRectMin();
 		const ImVec2 innerMax = ImGui::GetWindowDrawList()->GetClipRectMax();
 
@@ -353,9 +354,94 @@ namespace Graphite {
 
 		// The panes are pinned to the region rather than to the content: the text inside them
 		// slides as the reader scrolls across, while the split between them stays where it is.
-		const SideBySideLayout layout = LayoutSideBySide(m_SideInnerWidth, m_WidestSideLine, padding);
+		const SideBySidePanes panes = SplitIntoPanes(m_SideInnerWidth);
 
 		float widest = 0.0f;
+
+		// Draws one half of every row of a clipper step under a single clipping rectangle.
+		// Per row it would be two rectangles a row, and ImGui starts a fresh draw command each
+		// time one is pushed over anything already drawn — sixty rows of alternating halves
+		// would cost a hundred and twenty commands where the whole region should cost two.
+		const auto drawPane = [&](bool leftSide, int first, int last, const ImVec2& firstRowPos,
+								  float firstRowScreenY) {
+			const float paneX = leftSide ? 0.0f : panes.RightPaneX;
+			const float paneScreenX = innerMin.x + paneX;
+
+			// Clipped to its own half so a long line is reached by scrolling instead of
+			// spilling across the split into the half it does not belong to.
+			ImGui::PushClipRect(ImVec2(paneScreenX, innerMin.y),
+								ImVec2(paneScreenX + panes.PaneWidth, innerMax.y), true);
+
+			for (int index = first; index < last; ++index)
+			{
+				const std::optional<DiffRow>& row =
+					leftSide ? pairs[static_cast<std::size_t>(index)].Left
+							 : pairs[static_cast<std::size_t>(index)].Right;
+
+				// The other side changed and this one did not exist. The row still occupies its
+				// height — that is reserved once for the whole step, below, and not by whatever
+				// either half drew — so the two halves cannot stop lining up.
+				if (!row.has_value())
+				{
+					continue;
+				}
+
+				const float offsetY = static_cast<float>(index - first) * rowHeight;
+				const ImVec2 rowPos = ImVec2(firstRowPos.x + paneX, firstRowPos.y + offsetY);
+				const float rowScreenY = firstRowScreenY + offsetY;
+
+				if (const ImU32 band = BandFor(row->Kind, palette); band != 0)
+				{
+					ImGui::GetWindowDrawList()->AddRectFilled(
+						ImVec2(paneScreenX, rowScreenY),
+						ImVec2(paneScreenX + panes.PaneWidth,
+							   rowScreenY + ImGui::GetTextLineHeight()),
+						band);
+				}
+
+				if (row->Kind == DiffRowKind::HunkHeader)
+				{
+					const std::string& header = file.Hunks[row->Hunk].Header;
+
+					ImGui::SetCursorPos(rowPos);
+					ImGui::TextUnformatted(header.c_str());
+
+					// Measured like any other line: libgit2 puts the enclosing function's
+					// signature in the header, which is routinely the widest thing here, and
+					// leaving it out would put its tail beyond anything scrolling could reach.
+					// It starts at the half's edge rather than past the line numbers.
+					widest = std::max(widest, ImGui::CalcTextSize(header.c_str()).x);
+					continue;
+				}
+
+				// Positioned explicitly from the row's own start rather than with SameLine(),
+				// matching the unified view — a blank line number then costs nothing instead
+				// of leaving the text column's position dependent on it.
+				DrawNumber(rowPos.x, rowPos.y, numberWidth,
+						   leftSide ? row->OldLine : row->NewLine);
+
+				const ResolvedLine resolved =
+					ResolveRow(file, *row, leftSide ? DiffSide::Old : DiffSide::New, m_OldLines,
+							   m_NewLines, tokens);
+
+				if (!resolved.Text.has_value())
+				{
+					continue;
+				}
+
+				DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
+						 m_ColourSyntax ? resolved.Tokens : nullptr, TextFor(row->Kind, palette),
+						 syntax);
+
+				widest = std::max(widest, numberWidth +
+											  ImGui::CalcTextSize(resolved.Text->data(),
+																  resolved.Text->data() +
+																	  resolved.Text->size())
+												  .x);
+			}
+
+			ImGui::PopClipRect();
+		};
 
 		// Told the row height explicitly for the same reason as the unified view's clipper:
 		// measuring it from a first item is exactly what a cursor-rewind bug would corrupt.
@@ -364,105 +450,33 @@ namespace Graphite {
 
 		while (clipper.Step())
 		{
-			for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
-			{
-				const DiffPair& pair = pairs[static_cast<std::size_t>(index)];
-				const ImVec2 rowPos = ImGui::GetCursorPos();
-				const float rowScreenY = ImGui::GetCursorScreenPos().y;
+			const ImVec2 firstRowPos = ImGui::GetCursorPos();
+			const float firstRowScreenY = ImGui::GetCursorScreenPos().y;
+			const int rows = clipper.DisplayEnd - clipper.DisplayStart;
 
-				const auto drawSide = [&](const std::optional<DiffRow>& row, bool leftSide) {
-					// The other side changed and this one did not exist. The row still occupies
-					// its height — the cursor is placed for the next row below, not by whatever
-					// this half drew — so the two halves cannot stop lining up.
-					if (!row.has_value())
-					{
-						return;
-					}
+			drawPane(true, clipper.DisplayStart, clipper.DisplayEnd, firstRowPos, firstRowScreenY);
+			drawPane(false, clipper.DisplayStart, clipper.DisplayEnd, firstRowPos, firstRowScreenY);
 
-					const float paneX = leftSide ? 0.0f : layout.RightPaneX;
-					const float paneScreenX = innerMin.x + paneX;
-
-					// Clipped to its own pane so a long line is reached by scrolling instead of
-					// spilling across the split into the half it does not belong to.
-					ImGui::PushClipRect(ImVec2(paneScreenX, innerMin.y),
-										ImVec2(paneScreenX + layout.PaneWidth, innerMax.y), true);
-
-					if (const ImU32 band = BandFor(row->Kind, palette); band != 0)
-					{
-						ImGui::GetWindowDrawList()->AddRectFilled(
-							ImVec2(paneScreenX, rowScreenY),
-							ImVec2(paneScreenX + layout.PaneWidth,
-								   rowScreenY + ImGui::GetTextLineHeight()),
-							band);
-					}
-
-					if (row->Kind == DiffRowKind::HunkHeader)
-					{
-						const std::string& header = file.Hunks[row->Hunk].Header;
-
-						ImGui::SetCursorPos(ImVec2(rowPos.x + paneX, rowPos.y));
-						ImGui::TextUnformatted(header.c_str());
-
-						// Measured like any other line: libgit2 puts the enclosing function's
-						// signature in the header, which is routinely the widest thing here,
-						// and leaving it out would put its tail beyond anything scrolling
-						// could reach. It starts at the pane rather than past the numbers.
-						widest = std::max(widest, ImGui::CalcTextSize(header.c_str()).x);
-
-						ImGui::PopClipRect();
-						return;
-					}
-
-					// Positioned explicitly from the row's own start rather than with
-					// SameLine(), matching the unified view — a blank line number then costs
-					// nothing instead of leaving the text column's position dependent on it.
-					DrawNumber(rowPos.x + paneX, rowPos.y, numberWidth,
-							   leftSide ? row->OldLine : row->NewLine);
-
-					const ResolvedLine resolved =
-						ResolveRow(file, *row, leftSide ? DiffSide::Old : DiffSide::New,
-								   m_OldLines, m_NewLines, tokens);
-
-					if (resolved.Text.has_value())
-					{
-						DrawLine(ImVec2(rowPos.x + paneX + numberWidth, rowPos.y), *resolved.Text,
-								 m_ColourSyntax ? resolved.Tokens : nullptr,
-								 TextFor(row->Kind, palette), syntax);
-
-						widest = std::max(widest,
-										  numberWidth + ImGui::CalcTextSize(resolved.Text->data(),
-																			resolved.Text->data() +
-																				resolved.Text->size())
-															.x);
-					}
-
-					ImGui::PopClipRect();
-				};
-
-				drawSide(pair.Left, true);
-				drawSide(pair.Right, false);
-
-				// The row's height, reserved as an item rather than by moving the cursor: a
-				// bare SetCursorPos past the last item is how the region gets extended behind
-				// ImGui's back, and it asserts on the last row of the frame for exactly that.
-				// Submitting it decides the row's height outright, so a row with nothing on
-				// either side is as tall as one with text on both, and it leaves the cursor
-				// where the next row starts — ItemSize adds the spacing this height omits.
-				ImGui::SetCursorPos(rowPos);
-				ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
-			}
+			// The step's rows reserved as one item rather than by moving the cursor: a bare
+			// SetCursorPos past the last item is how a region gets extended behind ImGui's
+			// back, and it asserts on the last row of the frame for exactly that. Submitting it
+			// decides the height outright, so rows with nothing on either side are as tall as
+			// rows with text on both. The spacing comes off because ItemSize adds it back.
+			ImGui::SetCursorPos(firstRowPos);
+			ImGui::Dummy(ImVec2(0.0f, static_cast<float>(rows) * rowHeight -
+										  ImGui::GetStyle().ItemSpacing.y));
 		}
 
 		m_WidestSideLine = std::max(m_WidestSideLine, widest);
 
-		// Drawn after the panes and outside their clip rects, so it is not cut off by either
-		// and does not slide when the reader scrolls across.
-		// A filled rectangle rather than a line, which AddLine would centre on the split and
-		// so lay half of over the right pane's first pixel.
-		ImGui::GetWindowDrawList()->AddRectFilled(
-			ImVec2(innerMin.x + layout.RightPaneX, innerMin.y),
-			ImVec2(innerMin.x + layout.RightPaneX + 1.0f, innerMax.y),
-			ImGui::GetColorU32(ImGuiCol_Border));
+		// Drawn after the halves and outside their clipping rectangles, so it is not cut off by
+		// either and does not slide when the reader scrolls across. A filled rectangle rather
+		// than a line, which AddLine would centre on the split and so lay half of over the
+		// right half's first pixel.
+		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(innerMin.x + panes.RightPaneX, innerMin.y),
+												  ImVec2(innerMin.x + panes.RightPaneX + 1.0f,
+														 innerMax.y),
+												  ImGui::GetColorU32(ImGuiCol_Border));
 
 		ImGui::PopFont();
 		ImGui::EndChild();

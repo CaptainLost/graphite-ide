@@ -1,5 +1,7 @@
 #include "Git/DiffRows.h"
 
+#include "Git/CommitLabels.h"
+
 namespace Graphite {
 
 	namespace {
@@ -366,5 +368,29 @@ namespace Graphite {
 		// The terminator comes off by the same rule SplitTextLines uses, so the bytes drawn for
 		// a changed row and the bytes drawn for an Unchanged one are stripped identically.
 		return ResolvedLine{StripLineTerminator(line->Text), lineTokens};
+	}
+
+	DiffMeasurement MeasurementOf(const Core::FileDiff& file, bool wholeFile)
+	{
+		DiffMeasurement measurement;
+		measurement.Path = ShownPath(file);
+		measurement.WholeFile = wholeFile;
+		measurement.Hunks = file.Hunks.size();
+
+		for (const Core::Hunk& hunk : file.Hunks)
+		{
+			measurement.Lines += hunk.Lines.size();
+		}
+
+		// The last line of the last hunk tells two diffs of equal shape apart: a file edited
+		// near its top and the same file edited near its bottom agree on every count above.
+		if (!file.Hunks.empty() && !file.Hunks.back().Lines.empty())
+		{
+			const Core::DiffLine& last = file.Hunks.back().Lines.back();
+			measurement.LastOldLine = last.OldLine;
+			measurement.LastNewLine = last.NewLine;
+		}
+
+		return measurement;
 	}
 }

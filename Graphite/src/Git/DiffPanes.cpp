@@ -4,27 +4,29 @@
 
 namespace Graphite {
 
-	SideBySideLayout LayoutSideBySide(float availableWidth, float widestLine, float padding)
+	SideBySidePanes SplitIntoPanes(float visibleWidth)
 	{
-		SideBySideLayout layout;
+		SideBySidePanes panes;
 
 		// A pane of negative width would put the right half left of the left one. The caller
 		// gets this straight from ImGui, which reports a negative region while a pane is being
 		// dragged smaller than its decorations.
-		layout.PaneWidth = std::max(availableWidth, 0.0f) * 0.5f;
-		layout.RightPaneX = layout.PaneWidth;
+		panes.PaneWidth = std::max(visibleWidth, 0.0f) * 0.5f;
+		panes.RightPaneX = panes.PaneWidth;
 
-		// The line starts a padding in from its pane, so it needs that much more room than its
-		// own width; the two paddings come off because the region adds them back itself when
-		// it works out how far the scrollbar reaches. See the header for what goes wrong
-		// without them.
-		// Clamped because a padding wider than the region itself would otherwise ask for a
+		return panes;
+	}
+
+	float SideBySideContentWidth(float innerWidth, float widestLine, float padding)
+	{
+		const float half = std::max(innerWidth, 0.0f) * 0.5f;
+		const float inset = std::max(padding, 0.0f);
+
+		// The line starts an inset in from its half, so it needs that much more room than its
+		// own width; the two insets come off because the region adds them back itself when it
+		// works out how far the scrollbar reaches. See the header for what goes wrong without
+		// them. Clamped because an inset wider than the region would otherwise ask for a
 		// negative content width, which is not something to hand a scroll region.
-		layout.ContentWidth =
-			std::max(layout.PaneWidth - std::max(padding, 0.0f) * 2.0f +
-						 std::max(layout.PaneWidth, widestLine + std::max(padding, 0.0f)),
-					 0.0f);
-
-		return layout;
+		return std::max(half - inset * 2.0f + std::max(half, widestLine + inset), 0.0f);
 	}
 }

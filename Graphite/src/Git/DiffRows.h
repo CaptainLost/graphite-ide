@@ -5,6 +5,7 @@
 #include "Core/Git/Diff.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -119,4 +120,34 @@ namespace Graphite {
 							std::span<const std::string_view> oldLines,
 							std::span<const std::string_view> newLines,
 							const FileTokens& tokens);
+
+	// What a measured width belongs to.
+	//
+	// The side-by-side view keeps the widest line it has drawn rather than remeasuring the
+	// visible rows each frame, so that scrolling down past a long line does not shrink the
+	// scrollbar out from under the reader. That only holds while the rows are the same rows:
+	// once they are a different diff's, the kept width is a promise of content that is no
+	// longer there, and ImGui leaves the reader scrolled into blank space with nothing to
+	// suggest scrolling back.
+	//
+	// The path alone does not answer it. One DiffView serves every file of every commit, so
+	// the same path in the next commit arrives with the path unchanged and the lines entirely
+	// different — which is exactly the case a path-keyed reset misses.
+	struct DiffMeasurement
+	{
+		std::filesystem::path Path;
+		bool WholeFile = false;
+		std::size_t Hunks = 0;
+		std::size_t Lines = 0;
+		int LastOldLine = 0;
+		int LastNewLine = 0;
+
+		bool operator==(const DiffMeasurement& other) const = default;
+	};
+
+	// Cheap enough to build every frame: it counts hunks and lines and reads the last line's
+	// numbers, rather than hashing the text. Two diffs it cannot tell apart agree on the path,
+	// the hunk count, the line count and where the last line sits in both files — in which
+	// case they are near enough the same shape that a width measured for one fits the other.
+	DiffMeasurement MeasurementOf(const Core::FileDiff& file, bool wholeFile);
 }
