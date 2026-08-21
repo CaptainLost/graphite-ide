@@ -2,11 +2,15 @@
 
 #include "Editor/Palettes.h"
 #include "Git/GitPalette.h"
+#include "Git/HistoryFilter.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 
+#include <cstddef>
 #include <format>
 #include <functional>
 #include <unordered_set>
@@ -39,19 +43,30 @@ namespace Graphite {
 		// GitModel::Clear() drops the log on both events, and nothing else re-requests it,
 		// so without this a folder opened after another one leaves the history column
 		// loading forever - RenderCommits' own latch would stay set from the first folder.
-		events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent&) {
+		const auto forget = [this] {
 			m_LogRequested = false;
 			m_Commits.Reset();
-		});
 
-		events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
-			m_LogRequested = false;
-			m_Commits.Reset();
-		});
+			// The boxes are cleared along with everything else they select from: a path
+			// typed against the previous repository names a file this one may not have, and
+			// leaving the text standing would show an empty history with no visible reason.
+			m_FilterBuffer = {};
+			m_FilterPathBuffer = {};
+			m_RefFilterBuffer = {};
+			m_Filter.Reset();
+
+			m_PageWhenAsked.reset();
+			m_Searching = false;
+		};
+
+		events.Subscribe<WorkspaceOpenedEvent>([forget](const WorkspaceOpenedEvent&) { forget(); });
+		events.Subscribe<WorkspaceClosedEvent>([forget](const WorkspaceClosedEvent&) { forget(); });
 	}
 
 	void GitView::OnImGuiRender()
 	{
+		UpdateSearching();
+
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
 		const std::shared_ptr<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
@@ -68,6 +83,17 @@ namespace Graphite {
 			RenderRefs(branches ? *branches : std::vector<Core::Branch>{});
 
 			ImGui::TableSetColumnIndex(1);
+
+			RenderFilterBar();
+
+			// Above the split rather than inside the list: it describes the page as a whole,
+			// and a line that scrolls away with the first few rows describes it only until
+			// the reader starts reading.
+			if (const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+				page && m_Filter.Get() != HistoryFilter{})
+			{
+				RenderFilterSummary(*page);
+			}
 
 			const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
 			const std::function<void()> drawDiff = [this, &palette] { RenderDiff(palette); };
@@ -93,6 +119,12 @@ namespace Graphite {
 
 	void GitView::RenderRefs(const std::vector<Core::Branch>& branches)
 	{
+		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::InputTextWithHint("##refFilter", ICON_MDI_MAGNIFY "  Filter branches",
+								 m_RefFilterBuffer.data(), m_RefFilterBuffer.size());
+
+		const std::string refFilter(m_RefFilterBuffer.data());
+
 		const auto group = [&](const char* heading, Core::RefKind kind) {
 			ImGui::SeparatorText(heading);
 
@@ -103,21 +135,112 @@ namespace Graphite {
 					continue;
 				}
 
+				// Matched against the full name, so "origin" narrows to one remote's
+				// branches even though the label shows only the short name.
+				if (!MatchesRefFilter(branch.FullName, refFilter))
+				{
+					continue;
+				}
+
 				const bool selected = m_SelectedRef.has_value() && *m_SelectedRef == branch.FullName;
 
 				if (ImGui::Selectable(RefLabel(branch).c_str(), selected))
 				{
 					m_SelectedRef = branch.FullName;
 
-					Core::LogRequest request;
-					request.Ref = branch.FullName;
-					m_Model.RequestLog(request);
+					// Through RequestLog, not a request built here: picking a branch while a
+					// filter is on means "this branch, still filtered", and a request built
+					// from the ref alone would clear the boxes' effect while leaving their
+					// text on screen.
+					RequestLog(std::nullopt);
 				}
 			}
 		};
 
 		group("Local", Core::RefKind::Local);
 		group("Remote", Core::RefKind::Remote);
+	}
+
+	void GitView::RequestLog(std::optional<std::size_t> maxCount)
+	{
+		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount));
+
+		// Latched here rather than at each call site, so the first-page latch cannot fire a
+		// second query over the top of one this just sent.
+		m_LogRequested = true;
+
+		m_PageWhenAsked = m_Model.GetLog();
+		m_Searching = true;
+	}
+
+	void GitView::UpdateSearching()
+	{
+		if (!m_Searching)
+		{
+			return;
+		}
+
+		// A different page than the one that was on screen when the query went out is that
+		// query's answer. An error ends the wait too: a failed query leaves the old page
+		// standing, and a "Searching…" that never finishes would be the only thing the
+		// reader is told about it.
+		if (m_Model.GetLog() != m_PageWhenAsked || m_Model.GetLastError().has_value())
+		{
+			m_Searching = false;
+			m_PageWhenAsked.reset();
+		}
+	}
+
+	void GitView::RenderFilterBar()
+	{
+		const float pathWidth = ImGui::GetFontSize() * 12.0f;
+
+		// The text takes what the path leaves, rather than each taking half: a summary is
+		// longer than a path most of the time, and a reader who wants the path box wide can
+		// drag the column.
+		ImGui::SetNextItemWidth(-(pathWidth + ImGui::GetStyle().ItemSpacing.x));
+		ImGui::InputTextWithHint("##commitFilter",
+								 ICON_MDI_MAGNIFY "  Message, author or hash",
+								 m_FilterBuffer.data(), m_FilterBuffer.size());
+
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(pathWidth);
+		ImGui::InputTextWithHint("##commitPath", ICON_MDI_FILE_OUTLINE "  Path",
+								 m_FilterPathBuffer.data(), m_FilterPathBuffer.size());
+
+		m_Filter.Set(HistoryFilter{std::string(m_FilterBuffer.data()),
+								   std::string(m_FilterPathBuffer.data())});
+
+		if (m_Filter.Advance(ImGui::GetIO().DeltaTime))
+		{
+			// Back to the default page size on every change: a reader who loaded four pages
+			// of unfiltered history and then typed a word is asking a new question, and
+			// answering it at the old size would walk far more than they asked for.
+			RequestLog(std::nullopt);
+		}
+	}
+
+	void GitView::RenderFilterSummary(const Core::LogPage& page)
+	{
+		if (m_Searching)
+		{
+			ImGui::TextDisabled("Searching…");
+			return;
+		}
+
+		const std::size_t count = page.Commits.size();
+
+		if (page.Complete)
+		{
+			ImGui::TextDisabled("%zu matching %s", count, count == 1 ? "commit" : "commits");
+			return;
+		}
+
+		// The distinction the page's own Complete flag exists for: a filtered walk that hit
+		// its ceiling found these and stopped looking, which is not the same as these being
+		// all there are.
+		ImGui::TextDisabled("%zu matching %s so far — the search stopped before the end of "
+							"the history", count, count == 1 ? "commit" : "commits");
 	}
 
 	void GitView::RenderCommits(const GitPalette& palette)
@@ -130,10 +253,13 @@ namespace Graphite {
 		// in flight is not re-asked every frame it takes to come back.
 		if (!page && !m_LogRequested)
 		{
-			m_LogRequested = true;
-			m_Model.RequestLog({});
+			RequestLog(std::nullopt);
 		}
 
+		// A different page than the one that was on screen when the query went out is that
+		// query's answer. Cleared on an error too: a failed query leaves the old page
+		// standing, and a "Searching…" that never ends would be the only thing the reader
+		// is told about it.
 		// No child of its own: this is called as DrawSplitResults's DrawResults callback, which
 		// already opened one sized to the split the user dragged. Opening a second here would
 		// nest a child inside a child, each with its own scrollbar and its own scroll position —
@@ -195,10 +321,11 @@ namespace Graphite {
 				// Ask for a page twice the size rather than appending: the model holds one
 				// snapshot per query, and merging pages would need a second concept of
 				// identity for "the same log, more of it".
-				Core::LogRequest request;
-				request.Ref = m_SelectedRef;
-				request.MaxCount = page->Commits.size() * 2;
-				m_Model.RequestLog(request);
+				//
+				// Twice what is on screen, which under a filter is twice the matches rather
+				// than twice the commits walked — the walk goes as deep as it must to find
+				// them, bounded by LogRequest::MaxWalk and nothing else.
+				RequestLog(page->Commits.size() * 2);
 			}
 		}
 	}

@@ -5,6 +5,7 @@
 #include "Git/DiffView.h"
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
+#include "Git/HistoryFilter.h"
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Events/EventBus.h"
@@ -12,6 +13,8 @@
 #include "Core/Git/Ref.h"
 #include "Core/UI/Panel.h"
 
+#include <array>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -52,6 +55,28 @@ namespace Graphite {
 		void RenderCommits(const GitPalette& palette);
 		void RenderDiff(const GitPalette& palette);
 
+		// The two boxes above the history, and the settled query they eventually ask for.
+		// Drawn here rather than inside the commit list for the same reason the list does
+		// not know the model: what a filter costs is a question about queries, and the list
+		// draws whatever page it is handed.
+		void RenderFilterBar();
+
+		// Says how narrow the page on screen is, and — when the walk stopped at its ceiling
+		// — that the answer is not the whole story. Only drawn while a filter is on: an
+		// unfiltered page speaks for itself, and a count over every commit in the repository
+		// is a line nobody reads twice.
+		void RenderFilterSummary(const Core::LogPage& page);
+
+		// Decides whether the answer to the last query has landed. Called once at the top of
+		// the frame, before anything reads m_Searching, so the bar and the list cannot
+		// disagree about whether a search is still running.
+		void UpdateSearching();
+
+		// Everything that asks for a page goes through here, so a filter cannot be dropped
+		// by the one caller that forgot to carry it. `maxCount` absent leaves the default
+		// page size; load-more is what passes one.
+		void RequestLog(std::optional<std::size_t> maxCount);
+
 		GitModel& m_Model;
 		const ActiveScheme& m_Scheme;
 
@@ -64,6 +89,26 @@ namespace Graphite {
 		DiffView m_Diff;
 
 		std::optional<std::string> m_SelectedRef;
+
+		// What the reader is typing, and when it has stood still long enough to be worth a
+		// query. The buffers are what ImGui writes into; SettlingFilter is what decides
+		// whether the model hears about it.
+		std::array<char, 256> m_FilterBuffer{};
+		std::array<char, 260> m_FilterPathBuffer{};
+		std::array<char, 128> m_RefFilterBuffer{};
+
+		SettlingFilter m_Filter;
+
+		// The page that was on screen when the last query went out. While a newer answer is
+		// in flight the list still draws the older page, which is the right thing to draw
+		// and the wrong thing to leave unlabelled — without this the reader cannot tell a
+		// filter that found these commits from one that has not been answered yet.
+		//
+		// Held rather than pointed at: the model drops its reference the moment the answer
+		// lands, and an address compared against a freed one could match the page that
+		// replaced it.
+		std::shared_ptr<const Core::LogPage> m_PageWhenAsked;
+		bool m_Searching = false;
 
 		// How tall the commit list is; the diff takes what is left. Persisted across frames by
 		// DrawSplitResults's own contract — see SplitResults.h for why it starts at zero and

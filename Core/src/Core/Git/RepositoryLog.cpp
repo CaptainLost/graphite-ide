@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Git/CommitFilter.h"
 #include "Core/Git/LineRangeTracking.h"
 #include "Core/Git/Libgit2Support.h"
 
@@ -223,7 +224,11 @@ namespace Core {
 
 			if (!tracked.has_value())
 			{
-				commits.push_back(std::move(summary));
+				if (Matches(request.Filter, summary))
+				{
+					commits.push_back(std::move(summary));
+				}
+
 				continue;
 			}
 
@@ -289,7 +294,14 @@ namespace Core {
 				nextRange = MapRangeToParent(*file, *trackedRange);
 			}
 
-			commits.push_back(std::move(summary));
+			// Asked here rather than up where the summary was read, so a commit the filter
+			// drops is still diffed on the way past: that diff is what follows the file
+			// through a rename and maps the tracked range back to the parent, and skipping
+			// it would end the walk at the first unmatched commit that renamed the file.
+			if (Matches(request.Filter, summary))
+			{
+				commits.push_back(std::move(summary));
+			}
 
 			if (trackedRange.has_value())
 			{

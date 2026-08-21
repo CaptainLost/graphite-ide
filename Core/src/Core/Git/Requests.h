@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Git/CommitFilter.h"
 #include "Core/Git/Oid.h"
 
 #include <cstddef>
@@ -29,6 +30,13 @@ namespace Core {
 
 		// Only meaningful together with File.
 		std::optional<LineRange> Lines;
+
+		// Narrows the page to the commits this matches, without narrowing the walk: every
+		// commit the walk reaches is still visited and measured, so MaxWalk below is what
+		// bounds the search, and a filter that matches nothing still costs a full walk up
+		// to that ceiling. An empty filter accepts everything, which is what makes this
+		// field free to leave alone.
+		CommitFilter Filter;
 
 		bool FollowRenames = true;
 
