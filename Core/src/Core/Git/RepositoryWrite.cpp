@@ -190,4 +190,119 @@ namespace Core {
 
 		return Result<void>::Ok();
 	}
+
+	Result<Oid> Repository::Commit(const CommitRequest& request)
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		git_signature* who = nullptr;
+
+		// git's own resolution: repository config, then global, then the environment. A
+		// repository with no identity fails here, which is the honest answer — the
+		// alternative is inventing an author that outlives the mistake in the history.
+		if (git_signature_default(&who, m_Handle) != 0)
+		{
+			return Error{ErrorCode::InvalidArgument,
+						 std::format("cannot determine who is committing: {}", LastLibgit2Message())};
+		}
+
+		auto opened = OpenIndex(m_Handle);
+
+		if (!opened.HasValue())
+		{
+			git_signature_free(who);
+			return opened.GetError();
+		}
+
+		git_index* index = opened.GetValue();
+
+		git_oid treeId{};
+		const int written = git_index_write_tree(&treeId, index);
+		git_index_free(index);
+
+		if (written != 0)
+		{
+			git_signature_free(who);
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot write a tree from the index: {}", LastLibgit2Message())};
+		}
+
+		git_tree* tree = nullptr;
+
+		if (git_tree_lookup(&tree, m_Handle, &treeId) != 0)
+		{
+			git_signature_free(who);
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read the tree just written: {}", LastLibgit2Message())};
+		}
+
+		git_oid headId{};
+		const bool born = git_reference_name_to_id(&headId, m_Handle, "HEAD") == 0;
+
+		git_commit* head = nullptr;
+
+		if (born && git_commit_lookup(&head, m_Handle, &headId) != 0)
+		{
+			git_tree_free(tree);
+			git_signature_free(who);
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
+		}
+
+		Result<Oid> answer = Error{ErrorCode::IoFailure, "unreachable"};
+		git_oid commitId{};
+
+		if (request.Amend)
+		{
+			if (!born)
+			{
+				git_tree_free(tree);
+				git_signature_free(who);
+				return Error{ErrorCode::InvalidArgument,
+							 "there is no commit to amend: HEAD is unborn"};
+			}
+
+			// git_commit_amend keeps the parents of the commit it replaces, which is the
+			// whole reason amend is not just "commit with HEAD^ as the parent".
+			if (git_commit_amend(&commitId, head, "HEAD", who, who, "UTF-8",
+								 request.Message.c_str(), tree) == 0)
+			{
+				answer = ToOid(commitId);
+			}
+			else
+			{
+				answer = Error{ErrorCode::IoFailure,
+							   std::format("cannot amend: {}", LastLibgit2Message())};
+			}
+		}
+		else
+		{
+			const git_commit* parents[1] = {head};
+
+			if (git_commit_create(&commitId, m_Handle, "HEAD", who, who, "UTF-8",
+								  request.Message.c_str(), tree, born ? 1u : 0u,
+								  born ? parents : nullptr) == 0)
+			{
+				answer = ToOid(commitId);
+			}
+			else
+			{
+				answer = Error{ErrorCode::IoFailure,
+							   std::format("cannot commit: {}", LastLibgit2Message())};
+			}
+		}
+
+		if (head != nullptr)
+		{
+			git_commit_free(head);
+		}
+
+		git_tree_free(tree);
+		git_signature_free(who);
+
+		return answer;
+	}
 }

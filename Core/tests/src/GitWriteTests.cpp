@@ -195,3 +195,128 @@ TEST_CASE("DeleteUntracked reports a path it cannot remove")
 	const auto result = repository.GetValue().DeleteUntracked({"folder"});
 	CHECK_FALSE(result.HasValue());
 }
+
+TEST_CASE("Commit writes the index as a commit the log then finds")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("a.txt", "changed\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+
+	const auto committed = repository.GetValue().Commit({.Message = "second"});
+	REQUIRE(committed.HasValue());
+
+	const auto page = repository.GetValue().QueryLog({});
+	REQUIRE(page.HasValue());
+	REQUIRE_FALSE(page.GetValue().Commits.empty());
+	CHECK(page.GetValue().Commits.front().Id == committed.GetValue());
+	CHECK(StatusOf(repository.GetValue(), "a.txt").Index == Core::StatusFlags::None);
+}
+
+TEST_CASE("Commit fails rather than inventing an author it cannot resolve")
+{
+	GitFixture fixture;
+	fixture.SetUnusableIdentity();
+	fixture.Write("a.txt", "one\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+
+	const auto committed = repository.GetValue().Commit({.Message = "first"});
+	CHECK_FALSE(committed.HasValue());
+}
+
+TEST_CASE("Commit into an unborn HEAD makes a root commit")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+
+	const auto committed = repository.GetValue().Commit({.Message = "first"});
+	REQUIRE(committed.HasValue());
+
+	const auto parent = repository.GetValue().FirstParentOf(committed.GetValue());
+	REQUIRE(parent.HasValue());
+	CHECK_FALSE(parent.GetValue().has_value());
+}
+
+TEST_CASE("Amend replaces HEAD and keeps its parent")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("second");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	const auto before = repository.GetValue().QueryLog({});
+	REQUIRE(before.HasValue());
+	const std::size_t countBefore = before.GetValue().Commits.size();
+	const Core::Oid firstParent = before.GetValue().Commits.front().Id;
+
+	const auto amended = repository.GetValue().Commit({.Message = "second, reworded", .Amend = true});
+	REQUIRE(amended.HasValue());
+	CHECK(amended.GetValue() != firstParent);
+
+	const auto after = repository.GetValue().QueryLog({});
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue().Commits.size() == countBefore);
+	CHECK(after.GetValue().Commits.front().Id == amended.GetValue());
+	CHECK(after.GetValue().Commits.front().Summary == "second, reworded");
+}
+
+TEST_CASE("Amend fails when HEAD is unborn")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+
+	const auto amended = repository.GetValue().Commit({.Message = "nothing to amend", .Amend = true});
+	CHECK_FALSE(amended.HasValue());
+}
+
+TEST_CASE("Staging a conflicted file clears the conflict")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "base\n");
+	fixture.Commit("first");
+	fixture.Branch("other");
+	fixture.Write("a.txt", "mine\n");
+	fixture.Commit("mine");
+	fixture.Checkout("other");
+	fixture.Write("a.txt", "theirs\n");
+	fixture.Commit("theirs");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	fixture.StartConflict("master");
+	REQUIRE(StatusOf(repository.GetValue(), "a.txt").IsConflicted);
+
+	fixture.Write("a.txt", "resolved\n");
+	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+
+	CHECK_FALSE(StatusOf(repository.GetValue(), "a.txt").IsConflicted);
+}

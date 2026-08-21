@@ -82,4 +82,16 @@ namespace Core {
 		// Relative to the working directory. Without it, the whole tree.
 		std::optional<std::filesystem::path> File;
 	};
+
+	// What a commit needs and nothing more. No author override, no sign-off, no signing:
+	// none is needed to make the panel work, and each is easier to add against a shipped,
+	// tested write path than to design blind now.
+	struct CommitRequest
+	{
+		std::string Message;
+
+		// Replaces HEAD rather than adding to it, keeping HEAD's parents. Fails on an
+		// unborn HEAD, which has nothing to replace.
+		bool Amend = false;
+	};
 }

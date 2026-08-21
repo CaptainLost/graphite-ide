@@ -68,6 +68,31 @@ public:
 		REQUIRE_FALSE(code);
 	}
 
+	// The repository's own config, so a commit made through Core::Repository can resolve a
+	// signature. Deliberately not set in the constructor: a repository without an identity
+	// is a real state a user can be in, and one test asserts what happens there.
+	void SetIdentity(const std::string& name, const std::string& email)
+	{
+		git_config* config = nullptr;
+		REQUIRE(git_repository_config(&config, m_Repository) == 0);
+		REQUIRE(git_config_set_string(config, "user.name", name.c_str()) == 0);
+		REQUIRE(git_config_set_string(config, "user.email", email.c_str()) == 0);
+		git_config_free(config);
+	}
+
+	// Local config wins over global, so this shadows whatever identity the machine running
+	// the tests happens to have. Without it the "cannot resolve a signature" case passes or
+	// fails depending on the developer's own git config, which is not a property of the code
+	// under test.
+	void SetUnusableIdentity()
+	{
+		git_config* config = nullptr;
+		REQUIRE(git_repository_config(&config, m_Repository) == 0);
+		REQUIRE(git_config_set_string(config, "user.name", "") == 0);
+		REQUIRE(git_config_set_string(config, "user.email", "") == 0);
+		git_config_free(config);
+	}
+
 	std::string Commit(const std::string& message)
 	{
 		git_oid treeId = StageEverything();
@@ -168,6 +193,29 @@ public:
 		git_tree_free(tree);
 
 		return ToHex(commitId);
+	}
+
+	// Leaves the index in a conflicted state by merging a branch that changed the same
+	// file. Nothing here commits the merge — the conflict is the point.
+	void StartConflict(const std::string& otherBranch)
+	{
+		const std::string reference = "refs/heads/" + otherBranch;
+
+		git_reference* branch = nullptr;
+		REQUIRE(git_reference_lookup(&branch, m_Repository, reference.c_str()) == 0);
+
+		git_annotated_commit* their = nullptr;
+		REQUIRE(git_annotated_commit_from_ref(&their, m_Repository, branch) == 0);
+
+		git_merge_options mergeOptions = GIT_MERGE_OPTIONS_INIT;
+		git_checkout_options checkoutOptions = GIT_CHECKOUT_OPTIONS_INIT;
+		checkoutOptions.checkout_strategy = GIT_CHECKOUT_FORCE;
+
+		const git_annotated_commit* heads[1] = {their};
+		REQUIRE(git_merge(m_Repository, heads, 1, &mergeOptions, &checkoutOptions) == 0);
+
+		git_annotated_commit_free(their);
+		git_reference_free(branch);
 	}
 
 private:

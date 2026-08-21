@@ -89,6 +89,14 @@ namespace Core {
 		// skipped.
 		Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths);
 
+		// Writes the index as a commit on HEAD and answers with its id, so a caller has
+		// something to show and a test something to assert beyond the absence of an error.
+		//
+		// Author and committer come from git's own config resolution; a repository with no
+		// user.name or user.email fails here rather than inventing an identity for the
+		// history.
+		Result<Oid> Commit(const CommitRequest& request);
+
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
 			return m_WorkingDirectory;
