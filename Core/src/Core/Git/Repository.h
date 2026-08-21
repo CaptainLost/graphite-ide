@@ -8,6 +8,7 @@
 #include "Core/Git/Status.h"
 
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 struct git_repository;
@@ -44,6 +45,18 @@ namespace Core {
 
 		// Local branches first, then remote-tracking ones, each group in name order.
 		Result<std::vector<Branch>> QueryBranches() const;
+
+		// The file's bytes as they stood in one commit. Bytes rather than lines, and no
+		// encoding is assumed: the caller knows whether it asked about text.
+		//
+		// NotFound when that commit's tree has no such path — which is the ordinary answer
+		// for the older side of an added file, not a failure worth reporting to anyone.
+		Result<std::string> ReadBlob(const std::filesystem::path& path, const Oid& revision) const;
+
+		// The commit this one's diff is taken against. Empty for a root commit, which has
+		// nothing before it — not an error, and the caller's answer is the same as for a
+		// file that did not exist yet.
+		Result<std::optional<Oid>> FirstParentOf(const Oid& commit) const;
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{

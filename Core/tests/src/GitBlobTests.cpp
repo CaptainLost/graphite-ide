@@ -1,0 +1,242 @@
+#include <doctest/doctest.h>
+
+#include "Core/Git/Repository.h"
+
+#include "GitFixture.h"
+
+#include <string>
+
+using Core::LogRequest;
+using Core::Repository;
+
+namespace {
+
+	Repository OpenAt(const std::filesystem::path& root)
+	{
+		auto opened = Repository::Open(root);
+		REQUIRE(opened.HasValue());
+		return std::move(opened).GetValue();
+	}
+
+	Core::Oid HeadId(const Repository& repository)
+	{
+		auto log = repository.QueryLog(LogRequest{});
+		REQUIRE(log.HasValue());
+		REQUIRE_FALSE(log.GetValue().Commits.empty());
+		return log.GetValue().Commits.front().Id;
+	}
+}
+
+TEST_CASE("A file is read back exactly as it was committed")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\ntwo\nthree\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("a.txt", HeadId(repository));
+
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue() == "one\ntwo\nthree\n");
+}
+
+TEST_CASE("A file is read at the revision asked for, not the newest")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "first\n");
+	const std::string first = fixture.Commit("add a");
+
+	fixture.Write("a.txt", "second\n");
+	fixture.Commit("change a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	// The log comes back newest first, so the second entry is the commit the fixture made
+	// first — taken from the query rather than parsed back out of the hex the fixture
+	// returned, which would put a second hex reader in the tests.
+	auto log = repository.QueryLog(LogRequest{});
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().Commits.size() == 2);
+	REQUIRE(log.GetValue().Commits[1].Id.ToHex() == first);
+
+	auto text = repository.ReadBlob("a.txt", log.GetValue().Commits[1].Id);
+
+	// The whole point of the function: the diff view needs the file as it stood at one
+	// commit, which is never the file on disk.
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue() == "first\n");
+}
+
+TEST_CASE("A file with no trailing newline keeps its last line")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\ntwo");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("a.txt", HeadId(repository));
+
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue() == "one\ntwo");
+}
+
+TEST_CASE("Binary content survives the round trip")
+{
+	GitFixture fixture;
+
+	const std::string bytes("\x00\x01\x02\x00\x03", 5);
+	fixture.Write("data.bin", bytes);
+	fixture.Commit("add binary");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("data.bin", HeadId(repository));
+
+	// A std::string holds bytes, and nothing here may stop at the first zero — the caller
+	// decides what to do with a file that is not text.
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue().size() == 5);
+	CHECK(text.GetValue() == bytes);
+}
+
+TEST_CASE("A path that is not in that commit is not found")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("missing.txt", HeadId(repository));
+
+	// Not an error state the user caused: a file added later is genuinely absent from an
+	// earlier commit, and the diff view asks about exactly that when it shows an added file.
+	REQUIRE_FALSE(text.HasValue());
+	CHECK(text.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("A directory is not a file")
+{
+	GitFixture fixture;
+
+	fixture.Write("dir/a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("dir", HeadId(repository));
+
+	REQUIRE_FALSE(text.HasValue());
+}
+
+TEST_CASE("A file inside a directory is found by its full path")
+{
+	GitFixture fixture;
+
+	fixture.Write("dir/nested/a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("dir/nested/a.txt", HeadId(repository));
+
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue() == "one\n");
+}
+
+TEST_CASE("A backslash-separated path finds the same file")
+{
+	GitFixture fixture;
+
+	fixture.Write("dir/a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	// Every path in this application arrives as a std::filesystem::path, which on Windows
+	// carries native separators, while git speaks forward slashes on every platform.
+	auto text = repository.ReadBlob(std::filesystem::path("dir") / "a.txt", HeadId(repository));
+
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue() == "one\n");
+}
+
+TEST_CASE("A commit with a parent reports it")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string first = fixture.Commit("add a");
+
+	fixture.Write("a.txt", "two\n");
+	fixture.Commit("change a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto parent = repository.FirstParentOf(HeadId(repository));
+
+	REQUIRE(parent.HasValue());
+	REQUIRE(parent.GetValue().has_value());
+	CHECK(parent.GetValue()->ToHex() == first);
+}
+
+TEST_CASE("A root commit reports no parent")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto parent = repository.FirstParentOf(HeadId(repository));
+
+	REQUIRE(parent.HasValue());
+	CHECK_FALSE(parent.GetValue().has_value());
+}
+
+TEST_CASE("A merge commit reports its first parent")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string mainline = fixture.Commit("add a");
+
+	fixture.Branch("other");
+	fixture.Checkout("other");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b on other");
+
+	fixture.Checkout("master");
+
+	const std::string merge = fixture.MergeCommit("merge other", "other");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+	REQUIRE(log.HasValue());
+
+	Core::Oid mergeId;
+	for (const auto& entry : log.GetValue().Commits)
+	{
+		if (entry.Id.ToHex() == merge)
+		{
+			mergeId = entry.Id;
+		}
+	}
+
+	// A merge is shown against the first parent only — the other parents are offered
+	// separately, so this is the side its diff is taken against.
+	auto parent = repository.FirstParentOf(mergeId);
+
+	REQUIRE(parent.HasValue());
+	REQUIRE(parent.GetValue().has_value());
+	CHECK(parent.GetValue()->ToHex() == mainline);
+}
