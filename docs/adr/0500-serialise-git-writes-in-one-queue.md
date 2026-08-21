@@ -126,12 +126,15 @@ granularity.
 - `GitModel` grows a second responsibility and a second translation unit. A
   reader asking "what does the model do" now has two files to read, and the two
   halves share state that neither one owns alone.
-- A working-tree diff renders its hunks, its added and removed lines and its
-  change bands, but without the whole-file syntax colouring a commit's diff
-  gets. `GitPort::ReadFileTexts` reads both sides of a file out of commits —
-  that is what its `Oid` parameter is — so it has no way to name "the file as it
-  is on disk". Widening it is its own change; the gap is recorded here rather
-  than left as a comment in the code.
+- A working-tree diff first shipped without the whole-file syntax colouring a
+  commit's diff gets, because `GitPort::ReadFileTexts` reads both sides of a
+  file out of commits — that is what its `Oid` parameter is — and a commit is
+  the one thing neither side of a working-tree diff is. The hunks drew; the text
+  behind them did not. That gap was closed in
+  [0502](0502-read-a-working-tree-file-s-text-from-the-index-and-the-disk.md),
+  and the note is kept here rather than deleted because the shape of the
+  omission — a read model built entirely around commits — is the same shape this
+  record is about.
 
 ### Neutral
 
