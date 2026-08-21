@@ -57,6 +57,7 @@ namespace Graphite {
 			m_Filter.Reset();
 
 			m_PageWhenAsked.reset();
+			m_LastSeenPage.reset();
 			m_Searching = false;
 		};
 
@@ -66,7 +67,7 @@ namespace Graphite {
 
 	void GitView::OnImGuiRender()
 	{
-		UpdateSearching();
+		UpdateForNewPage();
 
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
@@ -179,8 +180,27 @@ namespace Graphite {
 		m_Searching = true;
 	}
 
-	void GitView::UpdateSearching()
+	void GitView::UpdateForNewPage()
 	{
+		const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+
+		if (page != m_LastSeenPage)
+		{
+			m_LastSeenPage = page;
+
+			// A narrowed filter drops commits, and the preview may have been showing a file
+			// from one of them — a pane answering a question nothing on screen asks any
+			// more. A page that still lists the commit leaves the reader where they were.
+			if (page)
+			{
+				m_Commits.KeepSelectionWithin(*page);
+			}
+			else
+			{
+				m_Commits.ClearSelection();
+			}
+		}
+
 		if (!m_Searching)
 		{
 			return;
@@ -190,7 +210,7 @@ namespace Graphite {
 		// query's answer. An error ends the wait too: a failed query leaves the old page
 		// standing, and a "Searching…" that never finishes would be the only thing the
 		// reader is told about it.
-		if (m_Model.GetLog() != m_PageWhenAsked || m_Model.GetLastError().has_value())
+		if (page != m_PageWhenAsked || m_Model.GetLastError().has_value())
 		{
 			m_Searching = false;
 			m_PageWhenAsked.reset();
@@ -354,6 +374,7 @@ namespace Graphite {
 			// whatever was selected last frame is a thing the next reader would have to
 			// reason is unreachable rather than something that is simply not there.
 			m_Diff.OnOpenAsTab = nullptr;
+			m_Diff.OnClose = nullptr;
 			ImGui::TextUnformatted("Select a file to see its changes.");
 			return;
 		}
@@ -366,6 +387,10 @@ namespace Graphite {
 		const OpenDiff selection{selected->Commit, selected->Path};
 
 		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
+
+		// Cleared alongside OnOpenAsTab above when nothing is selected, and reassigned here
+		// every frame for the same reason: this pane is shared across every selection.
+		m_Diff.OnClose = [this] { m_Commits.ClearSelection(); };
 
 		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 

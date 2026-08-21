@@ -67,10 +67,11 @@ namespace Graphite {
 		// is a line nobody reads twice.
 		void RenderFilterSummary(const Core::LogPage& page);
 
-		// Decides whether the answer to the last query has landed. Called once at the top of
-		// the frame, before anything reads m_Searching, so the bar and the list cannot
-		// disagree about whether a search is still running.
-		void UpdateSearching();
+		// Notices that a new page has arrived and does what that arrival implies: the wait
+		// for the last query ends, and a preview whose commit the new page no longer lists
+		// is closed. Called once at the top of the frame, before anything reads either, so
+		// the bar, the list and the pane cannot disagree about what is on screen.
+		void UpdateForNewPage();
 
 		// Everything that asks for a page goes through here, so a filter cannot be dropped
 		// by the one caller that forgot to carry it. `maxCount` absent leaves the default
@@ -109,6 +110,12 @@ namespace Graphite {
 		// replaced it.
 		std::shared_ptr<const Core::LogPage> m_PageWhenAsked;
 		bool m_Searching = false;
+
+		// The page the list drew last frame, so a page that arrived since can be told from
+		// the one already on screen. Kept apart from m_PageWhenAsked, which answers a
+		// narrower question — whether the query this view sent has come back — and is unset
+		// while no query is outstanding.
+		std::shared_ptr<const Core::LogPage> m_LastSeenPage;
 
 		// How tall the commit list is; the diff takes what is left. Persisted across frames by
 		// DrawSplitResults's own contract — see SplitResults.h for why it starts at zero and

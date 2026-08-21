@@ -26,6 +26,18 @@ namespace Graphite {
 		std::filesystem::path Path;
 	};
 
+	// The selection a newly arrived page leaves standing. A selection survives while the
+	// commit it names is still listed: a refresh that still shows the commit has not taken
+	// the reader anywhere, and closing the diff they were reading would be the panel losing
+	// their place for them. A narrowed filter that drops the commit is the other case — the
+	// pane would be answering a question nothing on screen asks any more.
+	//
+	// Checked against the commit and not the file: whether the file is in that commit's diff
+	// is a question the diff pane already answers for itself, and it cannot answer this one,
+	// because the diff may not have arrived yet.
+	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
+													const Core::LogPage& page);
+
 	// A list of commits with the graph down its left edge. Used by the Git view, and by the
 	// file and line histories in the next plan — which is why it takes a LogPage and a graph
 	// rather than reaching for a model.
@@ -50,6 +62,15 @@ namespace Graphite {
 					const GitPalette& palette,
 					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
 					std::string_view highlight = {}, std::string_view pathHighlight = {});
+
+		// Applied when a new page arrives, by whoever noticed it arrive — the list is handed
+		// pages and does not know one is newer than the last. See SelectionSurviving for
+		// which selections a page leaves standing and why.
+		void KeepSelectionWithin(const Core::LogPage& page);
+
+		// Closes the preview without touching the expansion set: the reader dismissed one
+		// file, not the commit they opened to find it.
+		void ClearSelection() { m_SelectedFile.reset(); }
 
 		bool IsExpanded(const Core::Oid& commit) const;
 		void ToggleExpanded(const Core::Oid& commit);

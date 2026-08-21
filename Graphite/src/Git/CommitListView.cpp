@@ -26,6 +26,30 @@ namespace Graphite {
 		}
 	}
 
+	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
+													const Core::LogPage& page)
+	{
+		if (!selection.has_value())
+		{
+			return std::nullopt;
+		}
+
+		for (const Core::CommitSummary& commit : page.Commits)
+		{
+			if (commit.Id == selection->Commit)
+			{
+				return selection;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	void CommitListView::KeepSelectionWithin(const Core::LogPage& page)
+	{
+		m_SelectedFile = SelectionSurviving(m_SelectedFile, page);
+	}
+
 	bool CommitListView::IsExpanded(const Core::Oid& commit) const
 	{
 		return m_Expanded.contains(commit);

@@ -2,6 +2,10 @@
 
 #include "Git/GitView.h"
 
+#include <cstdint>
+#include <optional>
+#include <vector>
+
 namespace {
 
 	Core::Diff DiffWith(std::vector<const char*> paths)
@@ -125,4 +129,59 @@ TEST_CASE("An unmeasured distance shows no numbers even when they are not zero")
 
 	CHECK(label.find("7") == std::string::npos);
 	CHECK(label.find("9") == std::string::npos);
+}
+
+namespace {
+
+	Core::LogPage PageOf(std::vector<std::uint8_t> commits)
+	{
+		Core::LogPage page;
+
+		for (const std::uint8_t first : commits)
+		{
+			Core::CommitSummary commit;
+			commit.Id.Bytes[0] = first;
+			page.Commits.push_back(std::move(commit));
+		}
+
+		return page;
+	}
+
+	Graphite::FileSelection SelectionIn(std::uint8_t commit, const char* path)
+	{
+		Core::Oid id;
+		id.Bytes[0] = commit;
+		return Graphite::FileSelection{id, path};
+	}
+}
+
+TEST_CASE("A selection whose commit is still listed survives a new page")
+{
+	const Core::LogPage page = PageOf({1, 2, 3});
+
+	const auto surviving = Graphite::SelectionSurviving(SelectionIn(2, "a.cpp"), page);
+
+	// A refresh that still shows the commit has not taken the reader anywhere, and closing
+	// the diff they were reading would be the panel losing their place for them.
+	REQUIRE(surviving.has_value());
+	CHECK(surviving->Path == std::filesystem::path{"a.cpp"});
+}
+
+TEST_CASE("A selection whose commit the new page does not list does not survive")
+{
+	const Core::LogPage page = PageOf({1, 3});
+
+	// What a narrowed filter does: the commit the preview was showing is no longer in the
+	// list above it, so the pane would be answering a question nothing on screen asked.
+	CHECK_FALSE(Graphite::SelectionSurviving(SelectionIn(2, "a.cpp"), page).has_value());
+}
+
+TEST_CASE("Nothing selected stays nothing selected")
+{
+	CHECK_FALSE(Graphite::SelectionSurviving(std::nullopt, PageOf({1, 2})).has_value());
+}
+
+TEST_CASE("An empty page keeps no selection at all")
+{
+	CHECK_FALSE(Graphite::SelectionSurviving(SelectionIn(1, "a.cpp"), PageOf({})).has_value());
 }

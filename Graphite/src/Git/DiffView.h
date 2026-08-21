@@ -57,6 +57,11 @@ namespace Graphite {
 		// the way the file and palette do every frame.
 		std::function<void()> OnOpenAsTab;
 
+		// Dismisses the pane. Left unset inside a tab, the way OnOpenAsTab is: a tab is
+		// closed by its own close button, and a second one inside it would be two answers to
+		// the same gesture.
+		std::function<void()> OnClose;
+
 	private:
 		void RenderToolbar(const Core::FileDiff& file);
 		void RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
