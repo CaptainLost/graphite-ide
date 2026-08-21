@@ -58,6 +58,23 @@ namespace Core {
 		// file that did not exist yet.
 		Result<std::optional<Oid>> FirstParentOf(const Oid& commit) const;
 
+		// Adds each path to the index as it stands on disk, which is what covers all three
+		// cases git otherwise names separately: a new file, an edited one, and a deleted
+		// one. Splitting them would push "this file is deleted, so a different call
+		// applies" into every caller, which is knowledge the caller does not have and
+		// should not acquire.
+		//
+		// A conflicted path staged this way stops being conflicted — that is how git
+		// records a resolution.
+		//
+		// Paths are relative to the working directory, as FileStatus::Path is.
+		Result<void> Stage(const std::vector<std::filesystem::path>& paths);
+
+		// Puts each path back as HEAD has it, leaving the working tree alone. On an unborn
+		// HEAD there is nothing to go back to, so the entry is removed from the index
+		// instead — the same answer git gives, and not an error.
+		Result<void> Unstage(const std::vector<std::filesystem::path>& paths);
+
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
 			return m_WorkingDirectory;
