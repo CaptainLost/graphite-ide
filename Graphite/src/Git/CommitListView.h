@@ -39,12 +39,17 @@ namespace Graphite {
 		// `highlight` is marked in each commit row wherever it appears — the same text the
 		// history was filtered by, so the reader can see which part of the row answered
 		// their question rather than re-reading the row to find out. Empty marks nothing.
-		// File rows are left plain: the path box takes patterns, and "*.cpp" appears
-		// nowhere in the path it selected.
+		//
+		// `pathHighlight` does the same for the file rows under an expanded commit. Kept
+		// apart from `highlight` because the two boxes above the list are separate
+		// questions, and the one that narrowed the files is the one a file row should
+		// answer. A pattern such as "*.cpp" marks nothing, since it appears nowhere in the
+		// path it selected — which is the honest outcome rather than marking the extension
+		// the path happens to end with.
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 					const GitPalette& palette,
 					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
-					std::string_view highlight = {});
+					std::string_view highlight = {}, std::string_view pathHighlight = {});
 
 		bool IsExpanded(const Core::Oid& commit) const;
 		void ToggleExpanded(const Core::Oid& commit);

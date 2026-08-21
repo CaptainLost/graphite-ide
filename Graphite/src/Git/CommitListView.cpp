@@ -69,7 +69,7 @@ namespace Graphite {
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 								const GitPalette& palette,
 								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
-					std::string_view highlight)
+					std::string_view highlight, std::string_view pathHighlight)
 	{
 		if (page.Commits.empty())
 		{
@@ -189,7 +189,8 @@ namespace Graphite {
 						const std::string rest = std::format("  {}", path.string());
 
 						if (MarkedSelectable("##file", selected, letter,
-											 ChangeColor(file->Change, palette), rest))
+											 ChangeColor(file->Change, palette), rest,
+											 pathHighlight))
 						{
 							m_SelectedFile = FileSelection{commit.Id, path};
 						}

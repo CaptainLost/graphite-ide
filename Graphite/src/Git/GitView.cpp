@@ -289,7 +289,8 @@ namespace Graphite {
 				return m_Model.GetDiffFor(commit);
 			};
 
-			m_Commits.Render(*page, graph, palette, diffOf, m_Filter.Get().Text);
+			m_Commits.Render(*page, graph, palette, diffOf, m_Filter.Get().Text,
+							 m_Filter.Get().Path);
 
 			// Driven from here, not from inside the list: the widget must not know the
 			// model. Asking for a diff already held, in flight, or previously failed costs

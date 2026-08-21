@@ -33,25 +33,24 @@ namespace Graphite {
 	// than a crash.
 	HighlightedLabel SplitHighlight(std::string&&, std::string_view) = delete;
 
-	// One row of a list, clickable across its whole width, with the matched part of its label
-	// marked. Returns what Selectable returns.
+	// One row of a list, clickable across its whole width: a leading marker that may carry a
+	// colour of its own — a file row's change letter — followed by text with the reader's
+	// needle marked wherever it appears. Returns what Selectable returns.
 	//
-	// `id` must start with "##": the label is drawn separately, in pieces, over an empty
-	// Selectable — positioning a coloured rectangle behind one string instead would mean
-	// measuring text, and CalcTextSize rounds up.
+	// `text` is the rest of the label exactly as it should appear, spacing included: how far
+	// the text sits from the marker is the caller's layout and not this function's.
+	//
+	// With nothing to colour and nothing to mark, this is one plain Selectable carrying its
+	// own label, which is what every other row in the application is. Otherwise the label is
+	// drawn in pieces over an empty Selectable — positioning a coloured rectangle behind one
+	// string instead would mean measuring text, and CalcTextSize rounds up.
+	//
+	// `id` must start with "##", because it is that empty Selectable's id.
+	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
+						  ImU32 markerColor, std::string_view text,
+						  std::string_view needle = {});
+
+	// A row with no marker: all label, needle marked. The commit rows and the refs list.
 	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
 							   std::string_view needle);
-
-	// One row whose leading marker carries a colour and whose text does not — a file row's
-	// change letter against its path. `text` is the rest of the label exactly as it should
-	// appear, spacing included, because how far the text sits from the marker is the
-	// caller's layout and not this function's.
-	//
-	// A marker with no colour, or no marker at all, draws as one plain Selectable: there is
-	// nothing to lay over anything, and tinting the row's spacing with a colour that means
-	// nothing is worse than not tinting it.
-	//
-	// `id` must start with "##", for the reason HighlightedSelectable's does.
-	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
-						  ImU32 markerColor, std::string_view text);
 }

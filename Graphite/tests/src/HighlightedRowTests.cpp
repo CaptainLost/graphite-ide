@@ -97,3 +97,20 @@ TEST_CASE("The three pieces always rebuild the label exactly")
 			  == label);
 	}
 }
+
+TEST_CASE("A pattern the reader typed is marked only where it appears literally")
+{
+	// The path box takes fragments and patterns alike. "Application" is in the path and is
+	// marked; "*.cpp" selected the same row without appearing in it, and marking nothing is
+	// the honest answer rather than marking the extension it happens to end with.
+	const std::string path = "Core/src/Core/App/Application.cpp";
+
+	const HighlightedLabel fragment = SplitHighlight(path, "Application");
+
+	CHECK(std::string(fragment.Match) == "Application");
+
+	const HighlightedLabel glob = SplitHighlight(path, "*.cpp");
+
+	CHECK(glob.Match.empty());
+	CHECK(std::string(glob.Before) == path);
+}

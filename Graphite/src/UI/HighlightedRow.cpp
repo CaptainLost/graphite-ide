@@ -52,10 +52,14 @@ namespace Graphite {
 	}
 
 	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
-						  ImU32 markerColor, std::string_view text)
+						  ImU32 markerColor, std::string_view text, std::string_view needle)
 	{
-		if (marker.empty() || markerColor == 0)
+		const HighlightedLabel split = SplitHighlight(text, needle);
+		const bool colouredMarker = !marker.empty() && markerColor != 0;
+
+		if (!colouredMarker && split.Match.empty())
 		{
+			// Nothing to lay over anything: one Selectable carrying its own label.
 			return ImGui::Selectable((std::string(marker) + std::string(text)).c_str(),
 									 selected);
 		}
@@ -63,11 +67,37 @@ namespace Graphite {
 		ImVec2 rowStart;
 		const bool clicked = OverlaidSelectable(id, selected, rowStart);
 
-		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(markerColor), "%.*s",
-						   static_cast<int>(marker.size()), marker.data());
-		ImGui::SameLine(0.0f, 0.0f);
+		if (!marker.empty())
+		{
+			if (markerColor != 0)
+			{
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(markerColor), "%.*s",
+								   static_cast<int>(marker.size()), marker.data());
+			}
+			else
+			{
+				// Drawn anyway, plainly: the row is being laid out in pieces for the
+				// needle's sake, and a marker left out here would go missing from it.
+				ImGui::TextUnformatted(marker.data(), marker.data() + marker.size());
+			}
 
-		ImGui::TextUnformatted(text.data(), text.data() + text.size());
+			ImGui::SameLine(0.0f, 0.0f);
+		}
+
+		ImGui::TextUnformatted(split.Before.data(), split.Before.data() + split.Before.size());
+
+		if (!split.Match.empty())
+		{
+			ImGui::SameLine(0.0f, 0.0f);
+
+			// The accent the theme already uses for a tick, so the match reads as marked
+			// rather than as a second colour of text.
+			ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), "%.*s",
+							   static_cast<int>(split.Match.size()), split.Match.data());
+
+			ImGui::SameLine(0.0f, 0.0f);
+			ImGui::TextUnformatted(split.After.data(), split.After.data() + split.After.size());
+		}
 
 		return clicked;
 	}
@@ -75,33 +105,6 @@ namespace Graphite {
 	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
 							   std::string_view needle)
 	{
-		const HighlightedLabel split = SplitHighlight(label, needle);
-
-		if (split.Match.empty())
-		{
-			// Nothing to mark, so nothing to lay over anything: one Selectable carrying its
-			// own label, which is what every other row in this application is.
-			return ImGui::Selectable(std::string(label).c_str(), selected);
-		}
-
-		// An empty label, drawn first, so the whole row is the click target and the text can
-		// be laid over it in pieces.
-		ImVec2 rowStart;
-		const bool clicked = OverlaidSelectable(id, selected, rowStart);
-
-		// The accent the theme already uses for a tick, so the match reads as marked rather
-		// than as a second colour of text.
-		const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-
-		ImGui::TextUnformatted(split.Before.data(), split.Before.data() + split.Before.size());
-		ImGui::SameLine(0.0f, 0.0f);
-
-		ImGui::TextColored(accent, "%.*s", static_cast<int>(split.Match.size()),
-						   split.Match.data());
-		ImGui::SameLine(0.0f, 0.0f);
-
-		ImGui::TextUnformatted(split.After.data(), split.After.data() + split.After.size());
-
-		return clicked;
+		return MarkedSelectable(id, selected, {}, 0, label, needle);
 	}
 }
