@@ -292,6 +292,12 @@ namespace Graphite {
 			// repository survives into the new one, showing "no longer loaded" and offering
 			// a Reload that would ask the new repository for a commit it never had.
 			m_DiffWindows.CloseAll();
+
+			// Same trap, same reason: an expectation registered against the folder this drop
+			// replaced has no business claiming a path in the one that just opened. Dropping a
+			// new folder onto the window is a folder close as far as the user is concerned, even
+			// though no WorkspaceClosedEvent says so.
+			m_DocumentWindows.ClearExpectedWrites();
 		});
 
 		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
