@@ -2,6 +2,7 @@
 
 #include "Git/CommitLabels.h"
 #include "Git/CommitRows.h"
+#include "UI/HighlightedRow.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -67,7 +68,8 @@ namespace Graphite {
 
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 								const GitPalette& palette,
-								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf)
+								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+					std::string_view highlight)
 	{
 		if (page.Commits.empty())
 		{
@@ -152,7 +154,10 @@ namespace Graphite {
 						commit.Id.ShortHex(), PaddedAuthor(commit.Author, AuthorColumnWidth),
 						PaddedAge(commit.Author.When, now, AgeColumnWidth), commit.Summary);
 
-					if (ImGui::Selectable(label.c_str(), false))
+					// Whatever the history was filtered by is marked wherever it lands in the
+					// row — hash, author or summary — because the filter matches all three
+					// and the row is where the answer to "why this commit" is.
+					if (HighlightedSelectable("##commit", false, label, highlight))
 					{
 						ToggleExpanded(commit.Id);
 					}

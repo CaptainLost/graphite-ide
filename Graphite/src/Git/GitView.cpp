@@ -3,6 +3,7 @@
 #include "Editor/Palettes.h"
 #include "Git/GitPalette.h"
 #include "Git/HistoryFilter.h"
+#include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
 
@@ -144,7 +145,9 @@ namespace Graphite {
 
 				const bool selected = m_SelectedRef.has_value() && *m_SelectedRef == branch.FullName;
 
-				if (ImGui::Selectable(RefLabel(branch).c_str(), selected))
+				// Marked the same way the commit rows are, so the two columns of this panel
+				// answer a filter in one language.
+				if (HighlightedSelectable("##ref", selected, RefLabel(branch), refFilter))
 				{
 					m_SelectedRef = branch.FullName;
 
@@ -286,7 +289,7 @@ namespace Graphite {
 				return m_Model.GetDiffFor(commit);
 			};
 
-			m_Commits.Render(*page, graph, palette, diffOf);
+			m_Commits.Render(*page, graph, palette, diffOf, m_Filter.Get().Text);
 
 			// Driven from here, not from inside the list: the widget must not know the
 			// model. Asking for a diff already held, in flight, or previously failed costs

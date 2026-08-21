@@ -22,13 +22,20 @@ any .cpp", which is a shape rather than a file.
 
 ## Decision
 
-Match `LogRequest::File` as a pattern. A pattern with no separator is matched
-against the file name alone, so `Application.cpp` and `*.cpp` name a file
-wherever it sits. A pattern with a separator is matched against the whole path,
-which keeps the existing callers exactly as they were.
+Match `LogRequest::File` as a pattern, in one of three ways, told apart by what
+the reader typed:
 
-Match whole, never as a substring: `Layer.cpp` does not name
-`GraphiteLayer.cpp`. `*Layer.cpp` says that on purpose.
+- a separator in it — matched whole against the whole path, which keeps the file
+  and line histories on the one file they were opened for;
+- a `*` or a `?` in it — matched whole against the file name, so `*.cpp` means
+  .cpp files and `Graph*` means names that start with Graph;
+- anything else — matched as a fragment of the file name, so `Graph` names
+  `GraphiteLayer.cpp`, the same gesture that opens a file by typing three
+  letters of it.
+
+The fragment is matched against the name alone and never the directories above
+it: otherwise every file under `Graphite/` would answer to `Graphite`, and this
+would be a path search wearing a file search's clothes.
 
 Neither `*` nor `?` crosses a `/`, so a pattern with separators says how deep it
 means.
@@ -57,8 +64,8 @@ that only the single-file case can narrow the walk the way it always did.
 
 ### Positive
 
-- The name a reader knows is the name that works, and `*.cpp` means what it
-  looks like.
+- The fragment a reader remembers is enough, and `*.cpp` still means what it
+  looks like — the wildcard is how they say where the loose part is.
 - The search panel and the history filter now agree about what `*` and `?` mean,
   because they run the same matcher.
 - The file and line histories are untouched: a path with separators still
@@ -66,9 +73,12 @@ that only the single-file case can narrow the walk the way it always did.
 
 ### Negative
 
-- A bare name can name more files than the reader meant — two `Main.cpp` in
-  different directories give one mixed history. The full-path form is the way
-  back, and the reader has to notice they need it.
+- A fragment names more files than a name does, and a name already named more
+  than one — `Graph` gathers GraphLayout.cpp and GraphGeometry.h along with the
+  file that was wanted. The full-path form is the way back, and the reader has
+  to notice they need it. This is the price of the box behaving like the quick
+  file-open it is mistaken for, and it was paid deliberately: three separate
+  attempts to use it were three attempts to type a fragment.
 - Matching is now a scan per file per commit rather than a comparison, on a
   query that already diffs every commit it passes. Small against the diff, but
   not nothing.
@@ -83,6 +93,10 @@ that only the single-file case can narrow the walk the way it always did.
 
 ## Alternatives Considered
 
+- **Keep matching whole names.** `Layer.cpp` would not name GraphiteLayer.cpp,
+  and every pattern would be exactly as wide as it reads. Rejected after it was
+  built and used: the first three things typed into the box were fragments, and
+  a rule that has to be taught at every use is a rule the box lost to.
 - **Match any tail of the path on a directory boundary.** `App/Main.cpp` and
   `Main.cpp` would both work with one rule and no separator test. Rejected
   because it changes what a full path means: `src/App/Main.cpp` would also match

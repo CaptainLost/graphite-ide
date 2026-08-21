@@ -70,6 +70,20 @@ namespace Core {
 			return GlobMatches(pattern, text);
 		}
 
-		return GlobMatches(pattern, std::filesystem::path{text}.filename().generic_string());
+		const std::string name = std::filesystem::path{text}.filename().generic_string();
+
+		// A wildcard is the reader saying where the loose part of the name is, so the
+		// pattern is honoured as written, against the whole name.
+		if (pattern.find('*') != std::string_view::npos ||
+			pattern.find('?') != std::string_view::npos)
+		{
+			return GlobMatches(pattern, name);
+		}
+
+		// Everything else is a fragment: "Graph" names GraphiteLayer.cpp, the same gesture
+		// that opens a file by typing three letters of it. Against the name alone and never
+		// the directories above it — otherwise every file under Graphite/ would answer to
+		// "Graphite", and this would be a path search wearing a file search's clothes.
+		return Contains(name, Lowered(pattern));
 	}
 }

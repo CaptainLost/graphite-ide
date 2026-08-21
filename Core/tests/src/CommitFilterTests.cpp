@@ -124,14 +124,34 @@ TEST_CASE("A pattern with no separator names the file, wherever it sits")
 	CHECK(Core::NamesPath("Application.cpp", "Core/src/Core/App/Application.cpp"));
 	CHECK(Core::NamesPath("*.cpp", "Core/src/Core/App/Application.cpp"));
 	CHECK_FALSE(Core::NamesPath("Application.h", "Core/src/Core/App/Application.cpp"));
+	CHECK_FALSE(Core::NamesPath("Application.cpp", "Core/src/Core/App/Application.h"));
 }
 
-TEST_CASE("A pattern naming part of the file name does not name the file")
+TEST_CASE("A fragment of the file name names the file")
 {
-	// Half a name is a substring search, and this box is not one: "Layer.cpp" naming
-	// GraphiteLayer.cpp would make every pattern quietly wider than it reads.
-	CHECK_FALSE(Core::NamesPath("Layer.cpp", "Graphite/src/App/GraphiteLayer.cpp"));
+	// What a reader types when they remember the beginning of a name and not the rest —
+	// the same gesture that opens a file by typing three letters of it.
+	CHECK(Core::NamesPath("Graph", "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK(Core::NamesPath("Layer.cpp", "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK(Core::NamesPath("graphitelayer", "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK_FALSE(Core::NamesPath("Widget", "Graphite/src/App/GraphiteLayer.cpp"));
+}
+
+TEST_CASE("A fragment is matched against the name, not against the directories above it")
+{
+	// Otherwise every file under Graphite/ would answer to "Graphite", and the box would
+	// be a path search wearing a file search's clothes.
+	CHECK_FALSE(Core::NamesPath("src", "Graphite/src/App/GraphiteLayer.cpp"));
+}
+
+TEST_CASE("A pattern with a wildcard is matched against the whole name")
+{
+	// The wildcard is how a reader says where the loose part is, so honouring it as a
+	// fragment too would make "*.cpp" mean nothing in particular.
 	CHECK(Core::NamesPath("*Layer.cpp", "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK(Core::NamesPath("Graph*", "Graphite/src/App/GraphiteLayer.cpp"));
+	CHECK_FALSE(Core::NamesPath("Graph*", "Graphite/src/App/MyGraphThing.cpp"));
+	CHECK_FALSE(Core::NamesPath("*.cpp", "Graphite/src/App/notes.md"));
 }
 
 TEST_CASE("A pattern with a separator is matched against the whole path")
@@ -140,6 +160,10 @@ TEST_CASE("A pattern with a separator is matched against the whole path")
 	// a bare name names more files than they meant.
 	CHECK(Core::NamesPath("Graphite/src/App/GraphiteLayer.cpp",
 						  "Graphite/src/App/GraphiteLayer.cpp"));
+
+	// A tail of the path, not the whole of it. Whole rather than fragment here is what
+	// keeps the file and line histories on the one file they were opened for: matching a
+	// contained path would quietly widen both.
 	CHECK_FALSE(Core::NamesPath("src/App/GraphiteLayer.cpp",
 								"Graphite/src/App/GraphiteLayer.cpp"));
 }

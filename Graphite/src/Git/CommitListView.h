@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <unordered_set>
 
 namespace Graphite {
@@ -34,9 +35,16 @@ namespace Graphite {
 		// `diffOf` answers a commit's diff, or null while it is being fetched. The list
 		// asks for every commit it draws; the model is what decides whether that costs a
 		// query.
+		//
+		// `highlight` is marked in each commit row wherever it appears — the same text the
+		// history was filtered by, so the reader can see which part of the row answered
+		// their question rather than re-reading the row to find out. Empty marks nothing.
+		// File rows are left plain: the path box takes patterns, and "*.cpp" appears
+		// nowhere in the path it selected.
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 					const GitPalette& palette,
-					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf);
+					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+					std::string_view highlight = {});
 
 		bool IsExpanded(const Core::Oid& commit) const;
 		void ToggleExpanded(const Core::Oid& commit);
