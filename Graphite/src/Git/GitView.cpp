@@ -193,7 +193,9 @@ namespace Graphite {
 
 	void GitView::RenderFilterBar()
 	{
-		const float pathWidth = ImGui::GetFontSize() * 12.0f;
+		// Wide enough for the example in the box's own hint: a hint clipped halfway through
+		// teaches the shape of the path less well than no hint at all.
+		const float pathWidth = ImGui::GetFontSize() * 14.0f;
 
 		// The text takes what the path leaves, rather than each taking half: a summary is
 		// longer than a path most of the time, and a reader who wants the path box wide can
@@ -205,7 +207,11 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(pathWidth);
-		ImGui::InputTextWithHint("##commitPath", ICON_MDI_FILE_OUTLINE "  Path",
+		// An example rather than the word "Path", because the box wants something more
+		// specific than a path: the whole path, from the working directory down, with the
+		// separators git wrote it with. A reader who types the file's own name gets an
+		// empty history and no hint as to why.
+		ImGui::InputTextWithHint("##commitPath", ICON_MDI_FILE_OUTLINE "  src/App/Main.cpp",
 								 m_FilterPathBuffer.data(), m_FilterPathBuffer.size());
 
 		m_Filter.Set(HistoryFilter{std::string(m_FilterBuffer.data()),
