@@ -104,6 +104,25 @@ TEST_CASE("Binary content survives the round trip")
 	CHECK(text.GetValue() == bytes);
 }
 
+TEST_CASE("An empty file reads back as an empty string")
+{
+	GitFixture fixture;
+
+	// An empty write still creates the file rather than skipping it — MakeFile opens with
+	// truncate and streams the (empty) contents, so the commit genuinely has this path.
+	fixture.Write("empty.txt", "");
+	fixture.Commit("add an empty file");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto text = repository.ReadBlob("empty.txt", HeadId(repository));
+
+	// The blob for a zero-byte file may hand back a null content pointer from libgit2;
+	// this proves the read succeeds rather than hitting undefined behaviour on that path.
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue().empty());
+}
+
 TEST_CASE("A path that is not in that commit is not found")
 {
 	GitFixture fixture;
@@ -132,7 +151,10 @@ TEST_CASE("A directory is not a file")
 
 	auto text = repository.ReadBlob("dir", HeadId(repository));
 
+	// Pinned to NotFound, not merely "not a value": the next task treats NotFound as "the
+	// file did not exist on that side," so any other code would read as a broken repository.
 	REQUIRE_FALSE(text.HasValue());
+	CHECK(text.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("A file inside a directory is found by its full path")
