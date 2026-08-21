@@ -35,8 +35,9 @@ namespace Graphite {
 		void Expect(const std::vector<std::filesystem::path>& paths);
 
 		// True once per registration, and never after the entry has expired. Compares whole
-		// paths - lexically normalised and folded case-insensitively, since Windows paths are
-		// - rather than a filename or a suffix: either of those can be satisfied by a
+		// paths, lexically normalised and case-folded, rather than a filename or a suffix.
+		// Windows paths are case-insensitive, so the fold is necessary; the whole-path
+		// comparison is necessary because a filename or a suffix match can be satisfied by a
 		// different file of the same name elsewhere in the tree, which would silence a
 		// genuine external change to a dirty buffer the user never asked to discard.
 		bool TakeFor(const std::filesystem::path& path);
