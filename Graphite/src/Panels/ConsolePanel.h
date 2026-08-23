@@ -6,6 +6,8 @@
 #include "Core/Base/RingBufferSink.h"
 #include "Core/UI/Panel.h"
 
+#include "Panels/ConsoleSelection.h"
+
 #include <imgui.h>
 
 #include <memory>
@@ -23,10 +25,22 @@ namespace Graphite {
 	private:
 		void RenderToolbar();
 		void RenderEntries();
+		void CollectShownEntries();
+		void HandleSweep(const ConsoleLayout& layout);
+		void HandleShortcuts();
+		void RenderContextMenu();
+		void CopySelection() const;
 		void FollowTailOnlyWhenEntriesArrived();
 
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::vector<Core::LogEntry> m_Entries;
+		// What the filter leaves of m_Entries, which is what the panel draws and what a
+		// selection is taken from: a message the reader cannot see is not one they can copy.
+		std::vector<Core::LogEntry> m_Shown;
+		ConsoleSelection m_Selection;
+		// Set while the left button is held after a press inside the output, so a drag that
+		// leaves the panel keeps extending the selection instead of dropping it.
+		bool m_Sweeping = false;
 		ImGuiTextFilter m_Filter;
 		bool m_AutoScroll = true;
 		std::size_t m_LastCount = 0;

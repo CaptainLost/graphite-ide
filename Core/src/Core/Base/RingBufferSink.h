@@ -5,6 +5,7 @@
 #include <spdlog/sinks/base_sink.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <vector>
@@ -36,5 +37,9 @@ namespace Core {
 		mutable std::mutex m_Mutex;
 		std::deque<LogEntry> m_Entries;
 		std::size_t m_Capacity;
+		// Never reset, Clear included: a number handed out once is not handed out again, so a
+		// reader that kept one can tell the message it named is gone rather than find another
+		// message wearing it.
+		std::uint64_t m_NextSequence = 1;
 	};
 }

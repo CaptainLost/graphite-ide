@@ -5,6 +5,7 @@
 #include <spdlog/spdlog.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -39,6 +40,11 @@ namespace Core {
 		LogLevel Level = LogLevel::Info;
 		LogSource Source = LogSource::Engine;
 		std::string Message;
+		// Names this message for as long as the program runs. A reader holding on to a
+		// position in the buffer - a selection, say - cannot hold an index instead: the
+		// buffer drops its oldest entries, and every index then points at a message one
+		// further along than the one it was taken from.
+		std::uint64_t Sequence = 0;
 	};
 
 	class RingBufferSink;

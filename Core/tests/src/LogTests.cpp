@@ -8,6 +8,7 @@
 #include <spdlog/logger.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -204,4 +205,34 @@ TEST_CASE("A capacity change replaces the console buffer")
 
 	Log::Init(Core::LogSpec{});
 	CHECK(Log::GetConsoleSink()->GetCapacity() == Core::LogSpec{}.ConsoleCapacity);
+}
+
+TEST_CASE("RingBufferSink numbers entries so a reader can name one after older ones are dropped")
+{
+	PrivateLog log{2};
+
+	log.Logger.info("first");
+	log.Logger.info("second");
+	log.Logger.info("third");
+
+	const auto entries = log.Sink->TakeSnapshot();
+	REQUIRE(entries.size() == 2);
+	CHECK(entries[0].Message == "second");
+	CHECK(entries[1].Sequence == entries[0].Sequence + 1);
+	// The numbers name a message rather than a slot: nothing left in the buffer wears the
+	// number the dropped message had.
+	CHECK(entries[0].Sequence > 0);
+}
+
+TEST_CASE("Clearing the buffer does not hand a later message a number already used")
+{
+	PrivateLog log{4};
+
+	log.Logger.info("before");
+	const std::uint64_t before = log.Sink->TakeSnapshot().front().Sequence;
+
+	log.Sink->Clear();
+	log.Logger.info("after");
+
+	CHECK(log.Sink->TakeSnapshot().front().Sequence > before);
 }

@@ -29,6 +29,7 @@ namespace Core {
 
 		const std::scoped_lock lock{m_Mutex};
 
+		entry.Sequence = m_NextSequence++;
 		m_Entries.push_back(std::move(entry));
 		while (m_Entries.size() > m_Capacity)
 			m_Entries.pop_front();

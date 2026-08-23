@@ -78,6 +78,10 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Panels/ReferencesPanel.cpp",
         "%{wks.location}/Graphite/src/Panels/SearchPreview.h",
         "%{wks.location}/Graphite/src/Panels/SearchPreview.cpp",
+        -- ConsoleSelection is what the console's mouse sweep comes to as a range and as
+        -- text; it holds no ImGui, so it is tested here alongside the two panels above.
+        "%{wks.location}/Graphite/src/Panels/ConsoleSelection.h",
+        "%{wks.location}/Graphite/src/Panels/ConsoleSelection.cpp",
         -- DroppedPaths is the rule a drag and drop is routed by, and reaches no further
         -- than the standard library; the rest of Workspace drags in the file tree, the
         -- watcher and libgit2, so it is named here rather than globbed.
