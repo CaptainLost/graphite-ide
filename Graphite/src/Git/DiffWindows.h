@@ -6,6 +6,7 @@
 
 #include "Core/Git/Oid.h"
 #include "Core/Git/Requests.h"
+#include "Core/Git/Status.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -44,6 +45,25 @@ namespace Graphite {
 	// after identifies. Changing the title therefore moves no window.
 	std::string DiffWindowName(const OpenDiff& diff);
 
+	// Which side of the working tree now holds this file's change, when it is not the side
+	// the tab is showing. Nullopt means the tab stays where it is: because its own side
+	// still holds a change, because no side does, or because the tab is not one of the two
+	// sides that pair up at all.
+	//
+	// Read off the status rather than off an empty diff. The status is already on hand
+	// every frame, so this costs no query; an empty diff, by contrast, is also what a tab
+	// shows while the first query for a side is still in flight, and following on that
+	// would send the tab to the other side and back again on every switch.
+	std::optional<Core::DiffTarget> TargetHolding(const Core::WorkingTreeStatus& status,
+												  const std::filesystem::path& path,
+												  Core::DiffTarget current);
+
+	// What a tab says when its file is not in the diff it asked for. For a commit that is a
+	// genuine mismatch - the file was never part of it. For a side of the working tree it
+	// is an ordinary, momentary emptiness, and saying which side and which file is what
+	// tells the two apart.
+	std::string EmptyDiffMessage(const OpenDiff& diff);
+
 	// Diffs opened as tabs in the document area.
 	//
 	// A tab is not membership of Core::DocumentSet — that set holds editable files and is
@@ -74,6 +94,13 @@ namespace Graphite {
 					unsigned int centreNode);
 
 	private:
+		struct Entry;
+
+		// Moves a working-tree tab to whichever side of the working tree now holds its
+		// file's change, when its own side has emptied. See TargetHolding for when that is,
+		// and for why it is decided off the status rather than off an empty diff.
+		static void FollowFile(Entry& entry, const GitModel& model);
+
 		struct Entry
 		{
 			OpenDiff Diff;

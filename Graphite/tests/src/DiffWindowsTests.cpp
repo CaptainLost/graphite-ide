@@ -2,6 +2,8 @@
 
 #include "Git/DiffWindows.h"
 
+#include "Core/Git/Status.h"
+
 #include <string>
 
 namespace {
@@ -142,4 +144,104 @@ TEST_CASE("Opening the same working-tree diff twice adds one tab")
 	windows.Open(unstaged);
 
 	CHECK(windows.GetCount() == 1);
+}
+
+namespace {
+
+	Graphite::OpenDiff WorkingDiff(Core::DiffTarget target, const char* path)
+	{
+		return Graphite::OpenDiff{.Commit = std::nullopt, .Target = target, .Path = path};
+	}
+
+	Core::WorkingTreeStatus StatusOf(const char* path, Core::StatusFlags index,
+									 Core::StatusFlags workTree, bool conflicted = false)
+	{
+		Core::WorkingTreeStatus status;
+		status.Entries.push_back(Core::FileStatus{.Path = path,
+												  .Index = index,
+												  .WorkTree = workTree,
+												  .IsConflicted = conflicted});
+		return status;
+	}
+}
+
+TEST_CASE("A staged tab whose file was unstaged follows it to the unstaged side")
+{
+	// The whole point of the tab following: unstaging is not the change vanishing, it is
+	// the change moving to the other half of the same file, and that is what the reader
+	// wants to go on looking at.
+	const Core::WorkingTreeStatus status =
+		StatusOf("a.txt", Core::StatusFlags::None, Core::StatusFlags::Modified);
+
+	CHECK(Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::IndexToHead)
+		  == Core::DiffTarget::WorkTreeToIndex);
+}
+
+TEST_CASE("An unstaged tab whose file was staged follows it to the staged side")
+{
+	const Core::WorkingTreeStatus status =
+		StatusOf("a.txt", Core::StatusFlags::Modified, Core::StatusFlags::None);
+
+	CHECK(Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::WorkTreeToIndex)
+		  == Core::DiffTarget::IndexToHead);
+}
+
+TEST_CASE("A tab whose own side still holds a change stays where it is")
+{
+	// A file staged one way and edited again since is in both halves at once. Following
+	// on that would drag the tab off the side the reader chose, every frame.
+	const Core::WorkingTreeStatus status =
+		StatusOf("a.txt", Core::StatusFlags::Modified, Core::StatusFlags::Modified);
+
+	CHECK(!Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::IndexToHead).has_value());
+	CHECK(!Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::WorkTreeToIndex)
+			   .has_value());
+}
+
+TEST_CASE("A tab whose file has no change anywhere stays where it is")
+{
+	// Discarded, or committed: there is nowhere to follow to, so the tab keeps its side
+	// and says that side is empty rather than pretending to be the other one.
+	CHECK(!Graphite::TargetHolding(Core::WorkingTreeStatus{}, "a.txt",
+								   Core::DiffTarget::WorkTreeToIndex)
+			   .has_value());
+}
+
+TEST_CASE("A conflicted file's tab stays where it is")
+{
+	// A conflicted entry is not two ordinary halves - see ChangesRows.h - so its index and
+	// work-tree flags are no basis for deciding which half a tab belongs to.
+	const Core::WorkingTreeStatus status = StatusOf(
+		"a.txt", Core::StatusFlags::Modified, Core::StatusFlags::Modified, /*conflicted=*/true);
+
+	CHECK(!Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::WorkTreeToIndex)
+			   .has_value());
+}
+
+TEST_CASE("Only the staged and unstaged pair follow anything")
+{
+	// WorkTreeToHead spans both halves, and a commit's tab has no working-tree side at
+	// all; neither has an other side to move to.
+	const Core::WorkingTreeStatus status =
+		StatusOf("a.txt", Core::StatusFlags::Modified, Core::StatusFlags::None);
+
+	CHECK(!Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::WorkTreeToHead).has_value());
+	CHECK(!Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::CommitToParent).has_value());
+}
+
+TEST_CASE("An empty working-tree diff says which side is empty, and for which file")
+{
+	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::IndexToHead, "src/a.txt"))
+		  == "a.txt has no staged changes.");
+	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::WorkTreeToIndex, "src/a.txt"))
+		  == "a.txt has no unstaged changes.");
+	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::WorkTreeToHead, "src/a.txt"))
+		  == "a.txt has no changes.");
+}
+
+TEST_CASE("An empty commit diff still reports a file missing from that commit")
+{
+	// A commit's diff is fixed: a file absent from it was never part of it, which is a
+	// different thing to report than a side of the working tree being momentarily empty.
+	CHECK(Graphite::EmptyDiffMessage(Diff(1, "a.txt")) == "That file is not in this diff.");
 }

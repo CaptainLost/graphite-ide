@@ -32,6 +32,44 @@ namespace {
 
 		return "diff";
 	}
+
+	// The other half of the staged/unstaged pair, for the two targets that have one.
+	std::optional<Core::DiffTarget> OtherSide(Core::DiffTarget target)
+	{
+		if (target == Core::DiffTarget::WorkTreeToIndex)
+		{
+			return Core::DiffTarget::IndexToHead;
+		}
+
+		if (target == Core::DiffTarget::IndexToHead)
+		{
+			return Core::DiffTarget::WorkTreeToIndex;
+		}
+
+		return std::nullopt;
+	}
+
+	// Whether the side a tab shows holds any change for a file, read off the two halves git
+	// tracks separately.
+	bool SideHasChange(const Core::FileStatus& file, Core::DiffTarget target)
+	{
+		const Core::StatusFlags flags =
+			target == Core::DiffTarget::IndexToHead ? file.Index : file.WorkTree;
+
+		return flags != Core::StatusFlags::None;
+	}
+
+	// How a side is named in a sentence about it being empty. Not NameOfTarget: that word
+	// is fixed by the identity it also spells, and "no working changes" is not English.
+	const char* WordForEmptySide(Core::DiffTarget target)
+	{
+		switch (target)
+		{
+		case Core::DiffTarget::WorkTreeToIndex: return "unstaged ";
+		case Core::DiffTarget::IndexToHead: return "staged ";
+		default: return "";
+		}
+	}
 }
 
 namespace Graphite {
@@ -94,6 +132,64 @@ namespace Graphite {
 			   "  " + DiffWindowTitle(diff) + "###" + DiffWindowIdentity(diff);
 	}
 
+	std::optional<Core::DiffTarget> TargetHolding(const Core::WorkingTreeStatus& status,
+												  const std::filesystem::path& path,
+												  Core::DiffTarget current)
+	{
+		const std::optional<Core::DiffTarget> other = OtherSide(current);
+
+		if (!other.has_value())
+		{
+			return std::nullopt;
+		}
+
+		const auto entry = std::find_if(status.Entries.begin(), status.Entries.end(),
+										[&path](const Core::FileStatus& file) {
+											return file.Path == path;
+										});
+
+		// Gone from the status entirely - committed, discarded, or never changed. There is
+		// no side to move to, so the tab keeps the one it has and reports it empty.
+		if (entry == status.Entries.end())
+		{
+			return std::nullopt;
+		}
+
+		// A conflicted entry is not two ordinary halves - see ChangesRows.h - so its flags
+		// are no basis for deciding which half a tab belongs to.
+		if (entry->IsConflicted)
+		{
+			return std::nullopt;
+		}
+
+		// Staged one way and edited again since puts a file in both halves at once. Only a
+		// side that has actually emptied sends its tab anywhere.
+		if (SideHasChange(*entry, current))
+		{
+			return std::nullopt;
+		}
+
+		if (!SideHasChange(*entry, *other))
+		{
+			return std::nullopt;
+		}
+
+		return other;
+	}
+
+	std::string EmptyDiffMessage(const OpenDiff& diff)
+	{
+		if (diff.Commit.has_value())
+		{
+			return "That file is not in this diff.";
+		}
+
+		// The file's name and not its path, for the same reason the tab carries only the
+		// name: the sentence is read next to a tab that already says which file this is.
+		return Core::ToUtf8(diff.Path.filename()) + " has no " + WordForEmptySide(diff.Target) +
+			   "changes.";
+	}
+
 	void DiffWindows::Open(const OpenDiff& diff)
 	{
 		for (Entry& entry : m_Open)
@@ -126,12 +222,50 @@ namespace Graphite {
 		std::erase_if(m_Open, [](const Entry& entry) { return !entry.Diff.Commit.has_value(); });
 	}
 
+	void DiffWindows::FollowFile(Entry& entry, const GitModel& model)
+	{
+		if (entry.Diff.Commit.has_value())
+		{
+			return;
+		}
+
+		const std::shared_ptr<const Core::WorkingTreeStatus> status = model.GetStatus();
+
+		if (!status)
+		{
+			return;
+		}
+
+		const std::optional<Core::DiffTarget> target =
+			TargetHolding(*status, entry.Diff.Path, entry.Diff.Target);
+
+		if (!target.has_value())
+		{
+			return;
+		}
+
+		entry.Diff.Target = *target;
+
+		// A new target is a new identity, so ImGui has never seen this window and has no
+		// dock position for it. Docking it again is what keeps a followed tab in the centre
+		// node instead of floating loose, and raising it is what keeps the reader looking at
+		// the thing they were already looking at.
+		entry.Fresh = true;
+		entry.Focus = true;
+	}
+
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
 							 unsigned int centreNode)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
 			Entry& entry = m_Open[index];
+
+			// Before the name is taken, because the name is the window: a tab that follows
+			// its file to the other side is, to ImGui, a different window from this frame
+			// on, and everything below has to be talking about the new one.
+			FollowFile(entry, model);
+
 			const std::string name = DiffWindowName(entry.Diff);
 
 			// Dock only on the frame this identity is new, exactly as DocumentWindows does:
@@ -195,7 +329,7 @@ namespace Graphite {
 
 					if (!fileIndex.has_value())
 					{
-						ImGui::TextUnformatted("That file is not in this diff.");
+						ImGui::TextUnformatted(EmptyDiffMessage(entry.Diff).c_str());
 					}
 					else
 					{
