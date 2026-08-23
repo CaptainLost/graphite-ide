@@ -533,4 +533,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0501](0501-announce-a-write-before-the-editor-sees-it.md) | Announce a write before the editor sees it | proposed | 2026-08-21 |
 | [0502](0502-read-a-working-tree-file-s-text-from-the-index-and-the-disk.md) | Read a working tree file's text from the index and the disk | proposed | 2026-08-22 |
 | [0503](0503-anchor-a-console-selection-to-a-log-entry-s-sequence-number.md) | Anchor a console selection to a log entry's sequence number | proposed | 2026-08-23 |
+| [0504](0504-treat-an-untracked-file-as-an-added-file-in-a-working-tree-diff.md) | Treat an untracked file as an added file in a working tree diff | proposed | 2026-08-23 |
 <!-- /adr-index -->

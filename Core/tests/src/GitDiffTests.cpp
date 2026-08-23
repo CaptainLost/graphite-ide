@@ -237,3 +237,37 @@ TEST_CASE("A file with no trailing newline keeps its last line")
 	// carries no text of its own and must not reach the view as a line of the file.
 	CHECK(sawAddedLine);
 }
+
+TEST_CASE("An untracked file is an added file with its whole content, in both working tree diffs")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+	fixture.Write("b.txt", "first\nsecond\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	DiffTarget target = DiffTarget::WorkTreeToIndex;
+
+	SUBCASE("against the index") { target = DiffTarget::WorkTreeToIndex; }
+	SUBCASE("against HEAD") { target = DiffTarget::WorkTreeToHead; }
+
+	DiffRequest request;
+	request.Target = target;
+	request.File = std::filesystem::path("b.txt");
+
+	auto diff = repository.QueryDiff(request);
+
+	REQUIRE(diff.HasValue());
+	REQUIRE(diff.GetValue().Files.size() == 1);
+
+	const Core::FileDiff& file = diff.GetValue().Files.front();
+
+	CHECK(file.Change == FileChange::Added);
+	CHECK(file.OldPath.empty());
+	CHECK(file.NewPath == std::filesystem::path("b.txt"));
+	REQUIRE(file.Hunks.size() == 1);
+	REQUIRE(file.Hunks.front().Lines.size() == 2);
+	CHECK(file.Hunks.front().Lines.front().Text == "first\n");
+}

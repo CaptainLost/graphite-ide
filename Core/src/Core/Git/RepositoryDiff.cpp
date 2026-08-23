@@ -24,6 +24,14 @@ namespace Core {
 				case GIT_DELTA_RENAMED: return FileChange::Renamed;
 				case GIT_DELTA_COPIED: return FileChange::Copied;
 				case GIT_DELTA_TYPECHANGE: return FileChange::TypeChanged;
+
+				// A file git has never seen is, against the index or against HEAD, a file
+				// that is entirely new - which is what an add is. libgit2 keeps the two
+				// deltas apart because a status listing wants to say "untracked"; a diff
+				// does not, and a view that only knew Added would otherwise draw the file
+				// as unmodified and empty.
+				case GIT_DELTA_UNTRACKED: return FileChange::Added;
+
 				default: return FileChange::Unmodified;
 			}
 		}
@@ -43,12 +51,16 @@ namespace Core {
 			file.Change = ToChange(delta->status);
 			file.IsBinary = (delta->flags & GIT_DIFF_FLAG_BINARY) != 0;
 
-			if (delta->old_file.path != nullptr && delta->status != GIT_DELTA_ADDED)
+			// Tested against the change rather than against delta->status, so that an
+			// untracked delta - an add by any other name - keeps the empty OldPath that
+			// FileDiff promises for one. Readers of that path go looking for a blob on the
+			// old side, and for a file git has never seen there is none.
+			if (delta->old_file.path != nullptr && file.Change != FileChange::Added)
 			{
 				file.OldPath = FromUtf8(delta->old_file.path);
 			}
 
-			if (delta->new_file.path != nullptr && delta->status != GIT_DELTA_DELETED)
+			if (delta->new_file.path != nullptr && file.Change != FileChange::Deleted)
 			{
 				file.NewPath = FromUtf8(delta->new_file.path);
 			}
@@ -117,6 +129,20 @@ namespace Core {
 		}
 
 		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
+
+		if (request.Target == DiffTarget::WorkTreeToIndex
+			|| request.Target == DiffTarget::WorkTreeToHead)
+		{
+			// A new file that has never been added is a change to the working tree, and the
+			// status listing already reports it as one - so a tab opened from that listing
+			// must find it here too, content and all. Without SHOW_UNTRACKED_CONTENT the
+			// delta arrives with no hunks, which reads on screen exactly like no change at
+			// all. RECURSE_UNTRACKED_DIRS goes with it because the file wanted may sit
+			// inside a directory git has never seen, and a pathspec naming that file matches
+			// nothing while the directory stands in for everything under it.
+			options.flags |= GIT_DIFF_INCLUDE_UNTRACKED | GIT_DIFF_SHOW_UNTRACKED_CONTENT
+							 | GIT_DIFF_RECURSE_UNTRACKED_DIRS;
+		}
 
 		std::string pathspec;
 		const char* pathspecEntry = nullptr;
