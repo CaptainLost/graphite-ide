@@ -307,6 +307,23 @@ namespace Graphite {
 		m_Answers.clear();
 	}
 
+	void LanguageServices::TakeDiagnostics(DiagnosticsUpdate& update)
+	{
+		update.Published.insert(update.Published.end(),
+								std::make_move_iterator(m_Diagnostics.Published.begin()),
+								std::make_move_iterator(m_Diagnostics.Published.end()));
+		update.Versions.insert(update.Versions.end(),
+							   std::make_move_iterator(m_Diagnostics.Versions.begin()),
+							   std::make_move_iterator(m_Diagnostics.Versions.end()));
+		update.Closed.insert(update.Closed.end(),
+							 std::make_move_iterator(m_Diagnostics.Closed.begin()),
+							 std::make_move_iterator(m_Diagnostics.Closed.end()));
+
+		m_Diagnostics.Published.clear();
+		m_Diagnostics.Versions.clear();
+		m_Diagnostics.Closed.clear();
+	}
+
 	void LanguageServices::Cancel(Ticket ticket)
 	{
 		for (auto& [key, server] : m_Servers)
@@ -351,14 +368,22 @@ namespace Graphite {
 		// Remembered before forwarding, not instead of it: a restart needs the text on hand with
 		// nowhere else to read it from, since the client that used to hold it is the one that
 		// just died.
-		std::string& kept = server.OpenDocuments[path];
-		kept = std::move(text);
+		ManagedServer::SentDocument& kept = server.OpenDocuments[path];
+		kept.Text = std::move(text);
 
 		// The kept copy, not a second one: `text` has been moved from, and the client only reads
 		// what it is given long enough to escape it into JSON.
 		if (server.Client)
 		{
-			server.Client->OpenDocument(path, kept);
+			kept.Version = server.Client->OpenDocument(path, kept.Text);
+
+			// A default version means nothing was actually sent - the client answers that way
+			// without a live process. A note claiming a version that never went anywhere would
+			// have a reader compare against a version no publication will ever name.
+			if (kept.Version != DocumentVersion{})
+			{
+				m_Diagnostics.Versions.push_back(DocumentVersionNote{path, kept.Version});
+			}
 		}
 	}
 
@@ -390,11 +415,17 @@ namespace Graphite {
 			return;
 		}
 
-		document->second = std::move(text);
+		document->second.Text = std::move(text);
 
 		if (server.Client)
 		{
-			server.Client->ChangeDocument(path, document->second);
+			document->second.Version = server.Client->ChangeDocument(path, document->second.Text);
+
+			if (document->second.Version != DocumentVersion{})
+			{
+				m_Diagnostics.Versions.push_back(
+					DocumentVersionNote{path, document->second.Version});
+			}
 		}
 	}
 
@@ -454,6 +485,10 @@ namespace Graphite {
 
 		if (server.Client)
 		{
+			// A note only when a live client was actually told - a document never sent (no
+			// binary found) has no version note either, so the model has no entry for it to
+			// drop in the first place.
+			m_Diagnostics.Closed.push_back(path);
 			server.Client->CloseDocument(path);
 		}
 	}
@@ -467,11 +502,18 @@ namespace Graphite {
 		server.Client.reset();
 		server.Client = std::make_unique<LspClient>(*server.Config, server.Binary, key.Root);
 
-		// A fresh server knows nothing about what is open. Every document remembered for this
-		// server is sent again, in no particular order — didOpen does not depend on prior state.
-		for (const auto& [path, text] : server.OpenDocuments)
+		// A fresh server knows nothing about what is open, and its numbering restarts at 1 - the
+		// old process's diagnostics, measured against the old numbering, are no longer about
+		// anything a new comparison can trust. Every document remembered for this server is sent
+		// again, in no particular order - didOpen does not depend on prior state - and each is
+		// reported both closed and reopened, so a reader holding a stale entry for it drops that
+		// entry before it ever compares the wrong process's version against the new one.
+		for (auto& [path, document] : server.OpenDocuments)
 		{
-			server.Client->OpenDocument(path, text);
+			document.Version = server.Client->OpenDocument(path, document.Text);
+
+			m_Diagnostics.Closed.push_back(path);
+			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, document.Version});
 		}
 
 		server.Restarts += 1;
@@ -625,8 +667,6 @@ namespace Graphite {
 			// see TakeAnswers for why there must be exactly one. A RequestId with no entry in
 			// Pending was already cancelled (Cancel erases it there without waiting for the
 			// server's reply), so it is dropped rather than delivered to nobody.
-			//
-			// drained.Diagnostics is left untouched here — nothing downstream reads it yet.
 			for (LspClient::Answer& answer : drained.Answers)
 			{
 				const auto pending = server.Pending.find(answer.Id);
@@ -646,6 +686,12 @@ namespace Graphite {
 				m_Answers.push_back(std::move(delivered));
 				server.Pending.erase(pending);
 			}
+
+			// Moved rather than copied - a publication is one server's word on one document, and
+			// Poll is the only place any Drain result is seen, same as drained.Answers above.
+			m_Diagnostics.Published.insert(m_Diagnostics.Published.end(),
+										   std::make_move_iterator(drained.Diagnostics.begin()),
+										   std::make_move_iterator(drained.Diagnostics.end()));
 
 			drained.Status.Restarts = server.Restarts;
 

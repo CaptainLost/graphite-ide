@@ -150,6 +150,28 @@ namespace Graphite {
 		std::vector<Diagnostic> Items; // empty means "all clear", which is a real answer
 	};
 
+	// What version a document was last sent under. Half of freshness; the other half is the
+	// version a publication names.
+	struct DocumentVersionNote
+	{
+		std::filesystem::path Path;
+		DocumentVersion Version;
+	};
+
+	// What the servers have said about documents since the last call, and what has since been
+	// sent to them. Both halves in one call because a set of diagnostics and the version it is
+	// measured against are one fact, and delivering them separately is a frame in which they
+	// disagree.
+	struct DiagnosticsUpdate
+	{
+		std::vector<PublishedDiagnostics> Published;
+		std::vector<DocumentVersionNote> Versions;
+
+		// Documents no server holds open any more - a closed tab, or a restart that threw the
+		// old process's numbering away. What makes an entry disappear.
+		std::vector<std::filesystem::path> Closed;
+	};
+
 	enum class DeclarationKind : std::uint8_t { Function, Type, Other };
 
 	// Two positions, because the protocol gives two and they answer different questions.

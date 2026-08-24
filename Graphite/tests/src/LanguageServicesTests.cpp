@@ -306,3 +306,41 @@ TEST_CASE("A ticket outstanding when its server dies is answered Failed, never l
 	CHECK(delivered);
 	CHECK(failed);
 }
+
+TEST_CASE("A fresh services object has nothing to say about diagnostics")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	Graphite::DiagnosticsUpdate update;
+	services.TakeDiagnostics(update);
+
+	CHECK(update.Published.empty());
+	CHECK(update.Versions.empty());
+	CHECK(update.Closed.empty());
+}
+
+TEST_CASE("A document a server never received produces no note")
+{
+	// The shape of every machine with no clangd installed: the language is configured, so an
+	// entry exists and reports NotFound, but nothing was ever sent. A version note here would
+	// claim a document was sent under a version that never went anywhere, and the model would
+	// then hold an entry for a file no server has ever heard of.
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp,
+								 temp.GetPath() / "no-such-clangd.exe");
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int main() {}\n");
+	services.CloseDocument(source, Graphite::LanguageId::Cpp);
+
+	Graphite::DiagnosticsUpdate update;
+	services.TakeDiagnostics(update);
+
+	CHECK(update.Versions.empty());
+	CHECK(update.Closed.empty());
+}

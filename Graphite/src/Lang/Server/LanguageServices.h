@@ -146,6 +146,12 @@ namespace Graphite {
 		// loop to form around.
 		void TakeAnswers(std::vector<Answer>& answers);
 
+		// UI thread only, once a frame, and - like TakeAnswers, and for the same reason - the
+		// only place diagnostics leave this class. Poll drains every client because it has to
+		// notice a dead process; nothing else may drain one, so nothing else can see this
+		// except through here.
+		void TakeDiagnostics(DiagnosticsUpdate& update);
+
 		void Cancel(Ticket ticket);
 
 		// Forwarded to the matching client and remembered here, so a restart can tell it again —
@@ -212,9 +218,16 @@ namespace Graphite {
 			bool RestartPending = false;
 			std::chrono::steady_clock::time_point RestartAt{};
 
-			// The text last sent for every document this server was told is open, so a restarted
-			// client can be told the same thing again.
-			std::map<std::filesystem::path, std::string> OpenDocuments;
+			// The text last sent for every document this server was told is open, and the version
+			// it went out under, so a restarted client can be told the same thing again and a
+			// reader can tell a current answer from one about text that has moved on.
+			struct SentDocument
+			{
+				std::string Text;
+				DocumentVersion Version;
+			};
+
+			std::map<std::filesystem::path, SentDocument> OpenDocuments;
 
 			// What ticket a still-outstanding `RequestId` of *this* client belongs to. RequestId
 			// is only meaningful together with the client that issued it — this is the map that
@@ -295,6 +308,7 @@ namespace Graphite {
 
 		std::uint64_t m_NextTicket = 1;
 		std::vector<Answer> m_Answers;
+		DiagnosticsUpdate m_Diagnostics;
 
 		// Last, deliberately: members are destroyed in reverse order of declaration, so this one
 		// joins its worker before anything the worker might still be touching goes away.
