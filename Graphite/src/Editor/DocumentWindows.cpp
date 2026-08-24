@@ -1822,10 +1822,8 @@ namespace Graphite {
 		}
 	}
 
-	void DocumentWindows::Render(const CommandContext& context, float fontSize,
-								 Core::IndentStyle indentStyle,
-								 unsigned int fallbackDockNode, bool wordWrap,
-								 const ResolvedScheme& scheme, ReferencesPanel& referencesPanel)
+	void DocumentWindows::Render(const CommandContext& context, const EditorFrame& frame,
+								 ReferencesPanel& referencesPanel)
 	{
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
@@ -1841,10 +1839,10 @@ namespace Graphite {
 		RenderReloadConflict();
 		RenderOverwriteConfirm();
 		RenderCloseConfirm();
-		RenderDefinitionChoices(scheme, indentStyle.Width);
+		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
-		RenderDocumentWindows(context, fontSize, indentStyle, fallbackDockNode, wordWrap, scheme,
-							  referencesPanel);
+		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
+							  frame.WordWrap, frame.Scheme, referencesPanel);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
 		// above would cost a walk of m_Syntax for every open document instead of one for the

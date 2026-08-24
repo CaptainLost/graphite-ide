@@ -513,9 +513,12 @@ namespace Graphite {
 
 		const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router, &m_FrameInput};
 
-		m_DocumentWindows.Render(commandContext, m_EditorSettings.GetFontSize(),
-								 m_EditorSettings.GetIndentStyle(), m_DockSpace.GetCenterNodeId(),
-								 m_EditorSettings.IsWordWrap(), m_ActiveScheme.Get(),
+		m_DocumentWindows.Render(commandContext,
+								 EditorFrame{.FontSize = m_EditorSettings.GetFontSize(),
+											 .Indent = m_EditorSettings.GetIndentStyle(),
+											 .FallbackDockNode = m_DockSpace.GetCenterNodeId(),
+											 .WordWrap = m_EditorSettings.IsWordWrap(),
+											 .Scheme = m_ActiveScheme.Get()},
 								 *m_ReferencesPanel);
 
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),

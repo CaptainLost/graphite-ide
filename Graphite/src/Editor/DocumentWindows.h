@@ -42,6 +42,23 @@ namespace Core {
 
 namespace Graphite {
 
+	// The settings one frame is drawn under. Bundled into a struct with a named field per
+	// setting, in the same spirit as StatusMessages in StatusBar.h:15 — as a flat parameter
+	// list this is exactly the shape ADR 0034 calls out: a compound value taken apart into
+	// individual elements, which a caller can pass in the wrong order with nothing to catch
+	// it. Designated initialisation at the one call site makes that mistake impossible rather
+	// than merely unlikely. Scheme is kept by reference rather than copied: ResolvedScheme
+	// holds two colour arrays, and every EditorFrame is a temporary built at the call site and
+	// passed straight into Render, so the reference never outlives what it points at.
+	struct EditorFrame
+	{
+		float FontSize;
+		Core::IndentStyle Indent;
+		unsigned int FallbackDockNode;
+		bool WordWrap;
+		const ResolvedScheme& Scheme;
+	};
+
 	class DocumentWindows
 	{
 	public:
@@ -58,9 +75,8 @@ namespace Graphite {
 		{
 		}
 
-		void Render(const CommandContext& context, float fontSize,
-					Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
-					bool wordWrap, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel);
+		void Render(const CommandContext& context, const EditorFrame& frame,
+					ReferencesPanel& referencesPanel);
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
 
