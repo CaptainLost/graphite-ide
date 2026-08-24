@@ -286,6 +286,29 @@ TEST_CASE("Amend replaces HEAD and keeps its parent")
 	CHECK(after.GetValue().Commits.front().Summary == "second, reworded");
 }
 
+TEST_CASE("Amend with no message keeps the message it is replacing")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	fixture.Write("b.txt", "two\n");
+	REQUIRE(repository.GetValue().Stage({"b.txt"}).HasValue());
+
+	// Amending to add a forgotten file is the case with nothing to say: the message is
+	// already written, and an empty box means "leave it alone", not "make it blank".
+	const auto amended = repository.GetValue().Commit({.Message = "", .Amend = true});
+	REQUIRE(amended.HasValue());
+
+	const auto after = repository.GetValue().QueryLog({});
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue().Commits.front().Summary == "first");
+}
+
 TEST_CASE("Amend fails when HEAD is unborn")
 {
 	GitFixture fixture;

@@ -92,6 +92,10 @@ namespace Core {
 
 		// Replaces HEAD rather than adding to it, keeping HEAD's parents. Fails on an
 		// unborn HEAD, which has nothing to replace.
+		//
+		// An empty Message keeps the message of the commit being replaced, rather than
+		// blanking it - amending to add a forgotten file is the case with nothing new to
+		// say. Without Amend an empty Message is just an empty message, which git rejects.
 		bool Amend = false;
 	};
 }

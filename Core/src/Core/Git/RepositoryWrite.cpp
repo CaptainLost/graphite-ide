@@ -270,10 +270,18 @@ namespace Core {
 							 "there is no commit to amend: HEAD is unborn"};
 			}
 
+			// No message means "keep the one that is already there", not "replace it with
+			// nothing": amending to add a forgotten file is the case with nothing to say,
+			// and a wiped message is not something the caller could put back. git_commit_amend
+			// reads a null message - and a null encoding, which has to go with it - as leaving
+			// that field of the original commit alone.
+			const bool keepMessage = request.Message.empty();
+
 			// git_commit_amend keeps the parents of the commit it replaces, which is the
 			// whole reason amend is not just "commit with HEAD^ as the parent".
-			if (git_commit_amend(&commitId, head, "HEAD", who, who, "UTF-8",
-								 request.Message.c_str(), tree) == 0)
+			if (git_commit_amend(&commitId, head, "HEAD", who, who,
+								 keepMessage ? nullptr : "UTF-8",
+								 keepMessage ? nullptr : request.Message.c_str(), tree) == 0)
 			{
 				answer = ToOid(commitId);
 			}
