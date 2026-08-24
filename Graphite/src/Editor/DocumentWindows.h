@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/ModalGate.h"
+#include "Editor/DiagnosticOverlay.h"
 #include "Editor/FindBar.h"
 #include "Editor/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
@@ -10,6 +11,7 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Lang/Syntax/SyntaxCache.h"
 
@@ -63,9 +65,11 @@ namespace Graphite {
 	{
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
-						LanguageServices& languageServices, PreviewSemantics& previewSemantics)
+						LanguageServices& languageServices, const DiagnosticsModel& diagnostics,
+						PreviewSemantics& previewSemantics)
 			: m_Documents(documents),
 			  m_LanguageServices(languageServices),
+			  m_Diagnostics(diagnostics),
 			  m_PreviewSemantics(previewSemantics),
 			  m_Modals(modals),
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
@@ -202,6 +206,15 @@ namespace Graphite {
 		// exists. Opens the document with the server the first time it is asked for.
 		LensState* LensFor(const Core::OpenItem& item);
 		SemanticOverlay& SemanticFor(const Core::OpenItem& item);
+
+		// The drawable form of what m_Diagnostics holds for this document, rebuilt only when one
+		// of the three inputs to the conversion has moved since the last call: the buffer's
+		// revision, the tab width, or whether m_Diagnostics has answered anew for this path. Kept
+		// per document rather than recomputed every frame because the conversion walks every
+		// line a diagnostic touches, and most frames change none of the three. Always returns a
+		// valid overlay, empty for a document nothing has been said about - the same idiom
+		// SemanticFor above uses.
+		DiagnosticOverlay& DiagnosticFor(const Core::OpenItem& item);
 
 		// Analysis outlives its tab: KeepAnalysis puts a closing document's answers away and
 		// RestoreAnalysis hands them to a reopening one. See AnalysisCache for why what comes back
@@ -366,6 +379,11 @@ namespace Graphite {
 
 		LanguageServices& m_LanguageServices;
 
+		// Declared right after m_LanguageServices, which fills it - see GraphiteLayer.h for why
+		// that order matters. Held by reference: GraphiteLayer owns it and feeds it once a frame,
+		// before this class ever reads it.
+		const DiagnosticsModel& m_Diagnostics;
+
 		// The preview panes' own mediator to the language servers, held by reference like
 		// m_LanguageServices above and declared right after it for the same reason: this class
 		// does not own it, GraphiteLayer does, and it must outlive every document window.
@@ -467,6 +485,28 @@ namespace Graphite {
 		// state rather than folded into it: they answer different questions about the same file
 		// and nothing about one is needed to read the other.
 		std::map<std::filesystem::path, SemanticOverlay> m_Semantic;
+
+		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
+		// and whether m_Diagnostics had answered for this path, so a rebuild is skipped on every
+		// frame that changed none of them. HasAnswer is carried alongside AnsweredVersion rather
+		// than folded into it: DocumentVersion{} is both "never answered" and what an answer
+		// naming no version reads as (see DiagnosticsModel::Entry), and those two have to be told
+		// apart the same way DiagnosticsModel::IsStale tells them apart, or the very first
+		// publication for a document that answers without a version would be mistaken for the
+		// unanswered state it replaced and never trigger a rebuild.
+		struct DiagnosticGuard
+		{
+			std::size_t Revision = 0;
+			std::size_t TabWidth = 0;
+			bool HasAnswer = false;
+			int AnsweredVersion = 0;
+		};
+
+		// The drawable form of what m_Diagnostics holds for one document, beside m_Semantic and
+		// pruned with it for the same reason: DiagnosticFor is called for every drawn document,
+		// including those no server serves.
+		std::map<std::filesystem::path, DiagnosticOverlay> m_DiagnosticOverlays;
+		std::map<std::filesystem::path, DiagnosticGuard> m_DiagnosticGuards;
 
 		// Answers belonging to documents whose tabs have closed. Sixteen because the point is the
 		// handful of files someone moves between, and an entry costs a map of spans per line.

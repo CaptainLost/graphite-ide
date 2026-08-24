@@ -437,6 +437,14 @@ namespace Graphite {
 		// appears there is nothing to read at all.
 		m_LanguageServices.Poll();
 
+		// Before anything draws, for the reason the Tick below gives: the panels render at 512
+		// and DocumentWindows drains its own answers at 516, so a model fed any later is read by
+		// the panel one frame before it is written - and on every frame a diagnostic arrives,
+		// the squiggle and the panel row disagree.
+		DiagnosticsUpdate diagnostics;
+		m_LanguageServices.TakeDiagnostics(diagnostics);
+		m_Diagnostics.Apply(diagnostics);
+
 		// Before the panels draw, so what they declare this frame is stamped with this frame's
 		// number, and so an entry nothing declared last frame is closed before anything asks
 		// about it again.

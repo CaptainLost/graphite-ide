@@ -857,6 +857,8 @@ namespace Graphite {
 				ForgetPendingFor(it->first);
 
 				m_Semantic.erase(it->first);
+				m_DiagnosticOverlays.erase(it->first);
+				m_DiagnosticGuards.erase(it->first);
 				it = m_Lenses.erase(it);
 			}
 		}
@@ -877,6 +879,22 @@ namespace Graphite {
 			else
 			{
 				it = m_Semantic.erase(it);
+			}
+		}
+
+		// The same sweep as above, and for the same reason: DiagnosticFor is called for every
+		// drawn document, so m_DiagnosticOverlays collects entries m_Lenses never had and the
+		// loop at the top of this function therefore never visits.
+		for (auto it = m_DiagnosticOverlays.begin(); it != m_DiagnosticOverlays.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				m_DiagnosticGuards.erase(it->first);
+				it = m_DiagnosticOverlays.erase(it);
 			}
 		}
 	}
@@ -1001,6 +1019,49 @@ namespace Graphite {
 	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
 	{
 		return m_Semantic[item.Path];
+	}
+
+	DiagnosticOverlay& DocumentWindows::DiagnosticFor(const Core::OpenItem& item)
+	{
+		DiagnosticOverlay& overlay = m_DiagnosticOverlays[item.Path];
+
+		// Without a buffer there is nothing to convert positions against, so the overlay is left
+		// exactly as it stood - empty for a document that has never had one. Diagnostics are not
+		// part of what KeepAnalysis/RestoreAnalysis carry across a close, so there is nothing
+		// stale to worry about reusing here either.
+		if (!item.Document)
+		{
+			return overlay;
+		}
+
+		const auto& documents = m_Diagnostics.Documents();
+		const auto entry = documents.find(item.Path);
+
+		// HasAnswer alongside the version rather than folded into it - see the comment on
+		// DiagnosticGuard for why the two have to be told apart.
+		const bool hasAnswer = entry != documents.end() && entry->second.HasAnswer;
+		const int answeredVersion = hasAnswer ? entry->second.Answered.Value : 0;
+		const std::size_t revision = item.Document->GetBuffer().GetRevision();
+
+		DiagnosticGuard& guard = m_DiagnosticGuards[item.Path];
+
+		// Every one of the three inputs to the conversion is unchanged: rebuilding would walk
+		// every line a diagnostic touches for no different a result, so the last-built overlay
+		// stands.
+		if (guard.Revision == revision && guard.TabWidth == item.TabWidth &&
+			guard.HasAnswer == hasAnswer && guard.AnsweredVersion == answeredVersion)
+		{
+			return overlay;
+		}
+
+		guard.Revision = revision;
+		guard.TabWidth = item.TabWidth;
+		guard.HasAnswer = hasAnswer;
+		guard.AnsweredVersion = answeredVersion;
+
+		overlay.Set(m_Diagnostics.For(item.Path), item.Document->GetBuffer(), item.TabWidth);
+
+		return overlay;
 	}
 
 	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
@@ -1756,6 +1817,17 @@ namespace Graphite {
 				// nothing in it colours nothing, so the widget needs no branch of its own and a
 				// document with no server behind it draws exactly as it always did.
 				view.Semantic = &SemanticFor(item);
+
+				// Null when nothing has been said about this document, the same idiom as Lens
+				// above: an overlay with nothing in it is indistinguishable from one nobody
+				// asked for, so there is no reason to make the widget hold an always-valid but
+				// possibly-empty overlay when a null pointer already says the same thing.
+				if (DiagnosticOverlay& diagnostics = DiagnosticFor(item); !diagnostics.IsEmpty())
+				{
+					view.Diagnostics = &diagnostics;
+				}
+
+				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 

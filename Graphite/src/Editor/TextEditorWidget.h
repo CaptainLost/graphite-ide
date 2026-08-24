@@ -23,6 +23,7 @@ namespace Graphite {
 	class LensModel;
 	class SyntaxCache;
 	class SemanticOverlay;
+	class DiagnosticOverlay;
 	struct ResolvedScheme;
 
 	struct CommandContext
@@ -96,6 +97,15 @@ namespace Graphite {
 		// lens row, without ever branching on whether a server exists. The same reason an empty
 		// token list saves it from branching on Syntax.
 		LensModel* Lens = nullptr;
+
+		// Null when the model holds nothing for this path - the same null-means-nothing-to-draw
+		// idiom Lens above already uses.
+		const DiagnosticOverlay* Diagnostics = nullptr;
+
+		// Read from DiagnosticsModel::IsStale for this document. Passed as a bool rather than by
+		// handing the widget the model: the widget draws what it is given and has no business
+		// holding something it could query.
+		bool DiagnosticsStale = false;
 	};
 
 	class FindBar;

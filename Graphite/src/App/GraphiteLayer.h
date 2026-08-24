@@ -11,6 +11,7 @@
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
@@ -131,6 +132,11 @@ namespace Graphite {
 		// frame through StatusFor.
 		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
 
+		// Declared after m_LanguageServices, which fills it each frame in OnImGuiRender, and
+		// before m_DocumentWindows and m_Panels, both of which hold this by reference: the model
+		// must outlive every reader of it through teardown.
+		DiagnosticsModel m_Diagnostics;
+
 		ModalGate m_Modals;
 
 		// Declared after m_LanguageServices, which the port forwards to, and before
@@ -140,7 +146,7 @@ namespace Graphite {
 
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers.
-		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices,
+		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices, m_Diagnostics,
 										  m_PreviewSemantics};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
