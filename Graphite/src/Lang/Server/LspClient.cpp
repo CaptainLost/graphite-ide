@@ -931,7 +931,8 @@ namespace Graphite {
 		}
 	}
 
-	void LspClient::OpenDocument(const std::filesystem::path& path, const std::string& text)
+	DocumentVersion LspClient::OpenDocument(const std::filesystem::path& path,
+											const std::string& text)
 	{
 		const std::string uri = ToFileUri(path);
 
@@ -947,9 +948,12 @@ namespace Graphite {
 		params["textDocument"]["text"] = text;
 
 		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didOpen", params));
+
+		return DocumentVersion{document.Version};
 	}
 
-	void LspClient::ChangeDocument(const std::filesystem::path& path, const std::string& text)
+	DocumentVersion LspClient::ChangeDocument(const std::filesystem::path& path,
+											  const std::string& text)
 	{
 		const std::string uri = ToFileUri(path);
 
@@ -960,7 +964,7 @@ namespace Graphite {
 		if (found == m_Shared->Documents.end())
 		{
 			// A change to a document the server was never told about would be a change to nothing.
-			return;
+			return DocumentVersion{};
 		}
 
 		Document& document = found->second;
@@ -979,6 +983,8 @@ namespace Graphite {
 		params["contentChanges"] = nlohmann::json::array({std::move(change)});
 
 		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didChange", params));
+
+		return DocumentVersion{document.Version};
 	}
 
 	void LspClient::SaveDocument(const std::filesystem::path& path)
@@ -1165,7 +1171,7 @@ namespace Graphite {
 		return m_Shared->Queued.size();
 	}
 
-	void LspClient::Drain(std::vector<Answer>& answers, ServerStatus& status)
+	void LspClient::Drain(Drained& drained)
 	{
 		// Before the status is read out, so a handshake that ran out of time between this frame
 		// and the last is reported as Failed on this one rather than the next.
@@ -1175,12 +1181,19 @@ namespace Graphite {
 		// hold up: StateMutex is never held across a read from, or a write to, the pipe.
 		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
-		answers.insert(answers.end(), std::make_move_iterator(m_Shared->Answers.begin()),
-					   std::make_move_iterator(m_Shared->Answers.end()));
+		drained.Answers.insert(drained.Answers.end(),
+							   std::make_move_iterator(m_Shared->Answers.begin()),
+							   std::make_move_iterator(m_Shared->Answers.end()));
 
 		m_Shared->Answers.clear();
 
-		status = m_Shared->Status;
+		drained.Diagnostics.insert(drained.Diagnostics.end(),
+								   std::make_move_iterator(m_Shared->Diagnostics.begin()),
+								   std::make_move_iterator(m_Shared->Diagnostics.end()));
+
+		m_Shared->Diagnostics.clear();
+
+		drained.Status = m_Shared->Status;
 	}
 
 	void LspClient::Deliver(const std::string& body)
@@ -1366,8 +1379,38 @@ namespace Graphite {
 				ApplyProgress(shared, incoming->Payload);
 			}
 
-			// Everything else a server volunteers — diagnostics, log lines, telemetry — has
-			// nowhere to go yet, and dropping a notification is always allowed.
+			if (incoming->Method == "textDocument/publishDiagnostics")
+			{
+				PublishedDiagnostics published = ParseDiagnostics(incoming->Payload);
+
+				if (!published.Path.empty())
+				{
+					// Dropped unless this client holds the document open. A publication can
+					// outlive its didClose - the notification is already in flight when the
+					// close goes out - and the warm-up in LanguageServices::Poll opens and
+					// closes a file deliberately. Shared::Documents is the authority on what is
+					// open and is already erased on close, so this check costs a lookup.
+					const std::string uri = ToFileUri(published.Path);
+
+					bool open = false;
+
+					{
+						const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
+						open = shared.Documents.contains(uri);
+					}
+
+					if (open)
+					{
+						const std::lock_guard<std::mutex> state(shared.StateMutex);
+						shared.Diagnostics.push_back(std::move(published));
+					}
+				}
+
+				return;
+			}
+
+			// window/logMessage and telemetry still have nowhere to go, and dropping a
+			// notification is always allowed.
 			return;
 		}
 

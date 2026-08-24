@@ -105,8 +105,12 @@ namespace Graphite {
 		LspClient(const LspClient&) = delete;
 		LspClient& operator=(const LspClient&) = delete;
 
-		void OpenDocument(const std::filesystem::path& path, const std::string& text);
-		void ChangeDocument(const std::filesystem::path& path, const std::string& text);
+		// Each returns the version it sent the document under, which is the only thing that can
+		// later say whether an answer describes the text on screen. ChangeDocument returns a
+		// default-constructed version for a document the server was never told about, which is
+		// the same "nothing was sent" its early-out has always meant but never said.
+		DocumentVersion OpenDocument(const std::filesystem::path& path, const std::string& text);
+		DocumentVersion ChangeDocument(const std::filesystem::path& path, const std::string& text);
 		void SaveDocument(const std::filesystem::path& path);
 		void CloseDocument(const std::filesystem::path& path);
 
@@ -151,10 +155,22 @@ namespace Graphite {
 		// until the process runs out of memory.
 		std::size_t QueuedCount() const;
 
-		// UI thread only. Moves everything answered since the last call into `answers` and
-		// reports where the server is. Also expires a handshake that has run out of time, which is
-		// what makes that check cost nothing extra: this already runs once a frame.
-		void Drain(std::vector<Answer>& answers, ServerStatus& status);
+		// Everything one client has for the UI thread since the last call. A struct rather than
+		// three out-parameters: two of these three - the status and the diagnostics - arrive with
+		// no RequestId to travel on, and a parameter list that grows once per unticketed message
+		// kind is the one ADR 0034 asks to be replaced by the type it is spelling out.
+		struct Drained
+		{
+			std::vector<Answer> Answers;
+			ServerStatus Status;
+			std::vector<PublishedDiagnostics> Diagnostics;
+		};
+
+		// UI thread only. Moves everything the server has said since the last call into
+		// `drained` and reports where the server is. Also expires a handshake that has run out
+		// of time, which is what makes that check cost nothing extra: this already runs once a
+		// frame.
+		void Drain(Drained& drained);
 
 		void Cancel(RequestId id);
 
@@ -216,7 +232,7 @@ namespace Graphite {
 		// deadlock this shape exists to prevent is one where the UI thread waits to write while
 		// the server waits for us to read. Add a message and reach for the right one:
 		//
-		//   StateMutex     Answers and Status. What Drain collects, and nothing else.
+		//   StateMutex     Answers, Status and Diagnostics. What Drain collects, and nothing else.
 		//   ProtocolMutex  Bookkeeping only: id allocation, the outstanding table, the document
 		//                  versions, the pre-handshake queue, InitializeId, Initialized,
 		//                  ReaderStopped. Never held across any I/O whatsoever.
@@ -232,6 +248,7 @@ namespace Graphite {
 			std::mutex StateMutex;
 			std::vector<Answer> Answers;
 			ServerStatus Status;
+			std::vector<PublishedDiagnostics> Diagnostics;
 
 			std::mutex ProtocolMutex;
 			JsonRpc Rpc;

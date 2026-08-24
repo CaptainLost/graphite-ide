@@ -618,15 +618,16 @@ namespace Graphite {
 				continue;
 			}
 
-			std::vector<LspClient::Answer> answers;
-			ServerStatus status;
-			server.Client->Drain(answers, status);
+			LspClient::Drained drained;
+			server.Client->Drain(drained);
 
 			// This is the single place any LspClient::Answer is turned into a ticketed Answer —
 			// see TakeAnswers for why there must be exactly one. A RequestId with no entry in
 			// Pending was already cancelled (Cancel erases it there without waiting for the
 			// server's reply), so it is dropped rather than delivered to nobody.
-			for (LspClient::Answer& answer : answers)
+			//
+			// drained.Diagnostics is left untouched here — nothing downstream reads it yet.
+			for (LspClient::Answer& answer : drained.Answers)
 			{
 				const auto pending = server.Pending.find(answer.Id);
 
@@ -646,7 +647,7 @@ namespace Graphite {
 				server.Pending.erase(pending);
 			}
 
-			status.Restarts = server.Restarts;
+			drained.Status.Restarts = server.Restarts;
 
 			// Logged on the change, not on the state: Poll runs every frame, so anything keyed on
 			// the state itself would say the same thing sixty times a second. Indexing is the one
@@ -654,11 +655,11 @@ namespace Graphite {
 			// index, so counts read low and definitions in files it has not reached yet are
 			// missing, and knowing when that stopped being true is the difference between a wrong
 			// answer and a wrong answer with a reason.
-			if (status.State != server.Status.State)
+			if (drained.Status.State != server.Status.State)
 			{
 				const std::string_view name = LanguageDisplayName(key.Language);
 
-				if (status.State == ServerState::Indexing)
+				if (drained.Status.State == ServerState::Indexing)
 				{
 					APP_INFO("{} started indexing for {}", server.Status.Name, name);
 				}
@@ -666,15 +667,15 @@ namespace Graphite {
 				{
 					APP_INFO("{} finished indexing for {}", server.Status.Name, name);
 				}
-				else if (status.State == ServerState::Failed)
+				else if (drained.Status.State == ServerState::Failed)
 				{
-					APP_WARN("{} failed for {}: {}", server.Status.Name, name, status.Detail);
+					APP_WARN("{} failed for {}: {}", server.Status.Name, name, drained.Status.Detail);
 				}
 			}
 
-			server.Status = status;
+			server.Status = drained.Status;
 
-			if (status.State != ServerState::Failed)
+			if (drained.Status.State != ServerState::Failed)
 			{
 				server.RestartPending = false;
 				continue;

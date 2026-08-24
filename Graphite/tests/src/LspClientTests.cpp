@@ -297,12 +297,10 @@ namespace {
 
 	Graphite::ServerStatus StatusOf(Graphite::LspClient& client)
 	{
-		std::vector<Graphite::LspClient::Answer> answers;
-		Graphite::ServerStatus status;
+		Graphite::LspClient::Drained drained;
+		client.Drain(drained);
 
-		client.Drain(answers, status);
-
-		return status;
+		return drained.Status;
 	}
 
 	// The id BeginHandshake allocates, since it is the first request a client ever makes.
@@ -380,9 +378,9 @@ TEST_CASE("A references answer leaves out the position it was asked from, and no
 		R"({"uri":"file:///D:/Application.h","range":{"start":{"line":39,"character":11}}},)"
 		R"({"uri":"file:///D:/Main.cpp","range":{"start":{"line":54,"character":10}}}]})");
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
-	client.Drain(answers, status);
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
 	REQUIRE(answers.size() == 1);
 
@@ -428,9 +426,9 @@ TEST_CASE("A server declaring a legend is asked, and its reply is read through t
 	// client that had hard-coded the protocol's own order would read it as something else.
 	client.Deliver(R"({"id":)" + std::to_string(id) + R"(,"result":{"data":[3,2,11,1,0]}})");
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
-	client.Drain(answers, status);
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
 	REQUIRE(answers.size() == 1);
 	REQUIRE(answers[0].SemanticTokens.size() == 1);
@@ -652,9 +650,9 @@ TEST_CASE("An answer is correlated to the question that was asked under its id")
 	client.Deliver(R"({"id":)" + std::to_string(definition) +
 				   R"(,"result":[{"uri":"file:///D:/a.cpp","range":{"start":{"line":3,"character":0}}}]})");
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
-	client.Drain(answers, status);
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
 	REQUIRE(answers.size() == 2);
 
@@ -682,9 +680,9 @@ TEST_CASE("A cancelled question's reply is dropped rather than delivered to nobo
 	client.Deliver(R"({"id":)" + std::to_string(id) +
 				   R"(,"result":[{"uri":"file:///D:/a.cpp","range":{"start":{"line":0,"character":0}}}]})");
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
-	client.Drain(answers, status);
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
 	CHECK(answers.empty());
 }
@@ -745,12 +743,12 @@ TEST_CASE("A question asked of a server that never started is answered rather th
 
 	const Graphite::RequestId id = client.AskDefinition({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
-	client.Drain(answers, status);
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
-	CHECK(status.State == Graphite::ServerState::Failed);
-	CHECK(status.Name == "clangd");
+	CHECK(drained.Status.State == Graphite::ServerState::Failed);
+	CHECK(drained.Status.Name == "clangd");
 
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].Id == id);
@@ -810,9 +808,9 @@ TEST_CASE("A client whose child never speaks the protocol still shuts down")
 
 	client.OpenDocument(temp.GetPath() / "main.cpp", "int Main() { return 0; }\n");
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
-	client.Drain(answers, status);
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
 	CHECK(answers.empty());
 }
@@ -839,14 +837,15 @@ TEST_CASE("clangd answers a definition request" * doctest::skip(true))
 	// Line 1, column 21 is inside the call to Answer.
 	const Graphite::RequestId id = client.AskDefinition({source, 1, Graphite::Utf16Column{21}});
 
-	std::vector<Graphite::LspClient::Answer> answers;
-	Graphite::ServerStatus status;
+	Graphite::LspClient::Drained drained;
 
-	for (int attempt = 0; attempt < 200 && answers.empty(); ++attempt)
+	for (int attempt = 0; attempt < 200 && drained.Answers.empty(); ++attempt)
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(50));
-		client.Drain(answers, status);
+		client.Drain(drained);
 	}
+
+	const std::vector<Graphite::LspClient::Answer>& answers = drained.Answers;
 
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].Id == id);
@@ -961,4 +960,76 @@ TEST_CASE("A range with no end collapses onto its start")
 	REQUIRE(published.Items.size() == 1);
 	CHECK(published.Items[0].EndLine == 5);
 	CHECK(published.Items[0].EndColumn == Graphite::Utf16Column{2});
+}
+
+TEST_CASE("A publication for an open document leaves through Drain")
+{
+	Graphite::LspClient client = Offline("C:/src");
+
+	client.OpenDocument("C:/src/Main.cpp", "int main() {}\n");
+
+	client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+		"uri":"file:///C:/src/Main.cpp","version":1,
+		"diagnostics":[{"range":{"start":{"line":0,"character":4},
+			"end":{"line":0,"character":8}},"severity":1,"message":"boom"}]}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Diagnostics.size() == 1);
+	CHECK(drained.Diagnostics[0].Path == std::filesystem::path{"C:/src/Main.cpp"});
+	CHECK(drained.Diagnostics[0].Version == Graphite::DocumentVersion{1});
+	REQUIRE(drained.Diagnostics[0].Items.size() == 1);
+	CHECK(drained.Diagnostics[0].Items[0].Message == "boom");
+}
+
+TEST_CASE("A publication for a document this client never opened is dropped")
+{
+	// Not hypothetical. The warm-up in LanguageServices::Poll opens a representative file and
+	// closes it immediately, and a publication for it can already be in flight when the close
+	// goes out; preview panes open and close documents the same way. Without this the model
+	// collects entries for files nothing on screen corresponds to.
+	Graphite::LspClient client = Offline("C:/src");
+
+	client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+		"uri":"file:///C:/src/Never.cpp","version":1,
+		"diagnostics":[{"range":{"start":{"line":0,"character":0},
+			"end":{"line":0,"character":1}},"severity":1,"message":"boom"}]}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	CHECK(drained.Diagnostics.empty());
+}
+
+TEST_CASE("A publication arriving after the document was closed is dropped")
+{
+	Graphite::LspClient client = Offline("C:/src");
+
+	client.OpenDocument("C:/src/Main.cpp", "int main() {}\n");
+	client.CloseDocument("C:/src/Main.cpp");
+
+	client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+		"uri":"file:///C:/src/Main.cpp","version":1,
+		"diagnostics":[{"range":{"start":{"line":0,"character":0},
+			"end":{"line":0,"character":1}},"severity":1,"message":"boom"}]}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	CHECK(drained.Diagnostics.empty());
+}
+
+TEST_CASE("The version a document is sent under is the one that goes out on the wire")
+{
+	Graphite::LspClient client = Offline("C:/src");
+
+	const Graphite::DocumentVersion opened = client.OpenDocument("C:/src/Main.cpp", "a\n");
+	const Graphite::DocumentVersion changed = client.ChangeDocument("C:/src/Main.cpp", "ab\n");
+
+	CHECK(opened == Graphite::DocumentVersion{1});
+	CHECK(changed == Graphite::DocumentVersion{2});
+
+	// A change to a document that was never opened is a change to nothing, and says so.
+	CHECK(client.ChangeDocument("C:/src/Other.cpp", "x\n") == Graphite::DocumentVersion{});
 }
