@@ -86,6 +86,27 @@ TEST_CASE("A set the buffer has outrun is stale")
 
 	CHECK(model.IsStale(kMain));
 	CHECK(model.For(kMain).size() == 1);   // dimmed, not dropped
+	CHECK(model.Total().Errors == 1);      // Total counts a stale entry's items too - dimmed, not dropped
+}
+
+TEST_CASE("A publication naming no version reads as stale once anything has been sent")
+{
+	// The protocol allows a publication that names no version at all - ParseDiagnostics treats
+	// version as optional, matching the LSP spec. DocumentVersion{} is both "never sent" and
+	// what such a reply reads as, so this must not be mistaken for "never answered": the safe
+	// reading is stale as soon as anything has been sent, per DocumentVersion's own comment.
+	Graphite::DiagnosticsModel model;
+
+	Graphite::DiagnosticsUpdate versionless;
+	versionless.Published.push_back(
+		Graphite::PublishedDiagnostics{kMain, Graphite::DocumentVersion{}, {Error(3, "one")}});
+	model.Apply(versionless);
+
+	Graphite::DiagnosticsUpdate typed;
+	typed.Versions.push_back({kMain, Graphite::DocumentVersion{1}});
+	model.Apply(typed);
+
+	CHECK(model.IsStale(kMain));
 }
 
 TEST_CASE("A close forgets a document entirely")
@@ -107,9 +128,11 @@ TEST_CASE("A close forgets a document entirely")
 
 TEST_CASE("A document closed and reopened within one update describes its new life")
 {
-	// This is a restart: the same update carries the close and the version that replaced it.
-	// Applying them in the other order would leave the document forgotten, and the publication
-	// that follows would be measured against a version nobody recorded.
+	// This is a restart: the same update carries the close, the version that replaced it, and
+	// the first diagnostics against the new session - the real shape of a re-diagnosed reopen.
+	// Applying the close last would let it erase the very publication this same update just
+	// wrote, since versions and publications write disjoint fields and nothing else distinguishes
+	// the two orderings: this is the case that actually pins closes running first.
 	Graphite::DiagnosticsModel model;
 
 	Graphite::DiagnosticsUpdate before;
@@ -120,10 +143,13 @@ TEST_CASE("A document closed and reopened within one update describes its new li
 	Graphite::DiagnosticsUpdate restart;
 	restart.Closed.push_back(kMain);
 	restart.Versions.push_back({kMain, Graphite::DocumentVersion{1}});
+	restart.Published.push_back(Published(1, {Error(5, "fresh")}));
 	model.Apply(restart);
 
-	// The old set is gone rather than being read as fresh against the reset numbering.
-	CHECK(model.For(kMain).empty());
+	// The old set is gone, and the new one - published within the same update that reopened the
+	// document - survives the close rather than being wiped out by it.
+	REQUIRE(model.For(kMain).size() == 1);
+	CHECK(model.For(kMain)[0].Message == "fresh");
 	CHECK(!model.IsStale(kMain));
 }
 

@@ -20,6 +20,7 @@ namespace Graphite {
 		{
 			Entry& entry = m_Documents[published.Path];
 			entry.Answered = published.Version;
+			entry.HasAnswer = true;
 			entry.Items = published.Items;
 		}
 	}
@@ -45,11 +46,12 @@ namespace Graphite {
 			return false;
 		}
 
-		// A document with a version sent but no answer yet is not stale - it simply has nothing
-		// to be stale about. Without this, a fresh entry born from a restart's version note
-		// (Answered still at its default of "never") would read as stale against the very first
-		// version it was ever given.
-		if (it->second.Answered == DocumentVersion{})
+		// A document with a version sent but no answer at all yet is not stale - it simply has
+		// nothing to be stale about. Without this, a fresh entry born from a restart's version
+		// note would read as stale against the very first version it was ever given. This is
+		// distinct from a genuine answer that names no version: HasAnswer tells those apart,
+		// because DocumentVersion{} means both things and comparing on the value alone cannot.
+		if (!it->second.HasAnswer)
 		{
 			return false;
 		}
@@ -65,13 +67,16 @@ namespace Graphite {
 		{
 			for (const Diagnostic& diagnostic : entry.Items)
 			{
-				if (diagnostic.Severity == DiagnosticSeverity::Error)
+				// Exhaustive rather than if/else: a third severity added to the enum without a
+				// case here fails the build instead of silently counting as a warning.
+				switch (diagnostic.Severity)
 				{
+				case DiagnosticSeverity::Error:
 					++counts.Errors;
-				}
-				else
-				{
+					break;
+				case DiagnosticSeverity::Warning:
 					++counts.Warnings;
+					break;
 				}
 			}
 		}

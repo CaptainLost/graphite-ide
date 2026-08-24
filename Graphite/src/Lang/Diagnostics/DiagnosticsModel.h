@@ -33,6 +33,15 @@ namespace Graphite {
 			// a flag written at delivery would be wrong within a frame.
 			DocumentVersion Sent;
 			DocumentVersion Answered;
+
+			// Whether a publication has landed at all. DocumentVersion{} is both "never sent" and
+			// what a reply naming no version reads as (see its own comment), so Answered alone
+			// cannot tell a document that has never been answered from one a server answered
+			// without naming a version - and those two cases must read oppositely: the first is
+			// not stale, having nothing to be stale about; the second is stale as soon as anything
+			// has been sent, which is the safe reading DocumentVersion's own comment commits to.
+			bool HasAnswer = false;
+
 			std::vector<Diagnostic> Items;
 		};
 
