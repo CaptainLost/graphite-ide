@@ -51,6 +51,10 @@ namespace Graphite {
 			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::MatchingBracket)]);
 		palette.UnmatchedBracket =
 			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::UnmatchedBracket)]);
+		palette.DiagnosticError =
+			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::DiagnosticError)]);
+		palette.DiagnosticWarning =
+			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::DiagnosticWarning)]);
 
 		return palette;
 	}

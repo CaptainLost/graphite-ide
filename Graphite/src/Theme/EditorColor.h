@@ -32,6 +32,13 @@ namespace Graphite {
 		MatchingBracket,
 		UnmatchedBracket,
 
+		// The squiggle under what a language server called wrong. Two colours, not four: a
+		// diagnostic the buffer has outrun is drawn in the same colour at lower alpha, because
+		// stale is a state of a diagnostic rather than a different kind of one - and every
+		// colour added here is one every scheme's author has to choose.
+		DiagnosticError,
+		DiagnosticWarning,
+
 		Count
 	};
 }

@@ -23,5 +23,7 @@ namespace Graphite {
 		ImU32 Lens = 0;
 		ImU32 MatchingBracket = 0;
 		ImU32 UnmatchedBracket = 0;
+		ImU32 DiagnosticError = 0;
+		ImU32 DiagnosticWarning = 0;
 	};
 }

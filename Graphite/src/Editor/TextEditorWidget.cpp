@@ -1,6 +1,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Editor/BracketMatch.h"
+#include "Editor/DiagnosticOverlay.h"
 #include "Editor/EditorPalette.h"
 #include "Editor/FindBar.h"
 #include "Editor/FindNavigation.h"
@@ -47,6 +48,10 @@ namespace Graphite {
 
 	namespace {
 		constexpr float kGutterPaddingX = 8.0f;
+
+		// A diagnostic the buffer has outrun is not wrong to look at yet, only unconfirmed —
+		// dimmed rather than dropped, so it stays findable while a fresh reply is in flight.
+		constexpr float kStaleDiagnosticAlpha = 0.4f;
 
 		constexpr int kMinimumGutterDigits = 3;
 
@@ -1548,6 +1553,74 @@ namespace Graphite {
 			}
 		}
 
+		// The row, and the byte offset within that row's tab-expanded line, the mouse sits over —
+		// the same arithmetic ApplyMouseToCaret uses for a click, and the mouse hit test's twin.
+		// Shared between every hover feature that needs to know which cell the pointer is over:
+		// ComputeHoverIdentifier's Ctrl-hover and the diagnostic tooltip both start here rather
+		// than each redoing the row/lens/column translation for itself, which would make this
+		// the third copy of it in the file.
+		struct MouseHit
+		{
+			bool Valid = false;
+			std::size_t Row = 0;
+
+			// ref.Line's text with tabs expanded — the coordinate space ByteInLine is measured in,
+			// and what a caller converts token or span byte offsets against with ColumnOfByte.
+			std::string Expanded;
+			std::size_t ByteInLine = 0;
+		};
+
+		MouseHit ComputeMouseHit(const Core::TextBuffer& buffer, const Core::OpenItem& item,
+								 const EditorMetrics& metrics, const ImVec2& origin,
+								 float textOriginX, const LensRows& lenses)
+		{
+			MouseHit hit;
+
+			if (!ImGui::IsWindowHovered())
+			{
+				return hit;
+			}
+
+			const ImVec2 mouse = ImGui::GetMousePos();
+
+			if (mouse.y < origin.y || mouse.x < textOriginX)
+			{
+				return hit;
+			}
+
+			const auto screenRow =
+				static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
+			// The fifth of ADR 0486's seven sites, and the mouse hit test's twin: the same
+			// division, for the pointer rather than for a click, translated before anything
+			// downstream is told about the row.
+			const LensRows::Row lensHit = lenses.At(screenRow);
+
+			// There is no text on a lens row for anything to hover.
+			if (lensHit.IsLens)
+			{
+				return hit;
+			}
+
+			const std::size_t row = lensHit.DocumentRow;
+			const float relativeX = mouse.x - textOriginX;
+			const auto column = static_cast<std::size_t>(
+				(relativeX + metrics.CellWidth * 0.5f) / metrics.CellWidth);
+
+			const Core::RowRef ref = item.Rows.RowAt(row);
+			const std::vector<std::size_t>& breaks = item.Rows.BreaksOf(ref.Line);
+			const std::size_t fromColumn =
+				ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0 : breaks[ref.SubRow - 1];
+
+			hit.Valid = true;
+			hit.Row = row;
+			// The exact arithmetic SliceRow uses: a column, measured from the row's own left
+			// edge, converted to a byte offset in the tab-expanded line the tokens are ranges of.
+			hit.Expanded = Core::ExpandTabs(buffer.LineText(ref.Line), item.TabWidth);
+			hit.ByteInLine = AdvanceColumns(hit.Expanded, 0, fromColumn + column);
+
+			return hit;
+		}
+
 		// The identifier token, if any, under the mouse while Ctrl is held — an absolute column
 		// range within its document row, the same coordinate system SliceRow already draws in.
 		struct HoverIdentifier
@@ -1558,10 +1631,10 @@ namespace Graphite {
 			std::size_t ToColumn = 0;
 		};
 
-		// Finds the identifier token under the mouse using the same row/column arithmetic
-		// ApplyMouseToCaret uses for a click, so the underline this feeds lines up with wherever
-		// a Ctrl+click would actually land the caret. A look only — nothing here moves the caret
-		// or asks a server; syntax is non-null because TokensOf lexes on demand.
+		// Finds the identifier token under the mouse using ComputeMouseHit's translation, so the
+		// underline this feeds lines up with wherever a Ctrl+click would actually land the caret.
+		// A look only — nothing here moves the caret or asks a server; syntax is non-null because
+		// TokensOf lexes on demand.
 		HoverIdentifier ComputeHoverIdentifier(const Core::TextBuffer& buffer,
 											   const Core::OpenItem& item,
 											   const EditorMetrics& metrics, const ImVec2& origin,
@@ -1570,45 +1643,19 @@ namespace Graphite {
 		{
 			HoverIdentifier hover;
 
-			if (syntax == nullptr || !ImGui::GetIO().KeyCtrl || !ImGui::IsWindowHovered())
+			if (syntax == nullptr || !ImGui::GetIO().KeyCtrl)
 			{
 				return hover;
 			}
 
-			const ImVec2 mouse = ImGui::GetMousePos();
+			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, lenses);
 
-			if (mouse.y < origin.y || mouse.x < textOriginX)
+			if (!hit.Valid)
 			{
 				return hover;
 			}
 
-			const auto screenRow =
-				static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
-			// The fifth of ADR 0486's seven sites, and the mouse hit test's twin: the same
-			// division, for the pointer rather than for a click, translated before anything
-			// downstream is told about the row.
-			const LensRows::Row hit = lenses.At(screenRow);
-
-			// There is no text on a lens row for an identifier to sit in.
-			if (hit.IsLens)
-			{
-				return hover;
-			}
-
-			const std::size_t row = hit.DocumentRow;
-			const float relativeX = mouse.x - textOriginX;
-			const auto column = static_cast<std::size_t>(
-				(relativeX + metrics.CellWidth * 0.5f) / metrics.CellWidth);
-
-			const Core::RowRef ref = item.Rows.RowAt(row);
-			const std::vector<std::size_t>& breaks = item.Rows.BreaksOf(ref.Line);
-			const std::size_t fromColumn =
-				ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0 : breaks[ref.SubRow - 1];
-
-			// The exact arithmetic SliceRow uses: a column, measured from the row's own left
-			// edge, converted to a byte offset in the tab-expanded line the tokens are ranges of.
-			const std::string expanded = Core::ExpandTabs(buffer.LineText(ref.Line), item.TabWidth);
-			const std::size_t byteInLine = AdvanceColumns(expanded, 0, fromColumn + column);
+			const Core::RowRef ref = item.Rows.RowAt(hit.Row);
 
 			for (const Token& token : syntax->TokensOf(buffer, ref.Line))
 			{
@@ -1617,15 +1664,15 @@ namespace Graphite {
 					continue;
 				}
 
-				if (byteInLine < token.From || byteInLine >= token.To)
+				if (hit.ByteInLine < token.From || hit.ByteInLine >= token.To)
 				{
 					continue;
 				}
 
 				hover.Valid = true;
-				hover.Row = row;
-				hover.FromColumn = Core::ColumnOfByte(expanded, token.From, item.TabWidth);
-				hover.ToColumn = Core::ColumnOfByte(expanded, token.To, item.TabWidth);
+				hover.Row = hit.Row;
+				hover.FromColumn = Core::ColumnOfByte(hit.Expanded, token.From, item.TabWidth);
+				hover.ToColumn = Core::ColumnOfByte(hit.Expanded, token.To, item.TabWidth);
 				break;
 			}
 
@@ -1664,6 +1711,180 @@ namespace Graphite {
 			canvas.Draw->AddLine(ImVec2(fromX, y), ImVec2(toX, y), canvas.Palette.Text, 1.0f);
 		}
 
+		// Every diagnostic span on the row the mouse sits over, whose range covers the pointer's
+		// own byte — not just the first: an overlapping warning and error are both wrong about
+		// the same text, and the brief asks that both surface rather than whichever the search
+		// happens to see first.
+		struct DiagnosticHover
+		{
+			bool Valid = false;
+			std::vector<const DiagnosticSpan*> Spans;
+		};
+
+		// The diagnostic tooltip's own hit test, built on ComputeMouseHit like
+		// ComputeHoverIdentifier's is — reusing the mouse translation rather than writing a third
+		// copy of it for this feature.
+		DiagnosticHover ComputeDiagnosticHover(const Core::TextBuffer& buffer,
+											   const Core::OpenItem& item,
+											   const EditorMetrics& metrics, const ImVec2& origin,
+											   float textOriginX, const LensRows& lenses,
+											   const DiagnosticOverlay* diagnostics)
+		{
+			DiagnosticHover hover;
+
+			if (diagnostics == nullptr)
+			{
+				return hover;
+			}
+
+			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, lenses);
+
+			if (!hit.Valid)
+			{
+				return hover;
+			}
+
+			const Core::RowRef ref = item.Rows.RowAt(hit.Row);
+
+			for (const DiagnosticSpan& span : diagnostics->SpansOn(ref.Line))
+			{
+				if (hit.ByteInLine < span.From || hit.ByteInLine >= span.To)
+				{
+					continue;
+				}
+
+				hover.Valid = true;
+				hover.Spans.push_back(&span);
+			}
+
+			return hover;
+		}
+
+		// A tooltip and nothing else — BeginTooltip/EndTooltip, never a popup or a modal, because
+		// either of those would take focus away from the editor while the pointer merely rests on
+		// a squiggle. Every covering span's message is shown, each with its Source beneath it
+		// when the server gave one, separated so several overlapping diagnostics read as several
+		// messages rather than one run-on paragraph.
+		void DrawDiagnosticTooltip(const DiagnosticHover& hover)
+		{
+			if (!hover.Valid)
+			{
+				return;
+			}
+
+			ImGui::BeginTooltip();
+
+			for (std::size_t index = 0; index < hover.Spans.size(); ++index)
+			{
+				if (index != 0)
+				{
+					ImGui::Separator();
+				}
+
+				const DiagnosticSpan& span = *hover.Spans[index];
+				ImGui::TextUnformatted(span.Message.c_str());
+
+				if (!span.Source.empty())
+				{
+					ImGui::TextDisabled("%s", span.Source.c_str());
+				}
+			}
+
+			ImGui::EndTooltip();
+		}
+
+		// The colour's own alpha scaled down, for a stale diagnostic drawn in the same colour a
+		// fresh one would use. Goes through ImGui's own float round trip rather than shifting the
+		// packed byte directly, so this makes no assumption about which byte of the ImU32 the
+		// alpha channel sits in.
+		ImU32 WithAlpha(ImU32 colour, float scale)
+		{
+			ImVec4 rgba = ImGui::ColorConvertU32ToFloat4(colour);
+			rgba.w *= scale;
+
+			return ImGui::ColorConvertFloat4ToU32(rgba);
+		}
+
+		// The wavy underline every editor uses for "a language server called this wrong" — a
+		// shape distinct at a glance from the hover underline's straight line, so the two never
+		// read as the same kind of mark. Built as one polyline rather than a run of AddLine calls,
+		// so a long span costs one draw command instead of one per bump.
+		void DrawSquiggle(ImDrawList* draw, float fromX, float toX, float baselineY, ImU32 colour)
+		{
+			if (toX <= fromX)
+			{
+				return;
+			}
+
+			constexpr float kHalfPeriod = 3.0f;
+			constexpr float kAmplitude = 1.5f;
+
+			std::vector<ImVec2> points;
+			points.reserve(static_cast<std::size_t>((toX - fromX) / kHalfPeriod) + 2);
+			points.push_back(ImVec2(fromX, baselineY));
+
+			float x = fromX;
+			bool crest = true;
+
+			while (x < toX)
+			{
+				x = std::min(x + kHalfPeriod, toX);
+				points.push_back(ImVec2(x, crest ? baselineY - kAmplitude : baselineY + kAmplitude));
+				crest = !crest;
+			}
+
+			draw->AddPolyline(points.data(), static_cast<int>(points.size()), colour,
+							  ImDrawFlags_None, 1.0f);
+		}
+
+		// Every diagnostic on this row, each drawn in its own severity's colour — an overlapping
+		// warning and error both draw in full, because merging them would say only one of two
+		// language-server complaints about that text exists. Measured the same way every other
+		// span in this file is: DiagnosticSpan holds byte offsets into the tab-expanded line, the
+		// same coordinate a Token does, so this converts through ColumnOfByte exactly as the hover
+		// identifier's token does, then clips against the row's own column span before turning
+		// columns into pixels with CellWidth — never ImGui::CalcTextSize on a substring, which
+		// rounds up per call and would walk the underline off the word it belongs to.
+		void DrawRowDiagnostics(const RowCanvas& canvas, const RowSlice& slice,
+								const VisibleLineCache& cache,
+								const std::vector<DiagnosticSpan>& spans, bool stale,
+								std::size_t tabWidth)
+		{
+			for (const DiagnosticSpan& span : spans)
+			{
+				const std::size_t fromColumn = Core::ColumnOfByte(cache.Expanded, span.From, tabWidth);
+				const std::size_t toColumn = Core::ColumnOfByte(cache.Expanded, span.To, tabWidth);
+
+				const std::size_t clippedFrom =
+					std::clamp(fromColumn, slice.FromColumn, slice.ToColumn);
+				const std::size_t clippedTo = std::clamp(toColumn, slice.FromColumn, slice.ToColumn);
+
+				if (clippedTo <= clippedFrom)
+				{
+					continue;
+				}
+
+				const float fromX =
+					canvas.TextOriginX +
+					static_cast<float>(clippedFrom - slice.FromColumn) * canvas.Metrics.CellWidth;
+				const float toX =
+					canvas.TextOriginX +
+					static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
+
+				// Sits just above the row's bottom edge, the same baseline the hover underline
+				// draws on, but pulled up one more pixel so the amplitude of the wave stays inside
+				// this row's own height rather than bleeding into the row below.
+				const float baselineY = slice.Y + canvas.Metrics.LineHeight - 2.0f;
+
+				const ImU32 base = span.Severity == DiagnosticSeverity::Error
+										? canvas.Palette.DiagnosticError
+										: canvas.Palette.DiagnosticWarning;
+				const ImU32 colour = stale ? WithAlpha(base, kStaleDiagnosticAlpha) : base;
+
+				DrawSquiggle(canvas.Draw, fromX, toX, baselineY, colour);
+			}
+		}
+
 		struct CaretPaint
 		{
 			std::size_t Line = 0;
@@ -1680,6 +1901,7 @@ namespace Graphite {
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
 					 const VisibleLineCache& cache, const RowSlice& slice,
 					 const std::vector<Token>& tokens, const std::vector<SemanticSpan>& semantic,
+					 const std::vector<DiagnosticSpan>& diagnostics, bool diagnosticsStale,
 					 const CaretPaint& caret, const HoverIdentifier& hover)
 		{
 			if (slice.Line == caret.Line)
@@ -1697,6 +1919,7 @@ namespace Graphite {
 				DrawRowSelection(canvas, slice, cache);
 
 			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
+			DrawRowDiagnostics(canvas, slice, cache, diagnostics, diagnosticsStale, item.TabWidth);
 			DrawGutter(canvas, slice, slice.Line == caret.Line);
 			DrawHoverUnderline(canvas, slice, hover);
 
@@ -1821,7 +2044,9 @@ namespace Graphite {
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
 							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
 							 const ResolvedScheme& scheme, const LensModel* lensModel,
-							 const SemanticOverlay* semanticOverlay, EditorFrameResult& result)
+							 const SemanticOverlay* semanticOverlay,
+							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
+							 EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -1876,6 +2101,13 @@ namespace Graphite {
 			const HoverIdentifier hover =
 				ComputeHoverIdentifier(buffer, item, metrics, origin, canvas.TextOriginX, lenses,
 									   syntax);
+
+			// Computed and drawn here rather than inside the row loop: the tooltip is one popup
+			// for the whole frame, not one per row, and BeginTooltip/EndTooltip need calling
+			// exactly once regardless of how many rows the clipper visits.
+			DrawDiagnosticTooltip(ComputeDiagnosticHover(buffer, item, metrics, origin,
+														 canvas.TextOriginX, lenses,
+														 diagnosticOverlay));
 
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
@@ -1953,7 +2185,15 @@ namespace Graphite {
 					const std::vector<SemanticSpan>& semantic =
 						semanticOverlay != nullptr ? semanticOverlay->SpansOn(ref.Line) : kNoSpans;
 
-					DrawRow(canvas, item, cache, slice, tokens, semantic, caret, hover);
+					// Same idiom, same reason: empty for a line no server has spoken about, and
+					// for every line when diagnosticOverlay is null.
+					static const std::vector<DiagnosticSpan> kNoDiagnostics;
+					const std::vector<DiagnosticSpan>& diagnostics =
+						diagnosticOverlay != nullptr ? diagnosticOverlay->SpansOn(ref.Line)
+													 : kNoDiagnostics;
+
+					DrawRow(canvas, item, cache, slice, tokens, semantic, diagnostics,
+							diagnosticsStale, caret, hover);
 				}
 			}
 
@@ -2106,7 +2346,7 @@ namespace Graphite {
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax,
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
-							view.Semantic, result);
+							view.Semantic, view.Diagnostics, view.DiagnosticsStale, result);
 
 			// After the rows, so a click on the bar is a click on the bar: the surface's own
 			// hit test has already run against a rectangle the bar now sits on top of, and a

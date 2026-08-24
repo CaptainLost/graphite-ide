@@ -45,6 +45,8 @@ namespace Graphite {
 			case EditorColor::Lens: return {"lens", "Reference count"};
 			case EditorColor::MatchingBracket: return {"matchingBracket", "Matching bracket"};
 			case EditorColor::UnmatchedBracket: return {"unmatchedBracket", "Unmatched bracket"};
+			case EditorColor::DiagnosticError: return {"diagnosticError", "Diagnostic error"};
+			case EditorColor::DiagnosticWarning: return {"diagnosticWarning", "Diagnostic warning"};
 			case EditorColor::Count: break;
 		}
 

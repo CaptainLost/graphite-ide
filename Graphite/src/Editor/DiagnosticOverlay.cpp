@@ -54,6 +54,7 @@ namespace Graphite {
 			span.To = Core::ExpandedOffsetOfByte(line, std::max(toByte, fromByte), tabWidth);
 			span.Severity = diagnostic.Severity;
 			span.Message = diagnostic.Message;
+			span.Source = diagnostic.Source;
 
 			if (span.To == span.From)
 			{

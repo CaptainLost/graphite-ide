@@ -27,6 +27,10 @@ namespace Graphite {
 		// from under this overlay on the next reply, and a pointer into it would dangle in a
 		// draw loop that runs long after the update that produced it.
 		std::string Message;
+
+		// "clang", "clang-tidy" — shown in the tooltip after the message, same as
+		// Diagnostic::Source this is copied from. Empty when the server did not say.
+		std::string Source;
 	};
 
 	// What a language server said is wrong with one document, kept in the form the editor draws
