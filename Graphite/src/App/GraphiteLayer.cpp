@@ -16,6 +16,7 @@
 
 #include "Panels/ExplorerPanel.h"
 
+#include "Panels/ProblemsPanel.h"
 #include "Panels/ReferencesPanel.h"
 
 #include <optional>
@@ -110,6 +111,8 @@ namespace Graphite {
 		m_ReferencesPanel = static_cast<ReferencesPanel*>(m_Panels.Add(
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
 											   m_EditorSettings, m_PreviewSemantics)));
+
+		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_ActiveScheme));
 
 		auto* gitView = static_cast<GitView*>(
 			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows)));
@@ -444,6 +447,35 @@ namespace Graphite {
 		DiagnosticsUpdate diagnostics;
 		m_LanguageServices.TakeDiagnostics(diagnostics);
 		m_Diagnostics.Apply(diagnostics);
+
+		// Preformatted here rather than handed to StatusBar.cpp as a Counts, the same way Server
+		// is preformatted from a ServerStatus below: it keeps DiagnosticsModel out of a file whose
+		// only other dependency is Core::DocumentSet. Left unset - not a zeroed string - when
+		// both counts are zero, which is what leaves the slot empty rather than reading "0
+		// errors".
+		if (const DiagnosticsModel::Counts counts = m_Diagnostics.Total();
+			counts.Errors > 0 || counts.Warnings > 0)
+		{
+			std::string problems;
+
+			if (counts.Errors > 0)
+			{
+				problems = std::to_string(counts.Errors) + (counts.Errors == 1 ? " error" : " errors");
+			}
+
+			if (counts.Warnings > 0)
+			{
+				if (!problems.empty())
+				{
+					problems += ", ";
+				}
+
+				problems += std::to_string(counts.Warnings) +
+							(counts.Warnings == 1 ? " warning" : " warnings");
+			}
+
+			messages.Problems = std::move(problems);
+		}
 
 		// Before the panels draw, so what they declare this frame is stamped with this frame's
 		// number, and so an entry nothing declared last frame is closed before anything asks

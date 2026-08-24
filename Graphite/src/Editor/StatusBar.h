@@ -33,6 +33,13 @@ namespace Graphite {
 		// strings into one to save a field would just move the transposition hazard the comment
 		// above already guards against into string parsing instead.
 		std::optional<std::string> ServerDetail;
+
+		// Preformatted from DiagnosticsModel::Total(), the same way Server is preformatted from a
+		// ServerStatus rather than handed over raw — StatusBar.cpp stays free of DiagnosticsModel
+		// entirely. Unset, not a zeroed Counts, when both counts are zero: an empty slot is the
+		// resting state, and a "0 errors" nobody asked for would be the one thing in this bar that
+		// has to be read to learn there is nothing to read.
+		std::optional<std::string> Problems;
 	};
 
 	void DrawStatusBar(const Core::DocumentSet& documents,

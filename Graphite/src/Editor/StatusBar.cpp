@@ -125,7 +125,15 @@ namespace Graphite {
 
 		std::string rightAligned;
 
-		// Server first, and only when there is something to say — a language with no server
+		// Problems first, ahead of the server phrase: a count of what is wrong is worth seeing
+		// before a description of what is still indexing. Absent whenever there is nothing to
+		// report — see the field's own comment on StatusMessages.
+		if (messages.Problems && !messages.Problems->empty())
+		{
+			rightAligned = *messages.Problems;
+		}
+
+		// Server next, and only when there is something to say — a language with no server
 		// configured contributes nothing to the bar, not even a separator.
 		//
 		// Outside the has-a-document branch deliberately: a server is started when the folder
@@ -133,7 +141,12 @@ namespace Graphite {
 		// wants reporting are exactly the ones with no document to hang the report off.
 		if (messages.Server && !messages.Server->empty())
 		{
-			rightAligned = *messages.Server;
+			if (!rightAligned.empty())
+			{
+				rightAligned += "    ";
+			}
+
+			rightAligned += *messages.Server;
 		}
 
 		if (hasDocument)

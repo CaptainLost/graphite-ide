@@ -1,0 +1,250 @@
+#include "Panels/ProblemsPanel.h"
+
+#include "Editor/Palettes.h"
+
+#include "Lang/Server/LspClient.h"
+
+#include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/Icons.h"
+#include "Core/Text/Caret.h"
+#include "Core/Text/DocumentSet.h"
+#include "Core/Text/TextBuffer.h"
+
+#include <IconsMaterialDesignIcons.h>
+
+#include <imgui.h>
+
+#include <algorithm>
+#include <vector>
+
+namespace Graphite {
+
+	namespace {
+
+		// A stale group's rows are dimmed rather than hidden — see DiagnosticsModel::IsStale's own
+		// comment: staleness is never a reason to drop anything, only to mark it. The same alpha
+		// TextEditorWidget's squiggle uses for the same state, so a document reads as equally
+		// provisional in both places.
+		constexpr float kStaleAlpha = 0.4f;
+
+		// Sorted for display: line, then column, then severity, so an error and a warning that
+		// share a position put the error first — the more urgent thing wins the tie.
+		std::vector<const Diagnostic*> Sorted(const std::vector<Diagnostic>& items)
+		{
+			std::vector<const Diagnostic*> sorted;
+			sorted.reserve(items.size());
+
+			for (const Diagnostic& item : items)
+			{
+				sorted.push_back(&item);
+			}
+
+			std::sort(sorted.begin(), sorted.end(),
+					 [](const Diagnostic* a, const Diagnostic* b)
+					 {
+						 if (a->Line != b->Line)
+						 {
+							 return a->Line < b->Line;
+						 }
+
+						 if (a->Column.Value != b->Column.Value)
+						 {
+							 return a->Column.Value < b->Column.Value;
+						 }
+
+						 // DiagnosticSeverity::Error is 0 and Warning is 1, so the natural order
+						 // already puts an error before a warning at the same position.
+						 return a->Severity < b->Severity;
+					 });
+
+			return sorted;
+		}
+	}
+
+	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents,
+								 const ActiveScheme& scheme)
+		: Core::Panel("problems", "Problems"), m_Diagnostics(diagnostics), m_Documents(documents),
+		  m_Scheme(scheme)
+	{
+	}
+
+	void ProblemsPanel::OnImGuiRender()
+	{
+		bool any = false;
+
+		for (const auto& [path, entry] : m_Diagnostics.Documents())
+		{
+			if (!entry.Items.empty() && m_Documents.Find(path))
+			{
+				any = true;
+				break;
+			}
+		}
+
+		if (!any)
+		{
+			// Not a bare window: an empty problems list is a state worth naming, the same way an
+			// empty search result is.
+			ImGui::TextUnformatted("No problems in open documents.");
+			return;
+		}
+
+		// Read once a frame, like every other panel that draws from a scheme, rather than once
+		// per row: every row this frame draws from the same colours.
+		const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
+
+		for (const auto& [path, entry] : m_Diagnostics.Documents())
+		{
+			// The filter that makes this a list of open documents rather than of everything the
+			// model has ever heard about: a preview pane or a warm-up probe leaves an entry here
+			// with no tab behind it, and Find is the only thing that tells the two apart.
+			if (entry.Items.empty() || !m_Documents.Find(path))
+			{
+				continue;
+			}
+
+			RenderFile(path, entry, palette);
+		}
+	}
+
+	void ProblemsPanel::RenderFile(const std::filesystem::path& path,
+								   const DiagnosticsModel::Entry& entry,
+								   const EditorPalette& palette)
+	{
+		const bool stale = m_Diagnostics.IsStale(path);
+
+		// Dims the whole group — header and rows alike — rather than recolouring each row's text:
+		// staleness is a property of the document, and a reader should see it as one glance rather
+		// than piece it together row by row.
+		if (stale)
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, kStaleAlpha);
+		}
+
+		ImGui::PushID(path.c_str());
+
+		std::size_t errors = 0;
+		std::size_t warnings = 0;
+
+		for (const Diagnostic& item : entry.Items)
+		{
+			if (item.Severity == DiagnosticSeverity::Error)
+			{
+				++errors;
+			}
+			else
+			{
+				++warnings;
+			}
+		}
+
+		std::string header =
+			std::string(Core::IconForExtension(Core::ToUtf8(path.extension()))) + "  " +
+			Core::ToUtf8(path.filename());
+
+		ImGui::TextUnformatted(header.c_str());
+
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("%s", Core::ToUtf8(path).c_str());
+		}
+
+		ImGui::SameLine();
+		ImGui::TextDisabled("(%zu error%s, %zu warning%s)", errors, errors == 1 ? "" : "s",
+							warnings, warnings == 1 ? "" : "s");
+
+		ImGui::Indent();
+
+		int rowId = 0;
+
+		for (const Diagnostic* diagnostic : Sorted(entry.Items))
+		{
+			RenderRow(path, *diagnostic, rowId++, palette);
+		}
+
+		ImGui::Unindent();
+
+		ImGui::PopID();
+
+		if (stale)
+		{
+			ImGui::PopStyleVar();
+		}
+	}
+
+	void ProblemsPanel::RenderRow(const std::filesystem::path& path, const Diagnostic& diagnostic,
+								  int rowId, const EditorPalette& palette)
+	{
+		const bool isError = diagnostic.Severity == DiagnosticSeverity::Error;
+
+		const char* icon = isError ? ICON_MDI_CLOSE_CIRCLE : ICON_MDI_ALERT;
+		const ImU32 colour = isError ? palette.DiagnosticError : palette.DiagnosticWarning;
+
+		ImGui::PushID(rowId);
+
+		ImGui::PushStyleColor(ImGuiCol_Text, colour);
+		ImGui::TextUnformatted(icon);
+		ImGui::PopStyleColor();
+
+		ImGui::SameLine();
+
+		const std::string label = std::to_string(diagnostic.Line + 1) + ":" +
+								  std::to_string(diagnostic.Column.Value + 1) + "  " +
+								  diagnostic.Message;
+
+		if (ImGui::Selectable(label.c_str()))
+		{
+			OpenAndSelect(path, diagnostic);
+		}
+
+		ImGui::PopID();
+	}
+
+	void ProblemsPanel::OpenAndSelect(const std::filesystem::path& path,
+									  const Diagnostic& diagnostic)
+	{
+		// Opened permanently, not as a preview tab: copying ReferencesPanel::OpenAndSelect, this
+		// is somewhere the user clicked to go, not a file they are skimming past.
+		m_Documents.Open(path, true);
+
+		const auto index = m_Documents.Find(path);
+
+		if (!index)
+		{
+			return;
+		}
+
+		Core::OpenItem& item = m_Documents.At(*index);
+
+		if (!item.Document)
+		{
+			return;
+		}
+
+		Core::TextBuffer& buffer = item.Document->GetBuffer();
+
+		// Only reached for a document Find already answered for, so this line exists in the
+		// buffer as it stands right now — no disk read and no stale span to guard against.
+		const std::string lineText = buffer.LineText(diagnostic.Line);
+		const std::size_t lineStart = buffer.LineStart(diagnostic.Line);
+
+		const std::size_t from =
+			lineStart + std::min(FromUtf16Column(lineText, diagnostic.Column), lineText.size());
+
+		// The diagnostic's own span, when it names one on the same line — otherwise just the
+		// point it starts at, which is all a multi-line span could mean here without pulling in
+		// every line between the two.
+		const bool spansOneLine = diagnostic.EndLine == diagnostic.Line &&
+								  diagnostic.EndColumn.Value > diagnostic.Column.Value;
+		const std::size_t to =
+			spansOneLine ? lineStart + std::min(FromUtf16Column(lineText, diagnostic.EndColumn),
+												lineText.size())
+						 : from;
+
+		item.Caret = Core::PlaceAt(buffer, item.Caret, from, false, item.TabWidth);
+		item.Caret = Core::PlaceAt(buffer, item.Caret, to, true, item.TabWidth);
+
+		item.RowAimAt = Core::NoRowAim;
+		item.PendingScroll = true;
+	}
+}
