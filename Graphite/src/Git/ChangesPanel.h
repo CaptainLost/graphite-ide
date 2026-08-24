@@ -44,8 +44,9 @@ namespace Graphite {
 		void RenderSection(const char* heading, const std::vector<std::size_t>& rows,
 						   const Core::WorkingTreeStatus& status, const GitPalette& palette);
 
-		// One row, and everything a row can do: click to open its diff, the contextual
-		// stage or unstage button, and the context menu that holds discard.
+		// One row, and everything a row can do: click to open its diff, and the buttons that
+		// appear on its right edge under the mouse - discard, and the contextual stage or
+		// unstage.
 		void RenderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
 					   const GitPalette& palette);
 
@@ -63,9 +64,9 @@ namespace Graphite {
 		// colour schemes.
 		unsigned int ColourOfLetter(char letter, const GitPalette& palette) const;
 
-		// Opens the confirmation for discarding `file`. Never issues the discard itself -
-		// that only happens once the confirmation's own Discard button is pressed.
-		void AskAboutDiscard(const Core::FileStatus& file);
+		// Discards `file`, asking first only when the discard would take unsaved edits with
+		// it. Everything else a discard undoes, git can hand back.
+		void BeginDiscard(const Core::FileStatus& file);
 
 		void RenderDiscardConfirm();
 
@@ -101,8 +102,8 @@ namespace Graphite {
 		std::string m_Message;
 		bool m_Amend = false;
 
-		// What the confirmation is asking about. Two lists because they are two outcomes:
-		// restored from the index, and deleted from disk for good.
+		// What the discard covers. Two lists because they are two outcomes: restored from the
+		// index, and deleted from disk for good.
 		DiscardRequest m_PendingDiscard;
 
 		// Named separately from the request so the dialog can warn about them without working

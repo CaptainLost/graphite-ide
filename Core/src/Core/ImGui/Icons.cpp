@@ -46,6 +46,11 @@ namespace Core {
 			ICON_MDI_CHEVRON_RIGHT,
 			ICON_MDI_FORMAT_LETTER_CASE,
 			ICON_MDI_FORMAT_LETTER_MATCHES,
+			ICON_MDI_PLUS,
+			ICON_MDI_MINUS,
+			ICON_MDI_UNDO,
+			ICON_MDI_DELETE,
+			ICON_MDI_CHECK,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
