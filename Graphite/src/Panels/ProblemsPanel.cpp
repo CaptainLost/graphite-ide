@@ -70,18 +70,17 @@ namespace Graphite {
 
 	void ProblemsPanel::OnImGuiRender()
 	{
-		bool any = false;
+		// The filter that makes this a list of open documents rather than of everything the model
+		// has ever heard about: a preview pane or a warm-up probe leaves an entry here with no tab
+		// behind it, and Find is the only thing that tells the two apart. The status bar's own
+		// count is built from this exact predicate too - see DiagnosticsModel::Total's comment -
+		// so a reader can always reconcile the number there with the rows drawn here.
+		const auto isOpenDocument = [this](const std::filesystem::path& path)
+		{ return m_Documents.Find(path).has_value(); };
 
-		for (const auto& [path, entry] : m_Diagnostics.Documents())
-		{
-			if (!entry.Items.empty() && m_Documents.Find(path))
-			{
-				any = true;
-				break;
-			}
-		}
+		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
 
-		if (!any)
+		if (counts.Errors == 0 && counts.Warnings == 0)
 		{
 			// Not a bare window: an empty problems list is a state worth naming, the same way an
 			// empty search result is.
@@ -95,10 +94,7 @@ namespace Graphite {
 
 		for (const auto& [path, entry] : m_Diagnostics.Documents())
 		{
-			// The filter that makes this a list of open documents rather than of everything the
-			// model has ever heard about: a preview pane or a warm-up probe leaves an entry here
-			// with no tab behind it, and Find is the only thing that tells the two apart.
-			if (entry.Items.empty() || !m_Documents.Find(path))
+			if (entry.Items.empty() || !isOpenDocument(path))
 			{
 				continue;
 			}

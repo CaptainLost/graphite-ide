@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <vector>
 
@@ -65,7 +66,15 @@ namespace Graphite {
 		// panel marks; never a reason to drop anything.
 		bool IsStale(const std::filesystem::path& path) const;
 
-		Counts Total() const;
+		// Errors and warnings summed across only the documents `include` admits — the model
+		// knows nothing about tabs, so it is the caller's predicate that decides what "counts"
+		// means. There is deliberately no unfiltered overload: the model also holds entries for
+		// files opened by preview panes and by the language layer's warm-up, and a caller that
+		// forgot to filter would silently count those in. The panel and the status bar both pass
+		// the same "Core::DocumentSet::Find answers for this path" predicate, so the number shown
+		// in the status bar always covers exactly the rows the panel lists — one rule, applied by
+		// both, rather than two counts that can drift apart.
+		Counts Total(const std::function<bool(const std::filesystem::path&)>& include) const;
 
 		// Path-ordered, which is what makes the panel's grouping stable from frame to frame.
 		const std::map<std::filesystem::path, Entry>& Documents() const { return m_Documents; }

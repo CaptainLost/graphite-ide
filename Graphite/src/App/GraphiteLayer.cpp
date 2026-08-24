@@ -448,12 +448,20 @@ namespace Graphite {
 		m_LanguageServices.TakeDiagnostics(diagnostics);
 		m_Diagnostics.Apply(diagnostics);
 
+		// The same "is this document open" predicate ProblemsPanel filters its own rows by - see
+		// DiagnosticsModel::Total's own comment on why there is no unfiltered overload to reach
+		// for instead. Passing anything looser here would let this count include a preview pane
+		// or a warm-up probe the panel below never lists, and a status bar count nobody can
+		// reconcile with the rows under it is worse than no count at all.
+		const auto isOpenDocument = [this](const std::filesystem::path& path)
+		{ return m_Documents.Find(path).has_value(); };
+
 		// Preformatted here rather than handed to StatusBar.cpp as a Counts, the same way Server
 		// is preformatted from a ServerStatus below: it keeps DiagnosticsModel out of a file whose
 		// only other dependency is Core::DocumentSet. Left unset - not a zeroed string - when
 		// both counts are zero, which is what leaves the slot empty rather than reading "0
 		// errors".
-		if (const DiagnosticsModel::Counts counts = m_Diagnostics.Total();
+		if (const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
 			counts.Errors > 0 || counts.Warnings > 0)
 		{
 			std::string problems;

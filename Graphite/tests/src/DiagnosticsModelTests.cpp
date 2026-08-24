@@ -10,6 +10,13 @@ namespace {
 
 	const std::filesystem::path kMain{"C:/src/Main.cpp"};
 
+	// Admits every path - what a test reaches for when it wants Total's old unfiltered behaviour
+	// and has no Core::DocumentSet at hand to build a real predicate from.
+	bool Everything(const std::filesystem::path&)
+	{
+		return true;
+	}
+
 	Graphite::Diagnostic Error(std::size_t line, std::string message)
 	{
 		Graphite::Diagnostic diagnostic;
@@ -85,8 +92,8 @@ TEST_CASE("A set the buffer has outrun is stale")
 	model.Apply(typed);
 
 	CHECK(model.IsStale(kMain));
-	CHECK(model.For(kMain).size() == 1);   // dimmed, not dropped
-	CHECK(model.Total().Errors == 1);      // Total counts a stale entry's items too - dimmed, not dropped
+	CHECK(model.For(kMain).size() == 1);            // dimmed, not dropped
+	CHECK(model.Total(Everything).Errors == 1);     // Total counts a stale entry's items too - dimmed, not dropped
 }
 
 TEST_CASE("A publication naming no version reads as stale once anything has been sent")
@@ -153,7 +160,7 @@ TEST_CASE("A document closed and reopened within one update describes its new li
 	CHECK(!model.IsStale(kMain));
 }
 
-TEST_CASE("Errors and warnings are counted separately across every document")
+TEST_CASE("Errors and warnings are counted separately across every document a predicate admits")
 {
 	Graphite::DiagnosticsModel model;
 
@@ -167,6 +174,34 @@ TEST_CASE("Errors and warnings are counted separately across every document")
 		std::filesystem::path{"C:/src/Other.cpp"}, Graphite::DocumentVersion{1}, {Error(0, "x")}});
 	model.Apply(update);
 
-	CHECK(model.Total().Errors == 2);
-	CHECK(model.Total().Warnings == 1);
+	CHECK(model.Total(Everything).Errors == 2);
+	CHECK(model.Total(Everything).Warnings == 1);
+}
+
+TEST_CASE("Total counts only the documents its predicate admits")
+{
+	// The rule ProblemsPanel and the status bar are meant to share: a caller decides what "open"
+	// means by the predicate it passes, and Total counts nothing else. Here the predicate stands
+	// in for "Core::DocumentSet::Find answers for this path" without needing a real DocumentSet -
+	// a document opened only by a preview pane or the language layer's warm-up is exactly the
+	// kind of entry this is meant to exclude.
+	Graphite::DiagnosticsModel model;
+
+	const std::filesystem::path other{"C:/src/Other.cpp"};
+
+	Graphite::Diagnostic warning;
+	warning.Line = 1;
+	warning.Severity = Graphite::DiagnosticSeverity::Warning;
+
+	Graphite::DiagnosticsUpdate update;
+	update.Published.push_back(Published(1, {Error(3, "one")}));
+	update.Published.push_back(
+		Graphite::PublishedDiagnostics{other, Graphite::DocumentVersion{1}, {warning}});
+	model.Apply(update);
+
+	const Graphite::DiagnosticsModel::Counts counts =
+		model.Total([](const std::filesystem::path& path) { return path == kMain; });
+
+	CHECK(counts.Errors == 1);
+	CHECK(counts.Warnings == 0);
 }

@@ -59,12 +59,18 @@ namespace Graphite {
 		return it->second.Answered < it->second.Sent;
 	}
 
-	DiagnosticsModel::Counts DiagnosticsModel::Total() const
+	DiagnosticsModel::Counts DiagnosticsModel::Total(
+		const std::function<bool(const std::filesystem::path&)>& include) const
 	{
 		Counts counts;
 
 		for (const auto& [path, entry] : m_Documents)
 		{
+			if (!include(path))
+			{
+				continue;
+			}
+
 			for (const Diagnostic& diagnostic : entry.Items)
 			{
 				// Exhaustive rather than if/else: a third severity added to the enum without a
