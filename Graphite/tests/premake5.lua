@@ -50,6 +50,8 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Editor/LensModel.cpp",
         "%{wks.location}/Graphite/src/Editor/SemanticOverlay.h",
         "%{wks.location}/Graphite/src/Editor/SemanticOverlay.cpp",
+        "%{wks.location}/Graphite/src/Editor/DiagnosticOverlay.h",
+        "%{wks.location}/Graphite/src/Editor/DiagnosticOverlay.cpp",
         "%{wks.location}/Graphite/src/Editor/LensRows.h",
         "%{wks.location}/Graphite/src/Editor/LensRows.cpp",
         "%{wks.location}/Graphite/src/Editor/MatchColumns.h",
