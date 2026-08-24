@@ -52,14 +52,10 @@ namespace Graphite {
 		// every line a server declined to colour - the two are the same thing to a reader.
 		bool IsEmpty() const { return m_Lines.empty(); }
 
-		// Covers the gap between an edit and the next reply: lines at or below `fromLine` move by
-		// `delta`, and `fromLine` itself is emptied.
-		//
-		// That line is emptied rather than moved because it is the one whose columns the edit
-		// actually invalidated — a character typed into it shifts everything after the caret,
-		// which no line-level adjustment can express. Every other line's spans are still exactly
-		// right; only their line numbers moved, and by a number this knows.
-		void OnLinesChanged(std::size_t fromLine, std::ptrdiff_t delta);
+		// There is deliberately no way to adjust an overlay for an edit. Colours stay where the
+		// server put them until a reply replaces them: a colour that has slid a few characters is
+		// visibly provisional and costs a reader nothing, while shifting one line-by-line only ever
+		// approximated an answer that was already on its way.
 
 		// Empty for a line nothing was said about, which is most of them: a server names
 		// identifiers, and blank lines, comments and punctuation are nobody's.

@@ -4,9 +4,6 @@
 #include "Core/Text/TextBuffer.h"
 #include "Lang/Server/LspClient.h"
 
-#include <algorithm>
-#include <utility>
-
 namespace Graphite {
 
 	namespace {
@@ -85,40 +82,6 @@ namespace Graphite {
 	void SemanticOverlay::Clear()
 	{
 		m_Lines.clear();
-	}
-
-	void SemanticOverlay::OnLinesChanged(std::size_t fromLine, std::ptrdiff_t delta)
-	{
-		std::map<std::size_t, std::vector<SemanticSpan>> moved;
-
-		for (auto& [line, spans] : m_Lines)
-		{
-			if (line < fromLine)
-			{
-				moved.emplace(line, std::move(spans));
-				continue;
-			}
-
-			if (line == fromLine)
-			{
-				// The edited line itself: its columns moved by an amount only the edit knows, so
-				// there is nothing here worth carrying forward.
-				continue;
-			}
-
-			const std::ptrdiff_t shifted = static_cast<std::ptrdiff_t>(line) + delta;
-
-			if (shifted < static_cast<std::ptrdiff_t>(fromLine))
-			{
-				// A deletion pulled this line above the edit, which means the line it described is
-				// gone rather than moved.
-				continue;
-			}
-
-			moved.emplace(static_cast<std::size_t>(shifted), std::move(spans));
-		}
-
-		m_Lines = std::move(moved);
 	}
 
 	const std::vector<SemanticSpan>& SemanticOverlay::SpansOn(std::size_t line) const

@@ -104,9 +104,10 @@ namespace Graphite {
 
 		// Two things make the snapshot stop describing what is on screen: an edit to a document
 		// a tab holds, and a tab width change, since the overlay's offsets are measured in
-		// tab-expanded text. Both drop the colours rather than shifting them — OnLinesChanged
-		// exists for the editor, which knows where the edit landed, and a preview does not. A
-		// moment without semantic colours is cheap; a colour on the wrong word is not. A
+		// tab-expanded text. Both drop the colours rather than trying to salvage them — the editor
+		// itself no longer shifts colours for an edit either, and a preview has no edit position
+		// to shift them by even if it wanted to. A moment without semantic colours is cheap; a
+		// colour on the wrong word is not. A
 		// transition is a third reason: the snapshot the outstanding request (if any) was made
 		// against may belong to the wrong side of the handoff, so it is retaken unconditionally
 		// rather than trusted because the revision happens to match.

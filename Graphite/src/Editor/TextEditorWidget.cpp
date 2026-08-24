@@ -694,7 +694,6 @@ namespace Graphite {
 			// Null when no language server serves this document; the lens notification is then a
 			// no-op rather than a branch at every edit site.
 			LensModel* Lens = nullptr;
-			SemanticOverlay* Semantic = nullptr;
 		};
 
 		// What has to be read BEFORE an edit runs to be able to describe it afterwards. The line
@@ -756,16 +755,6 @@ namespace Graphite {
 											 static_cast<std::ptrdiff_t>(before.LineCount);
 
 				sinks.Lens->OnLinesChanged(before.Line, delta, item.Rows);
-			}
-
-			if (sinks.Semantic != nullptr)
-			{
-				const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
-											 static_cast<std::ptrdiff_t>(before.LineCount);
-
-				// Lines, not rows: a semantic span belongs to a line of the document, and wrapping
-				// is nothing the server ever spoke about.
-				sinks.Semantic->OnLinesChanged(before.Line, delta);
 			}
 		}
 
@@ -2084,7 +2073,7 @@ namespace Graphite {
 			// error: this document then simply draws, exactly as an unfocused one does.
 			if (focused && context.Input != nullptr)
 			{
-				const EditSinks sinks{view.Syntax, view.Lens, view.Semantic};
+				const EditSinks sinks{view.Syntax, view.Lens};
 
 				ApplyKeyboard(*context.Input, buffer, item, view.Indent, sinks,
 							  RowsPerPage(metrics), caretAtFrameStart, result);

@@ -87,52 +87,6 @@ TEST_CASE("A line nothing was said about has no spans, and neither has one past 
 	CHECK(overlay.SpansOn(9999).empty());
 }
 
-TEST_CASE("An edit that adds lines carries the spans below it along")
-{
-	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
-
-	Graphite::SemanticOverlay overlay;
-	overlay.Set({Token(3, 0, 1, Graphite::SemanticKind::Type)}, buffer, 4);
-
-	overlay.OnLinesChanged(1, 2);
-
-	CHECK(overlay.SpansOn(3).empty());
-	CHECK(overlay.SpansOn(5).size() == 1);
-}
-
-TEST_CASE("An edit clears the line it happened on, whose columns it just moved")
-{
-	// The one line whose spans cannot be salvaged: a character typed into it shifts every column
-	// after the caret, so keeping them would paint the right colours in the wrong places until
-	// the server answers again.
-	const Core::TextBuffer buffer{"a\nb\nc\n"};
-
-	Graphite::SemanticOverlay overlay;
-	overlay.Set({Token(0, 0, 1, Graphite::SemanticKind::Type),
-				 Token(1, 0, 1, Graphite::SemanticKind::Type)},
-				buffer, 4);
-
-	overlay.OnLinesChanged(1, 0);
-
-	CHECK(overlay.SpansOn(0).size() == 1);
-	CHECK(overlay.SpansOn(1).empty());
-}
-
-TEST_CASE("A reply replaces everything an edit had shifted")
-{
-	const Core::TextBuffer buffer{"a\nb\n"};
-
-	Graphite::SemanticOverlay overlay;
-	overlay.Set({Token(0, 0, 1, Graphite::SemanticKind::Type)}, buffer, 4);
-	overlay.OnLinesChanged(0, 5);
-
-	overlay.Set({Token(1, 0, 1, Graphite::SemanticKind::Macro)}, buffer, 4);
-
-	CHECK(overlay.SpansOn(0).empty());
-	REQUIRE(overlay.SpansOn(1).size() == 1);
-	CHECK(overlay.SpansOn(1)[0].Kind == Graphite::TokenKind::SemanticMacro);
-}
-
 TEST_CASE("An overlay nothing was said about is empty, and one with a span is not")
 {
 	const Core::TextBuffer buffer{"int value;\n"};
