@@ -579,6 +579,114 @@ namespace Graphite {
 
 	namespace {
 
+		// nullopt means "drop this diagnostic": Information and Hint are real severities the
+		// protocol defines, but nothing downstream draws them. Absent is different from either —
+		// the field is optional and left to the client — and is read as the louder of the two
+		// kept severities, on the same reasoning ParseDiagnostics documents.
+		std::optional<DiagnosticSeverity> SeverityOf(const nlohmann::json& diagnostic)
+		{
+			const nlohmann::json* severity = FirstOf(diagnostic, {"severity"});
+
+			if (severity == nullptr || !severity->is_number_integer())
+			{
+				return DiagnosticSeverity::Error;
+			}
+
+			switch (severity->get<int>())
+			{
+			case 1: return DiagnosticSeverity::Error;
+			case 2: return DiagnosticSeverity::Warning;
+			default: return std::nullopt;   // Information, Hint, or something invented
+			}
+		}
+	}
+
+	PublishedDiagnostics ParseDiagnostics(const nlohmann::json& params)
+	{
+		PublishedDiagnostics published;
+
+		const nlohmann::json* uri = FirstOf(params, {"uri"});
+
+		if (uri == nullptr || !uri->is_string())
+		{
+			return published;
+		}
+
+		published.Path = FromFileUri(uri->get<std::string>());
+
+		if (const nlohmann::json* version = FirstOf(params, {"version"});
+			version != nullptr && version->is_number_integer())
+		{
+			published.Version = DocumentVersion{version->get<int>()};
+		}
+
+		const nlohmann::json* items = FirstOf(params, {"diagnostics"});
+
+		if (items == nullptr || !items->is_array())
+		{
+			return published;
+		}
+
+		for (const nlohmann::json& item : *items)
+		{
+			if (!item.is_object())
+			{
+				continue;
+			}
+
+			const std::optional<DiagnosticSeverity> severity = SeverityOf(item);
+
+			if (!severity)
+			{
+				continue;
+			}
+
+			Diagnostic diagnostic;
+			diagnostic.Severity = *severity;
+
+			if (const nlohmann::json* range = FirstOf(item, {"range"}))
+			{
+				if (const nlohmann::json* start = FirstOf(*range, {"start"}))
+				{
+					diagnostic.Line = ReadUnsigned(*start, "line");
+					diagnostic.Column = Utf16Column{ReadUnsigned(*start, "character")};
+				}
+
+				// An end the server did not give collapses onto the start rather than onto
+				// (0, 0): a zero-length span at the right place is drawable, one at the top of
+				// the file is a squiggle under text nobody complained about.
+				if (const nlohmann::json* end = FirstOf(*range, {"end"}))
+				{
+					diagnostic.EndLine = ReadUnsigned(*end, "line");
+					diagnostic.EndColumn = Utf16Column{ReadUnsigned(*end, "character")};
+				}
+				else
+				{
+					diagnostic.EndLine = diagnostic.Line;
+					diagnostic.EndColumn = diagnostic.Column;
+				}
+			}
+
+			if (const nlohmann::json* message = FirstOf(item, {"message"});
+				message != nullptr && message->is_string())
+			{
+				diagnostic.Message = message->get<std::string>();
+			}
+
+			if (const nlohmann::json* source = FirstOf(item, {"source"});
+				source != nullptr && source->is_string())
+			{
+				diagnostic.Source = source->get<std::string>();
+			}
+
+			published.Items.push_back(std::move(diagnostic));
+		}
+
+		return published;
+	}
+
+	namespace {
+
 		// The state a server settles into once it has answered initialize: a root with no compile
 		// database is not a failure, but it is not Ready either — clangd runs there and answers
 		// every question with a guess, which the status bar has to be able to say out loud.

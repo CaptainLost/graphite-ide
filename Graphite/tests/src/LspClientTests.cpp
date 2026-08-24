@@ -853,3 +853,112 @@ TEST_CASE("clangd answers a definition request" * doctest::skip(true))
 	REQUIRE(answers[0].Locations.size() == 1);
 	CHECK(answers[0].Locations[0].Line == 0);
 }
+
+TEST_CASE("A publication is parsed into a path, a version and its diagnostics")
+{
+	const nlohmann::json params = nlohmann::json::parse(R"({
+		"uri": "file:///C:/src/Main.cpp",
+		"version": 7,
+		"diagnostics": [
+			{"range": {"start": {"line": 3, "character": 8}, "end": {"line": 3, "character": 14}},
+			 "severity": 1, "message": "no matching constructor", "source": "clang"}
+		]
+	})");
+
+	const Graphite::PublishedDiagnostics published = Graphite::ParseDiagnostics(params);
+
+	CHECK(published.Path == std::filesystem::path{"C:/src/Main.cpp"});
+	CHECK(published.Version == Graphite::DocumentVersion{7});
+	REQUIRE(published.Items.size() == 1);
+	CHECK(published.Items[0].Line == 3);
+	CHECK(published.Items[0].Column == Graphite::Utf16Column{8});
+	CHECK(published.Items[0].EndLine == 3);
+	CHECK(published.Items[0].EndColumn == Graphite::Utf16Column{14});
+	CHECK(published.Items[0].Severity == Graphite::DiagnosticSeverity::Error);
+	CHECK(published.Items[0].Message == "no matching constructor");
+}
+
+TEST_CASE("Only errors and warnings survive the parse")
+{
+	// Information and Hint are mostly clang-tidy, which can bury a file. They are dropped here
+	// rather than filtered by a reader, so nothing downstream has to know they exist.
+	const nlohmann::json params = nlohmann::json::parse(R"({
+		"uri": "file:///C:/src/Main.cpp",
+		"diagnostics": [
+			{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+			 "severity": 1, "message": "error"},
+			{"range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 1}},
+			 "severity": 2, "message": "warning"},
+			{"range": {"start": {"line": 2, "character": 0}, "end": {"line": 2, "character": 1}},
+			 "severity": 3, "message": "information"},
+			{"range": {"start": {"line": 3, "character": 0}, "end": {"line": 3, "character": 1}},
+			 "severity": 4, "message": "hint"}
+		]
+	})");
+
+	const Graphite::PublishedDiagnostics published = Graphite::ParseDiagnostics(params);
+
+	REQUIRE(published.Items.size() == 2);
+	CHECK(published.Items[0].Severity == Graphite::DiagnosticSeverity::Error);
+	CHECK(published.Items[1].Severity == Graphite::DiagnosticSeverity::Warning);
+}
+
+TEST_CASE("A diagnostic naming no severity is kept as an error")
+{
+	// The protocol allows the field to be absent and leaves the meaning to the client. Treating
+	// the unknown as the louder of the two is the safe direction: a warning drawn as an error is
+	// noticed and corrected, an error drawn as nothing is not.
+	const nlohmann::json params = nlohmann::json::parse(R"({
+		"uri": "file:///C:/src/Main.cpp",
+		"diagnostics": [
+			{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+			 "message": "unclassified"}
+		]
+	})");
+
+	const Graphite::PublishedDiagnostics published = Graphite::ParseDiagnostics(params);
+
+	REQUIRE(published.Items.size() == 1);
+	CHECK(published.Items[0].Severity == Graphite::DiagnosticSeverity::Error);
+}
+
+TEST_CASE("A publication naming no version reads as version zero")
+{
+	// clangd sends one; the protocol makes it optional. Zero is "never sent", which compares
+	// less than every real version and so reads as stale - the safe direction again.
+	const nlohmann::json params = nlohmann::json::parse(R"({
+		"uri": "file:///C:/src/Main.cpp",
+		"diagnostics": []
+	})");
+
+	const Graphite::PublishedDiagnostics published = Graphite::ParseDiagnostics(params);
+
+	CHECK(published.Version == Graphite::DocumentVersion{});
+	CHECK(published.Items.empty());
+	CHECK(published.Path == std::filesystem::path{"C:/src/Main.cpp"});
+}
+
+TEST_CASE("A publication with no usable uri yields an empty path")
+{
+	// ADR 0004 forbids throwing across this boundary, and the existing parsers tolerate null, a
+	// wrong type and missing fields by yielding less. An empty path is what a caller drops on.
+	CHECK(Graphite::ParseDiagnostics(nlohmann::json::object()).Path.empty());
+	CHECK(Graphite::ParseDiagnostics(nlohmann::json{{"uri", 7}}).Path.empty());
+	CHECK(Graphite::ParseDiagnostics(nullptr).Path.empty());
+}
+
+TEST_CASE("A range with no end collapses onto its start")
+{
+	const nlohmann::json params = nlohmann::json::parse(R"({
+		"uri": "file:///C:/src/Main.cpp",
+		"diagnostics": [
+			{"range": {"start": {"line": 5, "character": 2}}, "severity": 2, "message": "odd"}
+		]
+	})");
+
+	const Graphite::PublishedDiagnostics published = Graphite::ParseDiagnostics(params);
+
+	REQUIRE(published.Items.size() == 1);
+	CHECK(published.Items[0].EndLine == 5);
+	CHECK(published.Items[0].EndColumn == Graphite::Utf16Column{2});
+}

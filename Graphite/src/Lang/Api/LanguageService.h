@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -97,6 +98,56 @@ namespace Graphite {
 		Utf16Column Column;
 		std::size_t Length = 0;
 		SemanticKind Kind = SemanticKind::Other;
+	};
+
+	// The two severities this editor draws. The protocol names four; Information and Hint are
+	// dropped at the parse, so nothing downstream can accidentally grow a case for them - see
+	// ParseDiagnostics.
+	enum class DiagnosticSeverity : std::uint8_t
+	{
+		Error,
+		Warning
+	};
+
+	// What a server said is wrong with one span of one document, in the units the protocol
+	// speaks. Turned into the editor's own coordinates by DiagnosticOverlay, which has the
+	// buffer and the tab width this cannot see.
+	struct Diagnostic
+	{
+		std::size_t Line = 0;
+		Utf16Column Column;
+		std::size_t EndLine = 0;
+		Utf16Column EndColumn;
+		DiagnosticSeverity Severity = DiagnosticSeverity::Error;
+		std::string Message;
+		std::string Source;   // "clang", "clang-tidy" - shown in the tooltip after the message
+	};
+
+	// The protocol's own count of how many times a document has been sent, which is the only
+	// thing that can say whether an answer describes the text on screen. A type rather than an
+	// int for the reason Utf16Column is one: it is trivially confused with Core::TextBuffer's
+	// revision counter, which counts a different thing entirely, and nothing but the type system
+	// can make that confusion loud.
+	struct DocumentVersion
+	{
+		DocumentVersion() = default;
+		explicit constexpr DocumentVersion(int value) : Value(value) {}
+
+		// Zero is "never sent", and what a reply naming no version reads as. It compares less
+		// than every real version, so such a reply reads as stale rather than as current.
+		int Value = 0;
+
+		// A defaulted three-way comparison declares == alongside it, so both spellings work
+		// from one line: IsStale needs <, and every test needs ==.
+		friend auto operator<=>(const DocumentVersion&, const DocumentVersion&) = default;
+	};
+
+	// One document's diagnostics as a server last published them.
+	struct PublishedDiagnostics
+	{
+		std::filesystem::path Path;    // empty when the notification named no usable uri
+		DocumentVersion Version;
+		std::vector<Diagnostic> Items; // empty means "all clear", which is a real answer
 	};
 
 	enum class DeclarationKind : std::uint8_t { Function, Type, Other };

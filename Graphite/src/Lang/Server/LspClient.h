@@ -70,6 +70,15 @@ namespace Graphite {
 	std::vector<SemanticToken> ParseSemanticTokens(const nlohmann::json& result,
 												   const std::vector<SemanticKind>& legend);
 
+	// One textDocument/publishDiagnostics notification's params. Tolerates null, a wrong type and
+	// missing fields by yielding less, never by failing, exactly as the reply parsers above do:
+	// a notification is not a request, so there is nobody to report a failure to.
+	//
+	// Severity is filtered here rather than by a reader. Information and Hint exist in the
+	// protocol and are not drawn anywhere in this application; dropping them at the boundary is
+	// what stops every downstream switch from needing a case that cannot happen.
+	PublishedDiagnostics ParseDiagnostics(const nlohmann::json& params);
+
 	// One conversation with one language server: it starts the process, keeps the server's copy
 	// of the open documents in step, asks three questions, and hands the answers back to the UI
 	// thread through Drain — the same division SearchService draws, for the same reason. A
