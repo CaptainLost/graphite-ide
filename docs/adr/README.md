@@ -534,4 +534,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0502](0502-read-a-working-tree-file-s-text-from-the-index-and-the-disk.md) | Read a working tree file's text from the index and the disk | proposed | 2026-08-22 |
 | [0503](0503-anchor-a-console-selection-to-a-log-entry-s-sequence-number.md) | Anchor a console selection to a log entry's sequence number | proposed | 2026-08-23 |
 | [0504](0504-treat-an-untracked-file-as-an-added-file-in-a-working-tree-diff.md) | Treat an untracked file as an added file in a working tree diff | proposed | 2026-08-23 |
+| [0505](0505-hold-diagnostics-in-a-model-both-the-editor-and-the-panel-read.md) | Hold diagnostics in a model both the editor and the panel read | proposed | 2026-08-25 |
+| [0506](0506-dim-a-diagnostic-the-buffer-has-outrun-rather-than-dropping-it.md) | Dim a diagnostic the buffer has outrun rather than dropping it | proposed | 2026-08-25 |
+| [0507](0507-correct-adr-0482-s-premise-about-what-stays-out-of-lang.md) | Correct ADR 0482's premise about what stays out of `Lang` | proposed | 2026-08-25 |
 <!-- /adr-index -->
