@@ -1853,7 +1853,18 @@ namespace Graphite {
 			for (const DiagnosticSpan& span : spans)
 			{
 				const std::size_t fromColumn = Core::ColumnOfByte(cache.Expanded, span.From, tabWidth);
-				const std::size_t toColumn = Core::ColumnOfByte(cache.Expanded, span.To, tabWidth);
+				std::size_t toColumn = Core::ColumnOfByte(cache.Expanded, span.To, tabWidth);
+
+				// DiagnosticOverlay widens a zero-length span by one byte so it draws something
+				// (see its own comment); when that byte lands past the end of the line - which is
+				// exactly where a missing semicolon or brace is reported - ColumnOfByte clamps it
+				// straight back onto fromColumn and the widening is lost before it can be drawn.
+				// Redo it here, in column space, where "one past the last column" is a valid place
+				// to end a squiggle even though it named no byte the line actually has.
+				if (toColumn <= fromColumn && span.To > span.From)
+				{
+					toColumn = fromColumn + 1;
+				}
 
 				const std::size_t clippedFrom =
 					std::clamp(fromColumn, slice.FromColumn, slice.ToColumn);

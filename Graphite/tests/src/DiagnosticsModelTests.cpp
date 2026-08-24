@@ -2,6 +2,7 @@
 
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -158,6 +159,47 @@ TEST_CASE("A document closed and reopened within one update describes its new li
 	REQUIRE(model.For(kMain).size() == 1);
 	CHECK(model.For(kMain)[0].Message == "fresh");
 	CHECK(!model.IsStale(kMain));
+}
+
+TEST_CASE("Two publications at the same version still move the generation")
+{
+	// A server that omits version publishes twice for a file nobody is typing in, and clangd
+	// itself republishes once its preamble build finishes - both land at the same version with
+	// different content. A reader keyed on Answered would call the two identical; Generation
+	// must not.
+	Graphite::DiagnosticsModel model;
+
+	Graphite::DiagnosticsUpdate first;
+	first.Published.push_back(Published(1, {Error(3, "one")}));
+	model.Apply(first);
+
+	const std::uint64_t firstGeneration = model.Documents().at(kMain).Generation;
+
+	Graphite::DiagnosticsUpdate second;
+	second.Published.push_back(Published(1, {Error(3, "one"), Error(9, "two")}));
+	model.Apply(second);
+
+	CHECK(model.Documents().at(kMain).Generation != firstGeneration);
+	CHECK(model.For(kMain).size() == 2);
+}
+
+TEST_CASE("Applying nothing about a document leaves its generation alone")
+{
+	Graphite::DiagnosticsModel model;
+
+	Graphite::DiagnosticsUpdate first;
+	first.Published.push_back(Published(1, {Error(3, "one")}));
+	model.Apply(first);
+
+	const std::uint64_t generation = model.Documents().at(kMain).Generation;
+
+	Graphite::DiagnosticsUpdate other;
+	other.Published.push_back(
+		Graphite::PublishedDiagnostics{std::filesystem::path{"C:/src/Other.cpp"},
+										Graphite::DocumentVersion{1}, {Error(0, "x")}});
+	model.Apply(other);
+
+	CHECK(model.Documents().at(kMain).Generation == generation);
 }
 
 TEST_CASE("Errors and warnings are counted separately across every document a predicate admits")

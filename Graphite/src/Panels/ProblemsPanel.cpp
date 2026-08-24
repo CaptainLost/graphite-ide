@@ -117,7 +117,10 @@ namespace Graphite {
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, kStaleAlpha);
 		}
 
-		ImGui::PushID(path.c_str());
+		// path.c_str() is const wchar_t* on Windows, which binds PushID's const void* overload
+		// and hashes the pointer rather than the text - unique and stable by accident, and a
+		// different overload entirely on a POSIX build. Push the path's actual text instead.
+		ImGui::PushID(Core::ToUtf8(path).c_str());
 
 		std::size_t errors = 0;
 		std::size_t warnings = 0;

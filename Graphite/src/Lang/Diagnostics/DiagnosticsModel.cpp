@@ -22,6 +22,10 @@ namespace Graphite {
 			entry.Answered = published.Version;
 			entry.HasAnswer = true;
 			entry.Items = published.Items;
+
+			// Moves on every publication, not only ones that change Answered - see the comment
+			// on Entry::Generation for why Answered alone cannot stand in for this.
+			++entry.Generation;
 		}
 	}
 

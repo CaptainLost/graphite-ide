@@ -939,7 +939,14 @@ namespace Graphite {
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
 		Document& document = m_Shared->Documents[uri];
-		document.Version = 1;
+
+		// Continues from the last version this client ever sent for this URI rather than
+		// restarting at 1: a reopen after a close is still this same client's numbering, and a
+		// publication that was already in flight for the pre-close version must not be read as
+		// answering a version this reopen has not reached yet (see LastVersions' own comment).
+		int& lastVersion = m_Shared->LastVersions[uri];
+		++lastVersion;
+		document.Version = lastVersion;
 
 		nlohmann::json params;
 		params["textDocument"]["uri"] = uri;
@@ -1399,6 +1406,18 @@ namespace Graphite {
 						open = shared.Documents.contains(uri);
 					}
 
+					// ProtocolMutex is released before StateMutex is taken, deliberately - holding
+					// both at once, nested with the lock CloseDocument takes, is the deadlock this
+					// file's whole locking order exists to avoid. The cost is a window: a
+					// CloseDocument for this same path can land between the check above and the
+					// push below, so a publication for a document that is closing gets through
+					// anyway. The next update then carries both a Closed note and this
+					// publication, and DiagnosticsModel::Apply's fixed close-then-publish order
+					// erases the entry the close names and recreates it from the publication - no
+					// later Closed can ever arrive to erase it again, because CloseDocument has
+					// already taken this path out of Documents. Both readers filter on
+					// Core::DocumentSet::Find, so the resurrected entry is invisible to either one:
+					// a bounded leak in the model, never a wrong answer shown to anyone.
 					if (open)
 					{
 						const std::lock_guard<std::mutex> state(shared.StateMutex);

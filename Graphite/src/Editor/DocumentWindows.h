@@ -487,19 +487,17 @@ namespace Graphite {
 		std::map<std::filesystem::path, SemanticOverlay> m_Semantic;
 
 		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
-		// and whether m_Diagnostics had answered for this path, so a rebuild is skipped on every
-		// frame that changed none of them. HasAnswer is carried alongside AnsweredVersion rather
-		// than folded into it: DocumentVersion{} is both "never answered" and what an answer
-		// naming no version reads as (see DiagnosticsModel::Entry), and those two have to be told
-		// apart the same way DiagnosticsModel::IsStale tells them apart, or the very first
-		// publication for a document that answers without a version would be mistaken for the
-		// unanswered state it replaced and never trigger a rebuild.
+		// and the generation of the answer m_Diagnostics held for this path, so a rebuild is
+		// skipped on every frame that changed none of them. Generation rather than the answered
+		// version: two publications can carry the same version and different content (a server
+		// that omits version, or clangd republishing once its preamble build finishes), and a
+		// guard keyed on the version would call those identical and never rebuild. Generation is
+		// bumped by DiagnosticsModel::Apply on every publication, so it never repeats.
 		struct DiagnosticGuard
 		{
 			std::size_t Revision = 0;
 			std::size_t TabWidth = 0;
-			bool HasAnswer = false;
-			int AnsweredVersion = 0;
+			std::uint64_t Generation = 0;
 		};
 
 		// The drawable form of what m_Diagnostics holds for one document, beside m_Semantic and

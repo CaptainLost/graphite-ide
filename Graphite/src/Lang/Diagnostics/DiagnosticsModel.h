@@ -5,6 +5,7 @@
 #include "Lang/Api/LanguageService.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -42,6 +43,14 @@ namespace Graphite {
 			// not stale, having nothing to be stale about; the second is stale as soon as anything
 			// has been sent, which is the safe reading DocumentVersion's own comment commits to.
 			bool HasAnswer = false;
+
+			// Bumped by Apply every time this entry's Items are replaced, regardless of what
+			// Answered says. Two publications can carry the same version and different content -
+			// a server that omits version publishing twice, or clangd republishing once its
+			// preamble build finishes - and a reader keyed on Answered would call them identical.
+			// Generation never repeats, so a reader comparing it can tell "nothing changed since
+			// last I looked" from "something did" even when the version cannot.
+			std::uint64_t Generation = 0;
 
 			std::vector<Diagnostic> Items;
 		};

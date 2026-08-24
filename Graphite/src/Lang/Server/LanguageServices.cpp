@@ -375,15 +375,11 @@ namespace Graphite {
 		// what it is given long enough to escape it into JSON.
 		if (server.Client)
 		{
+			// LspClient::OpenDocument always sends and always returns a non-default version, so
+			// nothing here needs to guard against a default one - `if (server.Client)` above is
+			// what suppresses the note on a machine with no live process to send it to.
 			kept.Version = server.Client->OpenDocument(path, kept.Text);
-
-			// A default version means nothing was actually sent - the client answers that way
-			// without a live process. A note claiming a version that never went anywhere would
-			// have a reader compare against a version no publication will ever name.
-			if (kept.Version != DocumentVersion{})
-			{
-				m_Diagnostics.Versions.push_back(DocumentVersionNote{path, kept.Version});
-			}
+			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, kept.Version});
 		}
 	}
 

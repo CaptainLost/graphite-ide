@@ -254,6 +254,14 @@ namespace Graphite {
 			JsonRpc Rpc;
 			std::unordered_map<RequestId, Asked> Pending;
 			std::unordered_map<std::string, Document> Documents;
+
+			// The last version number this client ever sent for a URI, kept even after the
+			// document closes and its Documents entry is erased. OpenDocument reads it so a
+			// reopened document continues the same numbering rather than starting back at 1 -
+			// see OpenDocument's own comment for why restarting it there is a bug. Never erased:
+			// only a genuinely new LspClient - what a server restart constructs - starts this
+			// map, and therefore the numbering, over.
+			std::unordered_map<std::string, int> LastVersions;
 			std::vector<std::string> Queued;
 			RequestId InitializeId = 0;
 			bool Initialized = false;

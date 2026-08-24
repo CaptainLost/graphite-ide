@@ -1037,10 +1037,10 @@ namespace Graphite {
 		const auto& documents = m_Diagnostics.Documents();
 		const auto entry = documents.find(item.Path);
 
-		// HasAnswer alongside the version rather than folded into it - see the comment on
-		// DiagnosticGuard for why the two have to be told apart.
-		const bool hasAnswer = entry != documents.end() && entry->second.HasAnswer;
-		const int answeredVersion = hasAnswer ? entry->second.Answered.Value : 0;
+		// 0 for a path with no entry at all, which matches a fresh DiagnosticGuard's own default
+		// and so never falsely appears unchanged: DiagnosticsModel::Entry::Generation starts at 0
+		// too, but only an entry that has never been published to can still read 0 here.
+		const std::uint64_t generation = entry != documents.end() ? entry->second.Generation : 0;
 		const std::size_t revision = item.Document->GetBuffer().GetRevision();
 
 		DiagnosticGuard& guard = m_DiagnosticGuards[item.Path];
@@ -1049,15 +1049,14 @@ namespace Graphite {
 		// every line a diagnostic touches for no different a result, so the last-built overlay
 		// stands.
 		if (guard.Revision == revision && guard.TabWidth == item.TabWidth &&
-			guard.HasAnswer == hasAnswer && guard.AnsweredVersion == answeredVersion)
+			guard.Generation == generation)
 		{
 			return overlay;
 		}
 
 		guard.Revision = revision;
 		guard.TabWidth = item.TabWidth;
-		guard.HasAnswer = hasAnswer;
-		guard.AnsweredVersion = answeredVersion;
+		guard.Generation = generation;
 
 		overlay.Set(m_Diagnostics.For(item.Path), item.Document->GetBuffer(), item.TabWidth);
 
