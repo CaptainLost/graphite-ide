@@ -11,12 +11,40 @@
 
 #include <imgui.h>
 
+#include <chrono>
 #include <cstddef>
+#include <exception>
 #include <format>
 #include <functional>
 #include <unordered_set>
 
 namespace Graphite {
+
+	namespace {
+
+		// The reader's own offset from UTC, for the absolute timestamps in the details pane.
+		// Resolved on every call rather than cached: it changes at a daylight-saving
+		// boundary, and a panel that keeps drawing after one would otherwise be an hour out
+		// until the application restarts.
+		//
+		// Zero when the time zone database is not available — which happens on a Windows
+		// install without the ICU data chrono reads — so a timestamp falls back to UTC
+		// rather than the pane failing to draw.
+		std::chrono::minutes LocalOffset()
+		{
+			try
+			{
+				const auto now = std::chrono::system_clock::now();
+
+				return std::chrono::floor<std::chrono::minutes>(
+					std::chrono::current_zone()->get_info(now).offset);
+			}
+			catch (const std::exception&)
+			{
+				return std::chrono::minutes{0};
+			}
+		}
+	}
 
 	std::string RefLabel(const Core::Branch& branch)
 	{
@@ -98,9 +126,14 @@ namespace Graphite {
 			}
 
 			const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
-			const std::function<void()> drawDiff = [this, &palette] { RenderDiff(palette); };
+			const std::function<void()> drawDiff = [this, &palette] { RenderPreview(palette); };
 
-			DrawSplitResults(SplitResultsInput{.HasSelection = m_Commits.GetSelectedFile().has_value(),
+			// Either selection is worth opening the pane for: a commit with no file picked
+			// still has a message to read, which is the whole point of selecting it.
+			const bool hasSelection = m_Commits.GetSelectedFile().has_value() ||
+									  m_Commits.GetSelectedCommit().has_value();
+
+			DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
 											   .ResultsHeight = m_ListHeight,
 											   .DrawResults = drawList,
 											   .DrawPreview = drawDiff,
@@ -315,17 +348,25 @@ namespace Graphite {
 			// Driven from here, not from inside the list: the widget must not know the
 			// model. Asking for a diff already held, in flight, or previously failed costs
 			// nothing on the model side, which is what makes it safe to ask about every
-			// expanded commit every frame.
-			std::unordered_set<Core::Oid> currentlyExpanded;
+			// such commit every frame.
+			//
+			// Two things want a commit's diff, and either one on its own is reason to ask
+			// for it: an expanded row, which lists the files out of it, and the selected
+			// commit, whose details pane counts its changed lines. They are separate
+			// gestures now that the arrow is what expands, so a selected commit is
+			// routinely not expanded and would otherwise never have a diff to count.
+			std::unordered_set<Core::Oid> wanted;
+
+			const std::optional<Core::Oid> selectedCommit = m_Commits.GetSelectedCommit();
 
 			for (const Core::CommitSummary& commit : page->Commits)
 			{
-				if (!m_Commits.IsExpanded(commit.Id))
+				if (!m_Commits.IsExpanded(commit.Id) && selectedCommit != commit.Id)
 				{
 					continue;
 				}
 
-				currentlyExpanded.insert(commit.Id);
+				wanted.insert(commit.Id);
 
 				if (!m_Model.GetDiffFor(commit.Id))
 				{
@@ -333,21 +374,21 @@ namespace Graphite {
 				}
 			}
 
-			// A commit expanded last frame but not this one was just collapsed. Only a failed
-			// entry is actually forgotten here - the model decides that, since it is the only
-			// thing that knows an entry failed - which is what gives a failure a way back:
-			// expanding the row again is the same gesture that asks for the diff in the first
-			// place. A successful diff stays cached, so collapsing and re-expanding a row does
-			// not re-query git.
-			for (const Core::Oid& commit : m_PreviouslyExpanded)
+			// A commit whose diff was wanted last frame and is not now was just collapsed or
+			// deselected. Only a failed entry is actually forgotten here - the model decides
+			// that, since it is the only thing that knows an entry failed - which is what
+			// gives a failure a way back: expanding or selecting the row again is the same
+			// gesture that asks for the diff in the first place. A successful diff stays
+			// cached, so collapsing and re-expanding a row does not re-query git.
+			for (const Core::Oid& commit : m_PreviouslyWanted)
 			{
-				if (!currentlyExpanded.contains(commit))
+				if (!wanted.contains(commit))
 				{
 					m_Model.ForgetFailedDiffFor(commit);
 				}
 			}
 
-			m_PreviouslyExpanded = std::move(currentlyExpanded);
+			m_PreviouslyWanted = std::move(wanted);
 
 			if (m_Commits.TakeLoadMoreRequest())
 			{
@@ -363,6 +404,55 @@ namespace Graphite {
 		}
 	}
 
+	void GitView::RenderPreview(const GitPalette& palette)
+	{
+		if (m_Commits.GetSelectedFile().has_value())
+		{
+			RenderDiff(palette);
+			return;
+		}
+
+		const std::optional<Core::Oid> commit = m_Commits.GetSelectedCommit();
+		const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+
+		if (!commit.has_value() || !page)
+		{
+			RenderDiff(palette);
+			return;
+		}
+
+		for (const Core::CommitSummary& summary : page->Commits)
+		{
+			if (summary.Id == *commit)
+			{
+				RenderDetails(summary, palette);
+				return;
+			}
+		}
+
+		// The selection outlived the page that carried it, which UpdateForNewPage exists to
+		// prevent — but it runs at the top of the frame and this reads the model again, so
+		// the honest fallback is the empty pane rather than a stale commit kept for the
+		// purpose.
+		RenderDiff(palette);
+	}
+
+	void GitView::RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette)
+	{
+		// The counts come from the diff the model already holds; a commit whose diff has not
+		// landed yet draws the line dimmed rather than asking for one here. RenderCommits is
+		// what asks, for the selected commit as well as the expanded ones, so this pane never
+		// waits on a query nobody sent.
+		std::optional<DiffStats> stats;
+
+		if (const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(commit.Id))
+		{
+			stats = CountChanges(*diff);
+		}
+
+		Graphite::RenderCommitDetails(commit, stats, LocalOffset(), palette);
+	}
+
 	void GitView::RenderDiff(const GitPalette& palette)
 	{
 		const std::optional<FileSelection> selected = m_Commits.GetSelectedFile();
@@ -375,7 +465,7 @@ namespace Graphite {
 			// reason is unreachable rather than something that is simply not there.
 			m_Diff.OnOpenAsTab = nullptr;
 			m_Diff.OnClose = nullptr;
-			ImGui::TextUnformatted("Select a file to see its changes.");
+			ImGui::TextUnformatted("Select a commit or a file to see what changed.");
 			return;
 		}
 

@@ -2,6 +2,7 @@
 
 #include "Git/CommitLabels.h"
 #include "Git/CommitListView.h"
+#include "Git/CommitDetailsView.h"
 #include "Git/DiffView.h"
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
@@ -53,7 +54,17 @@ namespace Graphite {
 	private:
 		void RenderRefs(const std::vector<Core::Branch>& branches);
 		void RenderCommits(const GitPalette& palette);
+		// The pane below the list. Which of the two things it shows is decided here: a
+		// selected file wins over the commit it sits under, because picking the file is the
+		// narrower question and the one the reader asked most recently.
+		void RenderPreview(const GitPalette& palette);
+
 		void RenderDiff(const GitPalette& palette);
+
+		// The details of whichever commit is selected, with its change counts taken from
+		// the diff the model already holds for it — expanding the row is what asked for
+		// that diff, and it is the same click that made this selection.
+		void RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette);
 
 		// The two boxes above the history, and the settled query they eventually ask for.
 		// Drawn here rather than inside the commit list for the same reason the list does
@@ -128,10 +139,11 @@ namespace Graphite {
 		// workspace opens or closes, since GitModel::Clear() drops the log on both.
 		bool m_LogRequested = false;
 
-		// Which commits were expanded as of last frame, so a commit dropped from this set
-		// this frame was just collapsed. Compared rather than driven by a callback out of
-		// CommitListView, which must not know the model it would otherwise call into.
-		std::unordered_set<Core::Oid> m_PreviouslyExpanded;
+		// Which commits wanted a diff as of last frame - the expanded ones and the selected
+		// one - so a commit dropped from this set this frame was just collapsed or
+		// deselected. Compared rather than driven by a callback out of CommitListView, which
+		// must not know the model it would otherwise call into.
+		std::unordered_set<Core::Oid> m_PreviouslyWanted;
 
 		// The whole-file texts for whichever file is currently selected, the tokens lexed from
 		// them, and which file they are for. Held here rather than inside DiffView because

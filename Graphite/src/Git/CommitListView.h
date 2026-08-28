@@ -38,6 +38,13 @@ namespace Graphite {
 	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
 													const Core::LogPage& page);
 
+	// The same rule for the commit the details pane is showing. Kept apart from the file
+	// selection above because the two are set by different gestures and one can outlive the
+	// other, but answered the same way: a commit the new page no longer lists is a commit
+	// nothing on screen points at any more.
+	std::optional<Core::Oid> CommitSelectionSurviving(const std::optional<Core::Oid>& commit,
+													  const Core::LogPage& page);
+
 	// A list of commits with the graph down its left edge. Used by the Git view, and by the
 	// file and line histories in the next plan — which is why it takes a LogPage and a graph
 	// rather than reaching for a model.
@@ -69,7 +76,8 @@ namespace Graphite {
 		void KeepSelectionWithin(const Core::LogPage& page);
 
 		// Closes the preview without touching the expansion set: the reader dismissed one
-		// file, not the commit they opened to find it.
+		// file, not the commit they opened to find it. The commit selection stays, so the
+		// pane falls back to that commit's details rather than to nothing.
 		void ClearSelection() { m_SelectedFile.reset(); }
 
 		bool IsExpanded(const Core::Oid& commit) const;
@@ -77,7 +85,14 @@ namespace Graphite {
 
 		std::optional<FileSelection> GetSelectedFile() const { return m_SelectedFile; }
 
-		// Clears the expansion set, the file selection and the load-more latch. Called when
+		// The commit whose details belong in the pane below. Set by clicking anywhere on a
+		// commit row except its arrow, which expands and collapses and does nothing else —
+		// so reading a commit's message and opening its file list are separate gestures, and
+		// neither undoes the other. Cleared by nothing except a new page dropping it, or by
+		// Reset.
+		std::optional<Core::Oid> GetSelectedCommit() const { return m_SelectedCommit; }
+
+		// Clears the expansion set, both selections and the load-more latch. Called when
 		// the workspace opens or closes: GitModel::Clear() drops every cached diff on both,
 		// so an expansion or a selection naming a commit from the old repository would point
 		// at nothing the new page ever re-requests, and RenderDiff would show "Loading…"
@@ -97,6 +112,7 @@ namespace Graphite {
 	private:
 		std::unordered_set<Core::Oid> m_Expanded;
 		std::optional<FileSelection> m_SelectedFile;
+		std::optional<Core::Oid> m_SelectedCommit;
 
 		bool m_LoadMoreRequested = false;
 

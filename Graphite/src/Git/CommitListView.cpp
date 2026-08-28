@@ -45,9 +45,29 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
+	std::optional<Core::Oid> CommitSelectionSurviving(const std::optional<Core::Oid>& commit,
+													  const Core::LogPage& page)
+	{
+		if (!commit.has_value())
+		{
+			return std::nullopt;
+		}
+
+		for (const Core::CommitSummary& listed : page.Commits)
+		{
+			if (listed.Id == *commit)
+			{
+				return commit;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	void CommitListView::KeepSelectionWithin(const Core::LogPage& page)
 	{
 		m_SelectedFile = SelectionSurviving(m_SelectedFile, page);
+		m_SelectedCommit = CommitSelectionSurviving(m_SelectedCommit, page);
 	}
 
 	bool CommitListView::IsExpanded(const Core::Oid& commit) const
@@ -80,6 +100,7 @@ namespace Graphite {
 	{
 		m_Expanded.clear();
 		m_SelectedFile.reset();
+		m_SelectedCommit.reset();
 		m_LoadMoreRequestedAtCount = -1;
 	}
 
@@ -168,22 +189,70 @@ namespace Graphite {
 
 					// The arrow lives in the label rather than as its own ArrowButton, so a
 					// commit row stays a plain Selectable — see the note above the clipper.
-					//
+					// That is also why it is hit-tested by hand below: it has no item of its
+					// own to ask.
+					const char* chevron =
+						expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
+
 					// The author and age columns are padded to a fixed width so every
 					// summary starts at the same column in this monospace list, rather than
 					// reading as ragged text.
 					const std::string label = std::format(
-						"{}  {}  {}  {}  {}",
-						expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT,
-						commit.Id.ShortHex(), PaddedAuthor(commit.Author, AuthorColumnWidth),
+						"{}  {}  {}  {}  {}", chevron, commit.Id.ShortHex(),
+						PaddedAuthor(commit.Author, AuthorColumnWidth),
 						PaddedAge(commit.Author.When, now, AgeColumnWidth), commit.Summary);
+
+					// Everything left of the hash: the arrow and the gap after it. Measured
+					// from the label's own leading piece, so the zone follows the font
+					// rather than a guess, and reaching as far as the hash makes the arrow
+					// forgiving to hit without ever swallowing a click meant for the row.
+					// CalcTextSize rounding up costs at most a pixel of gap, which is the
+					// harmless direction for a hit zone.
+					const float chevronZone =
+						ImGui::CalcTextSize(std::format("{}  ", chevron).c_str()).x;
+
+					const float rowStartX = ImGui::GetCursorScreenPos().x;
 
 					// Whatever the history was filtered by is marked wherever it lands in the
 					// row — hash, author or summary — because the filter matches all three
 					// and the row is where the answer to "why this commit" is.
-					if (HighlightedSelectable("##commit", false, label, highlight))
+					//
+					// Selected rather than merely expanded is what the row draws as
+					// highlighted: expansion is already said by the chevron and by the file
+					// rows below, while the selection is the only thing that says which
+					// commit the pane underneath is describing.
+					const bool selected = m_SelectedCommit == commit.Id;
+
+					if (HighlightedSelectable("##commit", selected, label, highlight))
 					{
-						ToggleExpanded(commit.Id);
+						// Where the press landed, not where the pointer is now: a Selectable
+						// fires on release, and a press that started on the arrow is what the
+						// reader meant even if the pointer drifted before they let go. Hover
+						// is checked too, so an activation that did not come from the mouse
+						// — which leaves MouseClickedPos wherever it last was — falls to
+						// selecting, the harmless of the two.
+						const bool onChevron =
+							ImGui::IsItemHovered() &&
+							ImGui::GetIO().MouseClickedPos[0].x < rowStartX + chevronZone;
+
+						if (onChevron)
+						{
+							// The arrow does this and nothing else: opening a commit's file
+							// list and reading its message are separate questions, and a
+							// reader who wanted the other one can ask for it without undoing
+							// this.
+							ToggleExpanded(commit.Id);
+						}
+						else
+						{
+							m_SelectedCommit = commit.Id;
+
+							// The file the pane was showing belongs to whichever commit was
+							// clicked last time. Leaving it standing would put a diff from
+							// one commit under the row of another, and the reader asked
+							// about this one.
+							m_SelectedFile.reset();
+						}
 					}
 				}
 				else

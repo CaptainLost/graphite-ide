@@ -185,3 +185,37 @@ TEST_CASE("An empty page keeps no selection at all")
 {
 	CHECK_FALSE(Graphite::SelectionSurviving(SelectionIn(1, "a.cpp"), PageOf({})).has_value());
 }
+
+namespace {
+
+	Core::Oid CommitId(std::uint8_t first)
+	{
+		Core::Oid id;
+		id.Bytes[0] = first;
+		return id;
+	}
+}
+
+TEST_CASE("A selected commit that is still listed survives a new page")
+{
+	const Core::LogPage page = PageOf({1, 2, 3});
+
+	const auto surviving = Graphite::CommitSelectionSurviving(CommitId(2), page);
+
+	// The details pane follows the same rule as the diff pane above it: a refresh that
+	// still shows the commit has not taken the reader anywhere.
+	REQUIRE(surviving.has_value());
+	CHECK(*surviving == CommitId(2));
+}
+
+TEST_CASE("A selected commit the new page does not list does not survive")
+{
+	const Core::LogPage page = PageOf({1, 3});
+
+	CHECK_FALSE(Graphite::CommitSelectionSurviving(CommitId(2), page).has_value());
+}
+
+TEST_CASE("No commit selected stays no commit selected")
+{
+	CHECK_FALSE(Graphite::CommitSelectionSurviving(std::nullopt, PageOf({1, 2})).has_value());
+}
