@@ -252,3 +252,149 @@ TEST_CASE("VtParser caps the parameter list and the operating system payload")
 	CHECK(screen.GetTitle().size() < 65536);
 	CHECK(RowText(screen, 0) == U"ok      ");
 }
+
+TEST_CASE("VtParser applies a palette foreground colour")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[31ma");
+
+	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Palette);
+	CHECK(screen.At(0, 0).Foreground.Index == 1);
+}
+
+TEST_CASE("VtParser applies a bright palette colour")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[92ma");
+
+	CHECK(screen.At(0, 0).Foreground.Index == 10);
+}
+
+TEST_CASE("VtParser applies a 256-colour index")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[38;5;208ma");
+
+	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Palette);
+	CHECK(screen.At(0, 0).Foreground.Index == 208);
+}
+
+TEST_CASE("VtParser applies a direct RGB colour")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[38;2;10;20;30ma");
+
+	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Rgb);
+	CHECK(screen.At(0, 0).Foreground.R == 10);
+	CHECK(screen.At(0, 0).Foreground.G == 20);
+	CHECK(screen.At(0, 0).Foreground.B == 30);
+}
+
+TEST_CASE("VtParser does not read past a truncated extended-colour sequence")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	// "38;5" with no index following must not crash or read out of bounds.
+	parser.Consume("\x1B[38;5ma");
+
+	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Default);
+}
+
+TEST_CASE("VtParser sets and clears attributes")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[1;4ma\x1B[22mb");
+
+	CHECK(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Bold));
+	CHECK(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Underline));
+	CHECK_FALSE(Core::HasFlag(screen.At(0, 1).Flags, Core::CellFlags::Bold));
+	CHECK(Core::HasFlag(screen.At(0, 1).Flags, Core::CellFlags::Underline));
+}
+
+TEST_CASE("VtParser turns off both bold and faint with a single code")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[1;2ma\x1B[22mb");
+
+	CHECK(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Bold));
+	CHECK(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Faint));
+	CHECK_FALSE(Core::HasFlag(screen.At(0, 1).Flags, Core::CellFlags::Bold));
+	CHECK_FALSE(Core::HasFlag(screen.At(0, 1).Flags, Core::CellFlags::Faint));
+}
+
+TEST_CASE("VtParser resets the pen")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[31;1m\x1B[0ma");
+
+	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Default);
+	CHECK(screen.At(0, 0).Flags == Core::CellFlags::None);
+}
+
+TEST_CASE("VtParser switches to the alternate buffer and back")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("keep");
+	parser.Consume("\x1B[?1049h");
+
+	CHECK(screen.IsAlternateBuffer());
+
+	parser.Consume("\x1B[?1049l");
+
+	CHECK_FALSE(screen.IsAlternateBuffer());
+	CHECK(screen.At(0, 0).Code == U'k');
+}
+
+TEST_CASE("VtParser hides and shows the cursor")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[?25l");
+	CHECK_FALSE(screen.IsCursorVisible());
+
+	parser.Consume("\x1B[?25h");
+	CHECK(screen.IsCursorVisible());
+}
+
+TEST_CASE("VtParser turns bracketed paste on and off")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[?2004h");
+	CHECK(screen.IsBracketedPaste());
+
+	parser.Consume("\x1B[?2004l");
+	CHECK_FALSE(screen.IsBracketedPaste());
+}
+
+TEST_CASE("VtParser ignores a public mode it does not implement")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	// Insert mode (4, unprefixed) is not a DEC private mode; it must be swallowed rather
+	// than mistaken for a private one and acted on.
+	parser.Consume("\x1B[4h");
+
+	CHECK_FALSE(screen.IsAlternateBuffer());
+	CHECK(screen.IsCursorVisible());
+}

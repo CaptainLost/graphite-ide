@@ -144,6 +144,11 @@ namespace Core {
 		void SetCursorVisible(bool visible) { m_CursorVisible = visible; }
 		bool IsCursorVisible() const { return m_CursorVisible; }
 
+		// A shell that turns this on wants pasted text wrapped in markers, so it can tell a
+		// paste from typing and not run every line it contains.
+		void SetBracketedPaste(bool bracketed) { m_BracketedPaste = bracketed; }
+		bool IsBracketedPaste() const { return m_BracketedPaste; }
+
 		void SetTitle(std::string title) { m_Title = std::move(title); }
 		const std::string& GetTitle() const { return m_Title; }
 
@@ -197,6 +202,7 @@ namespace Core {
 		bool m_PendingWrap = false;
 		bool m_AutoWrap = true;
 		bool m_CursorVisible = true;
+		bool m_BracketedPaste = false;
 		std::size_t m_ScrollbackLimit = 0;
 		std::string m_Title;
 

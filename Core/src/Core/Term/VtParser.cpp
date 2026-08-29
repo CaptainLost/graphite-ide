@@ -460,12 +460,154 @@ namespace Core {
 
 	void VtParser::HandleSgr()
 	{
-		// Task 6.
+		if (m_Parameters.empty())
+		{
+			m_Parameters.push_back(0);
+		}
+
+		Pen pen = m_Screen.GetPen();
+
+		for (std::size_t index = 0; index < m_Parameters.size(); ++index)
+		{
+			const std::uint16_t code = m_Parameters[index];
+
+			switch (code)
+			{
+			case 0:
+				pen = Pen{};
+				break;
+			case 1:
+				pen.Flags = pen.Flags | CellFlags::Bold;
+				break;
+			case 2:
+				pen.Flags = pen.Flags | CellFlags::Faint;
+				break;
+			case 3:
+				pen.Flags = pen.Flags | CellFlags::Italic;
+				break;
+			case 4:
+				pen.Flags = pen.Flags | CellFlags::Underline;
+				break;
+			case 7:
+				pen.Flags = pen.Flags | CellFlags::Inverse;
+				break;
+			case 8:
+				pen.Flags = pen.Flags | CellFlags::Hidden;
+				break;
+			case 22:
+				pen.Flags = pen.Flags & ~(CellFlags::Bold | CellFlags::Faint);
+				break;
+			case 23:
+				pen.Flags = pen.Flags & ~CellFlags::Italic;
+				break;
+			case 24:
+				pen.Flags = pen.Flags & ~CellFlags::Underline;
+				break;
+			case 27:
+				pen.Flags = pen.Flags & ~CellFlags::Inverse;
+				break;
+			case 28:
+				pen.Flags = pen.Flags & ~CellFlags::Hidden;
+				break;
+			case 39:
+				pen.Foreground = TerminalColor{};
+				break;
+			case 49:
+				pen.Background = TerminalColor{};
+				break;
+			case 38:
+			case 48:
+			{
+				// Extended colour: "38;5;<index>" or "38;2;<r>;<g>;<b>", with the parameters
+				// that follow belonging to this code rather than standing on their own.
+				TerminalColor chosen;
+				const std::uint16_t kind = Parameter(index + 1, 0);
+
+				if (kind == 5 && index + 2 < m_Parameters.size())
+				{
+					chosen = TerminalColor::FromPalette(static_cast<std::uint8_t>(m_Parameters[index + 2]));
+					index += 2;
+				}
+				else if (kind == 2 && index + 4 < m_Parameters.size())
+				{
+					chosen = TerminalColor::FromRgb(static_cast<std::uint8_t>(m_Parameters[index + 2]),
+											static_cast<std::uint8_t>(m_Parameters[index + 3]),
+											static_cast<std::uint8_t>(m_Parameters[index + 4]));
+					index += 4;
+				}
+				else
+				{
+					break;
+				}
+
+				if (code == 38)
+				{
+					pen.Foreground = chosen;
+				}
+				else
+				{
+					pen.Background = chosen;
+				}
+
+				break;
+			}
+			default:
+			{
+				if (code >= 30 && code <= 37)
+				{
+					pen.Foreground = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 30));
+				}
+				else if (code >= 40 && code <= 47)
+				{
+					pen.Background = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 40));
+				}
+				else if (code >= 90 && code <= 97)
+				{
+					pen.Foreground = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 90 + 8));
+				}
+				else if (code >= 100 && code <= 107)
+				{
+					pen.Background = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 100 + 8));
+				}
+
+				break;
+			}
+			}
+		}
+
+		m_Screen.SetPen(pen);
 	}
 
 	void VtParser::HandleMode(bool set)
 	{
-		// Task 6.
-		(void)set;
+		if (!m_Private)
+		{
+			// The public modes (insert mode and its kind) are not used by anything this
+			// terminal runs; recognising and ignoring them keeps them off the screen.
+			return;
+		}
+
+		for (const std::uint16_t mode : m_Parameters)
+		{
+			switch (mode)
+			{
+			case 7:
+				m_Screen.SetAutoWrap(set);
+				break;
+			case 25:
+				m_Screen.SetCursorVisible(set);
+				break;
+			case 1049:
+				m_Screen.UseAlternateBuffer(set);
+				break;
+			case 2004:
+				m_Screen.SetBracketedPaste(set);
+				break;
+			default:
+				// Mouse reporting and the rest are out of scope for now, and being listed
+				// nowhere is exactly what keeps them harmless.
+				break;
+			}
+		}
 	}
 }
