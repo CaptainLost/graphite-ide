@@ -202,6 +202,19 @@ TEST_CASE("TerminalScreen erases from the cursor to the end of the line")
 	CHECK(RowText(screen, 0) == U"ab    ");
 }
 
+TEST_CASE("TerminalScreen erases from the start of the line through the cursor")
+{
+	Core::TerminalScreen screen(6, 2);
+
+	PrintAscii(screen, "abcdef");
+	screen.SetCursor(0, 2);
+	screen.EraseInLine(Core::EraseExtent::ToStart);
+
+	// The boundary is cursor-inclusive: the cell under the cursor (index 2, 'c') is erased
+	// along with everything to its left, and only what follows the cursor survives.
+	CHECK(RowText(screen, 0) == U"   def");
+}
+
 TEST_CASE("TerminalScreen erases the whole display")
 {
 	Core::TerminalScreen screen(4, 2);
@@ -214,6 +227,51 @@ TEST_CASE("TerminalScreen erases the whole display")
 
 	CHECK(RowText(screen, 0) == U"    ");
 	CHECK(RowText(screen, 1) == U"    ");
+}
+
+TEST_CASE("TerminalScreen erases from the cursor to the end of the display")
+{
+	Core::TerminalScreen screen(4, 3);
+
+	PrintAscii(screen, "abcd");
+	screen.CarriageReturn();
+	screen.LineFeed();
+	PrintAscii(screen, "efgh");
+	screen.CarriageReturn();
+	screen.LineFeed();
+	PrintAscii(screen, "ijkl");
+
+	screen.SetCursor(1, 2);
+	screen.EraseInDisplay(Core::EraseExtent::ToEnd);
+
+	// A row above the cursor is untouched; on the cursor's own row everything left of it
+	// survives while the cursor cell and the rest of the row are erased; rows below are wiped.
+	CHECK(RowText(screen, 0) == U"abcd");
+	CHECK(RowText(screen, 1) == U"ef  ");
+	CHECK(RowText(screen, 2) == U"    ");
+}
+
+TEST_CASE("TerminalScreen erases from the start of the display through the cursor")
+{
+	Core::TerminalScreen screen(4, 3);
+
+	PrintAscii(screen, "abcd");
+	screen.CarriageReturn();
+	screen.LineFeed();
+	PrintAscii(screen, "efgh");
+	screen.CarriageReturn();
+	screen.LineFeed();
+	PrintAscii(screen, "ijkl");
+
+	screen.SetCursor(1, 2);
+	screen.EraseInDisplay(Core::EraseExtent::ToStart);
+
+	// The mirror image of the ToEnd case: rows above the cursor are wiped, the cursor's own
+	// row is cleared cursor-inclusive so only what follows it survives, and rows below are
+	// untouched.
+	CHECK(RowText(screen, 0) == U"    ");
+	CHECK(RowText(screen, 1) == U"   h");
+	CHECK(RowText(screen, 2) == U"ijkl");
 }
 
 TEST_CASE("TerminalScreen deletes characters and pulls the rest of the line left")
@@ -281,6 +339,11 @@ TEST_CASE("TerminalScreen scrolls only inside the scroll region")
 	// The region scrolled; the line above it did not move.
 	CHECK(RowText(screen, 0) == U"top ");
 	CHECK(RowText(screen, 1) == U"mid ");
+
+	// The line pushed out of this region (top row 1, not row 0) is a redraw artefact, not
+	// scrollback history: a user's terminal history must not fill with debris every time a
+	// full-screen program that uses scroll regions, such as vim, redraws and quits.
+	CHECK(screen.GetScrollbackCount() == 0);
 }
 
 TEST_CASE("TerminalScreen reverse index scrolls down at the top of the region")
@@ -301,6 +364,9 @@ TEST_CASE("TerminalScreen leaving the alternate buffer restores the primary unto
 	Core::TerminalScreen screen(4, 2);
 
 	PrintAscii(screen, "keep");
+	// A position distinct from where "editor stuff" leaves the cursor in the alternate
+	// buffer, so restoring the wrong cursor would be caught rather than coincide.
+	screen.SetCursor(1, 2);
 
 	screen.UseAlternateBuffer(true);
 	CHECK(RowText(screen, 0) == U"    ");
@@ -310,6 +376,8 @@ TEST_CASE("TerminalScreen leaving the alternate buffer restores the primary unto
 	screen.UseAlternateBuffer(false);
 
 	CHECK(RowText(screen, 0) == U"keep");
+	CHECK(screen.GetCursor().Row == 1);
+	CHECK(screen.GetCursor().Column == 2);
 }
 
 TEST_CASE("TerminalScreen alternate buffer does not feed the scrollback")
