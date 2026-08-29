@@ -56,6 +56,12 @@ namespace Graphite {
 		void HandleKeyboard();
 		ImU32 Resolve(const Core::TerminalColor& color, const EditorPalette& palette,
 					  bool foreground) const;
+
+		// One cell's two colours with the pen's flags already applied. Shared rather than inlined
+		// into the row loop because the cursor inverts the cell it sits on, and it has to invert
+		// exactly the pair that cell was drawn with.
+		void ResolveCell(const Core::Cell& cell, const EditorPalette& palette, ImU32& foreground,
+						 ImU32& background) const;
 		CellIndex CellUnder(const ImVec2& position, const ImVec2& origin,
 							const ImVec2& cellSize) const;
 

@@ -82,65 +82,67 @@ namespace Graphite {
 			return WithAlpha(colour, 255u);
 		}
 
-		// The bright half of the low sixteen is made from the ordinary half rather than given
-		// values of its own, so that whatever the scheme's red is, its bright red is the same
-		// red seen under more light.
-		ImU32 Brightened(ImU32 colour)
+		// xterm's own sixteen, and deliberately not the editor's scheme.
+		//
+		// The scheme names its colours by meaning rather than by hue, and most of the entries
+		// that might have stood in here are translucent bands meant to be painted *behind* text —
+		// the selection, the find match, the bracket highlights. Forcing those opaque to serve as
+		// foregrounds invents values the theme never offered, and a program asking for red wants
+		// the red it was authored against rather than this IDE's error red, which shares the word
+		// and not the intent.
+		//
+		// The cost is real and is a deliberate deferral, not an oversight: the terminal does not
+		// visually belong to the active theme the way the rest of the application does. Buying
+		// that back wants sixteen named terminal colours a scheme can set — an additive change
+		// that belongs with the settings work, not a mapping guessed at from fields chosen for
+		// something else.
+		ImU32 AnsiColour(std::uint8_t index)
 		{
-			const auto lift = [](ImU32 channel) { return channel + (255u - channel) / 3u; };
-
-			return IM_COL32(lift(ChannelOf(colour, IM_COL32_R_SHIFT)),
-							lift(ChannelOf(colour, IM_COL32_G_SHIFT)),
-							lift(ChannelOf(colour, IM_COL32_B_SHIFT)),
-							ChannelOf(colour, IM_COL32_A_SHIFT));
-		}
-
-		ImU32 AnsiColour(std::uint8_t index, const EditorPalette& palette)
-		{
-			// Only some of the eight hues have a counterpart in the editor's scheme, because that
-			// scheme names its colours by meaning rather than by hue: black, white, grey, red and
-			// yellow all have one, and green, blue, magenta and cyan name nothing there. The ones
-			// that map take the theme's own colour, so the terminal belongs to it. The rest keep
-			// the standard xterm values, which is better than pressing an entry chosen for
-			// something else — most of the remaining ones are translucent highlight bands, not
-			// text colours — into service as a hue it was never picked to be.
 			switch (index)
 			{
-				case 0: return Opaque(palette.Background);
-				case 1: return Opaque(palette.DiagnosticError);
-				case 2: return IM_COL32(0x0D, 0xBC, 0x79, 0xFF);
-				case 3: return Opaque(palette.DiagnosticWarning);
-				case 4: return IM_COL32(0x24, 0x72, 0xC8, 0xFF);
-				case 5: return IM_COL32(0xBC, 0x3F, 0xBC, 0xFF);
-				case 6: return IM_COL32(0x11, 0xA8, 0xCD, 0xFF);
-				case 7: return Opaque(palette.Text);
-				// Bright black is a grey, and the scheme already names one: the colour it dims
-				// text to. Taking Text brightened, as the seven below it do, would make it
-				// lighter than ordinary white rather than darker.
-				case 8: return Opaque(palette.Lens);
+				case 0: return IM_COL32(0x00, 0x00, 0x00, 0xFF);
+				case 1: return IM_COL32(0xCD, 0x00, 0x00, 0xFF);
+				case 2: return IM_COL32(0x00, 0xCD, 0x00, 0xFF);
+				case 3: return IM_COL32(0xCD, 0xCD, 0x00, 0xFF);
+				case 4: return IM_COL32(0x00, 0x00, 0xEE, 0xFF);
+				case 5: return IM_COL32(0xCD, 0x00, 0xCD, 0xFF);
+				case 6: return IM_COL32(0x00, 0xCD, 0xCD, 0xFF);
+				case 7: return IM_COL32(0xE5, 0xE5, 0xE5, 0xFF);
+				case 8: return IM_COL32(0x7F, 0x7F, 0x7F, 0xFF);
+				case 9: return IM_COL32(0xFF, 0x00, 0x00, 0xFF);
+				case 10: return IM_COL32(0x00, 0xFF, 0x00, 0xFF);
+				case 11: return IM_COL32(0xFF, 0xFF, 0x00, 0xFF);
+				case 12: return IM_COL32(0x5C, 0x5C, 0xFF, 0xFF);
+				case 13: return IM_COL32(0xFF, 0x00, 0xFF, 0xFF);
+				case 14: return IM_COL32(0x00, 0xFF, 0xFF, 0xFF);
 				default: break;
 			}
 
-			return Brightened(AnsiColour(static_cast<std::uint8_t>(index - 8), palette));
+			return IM_COL32(0xFF, 0xFF, 0xFF, 0xFF);
 		}
 
-		ImU32 PaletteColour(std::uint8_t index, const EditorPalette& palette)
+		ImU32 PaletteColour(std::uint8_t index)
 		{
 			if (index < 16)
 			{
-				return AnsiColour(index, palette);
+				return AnsiColour(index);
 			}
 
 			if (index < 232)
 			{
-				// The 6x6x6 cube: the offset read as three base-6 digits, each scaled across the
-				// channel's range.
+				// The 6x6x6 cube, as three base-6 digits. The ramp is xterm's — 0, 95, 135, 175,
+				// 215, 255 — and not the linear scaling across 0-255 that it resembles and that
+				// looks tidier written down. It is uneven on purpose, and every 256-colour prompt,
+				// ls colouring and diff tool picks its indices against these exact values, so
+				// "simplifying" this to digit * 255 / 5 silently renders somebody's deliberate
+				// choice as a different colour.
 				const int offset = static_cast<int>(index) - 16;
-				const auto level = [](int digit) { return digit * 255 / 5; };
+				const auto level = [](int digit) { return digit == 0 ? 0 : 55 + digit * 40; };
 
 				return IM_COL32(level(offset / 36), level((offset / 6) % 6), level(offset % 6), 255);
 			}
 
+			// xterm's greyscale ramp, from the same source as the cube above.
 			const int grey = 8 + (static_cast<int>(index) - 232) * 10;
 
 			return IM_COL32(grey, grey, grey, 255);
@@ -274,20 +276,41 @@ namespace Graphite {
 		{
 			const Core::CursorPosition cursor = screen.GetCursor();
 
-			if (static_cast<int>(cursor.Column) < columns && static_cast<int>(cursor.Row) < rows)
+			if (static_cast<int>(cursor.Column) < columns && static_cast<int>(cursor.Row) < rows
+				&& cursor.Column < screen.GetColumns() && cursor.Row < screen.GetRows())
 			{
 				const ImVec2 topLeft(origin.x + static_cast<float>(cursor.Column) * cellSize.x,
 									 origin.y + static_cast<float>(cursor.Row) * cellSize.y);
 				const ImVec2 bottomRight(topLeft.x + cellSize.x, topLeft.y + cellSize.y);
 
-				// Filled while this view has the keyboard and hollow when it does not, which is
-				// how every terminal says where typing would land without claiming it would.
 				if (ImGui::IsWindowFocused())
 				{
-					drawList.AddRectFilled(topLeft, bottomRight, palette.Caret);
+					// Inverted rather than filled over, which is what a real console does and the
+					// parity this feature is held to. A solid block hides the character underneath
+					// it, and it hides it exactly where it matters least affordably: on the one
+					// character you are about to overtype.
+					const Core::Cell& cell = screen.At(cursor.Row, cursor.Column);
+
+					ImU32 foreground = 0;
+					ImU32 background = 0;
+
+					ResolveCell(cell, palette, foreground, background);
+
+					drawList.AddRectFilled(topLeft, bottomRight, foreground);
+
+					if (!Core::HasFlag(cell.Flags, Core::CellFlags::Hidden) && !cell.WideTrailer)
+					{
+						std::string glyph;
+						AppendUtf8(glyph, cell.Code);
+
+						drawList.AddText(topLeft, background, glyph.c_str(),
+										 glyph.c_str() + glyph.size());
+					}
 				}
 				else
 				{
+					// Hollow while the keyboard is elsewhere: it still says where typing would
+					// land, without claiming that it would.
 					drawList.AddRect(topLeft, bottomRight, palette.Caret);
 				}
 			}
@@ -335,21 +358,10 @@ namespace Graphite {
 		{
 			const Core::Cell& cell = cells[static_cast<std::size_t>(column)];
 
-			ImU32 foreground = Resolve(cell.Foreground, palette, true);
-			ImU32 background = Resolve(cell.Background, palette, false);
+			ImU32 foreground = 0;
+			ImU32 background = 0;
 
-			// Inverse is the program's, not the theme's: swapping the two resolved colours is
-			// what makes a shell's highlighted completion or a status line read as inverted
-			// whatever scheme it is being drawn in.
-			if (Core::HasFlag(cell.Flags, Core::CellFlags::Inverse))
-			{
-				std::swap(foreground, background);
-			}
-
-			if (Core::HasFlag(cell.Flags, Core::CellFlags::Faint))
-			{
-				foreground = WithAlpha(foreground, ChannelOf(foreground, IM_COL32_A_SHIFT) / 2u);
-			}
+			ResolveCell(cell, palette, foreground, background);
 
 			foregrounds[static_cast<std::size_t>(column)] = foreground;
 			backgrounds[static_cast<std::size_t>(column)] = background;
@@ -635,12 +647,34 @@ namespace Graphite {
 	{
 		switch (color.Kind)
 		{
-			case Core::TerminalColorKind::Palette: return PaletteColour(color.Index, palette);
+			// Only Default reaches the panel's own colours. Everything the program named
+			// explicitly is given as named — see AnsiColour for why the theme is not consulted.
+			case Core::TerminalColorKind::Palette: return PaletteColour(color.Index);
 			case Core::TerminalColorKind::Rgb: return IM_COL32(color.R, color.G, color.B, 255);
 			case Core::TerminalColorKind::Default: break;
 		}
 
 		return foreground ? Opaque(palette.Text) : palette.Background;
+	}
+
+	void TerminalView::ResolveCell(const Core::Cell& cell, const EditorPalette& palette,
+								   ImU32& foreground, ImU32& background) const
+	{
+		foreground = Resolve(cell.Foreground, palette, true);
+		background = Resolve(cell.Background, palette, false);
+
+		// Inverse is the program's, not the theme's: swapping the two resolved colours is what
+		// makes a shell's highlighted completion or a status line read as inverted whatever
+		// scheme it is being drawn in.
+		if (Core::HasFlag(cell.Flags, Core::CellFlags::Inverse))
+		{
+			std::swap(foreground, background);
+		}
+
+		if (Core::HasFlag(cell.Flags, Core::CellFlags::Faint))
+		{
+			foreground = WithAlpha(foreground, ChannelOf(foreground, IM_COL32_A_SHIFT) / 2u);
+		}
 	}
 
 	TerminalView::CellIndex TerminalView::CellUnder(const ImVec2& position, const ImVec2& origin,
