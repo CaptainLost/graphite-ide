@@ -77,7 +77,7 @@ namespace Graphite {
 
 		// After the bar, never inside it: erasing from the vector the tab items were drawn from
 		// would pull the ground out from under ImGui mid-frame.
-		RemoveFinishedTabs();
+		RemoveClosedTabs();
 	}
 
 	void TerminalPanel::RenderTabBar()
@@ -95,28 +95,38 @@ namespace Graphite {
 
 			const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
-			for (std::size_t index = 0; index < m_Tabs.size(); ++index)
+			for (Tab& tab : m_Tabs)
 			{
-				Tab& tab = m_Tabs[index];
-
 				// The shell renames the tab as it works, so the visible half changes while the id
 				// after ### stays the session's own for as long as it lives.
 				const std::string& title = tab.Session->GetScreen().GetTitle();
 				tab.Label = (title.empty() ? tab.Session->GetProfileName() : title)
 							+ "###terminalTab" + std::to_string(tab.Id);
 
-				if (!ImGui::BeginTabItem(tab.Label.c_str()))
+				// The × and the middle click both come from p_open, and both only ever set the
+				// flag: the tab is removed after the bar, never from inside it.
+				bool open = true;
+
+				if (!ImGui::BeginTabItem(tab.Label.c_str(), &open))
 				{
+					tab.Closing = tab.Closing || !open;
 					continue;
 				}
-
-				m_Active = index;
 
 				const Core::CursorPosition fitted = tab.View->Draw(palette);
 
 				// What fitted is what the shell is told about, which is what makes dragging the
 				// panel edge behave like resizing a console window.
 				tab.Session->Resize(fitted.Column, fitted.Row);
+
+				// After the draw, so the menu sits over the grid it acts on. Closing is the
+				// panel's because the session is the panel's; the view only reports the choice.
+				if (tab.View->DrawContextMenu())
+				{
+					open = false;
+				}
+
+				tab.Closing = tab.Closing || !open;
 
 				ImGui::EndTabItem();
 			}
@@ -176,23 +186,20 @@ namespace Graphite {
 		tab.Id = m_NextId++;
 
 		m_Tabs.push_back(std::move(tab));
-		m_Active = m_Tabs.size() - 1;
 	}
 
-	void TerminalPanel::RemoveFinishedTabs()
+	void TerminalPanel::RemoveClosedTabs()
 	{
-		const auto finished = [](const Tab& tab) { return !tab.Session->IsAlive(); };
+		// A shell that exited on its own and a tab the reader closed leave by the same door.
+		// Erasing the Tab destroys its session, whose destructor terminates the process and
+		// joins the reader thread — which is why this may not happen inside the tab bar.
+		const auto done = [](const Tab& tab) { return tab.Closing || !tab.Session->IsAlive(); };
 
-		if (std::none_of(m_Tabs.begin(), m_Tabs.end(), finished))
+		if (std::none_of(m_Tabs.begin(), m_Tabs.end(), done))
 		{
 			return;
 		}
 
-		m_Tabs.erase(std::remove_if(m_Tabs.begin(), m_Tabs.end(), finished), m_Tabs.end());
-
-		if (m_Active >= m_Tabs.size())
-		{
-			m_Active = m_Tabs.empty() ? 0 : m_Tabs.size() - 1;
-		}
+		m_Tabs.erase(std::remove_if(m_Tabs.begin(), m_Tabs.end(), done), m_Tabs.end());
 	}
 }

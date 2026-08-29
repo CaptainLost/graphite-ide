@@ -258,7 +258,6 @@ namespace Core {
 		const std::filesystem::path programFiles = EnvironmentPath("ProgramFiles");
 		const std::filesystem::path systemRoot = EnvironmentPath("SystemRoot");
 		const std::filesystem::path system = JoinIfPresent(systemRoot, "System32");
-		const std::filesystem::path localAppData = EnvironmentPath("LOCALAPPDATA");
 
 		AddIfPresent(shells, "PowerShell",
 					 JoinIfPresent(programFiles, std::filesystem::path{"PowerShell"} / "7" /
@@ -293,7 +292,6 @@ namespace Core {
 		AddIfPresent(shells, "Git Bash", gitBash, {"--login", "-i"});
 
 		AddIfPresent(shells, "WSL", JoinIfPresent(system, "wsl.exe"), {});
-		(void)localAppData;
 #else
 		// /etc/shells lists what the machine offers, and SHELL names the user's own.
 		AddIfPresent(shells, "Default shell", EnvironmentPath("SHELL"), {"-i"});

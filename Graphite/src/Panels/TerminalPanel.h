@@ -40,19 +40,22 @@ namespace Graphite {
 			// Never reused, so ImGui keeps each tab's state with the session it belongs to even
 			// as the shell renames itself and as tabs to the left of it close.
 			std::uint64_t Id = 0;
+
+			// Set by the tab's close button or its context menu, acted on after the tab bar:
+			// the session cannot be destroyed while ImGui is still drawing the tab it is in.
+			bool Closing = false;
 		};
 
 		void OpenTab(const Core::ShellProfile& profile);
 		void RenderTabBar();
 		void RenderShellMenu();
-		void RemoveFinishedTabs();
+		void RemoveClosedTabs();
 
 		Workspace& m_Workspace;
 		const ActiveScheme& m_Scheme;
 		const Core::Keymap& m_Keys;
 		std::vector<Core::ShellProfile> m_Shells;
 		std::vector<Tab> m_Tabs;
-		std::size_t m_Active = 0;
 		std::uint64_t m_NextId = 1;
 
 		// The first draw opens the default shell; closing every tab afterwards leaves the panel

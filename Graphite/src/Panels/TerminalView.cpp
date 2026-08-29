@@ -347,15 +347,7 @@ namespace Graphite {
 					ImU32 foreground = 0;
 					ImU32 background = 0;
 
-					ResolveCell(cell, palette, foreground, background);
-
-					// Both forced opaque here, where the row's own drawing only needs it of the
-					// foreground: the inversion paints the background colour as a glyph over the
-					// foreground colour as a block, and a scheme whose background carries alpha
-					// would let the block show through the character the inversion exists to
-					// keep readable.
-					foreground = Opaque(foreground);
-					background = Opaque(background);
+					ResolveCell(cell, palette, foreground, background, true);
 
 					drawList.AddRectFilled(topLeft, bottomRight, foreground);
 
@@ -399,6 +391,93 @@ namespace Graphite {
 		fitted.Column = static_cast<std::uint16_t>(columns);
 
 		return fitted;
+	}
+
+	bool TerminalView::DrawContextMenu()
+	{
+		bool close = false;
+
+		// Over the grid rather than over the tab strip: it is the text a reader has just
+		// selected that they want to do something with, and the gesture lands where that text
+		// is. The window is the whole of this view, so the right button anywhere in it opens it.
+		if (!ImGui::BeginPopupContextWindow("##terminalContext",
+											ImGuiPopupFlags_MouseButtonRight
+												| ImGuiPopupFlags_NoOpenOverExistingPopup))
+		{
+			return false;
+		}
+
+		if (ImGui::MenuItem("Copy", "Ctrl+C", false, m_HasSelection))
+		{
+			Copy();
+		}
+
+		if (ImGui::MenuItem("Paste", "Ctrl+Shift+V"))
+		{
+			PasteFromClipboard();
+		}
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem("Clear"))
+		{
+			Clear();
+		}
+
+		// Reported rather than performed: the session lives in the panel's tab vector, and
+		// removing it from inside the draw the tab item is part of would pull the ground out
+		// from under ImGui mid-frame.
+		if (ImGui::MenuItem("Close"))
+		{
+			close = true;
+		}
+
+		ImGui::EndPopup();
+
+		return close;
+	}
+
+	void TerminalView::Copy()
+	{
+		if (!m_HasSelection)
+		{
+			return;
+		}
+
+		if (const std::string selected = CopySelection(); !selected.empty())
+		{
+			ImGui::SetClipboardText(selected.c_str());
+		}
+
+		ClearSelection();
+	}
+
+	void TerminalView::PasteFromClipboard()
+	{
+		if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
+		{
+			m_Session.Paste(clipboard);
+		}
+	}
+
+	void TerminalView::Clear()
+	{
+		// The scrollback goes with the screen, which is the choice `clear` itself makes on a
+		// modern system — it emits ESC[H ESC[2J ESC[3J, and the third of those is exactly "drop
+		// the history". Erasing only what is visible would leave everything the reader asked to
+		// be rid of one wheel notch above the top of an apparently empty screen, which reads as
+		// the command having half worked. What is lost is recoverable by rerunning a command;
+		// what is gained is that the gesture means what it says.
+		Core::TerminalScreen& screen = m_Session.GetScreen();
+
+		screen.EraseInDisplay(Core::EraseExtent::All);
+		screen.SetCursor(0, 0);
+		screen.ClearScrollback();
+
+		m_ScrollOffset = 0;
+		m_FollowTail = true;
+		m_LastScrollbackCount = 0;
+		ClearSelection();
 	}
 
 	void TerminalView::DrawRow(ImDrawList& drawList, const std::vector<Core::Cell>& cells, int row,
@@ -687,12 +766,7 @@ namespace Graphite {
 			{
 				if (m_HasSelection)
 				{
-					if (const std::string selected = CopySelection(); !selected.empty())
-					{
-						ImGui::SetClipboardText(selected.c_str());
-					}
-
-					ClearSelection();
+					Copy();
 				}
 				else if (const std::string bytes = Core::EncodeKey(*code, modifiers);
 						 !bytes.empty())
@@ -705,11 +779,7 @@ namespace Graphite {
 
 			if (ControlOf(io) && io.KeyShift && *code == Core::KeyCode::V)
 			{
-				if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
-				{
-					m_Session.Paste(clipboard);
-				}
-
+				PasteFromClipboard();
 				continue;
 			}
 
@@ -747,10 +817,39 @@ namespace Graphite {
 	}
 
 	void TerminalView::ResolveCell(const Core::Cell& cell, const EditorPalette& palette,
-								   ImU32& foreground, ImU32& background) const
+								   ImU32& foreground, ImU32& background, bool opaqueBase) const
 	{
-		foreground = Resolve(cell.Foreground, palette, true);
+		// Bold on one of the low eight palette entries is the bright entry eight above it. That
+		// is what every terminal since the hardware ones has done with it, and without it
+		// "\e[1;31m" and "\e[31m" are the same red — which is every bold prompt and every
+		// heading git status prints. A bold cell that named a 256-colour index or an RGB colour
+		// is left alone: the program picked an exact colour and there is no brighter one to
+		// promote it to.
+		//
+		// Italic is parsed and carried on the cell but is not drawn: this application bakes one
+		// monospaced face and has no italic one to switch to, and slanting the upright face by
+		// hand would smear a grid whose whole premise is that every cell is the same width.
+		Core::TerminalColor chosen = cell.Foreground;
+
+		if (Core::HasFlag(cell.Flags, Core::CellFlags::Bold)
+			&& chosen.Kind == Core::TerminalColorKind::Palette && chosen.Index < 8)
+		{
+			chosen.Index = static_cast<std::uint8_t>(chosen.Index + 8);
+		}
+
+		foreground = Resolve(chosen, palette, true);
 		background = Resolve(cell.Background, palette, false);
+
+		// Before the flags below rather than after them, which is what keeps a faint character
+		// faint under the cursor: the cursor needs both colours opaque, because it paints the
+		// background as a glyph over the foreground as a block and a scheme carrying alpha
+		// would let the block show through, but forcing that once the halving had been applied
+		// would undo it and render the one faint character the cursor sits on at full strength.
+		if (opaqueBase)
+		{
+			foreground = Opaque(foreground);
+			background = Opaque(background);
+		}
 
 		// Inverse is the program's, not the theme's: swapping the two resolved colours is what
 		// makes a shell's highlighted completion or a status line read as inverted whatever

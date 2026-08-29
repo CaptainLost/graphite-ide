@@ -38,6 +38,18 @@ namespace Graphite {
 		// theme is deliberately not consulted there.
 		Core::CursorPosition Draw(const EditorPalette& palette);
 
+		// The right-click menu over the grid. Copy, paste and clear are the view's own, because
+		// it owns the selection and the screen they act on; closing the session is not, because
+		// the session lives in the panel's tab vector. So a chosen Close is returned rather
+		// than performed, and the caller does it after the draw is over.
+		bool DrawContextMenu();
+
+		// The same three actions the keyboard reaches, named once so the menu and the key are
+		// one behaviour rather than two that agree today.
+		void Copy();
+		void PasteFromClipboard();
+		void Clear();
+
 		bool HasSelection() const { return m_HasSelection; }
 		std::string CopySelection() const;
 		void ClearSelection() { m_HasSelection = false; }
@@ -62,8 +74,10 @@ namespace Graphite {
 		// One cell's two colours with the pen's flags already applied. Shared rather than inlined
 		// into the row loop because the cursor inverts the cell it sits on, and it has to invert
 		// exactly the pair that cell was drawn with.
+		// `opaqueBase` forces both resolved colours opaque before the flags are applied, which
+		// the cursor needs and a row does not — see the comment beside it in the .cpp.
 		void ResolveCell(const Core::Cell& cell, const EditorPalette& palette, ImU32& foreground,
-						 ImU32& background) const;
+						 ImU32& background, bool opaqueBase = false) const;
 		CellIndex CellUnder(const ImVec2& position, const ImVec2& origin,
 							const ImVec2& cellSize) const;
 
