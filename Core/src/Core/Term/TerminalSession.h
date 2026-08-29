@@ -19,6 +19,14 @@
 
 namespace Core {
 
+	// The bytes a paste puts on the wire: the text wrapped in the bracketed-paste markers when
+	// the shell turned that mode on, and the text alone — indistinguishable from typing — when
+	// it did not.
+	//
+	// Free rather than a private step inside Paste so that the decision can be tested against a
+	// screen alone, with no shell to spawn and no wire to watch.
+	std::string BracketedPasteBytes(std::string_view text, bool bracketedPasteEnabled);
+
 	// One shell, its screen, and the thread that reads from it.
 	//
 	// The reader thread does not parse: it pushes raw bytes into a bounded queue, and the UI
@@ -67,7 +75,10 @@ namespace Core {
 		// Declared before the thread so that it outlives it: the members are destroyed in
 		// reverse order, and the pseudo-console's own destructor reads from the pipe, which
 		// must not happen while a reader is still inside it. The destructor's join is what
-		// actually guarantees that; this order keeps it true even if the join is ever removed.
+		// guarantees that, and nothing here substitutes for it — ~std::thread on a joinable
+		// thread calls std::terminate, so removing the join ends the process before member
+		// destruction order ever comes into play. This order is a second line of defence for
+		// the ordering alone: it keeps the console alive across the join it follows.
 		Scope<PseudoConsole> m_Console;
 		std::string m_ProfileName;
 		TerminalScreen m_Screen;

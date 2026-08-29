@@ -21,6 +21,22 @@ namespace Core {
 		constexpr std::chrono::milliseconds RetryPause{10};
 	}
 
+	std::string BracketedPasteBytes(std::string_view text, bool bracketedPasteEnabled)
+	{
+		if (!bracketedPasteEnabled)
+		{
+			return std::string{text};
+		}
+
+		std::string bytes;
+		bytes.reserve(text.size() + 12);
+		bytes += "\x1B[200~";
+		bytes += text;
+		bytes += "\x1B[201~";
+
+		return bytes;
+	}
+
 	TerminalSession::TerminalSession(Scope<PseudoConsole> console, std::string profileName,
 									 std::uint16_t columns, std::uint16_t rows)
 		: m_Console(std::move(console)), m_ProfileName(std::move(profileName)),
@@ -163,15 +179,9 @@ namespace Core {
 			return;
 		}
 
-		if (!m_Screen.IsBracketedPaste())
-		{
-			Send(text);
-			return;
-		}
-
-		Send("\x1B[200~");
-		Send(text);
-		Send("\x1B[201~");
+		// One write rather than three: the markers and the text they bracket must not be
+		// interleaved with anything else the UI sends in the meantime.
+		Send(BracketedPasteBytes(text, m_Screen.IsBracketedPaste()));
 	}
 
 	void TerminalSession::Resize(std::uint16_t columns, std::uint16_t rows)
