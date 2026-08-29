@@ -10,9 +10,25 @@ namespace Core {
 		constexpr char Escape = '\x1B';
 		constexpr char Bell = '\x07';
 
+		// This parser is where bytes from an arbitrary program enter the process, so neither
+		// buffer may grow with the stream: a run of ';' or an OSC that never terminates would
+		// otherwise reallocate until the process runs out of memory. Real terminals cap both
+		// at about these sizes, and no sequence anyone emits comes near them. Past the cap the
+		// excess is dropped, never buffered.
+		constexpr std::size_t MaxParameters = 32;
+		constexpr std::size_t MaxOscLength = 4096;
+
 		bool IsCsiFinal(char byte)
 		{
 			return byte >= '@' && byte <= '~';
+		}
+
+		// 0x3C-0x3F: '<', '=', '>', '?'. All four are legal parameter-prefix bytes and real
+		// programs emit them — ESC[>0c for secondary device attributes, ESC[>4;2m for
+		// modifyOtherKeys — so they must be parsed, not aborted on.
+		bool IsCsiPrefix(char byte)
+		{
+			return byte >= '<' && byte <= '?';
 		}
 	}
 
@@ -32,8 +48,10 @@ namespace Core {
 	{
 		m_State = State::Ground;
 		m_Parameters.clear();
+		m_ParametersFull = false;
 		m_Intermediate.clear();
 		m_OscBuffer.clear();
+		m_Prefix = '\0';
 		m_Private = false;
 	}
 
@@ -49,17 +67,23 @@ namespace Core {
 
 	void VtParser::ConsumeByte(char byte, std::string& replies)
 	{
+		// An ESC aborts whatever is in progress and begins a new sequence, in every state
+		// where it cannot be part of a terminator. Letting it fall through to the reset below
+		// instead would consume the ESC of the *next* sequence, and that sequence's body would
+		// then land on the screen as text — the one thing this parser exists to prevent.
+		// The string states own their ESC: there it may be the first half of ESC \.
+		if (byte == Escape && m_State != State::OscString && m_State != State::OscEscape
+			&& m_State != State::StringSink)
+		{
+			Reset();
+			m_State = State::Escape;
+			return;
+		}
+
 		switch (m_State)
 		{
 		case State::Ground:
 		{
-			if (byte == Escape)
-			{
-				Reset();
-				m_State = State::Escape;
-				return;
-			}
-
 			if (static_cast<unsigned char>(byte) < 0x20)
 			{
 				HandleControl(byte);
@@ -99,15 +123,25 @@ namespace Core {
 		case State::CsiEntry:
 		case State::CsiParam:
 		{
-			if (byte == '?' && m_State == State::CsiEntry)
+			if (m_State == State::CsiEntry && IsCsiPrefix(byte))
 			{
-				m_Private = true;
+				m_Prefix = byte;
+				// Only '?' means DEC private; the others are recorded as themselves so that
+				// dispatch can tell them apart rather than treating them as private modes.
+				m_Private = byte == '?';
 				m_State = State::CsiParam;
 				return;
 			}
 
 			if (byte >= '0' && byte <= '9')
 			{
+				m_State = State::CsiParam;
+
+				if (m_ParametersFull)
+				{
+					return;
+				}
+
 				if (m_Parameters.empty())
 				{
 					m_Parameters.push_back(0);
@@ -115,14 +149,32 @@ namespace Core {
 
 				m_Parameters.back() = static_cast<std::uint16_t>(
 					std::min(m_Parameters.back() * 10 + (byte - '0'), 65535));
-				m_State = State::CsiParam;
 				return;
 			}
 
 			if (byte == ';')
 			{
-				m_Parameters.push_back(0);
 				m_State = State::CsiParam;
+
+				if (m_ParametersFull)
+				{
+					return;
+				}
+
+				// The slot the separator closes has to exist before the next one opens, or a
+				// leading empty parameter — "ESC[;5H" is row default, column five — is lost.
+				if (m_Parameters.empty())
+				{
+					m_Parameters.push_back(0);
+				}
+
+				if (m_Parameters.size() >= MaxParameters)
+				{
+					m_ParametersFull = true;
+					return;
+				}
+
+				m_Parameters.push_back(0);
 				return;
 			}
 
@@ -168,16 +220,36 @@ namespace Core {
 				return;
 			}
 
-			// The other terminator is ESC \, whose ESC arrives here first.
+			// The other terminator is ESC \, whose ESC arrives here first. Whether it really
+			// terminates the string is not known until the next byte.
 			if (byte == Escape)
 			{
-				HandleOsc();
-				Reset();
-				m_State = State::Escape;
+				m_State = State::OscEscape;
 				return;
 			}
 
-			m_OscBuffer.push_back(byte);
+			if (m_OscBuffer.size() < MaxOscLength)
+			{
+				m_OscBuffer.push_back(byte);
+			}
+
+			return;
+		}
+		case State::OscEscape:
+		{
+			if (byte == '\\')
+			{
+				HandleOsc();
+				Reset();
+				return;
+			}
+
+			// A bare ESC means the program abandoned the string, so nothing of a partial
+			// payload may be committed — a half-written title is worse than none. The byte
+			// after it belongs to whatever sequence that ESC opened, so it is replayed there.
+			Reset();
+			m_State = State::Escape;
+			ConsumeByte(byte, replies);
 			return;
 		}
 		case State::StringSink:
@@ -256,6 +328,23 @@ namespace Core {
 
 	void VtParser::HandleCsi(char final, std::string& replies)
 	{
+		// An intermediate byte changes what a final means: "CSI Ps SP @" is scroll left, not
+		// insert characters, and "CSI Ps SP A" is scroll right, not cursor up. None of those
+		// are implemented, so the sequence is swallowed silently — dispatching on the final
+		// alone would perform a wrong action, which is worse than performing none.
+		if (!m_Intermediate.empty())
+		{
+			return;
+		}
+
+		// Likewise for a prefix other than '?': ESC[>0c asks for secondary device attributes
+		// and ESC[>4;2m sets modifyOtherKeys, and answering either as though it were the
+		// unprefixed sequence would be a wrong answer rather than silence.
+		if (m_Prefix != '\0' && m_Prefix != '?')
+		{
+			return;
+		}
+
 		switch (final)
 		{
 		case 'A':

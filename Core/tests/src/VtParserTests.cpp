@@ -3,6 +3,8 @@
 #include "Core/Term/TerminalScreen.h"
 #include "Core/Term/VtParser.h"
 
+#include <string>
+
 namespace {
 
 	std::u32string RowText(const Core::TerminalScreen& screen, std::uint16_t row)
@@ -134,4 +136,119 @@ TEST_CASE("VtParser saves and restores the cursor")
 	parser.Consume("\x1B[3;3H\x1B""7\x1B[1;1H\x1B""8x");
 
 	CHECK(screen.At(2, 2).Code == U'x');
+}
+
+TEST_CASE("VtParser lets an ESC abort the sequence in progress")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// The first sequence is abandoned halfway. Its ESC must start the second one rather
+	// than being eaten as the abandoned sequence's unrecognised byte.
+	parser.Consume("\x1B[3\x1B[2Jab");
+
+	CHECK(RowText(screen, 0) == U"ab      ");
+}
+
+TEST_CASE("VtParser starts a fresh sequence on a doubled ESC")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B\x1B[1;3Hx");
+
+	CHECK(RowText(screen, 0) == U"  x     ");
+}
+
+TEST_CASE("VtParser swallows a CSI opened with a prefix other than '?'")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// Secondary device attributes and modifyOtherKeys are emitted by real programs; the
+	// finals 'c' and 'm' must not reach the screen, and must not be dispatched either.
+	const std::string reply = parser.Consume("a\x1B[>0c\x1B[>4;2mb");
+
+	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(reply.empty());
+}
+
+TEST_CASE("VtParser keeps a leading empty parameter")
+{
+	Core::TerminalScreen screen(8, 4);
+	Core::VtParser parser(screen);
+
+	// "ESC[;5H" is row default, column five — not column default, row five.
+	parser.Consume("\x1B[;5Hx");
+
+	CHECK(screen.At(0, 4).Code == U'x');
+}
+
+TEST_CASE("VtParser ignores a CSI carrying an intermediate byte it does not implement")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// "CSI Ps SP @" is scroll left, not insert characters. Unimplemented means nothing
+	// happens, never a different action.
+	parser.Consume("abc\x1B[1;1H\x1B[1 @");
+
+	CHECK(RowText(screen, 0) == U"abc     ");
+}
+
+TEST_CASE("VtParser drops a title whose sequence an ESC abandons")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B]0;first\x07");
+	parser.Consume("\x1B]0;second\x1B[2Jok");
+
+	CHECK(screen.GetTitle() == "first");
+	CHECK(RowText(screen, 0) == U"ok      ");
+}
+
+TEST_CASE("VtParser takes a title from a string-terminated operating system command")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B]2;built\x1B\\ok");
+
+	CHECK(screen.GetTitle() == "built");
+	CHECK(RowText(screen, 0) == U"ok      ");
+}
+
+TEST_CASE("VtParser answers a cursor position report")
+{
+	Core::TerminalScreen screen(8, 4);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[3;5H");
+
+	// The reply is one-based, like the CUP that put the cursor there.
+	CHECK(parser.Consume("\x1B[6n") == "\x1B[3;5R");
+}
+
+TEST_CASE("VtParser answers a device attributes request")
+{
+	Core::TerminalScreen screen(8, 4);
+	Core::VtParser parser(screen);
+
+	CHECK(parser.Consume("\x1B[c") == "\x1B[?1;2c");
+	CHECK(parser.Consume("\x1B[0c") == "\x1B[?1;2c");
+}
+
+TEST_CASE("VtParser caps the parameter list and the operating system payload")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// Untrusted bytes: neither buffer may grow with the stream.
+	parser.Consume("\x1B[" + std::string(4096, ';') + "H");
+	parser.Consume("\x1B]0;" + std::string(65536, 'x') + "\x07"
+				   + "ok");
+
+	CHECK(screen.GetTitle().size() < 65536);
+	CHECK(RowText(screen, 0) == U"ok      ");
 }

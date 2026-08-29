@@ -36,6 +36,9 @@ namespace Core {
 			CsiParam,
 			CsiIntermediate,
 			OscString,
+			// An ESC arrived inside an OSC: the next byte decides whether it was the string
+			// terminator ESC \ or an abort.
+			OscEscape,
 			StringSink
 		};
 
@@ -53,8 +56,15 @@ namespace Core {
 		TerminalScreen& m_Screen;
 		State m_State = State::Ground;
 		std::vector<std::uint16_t> m_Parameters;
+		// Set once the parameter list is full: further digits and separators are dropped
+		// rather than corrupting the last parameter.
+		bool m_ParametersFull = false;
 		std::string m_Intermediate;
 		std::string m_OscBuffer;
+		// The byte a CSI was opened with, one of 0x3C-0x3F ('<', '=', '>', '?'), or '\0' when
+		// there was none. Only '?' shares dispatch with an unprefixed sequence; the rest
+		// introduce sequences this terminal does not implement and must be swallowed whole.
+		char m_Prefix = '\0';
 		// Set for a CSI opened with '?', which marks the DEC private modes — the alternate
 		// buffer, cursor visibility, bracketed paste. They share final bytes with the public
 		// modes and mean entirely different things.
