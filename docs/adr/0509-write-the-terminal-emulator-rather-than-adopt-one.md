@@ -29,6 +29,24 @@ process side is `Core::PseudoConsole`, a ConPTY sibling of `Core::ChildProcess`
 in `Core/Platform`, following the same `#ifdef _WIN32` / `#else` returning
 `ErrorCode::Unsupported` convention as every other file there.
 
+Two smaller decisions the panel rests on are recorded here, because they are the
+kind that get quietly reversed by a later change:
+
+**The cursor inverts the cell it sits on rather than filling over it.** A solid
+block hides the character underneath it, and it hides it in the one place that
+costs most — the character about to be overtyped. Parity with the system console
+settles it. The inversion is also why one `ResolveCell` serves both the row pass
+and the cursor: the cursor has to invert exactly the pair of colours that cell
+was drawn with, and two code paths deciding that separately would drift.
+
+**`TerminalView` takes the keymap as a constructor parameter, not per frame.**
+The palette is genuinely per-frame data, rebuilt from the active scheme each
+frame; the keymap is one object that lives as long as the application, and
+handing it in sixty times a second would state a variability it does not have.
+It is a hard dependency rather than a setter a caller can forget, because a view
+that silently swallowed every IDE shortcut would fail in a way nobody would
+trace back to a missing call.
+
 ## Rationale
 
 Three reasons carried this, in order of weight. The emulator is the only part
@@ -36,9 +54,10 @@ of the feature that is pure logic, and `CoreTests` is the only place in this
 repository where anything is tested; handing it to a library would move the
 whole feature into the untested half of the codebase, where correctness rests
 on running the app and looking. The cell model is what the panel reaches into
-directly — selection over cells, scrollback joined for copy, palette indices
-resolved against the active scheme — and a foreign cell model is one the panel
-adapts to rather than one that serves it. And the prior art points the same
+directly — selection over cells, scrollback joined for copy, and a colour kept
+as what the program asked for rather than flattened to RGB, so that drawing
+time decides what a palette index looks like — and a foreign cell model is one
+the panel adapts to rather than one that serves it. And the prior art points the same
 way without endorsing the adopt-a-library alternative: VS Code emulates with
 `xterm.js` and spawns with `node-pty`; JetBrains emulates with `JediTerm` and
 spawns with `pty4j`. Both wrote their own emulator having had the option not
@@ -82,8 +101,8 @@ and the emulation layer. Neither wrote its own ConPTY.
   future change to that code carries this record and the comments beside it as
   its only defence.
 - The ANSI 0–15 colour slots use standard xterm values and deliberately do not
-  follow the active colour scheme, though the design this record supersedes
-  said they would. The scheme's own colours at those positions are translucent
+  follow the active colour scheme, which was the intention when the work
+  started. The scheme's own colours at those positions are translucent
   highlight bands meant to sit behind text, not opaque foreground colours;
   forcing them opaque would invent values the scheme never offered. Only the
   default foreground and background are drawn from the scheme. The terminal
@@ -116,6 +135,6 @@ direct read.
 - [0002](0002-keep-core-free-of-ide-knowledge.md) — the module lives in Core,
   under the same constraint: `Core/Term` and `Core/Platform` know nothing of
   `TerminalPanel` or any other Graphite type.
-- `docs/superpowers/specs/2026-08-29-terminal-design.md` — the design this
-  record's decision is drawn from, and which its Negative section partly
-  supersedes on the ANSI colour question.
+- [0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md) — `PseudoConsole`,
+  `ShellProfiles` and `TerminalSession::Start` all report failure as `Result<>`,
+  which is what lets a shell that will not start leave the panel working.
