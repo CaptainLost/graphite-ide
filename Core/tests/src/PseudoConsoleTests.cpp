@@ -3,7 +3,9 @@
 #include "Core/Platform/PseudoConsole.h"
 
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -84,7 +86,6 @@ TEST_CASE("PseudoConsole terminating the shell releases a thread blocked in Read
 	REQUIRE(started);
 
 	Core::PseudoConsole& console = *started.GetValue();
-	std::array<char, 512> buffer{};
 
 	// Drain the banner and prompt first, so the read below has nothing waiting and genuinely
 	// blocks — otherwise this passes without proving anything.
@@ -95,10 +96,48 @@ TEST_CASE("PseudoConsole terminating the shell releases a thread blocked in Read
 		console.Terminate();
 	});
 
-	while (console.Read(buffer) != 0)
+	// The claim under test is that Read returns zero once the shell is killed, so the loop
+	// itself has to be the thing that is bounded. A deadline checked between iterations would
+	// not do it: the defect this guards against is a single Read that never returns, and it
+	// took out the whole suite by hanging rather than failing. Running the loop on its own
+	// thread and giving the main thread a deadline turns that into one red case in seconds.
+	// The buffer and the flag live with the reader — heap-allocated flag, thread-local buffer —
+	// because on failure that thread is still running when this one leaves the scope.
+	auto released = std::make_shared<std::atomic<bool>>(false);
+
+	std::thread reader([&console, released] {
+		std::array<char, 512> buffer{};
+
+		while (console.Read(buffer) != 0)
+		{
+		}
+
+		released->store(true);
+	});
+
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+
+	while (!released->load() && std::chrono::steady_clock::now() < deadline)
 	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 
+	CHECK(released->load());
 	terminator.join();
+
+	if (released->load())
+	{
+		reader.join();
+	}
+	else
+	{
+		// The reader is still parked inside Read, on a handle this object owns. Destroying the
+		// console would pull that handle out from under a live thread and turn a failed case
+		// into a crash on the way out, so the failing run deliberately leaks it instead.
+		reader.detach();
+		(void)started.GetValue().release();
+		return;
+	}
+
 	CHECK_FALSE(console.IsRunning());
 }

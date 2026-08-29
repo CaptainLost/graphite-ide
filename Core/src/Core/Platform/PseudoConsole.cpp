@@ -21,6 +21,13 @@ namespace Core {
 		// handle alone as end-of-stream would cut that off.
 		constexpr DWORD FlushGraceMilliseconds = 250;
 
+		// The two bounds the destructor runs under. Neither is a guess about how long a shell
+		// needs; both exist so that no shell, however wedged, can stop this object from being
+		// destroyed. Exceeding either leaks nothing this process owns — the handles are closed
+		// regardless — it only means the last of a dying shell's output is dropped.
+		constexpr DWORD ShutdownWaitMilliseconds = 2000;
+		constexpr DWORD ShutdownDrainMilliseconds = 250;
+
 		ErrorCode ErrorCodeFor(DWORD error)
 		{
 			switch (error)
@@ -72,9 +79,13 @@ namespace Core {
 
 			if (writeEnd == INVALID_HANDLE_VALUE)
 			{
+				// CloseHandle overwrites the thread's last error, so the caller would report
+				// whatever the close did rather than why the pipe could not be opened.
+				const DWORD failure = ::GetLastError();
 				::CloseHandle(readEnd);
 				readEnd = nullptr;
 				writeEnd = nullptr;
+				::SetLastError(failure);
 				return false;
 			}
 
@@ -116,6 +127,74 @@ namespace Core {
 			}
 
 			return static_cast<std::size_t>(transferred);
+		}
+
+		// Reads and discards whatever is already sitting in the pipe, for at most the given
+		// number of milliseconds. Used on the way out, where the point is not the bytes but the
+		// room they free: ClosePseudoConsole waits for the host to flush, and at that moment no
+		// reader is left, so a full buffer would leave the host unable to finish. The deadline is
+		// re-checked before every wait and after every completed read, so a host that keeps
+		// producing cannot hold this open.
+		void DrainPipe(HANDLE pipe, DWORD milliseconds)
+		{
+			const HANDLE event = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+
+			if (event == nullptr)
+			{
+				return;
+			}
+
+			const ULONGLONG deadline = ::GetTickCount64() + milliseconds;
+			char scratch[4096]{};
+
+			while (true)
+			{
+				const ULONGLONG now = ::GetTickCount64();
+
+				if (now >= deadline)
+				{
+					break;
+				}
+
+				::ResetEvent(event);
+
+				OVERLAPPED overlapped{};
+				overlapped.hEvent = event;
+
+				DWORD transferred = 0;
+
+				if (::ReadFile(pipe, scratch, static_cast<DWORD>(sizeof(scratch)), &transferred,
+							   &overlapped))
+				{
+					if (transferred == 0)
+					{
+						break;
+					}
+
+					continue;
+				}
+
+				if (::GetLastError() != ERROR_IO_PENDING)
+				{
+					break;
+				}
+
+				if (::WaitForSingleObject(event, static_cast<DWORD>(deadline - now))
+					!= WAIT_OBJECT_0)
+				{
+					::CancelIoEx(pipe, &overlapped);
+					::GetOverlappedResult(pipe, &overlapped, &transferred, TRUE);
+					break;
+				}
+
+				if (!::GetOverlappedResult(pipe, &overlapped, &transferred, FALSE)
+					|| transferred == 0)
+				{
+					break;
+				}
+			}
+
+			::CloseHandle(event);
 		}
 	}
 #endif
@@ -169,19 +248,33 @@ namespace Core {
 		auto* attributes = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
 			::HeapAlloc(::GetProcessHeap(), 0, attributeBytes));
 
-		if (attributes == nullptr
-			|| !::InitializeProcThreadAttributeList(attributes, 1, 0, &attributeBytes)
+		if (attributes == nullptr)
+		{
+			::ClosePseudoConsole(console);
+			::CloseHandle(inputWrite);
+			::CloseHandle(outputRead);
+			return Error{ErrorCode::IoFailure, "cannot allocate the process attribute list"};
+		}
+
+		const bool initialised =
+			::InitializeProcThreadAttributeList(attributes, 1, 0, &attributeBytes) != FALSE;
+
+		if (!initialised
 			|| !::UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
 											console, sizeof(console), nullptr, nullptr))
 		{
 			const Error error{ErrorCode::IoFailure,
 							  "cannot attach the pseudo-console to the process attributes"};
 
-			if (attributes != nullptr)
+			if (initialised)
 			{
-				::HeapFree(::GetProcessHeap(), 0, attributes);
+				// An initialised list owns more than the block it was written into, so returning
+				// that block to the heap is not enough; the API contract is to delete the list
+				// first. Only the update failing gets here with a list that was initialised.
+				::DeleteProcThreadAttributeList(attributes);
 			}
 
+			::HeapFree(::GetProcessHeap(), 0, attributes);
 			::ClosePseudoConsole(console);
 			::CloseHandle(inputWrite);
 			::CloseHandle(outputRead);
@@ -251,6 +344,25 @@ namespace Core {
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		Terminate();
+
+		// TerminateProcess only asks; it returns long before the process is gone. Everything
+		// below is written on the assumption that nothing is still feeding the pseudo-console,
+		// so the shell's death is waited for rather than assumed. The wait is bounded because a
+		// destructor that can block for ever is worse than one that gives up on a shell which
+		// refuses to die: on expiry the handles are closed anyway.
+		if (m_Process != nullptr)
+		{
+			::WaitForSingleObject(static_cast<HANDLE>(m_Process), ShutdownWaitMilliseconds);
+		}
+
+		// ClosePseudoConsole below waits for the host's final flush to land in the pipe, and by
+		// then nobody is draining it — a full buffer would leave the host unable to finish and
+		// the close unable to return. Emptying the pipe first hands that flush the whole buffer.
+		// Bounded, for the same reason as the wait above.
+		if (m_FromChild != nullptr)
+		{
+			DrainPipe(static_cast<HANDLE>(m_FromChild), ShutdownDrainMilliseconds);
+		}
 
 		// The pseudo-console goes first, while the reading end is still open: closing it is the
 		// host's cue to shut down, and the flush it does on the way out needs a pipe left to

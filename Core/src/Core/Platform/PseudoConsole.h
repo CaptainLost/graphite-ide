@@ -33,8 +33,16 @@ namespace Core {
 
 		~PseudoConsole();
 
-		// Blocks until at least one byte arrives. Zero means the shell is gone: unlike a pipe
-		// carrying a finite command's output, a live shell simply never returns zero.
+		// Blocks until at least one byte arrives, and returns how many were written into the
+		// buffer.
+		//
+		// Zero means "no bytes, and this call is not going to produce any" — it does NOT on its
+		// own mean the shell has exited. A live shell never reports end-of-output the way a pipe
+		// does, so the ordinary reason for zero is indeed that the shell is gone; but zero is
+		// also what an empty buffer, a failure to set up the wait, or a failed read returns,
+		// because this call has nowhere to put an error. A caller that reacts to the shell
+		// exiting — closing a terminal tab, say — must confirm with IsRunning() before treating
+		// zero as the end, and may otherwise read again.
 		std::size_t Read(std::span<char> buffer);
 
 		bool Write(std::string_view bytes);
