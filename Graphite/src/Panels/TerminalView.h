@@ -32,8 +32,10 @@ namespace Graphite {
 
 		// Draws into the current window's content region and handles input. Returns the
 		// columns and rows that fitted, so the caller can resize the session. The palette
-		// carries the editor's colours, which is what the low sixteen ANSI entries map onto
-		// so the terminal belongs to the same theme as everything around it.
+		// carries the editor's colours, and it is consulted for exactly one thing: a cell
+		// whose colour the program left at its default. Everything a program names is drawn
+		// in xterm's own values — see the comment above AnsiColour in the .cpp for why the
+		// theme is deliberately not consulted there.
 		Core::CursorPosition Draw(const EditorPalette& palette);
 
 		bool HasSelection() const { return m_HasSelection; }
@@ -90,6 +92,18 @@ namespace Graphite {
 		// reader is looking at, and every line the shell pushes into the scrollback would
 		// otherwise slide that text up by one: the offset is measured from the tail, so it has
 		// to grow by as much as the tail moved to leave the content where it was.
+		//
+		// A growing count is only an approximation of "the tail moved", and it stops being one
+		// in two known cases: once the scrollback is at its ten-thousand-line cap the count
+		// stays put while lines keep scrolling off the top, and entering or leaving the
+		// alternate buffer can make it drop outright. Both leave the pinned view sliding rather
+		// than corrupt; a session-side count of lines ever pushed is what would fix it properly.
 		std::size_t m_LastScrollbackCount = 0;
+
+		// One row's resolved colours, kept between frames rather than allocated per row. Two
+		// vectors a row at sixty frames a second is thousands of allocations a second for
+		// buffers that are the same size every time.
+		std::vector<ImU32> m_RowForegrounds;
+		std::vector<ImU32> m_RowBackgrounds;
 	};
 }

@@ -6,6 +6,10 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Term/KeyEncoding.h"
 
+// For SetKeyOwner: taking the mouse wheel away from the window's own scrolling has no
+// public entry point, and the same header is already used elsewhere in this project.
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -74,9 +78,9 @@ namespace Graphite {
 		}
 
 		// Several of the editor's own entries are translucent bands meant to be laid over text —
-		// the selection, the find match — and the ones borrowed below are not, but forcing this
-		// keeps a scheme that made its foreground slightly transparent from turning every glyph
-		// in the terminal into a ghost.
+		// the selection, the find match. Only the default foreground and background reach the
+		// terminal now, and neither is one of those, but forcing this keeps a scheme that made
+		// its text colour slightly transparent from turning every glyph here into a ghost.
 		ImU32 Opaque(ImU32 colour)
 		{
 			return WithAlpha(colour, 255u);
@@ -148,6 +152,23 @@ namespace Graphite {
 			return IM_COL32(grey, grey, grey, 255);
 		}
 
+		// On Windows AltGr reports as Ctrl+Alt rather than as a key of its own, so every Polish
+		// letter that needs it — ą ć ę ł ń ó ś ź ż — and @ \ | ~ on German and Nordic layouts
+		// arrive with both modifiers held. This is the same decision the editor makes in
+		// TextEditorWidget.cpp's ControlOf ("Control *and not* Alt"), written the other way
+		// round; the two are one rule and must stay recognisably so.
+		bool IsAltGr(const ImGuiIO& io)
+		{
+			return io.KeyCtrl && io.KeyAlt;
+		}
+
+		// A real control chord, as opposed to AltGr. Ctrl+C is a copy; Ctrl+Alt+C is whatever
+		// the layout puts on that key.
+		bool ControlOf(const ImGuiIO& io)
+		{
+			return io.KeyCtrl && !io.KeyAlt;
+		}
+
 		Core::KeyModifier ModifiersOf(const ImGuiIO& io)
 		{
 			Core::KeyModifier modifiers = Core::KeyModifier::None;
@@ -157,12 +178,15 @@ namespace Graphite {
 				modifiers = modifiers | Core::KeyModifier::Shift;
 			}
 
-			if (io.KeyCtrl)
+			// Neither bit is set under AltGr: passing Control through would make EncodeKey turn
+			// a letter typed with AltGr into that letter's control byte, so `ą` would reach the
+			// shell as Ctrl+A rather than as itself.
+			if (io.KeyCtrl && !IsAltGr(io))
 			{
 				modifiers = modifiers | Core::KeyModifier::Control;
 			}
 
-			if (io.KeyAlt)
+			if (io.KeyAlt && !IsAltGr(io))
 			{
 				modifiers = modifiers | Core::KeyModifier::Alt;
 			}
@@ -229,6 +253,12 @@ namespace Graphite {
 		// A view scrolled back stays on the text the reader is looking at. The offset is measured
 		// from the tail, so every line the shell pushes into the scrollback would otherwise slide
 		// that text up by one; growing the offset by as much as the tail moved leaves it put.
+		//
+		// A growing count is a proxy for "the tail moved" and not the thing itself. It stops
+		// reporting the motion once the scrollback sits at its ten-thousand-line cap — lines
+		// keep scrolling off the top while the count stands still — and it can fall rather than
+		// rise when the alternate buffer is entered or left. In both cases the pinned view
+		// slides; a count of lines ever pushed, kept by the screen, is what would settle it.
 		if (!m_FollowTail && scrollback > m_LastScrollbackCount)
 		{
 			m_ScrollOffset += static_cast<int>(scrollback - m_LastScrollbackCount);
@@ -238,6 +268,13 @@ namespace Graphite {
 
 		if (ImGui::IsWindowHovered())
 		{
+			// Claimed for as long as the pointer is over the grid, not only on the frames a
+			// notch arrives: ImGui applies the wheel to the window's own scroll at the start of
+			// the next frame and tests the ownership set during this one. Without this a single
+			// notch moves the scrollback and the window together. The owner is an id of this
+			// view's own, which is what makes the test in UpdateMouseWheel fail for the window.
+			ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGui::GetID("##terminalWheel"));
+
 			// A notch at a time rather than truncated to whole lines: a trackpad reports
 			// fractions, and truncating those would make it scroll nothing at all.
 			if (const float wheel = ImGui::GetIO().MouseWheel; wheel != 0.0f)
@@ -281,7 +318,17 @@ namespace Graphite {
 			{
 				const ImVec2 topLeft(origin.x + static_cast<float>(cursor.Column) * cellSize.x,
 									 origin.y + static_cast<float>(cursor.Row) * cellSize.y);
-				const ImVec2 bottomRight(topLeft.x + cellSize.x, topLeft.y + cellSize.y);
+
+				// A double-width character occupies two cells and its glyph is drawn across
+				// both, so a cursor one cell wide would invert half of the very character it
+				// exists to keep readable.
+				const bool wide =
+					static_cast<int>(cursor.Column) + 1 < columns
+					&& cursor.Column + 1 < screen.GetColumns()
+					&& screen.At(cursor.Row, static_cast<std::uint16_t>(cursor.Column + 1)).WideTrailer;
+
+				const ImVec2 bottomRight(topLeft.x + (wide ? 2.0f : 1.0f) * cellSize.x,
+										 topLeft.y + cellSize.y);
 
 				if (ImGui::IsWindowFocused())
 				{
@@ -295,6 +342,14 @@ namespace Graphite {
 					ImU32 background = 0;
 
 					ResolveCell(cell, palette, foreground, background);
+
+					// Both forced opaque here, where the row's own drawing only needs it of the
+					// foreground: the inversion paints the background colour as a glyph over the
+					// foreground colour as a block, and a scheme whose background carries alpha
+					// would let the block show through the character the inversion exists to
+					// keep readable.
+					foreground = Opaque(foreground);
+					background = Opaque(background);
 
 					drawList.AddRectFilled(topLeft, bottomRight, foreground);
 
@@ -322,9 +377,13 @@ namespace Graphite {
 
 		// The grid is drawn straight onto the draw list, which ImGui knows nothing about. Without
 		// an item covering it the cursor never advances, the scroll extent collapses to nothing
-		// and the item protocol trips its own assert on the last row of the frame.
+		// and the item protocol trips its own assert on the last row of the frame. The spacing
+		// comes off because ItemSize adds it back: rows is the region's height divided down to
+		// whole cells, so the remainder is less than one cell and usually less than the default
+		// spacing — reserving the full height would overflow the region, raise a scrollbar,
+		// narrow the next frame's width by one column, and set the fitted size oscillating.
 		ImGui::Dummy(ImVec2(static_cast<float>(columns) * cellSize.x,
-							static_cast<float>(rows) * cellSize.y));
+							static_cast<float>(rows) * cellSize.y - ImGui::GetStyle().ItemSpacing.y));
 
 		Core::CursorPosition fitted;
 		fitted.Row = static_cast<std::uint16_t>(rows);
@@ -351,8 +410,13 @@ namespace Graphite {
 			return origin.x + static_cast<float>(column) * cellSize.x;
 		};
 
-		std::vector<ImU32> foregrounds(static_cast<std::size_t>(count));
-		std::vector<ImU32> backgrounds(static_cast<std::size_t>(count));
+		// Members rather than locals: a pair of vectors allocated per row per frame is thousands
+		// of allocations a second for buffers whose size barely changes.
+		std::vector<ImU32>& foregrounds = m_RowForegrounds;
+		std::vector<ImU32>& backgrounds = m_RowBackgrounds;
+
+		foregrounds.resize(static_cast<std::size_t>(count));
+		backgrounds.resize(static_cast<std::size_t>(count));
 
 		for (int column = 0; column < count; ++column)
 		{
@@ -559,9 +623,11 @@ namespace Graphite {
 
 		// Taken as characters rather than encoded from the key, because the host has already
 		// applied the keyboard layout to them — which is also why EncodeKey deliberately returns
-		// nothing for a printable key, so that nothing is sent twice. Skipped while Ctrl or Alt
-		// is held: those combinations are control codes, and EncodeKey below is what makes them.
-		if (!io.KeyCtrl && !io.KeyAlt)
+		// nothing for a printable key, so that nothing is sent twice. Skipped while exactly one
+		// of Ctrl and Alt is held: those combinations are control codes, and EncodeKey below is
+		// what makes them. Both held is AltGr, which is how a layout reaches its third level —
+		// see IsAltGr — and the character it produced has to go out like any other.
+		if (IsAltGr(io) || (!io.KeyCtrl && !io.KeyAlt))
 		{
 			std::string typed;
 
@@ -600,21 +666,33 @@ namespace Graphite {
 			}
 
 			// The view's own two gestures, judged before the binding lookup below rather than
-			// after it. Ctrl+C has to reach the shell as an interrupt when nothing is selected
-			// even though the IDE binds it to a copy command, and a paste has to arrive as text
+			// after it. Both of Ctrl+C's outcomes resolve here, not just the copy: the interrupt
+			// is the one that must not depend on what the IDE has bound, and letting the empty
+			// selection fall through to the lookup would put it back at the mercy of it. Nothing
+			// binds Ctrl+C today, but ConsolePanel already advertises it as copy, so the day it
+			// is bound the interrupt would die silently. A paste likewise has to arrive as text
 			// on the wire rather than as an editor action.
-			if (io.KeyCtrl && !io.KeyShift && *code == Core::KeyCode::C && m_HasSelection)
+			if (ControlOf(io) && !io.KeyShift && *code == Core::KeyCode::C)
 			{
-				if (const std::string selected = CopySelection(); !selected.empty())
+				if (m_HasSelection)
 				{
-					ImGui::SetClipboardText(selected.c_str());
+					if (const std::string selected = CopySelection(); !selected.empty())
+					{
+						ImGui::SetClipboardText(selected.c_str());
+					}
+
+					ClearSelection();
+				}
+				else if (const std::string bytes = Core::EncodeKey(*code, modifiers);
+						 !bytes.empty())
+				{
+					m_Session.Send(bytes);
 				}
 
-				ClearSelection();
 				continue;
 			}
 
-			if (io.KeyCtrl && io.KeyShift && *code == Core::KeyCode::V)
+			if (ControlOf(io) && io.KeyShift && *code == Core::KeyCode::V)
 			{
 				if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
 				{
@@ -806,20 +884,26 @@ namespace Graphite {
 
 		std::string text;
 		std::vector<Core::Cell> scratch;
+		bool wrote = false;
 
 		for (int row = top; row <= bottom; ++row)
 		{
-			if (row != top)
-			{
-				text.push_back('\n');
-			}
-
 			const std::vector<Core::Cell>* cells = RowCells(row, scratch, right + 1);
 
+			// After the row is fetched, not before: a selection swept past the bottom of the
+			// screen names rows that do not exist, and separating them anyway would put a
+			// blank line in the clipboard for each one.
 			if (cells == nullptr)
 			{
 				continue;
 			}
+
+			if (wrote)
+			{
+				text.push_back('\n');
+			}
+
+			wrote = true;
 
 			const int count = std::min(right + 1, static_cast<int>(cells->size()));
 			std::string line;

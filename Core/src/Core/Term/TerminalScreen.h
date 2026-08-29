@@ -17,8 +17,9 @@ namespace Core {
 	};
 
 	// Kept as what the program actually asked for rather than resolved to RGB at write time:
-	// the low sixteen palette entries are mapped onto the editor's colour scheme when drawn,
-	// and flattening here would throw that away.
+	// a default colour has to stay distinguishable from a named one, since only the default
+	// takes the panel's own foreground and background, and flattening here would throw that
+	// away. It also leaves the mapping of the numbered entries a drawing-time decision.
 	struct TerminalColor
 	{
 		TerminalColorKind Kind = TerminalColorKind::Default;
