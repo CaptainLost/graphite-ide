@@ -120,7 +120,41 @@ namespace Core {
 				return;
 			}
 
+			// An intermediate byte: the sequence's meaning is decided by the final byte still
+			// to come, so nothing can be dispatched yet and the ESC path needs the same
+			// intermediate state the CSI path already has. Without it "ESC ( B" — ncurses'
+			// sgr0 for the xterm terminfo, emitted on every attribute reset by vim, less,
+			// htop and git's pager — swallows the '(' and prints the 'B'.
+			if (byte >= ' ' && byte <= '/')
+			{
+				if (m_Intermediate.size() < MaxIntermediateLength)
+				{
+					m_Intermediate.push_back(byte);
+				}
+
+				m_State = State::EscapeIntermediate;
+				return;
+			}
+
 			HandleEscape(byte);
+			Reset();
+			return;
+		}
+		case State::EscapeIntermediate:
+		{
+			if (byte >= ' ' && byte <= '/')
+			{
+				if (m_Intermediate.size() < MaxIntermediateLength)
+				{
+					m_Intermediate.push_back(byte);
+				}
+
+				return;
+			}
+
+			// Nothing with an intermediate is implemented — character set selection, the
+			// alignment test — so the final byte dispatches nothing and is consumed whole,
+			// which is the invariant this parser exists for.
 			Reset();
 			return;
 		}

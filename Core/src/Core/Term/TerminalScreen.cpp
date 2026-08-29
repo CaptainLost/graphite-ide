@@ -8,6 +8,18 @@ namespace Core {
 
 	namespace {
 		constexpr std::uint16_t TabWidth = 8;
+
+		// A repetition count arrives from the program on the other end of the pseudo-console,
+		// and the parser's digit accumulator only stops it at 65535: "ESC[65535S" would
+		// otherwise cost hundreds of millions of cell copies and a visible stall. Repeating an
+		// operation more times than there are rows or columns to act on changes nothing after
+		// the last one, so every count is cut to what the screen can absorb. The parser caps
+		// its own buffers for the same reason — this is the untrusted-input boundary, and the
+		// screen it drives holds the same stance.
+		std::uint16_t Repetitions(std::uint16_t count, std::size_t available)
+		{
+			return static_cast<std::uint16_t>(std::min<std::size_t>(count, available));
+		}
 	}
 
 	TerminalScreen::TerminalScreen(std::uint16_t columns, std::uint16_t rows,
@@ -117,12 +129,14 @@ namespace Core {
 
 	void TerminalScreen::ScrollUp(std::uint16_t count)
 	{
-		for (std::uint16_t step = 0; step < count; ++step)
+		const std::uint16_t steps = Repetitions(count, RegionHeight());
+
+		for (std::uint16_t step = 0; step < steps; ++step)
 		{
 			// Only a line leaving the top of a full-height primary screen is history. A line
 			// pushed out of a smaller scroll region, or out of the alternate buffer, is
 			// discarded — it is a redraw artefact, not something the reader scrolled past.
-			if (!m_Alternate && m_ScrollTop == 0 && m_ScrollbackLimit > 0)
+			if (!m_Alternate && IsFullHeightRegion() && m_ScrollbackLimit > 0)
 			{
 				m_Scrollback.push_back(m_Lines[m_ScrollTop]);
 
@@ -139,7 +153,9 @@ namespace Core {
 
 	void TerminalScreen::ScrollDown(std::uint16_t count)
 	{
-		for (std::uint16_t step = 0; step < count; ++step)
+		const std::uint16_t steps = Repetitions(count, RegionHeight());
+
+		for (std::uint16_t step = 0; step < steps; ++step)
 		{
 			m_Lines.erase(m_Lines.begin() + m_ScrollBottom);
 			m_Lines.insert(m_Lines.begin() + m_ScrollTop, std::vector<Cell>(m_Columns, Cell{}));
@@ -234,7 +250,10 @@ namespace Core {
 			return;
 		}
 
-		for (std::uint16_t step = 0; step < count; ++step)
+		const std::uint16_t steps =
+			Repetitions(count, static_cast<std::size_t>(m_ScrollBottom - m_Cursor.Row) + 1);
+
+		for (std::uint16_t step = 0; step < steps; ++step)
 		{
 			m_Lines.erase(m_Lines.begin() + m_ScrollBottom);
 			m_Lines.insert(m_Lines.begin() + m_Cursor.Row, std::vector<Cell>(m_Columns, Cell{}));
@@ -248,7 +267,10 @@ namespace Core {
 			return;
 		}
 
-		for (std::uint16_t step = 0; step < count; ++step)
+		const std::uint16_t steps =
+			Repetitions(count, static_cast<std::size_t>(m_ScrollBottom - m_Cursor.Row) + 1);
+
+		for (std::uint16_t step = 0; step < steps; ++step)
 		{
 			m_Lines.erase(m_Lines.begin() + m_Cursor.Row);
 			m_Lines.insert(m_Lines.begin() + m_ScrollBottom, std::vector<Cell>(m_Columns, Cell{}));
@@ -259,7 +281,9 @@ namespace Core {
 	{
 		std::vector<Cell>& line = RowAt(m_Cursor.Row);
 
-		for (std::uint16_t step = 0; step < count; ++step)
+		const std::uint16_t steps = Repetitions(count, line.size() - m_Cursor.Column);
+
+		for (std::uint16_t step = 0; step < steps; ++step)
 		{
 			line.pop_back();
 			line.insert(line.begin() + m_Cursor.Column, Cell{});
@@ -271,7 +295,9 @@ namespace Core {
 	{
 		std::vector<Cell>& line = RowAt(m_Cursor.Row);
 
-		for (std::uint16_t step = 0; step < count; ++step)
+		const std::uint16_t steps = Repetitions(count, line.size() - m_Cursor.Column);
+
+		for (std::uint16_t step = 0; step < steps; ++step)
 		{
 			line.erase(line.begin() + m_Cursor.Column);
 			line.emplace_back();
@@ -314,7 +340,12 @@ namespace Core {
 		{
 			m_Lines = std::move(m_PrimaryLines);
 			m_PrimaryLines.clear();
-			m_Cursor = m_PrimaryCursor;
+			// Through SetCursor, like every other restore: the screen can have been resized
+			// smaller while the alternate buffer was up — the panel dragged narrower with vim
+			// open — and a row that no longer exists leaves the cursor below the scroll bottom,
+			// where a line feed neither scrolls nor advances and every later line overwrites
+			// the bottom row.
+			SetCursor(m_PrimaryCursor.Row, m_PrimaryCursor.Column);
 		}
 
 		m_Alternate = alternate;

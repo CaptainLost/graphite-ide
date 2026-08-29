@@ -32,6 +32,10 @@ namespace Core {
 		{
 			Ground,
 			Escape,
+			// An intermediate byte followed the ESC: "ESC ( B" selects a character set,
+			// "ESC # 8" is the DEC alignment test. The final byte after it is dispatched
+			// nowhere, but it must be consumed here rather than printed.
+			EscapeIntermediate,
 			CsiEntry,
 			CsiParam,
 			CsiIntermediate,

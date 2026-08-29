@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -178,17 +179,38 @@ namespace Core {
 		void Resize(std::uint16_t columns, std::uint16_t rows);
 
 		std::size_t GetScrollbackCount() const { return m_Scrollback.size(); }
+
+		// Drops the history without touching the screen. What a reader asking a terminal to
+		// clear means by it: erasing the visible grid alone would leave everything they wanted
+		// gone still one wheel notch away.
+		void ClearScrollback() { m_Scrollback.clear(); }
+
+		// Clamped like At and RowAt, and for the same reason: the row a caller asks for comes
+		// from a scroll offset that can name a line the scrollback has since dropped, and the
+		// three accessors must not disagree about whether that is a crash or a nearby line.
+		// Never called on an empty scrollback — GetScrollbackCount is what a caller consults
+		// first — so there is always a line to answer with.
 		const std::vector<Cell>& GetScrollbackLine(std::size_t index) const
 		{
-			return m_Scrollback[index];
+			return m_Scrollback[std::min(index, m_Scrollback.size() - 1)];
 		}
 
-	protected:
+	private:
 		std::vector<Cell>& RowAt(std::uint16_t row);
 		void ClearCell(Cell& cell) const;
 
-		std::uint16_t ScrollTop() const { return m_ScrollTop; }
-		std::uint16_t ScrollBottom() const { return m_ScrollBottom; }
+		// How many rows an operation bounded by the scroll region can act on, and whether that
+		// region is the whole screen — only a line leaving the top of a full-height screen is
+		// history rather than a redraw artefact.
+		std::size_t RegionHeight() const
+		{
+			return static_cast<std::size_t>(m_ScrollBottom - m_ScrollTop) + 1;
+		}
+
+		bool IsFullHeightRegion() const
+		{
+			return m_ScrollTop == 0 && m_ScrollBottom + 1 == m_Rows;
+		}
 
 		std::vector<std::vector<Cell>> m_Lines;
 		std::uint16_t m_Columns = 0;

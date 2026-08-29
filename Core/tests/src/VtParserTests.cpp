@@ -532,3 +532,55 @@ TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pendi
 	CHECK(screen.At(0, 1).Code == U'\xFFFD');
 	CHECK(screen.At(0, 2).Code == U'b');
 }
+
+TEST_CASE("VtParser swallows a character-set selection whole")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// "ESC ( B" selects the ASCII character set. It is not implemented, but its final byte
+	// must not reach the screen: ncurses emits "\E(B\E[m" as sgr0 on essentially every
+	// attribute reset, so a leaked 'B' would litter the screen of anything that uses colour.
+	parser.Consume("\x1B(B" "hi");
+
+	CHECK(RowText(screen, 0) == U"hi      ");
+	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser swallows the line-drawing character set and a DEC alignment test")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// The same rule for the other intermediates real programs emit: "ESC ( 0" switches to the
+	// line-drawing set and "ESC # 8" is the DEC screen alignment test.
+	parser.Consume("\x1B(0" "a");
+	parser.Consume("\x1B#8" "b");
+
+	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser clamps a repetition count to the screen")
+{
+	Core::TerminalScreen screen(8, 5);
+	Core::VtParser parser(screen);
+
+	parser.Consume("hello");
+
+	// The digit accumulator caps a parameter at 65535, so an unclamped scroll would copy
+	// hundreds of millions of cells and push tens of thousands of blank lines into the
+	// scrollback. Only the rows that exist can leave the screen.
+	parser.Consume("\x1B[65535S");
+
+	CHECK(screen.GetScrollbackCount() == 5);
+	CHECK(RowText(screen, 0) == U"        ");
+	CHECK(screen.GetRows() == 5);
+	CHECK(screen.GetColumns() == 8);
+
+	parser.Consume("\x1B[65535L\x1B[65535M\x1B[65535@\x1B[65535P\x1B[65535T");
+
+	CHECK(screen.GetRows() == 5);
+	CHECK(screen.GetColumns() == 8);
+	CHECK(RowText(screen, 0) == U"        ");
+}

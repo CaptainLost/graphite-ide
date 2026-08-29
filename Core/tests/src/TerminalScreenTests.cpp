@@ -408,3 +408,28 @@ TEST_CASE("TerminalScreen resize truncates and pads without reflowing")
 
 	CHECK(RowText(screen, 0) == U"abc  ");
 }
+
+TEST_CASE("TerminalScreen clamps the cursor restored from the alternate buffer")
+{
+	Core::TerminalScreen screen(4, 10);
+
+	screen.SetCursor(8, 0);
+	screen.UseAlternateBuffer(true);
+
+	// The panel shrank while the alternate buffer was up — vim running in a dragged-smaller
+	// panel — so the cursor saved from the primary screen names a row that no longer exists.
+	screen.Resize(4, 3);
+	screen.UseAlternateBuffer(false);
+
+	CHECK(screen.GetCursor().Row < screen.GetRows());
+
+	// And the cursor still moves: left unclamped it sits below the scroll bottom, where a line
+	// feed neither scrolls nor advances, so every following line overwrites the bottom row.
+	PrintAscii(screen, "a");
+	screen.LineFeed();
+	screen.CarriageReturn();
+	PrintAscii(screen, "b");
+
+	CHECK(RowText(screen, 1) == U"a   ");
+	CHECK(RowText(screen, 2) == U"b   ");
+}
