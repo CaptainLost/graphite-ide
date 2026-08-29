@@ -18,6 +18,7 @@
 
 #include "Panels/ProblemsPanel.h"
 #include "Panels/ReferencesPanel.h"
+#include "Panels/TerminalPanel.h"
 
 #include <optional>
 
@@ -103,6 +104,8 @@ namespace Graphite {
 			m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents)));
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
+
+		m_Panels.Add(Core::CreateScope<TerminalPanel>(m_Workspace, m_ActiveScheme, m_Keys));
 
 		m_SearchPanel = static_cast<SearchPanel*>(m_Panels.Add(Core::CreateScope<SearchPanel>(
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
