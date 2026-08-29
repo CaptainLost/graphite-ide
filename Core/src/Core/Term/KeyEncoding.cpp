@@ -52,6 +52,21 @@ namespace Core {
 
 			return "\x1B[" + std::to_string(number) + ';' + std::to_string(parameter) + '~';
 		}
+
+		// F1 to F4 are SS3 sequences — ESC O P through ESC O S — while every other function key
+		// is a tilde sequence. SS3 carries no parameter, so a modified F1 has to fall back to
+		// the CSI form that does; xterm does the same, and a TUI reading its terminfo expects it.
+		std::string FunctionSequence(char final, KeyModifier modifiers)
+		{
+			const int parameter = ModifierParameter(modifiers);
+
+			if (parameter == 1)
+			{
+				return std::string("\x1BO") + final;
+			}
+
+			return "\x1B[1;" + std::to_string(parameter) + final;
+		}
 	}
 
 	std::string EncodeKey(KeyCode key, KeyModifier modifiers)
@@ -62,7 +77,9 @@ namespace Core {
 		case KeyCode::KPEnter:
 			return "\r";
 		case KeyCode::Tab:
-			return "\t";
+			// Shift+Tab is CBT, the back-tab: it is how a TUI walks its focus backwards, and a
+			// plain tab in its place walks forwards instead — the opposite of what was asked.
+			return HasModifier(modifiers, KeyModifier::Shift) ? "\x1B[Z" : "\t";
 		case KeyCode::Escape:
 			return "\x1B";
 		case KeyCode::Backspace:
@@ -81,12 +98,41 @@ namespace Core {
 			return CursorSequence('H', modifiers);
 		case KeyCode::End:
 			return CursorSequence('F', modifiers);
+		case KeyCode::Insert:
+			return TildeSequence(2, modifiers);
 		case KeyCode::Delete:
 			return TildeSequence(3, modifiers);
 		case KeyCode::PageUp:
 			return TildeSequence(5, modifiers);
 		case KeyCode::PageDown:
 			return TildeSequence(6, modifiers);
+		case KeyCode::F1:
+			return FunctionSequence('P', modifiers);
+		case KeyCode::F2:
+			return FunctionSequence('Q', modifiers);
+		case KeyCode::F3:
+			return FunctionSequence('R', modifiers);
+		case KeyCode::F4:
+			return FunctionSequence('S', modifiers);
+		// The tilde numbers are not consecutive — 16 and 22 were never assigned — so they are
+		// written out rather than computed from the key. A formula here would be shorter and
+		// would send F6 as F5's sequence.
+		case KeyCode::F5:
+			return TildeSequence(15, modifiers);
+		case KeyCode::F6:
+			return TildeSequence(17, modifiers);
+		case KeyCode::F7:
+			return TildeSequence(18, modifiers);
+		case KeyCode::F8:
+			return TildeSequence(19, modifiers);
+		case KeyCode::F9:
+			return TildeSequence(20, modifiers);
+		case KeyCode::F10:
+			return TildeSequence(21, modifiers);
+		case KeyCode::F11:
+			return TildeSequence(23, modifiers);
+		case KeyCode::F12:
+			return TildeSequence(24, modifiers);
 		default:
 			break;
 		}

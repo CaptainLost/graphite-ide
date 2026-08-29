@@ -57,3 +57,40 @@ TEST_CASE("EncodeKey sends nothing for a modifier held alone")
 {
 	CHECK(Core::EncodeKey(Core::KeyCode::LeftControl, Core::KeyModifier::Control).empty());
 }
+
+TEST_CASE("EncodeKey sends the function keys")
+{
+	// F1-F4 are SS3 sequences and the rest are tilde sequences, which is what xterm sends and
+	// what every terminfo entry a TUI reads is written against.
+	CHECK(Core::EncodeKey(Core::KeyCode::F1, Core::KeyModifier::None) == "\x1BOP");
+	CHECK(Core::EncodeKey(Core::KeyCode::F2, Core::KeyModifier::None) == "\x1BOQ");
+	CHECK(Core::EncodeKey(Core::KeyCode::F3, Core::KeyModifier::None) == "\x1BOR");
+	CHECK(Core::EncodeKey(Core::KeyCode::F4, Core::KeyModifier::None) == "\x1BOS");
+	CHECK(Core::EncodeKey(Core::KeyCode::F5, Core::KeyModifier::None) == "\x1B[15~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F6, Core::KeyModifier::None) == "\x1B[17~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F7, Core::KeyModifier::None) == "\x1B[18~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F8, Core::KeyModifier::None) == "\x1B[19~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F9, Core::KeyModifier::None) == "\x1B[20~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F10, Core::KeyModifier::None) == "\x1B[21~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F11, Core::KeyModifier::None) == "\x1B[23~");
+	CHECK(Core::EncodeKey(Core::KeyCode::F12, Core::KeyModifier::None) == "\x1B[24~");
+}
+
+TEST_CASE("EncodeKey parameterises a modified function key")
+{
+	// A modified F1-F4 leaves SS3 for the CSI form, which is the one that carries a parameter.
+	CHECK(Core::EncodeKey(Core::KeyCode::F1, Core::KeyModifier::Shift) == "\x1B[1;2P");
+	CHECK(Core::EncodeKey(Core::KeyCode::F5, Core::KeyModifier::Control) == "\x1B[15;5~");
+}
+
+TEST_CASE("EncodeKey sends insert")
+{
+	CHECK(Core::EncodeKey(Core::KeyCode::Insert, Core::KeyModifier::None) == "\x1B[2~");
+}
+
+TEST_CASE("EncodeKey sends a back-tab for shifted tab")
+{
+	// Shift+Tab is CBT, how a TUI walks its focus backwards; a plain tab would walk forwards.
+	CHECK(Core::EncodeKey(Core::KeyCode::Tab, Core::KeyModifier::Shift) == "\x1B[Z");
+	CHECK(Core::EncodeKey(Core::KeyCode::Tab, Core::KeyModifier::None) == "\t");
+}
