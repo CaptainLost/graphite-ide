@@ -43,6 +43,7 @@ namespace Core {
 		};
 
 		void ConsumeByte(char byte, std::string& replies);
+		void PrintByte(char byte);
 		void HandleControl(char byte);
 		void HandleEscape(char byte);
 		void HandleCsi(char final, std::string& replies);
@@ -69,5 +70,9 @@ namespace Core {
 		// buffer, cursor visibility, bracketed paste. They share final bytes with the public
 		// modes and mean entirely different things.
 		bool m_Private = false;
+		// A read from a pipe can end in the middle of a multi-byte character, so the partial
+		// bytes are held here until the character completes.
+		char32_t m_Pending = 0;
+		std::uint8_t m_PendingBytes = 0;
 	};
 }

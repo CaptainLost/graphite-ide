@@ -442,3 +442,48 @@ TEST_CASE("VtParser ignores a public mode it does not implement")
 	CHECK_FALSE(screen.IsAlternateBuffer());
 	CHECK(screen.IsCursorVisible());
 }
+
+TEST_CASE("VtParser decodes a multi-byte character")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\xC5\x82");  // U+0142, a Polish l with stroke
+
+	CHECK(screen.At(0, 0).Code == U'\u0142');
+	CHECK(screen.GetCursor().Column == 1);
+}
+
+TEST_CASE("VtParser decodes a character split across two reads")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\xC5");
+	parser.Consume("\x82");
+
+	CHECK(screen.At(0, 0).Code == U'\u0142');
+}
+
+TEST_CASE("VtParser gives a double-width character two cells")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\xE4\xBD\xA0");  // U+4F60
+
+	CHECK(screen.At(0, 0).Code == U'\u4F60');
+	CHECK(screen.At(0, 1).WideTrailer);
+	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser replaces an invalid byte rather than dropping the stream")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("a\xFF" "b");
+
+	CHECK(screen.At(0, 0).Code == U'a');
+	CHECK(screen.At(0, 2).Code == U'b');
+}
