@@ -103,6 +103,13 @@ namespace Core {
 		std::uint16_t Column = 0;
 	};
 
+	enum class EraseExtent : std::uint8_t
+	{
+		ToEnd,
+		ToStart,
+		All
+	};
+
 	// What a terminal currently looks like, and nothing else: no bytes are parsed here and no
 	// process is owned. VtParser turns a stream into calls on this, and the panel reads it.
 	class TerminalScreen
@@ -140,9 +147,42 @@ namespace Core {
 		void SetTitle(std::string title) { m_Title = std::move(title); }
 		const std::string& GetTitle() const { return m_Title; }
 
+		void EraseInDisplay(EraseExtent extent);
+		void EraseInLine(EraseExtent extent);
+
+		void InsertLines(std::uint16_t count);
+		void DeleteLines(std::uint16_t count);
+		void InsertCharacters(std::uint16_t count);
+		void DeleteCharacters(std::uint16_t count);
+		void EraseCharacters(std::uint16_t count);
+
+		void ScrollUp(std::uint16_t count);
+		void ScrollDown(std::uint16_t count);
+		void ReverseIndex();
+
+		void SetScrollRegion(std::uint16_t top, std::uint16_t bottom);
+		void ResetScrollRegion();
+
+		// vim and its kind draw on a second screen with no scrollback, so leaving it hands
+		// back the prompt that was there before, unchanged.
+		void UseAlternateBuffer(bool alternate);
+		bool IsAlternateBuffer() const { return m_Alternate; }
+
+		// Truncates and pads. Wrapped history is not reflowed — see the design document.
+		void Resize(std::uint16_t columns, std::uint16_t rows);
+
+		std::size_t GetScrollbackCount() const { return m_Scrollback.size(); }
+		const std::vector<Cell>& GetScrollbackLine(std::size_t index) const
+		{
+			return m_Scrollback[index];
+		}
+
 	protected:
 		std::vector<Cell>& RowAt(std::uint16_t row);
 		void ClearCell(Cell& cell) const;
+
+		std::uint16_t ScrollTop() const { return m_ScrollTop; }
+		std::uint16_t ScrollBottom() const { return m_ScrollBottom; }
 
 		std::vector<std::vector<Cell>> m_Lines;
 		std::uint16_t m_Columns = 0;
@@ -159,5 +199,12 @@ namespace Core {
 		bool m_CursorVisible = true;
 		std::size_t m_ScrollbackLimit = 0;
 		std::string m_Title;
+
+		std::deque<std::vector<Cell>> m_Scrollback;
+		std::vector<std::vector<Cell>> m_PrimaryLines;
+		CursorPosition m_PrimaryCursor;
+		bool m_Alternate = false;
+		std::uint16_t m_ScrollTop = 0;
+		std::uint16_t m_ScrollBottom = 0;
 	};
 }
