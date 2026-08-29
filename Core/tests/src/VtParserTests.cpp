@@ -487,3 +487,48 @@ TEST_CASE("VtParser replaces an invalid byte rather than dropping the stream")
 	CHECK(screen.At(0, 0).Code == U'a');
 	CHECK(screen.At(0, 2).Code == U'b');
 }
+
+TEST_CASE("VtParser re-reads the byte that broke a multi-byte character")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// 0xC5 opens a two-byte character but 'Z' is not a continuation byte: the
+	// character is broken, and 'Z' must still be read as a fresh character rather
+	// than being consumed as though it were part of the ruined one.
+	parser.Consume("\xC5" "Z");
+
+	CHECK(screen.At(0, 0).Code == U'\xFFFD');
+	CHECK(screen.At(0, 1).Code == U'Z');
+	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser re-reads a byte that breaks a multi-byte character across reads")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// Same recovery as above, but the lead byte and the offending byte arrive in
+	// separate Consume calls: the pending-character state must survive the call
+	// boundary and still recover the same way.
+	parser.Consume("\xC5");
+	parser.Consume("Z");
+
+	CHECK(screen.At(0, 0).Code == U'\xFFFD');
+	CHECK(screen.At(0, 1).Code == U'Z');
+	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pending")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// 0x82 is only ever valid as a continuation byte; with no character in
+	// progress it is malformed on its own and must not be folded into 'a'.
+	parser.Consume("a" "\x82" "b");
+
+	CHECK(screen.At(0, 0).Code == U'a');
+	CHECK(screen.At(0, 1).Code == U'\xFFFD');
+	CHECK(screen.At(0, 2).Code == U'b');
+}
