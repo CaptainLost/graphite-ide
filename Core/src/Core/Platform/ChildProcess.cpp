@@ -3,6 +3,7 @@
 #include "Core/Platform/ChildProcess.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/CommandLine.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -22,41 +23,6 @@ namespace Core {
 			default:
 				return ErrorCode::IoFailure;
 			}
-		}
-
-		// Quoting only when a space is present keeps the common case (plain flags such as /c,
-		// or a program path with none) readable in a debugger without changing what the child
-		// receives. This is not full Win32 argv escaping — nothing this class launches needs
-		// an embedded quote — just enough to keep a single argument, or the program path
-		// itself, from being split into two by CreateProcessW's own space-splitting.
-		std::wstring QuoteIfNeeded(const std::wstring& piece)
-		{
-			if (piece.find(L' ') == std::wstring::npos)
-			{
-				return piece;
-			}
-
-			return L'"' + piece + L'"';
-		}
-
-		// CreateProcessW takes one command line rather than an argv array, so the pieces have
-		// to be joined here. The program path is quoted exactly like an argument: unquoted, a
-		// space in it (as under "C:\Program Files\...", where a Windows clangd install lands)
-		// makes CreateProcessW split the path itself into a program and a bogus first argument.
-		std::wstring BuildCommandLine(const std::filesystem::path& program,
-									  const std::vector<std::string>& arguments)
-		{
-			std::wstring commandLine = QuoteIfNeeded(program.wstring());
-
-			for (const std::string& argument : arguments)
-			{
-				const std::wstring wide{argument.begin(), argument.end()};
-
-				commandLine.push_back(L' ');
-				commandLine += QuoteIfNeeded(wide);
-			}
-
-			return commandLine;
 		}
 	}
 #endif
@@ -140,7 +106,7 @@ namespace Core {
 
 		PROCESS_INFORMATION processInfo{};
 
-		std::wstring commandLine = BuildCommandLine(program, arguments);
+		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
 		const std::wstring directory = workingDirectory.wstring();
 
 		const BOOL created = ::CreateProcessW(
