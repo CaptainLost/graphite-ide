@@ -538,4 +538,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0506](0506-dim-a-diagnostic-the-buffer-has-outrun-rather-than-dropping-it.md) | Dim a diagnostic the buffer has outrun rather than dropping it | proposed | 2026-08-25 |
 | [0507](0507-correct-adr-0482-s-premise-about-what-stays-out-of-lang.md) | Correct ADR 0482's premise about what stays out of `Lang` | proposed | 2026-08-25 |
 | [0508](0508-let-the-selected-file-win-over-the-selected-commit-in-the-git-preview-pane.md) | Let the selected file win over the selected commit in the git preview pane | proposed | 2026-08-29 |
+| [0509](0509-write-the-terminal-emulator-rather-than-adopt-one.md) | Write the terminal emulator rather than adopt one | proposed | 2026-08-29 |
 <!-- /adr-index -->
