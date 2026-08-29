@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdlib>
+#include <string_view>
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -161,6 +162,20 @@ namespace Core {
 		// above does not know about — portable, unpackaged, or otherwise hand-placed — and
 		// it is written generically enough to answer for other executables too (pwsh.exe,
 		// say), not just git.exe.
+		// An installer may write a PATH entry with quotes around it — usually one containing a
+		// space. CreateProcess strips them before it resolves anything, so a segment used
+		// verbatim here would name a directory whose first and last characters are quote marks
+		// and match nothing at all.
+		std::string_view StripQuotes(std::string_view segment)
+		{
+			if (segment.size() >= 2 && segment.front() == '"' && segment.back() == '"')
+			{
+				return segment.substr(1, segment.size() - 2);
+			}
+
+			return segment;
+		}
+
 		std::filesystem::path FindOnPath(const std::string& executableName)
 		{
 			const std::string pathVariable = EnvironmentString("PATH");
@@ -174,11 +189,13 @@ namespace Core {
 					end = pathVariable.size();
 				}
 
-				if (end > start)
+				const std::string_view segment = StripQuotes(
+					std::string_view{pathVariable}.substr(start, end - start));
+
+				if (!segment.empty())
 				{
 					const std::filesystem::path candidate =
-						std::filesystem::path{pathVariable.substr(start, end - start)} /
-						executableName;
+						std::filesystem::path{std::string{segment}} / executableName;
 					std::error_code status;
 
 					if (std::filesystem::exists(candidate, status))
@@ -259,8 +276,10 @@ namespace Core {
 		// regardless of which drive Git lives on), then a PATH search (covers portable and
 		// unpackaged installs the registry never heard of), then the old %ProgramFiles%
 		// guess as a last resort that costs nothing and still covers the ordinary default
-		// install. AddIfPresent's own de-duplication collapses the common case where more
-		// than one of these finds the same bash.exe.
+		// install. The first mechanism that finds a bash.exe wins and the rest are skipped, so
+		// exactly one of them ever contributes a path; AddIfPresent still de-duplicates, but
+		// against this list that is defence for a future change rather than something today's
+		// code exercises.
 		std::filesystem::path gitBash = GitBashFromRegistry();
 		if (gitBash.empty())
 		{
