@@ -169,7 +169,13 @@ namespace Graphite {
 			return io.KeyCtrl && !io.KeyAlt;
 		}
 
-		Core::KeyModifier ModifiersOf(const ImGuiIO& io)
+		// `producedCharacter` says whether this frame's press put anything in the input queue, and
+		// it is what separates AltGr used as a third-level shift from a genuine Ctrl+Alt chord:
+		// both report as Ctrl+Alt on Windows and IsAltGr cannot tell them apart, but only the
+		// former makes a character. The Control and Alt bits are therefore dropped only when one
+		// was made — dropping them unconditionally would turn Ctrl+Alt+Left, which produces no
+		// character, into a bare \x1B[D instead of \x1B[1;7D.
+		Core::KeyModifier ModifiersOf(const ImGuiIO& io, bool producedCharacter)
 		{
 			Core::KeyModifier modifiers = Core::KeyModifier::None;
 
@@ -178,15 +184,15 @@ namespace Graphite {
 				modifiers = modifiers | Core::KeyModifier::Shift;
 			}
 
-			// Neither bit is set under AltGr: passing Control through would make EncodeKey turn
-			// a letter typed with AltGr into that letter's control byte, so `ą` would reach the
-			// shell as Ctrl+A rather than as itself.
-			if (io.KeyCtrl && !IsAltGr(io))
+			// Neither bit is set under AltGr that typed something: passing Control through would
+			// make EncodeKey turn a letter typed with AltGr into that letter's control byte, so
+			// `ą` would reach the shell as Ctrl+A on top of itself rather than as itself alone.
+			if (io.KeyCtrl && !(IsAltGr(io) && producedCharacter))
 			{
 				modifiers = modifiers | Core::KeyModifier::Control;
 			}
 
-			if (io.KeyAlt && !IsAltGr(io))
+			if (io.KeyAlt && !(IsAltGr(io) && producedCharacter))
 			{
 				modifiers = modifiers | Core::KeyModifier::Alt;
 			}
@@ -382,8 +388,11 @@ namespace Graphite {
 		// whole cells, so the remainder is less than one cell and usually less than the default
 		// spacing — reserving the full height would overflow the region, raise a scrollbar,
 		// narrow the next frame's width by one column, and set the fitted size oscillating.
-		ImGui::Dummy(ImVec2(static_cast<float>(columns) * cellSize.x,
-							static_cast<float>(rows) * cellSize.y - ImGui::GetStyle().ItemSpacing.y));
+		// Clamped at zero for the pathological case of a mono font shorter than the spacing.
+		const float height = std::max(
+			0.0f, static_cast<float>(rows) * cellSize.y - ImGui::GetStyle().ItemSpacing.y);
+
+		ImGui::Dummy(ImVec2(static_cast<float>(columns) * cellSize.x, height));
 
 		Core::CursorPosition fitted;
 		fitted.Row = static_cast<std::uint16_t>(rows);
@@ -627,10 +636,10 @@ namespace Graphite {
 		// of Ctrl and Alt is held: those combinations are control codes, and EncodeKey below is
 		// what makes them. Both held is AltGr, which is how a layout reaches its third level —
 		// see IsAltGr — and the character it produced has to go out like any other.
+		std::string typed;
+
 		if (IsAltGr(io) || (!io.KeyCtrl && !io.KeyAlt))
 		{
-			std::string typed;
-
 			for (int index = 0; index < io.InputQueueCharacters.Size; ++index)
 			{
 				AppendUtf8(typed, static_cast<char32_t>(io.InputQueueCharacters[index]));
@@ -642,7 +651,9 @@ namespace Graphite {
 			}
 		}
 
-		const Core::KeyModifier modifiers = ModifiersOf(io);
+		// Whether anything was typed is the only evidence that a Ctrl+Alt press was AltGr rather
+		// than a chord of its own, so the drain has to happen before the modifiers are read.
+		const Core::KeyModifier modifiers = ModifiersOf(io, !typed.empty());
 
 		for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END;
 			 key = static_cast<ImGuiKey>(static_cast<int>(key) + 1))
