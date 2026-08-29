@@ -9,7 +9,7 @@
 
 namespace Core {
 
-	enum class ColorKind : std::uint8_t
+	enum class TerminalColorKind : std::uint8_t
 	{
 		Default,
 		Palette,
@@ -19,26 +19,26 @@ namespace Core {
 	// Kept as what the program actually asked for rather than resolved to RGB at write time:
 	// the low sixteen palette entries are mapped onto the editor's colour scheme when drawn,
 	// and flattening here would throw that away.
-	struct Color
+	struct TerminalColor
 	{
-		ColorKind Kind = ColorKind::Default;
+		TerminalColorKind Kind = TerminalColorKind::Default;
 		std::uint8_t Index = 0;
 		std::uint8_t R = 0;
 		std::uint8_t G = 0;
 		std::uint8_t B = 0;
 
-		static Color FromPalette(std::uint8_t index)
+		static TerminalColor FromPalette(std::uint8_t index)
 		{
-			Color color;
-			color.Kind = ColorKind::Palette;
+			TerminalColor color;
+			color.Kind = TerminalColorKind::Palette;
 			color.Index = index;
 			return color;
 		}
 
-		static Color FromRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b)
+		static TerminalColor FromRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b)
 		{
-			Color color;
-			color.Kind = ColorKind::Rgb;
+			TerminalColor color;
+			color.Kind = TerminalColorKind::Rgb;
 			color.R = r;
 			color.G = g;
 			color.B = b;
@@ -81,16 +81,16 @@ namespace Core {
 
 	struct Pen
 	{
-		Color Foreground;
-		Color Background;
+		TerminalColor Foreground;
+		TerminalColor Background;
 		CellFlags Flags = CellFlags::None;
 	};
 
 	struct Cell
 	{
 		char32_t Code = U' ';
-		Color Foreground;
-		Color Background;
+		TerminalColor Foreground;
+		TerminalColor Background;
 		CellFlags Flags = CellFlags::None;
 		// The right half of a double-width character. It carries no glyph of its own; the
 		// drawing code skips it, and erasing either half clears both.

@@ -130,13 +130,13 @@ TEST_CASE("TerminalScreen paints printed cells with the current pen")
 	Core::TerminalScreen screen(4, 2);
 
 	Core::Pen pen;
-	pen.Foreground = Core::Color::FromPalette(1);
+	pen.Foreground = Core::TerminalColor::FromPalette(1);
 	pen.Flags = Core::CellFlags::Bold;
 	screen.SetPen(pen);
 
 	PrintAscii(screen, "a");
 
-	CHECK(screen.At(0, 0).Foreground.Kind == Core::ColorKind::Palette);
+	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Palette);
 	CHECK(screen.At(0, 0).Foreground.Index == 1);
 	CHECK(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Bold));
 }
