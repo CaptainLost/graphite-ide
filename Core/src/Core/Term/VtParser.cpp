@@ -17,6 +17,10 @@ namespace Core {
 		// excess is dropped, never buffered.
 		constexpr std::size_t MaxParameters = 32;
 		constexpr std::size_t MaxOscLength = 4096;
+		// No real sequence uses more than two intermediates, so a handful of bytes is plenty;
+		// without a cap "ESC[" followed by an endless run of 0x20-0x2F bytes would grow this
+		// buffer forever.
+		constexpr std::size_t MaxIntermediateLength = 8;
 
 		bool IsCsiFinal(char byte)
 		{
@@ -180,7 +184,10 @@ namespace Core {
 
 			if (byte >= ' ' && byte <= '/')
 			{
-				m_Intermediate.push_back(byte);
+				if (m_Intermediate.size() < MaxIntermediateLength)
+				{
+					m_Intermediate.push_back(byte);
+				}
 				m_State = State::CsiIntermediate;
 				return;
 			}
@@ -199,7 +206,10 @@ namespace Core {
 		{
 			if (byte >= ' ' && byte <= '/')
 			{
-				m_Intermediate.push_back(byte);
+				if (m_Intermediate.size() < MaxIntermediateLength)
+				{
+					m_Intermediate.push_back(byte);
+				}
 				return;
 			}
 
@@ -337,9 +347,18 @@ namespace Core {
 			return;
 		}
 
-		// Likewise for a prefix other than '?': ESC[>0c asks for secondary device attributes
-		// and ESC[>4;2m sets modifyOtherKeys, and answering either as though it were the
-		// unprefixed sequence would be a wrong answer rather than silence.
+		// ESC[>0c asks for secondary device attributes. tmux and some ncurses probes send it
+		// and wait on a timeout for an answer, so this is worth a real reply rather than the
+		// silence every other '>'-prefixed sequence gets.
+		if (m_Prefix == '>' && final == 'c')
+		{
+			replies += "\x1B[>0;10;1c";
+			return;
+		}
+
+		// Likewise for the rest of a prefix other than '?': ESC[>4;2m sets modifyOtherKeys,
+		// and answering it as though it were the unprefixed sequence would be a wrong answer
+		// rather than silence.
 		if (m_Prefix != '\0' && m_Prefix != '?')
 		{
 			return;

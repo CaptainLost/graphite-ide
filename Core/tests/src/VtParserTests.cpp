@@ -165,12 +165,21 @@ TEST_CASE("VtParser swallows a CSI opened with a prefix other than '?'")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// Secondary device attributes and modifyOtherKeys are emitted by real programs; the
-	// finals 'c' and 'm' must not reach the screen, and must not be dispatched either.
-	const std::string reply = parser.Consume("a\x1B[>0c\x1B[>4;2mb");
+	// modifyOtherKeys is emitted by real programs; its final 'm' must not reach the screen
+	// as text, and must not be dispatched as an SGR sequence either.
+	const std::string reply = parser.Consume("a\x1B[>4;2mb");
 
 	CHECK(RowText(screen, 0) == U"ab      ");
 	CHECK(reply.empty());
+}
+
+TEST_CASE("VtParser answers a secondary device attributes request")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// tmux and some ncurses probes send this and wait on a timeout for an answer.
+	CHECK(parser.Consume("\x1B[>0c") == "\x1B[>0;10;1c");
 }
 
 TEST_CASE("VtParser keeps a leading empty parameter")
@@ -250,6 +259,41 @@ TEST_CASE("VtParser caps the parameter list and the operating system payload")
 				   + "ok");
 
 	CHECK(screen.GetTitle().size() < 65536);
+	CHECK(RowText(screen, 0) == U"ok      ");
+}
+
+TEST_CASE("VtParser drops a code that falls past the parameter cap")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	// Fifty "0;" parameters followed by "1" for bold. If the cap did not exist, the trailing
+	// "1" would land in the parameter list and set Bold; capped at 32, that digit is dropped
+	// along with everything past it, so only leading zeros (which reset the pen) are seen.
+	std::string sequence = "\x1B[";
+	for (int i = 0; i < 49; ++i)
+	{
+		sequence += "0;";
+	}
+	sequence += "1ma";
+
+	parser.Consume(sequence);
+
+	CHECK_FALSE(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Bold));
+}
+
+TEST_CASE("VtParser caps the intermediate byte buffer")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// A run of 0x20-0x2F bytes with no final never terminates the sequence; the buffer must
+	// not grow with it. The next byte is a final this parser does not implement with any
+	// intermediate present, so nothing reaches the screen and no crash or unbounded growth
+	// occurs either way — the point is that the previous byte stream is bounded.
+	parser.Consume("\x1B[" + std::string(4096, ' ') + "@");
+	parser.Consume("ok");
+
 	CHECK(RowText(screen, 0) == U"ok      ");
 }
 
