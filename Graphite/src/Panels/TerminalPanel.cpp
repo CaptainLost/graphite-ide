@@ -12,6 +12,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <utility>
@@ -103,12 +104,22 @@ namespace Graphite {
 		{
 			const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
+			// Counted by position rather than by session id, so the strip always reads 1..N.
+			// Ids are never reused, so numbering by them would leave gaps as tabs close.
+			// Renumbering is safe because what ImGui keys tab state on is the id after ###,
+			// not the visible half.
+			std::size_t number = 0;
+
 			for (Tab& tab : m_Tabs)
 			{
+				++number;
+
 				// The shell renames the tab as it works, so the visible half changes while the id
-				// after ### stays the session's own for as long as it lives.
+				// after ### stays the session's own for as long as it lives. The number leads
+				// because several shells of one profile are otherwise indistinguishable.
 				const std::string& title = tab.Session->GetScreen().GetTitle();
-				tab.Label = TabLabelFor(title, tab.Session->GetProfileName())
+				tab.Label = std::to_string(number) + ": "
+							+ TabLabelFor(title, tab.Session->GetProfileName())
 							+ "###terminalTab" + std::to_string(tab.Id);
 
 				// The × and the middle click both come from p_open, and both only ever set the
