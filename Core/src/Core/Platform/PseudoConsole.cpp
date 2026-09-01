@@ -97,7 +97,8 @@ namespace Core {
 		// shell, owns the writing end — so the process handle is what lets a killed shell
 		// release a blocked reader; without this, Terminate() would kill the shell and a thread
 		// in Read would still be waiting on a pipe nothing is ever going to close.
-		std::size_t AwaitRead(HANDLE pipe, OVERLAPPED& overlapped, void* process)
+		std::size_t AwaitRead(HANDLE pipe, OVERLAPPED& overlapped, void* process,
+							  DWORD graceMilliseconds)
 		{
 			const HANDLE waited[2]{overlapped.hEvent, static_cast<HANDLE>(process)};
 			const DWORD count = process != nullptr ? 2u : 1u;
@@ -108,7 +109,7 @@ namespace Core {
 			{
 				// The process just died. Give the host a short window to deliver whatever it
 				// had already flushed before treating this as end-of-stream.
-				signalled = ::WaitForSingleObject(overlapped.hEvent, FlushGraceMilliseconds);
+				signalled = ::WaitForSingleObject(overlapped.hEvent, graceMilliseconds);
 			}
 
 			if (signalled != WAIT_OBJECT_0)
@@ -152,6 +153,18 @@ namespace Core {
 				const ULONGLONG now = ::GetTickCount64();
 
 				if (now >= deadline)
+				{
+					break;
+				}
+
+				// Only what is already buffered is taken. Issuing a read for bytes that may
+				// never arrive is what made this cost its whole budget every time: with the
+				// shell dead the read simply pends until the deadline, and the destructor
+				// stalls for a quarter of a second per session on the thread closing the tab.
+				DWORD available = 0;
+
+				if (!::PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)
+					|| available == 0)
 				{
 					break;
 				}
@@ -416,7 +429,8 @@ namespace Core {
 		}
 		else if (::GetLastError() == ERROR_IO_PENDING)
 		{
-			read = AwaitRead(pipe, overlapped, m_Process);
+			read = AwaitRead(pipe, overlapped, m_Process,
+							 m_Terminating ? 0u : FlushGraceMilliseconds);
 		}
 
 		::CloseHandle(overlapped.hEvent);
@@ -489,6 +503,10 @@ namespace Core {
 		{
 			return;
 		}
+
+		// Before the kill, so a read already parked in its grace window is not waiting
+		// on a shell that is about to be gone.
+		m_Terminating = true;
 
 		::TerminateProcess(static_cast<HANDLE>(m_Process), 1);
 #endif

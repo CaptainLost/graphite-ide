@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <span>
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -61,6 +62,12 @@ namespace Core {
 
 	private:
 		PseudoConsole() = default;
+
+		// Raised by Terminate. A shell we killed on purpose has no last words worth
+		// waiting for, so the read's flush grace is skipped once this is set - that
+		// wait is otherwise paid in full on every tab close, on the thread being
+		// joined, and the user sees it as the window locking up.
+		std::atomic<bool> m_Terminating{false};
 
 		void* m_Console = nullptr;
 		void* m_Process = nullptr;
