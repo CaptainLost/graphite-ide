@@ -9,6 +9,7 @@
 
 #include "Panels/TerminalView.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -48,7 +49,7 @@ namespace Graphite {
 
 		void OpenTab(const Core::ShellProfile& profile);
 		void RenderTabBar();
-		void RenderShellMenu();
+		void RenderNewTerminalRow();
 		void RemoveClosedTabs();
 
 		Workspace& m_Workspace;
@@ -57,6 +58,10 @@ namespace Graphite {
 		std::vector<Core::ShellProfile> m_Shells;
 		std::vector<Tab> m_Tabs;
 		std::uint64_t m_NextId = 1;
+
+		// Which profile the + above the tabs will start. Held here rather than in the
+		// draw so a choice survives the frame that made it.
+		std::size_t m_SelectedShell = 0;
 
 		// The first draw opens the default shell; closing every tab afterwards leaves the panel
 		// empty rather than starting another one behind the reader's back.

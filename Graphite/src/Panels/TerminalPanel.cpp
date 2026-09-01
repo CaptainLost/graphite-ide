@@ -2,6 +2,7 @@
 
 #include "Panels/TerminalPanel.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 
 #include "Editor/Palettes.h"
@@ -18,12 +19,36 @@
 namespace Graphite {
 
 	namespace {
-		constexpr const char* kShellMenuId = "##terminalShells";
-
 		// What a session starts at. The first frame measures the panel and resizes it to what
 		// actually fitted, so this only has to be a shape a shell can print its prompt into.
 		constexpr std::uint16_t kInitialColumns = 80;
 		constexpr std::uint16_t kInitialRows = 25;
+
+		// A shell's announced title is a program's own text, and a shell announces the least
+		// useful thing it could: PowerShell and cmd each name their own executable, path and
+		// all. That path tells a reader nothing the profile name does not tell them better, so
+		// a title that is only the shell introducing itself is dropped. A title a program
+		// actually chose - vim naming its file, a build naming its target - is kept, because
+		// that is the one worth reading.
+		std::string TabLabelFor(const std::string& title, const std::string& profileName)
+		{
+			if (title.empty())
+			{
+				return profileName;
+			}
+
+			// Only the last component can carry meaning; the directories never do.
+			const std::size_t separator = title.find_last_of("\\/");
+			const std::string leaf =
+				separator == std::string::npos ? title : title.substr(separator + 1);
+
+			if (leaf.empty())
+			{
+				return profileName;
+			}
+
+			return Core::Lowered(leaf).ends_with(".exe") ? profileName : leaf;
+		}
 	}
 
 	TerminalPanel::TerminalPanel(Workspace& workspace, const ActiveScheme& scheme,
@@ -55,21 +80,12 @@ namespace Graphite {
 			OpenTab(m_Shells.front());
 		}
 
+		// Above the tabs, and drawn whether or not any exist: choosing a shell and starting one
+		// is how the panel is used when it is empty, and it should not move once it is not.
+		RenderNewTerminalRow();
+
 		if (m_Tabs.empty())
 		{
-			const ImVec2 available = ImGui::GetContentRegionAvail();
-			const float buttonWidth = ImGui::GetFrameHeight() * 2.0f;
-
-			ImGui::SetCursorPos(
-				ImVec2(ImGui::GetCursorPos().x + std::max(0.0f, (available.x - buttonWidth) * 0.5f),
-					   ImGui::GetCursorPos().y + std::max(0.0f, available.y * 0.5f)));
-
-			if (ImGui::Button("+", ImVec2(buttonWidth, 0.0f)))
-			{
-				ImGui::OpenPopup(kShellMenuId);
-			}
-
-			RenderShellMenu();
 			return;
 		}
 
@@ -82,17 +98,9 @@ namespace Graphite {
 
 	void TerminalPanel::RenderTabBar()
 	{
-		bool openMenu = false;
-
 		if (ImGui::BeginTabBar("##terminalTabs", ImGuiTabBarFlags_AutoSelectNewTabs
 												| ImGuiTabBarFlags_TabListPopupButton))
 		{
-			if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing
-											  | ImGuiTabItemFlags_NoTooltip))
-			{
-				openMenu = true;
-			}
-
 			const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
 			for (Tab& tab : m_Tabs)
@@ -100,7 +108,7 @@ namespace Graphite {
 				// The shell renames the tab as it works, so the visible half changes while the id
 				// after ### stays the session's own for as long as it lives.
 				const std::string& title = tab.Session->GetScreen().GetTitle();
-				tab.Label = (title.empty() ? tab.Session->GetProfileName() : title)
+				tab.Label = TabLabelFor(title, tab.Session->GetProfileName())
 							+ "###terminalTab" + std::to_string(tab.Id);
 
 				// The × and the middle click both come from p_open, and both only ever set the
@@ -133,36 +141,53 @@ namespace Graphite {
 
 			ImGui::EndTabBar();
 		}
-
-		if (openMenu)
-		{
-			ImGui::OpenPopup(kShellMenuId);
-		}
-
-		RenderShellMenu();
 	}
 
-	void TerminalPanel::RenderShellMenu()
+	void TerminalPanel::RenderNewTerminalRow()
 	{
-		if (!ImGui::BeginPopup(kShellMenuId))
-		{
-			return;
-		}
-
 		if (m_Shells.empty())
 		{
 			ImGui::TextDisabled("No shell found");
+			return;
 		}
 
-		for (const Core::ShellProfile& profile : m_Shells)
+		// Discovery runs once in the constructor, so the list cannot shrink under a stale
+		// index; the guard is here because a stale index would silently start the wrong shell.
+		if (m_SelectedShell >= m_Shells.size())
 		{
-			if (ImGui::MenuItem(profile.Name.c_str()))
-			{
-				OpenTab(profile);
-			}
+			m_SelectedShell = 0;
 		}
 
-		ImGui::EndPopup();
+		// Fixed rather than fitted to the current name, so choosing a shorter shell does not
+		// shuffle the + button sideways under the pointer.
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+
+		if (ImGui::BeginCombo("##terminalShell", m_Shells[m_SelectedShell].Name.c_str()))
+		{
+			for (std::size_t index = 0; index < m_Shells.size(); ++index)
+			{
+				const bool selected = index == m_SelectedShell;
+
+				if (ImGui::Selectable(m_Shells[index].Name.c_str(), selected))
+				{
+					m_SelectedShell = index;
+				}
+
+				if (selected)
+				{
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("+"))
+		{
+			OpenTab(m_Shells[m_SelectedShell]);
+		}
 	}
 
 	void TerminalPanel::OpenTab(const Core::ShellProfile& profile)
