@@ -97,8 +97,11 @@ namespace Core {
 		// shell, owns the writing end — so the process handle is what lets a killed shell
 		// release a blocked reader; without this, Terminate() would kill the shell and a thread
 		// in Read would still be waiting on a pipe nothing is ever going to close.
+		// The flag is passed rather than its value: a reader is normally already parked here
+		// when the tab is closed, so a grace decided at the start of the read would be the one
+		// from before the shell was killed. It is read at the moment it is used.
 		std::size_t AwaitRead(HANDLE pipe, OVERLAPPED& overlapped, void* process,
-							  DWORD graceMilliseconds)
+							  const std::atomic<bool>& terminating)
 		{
 			const HANDLE waited[2]{overlapped.hEvent, static_cast<HANDLE>(process)};
 			const DWORD count = process != nullptr ? 2u : 1u;
@@ -109,7 +112,11 @@ namespace Core {
 			{
 				// The process just died. Give the host a short window to deliver whatever it
 				// had already flushed before treating this as end-of-stream.
-				signalled = ::WaitForSingleObject(overlapped.hEvent, graceMilliseconds);
+				const DWORD grace = terminating.load(std::memory_order_relaxed)
+										? 0u
+										: FlushGraceMilliseconds;
+
+				signalled = ::WaitForSingleObject(overlapped.hEvent, grace);
 			}
 
 			if (signalled != WAIT_OBJECT_0)
@@ -429,8 +436,7 @@ namespace Core {
 		}
 		else if (::GetLastError() == ERROR_IO_PENDING)
 		{
-			read = AwaitRead(pipe, overlapped, m_Process,
-							 m_Terminating ? 0u : FlushGraceMilliseconds);
+			read = AwaitRead(pipe, overlapped, m_Process, m_Terminating);
 		}
 
 		::CloseHandle(overlapped.hEvent);
