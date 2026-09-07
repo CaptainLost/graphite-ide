@@ -65,7 +65,7 @@ namespace Graphite {
 	}
 
 	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink)
-		: Core::Panel("console", "Console"), m_Sink(std::move(sink))
+		: Core::Panel("console", "Console", "tools"), m_Sink(std::move(sink))
 	{
 	}
 

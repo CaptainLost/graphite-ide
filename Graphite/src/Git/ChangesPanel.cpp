@@ -129,7 +129,7 @@ namespace Graphite {
 	ChangesPanel::ChangesPanel(GitModel& model, const Core::DocumentSet& documents,
 							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
 							   DiffWindows& diffWindows)
-		: Core::Panel("changes", "Changes"), m_Model(model), m_Documents(documents),
+		: Core::Panel("changes", "Changes", "git"), m_Model(model), m_Documents(documents),
 		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows)
 	{
 	}

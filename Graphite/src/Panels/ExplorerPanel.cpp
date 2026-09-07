@@ -24,15 +24,18 @@ namespace Graphite {
 			GitIgnoredDisplay Display;
 		};
 
+		// Which files these three are about is said by the submenu they hang under, so the
+		// labels only have to say what happens to them. The settings screen, which has a
+		// heading of its own, passes its own labels.
 		constexpr DisplayMode kDisplayModes[] = {
-			{"git.ignored.show", "Visible", GitIgnoredDisplay::Show},
-			{"git.ignored.dim", "Dimmed", GitIgnoredDisplay::Dim},
-			{"git.ignored.hide", "Hidden", GitIgnoredDisplay::Hide},
+			{"git.ignored.show", "Show", GitIgnoredDisplay::Show},
+			{"git.ignored.dim", "Dim", GitIgnoredDisplay::Dim},
+			{"git.ignored.hide", "Hide", GitIgnoredDisplay::Hide},
 		};
 	}
 
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents)
-		: Core::Panel("files", "Explorer"), m_Workspace(workspace),
+		: Core::Panel("files", "Explorer", "navigate"), m_Workspace(workspace),
 		  m_Files(workspace, documents), m_Solution(workspace)
 	{
 	}

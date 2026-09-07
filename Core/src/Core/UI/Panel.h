@@ -12,9 +12,11 @@ namespace Core {
 	class Panel : NonCopyable
 	{
 	public:
-		Panel(std::string id, std::string title, bool visible = true)
-			: m_Id(std::move(id)), m_Title(std::move(title)), m_Visible(visible),
-			  m_DefaultVisible(visible)
+		// The menu group is spelled out rather than defaulted: a panel that named none would
+		// register into a group no menu draws and vanish from the view menu without a word.
+		Panel(std::string id, std::string title, std::string menuGroup, bool visible = true)
+			: m_Id(std::move(id)), m_Title(std::move(title)), m_MenuGroup(std::move(menuGroup)),
+			  m_Visible(visible), m_DefaultVisible(visible)
 		{
 		}
 
@@ -30,6 +32,9 @@ namespace Core {
 		const std::string& GetId() const { return m_Id; }
 		const std::string& GetTitle() const { return m_Title; }
 
+		// Which block of the view menu this panel's toggle belongs to.
+		const std::string& GetMenuGroup() const { return m_MenuGroup; }
+
 		bool IsVisible() const { return m_Visible; }
 		void SetVisible(bool visible) { m_Visible = visible; }
 
@@ -43,6 +48,7 @@ namespace Core {
 	private:
 		std::string m_Id;
 		std::string m_Title;
+		std::string m_MenuGroup;
 		bool m_Visible = true;
 		bool m_DefaultVisible = true;
 		bool m_WasDrawn = false;

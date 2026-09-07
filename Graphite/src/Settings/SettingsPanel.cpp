@@ -10,7 +10,7 @@ namespace Graphite {
 	}
 
 	SettingsPanel::SettingsPanel(std::vector<Core::Scope<SettingsSection>> sections)
-		: Core::Panel("settings", "Settings", false), m_Sections(std::move(sections))
+		: Core::Panel("settings", "Settings", "window", false), m_Sections(std::move(sections))
 	{
 	}
 

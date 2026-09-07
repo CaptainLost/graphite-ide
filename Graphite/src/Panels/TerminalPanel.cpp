@@ -54,7 +54,7 @@ namespace Graphite {
 
 	TerminalPanel::TerminalPanel(Workspace& workspace, const ActiveScheme& scheme,
 								 const Core::Keymap& keys)
-		: Core::Panel("terminal", "Terminal"), m_Workspace(workspace), m_Scheme(scheme),
+		: Core::Panel("terminal", "Terminal", "tools"), m_Workspace(workspace), m_Scheme(scheme),
 		  m_Keys(keys), m_Shells(Core::DiscoverShells())
 	{
 	}

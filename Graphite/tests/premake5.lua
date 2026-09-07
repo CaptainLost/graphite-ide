@@ -91,6 +91,10 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Workspace/DroppedPaths.cpp",
         "%{wks.location}/Graphite/src/Git/**.h",
         "%{wks.location}/Graphite/src/Git/**.cpp",
+        -- The menu tree is data: it names commands and groups without reaching for any of
+        -- them, so the shape of the menu can be asserted here without the application.
+        "%{wks.location}/Graphite/src/App/GraphiteMenu.h",
+        "%{wks.location}/Graphite/src/App/GraphiteMenu.cpp",
     }
 
     includedirs

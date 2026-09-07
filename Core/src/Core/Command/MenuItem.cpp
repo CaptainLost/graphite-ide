@@ -22,6 +22,15 @@ namespace Core {
 		return item;
 	}
 
+	MenuItem MenuItem::Section(std::string label)
+	{
+		MenuItem item;
+		item.m_Kind = Kind::Section;
+		item.m_Text = std::move(label);
+
+		return item;
+	}
+
 	MenuItem MenuItem::Submenu(std::string label, std::vector<MenuItem> children)
 	{
 		MenuItem item;

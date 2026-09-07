@@ -103,6 +103,10 @@ namespace Core {
 				ImGui::Separator();
 				break;
 
+			case MenuItem::Kind::Section:
+				ImGui::SeparatorText(item.GetText().c_str());
+				break;
+
 			case MenuItem::Kind::Command:
 				RenderCommand(commands, keys, item.GetText());
 				break;

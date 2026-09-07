@@ -17,7 +17,7 @@ namespace Core {
 		{
 			commands.Add({.Id = "panel." + panel.GetId(),
 						  .Label = panel.GetTitle(),
-						  .Group = "panels",
+						  .Group = "panels." + panel.GetMenuGroup(),
 						  .Run = [&panel] { panel.SetVisible(!panel.IsVisible()); },
 						  .Checked = [&panel] { return panel.IsVisible(); }});
 		}

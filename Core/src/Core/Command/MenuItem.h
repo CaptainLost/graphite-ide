@@ -12,12 +12,17 @@ namespace Core {
 		{
 			Command,
 			Separator,
+			Section,
 			Submenu,
 			Group
 		};
 
 		static MenuItem Command(std::string id);
 		static MenuItem Separator();
+
+		// A separator that names the block it opens. The label is drawn, so it is prose for
+		// the reader rather than an identifier anything looks up.
+		static MenuItem Section(std::string label);
 		static MenuItem Submenu(std::string label, std::vector<MenuItem> children);
 
 		static MenuItem Group(std::string group);

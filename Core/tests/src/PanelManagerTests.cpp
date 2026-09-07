@@ -11,8 +11,9 @@ namespace {
 	class CountingPanel final : public Core::Panel
 	{
 	public:
-		CountingPanel(std::string id, std::string title, bool visible = true)
-			: Core::Panel(std::move(id), std::move(title), visible)
+		CountingPanel(std::string id, std::string title, std::string menuGroup = "tools",
+					  bool visible = true)
+			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), visible)
 		{
 		}
 
@@ -27,7 +28,7 @@ namespace {
 	{
 	public:
 		ListeningPanel(std::string id, bool consume)
-			: Core::Panel(std::move(id), "Panel"), m_Consume(consume)
+			: Core::Panel(std::move(id), "Panel", "tools"), m_Consume(consume)
 		{
 		}
 
@@ -120,12 +121,32 @@ TEST_CASE("RegisterCommands gives every panel a visibility toggle in the panels 
 
 	panels.RegisterCommands(commands);
 
-	const std::vector<const Core::Command*> members = commands.InGroup("panels");
+	const std::vector<const Core::Command*> members = commands.InGroup("panels.tools");
 
 	REQUIRE(members.size() == 2);
 	CHECK(members[0]->Id == "panel.files");
 	CHECK(members[0]->Label == "Explorer");
 	CHECK(members[1]->Id == "panel.console");
+}
+
+TEST_CASE("A panel's toggle lands in the menu group the panel names")
+{
+	// The menu draws one section per group, so this is what decides where a panel appears
+	// in it - not the order the panels were added in.
+	Core::PanelManager panels;
+	Core::CommandRegistry commands;
+	panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "navigate"));
+	panels.Add(std::make_unique<CountingPanel>("console", "Console", "tools"));
+
+	panels.RegisterCommands(commands);
+
+	const std::vector<const Core::Command*> navigate = commands.InGroup("panels.navigate");
+	const std::vector<const Core::Command*> tools = commands.InGroup("panels.tools");
+
+	REQUIRE(navigate.size() == 1);
+	CHECK(navigate[0]->Id == "panel.files");
+	REQUIRE(tools.size() == 1);
+	CHECK(tools[0]->Id == "panel.console");
 }
 
 TEST_CASE("A panel's command toggles it and reports its state")
@@ -214,7 +235,7 @@ TEST_CASE("ResetVisibility restores each panel's own default, not everything vis
 	// Layout, which nobody asked to open it.
 	Core::PanelManager panels;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
-	Core::Panel* keys = panels.Add(std::make_unique<CountingPanel>("keybindings", "Keyboard Shortcuts", false));
+	Core::Panel* keys = panels.Add(std::make_unique<CountingPanel>("keybindings", "Keyboard Shortcuts", "tools", false));
 
 	REQUIRE(files->IsVisible());
 	REQUIRE_FALSE(keys->IsVisible());
