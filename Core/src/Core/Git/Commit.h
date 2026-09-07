@@ -4,6 +4,7 @@
 #include "Core/Git/Signature.h"
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace Core {
@@ -34,5 +35,23 @@ namespace Core {
 	{
 		std::vector<CommitSummary> Commits;
 		bool Complete = true;
+
+		// The commits on the walked ref that its upstream does not have — what a push
+		// would send. Measured against that one upstream and nothing else: a commit
+		// already sitting on some other remote branch is still listed here, because the
+		// question this answers is the one the branch's own ahead count answers, and two
+		// parts of a panel disagreeing about the same number reads as a bug.
+		//
+		// Not a flag on CommitSummary: whether a commit has been pushed is a property of
+		// its relation to the ref being walked, not a fact recorded in the commit, and the
+		// same commit is unpushed in one branch's log and pushed in another's.
+		std::unordered_set<Oid> Unpushed;
+
+		// Whether the upstream was found at all. False for a branch with none, for a
+		// detached HEAD, and for the log of a remote-tracking ref, which has no upstream of
+		// its own. Empty and known means "nothing to push", which is a different answer
+		// from "there is nothing to compare against", so a caller that skips this check
+		// cannot tell the two apart — the same rule Branch::DistanceKnown states.
+		bool UpstreamKnown = false;
 	};
 }

@@ -50,6 +50,35 @@ namespace Graphite {
 						  ImU32 markerColor, std::string_view text,
 						  std::string_view needle = {});
 
+	// A row whose middle piece carries a colour of its own: `lead` drawn plainly, then
+	// `tinted` in `tint`, then `rest` with the needle marked. The commit rows, whose hash is
+	// tinted while the commit is not on the upstream yet.
+	//
+	// Unlike MarkedSelectable's marker, the coloured piece is not the first thing in the
+	// row, which is the whole reason this exists: a commit row opens with its expander, and
+	// the piece worth colouring comes after it.
+	//
+	// One mark is drawn, not one per piece — the same rule SplitHighlight states for one
+	// label. `tinted` is searched first because it is the earlier piece, and a needle found
+	// there is marked instead of tinted: the reader asked where their text landed, and an
+	// answer they can see beats a colour they were not looking for. A needle straddling the
+	// boundary between the two pieces matches neither, which is the one thing this cannot do
+	// that a single label could.
+	//
+	// A zero `tint` draws the middle piece plainly, so a caller with nothing to colour does
+	// not need a different function.
+	//
+	// `id` must start with "##", as MarkedSelectable's must, and for the same reason.
+	//
+	// `hovered`, when asked for, answers whether the pointer is over the row — the row's own
+	// item, and not the last piece drawn over it. A caller cannot work this out afterwards
+	// with ImGui::IsItemHovered(): by the time this returns, the last item is a run of text
+	// laid on top, and asking it gives the wrong answer for exactly the rows this function
+	// exists to draw.
+	bool TintedSelectable(const char* id, bool selected, std::string_view lead,
+						  std::string_view tinted, ImU32 tint, std::string_view rest,
+						  std::string_view needle = {}, bool* hovered = nullptr);
+
 	// A row with no marker: all label, needle marked. The commit rows and the refs list.
 	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
 							   std::string_view needle);

@@ -9,9 +9,12 @@
 
 #include <git2.h>
 
+#include <cstddef>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 namespace Core {
 
@@ -145,6 +148,80 @@ namespace Core {
 			return match;
 		}
 
+		// What a push of the walked ref would send, and whether there was an upstream to
+		// ask. Hiding the upstream stops the walk at the merge base, so this costs the
+		// ahead distance rather than the length of the history.
+		struct UnpushedSet
+		{
+			std::unordered_set<Oid> Commits;
+			bool Known = false;
+		};
+
+		UnpushedSet CollectUnpushed(git_repository* repository,
+									const std::optional<std::string>& ref, std::size_t maxWalk)
+		{
+			UnpushedSet unpushed;
+
+			git_reference* branch = nullptr;
+
+			const int found = ref.has_value()
+								  ? git_reference_lookup(&branch, repository, ref->c_str())
+								  : git_repository_head(&branch, repository);
+
+			if (found != 0)
+			{
+				return unpushed;
+			}
+
+			// Only a local branch has an upstream. A detached HEAD resolves to a direct
+			// reference still named "HEAD", and a remote-tracking ref is not a branch here
+			// either — both mean the same thing, that there is nothing to compare against.
+			git_reference* upstream = nullptr;
+
+			if (git_reference_is_branch(branch) == 0 ||
+				git_branch_upstream(&upstream, branch) != 0)
+			{
+				git_reference_free(branch);
+				return unpushed;
+			}
+
+			git_revwalk* walk = nullptr;
+
+			if (git_revwalk_new(&walk, repository) == 0)
+			{
+				if (git_revwalk_push_ref(walk, git_reference_name(branch)) == 0 &&
+					git_revwalk_hide_ref(walk, git_reference_name(upstream)) == 0)
+				{
+					git_oid id{};
+					std::size_t walked = 0;
+
+					while (walked < maxWalk && git_revwalk_next(&id, walk) == 0)
+					{
+						unpushed.Commits.insert(ToOid(id));
+						++walked;
+					}
+
+					// Stopping at the ceiling would leave every commit past it reading as
+					// pushed, which is the one wrong answer this must not give. A partial
+					// set is thrown away and the whole question reported unanswered: being
+					// told nothing beats being told the opposite of the truth.
+					unpushed.Known = walked < maxWalk;
+
+					if (!unpushed.Known)
+					{
+						unpushed.Commits.clear();
+					}
+				}
+
+				git_revwalk_free(walk);
+			}
+
+			git_reference_free(upstream);
+			git_reference_free(branch);
+
+			return unpushed;
+		}
+
 		bool HasWildcard(const std::filesystem::path& pattern)
 		{
 			const std::string text = pattern.generic_string();
@@ -192,6 +269,11 @@ namespace Core {
 			// Nothing was walked, so there is nothing this answer could be missing.
 			return LogPage{{}, true};
 		}
+
+		// Measured before the walk and against the ref itself, not against the page: the
+		// answer is a property of the branch, so a filtered page still marks the rows it
+		// does show correctly.
+		UnpushedSet unpushed = CollectUnpushed(m_Handle, request.Ref, request.MaxWalk);
 
 		std::vector<CommitSummary> commits;
 		git_oid id{};
@@ -351,6 +433,6 @@ namespace Core {
 		}
 
 		git_revwalk_free(walk);
-		return LogPage{std::move(commits), complete};
+		return LogPage{std::move(commits), complete, std::move(unpushed.Commits), unpushed.Known};
 	}
 }

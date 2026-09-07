@@ -102,6 +102,94 @@ namespace Graphite {
 		return clicked;
 	}
 
+	bool TintedSelectable(const char* id, bool selected, std::string_view lead,
+						  std::string_view tinted, ImU32 tint, std::string_view rest,
+						  std::string_view needle, bool* hovered)
+	{
+		const HighlightedLabel inTinted = SplitHighlight(tinted, needle);
+		const bool marked = !inTinted.Match.empty();
+
+		// Only the earlier piece is searched when it already carries the mark; see the
+		// header for why one row draws one mark.
+		const HighlightedLabel inRest =
+			marked ? HighlightedLabel{rest, {}, {}} : SplitHighlight(rest, needle);
+
+		if (tint == 0 && !marked && inRest.Match.empty())
+		{
+			// Nothing to lay over anything: one Selectable carrying its own label, which is
+			// what every other row in the application is.
+			const bool clicked = ImGui::Selectable(
+				(std::string(lead) + std::string(tinted) + std::string(rest)).c_str(),
+				selected);
+
+			if (hovered != nullptr)
+			{
+				*hovered = ImGui::IsItemHovered();
+			}
+
+			return clicked;
+		}
+
+		ImVec2 rowStart;
+		const bool clicked = OverlaidSelectable(id, selected, rowStart);
+
+		// Read here and not left to the caller: every piece below becomes the last item in
+		// turn, and by the time this returns the row itself is no longer the one ImGui
+		// answers about.
+		if (hovered != nullptr)
+		{
+			*hovered = ImGui::IsItemHovered();
+		}
+
+		const ImU32 markColor = ImGui::GetColorU32(ImGuiCol_CheckMark);
+
+		// Drawn in one pass so the SameLine between pieces is written once: an empty piece
+		// must not draw, because an empty TextUnformatted still advances the cursor a line
+		// and would leave the row two lines tall.
+		const struct
+		{
+			std::string_view Text;
+			ImU32 Color;
+		} pieces[] = {
+			{lead, 0},
+			{inTinted.Before, tint},
+			{inTinted.Match, markColor},
+			{inTinted.After, tint},
+			{inRest.Before, 0},
+			{inRest.Match, markColor},
+			{inRest.After, 0},
+		};
+
+		bool first = true;
+
+		for (const auto& piece : pieces)
+		{
+			if (piece.Text.empty())
+			{
+				continue;
+			}
+
+			if (!first)
+			{
+				ImGui::SameLine(0.0f, 0.0f);
+			}
+
+			first = false;
+
+			if (piece.Color != 0)
+			{
+				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(piece.Color), "%.*s",
+								   static_cast<int>(piece.Text.size()), piece.Text.data());
+			}
+			else
+			{
+				ImGui::TextUnformatted(piece.Text.data(), piece.Text.data() + piece.Text.size());
+			}
+		}
+
+		return clicked;
+	}
+
 	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
 							   std::string_view needle)
 	{

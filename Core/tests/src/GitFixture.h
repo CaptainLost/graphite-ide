@@ -195,6 +195,47 @@ public:
 		return ToHex(commitId);
 	}
 
+	// Puts refs/remotes/origin/<branch> at `commit` and makes the local branch of the same
+	// name track it — exactly what a fetch leaves behind, without a network or a second
+	// repository. The remote itself is created with the fixture's own path as its URL: it
+	// is never contacted, but git_branch_upstream needs a remote with a fetch refspec to
+	// map branch.<name>.merge onto refs/remotes/*, and without one the branch reads as
+	// having no upstream at all.
+	void PushTo(const std::string& branch, const std::string& commit)
+	{
+		git_remote* remote = nullptr;
+
+		if (git_remote_lookup(&remote, m_Repository, "origin") != 0)
+		{
+			REQUIRE(git_remote_create(&remote, m_Repository, "origin",
+									  Core::ToUtf8(m_Temp.GetPath()).c_str()) == 0);
+		}
+
+		git_remote_free(remote);
+
+		git_oid id{};
+		REQUIRE(git_oid_fromstr(&id, commit.c_str()) == 0);
+
+		const std::string reference = "refs/remotes/origin/" + branch;
+
+		git_reference* created = nullptr;
+		REQUIRE(git_reference_create(&created, m_Repository, reference.c_str(), &id, 1,
+									 nullptr) == 0);
+		git_reference_free(created);
+
+		git_config* config = nullptr;
+		REQUIRE(git_repository_config(&config, m_Repository) == 0);
+
+		const std::string remoteKey = "branch." + branch + ".remote";
+		const std::string mergeKey = "branch." + branch + ".merge";
+
+		REQUIRE(git_config_set_string(config, remoteKey.c_str(), "origin") == 0);
+		REQUIRE(git_config_set_string(config, mergeKey.c_str(),
+									  ("refs/heads/" + branch).c_str()) == 0);
+
+		git_config_free(config);
+	}
+
 	// Leaves the index in a conflicted state by merging a branch that changed the same
 	// file. Nothing here commits the merge — the conflict is the point.
 	void StartConflict(const std::string& otherBranch)

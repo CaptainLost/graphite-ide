@@ -24,7 +24,11 @@ namespace Graphite {
 	//
 	// `offset` is the reader's own offset from UTC, resolved by the caller once a frame —
 	// see FormattedTimestamp for why it is not read here.
-	void RenderCommitDetails(const Core::CommitSummary& commit,
+	//
+	// Returns whether the reader pressed the pane's close. Reported rather than acted on,
+	// because dismissing a selection is the business of whoever holds it — this function
+	// knows only the commit it was handed.
+	bool RenderCommitDetails(const Core::CommitSummary& commit,
 							 const std::optional<DiffStats>& stats, std::chrono::minutes offset,
 							 const GitPalette& palette);
 }

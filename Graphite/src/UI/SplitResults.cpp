@@ -1,11 +1,23 @@
 #include "UI/SplitResults.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <algorithm>
 
 namespace Graphite {
+
+	bool DrawPaneClose()
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float width = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+
+		ImGui::SameLine(ImGui::GetWindowWidth() - width - style.WindowPadding.x);
+
+		return ImGui::SmallButton(ICON_MDI_CLOSE);
+	}
 
 	void DrawSplitResults(const SplitResultsInput& input)
 	{

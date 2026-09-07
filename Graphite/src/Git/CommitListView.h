@@ -80,6 +80,11 @@ namespace Graphite {
 		// pane falls back to that commit's details rather than to nothing.
 		void ClearSelection() { m_SelectedFile.reset(); }
 
+		// Drops the commit the details pane is describing, and nothing else — the reader
+		// dismissed a description, not the file they may also have open. Mirrors
+		// ClearSelection above, which does the same for the other half.
+		void ClearCommitSelection() { m_SelectedCommit.reset(); }
+
 		bool IsExpanded(const Core::Oid& commit) const;
 		void ToggleExpanded(const Core::Oid& commit);
 

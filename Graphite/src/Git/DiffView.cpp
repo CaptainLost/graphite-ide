@@ -2,6 +2,7 @@
 
 #include "Git/CommitLabels.h"
 #include "Git/DiffPanes.h"
+#include "UI/SplitResults.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
 
@@ -203,21 +204,11 @@ namespace Graphite {
 			}
 		}
 
-		// Last, and placed outright rather than after a SameLine, so it sits at the pane's
-		// right edge however many buttons precede it. The reader's eye looks for a close in
-		// the corner, not at the end of a row of toggles.
-		if (OnClose)
+		// Last, so it sits at the pane's right edge however many buttons precede it — see
+		// DrawPaneClose, which the commit details pane opens with for the same reason.
+		if (OnClose && DrawPaneClose())
 		{
-			const ImGuiStyle& style = ImGui::GetStyle();
-			const float width =
-				ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
-
-			ImGui::SameLine(ImGui::GetWindowWidth() - width - style.WindowPadding.x);
-
-			if (ImGui::SmallButton(ICON_MDI_CLOSE))
-			{
-				OnClose();
-			}
+			OnClose();
 		}
 
 		ImGui::Separator();

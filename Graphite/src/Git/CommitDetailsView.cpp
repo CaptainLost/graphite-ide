@@ -1,6 +1,7 @@
 #include "Git/CommitDetailsView.h"
 
 #include "Git/CommitLabels.h"
+#include "UI/SplitResults.h"
 
 #include <imgui.h>
 
@@ -49,7 +50,7 @@ namespace Graphite {
 		}
 	}
 
-	void RenderCommitDetails(const Core::CommitSummary& commit,
+	bool RenderCommitDetails(const Core::CommitSummary& commit,
 							 const std::optional<DiffStats>& stats, std::chrono::minutes offset,
 							 const GitPalette& palette)
 	{
@@ -57,6 +58,10 @@ namespace Graphite {
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 		HashRow(commit.Id);
+
+		// On the hash's own line, at the pane's right corner — the same place the diff pane
+		// puts its close, so one gesture dismisses whichever of the two is open.
+		const bool closed = DrawPaneClose();
 
 		SignatureRow(nullptr, commit.Author, now, offset);
 
@@ -110,5 +115,7 @@ namespace Graphite {
 		}
 
 		ImGui::PopTextWrapPos();
+
+		return closed;
 	}
 }

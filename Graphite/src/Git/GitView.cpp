@@ -450,7 +450,12 @@ namespace Graphite {
 			stats = CountChanges(*diff);
 		}
 
-		Graphite::RenderCommitDetails(commit, stats, LocalOffset(), palette);
+		if (Graphite::RenderCommitDetails(commit, stats, LocalOffset(), palette))
+		{
+			// Only the commit: a file selected under some other row keeps its diff, which is
+			// what the pane falls back to showing.
+			m_Commits.ClearCommitSelection();
+		}
 	}
 
 	void GitView::RenderDiff(const GitPalette& palette)

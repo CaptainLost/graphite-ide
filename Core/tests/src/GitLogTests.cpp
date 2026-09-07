@@ -5,6 +5,7 @@
 #include "GitFixture.h"
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using Core::CommitSummary;
@@ -12,6 +13,20 @@ using Core::LogRequest;
 using Core::Repository;
 
 namespace {
+
+	// The unpushed set as text, so a failing test prints hashes a reader can look up rather
+	// than twenty raw bytes.
+	std::unordered_set<std::string> UnpushedHexes(const Core::LogPage& page)
+	{
+		std::unordered_set<std::string> hexes;
+
+		for (const Core::Oid& id : page.Unpushed)
+		{
+			hexes.insert(id.ToHex());
+		}
+
+		return hexes;
+	}
 
 	Repository OpenAt(const std::filesystem::path& root)
 	{
@@ -245,4 +260,119 @@ TEST_CASE("Querying a ref that does not exist is an error")
 
 	REQUIRE_FALSE(log.HasValue());
 	CHECK(log.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("Commits the upstream does not have are reported as unpushed")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string shared = fixture.Commit("add a");
+
+	fixture.PushTo("master", shared);
+
+	fixture.Write("b.txt", "two\n");
+	const std::string local = fixture.Commit("add b");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().UpstreamKnown);
+	CHECK(UnpushedHexes(log.GetValue()) == std::unordered_set<std::string>{local});
+}
+
+TEST_CASE("A branch level with its upstream has nothing unpushed")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string only = fixture.Commit("add a");
+
+	fixture.PushTo("master", only);
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().UpstreamKnown);
+	CHECK(log.GetValue().Unpushed.empty());
+}
+
+TEST_CASE("A branch with no upstream reports nothing rather than everything")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+
+	// Not "every commit is unpushed": without an upstream the question has no answer, and
+	// UpstreamKnown is what says so. A view that marked the whole history here would be
+	// stating a distance nobody measured.
+	CHECK_FALSE(log.GetValue().UpstreamKnown);
+	CHECK(log.GetValue().Unpushed.empty());
+}
+
+TEST_CASE("The log of a remote-tracking ref has nothing unpushed")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string shared = fixture.Commit("add a");
+
+	fixture.PushTo("master", shared);
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Ref = "refs/remotes/origin/master";
+
+	auto log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+
+	// A remote-tracking branch has no upstream of its own, so nothing in its history is
+	// waiting to be pushed anywhere.
+	CHECK_FALSE(log.GetValue().UpstreamKnown);
+	CHECK(log.GetValue().Unpushed.empty());
+}
+
+TEST_CASE("A merged branch's own commits count as unpushed")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string shared = fixture.Commit("add a");
+
+	fixture.PushTo("master", shared);
+
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("b.txt", "two\n");
+	const std::string side = fixture.Commit("add b");
+
+	fixture.Checkout("master");
+	const std::string merge = fixture.MergeCommit("merge side", "side");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	auto log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+
+	// Both, and for the same reason: neither is reachable from origin/master. That is also
+	// what the branch's own ahead count says, so the list and the count agree.
+	CHECK(log.GetValue().UpstreamKnown);
+	CHECK(UnpushedHexes(log.GetValue()) == std::unordered_set<std::string>{merge, side});
 }

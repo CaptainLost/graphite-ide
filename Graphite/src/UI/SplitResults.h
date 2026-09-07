@@ -40,4 +40,14 @@ namespace Graphite {
 	// Call with the content region this panel has to fill, after whatever heading the caller
 	// draws above it (a query field, a summary line). Opens and closes both children itself.
 	void DrawSplitResults(const SplitResultsInput& input);
+
+	// The close in a preview pane's top-right corner, and whether it was pressed. Drawn at the
+	// pane's right edge rather than after whatever precedes it, so a reader finds it in the
+	// corner however many controls that pane puts on the row first — which is why it is called
+	// last on the pane's opening line, and why it places itself instead of following a SameLine
+	// the caller wrote.
+	//
+	// Shared by the two panes that have something to dismiss: the diff and the commit details.
+	// What closing means is the caller's business; this only asks.
+	bool DrawPaneClose();
 }

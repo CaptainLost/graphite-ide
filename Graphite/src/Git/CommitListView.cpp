@@ -194,13 +194,17 @@ namespace Graphite {
 					const char* chevron =
 						expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
 
-					// The author and age columns are padded to a fixed width so every
-					// summary starts at the same column in this monospace list, rather than
-					// reading as ragged text.
-					const std::string label = std::format(
-						"{}  {}  {}  {}  {}", chevron, commit.Id.ShortHex(),
-						PaddedAuthor(commit.Author, AuthorColumnWidth),
-						PaddedAge(commit.Author.When, now, AgeColumnWidth), commit.Summary);
+					// Cut where the colour changes rather than built as one string: the
+					// hash is tinted while the upstream does not have this commit yet, so it
+					// is drawn as its own piece. The author and age columns are padded to a
+					// fixed width so every summary starts at the same column in this
+					// monospace list, rather than reading as ragged text.
+					const std::string lead = std::format("{}  ", chevron);
+					const std::string hash = commit.Id.ShortHex();
+					const std::string rest =
+						std::format("  {}  {}  {}", PaddedAuthor(commit.Author, AuthorColumnWidth),
+									PaddedAge(commit.Author.When, now, AgeColumnWidth),
+									commit.Summary);
 
 					// Everything left of the hash: the arrow and the gap after it. Measured
 					// from the label's own leading piece, so the zone follows the font
@@ -223,7 +227,22 @@ namespace Graphite {
 					// commit the pane underneath is describing.
 					const bool selected = m_SelectedCommit == commit.Id;
 
-					if (HighlightedSelectable("##commit", selected, label, highlight))
+					// A commit the upstream does not have yet: what a push would send. Said
+					// with the colour the editor's gutter gives an added line — an unpushed
+					// commit is one the remote has yet to gain — and said on the hash, which
+					// is the part of the row that names the commit rather than describing
+					// it. A column of its own would have had to be reserved on every row,
+					// including the rows of a branch with nothing to push.
+					const ImU32 tint =
+						page.Unpushed.contains(commit.Id) ? palette.GutterAdded : 0;
+
+					// Asked for here rather than read back with IsItemHovered below: a tinted
+					// or filter-marked row is drawn as pieces laid over its Selectable, and
+					// the last of those pieces is what ImGui would answer about.
+					bool hovered = false;
+
+					if (TintedSelectable("##commit", selected, lead, hash, tint, rest,
+										 highlight, &hovered))
 					{
 						// Where the press landed, not where the pointer is now: a Selectable
 						// fires on release, and a press that started on the arrow is what the
@@ -232,7 +251,7 @@ namespace Graphite {
 						// — which leaves MouseClickedPos wherever it last was — falls to
 						// selecting, the harmless of the two.
 						const bool onChevron =
-							ImGui::IsItemHovered() &&
+							hovered &&
 							ImGui::GetIO().MouseClickedPos[0].x < rowStartX + chevronZone;
 
 						if (onChevron)
