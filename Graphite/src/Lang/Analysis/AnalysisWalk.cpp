@@ -11,6 +11,16 @@
 
 namespace Graphite {
 
+	namespace {
+
+		// A file is worth queueing only when its language has a server configured to say
+		// anything about it — asking about anything else would just be a wasted round trip.
+		bool IsAnalysable(const std::filesystem::path& file)
+		{
+			return ServerConfigFor(LanguageOfPath(file)) != nullptr;
+		}
+	}
+
 	void CollectAnalysable(const std::filesystem::path& root, const Core::CancellationToken& token,
 						   const std::function<void(const std::filesystem::path&)>& onFile)
 	{
@@ -19,7 +29,7 @@ namespace Graphite {
 
 		EnumerateFiles(enumeration, token, [&onFile](const std::filesystem::path& file)
 		{
-			if (ServerConfigFor(LanguageOfPath(file)) == nullptr)
+			if (!IsAnalysable(file))
 			{
 				return;
 			}
@@ -69,7 +79,7 @@ namespace Graphite {
 
 			EnumerateFiles(enumeration, token, [&findings](const std::filesystem::path& file)
 			{
-				if (ServerConfigFor(LanguageOfPath(file)) == nullptr)
+				if (!IsAnalysable(file))
 				{
 					return;
 				}
