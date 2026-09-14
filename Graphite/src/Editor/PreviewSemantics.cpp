@@ -126,6 +126,16 @@ namespace Graphite {
 		Ask(path, entry);
 	}
 
+	bool PreviewSemantics::Holds(const std::filesystem::path& path) const
+	{
+		const auto found = m_Entries.find(path);
+
+		// Opened, not merely present: an entry riding on a tab's didOpen is the tab's to close,
+		// and claiming it here would tell a third party the file is spoken for by this class when
+		// it is not.
+		return found != m_Entries.end() && found->second.Opened;
+	}
+
 	const std::vector<SemanticSpan>& PreviewSemantics::SpansOn(const std::filesystem::path& path,
 															   std::size_t line) const
 	{

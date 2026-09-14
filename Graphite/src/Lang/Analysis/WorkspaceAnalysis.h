@@ -107,20 +107,23 @@ namespace Graphite {
 		void Clear();
 
 		// Once a frame on the UI thread. Retires a finished flight and launches at most one new
-		// one. `hasTab` answers whether a path is open in the editor — a predicate rather than a
-		// DocumentSet, so this class needs none of the editor to be tested.
+		// one. `heldElsewhere` answers whether somebody other than this class already has the path
+		// open with the server — a tab, a preview pane, anything that sent its own didOpen. A
+		// predicate rather than a DocumentSet, so this class needs none of the editor to be
+		// tested, and a question about holders rather than about tabs because a preview pane holds
+		// no tab and would otherwise have its document closed out from under it.
 		//
 		// `foregroundBusy` is yielded to, but only for so long: a foreground question that is
 		// never answered would otherwise stop this pass for the rest of the session.
 		void Tick(double now, bool foregroundBusy,
-				  const std::function<bool(const std::filesystem::path&)>& hasTab);
+				  const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
 
 		// True when this answer was one of ours, whether or not it was any use. The caller routes
 		// by return value, exactly as it does for PreviewSemantics.
 		//
 		// Records the answer and nothing more. Retiring the file — closing it, and deciding
 		// whether what came back is worth keeping — happens in Tick, because that decision needs
-		// the `hasTab` predicate and an answer arrives without one.
+		// the `heldElsewhere` predicate and an answer arrives without one.
 		bool Apply(const LanguageServices::Answer& answer);
 
 		AnalysisProgress Progress() const;
@@ -141,18 +144,19 @@ namespace Graphite {
 
 			bool Opened = false;
 
-			// Whether a tab held this file as of the last Tick. Carried on the flight rather than
-			// asked at each of the four places a flight is torn down — Retire, the timeout,
-			// Clear and the destructor — because two of those have no predicate to ask with:
-			// SetEnabled(false) reaches Clear from a settings panel, and a destructor has nobody
-			// left to ask at all. One answer, recorded once a frame, is also the only way the
-			// four places cannot drift apart, which is how this went wrong the first time.
+			// Whether somebody else — a tab, a preview pane — held this file open with the server
+			// as of the last Tick. Carried on the flight rather than asked at each of the four
+			// places a flight is torn down — Retire, the timeout, Clear and the destructor —
+			// because two of those have no predicate to ask with: SetEnabled(false) reaches Clear
+			// from a settings panel, and a destructor has nobody left to ask at all. One answer,
+			// recorded once a frame, is also the only way the four places cannot drift apart,
+			// which is how this went wrong the first time.
 			//
-			// The trade, deliberately: a tab that appears between a frame's Tick and a Clear in
+			// The trade, deliberately: a holder that appears between a frame's Tick and a Clear in
 			// that same frame leaves this pass's didOpen un-closed, which leaks one document
 			// entry until the server is restarted. That is the harmless direction — the other one
-			// takes the document away from a tab that will never open it again.
-			bool TabTook = false;
+			// takes the document away from a reader that will never open it again.
+			bool HeldElsewhere = false;
 
 			std::optional<LanguageServices::Ticket> Colours;
 			std::optional<LanguageServices::Ticket> Symbols;
@@ -167,12 +171,17 @@ namespace Graphite {
 			double StartedAt = 0.0;
 		};
 
-		void Launch(const std::function<bool(const std::filesystem::path&)>& hasTab);
-		void CollectTexts(double now);
+		void Launch(const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
+
+		// Takes the predicate too: the read is a round trip through a worker, so a tab or a pane
+		// can claim the file between the launch that asked for its text and the frame it arrives.
+		void CollectTexts(double now,
+						  const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
+
 		void Retire();
 
 		// Drops the flight, telling the server the file is closed only if this class is still the
-		// one holding it open. See Flight::TabTook.
+		// one holding it open. See Flight::HeldElsewhere.
 		void CloseFlight();
 
 		WorkspaceAnalysisPort& m_Port;

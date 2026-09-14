@@ -165,7 +165,7 @@ namespace Graphite {
 							 std::to_string(progress.Total) + " files.\n";
 
 		detail += "Holding " + Megabytes(keptBytes) + " of " + Megabytes(budgetBytes) + ".\n";
-		detail += "The file you are reading is always asked about first.";
+		detail += "The file you are reading has its own questions answered first; this waits.";
 
 		return detail;
 	}

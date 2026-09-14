@@ -20,8 +20,8 @@ namespace Graphite {
 		}
 
 		ImGui::TextWrapped("Files are sent to the language server one at a time, ahead of being "
-							"opened, so that a file opens already coloured. The file you are "
-							"reading always goes first.");
+							"opened, so that a file opens already coloured. The pass waits while "
+							"the file you are reading has questions of its own outstanding.");
 
 		// Disabled rather than hidden, the same reasoning SearchSection gives for its own
 		// project-only checkbox: a control that vanishes reads as a bug, and there is nothing to

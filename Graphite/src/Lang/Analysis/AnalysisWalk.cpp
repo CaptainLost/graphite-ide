@@ -48,6 +48,7 @@ namespace Graphite {
 		Cancel();
 
 		m_Token = Core::CancellationToken{};
+		m_Live = true;
 
 		{
 			const std::lock_guard<std::mutex> guard(m_Findings->Mutex);
@@ -95,6 +96,15 @@ namespace Graphite {
 
 	void AnalysisWalk::Cancel()
 	{
+		if (!m_Live)
+		{
+			// Nothing was started, or the last thing started has already been cancelled. Both mean
+			// the block below would be a fresh allocation replacing an empty one — see the header
+			// for why this guard is here and not at the call site.
+			return;
+		}
+
+		m_Live = false;
 		m_Token.Cancel();
 
 		// A fresh block for a fresh walk. The one that was running writes into the old block until

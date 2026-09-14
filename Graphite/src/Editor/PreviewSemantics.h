@@ -74,6 +74,15 @@ namespace Graphite {
 		void Declare(const std::filesystem::path& path, const Core::TextBuffer& buffer,
 					 std::size_t tabWidth, bool editorHolds);
 
+		// Whether this class is the one holding `path` open with the server right now — true only
+		// for a file it sent the didOpen for itself, never for one it is riding on a tab's.
+		//
+		// Asked by whoever else might open the same document: LanguageServices counts no
+		// references, so a second opener that closes the file would take it away from this class
+		// for as long as a pane keeps showing it. A preview pane holds no DocumentSet entry, so
+		// looking for a tab is not enough to find this holder.
+		bool Holds(const std::filesystem::path& path) const;
+
 		// Empty for a file nothing is known about yet, which includes every file between the
 		// frame it is first declared in and the frame its answer arrives.
 		const std::vector<SemanticSpan>& SpansOn(const std::filesystem::path& path,

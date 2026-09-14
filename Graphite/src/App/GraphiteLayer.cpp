@@ -588,9 +588,17 @@ namespace Graphite {
 			foregroundBusy = m_DocumentWindows.IsAnalysing(m_Documents.At(*analysed).Path);
 		}
 
+		// "Somebody else already holds this document with the server", not "a tab does".
+		// LanguageServices::OpenDocuments counts no references, so whichever of the three openers
+		// sends a didClose takes the file away from all of them — and a preview pane holds no
+		// DocumentSet entry, so a tab check alone would let the background pass close a document a
+		// pane is still asking about. See ADR 0512.
 		m_WorkspaceAnalysis.Tick(ImGui::GetTime(), foregroundBusy,
 								 [this](const std::filesystem::path& path)
-								 { return m_Documents.Find(path).has_value(); });
+								 {
+									 return m_Documents.Find(path).has_value() ||
+											m_PreviewSemantics.Holds(path);
+								 });
 
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup.

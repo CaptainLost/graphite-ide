@@ -100,35 +100,36 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_Flight->Opened && !m_Flight->TabTook)
+		if (m_Flight->Opened && !m_Flight->HeldElsewhere)
 		{
-			// A tab that took the file over is now the one holding the document, and it opened it
-			// exactly once: CloseDocument counts no references and LensFor never opens a document
-			// twice, so a didClose from here would take the file away from that tab for good —
-			// every didChange it sent afterwards would describe a document the server no longer
-			// holds. The didOpen is disowned instead, the same move PreviewSemantics makes on the
-			// same transition.
+			// Somebody who took the file over — a tab, a preview pane — is now the one holding the
+			// document, and they opened it exactly once: CloseDocument counts no references and
+			// neither LensFor nor PreviewSemantics::Declare opens a document twice, so a didClose
+			// from here would take the file away from that reader for good — every request it sent
+			// afterwards would describe a document the server no longer holds. The didOpen is
+			// disowned instead, the same move PreviewSemantics makes on the same transition.
 			m_Port.Close(m_Flight->Path, m_Flight->Language);
 		}
 
 		m_Flight.reset();
 	}
 
-	void WorkspaceAnalysis::Tick(double now, bool foregroundBusy,
-								 const std::function<bool(const std::filesystem::path&)>& hasTab)
+	void WorkspaceAnalysis::Tick(
+		double now, bool foregroundBusy,
+		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
 		if (!m_Enabled)
 		{
 			return;
 		}
 
-		CollectTexts(now);
+		CollectTexts(now, heldElsewhere);
 
 		// The one place the predicate is asked about a flight. Everything that tears one down
-		// reads the answer off the flight instead — see Flight::TabTook.
+		// reads the answer off the flight instead — see Flight::HeldElsewhere.
 		if (m_Flight)
 		{
-			m_Flight->TabTook = hasTab(m_Flight->Path);
+			m_Flight->HeldElsewhere = heldElsewhere(m_Flight->Path);
 		}
 
 		// Before the busy check, deliberately: a flight that has already been answered costs the
@@ -167,10 +168,11 @@ namespace Graphite {
 			return;
 		}
 
-		Launch(hasTab);
+		Launch(heldElsewhere);
 	}
 
-	void WorkspaceAnalysis::Launch(const std::function<bool(const std::filesystem::path&)>& hasTab)
+	void WorkspaceAnalysis::Launch(
+		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
 		if (m_Flight || m_Reading)
 		{
@@ -182,12 +184,12 @@ namespace Graphite {
 			std::filesystem::path path = std::move(m_Queue.front());
 			m_Queue.pop_front();
 
-			if (hasTab(path))
+			if (heldElsewhere(path))
 			{
-				// DocumentWindows opens this file with the server itself and asks its own
+				// Whoever holds this file opened it with the server themselves and asks their own
 				// questions about the buffer, which may already differ from what is on disk. The
-				// skip happens here, before the read is asked for, so a file with a tab costs
-				// neither a server nor a worker.
+				// skip happens here, before the read is asked for, so a file somebody already
+				// holds costs neither a server nor a worker.
 				++m_Done;
 				continue;
 			}
@@ -199,7 +201,8 @@ namespace Graphite {
 		}
 	}
 
-	void WorkspaceAnalysis::CollectTexts(double now)
+	void WorkspaceAnalysis::CollectTexts(
+		double now, const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
 		m_Arrived.clear();
 		m_Texts.Take(m_Arrived);
@@ -216,6 +219,18 @@ namespace Graphite {
 			m_Reading.reset();
 
 			if (!text.Readable || text.Text.empty())
+			{
+				++m_Done;
+				continue;
+			}
+
+			// Asked again, having been asked in Launch: the read between the two is a round trip
+			// through a worker, at least a frame and often many, and a tab can open on this path
+			// in the meantime. Opening it now would overwrite what LanguageServices remembers for
+			// that tab with the bytes on disk — invisible until the server dies and RestartServer
+			// replays them, at which point the tab's unsaved buffer is silently the disk version
+			// on the server's side until the next edit corrects it.
+			if (heldElsewhere(text.Path))
 			{
 				++m_Done;
 				continue;
@@ -304,10 +319,10 @@ namespace Graphite {
 		// AnalysisWorthKeeping refuses an entry with nothing in it, which is what a failed flight
 		// comes to. `documentModified` is false because this class never has a document: what it
 		// measured its answers against is the file on disk, and the stamp beside them describes
-		// exactly that. A file that acquired a tab keeps nothing — the tab's own buffer has moved
-		// on from what went to the server.
+		// exactly that. A file somebody else took over keeps nothing — the buffer they hold has
+		// moved on from what went to the server.
 		std::optional<CachedAnalysis> worth =
-			m_Flight->TabTook
+			m_Flight->HeldElsewhere
 				? std::nullopt
 				: AnalysisWorthKeeping(std::move(m_Flight->Result), false, m_Flight->ModifiedAt);
 

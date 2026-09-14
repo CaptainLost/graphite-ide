@@ -40,6 +40,11 @@ namespace Graphite {
 		// rather than a queue of them.
 		void Start(std::filesystem::path root, bool respectGitIgnore);
 
+		// Free when there is nothing to cancel, and safe to call every frame because of it: the
+		// render loop does exactly that while the feature is switched off, and this allocates a
+		// fresh findings block. The guard lives here rather than at the call site so the next
+		// caller inherits it — a per-frame allocation in the render loop is what ADR 0015 calls
+		// waste, and a call site is the easy place to forget.
 		void Cancel();
 
 		bool IsWalking() const;
@@ -60,6 +65,12 @@ namespace Graphite {
 
 		std::shared_ptr<Findings> m_Findings = std::make_shared<Findings>();
 		Core::CancellationToken m_Token;
+
+		// Whether a walk has been started and not yet cancelled. Not the same question as
+		// IsWalking, which goes false of its own accord the moment the worker runs out of tree:
+		// that walk's findings still need dropping, so it is Start and Cancel that move this, not
+		// the worker.
+		bool m_Live = false;
 
 		// Last, deliberately: destroyed first in reverse declaration order, so the worker is
 		// joined before anything it touches goes away.

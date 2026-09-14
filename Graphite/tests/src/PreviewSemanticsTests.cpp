@@ -122,6 +122,48 @@ TEST_CASE("A file a tab already holds is asked about but never opened")
 	CHECK(port.CountOf("ask") == 1);
 }
 
+TEST_CASE("Holds answers for the didOpen this class sent, and for no other")
+{
+	// What WorkspaceAnalysis asks before it opens or closes a document of its own: a file this
+	// class holds must not be closed by anybody else, and a file it is only riding a tab's didOpen
+	// for is not this class's to speak for.
+	FakePort port;
+	PreviewSemantics semantics{port};
+	const Core::TextBuffer buffer{"Renderer r;\n"};
+
+	CHECK_FALSE(semantics.Holds("a.cpp"));
+
+	semantics.Tick(1, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, false);
+
+	CHECK(semantics.Holds("a.cpp"));
+	CHECK_FALSE(semantics.Holds("b.cpp"));
+
+	// A tab took over: the didOpen is disowned, so this is no longer the holder even though the
+	// entry is still here and still being asked about.
+	semantics.Tick(2, 0.0);
+	semantics.Declare("a.cpp", buffer, 4, true);
+
+	CHECK_FALSE(semantics.Holds("a.cpp"));
+
+	// And the pane that only ever rode a tab's didOpen never claims one.
+	semantics.Tick(3, 0.0);
+	semantics.Declare("c.cpp", buffer, 4, true);
+
+	CHECK_FALSE(semantics.Holds("c.cpp"));
+
+	// Stops holding once the entry is dropped for want of a declaration.
+	semantics.Tick(4, 0.0);
+	semantics.Declare("d.cpp", buffer, 4, false);
+
+	CHECK(semantics.Holds("d.cpp"));
+
+	semantics.Tick(5, 0.0);
+	semantics.Tick(6, 0.0);
+
+	CHECK_FALSE(semantics.Holds("d.cpp"));
+}
+
 TEST_CASE("An answer colours the file it was asked about")
 {
 	FakePort port;
