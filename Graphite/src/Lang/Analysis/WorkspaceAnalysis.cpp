@@ -116,6 +116,14 @@ namespace Graphite {
 		{
 			// Given up on rather than waited for. Whatever became of the question, the file is no
 			// worse off than it was before this class existed, and the queue behind it is.
+			//
+			// A tab that arrived while this went unanswered is handed the document exactly as it
+			// is in Retire: the didOpen is disowned so the didClose below never goes out.
+			if (hasTab(m_Flight->Path))
+			{
+				m_Flight->Opened = false;
+			}
+
 			CloseFlight();
 			++m_Done;
 		}
@@ -262,15 +270,28 @@ namespace Graphite {
 
 		const std::filesystem::path path = m_Flight->Path;
 
+		// A tab took the document over while this was in the air.
+		const bool taken = hasTab(path);
+
 		// AnalysisWorthKeeping refuses an entry with nothing in it, which is what a failed flight
 		// comes to. `documentModified` is false because this class never has a document: what it
 		// measured its answers against is the file on disk, and the stamp beside them describes
-		// exactly that. A file that acquired a tab while this was in the air keeps nothing — the
-		// tab's own buffer has moved on from what went to the server.
+		// exactly that. A file that acquired a tab keeps nothing — the tab's own buffer has moved
+		// on from what went to the server.
 		std::optional<CachedAnalysis> worth =
-			hasTab(path) ? std::nullopt
-						 : AnalysisWorthKeeping(std::move(m_Flight->Result), false,
-												m_Flight->ModifiedAt);
+			taken ? std::nullopt
+				  : AnalysisWorthKeeping(std::move(m_Flight->Result), false, m_Flight->ModifiedAt);
+
+		if (taken)
+		{
+			// The didOpen is disowned rather than answered, which is the same move
+			// PreviewSemantics makes on the same transition and for the same reason:
+			// CloseDocument counts no references and LensFor opens a document exactly once, on
+			// the frame the tab appears. A didClose from here would therefore pull the file out
+			// from under a tab that will never open it again, and every didChange it sends after
+			// that would describe a document the server no longer holds.
+			m_Flight->Opened = false;
+		}
 
 		CloseFlight();
 		++m_Done;

@@ -298,7 +298,35 @@ TEST_CASE("A file that acquires a tab mid-flight is abandoned and nothing is cac
 	analysis.Tick(3.0, false, EveryTab);
 
 	CHECK_FALSE(cache.Take("a.cpp", OnDisk()).has_value());
-	CHECK(port.CountOf("close") == 1);
+
+	// And not closed either: the tab holds the document now, CloseDocument counts no references,
+	// and a tab only ever opens one once. A didClose from here would take the file away from it
+	// for good.
+	CHECK(port.CountOf("close") == 0);
+
+	// Dropped all the same — the queue is not left waiting on a flight nobody will retire.
+	CHECK(analysis.Progress().Done == 1);
+}
+
+TEST_CASE("A flight that times out after a tab takes it over closes nothing")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache};
+
+	// One file, so the Done below is the timed-out flight's and nothing else's: a queue behind it
+	// would be skipped in the same tick, every skip counting as done.
+	analysis.Enqueue({"a.cpp"});
+
+	analysis.Tick(1.0, false, NoTabs);
+	analysis.Tick(2.0, false, NoTabs);
+
+	// Never answered, and a tab appeared in the meantime.
+	analysis.Tick(2.0 + 200.0, false, EveryTab);
+
+	CHECK(port.CountOf("close") == 0);
+	CHECK(analysis.Progress().Done == 1);
 }
 
 TEST_CASE("An answer nobody here asked for is left for somebody else")
