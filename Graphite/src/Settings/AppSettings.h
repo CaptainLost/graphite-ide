@@ -40,6 +40,19 @@ namespace Graphite {
 		static bool LoadSearchProjectsOnly();
 		static void SaveSearchProjectsOnly(bool projectsOnly);
 
+		// Whether the workspace is analysed ahead of being read. See WorkspaceAnalysis for
+		// what that costs; the switch exists because the cost is a processor working through
+		// a tree nobody asked it to, which on a small machine or an enormous repository is a
+		// fair thing to decline.
+		static bool LoadBackgroundAnalysis();
+		static void SaveBackgroundAnalysis(bool enabled);
+
+		// How much analysis may be kept, in megabytes. Megabytes because that is the unit the
+		// panel offers and the only one a person can reason about — the cache itself budgets
+		// in bytes, which is the unit it can actually measure an entry in.
+		static std::size_t LoadAnalysisBudgetMegabytes();
+		static void SaveAnalysisBudgetMegabytes(std::size_t megabytes);
+
 		static std::string LoadColorScheme();
 		static void SaveColorScheme(std::string_view name);
 

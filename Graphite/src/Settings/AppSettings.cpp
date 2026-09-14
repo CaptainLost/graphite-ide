@@ -31,6 +31,9 @@ namespace Graphite {
 		constexpr const char* kSearchRespectGitIgnoreKey = "searchRespectGitIgnore";
 		constexpr const char* kSearchProjectsOnlyKey = "searchProjectsOnly";
 
+		constexpr const char* kBackgroundAnalysisKey = "backgroundAnalysis";
+		constexpr const char* kAnalysisBudgetKey = "analysisBudgetMegabytes";
+
 		constexpr std::string_view kKeyBindingPrefix = "key.";
 
 		const std::filesystem::path& SettingsPath()
@@ -72,6 +75,18 @@ namespace Graphite {
 				return 0;
 
 			return static_cast<std::size_t>(width);
+		}
+
+		std::size_t ParseAnalysisBudgetOrZero(const std::string& stored)
+		{
+			char* end = nullptr;
+			const unsigned long megabytes = std::strtoul(stored.c_str(), &end, 10);
+
+			// strtoul leaves end at the start of the string when it parsed nothing.
+			if (end == stored.c_str())
+				return 0;
+
+			return static_cast<std::size_t>(megabytes);
 		}
 
 		void RemoveStoredKeyBindings(Core::JsonFile& file)
@@ -180,6 +195,29 @@ namespace Graphite {
 	void AppSettings::SaveSearchProjectsOnly(bool projectsOnly)
 	{
 		WriteValue(kSearchProjectsOnlyKey, projectsOnly ? "1" : "0");
+	}
+
+	bool AppSettings::LoadBackgroundAnalysis()
+	{
+		// Absent means on, which is why this compares against "0" rather than for "1": the
+		// feature is the default, and a settings file written before it existed must not read as
+		// a decision to switch it off.
+		return Core::JsonFile::Load(SettingsPath()).Get(kBackgroundAnalysisKey) != "0";
+	}
+
+	void AppSettings::SaveBackgroundAnalysis(bool enabled)
+	{
+		WriteValue(kBackgroundAnalysisKey, enabled ? "1" : "0");
+	}
+
+	std::size_t AppSettings::LoadAnalysisBudgetMegabytes()
+	{
+		return ParseAnalysisBudgetOrZero(Core::JsonFile::Load(SettingsPath()).Get(kAnalysisBudgetKey));
+	}
+
+	void AppSettings::SaveAnalysisBudgetMegabytes(std::size_t megabytes)
+	{
+		WriteValue(kAnalysisBudgetKey, std::to_string(megabytes));
 	}
 
 	std::string AppSettings::LoadColorScheme()
