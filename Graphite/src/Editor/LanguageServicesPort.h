@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/PreviewSemantics.h"
+#include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Server/LanguageServices.h"
 
 namespace Graphite {
@@ -29,6 +30,45 @@ namespace Graphite {
 									 LanguageId language) override
 		{
 			return m_Services.AskSemanticTokens(path, language);
+		}
+
+		void Close(const std::filesystem::path& path, LanguageId language) override
+		{
+			m_Services.CloseDocument(path, language);
+		}
+
+	private:
+		LanguageServices& m_Services;
+	};
+
+	// The production WorkspaceAnalysisPort, beside the preview one above and for the same reason:
+	// the class it serves talks to this, the tests talk to a fake, and neither knows about the
+	// other.
+	class WorkspaceAnalysisServicesPort final : public WorkspaceAnalysisPort
+	{
+	public:
+		explicit WorkspaceAnalysisServicesPort(LanguageServices& services) : m_Services(services) {}
+
+		void Open(const std::filesystem::path& path, LanguageId language,
+				  std::string text) override
+		{
+			// EnsureStarted before OpenDocument, in that order and for the reason the port above
+			// gives: OpenDocument is a no-op while no server runs for this root, and a background
+			// file reached before the server started would otherwise be told to nobody.
+			m_Services.EnsureStarted(path, language);
+			m_Services.OpenDocument(path, language, std::move(text));
+		}
+
+		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path& path,
+												   LanguageId language) override
+		{
+			return m_Services.AskSemanticTokens(path, language);
+		}
+
+		LanguageServices::Ticket AskSymbols(const std::filesystem::path& path,
+											LanguageId language) override
+		{
+			return m_Services.AskSymbols(path, language);
 		}
 
 		void Close(const std::filesystem::path& path, LanguageId language) override
