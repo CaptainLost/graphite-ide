@@ -202,8 +202,9 @@ TEST_CASE("A finished file is closed, cached, and the next one starts")
 	CHECK(analysis.Apply(Colours(port.TicketOf("colours", "a.cpp"))));
 	CHECK(analysis.Apply(Symbols(port.TicketOf("symbols", "a.cpp"))));
 
-	// Retiring is a Tick's job, not an answer's: it needs the hasTab predicate, which only a Tick
-	// is given. The same tick asks for b.cpp's text.
+	// Retiring is a Tick's job, not an answer's: it needs the heldElsewhere predicate to know
+	// whether anybody else already holds this document open with the server, and only a Tick is given
+	// that predicate. The same tick asks for b.cpp's text.
 	analysis.Tick(3.0, false, NobodyElse);
 
 	CHECK(port.CountOf("close") == 1);
@@ -329,7 +330,7 @@ TEST_CASE("A flight already in the air is finished rather than abandoned when th
 	CHECK(cache.Take("a.cpp", OnDisk()).has_value());
 }
 
-TEST_CASE("A file that already has a tab is never opened from here")
+TEST_CASE("A file that somebody else already holds is never opened from here")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -345,15 +346,15 @@ TEST_CASE("A file that already has a tab is never opened from here")
 	CHECK(analysis.Progress().Done == 1);
 }
 
-TEST_CASE("A file a preview pane holds is left alone, tab or no tab")
+TEST_CASE("A file somebody else holds is left alone, whether a tab or other holder")
 {
 	FakePort port;
 	FakeTexts texts;
 	AnalysisCache cache{1024 * 1024};
 	WorkspaceAnalysis analysis{port, texts, cache};
 
-	// No tab anywhere — a pane previewing a search result sent the didOpen, and the predicate the
-	// application hands down answers for holders, not for tabs. b.cpp is what the pass may have.
+	// A preview pane holding a.cpp sent the didOpen, and the predicate the application hands down
+	// answers for holders, not for tabs. b.cpp is what the pass may have.
 	const auto paneHoldsA = [](const std::filesystem::path& path)
 	{ return path == std::filesystem::path{"a.cpp"}; };
 
@@ -399,7 +400,7 @@ TEST_CASE("A file taken over while its text is being read is never opened")
 	CHECK(analysis.Progress().Done == 1);
 }
 
-TEST_CASE("A file that acquires a tab mid-flight is abandoned and nothing is cached")
+TEST_CASE("A file that acquires a holder mid-flight is abandoned and nothing is cached")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -414,13 +415,13 @@ TEST_CASE("A file that acquires a tab mid-flight is abandoned and nothing is cac
 	analysis.Apply(Colours(port.TicketOf("colours", "a.cpp")));
 	analysis.Apply(Symbols(port.TicketOf("symbols", "a.cpp")));
 
-	// The tab appeared before the answers were retired.
+	// Somebody else became the holder before the answers were retired.
 	analysis.Tick(3.0, false, SomebodyElse);
 
 	CHECK_FALSE(cache.Take("a.cpp", OnDisk()).has_value());
 
-	// And not closed either: the tab holds the document now, CloseDocument counts no references,
-	// and a tab only ever opens one once. A didClose from here would take the file away from it
+	// And not closed either: the holder owns the document now, CloseDocument counts no references,
+	// and a holder only ever opens one once. A didClose from here would take the file away from it
 	// for good.
 	CHECK(port.CountOf("close") == 0);
 
@@ -428,7 +429,7 @@ TEST_CASE("A file that acquires a tab mid-flight is abandoned and nothing is cac
 	CHECK(analysis.Progress().Done == 1);
 }
 
-TEST_CASE("A flight that times out after a tab takes it over closes nothing")
+TEST_CASE("A flight that times out after somebody else takes it over closes nothing")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -442,7 +443,7 @@ TEST_CASE("A flight that times out after a tab takes it over closes nothing")
 	analysis.Tick(1.0, false, NobodyElse);
 	analysis.Tick(2.0, false, NobodyElse);
 
-	// Never answered, and a tab appeared in the meantime.
+	// Never answered, and somebody else became a holder in the meantime.
 	analysis.Tick(2.0 + 200.0, false, SomebodyElse);
 
 	CHECK(port.CountOf("close") == 0);
@@ -642,7 +643,7 @@ TEST_CASE("Closing the folder drops the queue and closes what was open")
 	CHECK(port.CountOf("open") == 1);
 }
 
-TEST_CASE("Closing the folder while a tab holds the file in flight closes nothing")
+TEST_CASE("Closing the folder while somebody else holds the file in flight closes nothing")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -654,8 +655,8 @@ TEST_CASE("Closing the folder while a tab holds the file in flight closes nothin
 	analysis.Tick(1.0, false, NobodyElse);
 	analysis.Tick(2.0, false, NobodyElse);
 
-	// The tick that tells the flight a tab has it. Clear has no predicate of its own — the folder
-	// can close from a settings toggle — so this is the only answer it will ever have.
+	// The tick that tells the flight somebody else now holds the file. Clear has no predicate of its
+	// own — the folder can close from a settings toggle — so this is the only answer it will ever have.
 	analysis.Tick(3.0, false, SomebodyElse);
 
 	analysis.Clear();
@@ -664,7 +665,7 @@ TEST_CASE("Closing the folder while a tab holds the file in flight closes nothin
 	CHECK(analysis.Progress().Total == 0);
 }
 
-TEST_CASE("Destruction closes what was opened here, and nothing a tab has taken over")
+TEST_CASE("Destruction closes what was opened here, and nothing somebody else holds")
 {
 	FakePort port;
 	FakeTexts texts;
@@ -684,7 +685,7 @@ TEST_CASE("Destruction closes what was opened here, and nothing a tab has taken 
 		CHECK(port.CountOf("close") == 1);
 	}
 
-	SUBCASE("a tab holds the file, so it is left open for it")
+	SUBCASE("somebody else holds the file, so it is left open for them")
 	{
 		{
 			WorkspaceAnalysis analysis{port, texts, cache};
