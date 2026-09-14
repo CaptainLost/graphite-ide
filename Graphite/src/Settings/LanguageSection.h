@@ -2,6 +2,8 @@
 
 #include "Settings/SettingsSection.h"
 
+#include <optional>
+
 namespace Graphite {
 
 	class AnalysisSettings;
@@ -21,5 +23,11 @@ namespace Graphite {
 
 	private:
 		AnalysisSettings& m_Settings;
+
+		// The slider's working value while it is being dragged. Committed to m_Settings only on
+		// ImGui::IsItemDeactivatedAfterEdit, so a drag writes graphite.json once instead of once
+		// per frame. Empty when no drag is in progress. Same reason EditorSection's font-size and
+		// tab-width sliders hold their own pending value.
+		std::optional<int> m_PendingBudgetMegabytes;
 	};
 }

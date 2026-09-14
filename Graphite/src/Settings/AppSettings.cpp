@@ -84,7 +84,9 @@ namespace Graphite {
 
 			// strtoul leaves end at the start of the string when it parsed nothing.
 			if (end == stored.c_str())
+			{
 				return 0;
+			}
 
 			return static_cast<std::size_t>(megabytes);
 		}
