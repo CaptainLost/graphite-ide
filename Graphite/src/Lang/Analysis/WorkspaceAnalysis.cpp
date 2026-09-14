@@ -89,8 +89,14 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_Flight->Opened)
+		if (m_Flight->Opened && !m_Flight->TabTook)
 		{
+			// A tab that took the file over is now the one holding the document, and it opened it
+			// exactly once: CloseDocument counts no references and LensFor never opens a document
+			// twice, so a didClose from here would take the file away from that tab for good —
+			// every didChange it sent afterwards would describe a document the server no longer
+			// holds. The didOpen is disowned instead, the same move PreviewSemantics makes on the
+			// same transition.
 			m_Port.Close(m_Flight->Path, m_Flight->Language);
 		}
 
@@ -107,23 +113,22 @@ namespace Graphite {
 
 		CollectTexts(now);
 
+		// The one place the predicate is asked about a flight. Everything that tears one down
+		// reads the answer off the flight instead — see Flight::TabTook.
+		if (m_Flight)
+		{
+			m_Flight->TabTook = hasTab(m_Flight->Path);
+		}
+
 		// Before the busy check, deliberately: a flight that has already been answered costs the
 		// server nothing more, and leaving it open until the editor goes quiet would hold a
 		// document — and the whole queue behind it — for as long as someone keeps typing.
-		Retire(hasTab);
+		Retire();
 
 		if (m_Flight && now - m_Flight->StartedAt > kFlightTimeoutSeconds)
 		{
 			// Given up on rather than waited for. Whatever became of the question, the file is no
 			// worse off than it was before this class existed, and the queue behind it is.
-			//
-			// A tab that arrived while this went unanswered is handed the document exactly as it
-			// is in Retire: the didOpen is disowned so the didClose below never goes out.
-			if (hasTab(m_Flight->Path))
-			{
-				m_Flight->Opened = false;
-			}
-
 			CloseFlight();
 			++m_Done;
 		}
@@ -261,7 +266,7 @@ namespace Graphite {
 		return false;
 	}
 
-	void WorkspaceAnalysis::Retire(const std::function<bool(const std::filesystem::path&)>& hasTab)
+	void WorkspaceAnalysis::Retire()
 	{
 		if (!m_Flight || !m_Flight->ColoursIn || !m_Flight->SymbolsIn)
 		{
@@ -270,28 +275,15 @@ namespace Graphite {
 
 		const std::filesystem::path path = m_Flight->Path;
 
-		// A tab took the document over while this was in the air.
-		const bool taken = hasTab(path);
-
 		// AnalysisWorthKeeping refuses an entry with nothing in it, which is what a failed flight
 		// comes to. `documentModified` is false because this class never has a document: what it
 		// measured its answers against is the file on disk, and the stamp beside them describes
 		// exactly that. A file that acquired a tab keeps nothing — the tab's own buffer has moved
 		// on from what went to the server.
 		std::optional<CachedAnalysis> worth =
-			taken ? std::nullopt
-				  : AnalysisWorthKeeping(std::move(m_Flight->Result), false, m_Flight->ModifiedAt);
-
-		if (taken)
-		{
-			// The didOpen is disowned rather than answered, which is the same move
-			// PreviewSemantics makes on the same transition and for the same reason:
-			// CloseDocument counts no references and LensFor opens a document exactly once, on
-			// the frame the tab appears. A didClose from here would therefore pull the file out
-			// from under a tab that will never open it again, and every didChange it sends after
-			// that would describe a document the server no longer holds.
-			m_Flight->Opened = false;
-		}
+			m_Flight->TabTook
+				? std::nullopt
+				: AnalysisWorthKeeping(std::move(m_Flight->Result), false, m_Flight->ModifiedAt);
 
 		CloseFlight();
 		++m_Done;

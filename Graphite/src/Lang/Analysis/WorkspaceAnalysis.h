@@ -138,6 +138,19 @@ namespace Graphite {
 
 			bool Opened = false;
 
+			// Whether a tab held this file as of the last Tick. Carried on the flight rather than
+			// asked at each of the four places a flight is torn down — Retire, the timeout,
+			// Clear and the destructor — because two of those have no predicate to ask with:
+			// SetEnabled(false) reaches Clear from a settings panel, and a destructor has nobody
+			// left to ask at all. One answer, recorded once a frame, is also the only way the
+			// four places cannot drift apart, which is how this went wrong the first time.
+			//
+			// The trade, deliberately: a tab that appears between a frame's Tick and a Clear in
+			// that same frame leaves this pass's didOpen un-closed, which leaks one document
+			// entry until the server is restarted. That is the harmless direction — the other one
+			// takes the document away from a tab that will never open it again.
+			bool TabTook = false;
+
 			std::optional<LanguageServices::Ticket> Colours;
 			std::optional<LanguageServices::Ticket> Symbols;
 
@@ -153,7 +166,10 @@ namespace Graphite {
 
 		void Launch(const std::function<bool(const std::filesystem::path&)>& hasTab);
 		void CollectTexts(double now);
-		void Retire(const std::function<bool(const std::filesystem::path&)>& hasTab);
+		void Retire();
+
+		// Drops the flight, telling the server the file is closed only if this class is still the
+		// one holding it open. See Flight::TabTook.
 		void CloseFlight();
 
 		WorkspaceAnalysisPort& m_Port;

@@ -521,3 +521,61 @@ TEST_CASE("Closing the folder drops the queue and closes what was open")
 
 	CHECK(port.CountOf("open") == 1);
 }
+
+TEST_CASE("Closing the folder while a tab holds the file in flight closes nothing")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache};
+
+	analysis.Enqueue({"a.cpp"});
+
+	analysis.Tick(1.0, false, NoTabs);
+	analysis.Tick(2.0, false, NoTabs);
+
+	// The tick that tells the flight a tab has it. Clear has no predicate of its own — the folder
+	// can close from a settings toggle — so this is the only answer it will ever have.
+	analysis.Tick(3.0, false, EveryTab);
+
+	analysis.Clear();
+
+	CHECK(port.CountOf("close") == 0);
+	CHECK(analysis.Progress().Total == 0);
+}
+
+TEST_CASE("Destruction closes what was opened here, and nothing a tab has taken over")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+
+	SUBCASE("nothing holds the file, so it is closed")
+	{
+		{
+			WorkspaceAnalysis analysis{port, texts, cache};
+
+			analysis.Enqueue({"a.cpp"});
+
+			analysis.Tick(1.0, false, NoTabs);
+			analysis.Tick(2.0, false, NoTabs);
+		}
+
+		CHECK(port.CountOf("close") == 1);
+	}
+
+	SUBCASE("a tab holds the file, so it is left open for it")
+	{
+		{
+			WorkspaceAnalysis analysis{port, texts, cache};
+
+			analysis.Enqueue({"a.cpp"});
+
+			analysis.Tick(1.0, false, NoTabs);
+			analysis.Tick(2.0, false, NoTabs);
+			analysis.Tick(3.0, false, EveryTab);
+		}
+
+		CHECK(port.CountOf("close") == 0);
+	}
+}
