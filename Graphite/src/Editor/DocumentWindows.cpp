@@ -1696,6 +1696,13 @@ namespace Graphite {
 				continue;
 			}
 
+			// The background pass asks about files with no tab at all, on its own tickets, and is
+			// offered them here for the reason the preview panes are: this is the only drain.
+			if (m_WorkspaceAnalysis.Apply(answer))
+			{
+				continue;
+			}
+
 			const auto count = m_PendingCounts.find(answer.For);
 
 			if (count == m_PendingCounts.end())

@@ -11,6 +11,7 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Lang/Syntax/SyntaxCache.h"
@@ -66,11 +67,14 @@ namespace Graphite {
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						LanguageServices& languageServices, const DiagnosticsModel& diagnostics,
-						PreviewSemantics& previewSemantics)
+						PreviewSemantics& previewSemantics, AnalysisCache& analysis,
+						WorkspaceAnalysis& workspaceAnalysis)
 			: m_Documents(documents),
 			  m_LanguageServices(languageServices),
 			  m_Diagnostics(diagnostics),
 			  m_PreviewSemantics(previewSemantics),
+			  m_Analysis(analysis),
+			  m_WorkspaceAnalysis(workspaceAnalysis),
 			  m_Modals(modals),
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
 			  m_ReloadConflict(modals, kReloadConflictTitle),
@@ -389,6 +393,16 @@ namespace Graphite {
 		// does not own it, GraphiteLayer does, and it must outlive every document window.
 		PreviewSemantics& m_PreviewSemantics;
 
+		// Not owned: the background pass writes into the same cache, and one cache with two
+		// producers is the whole point — an entry put there by the walk is the entry this class
+		// restores when a tab opens on that file.
+		AnalysisCache& m_Analysis;
+
+		// Offered every answer this class does not recognise, the same way PreviewSemantics is and
+		// for the same reason: CollectServerAnswers is the single drain point, so anything that
+		// asks a question of its own has to be heard from here.
+		WorkspaceAnalysis& m_WorkspaceAnalysis;
+
 		// Held as well as handed to the questions below: the definition picker is an ordinary
 		// popup rather than a ModalQuestion, and it still has to take the same gate — ImGui
 		// cannot stack two popups at level 0, and opening this one over a question would destroy
@@ -506,10 +520,6 @@ namespace Graphite {
 		std::map<std::filesystem::path, DiagnosticOverlay> m_DiagnosticOverlays;
 		std::map<std::filesystem::path, DiagnosticGuard> m_DiagnosticGuards;
 
-		// Answers belonging to documents whose tabs have closed. Budgeted rather than counted -
-		// see AnalysisCache - at a figure generous enough for the handful of files someone moves
-		// between while this member is still sized by hand.
-		AnalysisCache m_Analysis{64ull * 1024 * 1024};
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;
 
 		struct PendingCount

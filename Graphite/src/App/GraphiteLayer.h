@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include "Editor/AnalysisCache.h"
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/LanguageServicesPort.h"
@@ -11,10 +12,14 @@
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Lang/Analysis/AnalysisWalk.h"
+#include "Lang/Analysis/FileTextSource.h"
+#include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
+#include "Settings/AnalysisSettings.h"
 #include "Theme/ActiveScheme.h"
 #include "Workspace/DroppedPaths.h"
 #include "Workspace/Workspace.h"
@@ -144,10 +149,36 @@ namespace Graphite {
 		LanguageServicesPort m_PreviewPort{m_LanguageServices};
 		PreviewSemantics m_PreviewSemantics{m_PreviewPort};
 
+		// Read by LanguageSection, which m_Panels owns, so this is declared before m_Panels for
+		// the same reason m_EditorSettings is.
+		AnalysisSettings m_AnalysisSettings;
+
+		// Ahead of both its producers, so it outlives them: m_WorkspaceAnalysis writes entries
+		// into it and m_DocumentWindows reads them back when a tab opens, and either holding a
+		// reference to a destroyed cache is the failure this order prevents.
+		AnalysisCache m_Analysis{AnalysisSettings::kDefaultBudgetMegabytes * 1024ull * 1024ull};
+
+		// The reader's worker, declared before the class that asks it for text so the requests
+		// stop arriving before the thread is joined.
+		DiskFileTexts m_AnalysisTexts;
+
+		// Declared after m_LanguageServices, which the port forwards to, and before
+		// m_WorkspaceAnalysis, which holds the port: the pass closes whatever it had open from its
+		// own destructor, so the port and the servers behind it must both still be there.
+		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices};
+		WorkspaceAnalysis m_WorkspaceAnalysis{m_AnalysisPort, m_AnalysisTexts, m_Analysis};
+
+		// Last of this group, so its destructor runs first and the walking thread is cancelled and
+		// joined before anything it feeds goes away. It holds no reference to the members above -
+		// its findings are drained on the UI thread - so this is the cheap end of the order.
+		AnalysisWalk m_AnalysisWalk;
+
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
-		// with the matching server and feeds the reference-count rows from the answers.
-		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_LanguageServices, m_Diagnostics,
-										  m_PreviewSemantics};
+		// with the matching server and feeds the reference-count rows from the answers. After
+		// m_Analysis and m_WorkspaceAnalysis too, both of which it now holds by reference.
+		DocumentWindows m_DocumentWindows{m_Documents,  m_Modals,           m_LanguageServices,
+										  m_Diagnostics, m_PreviewSemantics, m_Analysis,
+										  m_WorkspaceAnalysis};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.

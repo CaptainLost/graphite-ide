@@ -41,6 +41,7 @@
 
 #include "Settings/EditorSection.h"
 #include "Settings/KeyBindingsSection.h"
+#include "Settings/LanguageSection.h"
 #include "Settings/SchemeSection.h"
 #include "Settings/SearchSection.h"
 #include "Settings/SettingsPanel.h"
@@ -152,6 +153,7 @@ namespace Graphite {
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
+		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings));
 
 		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
 
@@ -165,6 +167,13 @@ namespace Graphite {
 		m_EditorSettings.Load();
 		m_ActiveScheme.Load();
 		m_SearchSettings.Load();
+
+		// Beside the other settings, and before OpenStartupFolder below sets the root the first
+		// frame will start a walk for: a pass begun under the default budget and only then
+		// resized would evict its way down to the saved one for nothing.
+		m_AnalysisSettings.Load();
+		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
+		m_WorkspaceAnalysis.SetEnabled(m_AnalysisSettings.IsEnabled());
 
 		OpenStartupFolder();
 
@@ -435,6 +444,22 @@ namespace Graphite {
 				// cheaply as it can, and build outputs hold plenty of files that answer nothing.
 				m_LanguageServices.WarmUp(m_WarmedRoot, true);
 			}
+
+			// The same trigger as the warm-up above, and the same ignore rule: a tree's build
+			// output holds plenty of files a server has nothing to say about.
+			//
+			// Outside the branch, unlike the warm-up: a folder closing has to drop the queue as
+			// surely as a folder opening replaces it.
+			m_WorkspaceAnalysis.Clear();
+
+			if (!m_WarmedRoot.empty())
+			{
+				m_AnalysisWalk.Start(m_WarmedRoot, true);
+			}
+			else
+			{
+				m_AnalysisWalk.Cancel();
+			}
 		}
 
 		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
@@ -491,6 +516,37 @@ namespace Graphite {
 		m_PreviewSemantics.Tick(static_cast<std::size_t>(ImGui::GetFrameCount()),
 								ImGui::GetTime());
 
+		// Read every frame rather than on a change notification: both are a comparison against a
+		// value that almost never differs, and a settings object with no observers is one less
+		// thing to keep in step. Both setters return without work when nothing moved.
+		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
+		m_WorkspaceAnalysis.SetEnabled(m_AnalysisSettings.IsEnabled());
+
+		// What the walk has found so far, handed over on the UI thread. Drained every frame
+		// rather than once at the end: a tree of any size takes a while to walk, and there is no
+		// reason for the first file found to wait for the last.
+		std::vector<std::filesystem::path> found;
+		m_AnalysisWalk.Take(found);
+
+		m_WorkspaceAnalysis.SetWalking(m_AnalysisWalk.IsWalking());
+		m_WorkspaceAnalysis.SetTabWidth(m_EditorSettings.GetIndentStyle().Width);
+		m_WorkspaceAnalysis.Enqueue(std::move(found));
+
+		// The open document's own questions come first. IsAnalysing is what the Server slot below
+		// already asks to decide whether to say "analysing" rather than "ready", which makes it
+		// exactly the condition worth yielding to.
+		bool foregroundBusy = false;
+
+		if (const auto analysed = m_Documents.GetActive();
+			analysed && m_Documents.At(*analysed).Document)
+		{
+			foregroundBusy = m_DocumentWindows.IsAnalysing(m_Documents.At(*analysed).Path);
+		}
+
+		m_WorkspaceAnalysis.Tick(ImGui::GetTime(), foregroundBusy,
+								 [this](const std::filesystem::path& path)
+								 { return m_Documents.Find(path).has_value(); });
+
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup.
 		ServerStatus status;
@@ -540,6 +596,18 @@ namespace Graphite {
 			// is opened, which looks like the feature is not working.
 			messages.Server = ServerStatusText(*overall);
 			messages.ServerDetail = ServerStatusDetail(*overall);
+		}
+
+		// Its own slot beside the server's, because it answers a different question: the server
+		// phrase is about the file on screen, this one is about the tree behind it. Empty while
+		// there is nothing to say, which is what leaves the slot unoccupied rather than resting on
+		// a finished count nobody is waiting for.
+		if (std::string background = BackgroundAnalysisText(m_WorkspaceAnalysis.Progress());
+			!background.empty())
+		{
+			messages.Background = std::move(background);
+			messages.BackgroundDetail = BackgroundAnalysisDetail(
+				m_WorkspaceAnalysis.Progress(), m_Analysis.GetBytes(), m_Analysis.GetBudget());
 		}
 
 		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
