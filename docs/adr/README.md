@@ -540,4 +540,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0508](0508-let-the-selected-file-win-over-the-selected-commit-in-the-git-preview-pane.md) | Let the selected file win over the selected commit in the git preview pane | proposed | 2026-08-29 |
 | [0509](0509-write-the-terminal-emulator-rather-than-adopt-one.md) | Write the terminal emulator rather than adopt one | proposed | 2026-08-29 |
 | [0510](0510-make-every-panel-name-the-view-menu-group-it-is-drawn-under.md) | Make every panel name the view menu group it is drawn under | proposed | 2026-09-07 |
+| [0511](0511-analyse-the-workspace-ahead-of-the-reader-one-file-at-a-time.md) | Analyse the workspace ahead of the reader, one file at a time | proposed | 2026-09-14 |
 <!-- /adr-index -->
