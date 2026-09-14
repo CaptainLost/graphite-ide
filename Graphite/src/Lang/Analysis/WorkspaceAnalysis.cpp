@@ -14,6 +14,17 @@ namespace Graphite {
 		// and finite, because a question that is never answered would otherwise hold the whole
 		// queue behind it for the rest of the session.
 		constexpr double kFlightTimeoutSeconds = 120.0;
+
+		// How long the open document may claim to be waiting before this stops yielding to it.
+		//
+		// Not a guard against a busy editor: typing goes quiet between keystrokes and never gets
+		// near this. It guards against a foreground question that will never be answered — a
+		// language whose server is configured but whose binary is not installed leaves the active
+		// document's symbol request retrying forever, so what the editor reports is permanently
+		// busy and nothing here would ever launch again for the rest of the session. Long enough
+		// that a server merely slow to index still gets the whole floor, short enough that the
+		// broken case costs one wait rather than a session.
+		constexpr double kForegroundYieldCapSeconds = 10.0;
 	}
 
 	WorkspaceAnalysis::WorkspaceAnalysis(WorkspaceAnalysisPort& port, FileTextSource& texts,
@@ -133,11 +144,26 @@ namespace Graphite {
 			++m_Done;
 		}
 
-		if (foregroundBusy)
+		if (!foregroundBusy)
+		{
+			// Reset on the first quiet frame, so an ordinary session — busy for a keystroke,
+			// quiet, busy again — never accumulates towards the cap. Only an unbroken run of
+			// busy frames counts.
+			m_BusySince.reset();
+		}
+		else if (!m_BusySince)
+		{
+			m_BusySince = now;
+		}
+
+		if (foregroundBusy && now - *m_BusySince <= kForegroundYieldCapSeconds)
 		{
 			// Nothing new while the file on screen is waiting. What is already in the air is left
 			// alone: cancelling gives back none of the work the server has already done, and its
 			// answer still has somewhere useful to go.
+			//
+			// Past the cap the yield is dropped — see kForegroundYieldCapSeconds for the case it
+			// exists for.
 			return;
 		}
 

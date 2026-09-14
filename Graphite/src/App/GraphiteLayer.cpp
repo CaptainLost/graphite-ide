@@ -431,6 +431,12 @@ namespace Graphite {
 		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
 								 m_SearchPanel->GetStatusMessage()};
 
+		// Read once and spent everywhere below - the walk's trigger, the pass, and what the status
+		// bar is told about walking. Three separate reads of the same getter are three chances for
+		// those to disagree, and a bar saying "finding files" for a walk that was switched off is
+		// exactly what disagreement looks like.
+		const bool analysisEnabled = m_AnalysisSettings.IsEnabled();
+
 		// Noticed here rather than hooked onto the two places a folder can be opened from: a
 		// root comparison per frame catches every way it can change, including ones added later,
 		// and costs a path compare against a path that almost never differs.
@@ -452,7 +458,7 @@ namespace Graphite {
 			// surely as a folder opening replaces it.
 			m_WorkspaceAnalysis.Clear();
 
-			if (!m_WarmedRoot.empty())
+			if (!m_WarmedRoot.empty() && analysisEnabled)
 			{
 				m_AnalysisWalk.Start(m_WarmedRoot, true);
 			}
@@ -520,7 +526,24 @@ namespace Graphite {
 		// value that almost never differs, and a settings object with no observers is one less
 		// thing to keep in step. Both setters return without work when nothing moved.
 		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
-		m_WorkspaceAnalysis.SetEnabled(m_AnalysisSettings.IsEnabled());
+		m_WorkspaceAnalysis.SetEnabled(analysisEnabled);
+
+		if (!analysisEnabled)
+		{
+			// Cancelled rather than merely ignored. A walk left running would keep a worker
+			// traversing the whole tree to fill a queue Enqueue now drops on the floor - the
+			// setting is about not spending the machine on this, and a thread reading every
+			// directory under the root is most of that spending.
+			m_AnalysisWalk.Cancel();
+		}
+
+		// Read before the drain below, not after. The walker can push its last findings and clear
+		// this flag between the two calls, and a frame that reported "not walking" while still
+		// holding undrained paths would show a Total that jumps the frame after - which is the
+		// count appearing to go backwards, the one thing SetWalking exists to prevent. Reading it
+		// first costs at worst one extra frame of "finding files", which is the harmless
+		// direction.
+		const bool walking = analysisEnabled && m_AnalysisWalk.IsWalking();
 
 		// What the walk has found so far, handed over on the UI thread. Drained every frame
 		// rather than once at the end: a tree of any size takes a while to walk, and there is no
@@ -528,7 +551,7 @@ namespace Graphite {
 		std::vector<std::filesystem::path> found;
 		m_AnalysisWalk.Take(found);
 
-		m_WorkspaceAnalysis.SetWalking(m_AnalysisWalk.IsWalking());
+		m_WorkspaceAnalysis.SetWalking(walking);
 		m_WorkspaceAnalysis.SetTabWidth(m_EditorSettings.GetIndentStyle().Width);
 		m_WorkspaceAnalysis.Enqueue(std::move(found));
 

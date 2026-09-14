@@ -176,7 +176,7 @@ namespace Graphite {
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers. After
 		// m_Analysis and m_WorkspaceAnalysis too, both of which it now holds by reference.
-		DocumentWindows m_DocumentWindows{m_Documents,  m_Modals,           m_LanguageServices,
+		DocumentWindows m_DocumentWindows{m_Documents,   m_Modals,           m_LanguageServices,
 										  m_Diagnostics, m_PreviewSemantics, m_Analysis,
 										  m_WorkspaceAnalysis};
 

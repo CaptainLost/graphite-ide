@@ -237,6 +237,69 @@ TEST_CASE("Nothing new is launched while the open document is waiting on the ser
 	CHECK(port.CountOf("open") == 1);
 }
 
+TEST_CASE("A briefly busy document still holds everything back")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache};
+
+	analysis.Enqueue({"a.cpp"});
+
+	// Nine seconds of unbroken busy is under the cap, and the pass waits it out.
+	for (double now = 1.0; now <= 10.0; now += 1.0)
+	{
+		analysis.Tick(now, true, NoTabs);
+	}
+
+	CHECK(port.Calls.empty());
+}
+
+TEST_CASE("A document busy for longer than anything real is stopped being waited for")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache};
+
+	analysis.Enqueue({"a.cpp"});
+
+	// The foreground claims to be busy and never stops - a server configured but not installed,
+	// whose symbol request retries forever. Past the cap the pass goes anyway.
+	analysis.Tick(1.0, true, NoTabs);
+
+	CHECK(port.Calls.empty());
+
+	analysis.Tick(1.0 + 11.0, true, NoTabs);   // asks for a.cpp's text
+	analysis.Tick(1.0 + 12.0, true, NoTabs);   // the text arrives and a.cpp is opened
+
+	CHECK(port.CountOf("open") == 1);
+}
+
+TEST_CASE("Busy frames broken by a quiet one do not add up towards the cap")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache};
+
+	// Busy for nine seconds, one quiet frame, then busy again for nine: nineteen seconds between
+	// the first busy frame and the last, and not one unbroken run past the cap. Typing looks
+	// exactly like this. The queue is filled after the quiet frame so that frame has nothing to
+	// launch - what is under test is the clock, not what a quiet frame does with a queue.
+	analysis.Tick(1.0, true, NoTabs);
+	analysis.Tick(10.0, true, NoTabs);
+
+	analysis.Tick(11.0, false, NoTabs);
+
+	analysis.Enqueue({"a.cpp"});
+
+	analysis.Tick(12.0, true, NoTabs);
+	analysis.Tick(20.0, true, NoTabs);
+
+	CHECK(port.Calls.empty());
+}
+
 TEST_CASE("A flight already in the air is finished rather than abandoned when the editor gets busy")
 {
 	FakePort port;

@@ -109,6 +109,9 @@ namespace Graphite {
 		// Once a frame on the UI thread. Retires a finished flight and launches at most one new
 		// one. `hasTab` answers whether a path is open in the editor — a predicate rather than a
 		// DocumentSet, so this class needs none of the editor to be tested.
+		//
+		// `foregroundBusy` is yielded to, but only for so long: a foreground question that is
+		// never answered would otherwise stop this pass for the rest of the session.
 		void Tick(double now, bool foregroundBusy,
 				  const std::function<bool(const std::filesystem::path&)>& hasTab);
 
@@ -189,6 +192,10 @@ namespace Graphite {
 		std::optional<std::filesystem::path> m_Reading;
 
 		std::optional<Flight> m_Flight;
+
+		// When the open document's unbroken run of being busy began, so the yield to it can be
+		// bounded. Empty on every frame it is not busy. See kForegroundYieldCapSeconds.
+		std::optional<double> m_BusySince;
 
 		// Kept as a member rather than made afresh each frame: Tick runs sixty times a second and
 		// this is the one buffer in the class that would otherwise reallocate for every one of
