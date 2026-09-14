@@ -506,9 +506,10 @@ namespace Graphite {
 		std::map<std::filesystem::path, DiagnosticOverlay> m_DiagnosticOverlays;
 		std::map<std::filesystem::path, DiagnosticGuard> m_DiagnosticGuards;
 
-		// Answers belonging to documents whose tabs have closed. Sixteen because the point is the
-		// handful of files someone moves between, and an entry costs a map of spans per line.
-		AnalysisCache m_Analysis{16};
+		// Answers belonging to documents whose tabs have closed. Budgeted rather than counted -
+		// see AnalysisCache - at a figure generous enough for the handful of files someone moves
+		// between while this member is still sized by hand.
+		AnalysisCache m_Analysis{64ull * 1024 * 1024};
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;
 
 		struct PendingCount

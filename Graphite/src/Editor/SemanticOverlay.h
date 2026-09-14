@@ -52,6 +52,11 @@ namespace Graphite {
 		// every line a server declined to colour - the two are the same thing to a reader.
 		bool IsEmpty() const { return m_Lines.empty(); }
 
+		// Roughly what this overlay costs to keep, for the cache that budgets in bytes. Rough
+		// deliberately: what a budget protects is an order of magnitude, and a faithful
+		// accounting of a std::map's nodes would be unportable and beside the point.
+		std::size_t Footprint() const;
+
 		// There is deliberately no way to adjust an overlay for an edit. Colours stay where the
 		// server put them until a reply replaces them: a colour that has slid a few characters is
 		// visibly provisional and costs a reader nothing, while shifting one line-by-line only ever

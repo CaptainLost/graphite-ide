@@ -25,23 +25,58 @@ namespace Graphite {
 		return analysis;
 	}
 
-	AnalysisCache::AnalysisCache(std::size_t capacity) : m_Capacity(capacity) {}
+	std::size_t BytesOf(const CachedAnalysis& analysis)
+	{
+		std::size_t bytes = sizeof(CachedAnalysis) + analysis.Semantic.Footprint();
+
+		for (const Declaration& declaration : analysis.Declarations)
+		{
+			bytes += sizeof(Declaration) + declaration.Name.size();
+		}
+
+		for (const KnownCount& count : analysis.Counts)
+		{
+			bytes += sizeof(KnownCount) + count.Name.size();
+		}
+
+		return bytes;
+	}
+
+	AnalysisCache::AnalysisCache(std::size_t budgetBytes) : m_Budget(budgetBytes) {}
+
+	void AnalysisCache::SetBudget(std::size_t budgetBytes)
+	{
+		if (m_Budget == budgetBytes)
+		{
+			return;
+		}
+
+		m_Budget = budgetBytes;
+
+		Evict();
+	}
 
 	void AnalysisCache::Put(const std::filesystem::path& path, CachedAnalysis analysis)
 	{
-		if (m_Capacity == 0)
+		const std::size_t bytes = BytesOf(analysis);
+
+		if (bytes > m_Budget)
 		{
+			// Refused outright rather than stored and immediately evicted, which would empty the
+			// cache on the way to keeping nothing.
 			return;
 		}
 
 		if (const auto found = m_ByPath.find(path); found != m_ByPath.end())
 		{
+			m_Bytes -= found->second->Bytes;
 			m_Entries.erase(found->second);
 			m_ByPath.erase(found);
 		}
 
-		m_Entries.emplace_front(path, std::move(analysis));
+		m_Entries.push_front(Entry{path, std::move(analysis), bytes});
 		m_ByPath.emplace(path, m_Entries.begin());
+		m_Bytes += bytes;
 
 		Evict();
 	}
@@ -56,8 +91,9 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		CachedAnalysis kept = std::move(found->second->second);
+		CachedAnalysis kept = std::move(found->second->Analysis);
 
+		m_Bytes -= found->second->Bytes;
 		m_Entries.erase(found->second);
 		m_ByPath.erase(found);
 
@@ -73,9 +109,10 @@ namespace Graphite {
 
 	void AnalysisCache::Evict()
 	{
-		while (m_Entries.size() > m_Capacity)
+		while (!m_Entries.empty() && m_Bytes > m_Budget)
 		{
-			m_ByPath.erase(m_Entries.back().first);
+			m_Bytes -= m_Entries.back().Bytes;
+			m_ByPath.erase(m_Entries.back().Path);
 			m_Entries.pop_back();
 		}
 	}

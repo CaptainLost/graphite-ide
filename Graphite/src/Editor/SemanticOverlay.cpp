@@ -84,6 +84,24 @@ namespace Graphite {
 		m_Lines.clear();
 	}
 
+	std::size_t SemanticOverlay::Footprint() const
+	{
+		// A line costs its spans plus a constant for the node holding them — the node, its
+		// colour, its three pointers and the vector's own header.
+		constexpr std::size_t kPerLine = 64;
+
+		std::size_t bytes = 0;
+
+		for (const auto& [line, spans] : m_Lines)
+		{
+			(void)line;
+
+			bytes += kPerLine + spans.capacity() * sizeof(SemanticSpan);
+		}
+
+		return bytes;
+	}
+
 	const std::vector<SemanticSpan>& SemanticOverlay::SpansOn(std::size_t line) const
 	{
 		const auto found = m_Lines.find(line);
