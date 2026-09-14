@@ -257,5 +257,12 @@ namespace Graphite {
 		// The root the language servers were last warmed for, so the comparison in OnImGuiRender
 		// fires once per folder rather than once per frame.
 		std::filesystem::path m_WarmedRoot;
+
+		// What the background-analysis setting was last frame, so switching it back on can restart
+		// the walk. Remembered rather than hooked onto the settings section for the reason
+		// m_WarmedRoot is remembered rather than hooked onto the places a folder opens — see
+		// OnImGuiRender. Starts at AnalysisSettings' own default, so a session that loads that
+		// default sees no edge at all on its first frame.
+		bool m_AnalysisWasEnabled = true;
 	};
 }

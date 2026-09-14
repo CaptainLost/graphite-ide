@@ -437,6 +437,16 @@ namespace Graphite {
 		// exactly what disagreement looks like.
 		const bool analysisEnabled = m_AnalysisSettings.IsEnabled();
 
+		// The rising edge of that flag, noticed the way the changed root below is: a compare
+		// against a remembered value each frame catches every way the setting can move, including
+		// from places added later, and costs a bool compare. Switching the feature off cancels the
+		// walk and empties the queue, so switching it back on has nothing left to run — without
+		// this, it would stay inert until the folder was reopened, which reads as a switch that
+		// does not work.
+		const bool analysisSwitchedOn = analysisEnabled && !m_AnalysisWasEnabled;
+
+		m_AnalysisWasEnabled = analysisEnabled;
+
 		// Noticed here rather than hooked onto the two places a folder can be opened from: a
 		// root comparison per frame catches every way it can change, including ones added later,
 		// and costs a path compare against a path that almost never differs.
@@ -466,6 +476,18 @@ namespace Graphite {
 			{
 				m_AnalysisWalk.Cancel();
 			}
+		}
+		else if (analysisSwitchedOn && !m_WarmedRoot.empty())
+		{
+			// An `else if` rather than a second branch of its own: a frame that changed the root
+			// has already started the walk for it above, and this must not start a second one over
+			// the top. Start cancels whatever was running, so a double call would cost a wasted
+			// walk rather than corrupt anything - but which branch owns the call is worth being
+			// able to read off the code.
+			//
+			// Nothing to start with no folder open, hence the root check. The queue needs no
+			// clearing: switching the feature off emptied it on the way down.
+			m_AnalysisWalk.Start(m_WarmedRoot, true);
 		}
 
 		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
