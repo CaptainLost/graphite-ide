@@ -59,11 +59,31 @@ namespace Graphite {
 			return read;
 		}
 
-		const Core::Result<std::string> text = Core::Decode(bytes, probe.FileEncoding);
+		// Bytes rather than probe.FileEncoding, for the reason TextDocument::FromContent
+		// computes it the same way: the probe only sniffed a sample, so the mark actually
+		// sitting on the bytes about to be decoded is what has to be stripped.
+		const std::size_t bomLength = Core::BomLength(bytes);
+
+		const Core::Result<std::string> text =
+			Core::TransformsContent(probe.FileEncoding)
+				? Core::Decode(std::string_view{bytes}.substr(bomLength), probe.FileEncoding)
+				: Core::Decode(bytes, probe.FileEncoding);
 
 		if (!text)
 		{
 			return read;
+		}
+
+		std::string decoded = text.GetValue();
+
+		// Core::Decode passes UTF-8 through unchanged, so a mark on disk is still the first
+		// three bytes here. SemanticOverlay lines its spans up against the editor's own
+		// buffer, which TextDocument::FromContent already strips the same mark from — left
+		// in here, every colour on line 0 of a BOM-prefixed file would sit one character to
+		// the right of the text it belongs to.
+		if (!Core::TransformsContent(probe.FileEncoding))
+		{
+			decoded.erase(0, bomLength);
 		}
 
 		std::error_code error;
@@ -76,7 +96,7 @@ namespace Graphite {
 			return read;
 		}
 
-		read.Text = text.GetValue();
+		read.Text = std::move(decoded);
 		read.ModifiedAt = modified;
 		read.Readable = true;
 

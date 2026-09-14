@@ -32,25 +32,29 @@ TEST_CASE("A file that is not there is not readable, and says so rather than thr
 TEST_CASE("A binary file is refused rather than sent to a server as text")
 {
 	TempDirectory temp;
+
+	// A real PNG signature plus the length and chunk-type fields that start every IHDR
+	// chunk: 16 explicit bytes, so the std::string constructor below reads exactly what is
+	// there rather than running past the end of a shorter literal.
 	const std::filesystem::path file =
-		temp.MakeFile("a.png", std::string("\x89PNG\r\n\x1a\n\0\0\0\r", 16));
+		temp.MakeFile("a.png", std::string("\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR", 16));
 
 	const Graphite::FileText read = Graphite::ReadFileText(file);
 
 	CHECK_FALSE(read.Readable);
 }
 
-TEST_CASE("A UTF-8 file with a BOM is read the same way PreviewContent reads one")
+TEST_CASE("A UTF-8 file with a BOM comes back without it")
 {
-	// Core::Decode does not strip a BOM by itself — Core/Text/TextDocument.cpp strips it
-	// separately with BomLength() before decoding, for the one document that gets edited.
-	// ReadFileText mirrors PreviewContent's read, which never takes that extra step, so the
-	// mark comes back as part of the text rather than being stripped here.
+	// Core::Decode passes a UTF-8 BOM through unchanged — it is ReadFileText that strips it
+	// afterwards, the same mark TextDocument::FromContent strips from the buffer this text's
+	// colours are eventually drawn against. Left in, every colour on line 0 would be one
+	// UTF-16 unit off from where the editor's own buffer puts that line's text.
 	TempDirectory temp;
 	const std::filesystem::path file = temp.MakeFile("a.cpp", "\xEF\xBB\xBFint x;");
 
 	const Graphite::FileText read = Graphite::ReadFileText(file);
 
 	REQUIRE(read.Readable);
-	CHECK(read.Text == "\xEF\xBB\xBFint x;");
+	CHECK(read.Text == "int x;");
 }
