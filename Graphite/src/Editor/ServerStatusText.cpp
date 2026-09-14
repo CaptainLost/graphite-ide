@@ -19,6 +19,11 @@ namespace Graphite {
 				   (status.Restarts == 1 ? " time" : " times");
 		}
 
+		std::string Megabytes(std::size_t bytes)
+		{
+			return std::to_string(bytes / (1024ull * 1024ull)) + " MB";
+		}
+
 	}
 
 	std::string ServerStatusText(const ServerStatus& status)
@@ -128,6 +133,39 @@ namespace Graphite {
 
 			detail += restarts;
 		}
+
+		return detail;
+	}
+
+	std::string BackgroundAnalysisText(const AnalysisProgress& progress)
+	{
+		if (progress.Walking)
+		{
+			return "analysing workspace: finding files";
+		}
+
+		// Total == 0 is the pass having nothing queued yet; Done >= Total (once Total is
+		// non-zero) is the pass having finished. Both are the resting state and both say
+		// nothing, but they are different reasons, which is why the check names them separately
+		// rather than folding them into one comparison a reader would have to unpick.
+		if (progress.Total == 0 || progress.Done >= progress.Total)
+		{
+			return {};
+		}
+
+		return "analysing workspace: " + std::to_string(progress.Done) + " of " +
+			   std::to_string(progress.Total);
+	}
+
+	std::string BackgroundAnalysisDetail(const AnalysisProgress& progress, std::size_t keptBytes,
+										 std::size_t budgetBytes)
+	{
+		std::string detail = "Reading the workspace so a file opens already coloured: " +
+							 std::to_string(progress.Done) + " of " +
+							 std::to_string(progress.Total) + " files.\n";
+
+		detail += "Holding " + Megabytes(keptBytes) + " of " + Megabytes(budgetBytes) + ".\n";
+		detail += "The file you are reading is always asked about first.";
 
 		return detail;
 	}

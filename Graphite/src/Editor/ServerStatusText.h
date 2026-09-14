@@ -1,8 +1,10 @@
 #pragma once
 
+#include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Api/LanguageId.h"
 #include "Lang/Api/LanguageService.h"
 
+#include <cstddef>
 #include <string>
 
 namespace Graphite {
@@ -43,5 +45,22 @@ namespace Graphite {
 	std::string NoServerText(LanguageId language);
 
 	std::string NoServerDetail(LanguageId language);
+
+	// What the bar says about the pass reading the workspace behind the reader.
+	//
+	// Empty once the pass has finished, and empty before it has anything to report — the same
+	// resting state the Problems slot has, where a count of nothing would be the one thing in the
+	// bar that must be read to learn there is nothing to read.
+	//
+	// There is deliberately no phrase for "paused". The pass yields to the open document several
+	// times a second, and a slot flickering between two states would read as a fault rather than
+	// as the design working.
+	std::string BackgroundAnalysisText(const AnalysisProgress& progress);
+
+	// The tooltip behind it: the count again, and what the kept analysis weighs against the budget
+	// it is allowed. Both figures are the ones the settings panel's slider is about, which is what
+	// makes the number there mean something.
+	std::string BackgroundAnalysisDetail(const AnalysisProgress& progress, std::size_t keptBytes,
+										 std::size_t budgetBytes);
 
 }

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Editor/ServerStatusText.h"
+#include "Lang/Analysis/WorkspaceAnalysis.h"
 
 TEST_CASE("A language with no server contributes nothing to the bar")
 {
@@ -105,4 +106,49 @@ TEST_CASE("A language with no server says nothing, analysed or not")
 	status.State = Graphite::ServerState::NotConfigured;
 
 	CHECK(Graphite::AnalysingText(status, "notes.txt").empty());
+}
+
+TEST_CASE("The bar names the background pass while it is finding files")
+{
+	Graphite::AnalysisProgress progress;
+	progress.Walking = true;
+
+	CHECK(Graphite::BackgroundAnalysisText(progress) == "analysing workspace: finding files");
+}
+
+TEST_CASE("The bar counts the background pass against what it found")
+{
+	Graphite::AnalysisProgress progress;
+	progress.Done = 42;
+	progress.Total = 385;
+
+	CHECK(Graphite::BackgroundAnalysisText(progress) == "analysing workspace: 42 of 385");
+}
+
+TEST_CASE("A finished background pass says nothing at all")
+{
+	Graphite::AnalysisProgress progress;
+	progress.Done = 385;
+	progress.Total = 385;
+
+	CHECK(Graphite::BackgroundAnalysisText(progress).empty());
+}
+
+TEST_CASE("A background pass with nothing queued says nothing at all")
+{
+	CHECK(Graphite::BackgroundAnalysisText(Graphite::AnalysisProgress{}).empty());
+}
+
+TEST_CASE("The background tooltip says what is kept against what may be")
+{
+	Graphite::AnalysisProgress progress;
+	progress.Done = 42;
+	progress.Total = 385;
+
+	const std::string detail =
+		Graphite::BackgroundAnalysisDetail(progress, 34ull * 1024 * 1024, 128ull * 1024 * 1024);
+
+	CHECK(detail.find("42 of 385") != std::string::npos);
+	CHECK(detail.find("34 MB") != std::string::npos);
+	CHECK(detail.find("128 MB") != std::string::npos);
 }

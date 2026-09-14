@@ -40,6 +40,17 @@ namespace Graphite {
 		// resting state, and a "0 errors" nobody asked for would be the one thing in this bar that
 		// has to be read to learn there is nothing to read.
 		std::optional<std::string> Problems;
+
+		// Graphite::BackgroundAnalysisText's output — what the pass reading the workspace behind
+		// the reader has got through. Its own field rather than folded into Server: that slot
+		// speaks for the active document's own server and has a priority order between three
+		// different things to say, none of which this is.
+		std::optional<std::string> Background;
+
+		// The longer text behind Background. Joins the single tooltip the bar already hangs off
+		// its whole right-hand side, because splitting that into separately hoverable items is a
+		// change to how the bar draws for the sake of a second tooltip.
+		std::optional<std::string> BackgroundDetail;
 	};
 
 	void DrawStatusBar(const Core::DocumentSet& documents,

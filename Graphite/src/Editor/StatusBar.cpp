@@ -149,6 +149,18 @@ namespace Graphite {
 			rightAligned += *messages.Server;
 		}
 
+		// Last of the three, so it sits furthest from the caret and encoding figures the eye goes
+		// to. It is the slowest-moving thing in the bar and the one nobody needs to find quickly.
+		if (messages.Background && !messages.Background->empty())
+		{
+			if (!rightAligned.empty())
+			{
+				rightAligned += "    ";
+			}
+
+			rightAligned += *messages.Background;
+		}
+
 		if (hasDocument)
 		{
 			const Core::OpenItem& item = documents.At(*active);
@@ -165,10 +177,29 @@ namespace Graphite {
 		{
 			DrawRightAligned(rightAligned, height);
 
-			if (messages.Server && !messages.Server->empty() && ImGui::IsItemHovered() &&
-				messages.ServerDetail && !messages.ServerDetail->empty())
+			if (ImGui::IsItemHovered())
 			{
-				ImGui::SetTooltip("%s", messages.ServerDetail->c_str());
+				std::string tooltip;
+
+				if (messages.ServerDetail && !messages.ServerDetail->empty())
+				{
+					tooltip = *messages.ServerDetail;
+				}
+
+				if (messages.BackgroundDetail && !messages.BackgroundDetail->empty())
+				{
+					if (!tooltip.empty())
+					{
+						tooltip += "\n\n";
+					}
+
+					tooltip += *messages.BackgroundDetail;
+				}
+
+				if (!tooltip.empty())
+				{
+					ImGui::SetTooltip("%s", tooltip.c_str());
+				}
 			}
 		}
 
