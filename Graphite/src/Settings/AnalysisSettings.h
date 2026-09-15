@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 
 namespace Graphite {
 
@@ -53,5 +54,14 @@ namespace Graphite {
 
 		bool m_ConcurrencyAutomatic = true;
 		std::size_t m_Concurrency = kMinimumConcurrency;
+
+		// The last number somebody actually chose, kept for the life of the process even while
+		// automatic is on, so ticking the box back off returns what was chosen rather than
+		// reseeding from the machine every time. Not persisted: on disk automatic is still the
+		// absent/zero value, so a toggle-off in a later session — after this has gone with the
+		// process — falls back to AutomaticConcurrency() instead. That is the lesser loss: a
+		// sentinel here cannot tell "never chosen" from "chose kMinimumConcurrency", so the
+		// distinction can only be carried in memory, not in the stored number itself.
+		std::optional<std::size_t> m_RememberedConcurrency;
 	};
 }

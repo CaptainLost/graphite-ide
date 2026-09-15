@@ -90,3 +90,31 @@ TEST_CASE("Unticking automatic keeps the figure it had rather than dropping to t
 	// having quietly fallen back to kMinimumConcurrency.
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
 }
+
+TEST_CASE("A round trip through automatic returns the number that was chosen, not the machine's")
+{
+	Graphite::AnalysisSettings settings;
+
+	settings.SetConcurrencyAutomatic(false);
+	settings.SetConcurrency(2);
+
+	settings.SetConcurrencyAutomatic(true);
+	settings.SetConcurrencyAutomatic(false);
+
+	// The deliberate 2 comes back, not whatever AutomaticConcurrency() happens to say.
+	CHECK(settings.GetConcurrency() == 2);
+}
+
+TEST_CASE("While automatic is on, the remembered choice does not leak into what is reported")
+{
+	Graphite::AnalysisSettings settings;
+
+	settings.SetConcurrencyAutomatic(false);
+	settings.SetConcurrency(2);
+
+	settings.SetConcurrencyAutomatic(true);
+
+	// Automatic means automatic: the number on screen is the machine's, not the one that was
+	// typed before the box was ticked back on.
+	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
+}

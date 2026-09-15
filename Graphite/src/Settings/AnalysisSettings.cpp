@@ -24,6 +24,10 @@ namespace Graphite {
 		if (!m_ConcurrencyAutomatic)
 		{
 			m_Concurrency = std::clamp(savedConcurrency, kMinimumConcurrency, kMaximumConcurrency);
+
+			// A persisted manual figure is itself a remembered choice, so a tick-then-untick of
+			// automatic later in this session returns it rather than the machine's figure.
+			m_RememberedConcurrency = m_Concurrency;
 		}
 	}
 
@@ -82,11 +86,12 @@ namespace Graphite {
 
 		if (!automatic)
 		{
-			// Seed the stored figure from what automatic was actually giving, so unticking the
-			// box means "keep doing what you were doing, but let me change it" rather than
-			// silently dropping to the minimum m_Concurrency happens to hold until somebody
-			// drags the slider.
-			m_Concurrency = AutomaticConcurrency();
+			// Restore whatever was chosen by hand this session, if anything was; only a machine
+			// nobody has overridden yet falls back to the automatic figure. Reseeding from
+			// AutomaticConcurrency() unconditionally here would forget a deliberate choice the
+			// moment somebody ticked the box on to peek at the machine's figure and ticked it
+			// back off.
+			m_Concurrency = m_RememberedConcurrency.value_or(AutomaticConcurrency());
 		}
 
 		// Zero means automatic to AppSettings, the same idiom the budget uses for "absent".
@@ -96,6 +101,8 @@ namespace Graphite {
 	void AnalysisSettings::SetConcurrency(std::size_t concurrency)
 	{
 		const std::size_t clamped = std::clamp(concurrency, kMinimumConcurrency, kMaximumConcurrency);
+
+		m_RememberedConcurrency = clamped;
 
 		if (!m_ConcurrencyAutomatic && m_Concurrency == clamped)
 		{
