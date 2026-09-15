@@ -138,3 +138,37 @@ TEST_CASE("An identifier with nothing said about its line keeps the lexer's colo
 
 	CHECK(Graphite::ColourOf(identifier, {}) == Graphite::TokenKind::Identifier);
 }
+
+TEST_CASE("An overlay can be walked line by line and built back up again")
+{
+	Graphite::SemanticOverlay original;
+	original.SetSpansOn(3, {Graphite::SemanticSpan{0, 4, Graphite::TokenKind::SemanticType}});
+	original.SetSpansOn(7, {Graphite::SemanticSpan{2, 5, Graphite::TokenKind::SemanticType},
+							Graphite::SemanticSpan{9, 12, Graphite::TokenKind::SemanticType}});
+
+	Graphite::SemanticOverlay rebuilt;
+
+	original.ForEachLine([&rebuilt](std::size_t line, const std::vector<Graphite::SemanticSpan>& spans)
+						 { rebuilt.SetSpansOn(line, spans); });
+
+	CHECK(rebuilt.SpansOn(3).size() == 1);
+	CHECK(rebuilt.SpansOn(7).size() == 2);
+	CHECK(rebuilt.SpansOn(7)[1].From == 9);
+	CHECK(rebuilt.SpansOn(7)[1].To == 12);
+	CHECK(rebuilt.SpansOn(0).empty());
+	CHECK_FALSE(rebuilt.IsEmpty());
+}
+
+TEST_CASE("Setting no spans on a line leaves nothing behind to walk")
+{
+	Graphite::SemanticOverlay overlay;
+	overlay.SetSpansOn(3, {});
+
+	std::size_t visited = 0;
+
+	overlay.ForEachLine([&visited](std::size_t, const std::vector<Graphite::SemanticSpan>&)
+						{ ++visited; });
+
+	CHECK(visited == 0);
+	CHECK(overlay.IsEmpty());
+}

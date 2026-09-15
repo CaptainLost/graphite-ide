@@ -109,6 +109,27 @@ namespace Graphite {
 		return found == m_Lines.end() ? NoSpans() : found->second;
 	}
 
+	void SemanticOverlay::ForEachLine(
+		const std::function<void(std::size_t, const std::vector<SemanticSpan>&)>& visit) const
+	{
+		for (const auto& [line, spans] : m_Lines)
+		{
+			visit(line, spans);
+		}
+	}
+
+	void SemanticOverlay::SetSpansOn(std::size_t line, std::vector<SemanticSpan> spans)
+	{
+		if (spans.empty())
+		{
+			// Stored empty, a line would answer IsEmpty false and be walked out again as a line
+			// with nothing on it — a round trip that grew an entry out of nothing.
+			return;
+		}
+
+		m_Lines[line] = std::move(spans);
+	}
+
 	TokenKind ColourOf(const Token& token, const std::vector<SemanticSpan>& semantic)
 	{
 		if (token.Kind != TokenKind::Identifier)

@@ -5,6 +5,7 @@
 #include "Lang/Syntax/Token.h"
 
 #include <cstddef>
+#include <functional>
 #include <map>
 #include <vector>
 
@@ -56,6 +57,20 @@ namespace Graphite {
 		// deliberately: what a budget protects is an order of magnitude, and a faithful
 		// accounting of a std::map's nodes would be unportable and beside the point.
 		std::size_t Footprint() const;
+
+		// Walks the lines that carry spans, in line order. For the on-disk store and for nothing
+		// else: drawing asks SpansOn for the one line it is drawing, and a consumer that wanted
+		// every line at once would be rebuilding the map it is already holding.
+		void ForEachLine(
+			const std::function<void(std::size_t, const std::vector<SemanticSpan>&)>& visit) const;
+
+		// Puts spans on one line as they already are, converting nothing. The counterpart of
+		// ForEachLine, and the only way to rebuild an overlay that was measured in an earlier
+		// session: Set converts a server's answer against a buffer, and the buffer that answer was
+		// measured against is long gone by then.
+		//
+		// An empty vector stores nothing, so a rebuilt overlay is byte for byte what was walked.
+		void SetSpansOn(std::size_t line, std::vector<SemanticSpan> spans);
 
 		// There is deliberately no way to adjust an overlay for an edit. Colours stay where the
 		// server put them until a reply replaces them: a colour that has slid a few characters is
