@@ -23,16 +23,19 @@ namespace {
 		analysis.Semantic.SetSpansOn(7, {SemanticSpan{2, 5, TokenKind::SemanticType},
 										 SemanticSpan{9, 12, TokenKind::SemanticType}});
 
+		// Every field below is a distinct value from every other field of the same type, so a
+		// decoder that swapped Line and NameLine, or dropped one of them, could not pass by
+		// coincidence.
 		Declaration declaration;
 		declaration.Name = "Draw";
 		declaration.Kind = DeclarationKind::Function;
 		declaration.Line = 12;
 		declaration.Column = Utf16Column(4);
-		declaration.NameLine = 12;
+		declaration.NameLine = 15;
 		declaration.NameColumn = Utf16Column(9);
 
 		analysis.Declarations.push_back(std::move(declaration));
-		analysis.Counts.push_back({"Draw", DeclarationKind::Function, 7});
+		analysis.Counts.push_back({"Draw", DeclarationKind::Type, 7});
 		analysis.ModifiedAt = At(100);
 
 		return analysis;
@@ -53,10 +56,12 @@ TEST_CASE("An analysis survives a round trip through bytes")
 	CHECK(back->Declarations[0].Kind == DeclarationKind::Function);
 	CHECK(back->Declarations[0].Line == 12);
 	CHECK(back->Declarations[0].Column == Utf16Column(4));
+	CHECK(back->Declarations[0].NameLine == 15);
 	CHECK(back->Declarations[0].NameColumn == Utf16Column(9));
 
 	REQUIRE(back->Counts.size() == 1);
 	CHECK(back->Counts[0].Name == "Draw");
+	CHECK(back->Counts[0].Kind == DeclarationKind::Type);
 	CHECK(back->Counts[0].Count == 7);
 
 	REQUIRE(back->Semantic.SpansOn(7).size() == 2);
@@ -202,4 +207,42 @@ TEST_CASE("A declaration whose kind is past DeclarationKind's known values is re
 	corrupted[kindAt + 3] = 0;
 
 	CHECK_FALSE(DecodeAnalysis(corrupted, "a.cpp").has_value());
+}
+
+TEST_CASE("A known count whose kind is past DeclarationKind's known values is refused")
+{
+	// The counts loop validates KnownCount::Kind with its own if-statement, separate from the
+	// one guarding Declaration::Kind - nothing shares the check between them, so each needs its
+	// own case pinning it or a later simplification could delete either one unnoticed.
+	auto withKind = [](DeclarationKind kind)
+	{
+		CachedAnalysis analysis;
+		analysis.Counts.push_back({"Draw", kind, 7});
+
+		return analysis;
+	};
+
+	const std::string functionBytes = EncodeAnalysis("a.cpp", withKind(DeclarationKind::Function));
+	const std::string typeBytes = EncodeAnalysis("a.cpp", withKind(DeclarationKind::Type));
+
+	REQUIRE(functionBytes.size() == typeBytes.size());
+
+	const std::size_t kindAt = FirstDifference(functionBytes, typeBytes);
+	REQUIRE(kindAt < functionBytes.size());
+
+	std::string corrupted = functionBytes;
+	corrupted[kindAt] = 3;   // one past Other, the last valid DeclarationKind
+	corrupted[kindAt + 1] = 0;
+	corrupted[kindAt + 2] = 0;
+	corrupted[kindAt + 3] = 0;
+
+	CHECK_FALSE(DecodeAnalysis(corrupted, "a.cpp").has_value());
+}
+
+TEST_CASE("A record with extra bytes appended past a well-formed one is refused")
+{
+	// The only case that actually exercises AtEnd() as the check that distinguishes a
+	// well-formed record from a longer one - truncation trips the cursor's own bounds checks
+	// first, so it never reaches AtEnd() at all.
+	CHECK_FALSE(DecodeAnalysis(EncodeAnalysis("a.cpp", Sample()) + "x", "a.cpp").has_value());
 }
