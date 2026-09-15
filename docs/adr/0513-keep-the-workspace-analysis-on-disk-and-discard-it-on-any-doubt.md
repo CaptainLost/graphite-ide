@@ -47,8 +47,12 @@ by a worker and read on the UI thread.
   feature exists to remove.
 - **Write on a worker, one thread.** Tens of kilobytes of overlay serialised
   inside a frame is a visible hitch, once per analysed file. The index is
-  rewritten with every record, which is why the queue is one thread and not
-  several: two writers would race to assemble the index from disagreeing
+  rewritten on that same thread and not with every record — it names every
+  entry, so a rewrite per record makes the bytes written over a first pass
+  quadratic in the size of the workspace. It is coalesced instead, to at most
+  one rewrite per some tens of records or per some tens of seconds, and flushed
+  when the root changes or the store is destroyed. One thread and not several
+  either way: two writers would race to assemble the index from disagreeing
   pictures of the disk.
 - **Both producers write both tiers.** The pass writes what it analysed and
   `DocumentWindows::KeepAnalysis` writes what a closing tab knew, into the cache
@@ -98,6 +102,24 @@ how much of a damaged store to trust.
   open, even for a file outside that workspace's tree. The record is keyed by
   its normalised absolute path, so it is never served for the wrong file; it is
   simply kept somewhere a reader would not look for it.
+- The index is the very thing rejected under "One file for the whole store": it
+  names every entry, so every rewrite of it writes the whole store's worth of
+  paths. Coalescing the rewrite is what keeps that from being quadratic in the
+  size of the workspace, at the price of a crash leaving records the index does
+  not name — which the sweep already collects on the next launch, so the cost is
+  the last few files analysed again.
+- Two instances of the application open on one folder quietly undo each other's
+  store. The second to start prunes against a snapshot of the first's index and
+  sweeps every record the first has written since; each then replaces the
+  other's index in turn. Nothing corrupts — the writes are atomic and a missing
+  record is only ever a miss — but the store converges on useless for both, and
+  whichever instance closed first finds none of its second-launch promise kept.
+  No directory lock was taken, deliberately: a lock brings failure modes worse
+  than the problem it solves, because a stale one left by a crash needs a
+  timeout or a liveness check, and getting either wrong locks a user out of
+  their own cache with no way to tell why. The consequence here is a degraded
+  cache on an unusual workflow, never corruption and never lost work, which is
+  not worth buying at that price.
 
 ### Neutral
 
@@ -122,7 +144,10 @@ No index, no hashing, no sweep — a single file read and written whole. Rejecte
 because every write rewrites every entry: the pass finishes a file every few
 seconds, and the store of a large workspace is megabytes, so the worker would
 spend the session rewriting megabytes to append kilobytes. A truncation would
-also cost the whole store rather than one record.
+also cost the whole store rather than one record. The index pays a smaller
+version of the same cost and is named under Consequences for it; the difference
+is one of scale — a path and a stamp per entry rather than an overlay — and one
+of choice, since an index rewrite can be coalesced and a record cannot.
 
 ### A user-level store outside the workspace
 
