@@ -126,6 +126,15 @@ namespace Graphite {
 		static void ReadIndexInto(const std::filesystem::path& directory,
 								  const Core::CancellationToken& token, Listing& listing);
 
+		// Deletes every record in the directory that the pruned index does not name. Those are the
+		// unreachable ones: a record written a moment before the process was killed, one whose
+		// index write failed, one left behind because the name a path hashes to has moved. Nothing
+		// can ever open them again — a record is only ever reached through the filename the index
+		// stores — and walking the index, which is what pruning does, cannot see them at all. In a
+		// store with no size cap that is a leak the index was introduced to prevent.
+		static void SweepUnnamedRecords(const std::filesystem::path& directory,
+										const EntryMap& kept);
+
 		// Forgets an entry here and, on the worker, deletes its record and rewrites the index.
 		void Drop(const std::filesystem::path& key, const std::string& record);
 

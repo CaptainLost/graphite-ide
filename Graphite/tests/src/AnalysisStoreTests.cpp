@@ -50,6 +50,29 @@ namespace {
 
 		REQUIRE(store.IsReady());
 	}
+
+	std::filesystem::path StoreDirectory(const TempDirectory& temp)
+	{
+		return temp.GetPath() / ".graphite" / "analysis";
+	}
+
+	// What the store may never leave behind: a record nothing can reach. The index is the only
+	// thing that turns a path into a record's filename, so a record it does not name is invisible
+	// to every later read and every later prune alike.
+	std::size_t CountRecords(const std::filesystem::path& directory)
+	{
+		std::size_t records = 0;
+
+		for (const auto& entry : std::filesystem::directory_iterator{directory})
+		{
+			if (entry.path().extension() == ".rec")
+			{
+				++records;
+			}
+		}
+
+		return records;
+	}
 }
 
 TEST_CASE("An analysis written in one session is read back in the next")
@@ -167,6 +190,79 @@ TEST_CASE("A corrupt index throws the whole store away rather than half-trusting
 	WaitUntilReady(next);
 
 	CHECK_FALSE(next.Has(source));
+
+	// "Throws the whole store away" has to mean the disk, not just the map: an index that cannot
+	// be decoded leaves records named by a hash nothing can turn back into a path, so anything
+	// still sitting there is unreachable for the life of the project.
+	CHECK(CountRecords(StoreDirectory(temp)) == 0);
+}
+
+TEST_CASE("An index written against another record format is discarded whole, not one record at a time")
+{
+	TempDirectory temp;
+	const std::filesystem::path source = temp.MakeFile("a.cpp", "int x;");
+	const std::filesystem::file_time_type stamp = std::filesystem::last_write_time(source);
+
+	{
+		AnalysisStore store;
+		store.SetRoot(temp.GetPath());
+		WaitUntilReady(store);
+		store.Write(source, WithDeclaration("Draw", stamp));
+		WaitForWrites(store);
+	}
+
+	// The index carries the record version it was written against, in the third field after the
+	// magic and its own version. Moving it stands in for a build whose record format has changed:
+	// the records beside it still stat fine and would survive pruning, and each would then be
+	// refused by Read one opened document at a time.
+	{
+		const std::filesystem::path index = StoreDirectory(temp) / "index.bin";
+
+		std::fstream bytes{index, std::ios::binary | std::ios::in | std::ios::out};
+		REQUIRE(bytes.is_open());
+
+		bytes.seekp(8);
+		bytes.put(static_cast<char>(0xEE));
+	}
+
+	AnalysisStore next;
+	next.SetRoot(temp.GetPath());
+	WaitUntilReady(next);
+
+	CHECK_FALSE(next.Has(source));
+	CHECK(CountRecords(StoreDirectory(temp)) == 0);
+}
+
+TEST_CASE("A record the index no longer names is swept rather than left to sit there forever")
+{
+	TempDirectory temp;
+	const std::filesystem::path source = temp.MakeFile("a.cpp", "int x;");
+	const std::filesystem::file_time_type stamp = std::filesystem::last_write_time(source);
+
+	{
+		AnalysisStore store;
+		store.SetRoot(temp.GetPath());
+		WaitUntilReady(store);
+		store.Write(source, WithDeclaration("Draw", stamp));
+		WaitForWrites(store);
+	}
+
+	// A record from a write whose index rewrite never landed — the process was killed in between,
+	// or the index write failed. Walking the index, which is all pruning does, cannot see it.
+	{
+		std::ofstream orphan{StoreDirectory(temp) / "0123456789abcdef.rec", std::ios::binary};
+		orphan << "whatever a previous session left";
+	}
+
+	REQUIRE(CountRecords(StoreDirectory(temp)) == 2);
+
+	AnalysisStore next;
+	next.SetRoot(temp.GetPath());
+	WaitUntilReady(next);
+
+	// The live one survives; the unreachable one does not.
+	CHECK(next.Has(source));
+	CHECK(CountRecords(StoreDirectory(temp)) == 1);
 }
 
 TEST_CASE("A store with no root is ready at once and answers nothing")
@@ -204,4 +300,35 @@ TEST_CASE("A record whose bytes were corrupted is refused and the entry does not
 	}
 
 	CHECK_FALSE(store.Read(source, stamp).has_value());
+}
+
+TEST_CASE("A record refused by Read is deleted rather than read again on every later open")
+{
+	TempDirectory temp;
+	const std::filesystem::path source = temp.MakeFile("a.cpp", "int x;");
+	const std::filesystem::file_time_type stamp = std::filesystem::last_write_time(source);
+
+	AnalysisStore store;
+	store.SetRoot(temp.GetPath());
+	WaitUntilReady(store);
+	store.Write(source, WithDeclaration("Draw", stamp));
+	WaitForWrites(store);
+
+	for (const auto& entry : std::filesystem::directory_iterator{StoreDirectory(temp)})
+	{
+		if (entry.path().extension() == ".rec")
+		{
+			std::ofstream record{entry.path(), std::ios::binary | std::ios::trunc};
+			record << "rubbish";
+		}
+	}
+
+	CHECK_FALSE(store.Read(source, stamp).has_value());
+	CHECK_FALSE(store.Has(source));
+
+	// The deletion is handed to the worker, so the disk catches up a moment later — an entry
+	// nothing will ever accept is one every later open would otherwise pay to read again.
+	WaitForWrites(store);
+
+	CHECK(CountRecords(StoreDirectory(temp)) == 0);
 }

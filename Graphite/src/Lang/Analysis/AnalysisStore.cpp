@@ -6,8 +6,9 @@
 #include "Core/Fs/FileSystem.h"
 
 #include <fstream>
-#include <iterator>
 #include <functional>
+#include <iterator>
+#include <set>
 #include <system_error>
 #include <utility>
 
@@ -320,6 +321,39 @@ namespace Graphite {
 		(void)written;
 	}
 
+	void AnalysisStore::SweepUnnamedRecords(const std::filesystem::path& directory,
+											const EntryMap& kept)
+	{
+		std::set<std::string> named;
+
+		for (const std::pair<const std::filesystem::path, Entry>& entry : kept)
+		{
+			named.insert(entry.second.Record);
+		}
+
+		std::error_code listing;
+
+		for (const std::filesystem::directory_entry& entry :
+			 std::filesystem::directory_iterator{directory, listing})
+		{
+			// Only records. The index itself lives here, and so briefly does the `.tmp` neighbour
+			// WriteFileAtomically swaps into place — deleting either out from under a write would
+			// be this sweep causing the corruption it exists to clean up after.
+			if (entry.path().extension() != ".rec")
+			{
+				continue;
+			}
+
+			if (named.count(Core::ToUtf8(entry.path().filename())) != 0)
+			{
+				continue;
+			}
+
+			std::error_code removal;
+			std::filesystem::remove(entry.path(), removal);
+		}
+	}
+
 	void AnalysisStore::ReadIndexInto(const std::filesystem::path& directory,
 									  const Core::CancellationToken& token, Listing& listing)
 	{
@@ -353,6 +387,8 @@ namespace Graphite {
 					std::filesystem::remove(directory / entry.second.Record, removal);
 				}
 			}
+
+			SweepUnnamedRecords(directory, kept);
 		}
 		else
 		{
