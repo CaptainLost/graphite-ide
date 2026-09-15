@@ -166,7 +166,10 @@ namespace Graphite {
 		// m_WorkspaceAnalysis, which holds the port: the pass closes whatever it had open from its
 		// own destructor, so the port and the servers behind it must both still be there.
 		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices};
-		WorkspaceAnalysis m_WorkspaceAnalysis{m_AnalysisPort, m_AnalysisTexts, m_Analysis};
+		// No store yet: the second tier is owned and wired in a later change, and until then the
+		// pass consults nothing on the disk and writes nothing to it.
+		WorkspaceAnalysis m_WorkspaceAnalysis{m_AnalysisPort, m_AnalysisTexts, m_Analysis,
+											  nullptr};
 
 		// Last of this group, so its destructor runs first and the walking thread is cancelled and
 		// joined before anything it feeds goes away. It holds no reference to the members above -

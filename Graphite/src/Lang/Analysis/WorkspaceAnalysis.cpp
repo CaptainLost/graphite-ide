@@ -1,19 +1,21 @@
 #include "Lang/Analysis/WorkspaceAnalysis.h"
 
+#include "Lang/Analysis/AnalysisStore.h"
 #include "Lang/Registry/LanguageRegistry.h"
 #include "Lang/Server/ServerRegistry.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
 
-		// How long a flight may go unanswered before it is given up on. Generous, because a server
-		// indexing a large project can take a while to get to a question nobody is waiting for —
-		// and finite, because a question that is never answered would otherwise hold the whole
-		// queue behind it for the rest of the session.
-		constexpr double kFlightTimeoutSeconds = 120.0;
+		// How long a pending analysis may go unanswered before it is given up on. Generous,
+		// because a server indexing a large project can take a while to get to a question nobody
+		// is waiting for — and finite, because a question that is never answered would otherwise
+		// hold its slot, and the queue behind it, for the rest of the session.
+		constexpr double kAnalysisTimeoutSeconds = 120.0;
 
 		// How long the open document may claim to be waiting before this stops yielding to it.
 		//
@@ -21,21 +23,21 @@ namespace Graphite {
 		// near this. It guards against a foreground question that will never be answered — a
 		// language whose server is configured but whose binary is not installed leaves the active
 		// document's symbol request retrying forever, so what the editor reports is permanently
-		// busy and nothing here would ever launch again for the rest of the session. Long enough
+		// busy and nothing here would ever start again for the rest of the session. Long enough
 		// that a server merely slow to index still gets the whole floor, short enough that the
 		// broken case costs one wait rather than a session.
 		constexpr double kForegroundYieldCapSeconds = 10.0;
 	}
 
 	WorkspaceAnalysis::WorkspaceAnalysis(WorkspaceAnalysisPort& port, FileTextSource& texts,
-										 AnalysisCache& cache)
-		: m_Port(port), m_Texts(texts), m_Cache(cache)
+										 AnalysisCache& cache, AnalysisStore* store)
+		: m_Port(port), m_Texts(texts), m_Cache(cache), m_Store(store)
 	{
 	}
 
 	WorkspaceAnalysis::~WorkspaceAnalysis()
 	{
-		CloseFlight();
+		DropAll();
 	}
 
 	void WorkspaceAnalysis::SetEnabled(bool enabled)
@@ -51,6 +53,14 @@ namespace Graphite {
 		{
 			Clear();
 		}
+	}
+
+	void WorkspaceAnalysis::SetConcurrency(std::size_t limit)
+	{
+		// Lowering it starts nothing new and tears nothing down: what is already outstanding was
+		// paid for when it started, and cancelling gives none of that back. StartNext simply finds
+		// no room until enough entries have finished.
+		m_Limit = std::max<std::size_t>(1, limit);
 	}
 
 	void WorkspaceAnalysis::SetTabWidth(std::size_t width)
@@ -84,23 +94,34 @@ namespace Graphite {
 
 	void WorkspaceAnalysis::Clear()
 	{
-		CloseFlight();
+		DropAll();
 
 		m_Queue.clear();
-		m_Reading.reset();
+		m_AwaitingText.clear();
 		m_Arrived.clear();
 		m_Done = 0;
 		m_Queued = 0;
 	}
 
-	void WorkspaceAnalysis::CloseFlight()
+	bool WorkspaceAnalysis::IsOutstanding(const std::filesystem::path& path) const
 	{
-		if (!m_Flight)
+		for (const PendingAnalysis& pending : m_Pending)
 		{
-			return;
+			if (pending.Path == path)
+			{
+				return true;
+			}
 		}
 
-		if (m_Flight->Opened && !m_Flight->HeldElsewhere)
+		return std::find(m_AwaitingText.begin(), m_AwaitingText.end(), path) !=
+			   m_AwaitingText.end();
+	}
+
+	void WorkspaceAnalysis::Drop(std::size_t index)
+	{
+		PendingAnalysis& pending = m_Pending[index];
+
+		if (pending.Opened && !pending.HeldElsewhere)
 		{
 			// Somebody who took the file over — a tab, a preview pane — is now the one holding the
 			// document, and they opened it exactly once: CloseDocument counts no references and
@@ -108,10 +129,19 @@ namespace Graphite {
 			// from here would take the file away from that reader for good — every request it sent
 			// afterwards would describe a document the server no longer holds. The didOpen is
 			// disowned instead, the same move PreviewSemantics makes on the same transition.
-			m_Port.Close(m_Flight->Path, m_Flight->Language);
+			m_Port.Close(pending.Path, pending.Language);
 		}
 
-		m_Flight.reset();
+		m_Pending.erase(m_Pending.begin() + static_cast<std::ptrdiff_t>(index));
+	}
+
+	void WorkspaceAnalysis::DropAll()
+	{
+		// From the back, so each erase moves nothing and the index is always in range.
+		while (!m_Pending.empty())
+		{
+			Drop(m_Pending.size() - 1);
+		}
 	}
 
 	void WorkspaceAnalysis::Tick(
@@ -123,27 +153,20 @@ namespace Graphite {
 			return;
 		}
 
-		CollectTexts(now, heldElsewhere);
+		BeginArrivedFiles(now, heldElsewhere);
 
-		// The one place the predicate is asked about a flight. Everything that tears one down
-		// reads the answer off the flight instead — see Flight::HeldElsewhere.
-		if (m_Flight)
+		// The one place the predicate is asked about a file already open with the server.
+		// Everything that tears an entry down reads the answer off the entry instead — see
+		// PendingAnalysis::HeldElsewhere.
+		for (PendingAnalysis& pending : m_Pending)
 		{
-			m_Flight->HeldElsewhere = heldElsewhere(m_Flight->Path);
+			pending.HeldElsewhere = heldElsewhere(pending.Path);
 		}
 
-		// Before the busy check, deliberately: a flight that has already been answered costs the
+		// Before the busy check, deliberately: an entry that has already been answered costs the
 		// server nothing more, and leaving it open until the editor goes quiet would hold a
-		// document — and the whole queue behind it — for as long as someone keeps typing.
-		Retire();
-
-		if (m_Flight && now - m_Flight->StartedAt > kFlightTimeoutSeconds)
-		{
-			// Given up on rather than waited for. Whatever became of the question, the file is no
-			// worse off than it was before this class existed, and the queue behind it is.
-			CloseFlight();
-			++m_Done;
-		}
+		// document — and the slot, and the queue behind it — for as long as someone keeps typing.
+		FinishCompleted(now);
 
 		if (!foregroundBusy)
 		{
@@ -159,30 +182,46 @@ namespace Graphite {
 
 		if (foregroundBusy && now - *m_BusySince <= kForegroundYieldCapSeconds)
 		{
-			// Nothing new while the file on screen is waiting. What is already in the air is left
-			// alone: cancelling gives back none of the work the server has already done, and its
-			// answer still has somewhere useful to go.
+			// Nothing new while the file on screen is waiting — no slot, not merely the next one.
+			// What is already outstanding is left alone: cancelling gives back none of the work
+			// the server has already done, and its answer still has somewhere useful to go.
 			//
 			// Past the cap the yield is dropped — see kForegroundYieldCapSeconds for the case it
 			// exists for.
 			return;
 		}
 
-		Launch(heldElsewhere);
+		StartNext(heldElsewhere);
 	}
 
-	void WorkspaceAnalysis::Launch(
+	void WorkspaceAnalysis::StartNext(
 		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
-		if (m_Flight || m_Reading)
-		{
-			return;
-		}
-
-		while (!m_Queue.empty())
+		// Awaited reads count against the limit alongside pending analyses: a read on its way is a
+		// slot already spoken for, and counting only what a server has been told about would let
+		// the whole queue be read at once.
+		while (m_Pending.size() + m_AwaitingText.size() < m_Limit && !m_Queue.empty())
 		{
 			std::filesystem::path path = std::move(m_Queue.front());
 			m_Queue.pop_front();
+
+			if (IsOutstanding(path))
+			{
+				// The same file reached the queue twice. Counted all the same: it was counted into
+				// the total when it was queued, and a skip that did not count would leave the bar
+				// permanently short of its own figure. See IsOutstanding for why it is skipped.
+				++m_Done;
+				continue;
+			}
+
+			if (m_Store != nullptr && m_Store->Has(path))
+			{
+				// A previous session already asked about this version of this file. The whole of
+				// what makes a second launch cheap: neither a server nor a worker is troubled, and
+				// the entry is read from the disk in the frame a document opens it.
+				++m_Done;
+				continue;
+			}
 
 			if (heldElsewhere(path))
 			{
@@ -194,14 +233,12 @@ namespace Graphite {
 				continue;
 			}
 
-			m_Reading = path;
+			m_AwaitingText.push_back(path);
 			m_Texts.Request(path);
-
-			return;
 		}
 	}
 
-	void WorkspaceAnalysis::CollectTexts(
+	void WorkspaceAnalysis::BeginArrivedFiles(
 		double now, const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
 		m_Arrived.clear();
@@ -209,14 +246,22 @@ namespace Graphite {
 
 		for (FileText& text : m_Arrived)
 		{
-			if (!m_Reading || *m_Reading != text.Path)
+			const std::vector<std::filesystem::path>::iterator awaited =
+				std::find(m_AwaitingText.begin(), m_AwaitingText.end(), text.Path);
+
+			if (awaited == m_AwaitingText.end())
 			{
 				// A read left over from a folder that has since closed. Nothing to do with the
-				// file being waited for now.
+				// files being waited for now.
 				continue;
 			}
 
-			m_Reading.reset();
+			// The erase is also the second half of the one-path-one-analysis check: a path only
+			// reaches m_AwaitingText by passing IsOutstanding, and it leaves the moment its text
+			// is taken up, so a second text for the same path — a read outstanding across a Clear
+			// and a re-Enqueue is the way to get one — finds nothing here and is dropped above
+			// rather than opening the document a second time. See IsOutstanding and ADR 0512.
+			m_AwaitingText.erase(awaited);
 
 			if (!text.Readable || text.Text.empty())
 			{
@@ -224,12 +269,12 @@ namespace Graphite {
 				continue;
 			}
 
-			// Asked again, having been asked in Launch: the read between the two is a round trip
-			// through a worker, at least a frame and often many, and a tab can open on this path
-			// in the meantime. Opening it now would overwrite what LanguageServices remembers for
-			// that tab with the bytes on disk — invisible until the server dies and RestartServer
-			// replays them, at which point the tab's unsaved buffer is silently the disk version
-			// on the server's side until the next edit corrects it.
+			// Asked again, having been asked in StartNext: the read between the two is a round
+			// trip through a worker, at least a frame and often many, and a tab can open on this
+			// path in the meantime. Opening it now would overwrite what LanguageServices remembers
+			// for that tab with the bytes on disk — invisible until the server dies and
+			// RestartServer replays them, at which point the tab's unsaved buffer is silently the
+			// disk version on the server's side until the next edit corrects it.
 			if (heldElsewhere(text.Path))
 			{
 				++m_Done;
@@ -246,23 +291,23 @@ namespace Graphite {
 				continue;
 			}
 
-			Flight flight;
-			flight.Path = text.Path;
-			flight.Language = language;
-			flight.ModifiedAt = text.ModifiedAt;
-			flight.Snapshot = Core::TextBuffer{text.Text};
+			PendingAnalysis pending;
+			pending.Path = text.Path;
+			pending.Language = language;
+			pending.ModifiedAt = text.ModifiedAt;
+			pending.Snapshot = Core::TextBuffer{text.Text};
 
 			// Stamped where the questions are asked, not where the read was: the timeout is about
 			// how long a server has been silent, and the read before it took however long it took.
-			flight.StartedAt = now;
+			pending.StartedAt = now;
 
-			m_Port.Open(flight.Path, language, std::move(text.Text));
-			flight.Opened = true;
+			m_Port.Open(pending.Path, language, std::move(text.Text));
+			pending.Opened = true;
 
-			flight.Colours = m_Port.AskSemanticTokens(flight.Path, language);
-			flight.Symbols = m_Port.AskSymbols(flight.Path, language);
+			pending.Colours = m_Port.AskSemanticTokens(pending.Path, language);
+			pending.Symbols = m_Port.AskSymbols(pending.Path, language);
 
-			m_Flight = std::move(flight);
+			m_Pending.push_back(std::move(pending));
 		}
 
 		m_Arrived.clear();
@@ -270,68 +315,99 @@ namespace Graphite {
 
 	bool WorkspaceAnalysis::Apply(const LanguageServices::Answer& answer)
 	{
-		if (!m_Flight)
+		for (PendingAnalysis& pending : m_Pending)
 		{
-			return false;
-		}
-
-		if (m_Flight->Colours && *m_Flight->Colours == answer.For)
-		{
-			m_Flight->ColoursIn = true;
-			m_Flight->Colours.reset();
-
-			if (!answer.Failed)
+			if (pending.Colours && *pending.Colours == answer.For)
 			{
-				// Against the snapshot, not against anything else: the answer's columns were
-				// measured on the text that went out with the request.
-				m_Flight->Result.Semantic.Set(answer.SemanticTokens, m_Flight->Snapshot,
-											  m_TabWidth);
+				pending.HaveColours = true;
+				pending.Colours.reset();
+
+				if (!answer.Failed)
+				{
+					// Against the snapshot, not against anything else: the answer's columns were
+					// measured on the text that went out with the request.
+					pending.Result.Semantic.Set(answer.SemanticTokens, pending.Snapshot,
+												m_TabWidth);
+				}
+
+				return true;
 			}
 
-			return true;
-		}
-
-		if (m_Flight->Symbols && *m_Flight->Symbols == answer.For)
-		{
-			m_Flight->SymbolsIn = true;
-			m_Flight->Symbols.reset();
-
-			if (!answer.Failed)
+			if (pending.Symbols && *pending.Symbols == answer.For)
 			{
-				m_Flight->Result.Declarations = answer.Declarations;
-			}
+				pending.HaveSymbols = true;
+				pending.Symbols.reset();
 
-			return true;
+				if (!answer.Failed)
+				{
+					pending.Result.Declarations = answer.Declarations;
+				}
+
+				return true;
+			}
 		}
 
 		return false;
 	}
 
-	void WorkspaceAnalysis::Retire()
+	void WorkspaceAnalysis::FinishCompleted(double now)
 	{
-		if (!m_Flight || !m_Flight->ColoursIn || !m_Flight->SymbolsIn)
+		// By index rather than by iterator: Drop erases from the middle, and an iterator held
+		// across that is already invalid by the time the loop would use it again. After an erase
+		// the next entry has moved into this index, so the index only advances when nothing was
+		// removed.
+		for (std::size_t index = 0; index < m_Pending.size();)
 		{
-			return;
-		}
+			PendingAnalysis& pending = m_Pending[index];
 
-		const std::filesystem::path path = m_Flight->Path;
+			if (pending.HaveColours && pending.HaveSymbols)
+			{
+				const std::filesystem::path path = pending.Path;
 
-		// AnalysisWorthKeeping refuses an entry with nothing in it, which is what a failed flight
-		// comes to. `documentModified` is false because this class never has a document: what it
-		// measured its answers against is the file on disk, and the stamp beside them describes
-		// exactly that. A file somebody else took over keeps nothing — the buffer they hold has
-		// moved on from what went to the server.
-		std::optional<CachedAnalysis> worth =
-			m_Flight->HeldElsewhere
-				? std::nullopt
-				: AnalysisWorthKeeping(std::move(m_Flight->Result), false, m_Flight->ModifiedAt);
+				// AnalysisWorthKeeping refuses an entry with nothing in it, which is what a failed
+				// analysis comes to. `documentModified` is false because this class never has a
+				// document: what it measured its answers against is the file on disk, and the
+				// stamp beside them describes exactly that. A file somebody else took over keeps
+				// nothing — the buffer they hold has moved on from what went to the server.
+				std::optional<CachedAnalysis> worth;
 
-		CloseFlight();
-		++m_Done;
+				if (!pending.HeldElsewhere)
+				{
+					worth = AnalysisWorthKeeping(std::move(pending.Result), false,
+												 pending.ModifiedAt);
+				}
 
-		if (worth)
-		{
-			m_Cache.Put(path, std::move(*worth));
+				Drop(index);
+				++m_Done;
+
+				if (worth)
+				{
+					// Both tiers. The cache is this session's, the store is every session after
+					// it, and a pass that filled only the first would leave the second launch
+					// asking the server about a workspace nothing had changed.
+					if (m_Store != nullptr)
+					{
+						m_Store->Write(path, *worth);
+					}
+
+					m_Cache.Put(path, std::move(*worth));
+				}
+
+				continue;
+			}
+
+			if (now - pending.StartedAt > kAnalysisTimeoutSeconds)
+			{
+				// Given up on rather than waited for. Whatever became of the question, the file is
+				// no worse off than it was before this class existed, and the slot is free again
+				// for one that might be answered.
+				Drop(index);
+				++m_Done;
+
+				continue;
+			}
+
+			++index;
 		}
 	}
 

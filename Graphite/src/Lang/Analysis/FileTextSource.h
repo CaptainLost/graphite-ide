@@ -35,8 +35,8 @@ namespace Graphite {
 	// What WorkspaceAnalysis needs in order to have a file's text without reading one itself.
 	//
 	// A port rather than a JobQueue member, for the reason PreviewServerPort exists: the policy
-	// above it — one flight at a time, yield to the open document, cache what came back — is
-	// worth asserting without a filesystem, a thread, or a wait in a test.
+	// above it — a bounded number of files at once, yield to the open document, cache what came
+	// back — is worth asserting without a filesystem, a thread, or a wait in a test.
 	class FileTextSource
 	{
 	public:
