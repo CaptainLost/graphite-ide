@@ -77,3 +77,16 @@ TEST_CASE("Concurrency is automatic until somebody says otherwise")
 
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
 }
+
+TEST_CASE("Unticking automatic keeps the figure it had rather than dropping to the minimum")
+{
+	Graphite::AnalysisSettings settings;
+
+	CHECK(settings.IsConcurrencyAutomatic());
+
+	settings.SetConcurrencyAutomatic(false);
+
+	// Nothing was dragged, so this should read as "still what automatic chose", not as
+	// having quietly fallen back to kMinimumConcurrency.
+	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
+}

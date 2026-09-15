@@ -80,6 +80,15 @@ namespace Graphite {
 
 		m_ConcurrencyAutomatic = automatic;
 
+		if (!automatic)
+		{
+			// Seed the stored figure from what automatic was actually giving, so unticking the
+			// box means "keep doing what you were doing, but let me change it" rather than
+			// silently dropping to the minimum m_Concurrency happens to hold until somebody
+			// drags the slider.
+			m_Concurrency = AutomaticConcurrency();
+		}
+
 		// Zero means automatic to AppSettings, the same idiom the budget uses for "absent".
 		AppSettings::SaveAnalysisConcurrency(automatic ? 0 : m_Concurrency);
 	}
