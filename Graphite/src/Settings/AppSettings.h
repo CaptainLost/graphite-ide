@@ -53,6 +53,13 @@ namespace Graphite {
 		static std::size_t LoadAnalysisBudgetMegabytes();
 		static void SaveAnalysisBudgetMegabytes(std::size_t megabytes);
 
+		// How many files the background analysis may have outstanding at once, or zero for the
+		// figure derived from the machine. Zero rather than a sentinel like -1 because absent and
+		// automatic are the same thing here: a settings file written before this existed, and one
+		// written by somebody who ticked the box back on, should read alike.
+		static std::size_t LoadAnalysisConcurrency();
+		static void SaveAnalysisConcurrency(std::size_t concurrency);
+
 		static std::string LoadColorScheme();
 		static void SaveColorScheme(std::string_view name);
 

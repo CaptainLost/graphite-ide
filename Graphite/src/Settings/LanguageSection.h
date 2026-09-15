@@ -29,5 +29,8 @@ namespace Graphite {
 		// per frame. Empty when no drag is in progress. Same reason EditorSection's font-size and
 		// tab-width sliders hold their own pending value.
 		std::optional<int> m_PendingBudgetMegabytes;
+
+		// Same idea for the concurrency slider.
+		std::optional<int> m_PendingConcurrency;
 	};
 }

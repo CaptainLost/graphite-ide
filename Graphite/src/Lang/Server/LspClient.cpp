@@ -852,8 +852,11 @@ namespace Graphite {
 		m_Shared->Status.Detail = Core::ToUtf8(binary);
 		m_Shared->Status.State = ServerState::Starting;
 
+		// --pch-storage=disk keeps preambles out of memory, which is what makes several
+		// background files affordable at once: a preamble is the bulk of what a translation
+		// unit costs, and the background pass holds more than one open at a time.
 		Core::Result<Core::Scope<Core::ChildProcess>> started =
-			Core::ChildProcess::Start(binary, {"--background-index"}, root);
+			Core::ChildProcess::Start(binary, {"--background-index", "--pch-storage=disk"}, root);
 
 		if (!started)
 		{

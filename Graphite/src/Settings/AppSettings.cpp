@@ -33,6 +33,7 @@ namespace Graphite {
 
 		constexpr const char* kBackgroundAnalysisKey = "backgroundAnalysis";
 		constexpr const char* kAnalysisBudgetKey = "analysisBudgetMegabytes";
+		constexpr const char* kAnalysisConcurrencyKey = "analysisConcurrency";
 
 		constexpr std::string_view kKeyBindingPrefix = "key.";
 
@@ -77,10 +78,13 @@ namespace Graphite {
 			return static_cast<std::size_t>(width);
 		}
 
-		std::size_t ParseAnalysisBudgetOrZero(const std::string& stored)
+		// Shared by every stored value that is "a small non-negative number, or absent" —
+		// the analysis budget and the analysis concurrency both read this way, and zero
+		// already means "absent" or "automatic" for each of them.
+		std::size_t ParseSizeOrZero(const std::string& stored)
 		{
 			char* end = nullptr;
-			const unsigned long megabytes = std::strtoul(stored.c_str(), &end, 10);
+			const unsigned long value = std::strtoul(stored.c_str(), &end, 10);
 
 			// strtoul leaves end at the start of the string when it parsed nothing.
 			if (end == stored.c_str())
@@ -88,7 +92,7 @@ namespace Graphite {
 				return 0;
 			}
 
-			return static_cast<std::size_t>(megabytes);
+			return static_cast<std::size_t>(value);
 		}
 
 		void RemoveStoredKeyBindings(Core::JsonFile& file)
@@ -214,12 +218,22 @@ namespace Graphite {
 
 	std::size_t AppSettings::LoadAnalysisBudgetMegabytes()
 	{
-		return ParseAnalysisBudgetOrZero(Core::JsonFile::Load(SettingsPath()).Get(kAnalysisBudgetKey));
+		return ParseSizeOrZero(Core::JsonFile::Load(SettingsPath()).Get(kAnalysisBudgetKey));
 	}
 
 	void AppSettings::SaveAnalysisBudgetMegabytes(std::size_t megabytes)
 	{
 		WriteValue(kAnalysisBudgetKey, std::to_string(megabytes));
+	}
+
+	std::size_t AppSettings::LoadAnalysisConcurrency()
+	{
+		return ParseSizeOrZero(Core::JsonFile::Load(SettingsPath()).Get(kAnalysisConcurrencyKey));
+	}
+
+	void AppSettings::SaveAnalysisConcurrency(std::size_t concurrency)
+	{
+		WriteValue(kAnalysisConcurrencyKey, std::to_string(concurrency));
 	}
 
 	std::string AppSettings::LoadColorScheme()

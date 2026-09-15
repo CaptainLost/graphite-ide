@@ -37,3 +37,43 @@ TEST_CASE("Background analysis is on until it is turned off")
 
 	CHECK_FALSE(settings.IsEnabled());
 }
+
+TEST_CASE("The automatic concurrency is derived from the machine and stays in its bounds")
+{
+	const std::size_t automatic = Graphite::AnalysisSettings::AutomaticConcurrency();
+
+	CHECK(automatic >= 2);
+	CHECK(automatic <= 6);
+}
+
+TEST_CASE("A concurrency outside what the panel offers is clamped rather than accepted")
+{
+	Graphite::AnalysisSettings settings;
+
+	settings.SetConcurrencyAutomatic(false);
+
+	settings.SetConcurrency(0);
+	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::kMinimumConcurrency);
+
+	settings.SetConcurrency(999);
+	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::kMaximumConcurrency);
+}
+
+TEST_CASE("Concurrency is automatic until somebody says otherwise")
+{
+	Graphite::AnalysisSettings settings;
+
+	CHECK(settings.IsConcurrencyAutomatic());
+	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
+
+	settings.SetConcurrencyAutomatic(false);
+	settings.SetConcurrency(2);
+
+	CHECK_FALSE(settings.IsConcurrencyAutomatic());
+	CHECK(settings.GetConcurrency() == 2);
+
+	// Back to automatic, and the machine's answer returns rather than the number that was typed.
+	settings.SetConcurrencyAutomatic(true);
+
+	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
+}
