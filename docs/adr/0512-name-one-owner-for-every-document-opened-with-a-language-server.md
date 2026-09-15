@@ -47,13 +47,15 @@ The three owners, and how each keeps the rule:
   disowns rather than closes, and on the transition back it opens again.
   `Holds` exposes that flag so a third party can ask whether this class is the
   holder.
-- **`WorkspaceAnalysis`** owns a document only for the length of one flight, and
-  only for a file nothing else holds. It asks the `heldElsewhere` predicate
-  before requesting a file's text, again when the text arrives — the read is a
-  round trip through a worker, and a tab can open in between — and records the
-  answer on the flight every tick, because the four places a flight is torn
-  down include two that have no predicate to ask with. When the answer is true
-  it disowns its `didOpen` exactly as `PreviewSemantics` does.
+- **`WorkspaceAnalysis`** owns a document only for the length of one pending
+  analysis, and only for a file nothing else holds. It asks the `heldElsewhere`
+  predicate before requesting a file's text, again when the text arrives — the
+  read is a round trip through a worker, and a tab can open in between — and
+  records the answer on the pending analysis every tick, because the four
+  places one is torn down include two that have no predicate to ask with. When
+  the answer is true it disowns its `didOpen` exactly as `PreviewSemantics`
+  does. Several are outstanding at once, so the rule is kept per pending
+  analysis rather than for the pass as a whole.
 
 The predicate `GraphiteLayer` hands down is therefore the union of the holders,
 not `m_Documents.Find(path)`. A preview pane holds no `DocumentSet` entry, so a
@@ -137,7 +139,7 @@ be tested with neither).
 
 ## Related
 
-- [0511](0511-analyse-the-workspace-ahead-of-the-reader-one-file-at-a-time.md) —
+- [0511](0511-analyse-the-workspace-ahead-of-the-reader-several-files-at-a-time.md) —
   the background pass's own policy, which this record is the ownership rule
   beneath.
 - `Graphite/src/Lang/Server/LanguageServices.cpp` — `OpenDocument`,
