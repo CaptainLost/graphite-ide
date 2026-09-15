@@ -468,6 +468,12 @@ namespace Graphite {
 			// surely as a folder opening replaces it.
 			m_WorkspaceAnalysis.Clear();
 
+			// The store follows the folder for the same reason the walk does, and on the same
+			// comparison: an analysis kept for one workspace says nothing about the next. Outside
+			// the branch too — an empty root detaches it, which is what "no folder is open" looks
+			// like from there.
+			m_AnalysisStore.SetRoot(m_WarmedRoot);
+
 			if (!m_WarmedRoot.empty() && analysisEnabled)
 			{
 				m_AnalysisWalk.Start(m_WarmedRoot, true);
@@ -550,6 +556,10 @@ namespace Graphite {
 		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
 		m_WorkspaceAnalysis.SetEnabled(analysisEnabled);
 
+		// One read, whatever the mode: GetConcurrency answers with the machine's figure while
+		// automatic is on and with the chosen number otherwise, so nothing here branches on which.
+		m_WorkspaceAnalysis.SetConcurrency(m_AnalysisSettings.GetConcurrency());
+
 		if (!analysisEnabled)
 		{
 			// Cancelled rather than merely ignored. A walk left running would keep a worker
@@ -587,6 +597,16 @@ namespace Graphite {
 		{
 			foregroundBusy = m_DocumentWindows.IsAnalysing(m_Documents.At(*analysed).Path);
 		}
+
+		// Before the pass ticks, for the reason m_LanguageServices.Poll runs before anything reads a
+		// status: this is what turns a finished index listing into an answerable store, and a Tick
+		// ahead of it spends a frame asking a store that cannot yet say what it already knows.
+		//
+		// Unconditional, and the Tick below is too: the store states its own readiness to
+		// StartNext, which is the only place that has to honour it. Gating the whole Tick here
+		// would also stop the pass finishing files whose answers have arrived and timing out ones
+		// that have gone silent, neither of which has anything to do with the disk.
+		m_AnalysisStore.Poll();
 
 		// "Somebody else already holds this document with the server", not "a tab does".
 		// LanguageServices::OpenDocuments counts no references, so whichever of the three openers

@@ -12,6 +12,7 @@
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Lang/Analysis/AnalysisStore.h"
 #include "Lang/Analysis/AnalysisWalk.h"
 #include "Lang/Analysis/FileTextSource.h"
 #include "Lang/Analysis/WorkspaceAnalysis.h"
@@ -158,6 +159,14 @@ namespace Graphite {
 		// reference to a destroyed cache is the failure this order prevents.
 		AnalysisCache m_Analysis{AnalysisSettings::kDefaultBudgetMegabytes * 1024ull * 1024ull};
 
+		// Beside the cache it is the second tier of, and ahead of the same two readers for the same
+		// reason: m_WorkspaceAnalysis holds it as a pointer and writes every finished file into it,
+		// and m_DocumentWindows holds it by reference and reads one back whenever a tab opens. Both
+		// are declared below, so both are destroyed first and neither can outlive what it points
+		// at. Its own worker is joined by its destructor, which is why nothing above it has to wait
+		// for the disk.
+		AnalysisStore m_AnalysisStore;
+
 		// The reader's worker, declared before the class that asks it for text so the requests
 		// stop arriving before the thread is joined.
 		DiskFileTexts m_AnalysisTexts;
@@ -166,10 +175,11 @@ namespace Graphite {
 		// m_WorkspaceAnalysis, which holds the port: the pass closes whatever it had open from its
 		// own destructor, so the port and the servers behind it must both still be there.
 		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices};
-		// No store yet: the second tier is owned and wired in a later change, and until then the
-		// pass consults nothing on the disk and writes nothing to it.
+		// Both tiers, and both declared above so both outlive this: the pass writes a finished file
+		// into the cache and the store together, and it goes on writing until its own destructor
+		// has run.
 		WorkspaceAnalysis m_WorkspaceAnalysis{m_AnalysisPort, m_AnalysisTexts, m_Analysis,
-											  nullptr};
+											  &m_AnalysisStore};
 
 		// Last of this group, so its destructor runs first and the walking thread is cancelled and
 		// joined before anything it feeds goes away. It holds no reference to the members above -
@@ -178,10 +188,11 @@ namespace Graphite {
 
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers. After
-		// m_Analysis and m_WorkspaceAnalysis too, both of which it now holds by reference.
-		DocumentWindows m_DocumentWindows{m_Documents,   m_Modals,           m_LanguageServices,
-										  m_Diagnostics, m_PreviewSemantics, m_Analysis,
-										  m_WorkspaceAnalysis};
+		// m_Analysis, m_AnalysisStore and m_WorkspaceAnalysis too, all three of which it now holds
+		// by reference.
+		DocumentWindows m_DocumentWindows{m_Documents,     m_Modals,   m_LanguageServices,
+										  m_Diagnostics,   m_PreviewSemantics, m_Analysis,
+										  m_AnalysisStore, m_WorkspaceAnalysis};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.

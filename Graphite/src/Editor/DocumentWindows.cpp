@@ -958,6 +958,11 @@ namespace Graphite {
 
 		if (worth)
 		{
+			// Both tiers, exactly as the background pass writes both: what this tab learned is
+			// worth as much to the next session as to this one, and a store filled only by the
+			// pass would forget every file a reader opened before the walk reached it.
+			m_AnalysisStore.Write(path, *worth);
+
 			m_Analysis.Put(path, std::move(*worth));
 		}
 	}
@@ -972,6 +977,14 @@ namespace Graphite {
 		}
 
 		std::optional<CachedAnalysis> restored = m_Analysis.Take(item.Path, *modified);
+
+		if (!restored)
+		{
+			// The memory cache holds this session's work; the store holds every session before it.
+			// Asked second because a memory hit is both fresher and free — and this read touches
+			// the disk in the frame the tab opens, which AnalysisStore::Read argues for at length.
+			restored = m_AnalysisStore.Read(item.Path, *modified);
+		}
 
 		if (!restored)
 		{

@@ -11,6 +11,7 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Lang/Analysis/AnalysisStore.h"
 #include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
@@ -68,12 +69,13 @@ namespace Graphite {
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						LanguageServices& languageServices, const DiagnosticsModel& diagnostics,
 						PreviewSemantics& previewSemantics, AnalysisCache& analysis,
-						WorkspaceAnalysis& workspaceAnalysis)
+						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis)
 			: m_Documents(documents),
 			  m_LanguageServices(languageServices),
 			  m_Diagnostics(diagnostics),
 			  m_PreviewSemantics(previewSemantics),
 			  m_Analysis(analysis),
+			  m_AnalysisStore(analysisStore),
 			  m_WorkspaceAnalysis(workspaceAnalysis),
 			  m_Modals(modals),
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
@@ -397,6 +399,11 @@ namespace Graphite {
 		// producers is the whole point — an entry put there by the walk is the entry this class
 		// restores when a tab opens on that file.
 		AnalysisCache& m_Analysis;
+
+		// The tier under it, not owned either, and with the same two producers: the background pass
+		// writes what it analysed and this class writes what a closing tab knew. Asked after
+		// m_Analysis when a tab opens, because a memory hit is both fresher and free.
+		AnalysisStore& m_AnalysisStore;
 
 		// Offered every answer this class does not recognise, the same way PreviewSemantics is and
 		// for the same reason: CollectServerAnswers is the single drain point, so anything that
