@@ -961,6 +961,11 @@ namespace Graphite {
 			// Both tiers, exactly as the background pass writes both: what this tab learned is
 			// worth as much to the next session as to this one, and a store filled only by the
 			// pass would forget every file a reader opened before the walk reached it.
+			//
+			// Unguarded by the workspace-analysis setting, and deliberately: a store detached
+			// because that setting is off — or because no folder is open — drops the write itself
+			// rather than creating a directory for it, so a guard here would restate what
+			// AnalysisStore::Write already promises and give a second place for the two to drift.
 			m_AnalysisStore.Write(path, *worth);
 
 			m_Analysis.Put(path, std::move(*worth));

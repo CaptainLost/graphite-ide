@@ -6,6 +6,8 @@
 #include "Core/Jobs/JobQueue.h"
 
 #include <atomic>
+#include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -72,8 +74,10 @@ namespace Graphite {
 										   std::filesystem::file_time_type modifiedAt);
 
 		// Encodes and writes on a worker — tens of kilobytes serialised inside a frame is a
-		// visible hitch, once per analysed file. The index is rewritten with it, which is why the
-		// worker is one thread and not several.
+		// visible hitch, once per analysed file. The index is rewritten alongside it but not with
+		// every record: see FlushIndex for why it is coalesced and what that costs. Both still go
+		// through the one worker thread, because two writers would race to assemble the index from
+		// disagreeing pictures of the disk.
 		void Write(const std::filesystem::path& path, const CachedAnalysis& analysis);
 
 		// True when no write is outstanding. For tests, which have to know when the disk has
@@ -102,6 +106,14 @@ namespace Graphite {
 			std::mutex Mutex;
 			EntryMap Entries;
 			bool Done = false;
+
+			// What FlushIndex needs to decide whether the index on disk is far enough behind
+			// Entries to be worth writing again. Worker-side state, kept here rather than in a
+			// member because the worker must not reach for a member SetRoot may already have
+			// pointed somewhere else.
+			bool IndexDirty = false;
+			std::size_t RecordsSinceIndex = 0;
+			std::chrono::steady_clock::time_point IndexWrittenAt{};
 		};
 
 		std::filesystem::path Directory() const;
@@ -120,6 +132,27 @@ namespace Graphite {
 		static std::optional<EntryMap> DecodeIndex(std::string_view bytes);
 
 		static void WriteIndex(const std::filesystem::path& directory, const EntryMap& entries);
+
+		// Rewrites the index from the listing, but only when enough records have been written
+		// since the last rewrite or enough time has passed — or when `force`, which is what a
+		// closing store and a changed root use so a clean exit loses nothing it has bought.
+		//
+		// The index names every record, so writing it once per record makes the total bytes
+		// written over a first pass quadratic in the size of the workspace: ten thousand files is
+		// an index approaching a megabyte, written ten thousand times, every one of them a
+		// temporary file and a replace through this one worker.
+		//
+		// What coalescing changes is only the crash case: records may exist that the index does
+		// not name. That is already handled and is why this is safe — such a record is unreachable
+		// by construction, a record is only ever found through the filename the index carries, and
+		// SweepUnnamedRecords deletes exactly those on the next launch. The cost of a crash is
+		// therefore the last few files being analysed again, which is what a crash cost anyway.
+		static void FlushIndex(const std::filesystem::path& directory, Listing& listing, bool force);
+
+		// Submits a forced FlushIndex for the listing and root currently pointed at, if any.
+		// Called where this store is about to stop caring about that root — a new SetRoot, and
+		// destruction — because the coalesced state is otherwise dropped with it.
+		void FlushIndexOnWorker();
 
 		// The whole of SetRoot's worker job. Static so it cannot reach for a member that SetRoot
 		// may already have pointed somewhere else.

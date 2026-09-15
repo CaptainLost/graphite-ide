@@ -131,6 +131,11 @@ namespace Graphite {
 			// from here would take the file away from that reader for good — every request it sent
 			// afterwards would describe a document the server no longer holds. The didOpen is
 			// disowned instead, the same move PreviewSemantics makes on the same transition.
+			//
+			// The live field, deliberately, not EverHeldElsewhere: a holder that has gone away
+			// took its document with it, so there is nothing left to take away and the didOpen
+			// made here is the only one outstanding. Closing it is right; disowning it would leak
+			// a document entry for the rest of the session.
 			m_Port.Close(pending.Path, pending.Language);
 		}
 
@@ -162,7 +167,16 @@ namespace Graphite {
 		// PendingAnalysis::HeldElsewhere.
 		for (PendingAnalysis& pending : m_Pending)
 		{
-			pending.HeldElsewhere = heldElsewhere(pending.Path);
+			const bool held = heldElsewhere(pending.Path);
+
+			// Two fields from the one call, because two different questions are asked of it later.
+			// Drop needs the live answer — whether a didClose would take the document away from
+			// somebody still reading it is a question about now. FinishCompleted needs the sticky
+			// one — whether the answers still describe the file on disk is a question about ever.
+			// See PendingAnalysis::EverHeldElsewhere for what collapsing them back into one field
+			// costs.
+			pending.HeldElsewhere = held;
+			pending.EverHeldElsewhere |= held;
 		}
 
 		// Before the busy check, deliberately: an entry that has already been answered costs the
@@ -399,9 +413,14 @@ namespace Graphite {
 				// document: what it measured its answers against is the file on disk, and the
 				// stamp beside them describes exactly that. A file somebody else took over keeps
 				// nothing — the buffer they hold has moved on from what went to the server.
+				//
+				// The sticky field, not the live one: a holder that has since gone away still
+				// moved the server's picture of the file off the disk for as long as it existed,
+				// and an answer measured while it was there says nothing about the bytes this
+				// entry's stamp describes. See PendingAnalysis::EverHeldElsewhere.
 				std::optional<CachedAnalysis> worth;
 
-				if (!pending.HeldElsewhere)
+				if (!pending.EverHeldElsewhere)
 				{
 					worth = AnalysisWorthKeeping(std::move(pending.Result), false,
 												 pending.ModifiedAt);

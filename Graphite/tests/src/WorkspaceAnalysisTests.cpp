@@ -1042,3 +1042,52 @@ TEST_CASE("A completed analysis reaches the store as well as the memory cache")
 
 	CHECK(store.Read(source, OnDisk()).has_value());
 }
+
+TEST_CASE("A holder that comes and goes between the two answers leaves nothing in either tier")
+{
+	TempDirectory temp;
+	const std::filesystem::path source = temp.MakeFile("a.cpp", "int x;");
+
+	AnalysisStore store;
+	store.SetRoot(temp.GetPath());
+	WaitUntilReady(store);
+
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, &store};
+
+	analysis.Enqueue({source});
+
+	analysis.Tick(1.0, false, NobodyElse);
+	analysis.Tick(2.0, false, NobodyElse);
+
+	// A tab opens on the file and edits it. Its didChange reaches the server, so every answer to
+	// a question this class asked is now measured against the tab's buffer rather than the disk.
+	analysis.Tick(3.0, false, SomebodyElse);
+
+	CHECK(analysis.Apply(Symbols(port.TicketOf("symbols", source))));
+
+	// The tab closes before the second answer lands. The live predicate says nobody holds the
+	// file, which is true — and says nothing whatever about what the answers describe.
+	analysis.Tick(4.0, false, NobodyElse);
+
+	CHECK(analysis.Apply(Colours(port.TicketOf("colours", source))));
+
+	analysis.Tick(5.0, false, NobodyElse);
+
+	// Neither tier. Kept, these declarations would describe text that was never on disk, stamped
+	// with the disk file's own mtime — and the store's Has would then skip this file on every
+	// later launch, so the wrong outline would be served until somebody saved it.
+	CHECK_FALSE(cache.Take(source, OnDisk()).has_value());
+	CHECK_FALSE(store.Has(source));
+
+	WaitForWrites(store);
+
+	CHECK_FALSE(store.Read(source, OnDisk()).has_value());
+
+	// Retired all the same, and closed, because by the time it was dropped this class was once
+	// again the only one holding the document open.
+	CHECK(analysis.Progress().Done == 1);
+	CHECK(port.CountOf("close") == 1);
+}

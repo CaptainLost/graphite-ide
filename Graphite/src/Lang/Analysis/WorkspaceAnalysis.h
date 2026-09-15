@@ -174,6 +174,26 @@ namespace Graphite {
 			// takes the document away from a reader that will never open it again.
 			bool HeldElsewhere = false;
 
+			// Whether somebody else held this file open with the server at any point since this
+			// entry was made. Sticky: set with `|=` once a frame and never cleared, because the
+			// question it answers is not the one HeldElsewhere answers and the two need different
+			// answers.
+			//
+			// HeldElsewhere is about *now*: whether a didClose from here would take the document
+			// away from a reader who is still using it. That has to decay when the holder goes
+			// away, or this class would disown a didOpen nobody else owns any more.
+			//
+			// This one is about *ever*: whether the answers being retired can still be said to
+			// describe the bytes on disk. They cannot, once a holder has existed. The pass opens a
+			// file with the text it read from disk, but a tab that opens on the same path sends
+			// its own didChange, and from then on the server answers against the tab's buffer —
+			// including the questions this class asked before the tab appeared. If the tab then
+			// closes before the second answer lands, a live HeldElsewhere is false again and the
+			// result looks keepable: declarations describing text that was never on disk, stamped
+			// with the disk file's mtime, written to the store and served in the first frame of
+			// every tab open until somebody saves the file.
+			bool EverHeldElsewhere = false;
+
 			std::optional<LanguageServices::Ticket> Colours;
 			std::optional<LanguageServices::Ticket> Symbols;
 

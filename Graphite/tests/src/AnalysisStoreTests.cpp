@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace Graphite;
 
@@ -331,4 +332,103 @@ TEST_CASE("A record refused by Read is deleted rather than read again on every l
 	WaitForWrites(store);
 
 	CHECK(CountRecords(StoreDirectory(temp)) == 0);
+}
+
+namespace {
+
+	// How many entries the index on disk claims. The count sits after the magic and the two
+	// version fields, all four bytes each and little endian — see AnalysisRecord.h.
+	std::size_t IndexEntryCount(const std::filesystem::path& directory)
+	{
+		std::ifstream index{directory / "index.bin", std::ios::binary};
+		REQUIRE(index.is_open());
+
+		char bytes[16] = {};
+		index.read(bytes, sizeof(bytes));
+
+		std::size_t count = 0;
+
+		for (int byte = 3; byte >= 0; --byte)
+		{
+			count = (count << 8) | static_cast<unsigned char>(bytes[12 + byte]);
+		}
+
+		return count;
+	}
+}
+
+TEST_CASE("The index is not rewritten once per record, and a clean exit still names them all")
+{
+	TempDirectory temp;
+
+	std::vector<std::filesystem::path> sources;
+	std::vector<std::filesystem::file_time_type> stamps;
+
+	for (int file = 0; file < 5; ++file)
+	{
+		const std::filesystem::path source =
+			temp.MakeFile("f" + std::to_string(file) + ".cpp", "int x;");
+
+		sources.push_back(source);
+		stamps.push_back(std::filesystem::last_write_time(source));
+	}
+
+	{
+		AnalysisStore store;
+		store.SetRoot(temp.GetPath());
+		WaitUntilReady(store);
+
+		for (std::size_t file = 0; file < sources.size(); ++file)
+		{
+			store.Write(sources[file], WithDeclaration("Draw", stamps[file]));
+		}
+
+		WaitForWrites(store);
+
+		// Every record is on the disk, and the index still names none of them: rewriting it with
+		// each one is what makes the bytes written over a first pass quadratic in the size of the
+		// workspace, and a handful of records is nowhere near worth one.
+		CHECK(CountRecords(StoreDirectory(temp)) == sources.size());
+		CHECK(IndexEntryCount(StoreDirectory(temp)) == 0);
+	}
+
+	// The closing store flushes what had coalesced, so a clean exit loses nothing.
+	CHECK(IndexEntryCount(StoreDirectory(temp)) == sources.size());
+
+	AnalysisStore next;
+	next.SetRoot(temp.GetPath());
+	WaitUntilReady(next);
+
+	for (std::size_t file = 0; file < sources.size(); ++file)
+	{
+		CHECK(next.Has(sources[file]));
+		CHECK(next.Read(sources[file], stamps[file]).has_value());
+	}
+
+	CHECK(CountRecords(StoreDirectory(temp)) == sources.size());
+}
+
+TEST_CASE("Pointing the store at another folder writes the index the last one had coalesced")
+{
+	TempDirectory first;
+	TempDirectory second;
+
+	const std::filesystem::path source = first.MakeFile("a.cpp", "int x;");
+	const std::filesystem::file_time_type stamp = std::filesystem::last_write_time(source);
+
+	AnalysisStore store;
+	store.SetRoot(first.GetPath());
+	WaitUntilReady(store);
+
+	store.Write(source, WithDeclaration("Draw", stamp));
+	WaitForWrites(store);
+
+	REQUIRE(IndexEntryCount(StoreDirectory(first)) == 0);
+
+	// A folder closing is as much an end for that root as the process exiting is.
+	store.SetRoot(second.GetPath());
+	WaitUntilReady(store);
+	WaitForWrites(store);
+
+	CHECK(IndexEntryCount(StoreDirectory(first)) == 1);
 }

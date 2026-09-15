@@ -445,6 +445,12 @@ namespace Graphite {
 		// does not work.
 		const bool analysisSwitchedOn = analysisEnabled && !m_AnalysisWasEnabled;
 
+		// The falling edge, for the store alone. The walk is cancelled unconditionally further
+		// down, which it can be because Cancel on a walk that is not running does nothing; SetRoot
+		// cannot be called that way, because every call tears down the current listing and submits
+		// a new one, and a frame that did that sixty times a second would never be ready.
+		const bool analysisSwitchedOff = !analysisEnabled && m_AnalysisWasEnabled;
+
 		m_AnalysisWasEnabled = analysisEnabled;
 
 		// Noticed here rather than hooked onto the two places a folder can be opened from: a
@@ -472,7 +478,13 @@ namespace Graphite {
 			// comparison: an analysis kept for one workspace says nothing about the next. Outside
 			// the branch too — an empty root detaches it, which is what "no folder is open" looks
 			// like from there.
-			m_AnalysisStore.SetRoot(m_WarmedRoot);
+			//
+			// And the empty root is what a switched-off feature looks like from there as well.
+			// Handing the store the real root while the setting is off would create, sweep and
+			// fill `.graphite/analysis` under the tree of a user who asked for none of it — the
+			// same spending the walk is cancelled below to avoid, and the store's detached path
+			// already refuses every lookup and drops every write, so nothing new is needed for it.
+			m_AnalysisStore.SetRoot(analysisEnabled ? m_WarmedRoot : std::filesystem::path{});
 
 			if (!m_WarmedRoot.empty() && analysisEnabled)
 			{
@@ -494,6 +506,18 @@ namespace Graphite {
 			// Nothing to start with no folder open, hence the root check. The queue needs no
 			// clearing: switching the feature off emptied it on the way down.
 			m_AnalysisWalk.Start(m_WarmedRoot, true);
+
+			// Re-attached here, with the walk, because this is the transition that undoes the
+			// detach above: the store was pointed at nothing while the setting was off, and a
+			// pass restarted against a detached store would ask the server about every file the
+			// last session already answered for.
+			m_AnalysisStore.SetRoot(m_WarmedRoot);
+		}
+		else if (analysisSwitchedOff)
+		{
+			// The other half of the same rule, and no root check: detaching a store that was
+			// already detached costs one empty listing and keeps the two edges symmetrical.
+			m_AnalysisStore.SetRoot({});
 		}
 
 		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into

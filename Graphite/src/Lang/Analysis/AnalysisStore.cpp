@@ -27,6 +27,18 @@ namespace Graphite {
 
 		constexpr std::string_view kIndexName = "index.bin";
 
+		// How far the index may fall behind the records before it is rewritten. Two limits rather
+		// than one because the pass and a reader fill the store at completely different rates: a
+		// first pass over a large tree finishes a file every few seconds and would reach the count
+		// long before the interval, while a session where the only writer is a closing tab would
+		// reach the interval and never the count.
+		//
+		// The numbers are not delicate. Anything in the tens turns the quadratic into something
+		// linear enough not to matter, and anything in the tens of seconds bounds how much a crash
+		// costs at a handful of files re-analysed. See AnalysisStore::FlushIndex.
+		constexpr std::size_t kRecordsPerIndexWrite = 64;
+		constexpr std::chrono::seconds kIndexWriteInterval{30};
+
 		// Whole-file read with no error to report: everything above treats unreadable and corrupt
 		// as the same answer, which is "ask the server again".
 		std::string ReadWholeFile(const std::filesystem::path& path)
@@ -65,10 +77,21 @@ namespace Graphite {
 		// waits for whatever is running. Telling it to stop first is the difference between a
 		// closing window and a closing window that hangs.
 		m_Token.Cancel();
+
+		// After the cancel, and the one job that ignores the token: the records are already on the
+		// disk and the index that names them is the only thing missing. A clean exit that dropped
+		// it would hand the next launch a sweep of everything this session wrote, which is exactly
+		// the work the store exists to save.
+		FlushIndexOnWorker();
 	}
 
 	void AnalysisStore::SetRoot(std::filesystem::path root)
 	{
+		// Before the cancel below drops every reference to the old listing: whatever the last root
+		// bought and has not written an index for is still worth writing, for the reason the
+		// destructor gives.
+		FlushIndexOnWorker();
+
 		// Anything still in flight was submitted against the old root. It keeps its own listing
 		// alive through the shared_ptr and writes into that, and the token tells it not to touch
 		// the disk on the way out.
@@ -196,17 +219,18 @@ namespace Graphite {
 
 				if (written)
 				{
-					EntryMap snapshot;
-
 					{
 						const std::lock_guard<std::mutex> guard(listing->Mutex);
 						listing->Entries[key] = entry;
-						snapshot = listing->Entries;
+						listing->IndexDirty = true;
+						++listing->RecordsSinceIndex;
 					}
 
-					// Copied out before writing, so Poll on the UI thread never waits behind a
-					// disk write for this mutex.
-					WriteIndex(directory, snapshot);
+					// Not with every record: the index names them all, so rewriting it here would
+					// make the bytes written over a first pass quadratic in the size of the
+					// workspace. FlushIndex decides when it is far enough behind to be worth
+					// writing, and says what that costs.
+					FlushIndex(directory, *listing, false);
 				}
 			}
 
@@ -321,6 +345,62 @@ namespace Graphite {
 		(void)written;
 	}
 
+	void AnalysisStore::FlushIndex(const std::filesystem::path& directory, Listing& listing,
+								   bool force)
+	{
+		EntryMap snapshot;
+
+		{
+			const std::lock_guard<std::mutex> guard(listing.Mutex);
+
+			if (!listing.IndexDirty)
+			{
+				return;
+			}
+
+			const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+			if (!force && listing.RecordsSinceIndex < kRecordsPerIndexWrite &&
+				now - listing.IndexWrittenAt < kIndexWriteInterval)
+			{
+				return;
+			}
+
+			// Marked written before the write rather than after, and safe to be: this all happens
+			// on the one worker thread, so nothing can slip a record in between, and a failed
+			// write is a store the next session finds short a few entries — which is a miss, and a
+			// miss is only ever a miss.
+			listing.IndexDirty = false;
+			listing.RecordsSinceIndex = 0;
+			listing.IndexWrittenAt = now;
+
+			// Copied out before writing, so Poll on the UI thread never waits behind a disk write
+			// for this mutex.
+			snapshot = listing.Entries;
+		}
+
+		WriteIndex(directory, snapshot);
+	}
+
+	void AnalysisStore::FlushIndexOnWorker()
+	{
+		if (m_Root.empty() || !m_Listing)
+		{
+			return;
+		}
+
+		m_Outstanding.fetch_add(1, std::memory_order_relaxed);
+
+		// No token check inside: this runs precisely because the token has been, or is about to
+		// be, cancelled, and what it writes describes records already on the disk.
+		m_Jobs.Submit([this, listing = m_Listing, directory = Directory()]
+		{
+			FlushIndex(directory, *listing, true);
+
+			m_Outstanding.fetch_sub(1, std::memory_order_relaxed);
+		});
+	}
+
 	void AnalysisStore::SweepUnnamedRecords(const std::filesystem::path& directory,
 											const EntryMap& kept)
 	{
@@ -407,6 +487,14 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> guard(listing.Mutex);
 		listing.Entries = std::move(kept);
+
+		// The index on disk and Entries agree exactly, as of now: the coalescing window starts
+		// here rather than at the epoch, so the first record written into a fresh root waits with
+		// the rest of its batch instead of forcing a rewrite of what was just written.
+		listing.IndexDirty = false;
+		listing.RecordsSinceIndex = 0;
+		listing.IndexWrittenAt = std::chrono::steady_clock::now();
+
 		listing.Done = true;
 	}
 
@@ -424,15 +512,18 @@ namespace Graphite {
 				std::error_code removal;
 				std::filesystem::remove(directory / record, removal);
 
-				EntryMap snapshot;
-
 				{
 					const std::lock_guard<std::mutex> guard(listing->Mutex);
 					listing->Entries.erase(key);
-					snapshot = listing->Entries;
+					listing->IndexDirty = true;
 				}
 
-				WriteIndex(directory, snapshot);
+				// Forced, unlike a record write: an index still naming a record that is no longer
+				// there makes every later launch keep the entry through pruning and every later
+				// open pay to read a file that is gone. Rare enough to afford — this is one
+				// refused entry at a time, not one per analysed file — and it flushes whatever
+				// records had coalesced behind it as well.
+				FlushIndex(directory, *listing, true);
 			}
 
 			m_Outstanding.fetch_sub(1, std::memory_order_relaxed);
