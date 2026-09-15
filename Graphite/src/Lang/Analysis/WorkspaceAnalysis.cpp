@@ -4,6 +4,8 @@
 #include "Lang/Registry/LanguageRegistry.h"
 #include "Lang/Server/ServerRegistry.h"
 
+#include "Core/Fs/FileSystem.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -197,12 +199,33 @@ namespace Graphite {
 	void WorkspaceAnalysis::StartNext(
 		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
+		if (m_Store != nullptr && !m_Store->IsReady())
+		{
+			// Nothing new until the store can answer. Has reports false for everything until its
+			// index has been polled in, and a false there is indistinguishable from a file the
+			// store has never seen — so every path dequeued while the index worker is still
+			// reading would be read, opened and analysed again at full price. Not a correctness
+			// question: a miss is only ever a miss. But a second launch being cheap is the whole
+			// of what the store is for, and starting early spends exactly the files it exists to
+			// skip. The queue keeps its place; the next frame asks again.
+			//
+			// The gate is here rather than around Tick because everything else in a tick must go
+			// on running while the store warms up: an analysis already outstanding still has to
+			// be finished with, and one that has gone silent still has to time out.
+			return;
+		}
+
 		// Awaited reads count against the limit alongside pending analyses: a read on its way is a
 		// slot already spoken for, and counting only what a server has been told about would let
 		// the whole queue be read at once.
 		while (m_Pending.size() + m_AwaitingText.size() < m_Limit && !m_Queue.empty())
 		{
-			std::filesystem::path path = std::move(m_Queue.front());
+			// Normalised here, on the way in, so that everything downstream is comparing the same
+			// spelling: IsOutstanding's equality, the store's lookup — which normalises its own
+			// keys — and the path this class hands the server. Two spellings of one file reaching
+			// the queue would otherwise both pass IsOutstanding and produce two didOpens for one
+			// document entry, which is the failure ADR 0512 is about.
+			std::filesystem::path path = Core::NormalizePath(m_Queue.front());
 			m_Queue.pop_front();
 
 			if (IsOutstanding(path))
@@ -261,6 +284,13 @@ namespace Graphite {
 			// is taken up, so a second text for the same path — a read outstanding across a Clear
 			// and a re-Enqueue is the way to get one — finds nothing here and is dropped above
 			// rather than opening the document a second time. See IsOutstanding and ADR 0512.
+			//
+			// In that case it is the older read that is taken up and the fresh one that is
+			// dropped: the reads come back in the order they were asked for, so the stale text
+			// arrives first and is what matches. Safe, and only wasteful — the stamp that comes
+			// with it describes the text that was actually read, so an entry built from it is
+			// refused later by exactly the comparison that exists for a file edited behind the
+			// editor's back, rather than colouring anything wrongly.
 			m_AwaitingText.erase(awaited);
 
 			if (!text.Readable || text.Text.empty())

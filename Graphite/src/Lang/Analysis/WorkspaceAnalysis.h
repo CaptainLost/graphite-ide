@@ -196,6 +196,10 @@ namespace Graphite {
 		// takes the document away from the second, whose answers then describe a document the
 		// server no longer holds. While this class analysed one file at a time that was impossible
 		// by construction; with several outstanding it is impossible only because of this check.
+		//
+		// Plain equality, and safe to be: every path is normalised as it comes off the queue, so
+		// this, the store's lookup and what the server is told all mean the same thing by "the
+		// same file".
 		bool IsOutstanding(const std::filesystem::path& path) const;
 
 		// Takes paths off the queue until the limit is reached or the queue runs out.

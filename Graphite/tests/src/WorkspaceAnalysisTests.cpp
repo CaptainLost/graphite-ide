@@ -972,6 +972,42 @@ TEST_CASE("A file the store already has is skipped rather than asked about again
 	CHECK(analysis.Progress().Done == 1);
 }
 
+TEST_CASE("Nothing is started while the store is still reading its index")
+{
+	TempDirectory temp;
+	const std::filesystem::path source = temp.MakeFile("a.cpp", "int x;");
+
+	AnalysisStore store;
+	store.SetRoot(temp.GetPath());
+
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, &store};
+
+	analysis.Enqueue({source});
+
+	// Not polled in yet, so every Has would answer false and every file would be analysed again
+	// at full price — which is the whole of what the store exists to avoid.
+	REQUIRE_FALSE(store.IsReady());
+
+	analysis.Tick(1.0, false, NobodyElse);
+	analysis.Tick(2.0, false, NobodyElse);
+
+	CHECK(port.Calls.empty());
+
+	// And the queue kept its place rather than being spent while nobody could answer for it.
+	CHECK(analysis.Progress().Done == 0);
+	CHECK(analysis.Progress().Total == 1);
+
+	WaitUntilReady(store);
+
+	analysis.Tick(3.0, false, NobodyElse);
+	analysis.Tick(4.0, false, NobodyElse);
+
+	CHECK(port.CountOf("open") == 1);
+}
+
 TEST_CASE("A completed analysis reaches the store as well as the memory cache")
 {
 	TempDirectory temp;
