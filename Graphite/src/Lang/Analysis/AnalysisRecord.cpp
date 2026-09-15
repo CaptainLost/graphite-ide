@@ -2,158 +2,52 @@
 
 #include "Core/Fs/FileSystem.h"
 
-#include <cstring>
 #include <utility>
 
 namespace Graphite {
 
-	namespace {
-
-		constexpr char kMagic[4] = {'G', 'R', 'A', 'F'};
-
-		// Everything is written little endian by hand rather than by memcpy-ing a struct: a
-		// record written by one build and read by another has to agree on layout, and a struct's
-		// padding is not something this file gets to decide.
-		void PutU32(std::string& bytes, std::uint32_t value)
+	void PutU32(std::string& bytes, std::uint32_t value)
+	{
+		for (int shift = 0; shift < 32; shift += 8)
 		{
-			for (int shift = 0; shift < 32; shift += 8)
-			{
-				bytes.push_back(static_cast<char>((value >> shift) & 0xFF));
-			}
+			bytes.push_back(static_cast<char>((value >> shift) & 0xFF));
 		}
+	}
 
-		void PutU64(std::string& bytes, std::uint64_t value)
+	void PutU64(std::string& bytes, std::uint64_t value)
+	{
+		for (int shift = 0; shift < 64; shift += 8)
 		{
-			for (int shift = 0; shift < 64; shift += 8)
-			{
-				bytes.push_back(static_cast<char>((value >> shift) & 0xFF));
-			}
+			bytes.push_back(static_cast<char>((value >> shift) & 0xFF));
 		}
+	}
 
-		void PutString(std::string& bytes, std::string_view text)
-		{
-			PutU32(bytes, static_cast<std::uint32_t>(text.size()));
-			bytes.append(text);
-		}
+	void PutString(std::string& bytes, std::string_view text)
+	{
+		PutU32(bytes, static_cast<std::uint32_t>(text.size()));
+		bytes.append(text);
+	}
 
-		// A cursor that cannot be made to read past its buffer. Every Take below checks what is
-		// left before it moves, and a reader that has failed once stays failed, so a caller may
-		// read a whole record and check once at the end.
-		class Reader
-		{
-		public:
-			explicit Reader(std::string_view bytes) : m_Bytes(bytes) {}
+	std::uint64_t FileTimeToTicks(std::filesystem::file_time_type time)
+	{
+		return static_cast<std::uint64_t>(time.time_since_epoch().count());
+	}
 
-			bool Failed() const { return m_Failed; }
-
-			std::uint32_t TakeU32()
-			{
-				std::uint32_t value = 0;
-
-				if (!Ensure(4))
-				{
-					return 0;
-				}
-
-				for (int shift = 0; shift < 32; shift += 8)
-				{
-					value |= static_cast<std::uint32_t>(
-								 static_cast<unsigned char>(m_Bytes[m_At++]))
-							 << shift;
-				}
-
-				return value;
-			}
-
-			std::uint64_t TakeU64()
-			{
-				std::uint64_t value = 0;
-
-				if (!Ensure(8))
-				{
-					return 0;
-				}
-
-				for (int shift = 0; shift < 64; shift += 8)
-				{
-					value |= static_cast<std::uint64_t>(
-								 static_cast<unsigned char>(m_Bytes[m_At++]))
-							 << shift;
-				}
-
-				return value;
-			}
-
-			std::string TakeString()
-			{
-				const std::uint32_t length = TakeU32();
-
-				if (!Ensure(length))
-				{
-					return {};
-				}
-
-				std::string text{m_Bytes.substr(m_At, length)};
-				m_At += length;
-
-				return text;
-			}
-
-			bool TakeMagic()
-			{
-				if (!Ensure(sizeof(kMagic)))
-				{
-					return false;
-				}
-
-				const bool matches = m_Bytes.compare(m_At, sizeof(kMagic), kMagic, sizeof(kMagic)) == 0;
-				m_At += sizeof(kMagic);
-
-				return matches;
-			}
-
-			// A record that decoded cleanly but has bytes left over is as wrong as a short one:
-			// it means the writer and this reader disagree about the layout.
-			bool AtEnd() const { return !m_Failed && m_At == m_Bytes.size(); }
-
-		private:
-			bool Ensure(std::size_t count)
-			{
-				if (m_Failed || m_Bytes.size() - m_At < count)
-				{
-					m_Failed = true;
-					return false;
-				}
-
-				return true;
-			}
-
-			std::string_view m_Bytes;
-			std::size_t m_At = 0;
-			bool m_Failed = false;
-		};
-
-		std::uint64_t TicksOf(std::filesystem::file_time_type time)
-		{
-			return static_cast<std::uint64_t>(time.time_since_epoch().count());
-		}
-
-		std::filesystem::file_time_type TimeOf(std::uint64_t ticks)
-		{
-			return std::filesystem::file_time_type{
-				std::filesystem::file_time_type::duration{
-					static_cast<std::filesystem::file_time_type::rep>(ticks)}};
-		}
+	std::filesystem::file_time_type TicksToFileTime(std::uint64_t ticks)
+	{
+		return std::filesystem::file_time_type{
+			std::filesystem::file_time_type::duration{
+				static_cast<std::filesystem::file_time_type::rep>(ticks)}};
 	}
 
 	std::string EncodeAnalysis(const std::filesystem::path& path, const CachedAnalysis& analysis)
 	{
 		std::string bytes;
 
-		bytes.append(kMagic, sizeof(kMagic));
+		bytes.append(kAnalysisMagic);
 		PutU32(bytes, kAnalysisRecordVersion);
 		PutString(bytes, Core::ToUtf8(path));
-		PutU64(bytes, TicksOf(analysis.ModifiedAt));
+		PutU64(bytes, FileTimeToTicks(analysis.ModifiedAt));
 
 		std::uint32_t lines = 0;
 		analysis.Semantic.ForEachLine([&lines](std::size_t, const std::vector<SemanticSpan>&)
@@ -204,7 +98,7 @@ namespace Graphite {
 	{
 		Reader reader{bytes};
 
-		if (!reader.TakeMagic() || reader.TakeU32() != kAnalysisRecordVersion)
+		if (!reader.TakeMagic(kAnalysisMagic) || reader.TakeU32() != kAnalysisRecordVersion)
 		{
 			return std::nullopt;
 		}
@@ -217,7 +111,7 @@ namespace Graphite {
 		}
 
 		CachedAnalysis analysis;
-		analysis.ModifiedAt = TimeOf(reader.TakeU64());
+		analysis.ModifiedAt = TicksToFileTime(reader.TakeU64());
 
 		const std::uint32_t lines = reader.TakeU32();
 
