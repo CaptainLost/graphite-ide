@@ -8,12 +8,13 @@ namespace {
 
 	constexpr float kLineHeight = 16.0f;
 
-	// A viewport whose top edge sits exactly on screen row 20, which draws document row 20
-	// because nothing has been inserted above it yet.
+	// An anchor taken while the viewport's top edge sat on `screenRow`. Which line it names does
+	// not enter the arithmetic — that is the caller's half, and it is what turns a line back into
+	// a screen row before calling in here.
 	ScrollAnchor AtRow(std::size_t screenRow, float scrollY)
 	{
 		ScrollAnchor anchor;
-		anchor.DocumentRow = 20;
+		anchor.Line = 20;
 		anchor.ScreenRow = screenRow;
 		anchor.ScrollY = scrollY;
 
@@ -66,9 +67,9 @@ TEST_CASE("The offset inside the row survives the correction")
 	CHECK(*scroll == doctest::Approx(327.0f + kLineHeight));
 }
 
-TEST_CASE("A line height of zero corrects nothing rather than dividing by it")
+TEST_CASE("A line height of zero corrects nothing")
 {
-	// The first frame of a document, before metrics are known. Nothing is drawn then either, so
-	// there is nothing to keep in place.
+	// The first frame of a document, before metrics are known. Without the guard this would
+	// return the anchor's own scroll unchanged and write a stale offset back over a live one.
 	CHECK_FALSE(ScrollKeepingAnchor(AtRow(20, 320.0f), 59, 0.0f).has_value());
 }

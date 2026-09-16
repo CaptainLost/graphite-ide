@@ -945,8 +945,14 @@ namespace Graphite {
 			ApplyEditKeys(input, buffer, item, indentStyle, sinks, result);
 		}
 
+		// `scrollY` is where the view will be, which is not always what ImGui::GetScrollY() answers:
+		// SetScrollY only records a target, and the getter goes on reporting the old offset until
+		// the next Begin. A caller that corrected the scroll earlier in this frame therefore has to
+		// hand its own figure in, or the edges below are compared against an offset that is about
+		// to stop being true — and the caret is chased to a bottom edge it was never past.
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
-						   const EditorMetrics& metrics, bool wordWrap, const LensRows& lenses)
+						   const EditorMetrics& metrics, bool wordWrap, const LensRows& lenses,
+						   float scrollY)
 		{
 			const Core::Position where = buffer.ToPosition(item.Caret.Offset);
 
@@ -969,9 +975,9 @@ namespace Graphite {
 			// the first rows, which is where a line has usually already ended. Biasing the scroll
 			// for it would push the caret down a bar's height on every move, for the sake of a
 			// column the text rarely reaches.
-			if (caretY < ImGui::GetScrollY())
+			if (caretY < scrollY)
 				ImGui::SetScrollY(caretY);
-			else if (caretY + metrics.LineHeight > ImGui::GetScrollY() + ImGui::GetWindowHeight())
+			else if (caretY + metrics.LineHeight > scrollY + ImGui::GetWindowHeight())
 				ImGui::SetScrollY(caretY + metrics.LineHeight - ImGui::GetWindowHeight());
 
 			// Skipped entirely while wrapping: there is no horizontal range to scroll through,
@@ -2176,6 +2182,7 @@ namespace Graphite {
 					result.LastVisibleRow = anyDrawn ? std::max(result.LastVisibleRow, rowIndex)
 													 : rowIndex;
 					anyDrawn = true;
+					result.DrewRows = true;
 
 					CacheLine(cache, lineInput, ref.Line);
 
@@ -2348,20 +2355,32 @@ namespace Graphite {
 			// the fresher claim: a reply that arrives in the same frame somebody pressed a key
 			// must not drag the view back off where they just went. Keeping the reader's place is
 			// only worth doing when the reader did not ask to be somewhere else.
+			float scrollY = ImGui::GetScrollY();
+
 			if (view.Anchor != nullptr && view.Anchor->Taken)
 			{
-				const std::size_t screenRowNow = lenses.ScreenRowOf(view.Anchor->DocumentRow);
+				// The anchored line's rows, as they are now. A rewrap can have left the line
+				// shorter than the sub-row that was recorded, so the sub-row is clamped rather
+				// than trusted: the reader ends at the last row of the line they were inside,
+				// which is the nearest thing to where they were.
+				const std::size_t rowsOfLine = item.Rows.RowsOf(view.Anchor->Line);
+				const std::size_t subRow =
+					rowsOfLine == 0 ? 0 : std::min(view.Anchor->SubRow, rowsOfLine - 1);
+
+				const std::size_t screenRowNow =
+					lenses.ScreenRowOf(item.Rows.FirstRowOf(view.Anchor->Line) + subRow);
 
 				if (const std::optional<float> scroll =
 						ScrollKeepingAnchor(*view.Anchor, screenRowNow, metrics.LineHeight))
 				{
 					ImGui::SetScrollY(*scroll);
+					scrollY = *scroll;
 				}
 			}
 
 			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
-				ScrollToCaret(buffer, item, metrics, view.WordWrap, lenses);
+				ScrollToCaret(buffer, item, metrics, view.WordWrap, lenses, scrollY);
 				s_CaretMovedAt = ImGui::GetTime();
 				item.PendingScroll = false;
 			}
@@ -2379,9 +2398,15 @@ namespace Graphite {
 			// they were when something last moved. A frame that drew nothing leaves the previous
 			// anchor standing: it reports row zero, and adopting that would claim the reader had
 			// scrolled to the top.
-			if (view.Anchor != nullptr && result.LastVisibleRow >= result.FirstVisibleRow)
+			if (view.Anchor != nullptr && result.DrewRows)
 			{
-				view.Anchor->DocumentRow = result.FirstVisibleRow;
+				// Recorded as a line and a sub-row rather than as the row index itself: the index
+				// is a position in a mapping that rewrapping rebuilds, and the line is the same
+				// text however it comes to be broken up.
+				const Core::RowRef top = item.Rows.RowAt(result.FirstVisibleRow);
+
+				view.Anchor->Line = top.Line;
+				view.Anchor->SubRow = top.SubRow;
 				view.Anchor->ScreenRow = lenses.ScreenRowOf(result.FirstVisibleRow);
 				view.Anchor->ScrollY = ImGui::GetScrollY();
 				view.Anchor->Taken = true;

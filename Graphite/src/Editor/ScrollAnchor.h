@@ -16,8 +16,19 @@ namespace Graphite {
 	// there were declarations above it.
 	struct ScrollAnchor
 	{
-		// The document row the top of the viewport sat on.
-		std::size_t DocumentRow = 0;
+		// The document LINE the top of the viewport sat on, and how far into its wrapped rows.
+		//
+		// A line, not a row index, and that distinction is the whole of whether rewrapping is
+		// covered. A row index names a position in a mapping that rewrapping rebuilds, so after a
+		// narrower window recomputed the breaks the same index names different text and the
+		// correction would either not fire or fire in the wrong direction. A line names the same
+		// text however it is broken up.
+		std::size_t Line = 0;
+
+		// Which of that line's rows was at the top. Kept because a long wrapped line can fill the
+		// viewport by itself, and anchoring to its first row would jump the reader to the start of
+		// the paragraph they were in the middle of.
+		std::size_t SubRow = 0;
 
 		// The screen row that drew it at the time. This is what the correction compares against:
 		// the same document row drawing at a different screen row is precisely the event this

@@ -174,7 +174,15 @@ of a single shared `RowMap` has one wrap implementation to get right.
   language-server answer a lens row displays.
 - `Core/src/Core/Text/RowMap.h`, `Core/src/Core/Text/WrapLayout.cpp` — the
   types and functions this record keeps document-only.
-- `Graphite/src/Editor/TextEditorWidget.cpp` — the seven sites:
+- `Graphite/src/Editor/TextEditorWidget.cpp` — the nine sites:
   `DocumentHeightOf`, the clipper loop, the mouse hit test, scroll-to-caret,
-  `ComputeHoverIdentifier` and the caret's screen position translate through
-  `LensRows`; `pageRows` deliberately does not.
+  `ComputeHoverIdentifier`, the caret's screen position and both halves of the
+  scroll anchor — the correction that reads it and the record that takes it —
+  translate through `LensRows`; `pageRows` deliberately does not.
+
+  The scroll anchor is the clearest illustration of why this record's rule is
+  worth its cost. It has to hold a place in the document across a change to the
+  screen-row mapping, which is only expressible because the two are separate
+  things: it stores a line, converts to a document row through `RowMap`, and
+  converts that to a screen row through `LensRows`. Had lens rows been inserted
+  into `RowMap` itself, there would be no document coordinate left to anchor to.

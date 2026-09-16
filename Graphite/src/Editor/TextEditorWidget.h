@@ -71,6 +71,12 @@ namespace Graphite {
 		// and the next frame that draws corrects it.
 		std::size_t FirstVisibleRow = 0;
 		std::size_t LastVisibleRow = 0;
+
+		// Whether any document row was drawn at all. The two above cannot answer that: they are
+		// both zero on a frame that drew nothing AND on a frame that drew only the first row, so a
+		// caller comparing them would take the first case for the second and believe the reader
+		// was at the top of the file.
+		bool DrewRows = false;
 	};
 
 	// What the frame draws with, as opposed to what it draws. Syntax is always supplied today —
