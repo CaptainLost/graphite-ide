@@ -57,3 +57,47 @@ TEST_CASE("A cancelled walk stops rather than finishing quietly")
 
 	CHECK(seen == 1);
 }
+
+TEST_CASE("A nested project is left to whoever serves it")
+{
+	TempDirectory temp;
+	temp.MakeFile("a.cpp", "int x;");
+
+	// What a submodule looks like: a .git FILE, not a directory. RootFor stops at it, so every
+	// file below it belongs to a different server than the workspace's — one with no compile
+	// database of its own, started only because this pass asked about code nobody opened.
+	temp.MakeFile("vendor/imgui/.git", "gitdir: ../../.git/modules/imgui");
+	temp.MakeFile("vendor/imgui/imgui.cpp", "int y;");
+	temp.MakeFile("vendor/imgui/imgui.h", "int z;");
+
+	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
+
+	CHECK(found == std::vector<std::string>{"a.cpp"});
+}
+
+TEST_CASE("A directory carrying its own compile database is a project of its own")
+{
+	TempDirectory temp;
+	temp.MakeFile("a.cpp", "int x;");
+	temp.MakeFile("embedded/.clangd", "CompileFlags: {}");
+	temp.MakeFile("embedded/b.cpp", "int y;");
+
+	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
+
+	CHECK(found == std::vector<std::string>{"a.cpp"});
+}
+
+TEST_CASE("The workspace's own markers do not exclude the workspace")
+{
+	TempDirectory temp;
+
+	// Every repository this ever runs on has one of these at its root. Excluding a marked
+	// directory without exempting the root would switch the whole feature off everywhere.
+	temp.MakeFile(".git/HEAD", "ref: refs/heads/main");
+	temp.MakeFile("compile_commands.json", "[]");
+	temp.MakeFile("a.cpp", "int x;");
+
+	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
+
+	CHECK(found == std::vector<std::string>{"a.cpp"});
+}

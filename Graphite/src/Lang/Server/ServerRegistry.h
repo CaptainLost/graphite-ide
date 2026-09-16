@@ -36,6 +36,16 @@ namespace Graphite {
 	std::filesystem::path RootFor(const ServerConfig& config, const std::filesystem::path& file,
 								   const std::filesystem::path& fallbackRoot);
 
+	// True when `directory` carries any configured server's root marker — that is, when RootFor
+	// would stop there rather than climbing past it.
+	//
+	// The question a walk asks to find out where somebody else's project begins. A submodule
+	// under vendor/ carries its own .git, so every file below it resolves to its own root and
+	// would be served by its own language server, started from nothing and usually without a
+	// compile database. That is somebody else's code and somebody else's server; a pass that
+	// reads ahead for the reader has no business in it.
+	bool IsProjectRoot(const std::filesystem::path& directory);
+
 	// True when `root` holds none of the forms clangd accepts as a compile database:
 	// compile_commands.json, compile_flags.txt, .clangd.
 	bool LacksCompileDatabase(const std::filesystem::path& root);

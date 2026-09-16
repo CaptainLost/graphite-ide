@@ -101,6 +101,32 @@ namespace Graphite {
 		return fallbackRoot;
 	}
 
+	bool IsProjectRoot(const std::filesystem::path& directory)
+	{
+		// Across every configured language, not just the one a file happens to be written in:
+		// the question is whether this directory is the top of some project, and a directory
+		// holding another language's marker is no less somebody else's than one holding C++'s.
+		for (const LanguageId language : LanguagesWithServers())
+		{
+			const ServerConfig* config = ServerConfigFor(language);
+
+			if (config == nullptr)
+			{
+				continue;
+			}
+
+			for (const std::string_view marker : config->RootMarkers)
+			{
+				if (Exists(directory / marker))
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
 	bool LacksCompileDatabase(const std::filesystem::path& root)
 	{
 		for (const std::string_view name : kCompileDatabaseNames)

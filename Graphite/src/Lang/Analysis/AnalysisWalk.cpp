@@ -19,6 +19,25 @@ namespace Graphite {
 		{
 			return ServerConfigFor(LanguageOfPath(file)) != nullptr;
 		}
+
+		// Stops the walk at the edge of somebody else's project. A directory carrying its own
+		// root marker is where RootFor stops climbing, so every file below it belongs to a
+		// different language server than this workspace's — one that would have to be started
+		// from nothing, usually with no compile database, to answer about code the reader never
+		// opened. In this repository that is the seven submodules under vendor/, which are four
+		// fifths of the tree and the overwhelming majority of what the pass used to cost.
+		//
+		// Rejected at the directory, not at each file below it: a directory answered true is not
+		// descended into at all, which is what makes this cheap rather than merely correct.
+		//
+		// The walk's own root is exempt, and has to be: every repository this runs on carries a
+		// marker at its top, so excluding a marked directory without this would switch the
+		// feature off everywhere.
+		IgnorePredicate SkipNestedProjects(const std::filesystem::path& root)
+		{
+			return [root](const std::filesystem::path& path, bool isDirectory)
+			{ return isDirectory && path != root && IsProjectRoot(path); };
+		}
 	}
 
 	void CollectAnalysable(const std::filesystem::path& root, const Core::CancellationToken& token,
@@ -26,6 +45,7 @@ namespace Graphite {
 	{
 		EnumerationInput enumeration;
 		enumeration.Root = root;
+		enumeration.Ignored = SkipNestedProjects(root);
 
 		EnumerateFiles(enumeration, token, [&onFile](const std::filesystem::path& file)
 		{
@@ -62,6 +82,8 @@ namespace Graphite {
 			EnumerationInput enumeration;
 			enumeration.Root = root;
 
+			const IgnorePredicate nested = SkipNestedProjects(root);
+
 			// Opened on this thread rather than shared with the workspace's: libgit2 handles are
 			// not safe to use from two threads, which is the same reason SearchService and the
 			// warm-up walk each open their own.
@@ -72,11 +94,22 @@ namespace Graphite {
 				if (Core::Result<Core::Repository> opened = Core::Repository::Open(root))
 				{
 					repository.emplace(std::move(opened.GetValue()));
-
-					enumeration.Ignored = [&repository](const std::filesystem::path& path, bool)
-					{ return repository->IsIgnored(path); };
 				}
 			}
+
+			// Both rules, never one: a submodule's contents are not ignored by the parent
+			// repository — git treats the submodule as a single entry and says nothing about
+			// what is inside it — so gitignore alone would walk straight into vendor/.
+			enumeration.Ignored = [&repository, &nested](const std::filesystem::path& path,
+														 bool isDirectory)
+			{
+				if (nested(path, isDirectory))
+				{
+					return true;
+				}
+
+				return repository && repository->IsIgnored(path);
+			};
 
 			EnumerateFiles(enumeration, token, [&findings](const std::filesystem::path& file)
 			{
