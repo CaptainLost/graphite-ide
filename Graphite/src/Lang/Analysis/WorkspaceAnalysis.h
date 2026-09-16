@@ -45,6 +45,13 @@ namespace Graphite {
 													LanguageId language) = 0;
 
 		virtual void Close(const std::filesystem::path& path, LanguageId language) = 0;
+
+		// Whether the server for this file is in a state to answer at all.
+		//
+		// False only while one is still coming up. A server that is missing, broken, or running
+		// without a compile database answers true: those states do not improve by waiting, and
+		// what such a server says is the best this file will ever get.
+		virtual bool IsServerReady(const std::filesystem::path& path, LanguageId language) = 0;
 	};
 
 	// How far the pass has got, for the status bar. Total is what was queued, not what the tree
@@ -223,7 +230,15 @@ namespace Graphite {
 		bool IsOutstanding(const std::filesystem::path& path) const;
 
 		// Takes paths off the queue until the limit is reached or the queue runs out.
-		void StartNext(const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
+		void StartNext(double now,
+					   const std::function<bool(const std::filesystem::path&)>& heldElsewhere);
+
+		// Whether the front of the queue must wait for its server to finish coming up. Takes the
+		// path rather than answering once for the pass, because readiness is a fact about one
+		// language's server — with one configured language that is a distinction without a
+		// difference, and with two it is the difference between waiting for the right server and
+		// waiting for somebody else's.
+		bool ServerHeldBack(double now, const std::filesystem::path& path);
 
 		// Takes the predicate too: the read is a round trip through a worker, so a tab or a pane
 		// can claim the file between the frame its text was asked for and the frame it arrives.
@@ -274,6 +289,10 @@ namespace Graphite {
 		// When the open document's unbroken run of being busy began, so the yield to it can be
 		// bounded. Empty on every frame it is not busy. See kForegroundYieldCapSeconds.
 		std::optional<double> m_BusySince;
+
+		// When the unbroken run of waiting for a server to come up began, so that wait can be
+		// bounded too. Empty on every frame a server was ready. See kServerWaitCapSeconds.
+		std::optional<double> m_ServerUnreadySince;
 
 		// Kept as a member rather than made afresh each frame: Tick runs sixty times a second and
 		// this is the one buffer in the class that would otherwise reallocate for every one of

@@ -29,6 +29,19 @@ namespace Graphite {
 		// that a server merely slow to index still gets the whole floor, short enough that the
 		// broken case costs one wait rather than a session.
 		constexpr double kForegroundYieldCapSeconds = 10.0;
+
+		// How long to wait for a server to finish coming up before asking it anyway.
+		//
+		// Asking one that is still starting buys a question it does not answer, and the file is
+		// then given up on at kAnalysisTimeoutSeconds rather than analysed at all — so a cold
+		// clangd used to cost the first files of a session and two minutes of a counter sitting
+		// at zero while nothing anywhere was busy. Waiting costs a few seconds once; not waiting
+		// costs the timeout, every session, on the files most likely to be opened first.
+		//
+		// Bounded for the same reason the yield above is: a server configured but never installed
+		// reports itself unready for the rest of the session, and an unbounded wait would switch
+		// the feature off on exactly the machine where nobody would think to look for it.
+		constexpr double kServerWaitCapSeconds = 60.0;
 	}
 
 	WorkspaceAnalysis::WorkspaceAnalysis(WorkspaceAnalysisPort& port, FileTextSource& texts,
@@ -207,11 +220,29 @@ namespace Graphite {
 			return;
 		}
 
-		StartNext(heldElsewhere);
+		StartNext(now, heldElsewhere);
+	}
+
+	bool WorkspaceAnalysis::ServerHeldBack(double now, const std::filesystem::path& path)
+	{
+		if (m_Port.IsServerReady(path, LanguageOfPath(path)))
+		{
+			// Reset on the first ready frame, so a server that restarts mid-session gets the
+			// whole wait again rather than whatever was left of an earlier one.
+			m_ServerUnreadySince.reset();
+			return false;
+		}
+
+		if (!m_ServerUnreadySince)
+		{
+			m_ServerUnreadySince = now;
+		}
+
+		return now - *m_ServerUnreadySince <= kServerWaitCapSeconds;
 	}
 
 	void WorkspaceAnalysis::StartNext(
-		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
+		double now, const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
 		if (m_Store != nullptr && !m_Store->IsReady())
 		{
@@ -240,6 +271,18 @@ namespace Graphite {
 			// the queue would otherwise both pass IsOutstanding and produce two didOpens for one
 			// document entry, which is the failure ADR 0512 is about.
 			std::filesystem::path path = Core::NormalizePath(m_Queue.front());
+
+			if (ServerHeldBack(now, path))
+			{
+				// Asked before the queue is popped, so waiting keeps the file rather than spending
+				// it: the next frame asks the same question about the same path.
+				//
+				// Head of the queue only. With one configured language that is the whole queue;
+				// with two it would hold a Python file behind a clangd still coming up, which is
+				// worth revisiting when a second server exists rather than solving in advance.
+				return;
+			}
+
 			m_Queue.pop_front();
 
 			if (IsOutstanding(path))

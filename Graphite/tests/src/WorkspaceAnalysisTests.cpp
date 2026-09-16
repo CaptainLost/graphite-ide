@@ -51,6 +51,8 @@ namespace {
 			return static_cast<LanguageServices::Ticket>(++Tickets);
 		}
 
+		bool IsServerReady(const std::filesystem::path&, LanguageId) override { return Ready; }
+
 		void Close(const std::filesystem::path& path, LanguageId) override
 		{
 			Calls.push_back({"close", path});
@@ -96,6 +98,10 @@ namespace {
 
 		std::vector<Call> Calls;
 		std::uint64_t Tickets = 0;
+
+		// Ready by default so every case that is not about a server coming up reads as though one
+		// already had.
+		bool Ready = true;
 	};
 
 	// Answers every request it is given, in the order it was given them, and out of the same
@@ -1090,4 +1096,69 @@ TEST_CASE("A holder that comes and goes between the two answers leaves nothing i
 	// again the only one holding the document open.
 	CHECK(analysis.Progress().Done == 1);
 	CHECK(port.CountOf("close") == 1);
+}
+
+TEST_CASE("Nothing is asked of a server that is still starting up")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+
+	port.Ready = false;
+	analysis.Enqueue({"a.cpp", "b.cpp"});
+
+	analysis.Tick(1.0, false, NobodyElse);
+	analysis.Tick(2.0, false, NobodyElse);
+
+	// Asking a server that has not finished coming up buys a question it will not answer, and
+	// the file is then given up on at the analysis timeout rather than analysed at all.
+	CHECK(port.Calls.empty());
+	CHECK(analysis.Progress().Done == 0);
+	CHECK(analysis.Progress().Total == 2);
+}
+
+TEST_CASE("The queue proceeds once the server can answer")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+
+	port.Ready = false;
+	analysis.Enqueue({"a.cpp"});
+
+	analysis.Tick(1.0, false, NobodyElse);
+
+	REQUIRE(port.Calls.empty());
+
+	port.Ready = true;
+
+	analysis.Tick(2.0, false, NobodyElse);
+	analysis.Tick(3.0, false, NobodyElse);
+
+	CHECK(port.CountOf("open") == 1);
+}
+
+TEST_CASE("A server that never comes up stops holding the pass back for ever")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+
+	port.Ready = false;
+	analysis.Enqueue({"a.cpp"});
+
+	analysis.Tick(1.0, false, NobodyElse);
+
+	REQUIRE(port.Calls.empty());
+
+	// A server configured but never installed reports itself unready for the rest of the
+	// session. Waiting on it for ever would switch the feature off on exactly the machine
+	// where nobody would think to look for it.
+	analysis.Tick(1.0 + 200.0, false, NobodyElse);
+	analysis.Tick(1.0 + 201.0, false, NobodyElse);
+
+	CHECK(port.CountOf("open") == 1);
 }

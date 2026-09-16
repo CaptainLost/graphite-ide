@@ -76,6 +76,17 @@ namespace Graphite {
 			m_Services.CloseDocument(path, language);
 		}
 
+		bool IsServerReady(const std::filesystem::path&, LanguageId language) override
+		{
+			const ServerState state = m_Services.StatusFor(language).State;
+
+			// Everything except the two states a server passes through on its way up. Missing,
+			// broken and without-a-compile-database are all answers rather than waits: they do not
+			// improve, and what such a server says is the best this file will ever get. Reading it
+			// this way round also means a language nobody has configured never holds the pass.
+			return state != ServerState::Starting && state != ServerState::Indexing;
+		}
+
 	private:
 		LanguageServices& m_Services;
 	};
