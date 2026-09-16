@@ -4,6 +4,17 @@
 
 namespace Graphite {
 
+	std::size_t AnchoredRow(const ScrollAnchor& anchor, std::size_t firstRowOfLine,
+							std::size_t rowsOfLine)
+	{
+		if (rowsOfLine == 0)
+		{
+			return firstRowOfLine;
+		}
+
+		return firstRowOfLine + std::min(anchor.SubRow, rowsOfLine - 1);
+	}
+
 	std::optional<float> ScrollKeepingAnchor(const ScrollAnchor& anchor, std::size_t screenRowNow,
 											 float lineHeight)
 	{

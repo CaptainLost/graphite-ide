@@ -73,3 +73,36 @@ TEST_CASE("A line height of zero corrects nothing")
 	// return the anchor's own scroll unchanged and write a stale offset back over a live one.
 	CHECK_FALSE(ScrollKeepingAnchor(AtRow(20, 320.0f), 59, 0.0f).has_value());
 }
+
+TEST_CASE("An unchanged line hands back exactly the row the anchor was taken on")
+{
+	ScrollAnchor anchor;
+	anchor.Line = 20;
+	anchor.SubRow = 2;
+
+	// The round trip has to be exact, or the correction fires on frames where nothing moved and
+	// the reader is fought while scrolling.
+	CHECK(AnchoredRow(anchor, 100, 5) == 102);
+}
+
+TEST_CASE("A line that rewrapped shorter lands on its last row rather than past it")
+{
+	ScrollAnchor anchor;
+	anchor.Line = 20;
+	anchor.SubRow = 4;
+
+	// A wider window fits the line into two rows where it used to need five. The reader was
+	// inside it; the nearest place left is its end.
+	CHECK(AnchoredRow(anchor, 100, 2) == 101);
+}
+
+TEST_CASE("A line with no rows resolves to where the line begins")
+{
+	ScrollAnchor anchor;
+	anchor.Line = 20;
+	anchor.SubRow = 3;
+
+	// Out of range for the map, which answers zero rows. Subtracting one from that would index
+	// far past the end of the document.
+	CHECK(AnchoredRow(anchor, 100, 0) == 100);
+}

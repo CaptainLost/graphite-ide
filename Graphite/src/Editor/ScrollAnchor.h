@@ -45,6 +45,18 @@ namespace Graphite {
 		bool Taken = false;
 	};
 
+	// The document row the anchor names now, given what its line has become.
+	//
+	// `firstRowOfLine` and `rowsOfLine` are that line's RowMap answers this frame. Separated from
+	// the map itself so the one part with a decision in it — what to do when the line no longer
+	// has the row that was recorded — is testable without building a document: rewrapping into a
+	// wider window leaves a line shorter than the sub-row taken from it, and the reader then ends
+	// at the last row of the line they were inside, which is the nearest place still there.
+	//
+	// A line with no rows answers with the line's own first row rather than one before it.
+	std::size_t AnchoredRow(const ScrollAnchor& anchor, std::size_t firstRowOfLine,
+							std::size_t rowsOfLine);
+
 	// The scroll that puts the anchored document row back where it was, now that it draws at
 	// `screenRowNow`.
 	//
