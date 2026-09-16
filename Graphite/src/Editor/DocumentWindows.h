@@ -507,6 +507,15 @@ namespace Graphite {
 		// and nothing about one is needed to read the other.
 		std::map<std::filesystem::path, SemanticOverlay> m_Semantic;
 
+		// Where each document's viewport sat when it last drew, so a screen-row mapping that
+		// changes between frames — a lens row arriving, a narrower window rewrapping — does not
+		// slide the file out from under the reader. Beside m_Semantic and pruned with it.
+		//
+		// Kept for every document rather than only for served ones: lenses are the trigger that
+		// was noticed, but rewrapping moves rows in a plain text file just as well, and an anchor
+		// costs three numbers.
+		std::map<std::filesystem::path, ScrollAnchor> m_Anchors;
+
 		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
 		// and the generation of the answer m_Diagnostics held for this path, so a rebuild is
 		// skipped on every frame that changed none of them. Generation rather than the answered

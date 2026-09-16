@@ -48,6 +48,8 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Editor/PreviewSemantics.cpp",
         "%{wks.location}/Graphite/src/Editor/LensModel.h",
         "%{wks.location}/Graphite/src/Editor/LensModel.cpp",
+        "%{wks.location}/Graphite/src/Editor/ScrollAnchor.h",
+        "%{wks.location}/Graphite/src/Editor/ScrollAnchor.cpp",
         "%{wks.location}/Graphite/src/Editor/SemanticOverlay.h",
         "%{wks.location}/Graphite/src/Editor/SemanticOverlay.cpp",
         "%{wks.location}/Graphite/src/Editor/DiagnosticOverlay.h",

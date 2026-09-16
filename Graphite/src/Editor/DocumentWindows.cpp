@@ -882,6 +882,22 @@ namespace Graphite {
 			}
 		}
 
+		// The same sweep again, for the same reason: an anchor is taken for every drawn document,
+		// served or not, so this map collects entries the loop at the top never visits. A stale
+		// anchor would also be worse than a missing one — it would put a reopened tab back at a
+		// row from the last time the file was open.
+		for (auto it = m_Anchors.begin(); it != m_Anchors.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_Anchors.erase(it);
+			}
+		}
+
 		// The same sweep as above, and for the same reason: DiagnosticFor is called for every
 		// drawn document, so m_DiagnosticOverlays collects entries m_Lenses never had and the
 		// loop at the top of this function therefore never visits.
@@ -1852,6 +1868,11 @@ namespace Graphite {
 				}
 
 				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
+
+				// Created on first sight and kept until the tab goes, like the overlays above.
+				// The widget fills it in as it draws; until then it is an anchor nobody has taken
+				// and the widget skips it.
+				view.Anchor = &m_Anchors[item.Path];
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 

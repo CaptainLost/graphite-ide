@@ -2344,6 +2344,21 @@ namespace Graphite {
 				(void)RefreshFindMatchesIfStale(item, buffer);
 			}
 
+			// Before the caret, deliberately. Both want the scroll this frame, and the caret is
+			// the fresher claim: a reply that arrives in the same frame somebody pressed a key
+			// must not drag the view back off where they just went. Keeping the reader's place is
+			// only worth doing when the reader did not ask to be somewhere else.
+			if (view.Anchor != nullptr && view.Anchor->Taken)
+			{
+				const std::size_t screenRowNow = lenses.ScreenRowOf(view.Anchor->DocumentRow);
+
+				if (const std::optional<float> scroll =
+						ScrollKeepingAnchor(*view.Anchor, screenRowNow, metrics.LineHeight))
+				{
+					ImGui::SetScrollY(*scroll);
+				}
+			}
+
 			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
 				ScrollToCaret(buffer, item, metrics, view.WordWrap, lenses);
@@ -2358,6 +2373,19 @@ namespace Graphite {
 							focused, view.Syntax,
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
 							view.Semantic, view.Diagnostics, view.DiagnosticsStale, result);
+
+			// Taken after the rows, because FirstVisibleRow is what the rows just worked out, and
+			// taken every frame so the anchor describes where the reader is now rather than where
+			// they were when something last moved. A frame that drew nothing leaves the previous
+			// anchor standing: it reports row zero, and adopting that would claim the reader had
+			// scrolled to the top.
+			if (view.Anchor != nullptr && result.LastVisibleRow >= result.FirstVisibleRow)
+			{
+				view.Anchor->DocumentRow = result.FirstVisibleRow;
+				view.Anchor->ScreenRow = lenses.ScreenRowOf(result.FirstVisibleRow);
+				view.Anchor->ScrollY = ImGui::GetScrollY();
+				view.Anchor->Taken = true;
+			}
 
 			// After the rows, so a click on the bar is a click on the bar: the surface's own
 			// hit test has already run against a rectangle the bar now sits on top of, and a

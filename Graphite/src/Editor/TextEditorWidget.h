@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Editor/ScrollAnchor.h"
+
 #include "Core/Text/Editing.h"
 
 #include <cstddef>
@@ -106,6 +108,15 @@ namespace Graphite {
 		// handing the widget the model: the widget draws what it is given and has no business
 		// holding something it could query.
 		bool DiagnosticsStale = false;
+
+		// Where this document's viewport was last time it drew, so a screen-row mapping that
+		// changes between frames does not slide the content out from under the reader. Owned by
+		// the caller and kept per document, the same way the syntax cache and the overlays above
+		// are; the widget reads it at the top of a frame and writes it back at the bottom.
+		//
+		// Null is a document nothing anchors — a legitimate mode, not a defect, and the widget
+		// simply skips both halves. See ScrollAnchor for what the correction is for.
+		ScrollAnchor* Anchor = nullptr;
 	};
 
 	class FindBar;
