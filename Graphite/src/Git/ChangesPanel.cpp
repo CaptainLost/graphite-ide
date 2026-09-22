@@ -577,15 +577,29 @@ namespace Graphite {
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
 		const float chevronWidth = ImGui::CalcTextSize(chevron).x;
 
-		// Only once git has answered. A closed folder, one still being counted and one whose
-		// count failed all say nothing rather than a number, because the only other number
-		// available is one read off the disk - which is the very thing git is being asked
-		// instead of.
-		const std::string count =
-			listing == nullptr ? std::string() : std::format("({})", listing->Entries.size());
+		// Only while the folder is open and git has answered for it. One still being counted
+		// and one whose count failed both say nothing rather than a number, because the only
+		// other number available is one read off the disk - which is the very thing git is
+		// being asked instead of. A closed folder says nothing either: the model holds its
+		// listing until the next status refresh drops it, so a count left on a closed row
+		// would go on describing a listing nobody has re-asked for.
+		const std::string count = expanded && listing != nullptr
+									  ? std::format("({})", listing->Entries.size())
+									  : std::string();
 
+		// Derived from the string that will actually be drawn, so the name's budget below can
+		// never reserve room for a count this row has decided not to show.
 		const float countWidth =
 			count.empty() ? 0.0f : ImGui::CalcTextSize(count.c_str()).x + gap;
+
+		// The trailing separator is what tells a reader at a glance that this row is a
+		// directory and not a file that happens to have no extension. Held out of the
+		// elision and put back after it: a long name cut to fit would otherwise lose the one
+		// glyph carrying that, in exactly the case where the name is too long to recognise
+		// on its own. Its width comes off the budget so the two together still fit.
+		constexpr std::string_view Separator = "/";
+
+		const float separatorWidth = ImGui::CalcTextSize(Separator.data()).x;
 
 		const float textStart = rowStart.x + RowPadding() + chevronWidth + innerGap +
 								letterWidth + gap;
@@ -593,7 +607,8 @@ namespace Graphite {
 		// Cut short of the buttons and of the count, the same way a file row is cut short of
 		// the buttons alone.
 		const float nameLimit = rowStart.x + rowWidth - RowPadding() - buttonsWidth -
-								ImGui::GetStyle().ItemSpacing.x - countWidth - textStart;
+								ImGui::GetStyle().ItemSpacing.x - countWidth - separatorWidth -
+								textStart;
 
 		ImGui::SetCursorPos(ImVec2(rowStart.x + RowPadding(), rowStart.y));
 		ImGui::TextUnformatted(chevron);
@@ -601,11 +616,10 @@ namespace Graphite {
 		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
 		ImGui::SameLine(0.0f, gap);
 
-		// The trailing separator is what tells a reader at a glance that this row is a
-		// directory and not a file that happens to have no extension.
-		const std::string name = Core::ToUtf8(file.Path.filename()) + "/";
+		const std::string name =
+			Elided(Core::ToUtf8(file.Path.filename()), nameLimit) + std::string(Separator);
 
-		ImGui::TextUnformatted(Elided(name, nameLimit).c_str());
+		ImGui::TextUnformatted(name.c_str());
 
 		if (!count.empty())
 		{
