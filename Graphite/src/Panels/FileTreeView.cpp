@@ -3,6 +3,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
@@ -17,22 +18,6 @@
 namespace Graphite {
 
 	namespace {
-		// BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets the
-		// menu be dragged by its body: a popup has no title bar, so its whole surface counts
-		// as draggable background, and ConfigWindowsMoveFromTitleBarOnly skips its cancel
-		// path for exactly those windows. Opening by hand allows BeginPopup, which does take
-		// window flags.
-		bool BeginRightClickPopup(const char* popupId)
-		{
-			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
-			{
-				ImGui::OpenPopup(popupId);
-			}
-
-			return ImGui::BeginPopup(popupId, ImGuiWindowFlags_NoMove);
-		}
-
 		void CenterNextItem(float availableWidth, float itemWidth)
 		{
 			if (availableWidth > itemWidth)
@@ -162,7 +147,7 @@ namespace Graphite {
 	{
 		const std::string popupId = "##ctx" + Core::ToUtf8(node.Path);
 
-		if (!BeginRightClickPopup(popupId.c_str()))
+		if (!Core::BeginRightClickPopup(popupId.c_str()))
 			return;
 
 		const bool isRoot = m_Workspace.IsOpen() && node.Path == m_Workspace.GetRoot();

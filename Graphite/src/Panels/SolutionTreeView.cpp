@@ -2,6 +2,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Platform/FileDialog.h"
 #include "Sln/SolutionEditor.h"
@@ -32,21 +33,6 @@ namespace Graphite {
 				out.push_back(childPath);
 				CollectFolderPaths(child, childPath, out);
 			}
-		}
-
-		// BeginPopupContextItem cannot pass window flags, and without NoMove ImGui lets the
-		// menu be dragged by its body: a popup has no title bar, so its whole surface counts
-		// as draggable background. Opening by hand allows BeginPopup, which does take window
-		// flags.
-		bool BeginRightClickPopup(const char* popupId)
-		{
-			if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup))
-			{
-				ImGui::OpenPopup(popupId);
-			}
-
-			return ImGui::BeginPopup(popupId, ImGuiWindowFlags_NoMove);
 		}
 
 		std::optional<std::filesystem::path> PickProjectFile()
@@ -253,7 +239,7 @@ namespace Graphite {
 	{
 		const std::string popupId = "##ctxSlnFolder" + path;
 
-		if (!BeginRightClickPopup(popupId.c_str()))
+		if (!Core::BeginRightClickPopup(popupId.c_str()))
 			return;
 
 		const bool isRoot = path.empty();
@@ -297,7 +283,7 @@ namespace Graphite {
 	{
 		const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.Path);
 
-		if (!BeginRightClickPopup(popupId.c_str()))
+		if (!Core::BeginRightClickPopup(popupId.c_str()))
 			return;
 
 		if (ImGui::MenuItem("Remove from Solution"))
