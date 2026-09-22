@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,26 @@ namespace Graphite {
 		};
 
 		Section m_Section = Section::Unstaged;
+
+		// The selected row, as the path and the section it was drawn under - never as an
+		// index into WorkingTreeStatus::Entries, which is rebuilt and reordered on every
+		// refresh. See NextSelection in ChangesRows.h.
+		//
+		// One file can be drawn in two sections at once, staged one way and edited again
+		// since, so the section is part of the identity of a row and not decoration.
+		struct Selection
+		{
+			Section InSection = Section::Unstaged;
+			std::filesystem::path Path;
+
+			bool operator==(const Selection&) const = default;
+		};
+
+		std::optional<Selection> m_Selected;
+
+		// What each section drew last frame, in drawn order, so a selection whose row has
+		// gone can be moved to the row that took its place.
+		std::vector<std::filesystem::path> m_LastDrawn[3];
 
 		std::string m_Message;
 		bool m_Amend = false;

@@ -188,6 +188,16 @@ namespace Graphite {
 
 		if (status == nullptr)
 		{
+			// No status means no rows drawn anywhere, so a stale selection or a stale
+			// last-drawn list would only ever be compared against the working tree of a
+			// repository that may no longer even be the one open when drawing resumes.
+			m_Selected.reset();
+
+			for (std::vector<std::filesystem::path>& lastDrawn : m_LastDrawn)
+			{
+				lastDrawn.clear();
+			}
+
 			ImGui::TextUnformatted("No repository.");
 			return;
 		}
@@ -225,6 +235,10 @@ namespace Graphite {
 	{
 		if (rows.empty())
 		{
+			// A section that draws nothing still drew something: an empty list. Recorded here
+			// rather than left stale, or the next non-empty frame would move the selection
+			// against a list from before this section emptied.
+			m_LastDrawn[static_cast<std::size_t>(m_Section)].clear();
 			return;
 		}
 
@@ -271,6 +285,32 @@ namespace Graphite {
 
 		ImGui::EndDisabled();
 
+		std::vector<std::filesystem::path> drawn;
+		drawn.reserve(rows.size());
+
+		for (const std::size_t entry : rows)
+		{
+			drawn.push_back(status.Entries[entry].Path);
+		}
+
+		const std::size_t slot = static_cast<std::size_t>(m_Section);
+
+		if (m_Selected && m_Selected->InSection == m_Section && drawn != m_LastDrawn[slot])
+		{
+			const auto moved = NextSelection(m_Selected->Path, m_LastDrawn[slot], drawn);
+
+			if (moved.has_value())
+			{
+				m_Selected = Selection{.InSection = m_Section, .Path = *moved};
+			}
+			else
+			{
+				m_Selected.reset();
+			}
+		}
+
+		m_LastDrawn[slot] = drawn;
+
 		if (open)
 		{
 			for (const std::size_t entry : rows)
@@ -304,12 +344,17 @@ namespace Graphite {
 		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();
 		const float rowWidth = ImGui::GetContentRegionAvail().x;
 
+		const Selection identity{.InSection = m_Section, .Path = file.Path};
+		const bool selected = m_Selected.has_value() && *m_Selected == identity;
+
 		// An empty label over the whole row: the letter, name and directory are laid over it
 		// in pieces below, and the buttons are laid over its right edge. AllowOverlap keeps
 		// every click reaching whichever of those actually sits under the mouse.
-		if (ImGui::Selectable("##row", false, ImGuiSelectableFlags_AllowOverlap,
+		if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowOverlap,
 							  ImVec2(0.0f, rowHeight)))
 		{
+			m_Selected = identity;
+
 			const OpenDiff diff{
 				.Commit = std::nullopt, .Target = TargetForSection(), .Path = file.Path};
 
