@@ -146,6 +146,12 @@ namespace Graphite {
 		// panel stopped being drawn would hold the gate forever and silence every modal in the
 		// application. WasDrawn reports the previous frame, and a question can only be asked
 		// from a frame this panel drew, so this never withdraws one the reader can still see.
+		//
+		// The cost is that the question is dropped, queue and all: a discard clicked while
+		// another modal held the gate disappears without a word if the panel is hidden before
+		// its turn comes. That is the lesser harm - nothing is discarded, and the row is still
+		// there to click again, whereas a gate never handed back takes the whole application's
+		// modals down with it and gives no way back at all.
 		if (!WasDrawn() && m_DiscardQuestion.IsAsked())
 		{
 			m_DiscardQuestion.Withdraw();
@@ -941,11 +947,14 @@ namespace Graphite {
 
 		question.Dirty = DirtyAmong(every);
 
-		if (file.IsDirectory)
+		// The same test the row itself applies before printing a count - see RenderFolderRow.
+		// Held is not enough: the model keeps a listing until the next status refresh drops it,
+		// so a folder the reader opened and then closed still has one, and a count taken from
+		// it would put a number in the dialog that the row beneath is deliberately refusing to
+		// show. Asking git for one here is no answer either, since it would arrive after the
+		// question did, or never.
+		if (file.IsDirectory && m_Expanded.contains(file.Path))
 		{
-			// Only from the listing the model already holds. Asking git for one here would put
-			// a number in front of the reader that arrives after the question does, or never;
-			// a folder nobody has opened is honestly described without one.
 			if (const std::shared_ptr<const Core::WorkingTreeStatus> listing =
 					m_Model.GetUntrackedIn(file.Path))
 			{
@@ -1038,7 +1047,11 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::Text("Discard the changes made to %s since the last commit?", name.c_str());
+			// Unstaged, not "since the last commit": a discard restores from the index - see
+			// Repository::DiscardWorkTree - so a partially staged file keeps what was staged
+			// and loses only the edits made on top of it. Naming the larger loss would be
+			// naming a loss that is not about to happen.
+			ImGui::Text("Discard the unstaged changes to %s?", name.c_str());
 		}
 
 		ImGui::TextDisabled("This cannot be undone.");
@@ -1055,9 +1068,10 @@ namespace Graphite {
 		ImGui::Separator();
 
 		// The request is copied out before Answer(), which drops the payload `question` refers
-		// to. The same guard every other write control in this panel takes.
+		// to.
 		const DiscardRequest request = question.Request;
 
+		// The same guard every other write control in this panel takes.
 		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 		if (ImGui::Button("Discard"))
