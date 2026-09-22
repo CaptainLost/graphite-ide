@@ -129,16 +129,28 @@ namespace Graphite {
 		}
 	}
 
-	ChangesPanel::ChangesPanel(GitModel& model, const Core::DocumentSet& documents,
+	ChangesPanel::ChangesPanel(GitModel& model, ModalGate& modals,
+							   const Core::DocumentSet& documents,
 							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
 							   DiffWindows& diffWindows)
 		: Core::Panel("changes", "Changes", "git"), m_Model(model), m_Documents(documents),
-		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows)
+		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows),
+		  m_DiscardQuestion(modals, "Discard changes?")
 	{
 	}
 
 	void ChangesPanel::OnUpdate(Core::Timestep)
 	{
+		// OnImGuiRender is what hands the gate back, and PanelManager skips it for a panel that
+		// is hidden, collapsed or behind another dock tab - so a question left open when the
+		// panel stopped being drawn would hold the gate forever and silence every modal in the
+		// application. WasDrawn reports the previous frame, and a question can only be asked
+		// from a frame this panel drew, so this never withdraws one the reader can still see.
+		if (!WasDrawn() && m_DiscardQuestion.IsAsked())
+		{
+			m_DiscardQuestion.Withdraw();
+		}
+
 		// Drained here, not in OnImGuiRender: Core::PanelManager calls OnUpdate on every
 		// panel every frame regardless of visibility, dock state or collapse, but skips
 		// OnImGuiRender for a panel that is hidden, collapsed, or behind another dock tab.
@@ -204,6 +216,13 @@ namespace Graphite {
 			// Expansions go with them: the next repository's directories are not this one's,
 			// and a path that happened to exist in both would open by itself.
 			m_Expanded.clear();
+
+			// The question goes with them, and its gate with it. Begin is the only other code
+			// that hands the gate back, and it is below this return - a workspace closed while
+			// a discard was on screen would otherwise leave the gate held forever, and no modal
+			// question anywhere in the application could be asked again. The rows it was asked
+			// about are gone in any case, so there is nothing left to answer.
+			m_DiscardQuestion.Withdraw();
 
 			ImGui::TextUnformatted("No repository.");
 			return;
@@ -901,35 +920,52 @@ namespace Graphite {
 
 	void ChangesPanel::BeginDiscard(const Core::FileStatus& file)
 	{
-		m_PendingDiscard = {};
+		DiscardQuestion question;
+		question.Subject = file.Path;
+		question.IsDirectory = file.IsDirectory;
 
 		// An untracked file has nothing in the index to be restored from, so discarding it can
 		// only mean deleting it - a different outcome, and one the row's icon already said.
 		if (file.IsUntracked)
 		{
-			m_PendingDiscard.Delete.push_back(file.Path);
+			question.Request.Delete.push_back(file.Path);
 		}
 		else
 		{
-			m_PendingDiscard.Restore.push_back(file.Path);
+			question.Request.Restore.push_back(file.Path);
 		}
 
-		std::vector<std::filesystem::path> every = m_PendingDiscard.Restore;
-		every.insert(every.end(), m_PendingDiscard.Delete.begin(), m_PendingDiscard.Delete.end());
+		std::vector<std::filesystem::path> every = question.Request.Restore;
+		every.insert(every.end(), question.Request.Delete.begin(),
+					 question.Request.Delete.end());
 
-		m_PendingDirty = DirtyAmong(every);
+		question.Dirty = DirtyAmong(every);
 
-		// Nothing to confirm in the ordinary case: what a discard throws away is what git
-		// already holds a copy of, and a question whose answer is always yes is only a
-		// second click. The exception is what git never saw - an open document with unsaved
-		// edits - so that, and only that, is what the dialog below still asks about.
-		if (m_PendingDirty.empty())
+		if (file.IsDirectory)
 		{
-			m_Model.RequestDiscard(m_PendingDiscard);
-			return;
+			// Only from the listing the model already holds. Asking git for one here would put
+			// a number in front of the reader that arrives after the question does, or never;
+			// a folder nobody has opened is honestly described without one.
+			if (const std::shared_ptr<const Core::WorkingTreeStatus> listing =
+					m_Model.GetUntrackedIn(file.Path))
+			{
+				question.FileCount = listing->Entries.size();
+			}
 		}
 
-		m_AskingAboutDiscard = true;
+		// Every discard asks. Git can hand back none of what one throws away - not a tracked
+		// file's uncommitted edits, not an untracked file, not a directory - so there is no
+		// case where going ahead silently is safe. The explorer has always confirmed every
+		// delete; this panel was the one place that did not.
+		//
+		// Asked first, by subject: while this question is on screen it takes the clicks itself,
+		// but one waiting its turn behind another modal leaves the row clickable, and a second
+		// click there would queue a duplicate that asks again about a file the first answer has
+		// already discarded.
+		if (!m_DiscardQuestion.Asked(question))
+		{
+			m_DiscardQuestion.Ask(std::move(question));
+		}
 	}
 
 	std::vector<std::filesystem::path> ChangesPanel::DirtyAmong(
@@ -973,41 +1009,61 @@ namespace Graphite {
 
 	void ChangesPanel::RenderDiscardConfirm()
 	{
-		if (m_AskingAboutDiscard)
-		{
-			ImGui::OpenPopup("Discard changes##changesPanelDiscard");
-			m_AskingAboutDiscard = false;
-		}
-
-		if (!ImGui::BeginPopupModal("Discard changes##changesPanelDiscard", nullptr,
-									ImGuiWindowFlags_AlwaysAutoResize))
+		if (!m_DiscardQuestion.Begin())
 		{
 			return;
 		}
 
-		// The only reason this dialog ever opens - see BeginDiscard - so it is the whole
-		// question, not one warning among several.
-		ImGui::TextUnformatted("Open with unsaved changes - those changes will be lost:");
+		// Begin returning true is what guarantees there is a current payload.
+		const DiscardQuestion& question = *m_DiscardQuestion.GetCurrent();
+		const std::string name = Core::ToUtf8(question.Subject);
 
-		for (const std::filesystem::path& path : m_PendingDirty)
+		// Named loss, not a general "are you sure": what is about to go is different in each
+		// of these cases, and only the sentence says which one the reader is looking at.
+		if (question.IsDirectory)
 		{
-			// The full path, not just the filename: two same-named files open from different
-			// directories would otherwise make this warning ambiguous exactly where precision
-			// matters.
-			ImGui::BulletText("%s", Core::ToUtf8(path).c_str());
+			if (question.FileCount.has_value())
+			{
+				ImGui::Text("Delete %s/ and the %zu files in it?", name.c_str(),
+							*question.FileCount);
+			}
+			else
+			{
+				ImGui::Text("Delete %s/ and everything in it?", name.c_str());
+			}
+		}
+		else if (!question.Request.Delete.empty())
+		{
+			ImGui::Text("Delete %s?", name.c_str());
+		}
+		else
+		{
+			ImGui::Text("Discard the changes made to %s since the last commit?", name.c_str());
 		}
 
-		ImGui::Spacing();
+		ImGui::TextDisabled("This cannot be undone.");
 
-		// The same guard every other write control in this panel takes: harmless today, since
-		// the popup closes on press and the model serialises writes, but a reader should not
-		// have to notice that to trust it.
+		// A second, different loss: what git never saw, and so the one part of this no refresh
+		// of the working tree could put back either.
+		if (!question.Dirty.empty())
+		{
+			ImGui::Separator();
+			ImGui::Text("%zu open file(s) have unsaved edits that would be lost.",
+						question.Dirty.size());
+		}
+
+		ImGui::Separator();
+
+		// The request is copied out before Answer(), which drops the payload `question` refers
+		// to. The same guard every other write control in this panel takes.
+		const DiscardRequest request = question.Request;
+
 		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 		if (ImGui::Button("Discard"))
 		{
-			m_Model.RequestDiscard(m_PendingDiscard);
-			ImGui::CloseCurrentPopup();
+			m_Model.RequestDiscard(request);
+			m_DiscardQuestion.Answer();
 		}
 
 		ImGui::EndDisabled();
@@ -1016,9 +1072,9 @@ namespace Graphite {
 
 		if (ImGui::Button("Cancel"))
 		{
-			ImGui::CloseCurrentPopup();
+			m_DiscardQuestion.Answer();
 		}
 
-		ImGui::EndPopup();
+		m_DiscardQuestion.End();
 	}
 }

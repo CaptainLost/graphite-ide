@@ -122,8 +122,9 @@ namespace Graphite {
 			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows)));
 		gitView->SubscribeTo(m_Events);
 
-		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Documents, m_DocumentWindows,
-													  m_ActiveScheme, m_DiffWindows));
+		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
+													  m_DocumentWindows, m_ActiveScheme,
+													  m_DiffWindows));
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);

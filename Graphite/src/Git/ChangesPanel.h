@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/ModalQuestion.h"
 #include "Git/ChangesRows.h"
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
@@ -35,7 +36,7 @@ namespace Graphite {
 	class ChangesPanel final : public Core::Panel
 	{
 	public:
-		ChangesPanel(GitModel& model, const Core::DocumentSet& documents,
+		ChangesPanel(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents,
 					DocumentWindows& documentWindows, const ActiveScheme& scheme,
 					DiffWindows& diffWindows);
 
@@ -83,8 +84,9 @@ namespace Graphite {
 		// colour schemes.
 		unsigned int ColourOfLetter(char letter, const GitPalette& palette) const;
 
-		// Discards `file`, asking first only when the discard would take unsaved edits with
-		// it. Everything else a discard undoes, git can hand back.
+		// Asks about discarding `file`. Never discards on the spot: git can hand back none of
+		// what a discard throws away, so the question is the discard's first step and not a
+		// special case of it.
 		void BeginDiscard(const Core::FileStatus& file);
 
 		void RenderDiscardConfirm();
@@ -146,14 +148,34 @@ namespace Graphite {
 		std::string m_Message;
 		bool m_Amend = false;
 
-		// What the discard covers. Two lists because they are two outcomes: restored from the
-		// index, and deleted from disk for good.
-		DiscardRequest m_PendingDiscard;
+		// What one discard would throw away. Everything the question needs to word itself,
+		// worked out when the discard is asked for rather than while the dialog draws.
+		struct DiscardQuestion
+		{
+			// What the discard covers. Two lists because they are two outcomes: restored from
+			// the index, and deleted from disk for good.
+			DiscardRequest Request;
 
-		// Named separately from the request so the dialog can warn about them without working
-		// the answer out again while it draws.
-		std::vector<std::filesystem::path> m_PendingDirty;
+			// Named for the dialog's first line. One discard is always about one row.
+			std::filesystem::path Subject;
 
-		bool m_AskingAboutDiscard = false;
+			bool IsDirectory = false;
+
+			// Absent when the folder has not been opened, which is when there is no honest
+			// number to put in front of the reader.
+			std::optional<std::size_t> FileCount;
+
+			// The open documents with unsaved edits this would overwrite, if any.
+			std::vector<std::filesystem::path> Dirty;
+
+			// Two asks about one row are one question: a second click on a discard button the
+			// reader has not answered yet must not queue a duplicate behind the first.
+			bool operator==(const DiscardQuestion& other) const
+			{
+				return Subject == other.Subject;
+			}
+		};
+
+		ModalQuestion<DiscardQuestion> m_DiscardQuestion;
 	};
 }
