@@ -1,6 +1,9 @@
 #include "Git/ChangesRows.h"
 
+#include "Core/Fs/FileSystem.h"
+
 #include <algorithm>
+#include <format>
 
 namespace Graphite {
 
@@ -8,6 +11,54 @@ namespace Graphite {
 		bool Has(Core::StatusFlags flags, Core::StatusFlags wanted)
 		{
 			return (flags & wanted) == wanted;
+		}
+
+		// A path's components with the empty ones dropped. A trailing separator leaves an
+		// empty final element behind - NormalizePath keeps it, deliberately - and comparing
+		// component by component would otherwise let "dir/" and "dir" disagree.
+		std::vector<std::string> Components(const std::filesystem::path& path)
+		{
+			std::vector<std::string> parts;
+
+			for (const std::filesystem::path& part : path)
+			{
+				std::string text = Core::ToUtf8(part);
+
+				if (!text.empty())
+				{
+					parts.push_back(std::move(text));
+				}
+			}
+
+			return parts;
+		}
+
+		// Whether `path` sits inside `directory`, both already normalised. Compared component
+		// by component through CompareNames rather than as text, for the reason SamePath
+		// gives: Windows paths are case-insensitive, and a textual prefix test would also
+		// call "src2/a.txt" a file under "src".
+		bool UnderDirectory(const std::filesystem::path& path,
+							const std::filesystem::path& directory)
+		{
+			const std::vector<std::string> parts = Components(path);
+			const std::vector<std::string> base = Components(directory);
+
+			// A directory does not contain itself, and an empty directory is not a directory
+			// every path happens to be under.
+			if (base.empty() || parts.size() <= base.size())
+			{
+				return false;
+			}
+
+			for (std::size_t index = 0; index < base.size(); ++index)
+			{
+				if (Core::CompareNames(parts[index], base[index]) != 0)
+				{
+					return false;
+				}
+			}
+
+			return true;
 		}
 	}
 
@@ -104,5 +155,87 @@ namespace Graphite {
 		const std::size_t position = static_cast<std::size_t>(was - before.begin());
 
 		return after[std::min(position, after.size() - 1)];
+	}
+
+	DiscardPlan PlanDiscard(const DiscardSubject& subject,
+							const std::filesystem::path& workingDirectory,
+							const std::vector<std::filesystem::path>& openDirty)
+	{
+		DiscardPlan plan;
+
+		// An untracked path has nothing in the index to be restored from, so discarding it
+		// can only mean deleting it - a different outcome, and one the row's icon already
+		// said.
+		if (subject.IsUntracked)
+		{
+			plan.Delete.push_back(subject.Path);
+		}
+		else
+		{
+			plan.Restore.push_back(subject.Path);
+		}
+
+		if (subject.IsDirectory)
+		{
+			if (subject.Listing.has_value())
+			{
+				plan.Files = *subject.Listing;
+				plan.FileCount = plan.Files.size();
+			}
+
+			// Without a listing the files stay unknown rather than guessed. Reading the
+			// directory off the disk here would answer the question git is being asked
+			// instead of, and a guess put in front of the reader is worse than a sentence
+			// that does not count.
+		}
+		else
+		{
+			plan.Files.push_back(subject.Path);
+		}
+
+		const std::filesystem::path absoluteSubject =
+			Core::NormalizePath(workingDirectory / subject.Path);
+
+		for (const std::filesystem::path& document : openDirty)
+		{
+			const std::filesystem::path normalized = Core::NormalizePath(document);
+
+			// Not the listing: a directory nobody opened has no listing, and the edits under
+			// it would be lost all the same. The subject answers for every file beneath it,
+			// listed or not.
+			if (Core::SamePath(normalized, absoluteSubject)
+				|| (subject.IsDirectory && UnderDirectory(normalized, absoluteSubject)))
+			{
+				plan.Dirty.push_back(document);
+			}
+		}
+
+		return plan;
+	}
+
+	std::string DiscardQuestionText(const DiscardSubject& subject, const DiscardPlan& plan)
+	{
+		const std::string name = Core::ToUtf8(subject.Path);
+
+		if (subject.IsDirectory)
+		{
+			if (plan.FileCount.has_value())
+			{
+				return std::format("Delete {}/ and the {} files in it?", name, *plan.FileCount);
+			}
+
+			return std::format("Delete {}/ and everything in it?", name);
+		}
+
+		if (!plan.Delete.empty())
+		{
+			return std::format("Delete {}?", name);
+		}
+
+		// Unstaged, not "since the last commit": a discard restores from the index - see
+		// Repository::DiscardWorkTree - so a partially staged file keeps what was staged and
+		// loses only the edits made on top of it. Naming the larger loss would be naming a
+		// loss that is not about to happen.
+		return std::format("Discard the unstaged changes to {}?", name);
 	}
 }

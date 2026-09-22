@@ -130,3 +130,156 @@ TEST_CASE("A selection that was never in the list is dropped")
 
 	CHECK(Graphite::NextSelection("gone.txt", before, after) == std::nullopt);
 }
+
+namespace {
+
+	// The one repository these discard cases are asked about. Absolute, because a document's
+	// path is absolute and the whole point of the join is to bring the two onto the same
+	// footing.
+	const std::filesystem::path Repository = "C:/repo";
+
+	Graphite::DiscardSubject File(const char* path, bool untracked)
+	{
+		Graphite::DiscardSubject subject;
+		subject.Path = path;
+		subject.IsUntracked = untracked;
+		return subject;
+	}
+
+	Graphite::DiscardSubject Folder(const char* path,
+									std::optional<std::vector<std::filesystem::path>> listing)
+	{
+		Graphite::DiscardSubject subject;
+		subject.Path = path;
+		subject.IsDirectory = true;
+		subject.IsUntracked = true;
+		subject.Listing = std::move(listing);
+		return subject;
+	}
+}
+
+TEST_CASE("Discarding a tracked file restores it and names only itself")
+{
+	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(File("src/a.txt", false),
+															Repository, {});
+
+	CHECK(plan.Restore == std::vector<std::filesystem::path>{"src/a.txt"});
+	CHECK(plan.Delete.empty());
+	CHECK(plan.Files == std::vector<std::filesystem::path>{"src/a.txt"});
+	CHECK(plan.FileCount == std::nullopt);
+}
+
+TEST_CASE("Discarding an untracked file deletes it, since there is nothing to restore")
+{
+	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(File("src/a.txt", true),
+															Repository, {});
+
+	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src/a.txt"});
+	CHECK(plan.Restore.empty());
+}
+
+TEST_CASE("A folder discard names the files it was listed with")
+{
+	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(
+		Folder("src", std::vector<std::filesystem::path>{"src/a.txt", "src/deep/b.txt"}),
+		Repository, {});
+
+	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src"});
+	CHECK(plan.Files
+		  == std::vector<std::filesystem::path>{"src/a.txt", "src/deep/b.txt"});
+	CHECK(plan.FileCount == std::optional<std::size_t>(2));
+}
+
+TEST_CASE("A folder nobody opened names no files and counts none")
+{
+	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(Folder("src", std::nullopt),
+															Repository, {});
+
+	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src"});
+	CHECK(plan.Files.empty());
+	CHECK(plan.FileCount == std::nullopt);
+}
+
+TEST_CASE("Unsaved edits under a discarded folder are counted as lost")
+{
+	const std::vector<std::filesystem::path> dirty{"C:/repo/src/a.txt",
+												   "C:/repo/src/deep/b.txt"};
+
+	const Graphite::DiscardPlan plan =
+		Graphite::PlanDiscard(Folder("src", std::nullopt), Repository, dirty);
+
+	CHECK(plan.Dirty == dirty);
+}
+
+TEST_CASE("A folder with an empty listing still answers for the edits under it")
+{
+	const std::vector<std::filesystem::path> dirty{"C:/repo/src/a.txt"};
+
+	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(
+		Folder("src", std::vector<std::filesystem::path>{}), Repository, dirty);
+
+	CHECK(plan.Dirty == dirty);
+}
+
+TEST_CASE("A sibling folder sharing a prefix is not inside the one being discarded")
+{
+	const std::vector<std::filesystem::path> dirty{"C:/repo/src2/a.txt", "C:/repo/srcs.txt"};
+
+	const Graphite::DiscardPlan plan =
+		Graphite::PlanDiscard(Folder("src", std::nullopt), Repository, dirty);
+
+	CHECK(plan.Dirty.empty());
+}
+
+TEST_CASE("A document under a folder is matched however its path is spelled")
+{
+	// Native separators, the wrong case, and a step back through a directory: all three are
+	// spellings the same document can arrive with.
+	const std::vector<std::filesystem::path> dirty{R"(C:\repo\SRC\sub\..\a.txt)"};
+
+	const Graphite::DiscardPlan plan =
+		Graphite::PlanDiscard(Folder("src", std::nullopt), Repository, dirty);
+
+	CHECK(plan.Dirty == dirty);
+}
+
+TEST_CASE("A file discard warns about that file and no other")
+{
+	const std::vector<std::filesystem::path> dirty{"C:/repo/src/a.txt", "C:/repo/src/b.txt"};
+
+	const Graphite::DiscardPlan plan =
+		Graphite::PlanDiscard(File("src/a.txt", false), Repository, dirty);
+
+	CHECK(plan.Dirty == std::vector<std::filesystem::path>{"C:/repo/src/a.txt"});
+}
+
+TEST_CASE("The question counts a folder's files only when they are known")
+{
+	const Graphite::DiscardSubject listed =
+		Folder("src", std::vector<std::filesystem::path>{"src/a.txt", "src/b.txt"});
+
+	CHECK(Graphite::DiscardQuestionText(listed,
+										Graphite::PlanDiscard(listed, Repository, {}))
+		  == "Delete src/ and the 2 files in it?");
+
+	const Graphite::DiscardSubject unlisted = Folder("src", std::nullopt);
+
+	CHECK(Graphite::DiscardQuestionText(unlisted,
+										Graphite::PlanDiscard(unlisted, Repository, {}))
+		  == "Delete src/ and everything in it?");
+}
+
+TEST_CASE("The question says whether a file is deleted or restored")
+{
+	const Graphite::DiscardSubject untracked = File("src/a.txt", true);
+
+	CHECK(Graphite::DiscardQuestionText(untracked,
+										Graphite::PlanDiscard(untracked, Repository, {}))
+		  == "Delete src/a.txt?");
+
+	const Graphite::DiscardSubject tracked = File("src/a.txt", false);
+
+	CHECK(Graphite::DiscardQuestionText(tracked,
+										Graphite::PlanDiscard(tracked, Repository, {}))
+		  == "Discard the unstaged changes to src/a.txt?");
+}

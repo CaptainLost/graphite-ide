@@ -102,8 +102,10 @@ project "GraphiteTests"
     -- The one file under Git that is a window rather than logic: its rows open a file
     -- through DocumentWindows, and linking that call here would drag the whole text editor
     -- in behind it - the same reason Editor and Panels above are named file by file instead
-    -- of globbed. Nothing under tests/src names this panel; the row logic it draws is in
-    -- ChangesRows, which stays.
+    -- of globbed. Nothing under tests/src names this panel; the row logic it draws, and the
+    -- discard question it composes, are in ChangesRows, which stays. The way back in for a
+    -- test that really needs the panel is to publish OpenFileRequested on the event bus
+    -- instead of calling DocumentWindows, which is what pulls the editor in behind it.
     removefiles { "%{wks.location}/Graphite/src/Git/ChangesPanel.cpp" }
 
     includedirs

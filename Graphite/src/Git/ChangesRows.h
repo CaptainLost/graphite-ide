@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Graphite {
@@ -47,4 +48,66 @@ namespace Graphite {
 		const std::filesystem::path& selected,
 		const std::vector<std::filesystem::path>& before,
 		const std::vector<std::filesystem::path>& after);
+
+	// The row a discard was asked about, as the few facts the decision turns on rather than
+	// as the FileStatus it came from — so the decision can be made, and tested, without a
+	// status, a model or a panel.
+	struct DiscardSubject
+	{
+		// As the status names it: relative to the repository's working directory.
+		std::filesystem::path Path;
+
+		bool IsDirectory = false;
+		bool IsUntracked = false;
+
+		// The files git listed under a directory, git-relative, when the caller holds a
+		// listing it is willing to stand behind. Absent for a file, and for a directory
+		// nobody has opened — which is not the same as an empty listing, and is why this is
+		// an optional rather than a vector that happens to be empty.
+		std::optional<std::vector<std::filesystem::path>> Listing;
+	};
+
+	// What one discard would do and what it would cost, worked out before the question is
+	// put to the reader.
+	struct DiscardPlan
+	{
+		// The two outcomes a discard has, kept apart for the reason DiscardRequest keeps
+		// them apart. Copied into a DiscardRequest by the caller; this header stays clear of
+		// GitModel so the decision can be tested without one.
+		std::vector<std::filesystem::path> Restore;
+		std::vector<std::filesystem::path> Delete;
+
+		// Every file that disappears from disk or is rewritten under it, git-relative: the
+		// subject itself for a file, and the listing's entries for a directory. Empty for a
+		// directory with no listing, because nothing on this side can honestly say what was
+		// in it. The caller uses this to tell the editor which files a confirmed discard
+		// touched — a directory's own path names none of them.
+		std::vector<std::filesystem::path> Files;
+
+		// How many files the dialog may claim are in the directory. Absent wherever there is
+		// no honest number, which is every case but a directory with a listing.
+		std::optional<std::size_t> FileCount;
+
+		// The open documents with unsaved edits this would overwrite, as the caller spelled
+		// them.
+		std::vector<std::filesystem::path> Dirty;
+	};
+
+	// `openDirty` is the absolute path of every open document with unsaved changes.
+	// `workingDirectory` is what the subject's git-relative path is relative to — the
+	// repository's working directory, not the folder the user opened, which
+	// Core::Repository::Open may have resolved upward from.
+	//
+	// A document counts as overwritten when its path IS the subject or LIES UNDER it. The
+	// second half is what a directory discard turns on: exact equality can never match a
+	// file under a directory, so a whole-folder delete — the case where the most is lost —
+	// would be the one that warns about nothing.
+	DiscardPlan PlanDiscard(const DiscardSubject& subject,
+							const std::filesystem::path& workingDirectory,
+							const std::vector<std::filesystem::path>& openDirty);
+
+	// The sentence the discard question opens with. Named loss, not a general "are you
+	// sure": what is about to go is different in each of these cases, and only the sentence
+	// says which one the reader is looking at.
+	std::string DiscardQuestionText(const DiscardSubject& subject, const DiscardPlan& plan);
 }
