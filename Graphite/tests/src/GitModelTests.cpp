@@ -1757,3 +1757,89 @@ TEST_CASE("A working-tree diff that names no file reads no text")
 	CHECK(port.WorkingTreeTextCalls == 0);
 	CHECK(model.GetWorkingTreeTexts() == nullptr);
 }
+
+TEST_CASE("An untracked listing is null until it has been asked for and applied")
+{
+	FakePort port;
+	Core::WorkingTreeStatus listing;
+	Core::FileStatus file;
+	file.Path = "notes/first.md";
+	file.IsUntracked = true;
+	listing.Entries.push_back(file);
+	port.UntrackedByDirectory[std::filesystem::path("notes")] = listing;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	CHECK(model.GetUntrackedIn("notes") == nullptr);
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+
+	const auto held = model.GetUntrackedIn("notes");
+	REQUIRE(held != nullptr);
+	CHECK(held->Entries.size() == 1);
+	CHECK(port.LastUntrackedDirectory == std::filesystem::path("notes"));
+}
+
+TEST_CASE("A listing already held is not asked for again")
+{
+	FakePort port;
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+
+	CHECK(port.UntrackedCalls == 1);
+}
+
+TEST_CASE("A listing is dropped when the working tree changes")
+{
+	FakePort port;
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+	REQUIRE(model.GetUntrackedIn("notes") != nullptr);
+
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep(0.0f));
+
+	CHECK(model.GetUntrackedIn("notes") == nullptr);
+}
+
+TEST_CASE("A failed listing answers null and is not retried on its own")
+{
+	FakePort port;
+	port.FailUntracked = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+
+	CHECK(model.GetUntrackedIn("notes") == nullptr);
+	CHECK(port.UntrackedCalls == 1);
+}
+
+TEST_CASE("Clearing the model forgets every listing")
+{
+	FakePort port;
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestUntrackedIn("notes");
+	model.OnUpdate(Core::Timestep(0.0f));
+	REQUIRE(model.GetUntrackedIn("notes") != nullptr);
+
+	model.Clear();
+
+	CHECK(model.GetUntrackedIn("notes") == nullptr);
+}

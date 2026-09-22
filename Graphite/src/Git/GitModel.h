@@ -54,6 +54,24 @@ namespace Graphite {
 		void OnUpdate(Core::Timestep ts);
 
 		void RequestStatus();
+
+		// Every untracked file under one directory, fetched when a reader opens that
+		// directory up. Kept per directory rather than in one list, because each is a
+		// separate question with a separate answer, and dropped whole on every refresh:
+		// unlike a commit's diff, what is untracked under a directory changes as the
+		// working tree does.
+		//
+		// Asking for a directory already held, already in flight, or already failed does
+		// nothing. A panel asks on every frame it draws an expanded folder, and a
+		// permanent failure must not turn that into a worker job per frame.
+		void RequestUntrackedIn(std::filesystem::path directory);
+
+		// Null while the answer is in flight, after a failure, and for a directory never
+		// asked about. The caller's answer is the same in every case: draw no children
+		// under that folder yet.
+		std::shared_ptr<const Core::WorkingTreeStatus> GetUntrackedIn(
+			const std::filesystem::path& directory) const;
+
 		void RequestBranches();
 		void RequestLog(Core::LogRequest request);
 
@@ -312,6 +330,27 @@ namespace Graphite {
 
 		void Touch(CachedTexts& entry) const;
 		void EvictTextsIfFull();
+
+		struct CachedUntracked
+		{
+			std::uint64_t Requested = 0;
+			std::uint64_t Applied = 0;
+
+			std::shared_ptr<const Core::WorkingTreeStatus> Listing;
+
+			bool Failed = false;
+		};
+
+		// Keyed by the path's UTF-8 string, because std::filesystem::path has no standard
+		// hash. No LRU bound here, unlike kCachedDiffs: this map holds one entry per
+		// directory the reader expanded since the last refresh, and every refresh empties
+		// it, so there is nothing to accumulate.
+		std::unordered_map<std::string, CachedUntracked> m_Untracked;
+
+		// Model-wide and never restarts, for the reason spelled out on CachedDiff::Requested:
+		// an entry recreated after a Clear() would otherwise let a pre-clear delivery
+		// outrank a post-clear one.
+		std::uint64_t m_UntrackedGeneration = 0;
 
 		enum class WriteKind
 		{

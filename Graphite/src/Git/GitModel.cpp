@@ -1,5 +1,6 @@
 #include "Git/GitModel.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Workspace/Workspace.h"
 
 #include <utility>
@@ -43,6 +44,7 @@ namespace Graphite {
 		m_WorkingTreeTexts.reset();
 		m_CommitDiffs.clear();
 		m_Texts.clear();
+		m_Untracked.clear();
 
 		m_StatusError.reset();
 		m_BranchesError.reset();
@@ -194,6 +196,12 @@ namespace Graphite {
 				m_StatusError.reset();
 				m_Status = std::make_shared<const Core::WorkingTreeStatus>(
 					std::move(result).GetValue());
+
+				// What is untracked under an expanded directory changes as the working tree
+				// does, unlike a commit's diff - a fresh status means every listing held so
+				// far may already be stale, so all of them are dropped rather than kept
+				// until their own next refresh.
+				m_Untracked.clear();
 
 				// A failure here is not folded into m_StatusError: the status itself is good,
 				// and the previous working directory - correct for the same repository - is a
@@ -471,6 +479,59 @@ namespace Graphite {
 					std::make_shared<const Core::Diff>(std::move(result).GetValue());
 			});
 		});
+	}
+
+	void GitModel::RequestUntrackedIn(std::filesystem::path directory)
+	{
+		if (m_Root.empty())
+		{
+			return;
+		}
+
+		const std::string key = Core::ToUtf8(directory);
+		CachedUntracked& entry = m_Untracked[key];
+
+		if (entry.Listing != nullptr || entry.Failed || entry.Requested > entry.Applied)
+		{
+			return;
+		}
+
+		++m_UntrackedGeneration;
+		entry.Requested = m_UntrackedGeneration;
+
+		const std::uint64_t generation = entry.Requested;
+
+		m_Submit([this, directory = std::move(directory), key, generation]() {
+			auto listing = m_Port.QueryUntrackedIn(directory);
+
+			Deliver([this, key, generation, listing = std::move(listing)]() mutable {
+				const auto held = m_Untracked.find(key);
+
+				if (held == m_Untracked.end() || held->second.Applied >= generation)
+				{
+					return;
+				}
+
+				held->second.Applied = generation;
+
+				if (!listing.HasValue())
+				{
+					held->second.Failed = true;
+					return;
+				}
+
+				held->second.Listing = std::make_shared<const Core::WorkingTreeStatus>(
+					std::move(listing).GetValue());
+			});
+		});
+	}
+
+	std::shared_ptr<const Core::WorkingTreeStatus> GitModel::GetUntrackedIn(
+		const std::filesystem::path& directory) const
+	{
+		const auto held = m_Untracked.find(Core::ToUtf8(directory));
+
+		return held == m_Untracked.end() ? nullptr : held->second.Listing;
 	}
 
 	void GitModel::ForgetFailedDiffFor(const Core::Oid& commit)
