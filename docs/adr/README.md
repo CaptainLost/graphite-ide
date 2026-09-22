@@ -543,4 +543,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0511](0511-analyse-the-workspace-ahead-of-the-reader-several-files-at-a-time.md) | Analyse the workspace ahead of the reader, several files at a time | proposed | 2026-09-14 |
 | [0512](0512-name-one-owner-for-every-document-opened-with-a-language-server.md) | Name one owner for every document opened with a language server | proposed | 2026-09-14 |
 | [0513](0513-keep-the-workspace-analysis-on-disk-and-discard-it-on-any-doubt.md) | Keep the workspace analysis on disk and discard it on any doubt | proposed | 2026-09-15 |
+| [0514](0514-expand-an-untracked-directory-by-asking-git-about-that-directory-alone.md) | Expand an untracked directory by asking git about that directory alone | proposed | 2026-09-22 |
+| [0515](0515-ask-before-every-discard-in-the-changes-panel.md) | Ask before every discard in the changes panel | proposed | 2026-09-22 |
 <!-- /adr-index -->
