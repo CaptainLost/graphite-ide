@@ -3,6 +3,8 @@
 #include "Core/Git/Status.h"
 
 #include <cstddef>
+#include <filesystem>
+#include <optional>
 #include <vector>
 
 namespace Graphite {
@@ -31,4 +33,18 @@ namespace Graphite {
 	// one fact a reader cannot get from the path, and a file that is both renamed and
 	// modified is, to someone scanning a list, a rename.
 	char ChangeLetter(Core::StatusFlags flags, bool untracked);
+
+	// Where a selection lands after the status changed under it. `before` and `after` are
+	// the paths one section drew last frame and this frame, in drawn order.
+	//
+	// Kept by path rather than by index because the status is rebuilt on every refresh and
+	// its entries reorder; an index would quietly move the selection onto a different file
+	// every time a save landed. When the selected path is gone, the row that took its
+	// position is selected, so acting on a run of rows leaves the selection where the hand
+	// already is. Nothing is returned when the section emptied, or when the selection was
+	// not in it to begin with.
+	std::optional<std::filesystem::path> NextSelection(
+		const std::filesystem::path& selected,
+		const std::vector<std::filesystem::path>& before,
+		const std::vector<std::filesystem::path>& after);
 }

@@ -1,5 +1,7 @@
 #include "Git/ChangesRows.h"
 
+#include <algorithm>
+
 namespace Graphite {
 
 	namespace {
@@ -75,5 +77,32 @@ namespace Graphite {
 		}
 
 		return ' ';
+	}
+
+	std::optional<std::filesystem::path> NextSelection(
+		const std::filesystem::path& selected,
+		const std::vector<std::filesystem::path>& before,
+		const std::vector<std::filesystem::path>& after)
+	{
+		if (std::find(after.begin(), after.end(), selected) != after.end())
+		{
+			return selected;
+		}
+
+		if (after.empty())
+		{
+			return std::nullopt;
+		}
+
+		const auto was = std::find(before.begin(), before.end(), selected);
+
+		if (was == before.end())
+		{
+			return std::nullopt;
+		}
+
+		const std::size_t position = static_cast<std::size_t>(was - before.begin());
+
+		return after[std::min(position, after.size() - 1)];
 	}
 }

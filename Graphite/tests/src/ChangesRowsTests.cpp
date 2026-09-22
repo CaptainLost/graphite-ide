@@ -2,6 +2,10 @@
 
 #include "Git/ChangesRows.h"
 
+#include <filesystem>
+#include <optional>
+#include <vector>
+
 namespace {
 
 	Core::FileStatus Entry(const char* path, Core::StatusFlags index, Core::StatusFlags workTree)
@@ -82,4 +86,47 @@ TEST_CASE("The change letter names the most consequential flag")
 	// Thus Renamed+Modified is the only multi-bit combination ever produced. See:
 	// vendor/libgit2/src/libgit2/status.c (~lines 25-118) and diff_tform.c (~lines 980-1075).
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::Modified, false) == 'R');
+}
+
+TEST_CASE("A selection that is still there stays where it is")
+{
+	const std::vector<std::filesystem::path> before{"a.txt", "b.txt", "c.txt"};
+	const std::vector<std::filesystem::path> after{"c.txt", "a.txt", "b.txt"};
+
+	CHECK(Graphite::NextSelection("b.txt", before, after)
+		  == std::optional<std::filesystem::path>("b.txt"));
+}
+
+TEST_CASE("A selection that left is replaced by the row that took its place")
+{
+	const std::vector<std::filesystem::path> before{"a.txt", "b.txt", "c.txt"};
+	const std::vector<std::filesystem::path> after{"a.txt", "c.txt"};
+
+	CHECK(Graphite::NextSelection("b.txt", before, after)
+		  == std::optional<std::filesystem::path>("c.txt"));
+}
+
+TEST_CASE("A selection on the last row falls back to the new last row")
+{
+	const std::vector<std::filesystem::path> before{"a.txt", "b.txt", "c.txt"};
+	const std::vector<std::filesystem::path> after{"a.txt", "b.txt"};
+
+	CHECK(Graphite::NextSelection("c.txt", before, after)
+		  == std::optional<std::filesystem::path>("b.txt"));
+}
+
+TEST_CASE("A selection in a section that emptied is dropped")
+{
+	const std::vector<std::filesystem::path> before{"a.txt"};
+	const std::vector<std::filesystem::path> after{};
+
+	CHECK(Graphite::NextSelection("a.txt", before, after) == std::nullopt);
+}
+
+TEST_CASE("A selection that was never in the list is dropped")
+{
+	const std::vector<std::filesystem::path> before{"a.txt"};
+	const std::vector<std::filesystem::path> after{"a.txt"};
+
+	CHECK(Graphite::NextSelection("gone.txt", before, after) == std::nullopt);
 }
