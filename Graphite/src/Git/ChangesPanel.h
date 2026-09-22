@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,13 @@ namespace Graphite {
 		// unstage.
 		void RenderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
 					   const GitPalette& palette);
+
+		// An untracked directory: one row for the directory itself, and, while it is open,
+		// one row per file under it. Drawn apart from RenderRow because almost nothing is
+		// shared - a directory has no diff to open, no status letter worth more than '?',
+		// and a file count that does not exist until git has been asked.
+		void RenderFolderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
+							 const GitPalette& palette);
 
 		void RenderCommitBox();
 
@@ -115,6 +123,11 @@ namespace Graphite {
 		};
 
 		std::optional<Selection> m_Selected;
+
+		// Which untracked directories the reader has opened, by path. Kept across a status
+		// refresh - a directory does not close because a file elsewhere was saved - and
+		// cleared when the workspace closes.
+		std::set<std::filesystem::path> m_Expanded;
 
 		// What each section drew last frame, in drawn order, so a selection whose row has
 		// gone can be moved to the row that took its place.

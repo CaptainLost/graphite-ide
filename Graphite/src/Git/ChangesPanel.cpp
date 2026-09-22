@@ -198,6 +198,10 @@ namespace Graphite {
 				lastDrawn.clear();
 			}
 
+			// Expansions go with them: the next repository's directories are not this one's,
+			// and a path that happened to exist in both would open by itself.
+			m_Expanded.clear();
+
 			ImGui::TextUnformatted("No repository.");
 			return;
 		}
@@ -315,7 +319,14 @@ namespace Graphite {
 		{
 			for (const std::size_t entry : rows)
 			{
-				RenderRow(entry, status, palette);
+				if (status.Entries[entry].IsDirectory)
+				{
+					RenderFolderRow(entry, status, palette);
+				}
+				else
+				{
+					RenderRow(entry, status, palette);
+				}
 			}
 		}
 
@@ -486,6 +497,194 @@ namespace Graphite {
 		ImGui::Dummy(ImVec2(rowWidth, rowHeight));
 
 		ImGui::PopID();
+	}
+
+	void ChangesPanel::RenderFolderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
+									   const GitPalette& palette)
+	{
+		const Core::FileStatus& file = status.Entries[entry];
+
+		ImGui::PushID(static_cast<int>(entry));
+
+		// One line, always. The second line a file row spends on its parent directory would
+		// here repeat what the name already says for a directory at the root, and a nested
+		// one is reached by opening its parent rather than by reading a path off the row.
+		const float rowHeight = ImGui::GetTextLineHeight();
+
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();
+		const float rowWidth = ImGui::GetContentRegionAvail().x;
+
+		const Selection identity{.InSection = m_Section, .Path = file.Path};
+		const bool selected = m_Selected.has_value() && *m_Selected == identity;
+
+		// The listing is read before the row is laid out, not after: the file count is part
+		// of the row's width budget, and a count measured after the name was cut would let
+		// the two disagree about where the name may end.
+		const std::shared_ptr<const Core::WorkingTreeStatus> listing =
+			m_Model.GetUntrackedIn(file.Path);
+
+		// An empty label over the whole row, the same as a file row - see RenderRow. A
+		// directory has no diff, so the click opens and closes it instead.
+		if (ImGui::Selectable("##folder", selected, ImGuiSelectableFlags_AllowOverlap,
+							  ImVec2(0.0f, rowHeight)))
+		{
+			m_Selected = identity;
+
+			if (m_Expanded.contains(file.Path))
+			{
+				m_Expanded.erase(file.Path);
+			}
+			else
+			{
+				m_Expanded.insert(file.Path);
+			}
+		}
+
+		// Read off the rectangle rather than the Selectable, for the reason RenderRow gives:
+		// the buttons laid over the row's right edge would otherwise take the hover away from
+		// the row that decides whether they are drawn at all.
+		const ImVec2 rowScreenEnd(rowScreenStart.x + rowWidth,
+								  rowScreenStart.y + ImGui::GetItemRectSize().y);
+
+		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
+
+		const bool expanded = m_Expanded.contains(file.Path);
+
+		const char* chevron = expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
+
+		const char letter = ChangeLetter(file.WorkTree, file.IsUntracked);
+		const ImU32 letterColor = ColourOfLetter(letter, palette);
+
+		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
+
+		// The same rule a file row follows: discard only acts on the working tree, so it is
+		// offered only where the working tree is what the row is showing.
+		const bool offersDiscard = m_Section == Section::Unstaged;
+
+		// Nothing in the index to restore a wholly untracked directory from, so this deletes.
+		const char* discardIcon = file.IsUntracked ? ICON_MDI_DELETE : ICON_MDI_UNDO;
+
+		const float discardWidth =
+			offersDiscard ? ButtonWidth(discardIcon) + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+
+		const float buttonsWidth = discardWidth + ButtonWidth(stageIcon);
+
+		const float innerGap = ImGui::GetStyle().ItemInnerSpacing.x;
+		const float gap = innerGap * 2.0f;
+
+		const char letterText[] = {letter, '\0'};
+		const float letterWidth = ImGui::CalcTextSize(letterText).x;
+		const float chevronWidth = ImGui::CalcTextSize(chevron).x;
+
+		// Only once git has answered. A closed folder, one still being counted and one whose
+		// count failed all say nothing rather than a number, because the only other number
+		// available is one read off the disk - which is the very thing git is being asked
+		// instead of.
+		const std::string count =
+			listing == nullptr ? std::string() : std::format("({})", listing->Entries.size());
+
+		const float countWidth =
+			count.empty() ? 0.0f : ImGui::CalcTextSize(count.c_str()).x + gap;
+
+		const float textStart = rowStart.x + RowPadding() + chevronWidth + innerGap +
+								letterWidth + gap;
+
+		// Cut short of the buttons and of the count, the same way a file row is cut short of
+		// the buttons alone.
+		const float nameLimit = rowStart.x + rowWidth - RowPadding() - buttonsWidth -
+								ImGui::GetStyle().ItemSpacing.x - countWidth - textStart;
+
+		ImGui::SetCursorPos(ImVec2(rowStart.x + RowPadding(), rowStart.y));
+		ImGui::TextUnformatted(chevron);
+		ImGui::SameLine(0.0f, innerGap);
+		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
+		ImGui::SameLine(0.0f, gap);
+
+		// The trailing separator is what tells a reader at a glance that this row is a
+		// directory and not a file that happens to have no extension.
+		const std::string name = Core::ToUtf8(file.Path.filename()) + "/";
+
+		ImGui::TextUnformatted(Elided(name, nameLimit).c_str());
+
+		if (!count.empty())
+		{
+			ImGui::SameLine(0.0f, gap);
+			ImGui::TextDisabled("%s", count.c_str());
+		}
+
+		ImGui::SameLine(rowStart.x + rowWidth - RowPadding() - buttonsWidth);
+
+		if (rowHovered)
+		{
+			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+
+			if (offersDiscard)
+			{
+				if (ImGui::SmallButton(discardIcon))
+				{
+					BeginDiscard(file);
+				}
+
+				ImGui::SetItemTooltip("%s",
+									  file.IsUntracked ? "Delete folder" : "Discard changes");
+				ImGui::SameLine();
+			}
+
+			if (ImGui::SmallButton(stageIcon))
+			{
+				if (m_Section == Section::Staged)
+				{
+					m_Model.RequestUnstage({file.Path});
+				}
+				else
+				{
+					m_Model.RequestStage({file.Path});
+				}
+			}
+
+			ImGui::SetItemTooltip("%s", m_Section == Section::Staged ? "Unstage" : "Stage");
+
+			ImGui::EndDisabled();
+		}
+
+		// Closed here rather than after the children - see the end of RenderRow for why a row
+		// laid out by hand must end on an item. It also puts the cursor one row below this
+		// one, which is where the first child has to begin.
+		ImGui::SetCursorPos(rowStart);
+		ImGui::Dummy(ImVec2(rowWidth, rowHeight));
+
+		ImGui::PopID();
+
+		if (!expanded)
+		{
+			return;
+		}
+
+		// Asked on every frame the folder is open. The model answers a repeat ask for a
+		// listing it already holds, already has in flight, or has already failed, with
+		// nothing - see RequestUntrackedIn.
+		m_Model.RequestUntrackedIn(file.Path);
+
+		if (listing == nullptr)
+		{
+			return;
+		}
+
+		ImGui::Indent();
+
+		// RenderRow identifies a row by its index into the status it was handed, so a child
+		// at index 0 and the outer status's entry 0 would be the same ImGui id. Scoped under
+		// the folder's own path, which no other row in this panel draws under.
+		ImGui::PushID(Core::ToUtf8(file.Path).c_str());
+
+		for (std::size_t child = 0; child < listing->Entries.size(); ++child)
+		{
+			RenderRow(child, *listing, palette);
+		}
+
+		ImGui::PopID();
+		ImGui::Unindent();
 	}
 
 	void ChangesPanel::RenderCommitBox()
