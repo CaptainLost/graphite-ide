@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -179,7 +180,7 @@ TEST_CASE("DeleteUntracked removes the file from disk")
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "new.txt"));
 }
 
-TEST_CASE("DeleteUntracked removes a directory along with what is inside it")
+TEST_CASE("DeleteUntracked reports a path it cannot remove")
 {
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
@@ -188,14 +189,19 @@ TEST_CASE("DeleteUntracked removes a directory along with what is inside it")
 	auto repository = Core::Repository::Open(fixture.GetPath());
 	REQUIRE(repository.HasValue());
 
-	// A status entry for an untracked directory names the directory itself, not each file
-	// under it, so the deletion has to take everything below "folder" along with it.
 	fixture.Write("folder/inside.txt", "x\n");
 
-	const auto result = repository.GetValue().DeleteUntracked({std::filesystem::path("folder")});
-	REQUIRE(result.HasValue());
+	// An open handle without FILE_SHARE_DELETE makes Windows refuse to remove the file
+	// while it is held, which is a genuine failure rather than the old bug this used to
+	// assert (a non-empty directory failing outright). That drives remove_all into setting
+	// an error code, which is what this test exists to exercise.
+	std::ofstream held(fixture.GetPath() / "folder" / "inside.txt", std::ios::app);
+	REQUIRE(held.is_open());
 
-	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "folder"));
+	const auto result = repository.GetValue().DeleteUntracked({std::filesystem::path("folder")});
+	CHECK_FALSE(result.HasValue());
+
+	held.close();
 }
 
 TEST_CASE("Deleting an untracked directory removes it with everything under it")
