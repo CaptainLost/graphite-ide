@@ -99,6 +99,13 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/App/GraphiteMenu.cpp",
     }
 
+    -- The one file under Git that is a window rather than logic: its rows open a file
+    -- through DocumentWindows, and linking that call here would drag the whole text editor
+    -- in behind it - the same reason Editor and Panels above are named file by file instead
+    -- of globbed. Nothing under tests/src names this panel; the row logic it draws is in
+    -- ChangesRows, which stays.
+    removefiles { "%{wks.location}/Graphite/src/Git/ChangesPanel.cpp" }
+
     includedirs
     {
         "%{wks.location}/Core/src",

@@ -59,6 +59,16 @@ namespace Graphite {
 		void RenderFolderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
 							 const GitPalette& palette);
 
+		// The row's context menu. Same items and the same wording as the explorer's, so one
+		// gesture means one thing across the application; "Open File" is the exception,
+		// because the explorer opens a file by double-clicking it and this panel's click
+		// is already spoken for by the diff.
+		//
+		// `letter` is the one the row is already drawing, passed rather than worked out
+		// again: a conflicted row reads it off both halves of its status at once, and a
+		// second derivation here could disagree with what the reader can see.
+		void RenderRowContextMenu(const Core::FileStatus& file, char letter);
+
 		void RenderCommitBox();
 
 		// The error a write left behind, with a way to dismiss it. Drawn above the commit

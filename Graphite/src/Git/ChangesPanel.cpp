@@ -3,7 +3,10 @@
 #include "Editor/DocumentWindows.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/ContextMenu.h"
+#include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -358,6 +361,26 @@ namespace Graphite {
 		const Selection identity{.InSection = m_Section, .Path = file.Path};
 		const bool selected = m_Selected.has_value() && *m_Selected == identity;
 
+		// A conflicted entry is not split into a staged and an unstaged half the way an
+		// ordinary file is - see ChangesRows.h - so its letter is read off both sides
+		// together rather than off whichever one PartitionStatus happened to file it under.
+		Core::StatusFlags flags = file.WorkTree;
+
+		if (m_Section == Section::Conflicted)
+		{
+			flags = file.Index | file.WorkTree;
+		}
+		else if (m_Section == Section::Staged)
+		{
+			flags = file.Index;
+		}
+
+		// Worked out before the row is drawn rather than where it is first painted, because the
+		// context menu below needs it too and a menu attached to the wrong item is worse than a
+		// few lines of distance between a value and its use.
+		const char letter = ChangeLetter(flags, file.IsUntracked);
+		const ImU32 letterColor = ColourOfLetter(letter, palette);
+
 		// An empty label over the whole row: the letter, name and directory are laid over it
 		// in pieces below, and the buttons are laid over its right edge. AllowOverlap keeps
 		// every click reaching whichever of those actually sits under the mouse.
@@ -387,27 +410,23 @@ namespace Graphite {
 		// of them the Selectable underneath stops counting as hovered. Asked of the rectangle
 		// instead, which stays true across the whole row and keeps a button from vanishing out
 		// from under the hand reaching for it.
+		//
+		// Read here, while the Selectable is still the last item: everything below lays items
+		// of its own over the row.
 		const ImVec2 rowScreenEnd(rowScreenStart.x + rowWidth,
 								  rowScreenStart.y + ImGui::GetItemRectSize().y);
 
 		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
 
-		// A conflicted entry is not split into a staged and an unstaged half the way an
-		// ordinary file is - see ChangesRows.h - so its letter is read off both sides
-		// together rather than off whichever one PartitionStatus happened to file it under.
-		Core::StatusFlags flags = file.WorkTree;
-
-		if (m_Section == Section::Conflicted)
+		// Selected first, so the highlight and the menu about to open talk about the same file.
+		if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
 		{
-			flags = file.Index | file.WorkTree;
-		}
-		else if (m_Section == Section::Staged)
-		{
-			flags = file.Index;
+			m_Selected = identity;
 		}
 
-		const char letter = ChangeLetter(flags, file.IsUntracked);
-		const ImU32 letterColor = ColourOfLetter(letter, palette);
+		// Still directly after the Selectable, which is the item the menu has to attach to -
+		// the reads above take no item of their own.
+		RenderRowContextMenu(file, letter);
 
 		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
@@ -549,12 +568,22 @@ namespace Graphite {
 
 		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
 
+		const char letter = ChangeLetter(file.WorkTree, file.IsUntracked);
+		const ImU32 letterColor = ColourOfLetter(letter, palette);
+
+		// Selected first, for the reason RenderRow gives.
+		if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+		{
+			m_Selected = identity;
+		}
+
+		// Directly after the Selectable, as in RenderRow. The menu leaves out "Open File" of
+		// its own accord, from file.IsDirectory.
+		RenderRowContextMenu(file, letter);
+
 		const bool expanded = m_Expanded.contains(file.Path);
 
 		const char* chevron = expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
-
-		const char letter = ChangeLetter(file.WorkTree, file.IsUntracked);
-		const ImU32 letterColor = ColourOfLetter(letter, palette);
 
 		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
@@ -699,6 +728,70 @@ namespace Graphite {
 
 		ImGui::PopID();
 		ImGui::Unindent();
+	}
+
+	void ChangesPanel::RenderRowContextMenu(const Core::FileStatus& file, char letter)
+	{
+		// The path is part of the id so that two rows of one section cannot share a menu. It is
+		// enough on its own here: a folder's children are already drawn under a PushID of the
+		// folder's path - see the end of RenderFolderRow - so a child and a top-level row of
+		// the same name hash differently even when their paths read alike.
+		const std::string popupId = "##ctx" + Core::ToUtf8(file.Path);
+
+		if (!Core::BeginRightClickPopup(popupId.c_str()))
+		{
+			return;
+		}
+
+		// Joined onto the working directory and not the workspace root: Repository::Open
+		// searches upward for a .git, so the two are not always the same directory and only
+		// this one is what a status path is relative to.
+		const std::filesystem::path absolute = m_Model.GetWorkingDirectory() / file.Path;
+
+		// A deleted file is still a row, but there is nothing left on disk for either of these
+		// to reach.
+		const bool onDisk = letter != 'D';
+
+		ImGui::BeginDisabled(!onDisk);
+
+		if (!file.IsDirectory)
+		{
+			// Permanent, because choosing this from a menu is a deliberate open and not the
+			// preview that the next click in a list is free to replace.
+			if (ImGui::MenuItem("Open File"))
+			{
+				m_DocumentWindows.RequestOpen(absolute, true);
+			}
+
+			ImGui::Separator();
+		}
+
+		if (ImGui::MenuItem("Show in Explorer"))
+		{
+			if (const auto revealed = Core::Shell::RevealInFileBrowser(absolute); !revealed)
+			{
+				APP_ERROR("{}", revealed.GetError().Message);
+			}
+		}
+
+		ImGui::EndDisabled();
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem("Copy Path"))
+		{
+			ImGui::SetClipboardText(Core::ToUtf8(absolute).c_str());
+		}
+
+		// The path as the status names it, which is already relative to the working directory
+		// - so unlike the explorer's, this needs no relative() call and no fallback for two
+		// paths that share no prefix.
+		if (ImGui::MenuItem("Copy Relative Path"))
+		{
+			ImGui::SetClipboardText(Core::ToUtf8(file.Path).c_str());
+		}
+
+		ImGui::EndPopup();
 	}
 
 	void ChangesPanel::RenderCommitBox()
