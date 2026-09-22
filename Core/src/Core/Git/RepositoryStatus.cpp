@@ -146,9 +146,15 @@ namespace Core {
 
 		// RECURSE_UNTRACKED_DIRS is the whole point: without it libgit2 answers with the
 		// directory again, which is the entry the caller already has.
+		//
+		// DISABLE_PATHSPEC_MATCH is needed because the pathspec is otherwise read as an
+		// fnmatch-style glob: a directory whose name contains '[' or ']' — legal on Windows,
+		// where '*' and '?' are not — would have its brackets read as a character class and
+		// match nothing.
 		options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED
 						| GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS
-						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY;
+						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY
+						| GIT_STATUS_OPT_DISABLE_PATHSPEC_MATCH;
 
 		options.pathspec.strings = entries;
 		options.pathspec.count = 1;

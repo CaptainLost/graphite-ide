@@ -242,3 +242,21 @@ TEST_CASE("A listing of a directory with nothing untracked in it is empty")
 
 	CHECK(listing.GetValue().Entries.empty());
 }
+
+TEST_CASE("A directory name with bracket characters is matched literally, not as a glob")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("notes[1]/first.md", "one\n");
+	fixture.Write("notes[1]/second.md", "two\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+	const auto listing = repository.QueryUntrackedIn("notes[1]");
+	REQUIRE(listing.HasValue());
+
+	CHECK(Find(listing.GetValue(), "notes[1]/first.md") != nullptr);
+	CHECK(Find(listing.GetValue(), "notes[1]/second.md") != nullptr);
+}
