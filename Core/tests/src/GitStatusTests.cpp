@@ -146,3 +146,45 @@ TEST_CASE("Status of a repository with no commits lists the untracked files")
 	REQUIRE(entry != nullptr);
 	CHECK(entry->IsUntracked);
 }
+
+TEST_CASE("An untracked directory is reported as a directory without a trailing separator")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("notes/first.md", "one\n");
+	fixture.Write("notes/second.md", "two\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+	const auto status = repository.QueryStatus();
+	REQUIRE(status.HasValue());
+
+	const FileStatus* entry = Find(status.GetValue(), "notes");
+	REQUIRE(entry != nullptr);
+
+	CHECK(entry->IsDirectory);
+	CHECK(entry->IsUntracked);
+	CHECK(entry->Path.filename() == std::filesystem::path("notes"));
+	CHECK(entry->Path.parent_path().empty());
+}
+
+TEST_CASE("An untracked file is not a directory")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("loose.txt", "two\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+	const auto status = repository.QueryStatus();
+	REQUIRE(status.HasValue());
+
+	const FileStatus* entry = Find(status.GetValue(), "loose.txt");
+	REQUIRE(entry != nullptr);
+
+	CHECK_FALSE(entry->IsDirectory);
+}

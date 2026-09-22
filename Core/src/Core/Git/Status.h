@@ -50,6 +50,11 @@ namespace Core {
 
 		bool IsConflicted = false;
 		bool IsUntracked = false;
+
+		// libgit2 collapses a wholly untracked directory into one status entry. A reader
+		// asks this rather than looking for a separator on the end of Path, because Path
+		// is stored without one - see RepositoryStatus.cpp.
+		bool IsDirectory = false;
 	};
 
 	struct WorkingTreeStatus

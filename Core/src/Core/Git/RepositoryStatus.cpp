@@ -95,14 +95,27 @@ namespace Core {
 				continue;
 			}
 
+			std::string_view reported;
+
 			if (delta->new_file.path != nullptr)
 			{
-				file.Path = FromUtf8(delta->new_file.path);
+				reported = delta->new_file.path;
 			}
 			else if (delta->old_file.path != nullptr)
 			{
-				file.Path = FromUtf8(delta->old_file.path);
+				reported = delta->old_file.path;
 			}
+
+			// libgit2 names a collapsed untracked directory with a trailing '/'. Kept as a
+			// flag and cut off the path, so filename() names the directory instead of
+			// answering empty and pushing the name into parent_path().
+			if (reported.ends_with('/'))
+			{
+				file.IsDirectory = true;
+				reported.remove_suffix(1);
+			}
+
+			file.Path = FromUtf8(reported);
 
 			if (delta->old_file.path != nullptr && delta->new_file.path != nullptr
 				&& std::string_view(delta->old_file.path) != delta->new_file.path)
