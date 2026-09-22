@@ -52,6 +52,14 @@ namespace Core {
 		// directory would bury everything else.
 		Result<WorkingTreeStatus> QueryStatus() const;
 
+		// Every untracked file under one directory, each as its own entry.
+		//
+		// Separate from QueryStatus rather than folded into it: the full status collapses a
+		// wholly untracked directory to a single entry on purpose, so a working tree with a
+		// large untracked directory in it stays cheap to ask about. This is what a caller
+		// asks once it wants that one directory opened up, and it pays for only that one.
+		Result<WorkingTreeStatus> QueryUntrackedIn(const std::filesystem::path& directory) const;
+
 		// Local branches first, then remote-tracking ones, each group in name order.
 		Result<std::vector<Branch>> QueryBranches() const;
 

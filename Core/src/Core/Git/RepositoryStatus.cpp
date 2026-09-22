@@ -129,4 +129,67 @@ namespace Core {
 		git_status_list_free(list);
 		return status;
 	}
+
+	Result<WorkingTreeStatus> Repository::QueryUntrackedIn(
+		const std::filesystem::path& directory) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		const std::string spec = ToGitPath(directory);
+		char* entries[] = {const_cast<char*>(spec.c_str())};
+
+		git_status_options options = GIT_STATUS_OPTIONS_INIT;
+		options.show = GIT_STATUS_SHOW_WORKDIR_ONLY;
+
+		// RECURSE_UNTRACKED_DIRS is the whole point: without it libgit2 answers with the
+		// directory again, which is the entry the caller already has.
+		options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED
+						| GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS
+						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY;
+
+		options.pathspec.strings = entries;
+		options.pathspec.count = 1;
+
+		git_status_list* list = nullptr;
+
+		if (git_status_list_new(&list, m_Handle, &options) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot list the untracked files in '{}': {}", spec,
+									 LastLibgit2Message())};
+		}
+
+		WorkingTreeStatus status;
+		const std::size_t count = git_status_list_entrycount(list);
+
+		for (std::size_t index = 0; index < count; ++index)
+		{
+			const git_status_entry* entry = git_status_byindex(list, index);
+
+			if (entry == nullptr || (entry->status & GIT_STATUS_WT_NEW) == 0)
+			{
+				continue;
+			}
+
+			const git_diff_delta* delta = entry->index_to_workdir;
+
+			if (delta == nullptr || delta->new_file.path == nullptr)
+			{
+				continue;
+			}
+
+			FileStatus file;
+			file.WorkTree = StatusFlags::New;
+			file.IsUntracked = true;
+			file.Path = FromUtf8(delta->new_file.path);
+
+			status.Entries.push_back(std::move(file));
+		}
+
+		git_status_list_free(list);
+		return status;
+	}
 }

@@ -188,3 +188,57 @@ TEST_CASE("An untracked file is not a directory")
 
 	CHECK_FALSE(entry->IsDirectory);
 }
+
+TEST_CASE("An untracked directory expands to the files under it")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("notes/first.md", "one\n");
+	fixture.Write("notes/nested/second.md", "two\n");
+	fixture.Write("elsewhere/third.md", "three\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+	const auto listing = repository.QueryUntrackedIn("notes");
+	REQUIRE(listing.HasValue());
+
+	CHECK(listing.GetValue().Entries.size() == 2);
+	CHECK(Find(listing.GetValue(), "notes/first.md") != nullptr);
+	CHECK(Find(listing.GetValue(), "notes/nested/second.md") != nullptr);
+	CHECK(Find(listing.GetValue(), "elsewhere/third.md") == nullptr);
+}
+
+TEST_CASE("A nested gitignore keeps its files out of the listing")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("notes/.gitignore", "*.tmp\n");
+	fixture.Write("notes/first.md", "one\n");
+	fixture.Write("notes/scratch.tmp", "junk\n");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+	const auto listing = repository.QueryUntrackedIn("notes");
+	REQUIRE(listing.HasValue());
+
+	CHECK(Find(listing.GetValue(), "notes/first.md") != nullptr);
+	CHECK(Find(listing.GetValue(), "notes/scratch.tmp") == nullptr);
+}
+
+TEST_CASE("A listing of a directory with nothing untracked in it is empty")
+{
+	GitFixture fixture;
+
+	fixture.Write("tracked/a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+	const auto listing = repository.QueryUntrackedIn("tracked");
+	REQUIRE(listing.HasValue());
+
+	CHECK(listing.GetValue().Entries.empty());
+}
