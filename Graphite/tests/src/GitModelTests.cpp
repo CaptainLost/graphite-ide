@@ -33,6 +33,27 @@ namespace {
 			return Status;
 		}
 
+		Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
+			const std::filesystem::path& directory) override
+		{
+			++UntrackedCalls;
+			LastUntrackedDirectory = directory;
+
+			if (FailUntracked)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			const auto named = UntrackedByDirectory.find(directory);
+
+			if (named != UntrackedByDirectory.end())
+			{
+				return named->second;
+			}
+
+			return Core::WorkingTreeStatus{};
+		}
+
 		Core::Result<std::filesystem::path> GetWorkingDirectory() override
 		{
 			return WorkingDirectory;
@@ -173,6 +194,11 @@ namespace {
 		std::optional<Core::LogRequest> LastLogRequest;
 		int DiffCalls = 0;
 		int TextCalls = 0;
+
+		int UntrackedCalls = 0;
+		bool FailUntracked = false;
+		std::filesystem::path LastUntrackedDirectory;
+		std::map<std::filesystem::path, Core::WorkingTreeStatus> UntrackedByDirectory;
 
 	private:
 		Core::Result<void> Record(const std::string& kind,

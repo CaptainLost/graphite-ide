@@ -19,6 +19,12 @@ namespace {
 	public:
 		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Core::WorkingTreeStatus{}; }
 
+		Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
+			const std::filesystem::path&) override
+		{
+			return Core::WorkingTreeStatus{};
+		}
+
 		Core::Result<std::filesystem::path> GetWorkingDirectory() override
 		{
 			return WorkingDirectory;

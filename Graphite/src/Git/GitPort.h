@@ -27,6 +27,12 @@ namespace Graphite {
 
 		virtual Core::Result<Core::WorkingTreeStatus> QueryStatus() = 0;
 
+		// Every untracked file under one directory. Asked only when a reader opens that
+		// directory up; see Core::Repository::QueryUntrackedIn for why it is not part of
+		// the status itself.
+		virtual Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
+			const std::filesystem::path& directory) = 0;
+
 		// The directory libgit2 actually resolved against, which is not always the folder the
 		// user opened: Core::Repository::Open searches upward for a .git, so opening a
 		// subdirectory of a repository yields a working directory above it. Every path a
