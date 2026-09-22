@@ -183,8 +183,21 @@ namespace Core {
 
 		for (const std::filesystem::path& path : paths)
 		{
+			const std::filesystem::path absolute = m_WorkingDirectory / path;
+
 			std::error_code code;
-			std::filesystem::remove(m_WorkingDirectory / path, code);
+
+			// remove() refuses a directory with anything in it, and a status entry for an
+			// untracked directory names exactly that. remove_all takes ignored files under
+			// it too, which is the only outcome that leaves the directory actually gone.
+			if (std::filesystem::is_directory(absolute, code))
+			{
+				std::filesystem::remove_all(absolute, code);
+			}
+			else
+			{
+				std::filesystem::remove(absolute, code);
+			}
 
 			if (code)
 			{

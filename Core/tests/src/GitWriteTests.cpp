@@ -179,7 +179,7 @@ TEST_CASE("DeleteUntracked removes the file from disk")
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "new.txt"));
 }
 
-TEST_CASE("DeleteUntracked reports a path it cannot remove")
+TEST_CASE("DeleteUntracked removes a directory along with what is inside it")
 {
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
@@ -188,17 +188,50 @@ TEST_CASE("DeleteUntracked reports a path it cannot remove")
 	auto repository = Core::Repository::Open(fixture.GetPath());
 	REQUIRE(repository.HasValue());
 
-	// A directory with a file in it is not removed by std::filesystem::remove, so this is
-	// a failure the caller must be told about rather than a silent no-op.
+	// A status entry for an untracked directory names the directory itself, not each file
+	// under it, so the deletion has to take everything below "folder" along with it.
 	fixture.Write("folder/inside.txt", "x\n");
 
-	const auto result = repository.GetValue().DeleteUntracked({"folder"});
-	CHECK_FALSE(result.HasValue());
+	const auto result = repository.GetValue().DeleteUntracked({std::filesystem::path("folder")});
+	REQUIRE(result.HasValue());
 
-	// The assertion that actually guards the destructive path: a future change to
-	// std::filesystem::remove (or a switch to remove_all) must not make this call quietly
-	// succeed at deleting a directory it was told it could not.
-	CHECK(std::filesystem::exists(fixture.GetPath() / "folder" / "inside.txt"));
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "folder"));
+}
+
+TEST_CASE("Deleting an untracked directory removes it with everything under it")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("notes/first.md", "one\n");
+	fixture.Write("notes/nested/second.md", "two\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().DeleteUntracked({std::filesystem::path("notes")}).HasValue());
+
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "notes"));
+}
+
+TEST_CASE("Deleting an untracked file still removes just the file")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("loose.txt", "two\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().DeleteUntracked({std::filesystem::path("loose.txt")}).HasValue());
+
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "loose.txt"));
+	CHECK(std::filesystem::exists(fixture.GetPath() / "a.txt"));
 }
 
 TEST_CASE("Commit writes the index as a commit the log then finds")
