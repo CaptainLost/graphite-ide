@@ -97,6 +97,13 @@ namespace Graphite {
 		// wanted here is the list, which only the DocumentSet can give.
 		std::vector<std::filesystem::path> DirtyDocuments() const;
 
+		// Whether the selected row is a file drawn inside a folder that is currently open.
+		// Such a row is drawn against the folder's own listing and so never enters
+		// m_LastDrawn, which records top-level rows only - without this, any change to the
+		// top-level list would find the selection in neither the before nor the after and
+		// drop it, leaving the open diff tab with no row saying which file it belongs to.
+		bool SelectedIsInsideExpandedFolder() const;
+
 		GitModel& m_Model;
 		const Core::DocumentSet& m_Documents;
 

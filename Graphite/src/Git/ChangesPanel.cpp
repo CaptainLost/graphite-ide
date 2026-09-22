@@ -363,8 +363,13 @@ namespace Graphite {
 			{
 				m_Selected = Selection{.InSection = m_Section, .Path = *moved};
 			}
-			else
+			else if (!SelectedIsInsideExpandedFolder())
 			{
+				// A row inside an open folder is drawn from that folder's listing and so is
+				// in neither list NextSelection was given; it is not gone, it was never
+				// counted. Left alone rather than reset, so the highlight goes on naming the
+				// file whose diff is open. Closing the folder moves the selection onto the
+				// folder row, because the click that closes it is a click on that row.
 				m_Selected.reset();
 			}
 		}
@@ -1021,6 +1026,39 @@ namespace Graphite {
 		}
 
 		return dirty;
+	}
+
+	bool ChangesPanel::SelectedIsInsideExpandedFolder() const
+	{
+		if (!m_Selected.has_value())
+		{
+			return false;
+		}
+
+		// Every ancestor, not just the immediate parent: a folder's listing is recursive, so
+		// a selected row can be several directories deep under the one folder that was opened.
+		std::filesystem::path directory = m_Selected->Path.parent_path();
+
+		while (!directory.empty())
+		{
+			if (m_Expanded.contains(directory))
+			{
+				return true;
+			}
+
+			std::filesystem::path parent = directory.parent_path();
+
+			// A path that is its own parent - a root - would otherwise loop forever. Status
+			// paths are relative and never reach one, but nothing here forces that.
+			if (parent == directory)
+			{
+				break;
+			}
+
+			directory = std::move(parent);
+		}
+
+		return false;
 	}
 
 	void ChangesPanel::RenderDiscardConfirm()
