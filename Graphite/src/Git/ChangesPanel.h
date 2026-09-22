@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -91,13 +92,10 @@ namespace Graphite {
 
 		void RenderDiscardConfirm();
 
-		// Every open document with unsaved changes among these git-relative paths. Absolutises
-		// each one against GetWorkingDirectory(), not the repository root Core::Repository::Open
-		// may have resolved upward from, before comparing - the same way ExpectedWrites does it.
-		// See DirtyAmong's definition for why a filename or a raw ends_with check is not safe
-		// here.
-		std::vector<std::filesystem::path> DirtyAmong(
-			const std::vector<std::filesystem::path>& paths) const;
+		// The absolute path of every open document with unsaved changes. Which of them a
+		// discard would overwrite is PlanDiscard's decision, not this panel's - all that is
+		// wanted here is the list, which only the DocumentSet can give.
+		std::vector<std::filesystem::path> DirtyDocuments() const;
 
 		GitModel& m_Model;
 		const Core::DocumentSet& m_Documents;
@@ -149,24 +147,21 @@ namespace Graphite {
 		bool m_Amend = false;
 
 		// What one discard would throw away. Everything the question needs to word itself,
-		// worked out when the discard is asked for rather than while the dialog draws.
+		// worked out when the discard is asked for rather than while the dialog draws -
+		// which is also the only moment the folder's listing is still in reach, since by the
+		// time the discard has landed the directory is gone from disk.
 		struct DiscardQuestion
 		{
-			// What the discard covers. Two lists because they are two outcomes: restored from
-			// the index, and deleted from disk for good.
-			DiscardRequest Request;
+			// What the discard covers, what it would overwrite, and how many files it names.
+			// Decided by PlanDiscard, which is pure and tested - see ChangesRows.h.
+			DiscardPlan Plan;
 
 			// Named for the dialog's first line. One discard is always about one row.
 			std::filesystem::path Subject;
 
-			bool IsDirectory = false;
-
-			// Absent when the folder has not been opened, which is when there is no honest
-			// number to put in front of the reader.
-			std::optional<std::size_t> FileCount;
-
-			// The open documents with unsaved edits this would overwrite, if any.
-			std::vector<std::filesystem::path> Dirty;
+			// Composed here rather than in the dialog, for the same reason the plan is: the
+			// wording is a decision about what is being lost, and a decision a test can read.
+			std::string Text;
 
 			// Two asks about one row are one question: a second click on a discard button the
 			// reader has not answered yet must not queue a duplicate behind the first.
@@ -177,5 +172,16 @@ namespace Graphite {
 		};
 
 		ModalQuestion<DiscardQuestion> m_DiscardQuestion;
+
+		// The files a requested discard is about to take with it, by the subject path git
+		// will name in TakeDiscarded. Written when the reader confirms and read when the
+		// discard lands, because those are two different moments: a directory is already
+		// gone from disk by the time it is reported, so it cannot be enumerated then, and
+		// the editor would meet the deletion of each file under it as a change it never made.
+		//
+		// An entry is erased as it is used. One is left behind by a discard that failed,
+		// where no report ever comes; the map is cleared with everything else when the
+		// repository goes away.
+		std::map<std::filesystem::path, std::vector<std::filesystem::path>> m_DiscardedFiles;
 	};
 }

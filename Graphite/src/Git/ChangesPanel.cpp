@@ -194,7 +194,30 @@ namespace Graphite {
 
 			for (const std::filesystem::path& path : discarded)
 			{
-				absolute.push_back(m_Model.GetWorkingDirectory() / path);
+				// A directory is reported as itself, and the editor holds documents, not
+				// directories - so the expectation has to name the files that went with it or
+				// each one arrives as a change nobody in this application made. The list was
+				// taken when the discard was confirmed, which is the last moment it existed;
+				// see m_DiscardedFiles.
+				//
+				// A folder the reader never opened has no listing anywhere, so there is
+				// nothing to expand it into and its files do arrive unannounced. That is the
+				// honest answer: the only other source is the disk, which no longer has the
+				// directory to read.
+				const auto known = m_DiscardedFiles.find(path);
+
+				if (known == m_DiscardedFiles.end())
+				{
+					absolute.push_back(m_Model.GetWorkingDirectory() / path);
+					continue;
+				}
+
+				for (const std::filesystem::path& file : known->second)
+				{
+					absolute.push_back(m_Model.GetWorkingDirectory() / file);
+				}
+
+				m_DiscardedFiles.erase(known);
 			}
 
 			m_DocumentWindows.ExpectExternalWrite(absolute);
@@ -222,6 +245,11 @@ namespace Graphite {
 			// Expansions go with them: the next repository's directories are not this one's,
 			// and a path that happened to exist in both would open by itself.
 			m_Expanded.clear();
+
+			// And the files a discard was going to report: a discard whose write failed
+			// leaves its entry behind, and one kept across a workspace change would name
+			// paths relative to a working directory that is no longer the one open.
+			m_DiscardedFiles.clear();
 
 			// The question goes with them, and its gate with it. Begin is the only other code
 			// that hands the gate back, and it is below this return - a workspace closed while
@@ -928,26 +956,10 @@ namespace Graphite {
 
 	void ChangesPanel::BeginDiscard(const Core::FileStatus& file)
 	{
-		DiscardQuestion question;
-		question.Subject = file.Path;
-		question.IsDirectory = file.IsDirectory;
-
-		// An untracked file has nothing in the index to be restored from, so discarding it can
-		// only mean deleting it - a different outcome, and one the row's icon already said.
-		if (file.IsUntracked)
-		{
-			question.Request.Delete.push_back(file.Path);
-		}
-		else
-		{
-			question.Request.Restore.push_back(file.Path);
-		}
-
-		std::vector<std::filesystem::path> every = question.Request.Restore;
-		every.insert(every.end(), question.Request.Delete.begin(),
-					 question.Request.Delete.end());
-
-		question.Dirty = DirtyAmong(every);
+		DiscardSubject subject;
+		subject.Path = file.Path;
+		subject.IsDirectory = file.IsDirectory;
+		subject.IsUntracked = file.IsUntracked;
 
 		// The same test the row itself applies before printing a count - see RenderFolderRow.
 		// Held is not enough: the model keeps a listing until the next status refresh drops it,
@@ -960,9 +972,22 @@ namespace Graphite {
 			if (const std::shared_ptr<const Core::WorkingTreeStatus> listing =
 					m_Model.GetUntrackedIn(file.Path))
 			{
-				question.FileCount = listing->Entries.size();
+				std::vector<std::filesystem::path> files;
+				files.reserve(listing->Entries.size());
+
+				for (const Core::FileStatus& child : listing->Entries)
+				{
+					files.push_back(child.Path);
+				}
+
+				subject.Listing = std::move(files);
 			}
 		}
+
+		DiscardQuestion question;
+		question.Subject = file.Path;
+		question.Plan = PlanDiscard(subject, m_Model.GetWorkingDirectory(), DirtyDocuments());
+		question.Text = DiscardQuestionText(subject, question.Plan);
 
 		// Every discard asks. Git can hand back none of what one throws away - not a tracked
 		// file's uncommitted edits, not an untracked file, not a directory - so there is no
@@ -979,8 +1004,7 @@ namespace Graphite {
 		}
 	}
 
-	std::vector<std::filesystem::path> ChangesPanel::DirtyAmong(
-		const std::vector<std::filesystem::path>& paths) const
+	std::vector<std::filesystem::path> ChangesPanel::DirtyDocuments() const
 	{
 		std::vector<std::filesystem::path> dirty;
 
@@ -993,26 +1017,7 @@ namespace Graphite {
 				continue;
 			}
 
-			const std::filesystem::path normalizedItem = Core::NormalizePath(item.Path);
-
-			for (const std::filesystem::path& path : paths)
-			{
-				// `path` is git-relative; a document's path is absolute. Absolutised against
-				// the repository's working directory - not the folder the user opened, which
-				// Core::Repository::Open may have resolved upward from - before comparing whole
-				// normalised paths. The same rule ExpectedWrites uses, and not the
-				// filename-and-ends_with shortcut that was already withdrawn from ExpectedWrites
-				// for making a root-level file match anywhere in the tree while never matching a
-				// nested one at all.
-				const std::filesystem::path normalizedPath =
-					Core::NormalizePath(m_Model.GetWorkingDirectory() / path);
-
-				if (Core::SamePath(normalizedItem, normalizedPath))
-				{
-					dirty.push_back(item.Path);
-					break;
-				}
-			}
+			dirty.push_back(item.Path);
 		}
 
 		return dirty;
@@ -1027,57 +1032,43 @@ namespace Graphite {
 
 		// Begin returning true is what guarantees there is a current payload.
 		const DiscardQuestion& question = *m_DiscardQuestion.GetCurrent();
-		const std::string name = Core::ToUtf8(question.Subject);
 
-		// Named loss, not a general "are you sure": what is about to go is different in each
-		// of these cases, and only the sentence says which one the reader is looking at.
-		if (question.IsDirectory)
-		{
-			if (question.FileCount.has_value())
-			{
-				ImGui::Text("Delete %s/ and the %zu files in it?", name.c_str(),
-							*question.FileCount);
-			}
-			else
-			{
-				ImGui::Text("Delete %s/ and everything in it?", name.c_str());
-			}
-		}
-		else if (!question.Request.Delete.empty())
-		{
-			ImGui::Text("Delete %s?", name.c_str());
-		}
-		else
-		{
-			// Unstaged, not "since the last commit": a discard restores from the index - see
-			// Repository::DiscardWorkTree - so a partially staged file keeps what was staged
-			// and loses only the edits made on top of it. Naming the larger loss would be
-			// naming a loss that is not about to happen.
-			ImGui::Text("Discard the unstaged changes to %s?", name.c_str());
-		}
+		// Worded when the discard was asked for - see DiscardQuestionText.
+		ImGui::TextUnformatted(question.Text.c_str());
 
 		ImGui::TextDisabled("This cannot be undone.");
 
 		// A second, different loss: what git never saw, and so the one part of this no refresh
 		// of the working tree could put back either.
-		if (!question.Dirty.empty())
+		if (!question.Plan.Dirty.empty())
 		{
 			ImGui::Separator();
 			ImGui::Text("%zu open file(s) have unsaved edits that would be lost.",
-						question.Dirty.size());
+						question.Plan.Dirty.size());
 		}
 
 		ImGui::Separator();
 
-		// The request is copied out before Answer(), which drops the payload `question` refers
-		// to.
-		const DiscardRequest request = question.Request;
+		// Copied out before Answer(), which drops the payload `question` refers to.
+		const DiscardRequest request{.Restore = question.Plan.Restore,
+									 .Delete = question.Plan.Delete};
+
+		const std::filesystem::path subject = question.Subject;
+		const std::vector<std::filesystem::path> files = question.Plan.Files;
 
 		// The same guard every other write control in this panel takes.
 		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 		if (ImGui::Button("Discard"))
 		{
+			// Remembered here, while the files still exist: TakeDiscarded reports the subject
+			// - a directory, for a folder row - and by then there is nothing left on disk to
+			// enumerate. See m_DiscardedFiles.
+			if (!files.empty())
+			{
+				m_DiscardedFiles[subject] = files;
+			}
+
 			m_Model.RequestDiscard(request);
 			m_DiscardQuestion.Answer();
 		}
