@@ -342,3 +342,38 @@ TEST_CASE("A line longer than the chunk is still read whole rather than never")
 	REQUIRE(read.GetValue().Chunk.Records.size() == 1);
 	CHECK(read.GetValue().NextOffset == longLine.size());
 }
+
+TEST_CASE("An assistant record keeps why the response stopped")
+{
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::Assistant("r", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:01.000Z", "end_turn"));
+
+	CHECK(chunk.Records[0].StopReason == "end_turn");
+}
+
+TEST_CASE("Attachments keep the names, removals and file they carry")
+{
+	const std::string bytes =
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"WebFetch", "Monitor"}}, {"removedNames", {"Old"}}}) +
+		Fixtures::Attachment({{"type", "skill_listing"}, {"names", {"a", "b", "c"}}, {"skillCount", 3}}) +
+		Fixtures::Attachment({{"type", "mcp_instructions_delta"}, {"addedNames", {"ghidra"}}}) +
+		Fixtures::Attachment({{"type", "edited_text_file"}, {"filename", "D:\a.cpp"}}) +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", "not a list"}});
+
+	const TranscriptChunk chunk = ParseTranscript(bytes);
+
+	REQUIRE(chunk.Records.size() == 5);
+	CHECK(chunk.Records[0].AttachmentNames == std::vector<std::string>{"WebFetch", "Monitor"});
+	CHECK(chunk.Records[0].AttachmentRemoved == std::vector<std::string>{"Old"});
+	CHECK(chunk.Records[1].AttachmentNames == std::vector<std::string>{"a", "b", "c"});
+	CHECK(chunk.Records[2].AttachmentNames == std::vector<std::string>{"ghidra"});
+	CHECK(chunk.Records[3].AttachmentFile == "D:\a.cpp");
+	CHECK(chunk.Records[4].AttachmentNames.empty());
+}
+
+TEST_CASE("Every record knows how many bytes its line took")
+{
+	const std::string line = Fixtures::UserPrompt("hello");
+	CHECK(ParseTranscript(line).Records[0].Bytes == line.size() - 1);
+}

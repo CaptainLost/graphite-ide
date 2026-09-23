@@ -26,6 +26,25 @@ namespace Graphite {
 			return found != object.end() && found->is_boolean() && found->get<bool>();
 		}
 
+		// The string elements of an array field: empty for a missing or non-array field,
+		// skipping any element that is not itself a string.
+		std::vector<std::string> StringsAt(const nlohmann::json& object, const char* key)
+		{
+			std::vector<std::string> values;
+			const auto found = object.find(key);
+
+			if (found == object.end() || !found->is_array())
+				return values;
+
+			for (const nlohmann::json& element : *found)
+			{
+				if (element.is_string())
+					values.push_back(element.get<std::string>());
+			}
+
+			return values;
+		}
+
 		std::uint64_t CountAt(const nlohmann::json& object, const char* key)
 		{
 			const auto found = object.find(key);
@@ -185,6 +204,18 @@ namespace Graphite {
 		{
 			record.AttachmentType = StringAt(*attachment, "type");
 
+			if (record.AttachmentType == "deferred_tools_delta")
+			{
+				record.AttachmentNames = StringsAt(*attachment, "addedNames");
+				record.AttachmentRemoved = StringsAt(*attachment, "removedNames");
+			}
+			else if (record.AttachmentType == "mcp_instructions_delta")
+				record.AttachmentNames = StringsAt(*attachment, "addedNames");
+			else if (record.AttachmentType == "skill_listing")
+				record.AttachmentNames = StringsAt(*attachment, "names");
+			else if (record.AttachmentType == "edited_text_file")
+				record.AttachmentFile = StringAt(*attachment, "filename");
+
 			if (record.AttachmentType == "queued_command")
 			{
 				const auto origin = attachment->find("origin");
@@ -202,6 +233,7 @@ namespace Graphite {
 		if (const auto message = json.find("message"); message != json.end() && message->is_object())
 		{
 			record.Model = StringAt(*message, "model");
+			record.StopReason = StringAt(*message, "stop_reason");
 
 			if (const auto content = message->find("content"); content != message->end())
 			{
@@ -235,6 +267,8 @@ namespace Graphite {
 					block.ResultJson = serialised;
 			}
 		}
+
+		record.Bytes = line.size();
 
 		return record;
 	}

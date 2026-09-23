@@ -66,18 +66,23 @@ namespace Fixtures {
 	inline std::string Assistant(const std::string& requestId, const nlohmann::json& block,
 								 const nlohmann::json& usage,
 								 const std::string& model = "claude-opus-5",
-								 const std::string& timestamp = "2026-09-17T09:00:01.000Z")
+								 const std::string& timestamp = "2026-09-17T09:00:01.000Z",
+								 const char* stopReason = nullptr)
 	{
+		nlohmann::json message = {{"model", model},
+								   {"role", "assistant"},
+								   {"content", nlohmann::json::array({block})},
+								   {"usage", usage}};
+
+		if (stopReason != nullptr)
+			message["stop_reason"] = stopReason;
+
 		return Line({{"type", "assistant"},
 					 {"uuid", "assistant-" + requestId + "-" + timestamp},
 					 {"requestId", requestId},
 					 {"timestamp", timestamp},
 					 {"cwd", "D:\\Repos\\IDE"},
-					 {"message",
-					  {{"model", model},
-					   {"role", "assistant"},
-					   {"content", nlohmann::json::array({block})},
-					   {"usage", usage}}}});
+					 {"message", message}});
 	}
 
 	inline std::string ToolResult(const std::string& toolUseId, const std::string& text,
@@ -126,6 +131,12 @@ namespace Fixtures {
 					   {"prompt", prompt},
 					   {"origin", {{"kind", originKind}}},
 					   {"commandMode", commandMode}}}});
+	}
+
+	inline std::string Attachment(const nlohmann::json& attachment,
+								  const std::string& timestamp = "2026-09-17T09:00:00.500Z")
+	{
+		return Line({{"type", "attachment"}, {"timestamp", timestamp}, {"attachment", attachment}});
 	}
 
 	inline std::string AiTitle(const std::string& title)

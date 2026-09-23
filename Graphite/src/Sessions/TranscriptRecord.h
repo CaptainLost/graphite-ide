@@ -103,5 +103,21 @@ namespace Graphite {
 		std::vector<ContentBlock> Blocks;
 		std::optional<TokenCounts> Usage;
 		bool Fast = false;
+
+		// Why an assistant response stopped (`message.stop_reason`): "end_turn", "tool_use", ...
+		std::string StopReason;
+
+		// The names an attachment added: a deferred tool or MCP instructions delta's
+		// `addedNames`, or a skill listing's `names`.
+		std::vector<std::string> AttachmentNames;
+
+		// The names a deferred tools delta's `removedNames` took away.
+		std::vector<std::string> AttachmentRemoved;
+
+		// The file an `edited_text_file` attachment names.
+		std::string AttachmentFile;
+
+		// The line's length, excluding the newline and any trailing '\r'.
+		std::size_t Bytes = 0;
 	};
 }
