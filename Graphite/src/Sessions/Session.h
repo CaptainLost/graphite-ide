@@ -59,11 +59,22 @@ namespace Graphite {
 	public:
 		void Append(const std::vector<TranscriptRecord>& records);
 
+		// Clears turns, tools and everything derived from them, and moves to a new generation.
+		// Used when a transcript is read again from nothing (it shrank), so a view can tell
+		// this session is not the one it was reading — not just an older version of it.
+		void Reset();
+
 		const std::vector<Turn>& GetTurns() const { return m_Turns; }
 		const std::vector<ToolCall>& GetTools() const { return m_Tools; }
 
 		// Moves whenever an append changed anything, so a view can tell its layout is stale.
 		std::uint64_t GetVersion() const { return m_Version; }
+
+		// Moves only on Reset. A view compares this, not GetVersion(), to tell a restart from
+		// ordinary growth: GetVersion() is not monotonic across a Reset, so a view that rebuilt
+		// against an older, higher version would wrongly treat a fresh session as one it has
+		// already built rows for.
+		std::uint64_t GetGeneration() const { return m_Generation; }
 
 	private:
 		Turn& CurrentTurn();
@@ -75,5 +86,6 @@ namespace Graphite {
 		std::unordered_map<std::string, std::size_t> m_ToolById;
 		std::unordered_set<std::string> m_SeenRequests;
 		std::uint64_t m_Version = 0;
+		std::uint64_t m_Generation = 0;
 	};
 }

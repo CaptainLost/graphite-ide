@@ -98,6 +98,30 @@ TEST_CASE("Replies before any prompt land in a turn with no prompt")
 	CHECK(session.GetTurns()[0].Items.size() == 1);
 }
 
+TEST_CASE("Reset clears turns and tools and moves to a new generation")
+{
+	Session session;
+	session.Append(ParseTranscript(Fixtures::UserPrompt("go") +
+								   Fixtures::Assistant("a", Fixtures::ToolUseBlock("t1", "Read", {}),
+													   Fixtures::Usage(1, 1)))
+					   .Records);
+
+	REQUIRE(session.GetTurns().size() == 1);
+	REQUIRE(session.GetTools().size() == 1);
+	const std::uint64_t generationBefore = session.GetGeneration();
+
+	session.Reset();
+
+	CHECK(session.GetTurns().empty());
+	CHECK(session.GetTools().empty());
+	CHECK(session.GetGeneration() != generationBefore);
+
+	// A result for a tool the reset dropped must not find a stale entry: appending after a
+	// reset behaves like appending to a session that never held it.
+	session.Append(ParseTranscript(Fixtures::ToolResult("t1", "contents")).Records);
+	CHECK(session.GetTools().empty());
+}
+
 TEST_CASE("An unknown block is kept as an item naming its type")
 {
 	const Session session =

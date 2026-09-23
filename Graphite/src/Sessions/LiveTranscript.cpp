@@ -91,7 +91,7 @@ namespace Graphite {
 		}
 
 		if (restarted)
-			session = Session{};
+			session.Reset();
 
 		session.Append(records);
 		return restarted || !records.empty();

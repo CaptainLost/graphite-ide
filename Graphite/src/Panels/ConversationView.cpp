@@ -46,11 +46,14 @@ namespace Graphite {
 
 	void ConversationView::Rebuild(const Session& session, float width)
 	{
-		const bool sameSession = session.GetVersion() >= m_BuiltVersion && m_BuiltVersion != UINT64_MAX;
+		const bool sameSession = m_BuiltGeneration != UINT64_MAX && session.GetGeneration() == m_BuiltGeneration;
 		const std::size_t keep = sameSession ? m_Rows.size() : 0;
 
-		// A session only grows, so rows already built stay valid and keep their measured
-		// heights; a restart (the version going backwards) or a new width starts over.
+		// A session only grows within one generation, so rows already built stay valid and
+		// keep their measured heights; a different generation (the transcript was read again
+		// from nothing) or a new width starts over. The version is not used to detect this:
+		// it resets to zero on a restart, so it is not monotonic across one and cannot tell
+		// "the same session, grown" from "a different session that happens to be as long".
 		std::vector<Row> rows;
 
 		for (std::size_t turn = 0; turn < session.GetTurns().size(); ++turn)
@@ -81,6 +84,7 @@ namespace Graphite {
 
 		m_Rows = std::move(rows);
 		m_BuiltVersion = session.GetVersion();
+		m_BuiltGeneration = session.GetGeneration();
 		m_BuiltWidth = width;
 		m_OffsetsDirty = true;
 	}
@@ -229,7 +233,8 @@ namespace Graphite {
 
 		const float width = ImGui::GetContentRegionAvail().x;
 
-		if (session.GetVersion() != m_BuiltVersion || width != m_BuiltWidth)
+		if (session.GetVersion() != m_BuiltVersion || session.GetGeneration() != m_BuiltGeneration ||
+			width != m_BuiltWidth)
 			Rebuild(session, width);
 
 		if (m_OffsetsDirty)

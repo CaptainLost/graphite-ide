@@ -113,4 +113,14 @@ namespace Graphite {
 
 		++m_Version;
 	}
+
+	void Session::Reset()
+	{
+		m_Turns.clear();
+		m_Tools.clear();
+		m_ToolById.clear();
+		m_SeenRequests.clear();
+		m_Version = 0;
+		++m_Generation;
+	}
 }

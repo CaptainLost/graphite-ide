@@ -47,6 +47,10 @@ namespace Graphite {
 		std::set<std::size_t> m_Expanded;
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
+
+		// UINT64_MAX means "never built"; a real session's generation starts at 0, so this
+		// can never collide with one and mistake a first build for the same session.
+		std::uint64_t m_BuiltGeneration = UINT64_MAX;
 		float m_BuiltWidth = -1.0f;
 		bool m_OffsetsDirty = true;
 		bool m_FollowTail = true;

@@ -61,6 +61,8 @@ TEST_CASE("A transcript that shrank is read again from nothing")
 	live.Poll();
 	WaitForTurns(live, session, 2);
 
+	const std::uint64_t generationBefore = session.GetGeneration();
+
 	{
 		std::ofstream stream{file, std::ios::binary | std::ios::trunc};
 		stream << Fixtures::UserPrompt("only");
@@ -70,6 +72,10 @@ TEST_CASE("A transcript that shrank is read again from nothing")
 	WaitForTurns(live, session, 1);
 
 	CHECK(session.GetTurns()[0].Prompt == "only");
+
+	// A generation of its own, not just a version that happened to go backwards: a view
+	// building rows off the version alone cannot tell this apart from ordinary growth.
+	CHECK(session.GetGeneration() != generationBefore);
 }
 
 TEST_CASE("A transcript that does not exist yet is read once it appears")
