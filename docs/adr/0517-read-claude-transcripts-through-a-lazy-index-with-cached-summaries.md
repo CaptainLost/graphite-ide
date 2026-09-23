@@ -45,6 +45,10 @@ live session cheap to follow: a turn appends kilobytes, not the whole file.
 
 ### Neutral
 
+- The cache lives beside the executable rather than under a workspace's
+  `.graphite/`, where the workspace analysis keeps its store (ADR 0513): the
+  sessions it summarises belong to the machine, not to any one workspace.
+
 ## Alternatives Considered
 
 - **SQLite with FTS5 from the start.** Gives search and aggregate queries, but
@@ -54,4 +58,7 @@ live session cheap to follow: a turn appends kilobytes, not the whole file.
 
 ## Related
 
-- ADR 0494 (the central tab pattern the session windows follow)
+- ADR 0511 (the workspace analysis, which likewise runs on a worker ahead of
+  the reader)
+- ADR 0513 (the workspace analysis cache, kept on disk and discarded on any
+  doubt, as this cache is when its version changes)
