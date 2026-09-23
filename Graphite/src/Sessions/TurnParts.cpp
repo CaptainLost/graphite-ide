@@ -126,6 +126,32 @@ namespace Graphite {
 		return parts;
 	}
 
+	std::string LastActivity(const Turn& turn, const TurnPart& part, const std::vector<ToolCall>& tools)
+	{
+		std::string latest;
+		std::optional<std::chrono::sys_time<std::chrono::milliseconds>> latestTime;
+
+		const auto consider = [&latest, &latestTime](const std::string& timestamp)
+		{
+			if (const auto parsed = ParseTimestamp(timestamp); parsed && (!latestTime || *parsed > *latestTime))
+			{
+				latestTime = parsed;
+				latest = timestamp;
+			}
+		};
+
+		for (const std::size_t index : part.Items)
+		{
+			const TurnItem& item = turn.Items[index];
+			consider(item.At);
+
+			if (item.Kind == ItemKind::Tool)
+				consider(tools[item.Tool].FinishedAt);
+		}
+
+		return latest;
+	}
+
 	std::optional<std::chrono::milliseconds> GapBetween(std::string_view earlier, std::string_view later)
 	{
 		const auto from = ParseTimestamp(earlier);

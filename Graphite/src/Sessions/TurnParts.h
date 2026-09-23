@@ -44,6 +44,12 @@ namespace Graphite {
 
 	std::vector<TurnPart> SplitTurn(const Turn& turn, const std::vector<ToolCall>& tools);
 
+	// When the part last did anything: the latest of its items' times and, for a tool, when
+	// it finished. A run whose last tool ran for fifteen minutes was busy for all of them, so
+	// a pause is measured from here rather than from when that tool was called. Empty when
+	// no time in the part parses.
+	std::string LastActivity(const Turn& turn, const TurnPart& part, const std::vector<ToolCall>& tools);
+
 	constexpr std::chrono::minutes kGapThreshold{2};
 
 	// The pause between two timestamps when it is longer than kGapThreshold.

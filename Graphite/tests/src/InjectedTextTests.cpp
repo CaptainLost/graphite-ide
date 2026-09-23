@@ -37,3 +37,15 @@ TEST_CASE("Other injected text is labelled by what it is")
 	CHECK(InjectedLabel("<system-reminder>x</system-reminder>") == "System reminder");
 	CHECK(InjectedLabel("<task-notification><task-id>x</task-id></task-notification>") == "Task notification");
 }
+
+TEST_CASE("An interruption is injected text, labelled as one")
+{
+	for (const char* text : {"[Request interrupted by user]", "[Request interrupted by user for tool use]",
+							 "  \n[Request interrupted by user]"})
+	{
+		CHECK(IsInjectedText(text));
+		CHECK(InjectedLabel(text) == "Interrupted by user");
+	}
+
+	CHECK_FALSE(IsInjectedText("Why did I see [Request interrupted by user]?"));
+}

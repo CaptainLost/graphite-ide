@@ -189,3 +189,22 @@ TEST_CASE("Each item knows its time and request, and a request's usage is kept o
 	CHECK(turn.Requests.at("r1").Model == "claude-opus-5");
 	CHECK(turn.Requests.at("r2").Fast);
 }
+
+TEST_CASE("Injected meta text that carries a known tag is labelled by the tag, not its first line")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("<system-reminder>\nbe brief\n</system-reminder>"));
+
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Injected);
+	CHECK(session.GetTurns()[0].Items[0].Label == "System reminder");
+}
+
+TEST_CASE("An interruption folds into the turn it interrupted rather than starting one")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") +
+								  Fixtures::UserPrompt("[Request interrupted by user for tool use]", "2026-09-17T09:00:05.000Z"));
+
+	REQUIRE(session.GetTurns().size() == 1);
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Label == "Interrupted by user");
+}

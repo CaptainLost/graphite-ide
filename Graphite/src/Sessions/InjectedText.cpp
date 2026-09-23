@@ -7,6 +7,8 @@ namespace Graphite {
 	namespace {
 		struct Marker
 		{
+			// The text the injected text opens with: a tag, or the bracketed line Claude Code
+			// writes when the user stops a request.
 			std::string_view Tag;
 			std::string_view Label;
 		};
@@ -18,6 +20,7 @@ namespace Graphite {
 			Marker{"<local-command-stdout>", "Command output"},
 			Marker{"<system-reminder>", "System reminder"},
 			Marker{"<user-prompt-submit-hook>", "Hook output"},
+			Marker{"[Request interrupted by user", "Interrupted by user"},
 		};
 
 		std::string_view Trimmed(std::string_view text)

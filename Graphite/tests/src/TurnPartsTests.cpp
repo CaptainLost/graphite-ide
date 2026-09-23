@@ -82,3 +82,43 @@ TEST_CASE("A pause longer than two minutes is a gap; a shorter one is not")
 	CHECK_FALSE(GapBetween("2026-09-17T09:00:00.000Z", "2026-09-17T09:01:59.000Z").has_value());
 	CHECK_FALSE(GapBetween("", "2026-09-17T09:06:00.000Z").has_value());
 }
+
+TEST_CASE("A run of steps was last active when its last tool finished, not when it started")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("a", "Bash", {}), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z") +
+		Fixtures::ToolResult("a", "ok", false, "2026-09-17T09:15:02.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("Done."), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:16:02.000Z"));
+
+	const Turn& turn = session.GetTurns()[0];
+	const std::vector<TurnPart> parts = SplitTurn(turn, session.GetTools());
+
+	REQUIRE(parts.size() == 2);
+	REQUIRE(parts[0].Kind == PartKind::Steps);
+
+	const std::string last = LastActivity(turn, parts[0], session.GetTools());
+	CHECK(last == "2026-09-17T09:15:02.000Z");
+
+	// The reply came a minute after the tool finished: no pause, however long the tool ran.
+	CHECK_FALSE(GapBetween(last, turn.Items[parts[1].Items.front()].At).has_value());
+
+	// A reply's own time is its last activity.
+	CHECK(LastActivity(turn, parts[1], session.GetTools()) == "2026-09-17T09:16:02.000Z");
+}
+
+TEST_CASE("A tool still running leaves its start as the run's last activity")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("a", "Bash", {}), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z"));
+
+	const Turn& turn = session.GetTurns()[0];
+	const std::vector<TurnPart> parts = SplitTurn(turn, session.GetTools());
+
+	REQUIRE(parts.size() == 1);
+	CHECK(LastActivity(turn, parts[0], session.GetTools()) == "2026-09-17T09:00:02.000Z");
+}

@@ -7,8 +7,9 @@ namespace Graphite {
 
 	// Whether user-role text is something Claude Code wrote into the conversation — a
 	// background task's notification, a local command's echo, a reminder — rather than words
-	// the user typed. Recognised by a known opening tag at the start, after whitespace: a
-	// prompt that only mentions a tag, or starts with other markup, is still a prompt.
+	// the user typed. Recognised by a known opening at the start, after whitespace — a tag, or
+	// the "[Request interrupted by user" line an interruption leaves: a prompt that only
+	// mentions one, or starts with other markup, is still a prompt.
 	bool IsInjectedText(std::string_view text);
 
 	// One line saying what injected text was: a notification's own summary where it has one,

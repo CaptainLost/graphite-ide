@@ -41,9 +41,11 @@ namespace Graphite {
 				// only what the user typed starts a turn.
 				if (record.IsMeta || IsInjectedText(block.Text))
 				{
-					const std::string label = record.IsMeta
-												  ? TruncateUtf8(block.Text.substr(0, block.Text.find('\n')), 120)
-												  : InjectedLabel(block.Text);
+					// Meta text with no known opening, a skill's body say, has no kind to name, so
+					// its first line says what it is.
+					const std::string label = IsInjectedText(block.Text)
+												  ? InjectedLabel(block.Text)
+												  : TruncateUtf8(block.Text.substr(0, block.Text.find('\n')), 120);
 					CurrentTurn().Items.push_back(
 						{.Kind = ItemKind::Injected, .Text = block.Text, .Label = label, .At = record.Timestamp});
 					continue;

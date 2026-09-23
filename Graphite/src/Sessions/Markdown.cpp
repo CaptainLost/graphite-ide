@@ -152,6 +152,13 @@ namespace Graphite {
 			{
 				flush();
 			}
+			else if (trimmed.starts_with('|'))
+			{
+				// A table row. Tables are not laid out as grids, but each row stays a line of
+				// its own rather than running into its neighbours as one paragraph.
+				flush();
+				blocks.push_back({.Kind = MarkdownKind::Paragraph, .Spans = ParseSpans(trimmed)});
+			}
 			else if (headingHashes > 0)
 			{
 				flush();

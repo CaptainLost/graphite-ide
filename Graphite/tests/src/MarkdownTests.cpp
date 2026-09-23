@@ -111,3 +111,19 @@ TEST_CASE("A word wider than the whole width gets a line of its own and layout e
 	CHECK(words[1].Line == 1);
 	CHECK(words[2].Line == 2);
 }
+
+TEST_CASE("Each line of a table is a paragraph of its own")
+{
+	const std::vector<MarkdownBlock> blocks = ParseMarkdown("Before\n| a | **b** |\n|---|---|\n  | 1 | 2 |\nafter");
+
+	REQUIRE(blocks.size() == 5);
+	CHECK(blocks[0].Spans == std::vector<Span>{{SpanStyle::Plain, "Before"}});
+
+	for (std::size_t index = 1; index < 4; ++index)
+		CHECK(blocks[index].Kind == MarkdownKind::Paragraph);
+
+	CHECK(blocks[1].Spans == std::vector<Span>{{SpanStyle::Plain, "| a | "}, {SpanStyle::Bold, "b"}, {SpanStyle::Plain, " |"}});
+	CHECK(blocks[2].Spans == std::vector<Span>{{SpanStyle::Plain, "|---|---|"}});
+	CHECK(blocks[3].Spans == std::vector<Span>{{SpanStyle::Plain, "| 1 | 2 |"}});
+	CHECK(blocks[4].Spans == std::vector<Span>{{SpanStyle::Plain, "after"}});
+}
