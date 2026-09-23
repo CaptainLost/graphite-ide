@@ -47,6 +47,11 @@ namespace Graphite {
 		}
 	}
 
+	std::filesystem::path SessionsPanel::WorkspaceRoot() const
+	{
+		return m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::current_path();
+	}
+
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
 								 SessionWindows& windows, LaunchClaude launch)
 		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_MDI_ROBOT_OUTLINE),
@@ -216,7 +221,7 @@ namespace Graphite {
 
 		const std::string id = Core::Uuid::Generate().ToString();
 
-		if (!m_Launch("Claude", NewSessionCommand(program, id)))
+		if (!m_Launch("Claude", NewSessionCommand(program, id), WorkspaceRoot()))
 		{
 			m_LaunchProblem = "Claude did not start. The console has the reason.";
 			return;
@@ -236,8 +241,23 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_Launch("Claude", ResumeCommand(program, summary.Id)))
-			m_Windows.Open(summary);
+		// Claude Code looks up the transcript to resume under the project of the directory it
+		// is started in, so this must be the session's own folder - the workspace root would
+		// resume the wrong project, or fail to find one at all, whenever "This workspace only"
+		// is unticked or the session was started in a subfolder of the workspace.
+		std::error_code status;
+		const std::filesystem::path directory =
+			!summary.Cwd.empty() && std::filesystem::is_directory(summary.Cwd, status) ? summary.Cwd
+																						: WorkspaceRoot();
+
+		if (!m_Launch("Claude", ResumeCommand(program, summary.Id), directory))
+		{
+			m_LaunchProblem = "Claude did not start. The console has the reason.";
+			return;
+		}
+
+		m_LaunchProblem.reset();
+		m_Windows.Open(summary);
 	}
 
 	void SessionsPanel::RenderToolbar()

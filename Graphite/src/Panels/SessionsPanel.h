@@ -26,8 +26,12 @@ namespace Graphite {
 	class SessionsPanel final : public Core::Panel
 	{
 	public:
-		// Opens `command` in a terminal tab labelled `label`; false when it could not start.
-		using LaunchClaude = std::function<bool(const std::string& label, const ClaudeCommand& command)>;
+		// Opens `command` in a terminal tab labelled `label`, started in `workingDirectory`;
+		// false when it could not start. The directory matters here: Claude Code looks up a
+		// transcript to resume under the project of the directory it is started in, so resuming
+		// a session started elsewhere from the wrong directory fails to find it.
+		using LaunchClaude = std::function<bool(const std::string& label, const ClaudeCommand& command,
+												const std::filesystem::path& workingDirectory)>;
 
 		SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, SessionWindows& windows,
 					  LaunchClaude launch);
@@ -49,6 +53,10 @@ namespace Graphite {
 		void ContinueSession(const SessionSummary& summary);
 
 		std::vector<const SessionSummary*> VisibleSessions() const;
+
+		// The workspace root, or the process's current directory when none is open: where a
+		// launch starts unless the summary it resumes names somewhere more specific.
+		std::filesystem::path WorkspaceRoot() const;
 
 		const Workspace& m_Workspace;
 		const ClaudeSettings& m_Settings;

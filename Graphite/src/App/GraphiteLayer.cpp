@@ -134,14 +134,13 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<SessionsPanel>(
 			m_Workspace, m_ClaudeSettings, m_SessionWindows,
-			[this, terminal](const std::string& label, const ClaudeCommand& command)
+			[this, terminal](const std::string& label, const ClaudeCommand& command,
+							 const std::filesystem::path& workingDirectory)
 			{
 				m_Panels.SetVisible("terminal", true);
 
-				const std::filesystem::path directory =
-					m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::current_path();
-
-				return terminal->OpenCommand(label, command.Program, command.Arguments, directory);
+				return terminal->OpenCommand(label, command.Program, command.Arguments,
+											 workingDirectory);
 			}));
 
 		m_Workspace.RegisterCommands(m_Commands);
