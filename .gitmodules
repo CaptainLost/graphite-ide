@@ -23,3 +23,6 @@
 [submodule "vendor/imanim"]
 	path = vendor/imanim
 	url = https://github.com/soufianekhiat/ImAnim.git
+[submodule "vendor/implot"]
+	path = vendor/implot
+	url = https://github.com/epezent/implot.git

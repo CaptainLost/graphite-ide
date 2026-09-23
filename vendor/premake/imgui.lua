@@ -27,7 +27,13 @@ project "ImGui"
         -- Built here rather than as a project of its own: it is two files that compile
         -- against ImGui's internals and link nowhere ImGui does not already.
         "%{wks.location}/vendor/imanim/im_anim.h",
-        "%{wks.location}/vendor/imanim/im_anim.cpp"
+        "%{wks.location}/vendor/imanim/im_anim.cpp",
+        -- Built here for the same reason as ImAnim: its sources compile against ImGui's
+        -- internals and link nowhere ImGui does not. The demo is left out.
+        "%{wks.location}/vendor/implot/implot.h",
+        "%{wks.location}/vendor/implot/implot_internal.h",
+        "%{wks.location}/vendor/implot/implot.cpp",
+        "%{wks.location}/vendor/implot/implot_items.cpp"
     }
 
     includedirs

@@ -547,4 +547,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0515](0515-ask-before-every-discard-in-the-changes-panel.md) | Ask before every discard in the changes panel | proposed | 2026-09-22 |
 | [0516](0516-animate-the-ui-through-a-core-facade-over-imanim.md) | Animate the UI through a Core facade over ImAnim | proposed | 2026-09-23 |
 | [0517](0517-read-claude-transcripts-through-a-lazy-index-with-cached-summaries.md) | Read Claude transcripts through a lazy index with cached summaries | proposed | 2026-09-23 |
+| [0518](0518-add-implot-as-a-core-dependency.md) | Add ImPlot as a Core dependency | proposed | 2026-09-23 |
 <!-- /adr-index -->

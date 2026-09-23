@@ -124,6 +124,7 @@ project "GraphiteTests"
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.pugixml}",
         "%{IncludeDir.ImGui}",
+        "%{IncludeDir.ImPlot}",
         "%{IncludeDir.MdiIcons}",
         "%{IncludeDir.spdlog}",
         "%{IncludeDir.json}"

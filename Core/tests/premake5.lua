@@ -29,6 +29,7 @@ project "CoreTests"
         "%{IncludeDir.doctest}",
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.ImGui}",
+        "%{IncludeDir.ImPlot}",
         "%{IncludeDir.MdiIcons}",
         "%{IncludeDir.spdlog}"
     }

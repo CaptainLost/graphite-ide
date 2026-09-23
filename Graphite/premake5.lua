@@ -51,6 +51,7 @@ project "Graphite"
         "%{wks.location}/Core/src",
         "%{IncludeDir.GLFW}",
         "%{IncludeDir.ImGui}",
+        "%{IncludeDir.ImPlot}",
         "%{IncludeDir.MdiIcons}"
     }
 

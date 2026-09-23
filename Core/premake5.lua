@@ -34,6 +34,7 @@ project "Core"
     {
         "%{IncludeDir.libgit2}",
         "%{IncludeDir.ImAnim}",
+        "%{IncludeDir.ImPlot}",
         "%{IncludeDir.json}",
         "%{IncludeDir.MdiIcons}",
         "%{IncludeDir.spdlog}"

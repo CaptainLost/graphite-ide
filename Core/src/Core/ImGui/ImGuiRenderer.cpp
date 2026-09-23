@@ -11,6 +11,7 @@
 #include "Core/Platform/Window.h"
 
 #include <imgui.h>
+#include <implot.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 
@@ -160,6 +161,10 @@ namespace Core {
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 
+		// Beside ImGui's own and for exactly as long: every plot call reads it through a
+		// global, as ImGui's calls read theirs.
+		ImPlot::CreateContext();
+
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
@@ -181,6 +186,7 @@ namespace Core {
 		auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
 		if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
 		{
+			ImPlot::DestroyContext();
 			ImGui::DestroyContext();
 			return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL failed"};
 		}
@@ -188,6 +194,7 @@ namespace Core {
 		if (!ImGui_ImplOpenGL3_Init("#version 330 core"))
 		{
 			ImGui_ImplGlfw_Shutdown();
+			ImPlot::DestroyContext();
 			ImGui::DestroyContext();
 			return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
 		}
@@ -204,6 +211,7 @@ namespace Core {
 
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
+		ImPlot::DestroyContext();
 		ImGui::DestroyContext();
 		m_Initialized = false;
 	}
