@@ -126,15 +126,18 @@ namespace Graphite {
 		// A reply's markdown, parsed once and laid out once per width rather than every frame.
 		struct MarkdownCache
 		{
-			// What was parsed, so a reply whose text changed is parsed again.
+			// What was parsed, so a reply whose text changed is parsed again. A flag rather
+			// than an empty text, since an empty reply is parsed too.
+			bool Parsed = false;
 			std::string Text;
 			std::vector<MarkdownBlock> Blocks;
 
 			// Each block's words as placed, valid for the width and font size they were placed
-			// at. Empty for a code block, which is not laid out.
+			// at. Empty for a code block, which is not laid out. No width until the first layout:
+			// a sentinel inside the width's range would be mistaken for a real one.
 			std::vector<std::vector<PlacedWord>> Layouts;
-			float LaidWidth = -1.0f;
-			float LaidFontSize = -1.0f;
+			std::optional<float> LaidWidth;
+			float LaidFontSize = 0.0f;
 		};
 
 		// By (turn, part). Cleared by every rebuild.

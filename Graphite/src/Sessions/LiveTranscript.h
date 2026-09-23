@@ -52,6 +52,11 @@ namespace Graphite {
 			std::size_t SubagentsDone = 0;
 			std::size_t SubagentsTotal = 0;
 
+			// A walk has listed the subagent folder and read every file that changed. Until
+			// then the two counts above may still be the zeroes they start as, so "done equals
+			// total" says nothing on its own.
+			bool SubagentsWalked = false;
+
 			// The first pass over the main transcript has ended, the subagents aside: from then
 			// on the conversation is as complete as the file was when it started.
 			bool FirstPassDone = false;
@@ -78,9 +83,6 @@ namespace Graphite {
 			std::uint64_t Offset = 0;
 
 			LoadProgress Progress;
-
-			// Every subagent transcript has been walked once.
-			bool SubagentsWalked = false;
 
 			// The subagents' usage, set when some subagent's transcript moved on since the
 			// last map and moved out by TakeSubagents.

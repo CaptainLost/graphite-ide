@@ -93,7 +93,7 @@ namespace Graphite {
 
 		{
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
-			counting = !inbox.SubagentsWalked;
+			counting = !inbox.Progress.SubagentsWalked;
 
 			if (counting)
 			{
@@ -160,7 +160,6 @@ namespace Graphite {
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
 			inbox.Progress.SubagentsDone = present.size();
 			inbox.Progress.SubagentsTotal = present.size();
-			inbox.SubagentsWalked = true;
 		}
 
 		// Files not seen have gone, but only when the walk saw the whole folder: one cut short
@@ -252,6 +251,11 @@ namespace Graphite {
 
 				if (subagents.has_value())
 					inbox->Subagents = std::move(*subagents);
+
+				// Marked with the usage it produced, so whoever sees the walk done can take it.
+				// A walk cut short by closing is not done.
+				if (!inbox->Stopping)
+					inbox->Progress.SubagentsWalked = true;
 
 				if (!inbox->Again)
 				{

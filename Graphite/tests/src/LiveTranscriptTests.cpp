@@ -216,7 +216,7 @@ namespace {
 
 	bool AllRead(const LiveTranscript::LoadProgress& progress)
 	{
-		return progress.FirstPassDone && progress.SubagentsDone == progress.SubagentsTotal;
+		return progress.FirstPassDone && progress.SubagentsWalked;
 	}
 
 	// A transcript of `lines` long prompts, written in one go.
@@ -293,63 +293,79 @@ TEST_CASE("A missing transcript still ends its first pass, so the view does not 
 	CHECK(progress.Total == 0);
 }
 
+namespace {
+	using Clock = std::chrono::steady_clock;
+
+	// A session large enough that reading it takes a while in any build: a transcript of a
+	// few chunks and a subagent folder of many files. Built once for the tests that close a
+	// reader mid-read, with the time a whole read of it takes measured once.
+	struct LargeSession
+	{
+		TempDirectory Temp;
+		std::filesystem::path File;
+		Clock::duration FullRead{};
+
+		LargeSession()
+		{
+			File = Temp.MakeFile("p/s.jsonl", LongTranscript(20'000));
+
+			const std::string subagent = SubagentTranscript(150);
+			for (int index = 0; index < 80; ++index)
+				Temp.MakeFile("p/s/subagents/agent-a" + std::to_string(index) + ".jsonl", subagent);
+
+			LiveTranscript live{File};
+			const Clock::time_point start = Clock::now();
+			live.Poll();
+			WaitForProgress(live, AllRead, 300);
+			FullRead = Clock::now() - start;
+		}
+	};
+
+	const LargeSession& GetLargeSession()
+	{
+		static const LargeSession session;
+		return session;
+	}
+
+	// Destroys `live` and says how long that took.
+	Clock::duration TimeDestroy(std::unique_ptr<LiveTranscript>& live)
+	{
+		const Clock::time_point start = Clock::now();
+		live.reset();
+		return Clock::now() - start;
+	}
+}
+
 // The bound is relative, a quarter of the time the same files take to read in full in this
 // very run, so it holds in Debug and Release and on a slow machine alike: destroying stops
 // after the chunk or the subagent file in hand, which is a small part of the whole.
-TEST_CASE("Closing a transcript mid-read returns without finishing the read")
+TEST_CASE("Closing a transcript while its main file is read returns without finishing the read")
 {
-	TempDirectory temp;
-	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", LongTranscript(30'000));
+	const LargeSession& large = GetLargeSession();
 
-	for (int index = 0; index < 40; ++index)
-		temp.MakeFile("p/s/subagents/agent-a" + std::to_string(index) + ".jsonl", SubagentTranscript(300));
+	auto live = std::make_unique<LiveTranscript>(large.File);
+	live->Poll();
+	WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p) { return p.Bytes > 0; });
 
-	using Clock = std::chrono::steady_clock;
-	Clock::duration full{};
+	const LiveTranscript::LoadProgress before = live->GetProgress();
+	const Clock::duration destroy = TimeDestroy(live);
 
-	{
-		LiveTranscript live{file};
-		const Clock::time_point start = Clock::now();
-		live.Poll();
-		WaitForProgress(live, AllRead, 300);
-		full = Clock::now() - start;
-	}
+	CHECK_FALSE(before.FirstPassDone);
+	CHECK(destroy < large.FullRead / 4);
+}
 
-	SUBCASE("while reading the transcript")
-	{
-		Clock::duration destroy{};
+TEST_CASE("Closing a transcript while its subagents are read returns without finishing the walk")
+{
+	const LargeSession& large = GetLargeSession();
 
-		{
-			auto live = std::make_unique<LiveTranscript>(file);
-			live->Poll();
-			WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p) { return p.Bytes > 0; });
+	auto live = std::make_unique<LiveTranscript>(large.File);
+	live->Poll();
+	WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p)
+					{ return p.FirstPassDone && p.SubagentsTotal > 0 && !p.SubagentsWalked; }, 300);
 
-			const Clock::time_point start = Clock::now();
-			live.reset();
-			destroy = Clock::now() - start;
-		}
+	const LiveTranscript::LoadProgress before = live->GetProgress();
+	const Clock::duration destroy = TimeDestroy(live);
 
-		MESSAGE("full read ", std::chrono::duration_cast<std::chrono::milliseconds>(full).count(), " ms, destroy ",
-				std::chrono::duration_cast<std::chrono::milliseconds>(destroy).count(), " ms");
-		CHECK(destroy < full / 4);
-	}
-
-	SUBCASE("while reading the subagents")
-	{
-		Clock::duration destroy{};
-
-		{
-			auto live = std::make_unique<LiveTranscript>(file);
-			live->Poll();
-			WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p) { return p.FirstPassDone; }, 300);
-
-			const Clock::time_point start = Clock::now();
-			live.reset();
-			destroy = Clock::now() - start;
-		}
-
-		MESSAGE("full read ", std::chrono::duration_cast<std::chrono::milliseconds>(full).count(), " ms, destroy ",
-				std::chrono::duration_cast<std::chrono::milliseconds>(destroy).count(), " ms");
-		CHECK(destroy < full / 4);
-	}
+	CHECK(before.SubagentsDone < before.SubagentsTotal);
+	CHECK(destroy < large.FullRead / 4);
 }

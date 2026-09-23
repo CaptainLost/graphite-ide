@@ -44,7 +44,7 @@ namespace Graphite {
 				ImGui::TextDisabled("Loading transcript\xe2\x80\xa6");
 				ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), label.c_str());
 			}
-			else if (progress.SubagentsDone < progress.SubagentsTotal)
+			else if (!progress.SubagentsWalked)
 			{
 				ImGui::TextDisabled("Reading subagents\xe2\x80\xa6 %zu / %zu", progress.SubagentsDone,
 									progress.SubagentsTotal);

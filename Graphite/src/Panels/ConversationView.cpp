@@ -719,21 +719,26 @@ namespace Graphite {
 	void ConversationView::DrawMarkdown(const std::string& text, std::pair<std::size_t, std::size_t> key,
 										const ConversationContext& context)
 	{
-		const float width = ImGui::GetContentRegionAvail().x - kBlockPadding;
+		// Never negative: a split dragged narrower than the block's padding still lays out, one
+		// word to a line, rather than handing the layout and the code box a width below zero.
+		const float width = std::max(0.0f, ImGui::GetContentRegionAvail().x - kBlockPadding);
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
 		MarkdownCache& cache = m_Markdown[key];
 
-		if (cache.LaidWidth < 0.0f || cache.Text != text)
+		if (!cache.Parsed || cache.Text != text)
 		{
+			cache.Parsed = true;
 			cache.Text = text;
 			cache.Blocks = ParseMarkdown(text);
-			cache.LaidWidth = -1.0f;
+			cache.LaidWidth.reset();
 		}
 
 		// Laid out again only when the width or the font size moved: placing the words measures
 		// every one of them, too much for every visible reply every frame.
-		const bool relayout = cache.LaidWidth != width || cache.LaidFontSize != ImGui::GetFontSize();
+		const bool relayout = !cache.LaidWidth || *cache.LaidWidth != width ||
+							  cache.Layouts.size() != cache.Blocks.size() ||
+							  cache.LaidFontSize != ImGui::GetFontSize();
 
 		if (relayout)
 		{
