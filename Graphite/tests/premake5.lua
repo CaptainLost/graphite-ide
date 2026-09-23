@@ -30,6 +30,10 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src/Lang/**.cpp",
         "%{wks.location}/Graphite/src/Settings/**.h",
         "%{wks.location}/Graphite/src/Settings/**.cpp",
+        -- Sessions is the transcript model and nothing else: it draws nothing, and its windows
+        -- live under Panels, so the whole folder is globbed.
+        "%{wks.location}/Graphite/src/Sessions/**.h",
+        "%{wks.location}/Graphite/src/Sessions/**.cpp",
         -- Editor is named file by file rather than globbed: most of it is widget code that
         -- drags in ImGui and the application's own layers. The units named here are the parts
         -- that are only logic, drawing nothing and reaching no further than Core and the
