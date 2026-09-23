@@ -110,7 +110,8 @@ TEST_CASE("A usage line names the model, the cached share, output and cost")
 {
 	const UsageByModel usage{{{"claude-opus-5", false}, {2'000, 310, 0, 0, 198'000}}};
 
-	CHECK(UsageLine(usage, 1, Pricing::Defaults()) == "opus-5 \xc2\xb7 200.0k in (99% cache) \xc2\xb7 310 out \xc2\xb7 $0.12");
+	CHECK(UsageLine(usage, 1, Pricing::Defaults()) ==
+		  "1 request \xc2\xb7 opus-5 \xc2\xb7 200.0k in (99% cache) \xc2\xb7 310 out \xc2\xb7 $0.12");
 	CHECK(UsageLine(usage, 3, Pricing::Defaults()).starts_with("3 requests \xc2\xb7 opus-5"));
 }
 

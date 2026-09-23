@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/LiveTranscript.h"
+#include "Sessions/RequestTimeline.h"
 
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"
@@ -50,6 +51,54 @@ TEST_CASE("A live transcript reads what is there, then only what is appended")
 	WaitForTurns(live, session, 2);
 
 	CHECK(session.GetTurns()[1].Prompt == "two");
+}
+
+TEST_CASE("The timeline follows the transcript and restarts with it")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("s.jsonl",
+		Fixtures::UserPrompt("one") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z"));
+
+	LiveTranscript live{file};
+	Session session;
+	RequestTimeline timeline;
+
+	live.Poll();
+
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+		while (timeline.GetRequests().size() != 2)
+		{
+			live.Take(session, timeline);
+			REQUIRE(std::chrono::steady_clock::now() < deadline);
+			std::this_thread::sleep_for(std::chrono::milliseconds{5});
+		}
+	}
+
+	const std::uint64_t versionBefore = timeline.GetVersion();
+
+	{
+		std::ofstream stream{file, std::ios::binary | std::ios::trunc};
+		stream << Fixtures::UserPrompt("one") + Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1));
+	}
+
+	live.Poll();
+
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+		while (timeline.GetRequests().size() != 1)
+		{
+			live.Take(session, timeline);
+			REQUIRE(std::chrono::steady_clock::now() < deadline);
+			std::this_thread::sleep_for(std::chrono::milliseconds{5});
+		}
+	}
+
+	// A restart moves the timeline's version too, distinct from ordinary growth.
+	CHECK(timeline.GetVersion() != versionBefore);
 }
 
 TEST_CASE("A transcript that shrank is read again from nothing")

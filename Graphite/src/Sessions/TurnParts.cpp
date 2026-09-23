@@ -75,6 +75,17 @@ namespace Graphite {
 		std::map<std::string, std::size_t> owner;
 		std::set<std::string> pending;
 
+		// Every request key seen, in first-seen order, so RequestKeys can be reported that way
+		// once each key's final owner is known — owner itself, a std::map, sorts by key.
+		std::vector<std::string> order;
+		std::set<std::string> seen;
+
+		const auto note = [&order, &seen](const std::string& request)
+		{
+			if (seen.insert(request).second)
+				order.push_back(request);
+		};
+
 		for (std::size_t index = 0; index < turn.Items.size(); ++index)
 		{
 			const TurnItem& item = turn.Items[index];
@@ -82,7 +93,10 @@ namespace Graphite {
 			if (!IsVisible(item))
 			{
 				if (!item.RequestId.empty())
+				{
 					pending.insert(item.RequestId);
+					note(item.RequestId);
+				}
 				continue;
 			}
 
@@ -96,7 +110,10 @@ namespace Graphite {
 
 			const std::size_t part = parts.size() - 1;
 			if (!item.RequestId.empty())
+			{
 				owner[item.RequestId] = part;
+				note(item.RequestId);
+			}
 			for (const std::string& request : pending)
 				owner[request] = part;
 			pending.clear();
@@ -116,6 +133,13 @@ namespace Graphite {
 
 			parts[part].Usage[{found->second.Model, found->second.Fast}] += found->second.Usage;
 			++parts[part].Requests;
+		}
+
+		for (const std::string& request : order)
+		{
+			const auto found = owner.find(request);
+			if (found != owner.end())
+				parts[found->second].RequestKeys.push_back(request);
 		}
 
 		for (TurnPart& part : parts)

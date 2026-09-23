@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/ToolFacts.h"
@@ -36,6 +37,10 @@ namespace Graphite {
 
 		// UI thread only. Applies what arrived since the last call; true when anything did.
 		bool Take(Session& session);
+
+		// UI thread only. As above, and feeds the same records to a request timeline, resetting
+		// it alongside the session on a restart.
+		bool Take(Session& session, RequestTimeline& timeline);
 
 		// UI thread only. Moves out the subagents' usage when a newer map arrived since the
 		// last call; true when it did.
@@ -116,6 +121,9 @@ namespace Graphite {
 		// but moves nothing. Worker only.
 		static std::optional<SubagentUsage> FollowSubagents(const std::filesystem::path& sessionFile,
 															SubagentFiles& subagents, Inbox& inbox);
+
+		// Shared by both overloads of Take; `timeline` is null for the session-only one.
+		bool TakeRecords(Session& session, RequestTimeline* timeline);
 
 		std::filesystem::path m_File;
 		std::shared_ptr<Inbox> m_Inbox = std::make_shared<Inbox>();

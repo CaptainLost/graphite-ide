@@ -43,6 +43,9 @@ namespace Graphite {
 		// The requests whose last visible item is in this part, and what they used.
 		UsageByModel Usage;
 		std::size_t Requests = 0;
+
+		// Those requests' keys, in the order they first appeared in the turn.
+		std::vector<std::string> RequestKeys;
 	};
 
 	std::vector<TurnPart> SplitTurn(const Turn& turn, const std::vector<ToolCall>& tools);

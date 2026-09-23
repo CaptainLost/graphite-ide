@@ -43,6 +43,7 @@ TEST_CASE("Consecutive tool calls fold into one step run between replies")
 	CHECK(parts[1].Failures == 1);
 	CHECK(parts[1].Duration == std::chrono::milliseconds{7000});
 	CHECK(parts[1].Requests == 3);
+	CHECK(parts[1].RequestKeys == std::vector<std::string>{"r2", "r3", "r4"});
 	CHECK(parts[2].Kind == PartKind::Reply);
 }
 

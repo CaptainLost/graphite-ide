@@ -268,6 +268,16 @@ namespace Graphite {
 
 	bool LiveTranscript::Take(Session& session)
 	{
+		return TakeRecords(session, nullptr);
+	}
+
+	bool LiveTranscript::Take(Session& session, RequestTimeline& timeline)
+	{
+		return TakeRecords(session, &timeline);
+	}
+
+	bool LiveTranscript::TakeRecords(Session& session, RequestTimeline* timeline)
+	{
 		std::vector<TranscriptRecord> records;
 		bool restarted = false;
 
@@ -278,9 +288,16 @@ namespace Graphite {
 		}
 
 		if (restarted)
+		{
 			session.Reset();
+			if (timeline != nullptr)
+				timeline->Reset();
+		}
 
 		session.Append(records);
+		if (timeline != nullptr)
+			timeline->Append(records);
+
 		return restarted || !records.empty();
 	}
 
