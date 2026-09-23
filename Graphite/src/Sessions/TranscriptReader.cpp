@@ -2,6 +2,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
+#include <cstdint>
 #include <fstream>
 #include <string>
 
@@ -256,8 +258,8 @@ namespace Graphite {
 		return chunk;
 	}
 
-	Core::Result<TranscriptRead> ReadTranscript(const std::filesystem::path& file,
-												std::uint64_t offset)
+	Core::Result<TranscriptRead> ReadTranscriptChunk(const std::filesystem::path& file,
+													 std::uint64_t offset, std::uint64_t maxBytes)
 	{
 		std::error_code status;
 		const std::uintmax_t size = std::filesystem::file_size(file, status);
@@ -266,6 +268,7 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::NotFound, "cannot read the transcript's size"};
 
 		TranscriptRead read;
+		read.FileSize = size;
 
 		if (size < offset)
 		{
@@ -280,12 +283,32 @@ namespace Graphite {
 
 		stream.seekg(static_cast<std::streamoff>(offset));
 
-		std::string bytes(static_cast<std::size_t>(size - offset), '\0');
-		stream.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-		bytes.resize(static_cast<std::size_t>(stream.gcount()));
+		const std::uint64_t available = size - offset;
+		const std::uint64_t step = std::max<std::uint64_t>(maxBytes, 1);
+		std::string bytes;
+
+		// Grown a step at a time until the bytes hold a whole line or the file runs out.
+		while (bytes.size() < available)
+		{
+			const std::size_t had = bytes.size();
+			const std::uint64_t wanted = std::min<std::uint64_t>(step, available - had);
+
+			bytes.resize(had + static_cast<std::size_t>(wanted));
+			stream.read(bytes.data() + had, static_cast<std::streamsize>(wanted));
+			bytes.resize(had + static_cast<std::size_t>(stream.gcount()));
+
+			if (bytes.size() == had || bytes.find('\n', had) != std::string::npos)
+				break;
+		}
 
 		read.Chunk = ParseTranscript(bytes);
 		read.NextOffset = offset + read.Chunk.Consumed;
 		return read;
+	}
+
+	Core::Result<TranscriptRead> ReadTranscript(const std::filesystem::path& file,
+												std::uint64_t offset)
+	{
+		return ReadTranscriptChunk(file, offset, UINT64_MAX);
 	}
 }

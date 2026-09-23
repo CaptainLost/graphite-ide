@@ -7,6 +7,8 @@
 
 #include <chrono>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <thread>
 
 using namespace Graphite;
@@ -192,4 +194,162 @@ TEST_CASE("A subagent's transcript is followed from where the last read stopped"
 	Append(agent, Fixtures::Assistant("r3", Fixtures::TextBlock("w"), Fixtures::Usage(1, 1)));
 	live.Poll();
 	WaitForSubagent(live, subagents, "a1", {{{"claude-opus-5", false}, {7, 9, 0, 0, 0}}});
+}
+
+namespace {
+	// Polls GetProgress until `done` holds, or fails after `seconds`.
+	template <typename Done>
+	LiveTranscript::LoadProgress WaitForProgress(const LiveTranscript& live, Done done, int seconds = 60)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
+
+		while (true)
+		{
+			const LiveTranscript::LoadProgress progress = live.GetProgress();
+			if (done(progress))
+				return progress;
+
+			REQUIRE(std::chrono::steady_clock::now() < deadline);
+			std::this_thread::sleep_for(std::chrono::milliseconds{1});
+		}
+	}
+
+	bool AllRead(const LiveTranscript::LoadProgress& progress)
+	{
+		return progress.FirstPassDone && progress.SubagentsDone == progress.SubagentsTotal;
+	}
+
+	// A transcript of `lines` long prompts, written in one go.
+	std::string LongTranscript(std::size_t lines)
+	{
+		std::string bytes;
+		const std::string filler(300, 'x');
+
+		for (std::size_t index = 0; index < lines; ++index)
+			bytes += Fixtures::UserPrompt(filler + std::to_string(index));
+
+		return bytes;
+	}
+
+	// A subagent transcript of `lines` requests.
+	std::string SubagentTranscript(std::size_t lines)
+	{
+		std::string bytes;
+		const std::string filler(300, 'y');
+
+		for (std::size_t index = 0; index < lines; ++index)
+			bytes += Fixtures::Assistant("r" + std::to_string(index), Fixtures::TextBlock(filler), Fixtures::Usage(1, 1));
+
+		return bytes;
+	}
+}
+
+TEST_CASE("Loading reports the bytes read of the transcript and the subagents read, then that the first pass is done")
+{
+	TempDirectory temp;
+	const std::string bytes = Fixtures::UserPrompt("one") + Fixtures::UserPrompt("two", "2026-09-17T09:01:00.000Z");
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", bytes);
+	temp.MakeFile("p/s/subagents/agent-a1.jsonl", SubagentTranscript(2));
+	temp.MakeFile("p/s/subagents/agent-a2.jsonl", SubagentTranscript(3));
+
+	LiveTranscript live{file};
+
+	CHECK_FALSE(live.GetProgress().FirstPassDone);
+
+	live.Poll();
+	const LiveTranscript::LoadProgress progress = WaitForProgress(live, AllRead);
+
+	CHECK(progress.Bytes == bytes.size());
+	CHECK(progress.Total == bytes.size());
+	CHECK(progress.SubagentsTotal == 2);
+	CHECK(progress.SubagentsDone == 2);
+}
+
+TEST_CASE("A transcript larger than one chunk arrives in pieces, complete and in order")
+{
+	TempDirectory temp;
+	constexpr std::size_t kLines = 8'000;
+	const std::filesystem::path file = temp.MakeFile("s.jsonl", LongTranscript(kLines));
+
+	LiveTranscript live{file};
+	Session session;
+
+	live.Poll();
+	WaitForTurns(live, session, kLines);
+
+	CHECK(session.GetTurns().front().Prompt == std::string(300, 'x') + "0");
+	CHECK(session.GetTurns().back().Prompt == std::string(300, 'x') + std::to_string(kLines - 1));
+}
+
+TEST_CASE("A missing transcript still ends its first pass, so the view does not wait on it forever")
+{
+	TempDirectory temp;
+	LiveTranscript live{temp.GetPath() / "none.jsonl"};
+
+	live.Poll();
+	const LiveTranscript::LoadProgress progress =
+		WaitForProgress(live, [](const LiveTranscript::LoadProgress& p) { return p.FirstPassDone; }, 5);
+
+	CHECK(progress.Total == 0);
+}
+
+// The bound is relative, a quarter of the time the same files take to read in full in this
+// very run, so it holds in Debug and Release and on a slow machine alike: destroying stops
+// after the chunk or the subagent file in hand, which is a small part of the whole.
+TEST_CASE("Closing a transcript mid-read returns without finishing the read")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", LongTranscript(30'000));
+
+	for (int index = 0; index < 40; ++index)
+		temp.MakeFile("p/s/subagents/agent-a" + std::to_string(index) + ".jsonl", SubagentTranscript(300));
+
+	using Clock = std::chrono::steady_clock;
+	Clock::duration full{};
+
+	{
+		LiveTranscript live{file};
+		const Clock::time_point start = Clock::now();
+		live.Poll();
+		WaitForProgress(live, AllRead, 300);
+		full = Clock::now() - start;
+	}
+
+	SUBCASE("while reading the transcript")
+	{
+		Clock::duration destroy{};
+
+		{
+			auto live = std::make_unique<LiveTranscript>(file);
+			live->Poll();
+			WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p) { return p.Bytes > 0; });
+
+			const Clock::time_point start = Clock::now();
+			live.reset();
+			destroy = Clock::now() - start;
+		}
+
+		MESSAGE("full read ", std::chrono::duration_cast<std::chrono::milliseconds>(full).count(), " ms, destroy ",
+				std::chrono::duration_cast<std::chrono::milliseconds>(destroy).count(), " ms");
+		CHECK(destroy < full / 4);
+	}
+
+	SUBCASE("while reading the subagents")
+	{
+		Clock::duration destroy{};
+
+		{
+			auto live = std::make_unique<LiveTranscript>(file);
+			live->Poll();
+			WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p) { return p.FirstPassDone; }, 300);
+
+			const Clock::time_point start = Clock::now();
+			live.reset();
+			destroy = Clock::now() - start;
+		}
+
+		MESSAGE("full read ", std::chrono::duration_cast<std::chrono::milliseconds>(full).count(), " ms, destroy ",
+				std::chrono::duration_cast<std::chrono::milliseconds>(destroy).count(), " ms");
+		CHECK(destroy < full / 4);
+	}
 }

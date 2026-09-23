@@ -5,8 +5,10 @@
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"
 
+#include <cstdint>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using namespace Graphite;
 
@@ -214,4 +216,93 @@ TEST_CASE("A missing file is an error, not an empty transcript")
 	TempDirectory temp;
 
 	CHECK_FALSE(ReadTranscript(temp.GetPath() / "none.jsonl", 0).HasValue());
+}
+
+TEST_CASE("A file read in small chunks yields the same records as one read")
+{
+	std::string bytes;
+	for (int index = 0; index < 40; ++index)
+		bytes += Fixtures::UserPrompt("prompt " + std::to_string(index));
+
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("s.jsonl", bytes);
+
+	const Core::Result<TranscriptRead> whole = ReadTranscript(file, 0);
+	REQUIRE(whole.HasValue());
+
+	std::vector<std::string> chunked;
+	std::uint64_t offset = 0;
+
+	// Small enough that most chunks end in the middle of a line.
+	for (int reads = 0; offset < bytes.size(); ++reads)
+	{
+		REQUIRE(reads < 10'000);
+
+		Core::Result<TranscriptRead> read = ReadTranscriptChunk(file, offset, 300);
+		REQUIRE(read.HasValue());
+
+		for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
+			chunked.push_back(record.Blocks[0].Text);
+
+		// A line longer than the limit would never be consumed; the chunk reader must not
+		// stall on one.
+		REQUIRE(read.GetValue().NextOffset > offset);
+		offset = read.GetValue().NextOffset;
+	}
+
+	REQUIRE(chunked.size() == whole.GetValue().Chunk.Records.size());
+	for (std::size_t index = 0; index < chunked.size(); ++index)
+		CHECK(chunked[index] == whole.GetValue().Chunk.Records[index].Blocks[0].Text);
+}
+
+TEST_CASE("A chunk that ends in the middle of a line leaves that line for the next chunk")
+{
+	const std::string first = Fixtures::UserPrompt("first");
+	const std::string second = Fixtures::UserPrompt("second");
+
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("s.jsonl", first + second);
+
+	const Core::Result<TranscriptRead> read = ReadTranscriptChunk(file, 0, first.size() + second.size() / 2);
+
+	REQUIRE(read.HasValue());
+	REQUIRE(read.GetValue().Chunk.Records.size() == 1);
+	CHECK(read.GetValue().NextOffset == first.size());
+
+	const Core::Result<TranscriptRead> next = ReadTranscriptChunk(file, read.GetValue().NextOffset, 1'000'000);
+
+	REQUIRE(next.HasValue());
+	REQUIRE(next.GetValue().Chunk.Records.size() == 1);
+	CHECK(next.GetValue().Chunk.Records[0].Blocks[0].Text == "second");
+	CHECK(next.GetValue().NextOffset == first.size() + second.size());
+}
+
+TEST_CASE("A read reports the size of the file it read")
+{
+	const std::string bytes = Fixtures::UserPrompt("one") + Fixtures::UserPrompt("two");
+
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("s.jsonl", bytes);
+
+	const Core::Result<TranscriptRead> chunk = ReadTranscriptChunk(file, 0, 10);
+	const Core::Result<TranscriptRead> whole = ReadTranscript(file, 0);
+
+	REQUIRE(chunk.HasValue());
+	REQUIRE(whole.HasValue());
+	CHECK(chunk.GetValue().FileSize == bytes.size());
+	CHECK(whole.GetValue().FileSize == bytes.size());
+}
+
+TEST_CASE("A line longer than the chunk is still read whole rather than never")
+{
+	const std::string longLine = Fixtures::UserPrompt(std::string(5000, 'x'));
+
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("s.jsonl", longLine + Fixtures::UserPrompt("after"));
+
+	const Core::Result<TranscriptRead> read = ReadTranscriptChunk(file, 0, 100);
+
+	REQUIRE(read.HasValue());
+	REQUIRE(read.GetValue().Chunk.Records.size() == 1);
+	CHECK(read.GetValue().NextOffset == longLine.size());
 }

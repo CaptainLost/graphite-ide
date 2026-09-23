@@ -38,9 +38,19 @@ namespace Graphite {
 		// The file was shorter than the offset asked for, so it was read from zero and the
 		// caller must drop what it built from the earlier contents.
 		bool Restarted = false;
+
+		// How long the file was when it was read, so a caller reading it in pieces can tell
+		// how far through it is.
+		std::uint64_t FileSize = 0;
 	};
 
 	// Reads from `offset` to the end of the file.
 	Core::Result<TranscriptRead> ReadTranscript(const std::filesystem::path& file,
 												std::uint64_t offset);
+
+	// Reads about `maxBytes` from `offset`: a line the limit cuts is left for the next read,
+	// exactly like a last line with no newline. A line longer than the limit is read whole
+	// all the same, since leaving it would leave every read after it stuck on it.
+	Core::Result<TranscriptRead> ReadTranscriptChunk(const std::filesystem::path& file,
+													 std::uint64_t offset, std::uint64_t maxBytes);
 }

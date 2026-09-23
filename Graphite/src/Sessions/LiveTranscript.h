@@ -41,6 +41,25 @@ namespace Graphite {
 		// last call; true when it did.
 		bool TakeSubagents(SubagentUsage& out);
 
+		// How far loading has got, for a view to show while there is little or nothing to draw.
+		struct LoadProgress
+		{
+			// Of the main transcript: how far it has been read, and how long it was then.
+			std::uint64_t Bytes = 0;
+			std::uint64_t Total = 0;
+
+			// Of the subagent transcripts in the latest look at them.
+			std::size_t SubagentsDone = 0;
+			std::size_t SubagentsTotal = 0;
+
+			// The first pass over the main transcript has ended, the subagents aside: from then
+			// on the conversation is as complete as the file was when it started.
+			bool FirstPassDone = false;
+		};
+
+		// UI thread only.
+		LoadProgress GetProgress() const;
+
 		std::size_t GetSkipped() const;
 		const std::filesystem::path& GetFile() const { return m_File; }
 
@@ -57,6 +76,11 @@ namespace Graphite {
 
 			// Where the next read starts. Only the worker moves it.
 			std::uint64_t Offset = 0;
+
+			LoadProgress Progress;
+
+			// Every subagent transcript has been walked once.
+			bool SubagentsWalked = false;
 
 			// The subagents' usage, set when some subagent's transcript moved on since the
 			// last map and moved out by TakeSubagents.
@@ -79,12 +103,17 @@ namespace Graphite {
 			std::map<std::filesystem::path, SubagentFile> Files;
 		};
 
+		// Reads the main transcript from where the last read stopped, a chunk at a time, and
+		// publishes each chunk as it goes. False when the transcript is being closed. Worker only.
+		static bool ReadMain(const std::filesystem::path& file, Inbox& inbox);
+
 		// Brings every subagent transcript up to date, reading each only from where its last
 		// read stopped. Returns the whole map when any of them moved on — appeared, grew,
-		// shrank or went — and nothing when none did. A file that grew only by a line still
-		// being written is looked at again next time, but moves nothing. Worker only.
+		// shrank or went — and nothing when none did, or when the transcript is being closed.
+		// A file that grew only by a line still being written is looked at again next time,
+		// but moves nothing. Worker only.
 		static std::optional<SubagentUsage> FollowSubagents(const std::filesystem::path& sessionFile,
-															SubagentFiles& subagents);
+															SubagentFiles& subagents, Inbox& inbox);
 
 		std::filesystem::path m_File;
 		std::shared_ptr<Inbox> m_Inbox = std::make_shared<Inbox>();

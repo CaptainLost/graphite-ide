@@ -11,6 +11,9 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <format>
+#include <string>
 #include <utility>
 
 namespace Graphite {
@@ -18,6 +21,35 @@ namespace Graphite {
 	namespace {
 		// A tab shows the start of a title; the whole of it is in the session's list row.
 		constexpr std::size_t kTabTitleBytes = 60;
+
+		double Megabytes(std::uint64_t bytes)
+		{
+			return static_cast<double>(bytes) / (1024.0 * 1024.0);
+		}
+
+		// Above the conversation while it loads: a large transcript takes a while, in a Debug
+		// build especially, and an empty tab says nothing about whether anything is coming.
+		// The conversation fills in underneath as each chunk arrives.
+		void DrawProgress(const LiveTranscript::LoadProgress& progress)
+		{
+			if (!progress.FirstPassDone)
+			{
+				const float fraction =
+					progress.Total > 0 ? static_cast<float>(static_cast<double>(progress.Bytes) /
+															 static_cast<double>(progress.Total))
+									   : 0.0f;
+				const std::string label =
+					std::format("{:.1f} / {:.1f} MB", Megabytes(progress.Bytes), Megabytes(progress.Total));
+
+				ImGui::TextDisabled("Loading transcript\xe2\x80\xa6");
+				ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), label.c_str());
+			}
+			else if (progress.SubagentsDone < progress.SubagentsTotal)
+			{
+				ImGui::TextDisabled("Reading subagents\xe2\x80\xa6 %zu / %zu", progress.SubagentsDone,
+									progress.SubagentsTotal);
+			}
+		}
 	}
 
 	SessionWindows::SessionWindows(Core::EventBus& events, const ClaudeSettings& settings)
@@ -151,6 +183,8 @@ namespace Graphite {
 					{
 						if (const std::size_t skipped = entry.Live->GetSkipped(); skipped > 0)
 							ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
+
+						DrawProgress(entry.Live->GetProgress());
 
 						entry.Conversation.Draw(
 							entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion}, m_Events);
