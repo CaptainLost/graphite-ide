@@ -53,6 +53,7 @@ namespace Graphite {
 		Thinking,
 		ToolUse,
 		ToolResult,
+		Image,
 		Other
 	};
 
@@ -60,7 +61,8 @@ namespace Graphite {
 	{
 		BlockKind Kind = BlockKind::Other;
 
-		// The text, the thinking, a tool result's text, or — for Other — the block's type name.
+		// The text, the thinking, a tool result's text, an image's media type ("image/png"), or
+		// — for Other — the block's type name.
 		std::string Text;
 
 		// A tool_use's own id, or the id a tool_result answers.
@@ -76,6 +78,10 @@ namespace Graphite {
 		std::string ResultJson;
 
 		bool IsError = false;
+
+		// For an image: the length of its base64 data. The data itself is not kept — a pasted
+		// screenshot is hundreds of kilobytes the views never draw.
+		std::size_t DataBytes = 0;
 	};
 
 	// One line of a transcript, reduced to the fields this feature reads.
@@ -119,5 +125,10 @@ namespace Graphite {
 
 		// The line's length, excluding the newline and any trailing '\r'.
 		std::size_t Bytes = 0;
+
+		// For an attachment: the size of what it puts in front of the model — its text, its
+		// content, the lines it adds — rather than of the record that carries it, which also
+		// holds ids, timestamps and bookkeeping the model never sees.
+		std::size_t AttachmentContentBytes = 0;
 	};
 }

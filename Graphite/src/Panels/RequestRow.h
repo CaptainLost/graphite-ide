@@ -7,13 +7,30 @@
 
 #include <imgui.h>
 
+#include <chrono>
+#include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
 	// One API request as the session views show it, folded to a line or opened to what it sent
 	// and returned. Shared by the Requests tab and the table under a usage line, so a request
 	// reads the same wherever it is listed.
+
+	// The pieces a request's line and its row in the Requests table are made of, so the two
+	// read the same.
+
+	// "opus-5-5" for "claude-opus-5-5".
+	std::string ShortModelName(std::string_view model);
+
+	// "+2.3k", or "−2.3k" with U+2212 MINUS SIGN for a context that shrank.
+	std::string SignedTokens(std::int64_t tokens);
+
+	// "850 ms", "6.2 s", or FormatDuration past a minute.
+	std::string WaitText(std::chrono::milliseconds waited);
+
+	const char* StopGlyph(std::string_view reason);
 
 	// "#42 18:12:11 · opus-5-5 · ctx 663.9k +2.3k · 99% cache · 1.1k out · $0.15 · 6.2 s".
 	// A part the request does not carry — a timestamp that does not parse, no usage, no wait

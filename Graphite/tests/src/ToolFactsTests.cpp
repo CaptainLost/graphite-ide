@@ -126,3 +126,15 @@ TEST_CASE("Subagent usage is read per agent id from the session's subagents fold
 	REQUIRE(usage.contains("a1"));
 	CHECK(usage.at("a1") == UsageByModel{{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
 }
+
+TEST_CASE("A cached share is a whole percent, cut rather than rounded")
+{
+	// 99.9% is not all of it: rounded, it would read as 100%.
+	CHECK(CachedPercent(999, 1000) == 99);
+	CHECK(CachedPercent(1000, 1000) == 100);
+	CHECK(CachedPercent(0, 1000) == 0);
+	CHECK(CachedPercent(5, 0) == 0);
+
+	const UsageByModel usage{{{"claude-opus-5", false}, {1, 1, 0, 0, 999}}};
+	CHECK(UsageLine(usage, 1, Pricing::Defaults()).find("(99% cache)") != std::string::npos);
+}

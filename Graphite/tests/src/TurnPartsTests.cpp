@@ -148,3 +148,24 @@ TEST_CASE("A queued message is a part of its own between the parts around it")
 	CHECK(parts[3].Kind == PartKind::Steps);
 	CHECK(parts[3].Requests == 1);
 }
+
+TEST_CASE("A part lists only the requests it counts")
+{
+	// A response written without usage is an item of the turn but not one of its requests:
+	// listing its key would promise a request the part's count leaves out.
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Line({{"type", "assistant"},
+						{"uuid", "a-r1"},
+						{"requestId", "r1"},
+						{"timestamp", "2026-09-17T09:00:01.000Z"},
+						{"message", {{"role", "assistant"}, {"content", nlohmann::json::array({Fixtures::ToolUseBlock("a", "Bash", {})})}}}}) +
+		Fixtures::Assistant("r2", Fixtures::ToolUseBlock("b", "Bash", {}), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z"));
+
+	const std::vector<TurnPart> parts = SplitTurn(session.GetTurns()[0], session.GetTools());
+
+	REQUIRE(parts.size() == 1);
+	CHECK(parts[0].Requests == 1);
+	CHECK(parts[0].RequestKeys == std::vector<std::string>{"r2"});
+}

@@ -26,7 +26,12 @@ namespace Graphite {
 		Skills,
 		McpInstructions,
 		EditedFile,
-		Reminder
+		Reminder,
+
+		// An image the user pasted. Its estimate is its share of the delta by bytes like any
+		// other item's, though an image is billed by its pixels, not its bytes: it is the
+		// roughest estimate here.
+		Image
 	};
 
 	struct SentItem
@@ -74,6 +79,7 @@ namespace Graphite {
 		std::vector<ResponseItem> Response;
 		std::string StopReason;
 		std::size_t ToolsAvailable = 0; // deferred tools loaded at this request
+		std::size_t ToolsLoaded = 0;    // names this request's own tools deltas added
 	};
 
 	// Cuts a transcript's records into the API requests it made. Built by appending, like
@@ -96,12 +102,12 @@ namespace Graphite {
 		std::uint64_t GetVersion() const { return m_Version; }
 
 	private:
-		// A tool_use block's name and input, kept so the tool_result answering it — and the
+		// A tool_use block's name and the summary of its input, kept so the tool_result answering it — and the
 		// request that carries that result — can name it and summarise it.
 		struct ToolCallInfo
 		{
 			std::string Name;
-			std::string InputJson;
+			std::string Summary;
 		};
 
 		void AddAssistant(const TranscriptRecord& record, bool& changed);
@@ -110,8 +116,8 @@ namespace Graphite {
 		void EstimateTokens(ApiRequest& request) const;
 		void ApplyUsage(ApiRequest& request, std::size_t index, const TokenCounts& usage);
 
-		// The delta baseline for the request at `index`: its Context against the Context of
-		// the last earlier request that had usage, or nothing when none did.
+		// The delta for the request at `index`: its Context against the Context of the last
+		// earlier request that had one, or nothing when none did or this one has none.
 		std::optional<std::int64_t> ContextDeltaFor(std::size_t index) const;
 
 		std::vector<ApiRequest> m_Requests;
@@ -130,6 +136,9 @@ namespace Graphite {
 		// The deferred tools loaded so far, as of the last attachment that changed them.
 		std::set<std::string> m_Tools;
 
+		// Names the tools deltas in m_Pending added, for the request they go out with.
+		std::size_t m_PendingLoaded = 0;
+
 		// The last record's timestamp that actually parsed. A malformed one is worse than no
 		// timestamp: kept, it would make every Waited after it uncomputable instead of just
 		// the one record that carried it.
@@ -142,4 +151,8 @@ namespace Graphite {
 	// The tools this request used: called in its Response, or whose results it Sent — unique,
 	// in first-seen order.
 	std::vector<std::string> ToolNamesUsed(const ApiRequest& request);
+
+	// "Tools available: 12 (+3 loaded)", the count in brackets only when the request's own
+	// deltas loaded any.
+	std::string ToolsAvailableLabel(const ApiRequest& request);
 }

@@ -44,6 +44,10 @@ namespace Graphite {
 	ToolFacts FactsOf(const ToolCall& tool, const SubagentUsage& subagents, const Pricing& pricing);
 
 	std::string FormatBytes(std::uint64_t bytes);
+
+	// The share of `context` read from the cache, as a whole percent cut rather than rounded:
+	// 99.9% is not all of it. Zero for no context.
+	int CachedPercent(std::uint64_t cacheRead, std::uint64_t context);
 	std::string FormatTokens(std::uint64_t tokens);
 
 	// "opus-5 · 201k in (99% cache) · 310 out · $0.12", prefixed "N requests · " when there

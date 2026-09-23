@@ -377,3 +377,63 @@ TEST_CASE("Every record knows how many bytes its line took")
 	const std::string line = Fixtures::UserPrompt("hello");
 	CHECK(ParseTranscript(line).Records[0].Bytes == line.size() - 1);
 }
+
+TEST_CASE("An attachment's content size counts what it carries, not its line")
+{
+	const std::string bytes =
+		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "12345"}}) +
+		Fixtures::Attachment({{"type", "skill_listing"}, {"content", "- a: does a"}, {"names", {"a"}}}) +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"A", "B"}}, {"addedLines", {"A: a", "B: bb"}}}) +
+		Fixtures::Attachment({{"type", "mcp_instructions_delta"}, {"addedNames", {"x"}}, {"addedBlocks", {"## x\nuse x"}}}) +
+		Fixtures::Attachment({{"type", "edited_text_file"}, {"filename", "D:\a.cpp"}, {"snippet", "int a;"}}) +
+		Fixtures::QueuedCommand("also this") +
+		Fixtures::Attachment({{"type", "date"}, {"date", "2026-09-24"}});
+
+	const TranscriptChunk chunk = ParseTranscript(bytes);
+
+	REQUIRE(chunk.Records.size() == 7);
+	CHECK(chunk.Records[0].AttachmentContentBytes == 5);
+	CHECK(chunk.Records[1].AttachmentContentBytes == std::string("- a: does a").size());
+	// Joined a line apiece, as the model reads them.
+	CHECK(chunk.Records[2].AttachmentContentBytes == std::string("A: a\nB: bb").size());
+	CHECK(chunk.Records[3].AttachmentContentBytes == std::string("## x\nuse x").size());
+	CHECK(chunk.Records[4].AttachmentContentBytes == std::string("int a;").size());
+	CHECK(chunk.Records[5].AttachmentContentBytes == std::string("also this").size());
+
+	// No content field: the attachment object itself, compactly, and never the whole line.
+	CHECK(chunk.Records[6].AttachmentContentBytes ==
+		  nlohmann::json({{"type", "date"}, {"date", "2026-09-24"}}).dump().size());
+	CHECK(chunk.Records[6].AttachmentContentBytes < chunk.Records[6].Bytes);
+}
+
+TEST_CASE("An image block keeps its media type and data length, not the data")
+{
+	const std::string data(4000, 'A');
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::UserBlocks({Fixtures::TextBlock("look"), Fixtures::ImageBlock("image/png", data)}));
+
+	REQUIRE(chunk.Records.size() == 1);
+	REQUIRE(chunk.Records[0].Blocks.size() == 2);
+	const ContentBlock& image = chunk.Records[0].Blocks[1];
+	CHECK(image.Kind == BlockKind::Image);
+	CHECK(image.Text == "image/png");
+	CHECK(image.DataBytes == 4000);
+}
+
+TEST_CASE("An image block with a missing or mistyped source is still an image, with nothing known about it")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::UserBlocks(
+		{{{"type", "image"}},
+		 {{"type", "image"}, {"source", "not an object"}},
+		 {{"type", "image"}, {"source", {{"media_type", 7}, {"data", {1, 2}}}}}}));
+
+	REQUIRE(chunk.Records.size() == 1);
+	REQUIRE(chunk.Records[0].Blocks.size() == 3);
+
+	for (const ContentBlock& block : chunk.Records[0].Blocks)
+	{
+		CHECK(block.Kind == BlockKind::Image);
+		CHECK(block.Text.empty());
+		CHECK(block.DataBytes == 0);
+	}
+}

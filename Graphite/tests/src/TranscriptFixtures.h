@@ -43,6 +43,22 @@ namespace Fixtures {
 		return {{"type", "tool_use"}, {"id", id}, {"name", name}, {"input", input}};
 	}
 
+	inline nlohmann::json ImageBlock(const std::string& mediaType, const std::string& base64)
+	{
+		return {{"type", "image"}, {"source", {{"type", "base64"}, {"media_type", mediaType}, {"data", base64}}}};
+	}
+
+	// A user record whose content is a list of blocks, as a prompt with a pasted image is.
+	inline std::string UserBlocks(const nlohmann::json& blocks,
+								  const std::string& timestamp = "2026-09-17T09:00:00.000Z")
+	{
+		return Line({{"type", "user"},
+					 {"uuid", "user-" + timestamp},
+					 {"timestamp", timestamp},
+					 {"cwd", "D:\\Repos\\IDE"},
+					 {"message", {{"role", "user"}, {"content", blocks}}}});
+	}
+
 	inline std::string UserPrompt(const std::string& text,
 								  const std::string& timestamp = "2026-09-17T09:00:00.000Z",
 								  const std::string& cwd = "D:\\Repos\\IDE")

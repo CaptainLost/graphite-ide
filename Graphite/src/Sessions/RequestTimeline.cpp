@@ -4,9 +4,11 @@
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
+#include "Sessions/ToolFacts.h"
 
 #include <algorithm>
 #include <unordered_set>
+#include <utility>
 
 namespace Graphite {
 
@@ -38,16 +40,54 @@ namespace Graphite {
 			return joined;
 		}
 
+		std::string ToolCount(std::size_t count)
+		{
+			return std::to_string(count) + (count == 1 ? " tool" : " tools");
+		}
+
 		std::string ToolsLoadedLabel(const std::vector<std::string>& added, const std::vector<std::string>& removed)
 		{
-			std::string label = "+" + std::to_string(added.size()) + " tools: " + JoinNames(added, 5);
-
 			// U+2212 MINUS SIGN, not a hyphen: this is a count going down, drawn the same way a
-			// negative delta is drawn elsewhere in the request views.
+			// negative context delta is drawn in the request views.
+			const std::string minus = "\xe2\x88\x92";
+
+			if (added.empty() && removed.empty())
+				return "tools unchanged";
+
+			if (added.empty())
+				return minus + ToolCount(removed.size()) + " removed";
+
+			std::string label = "+" + ToolCount(added.size()) + ": " + JoinNames(added, 5);
+
 			if (!removed.empty())
-				label += ", \xe2\x88\x92" + std::to_string(removed.size()) + " removed";
+				label += ", " + minus + std::to_string(removed.size()) + " removed";
 
 			return label;
+		}
+
+		// Characters, not bytes: a reply in Polish has more bytes than letters.
+		std::size_t CodePoints(std::string_view text)
+		{
+			return static_cast<std::size_t>(std::count_if(text.begin(), text.end(), [](char c)
+														  { return (static_cast<unsigned char>(c) & 0xC0u) != 0x80u; }));
+		}
+
+		// "Image (png, 212.0 KB)", leaving out whatever the block did not say.
+		std::string ImageLabel(std::string_view mediaType, std::size_t bytes)
+		{
+			std::vector<std::string> parts;
+
+			if (!mediaType.empty())
+				parts.emplace_back(mediaType.starts_with("image/") ? mediaType.substr(6) : mediaType);
+			if (bytes > 0)
+				parts.push_back(FormatBytes(bytes));
+
+			std::string label = "Image";
+
+			for (std::size_t i = 0; i < parts.size(); ++i)
+				label += (i == 0 ? " (" : ", ") + parts[i];
+
+			return parts.empty() ? label : label + ")";
 		}
 
 		std::string McpLabel(const std::vector<std::string>& names)
@@ -125,12 +165,16 @@ namespace Graphite {
 
 	std::optional<std::int64_t> RequestTimeline::ContextDeltaFor(std::size_t index) const
 	{
-		// A request with no usage of its own — never adopted one, and never will — is not a
-		// baseline any later request should be measured against: its zero Context would read
-		// as a drop no one actually caused.
+		// A request with no context — no usage of its own, or the all-zero usage of a response
+		// Claude Code wrote itself for an interrupt or an API error — is neither measured nor
+		// a baseline: its zero would read as a drop, and the next request as adding its whole
+		// context, when no one actually caused either.
+		if (m_Requests[index].Context == 0)
+			return std::nullopt;
+
 		for (std::size_t j = index; j-- > 0;)
 		{
-			if (m_HasUsage[j])
+			if (m_HasUsage[j] && m_Requests[j].Context > 0)
 				return static_cast<std::int64_t>(m_Requests[index].Context) -
 					   static_cast<std::int64_t>(m_Requests[j].Context);
 		}
@@ -176,6 +220,7 @@ namespace Graphite {
 			fresh.Sent = std::move(m_Pending);
 			m_Pending.clear();
 			fresh.ToolsAvailable = m_Tools.size();
+			fresh.ToolsLoaded = std::exchange(m_PendingLoaded, 0);
 
 			const bool hasUsage = record.Usage.has_value();
 
@@ -225,26 +270,29 @@ namespace Graphite {
 				request->Response.push_back(
 					{.Kind = ResponseKind::Thinking,
 					 .Label = block.Text.empty() ? "thinking"
-												 : "thinking (" + std::to_string(block.Text.size()) + " chars)"});
+												 : "thinking (" + std::to_string(CodePoints(block.Text)) + " chars)"});
 				changed = true;
 				break;
 			case BlockKind::Text:
 				request->Response.push_back(
-					{.Kind = ResponseKind::Text, .Label = std::to_string(block.Text.size()) + " chars"});
+					{.Kind = ResponseKind::Text, .Label = std::to_string(CodePoints(block.Text)) + " chars"});
 				changed = true;
 				break;
 			case BlockKind::ToolUse:
 			{
-				m_ToolCalls[block.ToolUseId] = {block.ToolName, block.InputJson};
-				const std::string summary = ToolSummary({.Name = block.ToolName, .InputJson = block.InputJson});
+				// The summary is all a result needs of its call later: the input itself, a whole
+				// file for a Write, is not kept for the rest of the session.
+				std::string summary = ToolSummary({.Name = block.ToolName, .InputJson = block.InputJson});
 				request->Response.push_back({.Kind = ResponseKind::ToolCall,
 											 .Label = block.ToolName + "  " + summary,
 											 .ToolName = block.ToolName});
+				m_ToolCalls[block.ToolUseId] = {block.ToolName, std::move(summary)};
 				changed = true;
 				break;
 			}
 			case BlockKind::ToolResult:
-				// An assistant record never carries a tool result; nothing to add.
+			case BlockKind::Image:
+				// An assistant record carries neither a tool result nor an image; nothing to add.
 				break;
 			case BlockKind::Other:
 				request->Response.push_back({.Kind = ResponseKind::Other, .Label = block.Text});
@@ -267,16 +315,23 @@ namespace Graphite {
 				if (found != m_ToolCalls.end())
 				{
 					toolName = found->second.Name;
-					const std::string summary =
-						ToolSummary({.Name = found->second.Name, .InputJson = found->second.InputJson});
-					label = toolName + "  " + summary;
+					label = toolName + "  " + found->second.Summary;
 				}
 
+				// The result's text only: the structured result beside it is Claude Code's own
+				// record — an Edit's carries the whole file — and never reaches the model.
 				m_Pending.push_back({.Kind = SentKind::ToolResult,
 									 .Label = label,
 									 .ToolName = toolName,
 									 .IsError = block.IsError,
-									 .Bytes = block.Text.size() + block.ResultJson.size()});
+									 .Bytes = block.Text.size()});
+				changed = true;
+			}
+			else if (block.Kind == BlockKind::Image)
+			{
+				// Base64 carries three bytes in every four characters.
+				const std::size_t bytes = block.DataBytes * 3 / 4;
+				m_Pending.push_back({.Kind = SentKind::Image, .Label = ImageLabel(block.Text, bytes), .Bytes = bytes});
 				changed = true;
 			}
 			else if (block.Kind == BlockKind::Text)
@@ -304,7 +359,7 @@ namespace Graphite {
 	void RequestTimeline::AddAttachment(const TranscriptRecord& record, bool& changed)
 	{
 		SentItem item;
-		item.Bytes = record.Bytes;
+		item.Bytes = record.AttachmentContentBytes;
 
 		if (!record.QueuedPrompt.empty())
 		{
@@ -315,6 +370,8 @@ namespace Graphite {
 		{
 			item.Kind = SentKind::ToolsLoaded;
 			item.Label = ToolsLoadedLabel(record.AttachmentNames, record.AttachmentRemoved);
+
+			m_PendingLoaded += record.AttachmentNames.size();
 
 			for (const std::string& name : record.AttachmentNames)
 				m_Tools.insert(name);
@@ -380,6 +437,7 @@ namespace Graphite {
 		m_Pending.clear();
 		m_ToolCalls.clear();
 		m_Tools.clear();
+		m_PendingLoaded = 0;
 		m_LastTimestamp.clear();
 		++m_Version;
 	}
@@ -416,5 +474,15 @@ namespace Graphite {
 		}
 
 		return names;
+	}
+
+	std::string ToolsAvailableLabel(const ApiRequest& request)
+	{
+		std::string label = "Tools available: " + std::to_string(request.ToolsAvailable);
+
+		if (request.ToolsLoaded > 0)
+			label += " (+" + std::to_string(request.ToolsLoaded) + " loaded)";
+
+		return label;
 	}
 }

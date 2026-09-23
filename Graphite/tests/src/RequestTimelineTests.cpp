@@ -158,7 +158,7 @@ TEST_CASE("Tools available follow additions and removals")
 
 	CHECK(requests[0].ToolsAvailable == 3);
 	CHECK(requests[1].ToolsAvailable == 2);
-	CHECK(requests[1].Sent[0].Label == "+1 tools: D, \xe2\x88\x92" "2 removed");
+	CHECK(requests[1].Sent[0].Label == "+1 tool: D, \xe2\x88\x92" "2 removed");
 }
 
 TEST_CASE("Appending in batches gives the same requests as appending at once, even with a request split across them")
@@ -258,4 +258,141 @@ TEST_CASE("An unparseable timestamp does not hide the last good one for Waited")
 
 	REQUIRE(requests.size() == 2);
 	CHECK(requests[1].Waited == std::chrono::milliseconds{5000});
+}
+
+TEST_CASE("A tools delta says only what it did, and counts one tool as one")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"A", "B"}}}) +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"C"}}}) +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"removedNames", {"A", "B"}}}) +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"removedNames", {"C"}}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 4);
+	CHECK(requests[0].Sent[0].Label == "+2 tools: A, B");
+	CHECK(requests[0].Sent[1].Label == "+1 tool: C");
+	CHECK(requests[0].Sent[2].Label == "\xe2\x88\x92" "2 tools removed");
+	CHECK(requests[0].Sent[3].Label == "\xe2\x88\x92" "1 tool removed");
+}
+
+TEST_CASE("Tools available name how many of them the request's own deltas loaded")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"A", "B", "C"}}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)) +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"D"}}, {"removedNames", {"A", "B"}}}) +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("y"), Fixtures::Usage(1, 1)) +
+		Fixtures::UserPrompt("more", "2026-09-17T09:00:05.000Z") +
+		Fixtures::Assistant("r3", Fixtures::TextBlock("z"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests.size() == 3);
+	CHECK(requests[0].ToolsLoaded == 3);
+	CHECK(requests[1].ToolsLoaded == 1);
+	CHECK(requests[2].ToolsLoaded == 0);
+	CHECK(ToolsAvailableLabel(requests[0]) == "Tools available: 3 (+3 loaded)");
+	CHECK(ToolsAvailableLabel(requests[1]) == "Tools available: 2 (+1 loaded)");
+	CHECK(ToolsAvailableLabel(requests[2]) == "Tools available: 2");
+}
+
+TEST_CASE("A response's character counts are characters, not bytes")
+{
+	// "zażółć": six characters, ten bytes in UTF-8.
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::ThinkingBlock("za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87"), Fixtures::Usage(1, 1)) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Response.size() == 2);
+	CHECK(requests[0].Response[0].Label == "thinking (6 chars)");
+	CHECK(requests[0].Response[1].Label == "6 chars");
+}
+
+TEST_CASE("An attachment is measured by what it carries, not by its transcript line")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "tokens"}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Bytes == 6);
+}
+
+TEST_CASE("A tool result is measured by the text the model gets, not the metadata kept beside it")
+{
+	// An Edit's result is a line of text; its toolUseResult carries the whole file, which
+	// stays in the transcript and never reaches the model.
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Edit", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
+		Fixtures::ToolResultWith("t1", "ok", {{"originalFile", std::string(5000, 'x')}}) +
+		Fixtures::UserPrompt(std::string(200, 'p'), "2026-09-17T09:00:03.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 7, 0, 0, 1202), "claude-opus-5",
+							"2026-09-17T09:00:09.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[1].Sent.size() == 2);
+	CHECK(requests[1].Sent[0].Bytes == 2);
+	CHECK(requests[1].Sent[1].Bytes == 200);
+	CHECK(requests[1].Sent[1].EstimatedTokens > requests[1].Sent[0].EstimatedTokens);
+	CHECK(requests[1].Sent[0].EstimatedTokens + requests[1].Sent[1].EstimatedTokens == 202);
+}
+
+TEST_CASE("A pasted image is its own sent item, sized by the bytes it decodes to")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(0, 1, 0, 0, 1000)) +
+		Fixtures::UserBlocks({Fixtures::TextBlock("what is this"), Fixtures::ImageBlock("image/png", std::string(4096, 'A'))},
+							 "2026-09-17T09:00:02.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(0, 1, 0, 0, 2000), "claude-opus-5",
+							"2026-09-17T09:00:05.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[1].Sent.size() == 2);
+	CHECK(requests[1].Sent[0].Kind == SentKind::Prompt);
+	CHECK(requests[1].Sent[1].Kind == SentKind::Image);
+	CHECK(requests[1].Sent[1].Label == "Image (png, 3.0 KB)");
+	CHECK(requests[1].Sent[1].Bytes == 3072);
+	CHECK(requests[1].Sent[0].EstimatedTokens + requests[1].Sent[1].EstimatedTokens == 1000);
+}
+
+TEST_CASE("An image with nothing known about it is still listed")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserBlocks({{{"type", "image"}}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Kind == SentKind::Image);
+	CHECK(requests[0].Sent[0].Label == "Image");
+	CHECK(requests[0].Sent[0].Bytes == 0);
+}
+
+TEST_CASE("A synthetic response with an all-zero usage is not the next request's baseline")
+{
+	// Claude Code writes an interrupt or an API error as a `<synthetic>` response: a uuid, no
+	// requestId, and a usage of zeros. Measured against it, the next real request would read
+	// as having added its whole context.
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(0, 1, 0, 0, 5000)) +
+		KeylessAssistant(Fixtures::TextBlock("[Request interrupted by user]"), Fixtures::Usage(0, 0), "2026-09-17T09:00:02.000Z") +
+		Fixtures::UserPrompt("again", "2026-09-17T09:00:03.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(0, 1, 0, 0, 5200), "claude-opus-5",
+							"2026-09-17T09:00:04.000Z"));
+
+	REQUIRE(requests.size() == 3);
+	CHECK_FALSE(requests[1].ContextDelta.has_value());
+	REQUIRE(requests[2].ContextDelta.has_value());
+	CHECK(*requests[2].ContextDelta == 200);
+}
+
+TEST_CASE("A tool result for a call the transcript never showed names no tool")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::ToolResult("nobody", "x") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Kind == SentKind::ToolResult);
+	CHECK(requests[0].Sent[0].Label == "unknown tool");
+	CHECK(requests[0].Sent[0].ToolName.empty());
 }

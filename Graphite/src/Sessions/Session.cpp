@@ -115,6 +115,8 @@ namespace Graphite {
 				break;
 			}
 			case BlockKind::ToolResult:
+			case BlockKind::Image:
+				// Neither is something a response writes; the conversation has no row for them.
 				break;
 			case BlockKind::Other:
 				turn.Items.push_back(

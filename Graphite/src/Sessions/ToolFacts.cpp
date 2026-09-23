@@ -142,6 +142,14 @@ namespace Graphite {
 		return buffer;
 	}
 
+	int CachedPercent(std::uint64_t cacheRead, std::uint64_t context)
+	{
+		if (context == 0)
+			return 0;
+
+		return static_cast<int>(std::min<std::uint64_t>(cacheRead, context) * 100 / context);
+	}
+
 	std::string FormatTokens(std::uint64_t tokens)
 	{
 		char buffer[32];
@@ -239,7 +247,7 @@ namespace Graphite {
 		}
 
 		const std::uint64_t input = total.Input + total.CacheWrite5m + total.CacheWrite1h + total.CacheRead;
-		const int cached = input == 0 ? 0 : static_cast<int>(100.0 * static_cast<double>(total.CacheRead) / static_cast<double>(input));
+		const int cached = CachedPercent(total.CacheRead, input);
 
 		std::string line = std::to_string(requests) + (requests == 1 ? " request" : " requests") + kDot;
 		line += models + kDot + FormatTokens(input) + " in (" + std::to_string(cached) + "% cache)" + kDot +

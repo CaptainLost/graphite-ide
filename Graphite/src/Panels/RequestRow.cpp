@@ -20,40 +20,6 @@ namespace Graphite {
 		// measures the text, and a tool result's summary can be long.
 		constexpr std::size_t kLabelBytes = 400;
 
-		std::string ShortModel(std::string_view model)
-		{
-			return std::string{model.starts_with("claude-") ? model.substr(7) : model};
-		}
-
-		// A wait for the model is seconds, mostly: the tenth tells a quick request from a slow
-		// one where FormatDuration's whole seconds would not.
-		std::string WaitText(std::chrono::milliseconds waited)
-		{
-			if (waited < std::chrono::seconds{1})
-				return std::to_string(waited.count()) + " ms";
-
-			if (waited < std::chrono::minutes{1})
-				return std::format("{:.1f} s", static_cast<double>(waited.count()) / 1000.0);
-
-			return FormatDuration(waited);
-		}
-
-		std::string SignedTokens(std::int64_t tokens)
-		{
-			const std::uint64_t magnitude =
-				tokens < 0 ? static_cast<std::uint64_t>(-tokens) : static_cast<std::uint64_t>(tokens);
-			return (tokens < 0 ? "-" : "+") + FormatTokens(magnitude);
-		}
-
-		const char* StopGlyph(std::string_view reason)
-		{
-			if (reason == "end_turn")
-				return ICON_MDI_STOP_CIRCLE_OUTLINE;
-			if (reason == "tool_use")
-				return ICON_MDI_WRENCH_OUTLINE;
-			return ICON_MDI_HELP_CIRCLE_OUTLINE;
-		}
-
 		struct Look
 		{
 			const char* Icon = ICON_MDI_HELP_CIRCLE_OUTLINE;
@@ -77,6 +43,7 @@ namespace Graphite {
 			case SentKind::Skills: return {ICON_MDI_PUZZLE_OUTLINE, palette.Agent};
 			case SentKind::McpInstructions: return {ICON_MDI_SERVER_NETWORK, palette.Agent};
 			case SentKind::EditedFile: return {ICON_MDI_PENCIL, palette.Edit};
+			case SentKind::Image: return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
 			}
 
 			return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.Other};
@@ -124,6 +91,42 @@ namespace Graphite {
 		}
 	}
 
+	std::string ShortModelName(std::string_view model)
+	{
+		return std::string{model.starts_with("claude-") ? model.substr(7) : model};
+	}
+
+	std::string SignedTokens(std::int64_t tokens)
+	{
+		const std::uint64_t magnitude =
+			tokens < 0 ? static_cast<std::uint64_t>(-tokens) : static_cast<std::uint64_t>(tokens);
+
+		// U+2212 MINUS SIGN: as wide as the plus, so a column of deltas lines up.
+		return (tokens < 0 ? "\xe2\x88\x92" : "+") + FormatTokens(magnitude);
+	}
+
+	// A wait for the model is seconds, mostly: the tenth tells a quick request from a slow one
+	// where FormatDuration's whole seconds would not.
+	std::string WaitText(std::chrono::milliseconds waited)
+	{
+		if (waited < std::chrono::seconds{1})
+			return std::to_string(waited.count()) + " ms";
+
+		if (waited < std::chrono::minutes{1})
+			return std::format("{:.1f} s", static_cast<double>(waited.count()) / 1000.0);
+
+		return FormatDuration(waited);
+	}
+
+	const char* StopGlyph(std::string_view reason)
+	{
+		if (reason == "end_turn")
+			return ICON_MDI_STOP_CIRCLE_OUTLINE;
+		if (reason == "tool_use")
+			return ICON_MDI_WRENCH_OUTLINE;
+		return ICON_MDI_HELP_CIRCLE_OUTLINE;
+	}
+
 	std::string RequestLine(const ApiRequest& request, const Pricing& pricing, LocalClock& clock)
 	{
 		std::string line = "#" + std::to_string(request.Index);
@@ -132,7 +135,7 @@ namespace Graphite {
 			line += " " + time;
 
 		if (!request.Model.empty())
-			line += kDot + ShortModel(request.Model) + (request.Fast ? " fast" : "");
+			line += kDot + ShortModelName(request.Model) + (request.Fast ? " fast" : "");
 
 		if (request.Usage.Total() > 0)
 		{
@@ -142,7 +145,7 @@ namespace Graphite {
 				line += " " + SignedTokens(*request.ContextDelta);
 
 			if (request.Context > 0)
-				line += kDot + std::format("{:.0f}% cache", request.CachedShare * 100.0);
+				line += kDot + std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "% cache";
 
 			line += kDot + FormatTokens(request.Usage.Output) + " out";
 			line += kDot + FormatCost(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}));
@@ -201,6 +204,6 @@ namespace Graphite {
 		for (const ResponseItem& item : request.Response)
 			ItemLine(LookOf(item, palette), item.Label, {}, palette);
 
-		ColouredText(palette.TextDisabled, "Tools available: " + std::to_string(request.ToolsAvailable));
+		ColouredText(palette.TextDisabled, ToolsAvailableLabel(request));
 	}
 }

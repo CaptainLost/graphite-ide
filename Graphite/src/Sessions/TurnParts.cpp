@@ -135,10 +135,12 @@ namespace Graphite {
 			++parts[part].Requests;
 		}
 
+		// Only the keys counted above: a response written without usage is an item of the turn
+		// but not one of its requests, and listing it would promise a row the count leaves out.
 		for (const std::string& request : order)
 		{
 			const auto found = owner.find(request);
-			if (found != owner.end())
+			if (found != owner.end() && turn.Requests.contains(request))
 				parts[found->second].RequestKeys.push_back(request);
 		}
 

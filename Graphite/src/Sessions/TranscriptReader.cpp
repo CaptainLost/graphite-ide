@@ -144,6 +144,20 @@ namespace Graphite {
 				if (const auto content = block.find("content"); content != block.end())
 					parsed.Text = ResultText(*content);
 			}
+			else if (type == "image")
+			{
+				// Only what the views say about it: its type and how much of it there is. A
+				// source that is missing or of another shape leaves both unknown.
+				parsed.Kind = BlockKind::Image;
+
+				if (const auto source = block.find("source"); source != block.end() && source->is_object())
+				{
+					parsed.Text = StringAt(*source, "media_type");
+
+					if (const auto data = source->find("data"); data != source->end() && data->is_string())
+						parsed.DataBytes = data->get_ref<const std::string&>().size();
+				}
+			}
 			else
 			{
 				parsed.Kind = BlockKind::Other;
@@ -151,6 +165,49 @@ namespace Graphite {
 			}
 
 			return parsed;
+		}
+
+		// The size of a field that holds text for the model: a string, or a list whose strings
+		// are read a line apiece. Nothing for a missing field or one of another type.
+		std::optional<std::size_t> TextBytesAt(const nlohmann::json& object, const char* key)
+		{
+			const auto found = object.find(key);
+
+			if (found == object.end())
+				return std::nullopt;
+			if (found->is_string())
+				return found->get_ref<const std::string&>().size();
+			if (!found->is_array())
+				return std::nullopt;
+
+			std::size_t bytes = 0;
+			bool first = true;
+
+			for (const nlohmann::json& element : *found)
+			{
+				if (!first)
+					++bytes;
+				first = false;
+
+				bytes += element.is_string() ? element.get_ref<const std::string&>().size()
+											 : Serialised(element).size();
+			}
+
+			return bytes;
+		}
+
+		// What an attachment puts in front of the model. The fields are the ones Claude Code
+		// writes the model's text into; an attachment with none of them is measured as itself,
+		// compactly, which is closer to what it costs than the record around it.
+		std::size_t AttachmentContentBytes(const nlohmann::json& attachment)
+		{
+			for (const char* key : {"text", "content", "snippet", "prompt", "addedBlocks", "addedLines"})
+			{
+				if (const std::optional<std::size_t> bytes = TextBytesAt(attachment, key))
+					return *bytes;
+			}
+
+			return Serialised(attachment).size();
 		}
 
 		TokenCounts ParseUsage(const nlohmann::json& usage)
@@ -203,6 +260,7 @@ namespace Graphite {
 			attachment != json.end() && attachment->is_object())
 		{
 			record.AttachmentType = StringAt(*attachment, "type");
+			record.AttachmentContentBytes = AttachmentContentBytes(*attachment);
 
 			if (record.AttachmentType == "deferred_tools_delta")
 			{
