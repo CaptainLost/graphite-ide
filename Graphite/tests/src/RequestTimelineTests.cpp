@@ -12,6 +12,50 @@ namespace {
 	{
 		return BuildRequestTimeline(ParseTranscript(bytes).Records);
 	}
+
+	// An assistant record with neither a requestId nor a uuid: Fixtures::Assistant always
+	// fills in a uuid, so a truly keyless record has to be built by hand.
+	std::string KeylessAssistant(const nlohmann::json& block, const nlohmann::json& usage,
+								 const std::string& timestamp = "2026-09-17T09:00:01.000Z")
+	{
+		return Fixtures::Line({{"type", "assistant"},
+							   {"timestamp", timestamp},
+							   {"cwd", "D:\\Repos\\IDE"},
+							   {"message",
+								{{"role", "assistant"},
+								 {"content", nlohmann::json::array({block})},
+								 {"usage", usage}}}});
+	}
+
+	// An assistant record with a requestId but no usage at all, unlike Fixtures::Assistant
+	// which always carries one.
+	std::string AssistantNoUsage(const std::string& requestId, const nlohmann::json& block,
+								 const std::string& timestamp = "2026-09-17T09:00:01.000Z")
+	{
+		return Fixtures::Line({{"type", "assistant"},
+							   {"uuid", "assistant-" + requestId + "-" + timestamp},
+							   {"requestId", requestId},
+							   {"timestamp", timestamp},
+							   {"cwd", "D:\\Repos\\IDE"},
+							   {"message",
+								{{"role", "assistant"}, {"content", nlohmann::json::array({block})}}}});
+	}
+
+	// A record of an existing request that carries no blocks and no usage, only a stop
+	// reason — the shape a final housekeeping record for a response can take.
+	std::string AssistantStopReasonOnly(const std::string& requestId, const std::string& stopReason,
+										const std::string& timestamp)
+	{
+		return Fixtures::Line({{"type", "assistant"},
+							   {"uuid", "assistant-" + requestId + "-" + timestamp},
+							   {"requestId", requestId},
+							   {"timestamp", timestamp},
+							   {"cwd", "D:\\Repos\\IDE"},
+							   {"message",
+								{{"role", "assistant"},
+								 {"content", nlohmann::json::array()},
+								 {"stop_reason", stopReason}}}});
+	}
 }
 
 TEST_CASE("A response written as several records is one request, and what preceded it is what was sent")
@@ -149,4 +193,69 @@ TEST_CASE("Reset forgets everything")
 
 	CHECK(timeline.GetRequests().empty());
 	CHECK_FALSE(timeline.IndexOf("r1").has_value());
+}
+
+TEST_CASE("Two keyless assistant records separated by a user prompt give two requests, each with its own Sent")
+{
+	const std::vector<ApiRequest> requests = Build(
+		KeylessAssistant(Fixtures::TextBlock("a"), Fixtures::Usage(1, 1), "2026-09-17T09:00:01.000Z") +
+		Fixtures::UserPrompt("next", "2026-09-17T09:00:02.000Z") +
+		KeylessAssistant(Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "2026-09-17T09:00:03.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	CHECK(requests[0].Key.empty());
+	CHECK(requests[0].Sent.empty());
+	REQUIRE(requests[1].Sent.size() == 1);
+	CHECK(requests[1].Sent[0].Kind == SentKind::Prompt);
+	CHECK(requests[1].Sent[0].Label == "next");
+}
+
+TEST_CASE("A request whose first record lacks usage but whose second has it shows the second's context")
+{
+	const std::vector<ApiRequest> requests = Build(
+		AssistantNoUsage("r1", Fixtures::TextBlock("a"), "2026-09-17T09:00:01.000Z") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("b"), Fixtures::Usage(10, 0, 0, 0, 90), "claude-opus-5",
+							"2026-09-17T09:00:01.000Z"));
+
+	REQUIRE(requests.size() == 1);
+	CHECK(requests[0].Context == 100);
+	CHECK(requests[0].CachedShare == doctest::Approx(0.9));
+}
+
+TEST_CASE("A no-usage request between two usage requests does not inflate the third's delta")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(0, 1, 0, 0, 1000)) +
+		AssistantNoUsage("r2", Fixtures::TextBlock("b"), "2026-09-17T09:00:02.000Z") +
+		Fixtures::Assistant("r3", Fixtures::TextBlock("c"), Fixtures::Usage(0, 1, 0, 0, 1300), "claude-opus-5",
+							"2026-09-17T09:00:03.000Z"));
+
+	REQUIRE(requests.size() == 3);
+	REQUIRE(requests[2].ContextDelta.has_value());
+	CHECK(*requests[2].ContextDelta == 1300 - 1000);
+}
+
+TEST_CASE("A same-key record that changes only the stop reason bumps the version")
+{
+	RequestTimeline timeline;
+	timeline.Append(ParseTranscript(Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1))).Records);
+	const std::uint64_t before = timeline.GetVersion();
+
+	timeline.Append(ParseTranscript(AssistantStopReasonOnly("r1", "end_turn", "2026-09-17T09:00:02.000Z")).Records);
+
+	CHECK(timeline.GetVersion() > before);
+	CHECK(timeline.GetRequests()[0].StopReason == "end_turn");
+}
+
+TEST_CASE("An unparseable timestamp does not hide the last good one for Waited")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:00.000Z") +
+		Fixtures::Attachment({{"type", "total_tokens_reminder"}}, "not-a-timestamp") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:05.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	CHECK(requests[1].Waited == std::chrono::milliseconds{5000});
 }

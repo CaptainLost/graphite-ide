@@ -108,9 +108,19 @@ namespace Graphite {
 		void AddUser(const TranscriptRecord& record, bool& changed);
 		void AddAttachment(const TranscriptRecord& record, bool& changed);
 		void EstimateTokens(ApiRequest& request) const;
+		void ApplyUsage(ApiRequest& request, std::size_t index, const TokenCounts& usage);
+
+		// The delta baseline for the request at `index`: its Context against the Context of
+		// the last earlier request that had usage, or nothing when none did.
+		std::optional<std::int64_t> ContextDeltaFor(std::size_t index) const;
 
 		std::vector<ApiRequest> m_Requests;
 		std::unordered_map<std::string, std::size_t> m_ByKey;
+
+		// Whether the request at the same index has adopted a usage yet. A request created
+		// from a record with no usage starts false and may turn true later, when a further
+		// record of the same key carries one.
+		std::vector<bool> m_HasUsage;
 
 		// Sent items seen since the last response, waiting for the request they belong to.
 		std::vector<SentItem> m_Pending;
@@ -120,6 +130,9 @@ namespace Graphite {
 		// The deferred tools loaded so far, as of the last attachment that changed them.
 		std::set<std::string> m_Tools;
 
+		// The last record's timestamp that actually parsed. A malformed one is worse than no
+		// timestamp: kept, it would make every Waited after it uncomputable instead of just
+		// the one record that carried it.
 		std::string m_LastTimestamp;
 		std::uint64_t m_Version = 0;
 	};
