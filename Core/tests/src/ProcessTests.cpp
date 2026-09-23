@@ -1,9 +1,11 @@
 #include "corepch.h"
 
 #include "Core/Platform/Process.h"
+#include "Core/Platform/ShellProfiles.h"
 
 #include <doctest/doctest.h>
 
+#include <cstdlib>
 #include <filesystem>
 
 using namespace Core;
@@ -27,4 +29,34 @@ TEST_CASE("The executable directory is absolute")
 
 	REQUIRE(directory.HasValue());
 	CHECK(directory.GetValue().is_absolute());
+}
+
+TEST_CASE("The home directory is the user's profile and exists")
+{
+	const Core::Result<std::filesystem::path> home = Core::HomeDirectory();
+
+	REQUIRE(home.HasValue());
+	CHECK(std::filesystem::is_directory(home.GetValue()));
+	CHECK(home.GetValue() == Core::EnvironmentPath(L"USERPROFILE").value());
+}
+
+TEST_CASE("An unset environment variable is no path rather than an empty one")
+{
+	CHECK_FALSE(Core::EnvironmentPath(L"GRAPHITE_TESTS_SURELY_UNSET_VARIABLE").has_value());
+}
+
+TEST_CASE("A set environment variable comes back as the path it names, wide characters intact")
+{
+	REQUIRE(_wputenv_s(L"GRAPHITE_TESTS_PATH", L"C:\\Users\\Micha\u0142") == 0);
+
+	CHECK(Core::EnvironmentPath(L"GRAPHITE_TESTS_PATH").value()
+		  == std::filesystem::path{L"C:\\Users\\Micha\u0142"});
+
+	_wputenv_s(L"GRAPHITE_TESTS_PATH", L"");
+}
+
+TEST_CASE("A program on PATH is found and a missing one is not")
+{
+	CHECK_FALSE(Core::FindOnPath("cmd.exe").empty());
+	CHECK(Core::FindOnPath("graphite-no-such-program.exe").empty());
 }

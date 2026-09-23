@@ -43,6 +43,45 @@ namespace Core {
 #endif
 	}
 
+	std::optional<std::filesystem::path> EnvironmentPath(const wchar_t* name)
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		// Asked twice: once for the length, once for the value. The length includes the
+		// terminator; the second call's return value does not.
+		const DWORD length = GetEnvironmentVariableW(name, nullptr, 0);
+
+		if (length <= 1)
+			return std::nullopt;
+
+		std::wstring value(length, L'\0');
+		const DWORD written = GetEnvironmentVariableW(name, value.data(), length);
+
+		if (written == 0 || written >= length)
+			return std::nullopt;
+
+		value.resize(written);
+		return std::filesystem::path{value};
+#else
+		(void)name;
+		return std::nullopt;
+#endif
+	}
+
+	Result<std::filesystem::path> HomeDirectory()
+	{
+		std::optional<std::filesystem::path> home = EnvironmentPath(L"USERPROFILE");
+
+		if (!home.has_value())
+			return Error{ErrorCode::NotFound, "USERPROFILE is not set"};
+
+		std::error_code status;
+
+		if (!std::filesystem::is_directory(*home, status))
+			return Error{ErrorCode::NotFound, "USERPROFILE does not name a directory"};
+
+		return std::move(*home);
+	}
+
 	bool IsForeground()
 	{
 #ifdef CORE_PLATFORM_WINDOWS

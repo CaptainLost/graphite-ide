@@ -157,59 +157,6 @@ namespace Core {
 			return {};
 		}
 
-		// Finds an executable the same way CreateProcess resolves a bare command name: by
-		// walking PATH in order. This is the fallback for a Git install the registry key
-		// above does not know about — portable, unpackaged, or otherwise hand-placed — and
-		// it is written generically enough to answer for other executables too (pwsh.exe,
-		// say), not just git.exe.
-		// An installer may write a PATH entry with quotes around it — usually one containing a
-		// space. CreateProcess strips them before it resolves anything, so a segment used
-		// verbatim here would name a directory whose first and last characters are quote marks
-		// and match nothing at all.
-		std::string_view StripQuotes(std::string_view segment)
-		{
-			if (segment.size() >= 2 && segment.front() == '"' && segment.back() == '"')
-			{
-				return segment.substr(1, segment.size() - 2);
-			}
-
-			return segment;
-		}
-
-		std::filesystem::path FindOnPath(const std::string& executableName)
-		{
-			const std::string pathVariable = EnvironmentString("PATH");
-
-			std::size_t start = 0;
-			while (start <= pathVariable.size())
-			{
-				std::size_t end = pathVariable.find(';', start);
-				if (end == std::string::npos)
-				{
-					end = pathVariable.size();
-				}
-
-				const std::string_view segment = StripQuotes(
-					std::string_view{pathVariable}.substr(start, end - start));
-
-				if (!segment.empty())
-				{
-					const std::filesystem::path candidate =
-						std::filesystem::path{std::string{segment}} / executableName;
-					std::error_code status;
-
-					if (std::filesystem::exists(candidate, status))
-					{
-						return candidate;
-					}
-				}
-
-				start = end + 1;
-			}
-
-			return {};
-		}
-
 		// Git for Windows places git.exe in two different spots below the install root —
 		// "cmd\git.exe" and "mingw64\bin\git.exe" — at different depths, with "bin\bash.exe"
 		// a sibling of whichever the shim on PATH resolves to. Rather than assume one fixed
@@ -248,6 +195,56 @@ namespace Core {
 			return {};
 		}
 #endif
+	}
+
+	// An installer may write a PATH entry with quotes around it — usually one containing a
+	// space. CreateProcess strips them before it resolves anything, so a segment used
+	// verbatim here would name a directory whose first and last characters are quote marks
+	// and match nothing at all.
+	std::string_view StripQuotes(std::string_view segment)
+	{
+		if (segment.size() >= 2 && segment.front() == '"' && segment.back() == '"')
+		{
+			return segment.substr(1, segment.size() - 2);
+		}
+
+		return segment;
+	}
+
+	// Finds an executable the same way CreateProcess resolves a bare command name: by
+	// walking PATH in order.
+	std::filesystem::path FindOnPath(const std::string& executableName)
+	{
+		const std::string pathVariable = EnvironmentString("PATH");
+
+		std::size_t start = 0;
+		while (start <= pathVariable.size())
+		{
+			std::size_t end = pathVariable.find(';', start);
+			if (end == std::string::npos)
+			{
+				end = pathVariable.size();
+			}
+
+			const std::string_view segment = StripQuotes(
+				std::string_view{pathVariable}.substr(start, end - start));
+
+			if (!segment.empty())
+			{
+				const std::filesystem::path candidate =
+					std::filesystem::path{std::string{segment}} / executableName;
+				std::error_code status;
+
+				if (std::filesystem::exists(candidate, status))
+				{
+					return candidate;
+				}
+			}
+
+			start = end + 1;
+		}
+
+		return {};
 	}
 
 	std::vector<ShellProfile> DiscoverShells()
