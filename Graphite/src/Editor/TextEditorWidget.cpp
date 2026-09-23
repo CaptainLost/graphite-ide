@@ -1288,6 +1288,43 @@ namespace Graphite {
 			}
 		}
 
+		// The current match again, as an outline over the selection. Its fill alone was lost the
+		// moment a step selected it: the selection is drawn over the fills so a selected match
+		// still reads as selected, and blended over the current match's colour it came out
+		// close to every other match's — a counter reading 12/47 with nothing on screen saying
+		// which one was the twelfth. Opaque, whatever the scheme's fill alpha is, because an
+		// outline one pixel wide has no area to show a translucent colour with.
+		void DrawRowCurrentMatchOutline(const RowCanvas& canvas, const RowSlice& slice,
+										const VisibleLineCache& cache)
+		{
+			if (cache.Matches.Current >= cache.Matches.Columns.size())
+			{
+				return;
+			}
+
+			const MatchColumns& match = cache.Matches.Columns[cache.Matches.Current];
+
+			const std::size_t clippedFrom =
+				std::clamp(match.FromColumn, slice.FromColumn, slice.ToColumn);
+			const std::size_t clippedTo = std::clamp(match.ToColumn, slice.FromColumn, slice.ToColumn);
+
+			if (clippedTo <= clippedFrom)
+			{
+				return;
+			}
+
+			const float fromX =
+				canvas.TextOriginX +
+				static_cast<float>(clippedFrom - slice.FromColumn) * canvas.Metrics.CellWidth;
+			const float toX =
+				canvas.TextOriginX +
+				static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
+
+			canvas.Draw->AddRect(ImVec2(fromX, slice.Y),
+								 ImVec2(toX, slice.Y + canvas.Metrics.LineHeight),
+								 canvas.Palette.FindCurrentMatch | IM_COL32_A_MASK);
+		}
+
 		// Drawn with the find matches, before the selection and the text: the box marks the
 		// bracket, and the glyph has to stay on top of it and keep its own syntax colour.
 		// Clipped to this row's own column span the same way the matches above are.
@@ -1934,6 +1971,8 @@ namespace Graphite {
 
 			if (cache.SelectionOnLine)
 				DrawRowSelection(canvas, slice, cache);
+
+			DrawRowCurrentMatchOutline(canvas, slice, cache);
 
 			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
 			DrawRowDiagnostics(canvas, slice, cache, diagnostics, diagnosticsStale, item.TabWidth);

@@ -109,4 +109,9 @@ namespace Graphite {
 		if (target)
 			GoToMatch(item, buffer, *target);
 	}
+
+	void RevealFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer)
+	{
+		GoToMatch(item, buffer, item.Find.Current);
+	}
 }

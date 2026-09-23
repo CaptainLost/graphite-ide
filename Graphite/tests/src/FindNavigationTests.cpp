@@ -153,3 +153,63 @@ TEST_CASE("The frame Escape closes the bar on does not write the field back")
 	CHECK_FALSE(Graphite::AcceptsQueryEdit(Graphite::FindFieldEvents{false, false}));
 	CHECK_FALSE(Graphite::AcceptsQueryEdit(Graphite::FindFieldEvents{false, true}));
 }
+
+TEST_CASE("Revealing the current match selects it and asks for a scroll to it")
+{
+	const Core::TextBuffer buffer("alpha beta alpha gamma alpha");
+	Core::OpenItem item = ItemSearchingFor("alpha");
+
+	// The caret sits past the first match, so the counter's current one is the second.
+	item.Caret.Anchor = item.Caret.Offset = 7;
+
+	Graphite::RefreshFindMatches(item, buffer);
+
+	REQUIRE(item.Find.Current == 1);
+
+	item.PendingScroll = false;
+
+	Graphite::RevealFindMatch(item, buffer);
+
+	CHECK(item.Find.Current == 1);
+	CHECK(item.Caret.Anchor == 11);
+	CHECK(item.Caret.Offset == 16);
+	CHECK(item.PendingScroll);
+}
+
+TEST_CASE("A query typed a letter at a time stays on the match it started on")
+{
+	const Core::TextBuffer buffer("alp alpha alpine");
+	Core::OpenItem item = ItemSearchingFor("alpi");
+
+	item.Caret.Anchor = item.Caret.Offset = 5;
+
+	Graphite::RefreshFindMatches(item, buffer);
+	Graphite::RevealFindMatch(item, buffer);
+
+	REQUIRE(item.Caret.Anchor == 10);
+
+	// Narrowing the query leaves the selection's start where it was, so the match it now
+	// picks is the same text rather than the next one along.
+	item.Find.Query = "alpin";
+	Graphite::RefreshFindMatches(item, buffer);
+	Graphite::RevealFindMatch(item, buffer);
+
+	CHECK(item.Caret.Anchor == 10);
+	CHECK(item.Caret.Offset == 15);
+}
+
+TEST_CASE("Revealing with nothing found leaves the caret where it was")
+{
+	const Core::TextBuffer buffer("alpha beta");
+	Core::OpenItem item = ItemSearchingFor("zeta");
+
+	item.Caret.Anchor = item.Caret.Offset = 3;
+	item.PendingScroll = false;
+
+	Graphite::RefreshFindMatches(item, buffer);
+	Graphite::RevealFindMatch(item, buffer);
+
+	CHECK(item.Caret.Anchor == 3);
+	CHECK(item.Caret.Offset == 3);
+	CHECK_FALSE(item.PendingScroll);
+}

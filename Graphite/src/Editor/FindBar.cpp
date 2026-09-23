@@ -344,6 +344,7 @@ namespace Graphite {
 		// built for another query from a current one, so the query's every change rebuilds as it
 		// happens, and seeding one is a change.
 		RefreshFindMatches(item, buffer);
+		RevealFindMatch(item, buffer);
 
 		m_FocusFor = item.Path;
 	}
@@ -450,6 +451,7 @@ namespace Graphite {
 		{
 			item.Find.Query = field.data();
 			RefreshFindMatches(item, buffer);
+			RevealFindMatch(item, buffer);
 		}
 
 		// What was typed on one side of the divider, what came of it on the other.
@@ -471,7 +473,10 @@ namespace Graphite {
 						   item.Find.WholeWord);
 
 		if (matchCaseToggled || wholeWordToggled)
+		{
 			RefreshFindMatches(item, buffer);
+			RevealFindMatch(item, buffer);
+		}
 
 		ImGui::SameLine();
 

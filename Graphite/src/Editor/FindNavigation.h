@@ -43,4 +43,14 @@ namespace Graphite {
 	// anchor at the start, offset at the end. Does nothing when there are no matches. Asks for a
 	// scroll rather than performing one — the caller is not necessarily drawing.
 	void StepFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, bool backwards);
+
+	// Selects the current match and asks for a scroll to it, the way a step does, without
+	// moving Current. Does nothing when there are no matches.
+	//
+	// Called whenever the bar rebuilds the list on the user's behalf — a query typed, a toggle
+	// flipped, the bar opened — because the counter names a current match and nothing else
+	// showed which one it was: RefreshFindMatches only picks it, and it was often off screen.
+	// Selecting it is also what keeps a query typed a letter at a time on the match it started
+	// on, since the next rebuild picks from the selection's start.
+	void RevealFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer);
 }
