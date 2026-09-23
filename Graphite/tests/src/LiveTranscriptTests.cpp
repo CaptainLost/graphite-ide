@@ -120,3 +120,29 @@ TEST_CASE("Twenty thousand lines arrive complete and once, however the polls int
 	CHECK(session.GetTurns().front().Prompt == "p0");
 	CHECK(session.GetTurns().back().Prompt == "p19999");
 }
+
+TEST_CASE("Subagent usage arrives with the transcript and again when a subagent writes")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("one"));
+
+	LiveTranscript live{file};
+	Session session;
+	SubagentUsage subagents;
+
+	live.Poll();
+	WaitForTurns(live, session, 1);
+
+	temp.MakeFile("p/s/subagents/agent-a1.jsonl", Fixtures::Assistant("r", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6)));
+	live.Poll();
+
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+	while (!subagents.contains("a1"))
+	{
+		live.TakeSubagents(subagents);
+		REQUIRE(std::chrono::steady_clock::now() < deadline);
+		std::this_thread::sleep_for(std::chrono::milliseconds{5});
+	}
+
+	CHECK(subagents.at("a1") == UsageByModel{{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
+}

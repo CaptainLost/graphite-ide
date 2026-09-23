@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Sessions/Session.h"
+#include "Sessions/ToolFacts.h"
 #include "Sessions/TranscriptRecord.h"
 
 #include "Core/Jobs/JobQueue.h"
@@ -10,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 namespace Graphite {
@@ -33,6 +35,10 @@ namespace Graphite {
 		// UI thread only. Applies what arrived since the last call; true when anything did.
 		bool Take(Session& session);
 
+		// UI thread only. Moves out the subagents' usage when a newer map arrived since the
+		// last call; true when it did.
+		bool TakeSubagents(SubagentUsage& out);
+
 		std::size_t GetSkipped() const;
 		const std::filesystem::path& GetFile() const { return m_File; }
 
@@ -49,6 +55,13 @@ namespace Graphite {
 
 			// Where the next read starts. Only the worker moves it.
 			std::uint64_t Offset = 0;
+
+			// The subagents' usage, re-read only when their folder's files changed — what the
+			// worker last saw is the key.
+			std::optional<SubagentUsage> Subagents;
+			std::uintmax_t SubagentBytes = 0;
+			std::int64_t SubagentTicks = 0;
+			std::size_t SubagentFiles = 0;
 		};
 
 		std::filesystem::path m_File;
