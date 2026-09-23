@@ -116,8 +116,9 @@ namespace Graphite {
 
 			DrawPiece(at, ink, Fitted(SingleLineLabel(label, kLabelBytes), columnX - space - at.x));
 
+			// Cut too: on a row narrower than the column itself it would run past the edge.
 			at.x = columnX;
-			DrawPiece(at, palette.TextDisabled, column);
+			DrawPiece(at, palette.TextDisabled, Fitted(column, right - at.x));
 
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
 		}

@@ -3,6 +3,7 @@
 #include "Panels/LocalClock.h"
 #include "Sessions/Markdown.h"
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/ToolFacts.h"
 #include "Sessions/TurnParts.h"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -31,6 +33,14 @@ namespace Graphite {
 		// Moves on whenever a newer Subagents map arrives, so facts drawn from the old one
 		// are worked out again.
 		std::uint64_t SubagentsVersion = 0;
+
+		// The session's requests, which the table under a usage line lists. Without it a usage
+		// line opens to nothing.
+		const RequestTimeline* Timeline = nullptr;
+
+		// Shows a request in the Requests tab, by its position in Timeline->GetRequests().
+		// Without it the table's rows have no button to go there.
+		std::function<void(std::size_t)> OpenRequest;
 	};
 
 	// A session drawn for reading: a block per user message, Claude's replies with their
@@ -77,13 +87,15 @@ namespace Graphite {
 
 		// A message from the user: the prompt that opened a turn, or one queued within it.
 		void DrawUser(const std::string& text, const std::string& at, const ConversationContext& context);
-		void DrawReply(const Turn& turn, const TurnPart& part, std::pair<std::size_t, std::size_t> key,
-					   const ConversationContext& context);
+		void DrawReply(const Turn& turn, const TurnPart& part, std::size_t row, const ConversationContext& context);
 		void DrawStepsHeader(const Session& session, const Turn& turn, const TurnPart& part, std::size_t row,
 							 const ConversationContext& context);
 		void DrawStep(const Session& session, const TurnItem& item, std::size_t row, const ConversationContext& context,
 					  Core::EventBus& events);
 		void DrawInjected(const TurnItem& item, std::size_t row, const ConversationContext& context);
+		// A part's usage line, which opens to a line per request it covers, each with a button
+		// that shows the request in the Requests tab. `width` is the room the line may take.
+		void DrawUsage(const TurnPart& part, std::size_t row, float width, const ConversationContext& context);
 		void DrawGap(std::chrono::milliseconds gap, const ConversationContext& context);
 		void DrawMarkdown(const std::string& text, std::pair<std::size_t, std::size_t> key,
 						  const ConversationContext& context);
@@ -103,6 +115,9 @@ namespace Graphite {
 		// Everything starts folded.
 		std::set<std::pair<std::size_t, std::size_t>> m_OpenParts;
 		std::set<std::pair<std::size_t, std::size_t>> m_OpenItems;
+
+		// Usage lines opened to their requests, by (turn, part), as runs are.
+		std::set<std::pair<std::size_t, std::size_t>> m_OpenUsage;
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 

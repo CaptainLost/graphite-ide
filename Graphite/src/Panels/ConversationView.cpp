@@ -2,6 +2,7 @@
 
 #include "Panels/ConversationView.h"
 
+#include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"
 
 #include "Sessions/SessionSummary.h"
@@ -120,6 +121,7 @@ namespace Graphite {
 		{
 			m_OpenParts.clear();
 			m_OpenItems.clear();
+			m_OpenUsage.clear();
 		}
 
 		const auto identity = [](const Row& row)
@@ -240,15 +242,19 @@ namespace Graphite {
 
 		const TurnPart& part = m_Parts[row.Turn][row.Part];
 
+		// An opened usage line lists a line per request under it.
+		const float requests =
+			m_OpenUsage.contains({row.Turn, row.Part}) ? line * static_cast<float>(part.RequestKeys.size()) : 0.0f;
+
 		switch (part.Kind)
 		{
 		case PartKind::Reply:
 		{
 			const std::string& text = turn.Items[part.Items.front()].Text;
-			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y * 1.1f + 2.0f * line;
+			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y * 1.1f + 2.0f * line + requests;
 		}
 		case PartKind::Steps:
-			return part.Requests > 0 ? 2.0f * line : line;
+			return (part.Requests > 0 ? 2.0f * line : line) + requests;
 		case PartKind::Injected:
 			return line;
 		case PartKind::Queued:
@@ -281,9 +287,75 @@ namespace Graphite {
 		EndBlock(block, context.Palette.UserBlock);
 	}
 
-	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, std::pair<std::size_t, std::size_t> key,
+	void ConversationView::DrawUsage(const TurnPart& part, std::size_t row, float width,
 									 const ConversationContext& context)
 	{
+		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Part};
+		const float lineHeight = ImGui::GetTextLineHeight();
+		const ImVec2 start = ImGui::GetCursorScreenPos();
+
+		// Never zero: a Selectable given no width takes the rest of the window, past the block.
+		width = std::max(width, 1.0f);
+		const float right = start.x + width;
+
+		if (ImGui::Selectable("##usage", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(width, lineHeight)))
+			Toggle(m_OpenUsage, key, row);
+
+		ImVec2 at = start;
+		DrawPiece(at, context.Palette.TextDisabled,
+				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), width));
+
+		if (!m_OpenUsage.contains(key) || context.Timeline == nullptr)
+			return;
+
+		const std::vector<ApiRequest>& requests = context.Timeline->GetRequests();
+		const float space = ImGui::GetStyle().ItemSpacing.x;
+		const float button = ImGui::CalcTextSize(ICON_MDI_ARROW_RIGHT).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+		ImGui::Indent();
+
+		for (const std::string& requestKey : part.RequestKeys)
+		{
+			// A key the timeline has not cut a request for has nothing to show.
+			const std::optional<std::size_t> position = context.Timeline->IndexOf(requestKey);
+			if (!position)
+				continue;
+
+			// By the request's place in the session, which no other line under this usage shares.
+			ImGui::PushID(static_cast<int>(*position));
+
+			const ImVec2 line = ImGui::GetCursorScreenPos();
+			const float buttonX = std::max(right - button, line.x);
+
+			DrawRequestLine(line, context.OpenRequest ? buttonX - space : right, requests[*position], context.Prices,
+							context.Palette, m_Clock);
+
+			// The line went through the draw list; the button, or a Dummy, is the item that makes
+			// it one line tall.
+			if (context.OpenRequest)
+			{
+				ImGui::SetCursorScreenPos(ImVec2(buttonX, line.y));
+
+				if (ImGui::SmallButton(ICON_MDI_ARROW_RIGHT))
+					context.OpenRequest(*position);
+
+				ImGui::SetItemTooltip("Show in the Requests tab");
+			}
+			else
+			{
+				ImGui::Dummy(ImVec2(0.0f, lineHeight));
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::Unindent();
+	}
+
+	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, std::size_t row,
+									 const ConversationContext& context)
+	{
+		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Part};
 		const TurnItem& item = turn.Items[part.Items.front()];
 		const Block block = BeginBlock();
 
@@ -298,9 +370,7 @@ namespace Graphite {
 		if (part.Requests > 0)
 		{
 			ImGui::SameLine();
-			ColouredText(context.Palette.TextDisabled,
-						 Fitted(UsageLine(part.Usage, part.Requests, context.Prices),
-								ImGui::GetContentRegionAvail().x - kBlockPadding));
+			DrawUsage(part, row, ImGui::GetContentRegionAvail().x - kBlockPadding, context);
 		}
 
 		DrawMarkdown(item.Text, key, context);
@@ -388,8 +458,7 @@ namespace Graphite {
 		if (part.Requests > 0)
 		{
 			ImGui::Indent(kBarGap);
-			ColouredText(context.Palette.TextDisabled, Fitted(UsageLine(part.Usage, part.Requests, context.Prices),
-															  ImGui::GetContentRegionAvail().x));
+			DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
 			ImGui::Unindent(kBarGap);
 		}
 	}
@@ -770,7 +839,7 @@ namespace Graphite {
 			switch (part.Kind)
 			{
 			case PartKind::Reply:
-				DrawReply(turn, part, {row.Turn, row.Part}, context);
+				DrawReply(turn, part, index, context);
 				break;
 			case PartKind::Steps:
 				DrawStepsHeader(session, turn, part, index, context);

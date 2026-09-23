@@ -190,8 +190,11 @@ namespace Graphite {
 
 						if (progress.FirstPassDone)
 						{
-							entry.Conversation.Draw(
-								entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion}, m_Events);
+							const ConversationContext context{
+								m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion, &entry.Timeline,
+								[&entry](std::size_t request) { entry.PendingRequest = request; }};
+
+							entry.Conversation.Draw(entry.Data, context, m_Events);
 						}
 
 						ImGui::EndTabItem();
@@ -211,7 +214,19 @@ namespace Graphite {
 						ImGui::EndTabItem();
 					}
 
-					if (ImGui::BeginTabItem("Requests"))
+					// A request asked for from the conversation, drawn above, selects this tab once; the
+					// tab bar moves to it on the next frame. SetSelected on every frame would pin the
+					// reader to it.
+					const ImGuiTabItemFlags requestsFlags =
+						entry.PendingRequest ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+					const bool requestsOpen = ImGui::BeginTabItem("Requests", nullptr, requestsFlags);
+
+					// Revealed whether or not the tab is drawn this frame: the view keeps it for its
+					// next draw, which is the frame the selection takes effect.
+					if (const std::optional<std::size_t> pending = std::exchange(entry.PendingRequest, std::nullopt))
+						entry.Requests.Reveal(*pending);
+
+					if (requestsOpen)
 					{
 						// The same rule again: a request's context delta and the tools it had are
 						// only right once every record before it has been read.

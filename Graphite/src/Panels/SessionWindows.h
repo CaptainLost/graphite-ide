@@ -13,6 +13,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Events/EventBus.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -62,6 +63,10 @@ namespace Graphite {
 			// The session cut into the API requests it made, fed from the same reads as Data.
 			RequestTimeline Timeline;
 			RequestsView Requests;
+
+			// A request the conversation asked to be shown, by its position in the timeline: the
+			// Requests tab is selected and the request revealed on the next frame, then cleared.
+			std::optional<std::size_t> PendingRequest;
 			bool Fresh = true;
 			bool Focus = true;
 		};

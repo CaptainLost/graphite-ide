@@ -9,10 +9,12 @@
 #include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <implot.h>
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 
 namespace Graphite {
@@ -23,6 +25,9 @@ namespace Graphite {
 		constexpr float kChartLines = 12.0f;
 
 		constexpr std::size_t kToolNameBytes = 80;
+
+		// The chart's series, which name its legend entries too.
+		constexpr const char* kSeries[] = {"Uncached input", "Cache write", "Cache read", "Cost"};
 
 		ImVec4 Colour(ImU32 colour)
 		{
@@ -182,19 +187,25 @@ namespace Graphite {
 
 		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
 		ImPlot::SetNextFillStyle(Colour(palette.Run));
-		ImPlot::PlotBars("Uncached input", m_ChartX.data(), m_ChartTotal.data(), count, kBarWidth);
+		ImPlot::PlotBars(kSeries[0], m_ChartX.data(), m_ChartTotal.data(), count, kBarWidth);
 		ImPlot::SetNextFillStyle(Colour(palette.Edit));
-		ImPlot::PlotBars("Cache write", m_ChartX.data(), m_ChartCached.data(), count, kBarWidth);
+		ImPlot::PlotBars(kSeries[1], m_ChartX.data(), m_ChartCached.data(), count, kBarWidth);
 		ImPlot::SetNextFillStyle(Colour(palette.Web));
-		ImPlot::PlotBars("Cache read", m_ChartX.data(), m_ChartRead.data(), count, kBarWidth);
+		ImPlot::PlotBars(kSeries[2], m_ChartX.data(), m_ChartRead.data(), count, kBarWidth);
 
 		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
 		ImPlot::SetNextLineStyle(Colour(palette.Accent));
-		ImPlot::PlotLine("Cost", m_ChartX.data(), m_ChartCost.data(), count, ImPlotLineFlags_SkipNaN);
+		ImPlot::PlotLine(kSeries[3], m_ChartX.data(), m_ChartCost.data(), count, ImPlotLineFlags_SkipNaN);
 
 		// A click anywhere over a request's column opens it in the list: the bars are too thin
-		// to be hit exactly once there are a few hundred of them.
-		if (count > 0 && ImPlot::IsPlotHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		// to be hit exactly once there are a few hundred of them. Taken on release and only
+		// without a drag, which pans the chart; and not over the legend, which sits on the bars.
+		const bool overLegend = std::any_of(std::begin(kSeries), std::end(kSeries),
+											[](const char* series) { return ImPlot::IsLegendEntryHovered(series); });
+		const bool clicked = ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+							 !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left);
+
+		if (count > 0 && clicked && ImPlot::IsPlotHovered() && !overLegend)
 		{
 			const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
 			const double nearest = std::clamp(std::round(x), 1.0, static_cast<double>(count));
@@ -376,6 +387,10 @@ namespace Graphite {
 
 		DrawChart(context.Palette);
 		DrawFilters(timeline);
-		DrawList(timeline, context);
+
+		if (m_Shown.empty())
+			ImGui::TextDisabled("No request matches the filters.");
+		else
+			DrawList(timeline, context);
 	}
 }

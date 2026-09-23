@@ -75,6 +75,7 @@ namespace Core {
 			ICON_MDI_PUZZLE_OUTLINE,
 			ICON_MDI_SERVER_NETWORK,
 			ICON_MDI_BRAIN,
+			ICON_MDI_ARROW_RIGHT,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
