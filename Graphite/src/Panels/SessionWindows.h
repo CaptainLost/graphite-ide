@@ -5,6 +5,8 @@
 #include "Sessions/LiveTranscript.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
+#include "Sessions/ToolFacts.h"
+#include "Theme/SessionPalette.h"
 
 #include "Core/Base/Base.h"
 #include "Core/Events/EventBus.h"
@@ -38,7 +40,7 @@ namespace Graphite {
 		// Applies what each tab's reader delivered. UI thread, once per frame.
 		void Update();
 
-		void Render(unsigned int centreNode);
+		void Render(unsigned int centreNode, const SessionPalette& palette);
 
 	private:
 		struct Entry
@@ -48,6 +50,7 @@ namespace Graphite {
 			std::optional<SessionSummary> Summary;
 			Core::Scope<LiveTranscript> Live;
 			Session Data;
+			SubagentUsage Subagents;
 			ConversationView Conversation;
 			bool Fresh = true;
 			bool Focus = true;

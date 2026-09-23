@@ -13,13 +13,23 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <exception>
+#include <format>
+#include <map>
+#include <string_view>
+#include <tuple>
 
 namespace Graphite {
 
 	namespace {
-		const ImVec4 kPromptColour{0.55f, 0.75f, 1.0f, 1.0f};
-		const ImVec4 kRemovedColour{0.9f, 0.45f, 0.4f, 1.0f};
-		const ImVec4 kAddedColour{0.5f, 0.8f, 0.45f, 1.0f};
+		// How far a block's text sits inside its background, and a coloured bar's row text
+		// from the bar.
+		constexpr float kBlockPadding = 8.0f;
+		constexpr float kBarGap = 8.0f;
+
+		const char* const kEllipsis = "\xe2\x80\xa6";
+		const char* const kDot = " \xc2\xb7 ";
+		const char* const kTimes = " \xc3\x97";
 
 		std::string Pretty(const std::string& json)
 		{
@@ -42,43 +52,238 @@ namespace Graphite {
 
 			return FormatDuration(span);
 		}
+
+		// The reader's own offset from UTC, so the times in the conversation are the ones on
+		// their clock. Zero when the time zone database is not available, which happens on a
+		// Windows install without the ICU data chrono reads: the times fall back to UTC
+		// rather than the view failing to draw.
+		std::chrono::minutes LocalOffset()
+		{
+			try
+			{
+				const auto now = std::chrono::system_clock::now();
+				return std::chrono::floor<std::chrono::minutes>(std::chrono::current_zone()->get_info(now).offset);
+			}
+			catch (const std::exception&)
+			{
+				return std::chrono::minutes{0};
+			}
+		}
+
+		void ColouredText(ImU32 colour, const std::string& text)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, colour);
+			ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
+			ImGui::PopStyleColor();
+		}
+
+		// A thin vertical bar at the left of the row just begun, in the category's colour.
+		void CategoryBar(ImU32 colour, float height)
+		{
+			const ImVec2 at = ImGui::GetCursorScreenPos();
+			ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + 3.0f, at.y + height), colour);
+		}
+
+		// Text that is cut with an ellipsis to fit `width`, never wrapped.
+		std::string Fitted(const std::string& text, float width)
+		{
+			if (ImGui::CalcTextSize(text.c_str()).x <= width)
+				return text;
+
+			std::string cut = text;
+			while (!cut.empty() && ImGui::CalcTextSize((cut + kEllipsis).c_str()).x > width)
+			{
+				cut.pop_back();
+				while (!cut.empty() && (static_cast<unsigned char>(cut.back()) & 0xC0u) == 0x80u)
+					cut.pop_back();
+			}
+			return cut + kEllipsis;
+		}
+
+		const char* IconOf(ToolCategory category)
+		{
+			switch (category)
+			{
+			case ToolCategory::Read: return ICON_MDI_FILE_DOCUMENT_OUTLINE;
+			case ToolCategory::Edit: return ICON_MDI_PENCIL;
+			case ToolCategory::Run: return ICON_MDI_CONSOLE;
+			case ToolCategory::Agent: return ICON_MDI_ROBOT_OUTLINE;
+			case ToolCategory::Web: return ICON_MDI_WEB;
+			case ToolCategory::Other: return ICON_MDI_TOOLS;
+			}
+			return ICON_MDI_TOOLS;
+		}
+
+		// Draws `text` at `at` and moves `at` past it. The one-line rows are drawn through the
+		// draw list over a Selectable, so each piece can take its own colour and the row stays
+		// exactly one item tall.
+		void DrawPiece(ImVec2& at, ImU32 colour, const std::string& text)
+		{
+			ImGui::GetWindowDrawList()->AddText(at, colour, text.c_str(), text.c_str() + text.size());
+			at.x += ImGui::CalcTextSize(text.c_str(), text.c_str() + text.size()).x;
+		}
+
+		// A block with a background: the content is drawn on the upper channel of the window's
+		// draw list, and the rectangle behind it on the lower one once its height is known.
+		struct Block
+		{
+			ImVec2 Start;
+			float Width = 0.0f;
+		};
+
+		Block BeginBlock()
+		{
+			ImGui::Spacing();
+
+			ImDrawList* draw = ImGui::GetWindowDrawList();
+			draw->ChannelsSplit(2);
+			draw->ChannelsSetCurrent(1);
+
+			const Block block{ImGui::GetCursorScreenPos(), ImGui::GetContentRegionAvail().x};
+
+			// The top padding, as tall as the item spacing the last line leaves below it.
+			ImGui::Dummy(ImVec2(0.0f, 0.0f));
+			ImGui::Indent(kBlockPadding);
+			return block;
+		}
+
+		void EndBlock(const Block& block, ImU32 colour)
+		{
+			ImGui::Unindent(kBlockPadding);
+
+			const float bottom = ImGui::GetCursorScreenPos().y;
+			ImDrawList* draw = ImGui::GetWindowDrawList();
+
+			draw->ChannelsSetCurrent(0);
+			draw->AddRectFilled(block.Start, ImVec2(block.Start.x + block.Width, bottom), colour,
+								ImGui::GetStyle().FrameRounding);
+			draw->ChannelsMerge();
+		}
+
+		using RowIdentity = std::tuple<int, std::size_t, std::size_t, std::size_t>;
+	}
+
+	std::string ConversationView::ClockTime(const std::string& timestamp) const
+	{
+		const auto parsed = ParseTimestamp(timestamp);
+
+		if (!parsed)
+			return {};
+
+		const auto local = std::chrono::floor<std::chrono::minutes>(*parsed) + m_LocalOffset;
+		const std::chrono::hh_mm_ss clock{local - std::chrono::floor<std::chrono::days>(local)};
+
+		return std::format("{:02}:{:02}", clock.hours().count(), clock.minutes().count());
+	}
+
+	void ConversationView::Toggle(std::set<std::pair<std::size_t, std::size_t>>& open,
+								  std::pair<std::size_t, std::size_t> key, std::size_t row)
+	{
+		if (open.contains(key))
+			open.erase(key);
+		else
+			open.insert(key);
+
+		m_Measured[row] = false;
+		m_OffsetsDirty = true;
 	}
 
 	void ConversationView::Rebuild(const Session& session, float width)
 	{
-		const bool sameSession = m_BuiltGeneration != UINT64_MAX && session.GetGeneration() == m_BuiltGeneration;
-		const std::size_t keep = sameSession ? m_Rows.size() : 0;
-
 		// A session only grows within one generation, so rows already built stay valid and
 		// keep their measured heights; a different generation (the transcript was read again
 		// from nothing) or a new width starts over. The version is not used to detect this:
 		// it resets to zero on a restart, so it is not monotonic across one and cannot tell
 		// "the same session, grown" from "a different session that happens to be as long".
-		std::vector<Row> rows;
+		const bool sameSession = m_BuiltGeneration != UINT64_MAX && session.GetGeneration() == m_BuiltGeneration;
 
-		for (std::size_t turn = 0; turn < session.GetTurns().size(); ++turn)
+		// Cleared before the rows are built, since the rows depend on which runs are open.
+		if (!sameSession)
 		{
-			if (!session.GetTurns()[turn].Prompt.empty())
-				rows.push_back({RowKind::Prompt, turn, 0});
-
-			for (std::size_t item = 0; item < session.GetTurns()[turn].Items.size(); ++item)
-				rows.push_back({RowKind::Item, turn, item});
+			m_OpenParts.clear();
+			m_OpenItems.clear();
 		}
 
-		const bool widthChanged = width != m_BuiltWidth;
+		const auto identity = [](const Row& row)
+		{ return RowIdentity{static_cast<int>(row.Kind), row.Turn, row.Part, row.Item}; };
 
-		if (!sameSession)
-			m_Expanded.clear();
+		// Heights are kept by what a row shows, not by its index: opening a run of steps
+		// inserts rows in the middle, and every row after it would otherwise take the height of
+		// whatever used to sit at its index.
+		std::map<RowIdentity, std::pair<float, bool>> kept;
 
-		m_Heights.resize(rows.size());
-		m_Measured.resize(rows.size(), false);
+		if (sameSession && width == m_BuiltWidth)
+		{
+			for (std::size_t index = 0; index < m_Rows.size(); ++index)
+				kept.emplace(identity(m_Rows[index]), std::make_pair(m_Heights[index], m_Measured[index]));
+		}
+
+		const std::vector<Turn>& turns = session.GetTurns();
+		m_Parts.assign(turns.size(), {});
+
+		std::vector<Row> rows;
+
+		// The latest time seen so far, which a gap is measured from.
+		std::string_view last;
+
+		const auto gapTo = [&rows, &last](std::string_view next, std::size_t turn, std::size_t part)
+		{
+			if (last.empty() || next.empty())
+				return;
+
+			if (const std::optional<std::chrono::milliseconds> gap = GapBetween(last, next))
+				rows.push_back({RowKind::Gap, turn, part, 0, *gap});
+		};
+
+		for (std::size_t turn = 0; turn < turns.size(); ++turn)
+		{
+			const Turn& current = turns[turn];
+
+			if (!current.Prompt.empty())
+			{
+				gapTo(current.StartedAt, turn, kBeforeUser);
+				rows.push_back({RowKind::User, turn, 0, 0, {}});
+			}
+
+			if (!current.StartedAt.empty())
+				last = current.StartedAt;
+
+			m_Parts[turn] = SplitTurn(current, session.GetTools());
+
+			for (std::size_t part = 0; part < m_Parts[turn].size(); ++part)
+			{
+				const TurnPart& split = m_Parts[turn][part];
+
+				if (split.Items.empty())
+					continue;
+
+				gapTo(current.Items[split.Items.front()].At, turn, part);
+				rows.push_back({RowKind::Part, turn, part, 0, {}});
+
+				if (split.Kind == PartKind::Steps && m_OpenParts.contains({turn, part}))
+				{
+					for (const std::size_t item : split.Items)
+						rows.push_back({RowKind::Step, turn, part, item, {}});
+				}
+
+				if (const std::string& at = current.Items[split.Items.back()].At; !at.empty())
+					last = at;
+			}
+		}
+
+		m_Heights.assign(rows.size(), 0.0f);
+		m_Measured.assign(rows.size(), false);
 
 		for (std::size_t index = 0; index < rows.size(); ++index)
 		{
-			if (index >= keep || widthChanged)
+			if (const auto found = kept.find(identity(rows[index])); found != kept.end())
+			{
+				m_Heights[index] = found->second.first;
+				m_Measured[index] = found->second.second;
+			}
+			else
 			{
 				m_Heights[index] = Estimate(session, rows[index], width);
-				m_Measured[index] = false;
 			}
 		}
 
@@ -92,41 +297,261 @@ namespace Graphite {
 	float ConversationView::Estimate(const Session& session, const Row& row, float width) const
 	{
 		const float line = ImGui::GetTextLineHeightWithSpacing();
+		const float spacing = ImGui::GetStyle().ItemSpacing.y;
 		const Turn& turn = session.GetTurns()[row.Turn];
 
-		if (row.Kind == RowKind::Prompt)
-			return ImGui::CalcTextSize(turn.Prompt.c_str(), nullptr, false, width).y + line;
+		switch (row.Kind)
+		{
+		case RowKind::User:
+			return ImGui::CalcTextSize(turn.Prompt.c_str(), nullptr, false, width).y + 2.0f * line;
+		case RowKind::Gap:
+			return line + 2.0f * spacing;
+		case RowKind::Step:
+			return line;
+		case RowKind::Part:
+			break;
+		}
 
-		const TurnItem& item = turn.Items[row.Item];
+		const TurnPart& part = m_Parts[row.Turn][row.Part];
 
-		if (item.Kind == ItemKind::Text)
-			return ImGui::CalcTextSize(item.Text.c_str(), nullptr, false, width).y + ImGui::GetStyle().ItemSpacing.y;
+		switch (part.Kind)
+		{
+		case PartKind::Reply:
+		{
+			const std::string& text = turn.Items[part.Items.front()].Text;
+			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y * 1.1f + 2.0f * line;
+		}
+		case PartKind::Steps:
+			return part.Requests > 0 ? 2.0f * line : line;
+		case PartKind::Injected:
+			return line;
+		}
 
-		// Thinking, tools and unknown blocks start as one closed line.
 		return line;
 	}
 
-	void ConversationView::DrawTool(const ToolCall& tool, std::size_t row, Core::EventBus& events)
+	void ConversationView::DrawUser(const Turn& turn, const ConversationContext& context)
 	{
-		const bool expanded = m_Expanded.contains(row);
-		const char* chevron = expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
-		const char* status = !tool.HasResult ? "" : tool.IsError ? ICON_MDI_CLOSE : ICON_MDI_CHECK;
+		const Block block = BeginBlock();
 
-		const std::string header = std::string{chevron} + " " + tool.Name + "  " +
-								   SingleLineLabel(ToolSummary(tool), 200) + "  " + DurationText(tool) + " " + status;
+		ColouredText(context.Palette.Accent, "User");
 
-		if (ImGui::Selectable(header.c_str(), false, ImGuiSelectableFlags_None))
+		if (const std::string time = ClockTime(turn.StartedAt); !time.empty())
 		{
-			if (expanded)
-				m_Expanded.erase(row);
-			else
-				m_Expanded.insert(row);
-
-			m_Measured[row] = false;
-			m_OffsetsDirty = true;
+			ImGui::SameLine();
+			ColouredText(context.Palette.TextDisabled, time);
 		}
 
-		if (!expanded)
+		// The prompt as the user typed it: not markdown, which a prompt rarely is on purpose.
+		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - kBlockPadding);
+		ImGui::TextUnformatted(turn.Prompt.c_str(), turn.Prompt.c_str() + turn.Prompt.size());
+		ImGui::PopTextWrapPos();
+
+		EndBlock(block, context.Palette.UserBlock);
+	}
+
+	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, const ConversationContext& context)
+	{
+		const TurnItem& item = turn.Items[part.Items.front()];
+		const Block block = BeginBlock();
+
+		ColouredText(context.Palette.Accent, "Claude");
+
+		if (const std::string time = ClockTime(item.At); !time.empty())
+		{
+			ImGui::SameLine();
+			ColouredText(context.Palette.TextDisabled, time);
+		}
+
+		if (part.Requests > 0)
+		{
+			ImGui::SameLine();
+			ColouredText(context.Palette.TextDisabled,
+						 Fitted(UsageLine(part.Usage, part.Requests, context.Prices),
+								ImGui::GetContentRegionAvail().x - kBlockPadding));
+		}
+
+		DrawMarkdown(item.Text, context);
+
+		EndBlock(block, context.Palette.ClaudeBlock);
+	}
+
+	void ConversationView::DrawStepsHeader(const Session& session, const Turn& turn, const TurnPart& part,
+										   std::size_t row, const ConversationContext& context)
+	{
+		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Part};
+		const bool open = m_OpenParts.contains(key);
+		const float lineHeight = ImGui::GetTextLineHeight();
+		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+
+		// Coloured by the kind of the first call: a run is usually one kind of work, and a
+		// run with a failure in it is marked as failed whatever it was.
+		ImU32 bar = context.Palette.Other;
+		bool finished = true;
+		bool anyTool = false;
+
+		for (const std::size_t index : part.Items)
+		{
+			const TurnItem& item = turn.Items[index];
+
+			if (item.Kind != ItemKind::Tool)
+				continue;
+
+			const ToolCall& tool = session.GetTools()[item.Tool];
+
+			if (!anyTool)
+				bar = context.Palette.CategoryColor(CategoryOf(tool.Name));
+
+			anyTool = true;
+			finished = finished && tool.HasResult;
+		}
+
+		if (part.Failures > 0)
+			bar = context.Palette.Failed;
+
+		const ImVec2 start = ImGui::GetCursorScreenPos();
+		const float right = start.x + ImGui::GetContentRegionAvail().x;
+
+		CategoryBar(bar, lineHeight);
+
+		if (ImGui::Selectable("##steps", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		{
+			Toggle(m_OpenParts, key, row);
+
+			// Opening or closing a run adds or removes rows, which only a rebuild does.
+			m_BuiltVersion = UINT64_MAX;
+		}
+
+		const std::size_t count = part.Items.size();
+		std::string head = std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " " +
+						   std::to_string(count) + (count == 1 ? " step" : " steps");
+
+		constexpr std::size_t kNamed = 3;
+
+		for (std::size_t index = 0; index < part.ToolCounts.size() && index < kNamed; ++index)
+		{
+			head += index == 0 ? kDot : ", ";
+			head += part.ToolCounts[index].first + kTimes + std::to_string(part.ToolCounts[index].second);
+		}
+
+		if (part.ToolCounts.size() > kNamed)
+			head += ", + " + std::to_string(part.ToolCounts.size() - kNamed) + " more";
+
+		// The duration and the status are drawn after the names, and the names are cut so
+		// that they always fit.
+		const std::string duration = part.Duration.count() > 0 ? kDot + FormatDuration(part.Duration) : std::string{};
+		const bool showStatus = anyTool && finished;
+		const std::string status = !showStatus			? std::string{}
+								   : part.Failures > 0 ? std::string{ICON_MDI_CLOSE} + " " + std::to_string(part.Failures)
+													   : std::string{ICON_MDI_CHECK};
+		const std::string statusDot = showStatus ? kDot : "";
+
+		const float tail = ImGui::CalcTextSize((duration + statusDot + status).c_str()).x;
+		ImVec2 at(start.x + kBarGap, start.y);
+
+		DrawPiece(at, ink, Fitted(head, right - at.x - tail));
+		DrawPiece(at, context.Palette.TextDisabled, duration + statusDot);
+		DrawPiece(at, part.Failures > 0 ? context.Palette.Failed : ink, status);
+
+		if (part.Requests > 0)
+		{
+			ImGui::Indent(kBarGap);
+			ColouredText(context.Palette.TextDisabled, Fitted(UsageLine(part.Usage, part.Requests, context.Prices),
+															  ImGui::GetContentRegionAvail().x));
+			ImGui::Unindent(kBarGap);
+		}
+	}
+
+	void ConversationView::DrawStep(const Session& session, const TurnItem& item, std::size_t row,
+									const ConversationContext& context, Core::EventBus& events)
+	{
+		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Item};
+		const bool open = m_OpenItems.contains(key);
+		const SessionPalette& palette = context.Palette;
+
+		switch (item.Kind)
+		{
+		case ItemKind::Tool:
+			break;
+		case ItemKind::Thinking:
+		{
+			// Empty thinking is never among a run's items; this only guards the row.
+			if (item.Text.empty())
+				return;
+
+			const std::string label =
+				std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " thinking##thinking";
+
+			ImGui::PushStyleColor(ImGuiCol_Text, palette.TextDisabled);
+
+			if (ImGui::Selectable(label.c_str()))
+				Toggle(m_OpenItems, key, row);
+
+			if (open)
+				ImGui::TextWrapped("%s", item.Text.c_str());
+
+			ImGui::PopStyleColor();
+			return;
+		}
+		case ItemKind::Other:
+			ColouredText(palette.TextDisabled, "<" + item.Text + ">");
+			return;
+		case ItemKind::Text:
+		case ItemKind::Injected:
+			ImGui::TextWrapped("%s", item.Text.c_str());
+			return;
+		}
+
+		const ToolCall& tool = session.GetTools()[item.Tool];
+		const ToolFacts facts = FactsOf(tool, context.Subagents, context.Prices);
+		const ImU32 colour = tool.IsError ? palette.Failed : palette.CategoryColor(facts.Category);
+		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+		const float lineHeight = ImGui::GetTextLineHeight();
+
+		const ImVec2 start = ImGui::GetCursorScreenPos();
+		const float right = start.x + ImGui::GetContentRegionAvail().x;
+
+		CategoryBar(colour, lineHeight);
+
+		if (ImGui::Selectable("##step", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+			Toggle(m_OpenItems, key, row);
+
+		// The right column: what came back, the tool's own fact, how long it took, and how it
+		// ended. Pinned to the right edge; the summary gives way to it.
+		std::string column;
+
+		for (const std::string& piece : {facts.Size, facts.Detail, DurationText(tool)})
+		{
+			if (piece.empty())
+				continue;
+
+			if (!column.empty())
+				column += "  ";
+
+			column += piece;
+		}
+
+		const std::string status = !tool.HasResult ? std::string{} : tool.IsError ? ICON_MDI_CLOSE : ICON_MDI_CHECK;
+		const float space = ImGui::GetStyle().ItemSpacing.x;
+		const float rightWidth = ImGui::CalcTextSize(column.c_str()).x +
+								 (status.empty() ? 0.0f : space + ImGui::CalcTextSize(status.c_str()).x);
+
+		ImVec2 at(start.x + kBarGap, start.y);
+
+		DrawPiece(at, colour, std::string{IconOf(facts.Category)} + " ");
+		DrawPiece(at, ink, tool.Name + "  ");
+		DrawPiece(at, ink, Fitted(SingleLineLabel(ToolSummary(tool), 400), right - rightWidth - space - at.x));
+
+		at.x = right - rightWidth;
+		DrawPiece(at, palette.TextDisabled, column);
+
+		if (!status.empty())
+		{
+			at.x += space;
+			DrawPiece(at, tool.IsError ? palette.Failed : ink, status);
+		}
+
+		if (!open)
 			return;
 
 		ImGui::Indent();
@@ -142,7 +567,11 @@ namespace Graphite {
 		if (const std::vector<std::string> lines = EditLines(tool); !lines.empty())
 		{
 			for (const std::string& line : lines)
-				ImGui::TextColored(line.starts_with("- ") ? kRemovedColour : kAddedColour, "%s", line.c_str());
+			{
+				ImGui::PushStyleColor(ImGuiCol_Text, line.starts_with("- ") ? palette.Failed : palette.Run);
+				ImGui::TextWrapped("%s", line.c_str());
+				ImGui::PopStyleColor();
+			}
 		}
 		else
 		{
@@ -156,7 +585,7 @@ namespace Graphite {
 			// Coloured by the style rather than TextColored, which does not wrap: an error is
 			// as long as any other result.
 			if (tool.IsError)
-				ImGui::PushStyleColor(ImGuiCol_Text, kRemovedColour);
+				ImGui::PushStyleColor(ImGuiCol_Text, palette.Failed);
 
 			ImGui::TextWrapped("%s", tool.Result.c_str());
 
@@ -167,77 +596,223 @@ namespace Graphite {
 		ImGui::Unindent();
 	}
 
-	void ConversationView::DrawRow(const Session& session, std::size_t index, Core::EventBus& events)
+	void ConversationView::DrawInjected(const TurnItem& item, std::size_t row, const ConversationContext& context)
+	{
+		const std::size_t turn = m_Rows[row].Turn;
+		const std::pair<std::size_t, std::size_t> key{turn, m_Parts[turn][m_Rows[row].Part].Items.front()};
+		const bool open = m_OpenItems.contains(key);
+		const ImU32 colour = context.Palette.Injected;
+		const float lineHeight = ImGui::GetTextLineHeight();
+
+		const ImVec2 start = ImGui::GetCursorScreenPos();
+		const float right = start.x + ImGui::GetContentRegionAvail().x;
+
+		if (ImGui::Selectable("##injected", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+			Toggle(m_OpenItems, key, row);
+
+		const std::string time = ClockTime(item.At);
+		const float timeWidth = ImGui::CalcTextSize(time.c_str()).x;
+		const float space = ImGui::GetStyle().ItemSpacing.x;
+
+		ImVec2 at(start.x + kBarGap, start.y);
+
+		DrawPiece(at, colour, std::string{ICON_MDI_BELL_OUTLINE} + " ");
+		DrawPiece(at, colour,
+				  Fitted(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, 200),
+						 right - timeWidth - space - at.x));
+
+		at.x = right - timeWidth;
+		DrawPiece(at, colour, time);
+
+		if (!open)
+			return;
+
+		ImGui::Indent();
+		ImGui::PushStyleColor(ImGuiCol_Text, colour);
+		ImGui::TextWrapped("%s", item.Text.c_str());
+		ImGui::PopStyleColor();
+		ImGui::Unindent();
+	}
+
+	void ConversationView::DrawGap(std::chrono::milliseconds gap, const ConversationContext& context)
+	{
+		ImGui::Spacing();
+
+		const std::string text = std::string{ICON_MDI_TIMER_SAND} + " " + FormatDuration(gap);
+		const float width = ImGui::CalcTextSize(text.c_str()).x;
+
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (ImGui::GetContentRegionAvail().x - width) * 0.5f));
+		ColouredText(context.Palette.TextDisabled, text);
+
+		ImGui::Spacing();
+	}
+
+	void ConversationView::DrawMarkdown(const std::string& text, const ConversationContext& context)
+	{
+		const float width = ImGui::GetContentRegionAvail().x - kBlockPadding;
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+		const std::vector<MarkdownBlock> blocks = ParseMarkdown(text);
+
+		for (std::size_t index = 0; index < blocks.size(); ++index)
+		{
+			const MarkdownBlock& block = blocks[index];
+
+			if (block.Kind == MarkdownKind::Code)
+			{
+				// Its own box and its own sideways scroll: code is never wrapped, and the
+				// conversation itself has no horizontal scrollbar. The height leaves room for
+				// that scrollbar when the code is wider than the box, so it never also needs a
+				// vertical one.
+				const ImGuiStyle& style = ImGui::GetStyle();
+				const float lines = static_cast<float>(std::count(block.Code.begin(), block.Code.end(), '\n') + 1);
+				float height = lines * ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
+
+				if (ImGui::CalcTextSize(block.Code.c_str()).x > width - style.WindowPadding.x * 2.0f)
+					height += style.ScrollbarSize;
+
+				// Identified by the block's place within the row, which the row's own id
+				// qualifies: stable from frame to frame, so the box keeps its scroll.
+				ImGui::PushID(static_cast<int>(index));
+				ImGui::PushStyleColor(ImGuiCol_ChildBg, context.Palette.CodeBlock);
+
+				if (ImGui::BeginChild("##code", ImVec2(width, height), ImGuiChildFlags_None,
+									  ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+					ImGui::TextUnformatted(block.Code.c_str(), block.Code.c_str() + block.Code.size());
+
+				// EndChild whether or not BeginChild returned true.
+				ImGui::EndChild();
+				ImGui::PopStyleColor();
+				ImGui::PopID();
+				continue;
+			}
+
+			const float scale = block.Kind == MarkdownKind::Heading
+									? (block.Level == 1 ? 1.35f : block.Level == 2 ? 1.2f : 1.1f)
+									: 1.0f;
+
+			ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
+
+			const float indent = block.Kind == MarkdownKind::ListItem
+									 ? ImGui::GetFontSize() * (1.0f + static_cast<float>(block.Level))
+									 : 0.0f;
+			const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+			const bool bold = block.Kind == MarkdownKind::Heading;
+			const float codePad = ImGui::GetFontSize() * 0.3f;
+
+			if (block.Kind == MarkdownKind::ListItem)
+				draw->AddText(ImVec2(origin.x + indent - ImGui::CalcTextSize(block.Marker.c_str()).x -
+										 ImGui::GetFontSize() * 0.4f,
+									 origin.y),
+							  ink, block.Marker.c_str());
+
+			const auto measure = [codePad](std::string_view word, SpanStyle style)
+			{
+				const float pad = style == SpanStyle::Code ? codePad : 0.0f;
+				return ImGui::CalcTextSize(word.data(), word.data() + word.size()).x + pad;
+			};
+
+			const std::vector<PlacedWord> words = LayoutSpans(block.Spans, width - indent, measure);
+			int lastLine = 0;
+
+			for (const PlacedWord& word : words)
+			{
+				const SpanStyle style = block.Spans[word.Span].Style;
+				const ImVec2 at(origin.x + indent + word.X, origin.y + static_cast<float>(word.Line) * lineHeight);
+				const char* begin = word.Text.c_str();
+				const char* end = begin + word.Text.size();
+
+				if (style == SpanStyle::Code)
+				{
+					// The background covers the word, not the space placed after it.
+					const char* trimmed = end;
+					while (trimmed > begin && trimmed[-1] == ' ')
+						--trimmed;
+
+					const ImVec2 size = ImGui::CalcTextSize(begin, trimmed);
+					draw->AddRectFilled(at, ImVec2(at.x + size.x + codePad, at.y + ImGui::GetTextLineHeight()),
+										context.Palette.CodeBlock, 3.0f);
+					draw->AddText(ImVec2(at.x + codePad * 0.5f, at.y), ink, begin, trimmed);
+				}
+				else
+				{
+					draw->AddText(at, ink, begin, end);
+
+					// There is one text face; bold is the same glyphs drawn twice, a pixel apart.
+					if (bold || style == SpanStyle::Bold)
+						draw->AddText(ImVec2(at.x + 1.0f, at.y), ink, begin, end);
+				}
+
+				lastLine = word.Line;
+			}
+
+			ImGui::PopFont();
+
+			// The layout drew through the draw list; the cursor has to be moved past it with an
+			// item, or ImGui asserts on the next SetCursorPos.
+			ImGui::Dummy(ImVec2(width, static_cast<float>(words.empty() ? 1 : lastLine + 1) * lineHeight));
+		}
+	}
+
+	void ConversationView::DrawRow(const Session& session, std::size_t index, const ConversationContext& context,
+								   Core::EventBus& events)
 	{
 		const Row& row = m_Rows[index];
 		const Turn& turn = session.GetTurns()[row.Turn];
 
-		ImGui::PushID(static_cast<int>(index));
+		// Identified by what the row shows rather than by its index, which moves whenever a run
+		// of steps above it opens: a code box inside keeps its scroll across that.
+		const std::string id = std::format("{}/{}/{}/{}", static_cast<int>(row.Kind), row.Turn, row.Part, row.Item);
+		ImGui::PushID(id.c_str());
 
-		if (row.Kind == RowKind::Prompt)
+		switch (row.Kind)
 		{
-			ImGui::Separator();
-			ImGui::PushStyleColor(ImGuiCol_Text, kPromptColour);
-			ImGui::TextWrapped("%s", turn.Prompt.c_str());
-			ImGui::PopStyleColor();
+		case RowKind::User:
+			DrawUser(turn, context);
+			break;
+		case RowKind::Gap:
+			DrawGap(row.Gap, context);
+			break;
+		case RowKind::Part:
+		{
+			const TurnPart& part = m_Parts[row.Turn][row.Part];
+
+			switch (part.Kind)
+			{
+			case PartKind::Reply:
+				DrawReply(turn, part, context);
+				break;
+			case PartKind::Steps:
+				DrawStepsHeader(session, turn, part, index, context);
+				break;
+			case PartKind::Injected:
+				DrawInjected(turn.Items[part.Items.front()], index, context);
+				break;
+			}
+			break;
 		}
-		else
-		{
-			const TurnItem& item = turn.Items[row.Item];
-
-			switch (item.Kind)
-			{
-			case ItemKind::Text:
-				ImGui::TextWrapped("%s", item.Text.c_str());
-				break;
-			case ItemKind::Thinking:
-			{
-				const bool expanded = m_Expanded.contains(index);
-				const std::string label = std::string{expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} +
-										  (item.Text.empty() ? " thinking (not shown by the API)" : " thinking");
-
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-
-				if (ImGui::Selectable(label.c_str()))
-				{
-					if (expanded)
-						m_Expanded.erase(index);
-					else
-						m_Expanded.insert(index);
-
-					m_Measured[index] = false;
-					m_OffsetsDirty = true;
-				}
-
-				if (expanded && !item.Text.empty())
-					ImGui::TextWrapped("%s", item.Text.c_str());
-
-				ImGui::PopStyleColor();
-				break;
-			}
-			case ItemKind::Tool:
-				DrawTool(session.GetTools()[item.Tool], index, events);
-				break;
-			case ItemKind::Injected:
-				ImGui::TextDisabled("%s", item.Label.c_str());
-				break;
-			case ItemKind::Other:
-				ImGui::TextDisabled("<%s>", item.Text.c_str());
-				break;
-			}
+		case RowKind::Step:
+			ImGui::Indent();
+			DrawStep(session, turn.Items[row.Item], index, context, events);
+			ImGui::Unindent();
+			break;
 		}
 
 		ImGui::PopID();
 	}
 
-	void ConversationView::Draw(const Session& session, Core::EventBus& events)
+	void ConversationView::Draw(const Session& session, const ConversationContext& context, Core::EventBus& events)
 	{
-		if (!ImGui::BeginChild("##conversation", ImVec2(0, 0), ImGuiChildFlags_None,
-							   ImGuiWindowFlags_HorizontalScrollbar))
+		// No horizontal scrollbar: everything wraps to the window, and a code block scrolls
+		// sideways in a box of its own.
+		if (!ImGui::BeginChild("##conversation", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_None))
 		{
 			ImGui::EndChild();
 			return;
 		}
+
+		m_LocalOffset = LocalOffset();
 
 		const float width = ImGui::GetContentRegionAvail().x;
 
@@ -272,7 +847,7 @@ namespace Graphite {
 			ImGui::SetCursorPosY(startY + m_Offsets[index]);
 			const float before = ImGui::GetCursorPosY();
 
-			DrawRow(session, index, events);
+			DrawRow(session, index, context, events);
 
 			const float taken = ImGui::GetCursorPosY() - before;
 

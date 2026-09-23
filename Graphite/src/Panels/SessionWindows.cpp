@@ -112,12 +112,15 @@ namespace Graphite {
 	{
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
-			if (entry->Live)
-				entry->Live->Take(entry->Data);
+			if (!entry->Live)
+				continue;
+
+			entry->Live->Take(entry->Data);
+			entry->Live->TakeSubagents(entry->Subagents);
 		}
 	}
 
-	void SessionWindows::Render(unsigned int centreNode)
+	void SessionWindows::Render(unsigned int centreNode, const SessionPalette& palette)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
@@ -148,7 +151,8 @@ namespace Graphite {
 						if (const std::size_t skipped = entry.Live->GetSkipped(); skipped > 0)
 							ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
 
-						entry.Conversation.Draw(entry.Data, m_Events);
+						entry.Conversation.Draw(
+							entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette}, m_Events);
 						ImGui::EndTabItem();
 					}
 

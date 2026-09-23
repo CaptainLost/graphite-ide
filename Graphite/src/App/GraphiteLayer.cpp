@@ -37,6 +37,7 @@
 #include "Core/ImGui/Theme.h"
 
 #include "Theme/ChromePalette.h"
+#include "Theme/SessionPalette.h"
 
 #include "Core/Events/ApplicationEvent.h"
 
@@ -756,7 +757,7 @@ namespace Graphite {
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
 							 ReadSyntaxPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId());
 
-		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId());
+		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()));
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.
