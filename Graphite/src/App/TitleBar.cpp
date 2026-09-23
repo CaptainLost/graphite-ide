@@ -3,6 +3,7 @@
 #include "App/Version.h"
 
 #include "Core/ImGui/CaptionLayout.h"
+#include "Core/ImGui/Animation.h"
 #include "Core/Platform/Caption.h"
 #include "Core/Platform/Window.h"
 
@@ -32,13 +33,22 @@ namespace Graphite {
 			const bool pressed = ImGui::InvisibleButton(id, ImVec2(rect.Width, rect.Height));
 			const bool held = ImGui::IsItemActive();
 			const bool hovered = ImGui::IsItemHovered();
+			// Asked every frame, held or not, so the fade out starts from wherever it had got to.
+			const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), hovered);
 			ImGui::EndDisabled();
 
 			ImDrawList* draw = ImGui::GetWindowDrawList();
 
-			if (held || hovered)
+			// A press answers at once; only hovering fades, by the hover colour's alpha.
+			if (held)
 			{
-				draw->AddRectFilled(min, max, held ? heldColour : hoveredColour);
+				draw->AddRectFilled(min, max, heldColour);
+			}
+			else if (hover > 0.0f)
+			{
+				ImVec4 fill = ImGui::ColorConvertU32ToFloat4(hoveredColour);
+				fill.w *= hover;
+				draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(fill));
 			}
 
 			// Floored, not rounded: CalcTextSize rounds up, so a centred glyph placed on a

@@ -33,6 +33,7 @@ project "Core"
     externalincludedirs
     {
         "%{IncludeDir.libgit2}",
+        "%{IncludeDir.ImAnim}",
         "%{IncludeDir.json}",
         "%{IncludeDir.MdiIcons}",
         "%{IncludeDir.spdlog}"

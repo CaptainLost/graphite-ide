@@ -23,7 +23,11 @@ project "ImGui"
         "%{wks.location}/vendor/imgui/backends/imgui_impl_glfw.h",
         "%{wks.location}/vendor/imgui/backends/imgui_impl_glfw.cpp",
         "%{wks.location}/vendor/imgui/backends/imgui_impl_opengl3.h",
-        "%{wks.location}/vendor/imgui/backends/imgui_impl_opengl3.cpp"
+        "%{wks.location}/vendor/imgui/backends/imgui_impl_opengl3.cpp",
+        -- Built here rather than as a project of its own: it is two files that compile
+        -- against ImGui's internals and link nowhere ImGui does not already.
+        "%{wks.location}/vendor/imanim/im_anim.h",
+        "%{wks.location}/vendor/imanim/im_anim.cpp"
     }
 
     includedirs

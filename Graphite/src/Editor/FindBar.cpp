@@ -2,6 +2,7 @@
 
 #include "Editor/FindNavigation.h"
 
+#include "Core/ImGui/Animation.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
@@ -84,17 +85,24 @@ namespace Graphite {
 			const bool held = ImGui::IsItemActive();
 			const bool hovered = ImGui::IsItemHovered();
 
+			const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), hovered);
+
 			ImDrawList* draw = ImGui::GetWindowDrawList();
 
 			// No fill at rest: five boxed buttons beside a text field read as a form. An engaged
-			// toggle keeps one, because "on" has to be visible without hovering it.
-			if (held || hovered || engaged)
-			{
-				const ImU32 fill = held	   ? ImGui::GetColorU32(ImGuiCol_ButtonActive)
-								   : hovered ? ImGui::GetColorU32(ImGuiCol_ButtonHovered)
-											 : ImGui::GetColorU32(ImGuiCol_Button);
+			// toggle keeps one, because "on" has to be visible without hovering it. Hovering
+			// fades in from whichever of those two it rests at; a press answers at once.
+			const ImVec4 hoveredFill = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered);
+			const ImVec4 restingFill =
+				engaged ? ImGui::GetStyleColorVec4(ImGuiCol_Button)
+						: ImVec4(hoveredFill.x, hoveredFill.y, hoveredFill.z, 0.0f);
+			const ImVec4 fill = held ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
+									 : Core::Animation::Blend(restingFill, hoveredFill, hover);
 
-				draw->AddRectFilled(min, max, fill, ImGui::GetStyle().FrameRounding);
+			if (fill.w > 0.0f)
+			{
+				draw->AddRectFilled(min, max, ImGui::GetColorU32(fill),
+									ImGui::GetStyle().FrameRounding);
 			}
 
 			// Floored, not rounded: CalcTextSize rounds up, so a glyph centred onto a half pixel

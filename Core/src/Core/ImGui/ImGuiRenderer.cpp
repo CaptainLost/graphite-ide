@@ -5,6 +5,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/Animation.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Window.h"
@@ -240,6 +241,8 @@ namespace Core {
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+
+		Animation::BeginFrame();
 	}
 
 	void ImGuiRenderer::EndFrame(Window& window)

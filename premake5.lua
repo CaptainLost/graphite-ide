@@ -10,6 +10,7 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 IncludeDir = {}
 IncludeDir["GLFW"]    = "%{wks.location}/vendor/glfw/include"
 IncludeDir["ImGui"]   = "%{wks.location}/vendor/imgui"
+IncludeDir["ImAnim"]  = "%{wks.location}/vendor/imanim"
 IncludeDir["doctest"] = "%{wks.location}/vendor/doctest"
 IncludeDir["libgit2"]       = "%{wks.location}/vendor/libgit2/include"
 IncludeDir["pugixml"]       = "%{wks.location}/vendor/pugixml/src"

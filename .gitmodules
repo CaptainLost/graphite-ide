@@ -20,3 +20,6 @@
 [submodule "vendor/spdlog"]
 	path = vendor/spdlog
 	url = https://github.com/gabime/spdlog.git
+[submodule "vendor/imanim"]
+	path = vendor/imanim
+	url = https://github.com/soufianekhiat/ImAnim.git
