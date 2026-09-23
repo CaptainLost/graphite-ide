@@ -113,7 +113,7 @@ namespace Graphite {
 		const char* status = !tool.HasResult ? "" : tool.IsError ? ICON_MDI_CLOSE : ICON_MDI_CHECK;
 
 		const std::string header = std::string{chevron} + " " + tool.Name + "  " +
-								   TruncateUtf8(ToolSummary(tool), 200) + "  " + DurationText(tool) + " " + status;
+								   SingleLineLabel(ToolSummary(tool), 200) + "  " + DurationText(tool) + " " + status;
 
 		if (ImGui::Selectable(header.c_str(), false, ImGuiSelectableFlags_None))
 		{
@@ -153,10 +153,15 @@ namespace Graphite {
 		{
 			ImGui::Separator();
 
+			// Coloured by the style rather than TextColored, which does not wrap: an error is
+			// as long as any other result.
 			if (tool.IsError)
-				ImGui::TextColored(kRemovedColour, "%s", tool.Result.c_str());
-			else
-				ImGui::TextWrapped("%s", tool.Result.c_str());
+				ImGui::PushStyleColor(ImGuiCol_Text, kRemovedColour);
+
+			ImGui::TextWrapped("%s", tool.Result.c_str());
+
+			if (tool.IsError)
+				ImGui::PopStyleColor();
 		}
 
 		ImGui::Unindent();

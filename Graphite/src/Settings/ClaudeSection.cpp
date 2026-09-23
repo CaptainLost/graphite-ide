@@ -2,6 +2,8 @@
 
 #include "Sessions/ClaudeSettings.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <imgui.h>
 
 #include <cstddef>
@@ -44,12 +46,16 @@ namespace Graphite {
 				reinterpret_cast<const char8_t*>(m_PendingBinary.data()), m_PendingBinary.size()}});
 		}
 
-		const std::filesystem::path resolved = m_Settings.ResolveProgram();
+		if (!m_ResolvedFor.has_value() || *m_ResolvedFor != m_Settings.GetBinary())
+		{
+			m_ResolvedFor = m_Settings.GetBinary();
+			m_Resolved = m_Settings.ResolveProgram();
+		}
 
-		if (resolved.empty())
+		if (m_Resolved.empty())
 			ImGui::TextDisabled("Claude was not found. Name claude.exe above, or put it on PATH.");
 		else
-			ImGui::TextDisabled("Runs %s", reinterpret_cast<const char*>(resolved.u8string().c_str()));
+			ImGui::TextDisabled("Runs %s", reinterpret_cast<const char*>(m_Resolved.u8string().c_str()));
 	}
 
 	void ClaudeSection::RenderPrices()
@@ -104,6 +110,50 @@ namespace Graphite {
 			ImGui::PopID();
 		}
 
+		RenderNewPrice();
 		ImGui::EndTable();
+	}
+
+	void ClaudeSection::RenderNewPrice()
+	{
+		ImGui::PushID("##newPrice");
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+
+		char buffer[128] = {};
+		m_NewModel.copy(buffer, sizeof(buffer) - 1);
+		ImGui::SetNextItemWidth(-1.0f);
+
+		if (ImGui::InputTextWithHint("##model", "model id, e.g. claude-opus-5", buffer, sizeof(buffer)))
+			m_NewModel = buffer;
+
+		double* fields[] = {&m_NewPrice.Input, &m_NewPrice.Output, &m_NewPrice.CacheWrite5m,
+							&m_NewPrice.CacheWrite1h, &m_NewPrice.CacheRead};
+
+		for (std::size_t index = 0; index < std::size(fields); ++index)
+		{
+			ImGui::TableNextColumn();
+			ImGui::PushID(static_cast<int>(index));
+			ImGui::SetNextItemWidth(-1.0f);
+			ImGui::InputDouble("##price", fields[index], 0.0, 0.0, "%.3f");
+			ImGui::PopID();
+		}
+
+		ImGui::TableNextColumn();
+
+		// An empty id would price nothing, and a model's id is matched exactly, so surrounding
+		// spaces from a paste are not part of it.
+		const std::string model = Core::Trimmed(m_NewModel);
+		ImGui::BeginDisabled(model.empty());
+
+		if (ImGui::SmallButton("Add"))
+		{
+			m_Settings.SetPrice(model, m_NewPrice);
+			m_NewModel.clear();
+			m_NewPrice = {};
+		}
+
+		ImGui::EndDisabled();
+		ImGui::PopID();
 	}
 }

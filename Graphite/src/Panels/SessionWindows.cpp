@@ -3,6 +3,7 @@
 #include "Panels/SessionWindows.h"
 
 #include "Sessions/ClaudeSettings.h"
+#include "Sessions/SessionText.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -14,6 +15,11 @@
 
 namespace Graphite {
 
+	namespace {
+		// A tab shows the start of a title; the whole of it is in the session's list row.
+		constexpr std::size_t kTabTitleBytes = 60;
+	}
+
 	SessionWindows::SessionWindows(Core::EventBus& events, const ClaudeSettings& settings)
 		: m_Events(events), m_Settings(settings)
 	{
@@ -22,7 +28,7 @@ namespace Graphite {
 	SessionWindows::Entry* SessionWindows::Find(const std::string& id)
 	{
 		const auto found = std::find_if(m_Open.begin(), m_Open.end(),
-										[&id](const Core::Scope<Entry>& entry) { return entry->Id == id; });
+										[&id](const Core::Scope<Entry>& entry) { return SameSessionId(entry->Id, id); });
 		return found == m_Open.end() ? nullptr : found->get();
 	}
 
@@ -116,7 +122,8 @@ namespace Graphite {
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
 			Entry& entry = *m_Open[index];
-			const std::string name = ICON_MDI_ROBOT_OUTLINE "  " + entry.Title + "###session-" + entry.Id;
+			const std::string name =
+				ICON_MDI_ROBOT_OUTLINE "  " + SingleLineLabel(entry.Title, kTabTitleBytes) + "###session-" + entry.Id;
 
 			// Docked only on the frame this identity is new, as DiffWindows does: every frame
 			// would fight a reader who dragged the tab elsewhere.

@@ -7,6 +7,7 @@
 #include "Core/Fs/DirectoryWatcher.h"
 #include "Core/UI/Panel.h"
 
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -35,15 +36,30 @@ namespace Graphite {
 
 		SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, SessionWindows& windows,
 					  LaunchClaude launch);
+		~SessionsPanel() override;
+
+		SessionsPanel(const SessionsPanel&) = delete;
+		SessionsPanel& operator=(const SessionsPanel&) = delete;
 
 		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;
 
 	private:
+		// A session as the list draws it: the folder key it is grouped and sorted by, worked
+		// out once per frame rather than once per comparison.
+		struct VisibleRow
+		{
+			const SessionSummary* Summary = nullptr;
+			std::wstring Folder;
+		};
+
+		void FindProjectsDirectory();
+		void StartIndexingWhenPresent();
 		void StartIndexing();
 		void TakeFromIndex();
 		void TakeFromWatcher();
 		void SaveCacheWhenSettled();
+		void SaveCache();
 
 		void RenderToolbar();
 		void RenderList();
@@ -52,7 +68,7 @@ namespace Graphite {
 		void StartNewSession();
 		void ContinueSession(const SessionSummary& summary);
 
-		std::vector<const SessionSummary*> VisibleSessions() const;
+		std::vector<VisibleRow> VisibleSessions() const;
 
 		// The workspace root, or the process's current directory when none is open: where a
 		// launch starts unless the summary it resumes names somewhere more specific.
@@ -66,16 +82,30 @@ namespace Graphite {
 		std::filesystem::path m_Projects;
 		std::filesystem::path m_CacheFile;
 
-		// Why there is nothing to show, when there is nothing: no Claude directory, no program.
+		// Why there is nothing to show, when there is nothing. With m_Projects empty it is final
+		// (no home directory); otherwise the directory is missing and may yet appear, which the
+		// first Claude session started on this machine does.
 		std::optional<std::string> m_Problem;
 		std::optional<std::string> m_LaunchProblem;
+
+		// When the missing projects directory is looked for again.
+		std::chrono::steady_clock::time_point m_NextDirectoryCheck;
 
 		std::map<std::filesystem::path, SessionSummary> m_Sessions;
 
 		bool m_WorkspaceOnly = true;
 		std::string m_Filter;
 		bool m_Started = false;
+		bool m_Indexing = false;
+
+		// True from Start until the index first goes idle. Refreshes run the index too, while a
+		// live session writes, and a notice that came and went with each would flicker.
+		bool m_InitialScan = false;
+
+		// Written at most every kCacheSaveInterval while dirty, and once more on the way out:
+		// a live session delivers a summary with every turn, and each save rewrites every one.
 		bool m_CacheDirty = false;
+		std::chrono::steady_clock::time_point m_LastCacheSave;
 
 		Core::Scope<Core::DirectoryWatcher> m_Watcher;
 

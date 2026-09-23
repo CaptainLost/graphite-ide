@@ -59,8 +59,9 @@ namespace Graphite {
 		Core::EventBus& m_Events;
 		const ClaudeSettings& m_Settings;
 
-		// Scoped so an entry's address — which its reader's job does not hold, but ImGui ids
-		// derived from it would — stays put as tabs open and close.
+		// Scoped, so opening or closing a tab never moves the others. A window's ImGui id does
+		// not depend on where its entry lives: it comes from "###session-<id>", which is what
+		// keeps a tab's dock place as the list around it changes.
 		std::vector<Core::Scope<Entry>> m_Open;
 	};
 }
