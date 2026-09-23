@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -24,6 +25,10 @@ namespace Graphite {
 		const Pricing& Prices;
 		const SubagentUsage& Subagents;
 		const SessionPalette& Palette;
+
+		// Moves on whenever a newer Subagents map arrives, so facts drawn from the old one
+		// are worked out again.
+		std::uint64_t SubagentsVersion = 0;
 	};
 
 	// A session drawn for reading: a block per user message, Claude's replies with their
@@ -79,7 +84,10 @@ namespace Graphite {
 		void DrawMarkdown(const std::string& text, const ConversationContext& context);
 
 		// "HH:MM" in the reader's time zone, or nothing when the timestamp does not parse.
-		std::string ClockTime(const std::string& timestamp) const;
+		std::string ClockTime(const std::string& timestamp);
+
+		// The reader's offset from UTC at `instant`; zero when the time zone is unknown.
+		std::chrono::minutes OffsetAt(std::chrono::sys_time<std::chrono::milliseconds> instant);
 
 		void Toggle(std::set<std::pair<std::size_t, std::size_t>>& open, std::pair<std::size_t, std::size_t> key,
 					std::size_t row);
@@ -106,7 +114,15 @@ namespace Graphite {
 		bool m_OffsetsDirty = true;
 		bool m_FollowTail = true;
 
-		// The reader's offset from UTC, resolved once per frame for every time drawn in it.
-		std::chrono::minutes m_LocalOffset{0};
+		// Each tool's facts, by tool index, worked out when its row is first drawn. Cleared
+		// by every rebuild, and the Agent calls' when a newer subagent map arrives.
+		std::vector<std::optional<ToolFacts>> m_Facts;
+		std::uint64_t m_FactsSubagentsVersion = 0;
+
+		// The reader's time zone, looked up once and null when it could not be, and the span
+		// of time the offset last asked of it holds for.
+		const std::chrono::time_zone* m_Zone = nullptr;
+		bool m_ZoneResolved = false;
+		std::optional<std::chrono::sys_info> m_ZoneInfo;
 	};
 }

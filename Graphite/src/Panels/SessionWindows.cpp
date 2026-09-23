@@ -116,7 +116,8 @@ namespace Graphite {
 				continue;
 
 			entry->Live->Take(entry->Data);
-			entry->Live->TakeSubagents(entry->Subagents);
+			if (entry->Live->TakeSubagents(entry->Subagents))
+				++entry->SubagentsVersion;
 		}
 	}
 
@@ -152,7 +153,7 @@ namespace Graphite {
 							ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
 
 						entry.Conversation.Draw(
-							entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette}, m_Events);
+							entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion}, m_Events);
 						ImGui::EndTabItem();
 					}
 

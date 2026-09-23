@@ -11,6 +11,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Events/EventBus.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -51,6 +52,9 @@ namespace Graphite {
 			Core::Scope<LiveTranscript> Live;
 			Session Data;
 			SubagentUsage Subagents;
+
+			// Counts the subagent maps taken, which the conversation's facts are keyed by.
+			std::uint64_t SubagentsVersion = 0;
 			ConversationView Conversation;
 			bool Fresh = true;
 			bool Focus = true;

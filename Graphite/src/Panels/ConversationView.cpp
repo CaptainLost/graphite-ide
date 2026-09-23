@@ -6,6 +6,8 @@
 #include "Sessions/SessionText.h"
 #include "Workspace/Workspace.h"
 
+#include "Core/ImGui/ImGuiRenderer.h"
+
 #include <IconsMaterialDesignIcons.h>
 
 #include <nlohmann/json.hpp>
@@ -13,6 +15,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <exception>
 #include <format>
 #include <map>
@@ -53,23 +56,6 @@ namespace Graphite {
 			return FormatDuration(span);
 		}
 
-		// The reader's own offset from UTC, so the times in the conversation are the ones on
-		// their clock. Zero when the time zone database is not available, which happens on a
-		// Windows install without the ICU data chrono reads: the times fall back to UTC
-		// rather than the view failing to draw.
-		std::chrono::minutes LocalOffset()
-		{
-			try
-			{
-				const auto now = std::chrono::system_clock::now();
-				return std::chrono::floor<std::chrono::minutes>(std::chrono::current_zone()->get_info(now).offset);
-			}
-			catch (const std::exception&)
-			{
-				return std::chrono::minutes{0};
-			}
-		}
-
 		void ColouredText(ImU32 colour, const std::string& text)
 		{
 			ImGui::PushStyleColor(ImGuiCol_Text, colour);
@@ -84,20 +70,31 @@ namespace Graphite {
 			ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + 3.0f, at.y + height), colour);
 		}
 
-		// Text that is cut with an ellipsis to fit `width`, never wrapped.
+		// Text that is cut with an ellipsis to fit `width`, never wrapped. Measured once: the
+		// font says where the text stops fitting, which is always between two characters, so
+		// a multi-byte character is never split.
 		std::string Fitted(const std::string& text, float width)
 		{
-			if (ImGui::CalcTextSize(text.c_str()).x <= width)
+			ImFont* font = ImGui::GetFont();
+			const float size = ImGui::GetFontSize();
+			const char* begin = text.c_str();
+			const char* end = begin + text.size();
+
+			if (font->CalcTextSizeA(size, FLT_MAX, 0.0f, begin, end).x <= width)
 				return text;
 
-			std::string cut = text;
-			while (!cut.empty() && ImGui::CalcTextSize((cut + kEllipsis).c_str()).x > width)
-			{
-				cut.pop_back();
-				while (!cut.empty() && (static_cast<unsigned char>(cut.back()) & 0xC0u) == 0x80u)
-					cut.pop_back();
-			}
-			return cut + kEllipsis;
+			const float ellipsis = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kEllipsis).x;
+			if (width < ellipsis)
+				return {};
+
+			const char* remaining = begin;
+			font->CalcTextSizeA(size, width - ellipsis, 0.0f, begin, end, &remaining);
+
+			// Backed off to a lead byte all the same, should the font ever stop mid-character.
+			while (remaining > begin && (static_cast<unsigned char>(*remaining) & 0xC0u) == 0x80u)
+				--remaining;
+
+			return std::string{begin, remaining} + kEllipsis;
 		}
 
 		const char* IconOf(ToolCategory category)
@@ -163,14 +160,55 @@ namespace Graphite {
 		using RowIdentity = std::tuple<int, std::size_t, std::size_t, std::size_t>;
 	}
 
-	std::string ConversationView::ClockTime(const std::string& timestamp) const
+	std::chrono::minutes ConversationView::OffsetAt(std::chrono::sys_time<std::chrono::milliseconds> instant)
+	{
+		// The zone is looked up once. The lookup throws when the time zone database is not
+		// available, which happens on a Windows install without the ICU data chrono reads:
+		// the times then fall back to UTC rather than the view failing to draw.
+		if (!m_ZoneResolved)
+		{
+			m_ZoneResolved = true;
+
+			try
+			{
+				m_Zone = std::chrono::current_zone();
+			}
+			catch (const std::exception&)
+			{
+				m_Zone = nullptr;
+			}
+		}
+
+		if (m_Zone == nullptr)
+			return std::chrono::minutes{0};
+
+		// The offset at the instant itself, so a time on the far side of a daylight saving
+		// change is on the clock it was then. The zone's answer holds for a whole span, which
+		// nearly every time in a session falls within, so it is asked again only outside it.
+		if (!m_ZoneInfo || instant < m_ZoneInfo->begin || instant >= m_ZoneInfo->end)
+		{
+			try
+			{
+				m_ZoneInfo = m_Zone->get_info(std::chrono::floor<std::chrono::seconds>(instant));
+			}
+			catch (const std::exception&)
+			{
+				m_ZoneInfo.reset();
+				return std::chrono::minutes{0};
+			}
+		}
+
+		return std::chrono::floor<std::chrono::minutes>(m_ZoneInfo->offset);
+	}
+
+	std::string ConversationView::ClockTime(const std::string& timestamp)
 	{
 		const auto parsed = ParseTimestamp(timestamp);
 
 		if (!parsed)
 			return {};
 
-		const auto local = std::chrono::floor<std::chrono::minutes>(*parsed) + m_LocalOffset;
+		const auto local = std::chrono::floor<std::chrono::minutes>(*parsed) + OffsetAt(*parsed);
 		const std::chrono::hh_mm_ss clock{local - std::chrono::floor<std::chrono::days>(local)};
 
 		return std::format("{:02}:{:02}", clock.hours().count(), clock.minutes().count());
@@ -221,10 +259,13 @@ namespace Graphite {
 		const std::vector<Turn>& turns = session.GetTurns();
 		m_Parts.assign(turns.size(), {});
 
+		// A new version may have brought a tool its result, which changes its facts.
+		m_Facts.assign(session.GetTools().size(), std::nullopt);
+
 		std::vector<Row> rows;
 
 		// The latest time seen so far, which a gap is measured from.
-		std::string_view last;
+		std::string last;
 
 		const auto gapTo = [&rows, &last](std::string_view next, std::size_t turn, std::size_t part)
 		{
@@ -266,8 +307,10 @@ namespace Graphite {
 						rows.push_back({RowKind::Step, turn, part, item, {}});
 				}
 
-				if (const std::string& at = current.Items[split.Items.back()].At; !at.empty())
-					last = at;
+				// When the part last did anything, not when its last item was written: a tool
+				// that ran for a quarter of an hour was not a pause.
+				if (std::string at = LastActivity(current, split, session.GetTools()); !at.empty())
+					last = std::move(at);
 			}
 		}
 
@@ -503,7 +546,16 @@ namespace Graphite {
 		}
 
 		const ToolCall& tool = session.GetTools()[item.Tool];
-		const ToolFacts facts = FactsOf(tool, context.Subagents, context.Prices);
+
+		// Facts parse the tool's result, which is too much to do for every row every frame.
+		if (item.Tool >= m_Facts.size())
+			m_Facts.resize(session.GetTools().size());
+
+		std::optional<ToolFacts>& cached = m_Facts[item.Tool];
+		if (!cached)
+			cached = FactsOf(tool, context.Subagents, context.Prices);
+
+		const ToolFacts& facts = *cached;
 		const ImU32 colour = tool.IsError ? palette.Failed : palette.CategoryColor(facts.Category);
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 		const float lineHeight = ImGui::GetTextLineHeight();
@@ -539,10 +591,15 @@ namespace Graphite {
 		ImVec2 at(start.x + kBarGap, start.y);
 
 		DrawPiece(at, colour, std::string{IconOf(facts.Category)} + " ");
-		DrawPiece(at, ink, tool.Name + "  ");
-		DrawPiece(at, ink, Fitted(SingleLineLabel(ToolSummary(tool), 400), right - rightWidth - space - at.x));
 
-		at.x = right - rightWidth;
+		// The name and the summary are cut as one, so a long name gives way too rather than
+		// running under the right column. The column itself never starts left of the row.
+		const float columnX = std::max(right - rightWidth, at.x);
+
+		DrawPiece(at, ink,
+				  Fitted(tool.Name + "  " + SingleLineLabel(ToolSummary(tool), 400), columnX - space - at.x));
+
+		at.x = columnX;
 		DrawPiece(at, palette.TextDisabled, column);
 
 		if (!status.empty())
@@ -617,11 +674,13 @@ namespace Graphite {
 		ImVec2 at(start.x + kBarGap, start.y);
 
 		DrawPiece(at, colour, std::string{ICON_MDI_BELL_OUTLINE} + " ");
-		DrawPiece(at, colour,
-				  Fitted(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, 200),
-						 right - timeWidth - space - at.x));
 
-		at.x = right - timeWidth;
+		const float timeX = std::max(right - timeWidth, at.x);
+
+		DrawPiece(at, colour,
+				  Fitted(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, 200), timeX - space - at.x));
+
+		at.x = timeX;
 		DrawPiece(at, colour, time);
 
 		if (!open)
@@ -660,14 +719,20 @@ namespace Graphite {
 			if (block.Kind == MarkdownKind::Code)
 			{
 				// Its own box and its own sideways scroll: code is never wrapped, and the
-				// conversation itself has no horizontal scrollbar. The height leaves room for
-				// that scrollbar when the code is wider than the box, so it never also needs a
-				// vertical one.
+				// conversation itself has no horizontal scrollbar. The box is padded like a
+				// window; its height is the code's lines in the monospace face it is drawn in,
+				// plus that padding, plus room for the scrollbar when the code is wider than the
+				// space inside the padding, so it never also needs a vertical one.
 				const ImGuiStyle& style = ImGui::GetStyle();
+				ImFont* mono = Core::ImGuiRenderer::GetMonoFont();
 				const float lines = static_cast<float>(std::count(block.Code.begin(), block.Code.end(), '\n') + 1);
-				float height = lines * ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
 
-				if (ImGui::CalcTextSize(block.Code.c_str()).x > width - style.WindowPadding.x * 2.0f)
+				ImGui::PushFont(mono, 0.0f);
+				const float codeWidth = ImGui::CalcTextSize(block.Code.c_str(), block.Code.c_str() + block.Code.size()).x;
+				float height = lines * ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
+				ImGui::PopFont();
+
+				if (codeWidth > width - style.WindowPadding.x * 2.0f)
 					height += style.ScrollbarSize;
 
 				// Identified by the block's place within the row, which the row's own id
@@ -675,9 +740,13 @@ namespace Graphite {
 				ImGui::PushID(static_cast<int>(index));
 				ImGui::PushStyleColor(ImGuiCol_ChildBg, context.Palette.CodeBlock);
 
-				if (ImGui::BeginChild("##code", ImVec2(width, height), ImGuiChildFlags_None,
+				if (ImGui::BeginChild("##code", ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding,
 									  ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+				{
+					ImGui::PushFont(mono, 0.0f);
 					ImGui::TextUnformatted(block.Code.c_str(), block.Code.c_str() + block.Code.size());
+					ImGui::PopFont();
+				}
 
 				// EndChild whether or not BeginChild returned true.
 				ImGui::EndChild();
@@ -812,7 +881,17 @@ namespace Graphite {
 			return;
 		}
 
-		m_LocalOffset = LocalOffset();
+		// A newer subagent map changes what an Agent call's facts say.
+		if (context.SubagentsVersion != m_FactsSubagentsVersion)
+		{
+			for (std::optional<ToolFacts>& facts : m_Facts)
+			{
+				if (facts && facts->Category == ToolCategory::Agent)
+					facts.reset();
+			}
+
+			m_FactsSubagentsVersion = context.SubagentsVersion;
+		}
 
 		const float width = ImGui::GetContentRegionAvail().x;
 
