@@ -27,9 +27,10 @@ namespace Graphite {
 			return static_cast<double>(bytes) / (1024.0 * 1024.0);
 		}
 
-		// Above the conversation while it loads: a large transcript takes a while, in a Debug
-		// build especially, and an empty tab says nothing about whether anything is coming.
-		// The conversation fills in underneath as each chunk arrives.
+		// While the transcript's first pass is still being read this is all a tab shows: a large
+		// transcript takes a while, in a Debug build especially, and a conversation that grows
+		// chunk by chunk under the reader's eyes is worse to watch than a bar that fills. Once
+		// the transcript is in, only a quiet line remains while the subagents are still read.
 		void DrawProgress(const LiveTranscript::LoadProgress& progress)
 		{
 			if (!progress.FirstPassDone)
@@ -184,16 +185,29 @@ namespace Graphite {
 						if (const std::size_t skipped = entry.Live->GetSkipped(); skipped > 0)
 							ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
 
-						DrawProgress(entry.Live->GetProgress());
+						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
+						DrawProgress(progress);
 
-						entry.Conversation.Draw(
-							entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion}, m_Events);
+						if (progress.FirstPassDone)
+						{
+							entry.Conversation.Draw(
+								entry.Data, ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion}, m_Events);
+						}
+
 						ImGui::EndTabItem();
 					}
 
 					if (ImGui::BeginTabItem("Cost"))
 					{
-						DrawCost(entry.Data, entry.Summary, m_Settings.GetPricing());
+						// The same rule as the conversation: a cost summed over half a transcript
+						// is a wrong number, not a partial one.
+						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
+
+						if (progress.FirstPassDone)
+							DrawCost(entry.Data, entry.Summary, m_Settings.GetPricing());
+						else
+							DrawProgress(progress);
+
 						ImGui::EndTabItem();
 					}
 
