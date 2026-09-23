@@ -18,8 +18,10 @@
 #include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
+#include "Panels/SessionWindows.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
+#include "Sessions/ClaudeSettings.h"
 #include "Settings/AnalysisSettings.h"
 #include "Theme/ActiveScheme.h"
 #include "Workspace/DroppedPaths.h"
@@ -252,6 +254,12 @@ namespace Graphite {
 		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be
 		// declared before m_Panels, which is where GitView is constructed.
 		DiffWindows m_DiffWindows;
+
+		// Before m_Panels: SessionsPanel holds a reference to each, and ClaudeSection to the
+		// settings. m_SessionWindows owns a worker per open session; those join in its own
+		// destructor, and nothing it refers to is declared after it.
+		ClaudeSettings m_ClaudeSettings;
+		SessionWindows m_SessionWindows{m_Events, m_ClaudeSettings};
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

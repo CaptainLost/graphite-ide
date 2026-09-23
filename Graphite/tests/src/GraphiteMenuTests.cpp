@@ -73,11 +73,12 @@ TEST_CASE("The panels submenu holds every panel, under a heading per role")
 
 	REQUIRE(panels != nullptr);
 	CHECK(SectionHeadings(panels->GetChildren())
-		  == std::vector<std::string>{"Navigate", "Tools", "Git"});
+		  == std::vector<std::string>{"Navigate", "Tools", "Git", "AI"});
 
 	for (const auto& [heading, group] : {std::pair{"Navigate", "panels.navigate"},
 										 std::pair{"Tools", "panels.tools"},
-										 std::pair{"Git", "panels.git"}})
+										 std::pair{"Git", "panels.git"},
+										 std::pair{"AI", "panels.ai"}})
 	{
 		const std::vector<const MenuItem*> members = SectionBody(panels->GetChildren(), heading);
 

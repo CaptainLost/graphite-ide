@@ -18,6 +18,7 @@
 
 #include "Panels/ProblemsPanel.h"
 #include "Panels/ReferencesPanel.h"
+#include "Panels/SessionsPanel.h"
 #include "Panels/TerminalPanel.h"
 
 #include <optional>
@@ -39,6 +40,7 @@
 
 #include "Core/Events/ApplicationEvent.h"
 
+#include "Settings/ClaudeSection.h"
 #include "Settings/EditorSection.h"
 #include "Settings/KeyBindingsSection.h"
 #include "Settings/LanguageSection.h"
@@ -86,7 +88,7 @@ namespace Graphite {
 		// looking at the code it points into, which is what the bottom row is for. Without an
 		// entry here a panel has nowhere to land and opens as a window of its own.
 		m_Layout.Bottom = {"console", "search", "references"};
-		m_Layout.Center = {"settings", "git"};
+		m_Layout.Center = {"settings", "git", "sessions"};
 
 		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
 		// system one, and then TitleBar::Render draws nothing and the taller row would be
@@ -126,6 +128,22 @@ namespace Graphite {
 													  m_DocumentWindows, m_ActiveScheme,
 													  m_DiffWindows));
 
+		m_ClaudeSettings.Load();
+
+		auto* terminal = static_cast<TerminalPanel*>(m_Panels.Find("terminal"));
+
+		m_Panels.Add(Core::CreateScope<SessionsPanel>(
+			m_Workspace, m_ClaudeSettings, m_SessionWindows,
+			[this, terminal](const std::string& label, const ClaudeCommand& command)
+			{
+				m_Panels.SetVisible("terminal", true);
+
+				const std::filesystem::path directory =
+					m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::current_path();
+
+				return terminal->OpenCommand(label, command.Program, command.Arguments, directory);
+			}));
+
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
@@ -155,6 +173,7 @@ namespace Graphite {
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
 		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings));
+		sections.push_back(Core::CreateScope<ClaudeSection>(m_ClaudeSettings));
 
 		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
 
@@ -737,6 +756,8 @@ namespace Graphite {
 
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
 							 ReadSyntaxPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId());
+
+		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId());
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

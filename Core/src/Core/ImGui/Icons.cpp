@@ -60,6 +60,7 @@ namespace Core {
 			ICON_MDI_LINK_VARIANT,
 			ICON_MDI_TEXT_SEARCH,
 			ICON_MDI_COG_OUTLINE,
+			ICON_MDI_ROBOT_OUTLINE,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);

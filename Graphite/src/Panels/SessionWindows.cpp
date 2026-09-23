@@ -42,6 +42,12 @@ namespace Graphite {
 	{
 		if (Entry* existing = Find(summary.Id))
 		{
+			// A pending "New Claude session" tab reaches here with no reader yet when the user
+			// clicks it in the list before the index has delivered a summary for it: start
+			// reading now rather than waiting for UpdateSummary, which may be a poll away.
+			if (!existing->Live)
+				Attach(*existing, summary);
+
 			existing->Focus = true;
 			return;
 		}

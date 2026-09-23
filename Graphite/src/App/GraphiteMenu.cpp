@@ -32,6 +32,8 @@ namespace Graphite {
 										  MenuItem::Group("panels.tools"),
 										  MenuItem::Section("Git"),
 										  MenuItem::Group("panels.git"),
+										  MenuItem::Section("AI"),
+										  MenuItem::Group("panels.ai"),
 									  }),
 					MenuItem::Separator(),
 					MenuItem::Command("editor.toggleWordWrap"),
