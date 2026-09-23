@@ -166,3 +166,13 @@ TEST_CASE("Session ids match without regard to case")
 	CHECK_FALSE(SameSessionId("0a1b", "0a1c"));
 	CHECK_FALSE(SameSessionId("0a1b", "0a1b2"));
 }
+
+TEST_CASE("A prompt starting with markup can name the session; a notification cannot")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile(
+		"proj/abc.jsonl", Fixtures::UserPrompt("<task-notification><summary>x</summary></task-notification>") +
+							  Fixtures::UserPrompt("<div> does not render"));
+
+	CHECK(SummariseSession(file).DisplayTitle() == "<div> does not render");
+}

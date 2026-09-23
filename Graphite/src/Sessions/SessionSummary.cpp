@@ -1,5 +1,6 @@
 #include "Sessions/SessionSummary.h"
 
+#include "Sessions/InjectedText.h"
 #include "Sessions/TranscriptReader.h"
 
 #include <algorithm>
@@ -13,7 +14,7 @@ namespace Graphite {
 		constexpr std::size_t kPromptBytes = 160;
 
 		// A typed prompt, as opposed to text Claude Code put in the user's mouth: an injected
-		// skill (IsMeta) or a local command's echo, which is markup starting with '<'.
+		// skill (IsMeta) or a notification, command echo or reminder recognised by its tag.
 		std::optional<std::string> TypedPrompt(const TranscriptRecord& record)
 		{
 			if (record.Kind != RecordKind::User || record.IsMeta)
@@ -21,7 +22,7 @@ namespace Graphite {
 
 			for (const ContentBlock& block : record.Blocks)
 			{
-				if (block.Kind == BlockKind::Text && !block.Text.empty() && block.Text.front() != '<')
+				if (block.Kind == BlockKind::Text && !block.Text.empty() && !IsInjectedText(block.Text))
 					return block.Text;
 			}
 

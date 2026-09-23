@@ -218,6 +218,9 @@ namespace Graphite {
 			case ItemKind::Tool:
 				DrawTool(session.GetTools()[item.Tool], index, events);
 				break;
+			case ItemKind::Injected:
+				ImGui::TextDisabled("%s", item.Label.c_str());
+				break;
 			case ItemKind::Other:
 				ImGui::TextDisabled("<%s>", item.Text.c_str());
 				break;

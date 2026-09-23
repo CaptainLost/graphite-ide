@@ -144,3 +144,25 @@ TEST_CASE("A paired tool call carries its structured result and the size of its 
 	CHECK(nlohmann::json::parse(tool.ResultJson) == nlohmann::json{{"numLines", 5}});
 	CHECK(tool.ResultBytes == 5);
 }
+
+TEST_CASE("A task notification is an injected item in the current turn, not a new turn")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::UserPrompt("<task-notification><summary>Agent done</summary></task-notification>",
+							 "2026-09-17T09:00:05.000Z"));
+
+	REQUIRE(session.GetTurns().size() == 1);
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Injected);
+	CHECK(session.GetTurns()[0].Items[0].Label == "Agent done");
+}
+
+TEST_CASE("Injected meta text is an item too, labelled by its first line")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("Base directory for this skill\nmore"));
+
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Injected);
+	CHECK(session.GetTurns()[0].Items[0].Label == "Base directory for this skill");
+}

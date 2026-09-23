@@ -31,6 +31,7 @@ namespace Graphite {
 		Text,
 		Thinking,
 		Tool,
+		Injected,
 		Other
 	};
 
@@ -43,6 +44,9 @@ namespace Graphite {
 
 		// For Tool: the call's index in Session::GetTools().
 		std::size_t Tool = 0;
+
+		// For Injected: one line saying what it was. Text keeps the whole of it.
+		std::string Label;
 	};
 
 	// A prompt the user typed and everything up to the next one.

@@ -1,5 +1,8 @@
 #include "Sessions/Session.h"
 
+#include "Sessions/InjectedText.h"
+#include "Sessions/SessionSummary.h"
+
 namespace Graphite {
 
 	Turn& Session::CurrentTurn()
@@ -32,8 +35,19 @@ namespace Graphite {
 				tool.ResultBytes = block.Text.size();
 				tool.FinishedAt = record.Timestamp;
 			}
-			else if (block.Kind == BlockKind::Text && !record.IsMeta)
+			else if (block.Kind == BlockKind::Text)
 			{
+				// Words Claude Code put in the user's mouth fold into the turn they arrived in;
+				// only what the user typed starts a turn.
+				if (record.IsMeta || IsInjectedText(block.Text))
+				{
+					const std::string label = record.IsMeta
+												  ? TruncateUtf8(block.Text.substr(0, block.Text.find('\n')), 120)
+												  : InjectedLabel(block.Text);
+					CurrentTurn().Items.push_back({.Kind = ItemKind::Injected, .Text = block.Text, .Label = label});
+					continue;
+				}
+
 				startsTurn = true;
 
 				if (!prompt.empty())
