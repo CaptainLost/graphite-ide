@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -47,6 +48,22 @@ namespace Graphite {
 
 		// For Injected: one line saying what it was. Text keeps the whole of it.
 		std::string Label;
+
+		// When the record holding this item was written.
+		std::string At;
+
+		// The request that produced this item: requestId, else the record's uuid. Empty for
+		// items on the user's side.
+		std::string RequestId;
+	};
+
+	// What one API request cost, kept per turn so a view can show it beside the reply or the
+	// steps it produced.
+	struct RequestUsage
+	{
+		std::string Model;
+		bool Fast = false;
+		TokenCounts Usage;
 	};
 
 	// A prompt the user typed and everything up to the next one.
@@ -56,6 +73,7 @@ namespace Graphite {
 		std::string StartedAt;
 		std::vector<TurnItem> Items;
 		UsageByModel Usage;
+		std::map<std::string, RequestUsage> Requests;
 	};
 
 	// A transcript assembled for reading. Built by appending, so a live session grows by the

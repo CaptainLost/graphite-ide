@@ -44,7 +44,8 @@ namespace Graphite {
 					const std::string label = record.IsMeta
 												  ? TruncateUtf8(block.Text.substr(0, block.Text.find('\n')), 120)
 												  : InjectedLabel(block.Text);
-					CurrentTurn().Items.push_back({.Kind = ItemKind::Injected, .Text = block.Text, .Label = label});
+					CurrentTurn().Items.push_back(
+						{.Kind = ItemKind::Injected, .Text = block.Text, .Label = label, .At = record.Timestamp});
 					continue;
 				}
 
@@ -68,14 +69,16 @@ namespace Graphite {
 	void Session::AddAssistant(const TranscriptRecord& record)
 	{
 		Turn& turn = CurrentTurn();
+		const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
 
 		// Same rule as UsageTally: a response's usage rides on every record of it.
 		if (record.Usage.has_value())
 		{
-			const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
-
 			if (key.empty() || m_SeenRequests.insert(key).second)
+			{
 				turn.Usage[{record.Model, record.Fast}] += *record.Usage;
+				turn.Requests[key] = {record.Model, record.Fast, *record.Usage};
+			}
 		}
 
 		for (const ContentBlock& block : record.Blocks)
@@ -83,10 +86,12 @@ namespace Graphite {
 			switch (block.Kind)
 			{
 			case BlockKind::Text:
-				turn.Items.push_back({.Kind = ItemKind::Text, .Text = block.Text});
+				turn.Items.push_back(
+					{.Kind = ItemKind::Text, .Text = block.Text, .At = record.Timestamp, .RequestId = key});
 				break;
 			case BlockKind::Thinking:
-				turn.Items.push_back({.Kind = ItemKind::Thinking, .Text = block.Text});
+				turn.Items.push_back(
+					{.Kind = ItemKind::Thinking, .Text = block.Text, .At = record.Timestamp, .RequestId = key});
 				break;
 			case BlockKind::ToolUse:
 			{
@@ -97,14 +102,16 @@ namespace Graphite {
 				tool.StartedAt = record.Timestamp;
 
 				m_ToolById[tool.Id] = m_Tools.size();
-				turn.Items.push_back({.Kind = ItemKind::Tool, .Tool = m_Tools.size()});
+				turn.Items.push_back(
+					{.Kind = ItemKind::Tool, .Tool = m_Tools.size(), .At = record.Timestamp, .RequestId = key});
 				m_Tools.push_back(std::move(tool));
 				break;
 			}
 			case BlockKind::ToolResult:
 				break;
 			case BlockKind::Other:
-				turn.Items.push_back({.Kind = ItemKind::Other, .Text = block.Text});
+				turn.Items.push_back(
+					{.Kind = ItemKind::Other, .Text = block.Text, .At = record.Timestamp, .RequestId = key});
 				break;
 			}
 		}

@@ -166,3 +166,26 @@ TEST_CASE("Injected meta text is an item too, labelled by its first line")
 	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Injected);
 	CHECK(session.GetTurns()[0].Items[0].Label == "Base directory for this skill");
 }
+
+TEST_CASE("Each item knows its time and request, and a request's usage is kept once per turn")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(10, 20), "claude-opus-5",
+							"2026-09-17T09:00:01.000Z") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("hi"), Fixtures::Usage(10, 20), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z") +
+		Fixtures::Assistant("r2", Fixtures::ToolUseBlock("t", "Bash", {}), Fixtures::Usage(5, 6, 0, 0, 0, "fast"),
+							"claude-opus-5", "2026-09-17T09:00:03.000Z"));
+
+	const Turn& turn = session.GetTurns()[0];
+	REQUIRE(turn.Items.size() == 3);
+	CHECK(turn.Items[1].At == "2026-09-17T09:00:02.000Z");
+	CHECK(turn.Items[0].RequestId == "r1");
+	CHECK(turn.Items[2].RequestId == "r2");
+
+	REQUIRE(turn.Requests.size() == 2);
+	CHECK(turn.Requests.at("r1").Usage == TokenCounts{10, 20, 0, 0, 0});
+	CHECK(turn.Requests.at("r1").Model == "claude-opus-5");
+	CHECK(turn.Requests.at("r2").Fast);
+}
