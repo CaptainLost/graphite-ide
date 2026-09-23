@@ -4,50 +4,91 @@
 #include "Sessions/TranscriptReader.h"
 
 #include <filesystem>
+#include <map>
+#include <optional>
+#include <set>
 #include <system_error>
 #include <utility>
 
 namespace Graphite {
 
-	namespace {
-		// The subagents' folder, walked the same way FingerprintOf walks it: file count, total
-		// size and newest write time, so a change to any of the three means "read it again".
-		struct SubagentFingerprint
-		{
-			std::uintmax_t Bytes = 0;
-			std::int64_t Ticks = 0;
-			std::size_t Files = 0;
-		};
+	std::optional<SubagentUsage> LiveTranscript::FollowSubagents(const std::filesystem::path& sessionFile,
+																 SubagentFiles& subagents)
+	{
+		std::map<std::filesystem::path, SubagentFile>& files = subagents.Files;
+		bool moved = false;
+		std::set<std::filesystem::path> present;
+		std::error_code status;
 
-		SubagentFingerprint FingerprintSubagents(const std::filesystem::path& sessionFile)
+		for (std::filesystem::directory_iterator it{SubagentDirectory(sessionFile), status}, end;
+			 !status && it != end; it.increment(status))
 		{
-			SubagentFingerprint print;
-			std::error_code status;
+			const std::filesystem::path& path = it->path();
 
-			for (std::filesystem::directory_iterator it{SubagentDirectory(sessionFile), status}, end;
-				 !status && it != end; it.increment(status))
+			if (path.extension() != ".jsonl" || !path.stem().string().starts_with("agent-"))
+				continue;
+
+			std::error_code sizeStatus;
+			const std::uintmax_t size = std::filesystem::file_size(path, sizeStatus);
+			if (sizeStatus)
+				continue;
+
+			present.insert(path);
+
+			const auto [found, added] = files.try_emplace(path);
+			SubagentFile& file = found->second;
+			moved = moved || added;
+
+			if (!added && size == file.Size)
+				continue;
+
+			// A missing or locked file keeps what was read of it; the next poll retries.
+			Core::Result<TranscriptRead> read = ReadTranscript(path, file.Offset);
+			if (!read)
+				continue;
+
+			TranscriptRead& value = read.GetValue();
+
+			// Shorter than what was read: rewritten, so its usage is counted afresh.
+			if (value.Restarted)
 			{
-				const std::string stem = it->path().stem().string();
-
-				if (it->path().extension() != ".jsonl" || !stem.starts_with("agent-"))
-					continue;
-
-				std::error_code fileStatus;
-				const auto size = std::filesystem::file_size(it->path(), fileStatus);
-				if (fileStatus)
-					continue;
-
-				const auto written = std::filesystem::last_write_time(it->path(), fileStatus);
-				if (fileStatus)
-					continue;
-
-				print.Bytes += size;
-				print.Ticks = std::max<std::int64_t>(print.Ticks, written.time_since_epoch().count());
-				++print.Files;
+				file.Tally = {};
+				moved = true;
 			}
 
-			return print;
+			for (const TranscriptRecord& record : value.Chunk.Records)
+				file.Tally.Add(record);
+
+			moved = moved || !value.Chunk.Records.empty();
+			file.Offset = value.NextOffset;
+			file.Size = size;
 		}
+
+		// Files not seen have gone, but only when the walk saw the whole folder: one cut short
+		// by an error has not seen them, and forgetting them would read them again from zero.
+		const bool walked = !status || status == std::errc::no_such_file_or_directory;
+
+		for (auto it = files.begin(); walked && it != files.end();)
+		{
+			if (present.contains(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = files.erase(it);
+				moved = true;
+			}
+		}
+
+		if (!moved)
+			return std::nullopt;
+
+		SubagentUsage usage;
+		for (const auto& [path, file] : files)
+			usage[path.stem().string().substr(6)] = file.Tally.Get();
+
+		return usage;
 	}
 
 	LiveTranscript::LiveTranscript(std::filesystem::path file) : m_File(std::move(file)) {}
@@ -72,7 +113,7 @@ namespace Graphite {
 			m_Inbox->Reading = true;
 		}
 
-		m_Jobs.Submit([inbox = m_Inbox, file = m_File]
+		m_Jobs.Submit([inbox = m_Inbox, subagentFiles = m_Subagents, file = m_File]
 		{
 			while (true)
 			{
@@ -94,27 +135,12 @@ namespace Graphite {
 				// A missing or locked file leaves the offset where it was; the next poll retries.
 				Core::Result<TranscriptRead> read = ReadTranscript(file, offset);
 
-				// Same walk FingerprintOf uses, over the subagents' folder alone; a change in
-				// any of the three means the folder is worth reading again.
-				const SubagentFingerprint subagentPrint = FingerprintSubagents(file);
-				bool subagentsChanged = false;
-
-				{
-					const std::lock_guard<std::mutex> guard(inbox->Mutex);
-					subagentsChanged = subagentPrint.Files != inbox->SubagentFiles ||
-										subagentPrint.Bytes != inbox->SubagentBytes ||
-										subagentPrint.Ticks != inbox->SubagentTicks;
-				}
-
-				std::optional<SubagentUsage> subagents;
-				if (subagentsChanged)
-					subagents = LoadSubagentUsage(file);
-
-				const std::lock_guard<std::mutex> guard(inbox->Mutex);
-
+				// The conversation is published before the subagents are looked at, so a
+				// subagent's write never holds back what the main transcript already said.
 				if (read.HasValue())
 				{
 					TranscriptRead& value = read.GetValue();
+					const std::lock_guard<std::mutex> guard(inbox->Mutex);
 
 					if (value.Restarted)
 					{
@@ -130,13 +156,12 @@ namespace Graphite {
 					inbox->Offset = value.NextOffset;
 				}
 
+				std::optional<SubagentUsage> subagents = FollowSubagents(file, *subagentFiles);
+
+				const std::lock_guard<std::mutex> guard(inbox->Mutex);
+
 				if (subagents.has_value())
-				{
 					inbox->Subagents = std::move(*subagents);
-					inbox->SubagentBytes = subagentPrint.Bytes;
-					inbox->SubagentTicks = subagentPrint.Ticks;
-					inbox->SubagentFiles = subagentPrint.Files;
-				}
 
 				if (!inbox->Again)
 				{

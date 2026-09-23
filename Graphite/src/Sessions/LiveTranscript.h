@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Sessions/Session.h"
+#include "Sessions/SessionSummary.h"
 #include "Sessions/ToolFacts.h"
 #include "Sessions/TranscriptRecord.h"
 
@@ -9,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -56,16 +58,37 @@ namespace Graphite {
 			// Where the next read starts. Only the worker moves it.
 			std::uint64_t Offset = 0;
 
-			// The subagents' usage, re-read only when their folder's files changed — what the
-			// worker last saw is the key.
+			// The subagents' usage, set when some subagent's transcript moved on since the
+			// last map and moved out by TakeSubagents.
 			std::optional<SubagentUsage> Subagents;
-			std::uintmax_t SubagentBytes = 0;
-			std::int64_t SubagentTicks = 0;
-			std::size_t SubagentFiles = 0;
 		};
+
+		// One subagent transcript as the worker follows it: how far it has been read, the
+		// size it had then, and the usage of what was read so far.
+		struct SubagentFile
+		{
+			std::uint64_t Offset = 0;
+			std::uintmax_t Size = 0;
+			UsageTally Tally;
+		};
+
+		// The worker's own record of every subagent transcript, by path. Only the worker
+		// touches it, one read at a time, so it needs no lock and no file IO happens under one.
+		struct SubagentFiles
+		{
+			std::map<std::filesystem::path, SubagentFile> Files;
+		};
+
+		// Brings every subagent transcript up to date, reading each only from where its last
+		// read stopped. Returns the whole map when any of them moved on — appeared, grew,
+		// shrank or went — and nothing when none did. A file that grew only by a line still
+		// being written is looked at again next time, but moves nothing. Worker only.
+		static std::optional<SubagentUsage> FollowSubagents(const std::filesystem::path& sessionFile,
+															SubagentFiles& subagents);
 
 		std::filesystem::path m_File;
 		std::shared_ptr<Inbox> m_Inbox = std::make_shared<Inbox>();
+		std::shared_ptr<SubagentFiles> m_Subagents = std::make_shared<SubagentFiles>();
 
 		// Last, deliberately: joined before the inbox it writes into could go.
 		Core::JobQueue m_Jobs{1};

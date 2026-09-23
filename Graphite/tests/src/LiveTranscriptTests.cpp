@@ -146,3 +146,50 @@ TEST_CASE("Subagent usage arrives with the transcript and again when a subagent 
 
 	CHECK(subagents.at("a1") == UsageByModel{{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
 }
+
+namespace {
+	// Takes the subagents' usage until agent `id` has `expected`, or fails after five seconds.
+	void WaitForSubagent(LiveTranscript& live, SubagentUsage& subagents, const std::string& id,
+						 const UsageByModel& expected)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+
+		while (!subagents.contains(id) || subagents.at(id) != expected)
+		{
+			live.TakeSubagents(subagents);
+			REQUIRE(std::chrono::steady_clock::now() < deadline);
+			std::this_thread::sleep_for(std::chrono::milliseconds{5});
+		}
+	}
+}
+
+TEST_CASE("A subagent's transcript is followed from where the last read stopped")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("one"));
+	const std::string first = Fixtures::Assistant("r1", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6));
+	const std::filesystem::path agent = temp.MakeFile("p/s/subagents/agent-a1.jsonl", first);
+
+	LiveTranscript live{file};
+	Session session;
+	SubagentUsage subagents;
+
+	live.Poll();
+	WaitForSubagent(live, subagents, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
+
+	Append(agent, Fixtures::Assistant("r2", Fixtures::TextBlock("z"), Fixtures::Usage(1, 2)));
+	live.Poll();
+	WaitForSubagent(live, subagents, "a1", {{{"claude-opus-5", false}, {6, 8, 0, 0, 0}}});
+
+	// The first line blanked in place, the file no shorter: a read from the start would lose
+	// its usage, a read from where the last one stopped keeps it.
+	{
+		std::fstream stream{agent, std::ios::binary | std::ios::in | std::ios::out};
+		stream.seekp(0);
+		stream << std::string(first.size() - 1, ' ');
+	}
+
+	Append(agent, Fixtures::Assistant("r3", Fixtures::TextBlock("w"), Fixtures::Usage(1, 1)));
+	live.Poll();
+	WaitForSubagent(live, subagents, "a1", {{{"claude-opus-5", false}, {7, 9, 0, 0, 0}}});
+}
