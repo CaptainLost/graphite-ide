@@ -17,6 +17,7 @@ namespace Core {
 		{
 			commands.Add({.Id = "panel." + panel.GetId(),
 						  .Label = panel.GetTitle(),
+						  .Icon = panel.GetIcon(),
 						  .Group = "panels." + panel.GetMenuGroup(),
 						  .Run = [&panel] { panel.SetVisible(!panel.IsVisible()); },
 						  .Checked = [&panel] { return panel.IsVisible(); }});
@@ -93,7 +94,7 @@ namespace Core {
 			}
 
 			bool open = true;
-			const std::string label = panel->GetTitle() + "###" + panel->GetId();
+			const std::string label = panel->GetWindowName();
 
 			// Begin returns false when the window is collapsed or another tab of the same dock
 			// node is selected: the panel got its turn, but its body did not run.

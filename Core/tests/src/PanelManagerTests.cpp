@@ -13,7 +13,7 @@ namespace {
 	public:
 		CountingPanel(std::string id, std::string title, std::string menuGroup = "tools",
 					  bool visible = true)
-			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), visible)
+			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), "", visible)
 		{
 		}
 
@@ -28,7 +28,7 @@ namespace {
 	{
 	public:
 		ListeningPanel(std::string id, bool consume)
-			: Core::Panel(std::move(id), "Panel", "tools"), m_Consume(consume)
+			: Core::Panel(std::move(id), "Panel", "tools", ""), m_Consume(consume)
 		{
 		}
 
@@ -246,4 +246,40 @@ TEST_CASE("ResetVisibility restores each panel's own default, not everything vis
 
 	CHECK(files->IsVisible());
 	CHECK_FALSE(keys->IsVisible());
+}
+
+TEST_CASE("A panel's window name shows its icon before the title and keeps its id stable")
+{
+	CountingPanel plain("console", "Console");
+	CHECK(plain.GetWindowName() == "Console###console");
+
+	class IconPanel final : public Core::Panel
+	{
+	public:
+		IconPanel() : Core::Panel("terminal", "Terminal", "tools", "*") {}
+	} withIcon;
+	CHECK(withIcon.GetWindowName() == "*  Terminal###terminal");
+}
+
+TEST_CASE("A panel's toggle carries the panel's icon for the menu to draw")
+{
+	class IconPanel final : public Core::Panel
+	{
+	public:
+		IconPanel() : Core::Panel("terminal", "Terminal", "tools", "*") {}
+	};
+
+	Core::PanelManager panels;
+	Core::CommandRegistry commands;
+	panels.Add(std::make_unique<IconPanel>());
+	panels.Add(std::make_unique<CountingPanel>("console", "Console"));
+
+	panels.RegisterCommands(commands);
+
+	const std::vector<const Core::Command*> members = commands.InGroup("panels.tools");
+
+	REQUIRE(members.size() == 2);
+	CHECK(members[0]->Icon == "*");
+	CHECK(members[0]->Label == "Terminal");
+	CHECK(members[1]->Icon.empty());
 }

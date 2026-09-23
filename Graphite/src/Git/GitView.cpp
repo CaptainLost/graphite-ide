@@ -62,7 +62,7 @@ namespace Graphite {
 	}
 
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows)
-		: Core::Panel("git", "Git", "git", false), m_Model(model), m_Scheme(scheme),
+		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
 		  m_DiffWindows(diffWindows)
 	{
 	}

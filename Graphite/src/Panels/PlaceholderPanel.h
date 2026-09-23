@@ -13,7 +13,7 @@ namespace Graphite {
 	{
 	public:
 		PlaceholderPanel(std::string id, std::string title, std::string message)
-			: Core::Panel(std::move(id), std::move(title)), m_Message(std::move(message))
+			: Core::Panel(std::move(id), std::move(title), "tools", ""), m_Message(std::move(message))
 		{
 		}
 

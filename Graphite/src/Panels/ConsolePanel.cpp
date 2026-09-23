@@ -5,6 +5,8 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <optional>
 #include <string>
 #include <utility>
@@ -65,7 +67,7 @@ namespace Graphite {
 	}
 
 	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink)
-		: Core::Panel("console", "Console", "tools"), m_Sink(std::move(sink))
+		: Core::Panel("console", "Console", "tools", ICON_MDI_MESSAGE_TEXT_OUTLINE), m_Sink(std::move(sink))
 	{
 	}
 

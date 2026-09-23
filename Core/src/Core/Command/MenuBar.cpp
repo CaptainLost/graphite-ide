@@ -82,8 +82,9 @@ namespace Core {
 
 			const bool enabled = !command->Enabled || command->Enabled();
 			const bool checked = command->Checked && command->Checked();
-			const std::string label =
-				LabelWithStableId(TextBeforeShortcutHint(command->Label), id);
+			const std::string text = TextBeforeShortcutHint(command->Label);
+			const std::string label = LabelWithStableId(
+				command->Icon.empty() ? text : command->Icon + "  " + text, id);
 
 			if (ImGui::MenuItem(label.c_str(), shortcut.empty() ? nullptr : shortcut.c_str(), checked,
 								enabled))

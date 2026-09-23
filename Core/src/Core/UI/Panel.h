@@ -14,9 +14,12 @@ namespace Core {
 	public:
 		// The menu group is spelled out rather than defaulted: a panel that named none would
 		// register into a group no menu draws and vanish from the view menu without a word.
-		Panel(std::string id, std::string title, std::string menuGroup, bool visible = true)
+		// The icon is drawn before the title on the panel's tab; an empty one leaves the title
+		// alone.
+		Panel(std::string id, std::string title, std::string menuGroup, std::string icon,
+			  bool visible = true)
 			: m_Id(std::move(id)), m_Title(std::move(title)), m_MenuGroup(std::move(menuGroup)),
-			  m_Visible(visible), m_DefaultVisible(visible)
+			  m_Icon(std::move(icon)), m_Visible(visible), m_DefaultVisible(visible)
 		{
 		}
 
@@ -31,6 +34,15 @@ namespace Core {
 
 		const std::string& GetId() const { return m_Id; }
 		const std::string& GetTitle() const { return m_Title; }
+		const std::string& GetIcon() const { return m_Icon; }
+
+		// What ImGui knows the window by: the icon and title it shows on the tab, and the id
+		// after ### that keeps the window, and its dock placement, the same whatever is shown.
+		std::string GetWindowName() const
+		{
+			const std::string shown = m_Icon.empty() ? m_Title : m_Icon + "  " + m_Title;
+			return shown + "###" + m_Id;
+		}
 
 		// Which block of the view menu this panel's toggle belongs to.
 		const std::string& GetMenuGroup() const { return m_MenuGroup; }
@@ -49,6 +61,7 @@ namespace Core {
 		std::string m_Id;
 		std::string m_Title;
 		std::string m_MenuGroup;
+		std::string m_Icon;
 		bool m_Visible = true;
 		bool m_DefaultVisible = true;
 		bool m_WasDrawn = false;

@@ -5,6 +5,8 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Fs/FileSystem.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 
 #include <filesystem>
@@ -35,7 +37,7 @@ namespace Graphite {
 	}
 
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents)
-		: Core::Panel("files", "Explorer", "navigate"), m_Workspace(workspace),
+		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
 		  m_Files(workspace, documents), m_Solution(workspace)
 	{
 	}

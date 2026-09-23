@@ -9,6 +9,8 @@
 #include "Theme/ActiveScheme.h"
 #include "Workspace/Workspace.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -54,7 +56,7 @@ namespace Graphite {
 
 	TerminalPanel::TerminalPanel(Workspace& workspace, const ActiveScheme& scheme,
 								 const Core::Keymap& keys)
-		: Core::Panel("terminal", "Terminal", "tools"), m_Workspace(workspace), m_Scheme(scheme),
+		: Core::Panel("terminal", "Terminal", "tools", ICON_MDI_CONSOLE), m_Workspace(workspace), m_Scheme(scheme),
 		  m_Keys(keys), m_Shells(Core::DiscoverShells())
 	{
 	}

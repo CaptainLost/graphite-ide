@@ -8,6 +8,8 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Text/Caret.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 
 #include <functional>
@@ -26,7 +28,7 @@ namespace Graphite {
 		// The id stays "search" while the title changes: the id is what imgui.ini keys the dock
 		// layout on and what the panel's command is named after, so renaming it would move
 		// everyone's panel back to where it started.
-		: Core::Panel("search", "Find in Files", "navigate", false), m_Service(service), m_Settings(settings),
+		: Core::Panel("search", "Find in Files", "navigate", ICON_MDI_TEXT_SEARCH, false), m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
 		  m_Preview(&semantics)
 	{
@@ -128,7 +130,7 @@ namespace Graphite {
 		// stays behind it, never reaches OnImGuiRender, and so never consumes the queued
 		// keyboard focus below — the user would have to click the tab first.
 		// The same name PanelManager gives the window, because that is what ImGui knows it by.
-		const std::string window = GetTitle() + "###" + GetId();
+		const std::string window = GetWindowName();
 
 		ImGui::SetWindowFocus(window.c_str());
 

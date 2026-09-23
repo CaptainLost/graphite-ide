@@ -12,6 +12,8 @@
 
 #include "Workspace/Workspace.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -166,7 +168,7 @@ namespace Graphite {
 									 PreviewSemantics& semantics)
 		// Hidden until asked for, like the search panel: it opens with nothing to show, so it
 		// costs no space until Shift+F12 or a lens click first fills it.
-		: Core::Panel("references", "References", "navigate", false), m_Workspace(workspace),
+		: Core::Panel("references", "References", "navigate", ICON_MDI_LINK_VARIANT, false), m_Workspace(workspace),
 		  m_Documents(documents), m_Scheme(scheme), m_Editor(editor), m_Preview(&semantics)
 	{
 	}
@@ -235,7 +237,7 @@ namespace Graphite {
 
 		// The same name PanelManager gives the window, because that is what ImGui knows it by -
 		// see SearchPanel::Focus for the same reasoning.
-		const std::string window = GetTitle() + "###" + GetId();
+		const std::string window = GetWindowName();
 
 		ImGui::SetWindowFocus(window.c_str());
 	}

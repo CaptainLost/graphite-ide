@@ -63,7 +63,7 @@ namespace Graphite {
 
 	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents,
 								 const ActiveScheme& scheme)
-		: Core::Panel("problems", "Problems", "tools"), m_Diagnostics(diagnostics), m_Documents(documents),
+		: Core::Panel("problems", "Problems", "tools", ICON_MDI_ALERT_CIRCLE_OUTLINE), m_Diagnostics(diagnostics), m_Documents(documents),
 		  m_Scheme(scheme)
 	{
 	}

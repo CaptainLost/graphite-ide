@@ -133,7 +133,7 @@ namespace Graphite {
 							   const Core::DocumentSet& documents,
 							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
 							   DiffWindows& diffWindows)
-		: Core::Panel("changes", "Changes", "git"), m_Model(model), m_Documents(documents),
+		: Core::Panel("changes", "Changes", "git", ICON_MDI_FILE_DOCUMENT_EDIT_OUTLINE), m_Model(model), m_Documents(documents),
 		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows),
 		  m_DiscardQuestion(modals, "Discard changes?")
 	{
