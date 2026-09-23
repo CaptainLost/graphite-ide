@@ -1,17 +1,20 @@
 #include "Git/ChangesPanel.h"
 
 #include "Editor/DocumentWindows.h"
+#include "Theme/ChromePalette.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/Icons.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <optional>
@@ -66,17 +69,75 @@ namespace Graphite {
 			return ImGui::GetFrameHeight() * 2.0f;
 		}
 
-		// Everything RenderCommitBox draws, top to bottom, with the spacing between. Shared
-		// with OnImGuiRender, which reserves exactly this much at the bottom of the panel so
-		// the box does not move as the lists above it grow.
+		// Everything RenderCommitBox draws, top to bottom, with the spacing between: the
+		// separator, the message box, and the row holding the button and the amend checkbox.
+		// Shared with OnImGuiRender, which reserves exactly this much at the bottom of the
+		// panel so the box does not move as the lists above it grow.
 		float CommitBoxHeight()
 		{
-			return ImGui::GetFrameHeightWithSpacing() + MessageBoxHeight() +
-				   ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeight();
+			const ImGuiStyle& style = ImGui::GetStyle();
+
+			// The thickness Separator itself uses, clamp and all.
+			const float separator = std::max(style.SeparatorSize, 1.0f);
+
+			return separator + style.ItemSpacing.y + MessageBoxHeight() + style.ItemSpacing.y +
+				   ImGui::GetFrameHeight();
+		}
+
+		// The column every row starts with: a file's icon, a folder's chevron, a section's
+		// chevron. One width for all three, so whatever follows them - a name, a heading -
+		// starts at the same x on every row. The font size rather than a glyph's measured
+		// width, because icon glyphs are not all equally wide and the column must not be.
+		float IconColumnWidth()
+		{
+			return ImGui::GetFontSize();
+		}
+
+		// The gap between the icon column and the text, and between a name and whatever
+		// follows it on the same line. One inner spacing is the gap between an item and its
+		// own label; these are separate readings of one row, so they sit twice that apart.
+		float TextGap()
+		{
+			return ImGui::GetStyle().ItemInnerSpacing.x * 2.0f;
+		}
+
+		// One level of nesting: rows under a heading, files under an open folder. Exactly the
+		// icon column and its gap, so a nested row's icon lands under its parent's text and
+		// every level lines up with the one above it.
+		float TreeIndent()
+		{
+			return IconColumnWidth() + TextGap();
+		}
+
+		// The narrowest a directory is drawn at before it is dropped - see FitRowText.
+		float MinDirectoryWidth()
+		{
+			return ImGui::GetFontSize() * 3.0f;
+		}
+
+		// A file's name in its status colour, pulled most of the way back towards the text
+		// colour: tinted enough that a list can be read by colour without looking at the
+		// letters, not so much that a name stops reading as plain text.
+		ImVec4 TintedName(unsigned int statusColor)
+		{
+			constexpr float kTint = 0.45f;
+
+			const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+			const ImVec4 status = ImGui::ColorConvertU32ToFloat4(statusColor);
+
+			return ImVec4(text.x + (status.x - text.x) * kTint,
+						  text.y + (status.y - text.y) * kTint,
+						  text.z + (status.z - text.z) * kTint, text.w);
+		}
+
+		ImVec4 Scaled(const ImVec4& colour, float factor)
+		{
+			return ImVec4(std::min(colour.x * factor, 1.0f), std::min(colour.y * factor, 1.0f),
+						  std::min(colour.z * factor, 1.0f), colour.w);
 		}
 
 		// The single-character ellipsis (U+2026) as the three bytes its UTF-8 encoding takes.
-		constexpr std::string_view Ellipsis = "â¦";
+		constexpr std::string_view Ellipsis = "…";
 
 		// `text` cut down until it fits `width` pixels, ending in an ellipsis when anything
 		// was dropped. Empty when not even the ellipsis fits, since half an ellipsis says
@@ -266,20 +327,34 @@ namespace Graphite {
 
 		// The lists scroll together above a commit box pinned to the bottom. Reserved by
 		// height rather than drawn after, because the box must not move as the lists grow.
-		const float boxHeight = CommitBoxHeight() + ImGui::GetStyle().ItemSpacing.y;
+		// The write error's line is drawn between the two while there is one, so it is
+		// reserved too - or the box would be pushed past the bottom of the panel.
+		const float errorHeight =
+			m_Model.GetWriteError().has_value() ? ImGui::GetTextLineHeightWithSpacing() : 0.0f;
+
+		const float boxHeight = CommitBoxHeight() + errorHeight + ImGui::GetStyle().ItemSpacing.y;
 
 		if (ImGui::BeginChild("changes.lists", ImVec2(0.0f, -boxHeight)))
 		{
 			// An empty section is not drawn at all: a repository with no conflicts must not
 			// carry an empty "Conflicted" heading forever.
+			// A child without a border has no padding of its own, and a row's highlight reaches
+			// half an item spacing above the row - so the first heading's would be cut off at
+			// the top, leaving what is drawn on it looking pushed up against its highlight.
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().ItemSpacing.y * 0.5f);
+
+			bool drawnAbove = false;
+
 			m_Section = Section::Conflicted;
-			RenderSection("Conflicted", sections.Conflicted, *status, palette);
+			drawnAbove = RenderSection("CONFLICTED", sections.Conflicted, *status, palette,
+									   drawnAbove);
 
 			m_Section = Section::Staged;
-			RenderSection("Staged", sections.Staged, *status, palette);
+			drawnAbove = RenderSection("STAGED", sections.Staged, *status, palette, drawnAbove) ||
+						 drawnAbove;
 
 			m_Section = Section::Unstaged;
-			RenderSection("Changes", sections.Unstaged, *status, palette);
+			RenderSection("CHANGES", sections.Unstaged, *status, palette, drawnAbove);
 		}
 
 		ImGui::EndChild();
@@ -289,9 +364,9 @@ namespace Graphite {
 		RenderDiscardConfirm();
 	}
 
-	void ChangesPanel::RenderSection(const char* heading, const std::vector<std::size_t>& rows,
+	bool ChangesPanel::RenderSection(const char* heading, const std::vector<std::size_t>& rows,
 									 const Core::WorkingTreeStatus& status,
-									 const GitPalette& palette)
+									 const GitPalette& palette, bool spaced)
 	{
 		if (rows.empty())
 		{
@@ -299,51 +374,114 @@ namespace Graphite {
 			// rather than left stale, or the next non-empty frame would move the selection
 			// against a list from before this section emptied.
 			m_LastDrawn[static_cast<std::size_t>(m_Section)].clear();
-			return;
+			return false;
 		}
 
 		ImGui::PushID(heading);
 
-		const ImVec2 headerStart = ImGui::GetCursorPos();
-		const float availableWidth = ImGui::GetContentRegionAvail().x;
-
-		const std::string label = std::format("{} ({})", heading, rows.size());
-
-		// AllowOverlap: the "stage all"/"unstage all" button is laid over the same row via
-		// SameLine below, the same technique the file rows and HitList's group headers use.
-		const bool open = ImGui::CollapsingHeader(
-			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
-
-		const char* allLabel = m_Section == Section::Staged ? ICON_MDI_MINUS "  Unstage all"
-															: ICON_MDI_PLUS "  Stage all";
-
-		const float buttonWidth = ButtonWidth(allLabel);
-
-		ImGui::SameLine(headerStart.x + availableWidth - buttonWidth - RowPadding());
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
-
-		if (ImGui::SmallButton(allLabel))
+		// A section after another keeps one item spacing more from it, so the lists read as
+		// groups rather than as one run broken by a line of different text.
+		if (spaced)
 		{
-			// One write of many paths is one index write, rather than one per row.
-			std::vector<std::filesystem::path> paths;
-			paths.reserve(rows.size());
-
-			for (const std::size_t entry : rows)
-			{
-				paths.push_back(status.Entries[entry].Path);
-			}
-
-			if (m_Section == Section::Staged)
-			{
-				m_Model.RequestUnstage(std::move(paths));
-			}
-			else
-			{
-				m_Model.RequestStage(std::move(paths));
-			}
+			ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
 		}
 
-		ImGui::EndDisabled();
+		const std::size_t slot = static_cast<std::size_t>(m_Section);
+
+		// Drawn by hand rather than as a CollapsingHeader: that one paints a full-width
+		// block with a triangle of its own, and the rows under it already open and close on
+		// a chevron. A heading is one line of the same list, not a bar across it.
+		const float rowHeight = ImGui::GetTextLineHeight();
+
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();
+		const float rowWidth = ImGui::GetContentRegionAvail().x;
+
+		if (ImGui::Selectable("##header", false, ImGuiSelectableFlags_AllowOverlap,
+							  ImVec2(0.0f, rowHeight)))
+		{
+			m_Collapsed[slot] = !m_Collapsed[slot];
+		}
+
+		// Off the rectangle, for the reason RenderRow gives.
+		const ImVec2 rowScreenEnd(rowScreenStart.x + rowWidth,
+								  rowScreenStart.y + ImGui::GetItemRectSize().y);
+
+		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
+
+		const bool open = !m_Collapsed[slot];
+
+		const float pad = RowPadding();
+		const float textStart = rowStart.x + pad + IconColumnWidth() + TextGap();
+
+		ImGui::SetCursorPos(ImVec2(rowStart.x + pad, rowStart.y));
+		ImGui::TextDisabled("%s", open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT);
+
+		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
+		ImGui::TextDisabled("%s", heading);
+
+		// The count as a pill rather than in brackets: it is a figure about the heading,
+		// not part of its name. Painted rather than laid out as an item, so the row still
+		// ends on the one Dummy below.
+		{
+			ImGui::SameLine(0.0f, TextGap());
+
+			const std::string count = std::format("{}", rows.size());
+			const ImVec2 countSize = ImGui::CalcTextSize(count.c_str());
+			const float pillPadding = ImGui::GetStyle().FramePadding.x;
+
+			const ImVec2 pillMin = ImGui::GetCursorScreenPos();
+			const ImVec2 pillMax(pillMin.x + countSize.x + pillPadding * 2.0f,
+								 pillMin.y + rowHeight);
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+			drawList->AddRectFilled(pillMin, pillMax, ImGui::GetColorU32(ImGuiCol_Button),
+									rowHeight * 0.5f);
+			drawList->AddText(ImVec2(pillMin.x + pillPadding, pillMin.y),
+							  ImGui::GetColorU32(ImGuiCol_Text), count.c_str());
+		}
+
+		// Only under the mouse, as on the rows: a button on every heading at all times is
+		// the loudest thing in the panel, and it is the least often wanted.
+		if (rowHovered)
+		{
+			const char* allIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
+
+			ImGui::SetCursorPos(
+				ImVec2(rowStart.x + rowWidth - pad - ButtonWidth(allIcon), rowStart.y));
+
+			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+
+			if (ImGui::SmallButton(allIcon))
+			{
+				// One write of many paths is one index write, rather than one per row.
+				std::vector<std::filesystem::path> paths;
+				paths.reserve(rows.size());
+
+				for (const std::size_t entry : rows)
+				{
+					paths.push_back(status.Entries[entry].Path);
+				}
+
+				if (m_Section == Section::Staged)
+				{
+					m_Model.RequestUnstage(std::move(paths));
+				}
+				else
+				{
+					m_Model.RequestStage(std::move(paths));
+				}
+			}
+
+			ImGui::SetItemTooltip("%s", m_Section == Section::Staged ? "Unstage all" : "Stage all");
+
+			ImGui::EndDisabled();
+		}
+
+		// See the end of RenderRow for why a row laid out by hand ends on an item.
+		ImGui::SetCursorPos(rowStart);
+		ImGui::Dummy(ImVec2(rowWidth, rowHeight));
 
 		std::vector<std::filesystem::path> drawn;
 		drawn.reserve(rows.size());
@@ -352,8 +490,6 @@ namespace Graphite {
 		{
 			drawn.push_back(status.Entries[entry].Path);
 		}
-
-		const std::size_t slot = static_cast<std::size_t>(m_Section);
 
 		if (m_Selected && m_Selected->InSection == m_Section && drawn != m_LastDrawn[slot])
 		{
@@ -378,6 +514,10 @@ namespace Graphite {
 
 		if (open)
 		{
+			// One level in, so a row's icon sits under the heading's text: the rows belong to
+			// the heading, and at the same indent the two read as siblings.
+			ImGui::Indent(TreeIndent());
+
 			for (const std::size_t entry : rows)
 			{
 				if (status.Entries[entry].IsDirectory)
@@ -389,9 +529,13 @@ namespace Graphite {
 					RenderRow(entry, status, palette);
 				}
 			}
+
+			ImGui::Unindent(TreeIndent());
 		}
 
 		ImGui::PopID();
+
+		return true;
 	}
 
 	void ChangesPanel::RenderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
@@ -401,16 +545,13 @@ namespace Graphite {
 
 		ImGui::PushID(static_cast<int>(entry));
 
-		// Two lines, not one: the name and the buttons need the full width between them, and
-		// a directory squeezed in beside them either collides with the buttons or is cut down
-		// to nothing. A file at the repository root has no second line and gets a short row -
-		// there is no directory to show, and a blank line saying so would be worse.
+		// One line: the name, then its directory, dimmed, in whatever room the name leaves.
+		// The directory is there to tell two files of one name apart, which it still does cut
+		// short, and a second line spent on it doubled the height of every list for the sake
+		// of the few rows that needed it.
 		const std::filesystem::path directory = file.Path.parent_path();
 
-		const float lineHeight = ImGui::GetTextLineHeight();
-		const float lineGap = ImGui::GetStyle().ItemInnerSpacing.y;
-		const float rowHeight =
-			directory.empty() ? lineHeight : lineHeight * 2.0f + lineGap;
+		const float rowHeight = ImGui::GetTextLineHeight();
 
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();
@@ -502,31 +643,44 @@ namespace Graphite {
 
 		const float buttonsWidth = discardWidth + ButtonWidth(stageIcon);
 
-		// One inner spacing is the gap between an item and its own label; the letter and the
-		// name are separate readings of one file, so they are given twice that to sit apart by.
-		const float gap = ImGui::GetStyle().ItemInnerSpacing.x * 2.0f;
-
 		const char letterText[] = {letter, '\0'};
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
 
-		// Where the second line begins: under the name, not under the letter, so the letter
-		// column stays a column and the two lines read as one entry.
-		const float textStart = rowStart.x + RowPadding() + letterWidth + gap;
+		const float pad = RowPadding();
+		const float gap = TextGap();
+		const float textStart = rowStart.x + pad + IconColumnWidth() + gap;
+		const float rightEdge = rowStart.x + rowWidth - pad;
 
-		// The name is cut short of the buttons rather than run underneath them. Their space is
-		// held even while they are hidden, so this budget does not change as the mouse arrives.
-		const float nameLimit = rowStart.x + rowWidth - RowPadding() - buttonsWidth -
-								ImGui::GetStyle().ItemSpacing.x - textStart;
+		// The letter sits on the right edge, and under the mouse the buttons take its place.
+		// The text gives way to whichever of the two is there, so a long directory - or a name
+		// too long for the row - is cut a little shorter while the mouse is on its row. Where
+		// the name starts does not move.
+		const float trailing = rowHovered ? buttonsWidth : letterWidth;
+		const float available = rightEdge - trailing - ImGui::GetStyle().ItemSpacing.x - textStart;
 
-		ImGui::SetCursorPos(ImVec2(rowStart.x + RowPadding(), rowStart.y));
-		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
-		ImGui::SameLine(0.0f, gap);
-		ImGui::TextUnformatted(Elided(Core::ToUtf8(file.Path.filename()), nameLimit).c_str());
+		const std::string name = Core::ToUtf8(file.Path.filename());
+		const std::string directoryText = Core::ToUtf8(directory);
 
-		ImGui::SameLine(rowStart.x + rowWidth - RowPadding() - buttonsWidth);
+		const RowText fit = FitRowText(
+			available, ImGui::CalcTextSize(name.c_str()).x,
+			directory.empty() ? 0.0f : ImGui::CalcTextSize(directoryText.c_str()).x, gap,
+			MinDirectoryWidth());
+
+		ImGui::SetCursorPos(ImVec2(rowStart.x + pad, rowStart.y));
+		ImGui::TextUnformatted(Core::IconForExtension(Core::ToUtf8(file.Path.extension())));
+
+		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
+		ImGui::TextColored(TintedName(letterColor), "%s", Elided(name, fit.Name).c_str());
+
+		if (fit.Directory > 0.0f)
+		{
+			ImGui::SameLine(0.0f, gap);
+			ImGui::TextDisabled("%s", Elided(directoryText, fit.Directory).c_str());
+		}
 
 		if (rowHovered)
 		{
+			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, rowStart.y));
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 			if (offersDiscard)
@@ -556,14 +710,10 @@ namespace Graphite {
 
 			ImGui::EndDisabled();
 		}
-
-		if (!directory.empty())
+		else
 		{
-			// The full width of the row is the second line's to use: nothing is laid over it.
-			const float directoryLimit = rowWidth - RowPadding() - (textStart - rowStart.x);
-
-			ImGui::SetCursorPos(ImVec2(textStart, rowStart.y + lineHeight + lineGap));
-			ImGui::TextDisabled("%s", Elided(Core::ToUtf8(directory), directoryLimit).c_str());
+			ImGui::SetCursorPos(ImVec2(rightEdge - letterWidth, rowStart.y));
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
 		}
 
 		// The row is drawn by moving the cursor around, and a window whose last operation is a
@@ -644,6 +794,7 @@ namespace Graphite {
 		const bool expanded = m_Expanded.contains(file.Path);
 
 		const char* chevron = expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
+		const char* folderIcon = expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER;
 
 		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
@@ -659,12 +810,10 @@ namespace Graphite {
 
 		const float buttonsWidth = discardWidth + ButtonWidth(stageIcon);
 
-		const float innerGap = ImGui::GetStyle().ItemInnerSpacing.x;
-		const float gap = innerGap * 2.0f;
+		const float gap = TextGap();
 
 		const char letterText[] = {letter, '\0'};
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
-		const float chevronWidth = ImGui::CalcTextSize(chevron).x;
 
 		// Only while the folder is open and git has answered for it. One still being counted
 		// and one whose count failed both say nothing rather than a number, because the only
@@ -690,36 +839,60 @@ namespace Graphite {
 
 		const float separatorWidth = ImGui::CalcTextSize(Separator.data()).x;
 
-		const float textStart = rowStart.x + RowPadding() + chevronWidth + innerGap +
-								letterWidth + gap;
+		// The chevron takes the icon column a file row gives its icon, and the folder icon and
+		// name follow one level further in. Hanging the chevron out into the heading's column
+		// instead, so the name could line up with the files', made the folder read as a
+		// sibling of the heading rather than a row under it; and reserving a chevron column on
+		// every row would push all the file rows right for the sake of the few that open.
+		const float pad = RowPadding();
+		const float iconStart = rowStart.x + pad + TreeIndent();
+		const float textStart = iconStart + IconColumnWidth() + gap;
+		const float rightEdge = rowStart.x + rowWidth - pad;
 
-		// Cut short of the buttons and of the count, the same way a file row is cut short of
-		// the buttons alone.
-		const float nameLimit = rowStart.x + rowWidth - RowPadding() - buttonsWidth -
-								ImGui::GetStyle().ItemSpacing.x - countWidth - separatorWidth -
-								textStart;
+		// The same trade a file row makes between its letter and its buttons - see RenderRow.
+		const float trailing = rowHovered ? buttonsWidth : letterWidth;
 
-		ImGui::SetCursorPos(ImVec2(rowStart.x + RowPadding(), rowStart.y));
-		ImGui::TextUnformatted(chevron);
-		ImGui::SameLine(0.0f, innerGap);
-		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
-		ImGui::SameLine(0.0f, gap);
+		// Cut short of whatever sits on the right edge and of the count.
+		const float nameLimit = rightEdge - trailing - ImGui::GetStyle().ItemSpacing.x -
+								countWidth - separatorWidth - textStart;
 
-		const std::string name =
-			Elided(Core::ToUtf8(file.Path.filename()), nameLimit) + std::string(Separator);
+		// Dimmed like the heading's: the icon beside it already says open or closed, so the
+		// chevron is only the affordance.
+		ImGui::SetCursorPos(ImVec2(rowStart.x + pad, rowStart.y));
+		ImGui::TextDisabled("%s", chevron);
 
-		ImGui::TextUnformatted(name.c_str());
+		ImGui::SetCursorPos(ImVec2(iconStart, rowStart.y));
+		ImGui::TextUnformatted(folderIcon);
 
-		if (!count.empty())
+		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
+
+		const std::string elided = Elided(Core::ToUtf8(file.Path.filename()), nameLimit);
+
+		// A row too narrow for even an ellipsis of the name draws neither the separator nor
+		// the count: neither says anything without the name, and both would run on under
+		// the letter or the buttons.
+		const bool drawsName = !elided.empty();
+
+		if (drawsName)
+		{
+			ImGui::TextColored(TintedName(letterColor), "%s",
+							   (elided + std::string(Separator)).c_str());
+		}
+
+		if (drawsName && !count.empty())
 		{
 			ImGui::SameLine(0.0f, gap);
 			ImGui::TextDisabled("%s", count.c_str());
 		}
 
-		ImGui::SameLine(rowStart.x + rowWidth - RowPadding() - buttonsWidth);
-
-		if (rowHovered)
+		if (!rowHovered)
 		{
+			ImGui::SetCursorPos(ImVec2(rightEdge - letterWidth, rowStart.y));
+			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
+		}
+		else
+		{
+			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, rowStart.y));
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 			if (offersDiscard)
@@ -774,7 +947,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::Indent();
+		ImGui::Indent(TreeIndent());
 
 		// RenderRow identifies a row by its index into the status it was handed, so a child
 		// at index 0 and the outer status's entry 0 would be the same ImGui id. Scoped under
@@ -787,7 +960,7 @@ namespace Graphite {
 		}
 
 		ImGui::PopID();
-		ImGui::Unindent();
+		ImGui::Unindent(TreeIndent());
 	}
 
 	void ChangesPanel::RenderRowContextMenu(const Core::FileStatus& file, char letter)
@@ -863,15 +1036,11 @@ namespace Graphite {
 		const float pad = RowPadding();
 		const float width = ImGui::GetContentRegionAvail().x - pad * 2.0f;
 
+		// A line between the lists and the box: the lists scroll and the box stays put, and
+		// without it the two read as one column with a gap in it.
+		ImGui::Separator();
+
 		ImGui::BeginDisabled(inFlight);
-
-		// Above the message and right-aligned: amend changes what the button at the bottom
-		// will do, so it belongs to that pair rather than to the lists overhead.
-		const float amendWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-								 ImGui::CalcTextSize("Amend").x;
-
-		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad + width - amendWidth);
-		ImGui::Checkbox("Amend", &m_Amend);
 
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
 
@@ -905,16 +1074,55 @@ namespace Graphite {
 		// message sent to RequestCommit below is never trimmed; only this enablement test is.
 		const bool canCommit = !inFlight && (!Core::Trimmed(m_Message).empty() || m_Amend);
 
+		// Beside the button rather than on a line of its own: amend changes what the button
+		// will do, so the two are read together.
+		const float amendWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+								 ImGui::CalcTextSize("Amend").x;
+
+		// Held above zero: ImGui reads a negative width as "all but this much" and zero as
+		// "as wide as the label", so a panel narrower than the two together would otherwise
+		// turn the button full-width at the very moment there is least room for it.
+		const float commitWidth =
+			std::max(width - amendWidth - ImGui::GetStyle().ItemSpacing.x, 1.0f);
+
 		ImGui::BeginDisabled(!canCommit);
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
 
-		// The full width of the box: this is the one thing the panel exists to let you do,
-		// and a button that size cannot be missed or mistaken for one of the row controls.
-		if (ImGui::Button(ICON_MDI_CHECK "  Commit", ImVec2(width, 0.0f)))
+		// In the accent colour while it can be pressed: this is the one thing the panel exists
+		// to let you do, and it should not look like one of the row controls. Grey while it
+		// cannot, which says so better than a faded accent would.
+		if (canCommit)
+		{
+			const ImVec4 accent = [&] {
+				const Core::Color colour = ChromePaletteFor(m_Scheme.Get()).Accent;
+				return ImVec4(colour.R, colour.G, colour.B, colour.A);
+			}();
+
+			ImGui::PushStyleColor(ImGuiCol_Button, accent);
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Scaled(accent, 1.15f));
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, Scaled(accent, 0.85f));
+
+			// White whatever the scheme's text colour: a light scheme's dark text on its
+			// accent is the one pairing that does not read.
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+		}
+
+		if (ImGui::Button(ICON_MDI_CHECK "  Commit", ImVec2(commitWidth, 0.0f)))
 		{
 			m_Model.RequestCommit({.Message = m_Message, .Amend = m_Amend});
 		}
 
+		if (canCommit)
+		{
+			ImGui::PopStyleColor(4);
+		}
+
+		ImGui::EndDisabled();
+
+		ImGui::SameLine();
+
+		ImGui::BeginDisabled(inFlight);
+		ImGui::Checkbox("Amend", &m_Amend);
 		ImGui::EndDisabled();
 	}
 
@@ -946,7 +1154,7 @@ namespace Graphite {
 
 	unsigned int ChangesPanel::ColourOfLetter(char letter, const GitPalette& palette) const
 	{
-		if (letter == 'A' || letter == '?')
+		if (letter == 'A' || letter == 'U')
 		{
 			return palette.GutterAdded;
 		}

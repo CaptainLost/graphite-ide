@@ -72,7 +72,7 @@ TEST_CASE("A clean entry lands in no section at all")
 
 TEST_CASE("The change letter names the most consequential flag")
 {
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, true) == '?');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, true) == 'U');
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, false) == 'A');
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Deleted, false) == 'D');
 	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed, false) == 'R');
@@ -282,4 +282,59 @@ TEST_CASE("The question says whether a file is deleted or restored")
 	CHECK(Graphite::DiscardQuestionText(tracked,
 										Graphite::PlanDiscard(tracked, Repository, {}))
 		  == "Discard the unstaged changes to src/a.txt?");
+}
+
+TEST_CASE("A row with room for everything shows the name and the directory whole")
+{
+	const Graphite::RowText text = Graphite::FitRowText(300.0f, 100.0f, 120.0f, 8.0f, 40.0f);
+
+	CHECK(text.Name == doctest::Approx(100.0f));
+	CHECK(text.Directory == doctest::Approx(120.0f));
+}
+
+TEST_CASE("A directory that does not fit is cut to what the name leaves over")
+{
+	const Graphite::RowText text = Graphite::FitRowText(200.0f, 100.0f, 120.0f, 8.0f, 40.0f);
+
+	CHECK(text.Name == doctest::Approx(100.0f));
+	CHECK(text.Directory == doctest::Approx(92.0f));
+}
+
+TEST_CASE("A directory left less than its minimum is not drawn at all")
+{
+	const Graphite::RowText text = Graphite::FitRowText(140.0f, 100.0f, 120.0f, 8.0f, 40.0f);
+
+	CHECK(text.Name == doctest::Approx(100.0f));
+	CHECK(text.Directory == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A directory narrower than the minimum is still drawn when it fits whole")
+{
+	const Graphite::RowText text = Graphite::FitRowText(140.0f, 100.0f, 20.0f, 8.0f, 40.0f);
+
+	CHECK(text.Directory == doctest::Approx(20.0f));
+}
+
+TEST_CASE("A name wider than the row takes the whole row and leaves no directory")
+{
+	const Graphite::RowText text = Graphite::FitRowText(80.0f, 100.0f, 120.0f, 8.0f, 40.0f);
+
+	CHECK(text.Name == doctest::Approx(80.0f));
+	CHECK(text.Directory == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A file at the repository root has no directory to fit")
+{
+	const Graphite::RowText text = Graphite::FitRowText(300.0f, 100.0f, 0.0f, 8.0f, 40.0f);
+
+	CHECK(text.Name == doctest::Approx(100.0f));
+	CHECK(text.Directory == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A row with no room shows nothing")
+{
+	const Graphite::RowText text = Graphite::FitRowText(-10.0f, 100.0f, 120.0f, 8.0f, 40.0f);
+
+	CHECK(text.Name == doctest::Approx(0.0f));
+	CHECK(text.Directory == doctest::Approx(0.0f));
 }

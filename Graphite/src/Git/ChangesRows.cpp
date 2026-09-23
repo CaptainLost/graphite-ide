@@ -92,11 +92,13 @@ namespace Graphite {
 
 	char ChangeLetter(Core::StatusFlags flags, bool untracked)
 	{
-		// Untracked first: git shows these as ?? rather than A, and the difference matters
-		// here because discarding one deletes it rather than restoring it.
+		// Untracked first: not an A, because the difference matters here - discarding one
+		// deletes it rather than restoring it. A letter rather than the ?? git status prints,
+		// since every other mark in the list is a letter and a lone question mark among them
+		// reads as something the panel could not work out.
 		if (untracked)
 		{
-			return '?';
+			return 'U';
 		}
 
 		// Ordered by what a reader most needs told. A rename beats a modification because
@@ -237,5 +239,26 @@ namespace Graphite {
 		// loses only the edits made on top of it. Naming the larger loss would be naming a
 		// loss that is not about to happen.
 		return std::format("Discard the unstaged changes to {}?", name);
+	}
+
+	RowText FitRowText(float available, float name, float directory, float gap,
+					   float minDirectory)
+	{
+		if (available <= 0.0f)
+		{
+			return {};
+		}
+
+		RowText text;
+		text.Name = std::min(name, available);
+
+		const float left = available - text.Name - gap;
+
+		if (directory > 0.0f && left >= std::min(minDirectory, directory))
+		{
+			text.Directory = std::min(directory, left);
+		}
+
+		return text;
 	}
 }

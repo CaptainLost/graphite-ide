@@ -110,4 +110,25 @@ namespace Graphite {
 	// sure": what is about to go is different in each of these cases, and only the sentence
 	// says which one the reader is looking at.
 	std::string DiscardQuestionText(const DiscardSubject& subject, const DiscardPlan& plan);
+
+	// How much of one line a file row gives its name and how much its directory, in pixels.
+	// Zero means "do not draw it"; a budget smaller than the natural width means "cut it to
+	// this". Pixels in, pixels out, so the rule can be tested without a font.
+	struct RowText
+	{
+		float Name = 0.0f;
+		float Directory = 0.0f;
+	};
+
+	// `available` is the room between where the name starts and whatever sits at the row's
+	// right edge. `name` and `directory` are what each would take drawn whole, and `gap` is
+	// what separates them.
+	//
+	// The name comes first and is only ever cut when it alone is wider than the row: it is
+	// the part a reader is looking for, and the directory is there to tell two files of one
+	// name apart. A directory cut below `minDirectory` is dropped rather than shown as a
+	// stub, since two letters and an ellipsis tell nobody where a file is - unless it is
+	// narrower than that already and fits whole.
+	RowText FitRowText(float available, float name, float directory, float gap,
+					   float minDirectory);
 }

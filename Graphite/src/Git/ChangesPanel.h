@@ -45,8 +45,12 @@ namespace Graphite {
 		void OnImGuiRender() override;
 
 	private:
-		void RenderSection(const char* heading, const std::vector<std::size_t>& rows,
-						   const Core::WorkingTreeStatus& status, const GitPalette& palette);
+		// Draws one section's heading and, while it is open, its rows. Returns whether it
+		// drew anything - an empty section draws nothing - so the next one knows whether to
+		// keep its distance from one above it (`spaced`).
+		bool RenderSection(const char* heading, const std::vector<std::size_t>& rows,
+						   const Core::WorkingTreeStatus& status, const GitPalette& palette,
+						   bool spaced);
 
 		// One row, and everything a row can do: click to open its diff, and the buttons that
 		// appear on its right edge under the mouse - discard, and the contextual stage or
@@ -56,7 +60,7 @@ namespace Graphite {
 
 		// An untracked directory: one row for the directory itself, and, while it is open,
 		// one row per file under it. Drawn apart from RenderRow because almost nothing is
-		// shared - a directory has no diff to open, no status letter worth more than '?',
+		// shared - a directory has no diff to open, no status letter worth more than 'U',
 		// and a file count that does not exist until git has been asked.
 		void RenderFolderRow(std::size_t entry, const Core::WorkingTreeStatus& status,
 							 const GitPalette& palette);
@@ -149,6 +153,10 @@ namespace Graphite {
 		// What each section drew last frame, in drawn order, so a selection whose row has
 		// gone can be moved to the row that took its place.
 		std::vector<std::filesystem::path> m_LastDrawn[3];
+
+		// Which sections the reader has closed, by Section. Open is the default, so a
+		// section that appears for the first time - the first conflict of a merge - is seen.
+		bool m_Collapsed[3] = {};
 
 		std::string m_Message;
 		bool m_Amend = false;
