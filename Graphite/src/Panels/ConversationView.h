@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -75,14 +76,16 @@ namespace Graphite {
 
 		// A message from the user: the prompt that opened a turn, or one queued within it.
 		void DrawUser(const std::string& text, const std::string& at, const ConversationContext& context);
-		void DrawReply(const Turn& turn, const TurnPart& part, const ConversationContext& context);
+		void DrawReply(const Turn& turn, const TurnPart& part, std::pair<std::size_t, std::size_t> key,
+					   const ConversationContext& context);
 		void DrawStepsHeader(const Session& session, const Turn& turn, const TurnPart& part, std::size_t row,
 							 const ConversationContext& context);
 		void DrawStep(const Session& session, const TurnItem& item, std::size_t row, const ConversationContext& context,
 					  Core::EventBus& events);
 		void DrawInjected(const TurnItem& item, std::size_t row, const ConversationContext& context);
 		void DrawGap(std::chrono::milliseconds gap, const ConversationContext& context);
-		void DrawMarkdown(const std::string& text, const ConversationContext& context);
+		void DrawMarkdown(const std::string& text, std::pair<std::size_t, std::size_t> key,
+						  const ConversationContext& context);
 
 		// "HH:MM" in the reader's time zone, or nothing when the timestamp does not parse.
 		std::string ClockTime(const std::string& timestamp);
@@ -119,6 +122,23 @@ namespace Graphite {
 		// by every rebuild, and the Agent calls' when a newer subagent map arrives.
 		std::vector<std::optional<ToolFacts>> m_Facts;
 		std::uint64_t m_FactsSubagentsVersion = 0;
+
+		// A reply's markdown, parsed once and laid out once per width rather than every frame.
+		struct MarkdownCache
+		{
+			// What was parsed, so a reply whose text changed is parsed again.
+			std::string Text;
+			std::vector<MarkdownBlock> Blocks;
+
+			// Each block's words as placed, valid for the width and font size they were placed
+			// at. Empty for a code block, which is not laid out.
+			std::vector<std::vector<PlacedWord>> Layouts;
+			float LaidWidth = -1.0f;
+			float LaidFontSize = -1.0f;
+		};
+
+		// By (turn, part). Cleared by every rebuild.
+		std::map<std::pair<std::size_t, std::size_t>, MarkdownCache> m_Markdown;
 
 		// The reader's time zone, looked up once and null when it could not be, and the span
 		// of time the offset last asked of it holds for.

@@ -330,6 +330,9 @@ namespace Graphite {
 			}
 		}
 
+		// Rows may now stand for other parts; each reply is parsed again when next drawn.
+		m_Markdown.clear();
+
 		m_Rows = std::move(rows);
 		m_BuiltVersion = session.GetVersion();
 		m_BuiltGeneration = session.GetGeneration();
@@ -398,7 +401,8 @@ namespace Graphite {
 		EndBlock(block, context.Palette.UserBlock);
 	}
 
-	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, const ConversationContext& context)
+	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, std::pair<std::size_t, std::size_t> key,
+									 const ConversationContext& context)
 	{
 		const TurnItem& item = turn.Items[part.Items.front()];
 		const Block block = BeginBlock();
@@ -419,7 +423,7 @@ namespace Graphite {
 								ImGui::GetContentRegionAvail().x - kBlockPadding));
 		}
 
-		DrawMarkdown(item.Text, context);
+		DrawMarkdown(item.Text, key, context);
 
 		EndBlock(block, context.Palette.ClaudeBlock);
 	}
@@ -712,11 +716,33 @@ namespace Graphite {
 		ImGui::Spacing();
 	}
 
-	void ConversationView::DrawMarkdown(const std::string& text, const ConversationContext& context)
+	void ConversationView::DrawMarkdown(const std::string& text, std::pair<std::size_t, std::size_t> key,
+										const ConversationContext& context)
 	{
 		const float width = ImGui::GetContentRegionAvail().x - kBlockPadding;
 		ImDrawList* draw = ImGui::GetWindowDrawList();
-		const std::vector<MarkdownBlock> blocks = ParseMarkdown(text);
+
+		MarkdownCache& cache = m_Markdown[key];
+
+		if (cache.LaidWidth < 0.0f || cache.Text != text)
+		{
+			cache.Text = text;
+			cache.Blocks = ParseMarkdown(text);
+			cache.LaidWidth = -1.0f;
+		}
+
+		// Laid out again only when the width or the font size moved: placing the words measures
+		// every one of them, too much for every visible reply every frame.
+		const bool relayout = cache.LaidWidth != width || cache.LaidFontSize != ImGui::GetFontSize();
+
+		if (relayout)
+		{
+			cache.Layouts.assign(cache.Blocks.size(), {});
+			cache.LaidWidth = width;
+			cache.LaidFontSize = ImGui::GetFontSize();
+		}
+
+		const std::vector<MarkdownBlock>& blocks = cache.Blocks;
 
 		for (std::size_t index = 0; index < blocks.size(); ++index)
 		{
@@ -788,7 +814,10 @@ namespace Graphite {
 				return ImGui::CalcTextSize(word.data(), word.data() + word.size()).x + pad;
 			};
 
-			const std::vector<PlacedWord> words = LayoutSpans(block.Spans, width - indent, measure);
+			if (relayout)
+				cache.Layouts[index] = LayoutSpans(block.Spans, width - indent, measure);
+
+			const std::vector<PlacedWord>& words = cache.Layouts[index];
 			int lastLine = 0;
 
 			for (const PlacedWord& word : words)
@@ -856,7 +885,7 @@ namespace Graphite {
 			switch (part.Kind)
 			{
 			case PartKind::Reply:
-				DrawReply(turn, part, context);
+				DrawReply(turn, part, {row.Turn, row.Part}, context);
 				break;
 			case PartKind::Steps:
 				DrawStepsHeader(session, turn, part, index, context);
@@ -887,7 +916,10 @@ namespace Graphite {
 	{
 		// No horizontal scrollbar: everything wraps to the window, and a code block scrolls
 		// sideways in a box of its own.
-		if (!ImGui::BeginChild("##conversation", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_None))
+		// Padded like a window, so the blocks and the right-aligned times keep the same distance
+		// from the scrollbar as from the left edge.
+		if (!ImGui::BeginChild("##conversation", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
+							   ImGuiWindowFlags_None))
 		{
 			ImGui::EndChild();
 			return;
