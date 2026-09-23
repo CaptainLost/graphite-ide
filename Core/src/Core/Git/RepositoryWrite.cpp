@@ -84,8 +84,44 @@ namespace Core {
 			std::error_code code;
 			const bool onDisk = std::filesystem::exists(m_WorkingDirectory / path, code);
 
-			const int result = onDisk ? git_index_add_bypath(index, text.c_str())
-									  : git_index_remove_bypath(index, text.c_str());
+			int result = 0;
+
+			if (!onDisk)
+			{
+				result = git_index_remove_bypath(index, text.c_str());
+			}
+			else if (std::filesystem::is_directory(m_WorkingDirectory / path, code))
+			{
+				// The status collapses a wholly untracked directory into one entry, and
+				// add_bypath takes files only - so the directory is opened up into its files
+				// first. QueryUntrackedIn leaves out what .gitignore excludes, the way
+				// `git add <dir>` does.
+				//
+				// Not git_index_add_all: it matches every path it walks against the pathspec
+				// as a glob whatever flags it is given, so a directory named with brackets -
+				// legal on Windows - would stage nothing and report success.
+				const Result<WorkingTreeStatus> files = QueryUntrackedIn(path);
+
+				if (!files.HasValue())
+				{
+					git_index_free(index);
+					return files.GetError();
+				}
+
+				for (const FileStatus& file : files.GetValue().Entries)
+				{
+					result = git_index_add_bypath(index, ToGitPath(file.Path).c_str());
+
+					if (result != 0)
+					{
+						break;
+					}
+				}
+			}
+			else
+			{
+				result = git_index_add_bypath(index, text.c_str());
+			}
 
 			if (result != 0)
 			{

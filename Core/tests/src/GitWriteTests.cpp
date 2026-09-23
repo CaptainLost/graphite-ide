@@ -51,6 +51,75 @@ TEST_CASE("Stage adds a new file to the index")
 	CHECK(after.WorkTree == Core::StatusFlags::None);
 }
 
+TEST_CASE("Stage adds every file under an untracked directory")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("new folder/b.txt", "two\n");
+	fixture.Write("new folder/deep/c.txt", "three\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"new folder"}).HasValue());
+
+	CHECK(Has(StatusOf(repository.GetValue(), "new folder/b.txt").Index, Core::StatusFlags::New));
+	CHECK(Has(StatusOf(repository.GetValue(), "new folder/deep/c.txt").Index,
+			  Core::StatusFlags::New));
+}
+
+TEST_CASE("Staging a directory leaves the ignored files under it out")
+{
+	GitFixture fixture;
+	fixture.Write(".gitignore", "*.log\n");
+	fixture.Commit("first");
+	fixture.Write("dir/b.txt", "two\n");
+	fixture.Write("dir/noise.log", "noise\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"dir"}).HasValue());
+
+	CHECK(Has(StatusOf(repository.GetValue(), "dir/b.txt").Index, Core::StatusFlags::New));
+	CHECK(StatusOf(repository.GetValue(), "dir/noise.log").Index == Core::StatusFlags::None);
+}
+
+TEST_CASE("A directory named like a pattern is staged by its name")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("[ab]/b.txt", "two\n");
+	fixture.Write("a/c.txt", "three\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"[ab]"}).HasValue());
+
+	CHECK(Has(StatusOf(repository.GetValue(), "[ab]/b.txt").Index, Core::StatusFlags::New));
+	CHECK(StatusOf(repository.GetValue(), "a/c.txt").Index == Core::StatusFlags::None);
+}
+
+TEST_CASE("Staging a directory stages only that directory")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("dir/b.txt", "two\n");
+	fixture.Write("dir2/c.txt", "three\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	REQUIRE(repository.GetValue().Stage({"dir"}).HasValue());
+
+	CHECK(Has(StatusOf(repository.GetValue(), "dir/b.txt").Index, Core::StatusFlags::New));
+	CHECK(StatusOf(repository.GetValue(), "dir2/c.txt").Index == Core::StatusFlags::None);
+}
+
 TEST_CASE("Stage records a modified file")
 {
 	GitFixture fixture;
