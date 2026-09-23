@@ -137,3 +137,32 @@ TEST_CASE("Truncating never cuts a character in half")
 	CHECK(TruncateUtf8("a\xc5\xbc\xc5\xbc", 4) == "a\xc5\xbc");
 	CHECK(TruncateUtf8("short", 100) == "short");
 }
+
+TEST_CASE("A transcript that cannot be read has no summary, and a readable one has")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("hello"));
+	const std::filesystem::path directory = temp.MakeDir("p/x.jsonl");
+
+	const std::optional<SessionSummary> read = TrySummariseSession(file);
+	REQUIRE(read.has_value());
+	CHECK(read->FirstPrompt == "hello");
+
+	CHECK_FALSE(TrySummariseSession(directory).has_value());
+	CHECK_FALSE(TrySummariseSession(temp.GetPath() / "p" / "missing.jsonl").has_value());
+}
+
+TEST_CASE("Folders that differ only in case or a trailing separator share one key")
+{
+	CHECK(DirectoryKey("d:\\repos\\ide\\") == DirectoryKey("D:\\Repos\\IDE"));
+	CHECK(DirectoryKey("D:/Repos/IDE") == DirectoryKey("D:\\Repos\\IDE"));
+	CHECK_FALSE(DirectoryKey("D:\\Repos\\IDE2") == DirectoryKey("D:\\Repos\\IDE"));
+	CHECK(DirectoryKey("").empty());
+}
+
+TEST_CASE("Session ids match without regard to case")
+{
+	CHECK(SameSessionId("0a1b2c3d-EEFF", "0A1B2C3D-eeff"));
+	CHECK_FALSE(SameSessionId("0a1b", "0a1c"));
+	CHECK_FALSE(SameSessionId("0a1b", "0a1b2"));
+}

@@ -55,7 +55,7 @@ TEST_CASE("Per-turn costs add up to the session's cost")
 					   .Records);
 
 	const Pricing pricing = Pricing::Defaults();
-	const std::vector<BucketCosts> turns = TurnCosts(session, pricing);
+	const std::vector<TurnCost> turns = TurnCosts(session, pricing);
 
 	REQUIRE(turns.size() == 2);
 
@@ -64,5 +64,34 @@ TEST_CASE("Per-turn costs add up to the session's cost")
 		for (const auto& [key, counts] : turn.Usage)
 			all[key] += counts;
 
-	CHECK(turns[0].Total() + turns[1].Total() == doctest::Approx(pricing.CostOf(all).Dollars));
+	CHECK(turns[0].Known);
+	CHECK(turns[1].Known);
+	CHECK(turns[0].Buckets.Total() + turns[1].Buckets.Total() == doctest::Approx(pricing.CostOf(all).Dollars));
+}
+
+TEST_CASE("A turn that used a model with no price is reported as not fully priced")
+{
+	Session session;
+	session.Append(ParseTranscript(Fixtures::UserPrompt("a") +
+								   Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1000, 2000)) +
+								   Fixtures::UserPrompt("b", "2026-09-17T09:10:00.000Z") +
+								   Fixtures::Assistant("r2", Fixtures::TextBlock("y"), Fixtures::Usage(3000, 4000),
+													   "claude-mystery-9", "2026-09-17T09:10:01.000Z"))
+					   .Records);
+
+	const std::vector<TurnCost> turns = TurnCosts(session, Pricing::Defaults());
+
+	REQUIRE(turns.size() == 2);
+	CHECK(turns[0].Known);
+	CHECK(turns[0].Buckets.Total() > 0.0);
+	CHECK_FALSE(turns[1].Known);
+}
+
+TEST_CASE("A label is one line, never carries an ImGui id separator, and is cut on a character")
+{
+	CHECK(SingleLineLabel("fix the\n\n  build\tnow", 100) == "fix the build now");
+	CHECK(SingleLineLabel("  padded  ", 100) == "padded");
+	CHECK(SingleLineLabel("issue ##12 and ###3", 100) == "issue # #12 and # # #3");
+	CHECK(SingleLineLabel("a\xc5\xbc\xc5\xbc", 4) == "a\xc5\xbc");
+	CHECK(SingleLineLabel("", 10).empty());
 }

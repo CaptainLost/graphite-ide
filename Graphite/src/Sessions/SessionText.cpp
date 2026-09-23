@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdio>
+#include <utility>
 
 namespace Graphite {
 
@@ -111,29 +112,61 @@ namespace Graphite {
 		return std::filesystem::path{std::u8string{reinterpret_cast<const char8_t*>(path.data()), path.size()}};
 	}
 
-	std::vector<BucketCosts> TurnCosts(const Session& session, const Pricing& pricing)
+	std::vector<TurnCost> TurnCosts(const Session& session, const Pricing& pricing)
 	{
-		std::vector<BucketCosts> costs;
+		std::vector<TurnCost> costs;
 		costs.reserve(session.GetTurns().size());
 
 		for (const Turn& turn : session.GetTurns())
 		{
-			BucketCosts sum;
+			TurnCost cost;
 
 			for (const auto& [key, counts] : turn.Usage)
 			{
 				if (const std::optional<BucketCosts> part = pricing.BucketsOf(key, counts))
 				{
-					sum.Input += part->Input;
-					sum.Output += part->Output;
-					sum.CacheWrite += part->CacheWrite;
-					sum.CacheRead += part->CacheRead;
+					cost.Buckets.Input += part->Input;
+					cost.Buckets.Output += part->Output;
+					cost.Buckets.CacheWrite += part->CacheWrite;
+					cost.Buckets.CacheRead += part->CacheRead;
+				}
+				else
+				{
+					cost.Known = false;
 				}
 			}
 
-			costs.push_back(sum);
+			costs.push_back(cost);
 		}
 
 		return costs;
+	}
+
+	std::string SingleLineLabel(std::string_view text, std::size_t maxBytes)
+	{
+		std::string label;
+		label.reserve(text.size());
+		bool space = false;
+
+		for (const char c : text)
+		{
+			if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f')
+			{
+				space = !label.empty();
+				continue;
+			}
+
+			if (std::exchange(space, false))
+				label += ' ';
+
+			// "###" becomes "# # #": a space after every '#' that follows another leaves no
+			// two side by side.
+			if (c == '#' && !label.empty() && label.back() == '#')
+				label += ' ';
+
+			label += c;
+		}
+
+		return TruncateUtf8(label, maxBytes);
 	}
 }

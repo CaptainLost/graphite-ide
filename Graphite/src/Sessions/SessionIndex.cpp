@@ -32,7 +32,8 @@ namespace Graphite {
 		}
 
 		// Re-summarises `file` if its fingerprint moved and records what was delivered; a file
-		// that is gone and was known is reported as removed.
+		// that is gone and was known is reported as removed. A file that cannot be read is
+		// neither delivered nor recorded, so the watcher's next report of it tries again.
 		void Examine(const std::filesystem::path& file, std::map<std::filesystem::path, Fingerprint>& prints,
 					 IndexDelivery& out)
 		{
@@ -51,8 +52,13 @@ namespace Graphite {
 			if (known != prints.end() && known->second == print)
 				return;
 
-			prints[file] = print;
-			out.Updated.push_back(SummariseSession(file));
+			std::optional<SessionSummary> summary = TrySummariseSession(file);
+
+			if (!summary.has_value())
+				return;
+
+			prints[file] = summary->Print;
+			out.Updated.push_back(std::move(*summary));
 		}
 	}
 
@@ -71,9 +77,10 @@ namespace Graphite {
 		return files;
 	}
 
-	void ScanProjects(const std::filesystem::path& projects, const std::vector<SessionSummary>& cached,
-					  const Core::CancellationToken& token,
-					  const std::function<void(SessionSummary)>& onSummary)
+	std::vector<std::filesystem::path> ScanProjects(const std::filesystem::path& projects,
+													const std::vector<SessionSummary>& cached,
+													const Core::CancellationToken& token,
+													const std::function<void(SessionSummary)>& onSummary)
 	{
 		std::map<std::filesystem::path, const SessionSummary*> byFile;
 
@@ -85,16 +92,32 @@ namespace Graphite {
 			for (const std::filesystem::path& file : SessionFilesUnder(project))
 			{
 				if (token.IsCancelled())
-					return;
+					return {};
 
 				const auto found = byFile.find(file);
 
 				if (found != byFile.end() && found->second->Print == FingerprintOf(file))
 					onSummary(*found->second);
-				else
-					onSummary(SummariseSession(file));
+				else if (std::optional<SessionSummary> summary = TrySummariseSession(file))
+					onSummary(std::move(*summary));
+
+				// Found, whether or not it could be read: an unreadable file is still there, and
+				// its cached summary is the best there is until it reads again.
+				if (found != byFile.end())
+					byFile.erase(found);
 			}
 		}
+
+		if (token.IsCancelled())
+			return {};
+
+		std::vector<std::filesystem::path> gone;
+		gone.reserve(byFile.size());
+
+		for (const auto& [file, summary] : byFile)
+			gone.push_back(file);
+
+		return gone;
 	}
 
 	std::optional<std::filesystem::path> SessionFileFor(const std::filesystem::path& projects,
@@ -149,7 +172,8 @@ namespace Graphite {
 
 		Submit([projects = std::move(projects), cached = std::move(cached), token = m_Token](Inbox& inbox, Known& known)
 		{
-			ScanProjects(projects, cached, token, [&inbox, &known](SessionSummary summary)
+			std::vector<std::filesystem::path> gone =
+				ScanProjects(projects, cached, token, [&inbox, &known](SessionSummary summary)
 			{
 				known.Prints[summary.File] = summary.Print;
 
@@ -157,6 +181,13 @@ namespace Graphite {
 				const std::lock_guard<std::mutex> guard(inbox.Mutex);
 				inbox.Ready.Updated.push_back(std::move(summary));
 			});
+
+			// The caller shows the cache before the scan confirms it, so a session whose file
+			// went away while nothing was watching must be taken back out explicitly; no
+			// watcher report will ever name it.
+			const std::lock_guard<std::mutex> guard(inbox.Mutex);
+			for (std::filesystem::path& file : gone)
+				inbox.Ready.Removed.push_back(std::move(file));
 		});
 	}
 

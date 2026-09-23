@@ -20,8 +20,11 @@ namespace Graphite {
 
 	// Every session under `projects`, taken from `cached` where the fingerprint still matches
 	// and summarised again where it does not. Synchronous, and tested that way — SessionIndex
-	// is the thread.
-	void ScanProjects(const std::filesystem::path& projects, const std::vector<SessionSummary>& cached,
+	// is the thread. A file that cannot be read is left out, to be tried again when it next
+	// changes. Returns the cached sessions whose file the scan did not find — deleted while
+	// nothing was watching — or nothing when the scan was cancelled and so did not look
+	// everywhere.
+	std::vector<std::filesystem::path> ScanProjects(const std::filesystem::path& projects, const std::vector<SessionSummary>& cached,
 					  const Core::CancellationToken& token,
 					  const std::function<void(SessionSummary)>& onSummary);
 

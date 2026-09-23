@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Graphite {
@@ -27,7 +28,22 @@ namespace Graphite {
 	// The file a Read, Edit or Write acted on.
 	std::optional<std::filesystem::path> ToolFilePath(const ToolCall& tool);
 
-	// Each turn's cost by bucket. A model with no price adds nothing here; the totals shown
-	// beside the chart carry the "?".
-	std::vector<BucketCosts> TurnCosts(const Session& session, const Pricing& pricing);
+	struct TurnCost
+	{
+		// The priced part of the turn, by bucket. A model with no price adds nothing here.
+		BucketCosts Buckets;
+
+		// False when some of the turn's tokens went to a model with no price: Buckets is then
+		// part of the cost, and a reader must be shown "?" rather than it.
+		bool Known = true;
+	};
+
+	// Each turn's cost. A chart may draw the priced part of a turn that is not Known; a
+	// number shown as the turn's cost may not.
+	std::vector<TurnCost> TurnCosts(const Session& session, const Pricing& pricing);
+
+	// `text` as an ImGui label: on one line, with every run of whitespace a single space, and
+	// with no "##", which ImGui would take as the start of the widget's id and hide the rest
+	// behind. At most `maxBytes`, cut on a character.
+	std::string SingleLineLabel(std::string_view text, std::size_t maxBytes);
 }

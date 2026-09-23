@@ -90,7 +90,8 @@ namespace Graphite {
 			ImGui::EndTable();
 		}
 
-		void DrawChart(const std::vector<BucketCosts>& turns)
+		// A turn that is not Known draws its priced part only; the table beside it says "?".
+		void DrawChart(const std::vector<TurnCost>& turns)
 		{
 			if (turns.empty())
 				return;
@@ -103,10 +104,10 @@ namespace Graphite {
 
 			for (std::size_t turn = 0; turn < turns.size(); ++turn)
 			{
-				values[0 * turns.size() + turn] = turns[turn].Input;
-				values[1 * turns.size() + turn] = turns[turn].Output;
-				values[2 * turns.size() + turn] = turns[turn].CacheWrite;
-				values[3 * turns.size() + turn] = turns[turn].CacheRead;
+				values[0 * turns.size() + turn] = turns[turn].Buckets.Input;
+				values[1 * turns.size() + turn] = turns[turn].Buckets.Output;
+				values[2 * turns.size() + turn] = turns[turn].Buckets.CacheWrite;
+				values[3 * turns.size() + turn] = turns[turn].Buckets.CacheRead;
 			}
 
 			if (ImPlot::BeginPlot("Cost per turn", ImVec2(-1.0f, ImGui::GetFontSize() * 16.0f)))
@@ -119,7 +120,7 @@ namespace Graphite {
 			}
 		}
 
-		void DrawTurnTable(const Session& session, const std::vector<BucketCosts>& turns)
+		void DrawTurnTable(const Session& session, const std::vector<TurnCost>& turns)
 		{
 			if (!ImGui::BeginTable("##turns", 7,
 								   ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp))
@@ -137,7 +138,7 @@ namespace Graphite {
 			{
 				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 				{
-					const BucketCosts& cost = turns[static_cast<std::size_t>(row)];
+					const TurnCost& cost = turns[static_cast<std::size_t>(row)];
 					const Turn& turn = session.GetTurns()[static_cast<std::size_t>(row)];
 
 					ImGui::TableNextRow();
@@ -146,10 +147,20 @@ namespace Graphite {
 					ImGui::TableNextColumn();
 					ImGui::TextUnformatted(TruncateUtf8(turn.Prompt, 80).c_str());
 
-					for (const double dollars : {cost.Input, cost.Output, cost.CacheWrite, cost.CacheRead, cost.Total()})
+					const BucketCosts& buckets = cost.Buckets;
+
+					for (const double dollars :
+						 {buckets.Input, buckets.Output, buckets.CacheWrite, buckets.CacheRead, buckets.Total()})
 					{
 						ImGui::TableNextColumn();
-						ImGui::Text("$%.3f", dollars);
+
+						// A bucket of a turn that used an unpriced model is missing that model's
+						// share, so none of its numbers is the turn's: "?" rather than a
+						// confident, wrong figure.
+						if (cost.Known)
+							ImGui::Text("$%.3f", dollars);
+						else
+							ImGui::TextUnformatted("?");
 					}
 				}
 			}
@@ -160,7 +171,7 @@ namespace Graphite {
 
 	void DrawCost(const Session& session, const std::optional<SessionSummary>& summary, const Pricing& pricing)
 	{
-		const std::vector<BucketCosts> turns = TurnCosts(session, pricing);
+		const std::vector<TurnCost> turns = TurnCosts(session, pricing);
 
 		DrawTotals(session, summary, pricing);
 		ImGui::Spacing();

@@ -3,6 +3,7 @@
 #include "Sessions/TranscriptReader.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cwctype>
 
@@ -120,42 +121,62 @@ namespace Graphite {
 
 	SessionSummary SummariseSession(const std::filesystem::path& sessionFile)
 	{
+		std::optional<SessionSummary> summary = TrySummariseSession(sessionFile);
+
+		if (summary.has_value())
+			return std::move(*summary);
+
+		// What the callers of this form have always had for a file that could not be read:
+		// the session's identity and fingerprint, and nothing else.
+		SessionSummary empty;
+		empty.Id = sessionFile.stem().string();
+		empty.File = sessionFile;
+		empty.Print = FingerprintOf(sessionFile);
+		return empty;
+	}
+
+	std::optional<SessionSummary> TrySummariseSession(const std::filesystem::path& sessionFile)
+	{
+		// Fingerprinted before the read, so a line appended in between leaves the print older
+		// than the summary and the next look summarises again, rather than the other way round.
+		const Fingerprint print = FingerprintOf(sessionFile);
+		Core::Result<TranscriptRead> read = ReadTranscript(sessionFile, 0);
+
+		if (!read)
+			return std::nullopt;
+
 		SessionSummary summary;
 		summary.Id = sessionFile.stem().string();
 		summary.File = sessionFile;
-		summary.Print = FingerprintOf(sessionFile);
+		summary.Print = print;
+		summary.SkippedLines = read.GetValue().Chunk.Skipped;
 
 		UsageTally main;
 
-		if (Core::Result<TranscriptRead> read = ReadTranscript(sessionFile, 0))
+		for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
 		{
-			summary.SkippedLines = read.GetValue().Chunk.Skipped;
+			main.Add(record);
 
-			for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
+			if (record.Kind == RecordKind::AiTitle && !record.Title.empty())
+				summary.Title = record.Title;
+
+			if (summary.Cwd.empty() && !record.Cwd.empty())
+				summary.Cwd = std::filesystem::path{std::u8string{
+					reinterpret_cast<const char8_t*>(record.Cwd.data()), record.Cwd.size()}};
+
+			if (summary.FirstPrompt.empty())
 			{
-				main.Add(record);
+				if (std::optional<std::string> prompt = TypedPrompt(record))
+					summary.FirstPrompt = TruncateUtf8(*prompt, kPromptBytes);
+			}
 
-				if (record.Kind == RecordKind::AiTitle && !record.Title.empty())
-					summary.Title = record.Title;
-
-				if (summary.Cwd.empty() && !record.Cwd.empty())
-					summary.Cwd = std::filesystem::path{std::u8string{
-						reinterpret_cast<const char8_t*>(record.Cwd.data()), record.Cwd.size()}};
-
-				if (summary.FirstPrompt.empty())
-				{
-					if (std::optional<std::string> prompt = TypedPrompt(record))
-						summary.FirstPrompt = TruncateUtf8(*prompt, kPromptBytes);
-				}
-
-				// ISO 8601 in UTC compares as text in time order.
-				if (!record.Timestamp.empty())
-				{
-					if (summary.StartedAt.empty() || record.Timestamp < summary.StartedAt)
-						summary.StartedAt = record.Timestamp;
-					if (record.Timestamp > summary.EndedAt)
-						summary.EndedAt = record.Timestamp;
-				}
+			// ISO 8601 in UTC compares as text in time order.
+			if (!record.Timestamp.empty())
+			{
+				if (summary.StartedAt.empty() || record.Timestamp < summary.StartedAt)
+					summary.StartedAt = record.Timestamp;
+				if (record.Timestamp > summary.EndedAt)
+					summary.EndedAt = record.Timestamp;
 			}
 		}
 
@@ -166,9 +187,9 @@ namespace Graphite {
 			++summary.SubagentCount;
 			UsageTally tally;
 
-			if (Core::Result<TranscriptRead> read = ReadTranscript(file, 0))
+			if (Core::Result<TranscriptRead> agent = ReadTranscript(file, 0))
 			{
-				for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
+				for (const TranscriptRecord& record : agent.GetValue().Chunk.Records)
 					tally.Add(record);
 			}
 
@@ -177,6 +198,15 @@ namespace Graphite {
 		});
 
 		return summary;
+	}
+
+	bool SameSessionId(std::string_view a, std::string_view b)
+	{
+		return a.size() == b.size() &&
+			   std::equal(a.begin(), a.end(), b.begin(), [](char x, char y)
+			   {
+				   return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+			   });
 	}
 
 	std::optional<std::chrono::sys_time<std::chrono::milliseconds>> ParseTimestamp(std::string_view text)
@@ -220,6 +250,11 @@ namespace Graphite {
 			return false;
 
 		return a.size() == b.size() || a[b.size()] == L'\\';
+	}
+
+	std::wstring DirectoryKey(const std::filesystem::path& directory)
+	{
+		return directory.empty() ? std::wstring{} : Comparable(directory);
 	}
 
 	std::string TruncateUtf8(std::string_view text, std::size_t maxBytes)

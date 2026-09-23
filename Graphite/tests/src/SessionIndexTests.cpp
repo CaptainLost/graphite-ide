@@ -154,3 +154,46 @@ TEST_CASE("The index delivers every session, then what changed, then what was de
 	REQUIRE(removed.Removed.size() == 1);
 	CHECK(removed.Removed[0] == first);
 }
+
+TEST_CASE("A cached session whose transcript was deleted while the index was not running is delivered as removed")
+{
+	TempDirectory temp;
+	const std::filesystem::path kept = temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("a"));
+	const std::filesystem::path gone = temp.MakeFile("p/b.jsonl", Fixtures::UserPrompt("b"));
+
+	const std::vector<SessionSummary> cached = {SummariseSession(kept), SummariseSession(gone)};
+	std::filesystem::remove(gone);
+
+	SessionIndex index;
+	index.Start(temp.GetPath(), cached);
+	const IndexDelivery delivery = Settle(index);
+
+	REQUIRE(delivery.Updated.size() == 1);
+	CHECK(delivery.Updated[0].File == kept);
+	REQUIRE(delivery.Removed.size() == 1);
+	CHECK(delivery.Removed[0] == gone);
+}
+
+TEST_CASE("A transcript that cannot be read is neither delivered nor remembered, so it is tried again")
+{
+	TempDirectory temp;
+	temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("a"));
+
+	// A directory where a transcript should be: it exists, and reading it fails.
+	const std::filesystem::path unreadable = temp.MakeDir("p/x.jsonl");
+
+	SessionIndex index;
+	index.Start(temp.GetPath(), {});
+	CHECK(Settle(index).Updated.size() == 1);
+
+	index.Refresh({temp.GetPath() / "p" / "x"});
+	CHECK(Settle(index).Updated.empty());
+
+	// Had its fingerprint been kept, its disappearance would now be reported as a removal.
+	std::filesystem::remove(unreadable);
+	index.Refresh({temp.GetPath() / "p"});
+	const IndexDelivery after = Settle(index);
+
+	CHECK(after.Updated.empty());
+	CHECK(after.Removed.empty());
+}
