@@ -39,5 +39,17 @@
     "ui.accent": "FE8019",
     "ui.text": "EBDBB2",
     "ui.textDisabled": "928374",
-    "ui.border": "504945"
+    "ui.border": "504945",
+
+    "sessions.read": "83A598",
+    "sessions.edit": "FABD2F",
+    "sessions.run": "B8BB26",
+    "sessions.agent": "D3869B",
+    "sessions.web": "8EC07C",
+    "sessions.other": "928374",
+    "sessions.failed": "FB4934",
+    "sessions.userBlock": "3C3836",
+    "sessions.claudeBlock": "32302FB3",
+    "sessions.codeBlock": "1D2021",
+    "sessions.injected": "7C6F64"
 }

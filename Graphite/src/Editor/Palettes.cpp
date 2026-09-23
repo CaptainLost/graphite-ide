@@ -1,5 +1,7 @@
 #include "Editor/Palettes.h"
 
+#include "Theme/SessionPalette.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -80,6 +82,30 @@ namespace Graphite {
 						 of(GitColor::GraphLane3), of(GitColor::GraphLane4),
 						 of(GitColor::GraphLane5), of(GitColor::GraphLane6)};
 
+		return palette;
+	}
+
+	SessionPalette ReadSessionPalette(const ResolvedScheme& scheme)
+	{
+		const auto of = [&scheme](SessionColor color) {
+			return ToImU32(scheme.Session[static_cast<std::size_t>(color)]);
+		};
+
+		SessionPalette palette;
+		palette.Read = of(SessionColor::Read);
+		palette.Edit = of(SessionColor::Edit);
+		palette.Run = of(SessionColor::Run);
+		palette.Agent = of(SessionColor::Agent);
+		palette.Web = of(SessionColor::Web);
+		palette.Other = of(SessionColor::Other);
+		palette.Failed = of(SessionColor::Failed);
+		palette.UserBlock = of(SessionColor::UserBlock);
+		palette.ClaudeBlock = of(SessionColor::ClaudeBlock);
+		palette.CodeBlock = of(SessionColor::CodeBlock);
+		palette.Injected = of(SessionColor::Injected);
+		palette.Accent = ToImU32(scheme.Chrome[static_cast<std::size_t>(ChromeColor::Accent)]);
+		palette.TextDisabled =
+			ToImU32(scheme.Chrome[static_cast<std::size_t>(ChromeColor::TextDisabled)]);
 		return palette;
 	}
 }

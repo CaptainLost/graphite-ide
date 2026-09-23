@@ -106,6 +106,11 @@ namespace Graphite {
 		return m_Scheme.Git[static_cast<std::size_t>(color)].has_value();
 	}
 
+	bool SchemeDraft::IsOverridden(SessionColor color) const
+	{
+		return m_Scheme.Session[static_cast<std::size_t>(color)].has_value();
+	}
+
 	void SchemeDraft::SetColor(TokenKind kind, const Core::Color& color)
 	{
 		if (IsReadOnly())
@@ -152,6 +157,18 @@ namespace Graphite {
 		Resolve();
 	}
 
+	void SchemeDraft::SetColor(SessionColor which, const Core::Color& color)
+	{
+		if (IsReadOnly())
+		{
+			return;
+		}
+
+		m_Scheme.Session[static_cast<std::size_t>(which)] = color;
+
+		Resolve();
+	}
+
 	void SchemeDraft::Revert(TokenKind kind)
 	{
 		if (IsReadOnly())
@@ -194,6 +211,18 @@ namespace Graphite {
 		}
 
 		m_Scheme.Git[static_cast<std::size_t>(which)].reset();
+
+		Resolve();
+	}
+
+	void SchemeDraft::Revert(SessionColor which)
+	{
+		if (IsReadOnly())
+		{
+			return;
+		}
+
+		m_Scheme.Session[static_cast<std::size_t>(which)].reset();
 
 		Resolve();
 	}

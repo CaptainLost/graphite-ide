@@ -48,6 +48,15 @@ namespace Graphite {
 			int A = 255;
 		};
 
+		struct SessionEntry
+		{
+			SessionColor Color;
+			int R;
+			int G;
+			int B;
+			int A = 255;
+		};
+
 		constexpr SyntaxEntry kDarkSyntax[] = {
 			{TokenKind::Keyword, 197, 134, 192},
 			{TokenKind::Number, 181, 206, 168},
@@ -136,6 +145,22 @@ namespace Graphite {
 
 		static_assert(std::size(kDarkGit) == static_cast<std::size_t>(GitColor::Count));
 
+		constexpr SessionEntry kDarkSession[] = {
+			{SessionColor::Read, 97, 175, 239},
+			{SessionColor::Edit, 229, 192, 123},
+			{SessionColor::Run, 152, 195, 121},
+			{SessionColor::Agent, 198, 120, 221},
+			{SessionColor::Web, 86, 182, 194},
+			{SessionColor::Other, 127, 132, 142},
+			{SessionColor::Failed, 224, 108, 117},
+			{SessionColor::UserBlock, 62, 68, 81, 170},
+			{SessionColor::ClaudeBlock, 40, 44, 52, 110},
+			{SessionColor::CodeBlock, 24, 26, 31, 255},
+			{SessionColor::Injected, 127, 132, 142},
+		};
+
+		static_assert(std::size(kDarkSession) == static_cast<std::size_t>(SessionColor::Count));
+
 		constexpr SyntaxEntry kLightSyntax[] = {
 			{TokenKind::Keyword, 0, 0, 255},
 			{TokenKind::Number, 9, 134, 88},
@@ -206,12 +231,29 @@ namespace Graphite {
 
 		static_assert(std::size(kLightGit) == static_cast<std::size_t>(GitColor::Count));
 
+		constexpr SessionEntry kLightSession[] = {
+			{SessionColor::Read, 30, 100, 180},
+			{SessionColor::Edit, 170, 120, 20},
+			{SessionColor::Run, 40, 120, 40},
+			{SessionColor::Agent, 130, 60, 170},
+			{SessionColor::Web, 20, 130, 140},
+			{SessionColor::Other, 120, 120, 120},
+			{SessionColor::Failed, 170, 40, 40},
+			{SessionColor::UserBlock, 222, 230, 242, 255},
+			{SessionColor::ClaudeBlock, 246, 246, 246, 255},
+			{SessionColor::CodeBlock, 236, 236, 236, 255},
+			{SessionColor::Injected, 130, 130, 130},
+		};
+
+		static_assert(std::size(kLightSession) == static_cast<std::size_t>(SessionColor::Count));
+
 		template <std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount,
-				  std::size_t GitCount>
+				  std::size_t GitCount, std::size_t SessionCount>
 		ResolvedScheme Build(const SyntaxEntry (&syntax)[SyntaxCount],
 							  const EditorEntry (&editor)[EditorCount],
 							  const ChromeEntry (&chrome)[ChromeCount],
-							  const GitEntry (&git)[GitCount])
+							  const GitEntry (&git)[GitCount],
+							  const SessionEntry (&session)[SessionCount])
 		{
 			ResolvedScheme scheme;
 
@@ -224,6 +266,12 @@ namespace Graphite {
 			for (const GitEntry& entry : git)
 			{
 				scheme.Git[static_cast<std::size_t>(entry.Color)] =
+					FromBytes(entry.R, entry.G, entry.B, entry.A);
+			}
+
+			for (const SessionEntry& entry : session)
+			{
+				scheme.Session[static_cast<std::size_t>(entry.Color)] =
 					FromBytes(entry.R, entry.G, entry.B, entry.A);
 			}
 
@@ -249,12 +297,12 @@ namespace Graphite {
 
 		ResolvedScheme MakeDark()
 		{
-			return Build(kDarkSyntax, kDarkEditor, kDarkChrome, kDarkGit);
+			return Build(kDarkSyntax, kDarkEditor, kDarkChrome, kDarkGit, kDarkSession);
 		}
 
 		ResolvedScheme MakeLight()
 		{
-			return Build(kLightSyntax, kLightEditor, kLightChrome, kLightGit);
+			return Build(kLightSyntax, kLightEditor, kLightChrome, kLightGit, kLightSession);
 		}
 	}
 

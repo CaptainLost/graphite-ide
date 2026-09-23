@@ -94,6 +94,27 @@ namespace Graphite {
 		return {};
 	}
 
+	ColorNames NamesOf(SessionColor color)
+	{
+		switch (color)
+		{
+			case SessionColor::Read: return {"read", "Tool: read"};
+			case SessionColor::Edit: return {"edit", "Tool: edit"};
+			case SessionColor::Run: return {"run", "Tool: run"};
+			case SessionColor::Agent: return {"agent", "Tool: agent"};
+			case SessionColor::Web: return {"web", "Tool: web"};
+			case SessionColor::Other: return {"other", "Tool: other"};
+			case SessionColor::Failed: return {"failed", "Tool: failed"};
+			case SessionColor::UserBlock: return {"userBlock", "User message"};
+			case SessionColor::ClaudeBlock: return {"claudeBlock", "Claude reply"};
+			case SessionColor::CodeBlock: return {"codeBlock", "Code block"};
+			case SessionColor::Injected: return {"injected", "Injected text"};
+			case SessionColor::Count: break;
+		}
+
+		return {"", ""};
+	}
+
 	std::string_view NameOf(TokenKind kind) { return NamesOf(kind).Key; }
 
 	std::string_view NameOf(EditorColor color) { return NamesOf(color).Key; }
@@ -102,6 +123,8 @@ namespace Graphite {
 
 	std::string_view NameOf(GitColor color) { return NamesOf(color).Key; }
 
+	std::string_view NameOf(SessionColor color) { return NamesOf(color).Key; }
+
 	std::string_view LabelOf(TokenKind kind) { return NamesOf(kind).Label; }
 
 	std::string_view LabelOf(EditorColor color) { return NamesOf(color).Label; }
@@ -109,6 +132,8 @@ namespace Graphite {
 	std::string_view LabelOf(ChromeColor color) { return NamesOf(color).Label; }
 
 	std::string_view LabelOf(GitColor color) { return NamesOf(color).Label; }
+
+	std::string_view LabelOf(SessionColor color) { return NamesOf(color).Label; }
 
 	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base)
 	{
@@ -143,6 +168,14 @@ namespace Graphite {
 			if (scheme.Git[index])
 			{
 				resolved.Git[index] = *scheme.Git[index];
+			}
+		}
+
+		for (std::size_t index = 0; index < scheme.Session.size(); ++index)
+		{
+			if (scheme.Session[index])
+			{
+				resolved.Session[index] = *scheme.Session[index];
 			}
 		}
 

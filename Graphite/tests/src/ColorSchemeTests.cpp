@@ -217,3 +217,43 @@ TEST_CASE("Every git colour has a key and a label, and no two keys collide")
 	std::sort(keys.begin(), keys.end());
 	CHECK(std::adjacent_find(keys.begin(), keys.end()) == keys.end());
 }
+
+TEST_CASE("A session colour overrides its base and leaves the others alone")
+{
+	Graphite::ColorScheme scheme;
+	scheme.Session[static_cast<std::size_t>(Graphite::SessionColor::Read)] =
+		Core::Color{0.1f, 0.2f, 0.3f, 1.0f};
+
+	Graphite::ResolvedScheme base = Graphite::DarkScheme();
+	const Core::Color untouched =
+		base.Session[static_cast<std::size_t>(Graphite::SessionColor::Edit)];
+
+	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
+
+	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Read)].R
+		  == doctest::Approx(0.1f));
+	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Edit)].R
+		  == doctest::Approx(untouched.R));
+}
+
+TEST_CASE("Every session colour has a key and a label, and no two keys collide")
+{
+	std::vector<std::string_view> keys;
+
+	for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::SessionColor::Count);
+		 ++index)
+	{
+		const Graphite::ColorNames names =
+			Graphite::NamesOf(static_cast<Graphite::SessionColor>(index));
+
+		// A colour with no key cannot be written to a scheme file, and one with no label
+		// shows as a blank row in the settings panel. Both are silent failures.
+		CHECK_FALSE(names.Key.empty());
+		CHECK_FALSE(names.Label.empty());
+
+		keys.push_back(names.Key);
+	}
+
+	std::sort(keys.begin(), keys.end());
+	CHECK(std::adjacent_find(keys.begin(), keys.end()) == keys.end());
+}

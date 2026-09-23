@@ -106,6 +106,20 @@ TEST_CASE("Both built-in schemes define every git colour")
 	}
 }
 
+TEST_CASE("Both built-in schemes define every session colour")
+{
+	for (const Graphite::ResolvedScheme& scheme : {Graphite::DarkScheme(), Graphite::LightScheme()})
+	{
+		for (std::size_t index = 0;
+			 index < static_cast<std::size_t>(Graphite::SessionColor::Count); ++index)
+		{
+			// A colour left at its default is fully transparent black, which draws as
+			// nothing at all — the row simply disappears rather than looking wrong.
+			CHECK(scheme.Session[index].A > 0.0f);
+		}
+	}
+}
+
 TEST_CASE("The graph lanes are visibly different from one another")
 {
 	const Graphite::ResolvedScheme scheme = Graphite::DarkScheme();

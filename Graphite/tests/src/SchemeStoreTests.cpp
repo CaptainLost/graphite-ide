@@ -29,19 +29,21 @@ namespace {
 	constexpr std::size_t kEditorCount = static_cast<std::size_t>(Graphite::EditorColor::Count);
 	constexpr std::size_t kChromeCount = static_cast<std::size_t>(Graphite::ChromeColor::Count);
 	constexpr std::size_t kGitCount = static_cast<std::size_t>(Graphite::GitColor::Count);
+	constexpr std::size_t kSessionCount = static_cast<std::size_t>(Graphite::SessionColor::Count);
 
-	// The four categories are numbered end to end so that no two colours anywhere in the
+	// The five categories are numbered end to end so that no two colours anywhere in the
 	// scheme share a value: a category wired to another one's names or prefix would then show
 	// up as the wrong colour rather than as the right one by accident.
 	constexpr std::size_t kEditorBase = kSyntaxCount;
 	constexpr std::size_t kChromeBase = kSyntaxCount + kEditorCount;
 	constexpr std::size_t kGitBase = kSyntaxCount + kEditorCount + kChromeCount;
+	constexpr std::size_t kSessionBase = kSyntaxCount + kEditorCount + kChromeCount + kGitCount;
 }
 
-// Four categories with parallel but separate machinery — a sparse array, a resolve loop, a
+// Five categories with parallel but separate machinery — a sparse array, a resolve loop, a
 // name, a store prefix with its load branch and its save loop. Missing one of those for one
 // category compiles and half-works: an override that loads but never applies, or applies but
-// never persists. Saturating all four and running the whole path is what catches that; the
+// never persists. Saturating all five and running the whole path is what catches that; the
 // static_asserts on the built-in tables only guard completeness, not the wiring.
 TEST_CASE("Every colour of every category survives save, load and resolve")
 {
@@ -68,6 +70,11 @@ TEST_CASE("Every colour of every category survives save, load and resolve")
 	for (std::size_t index = 0; index < kGitCount; ++index)
 	{
 		scheme.Git[index] = DistinctColor(kGitBase + index);
+	}
+
+	for (std::size_t index = 0; index < kSessionCount; ++index)
+	{
+		scheme.Session[index] = DistinctColor(kSessionBase + index);
 	}
 
 	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "saturated", scheme));
@@ -107,6 +114,14 @@ TEST_CASE("Every colour of every category survives save, load and resolve")
 		REQUIRE(loaded.Git[index].has_value());
 		CHECK(resolved.Git[index].R ==
 			  doctest::Approx(DistinctColor(kGitBase + index).R).epsilon(0.001));
+	}
+
+	for (std::size_t index = 0; index < kSessionCount; ++index)
+	{
+		CAPTURE(index);
+		REQUIRE(loaded.Session[index].has_value());
+		CHECK(resolved.Session[index].R ==
+			  doctest::Approx(DistinctColor(kSessionBase + index).R).epsilon(0.001));
 	}
 }
 
