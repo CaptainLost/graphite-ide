@@ -3,6 +3,7 @@
 #include "Panels/ConversationView.h"
 #include "Panels/LocalClock.h"
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestSort.h"
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 
@@ -16,33 +17,37 @@
 
 namespace Graphite {
 
-	// Every API request of a session: a chart of each one's context and cost, and a list that
-	// folds each to a line and opens it to what it sent and returned. The list is virtualised
-	// as the conversation is: rows start at an estimated height and keep what they really took
-	// the first time they are drawn.
+	// Every API request of a session: a chart of each one's context and cost, a table of them
+	// the reader sorts by any column, and under it, split by a handle the reader drags, what
+	// the selected request sent and returned.
 	class RequestsView
 	{
 	public:
 		void Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context);
 
-		// Clears the filters, opens the request at `requestIndex` — its position in
-		// GetRequests() — and scrolls the list to it on the next draw.
-		void Reveal(std::size_t requestIndex);
+		// Clears the filters, selects the request at `requestIndex` — its position in
+		// GetRequests() — and scrolls the table to it on the next draw. `generation` is the
+		// session generation the position was taken from: a position from an earlier reading of
+		// the transcript names some other request, and is dropped.
+		void Reveal(std::size_t requestIndex, std::uint64_t generation);
 
 	private:
 		void Rebuild(const RequestTimeline& timeline, const Session& session);
-		void PriceChart(const RequestTimeline& timeline, const Pricing& pricing);
-		void Filter(const RequestTimeline& timeline);
+		void PriceRequests(const RequestTimeline& timeline, const Pricing& pricing);
+		void Filter(const RequestTimeline& timeline, const Pricing& pricing);
 		void DrawChart(const SessionPalette& palette);
-		void DrawFilters(const RequestTimeline& timeline);
-		void DrawList(const RequestTimeline& timeline, const ConversationContext& context);
-		void DrawRow(const ApiRequest& request, std::size_t position, const ConversationContext& context);
-		float Estimate(const ApiRequest& request, std::size_t position) const;
+		void DrawFilters(const RequestTimeline& timeline, const Pricing& pricing);
+		void DrawTable(const RequestTimeline& timeline, const ConversationContext& context);
+		void DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context);
+		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context);
 
-		// By position in GetRequests(), for every request.
-		std::vector<float> m_Heights;
-		std::vector<bool> m_Measured;
+		// By position in GetRequests(), for every request: the tools it used, and the same names
+		// joined as its Tools cell reads them.
 		std::vector<std::vector<std::string>> m_ToolNames;
+		std::vector<std::string> m_ToolLabels;
+
+		// Every tool any request used, for the filter.
+		std::set<std::string> m_AllTools;
 
 		// The chart's series, one value per request.
 		std::vector<double> m_ChartX;
@@ -51,29 +56,35 @@ namespace Graphite {
 		std::vector<double> m_ChartRead;
 		std::vector<double> m_ChartCost;
 
-		// The prices m_ChartCost was worked out with: an edited price moves the line without
-		// the timeline changing.
+		// Each request's cost, for its cell and the chart's line, and the prices they were
+		// worked out with: an edited price moves both without the timeline changing.
+		std::vector<CostResult> m_Costs;
 		std::map<std::string, Price> m_PricedWith;
-		bool m_PriceDirty = true;
 
-		// Every tool any request used, sorted, for the filter.
-		std::vector<std::string> m_AllTools;
+		// The first position whose cost is not worked out yet.
+		std::size_t m_PriceFrom = 0;
 
-		// The positions the filters let through, and each one's top in the list.
+		// The positions the filters let through, in the table's order.
 		std::vector<std::size_t> m_Shown;
-		std::vector<float> m_Offsets;
 
-		std::set<std::size_t> m_Open;
+		RequestColumn m_SortColumn = RequestColumn::Index;
+		bool m_SortAscending = true;
+
+		std::optional<std::size_t> m_Selected;
 		bool m_RebuiltOnly = false;
 		std::string m_ToolFilter;
+
 		std::optional<std::size_t> m_PendingReveal;
+		std::uint64_t m_RevealGeneration = 0;
+
+		// The table's height above the handle; below zero until the first draw picks one.
+		float m_ListHeight = -1.0f;
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 
 		// UINT64_MAX means "never built", as in the conversation: a real generation starts at 0.
 		std::uint64_t m_BuiltGeneration = UINT64_MAX;
 		bool m_FilterDirty = true;
-		bool m_OffsetsDirty = true;
 
 		LocalClock m_Clock;
 	};

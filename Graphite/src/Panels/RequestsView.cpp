@@ -21,7 +21,7 @@ namespace Graphite {
 
 	namespace {
 		// The chart's height, in lines of text: tall enough to tell a cache rebuild from its
-		// neighbours, short enough to leave most of the tab to the list.
+		// neighbours, short enough to leave most of the tab to the table.
 		constexpr float kChartLines = 12.0f;
 
 		constexpr std::size_t kToolNameBytes = 80;
@@ -29,125 +29,174 @@ namespace Graphite {
 		// The chart's series, which name its legend entries too.
 		constexpr const char* kSeries[] = {"Uncached input", "Cache write", "Cache read", "Cost"};
 
+		// The table's columns, in the order they start in. The sort column travels as the
+		// column's user id, so a reader's reordering or hiding never changes what a sort means.
+		struct ColumnSpec
+		{
+			const char* Label;
+			RequestColumn Id;
+			ImGuiTableColumnFlags Flags;
+			float Weight;
+			bool Numeric;
+		};
+
+		// "Δ" is U+0394. The last column is the rebuilt mark alone: its header is the mark too.
+		constexpr ColumnSpec kColumns[] = {
+			{"#", RequestColumn::Index, ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoHide, 0.6f, true},
+			{"Time", RequestColumn::Time, ImGuiTableColumnFlags_None, 1.1f, false},
+			{"Model", RequestColumn::Model, ImGuiTableColumnFlags_None, 1.2f, false},
+			{"Context", RequestColumn::Context, ImGuiTableColumnFlags_None, 1.0f, true},
+			{"\xce\x94", RequestColumn::Delta, ImGuiTableColumnFlags_None, 0.9f, true},
+			{"Cache %", RequestColumn::CachedShare, ImGuiTableColumnFlags_None, 0.8f, true},
+			{"Out", RequestColumn::Output, ImGuiTableColumnFlags_None, 0.8f, true},
+			{"Cost", RequestColumn::Cost, ImGuiTableColumnFlags_None, 0.8f, true},
+			{"Wait", RequestColumn::Wait, ImGuiTableColumnFlags_None, 0.8f, true},
+			{"Stop", RequestColumn::Stop, ImGuiTableColumnFlags_None, 1.2f, false},
+			{"Tools", RequestColumn::Tools, ImGuiTableColumnFlags_None, 2.0f, false},
+			{ICON_MDI_CACHED "##rebuilt", RequestColumn::Rebuilt, ImGuiTableColumnFlags_WidthFixed, 0.0f, false},
+		};
+
+		constexpr int kColumnCount = static_cast<int>(std::size(kColumns));
+
 		ImVec4 Colour(ImU32 colour)
 		{
 			return ImGui::ColorConvertU32ToFloat4(colour);
 		}
+
+		// One cell's text, cut to the column so it never runs into the next, and pushed to the
+		// right edge for a number so a column of them lines up.
+		void Cell(const std::string& text, ImU32 colour, bool alignRight)
+		{
+			const float room = ImGui::GetContentRegionAvail().x;
+			const std::string fitted = Fitted(text, room);
+
+			if (alignRight)
+			{
+				const float width = ImGui::CalcTextSize(fitted.c_str(), fitted.c_str() + fitted.size()).x;
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(room - width, 0.0f));
+			}
+
+			// An item on every path, the empty text included: the cursor was just moved.
+			ColouredText(colour, fitted);
+		}
 	}
 
-	void RequestsView::Reveal(std::size_t requestIndex)
+	void RequestsView::Reveal(std::size_t requestIndex, std::uint64_t generation)
 	{
 		m_RebuiltOnly = false;
 		m_ToolFilter.clear();
-		m_Open.insert(requestIndex);
-
-		if (requestIndex < m_Measured.size())
-			m_Measured[requestIndex] = false;
-
+		m_Selected = requestIndex;
 		m_PendingReveal = requestIndex;
+		m_RevealGeneration = generation;
 		m_FilterDirty = true;
-	}
-
-	float RequestsView::Estimate(const ApiRequest& request, std::size_t position) const
-	{
-		const float line = ImGui::GetTextLineHeightWithSpacing();
-
-		if (!m_Open.contains(position))
-			return line;
-
-		// The folded line, the three headings, and a line an item — or one saying there is none.
-		const float items = static_cast<float>(std::max<std::size_t>(request.Sent.size(), 1) +
-											   std::max<std::size_t>(request.Response.size(), 1));
-		return line * (4.0f + items);
 	}
 
 	void RequestsView::Rebuild(const RequestTimeline& timeline, const Session& session)
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
-		// Within one generation the timeline only grows, and the requests already listed keep
-		// their places and their measured heights. A new generation is the transcript read again
-		// from nothing: what was open, filtered or about to be revealed named other requests.
-		// Never having been built is not a new generation, or a Reveal made before the first
-		// draw would be lost.
+		// A new generation is the transcript read again from nothing: what was selected or
+		// filtered named other requests. A reveal asked for in this very generation — the
+		// conversation, drawn first, may ask for one on the frame the restart lands — is the one
+		// thing kept.
 		if (session.GetGeneration() != m_BuiltGeneration)
 		{
-			if (m_BuiltGeneration != UINT64_MAX)
-			{
-				m_Open.clear();
-				m_RebuiltOnly = false;
-				m_ToolFilter.clear();
-				m_PendingReveal.reset();
-			}
+			m_Selected.reset();
+			m_RebuiltOnly = false;
+			m_ToolFilter.clear();
 
-			m_Heights.clear();
-			m_Measured.clear();
+			if (m_PendingReveal && m_RevealGeneration != session.GetGeneration())
+				m_PendingReveal.reset();
+
+			m_Selected = m_PendingReveal;
+
+			m_ToolNames.clear();
+			m_ToolLabels.clear();
+			m_AllTools.clear();
+			m_Costs.clear();
+			m_PriceFrom = 0;
 		}
 
-		const std::size_t kept = std::min(m_Heights.size(), requests.size());
+		// Within one generation the timeline only grows, and of the requests already built only
+		// the last can still change: the rest of its response is still being written. The ones
+		// before it are kept as they are. A timeline that shrank all the same is built again.
+		if (requests.size() < m_ToolNames.size())
+		{
+			m_ToolNames.clear();
+			m_ToolLabels.clear();
+			m_AllTools.clear();
+			m_PriceFrom = 0;
+		}
 
-		m_Heights.resize(requests.size());
-		m_Measured.resize(requests.size(), false);
-
-		for (std::size_t position = kept; position < requests.size(); ++position)
-			m_Heights[position] = Estimate(requests[position], position);
+		const std::size_t from = m_ToolNames.empty() ? 0 : m_ToolNames.size() - 1;
 
 		m_ToolNames.resize(requests.size());
-
-		std::set<std::string> tools;
-
-		for (std::size_t position = 0; position < requests.size(); ++position)
-		{
-			m_ToolNames[position] = ToolNamesUsed(requests[position]);
-			tools.insert(m_ToolNames[position].begin(), m_ToolNames[position].end());
-		}
-
-		m_AllTools.assign(tools.begin(), tools.end());
-
-		// Stacked by drawing each bar from the top down, every one over the last: PlotBarGroups
-		// takes its colours from the colormap and fixes them when an item is first seen, where
-		// this chart's must follow the scheme.
+		m_ToolLabels.resize(requests.size());
 		m_ChartX.resize(requests.size());
 		m_ChartTotal.resize(requests.size());
 		m_ChartCached.resize(requests.size());
 		m_ChartRead.resize(requests.size());
 
-		for (std::size_t position = 0; position < requests.size(); ++position)
+		for (std::size_t position = from; position < requests.size(); ++position)
 		{
 			const ApiRequest& request = requests[position];
-			const TokenCounts& usage = request.Usage;
 
+			m_ToolNames[position] = ToolNamesUsed(request);
+			m_AllTools.insert(m_ToolNames[position].begin(), m_ToolNames[position].end());
+
+			std::string label;
+			for (const std::string& name : m_ToolNames[position])
+				label += (label.empty() ? "" : ", ") + SingleLineLabel(name, kToolNameBytes);
+			m_ToolLabels[position] = std::move(label);
+
+			// Stacked by drawing each bar from the top down, every one over the last:
+			// PlotBarGroups takes its colours from the colormap and fixes them when an item is
+			// first seen, where this chart's must follow the scheme.
+			const TokenCounts& usage = request.Usage;
 			m_ChartX[position] = static_cast<double>(request.Index);
 			m_ChartTotal[position] = static_cast<double>(request.Context);
 			m_ChartCached[position] = static_cast<double>(usage.CacheRead + usage.CacheWrite5m + usage.CacheWrite1h);
 			m_ChartRead[position] = static_cast<double>(usage.CacheRead);
 		}
 
+		m_PriceFrom = std::min(m_PriceFrom, from);
 		m_BuiltVersion = timeline.GetVersion();
 		m_BuiltGeneration = session.GetGeneration();
 		m_FilterDirty = true;
-		m_PriceDirty = true;
 	}
 
-	void RequestsView::PriceChart(const RequestTimeline& timeline, const Pricing& pricing)
+	void RequestsView::PriceRequests(const RequestTimeline& timeline, const Pricing& pricing)
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
+
+		// An edited price changes every request's cost, and with a table sorted by cost, the
+		// order too.
+		if (pricing.GetEntries() != m_PricedWith)
+		{
+			m_PricedWith = pricing.GetEntries();
+			m_PriceFrom = 0;
+			m_FilterDirty = true;
+		}
+
+		if (m_PriceFrom >= requests.size() && m_Costs.size() == requests.size())
+			return;
+
+		m_Costs.resize(requests.size());
 		m_ChartCost.resize(requests.size());
 
 		// A request with no price has no point on the line, rather than a point at zero.
-		for (std::size_t position = 0; position < requests.size(); ++position)
+		for (std::size_t position = std::min(m_PriceFrom, requests.size()); position < requests.size(); ++position)
 		{
 			const ApiRequest& request = requests[position];
-			const CostResult cost = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}});
-
-			m_ChartCost[position] = cost.IsKnown() ? cost.Dollars : std::numeric_limits<double>::quiet_NaN();
+			m_Costs[position] = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}});
+			m_ChartCost[position] =
+				m_Costs[position].IsKnown() ? m_Costs[position].Dollars : std::numeric_limits<double>::quiet_NaN();
 		}
 
-		m_PricedWith = pricing.GetEntries();
-		m_PriceDirty = false;
+		m_PriceFrom = requests.size();
 	}
 
-	void RequestsView::Filter(const RequestTimeline& timeline)
+	void RequestsView::Filter(const RequestTimeline& timeline, const Pricing& pricing)
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 		m_Shown.clear();
@@ -165,8 +214,8 @@ namespace Graphite {
 			m_Shown.push_back(position);
 		}
 
+		SortRequests(m_Shown, requests, m_SortColumn, m_SortAscending, pricing);
 		m_FilterDirty = false;
-		m_OffsetsDirty = true;
 	}
 
 	void RequestsView::DrawChart(const SessionPalette& palette)
@@ -176,9 +225,13 @@ namespace Graphite {
 		if (!ImPlot::BeginPlot("##requestsChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
 			return;
 
-		ImPlot::SetupAxis(ImAxis_X1, "Request", ImPlotAxisFlags_AutoFit);
-		ImPlot::SetupAxis(ImAxis_Y1, "Tokens", ImPlotAxisFlags_AutoFit);
-		ImPlot::SetupAxis(ImAxis_Y2, "Dollars", ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit);
+		// The requests axis is set once and then left to the reader to pan and zoom; the value
+		// axes follow whatever part of it is in view.
+		ImPlot::SetupAxis(ImAxis_X1, "Request", ImPlotAxisFlags_None);
+		ImPlot::SetupAxisLimits(ImAxis_X1, 0.5, static_cast<double>(count) + 0.5, ImPlotCond_Once);
+		ImPlot::SetupAxis(ImAxis_Y1, "Tokens", ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
+		ImPlot::SetupAxis(ImAxis_Y2, "Dollars",
+						  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 
 		// Hiding a series would uncover the one drawn under it in the wrong colour.
 		ImPlot::SetupLegend(ImPlotLocation_NorthWest, ImPlotLegendFlags_NoButtons);
@@ -197,8 +250,8 @@ namespace Graphite {
 		ImPlot::SetNextLineStyle(Colour(palette.Accent));
 		ImPlot::PlotLine(kSeries[3], m_ChartX.data(), m_ChartCost.data(), count, ImPlotLineFlags_SkipNaN);
 
-		// A click anywhere over a request's column opens it in the list: the bars are too thin
-		// to be hit exactly once there are a few hundred of them. Taken on release and only
+		// A click anywhere over a request's column selects it in the table: the bars are too
+		// thin to be hit exactly once there are a few hundred of them. Taken on release and only
 		// without a drag, which pans the chart; and not over the legend, which sits on the bars.
 		const bool overLegend = std::any_of(std::begin(kSeries), std::end(kSeries),
 											[](const char* series) { return ImPlot::IsLegendEntryHovered(series); });
@@ -210,13 +263,13 @@ namespace Graphite {
 			const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
 			const double nearest = std::clamp(std::round(x), 1.0, static_cast<double>(count));
 
-			Reveal(static_cast<std::size_t>(nearest) - 1);
+			Reveal(static_cast<std::size_t>(nearest) - 1, m_BuiltGeneration);
 		}
 
 		ImPlot::EndPlot();
 	}
 
-	void RequestsView::DrawFilters(const RequestTimeline& timeline)
+	void RequestsView::DrawFilters(const RequestTimeline& timeline, const Pricing& pricing)
 	{
 		if (ImGui::Checkbox("Cache rebuilt only", &m_RebuiltOnly))
 			m_FilterDirty = true;
@@ -234,12 +287,12 @@ namespace Graphite {
 				m_FilterDirty = true;
 			}
 
-			for (std::size_t index = 0; index < m_AllTools.size(); ++index)
-			{
-				const std::string& name = m_AllTools[index];
+			int index = 0;
 
+			for (const std::string& name : m_AllTools)
+			{
 				// By place, so two names that read the same once cut to a label stay apart.
-				ImGui::PushID(static_cast<int>(index));
+				ImGui::PushID(index++);
 
 				if (ImGui::Selectable(SingleLineLabel(name, kToolNameBytes).c_str(), name == m_ToolFilter))
 				{
@@ -254,7 +307,7 @@ namespace Graphite {
 		}
 
 		if (m_FilterDirty)
-			Filter(timeline);
+			Filter(timeline, pricing);
 
 		const std::size_t total = timeline.GetRequests().size();
 		const char* noun = total == 1 ? "request" : "requests";
@@ -267,108 +320,187 @@ namespace Graphite {
 			ImGui::TextDisabled("%zu of %zu %s", m_Shown.size(), total, noun);
 	}
 
-	void RequestsView::DrawRow(const ApiRequest& request, std::size_t position, const ConversationContext& context)
+	void RequestsView::DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context)
 	{
+		const SessionPalette& palette = context.Palette;
+		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+		const bool hasUsage = request.Usage.Total() > 0;
+
+		ImGui::TableNextRow();
 		ImGui::PushID(static_cast<int>(position));
 
-		const bool open = m_Open.contains(position);
-		const float lineHeight = ImGui::GetTextLineHeight();
-		const ImVec2 start = ImGui::GetCursorScreenPos();
-		const float right = start.x + ImGui::GetContentRegionAvail().x;
-
-		if (ImGui::Selectable("##request", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		// Cell by cell in the order the columns were set up, which is not the order a reader
+		// may have dragged them into; a hidden one is skipped.
+		for (int column = 0; column < kColumnCount; ++column)
 		{
-			if (open)
-				m_Open.erase(position);
-			else
-				m_Open.insert(position);
+			if (!ImGui::TableSetColumnIndex(column))
+				continue;
 
-			m_Measured[position] = false;
-			m_OffsetsDirty = true;
-		}
+			const ColumnSpec& spec = kColumns[column];
 
-		ImVec2 at = start;
-		DrawPiece(at, ImGui::GetColorU32(ImGuiCol_Text),
-				  std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ");
-		DrawRequestLine(at, right, request, context.Prices, context.Palette, m_Clock);
+			switch (spec.Id)
+			{
+			case RequestColumn::Index:
+			{
+				// The row's one item that takes a click, across every column. `#` cannot be
+				// hidden, so the row always has it.
+				if (ImGui::Selectable("##row", m_Selected == position,
+									  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+					m_Selected = position;
 
-		if (open)
-		{
-			ImGui::Indent();
-			DrawRequestDetails(request, context.Palette);
-			ImGui::Unindent();
+				ImGui::SameLine(0.0f, 0.0f);
+				Cell(std::to_string(request.Index), ink, spec.Numeric);
+				break;
+			}
+			case RequestColumn::Time: Cell(m_Clock.HoursMinutesSeconds(request.RespondedAt), ink, false); break;
+			case RequestColumn::Model:
+				Cell(request.Model.empty() ? std::string{}
+										   : SingleLineLabel(ShortModelName(request.Model), 80) + (request.Fast ? " fast" : ""),
+					 ink, false);
+				break;
+			case RequestColumn::Context:
+				Cell(hasUsage ? FormatTokens(request.Context) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Delta:
+				Cell(request.ContextDelta ? SignedTokens(*request.ContextDelta) : std::string{}, ink, true);
+				break;
+			case RequestColumn::CachedShare:
+				Cell(hasUsage && request.Context > 0
+						 ? std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "%"
+						 : std::string{},
+					 ink, true);
+				break;
+			case RequestColumn::Output:
+				Cell(hasUsage ? FormatTokens(request.Usage.Output) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Cost:
+				Cell(hasUsage && position < m_Costs.size() ? FormatCost(m_Costs[position]) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Wait:
+				Cell(request.Waited ? WaitText(*request.Waited) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Stop:
+				Cell(std::string{StopGlyph(request.StopReason)} +
+						 (request.StopReason.empty() ? "" : " " + SingleLineLabel(request.StopReason, 60)),
+					 palette.TextDisabled, false);
+				break;
+			case RequestColumn::Tools: Cell(m_ToolLabels[position], palette.TextDisabled, false); break;
+			case RequestColumn::Rebuilt:
+				Cell(request.CacheRebuilt ? std::string{ICON_MDI_CACHED} : std::string{}, palette.Edit, false);
+				break;
+			}
 		}
 
 		ImGui::PopID();
 	}
 
-	void RequestsView::DrawList(const RequestTimeline& timeline, const ConversationContext& context)
+	void RequestsView::DrawTable(const RequestTimeline& timeline, const ConversationContext& context)
 	{
-		if (!ImGui::BeginChild("##requests", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_None))
-		{
-			ImGui::EndChild();
+		constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_Sortable | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |
+										   ImGuiTableFlags_Reorderable | ImGuiTableFlags_RowBg |
+										   ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY |
+										   ImGuiTableFlags_SizingStretchProp;
+
+		// Fills the child it is in; the table scrolls itself, under its frozen header.
+		if (!ImGui::BeginTable("##requestTable", kColumnCount, kFlags))
 			return;
-		}
 
-		const std::vector<ApiRequest>& requests = timeline.GetRequests();
+		// The mark's column is as wide as the mark and the sort arrow its header may show.
+		const float markWidth = ImGui::CalcTextSize(ICON_MDI_CACHED).x + ImGui::GetFontSize();
 
-		if (m_OffsetsDirty)
+		for (const ColumnSpec& spec : kColumns)
 		{
-			m_Offsets.assign(m_Shown.size() + 1, 0.0f);
-
-			for (std::size_t row = 0; row < m_Shown.size(); ++row)
-				m_Offsets[row + 1] = m_Offsets[row] + m_Heights[m_Shown[row]];
-
-			m_OffsetsDirty = false;
+			const float width = (spec.Flags & ImGuiTableColumnFlags_WidthFixed) != 0 ? markWidth : spec.Weight;
+			ImGui::TableSetupColumn(spec.Label, spec.Flags, width, static_cast<ImGuiID>(spec.Id));
 		}
 
-		// Scrolled to on the next frame, when the child applies its scroll target. The row's top
-		// is exact: every row above it that was never drawn is a folded one, one line tall.
+		ImGui::TableSetupScrollFreeze(0, 1);
+
+		if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsDirty)
+		{
+			m_SortColumn = RequestColumn::Index;
+			m_SortAscending = true;
+
+			if (specs->SpecsCount > 0 && specs->Specs[0].ColumnUserID <= static_cast<ImGuiID>(RequestColumn::Rebuilt))
+			{
+				m_SortColumn = static_cast<RequestColumn>(specs->Specs[0].ColumnUserID);
+				m_SortAscending = specs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
+			}
+
+			SortRequests(m_Shown, timeline.GetRequests(), m_SortColumn, m_SortAscending, context.Prices);
+			specs->SpecsDirty = false;
+		}
+
+		// The header row by hand rather than TableHeadersRow, for the mark's column to say what
+		// the mark means.
+		ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
+
+		for (int column = 0; column < kColumnCount; ++column)
+		{
+			if (!ImGui::TableSetColumnIndex(column))
+				continue;
+
+			ImGui::PushID(column);
+			ImGui::TableHeader(ImGui::TableGetColumnName(column));
+
+			if (kColumns[column].Id == RequestColumn::Rebuilt)
+				ImGui::SetItemTooltip("Cache rebuilt: at least half the context was written to the cache");
+
+			ImGui::PopID();
+		}
+
+		// The row to scroll to, in the table's order. The filters were cleared by Reveal, so it
+		// is there unless the timeline no longer has it.
+		std::optional<int> revealRow;
+
 		if (m_PendingReveal)
 		{
-			const auto found = std::lower_bound(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
+			const auto found = std::find(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
 
-			if (found != m_Shown.end() && *found == *m_PendingReveal)
-				ImGui::SetScrollY(m_Offsets[static_cast<std::size_t>(found - m_Shown.begin())]);
+			if (found != m_Shown.end())
+				revealRow = static_cast<int>(found - m_Shown.begin());
 
 			m_PendingReveal.reset();
 		}
 
-		const float top = ImGui::GetScrollY();
-		const float bottom = top + ImGui::GetWindowHeight();
+		const std::vector<ApiRequest>& requests = timeline.GetRequests();
+		ImGuiListClipper clipper;
+		clipper.Begin(static_cast<int>(m_Shown.size()));
 
-		// Rows overlapping the visible band, plus one either side so a row half in view is drawn.
-		const auto first = std::upper_bound(m_Offsets.begin(), m_Offsets.end(), top);
-		std::size_t begin = first == m_Offsets.begin() ? 0 : static_cast<std::size_t>(first - m_Offsets.begin()) - 1;
-		begin = begin > 0 ? begin - 1 : 0;
+		// Drawn whether or not it is in view, so it has a place to scroll to.
+		if (revealRow)
+			clipper.IncludeItemByIndex(*revealRow);
 
-		const float startY = ImGui::GetCursorPosY();
-
-		for (std::size_t row = begin; row < m_Shown.size() && m_Offsets[row] < bottom + m_Heights[m_Shown[row]]; ++row)
+		while (clipper.Step())
 		{
-			const std::size_t position = m_Shown[row];
-
-			ImGui::SetCursorPosY(startY + m_Offsets[row]);
-			const float before = ImGui::GetCursorPosY();
-
-			DrawRow(requests[position], position, context);
-
-			const float taken = ImGui::GetCursorPosY() - before;
-
-			if (!m_Measured[position] || taken != m_Heights[position])
+			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 			{
-				m_Heights[position] = taken;
-				m_Measured[position] = true;
-				m_OffsetsDirty = true;
+				const std::size_t position = m_Shown[static_cast<std::size_t>(row)];
+				DrawTableRow(requests[position], position, context);
+
+				if (revealRow && row == *revealRow)
+					ImGui::SetScrollHereY(0.5f);
 			}
 		}
 
-		// The child's scroll range is the whole list, drawn or not. The Dummy closes the layout:
-		// a SetCursorPos with no item after it is an assertion failure in ImGui.
-		ImGui::SetCursorPosY(startY + m_Offsets.back());
-		ImGui::Dummy(ImVec2(0.0f, 0.0f));
+		ImGui::EndTable();
+	}
 
-		ImGui::EndChild();
+	void RequestsView::DrawDetails(const RequestTimeline& timeline, const ConversationContext& context)
+	{
+		const std::vector<ApiRequest>& requests = timeline.GetRequests();
+
+		if (!m_Selected || *m_Selected >= requests.size())
+		{
+			ImGui::TextDisabled("Select a request to see what it sent and returned.");
+			return;
+		}
+
+		const ApiRequest& request = requests[*m_Selected];
+
+		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
+					 Fitted(RequestLine(request, context.Prices, m_Clock), ImGui::GetContentRegionAvail().x));
+		DrawRequestDetails(request, context.Palette);
 	}
 
 	void RequestsView::Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context)
@@ -376,8 +508,7 @@ namespace Graphite {
 		if (session.GetGeneration() != m_BuiltGeneration || timeline.GetVersion() != m_BuiltVersion)
 			Rebuild(timeline, session);
 
-		if (m_PriceDirty || context.Prices.GetEntries() != m_PricedWith)
-			PriceChart(timeline, context.Prices);
+		PriceRequests(timeline, context.Prices);
 
 		if (timeline.GetRequests().empty())
 		{
@@ -386,11 +517,53 @@ namespace Graphite {
 		}
 
 		DrawChart(context.Palette);
-		DrawFilters(timeline);
+		DrawFilters(timeline, context.Prices);
 
-		if (m_Shown.empty())
-			ImGui::TextDisabled("No request matches the filters.");
-		else
-			DrawList(timeline, context);
+		// The table above, the selected request's details below, and between them a handle
+		// that moves the line between the two. Each side keeps a few lines however far it is
+		// dragged.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
+		const float room = ImGui::GetContentRegionAvail().y - handle - 2.0f * style.ItemSpacing.y;
+		const float minimum = ImGui::GetFrameHeightWithSpacing() * 3.0f;
+
+		if (m_ListHeight < 0.0f)
+			m_ListHeight = room * 0.55f;
+
+		const float listHeight = std::max(std::min(m_ListHeight, room - minimum), minimum);
+
+		if (ImGui::BeginChild("##requestList", ImVec2(0.0f, listHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
+							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+		{
+			if (m_Shown.empty())
+				ImGui::TextDisabled("No request matches the filters.");
+			else
+				DrawTable(timeline, context);
+		}
+
+		ImGui::EndChild();
+
+		const ImVec2 handleAt = ImGui::GetCursorScreenPos();
+		const float handleWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
+
+		ImGui::InvisibleButton("##requestSplit", ImVec2(handleWidth, handle));
+
+		if (ImGui::IsItemActive())
+			m_ListHeight = std::max(std::min(listHeight + ImGui::GetIO().MouseDelta.y, room - minimum), minimum);
+
+		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+
+		const ImGuiCol lineColour = ImGui::IsItemActive()	 ? ImGuiCol_SeparatorActive
+									: ImGui::IsItemHovered() ? ImGuiCol_SeparatorHovered
+															 : ImGuiCol_Separator;
+		const float lineY = std::floor(handleAt.y + handle * 0.5f);
+		ImGui::GetWindowDrawList()->AddLine(ImVec2(handleAt.x, lineY), ImVec2(handleAt.x + handleWidth, lineY),
+											ImGui::GetColorU32(lineColour));
+
+		if (ImGui::BeginChild("##requestDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding))
+			DrawDetails(timeline, context);
+
+		ImGui::EndChild();
 	}
 }

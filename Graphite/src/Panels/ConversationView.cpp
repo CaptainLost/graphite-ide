@@ -301,11 +301,15 @@ namespace Graphite {
 		if (ImGui::Selectable("##usage", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(width, lineHeight)))
 			Toggle(m_OpenUsage, key, row);
 
+		// The chevron says the line opens, as a run of steps' does.
+		const bool open = m_OpenUsage.contains(key);
 		ImVec2 at = start;
 		DrawPiece(at, context.Palette.TextDisabled,
-				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), width));
+				  Fitted(std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ", right - at.x));
+		DrawPiece(at, context.Palette.TextDisabled,
+				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), right - at.x));
 
-		if (!m_OpenUsage.contains(key) || context.Timeline == nullptr)
+		if (!open || context.Timeline == nullptr)
 			return;
 
 		const std::vector<ApiRequest>& requests = context.Timeline->GetRequests();

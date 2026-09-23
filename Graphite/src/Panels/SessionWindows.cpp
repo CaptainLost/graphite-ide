@@ -224,7 +224,7 @@ namespace Graphite {
 					// Revealed whether or not the tab is drawn this frame: the view keeps it for its
 					// next draw, which is the frame the selection takes effect.
 					if (const std::optional<std::size_t> pending = std::exchange(entry.PendingRequest, std::nullopt))
-						entry.Requests.Reveal(*pending);
+						entry.Requests.Reveal(*pending, entry.Data.GetGeneration());
 
 					if (requestsOpen)
 					{
