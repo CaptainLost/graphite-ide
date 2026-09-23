@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,12 @@ namespace Graphite {
 		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;
 
+		// Opens a tab running `program` rather than a discovered shell. The tab behaves as any
+		// other: it is pumped, resized and closed the same way, and it closes when the program
+		// exits. False when the program could not be started, which is also logged.
+		bool OpenCommand(const std::string& label, const std::filesystem::path& program,
+						 std::vector<std::string> arguments, const std::filesystem::path& workingDirectory);
+
 	private:
 		struct Tab
 		{
@@ -47,7 +54,8 @@ namespace Graphite {
 			bool Closing = false;
 		};
 
-		void OpenTab(const Core::ShellProfile& profile);
+		bool OpenTab(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory);
+		std::filesystem::path DefaultWorkingDirectory() const;
 		void RenderTabBar();
 		void RenderNewTerminalRow();
 		void RemoveClosedTabs();

@@ -1,0 +1,109 @@
+#include "Settings/ClaudeSection.h"
+
+#include "Sessions/ClaudeSettings.h"
+
+#include <imgui.h>
+
+#include <cstddef>
+#include <iterator>
+#include <map>
+
+namespace Graphite {
+
+	ClaudeSection::ClaudeSection(ClaudeSettings& settings) : m_Settings(settings) {}
+
+	void ClaudeSection::OnImGuiRender()
+	{
+		RenderBinary();
+		RenderPrices();
+	}
+
+	void ClaudeSection::RenderBinary()
+	{
+		ImGui::SeparatorText("Program");
+
+		if (!m_EditingBinary)
+		{
+			const std::u8string text = m_Settings.GetBinary().u8string();
+			m_PendingBinary.assign(reinterpret_cast<const char*>(text.data()), text.size());
+		}
+
+		char buffer[1024] = {};
+		m_PendingBinary.copy(buffer, sizeof(buffer) - 1);
+
+		ImGui::SetNextItemWidth(-1.0f);
+
+		if (ImGui::InputTextWithHint("##claudeBinary", "claude.exe from PATH", buffer, sizeof(buffer)))
+			m_PendingBinary = buffer;
+
+		m_EditingBinary = ImGui::IsItemActive();
+
+		if (ImGui::IsItemDeactivatedAfterEdit())
+		{
+			m_Settings.SetBinary(std::filesystem::path{std::u8string{
+				reinterpret_cast<const char8_t*>(m_PendingBinary.data()), m_PendingBinary.size()}});
+		}
+
+		const std::filesystem::path resolved = m_Settings.ResolveProgram();
+
+		if (resolved.empty())
+			ImGui::TextDisabled("Claude was not found. Name claude.exe above, or put it on PATH.");
+		else
+			ImGui::TextDisabled("Runs %s", reinterpret_cast<const char*>(resolved.u8string().c_str()));
+	}
+
+	void ClaudeSection::RenderPrices()
+	{
+		ImGui::SeparatorText("Prices, dollars per million tokens");
+
+		constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
+
+		if (!ImGui::BeginTable("##claudePrices", 7, kFlags))
+			return;
+
+		ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+		for (const char* column : {"Input", "Output", "Write 5m", "Write 1h", "Read"})
+			ImGui::TableSetupColumn(column, ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("##reset", ImGuiTableColumnFlags_WidthFixed);
+		ImGui::TableHeadersRow();
+
+		// Copied first: SetPrice and ResetPrice change the map being walked.
+		const std::map<std::string, Price> entries = m_Settings.GetPricing().GetEntries();
+
+		for (const auto& [model, price] : entries)
+		{
+			ImGui::PushID(model.c_str());
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			ImGui::TextUnformatted(model.c_str());
+
+			Price edited = price;
+			double* fields[] = {&edited.Input, &edited.Output, &edited.CacheWrite5m, &edited.CacheWrite1h,
+								&edited.CacheRead};
+
+			bool committed = false;
+
+			for (std::size_t index = 0; index < std::size(fields); ++index)
+			{
+				ImGui::TableNextColumn();
+				ImGui::PushID(static_cast<int>(index));
+				ImGui::SetNextItemWidth(-1.0f);
+				ImGui::InputDouble("##price", fields[index], 0.0, 0.0, "%.3f");
+				committed = committed || ImGui::IsItemDeactivatedAfterEdit();
+				ImGui::PopID();
+			}
+
+			if (committed && !(edited == price))
+				m_Settings.SetPrice(model, edited);
+
+			ImGui::TableNextColumn();
+
+			if (ImGui::SmallButton("Reset"))
+				m_Settings.ResetPrice(model);
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndTable();
+	}
+}

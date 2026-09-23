@@ -27,6 +27,8 @@ namespace Graphite {
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kColorSchemeKey = "colorScheme";
 		constexpr const char* kLanguageServerBinaryKey = "languageServerBinary";
+		constexpr const char* kClaudeBinaryKey = "claude.binary";
+		constexpr std::string_view kClaudePricePrefix = "claude.price.";
 
 		constexpr const char* kSearchRespectGitIgnoreKey = "searchRespectGitIgnore";
 		constexpr const char* kSearchProjectsOnlyKey = "searchProjectsOnly";
@@ -256,6 +258,46 @@ namespace Graphite {
 	void AppSettings::SaveLanguageServerBinary(const std::filesystem::path& binary)
 	{
 		WriteValue(kLanguageServerBinaryKey, Core::ToUtf8(binary));
+	}
+
+	std::filesystem::path AppSettings::LoadClaudeBinary()
+	{
+		return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kClaudeBinaryKey));
+	}
+
+	void AppSettings::SaveClaudeBinary(const std::filesystem::path& binary)
+	{
+		WriteValue(kClaudeBinaryKey, Core::ToUtf8(binary));
+	}
+
+	std::vector<std::pair<std::string, std::string>> AppSettings::LoadClaudePrices()
+	{
+		const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+		std::vector<std::pair<std::string, std::string>> prices;
+
+		for (const std::string& key : file.GetKeys())
+		{
+			if (!std::string_view{key}.starts_with(kClaudePricePrefix))
+				continue;
+
+			prices.emplace_back(key.substr(kClaudePricePrefix.size()), file.Get(key));
+		}
+
+		return prices;
+	}
+
+	void AppSettings::SaveClaudePrice(std::string_view model, std::string_view price)
+	{
+		WriteValue((std::string{kClaudePricePrefix} + std::string{model}).c_str(), std::string{price});
+	}
+
+	void AppSettings::RemoveClaudePrice(std::string_view model)
+	{
+		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+		file.Remove(std::string{kClaudePricePrefix} + std::string{model});
+
+		if (!file.Save(SettingsPath()))
+			APP_WARN("Cannot write '{}'", SettingsPath().string());
 	}
 
 	std::filesystem::path AppSettings::ThemesDirectory()

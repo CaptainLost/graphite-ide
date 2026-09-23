@@ -80,7 +80,7 @@ namespace Graphite {
 			m_OpenedFirstTab = true;
 
 			// The discovery list is ordered most capable first, so this is the best default.
-			OpenTab(m_Shells.front());
+			OpenTab(m_Shells.front(), DefaultWorkingDirectory());
 		}
 
 		// Above the tabs, and drawn whether or not any exist: choosing a shell and starting one
@@ -199,15 +199,17 @@ namespace Graphite {
 
 		if (ImGui::Button("+"))
 		{
-			OpenTab(m_Shells[m_SelectedShell]);
+			OpenTab(m_Shells[m_SelectedShell], DefaultWorkingDirectory());
 		}
 	}
 
-	void TerminalPanel::OpenTab(const Core::ShellProfile& profile)
+	std::filesystem::path TerminalPanel::DefaultWorkingDirectory() const
 	{
-		const std::filesystem::path workingDirectory =
-			m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::current_path();
+		return m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::current_path();
+	}
 
+	bool TerminalPanel::OpenTab(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory)
+	{
 		Core::Result<Core::Scope<Core::TerminalSession>> result =
 			Core::TerminalSession::Start(profile, workingDirectory, kInitialColumns, kInitialRows);
 
@@ -215,7 +217,7 @@ namespace Graphite {
 		{
 			// No tab: an empty one would look like a shell that had simply printed nothing.
 			APP_ERROR("Cannot start {}: {}", profile.Name, result.GetError().Message);
-			return;
+			return false;
 		}
 
 		Tab tab;
@@ -224,6 +226,22 @@ namespace Graphite {
 		tab.Id = m_NextId++;
 
 		m_Tabs.push_back(std::move(tab));
+		return true;
+	}
+
+	bool TerminalPanel::OpenCommand(const std::string& label, const std::filesystem::path& program,
+									std::vector<std::string> arguments,
+									const std::filesystem::path& workingDirectory)
+	{
+		// A program is started the way a shell is: a profile is only a name, a path and its
+		// arguments, and TerminalSession needs nothing more.
+		const Core::ShellProfile profile{label, program, std::move(arguments)};
+
+		// Opening a command is a request to see it; without this the first-tab logic would
+		// also start the default shell beside it the first time the panel is drawn.
+		m_OpenedFirstTab = true;
+
+		return OpenTab(profile, workingDirectory);
 	}
 
 	void TerminalPanel::RemoveClosedTabs()

@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace Core {
 
@@ -75,6 +77,16 @@ namespace Graphite {
 		// a "locate clangd" prompt, has somewhere to write without reopening the JSON key.
 		static std::filesystem::path LoadLanguageServerBinary();
 		static void SaveLanguageServerBinary(const std::filesystem::path& binary);
+
+		// Where claude.exe is, when it is not the one on PATH. Empty means "use PATH".
+		static std::filesystem::path LoadClaudeBinary();
+		static void SaveClaudeBinary(const std::filesystem::path& binary);
+
+		// Price overrides as model → "input,output,write5m,write1h,read", one key per model
+		// under "claude.price.". Read as text; Pricing decides what is a valid price.
+		static std::vector<std::pair<std::string, std::string>> LoadClaudePrices();
+		static void SaveClaudePrice(std::string_view model, std::string_view price);
+		static void RemoveClaudePrice(std::string_view model);
 
 		// The executable directory's themes subdirectory, whether or not it exists yet — the
 		// same directory ResolveNamed reads from and the settings panel writes into.
