@@ -40,6 +40,7 @@ namespace Graphite {
 			m_Buffer = nullptr;
 			m_Message.clear();
 			m_State = PreviewState::Empty;
+			m_CentredOn.reset();
 
 			// One file's colours at a time. The cache's entry states belong to the file that
 			// was showing — line 40 of the next file starts in whatever state its own line 39
@@ -84,9 +85,21 @@ namespace Graphite {
 		m_Buffer = nullptr;
 		m_Message.clear();
 		m_State = PreviewState::Empty;
+		m_CentredOn.reset();
 
 		m_Syntax.Reset();
 		m_Syntax.SetLexer(nullptr);
+	}
+
+	bool PreviewContent::TakeCentring(std::size_t line)
+	{
+		if (m_CentredOn == line)
+		{
+			return false;
+		}
+
+		m_CentredOn = line;
+		return true;
 	}
 
 	const std::vector<Token>& PreviewContent::TokensOf(std::size_t line)

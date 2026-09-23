@@ -7,6 +7,7 @@
 #include "Lang/Syntax/Token.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -92,6 +93,11 @@ namespace Graphite {
 		// the cache when it changes, because the lexer is fed tab-expanded text.
 		void SetTabWidth(std::size_t width);
 
+		// True the first time it is asked about a line of the file being shown, false after
+		// that until the line or the file changes. The pane scrolls to the hit only on that
+		// first frame: centring on every frame would take the scroll away from the reader.
+		bool TakeCentring(std::size_t line);
+
 	private:
 		void LoadFromDisk();
 		void DeclareToServer();
@@ -114,5 +120,9 @@ namespace Graphite {
 		// Show needs it: the server's columns become offsets into tab-expanded text, so a span
 		// is only meaningful for one width.
 		std::size_t m_TabWidth = Core::DefaultTabWidth;
+
+		// The line the pane was last centred on, in the file m_Path names. Forgotten whenever
+		// that file changes, so the same line number in another file still asks to be centred.
+		std::optional<std::size_t> m_CentredOn;
 	};
 }

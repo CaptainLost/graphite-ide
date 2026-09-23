@@ -348,3 +348,38 @@ TEST_CASE("The spans of the file being shown are the ones handed back")
 	REQUIRE(spans.size() == 1);
 	CHECK(spans[0].Kind == TokenKind::SemanticType);
 }
+
+TEST_CASE("A preview asks to be centred once per hit line, so the reader can scroll it after")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "a\nb\nc\n");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(file, documents);
+
+	CHECK(content.TakeCentring(1));
+	CHECK_FALSE(content.TakeCentring(1));
+	CHECK(content.TakeCentring(2));
+}
+
+TEST_CASE("Showing another file asks to be centred again, even on the same line")
+{
+	TempDirectory temp;
+	const std::filesystem::path first = temp.MakeFile("first.cpp", "a\nb\n");
+	const std::filesystem::path second = temp.MakeFile("second.cpp", "a\nb\n");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(first, documents);
+	REQUIRE(content.TakeCentring(1));
+
+	content.Show(second, documents);
+	CHECK(content.TakeCentring(1));
+
+	content.Clear();
+	content.Show(second, documents);
+	CHECK(content.TakeCentring(1));
+}

@@ -1,5 +1,7 @@
 #include "Search/PreviewWindow.h"
 
+#include <algorithm>
+
 namespace Graphite {
 
 	PreviewWindow WindowAround(std::size_t line, std::size_t lineCount, std::size_t span)
@@ -33,5 +35,14 @@ namespace Graphite {
 		}
 
 		return PreviewWindow{first, first + span - 1};
+	}
+
+	float ScrollCentring(const ScrollCentringInput& input)
+	{
+		const float rowMiddle = input.ContentTop +
+								static_cast<float>(input.RowsAbove) * input.LineHeight +
+								input.LineHeight * 0.5f;
+
+		return std::max(0.0f, rowMiddle - input.ViewHeight * 0.5f);
 	}
 }

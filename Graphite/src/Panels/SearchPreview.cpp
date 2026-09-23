@@ -7,6 +7,7 @@
 #include "Search/PreviewWindow.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/TextBuffer.h"
 
 #include <imgui.h>
@@ -122,9 +123,24 @@ namespace Graphite {
 		const std::size_t hitLine = input.Hits[input.Current].Line;
 		const PreviewWindow window = WindowAround(hitLine, buffer->GetLineCount(), kPreviewSpan);
 
-		const float cellWidth = ImGui::CalcTextSize("0").x;
+		// From the baked font, not CalcTextSize, which rounds the advance up: every run below is
+		// placed at a multiple of this while AddText advances by the true width, so a rounded
+		// cell opened a gap at each token boundary that widened along the line.
+		const float cellWidth = Core::MonospaceCellWidth();
 		const float lineHeight = ImGui::GetTextLineHeight();
 		const float gutter = GutterWidth(window.Last, cellWidth);
+
+		// Once per hit rather than every frame, so the pane can still be scrolled by hand. Set
+		// before the rows are drawn and applied by ImGui on the next frame, clamped to the
+		// content this frame measures — which is the same twenty-one lines either way.
+		if (content.TakeCentring(hitLine))
+		{
+			ImGui::SetScrollY(ScrollCentring(
+				ScrollCentringInput{.ContentTop = ImGui::GetCursorPosY(),
+									.RowsAbove = hitLine - window.First,
+									.LineHeight = lineHeight,
+									.ViewHeight = ImGui::GetWindowHeight()}));
+		}
 
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 

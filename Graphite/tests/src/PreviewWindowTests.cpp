@@ -42,3 +42,21 @@ TEST_CASE("An empty buffer answers a single empty line")
 {
 	CHECK(WindowAround(0, 0, 21) == PreviewWindow{0, 0});
 }
+
+TEST_CASE("Centring scrolls the hit's row to the middle of the pane")
+{
+	// Row 10 of a pane whose content starts 4px down: its middle is at 4 + 10*20 + 10 = 214,
+	// and a 100px pane has its middle 50px below the scroll.
+	CHECK(ScrollCentring(ScrollCentringInput{.ContentTop = 4.0f,
+											 .RowsAbove = 10,
+											 .LineHeight = 20.0f,
+											 .ViewHeight = 100.0f}) == doctest::Approx(164.0f));
+}
+
+TEST_CASE("Centring a row near the top never scrolls above the content")
+{
+	CHECK(ScrollCentring(ScrollCentringInput{.ContentTop = 4.0f,
+											 .RowsAbove = 1,
+											 .LineHeight = 20.0f,
+											 .ViewHeight = 400.0f}) == 0.0f);
+}

@@ -30,4 +30,28 @@ namespace Graphite {
 	// `lineCount` of zero answers {0, 0}; Core::TextBuffer always reports at least one line,
 	// so this is defence rather than a case a caller can reach.
 	PreviewWindow WindowAround(std::size_t line, std::size_t lineCount, std::size_t span);
+
+	// Bundled because three of these are floats a caller could transpose with nothing said.
+	struct ScrollCentringInput
+	{
+		// Where the first drawn row starts, in the pane's content coordinates — the window
+		// padding above it.
+		float ContentTop = 0.0f;
+
+		// How many drawn rows come before the one to centre.
+		std::size_t RowsAbove = 0;
+
+		float LineHeight = 0.0f;
+
+		// The height of the pane the rows are seen through.
+		float ViewHeight = 0.0f;
+	};
+
+	// The scroll that puts the middle of a row at the middle of the pane. Never negative; the
+	// far end is left to ImGui, which clamps a scroll to the content it measured.
+	//
+	// Needed because the window above is drawn top-down into a pane usually shorter than it:
+	// a bottom panel split in two holds about half of twenty-one lines, so an unscrolled pane
+	// showed the lines above the hit and left the hit itself on the bottom edge.
+	float ScrollCentring(const ScrollCentringInput& input);
 }
