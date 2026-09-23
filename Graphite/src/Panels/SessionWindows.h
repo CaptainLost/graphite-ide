@@ -2,7 +2,9 @@
 
 #include "Panels/ConversationView.h"
 #include "Panels/CostView.h"
+#include "Panels/RequestsView.h"
 #include "Sessions/LiveTranscript.h"
+#include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/ToolFacts.h"
@@ -56,6 +58,10 @@ namespace Graphite {
 			// Counts the subagent maps taken, which the conversation's facts are keyed by.
 			std::uint64_t SubagentsVersion = 0;
 			ConversationView Conversation;
+
+			// The session cut into the API requests it made, fed from the same reads as Data.
+			RequestTimeline Timeline;
+			RequestsView Requests;
 			bool Fresh = true;
 			bool Focus = true;
 		};

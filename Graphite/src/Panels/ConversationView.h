@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panels/LocalClock.h"
 #include "Sessions/Markdown.h"
 #include "Sessions/Pricing.h"
 #include "Sessions/Session.h"
@@ -87,12 +88,6 @@ namespace Graphite {
 		void DrawMarkdown(const std::string& text, std::pair<std::size_t, std::size_t> key,
 						  const ConversationContext& context);
 
-		// "HH:MM" in the reader's time zone, or nothing when the timestamp does not parse.
-		std::string ClockTime(const std::string& timestamp);
-
-		// The reader's offset from UTC at `instant`; zero when the time zone is unknown.
-		std::chrono::minutes OffsetAt(std::chrono::sys_time<std::chrono::milliseconds> instant);
-
 		void Toggle(std::set<std::pair<std::size_t, std::size_t>>& open, std::pair<std::size_t, std::size_t> key,
 					std::size_t row);
 
@@ -143,10 +138,7 @@ namespace Graphite {
 		// By (turn, part). Cleared by every rebuild.
 		std::map<std::pair<std::size_t, std::size_t>, MarkdownCache> m_Markdown;
 
-		// The reader's time zone, looked up once and null when it could not be, and the span
-		// of time the offset last asked of it holds for.
-		const std::chrono::time_zone* m_Zone = nullptr;
-		bool m_ZoneResolved = false;
-		std::optional<std::chrono::sys_info> m_ZoneInfo;
+		// Each user message's and reply's time, on the reader's clock.
+		LocalClock m_Clock;
 	};
 }

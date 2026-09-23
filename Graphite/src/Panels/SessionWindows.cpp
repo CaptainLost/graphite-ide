@@ -148,7 +148,7 @@ namespace Graphite {
 			if (!entry->Live)
 				continue;
 
-			entry->Live->Take(entry->Data);
+			entry->Live->Take(entry->Data, entry->Timeline);
 			if (entry->Live->TakeSubagents(entry->Subagents))
 				++entry->SubagentsVersion;
 		}
@@ -207,6 +207,26 @@ namespace Graphite {
 							DrawCost(entry.Data, entry.Summary, m_Settings.GetPricing());
 						else
 							DrawProgress(progress);
+
+						ImGui::EndTabItem();
+					}
+
+					if (ImGui::BeginTabItem("Requests"))
+					{
+						// The same rule again: a request's context delta and the tools it had are
+						// only right once every record before it has been read.
+						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
+
+						if (progress.FirstPassDone)
+						{
+							entry.Requests.Draw(
+								entry.Timeline, entry.Data,
+								ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion});
+						}
+						else
+						{
+							DrawProgress(progress);
+						}
 
 						ImGui::EndTabItem();
 					}

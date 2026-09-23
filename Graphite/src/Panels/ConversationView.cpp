@@ -2,6 +2,8 @@
 
 #include "Panels/ConversationView.h"
 
+#include "Panels/SessionDrawing.h"
+
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Workspace/Workspace.h"
@@ -15,8 +17,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cfloat>
-#include <exception>
 #include <format>
 #include <map>
 #include <string_view>
@@ -30,8 +30,6 @@ namespace Graphite {
 		constexpr float kBlockPadding = 8.0f;
 		constexpr float kBarGap = 8.0f;
 
-		const char* const kEllipsis = "\xe2\x80\xa6";
-		const char* const kDot = " \xc2\xb7 ";
 		const char* const kTimes = " \xc3\x97";
 
 		std::string Pretty(const std::string& json)
@@ -54,70 +52,6 @@ namespace Graphite {
 				return std::to_string(span.count()) + "ms";
 
 			return FormatDuration(span);
-		}
-
-		void ColouredText(ImU32 colour, const std::string& text)
-		{
-			ImGui::PushStyleColor(ImGuiCol_Text, colour);
-			ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
-			ImGui::PopStyleColor();
-		}
-
-		// A thin vertical bar at the left of the row just begun, in the category's colour.
-		void CategoryBar(ImU32 colour, float height)
-		{
-			const ImVec2 at = ImGui::GetCursorScreenPos();
-			ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + 3.0f, at.y + height), colour);
-		}
-
-		// Text that is cut with an ellipsis to fit `width`, never wrapped. Measured once: the
-		// font says where the text stops fitting, which is always between two characters, so
-		// a multi-byte character is never split.
-		std::string Fitted(const std::string& text, float width)
-		{
-			ImFont* font = ImGui::GetFont();
-			const float size = ImGui::GetFontSize();
-			const char* begin = text.c_str();
-			const char* end = begin + text.size();
-
-			if (font->CalcTextSizeA(size, FLT_MAX, 0.0f, begin, end).x <= width)
-				return text;
-
-			const float ellipsis = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kEllipsis).x;
-			if (width < ellipsis)
-				return {};
-
-			const char* remaining = begin;
-			font->CalcTextSizeA(size, width - ellipsis, 0.0f, begin, end, &remaining);
-
-			// Backed off to a lead byte all the same, should the font ever stop mid-character.
-			while (remaining > begin && (static_cast<unsigned char>(*remaining) & 0xC0u) == 0x80u)
-				--remaining;
-
-			return std::string{begin, remaining} + kEllipsis;
-		}
-
-		const char* IconOf(ToolCategory category)
-		{
-			switch (category)
-			{
-			case ToolCategory::Read: return ICON_MDI_FILE_DOCUMENT_OUTLINE;
-			case ToolCategory::Edit: return ICON_MDI_PENCIL;
-			case ToolCategory::Run: return ICON_MDI_CONSOLE;
-			case ToolCategory::Agent: return ICON_MDI_ROBOT_OUTLINE;
-			case ToolCategory::Web: return ICON_MDI_WEB;
-			case ToolCategory::Other: return ICON_MDI_TOOLS;
-			}
-			return ICON_MDI_TOOLS;
-		}
-
-		// Draws `text` at `at` and moves `at` past it. The one-line rows are drawn through the
-		// draw list over a Selectable, so each piece can take its own colour and the row stays
-		// exactly one item tall.
-		void DrawPiece(ImVec2& at, ImU32 colour, const std::string& text)
-		{
-			ImGui::GetWindowDrawList()->AddText(at, colour, text.c_str(), text.c_str() + text.size());
-			at.x += ImGui::CalcTextSize(text.c_str(), text.c_str() + text.size()).x;
 		}
 
 		// A block with a background: the content is drawn on the upper channel of the window's
@@ -158,60 +92,6 @@ namespace Graphite {
 		}
 
 		using RowIdentity = std::tuple<int, std::size_t, std::size_t, std::size_t>;
-	}
-
-	std::chrono::minutes ConversationView::OffsetAt(std::chrono::sys_time<std::chrono::milliseconds> instant)
-	{
-		// The zone is looked up once. The lookup throws when the time zone database is not
-		// available, which happens on a Windows install without the ICU data chrono reads:
-		// the times then fall back to UTC rather than the view failing to draw.
-		if (!m_ZoneResolved)
-		{
-			m_ZoneResolved = true;
-
-			try
-			{
-				m_Zone = std::chrono::current_zone();
-			}
-			catch (const std::exception&)
-			{
-				m_Zone = nullptr;
-			}
-		}
-
-		if (m_Zone == nullptr)
-			return std::chrono::minutes{0};
-
-		// The offset at the instant itself, so a time on the far side of a daylight saving
-		// change is on the clock it was then. The zone's answer holds for a whole span, which
-		// nearly every time in a session falls within, so it is asked again only outside it.
-		if (!m_ZoneInfo || instant < m_ZoneInfo->begin || instant >= m_ZoneInfo->end)
-		{
-			try
-			{
-				m_ZoneInfo = m_Zone->get_info(std::chrono::floor<std::chrono::seconds>(instant));
-			}
-			catch (const std::exception&)
-			{
-				m_ZoneInfo.reset();
-				return std::chrono::minutes{0};
-			}
-		}
-
-		return std::chrono::floor<std::chrono::minutes>(m_ZoneInfo->offset);
-	}
-
-	std::string ConversationView::ClockTime(const std::string& timestamp)
-	{
-		const auto parsed = ParseTimestamp(timestamp);
-
-		if (!parsed)
-			return {};
-
-		const auto local = std::chrono::floor<std::chrono::minutes>(*parsed) + OffsetAt(*parsed);
-		const std::chrono::hh_mm_ss clock{local - std::chrono::floor<std::chrono::days>(local)};
-
-		return std::format("{:02}:{:02}", clock.hours().count(), clock.minutes().count());
 	}
 
 	void ConversationView::Toggle(std::set<std::pair<std::size_t, std::size_t>>& open,
@@ -387,7 +267,7 @@ namespace Graphite {
 
 		ColouredText(context.Palette.Accent, "User");
 
-		if (const std::string time = ClockTime(at); !time.empty())
+		if (const std::string time = m_Clock.HoursMinutes(at); !time.empty())
 		{
 			ImGui::SameLine();
 			ColouredText(context.Palette.TextDisabled, time);
@@ -409,7 +289,7 @@ namespace Graphite {
 
 		ColouredText(context.Palette.Accent, "Claude");
 
-		if (const std::string time = ClockTime(item.At); !time.empty())
+		if (const std::string time = m_Clock.HoursMinutes(item.At); !time.empty())
 		{
 			ImGui::SameLine();
 			ColouredText(context.Palette.TextDisabled, time);
@@ -677,7 +557,7 @@ namespace Graphite {
 		if (ImGui::Selectable("##injected", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
 			Toggle(m_OpenItems, key, row);
 
-		const std::string time = ClockTime(item.At);
+		const std::string time = m_Clock.HoursMinutes(item.At);
 		const float timeWidth = ImGui::CalcTextSize(time.c_str()).x;
 		const float space = ImGui::GetStyle().ItemSpacing.x;
 
