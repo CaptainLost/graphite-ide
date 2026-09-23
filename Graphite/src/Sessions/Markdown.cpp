@@ -137,25 +137,27 @@ namespace Graphite {
 				continue;
 			}
 
+			// A '#' line only counts as a heading up to level 6 with a space after the hashes;
+			// zero means "not a heading", which a '#'-line falls through on just like any other
+			// paragraph text.
+			std::size_t headingHashes = 0;
+			if (trimmed.starts_with('#'))
+			{
+				const std::size_t hashes = trimmed.find_first_not_of('#');
+				if (hashes != std::string_view::npos && hashes <= 6 && trimmed[hashes] == ' ')
+					headingHashes = hashes;
+			}
+
 			if (trimmed.empty())
 			{
 				flush();
 			}
-			else if (trimmed.starts_with('#'))
+			else if (headingHashes > 0)
 			{
-				const std::size_t hashes = trimmed.find_first_not_of('#');
-
-				if (hashes != std::string_view::npos && hashes <= 6 && trimmed[hashes] == ' ')
-				{
-					flush();
-					blocks.push_back({.Kind = MarkdownKind::Heading,
-									  .Level = static_cast<int>(std::min<std::size_t>(hashes, 3)),
-									  .Spans = ParseSpans(TrimLeft(trimmed.substr(hashes)))});
-				}
-				else
-				{
-					paragraph += (paragraph.empty() ? "" : " ") + std::string{trimmed};
-				}
+				flush();
+				blocks.push_back({.Kind = MarkdownKind::Heading,
+								  .Level = static_cast<int>(std::min<std::size_t>(headingHashes, 3)),
+								  .Spans = ParseSpans(TrimLeft(trimmed.substr(headingHashes)))});
 			}
 			else if (trimmed.starts_with("- ") || trimmed.starts_with("* ") || OrderedMarker(trimmed) > 0)
 			{

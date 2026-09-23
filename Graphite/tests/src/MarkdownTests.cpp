@@ -53,6 +53,36 @@ TEST_CASE("A fence that never closes runs to the end as code")
 	CHECK(blocks[0].Code == "line one\nline two");
 }
 
+TEST_CASE("Odd inputs parse without losing text")
+{
+	CHECK(ParseMarkdown("").empty());
+
+	const std::vector<MarkdownBlock> fence = ParseMarkdown("```");
+	REQUIRE(fence.size() == 1);
+	CHECK(fence[0].Kind == MarkdownKind::Code);
+	CHECK(fence[0].Code.empty());
+
+	const std::vector<MarkdownBlock> doubleStar = ParseMarkdown("**");
+	REQUIRE(doubleStar.size() == 1);
+	CHECK(doubleStar[0].Kind == MarkdownKind::Paragraph);
+	CHECK(doubleStar[0].Spans == std::vector<Span>{{SpanStyle::Plain, "**"}});
+
+	const std::vector<MarkdownBlock> singleStar = ParseMarkdown("*");
+	REQUIRE(singleStar.size() == 1);
+	CHECK(singleStar[0].Kind == MarkdownKind::Paragraph);
+	CHECK(singleStar[0].Spans == std::vector<Span>{{SpanStyle::Plain, "*"}});
+
+	const std::vector<MarkdownBlock> hashOnly = ParseMarkdown("#");
+	REQUIRE(hashOnly.size() == 1);
+	CHECK(hashOnly[0].Kind == MarkdownKind::Paragraph);
+	CHECK(hashOnly[0].Spans == std::vector<Span>{{SpanStyle::Plain, "#"}});
+
+	const std::vector<MarkdownBlock> crlf = ParseMarkdown("a\r\nb\r");
+	REQUIRE(crlf.size() == 1);
+	CHECK(crlf[0].Kind == MarkdownKind::Paragraph);
+	CHECK(crlf[0].Spans == std::vector<Span>{{SpanStyle::Plain, "a b"}});
+}
+
 TEST_CASE("Words wrap at the width, keeping their span")
 {
 	// Every character is 1 wide.
