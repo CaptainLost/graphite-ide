@@ -111,6 +111,23 @@ namespace Fixtures {
 														   {"is_error", isError}}})}}}});
 	}
 
+	// A message the user typed while Claude was still working: Claude Code queues it and
+	// writes it as an attachment rather than a user record.
+	inline std::string QueuedCommand(const std::string& prompt,
+									 const std::string& timestamp = "2026-09-17T09:00:03.000Z",
+									 const std::string& originKind = "human",
+									 const std::string& commandMode = "prompt")
+	{
+		return Line({{"type", "attachment"},
+					 {"uuid", "queued-" + timestamp},
+					 {"timestamp", timestamp},
+					 {"attachment",
+					  {{"type", "queued_command"},
+					   {"prompt", prompt},
+					   {"origin", {{"kind", originKind}}},
+					   {"commandMode", commandMode}}}});
+	}
+
 	inline std::string AiTitle(const std::string& title)
 	{
 		return Line({{"type", "ai-title"}, {"aiTitle", title}, {"sessionId", "s"}});

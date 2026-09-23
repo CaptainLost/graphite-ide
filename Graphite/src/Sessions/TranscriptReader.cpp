@@ -184,6 +184,19 @@ namespace Graphite {
 			attachment != json.end() && attachment->is_object())
 		{
 			record.AttachmentType = StringAt(*attachment, "type");
+
+			if (record.AttachmentType == "queued_command")
+			{
+				const auto origin = attachment->find("origin");
+				const bool human = origin != attachment->end() && origin->is_object() &&
+								   StringAt(*origin, "kind") == "human";
+
+				// Other modes (a queued shell command) are not something the user said to Claude.
+				const std::string mode = StringAt(*attachment, "commandMode");
+
+				if (human && (mode.empty() || mode == "prompt"))
+					record.QueuedPrompt = StringAt(*attachment, "prompt");
+			}
 		}
 
 		if (const auto message = json.find("message"); message != json.end() && message->is_object())

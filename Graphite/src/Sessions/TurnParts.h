@@ -22,7 +22,10 @@ namespace Graphite {
 		Steps,
 
 		// Text Claude Code injected into the conversation.
-		Injected
+		Injected,
+
+		// A message the user typed while Claude was working.
+		Queued
 	};
 
 	struct TurnPart

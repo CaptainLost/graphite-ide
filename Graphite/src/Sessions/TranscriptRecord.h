@@ -91,6 +91,11 @@ namespace Graphite {
 		std::string AttachmentType;
 		std::string Title;
 
+		// A message the user typed while Claude was working, which Claude Code queues and
+		// writes as a `queued_command` attachment. Empty for every other record, including a
+		// queued command the user did not type (a hook's, say).
+		std::string QueuedPrompt;
+
 		// Text Claude Code injected as if the user had said it (a skill's body, a reminder):
 		// it is not a prompt the user typed.
 		bool IsMeta = false;

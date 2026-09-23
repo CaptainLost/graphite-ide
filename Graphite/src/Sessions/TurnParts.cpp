@@ -20,6 +20,7 @@ namespace Graphite {
 			{
 			case ItemKind::Text: return PartKind::Reply;
 			case ItemKind::Injected: return PartKind::Injected;
+			case ItemKind::Queued: return PartKind::Queued;
 			default: return PartKind::Steps;
 			}
 		}
@@ -87,7 +88,7 @@ namespace Graphite {
 
 			const PartKind kind = KindOf(item);
 
-			// Only step runs gather; a reply and an injected row are one item each.
+			// Only step runs gather; a reply, an injected row and a queued message are one item each.
 			if (parts.empty() || kind != PartKind::Steps || parts.back().Kind != PartKind::Steps)
 				parts.push_back({.Kind = kind});
 

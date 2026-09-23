@@ -122,3 +122,28 @@ TEST_CASE("A tool still running leaves its start as the run's last activity")
 	REQUIRE(parts.size() == 1);
 	CHECK(LastActivity(turn, parts[0], session.GetTools()) == "2026-09-17T09:00:02.000Z");
 }
+
+TEST_CASE("A queued message is a part of its own between the parts around it")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("a", "Bash", {}), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:01.000Z") +
+		Fixtures::ToolResult("a", "ok", false, "2026-09-17T09:00:02.000Z") +
+		Fixtures::QueuedCommand("one", "2026-09-17T09:00:03.000Z") +
+		Fixtures::QueuedCommand("two", "2026-09-17T09:00:03.500Z") +
+		Fixtures::Assistant("r2", Fixtures::ToolUseBlock("b", "Read", {}), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:04.000Z") +
+		Fixtures::ToolResult("b", "ok", false, "2026-09-17T09:00:05.000Z"));
+
+	const std::vector<TurnPart> parts = SplitTurn(session.GetTurns()[0], session.GetTools());
+
+	REQUIRE(parts.size() == 4);
+	CHECK(parts[0].Kind == PartKind::Steps);
+	CHECK(parts[1].Kind == PartKind::Queued);
+	CHECK(parts[1].Items == std::vector<std::size_t>{1});
+	CHECK(parts[2].Kind == PartKind::Queued);
+	CHECK(parts[2].Items == std::vector<std::size_t>{2});
+	CHECK(parts[3].Kind == PartKind::Steps);
+	CHECK(parts[3].Requests == 1);
+}

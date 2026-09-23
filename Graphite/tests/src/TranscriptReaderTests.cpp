@@ -293,6 +293,42 @@ TEST_CASE("A read reports the size of the file it read")
 	CHECK(whole.GetValue().FileSize == bytes.size());
 }
 
+TEST_CASE("A message the user queued while Claude worked keeps its text")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::QueuedCommand("also fix the tests"));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].Kind == RecordKind::Attachment);
+	CHECK(chunk.Records[0].AttachmentType == "queued_command");
+	CHECK(chunk.Records[0].QueuedPrompt == "also fix the tests");
+}
+
+TEST_CASE("A queued command the user did not type, or another attachment, has no queued prompt")
+{
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::QueuedCommand("from a hook", "2026-09-17T09:00:03.000Z", "system") +
+		Fixtures::QueuedCommand("/compact", "2026-09-17T09:00:04.000Z", "human", "bash") +
+		Fixtures::Line({{"type", "attachment"},
+						{"timestamp", "2026-09-17T09:00:05.000Z"},
+						{"attachment", {{"type", "todo_reminder"}, {"prompt", "not a prompt"}}}}));
+
+	REQUIRE(chunk.Records.size() == 3);
+	CHECK(chunk.Records[0].QueuedPrompt.empty());
+	CHECK(chunk.Records[1].QueuedPrompt.empty());
+	CHECK(chunk.Records[2].QueuedPrompt.empty());
+}
+
+TEST_CASE("A queued command with no command mode is taken as a prompt")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::Line(
+		{{"type", "attachment"},
+		 {"timestamp", "2026-09-17T09:00:03.000Z"},
+		 {"attachment", {{"type", "queued_command"}, {"prompt", "and this"}, {"origin", {{"kind", "human"}}}}}}));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].QueuedPrompt == "and this");
+}
+
 TEST_CASE("A line longer than the chunk is still read whole rather than never")
 {
 	const std::string longLine = Fixtures::UserPrompt(std::string(5000, 'x'));

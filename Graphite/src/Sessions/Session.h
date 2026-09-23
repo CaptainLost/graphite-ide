@@ -33,6 +33,10 @@ namespace Graphite {
 		Thinking,
 		Tool,
 		Injected,
+
+		// A message the user typed while Claude was working. It belongs to the turn it
+		// arrived in rather than starting one.
+		Queued,
 		Other
 	};
 
@@ -104,6 +108,7 @@ namespace Graphite {
 		Turn& CurrentTurn();
 		void AddAssistant(const TranscriptRecord& record);
 		void AddUser(const TranscriptRecord& record);
+		void AddQueued(const TranscriptRecord& record);
 
 		std::vector<Turn> m_Turns;
 		std::vector<ToolCall> m_Tools;

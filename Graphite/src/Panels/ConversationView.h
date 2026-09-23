@@ -73,7 +73,8 @@ namespace Graphite {
 		void DrawRow(const Session& session, std::size_t index, const ConversationContext& context,
 					 Core::EventBus& events);
 
-		void DrawUser(const Turn& turn, const ConversationContext& context);
+		// A message from the user: the prompt that opened a turn, or one queued within it.
+		void DrawUser(const std::string& text, const std::string& at, const ConversationContext& context);
 		void DrawReply(const Turn& turn, const TurnPart& part, const ConversationContext& context);
 		void DrawStepsHeader(const Session& session, const Turn& turn, const TurnPart& part, std::size_t row,
 							 const ConversationContext& context);

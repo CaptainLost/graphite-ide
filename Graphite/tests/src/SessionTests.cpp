@@ -208,3 +208,22 @@ TEST_CASE("An interruption folds into the turn it interrupted rather than starti
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
 	CHECK(session.GetTurns()[0].Items[0].Label == "Interrupted by user");
 }
+
+TEST_CASE("A message queued mid-turn is an item of the current turn, not a new turn")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("Working."), Fixtures::Usage(1, 1)) +
+		Fixtures::QueuedCommand("also the tests", "2026-09-17T09:00:03.000Z") +
+		Fixtures::QueuedCommand("from a hook", "2026-09-17T09:00:04.000Z", "system"));
+
+	REQUIRE(session.GetTurns().size() == 1);
+
+	const Turn& turn = session.GetTurns()[0];
+	CHECK(turn.Prompt == "go");
+	REQUIRE(turn.Items.size() == 2);
+	CHECK(turn.Items[1].Kind == ItemKind::Queued);
+	CHECK(turn.Items[1].Text == "also the tests");
+	CHECK(turn.Items[1].At == "2026-09-17T09:00:03.000Z");
+	CHECK(turn.Items[1].RequestId.empty());
+}

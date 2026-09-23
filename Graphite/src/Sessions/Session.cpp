@@ -68,6 +68,11 @@ namespace Graphite {
 		}
 	}
 
+	void Session::AddQueued(const TranscriptRecord& record)
+	{
+		CurrentTurn().Items.push_back({.Kind = ItemKind::Queued, .Text = record.QueuedPrompt, .At = record.Timestamp});
+	}
+
 	void Session::AddAssistant(const TranscriptRecord& record)
 	{
 		Turn& turn = CurrentTurn();
@@ -130,10 +135,12 @@ namespace Graphite {
 				AddUser(record);
 			else if (record.Kind == RecordKind::Assistant)
 				AddAssistant(record);
+			else if (record.Kind == RecordKind::Attachment && !record.QueuedPrompt.empty())
+				AddQueued(record);
 
-			// Attachments, system records and unknown record types are bookkeeping — modes,
-			// reminders, snapshots — not conversation. The summary reads what it needs of
-			// them; the conversation view does not draw them.
+			// Other attachments, system records and unknown record types are bookkeeping —
+			// modes, reminders, snapshots — not conversation. The summary reads what it needs
+			// of them; the conversation view does not draw them.
 		}
 
 		++m_Version;

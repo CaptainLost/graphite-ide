@@ -368,18 +368,23 @@ namespace Graphite {
 			return part.Requests > 0 ? 2.0f * line : line;
 		case PartKind::Injected:
 			return line;
+		case PartKind::Queued:
+		{
+			const std::string& text = turn.Items[part.Items.front()].Text;
+			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y + 2.0f * line;
+		}
 		}
 
 		return line;
 	}
 
-	void ConversationView::DrawUser(const Turn& turn, const ConversationContext& context)
+	void ConversationView::DrawUser(const std::string& text, const std::string& at, const ConversationContext& context)
 	{
 		const Block block = BeginBlock();
 
 		ColouredText(context.Palette.Accent, "User");
 
-		if (const std::string time = ClockTime(turn.StartedAt); !time.empty())
+		if (const std::string time = ClockTime(at); !time.empty())
 		{
 			ImGui::SameLine();
 			ColouredText(context.Palette.TextDisabled, time);
@@ -387,7 +392,7 @@ namespace Graphite {
 
 		// The prompt as the user typed it: not markdown, which a prompt rarely is on purpose.
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - kBlockPadding);
-		ImGui::TextUnformatted(turn.Prompt.c_str(), turn.Prompt.c_str() + turn.Prompt.size());
+		ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
 		ImGui::PopTextWrapPos();
 
 		EndBlock(block, context.Palette.UserBlock);
@@ -541,6 +546,7 @@ namespace Graphite {
 			return;
 		case ItemKind::Text:
 		case ItemKind::Injected:
+		case ItemKind::Queued:
 			ImGui::TextWrapped("%s", item.Text.c_str());
 			return;
 		}
@@ -838,7 +844,7 @@ namespace Graphite {
 		switch (row.Kind)
 		{
 		case RowKind::User:
-			DrawUser(turn, context);
+			DrawUser(turn.Prompt, turn.StartedAt, context);
 			break;
 		case RowKind::Gap:
 			DrawGap(row.Gap, context);
@@ -858,6 +864,12 @@ namespace Graphite {
 			case PartKind::Injected:
 				DrawInjected(turn.Items[part.Items.front()], index, context);
 				break;
+			case PartKind::Queued:
+			{
+				const TurnItem& item = turn.Items[part.Items.front()];
+				DrawUser(item.Text, item.At, context);
+				break;
+			}
 			}
 			break;
 		}
