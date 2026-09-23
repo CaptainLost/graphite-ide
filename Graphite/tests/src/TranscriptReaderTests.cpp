@@ -182,6 +182,21 @@ TEST_CASE("Reading from an offset returns only what was appended since")
 	CHECK_FALSE(second.GetValue().Restarted);
 }
 
+TEST_CASE("A tool result keeps the structured result written beside it")
+{
+	const TranscriptChunk chunk =
+		ParseTranscript(Fixtures::ToolResultWith("t", "ok", {{"numLines", 3}, {"numFiles", 2}}));
+
+	REQUIRE(chunk.Records.size() == 1);
+	const ContentBlock& block = chunk.Records[0].Blocks[0];
+	CHECK(nlohmann::json::parse(block.ResultJson) == nlohmann::json{{"numLines", 3}, {"numFiles", 2}});
+}
+
+TEST_CASE("A tool result without a structured result has none")
+{
+	CHECK(ParseTranscript(Fixtures::ToolResult("t", "ok")).Records[0].Blocks[0].ResultJson.empty());
+}
+
 TEST_CASE("A file shorter than the offset is read again from its start")
 {
 	TempDirectory temp;

@@ -70,6 +70,11 @@ namespace Graphite {
 		// A tool_use's input, serialised again so the model holds no JSON type.
 		std::string InputJson;
 
+		// For a tool_result: the record's `toolUseResult`, serialised — the structured facts
+		// (line counts, patches, output sizes) that the text of the result does not carry.
+		// Empty when the record has none.
+		std::string ResultJson;
+
 		bool IsError = false;
 	};
 

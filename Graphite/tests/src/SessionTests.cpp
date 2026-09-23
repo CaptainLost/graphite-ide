@@ -132,3 +132,15 @@ TEST_CASE("An unknown block is kept as an item naming its type")
 	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Other);
 	CHECK(session.GetTurns()[0].Items[0].Text == "server_tool_use");
 }
+
+TEST_CASE("A paired tool call carries its structured result and the size of its text")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("a", Fixtures::ToolUseBlock("t1", "Grep", {{"pattern", "x"}}), Fixtures::Usage(1, 1)) +
+		Fixtures::ToolResultWith("t1", "12345", {{"numLines", 5}}));
+
+	const ToolCall& tool = session.GetTools()[0];
+	CHECK(nlohmann::json::parse(tool.ResultJson) == nlohmann::json{{"numLines", 5}});
+	CHECK(tool.ResultBytes == 5);
+}

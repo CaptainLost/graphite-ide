@@ -208,6 +208,19 @@ namespace Graphite {
 			}
 		}
 
+		// Claude Code writes the structured result once per record, beside the message rather
+		// than inside the block; a record answers one tool, so every result block gets it.
+		if (const auto result = json.find("toolUseResult"); result != json.end() && result->is_object())
+		{
+			const std::string serialised = Serialised(*result);
+
+			for (ContentBlock& block : record.Blocks)
+			{
+				if (block.Kind == BlockKind::ToolResult)
+					block.ResultJson = serialised;
+			}
+		}
+
 		return record;
 	}
 

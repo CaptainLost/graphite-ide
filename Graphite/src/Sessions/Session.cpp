@@ -28,6 +28,8 @@ namespace Graphite {
 				tool.HasResult = true;
 				tool.IsError = block.IsError;
 				tool.Result = block.Text;
+				tool.ResultJson = block.ResultJson;
+				tool.ResultBytes = block.Text.size();
 				tool.FinishedAt = record.Timestamp;
 			}
 			else if (block.Kind == BlockKind::Text && !record.IsMeta)

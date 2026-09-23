@@ -94,6 +94,23 @@ namespace Fixtures {
 														   {"is_error", isError}}})}}}});
 	}
 
+	// A tool result carrying the record-level `toolUseResult` Claude Code writes beside it:
+	// the structured facts (line counts, patches, sizes) the conversation view reads.
+	inline std::string ToolResultWith(const std::string& toolUseId, const std::string& text,
+									  const nlohmann::json& result, bool isError = false,
+									  const std::string& timestamp = "2026-09-17T09:00:02.000Z")
+	{
+		return Line({{"type", "user"},
+					 {"timestamp", timestamp},
+					 {"toolUseResult", result},
+					 {"message",
+					  {{"role", "user"},
+					   {"content", nlohmann::json::array({{{"type", "tool_result"},
+														   {"tool_use_id", toolUseId},
+														   {"content", text},
+														   {"is_error", isError}}})}}}});
+	}
+
 	inline std::string AiTitle(const std::string& title)
 	{
 		return Line({{"type", "ai-title"}, {"aiTitle", title}, {"sessionId", "s"}});

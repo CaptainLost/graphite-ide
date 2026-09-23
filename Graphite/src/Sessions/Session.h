@@ -18,6 +18,8 @@ namespace Graphite {
 		std::string Name;
 		std::string InputJson;
 		std::string Result;
+		std::string ResultJson;
+		std::size_t ResultBytes = 0;
 		std::string StartedAt;
 		std::string FinishedAt;
 		bool HasResult = false;
