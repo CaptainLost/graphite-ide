@@ -358,7 +358,7 @@ TEST_CASE("Attachments keep the names, removals and file they carry")
 		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"WebFetch", "Monitor"}}, {"removedNames", {"Old"}}}) +
 		Fixtures::Attachment({{"type", "skill_listing"}, {"names", {"a", "b", "c"}}, {"skillCount", 3}}) +
 		Fixtures::Attachment({{"type", "mcp_instructions_delta"}, {"addedNames", {"ghidra"}}}) +
-		Fixtures::Attachment({{"type", "edited_text_file"}, {"filename", "D:\a.cpp"}}) +
+		Fixtures::Attachment({{"type", "edited_text_file"}, {"filename", "D:\\a.cpp"}}) +
 		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", "not a list"}});
 
 	const TranscriptChunk chunk = ParseTranscript(bytes);
@@ -368,7 +368,7 @@ TEST_CASE("Attachments keep the names, removals and file they carry")
 	CHECK(chunk.Records[0].AttachmentRemoved == std::vector<std::string>{"Old"});
 	CHECK(chunk.Records[1].AttachmentNames == std::vector<std::string>{"a", "b", "c"});
 	CHECK(chunk.Records[2].AttachmentNames == std::vector<std::string>{"ghidra"});
-	CHECK(chunk.Records[3].AttachmentFile == "D:\a.cpp");
+	CHECK(chunk.Records[3].AttachmentFile == "D:\\a.cpp");
 	CHECK(chunk.Records[4].AttachmentNames.empty());
 }
 
