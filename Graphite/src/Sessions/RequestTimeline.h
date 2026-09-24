@@ -31,7 +31,12 @@ namespace Graphite {
 		// An image the user pasted. Its estimate is its share of the delta by bytes like any
 		// other item's, though an image is billed by its pixels, not its bytes: it is the
 		// roughest estimate here.
-		Image
+		Image,
+
+		// What the session's first request carried ahead of every message, from Claude
+		// Code's snapshot of its prompt: the system prompt, and the tools it defined in full.
+		SystemPrompt,
+		ToolSchemas
 	};
 
 	struct SentItem
@@ -42,6 +47,12 @@ namespace Graphite {
 		bool IsError = false; // ToolResult only
 		std::size_t Bytes = 0;
 		std::int64_t EstimatedTokens = 0;
+
+		// What the model was sent, as plain text: an image is a placeholder naming it.
+		std::string Text;
+
+		// Text was reconstructed from a transcript too old to record what was sent.
+		bool Approximate = false;
 	};
 
 	// What one block of a response was.
@@ -58,6 +69,10 @@ namespace Graphite {
 		ResponseKind Kind = ResponseKind::Other;
 		std::string Label;    // Text: "N chars"; ToolCall: tool name + "  " + summary; Thinking: "thinking" or "thinking (N chars)"
 		std::string ToolName; // ToolCall only
+
+		// What the model wrote: the thinking, the reply, or a tool's name over its input
+		// laid out as JSON.
+		std::string Text;
 	};
 
 	// One call to the model: everything queued for it since the previous response, and what it

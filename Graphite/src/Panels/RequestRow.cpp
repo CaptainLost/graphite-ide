@@ -44,6 +44,8 @@ namespace Graphite {
 			case SentKind::McpInstructions: return {ICON_MDI_SERVER_NETWORK, palette.Agent};
 			case SentKind::EditedFile: return {ICON_MDI_PENCIL, palette.Edit};
 			case SentKind::Image: return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
+			case SentKind::SystemPrompt: return {ICON_MDI_TEXT_BOX_OUTLINE, palette.Injected};
+			case SentKind::ToolSchemas: return {ICON_MDI_CODE_BRACES, palette.Agent};
 			}
 
 			return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.Other};

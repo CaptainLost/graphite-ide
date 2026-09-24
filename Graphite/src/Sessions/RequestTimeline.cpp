@@ -10,6 +10,8 @@
 #include <unordered_set>
 #include <utility>
 
+#include <nlohmann/json.hpp>
+
 namespace Graphite {
 
 	namespace {
@@ -45,6 +47,13 @@ namespace Graphite {
 			return std::to_string(count) + (count == 1 ? " tool" : " tools");
 		}
 
+		// These are names only: a deferred tool's schema reaches the model when it is loaded,
+		// not when it is announced.
+		std::string DeferredNames(std::size_t count)
+		{
+			return std::to_string(count) + (count == 1 ? " deferred tool name" : " deferred tool names");
+		}
+
 		std::string ToolsLoadedLabel(const std::vector<std::string>& added, const std::vector<std::string>& removed)
 		{
 			// U+2212 MINUS SIGN, not a hyphen: this is a count going down, drawn the same way a
@@ -57,7 +66,7 @@ namespace Graphite {
 			if (added.empty())
 				return minus + ToolCount(removed.size()) + " removed";
 
-			std::string label = "+" + ToolCount(added.size()) + ": " + JoinNames(added, 5);
+			std::string label = DeferredNames(added.size()) + ": " + JoinNames(added, 5);
 
 			if (!removed.empty())
 				label += ", " + minus + std::to_string(removed.size()) + " removed";
@@ -88,6 +97,26 @@ namespace Graphite {
 				label += (i == 0 ? " (" : ", ") + parts[i];
 
 			return parts.empty() ? label : label + ")";
+		}
+
+		// An image in the sent text: what it is and how big, since its pixels are not text.
+		std::string ImageText(std::string_view mediaType, std::size_t bytes)
+		{
+			std::string text = "[" + (mediaType.empty() ? std::string{"image"} : std::string{mediaType});
+
+			if (bytes > 0)
+				text += ", " + FormatBytes(bytes);
+
+			return text + "]";
+		}
+
+		// A tool call's input laid out two spaces an indent; the input as written when it does
+		// not parse.
+		std::string PrettyJson(const std::string& json)
+		{
+			const nlohmann::json parsed = nlohmann::json::parse(json, nullptr, false);
+
+			return parsed.is_discarded() ? json : parsed.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
 		}
 
 		std::string McpLabel(const std::vector<std::string>& names)
@@ -270,22 +299,24 @@ namespace Graphite {
 				request->Response.push_back(
 					{.Kind = ResponseKind::Thinking,
 					 .Label = block.Text.empty() ? "thinking"
-												 : "thinking (" + std::to_string(CodePoints(block.Text)) + " chars)"});
+												 : "thinking (" + std::to_string(CodePoints(block.Text)) + " chars)",
+					 .Text = block.Text});
 				changed = true;
 				break;
 			case BlockKind::Text:
 				request->Response.push_back(
-					{.Kind = ResponseKind::Text, .Label = std::to_string(CodePoints(block.Text)) + " chars"});
+					{.Kind = ResponseKind::Text, .Label = std::to_string(CodePoints(block.Text)) + " chars", .Text = block.Text});
 				changed = true;
 				break;
 			case BlockKind::ToolUse:
 			{
-				// The summary is all a result needs of its call later: the input itself, a whole
-				// file for a Write, is not kept for the rest of the session.
+				// The summary is all a result needs of its call later; the input is kept once, laid out, as the
+				// text the model wrote.
 				std::string summary = ToolSummary({.Name = block.ToolName, .InputJson = block.InputJson});
 				request->Response.push_back({.Kind = ResponseKind::ToolCall,
 											 .Label = block.ToolName + "  " + summary,
-											 .ToolName = block.ToolName});
+											 .ToolName = block.ToolName,
+											 .Text = block.ToolName + "\n" + PrettyJson(block.InputJson)});
 				m_ToolCalls[block.ToolUseId] = {block.ToolName, std::move(summary)};
 				changed = true;
 				break;
@@ -324,14 +355,18 @@ namespace Graphite {
 									 .Label = label,
 									 .ToolName = toolName,
 									 .IsError = block.IsError,
-									 .Bytes = block.Text.size()});
+									 .Bytes = block.Text.size(),
+									 .Text = block.Text});
 				changed = true;
 			}
 			else if (block.Kind == BlockKind::Image)
 			{
 				// Base64 carries three bytes in every four characters.
 				const std::size_t bytes = block.DataBytes * 3 / 4;
-				m_Pending.push_back({.Kind = SentKind::Image, .Label = ImageLabel(block.Text, bytes), .Bytes = bytes});
+				m_Pending.push_back({.Kind = SentKind::Image,
+									 .Label = ImageLabel(block.Text, bytes),
+									 .Bytes = bytes,
+									 .Text = ImageText(block.Text, bytes)});
 				changed = true;
 			}
 			else if (block.Kind == BlockKind::Text)
@@ -342,13 +377,15 @@ namespace Graphite {
 					// so its first line says what it is.
 					const std::string label = IsInjectedText(block.Text) ? InjectedLabel(block.Text)
 																		 : FirstLineTruncated(block.Text, 120);
-					m_Pending.push_back({.Kind = SentKind::Injected, .Label = label, .Bytes = block.Text.size()});
+					m_Pending.push_back(
+						{.Kind = SentKind::Injected, .Label = label, .Bytes = block.Text.size(), .Text = block.Text});
 				}
 				else
 				{
 					m_Pending.push_back({.Kind = SentKind::Prompt,
 										 .Label = FirstLineTruncated(block.Text, 120),
-										 .Bytes = block.Text.size()});
+										 .Bytes = block.Text.size(),
+										 .Text = block.Text});
 				}
 
 				changed = true;
@@ -358,8 +395,20 @@ namespace Graphite {
 
 	void RequestTimeline::AddAttachment(const TranscriptRecord& record, bool& changed)
 	{
+		// Claude Code's snapshot of the prompt is read for the first request, not listed as
+		// something sent in its own right.
+		if (record.AttachmentType == "prompt_snapshot")
+			return;
+
+		// Claude Code's own bookkeeping — a hook's outcome, a record of the deferred tools —
+		// that the model never saw.
+		if (!record.AttachmentSent)
+			return;
+
 		SentItem item;
-		item.Bytes = record.AttachmentText.size();
+		item.Text = record.AttachmentText;
+		item.Bytes = item.Text.size();
+		item.Approximate = record.AttachmentApproximate;
 
 		if (!record.QueuedPrompt.empty())
 		{

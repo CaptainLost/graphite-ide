@@ -141,7 +141,7 @@ TEST_CASE("Every kind of attachment and user text is classified")
 
 	CHECK(kinds == std::vector<SentKind>{SentKind::ToolsLoaded, SentKind::Skills, SentKind::McpInstructions, SentKind::EditedFile,
 										 SentKind::QueuedPrompt, SentKind::Injected, SentKind::Injected, SentKind::Prompt});
-	CHECK(requests[0].Sent[0].Label == "+2 tools: WebFetch, Monitor");
+	CHECK(requests[0].Sent[0].Label == "2 deferred tool names: WebFetch, Monitor");
 	CHECK(requests[0].Sent[1].Label == "2 skills");
 	CHECK(requests[0].Sent[2].Label == "MCP: ghidra");
 	CHECK(requests[0].Sent[3].Label == "Edited D:\\a.cpp");
@@ -158,7 +158,7 @@ TEST_CASE("Tools available follow additions and removals")
 
 	CHECK(requests[0].ToolsAvailable == 3);
 	CHECK(requests[1].ToolsAvailable == 2);
-	CHECK(requests[1].Sent[0].Label == "+1 tool: D, \xe2\x88\x92" "2 removed");
+	CHECK(requests[1].Sent[0].Label == "1 deferred tool name: D, \xe2\x88\x92" "2 removed");
 }
 
 TEST_CASE("Appending in batches gives the same requests as appending at once, even with a request split across them")
@@ -270,8 +270,8 @@ TEST_CASE("A tools delta says only what it did, and counts one tool as one")
 		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
 
 	REQUIRE(requests[0].Sent.size() == 4);
-	CHECK(requests[0].Sent[0].Label == "+2 tools: A, B");
-	CHECK(requests[0].Sent[1].Label == "+1 tool: C");
+	CHECK(requests[0].Sent[0].Label == "2 deferred tool names: A, B");
+	CHECK(requests[0].Sent[1].Label == "1 deferred tool name: C");
 	CHECK(requests[0].Sent[2].Label == "\xe2\x88\x92" "2 tools removed");
 	CHECK(requests[0].Sent[3].Label == "\xe2\x88\x92" "1 tool removed");
 }
@@ -395,4 +395,74 @@ TEST_CASE("A tool result for a call the transcript never showed names no tool")
 	CHECK(requests[0].Sent[0].Kind == SentKind::ToolResult);
 	CHECK(requests[0].Sent[0].Label == "unknown tool");
 	CHECK(requests[0].Sent[0].ToolName.empty());
+}
+
+TEST_CASE("Every sent and returned item carries the text the model saw or wrote")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {{"command", "ls"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
+		Fixtures::ToolResult("t1", "a.cpp") +
+		// A single-element json initializer list whose element is already a json value collapses to that
+		// value rather than an array of one, so the array has to be built explicitly here.
+		Fixtures::UserBlocks(nlohmann::json::array({Fixtures::ImageBlock("image/png", std::string(4096, 'A'))}),
+							 "2026-09-17T09:00:03.000Z") +
+		Fixtures::RenderedAttachment({{"type", "date"}, {"date", "2026-09-24"}}, {"Today is 2026-09-24."}, "2.1.280",
+									 "2026-09-17T09:00:04.000Z") +
+		Fixtures::Assistant("r2", Fixtures::ThinkingBlock("hmm"), Fixtures::Usage(0, 5, 0, 0, 1100), "claude-opus-5",
+							"2026-09-17T09:00:05.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 5, 0, 0, 1100), "claude-opus-5",
+							"2026-09-17T09:00:05.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Text == "go");
+	REQUIRE(requests[0].Response.size() == 1);
+	CHECK(requests[0].Response[0].Text == "Bash\n{\n  \"command\": \"ls\"\n}");
+
+	const ApiRequest& second = requests[1];
+	REQUIRE(second.Sent.size() == 3);
+	CHECK(second.Sent[0].Text == "a.cpp");
+	CHECK(second.Sent[1].Text == "[image/png, 3.0 KB]");
+	CHECK(second.Sent[2].Text == "Today is 2026-09-24.");
+	CHECK(second.Sent[2].Bytes == second.Sent[2].Text.size());
+	CHECK_FALSE(second.Sent[2].Approximate);
+	REQUIRE(second.Response.size() == 2);
+	CHECK(second.Response[0].Text == "hmm");
+	CHECK(second.Response[1].Text == "done");
+}
+
+TEST_CASE("An attachment the model never saw is not listed as sent")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::VersionedAttachment({{"type", "hook_success"}, {"content", ""}}, "2.1.280") +
+		Fixtures::VersionedAttachment({{"type", "deferred_tools_record"}, {"entries", nlohmann::json::array()}}, "2.1.280") +
+		Fixtures::VersionedAttachment({{"type", "prompt_snapshot"}}, "2.1.280") +
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Kind == SentKind::Prompt);
+}
+
+TEST_CASE("An attachment from before rendered text is listed, marked approximate")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::VersionedAttachment({{"type", "total_tokens_reminder"}, {"text", "tokens"}}, "2.1.259") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Approximate);
+	CHECK(requests[0].Sent[0].Text == "tokens");
+	CHECK(requests[0].Sent[0].Bytes == 6);
+}
+
+TEST_CASE("An image with nothing known about it has placeholder text")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserBlocks({{{"type", "image"}}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Text == "[image]");
 }
