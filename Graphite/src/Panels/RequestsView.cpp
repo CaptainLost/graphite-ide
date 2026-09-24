@@ -766,7 +766,7 @@ namespace Graphite {
 		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
-							width - closeWidth - style.ItemSpacing.x));
+							std::max(width - closeWidth - style.ItemSpacing.x, 0.0f)));
 
 		// Last on the line, the way the app's other detail panes end theirs: the close places
 		// itself at the right corner. Dismissing drops the request and what was picked in it, so

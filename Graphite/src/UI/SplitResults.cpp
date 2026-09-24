@@ -14,7 +14,12 @@ namespace Graphite {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float width = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 
-		ImGui::SameLine(ImGui::GetWindowWidth() - width - style.WindowPadding.x);
+		// At a pane too narrow for `width` plus what precedes it on the line, this would land
+		// left of the content start and overlap it. Held at the cursor SameLine's default would
+		// leave it at instead, which is never further right than the corner it aims for.
+		const float x = std::max(ImGui::GetWindowWidth() - width - style.WindowPadding.x, ImGui::GetCursorPosX());
+
+		ImGui::SameLine(x);
 
 		return ImGui::SmallButton(ICON_MDI_CLOSE);
 	}
