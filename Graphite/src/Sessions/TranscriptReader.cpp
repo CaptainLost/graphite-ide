@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <optional>
@@ -64,6 +65,40 @@ namespace Graphite {
 				return static_cast<std::uint64_t>(found->get<std::int64_t>());
 
 			return 0;
+		}
+
+		// A count that may be missing: nothing for an absent field, a wrong type or a negative
+		// number, where CountAt would give a zero indistinguishable from a real one.
+		std::optional<std::uint64_t> OptionalCountAt(const nlohmann::json& object, const char* key)
+		{
+			const auto found = object.find(key);
+
+			if (found == object.end())
+				return std::nullopt;
+			if (found->is_number_unsigned())
+				return found->get<std::uint64_t>();
+			if (found->is_number_integer() && found->get<std::int64_t>() >= 0)
+				return static_cast<std::uint64_t>(found->get<std::int64_t>());
+
+			return std::nullopt;
+		}
+
+		CompactionFacts CompactionOf(const nlohmann::json& json)
+		{
+			CompactionFacts facts;
+			const auto metadata = json.find("compactMetadata");
+
+			if (metadata == json.end() || !metadata->is_object())
+				return facts;
+
+			facts.Trigger = StringAt(*metadata, "trigger");
+			facts.PreTokens = OptionalCountAt(*metadata, "preTokens");
+			facts.PostTokens = OptionalCountAt(*metadata, "postTokens");
+
+			if (const std::optional<std::uint64_t> ms = OptionalCountAt(*metadata, "durationMs"))
+				facts.Duration = std::chrono::milliseconds{static_cast<std::int64_t>(*ms)};
+
+			return facts;
 		}
 
 		RecordKind KindOf(const std::string& type)
@@ -451,6 +486,12 @@ namespace Graphite {
 		record.RequestId = StringAt(json, "requestId");
 		record.IsCompactSummary = BoolAt(json, "isCompactSummary");
 		record.IsMeta = BoolAt(json, "isMeta") || record.IsCompactSummary;
+
+		if (record.Kind == RecordKind::System && StringAt(json, "subtype") == "compact_boundary")
+		{
+			record.IsCompactBoundary = true;
+			record.Compaction = CompactionOf(json);
+		}
 
 		if (record.Kind == RecordKind::AiTitle)
 			record.Title = StringAt(json, "aiTitle");

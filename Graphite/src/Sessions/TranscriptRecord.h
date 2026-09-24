@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -57,6 +58,16 @@ namespace Graphite {
 		return {std::max(a.Input, b.Input), std::max(a.Output, b.Output), std::max(a.CacheWrite5m, b.CacheWrite5m),
 				std::max(a.CacheWrite1h, b.CacheWrite1h), std::max(a.CacheRead, b.CacheRead)};
 	}
+
+	// What a compact_boundary record reported of the compaction. Each is absent when the
+	// record does not carry it: only automatic compactions from one version have been seen.
+	struct CompactionFacts
+	{
+		std::string Trigger; // "auto", "manual", ...
+		std::optional<std::uint64_t> PreTokens;
+		std::optional<std::uint64_t> PostTokens;
+		std::optional<std::chrono::milliseconds> Duration;
+	};
 
 	enum class RecordKind
 	{
@@ -133,6 +144,11 @@ namespace Graphite {
 		// The summary Claude Code writes in place of the context it compacted. It is a user
 		// record with no isMeta, so this flag is the only thing that says no one typed it.
 		bool IsCompactSummary = false;
+
+		// A system record Claude Code writes where it compacted the context, just before the
+		// summary record; Compaction holds what it reported.
+		bool IsCompactBoundary = false;
+		CompactionFacts Compaction;
 
 		std::vector<ContentBlock> Blocks;
 		std::optional<TokenCounts> Usage;

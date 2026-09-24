@@ -5,8 +5,10 @@
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"
 
+#include <chrono>
 #include <cstdint>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -665,4 +667,57 @@ TEST_CASE("Only a prompt snapshot fills the snapshot fields")
 
 	REQUIRE(chunk.Records.size() == 1);
 	CHECK(chunk.Records[0].SystemPromptText.empty());
+}
+
+TEST_CASE("A compact boundary reads its trigger, token counts and duration")
+{
+	const std::vector<TranscriptRecord> records = ParseTranscript(Fixtures::kCompactBoundary).Records;
+
+	REQUIRE(records.size() == 1);
+	const TranscriptRecord& record = records[0];
+	CHECK(record.Kind == RecordKind::System);
+	CHECK(record.IsCompactBoundary);
+	CHECK(record.Timestamp == "2026-08-31T16:33:10.464Z");
+	CHECK(record.Compaction.Trigger == "auto");
+	CHECK(record.Compaction.PreTokens == std::optional<std::uint64_t>{167324});
+	CHECK(record.Compaction.PostTokens == std::optional<std::uint64_t>{5090});
+	CHECK(record.Compaction.Duration == std::optional<std::chrono::milliseconds>{169810});
+}
+
+TEST_CASE("A compact boundary with no metadata reads with every fact absent")
+{
+	const std::vector<TranscriptRecord> records = ParseTranscript(
+		Fixtures::Line({{"type", "system"}, {"subtype", "compact_boundary"}, {"timestamp", "2026-08-31T16:33:10.464Z"}}))
+		.Records;
+
+	REQUIRE(records.size() == 1);
+	CHECK(records[0].IsCompactBoundary);
+	CHECK(records[0].Compaction.Trigger.empty());
+	CHECK_FALSE(records[0].Compaction.PreTokens.has_value());
+	CHECK_FALSE(records[0].Compaction.PostTokens.has_value());
+	CHECK_FALSE(records[0].Compaction.Duration.has_value());
+}
+
+TEST_CASE("A compact boundary's count of the wrong type reads as absent, the rest still read")
+{
+	const std::vector<TranscriptRecord> records = ParseTranscript(Fixtures::Line(
+		{{"type", "system"},
+		 {"subtype", "compact_boundary"},
+		 {"compactMetadata", {{"trigger", "manual"}, {"preTokens", "lots"}, {"postTokens", 4000}, {"durationMs", -5}}}}))
+		.Records;
+
+	REQUIRE(records.size() == 1);
+	CHECK(records[0].Compaction.Trigger == "manual");
+	CHECK_FALSE(records[0].Compaction.PreTokens.has_value());
+	CHECK(records[0].Compaction.PostTokens == std::optional<std::uint64_t>{4000});
+	CHECK_FALSE(records[0].Compaction.Duration.has_value());
+}
+
+TEST_CASE("Another system record is not a compact boundary")
+{
+	const std::vector<TranscriptRecord> records =
+		ParseTranscript(Fixtures::Line({{"type", "system"}, {"subtype", "turn_duration"}, {"durationMs", 5000}})).Records;
+
+	REQUIRE(records.size() == 1);
+	CHECK_FALSE(records[0].IsCompactBoundary);
 }
