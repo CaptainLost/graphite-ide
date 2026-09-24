@@ -541,7 +541,7 @@ namespace Graphite {
 		}
 
 		if (request.ToolsLoaded > 0)
-			label += " (+" + std::to_string(request.ToolsLoaded) + " loaded)";
+			label += " (+" + std::to_string(request.ToolsLoaded) + " new)";
 
 		return label;
 	}

@@ -92,7 +92,7 @@ namespace Graphite {
 		std::vector<ResponseItem> Response;
 		std::string StopReason;
 		std::size_t ToolsAvailable = 0; // deferred tool names announced by this request
-		std::size_t ToolsLoaded = 0;    // names this request's own tools deltas added
+		std::size_t ToolsLoaded = 0;    // new tool names this request's own deltas announced
 
 		// Tools the request carried with their full schema, from the session's latest prompt
 		// snapshot: the tool count a reader can trust, unlike ToolsAvailable's names alone.
@@ -183,9 +183,9 @@ namespace Graphite {
 	// in first-seen order.
 	std::vector<std::string> ToolNamesUsed(const ApiRequest& request);
 
-	// "Tools: 17 with schemas, 88 by name only (+3 loaded)": the tools this request had in full
+	// "Tools: 17 with schemas, 88 by name only (+3 new)": the tools this request had in full
 	// against the ones it only had a deferred name for, the count in brackets only when the
-	// request's own deltas loaded any. Either count is left out when it is zero, and both
+	// request's own deltas announced any. Either count is left out when it is zero, and both
 	// being zero reads as "Tools: none recorded".
 	std::string ToolsAvailableLabel(const ApiRequest& request);
 }

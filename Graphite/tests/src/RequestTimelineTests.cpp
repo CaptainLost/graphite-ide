@@ -330,8 +330,8 @@ TEST_CASE("Tools available name how many of them the request's own deltas loaded
 	CHECK(requests[0].ToolsLoaded == 3);
 	CHECK(requests[1].ToolsLoaded == 1);
 	CHECK(requests[2].ToolsLoaded == 0);
-	CHECK(ToolsAvailableLabel(requests[0]) == "Tools: 3 by name only (+3 loaded)");
-	CHECK(ToolsAvailableLabel(requests[1]) == "Tools: 2 by name only (+1 loaded)");
+	CHECK(ToolsAvailableLabel(requests[0]) == "Tools: 3 by name only (+3 new)");
+	CHECK(ToolsAvailableLabel(requests[1]) == "Tools: 2 by name only (+1 new)");
 	CHECK(ToolsAvailableLabel(requests[2]) == "Tools: 2 by name only");
 }
 
@@ -349,7 +349,7 @@ TEST_CASE("Tools available label names a snapshot's schemas, and reads \"none re
 		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(100, 1)));
 
 	REQUIRE(withSchemas.size() == 1);
-	CHECK(ToolsAvailableLabel(withSchemas[0]) == "Tools: 1 with schema, 2 by name only (+2 loaded)");
+	CHECK(ToolsAvailableLabel(withSchemas[0]) == "Tools: 1 with schema, 2 by name only (+2 new)");
 }
 
 TEST_CASE("A snapshot arriving after the first request gives it a schema count it did not have")
