@@ -548,25 +548,23 @@ namespace Graphite {
 
 	std::string SentHeading(const ApiRequest& request)
 	{
-		if (request.Index == 1)
-			return request.Sent.empty() ? "Nothing sent" : "Sent to the model \xe2\x80\x94 first request";
-
-		const std::string previous = "#" + std::to_string(request.Index - 1);
-
-		return request.Sent.empty() ? "Nothing new since " + previous : "New since " + previous + " \xe2\x80\x94 sent to the model";
+		return request.Sent.empty() ? "Nothing added to the context" : "Added to the context";
 	}
 
 	std::string SentSummary(const ApiRequest& request)
 	{
+		const std::string reference =
+			request.Index == 1 ? "first request" : "since #" + std::to_string(request.Index - 1);
+
 		if (request.Sent.empty())
-			return {};
+			return reference;
 
 		std::size_t bytes = 0;
 		for (const SentItem& item : request.Sent)
 			bytes += item.Bytes;
 
-		return std::to_string(request.Sent.size()) + (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " +
-			   FormatBytes(bytes);
+		return reference + " \xc2\xb7 " + std::to_string(request.Sent.size()) +
+			   (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " + FormatBytes(bytes);
 	}
 
 	std::string ReplyHeading(const ApiRequest& request)

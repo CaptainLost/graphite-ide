@@ -189,13 +189,14 @@ namespace Graphite {
 	// being zero reads as "Tools: none recorded".
 	std::string ToolsAvailableLabel(const ApiRequest& request);
 
-	// What the Sent section's heading says, naming the request that the items since it are new
-	// against: "Sent to the model — first request", "New since #4 — sent to the model", or, when
-	// Sent is empty, "Nothing sent" (#1) or "Nothing new since #4".
+	// What the Sent section's heading says: "Added to the context", or, when Sent is empty,
+	// "Nothing added to the context" — the same wording for every request, #1 included.
 	std::string SentHeading(const ApiRequest& request);
 
-	// "6 items · 30.8 KB", "1 item · 73 B": how many items Sent carries and their bytes together,
-	// via FormatBytes. Empty when Sent is empty — the heading alone says that.
+	// The reference the items are new against, then the existing count and size:
+	// "first request · 20 items · 190.0 KB" (#1), "since #140 · 1 item · 5.4 KB" (later requests,
+	// the number is Index - 1). When Sent is empty, just the reference: "first request" or
+	// "since #140".
 	std::string SentSummary(const ApiRequest& request);
 
 	// "Model's reply", or "Model's reply — nothing yet" when Response is empty.

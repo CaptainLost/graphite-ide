@@ -620,7 +620,7 @@ TEST_CASE("A snapshot with no system prompt changes nothing")
 	CHECK(requests[0].Sent[0].Kind == SentKind::Prompt);
 }
 
-TEST_CASE("The Sent heading names the first request, or the request the new items are since")
+TEST_CASE("The Sent heading says what was added to the context, the same wording for every request")
 {
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::UserPrompt("go") +
@@ -630,11 +630,11 @@ TEST_CASE("The Sent heading names the first request, or the request the new item
 							"2026-09-17T09:00:03.000Z"));
 
 	REQUIRE(requests.size() == 2);
-	CHECK(SentHeading(requests[0]) == "Sent to the model \xe2\x80\x94 first request");
-	CHECK(SentHeading(requests[1]) == "New since #1 \xe2\x80\x94 sent to the model");
+	CHECK(SentHeading(requests[0]) == "Added to the context");
+	CHECK(SentHeading(requests[1]) == "Added to the context");
 }
 
-TEST_CASE("The Sent heading says nothing was sent, naming the previous request past #1")
+TEST_CASE("The Sent heading says nothing was added to the context when Sent is empty, #1 included")
 {
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
@@ -644,23 +644,34 @@ TEST_CASE("The Sent heading says nothing was sent, naming the previous request p
 	REQUIRE(requests.size() == 2);
 	CHECK(requests[0].Sent.empty());
 	CHECK(requests[1].Sent.empty());
-	CHECK(SentHeading(requests[0]) == "Nothing sent");
-	CHECK(SentHeading(requests[1]) == "Nothing new since #1");
+	CHECK(SentHeading(requests[0]) == "Nothing added to the context");
+	CHECK(SentHeading(requests[1]) == "Nothing added to the context");
 }
 
-TEST_CASE("The Sent summary counts items and their bytes, singular and plural, and is empty with nothing sent")
+TEST_CASE("The Sent summary leads with the request it is new since, then the count and bytes")
 {
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::UserPrompt("go") +
-		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)));
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
+		Fixtures::UserPrompt("again", "2026-09-17T09:00:02.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:03.000Z"));
 
-	REQUIRE(requests.size() == 1);
-	CHECK(SentSummary(requests[0]) == "1 item \xc2\xb7 2 B");
-	CHECK(SentSummary(requests[0]).empty() == false);
+	REQUIRE(requests.size() == 2);
+	CHECK(SentSummary(requests[0]) == "first request \xc2\xb7 1 item \xc2\xb7 2 B");
+	CHECK(SentSummary(requests[1]) == "since #1 \xc2\xb7 1 item \xc2\xb7 5 B");
+}
 
-	const std::vector<ApiRequest> empty =
-		Build(Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)));
-	CHECK(SentSummary(empty[0]).empty());
+TEST_CASE("The Sent summary is just the reference when Sent is empty, #1 included")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	CHECK(SentSummary(requests[0]) == "first request");
+	CHECK(SentSummary(requests[1]) == "since #1");
 }
 
 TEST_CASE("The Sent summary adds every item's bytes together")
@@ -675,7 +686,7 @@ TEST_CASE("The Sent summary adds every item's bytes together")
 
 	REQUIRE(requests.size() == 2);
 	REQUIRE(requests[1].Sent.size() == 2);
-	CHECK(SentSummary(requests[1]) == "2 items \xc2\xb7 1006 B");
+	CHECK(SentSummary(requests[1]) == "since #1 \xc2\xb7 2 items \xc2\xb7 1006 B");
 }
 
 TEST_CASE("The Reply heading says nothing came back when Response is empty")
