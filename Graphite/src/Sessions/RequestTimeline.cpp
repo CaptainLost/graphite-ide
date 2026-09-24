@@ -123,60 +123,6 @@ namespace Graphite {
 		}
 	}
 
-	void RequestTimeline::EstimateTokens(ApiRequest& request) const
-	{
-		for (SentItem& item : request.Sent)
-			item.EstimatedTokens = 0;
-
-		// Against the previous request's context, what this one added. A request with no
-		// earlier context to measure against added all of its own — but only one that lists
-		// its system prompt accounts for all of it: without the snapshot, the first request's
-		// context, most of it the prompt and the tools, would be put down to the few items it
-		// does list. A context that shrank, or none at all, gives no estimate: splitting a
-		// negative or missing number across items would be a made-up one.
-		const bool accountsForAll = std::any_of(request.Sent.begin(), request.Sent.end(), [](const SentItem& item)
-												{ return item.Kind == SentKind::SystemPrompt; });
-
-		if (!request.ContextDelta.has_value() && !accountsForAll)
-			return;
-
-		const std::int64_t delta = request.ContextDelta.has_value() ? *request.ContextDelta
-																	: static_cast<std::int64_t>(request.Context);
-
-		if (delta <= 0)
-			return;
-
-		std::uint64_t totalBytes = 0;
-
-		for (const SentItem& item : request.Sent)
-			totalBytes += item.Bytes;
-
-		if (totalBytes == 0)
-			return;
-
-		std::int64_t assigned = 0;
-		std::size_t lastWithBytes = request.Sent.size();
-
-		for (std::size_t i = 0; i < request.Sent.size(); ++i)
-		{
-			SentItem& item = request.Sent[i];
-
-			if (item.Bytes == 0)
-				continue;
-
-			const std::int64_t estimate =
-				delta * static_cast<std::int64_t>(item.Bytes) / static_cast<std::int64_t>(totalBytes);
-			item.EstimatedTokens = estimate;
-			assigned += estimate;
-			lastWithBytes = i;
-		}
-
-		// Rounding down on every item leaves a remainder; the last item that had a byte to
-		// measure absorbs it, so the estimates sum to exactly the delta.
-		if (lastWithBytes < request.Sent.size())
-			request.Sent[lastWithBytes].EstimatedTokens += delta - assigned;
-	}
-
 	// Recomputes everything Usage derives, for a request that just adopted one — whether at
 	// creation or from a later record of the same key.
 	void RequestTimeline::ApplyUsage(ApiRequest& request, std::size_t index, const TokenCounts& usage)
@@ -190,7 +136,6 @@ namespace Graphite {
 								  : 0.0;
 		request.CacheRebuilt =
 			request.Context > 0 && (request.Usage.CacheWrite5m + request.Usage.CacheWrite1h) * 2 >= request.Context;
-		EstimateTokens(request);
 	}
 
 	std::optional<std::int64_t> RequestTimeline::ContextDeltaFor(std::size_t index) const
@@ -479,10 +424,7 @@ namespace Graphite {
 		}
 
 		if (!m_Requests.empty())
-		{
 			PlaceSnapshot(m_Requests.front());
-			EstimateTokens(m_Requests.front());
-		}
 
 		changed = true;
 	}

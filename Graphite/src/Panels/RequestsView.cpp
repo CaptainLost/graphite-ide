@@ -457,10 +457,7 @@ namespace Graphite {
 			const std::size_t items = request.Sent.size();
 			const std::string prefix =
 				"Sent: " + std::to_string(items) + (items == 1 ? " item" : " items") + " \xe2\x80\x94 largest: ";
-			std::string suffix = "  " + FormatBytes(largest.Bytes);
-
-			if (largest.EstimatedTokens > 0)
-				suffix += " ~" + FormatTokens(static_cast<std::uint64_t>(largest.EstimatedTokens)) + " tok";
+			const std::string suffix = "  " + FormatBytes(largest.Bytes);
 
 			// The label gives way to the numbers after it, down to a few characters.
 			const float room =

@@ -101,7 +101,7 @@ TEST_CASE("A response written as several records is one request, and what preced
 	CHECK(request.Response[1].ToolName == "Bash");
 }
 
-TEST_CASE("The next request's sent items are the tool result and what came with it, with estimates that sum to the delta")
+TEST_CASE("The next request's sent items are the tool result and what came with it")
 {
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::UserPrompt("go") +
@@ -119,14 +119,13 @@ TEST_CASE("The next request's sent items are the tool result and what came with 
 	CHECK(second.Sent[0].Kind == SentKind::ToolResult);
 	CHECK(second.Sent[0].ToolName == "Read");
 	CHECK(second.Sent[0].Label.starts_with("Read"));
+	CHECK(second.Sent[0].Bytes == 300);
 	CHECK(second.Sent[1].Kind == SentKind::Reminder);
 	CHECK(second.Sent[1].Label == "total_tokens_reminder");
-	CHECK(second.Sent[0].EstimatedTokens + second.Sent[1].EstimatedTokens == 200);
-	CHECK(second.Sent[0].EstimatedTokens > second.Sent[1].EstimatedTokens);
 	CHECK(ToolNamesUsed(second) == std::vector<std::string>{"Read"});
 }
 
-TEST_CASE("A context that shrank gives no estimates, and a large cache write marks a rebuilt cache")
+TEST_CASE("A large cache write marks a rebuilt cache")
 {
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(0, 1, 0, 0, 5000)) +
@@ -135,7 +134,6 @@ TEST_CASE("A context that shrank gives no estimates, and a large cache write mar
 
 	const ApiRequest& second = requests[1];
 	CHECK(*second.ContextDelta == 3020 - 5000);
-	CHECK(second.Sent[0].EstimatedTokens == 0);
 	CHECK(second.CacheRebuilt);
 	CHECK_FALSE(requests[0].CacheRebuilt);
 }
@@ -188,20 +186,6 @@ TEST_CASE("A queued prompt with a pasted image is listed by its words, and its t
 	CHECK(item.Label == "look at this [Image #2]");
 	CHECK(item.Text == "look at this [Image #2]\n[image/png, 3.0 KB]");
 	CHECK(item.Approximate);
-}
-
-TEST_CASE("A first request with no snapshot gives no estimates rather than spread its whole context")
-{
-	// Without the system prompt and the tools listed, the first request's context — most of it
-	// theirs — would be put down to the few words it carried.
-	const std::vector<ApiRequest> requests = Build(
-		Fixtures::UserPrompt("hi") +
-		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "tokens"}}) +
-		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(20000, 1)));
-
-	REQUIRE(requests[0].Sent.size() == 2);
-	CHECK(requests[0].Sent[0].EstimatedTokens == 0);
-	CHECK(requests[0].Sent[1].EstimatedTokens == 0);
 }
 
 TEST_CASE("Tools available follow additions and removals")
@@ -373,6 +357,32 @@ TEST_CASE("An attachment is measured by what it carries, not by its transcript l
 	CHECK(requests[0].Sent[0].Bytes == 6);
 }
 
+TEST_CASE("A sent item carries its size in bytes and nothing that guesses at tokens")
+{
+	// A tool result, an image and an attachment in the one request: every kind a sent item can
+	// take size from is measured by its bytes alone. SentItem has no token field to check —
+	// this asserts what stands in its place. SentColumn's "≈ " prefix is Panels, not linked
+	// into this test binary, so it is not asserted here.
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Read", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
+		Fixtures::ToolResult("t1", "hit") +
+		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "tokens"}}) +
+		Fixtures::UserBlocks(nlohmann::json::array({Fixtures::ImageBlock("image/png", std::string(4096, 'A'))}),
+							 "2026-09-17T09:00:03.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 5, 0, 0, 1100), "claude-opus-5",
+							"2026-09-17T09:00:04.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[1].Sent.size() == 3);
+	CHECK(requests[1].Sent[0].Kind == SentKind::ToolResult);
+	CHECK(requests[1].Sent[0].Bytes == 3);
+	CHECK(requests[1].Sent[1].Kind == SentKind::Reminder);
+	CHECK(requests[1].Sent[1].Bytes == 6);
+	CHECK(requests[1].Sent[2].Kind == SentKind::Image);
+	CHECK(requests[1].Sent[2].Bytes == 3072);
+}
+
 TEST_CASE("A tool result is measured by the text the model gets, not the metadata kept beside it")
 {
 	// An Edit's result is a line of text; its toolUseResult carries the whole file, which
@@ -389,8 +399,6 @@ TEST_CASE("A tool result is measured by the text the model gets, not the metadat
 	REQUIRE(requests[1].Sent.size() == 2);
 	CHECK(requests[1].Sent[0].Bytes == 2);
 	CHECK(requests[1].Sent[1].Bytes == 200);
-	CHECK(requests[1].Sent[1].EstimatedTokens > requests[1].Sent[0].EstimatedTokens);
-	CHECK(requests[1].Sent[0].EstimatedTokens + requests[1].Sent[1].EstimatedTokens == 202);
 }
 
 TEST_CASE("A pasted image is its own sent item, sized by the bytes it decodes to")
@@ -408,7 +416,6 @@ TEST_CASE("A pasted image is its own sent item, sized by the bytes it decodes to
 	CHECK(requests[1].Sent[1].Kind == SentKind::Image);
 	CHECK(requests[1].Sent[1].Label == "Image (png, 3.0 KB)");
 	CHECK(requests[1].Sent[1].Bytes == 3072);
-	CHECK(requests[1].Sent[0].EstimatedTokens + requests[1].Sent[1].EstimatedTokens == 1000);
 }
 
 TEST_CASE("An image with nothing known about it is still listed")
@@ -544,10 +551,6 @@ TEST_CASE("The prompt snapshots put the system prompt and the tool schemas first
 	CHECK(first.Sent[1].Label == "Tools (1 schema)");
 	CHECK(first.Sent[1].Bytes == first.Sent[1].Text.size());
 	CHECK(first.Sent[2].Kind == SentKind::Prompt);
-
-	// With no earlier context to measure against, the items share the whole of it — and
-	// they were shared again when the second snapshot changed them.
-	CHECK(first.Sent[0].EstimatedTokens + first.Sent[1].EstimatedTokens + first.Sent[2].EstimatedTokens == 100);
 
 	REQUIRE(requests[1].Sent.size() == 1);
 	CHECK(requests[1].Sent[0].Kind == SentKind::Prompt);

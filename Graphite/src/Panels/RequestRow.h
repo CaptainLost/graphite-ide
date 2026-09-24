@@ -57,8 +57,9 @@ namespace Graphite {
 	ItemLook LookOf(const SentItem& item, const SessionPalette& palette);
 	ItemLook LookOf(const ResponseItem& item, const SessionPalette& palette);
 
-	// "3.5 KB  ~880 tok": a sent item's size and its share of the context, with "≈ " in
-	// front when its text is a reconstruction.
+	// "3.5 KB": a sent item's size in bytes, with "≈ " in front when its text is a
+	// reconstruction. No token figure: the transcript records tokens per request, not per
+	// item, so a per-item count would only ever be a guess.
 	std::string SentColumn(const SentItem& item);
 
 	// What the reader did to the list this frame, by the item's position in Sent then

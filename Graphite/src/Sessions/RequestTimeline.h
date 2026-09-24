@@ -28,9 +28,8 @@ namespace Graphite {
 		EditedFile,
 		Reminder,
 
-		// An image the user pasted. Its estimate is its share of the delta by bytes like any
-		// other item's, though an image is billed by its pixels, not its bytes: it is the
-		// roughest estimate here.
+		// An image the user pasted. It is sized here by the bytes it decodes to, which is
+		// not what it is billed by: an image's cost is its pixels, not its bytes.
 		Image,
 
 		// What the session's first request carried ahead of every message, from Claude
@@ -46,7 +45,6 @@ namespace Graphite {
 		std::string ToolName; // ToolResult only
 		bool IsError = false; // ToolResult only
 		std::size_t Bytes = 0;
-		std::int64_t EstimatedTokens = 0;
 
 		// What the model was sent, as plain text: an image is a placeholder naming it.
 		std::string Text;
@@ -133,7 +131,6 @@ namespace Graphite {
 		// Replaces whatever the snapshot put at the head of `request` with m_Snapshot.
 		void PlaceSnapshot(ApiRequest& request) const;
 
-		void EstimateTokens(ApiRequest& request) const;
 		void ApplyUsage(ApiRequest& request, std::size_t index, const TokenCounts& usage);
 
 		// The delta for the request at `index`: its Context against the Context of the last

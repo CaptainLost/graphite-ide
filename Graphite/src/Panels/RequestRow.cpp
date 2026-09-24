@@ -108,10 +108,7 @@ namespace Graphite {
 
 	std::string SentColumn(const SentItem& item)
 	{
-		std::string column = FormatBytes(item.Bytes);
-
-		if (item.EstimatedTokens > 0)
-			column += "  ~" + FormatTokens(static_cast<std::uint64_t>(item.EstimatedTokens)) + " tok";
+		const std::string column = FormatBytes(item.Bytes);
 
 		// U+2248 ALMOST EQUAL TO.
 		return item.Approximate ? "\xe2\x89\x88 " + column : column;
