@@ -190,4 +190,23 @@ namespace Graphite {
 
 		return *to - *from;
 	}
+
+	std::optional<std::chrono::milliseconds> GapBefore(std::string_view earlier, const TurnItem& item)
+	{
+		const auto from = ParseTimestamp(earlier);
+		const auto to = ParseTimestamp(item.At);
+
+		if (!from || !to)
+			return std::nullopt;
+
+		std::chrono::milliseconds span = *to - *from;
+
+		if (item.Kind == ItemKind::Compaction && item.Compaction.Duration)
+			span -= *item.Compaction.Duration;
+
+		if (span <= kGapThreshold)
+			return std::nullopt;
+
+		return span;
+	}
 }

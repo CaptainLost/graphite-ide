@@ -284,6 +284,19 @@ TEST_CASE("Two compactions in one turn each keep their own summary")
 	CHECK_FALSE(turn.Items[2].Text.empty());
 }
 
+TEST_CASE("Two compactions back to back each keep their own summary")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary + Fixtures::kCompactSummary +
+								  Fixtures::kCompactBoundary + Fixtures::kCompactSummary);
+
+	const Turn& turn = session.GetTurns()[0];
+	REQUIRE(turn.Items.size() == 2);
+	CHECK(turn.Items[0].Kind == ItemKind::Compaction);
+	CHECK_FALSE(turn.Items[0].Text.empty());
+	CHECK(turn.Items[1].Kind == ItemKind::Compaction);
+	CHECK_FALSE(turn.Items[1].Text.empty());
+}
+
 TEST_CASE("A compaction before any prompt lands in a turn with no prompt")
 {
 	const Session session = Build(Fixtures::kCompactBoundary + Fixtures::kCompactSummary + Fixtures::UserPrompt("next"));

@@ -188,3 +188,27 @@ TEST_CASE("A compaction stands on its own between two step runs")
 	CHECK(parts[1].Requests == 0);
 	CHECK(parts[2].Kind == PartKind::Steps);
 }
+
+TEST_CASE("The pause before a compaction has the time it took itself taken off")
+{
+	// Real numbers from session f04ede21 compaction 1: last tool result 16:30:20.000Z, the
+	// boundary written at 16:33:10.464Z, 169810 ms after the compaction began.
+	TurnItem compaction{.Kind = ItemKind::Compaction,
+						.At = "2026-08-31T16:33:10.464Z",
+						.Compaction = {.Duration = std::chrono::milliseconds{169810}}};
+
+	// The gap is the compaction's own time and nothing else, so it does not clear the threshold.
+	CHECK_FALSE(GapBefore("2026-08-31T16:30:20.000Z", compaction).has_value());
+
+	// Without a duration there is nothing to take off: the whole span shows as a pause.
+	TurnItem noDuration{.Kind = ItemKind::Compaction, .At = "2026-08-31T16:33:10.464Z"};
+	CHECK(GapBefore("2026-08-31T16:30:20.000Z", noDuration) == std::chrono::milliseconds{170464});
+
+	// A pause that started well before the compaction still has the compaction's own time
+	// taken off the end of it.
+	CHECK(GapBefore("2026-08-31T16:00:00.000Z", compaction) == std::chrono::milliseconds{1820654});
+
+	// A non-compaction item has nothing to take off: same as GapBetween.
+	TurnItem text{.Kind = ItemKind::Text, .At = "2026-08-31T16:33:10.464Z"};
+	CHECK(GapBefore("2026-08-31T16:30:20.000Z", text) == std::chrono::milliseconds{170464});
+}

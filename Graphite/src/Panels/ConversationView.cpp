@@ -150,13 +150,28 @@ namespace Graphite {
 		// The latest time seen so far, which a gap is measured from.
 		std::string last;
 
-		const auto gapTo = [&rows, &last](std::string_view next, std::size_t turn, std::size_t part)
+		const auto pushGap = [&rows](std::optional<std::chrono::milliseconds> gap, std::size_t turn, std::size_t part)
+		{
+			if (gap)
+				rows.push_back({RowKind::Gap, turn, part, 0, *gap});
+		};
+
+		const auto gapTo = [&rows, &last, &pushGap](std::string_view next, std::size_t turn, std::size_t part)
 		{
 			if (last.empty() || next.empty())
 				return;
 
-			if (const std::optional<std::chrono::milliseconds> gap = GapBetween(last, next))
-				rows.push_back({RowKind::Gap, turn, part, 0, *gap});
+			pushGap(GapBetween(last, next), turn, part);
+		};
+
+		// Same as gapTo, but for an item that may be a compaction: its own time is taken off
+		// first, so the divider's duration is not shown again as a pause above it.
+		const auto gapBeforeItem = [&rows, &last, &pushGap](const TurnItem& item, std::size_t turn, std::size_t part)
+		{
+			if (last.empty() || item.At.empty())
+				return;
+
+			pushGap(GapBefore(last, item), turn, part);
 		};
 
 		for (std::size_t turn = 0; turn < turns.size(); ++turn)
@@ -181,7 +196,7 @@ namespace Graphite {
 				if (split.Items.empty())
 					continue;
 
-				gapTo(current.Items[split.Items.front()].At, turn, part);
+				gapBeforeItem(current.Items[split.Items.front()], turn, part);
 
 				const bool open = split.Kind == PartKind::Steps && m_OpenParts.contains({turn, part});
 				rows.push_back({RowKind::Part, turn, part, 0, {}, open});
@@ -705,7 +720,7 @@ namespace Graphite {
 		// tall all the same, so the row keeps the height the pause row has.
 		if (hasSummary)
 		{
-			if (ImGui::Selectable("##compaction", false, ImGuiSelectableFlags_None, ImVec2(0.0f, lineHeight)))
+			if (ImGui::Selectable("##compaction", false, ImGuiSelectableFlags_None, ImVec2(width, lineHeight)))
 				Toggle(m_OpenItems, key, row);
 		}
 		else

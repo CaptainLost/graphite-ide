@@ -68,7 +68,10 @@ namespace Graphite {
 		}
 
 		// A count that may be missing: nothing for an absent field, a wrong type or a negative
-		// number, where CountAt would give a zero indistinguishable from a real one.
+		// number, where CountAt would give a zero indistinguishable from a real one. Zero itself
+		// is kept (>= 0, not CountAt's > 0) because a boundary can genuinely report zero pre or
+		// post tokens; CountAt's callers have no field that is meaningfully absent, so 0 already
+		// says "none" for them.
 		std::optional<std::uint64_t> OptionalCountAt(const nlohmann::json& object, const char* key)
 		{
 			const auto found = object.find(key);

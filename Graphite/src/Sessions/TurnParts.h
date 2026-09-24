@@ -63,4 +63,10 @@ namespace Graphite {
 
 	// The pause between two timestamps when it is longer than kGapThreshold.
 	std::optional<std::chrono::milliseconds> GapBetween(std::string_view earlier, std::string_view later);
+
+	// The pause before `item` began, measured from `earlier`: GapBetween to the item's own
+	// time, except that a compaction's boundary is written when the compaction ends, so the
+	// time it took is not a pause — it is taken off first. Nothing when what is left does not
+	// exceed kGapThreshold, or a time does not parse.
+	std::optional<std::chrono::milliseconds> GapBefore(std::string_view earlier, const TurnItem& item);
 }
