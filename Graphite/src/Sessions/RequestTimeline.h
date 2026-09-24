@@ -91,8 +91,12 @@ namespace Graphite {
 		std::vector<SentItem> Sent;
 		std::vector<ResponseItem> Response;
 		std::string StopReason;
-		std::size_t ToolsAvailable = 0; // deferred tools loaded at this request
+		std::size_t ToolsAvailable = 0; // deferred tool names announced by this request
 		std::size_t ToolsLoaded = 0;    // names this request's own tools deltas added
+
+		// Tools the request carried with their full schema, from the session's latest prompt
+		// snapshot: the tool count a reader can trust, unlike ToolsAvailable's names alone.
+		std::size_t ToolSchemas = 0;
 	};
 
 	// Cuts a transcript's records into the API requests it made. Built by appending, like
@@ -154,6 +158,10 @@ namespace Graphite {
 		// are placed on a request that already exists as often as on one still to come.
 		std::vector<SentItem> m_Snapshot;
 
+		// The latest snapshot's tool schema count, applied to every request: the tool set with
+		// full schemas is the session's, not any one request's.
+		std::size_t m_SnapshotToolSchemas = 0;
+
 		std::unordered_map<std::string, ToolCallInfo> m_ToolCalls;
 
 		// The deferred tools loaded so far, as of the last attachment that changed them.
@@ -175,7 +183,9 @@ namespace Graphite {
 	// in first-seen order.
 	std::vector<std::string> ToolNamesUsed(const ApiRequest& request);
 
-	// "Tools available: 12 (+3 loaded)", the count in brackets only when the request's own
-	// deltas loaded any.
+	// "Tools: 17 with schemas, 88 by name only (+3 loaded)": the tools this request had in full
+	// against the ones it only had a deferred name for, the count in brackets only when the
+	// request's own deltas loaded any. Either count is left out when it is zero, and both
+	// being zero reads as "Tools: none recorded".
 	std::string ToolsAvailableLabel(const ApiRequest& request);
 }

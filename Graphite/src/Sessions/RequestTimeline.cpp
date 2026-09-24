@@ -196,6 +196,7 @@ namespace Graphite {
 			m_Pending.clear();
 			fresh.ToolsAvailable = m_Tools.size();
 			fresh.ToolsLoaded = std::exchange(m_PendingLoaded, 0);
+			fresh.ToolSchemas = m_SnapshotToolSchemas;
 
 			if (m_Requests.empty())
 				PlaceSnapshot(fresh);
@@ -426,6 +427,14 @@ namespace Graphite {
 		if (!m_Requests.empty())
 			PlaceSnapshot(m_Requests.front());
 
+		// The tool set a snapshot describes is the session's, not the first request's alone:
+		// every request already on the timeline picks up the new count, and one created from
+		// here on starts with it too.
+		m_SnapshotToolSchemas = record.ToolSchemaCount;
+
+		for (ApiRequest& request : m_Requests)
+			request.ToolSchemas = m_SnapshotToolSchemas;
+
 		changed = true;
 	}
 
@@ -469,6 +478,7 @@ namespace Graphite {
 		m_HasUsage.clear();
 		m_Pending.clear();
 		m_Snapshot.clear();
+		m_SnapshotToolSchemas = 0;
 		m_ToolCalls.clear();
 		m_Tools.clear();
 		m_PendingLoaded = 0;
@@ -512,7 +522,23 @@ namespace Graphite {
 
 	std::string ToolsAvailableLabel(const ApiRequest& request)
 	{
-		std::string label = "Tools available: " + std::to_string(request.ToolsAvailable);
+		std::vector<std::string> parts;
+
+		if (request.ToolSchemas > 0)
+			parts.push_back(std::to_string(request.ToolSchemas) + (request.ToolSchemas == 1 ? " with schema" : " with schemas"));
+
+		if (request.ToolsAvailable > 0)
+			parts.push_back(std::to_string(request.ToolsAvailable) + " by name only");
+
+		std::string label = "Tools: none recorded";
+
+		if (!parts.empty())
+		{
+			label = "Tools: ";
+
+			for (std::size_t i = 0; i < parts.size(); ++i)
+				label += (i == 0 ? "" : ", ") + parts[i];
+		}
 
 		if (request.ToolsLoaded > 0)
 			label += " (+" + std::to_string(request.ToolsLoaded) + " loaded)";

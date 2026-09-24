@@ -330,9 +330,41 @@ TEST_CASE("Tools available name how many of them the request's own deltas loaded
 	CHECK(requests[0].ToolsLoaded == 3);
 	CHECK(requests[1].ToolsLoaded == 1);
 	CHECK(requests[2].ToolsLoaded == 0);
-	CHECK(ToolsAvailableLabel(requests[0]) == "Tools available: 3 (+3 loaded)");
-	CHECK(ToolsAvailableLabel(requests[1]) == "Tools available: 2 (+1 loaded)");
-	CHECK(ToolsAvailableLabel(requests[2]) == "Tools available: 2");
+	CHECK(ToolsAvailableLabel(requests[0]) == "Tools: 3 by name only (+3 loaded)");
+	CHECK(ToolsAvailableLabel(requests[1]) == "Tools: 2 by name only (+1 loaded)");
+	CHECK(ToolsAvailableLabel(requests[2]) == "Tools: 2 by name only");
+}
+
+TEST_CASE("Tools available label names a snapshot's schemas, and reads \"none recorded\" with neither")
+{
+	const std::vector<ApiRequest> noSnapshot = Build(Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(noSnapshot.size() == 1);
+	CHECK(ToolsAvailableLabel(noSnapshot[0]) == "Tools: none recorded");
+
+	const std::vector<ApiRequest> withSchemas = Build(
+		Snapshot(true) +
+		Fixtures::UserPrompt("go") +
+		Fixtures::Attachment({{"type", "deferred_tools_delta"}, {"addedNames", {"A", "B"}}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(100, 1)));
+
+	REQUIRE(withSchemas.size() == 1);
+	CHECK(ToolsAvailableLabel(withSchemas[0]) == "Tools: 1 with schema, 2 by name only (+2 loaded)");
+}
+
+TEST_CASE("A snapshot arriving after the first request gives it a schema count it did not have")
+{
+	RequestTimeline timeline;
+	timeline.Append(ParseTranscript(Fixtures::UserPrompt("go") +
+									Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(100, 1)))
+						.Records);
+
+	REQUIRE(timeline.GetRequests().size() == 1);
+	CHECK(ToolsAvailableLabel(timeline.GetRequests()[0]) == "Tools: none recorded");
+
+	timeline.Append(ParseTranscript(Snapshot(true)).Records);
+
+	CHECK(ToolsAvailableLabel(timeline.GetRequests()[0]) == "Tools: 1 with schema");
 }
 
 TEST_CASE("A response's character counts are characters, not bytes")
@@ -552,8 +584,13 @@ TEST_CASE("The prompt snapshots put the system prompt and the tool schemas first
 	CHECK(first.Sent[1].Bytes == first.Sent[1].Text.size());
 	CHECK(first.Sent[2].Kind == SentKind::Prompt);
 
+	// The second snapshot's tool count reaches the first request even though it arrived after
+	// it, and every request from then on starts with it.
+	CHECK(first.ToolSchemas == 1);
+
 	REQUIRE(requests[1].Sent.size() == 1);
 	CHECK(requests[1].Sent[0].Kind == SentKind::Prompt);
+	CHECK(requests[1].ToolSchemas == 1);
 }
 
 TEST_CASE("A snapshot after the first request changes it and moves the version")
