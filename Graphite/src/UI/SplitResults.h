@@ -4,18 +4,20 @@
 
 namespace Graphite {
 
-	// The stacked, splitter-divided layout used wherever a list sits above a detail pane: the
-	// search panel, the references panel, and the git view's commit list above its diff all draw
-	// it. Results on top, a preview pane below once something is selected, with a draggable
-	// divider between them. Stacked rather than side by side because the query field and its row
-	// of toggles — or, for the references panel, the summary line — run the full width above
-	// both, and a preview beside the results would make three columns of a panel that reads top
-	// to bottom.
+	// The stacked, splitter-divided layout used wherever a list sits above a detail pane: any
+	// list of hits, commits or records whose one picked entry is shown in more detail draws it,
+	// so the app's lists all open, divide and close their details the same way. Results on top,
+	// a preview pane below once something is selected, with a draggable divider between them.
+	// Stacked rather than side by side because what heads such a list — a query field and its
+	// row of toggles, a summary line, a chart and the filters under it — runs the full width
+	// above both, and a preview beside the results would make three columns of a panel that
+	// reads top to bottom. A preview that wants columns of its own lays them out inside the
+	// pane, where they have the list's whole width to share.
 	//
-	// Draws only the results, filling the whole space, when `HasSelection` is false: this panel
-	// is used to read a list far more often than to look at one hit, and a pane reserving half
-	// the height for "nothing selected" is half a panel spent saying nothing. The preview then
-	// costs nothing until something is picked.
+	// Draws only the results, filling the whole space, when `HasSelection` is false: such a list
+	// is read as a list far more often than one entry of it is looked at, and a pane reserving
+	// half the height for "nothing selected" is half a panel spent saying nothing. The preview
+	// then costs nothing until something is picked.
 	struct SplitResultsInput
 	{
 		bool HasSelection = false;
@@ -47,7 +49,8 @@ namespace Graphite {
 	// last on the pane's opening line, and why it places itself instead of following a SameLine
 	// the caller wrote.
 	//
-	// Shared by the two panes that have something to dismiss: the diff and the commit details.
-	// What closing means is the caller's business; this only asks.
+	// For any pane the reader can dismiss, such as a preview DrawSplitResults draws, so that
+	// every such pane is closed from the same place. What closing means is the caller's
+	// business; this only asks.
 	bool DrawPaneClose();
 }
