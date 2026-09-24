@@ -169,3 +169,22 @@ TEST_CASE("A part lists only the requests it counts")
 	CHECK(parts[0].Requests == 1);
 	CHECK(parts[0].RequestKeys == std::vector<std::string>{"r2"});
 }
+
+TEST_CASE("A compaction stands on its own between two step runs")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("a", "Bash", {}), Fixtures::Usage(1, 1)) +
+		Fixtures::kCompactBoundary + Fixtures::kCompactSummary +
+		Fixtures::Assistant("r2", Fixtures::ToolUseBlock("b", "Bash", {}), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-08-31T16:33:20.000Z"));
+
+	const std::vector<TurnPart> parts = SplitTurn(session.GetTurns()[0], session.GetTools());
+
+	REQUIRE(parts.size() == 3);
+	CHECK(parts[0].Kind == PartKind::Steps);
+	CHECK(parts[1].Kind == PartKind::Compaction);
+	CHECK(parts[1].Items.size() == 1);
+	CHECK(parts[1].Requests == 0);
+	CHECK(parts[2].Kind == PartKind::Steps);
+}

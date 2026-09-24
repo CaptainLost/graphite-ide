@@ -213,12 +213,12 @@ TEST_CASE("A turn counts a streamed response by its whole output and a refused o
 									 {{"claude-opus-4-8", false}, TokenCounts{2, 1066, 0, 17298, 28871}}});
 }
 
-TEST_CASE("A compaction summary written mid-turn is an injected item of that turn, not a new prompt")
+TEST_CASE("A compaction mid-turn is one compaction item carrying the boundary's facts and the summary")
 {
 	const Session session = Build(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {}), Fixtures::Usage(1, 1)) +
-		Fixtures::kCompactSummary +
+		Fixtures::kCompactBoundary + Fixtures::kCompactSummary +
 		Fixtures::Assistant("r2", Fixtures::TextBlock("carrying on"), Fixtures::Usage(1, 1), "claude-opus-5",
 							"2026-08-31T16:33:20.000Z"));
 
@@ -226,9 +226,73 @@ TEST_CASE("A compaction summary written mid-turn is an injected item of that tur
 	const Turn& turn = session.GetTurns()[0];
 	CHECK(turn.Prompt == "go");
 	REQUIRE(turn.Items.size() == 3);
+
+	const TurnItem& compaction = turn.Items[1];
+	CHECK(compaction.Kind == ItemKind::Compaction);
+	CHECK(compaction.At == "2026-08-31T16:33:10.464Z");
+	CHECK(compaction.Compaction.PreTokens == std::optional<std::uint64_t>{167324});
+	CHECK(compaction.Compaction.Trigger == "auto");
+	CHECK(compaction.Text.starts_with("This session is being continued"));
+}
+
+TEST_CASE("A compaction summary with no boundary before it is still one compaction item")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactSummary);
+
+	REQUIRE(session.GetTurns().size() == 1);
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	const TurnItem& item = session.GetTurns()[0].Items[0];
+	CHECK(item.Kind == ItemKind::Compaction);
+	CHECK(item.Text.starts_with("This session is being continued"));
+	CHECK(item.At == "2026-08-31T16:33:10.124Z");
+	CHECK_FALSE(item.Compaction.PreTokens.has_value());
+}
+
+TEST_CASE("A compact boundary with no summary after it is a compaction item with no text")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary);
+
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Compaction);
+	CHECK(session.GetTurns()[0].Items[0].Text.empty());
+}
+
+TEST_CASE("A summary read in a later append fills the compaction its boundary started")
+{
+	Session session;
+	session.Append(ParseTranscript(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary).Records);
+	const std::uint64_t before = session.GetVersion();
+
+	session.Append(ParseTranscript(Fixtures::kCompactSummary).Records);
+
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Text.starts_with("This session is being continued"));
+	CHECK(session.GetVersion() > before);
+}
+
+TEST_CASE("Two compactions in one turn each keep their own summary")
+{
+	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary + Fixtures::MetaUser("first") +
+								  Fixtures::kCompactSummary + Fixtures::kCompactBoundary + Fixtures::kCompactSummary);
+
+	const Turn& turn = session.GetTurns()[0];
+	REQUIRE(turn.Items.size() == 3);
+	CHECK(turn.Items[0].Kind == ItemKind::Compaction);
+	CHECK_FALSE(turn.Items[0].Text.empty());
 	CHECK(turn.Items[1].Kind == ItemKind::Injected);
-	CHECK(turn.Items[1].Label == "Compaction summary");
-	CHECK(turn.Items[1].Text.starts_with("This session is being continued"));
+	CHECK(turn.Items[2].Kind == ItemKind::Compaction);
+	CHECK_FALSE(turn.Items[2].Text.empty());
+}
+
+TEST_CASE("A compaction before any prompt lands in a turn with no prompt")
+{
+	const Session session = Build(Fixtures::kCompactBoundary + Fixtures::kCompactSummary + Fixtures::UserPrompt("next"));
+
+	REQUIRE(session.GetTurns().size() == 2);
+	CHECK(session.GetTurns()[0].Prompt.empty());
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Compaction);
+	CHECK(session.GetTurns()[1].Prompt == "next");
 }
 
 TEST_CASE("Injected meta text that carries a known tag is labelled by the tag, not its first line")

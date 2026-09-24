@@ -25,7 +25,10 @@ namespace Graphite {
 		Injected,
 
 		// A message the user typed while Claude was working.
-		Queued
+		Queued,
+
+		// Where Claude Code compacted the context.
+		Compaction
 	};
 
 	struct TurnPart

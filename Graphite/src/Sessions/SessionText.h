@@ -18,6 +18,11 @@ namespace Graphite {
 
 	std::string FormatDuration(std::chrono::milliseconds span);
 
+	// A compaction on one line: "Context compacted", then whichever of these it knows — the
+	// token counts before and after (only with both), the trigger, the duration — and `time`
+	// last when it is not empty, joined by " · ".
+	std::string CompactionLabel(const CompactionFacts& facts, const std::string& time);
+
 	// The one field of a tool's input a reader scans for — the command, the path, the
 	// pattern, the subagent's task — or the start of the raw input for a tool not known here.
 	std::string ToolSummary(const ToolCall& tool);

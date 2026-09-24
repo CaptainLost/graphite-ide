@@ -95,3 +95,24 @@ TEST_CASE("A label is one line, never carries an ImGui id separator, and is cut 
 	CHECK(SingleLineLabel("a\xc5\xbc\xc5\xbc", 4) == "a\xc5\xbc");
 	CHECK(SingleLineLabel("", 10).empty());
 }
+
+TEST_CASE("A compaction's label joins every fact it has, with the time last")
+{
+	CompactionFacts facts;
+	facts.Trigger = "auto";
+	facts.PreTokens = 167324;
+	facts.PostTokens = 5090;
+	facts.Duration = std::chrono::milliseconds{169810};
+
+	CHECK(CompactionLabel(facts, "18:33") ==
+		  "Context compacted \xc2\xb7 167.3k \xe2\x86\x92 5.1k \xc2\xb7 auto \xc2\xb7 2m \xc2\xb7 18:33");
+}
+
+TEST_CASE("A compaction's label leaves out what it does not know, and the counts unless it has both")
+{
+	CompactionFacts facts;
+	facts.PreTokens = 167324;
+
+	CHECK(CompactionLabel(facts, "") == "Context compacted");
+	CHECK(CompactionLabel(CompactionFacts{}, "18:33") == "Context compacted \xc2\xb7 18:33");
+}

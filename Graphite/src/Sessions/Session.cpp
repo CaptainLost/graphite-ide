@@ -36,15 +36,21 @@ namespace Graphite {
 			}
 			else if (block.Kind == BlockKind::Text)
 			{
+				if (record.IsCompactSummary)
+				{
+					AttachCompactSummary(block.Text, record.Timestamp);
+					continue;
+				}
+
 				// Words Claude Code put in the user's mouth fold into the turn they arrived in;
 				// only what the user typed starts a turn.
 				if (record.IsMeta || IsInjectedText(block.Text))
 				{
 					// Meta text with no known opening, a skill's body say, has no kind to name, so
 					// its first line says what it is.
-					const std::string label = record.IsCompactSummary ? std::string{kCompactSummaryLabel}
-											  : IsInjectedText(block.Text) ? InjectedLabel(block.Text)
-																		   : FirstLineLabel(block.Text, 120);
+					const std::string label = IsInjectedText(block.Text)
+												  ? InjectedLabel(block.Text)
+												  : FirstLineLabel(block.Text, 120);
 					CurrentTurn().Items.push_back(
 						{.Kind = ItemKind::Injected, .Text = block.Text, .Label = label, .At = record.Timestamp});
 					continue;
@@ -70,6 +76,33 @@ namespace Graphite {
 	void Session::AddQueued(const TranscriptRecord& record)
 	{
 		CurrentTurn().Items.push_back({.Kind = ItemKind::Queued, .Text = record.QueuedPrompt, .At = record.Timestamp});
+	}
+
+	void Session::AddCompaction(const TranscriptRecord& record)
+	{
+		CurrentTurn().Items.push_back(
+			{.Kind = ItemKind::Compaction, .At = record.Timestamp, .Compaction = record.Compaction});
+	}
+
+	void Session::AttachCompactSummary(const std::string& text, const std::string& at)
+	{
+		Turn& turn = CurrentTurn();
+
+		for (auto item = turn.Items.rbegin(); item != turn.Items.rend(); ++item)
+		{
+			if (item->Kind != ItemKind::Compaction)
+				continue;
+
+			if (item->Text.empty())
+			{
+				item->Text = text;
+				return;
+			}
+
+			break;
+		}
+
+		turn.Items.push_back({.Kind = ItemKind::Compaction, .Text = text, .At = at});
 	}
 
 	void Session::AddAssistant(const TranscriptRecord& record)
@@ -154,8 +187,10 @@ namespace Graphite {
 				AddAssistant(record);
 			else if (record.Kind == RecordKind::Attachment && !record.QueuedPrompt.empty())
 				AddQueued(record);
+			else if (record.Kind == RecordKind::System && record.IsCompactBoundary)
+				AddCompaction(record);
 
-			// Other attachments, system records and unknown record types are bookkeeping —
+			// Other attachments, other system records and unknown record types are bookkeeping —
 			// modes, reminders, snapshots — not conversation. The summary reads what it needs
 			// of them; the conversation view does not draw them.
 		}

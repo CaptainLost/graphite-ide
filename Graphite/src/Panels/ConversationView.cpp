@@ -276,6 +276,8 @@ namespace Graphite {
 			const std::string& text = turn.Items[part.Items.front()].Text;
 			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y + 2.0f * line;
 		}
+		case PartKind::Compaction:
+			return line + 2.0f * spacing;
 		}
 
 		return line;
@@ -531,6 +533,7 @@ namespace Graphite {
 		case ItemKind::Text:
 		case ItemKind::Injected:
 		case ItemKind::Queued:
+		case ItemKind::Compaction:
 			ImGui::TextWrapped("%s", item.Text.c_str());
 			return;
 		}
@@ -884,6 +887,8 @@ namespace Graphite {
 				DrawUser(item.Text, item.At, context);
 				break;
 			}
+			case PartKind::Compaction:
+				break;
 			}
 			break;
 		}

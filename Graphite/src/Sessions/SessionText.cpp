@@ -1,6 +1,7 @@
 #include "Sessions/SessionText.h"
 
 #include "Sessions/SessionSummary.h"
+#include "Sessions/ToolFacts.h"
 
 #include <nlohmann/json.hpp>
 
@@ -64,6 +65,24 @@ namespace Graphite {
 						  static_cast<long long>(seconds % 3600 / 60));
 
 		return buffer;
+	}
+
+	std::string CompactionLabel(const CompactionFacts& facts, const std::string& time)
+	{
+		std::string label = "Context compacted";
+
+		const auto add = [&label](const std::string& piece) { label += " \xc2\xb7 " + piece; };
+
+		if (facts.PreTokens && facts.PostTokens)
+			add(FormatTokens(*facts.PreTokens) + " \xe2\x86\x92 " + FormatTokens(*facts.PostTokens));
+		if (!facts.Trigger.empty())
+			add(facts.Trigger);
+		if (facts.Duration)
+			add(FormatDuration(*facts.Duration));
+		if (!time.empty())
+			add(time);
+
+		return label;
 	}
 
 	std::string ToolSummary(const ToolCall& tool)

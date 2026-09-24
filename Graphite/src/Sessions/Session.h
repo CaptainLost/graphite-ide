@@ -36,6 +36,10 @@ namespace Graphite {
 		// A message the user typed while Claude was working. It belongs to the turn it
 		// arrived in rather than starting one.
 		Queued,
+
+		// Where Claude Code compacted the context: the boundary's facts in Compaction, the
+		// summary the model was given instead in Text (empty until it is read).
+		Compaction,
 		Other
 	};
 
@@ -58,6 +62,9 @@ namespace Graphite {
 		// The request that produced this item: requestId, else the record's uuid. Empty for
 		// items on the user's side.
 		std::string RequestId;
+
+		// For Compaction: what the boundary reported.
+		CompactionFacts Compaction;
 	};
 
 	// What one API request cost, kept per turn so a view can show it beside the reply or the
@@ -108,6 +115,11 @@ namespace Graphite {
 		void AddAssistant(const TranscriptRecord& record);
 		void AddUser(const TranscriptRecord& record);
 		void AddQueued(const TranscriptRecord& record);
+		void AddCompaction(const TranscriptRecord& record);
+
+		// Gives a compaction summary to the current turn's last compaction when that has none
+		// yet, or makes it a compaction of its own: a summary written without a boundary.
+		void AttachCompactSummary(const std::string& text, const std::string& at);
 
 		std::vector<Turn> m_Turns;
 		std::vector<ToolCall> m_Tools;
