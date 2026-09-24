@@ -2,12 +2,17 @@
 
 #include "Panels/CostView.h"
 
+#include "Panels/SessionDrawing.h"
 #include "Sessions/SessionText.h"
 
 #include <imgui.h>
 #include <implot.h>
+#include <implot_internal.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -90,34 +95,148 @@ namespace Graphite {
 			ImGui::EndTable();
 		}
 
-		// A turn that is not Known draws its priced part only; the table beside it says "?".
-		void DrawChart(const std::vector<TurnCost>& turns)
+		// The chart's height, in lines of text.
+		constexpr float kChartLines = 16.0f;
+
+		// Room left above the tallest bar and the total's end, so neither is drawn on the plot's
+		// edge. ImPlot pads each end of a fit by half of this; both value axes hold their floor
+		// at zero, so all of it goes on top.
+		constexpr float kFitPadding = 0.12f;
+
+		// The cost's layers, bottom up and indexed by CostLayer: the three the context is made of,
+		// named and coloured as the Requests tab's context chart draws them, and the output on
+		// top. They name the legend entries too.
+		constexpr const char* kLayerNames[kCostLayers] = {"Cache read", "Cache write", "Uncached input", "Output"};
+		constexpr const char* kTotalSeries = "Total";
+
+		ImVec4 Colour(ImU32 colour)
 		{
-			if (turns.empty())
-				return;
+			return ImGui::ColorConvertU32ToFloat4(colour);
+		}
 
-			constexpr int kBuckets = 4;
-			const char* labels[kBuckets] = {"Input", "Output", "Cache write", "Cache read"};
-
-			// Item-major, as PlotBarGroups reads it: every turn's input, then every turn's output...
-			std::vector<double> values(static_cast<std::size_t>(kBuckets) * turns.size());
-
-			for (std::size_t turn = 0; turn < turns.size(); ++turn)
+		ImU32 LayerColour(const SessionPalette& palette, std::size_t layer)
+		{
+			switch (static_cast<CostLayer>(layer))
 			{
-				values[0 * turns.size() + turn] = turns[turn].Buckets.Input;
-				values[1 * turns.size() + turn] = turns[turn].Buckets.Output;
-				values[2 * turns.size() + turn] = turns[turn].Buckets.CacheWrite;
-				values[3 * turns.size() + turn] = turns[turn].Buckets.CacheRead;
+			case CostLayer::CacheRead: return palette.Web;
+			case CostLayer::CacheWrite: return palette.Edit;
+			case CostLayer::Input: return palette.Run;
+			case CostLayer::Output: return palette.Agent;
 			}
 
-			if (ImPlot::BeginPlot("Cost per turn", ImVec2(-1.0f, ImGui::GetFontSize() * 16.0f)))
+			return palette.Other;
+		}
+
+		CostLayers LayersOf(const BucketCosts& buckets)
+		{
+			CostLayers layers{};
+			layers[static_cast<std::size_t>(CostLayer::CacheRead)] = buckets.CacheRead;
+			layers[static_cast<std::size_t>(CostLayer::CacheWrite)] = buckets.CacheWrite;
+			layers[static_cast<std::size_t>(CostLayer::Input)] = buckets.Input;
+			layers[static_cast<std::size_t>(CostLayer::Output)] = buckets.Output;
+			return layers;
+		}
+
+		// Whether the legend shows the series: an item ImPlot has not seen yet is shown, which
+		// is how it starts. Only after SetupFinish, which pushes the id the items are hashed
+		// under.
+		bool SeriesShown(const char* label)
+		{
+			const ImPlotItem* item = ImPlot::GetItem(label);
+			return item == nullptr || item->Show;
+		}
+
+		// One stacked bar per turn or request, numbered from 1, with the session's running total
+		// on a second axis. Returns the index of the bar clicked, if any.
+		std::optional<std::size_t> DrawChart(const char* axisLabel, const std::vector<CostLayers>& layers,
+											 const std::vector<double>& total, const SessionPalette& palette)
+		{
+			const int count = static_cast<int>(layers.size());
+
+			if (count == 0)
 			{
-				ImPlot::SetupAxes("Turn", "Dollars", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
-				ImPlot::SetupLegend(ImPlotLocation_NorthWest);
-				ImPlot::PlotBarGroups(labels, values.data(), kBuckets, static_cast<int>(turns.size()), 0.67, 1.0,
-									  ImPlotBarGroupsFlags_Stacked);
-				ImPlot::EndPlot();
+				ImGui::TextDisabled("Nothing to chart yet.");
+				return std::nullopt;
 			}
+
+			// Kept pushed through EndPlot, which is where ImPlot reads it when it fits the axes.
+			ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
+
+			if (!ImPlot::BeginPlot("##costChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
+			{
+				ImPlot::PopStyleVar();
+				return std::nullopt;
+			}
+
+			ImPlot::SetupAxis(ImAxis_X1, axisLabel, ImPlotAxisFlags_AutoFit);
+
+			// Both value axes stand on zero: with the floor free the fit would pad below it too, and
+			// the running total, fitted to its own first and last values, would make any growth
+			// look like it filled the chart.
+			ImPlot::SetupAxis(ImAxis_Y1, "Dollars", ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_LockMin);
+			ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Once);
+			ImPlot::SetupAxis(ImAxis_Y2, "Total dollars",
+							  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_LockMin);
+			ImPlot::SetupAxisLimits(ImAxis_Y2, 0.0, 1.0, ImPlotCond_Once);
+
+			// Outside and above, so it never covers the first bars.
+			ImPlot::SetupLegend(ImPlotLocation_North, ImPlotLegendFlags_Outside | ImPlotLegendFlags_Horizontal);
+
+			// Finished by hand so the legend's show state can be read before anything is plotted.
+			ImPlot::SetupFinish();
+
+			std::array<bool, kCostLayers> shown{};
+			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
+				shown[layer] = SeriesShown(kLayerNames[layer]);
+
+			std::vector<double> xs(layers.size());
+			std::array<std::vector<double>, kCostLayers> tops;
+
+			for (std::vector<double>& layerTops : tops)
+				layerTops.resize(layers.size());
+
+			for (std::size_t index = 0; index < layers.size(); ++index)
+			{
+				xs[index] = static_cast<double>(index + 1);
+				const CostLayers stacked = StackedTops(layers[index], shown);
+
+				for (std::size_t layer = 0; layer < kCostLayers; ++layer)
+					tops[layer][index] = stacked[layer];
+			}
+
+			// Stacked by drawing each layer's bar from the top down, every one over the last, to
+			// the height the layers the legend shows reach, in the scheme's colours rather than
+			// the colormap's. A hidden layer is still plotted, so its legend entry stays to show
+			// it again; ImPlot draws nothing for it, and the layers above it come down by what it
+			// held.
+			ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
+
+			for (std::size_t layer = kCostLayers; layer-- > 0;)
+			{
+				const ImVec4 colour = Colour(LayerColour(palette, layer));
+				ImPlot::SetNextFillStyle(colour);
+				ImPlot::SetNextLineStyle(colour);
+				ImPlot::PlotBars(kLayerNames[layer], xs.data(), tops[layer].data(), count, kBarFraction);
+			}
+
+			ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
+			ImPlot::SetNextLineStyle(Colour(palette.Accent));
+			ImPlot::PlotLine(kTotalSeries, xs.data(), total.data(), count);
+
+			// A click over a bar's column picks it, as in the Requests chart. The legend is
+			// outside the plot, so a click on it never lands here.
+			std::optional<std::size_t> clicked;
+
+			if (ImPlot::IsPlotHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+				!ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
+			{
+				const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
+				clicked = static_cast<std::size_t>(std::clamp(std::round(x), 1.0, static_cast<double>(count))) - 1;
+			}
+
+			ImPlot::EndPlot();
+			ImPlot::PopStyleVar();
+			return clicked;
 		}
 
 		void DrawTurnTable(const Session& session, const std::vector<TurnCost>& turns)
@@ -169,14 +288,81 @@ namespace Graphite {
 		}
 	}
 
-	void DrawCost(const Session& session, const std::optional<SessionSummary>& summary, const Pricing& pricing)
+	std::optional<std::size_t> CostView::Draw(const Session& session, const std::optional<SessionSummary>& summary,
+											  const RequestTimeline& timeline, const Pricing& pricing,
+											  const SessionPalette& palette)
 	{
 		const std::vector<TurnCost> turns = TurnCosts(session, pricing);
 
 		DrawTotals(session, summary, pricing);
 		ImGui::Spacing();
-		DrawChart(turns);
+
+		// In CostBy's order.
+		constexpr const char* kScopes[] = {"Per turn", "Per request"};
+
+		int by = static_cast<int>(m_By);
+
+		if (SegmentedChoice(kScopes, by))
+			m_By = static_cast<CostBy>(by);
+
+		std::optional<std::size_t> clicked;
+
+		if (m_By == CostBy::Turn)
+		{
+			// A turn that is not Known draws its priced part, as the table below it says "?" for
+			// it; the total takes nothing from it, since a number shown as a sum may not be a
+			// part of one.
+			std::vector<CostLayers> layers;
+			std::vector<CostResult> costs;
+			layers.reserve(turns.size());
+			costs.reserve(turns.size());
+
+			for (const TurnCost& turn : turns)
+			{
+				layers.push_back(LayersOf(turn.Buckets));
+
+				CostResult cost;
+				cost.Dollars = turn.Buckets.Total();
+
+				if (!turn.Known)
+					cost.UnknownModels.emplace_back();
+
+				costs.push_back(std::move(cost));
+			}
+
+			DrawChart("Turn", layers, CumulativeCost(costs), palette);
+		}
+		else
+		{
+			if (timeline.GetVersion() != m_BuiltVersion || pricing.GetEntries() != m_PricedWith)
+				PriceRequests(timeline, pricing);
+
+			// A click picks the request for the Requests tab to show.
+			clicked = DrawChart("Request", m_RequestLayers, m_RequestTotal, palette);
+		}
+
 		ImGui::Spacing();
 		DrawTurnTable(session, turns);
+		return clicked;
+	}
+
+	void CostView::PriceRequests(const RequestTimeline& timeline, const Pricing& pricing)
+	{
+		const std::vector<ApiRequest>& requests = timeline.GetRequests();
+		std::vector<CostResult> costs;
+		costs.reserve(requests.size());
+		m_RequestLayers.clear();
+		m_RequestLayers.reserve(requests.size());
+
+		// A request with no price has no bar, and the total runs flat across it.
+		for (const ApiRequest& request : requests)
+		{
+			m_RequestLayers.push_back(CostLayersOf(request, pricing).value_or(CostLayers{}));
+			costs.push_back(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}));
+		}
+
+		m_RequestTotal = CumulativeCost(costs);
+		m_BuiltVersion = timeline.GetVersion();
+		m_PricedWith = pricing.GetEntries();
 	}
 }

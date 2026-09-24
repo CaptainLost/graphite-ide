@@ -12,7 +12,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -35,12 +34,11 @@ namespace Graphite {
 		std::uint64_t Generation = 0;
 	};
 
-	// What the chart stacks: the context by cache layer, the cost by bucket, or the time
-	// spent waiting and between requests.
+	// What the chart stacks: the context by cache layer, or the time spent waiting and between
+	// requests. What the requests cost is charted in the Cost tab, by CostView.
 	enum class ChartMode
 	{
 		Context,
-		Cost,
 		Time
 	};
 
@@ -61,13 +59,13 @@ namespace Graphite {
 		std::optional<std::size_t> Draw(const RequestChartInput& input, const ConversationContext& context);
 
 	private:
-		// Up to the most layers any mode stacks.
-		static constexpr std::size_t kMaxLayers = kCostLayers;
+		// Up to the most layers any mode stacks: the context's three, as many as the time has.
+		static constexpr std::size_t kMaxLayers = kContextLayers;
 
 		using Layers = std::array<double, kMaxLayers>;
 		using Shown = std::array<bool, kMaxLayers>;
 
-		void Rebuild(const RequestChartInput& input, const Pricing& pricing);
+		void Rebuild(const RequestChartInput& input);
 		void DrawModeBar();
 		void CollectPoints();
 		Layers LayerValues(std::size_t position) const;
@@ -81,9 +79,8 @@ namespace Graphite {
 		ChartMode m_Mode = ChartMode::Context;
 		ChartAxis m_Axis = ChartAxis::Index;
 
-		// By position in GetRequests(), worked out again whenever the timeline, the reading of
-		// the transcript or the prices change: each request's number, context layers, cost
-		// layers — zero for a request with no price — and the session's cost up to it.
+		// By position in GetRequests(), worked out again whenever the timeline or the reading of
+		// the transcript changes: each request's number and context layers.
 		std::vector<double> m_Index;
 
 		// When each request was answered, in UNIX seconds; NaN for one whose time does not
@@ -92,8 +89,6 @@ namespace Graphite {
 		double m_ClockBarWidth = 60.0;
 
 		std::vector<ContextLayers> m_Context;
-		std::vector<CostLayers> m_CostLayers;
-		std::vector<double> m_Cumulative;
 
 		// Each request's wait for the model in seconds (zero without one), the gap before it
 		// and whether that gap outlived the cache, and its output tokens per second (NaN
@@ -105,7 +100,6 @@ namespace Graphite {
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 		std::uint64_t m_BuiltGeneration = UINT64_MAX;
-		std::map<std::string, Price> m_PricedWith;
 		std::size_t m_BuiltCount = 0;
 
 		// This frame's points — the positions with a place on the current axis — their x, the

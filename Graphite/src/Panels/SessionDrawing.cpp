@@ -64,4 +64,42 @@ namespace Graphite {
 		ImGui::GetWindowDrawList()->AddText(at, colour, text.c_str(), text.c_str() + text.size());
 		at.x += ImGui::CalcTextSize(text.c_str(), text.c_str() + text.size()).x;
 	}
+
+	bool SegmentButton(const char* label, bool selected)
+	{
+		const ImVec4* colours = ImGui::GetStyle().Colors;
+
+		// The chosen option keeps the pressed colour under the mouse too: hovering it offers
+		// nothing to press.
+		ImGui::PushStyleColor(ImGuiCol_Button, selected ? colours[ImGuiCol_ButtonActive] : colours[ImGuiCol_FrameBg]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+							  selected ? colours[ImGuiCol_ButtonActive] : colours[ImGuiCol_ButtonHovered]);
+		const bool clicked = ImGui::SmallButton(label);
+		ImGui::PopStyleColor(2);
+
+		return clicked && !selected;
+	}
+
+	bool SegmentedChoice(std::span<const char* const> labels, int& selected)
+	{
+		bool moved = false;
+
+		for (std::size_t index = 0; index < labels.size(); ++index)
+		{
+			if (index > 0)
+				ImGui::SameLine(0.0f, 0.0f);
+
+			ImGui::PushID(static_cast<int>(index));
+
+			if (SegmentButton(labels[index], static_cast<int>(index) == selected))
+			{
+				selected = static_cast<int>(index);
+				moved = true;
+			}
+
+			ImGui::PopID();
+		}
+
+		return moved;
+	}
 }

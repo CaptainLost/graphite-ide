@@ -52,14 +52,11 @@ namespace Graphite {
 		// The context's layers, indexed by ContextLayer; they name the legend entries too.
 		constexpr const char* kContextNames[kContextLayers] = {"Cache read", "Cache write", "Uncached input"};
 
-		// The cost's layers, indexed by CostLayer. The three the context is made of share its
-		// names, and so its legend entries' shown state, and its colours.
-		constexpr const char* kCostNames[kCostLayers] = {"Cache read", "Cache write", "Uncached input", "Output"};
-
 		// The time's layers, bottom up: the wait for the model, then the gap before the request —
 		// drawn as one of two layers, by whether it outlived the cache, so the ones that did
 		// stand out and can be hidden on their own. One of the two is always zero.
 		constexpr std::size_t kTimeLayers = 3;
+		static_assert(kTimeLayers <= kContextLayers, "the chart keeps room for as many layers as the context has");
 		constexpr const char* kTimeNames[kTimeLayers] = {"Wait", "Gap", "Gap past cache life"};
 
 		constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
@@ -74,7 +71,7 @@ namespace Graphite {
 		// the second axis, if it has one.
 		struct ModeLayout
 		{
-			std::array<ChartLayer, kCostLayers> Layers{};
+			std::array<ChartLayer, kContextLayers> Layers{};
 			std::size_t LayerCount = 0;
 			const char* Y1Label = nullptr;
 			ImPlotScale Y1Scale = ImPlotScale_Linear;
@@ -120,17 +117,6 @@ namespace Graphite {
 				layout.LayerCount = kContextLayers;
 				layout.Y1Label = "Tokens";
 				break;
-			case ChartMode::Cost:
-				for (std::size_t layer = 0; layer < kContextLayers; ++layer)
-					layout.Layers[layer] = {kCostNames[layer], ContextColour(palette, layer)};
-
-				layout.Layers[static_cast<std::size_t>(CostLayer::Output)] = {kCostNames[kCostLayers - 1], palette.Agent};
-				layout.LayerCount = kCostLayers;
-				layout.Y1Label = "Dollars";
-				layout.LineName = "Total";
-				layout.Y2Label = "Total dollars";
-				layout.LineColour = palette.Accent;
-				break;
 			case ChartMode::Time:
 				layout.Layers[0] = {kTimeNames[0], palette.Web};
 				layout.Layers[1] = {kTimeNames[1], palette.TextDisabled};
@@ -161,9 +147,8 @@ namespace Graphite {
 
 	std::optional<std::size_t> RequestChartView::Draw(const RequestChartInput& input, const ConversationContext& context)
 	{
-		if (input.Generation != m_BuiltGeneration || input.Timeline.GetVersion() != m_BuiltVersion ||
-			context.Prices.GetEntries() != m_PricedWith)
-			Rebuild(input, context.Prices);
+		if (input.Generation != m_BuiltGeneration || input.Timeline.GetVersion() != m_BuiltVersion)
+			Rebuild(input);
 
 		DrawModeBar();
 		CollectPoints();
@@ -374,7 +359,7 @@ namespace Graphite {
 		return clicked;
 	}
 
-	void RequestChartView::Rebuild(const RequestChartInput& input, const Pricing& pricing)
+	void RequestChartView::Rebuild(const RequestChartInput& input)
 	{
 		const std::vector<ApiRequest>& requests = input.Timeline.GetRequests();
 		const std::size_t count = requests.size();
@@ -392,7 +377,6 @@ namespace Graphite {
 		m_Index.resize(count);
 		m_Times.resize(count);
 		m_Context.resize(count);
-		m_CostLayers.resize(count);
 		m_Wait.resize(count);
 		m_Gaps.resize(count);
 		m_Expired.resize(count);
@@ -404,7 +388,6 @@ namespace Graphite {
 			m_Index[position] = static_cast<double>(request.Index);
 			m_Times[position] = ClockSeconds(request).value_or(kNaN);
 			m_Context[position] = LayersOf(request);
-			m_CostLayers[position] = CostLayersOf(request, pricing).value_or(CostLayers{});
 			m_Wait[position] = request.Waited ? static_cast<double>(request.Waited->count()) / 1000.0 : 0.0;
 			m_Gaps[position] = position > 0 ? GapBefore(requests[position - 1], request) : std::nullopt;
 			m_Expired[position] = m_Gaps[position] && CacheExpired(requests[position - 1], *m_Gaps[position]);
@@ -415,11 +398,6 @@ namespace Graphite {
 		std::copy_if(m_Times.begin(), m_Times.end(), std::back_inserter(timed), [](double time) { return !std::isnan(time); });
 		m_ClockBarWidth = ClockBarWidth(std::move(timed));
 
-		// From the costs RequestsView priced for its Cost column, so the line and the column
-		// never disagree. They are priced before the chart is drawn, so they cover every request.
-		m_Cumulative = CumulativeCost(input.Costs);
-		m_Cumulative.resize(count, m_Cumulative.empty() ? 0.0 : m_Cumulative.back());
-
 		if (count != m_BuiltCount)
 		{
 			m_FitPending = true;
@@ -428,32 +406,27 @@ namespace Graphite {
 
 		m_BuiltVersion = input.Timeline.GetVersion();
 		m_BuiltGeneration = input.Generation;
-		m_PricedWith = pricing.GetEntries();
 	}
 
 	void RequestChartView::DrawModeBar()
 	{
-		if (!ImGui::BeginTabBar("##chartMode"))
-			return;
+		// In ChartMode's order.
+		constexpr const char* kModes[] = {"Context", "Time"};
 
-		const auto tab = [this](const char* label, ChartMode mode)
-		{
-			if (ImGui::BeginTabItem(label))
-			{
-				m_Mode = mode;
-				ImGui::EndTabItem();
-			}
-		};
+		int mode = static_cast<int>(m_Mode);
 
-		tab("Context", ChartMode::Context);
-		tab("Cost", ChartMode::Cost);
-		tab("Time", ChartMode::Time);
+		if (SegmentedChoice(kModes, mode))
+			m_Mode = static_cast<ChartMode>(mode);
 
-		// At the bar's right end: what the requests are placed along. Switching fits the axis
+		// At the row's right end: what the requests are placed along. Switching fits the axis
 		// again, since a range in request numbers means nothing in seconds.
 		const char* axisLabel = m_Axis == ChartAxis::Index ? "X: Number###chartAxis" : "X: Clock###chartAxis";
+		const float axisWidth = ImGui::CalcTextSize(axisLabel, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 
-		if (ImGui::TabItemButton(axisLabel, ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+		ImGui::SameLine();
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(ImGui::GetContentRegionAvail().x - axisWidth, 0.0f));
+
+		if (ImGui::SmallButton(axisLabel))
 		{
 			m_Axis = m_Axis == ChartAxis::Index ? ChartAxis::Clock : ChartAxis::Index;
 			m_FitPending = true;
@@ -461,8 +434,6 @@ namespace Graphite {
 		}
 
 		ImGui::SetItemTooltip("Place the requests by number or by the time they were answered");
-
-		ImGui::EndTabBar();
 	}
 
 	void RequestChartView::CollectPoints()
@@ -494,9 +465,6 @@ namespace Graphite {
 			for (std::size_t layer = 0; layer < kContextLayers; ++layer)
 				values[layer] = m_Context[position][layer];
 			break;
-		case ChartMode::Cost:
-			values = m_CostLayers[position];
-			break;
 		case ChartMode::Time:
 		{
 			const double gap = m_Gaps[position] ? static_cast<double>(m_Gaps[position]->count()) / 1000.0 : 0.0;
@@ -513,7 +481,6 @@ namespace Graphite {
 	{
 		switch (m_Mode)
 		{
-		case ChartMode::Cost: return m_Cumulative[position];
 		case ChartMode::Time: return m_Rate[position];
 		case ChartMode::Context: break;
 		}
@@ -587,7 +554,7 @@ namespace Graphite {
 		ImDrawList* list = ImPlot::GetPlotDrawList();
 
 		// A small triangle pointing down at the top of the bar, whatever the mode stacks: a
-		// rebuild is what explains a jump in the context, the cost and the wait alike.
+		// rebuild is what explains a jump in the context and the wait alike.
 		ImPlot::PushPlotClipRect();
 
 		for (std::size_t point = 0; point < m_Points.size(); ++point)

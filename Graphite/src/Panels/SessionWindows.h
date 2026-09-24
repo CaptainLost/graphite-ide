@@ -59,13 +59,15 @@ namespace Graphite {
 			// Counts the subagent maps taken, which the conversation's facts are keyed by.
 			std::uint64_t SubagentsVersion = 0;
 			ConversationView Conversation;
+			CostView Cost;
 
 			// The session cut into the API requests it made, fed from the same reads as Data.
 			RequestTimeline Timeline;
 			RequestsView Requests;
 
-			// A request the conversation asked to be shown, by its position in the timeline: the
-			// Requests tab is selected and the request revealed on the next frame, then cleared.
+			// A request the conversation or the Cost tab asked to be shown, by its position in the
+			// timeline: the Requests tab is selected and the request revealed on the next frame,
+			// then cleared.
 			std::optional<std::size_t> PendingRequest;
 			bool Fresh = true;
 			bool Focus = true;

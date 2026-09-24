@@ -206,17 +206,25 @@ namespace Graphite {
 						// is a wrong number, not a partial one.
 						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
 
+						// A request clicked on its chart is shown in the Requests tab, as one picked
+						// in the conversation is.
 						if (progress.FirstPassDone)
-							DrawCost(entry.Data, entry.Summary, m_Settings.GetPricing());
+						{
+							if (const std::optional<std::size_t> clicked =
+									entry.Cost.Draw(entry.Data, entry.Summary, entry.Timeline, m_Settings.GetPricing(), palette))
+								entry.PendingRequest = clicked;
+						}
 						else
+						{
 							DrawProgress(progress);
+						}
 
 						ImGui::EndTabItem();
 					}
 
-					// A request asked for from the conversation, drawn above, selects this tab once; the
-					// tab bar moves to it on the next frame. SetSelected on every frame would pin the
-					// reader to it.
+					// A request asked for from the conversation or the Cost tab, drawn above, selects
+					// this tab once; the tab bar moves to it on the next frame. SetSelected on every
+					// frame would pin the reader to it.
 					const ImGuiTabItemFlags requestsFlags =
 						entry.PendingRequest ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
 					const bool requestsOpen = ImGui::BeginTabItem("Requests", nullptr, requestsFlags);
