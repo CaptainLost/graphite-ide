@@ -76,8 +76,8 @@ namespace Graphite {
 
 	void RequestsView::Reveal(std::size_t requestIndex, std::uint64_t generation)
 	{
-		m_RebuiltOnly = false;
-		m_ToolFilter.clear();
+		// The filters stay unless they hide this request, which Filter finds out once it knows
+		// what the request used.
 		m_Selected = requestIndex;
 		m_PendingReveal = requestIndex;
 		m_RevealGeneration = generation;
@@ -181,14 +181,26 @@ namespace Graphite {
 		m_Shown.clear();
 		m_Passes.assign(requests.size(), false);
 
-		for (std::size_t position = 0; position < requests.size(); ++position)
+		const auto passes = [this, &requests](std::size_t position)
 		{
 			if (m_RebuiltOnly && !requests[position].CacheRebuilt)
-				continue;
+				return false;
 
 			const std::vector<std::string>& names = m_ToolNames[position];
+			return m_ToolFilter.empty() || std::find(names.begin(), names.end(), m_ToolFilter) != names.end();
+		};
 
-			if (!m_ToolFilter.empty() && std::find(names.begin(), names.end(), m_ToolFilter) == names.end())
+		// A request asked to be shown has to be in the list, so filters that would hide it are
+		// dropped. Filters it passes are the reader's and stay.
+		if (m_PendingReveal && *m_PendingReveal < requests.size() && !passes(*m_PendingReveal))
+		{
+			m_RebuiltOnly = false;
+			m_ToolFilter.clear();
+		}
+
+		for (std::size_t position = 0; position < requests.size(); ++position)
+		{
+			if (!passes(position))
 				continue;
 
 			m_Shown.push_back(position);

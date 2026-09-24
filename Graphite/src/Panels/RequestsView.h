@@ -27,10 +27,10 @@ namespace Graphite {
 	public:
 		void Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context);
 
-		// Clears the filters, selects the request at `requestIndex` — its position in
-		// GetRequests() — and scrolls the table to it on the next draw. `generation` is the
-		// session generation the position was taken from: a position from an earlier reading of
-		// the transcript names some other request, and is dropped.
+		// Selects the request at `requestIndex` — its position in GetRequests() — and scrolls the
+		// table to it on the next draw, dropping the filters only if they would hide it.
+		// `generation` is the session generation the position was taken from: a position from an
+		// earlier reading of the transcript names some other request, and is dropped.
 		void Reveal(std::size_t requestIndex, std::uint64_t generation);
 
 	private:
