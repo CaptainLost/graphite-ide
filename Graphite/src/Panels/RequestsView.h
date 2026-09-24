@@ -41,8 +41,7 @@ namespace Graphite {
 		void DrawBarTooltip(const ApiRequest& request, std::size_t position, const ConversationContext& context);
 		void DrawFilters(const RequestTimeline& timeline, const Pricing& pricing);
 		void DrawTable(const RequestTimeline& timeline, const ConversationContext& context);
-		void DrawTableRow(const ApiRequest& request, std::size_t position, const ApiRequest* previous,
-						  const ConversationContext& context);
+		void DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context);
 		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context);
 
 		// By position in GetRequests(), for every request: the tools it used, and the same names

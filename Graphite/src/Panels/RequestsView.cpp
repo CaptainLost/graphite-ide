@@ -519,8 +519,7 @@ namespace Graphite {
 			ImGui::TextDisabled("%zu of %zu %s", m_Shown.size(), total, noun);
 	}
 
-	void RequestsView::DrawTableRow(const ApiRequest& request, std::size_t position, const ApiRequest* previous,
-									const ConversationContext& context)
+	void RequestsView::DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context)
 	{
 		const SessionPalette& palette = context.Palette;
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
@@ -554,9 +553,8 @@ namespace Graphite {
 			}
 			case RequestColumn::Time:
 			{
-				// The time alone, and the day with it where the day changes from the row above in
-				// the table's order, or on the first row: a session that runs past midnight shows
-				// where it did.
+				// The day on every row, not only where it changes: a column that switches format as
+				// the sort order changes reads as two different columns, and the width is there.
 				const auto local = m_Clock.LocalTime(request.RespondedAt);
 
 				if (!local)
@@ -565,11 +563,7 @@ namespace Graphite {
 					break;
 				}
 
-				const auto above = previous != nullptr ? m_Clock.LocalTime(previous->RespondedAt) : std::nullopt;
-				const bool newDay = !above || std::chrono::floor<std::chrono::days>(*above) !=
-												  std::chrono::floor<std::chrono::days>(*local);
-
-				Cell(FormatLocalTime(*local, newDay ? ClockStyle::MonthDayTime : ClockStyle::Time), ink, false);
+				Cell(FormatLocalTime(*local, ClockStyle::MonthDayTime), ink, false);
 				ImGui::SetItemTooltip("%s", FormatLocalTime(*local, ClockStyle::DateTimeWeekday).c_str());
 				break;
 			}
@@ -696,8 +690,7 @@ namespace Graphite {
 			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 			{
 				const std::size_t position = m_Shown[static_cast<std::size_t>(row)];
-				const ApiRequest* previous = row > 0 ? &requests[m_Shown[static_cast<std::size_t>(row) - 1]] : nullptr;
-				DrawTableRow(requests[position], position, previous, context);
+				DrawTableRow(requests[position], position, context);
 
 				if (revealRow && row == *revealRow)
 					ImGui::SetScrollHereY(0.5f);
