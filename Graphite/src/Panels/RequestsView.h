@@ -2,6 +2,7 @@
 
 #include "Panels/ConversationView.h"
 #include "Panels/LocalClock.h"
+#include "Panels/SentTextView.h"
 #include "Sessions/Pricing.h"
 #include "Sessions/RequestChart.h"
 #include "Sessions/RequestSort.h"
@@ -85,6 +86,22 @@ namespace Graphite {
 
 		// The table's height above the handle; below zero until the first draw picks one.
 		float m_ListHeight = -1.0f;
+
+		// The item of the selected request that the list and the text beside it both show
+		// selected, by its position in Sent then Response; cleared when another request is
+		// selected, since that position then names some other item or none.
+		std::optional<std::size_t> m_SelectedItem;
+
+		// The item the list scrolls to on the next draw: one clicked in the text.
+		std::optional<std::size_t> m_RevealItem;
+
+		// The request the details last drew, to notice another one.
+		std::optional<std::size_t> m_DetailsFor;
+
+		// The list's width left of the handle; below zero until the first draw picks one.
+		float m_ItemsWidth = -1.0f;
+
+		SentTextView m_SentText;
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 

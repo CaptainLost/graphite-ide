@@ -4,6 +4,7 @@
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"
+#include "Sessions/SentTextLayout.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
 
@@ -20,6 +21,7 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <utility>
 
 namespace Graphite {
 
@@ -712,10 +714,82 @@ namespace Graphite {
 
 		const ApiRequest& request = requests[*m_Selected];
 
+		if (m_DetailsFor != m_Selected)
+		{
+			m_SelectedItem.reset();
+			m_RevealItem.reset();
+			m_DetailsFor = m_Selected;
+		}
+
+		// A request whose items shrank under a live transcript's rewrite has no such item.
+		if (m_SelectedItem && *m_SelectedItem >= SegmentCount(request))
+			m_SelectedItem.reset();
+
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
 							ImGui::GetContentRegionAvail().x));
-		DrawRequestDetails(request, context.Palette, std::nullopt, std::nullopt);
+
+		// The items on the left, their text on the right, and between them a handle that moves
+		// the line between the two. Each side keeps some width however far it is dragged.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
+		const float room = ImGui::GetContentRegionAvail().x - handle - 2.0f * style.ItemSpacing.x;
+		const float minimum = ImGui::GetFontSize() * 12.0f;
+
+		if (m_ItemsWidth < 0.0f)
+			m_ItemsWidth = room * 0.4f;
+
+		const float itemsWidth = std::max(std::min(m_ItemsWidth, room - minimum), minimum);
+		std::optional<std::size_t> hovered;
+
+		if (ImGui::BeginChild("##detailItems", ImVec2(itemsWidth, 0.0f)))
+		{
+			const DetailsPick pick =
+				DrawRequestDetails(request, context.Palette, m_SelectedItem, std::exchange(m_RevealItem, std::nullopt));
+
+			if (pick.Clicked)
+			{
+				m_SelectedItem = pick.Clicked;
+				m_SentText.ScrollTo(*pick.Clicked);
+			}
+
+			hovered = pick.Hovered;
+		}
+
+		ImGui::EndChild();
+		ImGui::SameLine();
+
+		const ImVec2 handleAt = ImGui::GetCursorScreenPos();
+		const float handleHeight = std::max(ImGui::GetContentRegionAvail().y, 1.0f);
+
+		ImGui::InvisibleButton("##detailsSplit", ImVec2(handle, handleHeight));
+
+		if (ImGui::IsItemActive())
+			m_ItemsWidth = std::max(std::min(itemsWidth + ImGui::GetIO().MouseDelta.x, room - minimum), minimum);
+
+		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+		const ImGuiCol lineColour = ImGui::IsItemActive()	 ? ImGuiCol_SeparatorActive
+									: ImGui::IsItemHovered() ? ImGuiCol_SeparatorHovered
+															 : ImGuiCol_Separator;
+		const float lineX = std::floor(handleAt.x + handle * 0.5f);
+		ImGui::GetWindowDrawList()->AddLine(ImVec2(lineX, handleAt.y), ImVec2(lineX, handleAt.y + handleHeight),
+											ImGui::GetColorU32(lineColour));
+
+		ImGui::SameLine();
+
+		if (ImGui::BeginChild("##sentText", ImVec2(0.0f, 0.0f)))
+		{
+			if (const std::optional<std::size_t> clicked =
+					m_SentText.Draw(request, timeline.GetVersion(), m_SelectedItem, hovered, context.Palette))
+			{
+				m_SelectedItem = clicked;
+				m_RevealItem = clicked;
+			}
+		}
+
+		ImGui::EndChild();
 	}
 
 	void RequestsView::Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context)
@@ -776,7 +850,8 @@ namespace Graphite {
 		ImGui::GetWindowDrawList()->AddLine(ImVec2(handleAt.x, lineY), ImVec2(handleAt.x + handleWidth, lineY),
 											ImGui::GetColorU32(lineColour));
 
-		if (ImGui::BeginChild("##requestDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding))
+		if (ImGui::BeginChild("##requestDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding,
+							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 			DrawDetails(timeline, context);
 
 		ImGui::EndChild();
