@@ -31,9 +31,10 @@ namespace Graphite {
 		constexpr float kDimAlpha = 0.25f;
 		constexpr float kBandAlpha = 0.18f;
 
-		// Room left above the tallest bar and the line's highest point when the value axes fit,
-		// as a share of what they show: the rebuild marker sits there, and a line's peak is not
-		// drawn on the plot's edge.
+		// Headroom added above the tallest bar and the line's peak when the value axes fit, as a
+		// share of what they show: the rebuild marker sits there, and a line's peak is not drawn
+		// on the plot's edge. Y1's floor is held at zero (see SetupAxisLimits below), so this
+		// only ever adds room above; Y2 has no such floor and is padded on both ends.
 		constexpr float kFitPadding = 0.12f;
 
 		// The context's layers, indexed by ContextLayer; they name the legend entries too.
@@ -129,12 +130,17 @@ namespace Graphite {
 		const int count = static_cast<int>(m_Points.size());
 		std::optional<std::size_t> clicked;
 
+		// Kept pushed through EndPlot, which is where ImPlot's ApplyFit reads it (BeginPlot's
+		// SetupFinish is too early), and popped on every path out of here, including the plot
+		// staying closed.
 		ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
 		const bool open = ImPlot::BeginPlot("##requestsChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines));
-		ImPlot::PopStyleVar();
 
 		if (!open)
+		{
+			ImPlot::PopStyleVar();
 			return clicked;
+		}
 
 		// The requests axis is fitted to every request when they change, until the reader pans
 		// or zooms it; the value axes follow whatever part of it is in view. Set with Always for
@@ -149,7 +155,12 @@ namespace Graphite {
 			m_FitPending = false;
 		}
 
-		ImPlot::SetupAxis(ImAxis_Y1, layout.Y1Label, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
+		ImPlot::SetupAxis(ImAxis_Y1, layout.Y1Label,
+						  ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin);
+
+		// ApplyFit pads both ends of the range it fits, and with the floor free that lifts the
+		// bars off the axis; held at zero here, once, so they still stand on it.
+		ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Once);
 
 		if (layout.Y1Scale != ImPlotScale_Linear)
 			ImPlot::SetupAxisScale(ImAxis_Y1, layout.Y1Scale);
@@ -229,7 +240,10 @@ namespace Graphite {
 		// under it was pressed.
 		const bool overLegend = ImPlot::GetCurrentPlot()->Items.Legend.Hovered;
 
-		if (ImPlot::IsPlotHovered() && !overLegend)
+		// ImPlot pans and zooms the X axis from a drag over its tick area too, which
+		// IsPlotHovered — the plot rectangle alone — misses; the moved/double-click detection is
+		// asked over that area as well, so a drag there is not mistaken for the view staying put.
+		if ((ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1)) && !overLegend)
 		{
 			// A pan with the left button, a box zoom with the right, or the wheel hands the axis
 			// to the reader; a double click, which ImPlot answers by fitting everything, hands
@@ -240,7 +254,12 @@ namespace Graphite {
 
 			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 				m_ViewMoved = false;
+		}
 
+		// The click and the tooltip stay on the plot rectangle alone: the axis's tick area is
+		// not where a bar is.
+		if (ImPlot::IsPlotHovered() && !overLegend)
+		{
 			if (count > 0)
 			{
 				const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
@@ -264,6 +283,7 @@ namespace Graphite {
 		}
 
 		ImPlot::EndPlot();
+		ImPlot::PopStyleVar();
 		return clicked;
 	}
 
@@ -272,9 +292,13 @@ namespace Graphite {
 		const std::vector<ApiRequest>& requests = input.Timeline.GetRequests();
 		const std::size_t count = requests.size();
 
-		// Another reading of the transcript: where the reader had panned to named other requests.
+		// Another reading of the transcript: where the reader had panned to named other requests,
+		// so the view is fitted again even if the count of requests did not change below.
 		if (input.Generation != m_BuiltGeneration)
+		{
 			m_ViewMoved = false;
+			m_FitPending = true;
+		}
 
 		// Every request, not only the last: a pass over a few thousand requests on the frames
 		// the timeline changes costs less than keeping track of which ones could have.

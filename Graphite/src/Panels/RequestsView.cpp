@@ -111,11 +111,11 @@ namespace Graphite {
 		}
 
 		// Within one generation the timeline only grows. Of what is kept here per request — the
-		// tools it used — only the last request's can still change: the rest of
-		// its response is still being written. An earlier request can change too, when a prompt
-		// snapshot puts the system prompt and the tools at the head of the first one, but those
-		// are neither tool results nor usage, and nothing kept here reads them. So the ones before
-		// the last are kept as they are. A timeline that shrank all the same is built again.
+		// tools it used — only the last request's can still change: the rest of its response is
+		// still being written. An earlier request can change too, when a prompt snapshot puts the
+		// system prompt and the tools at the head of the first one, but those are neither tool
+		// results nor usage, and nothing kept here reads them. So the ones before the last are
+		// kept as they are. A timeline that shrank all the same is built again.
 		if (requests.size() < m_ToolNames.size())
 		{
 			m_ToolNames.clear();

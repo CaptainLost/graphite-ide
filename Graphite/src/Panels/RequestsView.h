@@ -9,7 +9,6 @@
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -51,8 +50,8 @@ namespace Graphite {
 		// Every tool any request used, for the filter.
 		std::set<std::string> m_AllTools;
 
-		// Each request's cost, for its cell and the chart's line, and the prices they were
-		// worked out with: an edited price moves both without the timeline changing.
+		// Each request's cost, for its cell and the chart, and the prices they were worked out
+		// with: an edited price moves both without the timeline changing.
 		std::vector<CostResult> m_Costs;
 		std::map<std::string, Price> m_PricedWith;
 
