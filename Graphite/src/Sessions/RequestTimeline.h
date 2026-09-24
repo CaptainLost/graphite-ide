@@ -128,6 +128,11 @@ namespace Graphite {
 		void AddAssistant(const TranscriptRecord& record, bool& changed);
 		void AddUser(const TranscriptRecord& record, bool& changed);
 		void AddAttachment(const TranscriptRecord& record, bool& changed);
+		void AddSnapshot(const TranscriptRecord& record, bool& changed);
+
+		// Replaces whatever the snapshot put at the head of `request` with m_Snapshot.
+		void PlaceSnapshot(ApiRequest& request) const;
+
 		void EstimateTokens(ApiRequest& request) const;
 		void ApplyUsage(ApiRequest& request, std::size_t index, const TokenCounts& usage);
 
@@ -145,6 +150,12 @@ namespace Graphite {
 
 		// Sent items seen since the last response, waiting for the request they belong to.
 		std::vector<SentItem> m_Pending;
+
+		// What the latest prompt snapshot says the first request carried ahead of every
+		// message: its system prompt and, once Claude Code has written them, its tool schemas.
+		// Claude Code writes the second snapshot after that request's response, so the items
+		// are placed on a request that already exists as often as on one still to come.
+		std::vector<SentItem> m_Snapshot;
 
 		std::unordered_map<std::string, ToolCallInfo> m_ToolCalls;
 

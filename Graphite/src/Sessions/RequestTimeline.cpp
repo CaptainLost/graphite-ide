@@ -139,9 +139,14 @@ namespace Graphite {
 		for (SentItem& item : request.Sent)
 			item.EstimatedTokens = 0;
 
-		// A context that shrank, or nothing sent with a byte to measure, gives no estimate:
-		// splitting a negative or unmeasurable delta across items would be a made-up number.
-		if (!request.ContextDelta.has_value() || *request.ContextDelta <= 0)
+		// Against the previous request's context, what this one added. A request with no
+		// earlier context to measure against — the first — added all of its own. A context
+		// that shrank, or none at all, gives no estimate: splitting a negative or missing
+		// number across items would be a made-up one.
+		const std::int64_t delta = request.ContextDelta.has_value() ? *request.ContextDelta
+																	: static_cast<std::int64_t>(request.Context);
+
+		if (delta <= 0)
 			return;
 
 		std::uint64_t totalBytes = 0;
@@ -152,7 +157,6 @@ namespace Graphite {
 		if (totalBytes == 0)
 			return;
 
-		const std::int64_t delta = *request.ContextDelta;
 		std::int64_t assigned = 0;
 		std::size_t lastWithBytes = request.Sent.size();
 
@@ -250,6 +254,9 @@ namespace Graphite {
 			m_Pending.clear();
 			fresh.ToolsAvailable = m_Tools.size();
 			fresh.ToolsLoaded = std::exchange(m_PendingLoaded, 0);
+
+			if (m_Requests.empty())
+				PlaceSnapshot(fresh);
 
 			const bool hasUsage = record.Usage.has_value();
 
@@ -395,10 +402,11 @@ namespace Graphite {
 
 	void RequestTimeline::AddAttachment(const TranscriptRecord& record, bool& changed)
 	{
-		// Claude Code's snapshot of the prompt is read for the first request, not listed as
-		// something sent in its own right.
 		if (record.AttachmentType == "prompt_snapshot")
+		{
+			AddSnapshot(record, changed);
 			return;
+		}
 
 		// Claude Code's own bookkeeping — a hook's outcome, a record of the deferred tools —
 		// that the model never saw.
@@ -452,6 +460,43 @@ namespace Graphite {
 		changed = true;
 	}
 
+	void RequestTimeline::AddSnapshot(const TranscriptRecord& record, bool& changed)
+	{
+		// A snapshot with no system prompt says nothing about what was sent.
+		if (record.SystemPromptText.empty())
+			return;
+
+		m_Snapshot.clear();
+		m_Snapshot.push_back({.Kind = SentKind::SystemPrompt,
+							  .Label = "System prompt",
+							  .Bytes = record.SystemPromptText.size(),
+							  .Text = record.SystemPromptText});
+
+		if (record.ToolSchemaCount > 0)
+		{
+			const std::size_t count = record.ToolSchemaCount;
+			m_Snapshot.push_back({.Kind = SentKind::ToolSchemas,
+								  .Label = "Tools (" + std::to_string(count) + (count == 1 ? " schema)" : " schemas)"),
+								  .Bytes = record.ToolSchemasText.size(),
+								  .Text = record.ToolSchemasText});
+		}
+
+		if (!m_Requests.empty())
+		{
+			PlaceSnapshot(m_Requests.front());
+			EstimateTokens(m_Requests.front());
+		}
+
+		changed = true;
+	}
+
+	void RequestTimeline::PlaceSnapshot(ApiRequest& request) const
+	{
+		std::erase_if(request.Sent, [](const SentItem& item)
+					  { return item.Kind == SentKind::SystemPrompt || item.Kind == SentKind::ToolSchemas; });
+		request.Sent.insert(request.Sent.begin(), m_Snapshot.begin(), m_Snapshot.end());
+	}
+
 	void RequestTimeline::Append(const std::vector<TranscriptRecord>& records)
 	{
 		bool changed = false;
@@ -484,6 +529,7 @@ namespace Graphite {
 		m_ByKey.clear();
 		m_HasUsage.clear();
 		m_Pending.clear();
+		m_Snapshot.clear();
 		m_ToolCalls.clear();
 		m_Tools.clear();
 		m_PendingLoaded = 0;

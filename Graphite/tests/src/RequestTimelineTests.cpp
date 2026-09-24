@@ -56,6 +56,22 @@ namespace {
 								 {"content", nlohmann::json::array()},
 								 {"stop_reason", stopReason}}}});
 	}
+
+	// A prompt snapshot as Claude Code writes the pair of them: the first before request #1
+	// with the system prompt alone, the second after it with the tools and the CLI prefix.
+	std::string Snapshot(bool withTools)
+	{
+		nlohmann::json attachment = {{"type", "prompt_snapshot"}, {"systemPrompt", nlohmann::json::array({"Be helpful."})}};
+
+		if (withTools)
+		{
+			attachment["cliPrefix"] = "Prefix.";
+			attachment["tools"] = nlohmann::json::array(
+				{nlohmann::json{{"name", "Read"}, {"description", "Reads."}, {"input_schema", {{"type", "object"}}}}});
+		}
+
+		return Fixtures::VersionedAttachment(attachment, "2.1.280");
+	}
 }
 
 TEST_CASE("A response written as several records is one request, and what preceded it is what was sent")
@@ -465,4 +481,73 @@ TEST_CASE("An image with nothing known about it has placeholder text")
 
 	REQUIRE(requests[0].Sent.size() == 1);
 	CHECK(requests[0].Sent[0].Text == "[image]");
+}
+
+TEST_CASE("The prompt snapshots put the system prompt and the tool schemas first in the first request")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Snapshot(false) +
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(100, 1)) +
+		Snapshot(true) +
+		Fixtures::UserPrompt("more", "2026-09-17T09:00:05.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("y"), Fixtures::Usage(150, 1), "claude-opus-5", "2026-09-17T09:00:06.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	const ApiRequest& first = requests[0];
+	REQUIRE(first.Sent.size() == 3);
+	CHECK(first.Sent[0].Kind == SentKind::SystemPrompt);
+	CHECK(first.Sent[0].Label == "System prompt");
+	// The later snapshot replaced the earlier one rather than adding to it.
+	CHECK(first.Sent[0].Text == "Prefix.\n\nBe helpful.");
+	CHECK(first.Sent[1].Kind == SentKind::ToolSchemas);
+	CHECK(first.Sent[1].Label == "Tools (1 schema)");
+	CHECK(first.Sent[1].Bytes == first.Sent[1].Text.size());
+	CHECK(first.Sent[2].Kind == SentKind::Prompt);
+
+	// With no earlier context to measure against, the items share the whole of it — and
+	// they were shared again when the second snapshot changed them.
+	CHECK(first.Sent[0].EstimatedTokens + first.Sent[1].EstimatedTokens + first.Sent[2].EstimatedTokens == 100);
+
+	REQUIRE(requests[1].Sent.size() == 1);
+	CHECK(requests[1].Sent[0].Kind == SentKind::Prompt);
+}
+
+TEST_CASE("A snapshot after the first request changes it and moves the version")
+{
+	RequestTimeline timeline;
+	timeline.Append(ParseTranscript(Fixtures::UserPrompt("go") +
+									Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(100, 1)))
+						.Records);
+	const std::uint64_t before = timeline.GetVersion();
+
+	timeline.Append(ParseTranscript(Snapshot(true)).Records);
+
+	CHECK(timeline.GetVersion() > before);
+	REQUIRE(timeline.GetRequests()[0].Sent.size() == 3);
+	CHECK(timeline.GetRequests()[0].Sent[0].Kind == SentKind::SystemPrompt);
+}
+
+TEST_CASE("A snapshot with no system prompt changes nothing")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::VersionedAttachment({{"type", "prompt_snapshot"}, {"tools", nlohmann::json::array({nlohmann::json{{"name", "Read"}}})}},
+									  "2.1.280") +
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	CHECK(requests[0].Sent[0].Kind == SentKind::Prompt);
+}
+
+TEST_CASE("Reset forgets the snapshot too")
+{
+	RequestTimeline timeline;
+	timeline.Append(ParseTranscript(Snapshot(true)).Records);
+	timeline.Reset();
+	timeline.Append(ParseTranscript(Fixtures::UserPrompt("go") +
+									Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(1, 1)))
+						.Records);
+
+	REQUIRE(timeline.GetRequests()[0].Sent.size() == 1);
 }
