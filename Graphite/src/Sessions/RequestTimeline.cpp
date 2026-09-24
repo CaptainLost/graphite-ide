@@ -216,13 +216,33 @@ namespace Graphite {
 			index = found->second;
 			request = &m_Requests[index];
 
-			// Session's rule: usage rides on every record of a response, so the first record
-			// that carries one is authoritative — a later duplicate must not overwrite it.
-			if (!m_HasUsage[index] && record.Usage.has_value())
+			// Session's rule: usage rides on every record of a response, and the counts kept
+			// are the ones MergeResponseUsage picks from all of them.
+			if (record.Usage.has_value())
 			{
-				ApplyUsage(*request, index, *record.Usage);
-				m_HasUsage[index] = true;
-				changed = true;
+				const TokenCounts merged =
+					m_HasUsage[index] ? MergeResponseUsage(request->Usage, *record.Usage) : *record.Usage;
+
+				if (!m_HasUsage[index] || merged != request->Usage)
+				{
+					const std::uint64_t context = request->Context;
+					ApplyUsage(*request, index, merged);
+					m_HasUsage[index] = true;
+					changed = true;
+
+					// A later request measured its delta against this one's context.
+					if (request->Context != context)
+					{
+						for (std::size_t next = index + 1; next < m_Requests.size(); ++next)
+						{
+							if (m_HasUsage[next] && m_Requests[next].Context > 0)
+							{
+								m_Requests[next].ContextDelta = ContextDeltaFor(next);
+								break;
+							}
+						}
+					}
+				}
 			}
 		}
 

@@ -185,4 +185,22 @@ namespace Fixtures {
 	{
 		return Line({{"type", "ai-title"}, {"aiTitle", title}, {"sessionId", "s"}});
 	}
+
+	// Two real records of one response from a subagent transcript (2.1.251), content cut down.
+	// The first was written while the response still streamed: it carries the input and cache
+	// counts already, but only the output generated so far. The last carries the whole output.
+	inline const std::string kStreamedResponse =
+		R"({"type": "assistant", "uuid": "74674d8b-a7b6-49e3-a1ab-fcd8e2fa3578", "requestId": "req_011CeXHAwLduK1tMsKBgq5eP", "timestamp": "2026-08-29T15:31:00.692Z", "version": "2.1.251", "message": {"model": "claude-opus-5", "role": "assistant", "content": [{"type": "thinking", "thinking": "", "signature": "sig"}], "stop_reason": null, "usage": {"input_tokens": 2, "cache_creation_input_tokens": 304, "cache_read_input_tokens": 67877, "cache_creation": {"ephemeral_5m_input_tokens": 304, "ephemeral_1h_input_tokens": 0}, "output_tokens": 2}}})"
+		"\n"
+		R"({"type": "assistant", "uuid": "92511126-51e6-4b5a-80df-bc865627cf2d", "requestId": "req_011CeXHAwLduK1tMsKBgq5eP", "timestamp": "2026-08-29T15:31:01.429Z", "version": "2.1.251", "message": {"model": "claude-opus-5", "role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01H1K4TrABd9YsVBXCRvrB1b", "name": "Bash", "input": {"command": "ls"}, "caller": {"type": "direct"}}], "stop_reason": "tool_use", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 304, "cache_read_input_tokens": 67877, "output_tokens": 657, "output_tokens_details": {"thinking_tokens": 487}, "cache_creation": {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 304}}}})"
+		"\n";
+
+	// Two real records of one refused response (2.1.251), content cut down. Claude Code follows
+	// the model's record with one of its own under the same request id, naming the <synthetic>
+	// model and carrying all-zero usage; the request still cost what the first record says.
+	inline const std::string kRefusedResponse =
+		R"({"type": "assistant", "uuid": "cfbefb86-0467-4fe6-9dc8-4dbafc8b6cc0", "requestId": "req_011CeXG5cyqF3ePoWdsANZSi", "timestamp": "2026-08-29T15:16:50.435Z", "version": "2.1.251", "message": {"model": "claude-opus-4-8", "role": "assistant", "content": [{"type": "thinking", "thinking": "", "signature": "sig"}], "stop_reason": "refusal", "usage": {"input_tokens": 2, "cache_creation_input_tokens": 17298, "cache_read_input_tokens": 28871, "output_tokens": 1066, "output_tokens_details": {"thinking_tokens": 1066}, "cache_creation": {"ephemeral_1h_input_tokens": 17298, "ephemeral_5m_input_tokens": 0}}}})"
+		"\n"
+		R"({"type": "assistant", "uuid": "1dd9a222-f991-4296-a9a1-f34e8eae8514", "requestId": "req_011CeXG5cyqF3ePoWdsANZSi", "timestamp": "2026-08-29T15:16:50.453Z", "isApiErrorMessage": true, "version": "2.1.251", "message": {"model": "<synthetic>", "role": "assistant", "content": [{"type": "text", "text": "API Error: Opus 4.8's safeguar"}], "stop_reason": "refusal", "usage": {"output_tokens_details": null, "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cache_creation": {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 0}}}})"
+		"\n";
 }

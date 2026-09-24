@@ -10,13 +10,14 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_set>
+#include <unordered_map>
 
 namespace Graphite {
 
 	// Adds a request's usage once, however many records carry it. Claude Code writes one
-	// record per content block of a response and repeats the response's usage on each, so a
-	// sum over records counts one request two to five times.
+	// record per content block of a response and puts the response's usage on each, so a sum
+	// over records counts one request two to five times. The records do not always agree:
+	// MergeResponseUsage says which counts a request keeps.
 	class UsageTally
 	{
 	public:
@@ -25,7 +26,15 @@ namespace Graphite {
 		const UsageByModel& Get() const { return m_Usage; }
 
 	private:
-		std::unordered_set<std::string> m_Seen;
+		// What a request has put into m_Usage so far, and under which model: the first record
+		// with usage names it, since a refused response's last record names <synthetic>.
+		struct Counted
+		{
+			UsageKey Key;
+			TokenCounts Usage;
+		};
+
+		std::unordered_map<std::string, Counted> m_Counted;
 		UsageByModel m_Usage;
 	};
 

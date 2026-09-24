@@ -25,6 +25,24 @@ TEST_CASE("One request written as three records is counted once")
 	CHECK(tally.Get() == UsageByModel{{{"claude-opus-5", false}, usage}});
 }
 
+TEST_CASE("A response written while it streamed is counted with its whole output, not the first record's")
+{
+	UsageTally tally;
+	for (const TranscriptRecord& record : ParseTranscript(Fixtures::kStreamedResponse).Records)
+		tally.Add(record);
+
+	CHECK(tally.Get() == UsageByModel{{{"claude-opus-5", false}, TokenCounts{2, 657, 304, 0, 67877}}});
+}
+
+TEST_CASE("A refused response keeps what the model's record cost when Claude Code's zero record follows it")
+{
+	UsageTally tally;
+	for (const TranscriptRecord& record : ParseTranscript(Fixtures::kRefusedResponse).Records)
+		tally.Add(record);
+
+	CHECK(tally.Get() == UsageByModel{{{"claude-opus-4-8", false}, TokenCounts{2, 1066, 0, 17298, 28871}}});
+}
+
 TEST_CASE("Two requests are both counted, each under its own model")
 {
 	const std::string bytes =

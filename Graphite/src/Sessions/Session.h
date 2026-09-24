@@ -8,7 +8,6 @@
 #include <map>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace Graphite {
@@ -113,7 +112,8 @@ namespace Graphite {
 		std::vector<Turn> m_Turns;
 		std::vector<ToolCall> m_Tools;
 		std::unordered_map<std::string, std::size_t> m_ToolById;
-		std::unordered_set<std::string> m_SeenRequests;
+		// The turn each request's usage was counted in, by request key.
+		std::unordered_map<std::string, std::size_t> m_RequestTurn;
 		std::uint64_t m_Version = 0;
 		std::uint64_t m_Generation = 0;
 	};

@@ -77,13 +77,29 @@ namespace Graphite {
 		Turn& turn = CurrentTurn();
 		const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
 
-		// Same rule as UsageTally: a response's usage rides on every record of it.
+		// Same rule as UsageTally: a response's usage rides on every record of it, counted once
+		// under the model its first record names, keeping the counts MergeResponseUsage picks.
 		if (record.Usage.has_value())
 		{
-			if (key.empty() || m_SeenRequests.insert(key).second)
+			const auto seen = key.empty() ? m_RequestTurn.end() : m_RequestTurn.find(key);
+
+			if (seen == m_RequestTurn.end())
 			{
 				turn.Usage[{record.Model, record.Fast}] += *record.Usage;
 				turn.Requests[key] = {record.Model, record.Fast, *record.Usage};
+
+				if (!key.empty())
+					m_RequestTurn.emplace(key, m_Turns.size() - 1);
+			}
+			else
+			{
+				Turn& owner = m_Turns[seen->second];
+				RequestUsage& request = owner.Requests[key];
+				const TokenCounts merged = MergeResponseUsage(request.Usage, *record.Usage);
+				TokenCounts& total = owner.Usage[{request.Model, request.Fast}];
+				total -= request.Usage;
+				total += merged;
+				request.Usage = merged;
 			}
 		}
 
@@ -152,7 +168,7 @@ namespace Graphite {
 		m_Turns.clear();
 		m_Tools.clear();
 		m_ToolById.clear();
-		m_SeenRequests.clear();
+		m_RequestTurn.clear();
 		m_Version = 0;
 		++m_Generation;
 	}

@@ -276,6 +276,34 @@ TEST_CASE("A no-usage request between two usage requests does not inflate the th
 	CHECK(*requests[2].ContextDelta == 1300 - 1000);
 }
 
+TEST_CASE("A streamed response's later record raises its output, and the change bumps the version")
+{
+	const std::vector<TranscriptRecord> records = ParseTranscript(Fixtures::kStreamedResponse).Records;
+	REQUIRE(records.size() == 2);
+
+	RequestTimeline timeline;
+	timeline.Append({records[0]});
+	CHECK(timeline.GetRequests()[0].Usage.Output == 2);
+	const std::uint64_t before = timeline.GetVersion();
+
+	timeline.Append({records[1]});
+
+	REQUIRE(timeline.GetRequests().size() == 1);
+	CHECK(timeline.GetVersion() > before);
+	CHECK(timeline.GetRequests()[0].Usage == TokenCounts{2, 657, 304, 0, 67877});
+	CHECK(timeline.GetRequests()[0].Context == 2 + 304 + 67877);
+}
+
+TEST_CASE("A refused response keeps the model's usage and model when Claude Code's zero record follows it")
+{
+	const std::vector<ApiRequest> requests = Build(Fixtures::kRefusedResponse);
+
+	REQUIRE(requests.size() == 1);
+	CHECK(requests[0].Usage == TokenCounts{2, 1066, 0, 17298, 28871});
+	CHECK(requests[0].Model == "claude-opus-4-8");
+	CHECK(requests[0].Context == 2 + 17298 + 28871);
+}
+
 TEST_CASE("A same-key record that changes only the stop reason bumps the version")
 {
 	RequestTimeline timeline;

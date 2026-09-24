@@ -92,11 +92,28 @@ namespace Graphite {
 		// A record with no request id is its own request; its uuid keeps it from being
 		// merged with another such record.
 		const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
+		const UsageKey model{record.Model, record.Fast};
 
-		if (!key.empty() && !m_Seen.insert(key).second)
+		if (key.empty())
+		{
+			m_Usage[model] += *record.Usage;
 			return;
+		}
 
-		m_Usage[{record.Model, record.Fast}] += *record.Usage;
+		const auto [found, inserted] = m_Counted.try_emplace(key, Counted{model, *record.Usage});
+
+		if (inserted)
+		{
+			m_Usage[model] += *record.Usage;
+			return;
+		}
+
+		Counted& counted = found->second;
+		const TokenCounts merged = MergeResponseUsage(counted.Usage, *record.Usage);
+		TokenCounts& total = m_Usage[counted.Key];
+		total -= counted.Usage;
+		total += merged;
+		counted.Usage = merged;
 	}
 
 	std::filesystem::path SubagentDirectory(const std::filesystem::path& sessionFile)

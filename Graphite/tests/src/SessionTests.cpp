@@ -199,6 +199,20 @@ TEST_CASE("Each item knows its time and request, and a request's usage is kept o
 	CHECK(turn.Requests.at("r2").Fast);
 }
 
+TEST_CASE("A turn counts a streamed response by its whole output and a refused one by the model's record")
+{
+	const Session session =
+		Build(Fixtures::UserPrompt("go") + Fixtures::kStreamedResponse + Fixtures::kRefusedResponse);
+
+	const Turn& turn = session.GetTurns()[0];
+	REQUIRE(turn.Requests.size() == 2);
+	CHECK(turn.Requests.at("req_011CeXHAwLduK1tMsKBgq5eP").Usage == TokenCounts{2, 657, 304, 0, 67877});
+	CHECK(turn.Requests.at("req_011CeXG5cyqF3ePoWdsANZSi").Usage == TokenCounts{2, 1066, 0, 17298, 28871});
+	CHECK(turn.Requests.at("req_011CeXG5cyqF3ePoWdsANZSi").Model == "claude-opus-4-8");
+	CHECK(turn.Usage == UsageByModel{{{"claude-opus-5", false}, TokenCounts{2, 657, 304, 0, 67877}},
+									 {{"claude-opus-4-8", false}, TokenCounts{2, 1066, 0, 17298, 28871}}});
+}
+
 TEST_CASE("Injected meta text that carries a known tag is labelled by the tag, not its first line")
 {
 	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("<system-reminder>\nbe brief\n</system-reminder>"));

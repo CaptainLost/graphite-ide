@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -27,6 +28,17 @@ namespace Graphite {
 			return *this;
 		}
 
+		// Only ever takes back what was added before, so no bucket goes below zero.
+		TokenCounts& operator-=(const TokenCounts& other)
+		{
+			Input -= other.Input;
+			Output -= other.Output;
+			CacheWrite5m -= other.CacheWrite5m;
+			CacheWrite1h -= other.CacheWrite1h;
+			CacheRead -= other.CacheRead;
+			return *this;
+		}
+
 		std::uint64_t Total() const
 		{
 			return Input + Output + CacheWrite5m + CacheWrite1h + CacheRead;
@@ -34,6 +46,17 @@ namespace Graphite {
 
 		friend bool operator==(const TokenCounts&, const TokenCounts&) = default;
 	};
+
+	// The usage of a response seen in two of its records: the larger count in every bucket.
+	// A record written while the response streamed carries the output generated so far, and
+	// the response's last record carries all of it. A refused response is followed by a record
+	// Claude Code writes itself under the same request id with every bucket zero. The largest
+	// count is the right one in both cases.
+	inline TokenCounts MergeResponseUsage(const TokenCounts& a, const TokenCounts& b)
+	{
+		return {std::max(a.Input, b.Input), std::max(a.Output, b.Output), std::max(a.CacheWrite5m, b.CacheWrite5m),
+				std::max(a.CacheWrite1h, b.CacheWrite1h), std::max(a.CacheRead, b.CacheRead)};
+	}
 
 	enum class RecordKind
 	{
