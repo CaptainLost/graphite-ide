@@ -7,6 +7,7 @@
 #include "Sessions/SentTextLayout.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
+#include "UI/SideBySide.h"
 #include "UI/SplitResults.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -792,14 +793,28 @@ namespace Graphite {
 		// that puts its scrollbar in line with the table's, which sits inside the same padding,
 		// and nothing reaches past the content region, where the pane's horizontal scrollbar
 		// would start counting it.
+		//
+		// So the two panes share `room`: the width from the items pane's left edge to the
+		// content region's right edge, less the handle and the item spacing either side of it.
+		// SplitSideBySide keeps the sum of the two within it at any width — on a pane too narrow
+		// for both minimums each side gets half — and the text pane, filling the rest, is then
+		// what is left of it (ImGui cuts the items pane to whole pixels, which only gives the
+		// text the fraction). Only below ImGui's smallest child window, which it would widen to
+		// that size and so past the edge, are the two not drawn at all: at that width there is
+		// nothing to read in them anyway.
 		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
 		const float room = width + padding.x - handle - 2.0f * style.ItemSpacing.x;
 		const float minimum = ImGui::GetFontSize() * 12.0f;
 
-		if (m_ItemsWidth < 0.0f)
+		if (m_ItemsWidth < 0.0f && room > 0.0f)
 			m_ItemsWidth = room * 0.4f;
 
-		const float itemsWidth = std::max(std::min(m_ItemsWidth, room - minimum), minimum);
+		const SideBySideWidths widths = SplitSideBySide(room, m_ItemsWidth, minimum);
+
+		if (std::floor(widths.Left) < IMGUI_WINDOW_HARD_MIN_SIZE || widths.Right < IMGUI_WINDOW_HARD_MIN_SIZE)
+			return;
+
+		const float itemsWidth = widths.Left;
 		std::optional<std::size_t> hovered;
 
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() - padding.x);
@@ -831,7 +846,7 @@ namespace Graphite {
 		ImGui::InvisibleButton("##detailsSplit", ImVec2(handle, handleHeight));
 
 		if (ImGui::IsItemActive())
-			m_ItemsWidth = std::max(std::min(itemsWidth + ImGui::GetIO().MouseDelta.x, room - minimum), minimum);
+			m_ItemsWidth = SplitSideBySide(room, itemsWidth + ImGui::GetIO().MouseDelta.x, minimum).Left;
 
 		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
 			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
