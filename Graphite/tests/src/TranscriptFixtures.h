@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // Lines in the shape Claude Code writes them, built through the JSON library so escaping is
 // never hand-written. Only the fields the model reads are present; real records carry many more.
@@ -153,6 +154,31 @@ namespace Fixtures {
 								  const std::string& timestamp = "2026-09-17T09:00:00.500Z")
 	{
 		return Line({{"type", "attachment"}, {"timestamp", timestamp}, {"attachment", attachment}});
+	}
+
+	// An attachment as Claude Code 2.1.260 and later writes it: `rendered` holds what the
+	// model was sent, one element per text block.
+	inline std::string RenderedAttachment(const nlohmann::json& attachment, const std::vector<std::string>& rendered,
+										  const std::string& version = "2.1.280",
+										  const std::string& timestamp = "2026-09-17T09:00:00.500Z")
+	{
+		nlohmann::json parts = nlohmann::json::array();
+
+		for (const std::string& text : rendered)
+			parts.push_back(nlohmann::json{{"content", text}});
+
+		return Line({{"type", "attachment"},
+					 {"version", version},
+					 {"timestamp", timestamp},
+					 {"attachment", attachment},
+					 {"rendered", parts}});
+	}
+
+	// An attachment with no `rendered`, written by the version given.
+	inline std::string VersionedAttachment(const nlohmann::json& attachment, const std::string& version,
+										   const std::string& timestamp = "2026-09-17T09:00:00.500Z")
+	{
+		return Line({{"type", "attachment"}, {"version", version}, {"timestamp", timestamp}, {"attachment", attachment}});
 	}
 
 	inline std::string AiTitle(const std::string& title)

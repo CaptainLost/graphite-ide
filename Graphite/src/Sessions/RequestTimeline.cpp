@@ -359,7 +359,7 @@ namespace Graphite {
 	void RequestTimeline::AddAttachment(const TranscriptRecord& record, bool& changed)
 	{
 		SentItem item;
-		item.Bytes = record.AttachmentContentBytes;
+		item.Bytes = record.AttachmentText.size();
 
 		if (!record.QueuedPrompt.empty())
 		{

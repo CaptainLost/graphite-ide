@@ -126,9 +126,18 @@ namespace Graphite {
 		// The line's length, excluding the newline and any trailing '\r'.
 		std::size_t Bytes = 0;
 
-		// For an attachment: the size of what it puts in front of the model — its text, its
-		// content, the lines it adds — rather than of the record that carries it, which also
-		// holds ids, timestamps and bookkeeping the model never sees.
-		std::size_t AttachmentContentBytes = 0;
+		// For an attachment: the text it put in front of the model — read from `rendered`
+		// when Claude Code wrote it, reconstructed from the attachment's own fields when it
+		// did not.
+		std::string AttachmentText;
+
+		// False for an attachment the model never saw: from Claude Code 2.1.260 on, one that
+		// carries no `rendered` is Claude Code's own bookkeeping (a hook's outcome, a snapshot
+		// of the prompt).
+		bool AttachmentSent = true;
+
+		// AttachmentText was reconstructed rather than read: the record predates `rendered`,
+		// or does not say which version wrote it.
+		bool AttachmentApproximate = false;
 	};
 }

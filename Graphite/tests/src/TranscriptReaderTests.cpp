@@ -378,8 +378,10 @@ TEST_CASE("Every record knows how many bytes its line took")
 	CHECK(ParseTranscript(line).Records[0].Bytes == line.size() - 1);
 }
 
-TEST_CASE("An attachment's content size counts what it carries, not its line")
+TEST_CASE("An attachment with no rendered text is reconstructed from what it carries, and says so")
 {
+	// No version: the fixtures, like transcripts from before 2.1.260, say nothing about
+	// which Claude Code wrote them.
 	const std::string bytes =
 		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "12345"}}) +
 		Fixtures::Attachment({{"type", "skill_listing"}, {"content", "- a: does a"}, {"names", {"a"}}}) +
@@ -392,18 +394,97 @@ TEST_CASE("An attachment's content size counts what it carries, not its line")
 	const TranscriptChunk chunk = ParseTranscript(bytes);
 
 	REQUIRE(chunk.Records.size() == 7);
-	CHECK(chunk.Records[0].AttachmentContentBytes == 5);
-	CHECK(chunk.Records[1].AttachmentContentBytes == std::string("- a: does a").size());
+	CHECK(chunk.Records[0].AttachmentText == "12345");
+	CHECK(chunk.Records[1].AttachmentText == "- a: does a");
 	// Joined a line apiece, as the model reads them.
-	CHECK(chunk.Records[2].AttachmentContentBytes == std::string("A: a\nB: bb").size());
-	CHECK(chunk.Records[3].AttachmentContentBytes == std::string("## x\nuse x").size());
-	CHECK(chunk.Records[4].AttachmentContentBytes == std::string("int a;").size());
-	CHECK(chunk.Records[5].AttachmentContentBytes == std::string("also this").size());
+	CHECK(chunk.Records[2].AttachmentText == "A: a\nB: bb");
+	CHECK(chunk.Records[3].AttachmentText == "## x\nuse x");
+	CHECK(chunk.Records[4].AttachmentText == "int a;");
+	CHECK(chunk.Records[5].AttachmentText == "also this");
 
 	// No content field: the attachment object itself, compactly, and never the whole line.
-	CHECK(chunk.Records[6].AttachmentContentBytes ==
-		  nlohmann::json({{"type", "date"}, {"date", "2026-09-24"}}).dump().size());
-	CHECK(chunk.Records[6].AttachmentContentBytes < chunk.Records[6].Bytes);
+	CHECK(chunk.Records[6].AttachmentText == nlohmann::json({{"type", "date"}, {"date", "2026-09-24"}}).dump());
+	CHECK(chunk.Records[6].AttachmentText.size() < chunk.Records[6].Bytes);
+
+	for (const TranscriptRecord& record : chunk.Records)
+	{
+		CHECK(record.AttachmentSent);
+		CHECK(record.AttachmentApproximate);
+	}
+}
+
+TEST_CASE("An attachment's rendered text is what it sent, joined a block to a line")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::RenderedAttachment(
+		{{"type", "date"}, {"date", "2026-09-24"}},
+		{"<system-reminder>\nToday's date is 2026-09-24.\n</system-reminder>", "second"}));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].AttachmentText == "<system-reminder>\nToday's date is 2026-09-24.\n</system-reminder>\nsecond");
+	CHECK(chunk.Records[0].AttachmentSent);
+	CHECK_FALSE(chunk.Records[0].AttachmentApproximate);
+}
+
+TEST_CASE("An empty rendered list is an attachment that sent nothing, not one that was not sent")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::RenderedAttachment({{"type", "date"}, {"date", "x"}}, {}));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].AttachmentText.empty());
+	CHECK(chunk.Records[0].AttachmentSent);
+	CHECK_FALSE(chunk.Records[0].AttachmentApproximate);
+}
+
+TEST_CASE("Rendered elements of the wrong shape contribute nothing and cost nothing else")
+{
+	const std::string line = Fixtures::Line(
+		{{"type", "attachment"},
+		 {"version", "2.1.280"},
+		 {"attachment", {{"type", "date"}}},
+		 {"rendered", nlohmann::json::array({42, nlohmann::json{{"content", 7}}, nlohmann::json{{"content", "kept"}}})}});
+
+	const TranscriptChunk chunk = ParseTranscript(line);
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].AttachmentText == "kept");
+	CHECK(chunk.Records[0].AttachmentSent);
+}
+
+TEST_CASE("From 2.1.260 on, an attachment without rendered text was never sent")
+{
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::VersionedAttachment({{"type", "hook_success"}, {"content", ""}}, "2.1.260") +
+		Fixtures::VersionedAttachment({{"type", "hook_success"}, {"content", ""}}, "2.2.0") +
+		Fixtures::VersionedAttachment({{"type", "total_tokens_reminder"}, {"text", "old"}}, "2.1.259") +
+		Fixtures::VersionedAttachment({{"type", "total_tokens_reminder"}, {"text", "odd"}}, "not a version"));
+
+	REQUIRE(chunk.Records.size() == 4);
+	CHECK_FALSE(chunk.Records[0].AttachmentSent);
+	CHECK(chunk.Records[0].AttachmentText.empty());
+	CHECK_FALSE(chunk.Records[1].AttachmentSent);
+
+	// Older, or unreadable: shown reconstructed rather than hidden.
+	CHECK(chunk.Records[2].AttachmentSent);
+	CHECK(chunk.Records[2].AttachmentApproximate);
+	CHECK(chunk.Records[2].AttachmentText == "old");
+	CHECK(chunk.Records[3].AttachmentSent);
+	CHECK(chunk.Records[3].AttachmentApproximate);
+	CHECK(chunk.Records[3].AttachmentText == "odd");
+}
+
+TEST_CASE("Each record of a transcript that changed version is judged by its own version")
+{
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::VersionedAttachment({{"type", "total_tokens_reminder"}, {"text", "before"}}, "2.1.251") +
+		Fixtures::VersionedAttachment({{"type", "hook_success"}, {"content", ""}}, "2.1.280") +
+		Fixtures::RenderedAttachment({{"type", "total_tokens_reminder"}, {"text", "x"}}, {"after"}, "2.1.280"));
+
+	REQUIRE(chunk.Records.size() == 3);
+	CHECK(chunk.Records[0].AttachmentSent);
+	CHECK(chunk.Records[0].AttachmentApproximate);
+	CHECK_FALSE(chunk.Records[1].AttachmentSent);
+	CHECK(chunk.Records[2].AttachmentText == "after");
+	CHECK_FALSE(chunk.Records[2].AttachmentApproximate);
 }
 
 TEST_CASE("An image block keeps its media type and data length, not the data")

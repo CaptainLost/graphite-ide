@@ -3,8 +3,11 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cstdint>
 #include <fstream>
+#include <optional>
 #include <string>
 
 namespace Graphite {
@@ -167,47 +170,114 @@ namespace Graphite {
 			return parsed;
 		}
 
-		// The size of a field that holds text for the model: a string, or a list whose strings
-		// are read a line apiece. Nothing for a missing field or one of another type.
-		std::optional<std::size_t> TextBytesAt(const nlohmann::json& object, const char* key)
+		// A field that holds text for the model: a string, or a list whose strings are read a
+		// line apiece. Nothing for a missing field or one of another type.
+		std::optional<std::string> TextAt(const nlohmann::json& object, const char* key)
 		{
 			const auto found = object.find(key);
 
 			if (found == object.end())
 				return std::nullopt;
 			if (found->is_string())
-				return found->get_ref<const std::string&>().size();
+				return found->get<std::string>();
 			if (!found->is_array())
 				return std::nullopt;
 
-			std::size_t bytes = 0;
+			std::string text;
 			bool first = true;
 
 			for (const nlohmann::json& element : *found)
 			{
 				if (!first)
-					++bytes;
+					text += '\n';
 				first = false;
 
-				bytes += element.is_string() ? element.get_ref<const std::string&>().size()
-											 : Serialised(element).size();
+				text += element.is_string() ? element.get<std::string>() : Serialised(element);
 			}
 
-			return bytes;
+			return text;
 		}
 
-		// What an attachment puts in front of the model. The fields are the ones Claude Code
-		// writes the model's text into; an attachment with none of them is measured as itself,
-		// compactly, which is closer to what it costs than the record around it.
-		std::size_t AttachmentContentBytes(const nlohmann::json& attachment)
+		// What an attachment written before `rendered` existed most likely put in front of the
+		// model. The fields are the ones Claude Code wrote the model's text into; an attachment
+		// with none of them is shown as itself, compactly, which is closer to what it cost
+		// than the record around it.
+		std::string ReconstructedText(const nlohmann::json& attachment)
 		{
 			for (const char* key : {"text", "content", "snippet", "prompt", "addedBlocks", "addedLines"})
 			{
-				if (const std::optional<std::size_t> bytes = TextBytesAt(attachment, key))
-					return *bytes;
+				if (std::optional<std::string> text = TextAt(attachment, key))
+					return std::move(*text);
 			}
 
-			return Serialised(attachment).size();
+			return Serialised(attachment);
+		}
+
+		// The text an attachment sent, as Claude Code recorded it beside the attachment: one
+		// element per text block, joined a block to a line. Nothing when the record has no
+		// `rendered` list. An element of another shape contributes nothing.
+		std::optional<std::string> RenderedText(const nlohmann::json& record)
+		{
+			const auto found = record.find("rendered");
+
+			if (found == record.end() || !found->is_array())
+				return std::nullopt;
+
+			std::string text;
+			bool first = true;
+
+			for (const nlohmann::json& element : *found)
+			{
+				if (!element.is_object())
+					continue;
+
+				const auto content = element.find("content");
+
+				if (content == element.end() || !content->is_string())
+					continue;
+
+				if (!first)
+					text += '\n';
+				first = false;
+
+				text += content->get_ref<const std::string&>();
+			}
+
+			return text;
+		}
+
+		using Version = std::array<unsigned, 3>;
+
+		// The first Claude Code that records what an attachment sent. From it on, an
+		// attachment with no record of that was not sent at all.
+		constexpr Version kRenderedSince{2, 1, 260};
+
+		// "2.1.280" as its three numbers; whatever follows the third is ignored. Nothing when
+		// the text does not start with three dot-separated numbers.
+		std::optional<Version> ParseVersion(const std::string& text)
+		{
+			Version parts{};
+			const char* at = text.data();
+			const char* end = text.data() + text.size();
+
+			for (std::size_t i = 0; i < parts.size(); ++i)
+			{
+				if (i > 0)
+				{
+					if (at == end || *at != '.')
+						return std::nullopt;
+					++at;
+				}
+
+				const auto [next, error] = std::from_chars(at, end, parts[i]);
+
+				if (error != std::errc{})
+					return std::nullopt;
+
+				at = next;
+			}
+
+			return parts;
 		}
 
 		TokenCounts ParseUsage(const nlohmann::json& usage)
@@ -260,7 +330,23 @@ namespace Graphite {
 			attachment != json.end() && attachment->is_object())
 		{
 			record.AttachmentType = StringAt(*attachment, "type");
-			record.AttachmentContentBytes = AttachmentContentBytes(*attachment);
+
+			if (std::optional<std::string> rendered = RenderedText(json))
+			{
+				record.AttachmentText = std::move(*rendered);
+			}
+			else if (const std::optional<Version> version = ParseVersion(StringAt(json, "version"));
+					 version.has_value() && *version >= kRenderedSince)
+			{
+				record.AttachmentSent = false;
+			}
+			else
+			{
+				// Older than `rendered`, or silent about its version: showing a reconstruction
+				// is better than hiding something that may well have been sent.
+				record.AttachmentText = ReconstructedText(*attachment);
+				record.AttachmentApproximate = true;
+			}
 
 			if (record.AttachmentType == "deferred_tools_delta")
 			{
