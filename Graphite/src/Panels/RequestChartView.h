@@ -81,9 +81,12 @@ namespace Graphite {
 		ChartAxis m_Axis = ChartAxis::Index;
 
 		// By position in GetRequests(), worked out again whenever the timeline, the reading of
-		// the transcript or the prices change: each request's number and context layers.
+		// the transcript or the prices change: each request's number, context layers, cost
+		// layers — zero for a request with no price — and the session's cost up to it.
 		std::vector<double> m_Index;
 		std::vector<ContextLayers> m_Context;
+		std::vector<CostLayers> m_CostLayers;
+		std::vector<double> m_Cumulative;
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 		std::uint64_t m_BuiltGeneration = UINT64_MAX;

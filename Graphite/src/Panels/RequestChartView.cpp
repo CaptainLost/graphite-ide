@@ -40,6 +40,10 @@ namespace Graphite {
 		// The context's layers, indexed by ContextLayer; they name the legend entries too.
 		constexpr const char* kContextNames[kContextLayers] = {"Cache read", "Cache write", "Uncached input"};
 
+		// The cost's layers, indexed by CostLayer. The three the context is made of share its
+		// names, and so its legend entries' shown state, and its colours.
+		constexpr const char* kCostNames[kCostLayers] = {"Cache read", "Cache write", "Uncached input", "Output"};
+
 		constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 		struct ChartLayer
@@ -99,6 +103,16 @@ namespace Graphite {
 				layout.Y1Label = "Tokens";
 				break;
 			case ChartMode::Cost:
+				for (std::size_t layer = 0; layer < kContextLayers; ++layer)
+					layout.Layers[layer] = {kCostNames[layer], ContextColour(palette, layer)};
+
+				layout.Layers[static_cast<std::size_t>(CostLayer::Output)] = {kCostNames[kCostLayers - 1], palette.Agent};
+				layout.LayerCount = kCostLayers;
+				layout.Y1Label = "Dollars";
+				layout.LineName = "Total";
+				layout.Y2Label = "Total dollars";
+				layout.LineColour = palette.Accent;
+				break;
 			case ChartMode::Time:
 				break;
 			}
@@ -304,13 +318,20 @@ namespace Graphite {
 		// the timeline changes costs less than keeping track of which ones could have.
 		m_Index.resize(count);
 		m_Context.resize(count);
+		m_CostLayers.resize(count);
 
 		for (std::size_t position = 0; position < count; ++position)
 		{
 			const ApiRequest& request = requests[position];
 			m_Index[position] = static_cast<double>(request.Index);
 			m_Context[position] = LayersOf(request);
+			m_CostLayers[position] = CostLayersOf(request, pricing).value_or(CostLayers{});
 		}
+
+		// From the costs RequestsView priced for its Cost column, so the line and the column
+		// never disagree. They are priced before the chart is drawn, so they cover every request.
+		m_Cumulative = CumulativeCost(input.Costs);
+		m_Cumulative.resize(count, m_Cumulative.empty() ? 0.0 : m_Cumulative.back());
 
 		if (count != m_BuiltCount)
 		{
@@ -338,6 +359,7 @@ namespace Graphite {
 		};
 
 		tab("Context", ChartMode::Context);
+		tab("Cost", ChartMode::Cost);
 
 		ImGui::EndTabBar();
 	}
@@ -367,6 +389,8 @@ namespace Graphite {
 				values[layer] = m_Context[position][layer];
 			break;
 		case ChartMode::Cost:
+			values = m_CostLayers[position];
+			break;
 		case ChartMode::Time:
 			break;
 		}
@@ -376,14 +400,11 @@ namespace Graphite {
 
 	double RequestChartView::LineValue(std::size_t position) const
 	{
-		(void)position;
-
 		switch (m_Mode)
 		{
+		case ChartMode::Cost: return m_Cumulative[position];
 		case ChartMode::Context:
-		case ChartMode::Cost:
-		case ChartMode::Time:
-			break;
+		case ChartMode::Time: break;
 		}
 
 		return kNaN;
