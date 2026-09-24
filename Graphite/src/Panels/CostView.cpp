@@ -86,6 +86,7 @@ namespace Graphite {
 				ImGui::TableNextColumn();
 				// Shortened as the Requests tab writes tokens: "51.2M", not eight digits to count.
 				ImGui::TextUnformatted(FormatTokens(counts.Total()).c_str());
+				ImGui::SetItemTooltip("%s tokens", FormatTokensExact(counts.Total()).c_str());
 				ImGui::TableNextColumn();
 				ImGui::TextUnformatted(FormatCost(cost).c_str());
 				ImGui::TableNextColumn();

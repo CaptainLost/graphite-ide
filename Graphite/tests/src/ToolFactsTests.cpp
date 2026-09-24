@@ -50,6 +50,15 @@ TEST_CASE("Sizes read as bytes and tokens a person scans")
 	CHECK(FormatTokens(1200000) == "1.2M");
 }
 
+TEST_CASE("FormatTokensExact writes every digit, in groups of three")
+{
+	CHECK(FormatTokensExact(0) == "0");
+	CHECK(FormatTokensExact(999) == "999");
+	CHECK(FormatTokensExact(1000) == "1,000");
+	CHECK(FormatTokensExact(51233707) == "51,233,707");
+	CHECK(FormatTokensExact(100000) == "100,000");
+}
+
 TEST_CASE("A read reports the lines it read")
 {
 	CHECK(Facts(Call("Read", {{"type", "text"}, {"file", {{"numLines", 214}}}})).Size == "214 lines");

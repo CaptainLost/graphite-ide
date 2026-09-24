@@ -174,6 +174,23 @@ namespace Graphite {
 		return buffer;
 	}
 
+	std::string FormatTokensExact(std::uint64_t tokens)
+	{
+		const std::string digits = std::to_string(tokens);
+		std::string grouped;
+
+		for (std::size_t index = 0; index < digits.size(); ++index)
+		{
+			// A comma before every group of three counted from the right, never in front.
+			if (index > 0 && (digits.size() - index) % 3 == 0)
+				grouped += ',';
+
+			grouped += digits[index];
+		}
+
+		return grouped;
+	}
+
 	ToolFacts FactsOf(const ToolCall& tool, const SubagentUsage& subagents, const Pricing& pricing)
 	{
 		ToolFacts facts;

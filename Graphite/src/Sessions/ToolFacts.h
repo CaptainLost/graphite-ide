@@ -54,6 +54,10 @@ namespace Graphite {
 	int CachedPercent(std::uint64_t cacheRead, std::uint64_t context);
 	std::string FormatTokens(std::uint64_t tokens);
 
+	// Every digit of the count, grouped in threes — "51,233,707" — for where FormatTokens's
+	// short form is shown and the exact figure is asked for.
+	std::string FormatTokensExact(std::uint64_t tokens);
+
 	// "opus-5 · 201k in (99% cache) · 310 out · $0.12", prefixed "N requests · " when there
 	// were several. Several models are named together, joined by "+".
 	std::string UsageLine(const UsageByModel& usage, std::size_t requests, const Pricing& pricing);
