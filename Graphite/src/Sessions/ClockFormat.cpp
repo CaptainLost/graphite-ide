@@ -30,6 +30,7 @@ namespace Graphite {
 		case ClockStyle::DateTimeWeekday:
 			return std::format("{:04}-{:02}-{:02} {} ({})", year, month, dayOfMonth, hms,
 							   kWeekdays[std::chrono::weekday{day}.c_encoding()]);
+		case ClockStyle::Date: return std::format("{:04}-{:02}-{:02}", year, month, dayOfMonth);
 		}
 
 		return hms;

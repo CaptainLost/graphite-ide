@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panels/LocalClock.h"
 #include "Sessions/ClaudeLaunch.h"
 #include "Sessions/SessionIndex.h"
 
@@ -92,6 +93,10 @@ namespace Graphite {
 		std::chrono::steady_clock::time_point m_NextDirectoryCheck;
 
 		std::map<std::filesystem::path, SessionSummary> m_Sessions;
+
+		// Each row's date on the reader's clock, as the session views write their times: a
+		// session that ended late in the evening belongs to that evening's day, not UTC's.
+		LocalClock m_Clock;
 
 		bool m_WorkspaceOnly = true;
 		std::string m_Filter;

@@ -396,7 +396,8 @@ namespace Graphite {
 			detail += " (subagents " + FormatCost(subagents) + ")";
 		if (const std::string duration = DurationOf(summary); !duration.empty())
 			detail += "  " + duration;
-		detail += "  " + summary.EndedAt.substr(0, 10);
+		if (const std::string ended = m_Clock.Format(summary.EndedAt, ClockStyle::Date); !ended.empty())
+			detail += "  " + ended;
 
 		ImGui::Indent();
 		ImGui::TextDisabled("%s", detail.c_str());

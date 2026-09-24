@@ -25,6 +25,12 @@ TEST_CASE("FormatLocalTime writes each style with zero-padded fields")
 	CHECK(FormatLocalTime(time, ClockStyle::DateTimeWeekday) == "2026-09-03 08:05:07 (Thursday)");
 }
 
+TEST_CASE("FormatLocalTime writes the date alone, zero-padded, with no time")
+{
+	CHECK(FormatLocalTime(At(2026, 9, 3, 8, 5, 7), ClockStyle::Date) == "2026-09-03");
+	CHECK(FormatLocalTime(At(2026, 12, 31, 23, 59, 59), ClockStyle::Date) == "2026-12-31");
+}
+
 TEST_CASE("FormatLocalTime names the weekday in English, Sunday included")
 {
 	CHECK(FormatLocalTime(At(2026, 9, 23, 18, 52, 33), ClockStyle::DateTimeWeekday) ==
