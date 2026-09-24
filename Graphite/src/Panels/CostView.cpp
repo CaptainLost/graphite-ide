@@ -149,7 +149,8 @@ namespace Graphite {
 		// One stacked bar per turn or request, numbered from 1, with the session's running total
 		// on a second axis. Returns the index of the bar clicked, if any.
 		std::optional<std::size_t> DrawChart(const char* axisLabel, const std::vector<CostLayers>& layers,
-											 const std::vector<double>& total, const SessionPalette& palette)
+											 const std::vector<double>& total, const SessionPalette& palette,
+											 FollowingAxis& xAxis)
 		{
 			const int count = static_cast<int>(layers.size());
 
@@ -162,21 +163,28 @@ namespace Graphite {
 			// Kept pushed through EndPlot, which is where ImPlot reads it when it fits the axes.
 			ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
 
-			if (!ImPlot::BeginPlot("##costChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
+			// The blank title keeps a line above the plot for DrawAxisCaptions.
+			if (!ImPlot::BeginPlot(" ##costChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
 			{
 				ImPlot::PopStyleVar();
 				return std::nullopt;
 			}
 
-			ImPlot::SetupAxis(ImAxis_X1, axisLabel, ImPlotAxisFlags_AutoFit);
+			// Numbered from 1, so the bars run from 1 to count, each half a slot wide either side.
+			ImPlot::SetupAxis(ImAxis_X1, axisLabel, ImPlotAxisFlags_None);
+			xAxis.Setup(0.5, static_cast<double>(count) + 0.5);
 
 			// Both value axes stand on zero: with the floor free the fit would pad below it too, and
 			// the running total, fitted to its own first and last values, would make any growth
 			// look like it filled the chart.
-			ImPlot::SetupAxis(ImAxis_Y1, "Dollars", ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_LockMin);
+			// Named above the plot by DrawAxisCaptions, level, rather than on their side. RangeFit
+			// fits them to the bars in view, so a zoomed-in stretch is not flattened by the rest.
+			ImPlot::SetupAxis(ImAxis_Y1, nullptr,
+							  ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin);
 			ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Once);
-			ImPlot::SetupAxis(ImAxis_Y2, "Total dollars",
-							  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_LockMin);
+			ImPlot::SetupAxis(ImAxis_Y2, nullptr,
+							  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit |
+								  ImPlotAxisFlags_LockMin);
 			ImPlot::SetupAxisLimits(ImAxis_Y2, 0.0, 1.0, ImPlotCond_Once);
 
 			// Outside and above, so it never covers the first bars.
@@ -184,6 +192,8 @@ namespace Graphite {
 
 			// Finished by hand so the legend's show state can be read before anything is plotted.
 			ImPlot::SetupFinish();
+
+			DrawAxisCaptions("Dollars", "Total dollars");
 
 			std::array<bool, kCostLayers> shown{};
 			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
@@ -223,15 +233,21 @@ namespace Graphite {
 			ImPlot::SetNextLineStyle(Colour(palette.Accent));
 			ImPlot::PlotLine(kTotalSeries, xs.data(), total.data(), count);
 
-			// A click over a bar's column picks it, as in the Requests chart. The legend is
-			// outside the plot, so a click on it never lands here.
+			xAxis.Track();
+
+			// A click over a bar's column picks it, as in the Requests chart, and only without a
+			// drag, which pans the chart. The legend is outside the plot, so a click on it never
+			// lands here.
 			std::optional<std::size_t> clicked;
 
 			if (ImPlot::IsPlotHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
 				!ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
 			{
+				// Only over the bars: the chart pans past them, and a click out there is no bar's.
 				const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
-				clicked = static_cast<std::size_t>(std::clamp(std::round(x), 1.0, static_cast<double>(count))) - 1;
+
+				if (x >= 0.5 && x <= static_cast<double>(count) + 0.5)
+					clicked = static_cast<std::size_t>(std::clamp(std::round(x), 1.0, static_cast<double>(count))) - 1;
 			}
 
 			ImPlot::EndPlot();
@@ -294,6 +310,13 @@ namespace Graphite {
 	{
 		const std::vector<TurnCost> turns = TurnCosts(session, pricing);
 
+		// Another reading of the transcript: where the reader had panned to named other turns.
+		if (session.GetGeneration() != m_BuiltGeneration)
+		{
+			m_XAxis.Reset();
+			m_BuiltGeneration = session.GetGeneration();
+		}
+
 		DrawTotals(session, summary, pricing);
 		ImGui::Spacing();
 
@@ -302,8 +325,12 @@ namespace Graphite {
 
 		int by = static_cast<int>(m_By);
 
+		// Turn 5 and request 5 are different places along the axis.
 		if (SegmentedChoice(kScopes, by))
+		{
 			m_By = static_cast<CostBy>(by);
+			m_XAxis.Reset();
+		}
 
 		std::optional<std::size_t> clicked;
 
@@ -330,7 +357,8 @@ namespace Graphite {
 				costs.push_back(std::move(cost));
 			}
 
-			DrawChart("Turn", layers, CumulativeCost(costs), palette);
+			FitTo(layers.size());
+			DrawChart("Turn", layers, CumulativeCost(costs), palette, m_XAxis);
 		}
 		else
 		{
@@ -338,12 +366,23 @@ namespace Graphite {
 				PriceRequests(timeline, pricing);
 
 			// A click picks the request for the Requests tab to show.
-			clicked = DrawChart("Request", m_RequestLayers, m_RequestTotal, palette);
+			FitTo(m_RequestLayers.size());
+			clicked = DrawChart("Request", m_RequestLayers, m_RequestTotal, palette, m_XAxis);
 		}
 
 		ImGui::Spacing();
 		DrawTurnTable(session, turns);
 		return clicked;
+	}
+
+	void CostView::FitTo(std::size_t count)
+	{
+		// A new turn or request: the axis takes it in, unless the reader has moved it.
+		if (count != m_ChartCount)
+		{
+			m_XAxis.Refit();
+			m_ChartCount = count;
+		}
 	}
 
 	void CostView::PriceRequests(const RequestTimeline& timeline, const Pricing& pricing)

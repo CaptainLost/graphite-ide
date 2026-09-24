@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panels/ChartAxes.h"
 #include "Sessions/Pricing.h"
 #include "Sessions/RequestChart.h"
 #include "Sessions/RequestTimeline.h"
@@ -36,8 +37,15 @@ namespace Graphite {
 		};
 
 		void PriceRequests(const RequestTimeline& timeline, const Pricing& pricing);
+		void FitTo(std::size_t count);
 
 		CostBy m_By = CostBy::Turn;
+
+		// The turns or requests axis, fitted to them as they arrive until the reader moves it;
+		// and how many bars it was last fitted to.
+		FollowingAxis m_XAxis;
+		std::size_t m_ChartCount = 0;
+		std::uint64_t m_BuiltGeneration = UINT64_MAX;
 
 		// Each request's cost by layer and the session's cost up to it, worked out again when
 		// the timeline or the prices change.

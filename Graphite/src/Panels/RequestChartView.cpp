@@ -174,7 +174,8 @@ namespace Graphite {
 		// SetupFinish is too early), and popped on every path out of here, including the plot
 		// staying closed.
 		ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
-		const bool open = ImPlot::BeginPlot("##requestsChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines));
+		// The blank title keeps a line above the plot for DrawAxisCaptions.
+		const bool open = ImPlot::BeginPlot(" ##requestsChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines));
 
 		if (!open)
 		{
@@ -184,9 +185,8 @@ namespace Graphite {
 		}
 
 		// The requests axis is fitted to every request when they change, until the reader pans
-		// or zooms it; the value axes follow whatever part of it is in view. Set with Always for
-		// that one frame only: an axis set with Always takes no input.
-		ImPlot::SetupAxis(ImAxis_X1, m_Axis == ChartAxis::Index ? "Request" : nullptr, ImPlotAxisFlags_None);
+		// or zooms it; the value axes follow whatever part of it is in view.
+		ImPlot::SetupAxis(ImAxis_X1, m_Axis == ChartAxis::Index ? "Request" : "Time answered", ImPlotAxisFlags_None);
 
 		if (m_Axis == ChartAxis::Clock)
 		{
@@ -207,15 +207,16 @@ namespace Graphite {
 			ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Linear);
 		}
 
-		if (m_FitPending && !m_ViewMoved && count > 0)
+		if (count > 0)
 		{
 			const auto [low, high] = std::minmax_element(m_Xs.begin(), m_Xs.end());
 			const double pad = m_BarWidth / kBarFraction * 0.5;
-			ImPlot::SetupAxisLimits(ImAxis_X1, *low - pad, *high + pad, ImPlotCond_Always);
-			m_FitPending = false;
+			m_XAxis.Setup(*low - pad, *high + pad);
 		}
 
-		ImPlot::SetupAxis(ImAxis_Y1, layout.Y1Label,
+		// The value axes are named above the plot by DrawAxisCaptions, level, rather than on
+		// their side beside their ticks.
+		ImPlot::SetupAxis(ImAxis_Y1, nullptr,
 						  ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin);
 
 		// ApplyFit pads both ends of the range it fits, and with the floor free that lifts the
@@ -226,7 +227,7 @@ namespace Graphite {
 			ImPlot::SetupAxisScale(ImAxis_Y1, layout.Y1Scale);
 
 		if (layout.LineName != nullptr)
-			ImPlot::SetupAxis(ImAxis_Y2, layout.Y2Label,
+			ImPlot::SetupAxis(ImAxis_Y2, nullptr,
 							  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
 
 		// Outside and above, so it never covers the first bars.
@@ -234,6 +235,8 @@ namespace Graphite {
 
 		// Finished by hand so the legend's show state can be read before anything is plotted.
 		ImPlot::SetupFinish();
+
+		DrawAxisCaptions(layout.Y1Label, layout.LineName != nullptr ? layout.Y2Label : nullptr);
 
 		Shown shown{};
 		for (std::size_t layer = 0; layer < layout.LayerCount; ++layer)
@@ -300,21 +303,7 @@ namespace Graphite {
 		// under it was pressed.
 		const bool overLegend = ImPlot::GetCurrentPlot()->Items.Legend.Hovered;
 
-		// ImPlot pans and zooms the X axis from a drag over its tick area too, which
-		// IsPlotHovered — the plot rectangle alone — misses; the moved/double-click detection is
-		// asked over that area as well, so a drag there is not mistaken for the view staying put.
-		if ((ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1)) && !overLegend)
-		{
-			// A pan with the left button, a box zoom with the right, or the wheel hands the axis
-			// to the reader; a double click, which ImPlot answers by fitting everything, hands
-			// it back.
-			if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) || ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
-				ImGui::GetIO().MouseWheel != 0.0f)
-				m_ViewMoved = true;
-
-			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-				m_ViewMoved = false;
-		}
+		m_XAxis.Track();
 
 		// The click and the tooltip stay on the plot rectangle alone: the axis's tick area is
 		// not where a bar is.
@@ -367,10 +356,7 @@ namespace Graphite {
 		// Another reading of the transcript: where the reader had panned to named other requests,
 		// so the view is fitted again even if the count of requests did not change below.
 		if (input.Generation != m_BuiltGeneration)
-		{
-			m_ViewMoved = false;
-			m_FitPending = true;
-		}
+			m_XAxis.Reset();
 
 		// Every request, not only the last: a pass over a few thousand requests on the frames
 		// the timeline changes costs less than keeping track of which ones could have.
@@ -400,7 +386,7 @@ namespace Graphite {
 
 		if (count != m_BuiltCount)
 		{
-			m_FitPending = true;
+			m_XAxis.Refit();
 			m_BuiltCount = count;
 		}
 
@@ -429,8 +415,7 @@ namespace Graphite {
 		if (ImGui::SmallButton(axisLabel))
 		{
 			m_Axis = m_Axis == ChartAxis::Index ? ChartAxis::Clock : ChartAxis::Index;
-			m_FitPending = true;
-			m_ViewMoved = false;
+			m_XAxis.Reset();
 		}
 
 		ImGui::SetItemTooltip("Place the requests by number or by the time they were answered");

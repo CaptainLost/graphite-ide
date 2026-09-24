@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Panels/ChartAxes.h"
 #include "Panels/ConversationView.h"
 #include "Panels/LocalClock.h"
 #include "Sessions/Pricing.h"
@@ -114,11 +115,8 @@ namespace Graphite {
 		std::vector<double> m_Line;
 		double m_BarWidth = kBarFraction;
 
-		// Whether the requests axis is fitted to every request on the next frame, and whether
-		// the reader has panned or zoomed it since it last was: the reader's view is kept as
-		// requests arrive, until a double click fits it again.
-		bool m_FitPending = true;
-		bool m_ViewMoved = false;
+		// The requests axis: fitted to every request as they arrive, until the reader moves it.
+		FollowingAxis m_XAxis;
 
 		LocalClock m_LocalClock;
 	};
