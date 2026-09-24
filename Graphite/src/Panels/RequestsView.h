@@ -19,9 +19,9 @@
 
 namespace Graphite {
 
-	// Every API request of a session: a chart of them above — see RequestChartView — a table of them
-	// the reader sorts by any column, and — once a request is picked — under it, split by a
-	// divider the reader drags and closed from its corner, what that request sent and returned.
+	// Every API request of a session: a chart of them (RequestChartView), a table of them the
+	// reader sorts by any column, and — once a request is picked — under it, split by a divider
+	// the reader drags and closed from its corner, what that request sent and returned.
 	class RequestsView
 	{
 	public:

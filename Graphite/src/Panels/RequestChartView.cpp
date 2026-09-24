@@ -34,10 +34,20 @@ namespace Graphite {
 		constexpr float kBandAlpha = 0.18f;
 
 		// Headroom added above the tallest bar and the line's peak when the value axes fit, as a
-		// share of what they show: the rebuild marker sits there, and a line's peak is not drawn
-		// on the plot's edge. Y1's floor is held at zero (see SetupAxisLimits below), so this
-		// only ever adds room above; Y2 has no such floor and is padded on both ends.
+		// share of what they show. ApplyFit pads each end of the range it fits by half of this,
+		// so it buys about 6% above the tallest bar and the line's peak (Y1's floor is held at
+		// zero, see SetupAxisLimits below, so this only ever adds room above; Y2 has no such
+		// floor and is padded on both ends) — on a SymLog axis, and whenever 6% is still only a
+		// few pixels, that is not enough room for the rebuild marker, which is why
+		// DrawRebuildMarkers clamps it into the plot instead of relying on this alone.
 		constexpr float kFitPadding = 0.12f;
+
+		// The selection band's and the tooltip's hit test's minimum size, in font sizes rather
+		// than in plot units: on the clock axis a bar is kBarFraction of the smallest gap
+		// between responses, which on a multi-hour session is a fraction of a pixel — too thin
+		// to see or to click. Both are worked out in pixels against these floors instead.
+		constexpr float kMinBandEms = 0.5f;
+		constexpr float kMinHitEms = 0.25f;
 
 		// The context's layers, indexed by ContextLayer; they name the legend entries too.
 		constexpr const char* kContextNames[kContextLayers] = {"Cache read", "Cache write", "Uncached input"};
@@ -194,7 +204,23 @@ namespace Graphite {
 		ImPlot::SetupAxis(ImAxis_X1, m_Axis == ChartAxis::Index ? "Request" : nullptr, ImPlotAxisFlags_None);
 
 		if (m_Axis == ChartAxis::Clock)
+		{
 			ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Time);
+		}
+		else
+		{
+			// SetupAxisScale(Time) sets ConstraintRange to a window of UNIX seconds
+			// (IMPLOT_MIN_TIME..IMPLOT_MAX_TIME), and ImPlotAxis::Reset(), which BeginPlot runs
+			// at the start of every frame, does not clear ConstraintRange. Left alone, the
+			// number axis would stay pinned to that window — unable to pan below 0 — for the
+			// rest of the session once the reader had visited the clock axis once. Explicitly
+			// setting Linear here puts it back: implot.cpp's SetupAxisScale takes the
+			// ConstraintRange (-INFINITY, INFINITY) in its `default` branch, which every scale
+			// other than Time, Log10 and SymLog falls into (verified in
+			// vendor/implot/implot.cpp), so this alone is enough; no separate
+			// SetupAxisLimitsConstraints call is needed.
+			ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Linear);
+		}
 
 		if (m_FitPending && !m_ViewMoved && count > 0)
 		{
@@ -326,7 +352,18 @@ namespace Graphite {
 				// chart is being panned under the mouse. Asked of the button held now: the drag
 				// distance above is kept until the next click, and would hide the tooltip after
 				// any drag anywhere.
-				if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) && std::abs(x - m_Xs[nearest]) <= m_BarWidth * 0.5)
+				// Compared in pixels, not plot units: on the clock axis the bar is a fraction
+				// of a pixel wide, so half its width would almost never be hit. Floored at
+				// kMinHitEms of the font size, same reasoning as the selection band above.
+				const float mousePixelX = ImPlot::PlotToPixels(x, 0.0, ImAxis_X1, ImAxis_Y1).x;
+				const float nearestPixelX = ImPlot::PlotToPixels(m_Xs[nearest], 0.0, ImAxis_X1, ImAxis_Y1).x;
+				const float barEdgePixelX =
+					ImPlot::PlotToPixels(m_Xs[nearest] + m_BarWidth * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+				const float halfBarPixels = std::abs(barEdgePixelX - nearestPixelX);
+				const float hitHalfPixels = std::max(halfBarPixels, ImGui::GetFontSize() * kMinHitEms);
+
+				if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
+					std::abs(mousePixelX - nearestPixelX) <= hitHalfPixels)
 					DrawTooltip(input, position, context);
 			}
 		}
@@ -522,8 +559,17 @@ namespace Graphite {
 			return;
 
 		const double x = m_Xs[static_cast<std::size_t>(found - m_Points.begin())];
-		const float left = ImPlot::PlotToPixels(x - slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
-		const float right = ImPlot::PlotToPixels(x + slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+		float left = ImPlot::PlotToPixels(x - slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+		float right = ImPlot::PlotToPixels(x + slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+
+		// Widened symmetrically about the column's centre, which left and right already are
+		// equidistant from, so a band too thin to see (a bar on the clock axis can be a fraction
+		// of a pixel wide) still shows.
+		const float minBandPixels = ImGui::GetFontSize() * kMinBandEms;
+		const float widen = std::max(0.0f, minBandPixels - (right - left)) * 0.5f;
+		left -= widen;
+		right += widen;
+
 		const ImVec2 plotPos = ImPlot::GetPlotPos();
 		const ImVec2 plotSize = ImPlot::GetPlotSize();
 
@@ -552,10 +598,24 @@ namespace Graphite {
 				continue;
 
 			const ImVec2 top = ImPlot::PlotToPixels(m_Xs[point], m_StackTop[point], ImAxis_X1, ImAxis_Y1);
-			const float tip = top.y - gap;
+			float tip = top.y - gap;
+			float apexY = tip - size * 1.5f;
 
-			list->AddTriangleFilled(ImVec2(top.x - size, tip - size * 1.5f), ImVec2(top.x + size, tip - size * 1.5f),
-									ImVec2(top.x, tip), colour);
+			// kFitPadding buys only a few pixels above the tallest bar — nothing at all on
+			// SymLog, where the fit is dominated by the axis's low end. When that headroom runs
+			// out before the marker's apex does, the whole triangle is pulled down to fit under
+			// the plot's top edge instead of being clipped there: it now overlaps the bar it
+			// marks, but still points down at it.
+			const float plotTop = ImPlot::GetPlotPos().y + 1.0f;
+
+			if (apexY < plotTop)
+			{
+				apexY = plotTop;
+				tip = apexY + size * 1.5f;
+			}
+
+			list->AddTriangleFilled(ImVec2(top.x - size, apexY), ImVec2(top.x + size, apexY), ImVec2(top.x, tip),
+									colour);
 		}
 
 		ImPlot::PopPlotClipRect();
