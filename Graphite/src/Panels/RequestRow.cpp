@@ -241,13 +241,17 @@ namespace Graphite {
 
 		SectionHeading(SentHeading(request), SentSummary(request), palette);
 
+		ImGui::Indent();
 		for (std::size_t i = 0; i < request.Sent.size(); ++i)
 			line(LookOf(request.Sent[i], palette), request.Sent[i].Label, SentColumn(request.Sent[i]), i);
+		ImGui::Unindent();
 
 		SectionHeading(ReplyHeading(request), ReplySummary(request), palette);
 
+		ImGui::Indent();
 		for (std::size_t i = 0; i < request.Response.size(); ++i)
 			line(LookOf(request.Response[i], palette), request.Response[i].Label, {}, request.Sent.size() + i);
+		ImGui::Unindent();
 
 		ColouredText(palette.TextDisabled, ToolsAvailableLabel(request));
 
