@@ -12,6 +12,10 @@ namespace Graphite {
 	// mentions one, or starts with other markup, is still a prompt.
 	bool IsInjectedText(std::string_view text);
 
+	// What a compaction summary is labelled as. Its text opens with a sentence, not a tag, and
+	// that sentence alone would not say the context was compacted there.
+	inline constexpr std::string_view kCompactSummaryLabel = "Compaction summary";
+
 	// One line saying what injected text was: a notification's own summary where it has one,
 	// otherwise the kind of text it is.
 	std::string InjectedLabel(std::string_view text);

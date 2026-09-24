@@ -126,9 +126,13 @@ namespace Graphite {
 		// has a placeholder line naming the image, as the requests' sent text does.
 		std::string QueuedPrompt;
 
-		// Text Claude Code injected as if the user had said it (a skill's body, a reminder):
-		// it is not a prompt the user typed.
+		// Text Claude Code injected as if the user had said it (a skill's body, a reminder, a
+		// compaction summary): it is not a prompt the user typed.
 		bool IsMeta = false;
+
+		// The summary Claude Code writes in place of the context it compacted. It is a user
+		// record with no isMeta, so this flag is the only thing that says no one typed it.
+		bool IsCompactSummary = false;
 
 		std::vector<ContentBlock> Blocks;
 		std::optional<TokenCounts> Usage;

@@ -449,7 +449,8 @@ namespace Graphite {
 		record.Timestamp = StringAt(json, "timestamp");
 		record.Cwd = StringAt(json, "cwd");
 		record.RequestId = StringAt(json, "requestId");
-		record.IsMeta = BoolAt(json, "isMeta");
+		record.IsCompactSummary = BoolAt(json, "isCompactSummary");
+		record.IsMeta = BoolAt(json, "isMeta") || record.IsCompactSummary;
 
 		if (record.Kind == RecordKind::AiTitle)
 			record.Title = StringAt(json, "aiTitle");

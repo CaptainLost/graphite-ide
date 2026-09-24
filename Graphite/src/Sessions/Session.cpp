@@ -42,9 +42,9 @@ namespace Graphite {
 				{
 					// Meta text with no known opening, a skill's body say, has no kind to name, so
 					// its first line says what it is.
-					const std::string label = IsInjectedText(block.Text)
-												  ? InjectedLabel(block.Text)
-												  : FirstLineLabel(block.Text, 120);
+					const std::string label = record.IsCompactSummary ? std::string{kCompactSummaryLabel}
+											  : IsInjectedText(block.Text) ? InjectedLabel(block.Text)
+																		   : FirstLineLabel(block.Text, 120);
 					CurrentTurn().Items.push_back(
 						{.Kind = ItemKind::Injected, .Text = block.Text, .Label = label, .At = record.Timestamp});
 					continue;

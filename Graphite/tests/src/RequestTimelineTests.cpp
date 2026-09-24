@@ -369,6 +369,20 @@ TEST_CASE("A response's later record moves its end, and the change bumps the ver
 	CHECK(timeline.GetRequests()[0].Waited == std::chrono::milliseconds{7000});
 }
 
+TEST_CASE("A compaction summary is sent as injected text labelled as the summary, not as a prompt")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") + Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {}), Fixtures::Usage(1, 1)) +
+		Fixtures::kCompactSummary +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("carrying on"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-08-31T16:33:20.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[1].Sent.size() == 1);
+	CHECK(requests[1].Sent[0].Kind == SentKind::Injected);
+	CHECK(requests[1].Sent[0].Label == "Compaction summary");
+}
+
 TEST_CASE("A tools delta says only what it did, and counts one tool as one")
 {
 	const std::vector<ApiRequest> requests = Build(

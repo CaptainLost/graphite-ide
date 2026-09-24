@@ -203,4 +203,11 @@ namespace Fixtures {
 		"\n"
 		R"({"type": "assistant", "uuid": "1dd9a222-f991-4296-a9a1-f34e8eae8514", "requestId": "req_011CeXG5cyqF3ePoWdsANZSi", "timestamp": "2026-08-29T15:16:50.453Z", "isApiErrorMessage": true, "version": "2.1.251", "message": {"model": "<synthetic>", "role": "assistant", "content": [{"type": "text", "text": "API Error: Opus 4.8's safeguar"}], "stop_reason": "refusal", "usage": {"output_tokens_details": null, "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "cache_creation": {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 0}}}})"
 		"\n";
+
+	// A real summary record (2.1.251), its text cut down. Claude Code writes it when it compacts
+	// the context, often in the middle of a turn, as a user record with a plain string for its
+	// content and no isMeta; only isCompactSummary says the user never typed it.
+	inline const std::string kCompactSummary =
+		R"({"type": "user", "uuid": "c1fc7cb3-0c0f-4efa-bc2a-8baf1f6ad687", "timestamp": "2026-08-31T16:33:10.124Z", "isCompactSummary": true, "isVisibleInTranscriptOnly": true, "version": "2.1.251", "message": {"role": "user", "content": "This session is being continued from a previous conversation that ran out of context. The summary below covers the earli"}})"
+		"\n";
 }

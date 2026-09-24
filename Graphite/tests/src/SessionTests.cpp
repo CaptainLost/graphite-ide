@@ -213,6 +213,24 @@ TEST_CASE("A turn counts a streamed response by its whole output and a refused o
 									 {{"claude-opus-4-8", false}, TokenCounts{2, 1066, 0, 17298, 28871}}});
 }
 
+TEST_CASE("A compaction summary written mid-turn is an injected item of that turn, not a new prompt")
+{
+	const Session session = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {}), Fixtures::Usage(1, 1)) +
+		Fixtures::kCompactSummary +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("carrying on"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-08-31T16:33:20.000Z"));
+
+	REQUIRE(session.GetTurns().size() == 1);
+	const Turn& turn = session.GetTurns()[0];
+	CHECK(turn.Prompt == "go");
+	REQUIRE(turn.Items.size() == 3);
+	CHECK(turn.Items[1].Kind == ItemKind::Injected);
+	CHECK(turn.Items[1].Label == "Compaction summary");
+	CHECK(turn.Items[1].Text.starts_with("This session is being continued"));
+}
+
 TEST_CASE("Injected meta text that carries a known tag is labelled by the tag, not its first line")
 {
 	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("<system-reminder>\nbe brief\n</system-reminder>"));
