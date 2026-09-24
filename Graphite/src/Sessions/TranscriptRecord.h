@@ -139,5 +139,15 @@ namespace Graphite {
 		// AttachmentText was reconstructed rather than read: the record predates `rendered`,
 		// or does not say which version wrote it.
 		bool AttachmentApproximate = false;
+
+		// For a `prompt_snapshot`: the system prompt the session's first request went out
+		// with — the CLI prefix, then each block, a blank line between — or empty when the
+		// snapshot holds none.
+		std::string SystemPromptText;
+
+		// For a `prompt_snapshot`: every tool schema the first request carried in full, each
+		// as its name, its description and its input schema, a rule between tools.
+		std::string ToolSchemasText;
+		std::size_t ToolSchemaCount = 0;
 	};
 }

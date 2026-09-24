@@ -9,6 +9,8 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace Graphite {
 
@@ -246,6 +248,66 @@ namespace Graphite {
 			return text;
 		}
 
+		std::string JoinedWith(const std::vector<std::string>& parts, std::string_view separator)
+		{
+			std::string joined;
+
+			for (std::size_t i = 0; i < parts.size(); ++i)
+			{
+				if (i > 0)
+					joined += separator;
+				joined += parts[i];
+			}
+
+			return joined;
+		}
+
+		// The CLI prefix and the system prompt's blocks, a blank line between. A snapshot with
+		// no blocks has no system prompt, whatever prefix it carries.
+		std::string SystemPromptText(const nlohmann::json& snapshot)
+		{
+			std::vector<std::string> blocks = StringsAt(snapshot, "systemPrompt");
+
+			if (blocks.empty())
+				return {};
+
+			if (std::string prefix = StringAt(snapshot, "cliPrefix"); !prefix.empty())
+				blocks.insert(blocks.begin(), std::move(prefix));
+
+			return JoinedWith(blocks, "\n\n");
+		}
+
+		// Each tool as the model reads its definition: name, description, and input schema
+		// laid out two spaces an indent, the parts a blank line apart and a rule between
+		// tools. An element that is not an object is not a tool.
+		std::string ToolSchemasText(const nlohmann::json& snapshot, std::size_t& count)
+		{
+			std::vector<std::string> tools;
+			const auto found = snapshot.find("tools");
+
+			if (found != snapshot.end() && found->is_array())
+			{
+				for (const nlohmann::json& tool : *found)
+				{
+					if (!tool.is_object())
+						continue;
+
+					std::vector<std::string> parts{StringAt(tool, "name")};
+
+					if (std::string description = StringAt(tool, "description"); !description.empty())
+						parts.push_back(std::move(description));
+
+					if (const auto schema = tool.find("input_schema"); schema != tool.end())
+						parts.push_back(schema->dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
+
+					tools.push_back(JoinedWith(parts, "\n\n"));
+				}
+			}
+
+			count = tools.size();
+			return JoinedWith(tools, "\n\n" + std::string(40, '-') + "\n\n");
+		}
+
 		using Version = std::array<unsigned, 3>;
 
 		// The first Claude Code that records what an attachment sent. From it on, an
@@ -359,6 +421,11 @@ namespace Graphite {
 				record.AttachmentNames = StringsAt(*attachment, "names");
 			else if (record.AttachmentType == "edited_text_file")
 				record.AttachmentFile = StringAt(*attachment, "filename");
+			else if (record.AttachmentType == "prompt_snapshot")
+			{
+				record.SystemPromptText = SystemPromptText(*attachment);
+				record.ToolSchemasText = ToolSchemasText(*attachment, record.ToolSchemaCount);
+			}
 
 			if (record.AttachmentType == "queued_command")
 			{

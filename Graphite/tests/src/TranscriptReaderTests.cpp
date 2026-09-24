@@ -518,3 +518,59 @@ TEST_CASE("An image block with a missing or mistyped source is still an image, w
 		CHECK(block.DataBytes == 0);
 	}
 }
+
+TEST_CASE("A prompt snapshot carries the system prompt and the tool schemas as text")
+{
+	const nlohmann::json schema = {{"type", "object"}};
+	const std::string bytes = Fixtures::VersionedAttachment(
+		{{"type", "prompt_snapshot"},
+		 {"cliPrefix", "You are Claude Code."},
+		 {"systemPrompt", nlohmann::json::array({"First.", "Second."})},
+		 {"tools", nlohmann::json::array({nlohmann::json{{"name", "Read"}, {"description", "Reads a file."}, {"input_schema", schema}},
+										  nlohmann::json{{"name", "Bash"}, {"description", "Runs."}, {"input_schema", schema}}})}},
+		"2.1.280");
+
+	const TranscriptChunk chunk = ParseTranscript(bytes);
+
+	REQUIRE(chunk.Records.size() == 1);
+	const TranscriptRecord& record = chunk.Records[0];
+	CHECK(record.SystemPromptText == "You are Claude Code.\n\nFirst.\n\nSecond.");
+	CHECK(record.ToolSchemaCount == 2);
+
+	const std::string rule = "\n\n" + std::string(40, '-') + "\n\n";
+	CHECK(record.ToolSchemasText == "Read\n\nReads a file.\n\n{\n  \"type\": \"object\"\n}" + rule +
+										"Bash\n\nRuns.\n\n{\n  \"type\": \"object\"\n}");
+
+	// The snapshot is Claude Code's own record: it is read for what it says, not as something sent.
+	CHECK_FALSE(record.AttachmentSent);
+}
+
+TEST_CASE("A prompt snapshot without tools, or without a system prompt, says only what it has")
+{
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::VersionedAttachment({{"type", "prompt_snapshot"}, {"systemPrompt", nlohmann::json::array({"Only."})}}, "2.1.280") +
+		Fixtures::VersionedAttachment(
+			{{"type", "prompt_snapshot"},
+			 {"cliPrefix", "Prefix."},
+			 {"tools", nlohmann::json::array({nlohmann::json{{"name", "Read"}}, "not a tool"})}},
+			"2.1.280"));
+
+	REQUIRE(chunk.Records.size() == 2);
+	CHECK(chunk.Records[0].SystemPromptText == "Only.");
+	CHECK(chunk.Records[0].ToolSchemaCount == 0);
+	CHECK(chunk.Records[0].ToolSchemasText.empty());
+
+	// A prefix with no system prompt behind it is not a system prompt.
+	CHECK(chunk.Records[1].SystemPromptText.empty());
+	CHECK(chunk.Records[1].ToolSchemaCount == 1);
+	CHECK(chunk.Records[1].ToolSchemasText == "Read");
+}
+
+TEST_CASE("Only a prompt snapshot fills the snapshot fields")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
+		{{"type", "date"}, {"systemPrompt", nlohmann::json::array({"no"})}}, "2.1.259"));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].SystemPromptText.empty());
+}
