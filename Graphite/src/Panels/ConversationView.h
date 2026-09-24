@@ -104,6 +104,9 @@ namespace Graphite {
 		void DrawStep(const Session& session, const TurnItem& item, std::size_t row, const ConversationContext& context,
 					  Core::EventBus& events);
 		void DrawInjected(const TurnItem& item, std::size_t row, const ConversationContext& context);
+		// A rule across the width with the compaction's label centred on it; a click opens the
+		// summary below it when there is one.
+		void DrawCompaction(const TurnItem& item, std::size_t row, const ConversationContext& context);
 		// A part's usage line, which opens to a line per request it covers, each with a button
 		// that shows the request in the Requests tab. `width` is the room the line may take.
 		void DrawUsage(const TurnPart& part, std::size_t row, float width, const ConversationContext& context);

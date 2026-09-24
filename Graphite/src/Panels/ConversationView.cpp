@@ -7,6 +7,7 @@
 
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
+#include "Sessions/ToolFacts.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -686,6 +687,67 @@ namespace Graphite {
 		ImGui::Unindent();
 	}
 
+	void ConversationView::DrawCompaction(const TurnItem& item, std::size_t row, const ConversationContext& context)
+	{
+		const std::size_t turn = m_Rows[row].Turn;
+		const std::pair<std::size_t, std::size_t> key{turn, m_Parts[turn][m_Rows[row].Part].Items.front()};
+		const bool hasSummary = !item.Text.empty();
+		const bool open = hasSummary && m_OpenItems.contains(key);
+		const ImU32 colour = context.Palette.Injected;
+		const float lineHeight = ImGui::GetTextLineHeight();
+
+		ImGui::Spacing();
+
+		const ImVec2 start = ImGui::GetCursorScreenPos();
+		const float width = ImGui::GetContentRegionAvail().x;
+
+		// Only a divider with a summary to open answers the mouse; one without stays one item
+		// tall all the same, so the row keeps the height the pause row has.
+		if (hasSummary)
+		{
+			if (ImGui::Selectable("##compaction", false, ImGuiSelectableFlags_None, ImVec2(0.0f, lineHeight)))
+				Toggle(m_OpenItems, key, row);
+		}
+		else
+		{
+			ImGui::Dummy(ImVec2(width, lineHeight));
+		}
+
+		if (item.Compaction.PreTokens && item.Compaction.PostTokens)
+			ImGui::SetItemTooltip("%s \xe2\x86\x92 %s tokens", FormatTokensExact(*item.Compaction.PreTokens).c_str(),
+								  FormatTokensExact(*item.Compaction.PostTokens).c_str());
+
+		// The label is cut to the width first; the rule shows only in whatever room is left
+		// either side of it, so at a narrow width the rule goes before any of the words do.
+		const std::string label = Fitted(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " +
+											 CompactionLabel(item.Compaction, m_Clock.HoursMinutes(item.At)),
+										 width);
+		const float labelWidth = ImGui::CalcTextSize(label.c_str()).x;
+		const float space = ImGui::GetStyle().ItemSpacing.x;
+		const float labelX = start.x + std::max(0.0f, (width - labelWidth) * 0.5f);
+		const float middle = start.y + lineHeight * 0.5f;
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+
+		if (labelX - space > start.x)
+			draw->AddLine(ImVec2(start.x, middle), ImVec2(labelX - space, middle), colour);
+		if (labelX + labelWidth + space < start.x + width)
+			draw->AddLine(ImVec2(labelX + labelWidth + space, middle), ImVec2(start.x + width, middle), colour);
+
+		ImVec2 at(labelX, start.y);
+		DrawPiece(at, colour, label);
+
+		if (open)
+		{
+			ImGui::Indent();
+			ImGui::PushStyleColor(ImGuiCol_Text, colour);
+			ImGui::TextWrapped("%s", item.Text.c_str());
+			ImGui::PopStyleColor();
+			ImGui::Unindent();
+		}
+
+		ImGui::Spacing();
+	}
+
 	void ConversationView::DrawGap(std::chrono::milliseconds gap, const ConversationContext& context)
 	{
 		ImGui::Spacing();
@@ -888,6 +950,7 @@ namespace Graphite {
 				break;
 			}
 			case PartKind::Compaction:
+				DrawCompaction(turn.Items[part.Items.front()], index, context);
 				break;
 			}
 			break;
