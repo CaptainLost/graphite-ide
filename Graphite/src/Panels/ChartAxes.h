@@ -1,5 +1,7 @@
 #pragma once
 
+#include <imgui.h>
+
 namespace Graphite {
 
 	// A plot's x axis that follows its data — fitted to every point whenever they change — until
@@ -45,4 +47,10 @@ namespace Graphite {
 	// Labels only the whole numbers on the x axis: turns and requests are counted, and a tick
 	// at 1.5 names neither. Between SetupAxis(ImAxis_X1, ...) and SetupFinish.
 	void SetupCountedAxis();
+
+	// The selected column's band: a faint `accent` rectangle the plot's full height, centred on
+	// `x` and `slot` wide in plot units — widened about its centre to a floor in font sizes, so
+	// a column a fraction of a pixel wide (a bar on a long session's clock axis) still shows.
+	// After SetupFinish, before the bars are plotted, so it lies under them.
+	void DrawColumnBand(double x, double slot, ImU32 accent);
 }

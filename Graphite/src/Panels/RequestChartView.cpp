@@ -30,9 +30,8 @@ namespace Graphite {
 		// The bar tooltip's widest line, in font sizes, before a long label is cut.
 		constexpr float kTooltipEms = 36.0f;
 
-		// How strongly a request the filters leave out, and the selected request's band, are drawn.
+		// How strongly a request the filters leave out is drawn.
 		constexpr float kDimAlpha = 0.25f;
-		constexpr float kBandAlpha = 0.18f;
 
 		// Headroom added above the tallest bar and the line's peak when the value axes fit, as a
 		// share of what they show. ApplyFit pads each end of the range it fits by half of this,
@@ -43,11 +42,10 @@ namespace Graphite {
 		// DrawRebuildMarkers clamps it into the plot instead of relying on this alone.
 		constexpr float kFitPadding = 0.12f;
 
-		// The selection band's and the tooltip's hit test's minimum size, in font sizes rather
-		// than in plot units: on the clock axis a bar is kBarFraction of the smallest gap
-		// between responses, which on a multi-hour session is a fraction of a pixel — too thin
-		// to see or to click. Both are worked out in pixels against these floors instead.
-		constexpr float kMinBandEms = 0.5f;
+		// The tooltip's hit test's minimum size, in font sizes rather than in plot units: on the
+		// clock axis a bar is kBarFraction of the smallest gap between responses, which on a
+		// multi-hour session is a fraction of a pixel — too thin to point at. It is worked out
+		// in pixels against this floor instead, as DrawColumnBand does for the selection band.
 		constexpr float kMinHitEms = 0.25f;
 
 		// The context's layers, indexed by ContextLayer; they name the legend entries too.
@@ -518,25 +516,7 @@ namespace Graphite {
 		if (found == m_Points.end())
 			return;
 
-		const double x = m_Xs[static_cast<std::size_t>(found - m_Points.begin())];
-		float left = ImPlot::PlotToPixels(x - slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
-		float right = ImPlot::PlotToPixels(x + slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
-
-		// Widened symmetrically about the column's centre, which left and right already are
-		// equidistant from, so a band too thin to see (a bar on the clock axis can be a fraction
-		// of a pixel wide) still shows.
-		const float minBandPixels = ImGui::GetFontSize() * kMinBandEms;
-		const float widen = std::max(0.0f, minBandPixels - (right - left)) * 0.5f;
-		left -= widen;
-		right += widen;
-
-		const ImVec2 plotPos = ImPlot::GetPlotPos();
-		const ImVec2 plotSize = ImPlot::GetPlotSize();
-
-		ImPlot::PushPlotClipRect();
-		ImPlot::GetPlotDrawList()->AddRectFilled(ImVec2(left, plotPos.y), ImVec2(right, plotPos.y + plotSize.y),
-												 ImGui::GetColorU32(Faded(accent, kBandAlpha)));
-		ImPlot::PopPlotClipRect();
+		DrawColumnBand(m_Xs[static_cast<std::size_t>(found - m_Points.begin())], slot, accent);
 	}
 
 	void RequestChartView::DrawRebuildMarkers(const RequestChartInput& input, ImU32 colour) const

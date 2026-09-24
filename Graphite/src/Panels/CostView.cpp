@@ -231,11 +231,12 @@ namespace Graphite {
 		}
 
 		// One stacked bar per turn or request, numbered from 1, with the session's running total
-		// on a second axis. Returns the index of the bar clicked, if any.
+		// on a second axis, and the bar at index `selected` banded. Returns the index of the bar
+		// clicked, if any.
 		std::optional<std::size_t> DrawChart(const char* title, const char* axisLabel,
 											 const std::vector<CostLayers>& layers, const std::vector<double>& total,
-											 const std::vector<CostBar>& bars, const SessionPalette& palette,
-											 FollowingAxis& xAxis)
+											 const std::vector<CostBar>& bars, std::optional<std::size_t> selected,
+											 const SessionPalette& palette, FollowingAxis& xAxis)
 		{
 			const int count = static_cast<int>(layers.size());
 
@@ -283,6 +284,10 @@ namespace Graphite {
 			ImPlot::SetupFinish();
 
 			DrawAxisCaptions("Dollars", "Total dollars");
+
+			// Under the bars, as the Requests chart bands its selection: a bar is one slot wide.
+			if (selected && *selected < layers.size())
+				DrawColumnBand(static_cast<double>(*selected + 1), 1.0, palette.Accent);
 
 			std::array<bool, kCostLayers> shown{};
 			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
@@ -403,7 +408,7 @@ namespace Graphite {
 
 	std::optional<std::size_t> CostView::Draw(const Session& session, const std::optional<SessionSummary>& summary,
 											  const RequestTimeline& timeline, const Pricing& pricing,
-											  const SessionPalette& palette)
+											  std::optional<std::size_t> selected, const SessionPalette& palette)
 	{
 		const std::vector<TurnCost> turns = TurnCosts(session, pricing);
 
@@ -463,7 +468,8 @@ namespace Graphite {
 			}
 
 			FitTo(layers.size());
-			DrawChart("Cost per turn", "Turn", layers, CumulativeCost(costs), bars, palette, m_XAxis);
+			// A turn is several requests, so none of its bars is the selected request's.
+			DrawChart("Cost per turn", "Turn", layers, CumulativeCost(costs), bars, std::nullopt, palette, m_XAxis);
 		}
 		else
 		{
@@ -472,8 +478,8 @@ namespace Graphite {
 
 			// A click picks the request for the Requests tab to show.
 			FitTo(m_RequestLayers.size());
-			clicked = DrawChart("Cost per request", "Request", m_RequestLayers, m_RequestTotal, m_RequestBars, palette,
-								m_XAxis);
+			clicked = DrawChart("Cost per request", "Request", m_RequestLayers, m_RequestTotal, m_RequestBars, selected,
+								palette, m_XAxis);
 		}
 
 		ImGui::Spacing();

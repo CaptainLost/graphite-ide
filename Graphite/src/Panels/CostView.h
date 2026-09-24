@@ -33,10 +33,11 @@ namespace Graphite {
 	{
 	public:
 		// Returns the position in `timeline` of a request clicked on the chart, for the
-		// Requests tab to show.
+		// Requests tab to show. `selected` is the request that tab has picked, banded on the
+		// chart when it charts requests.
 		std::optional<std::size_t> Draw(const Session& session, const std::optional<SessionSummary>& summary,
 										 const RequestTimeline& timeline, const Pricing& pricing,
-										 const SessionPalette& palette);
+										 std::optional<std::size_t> selected, const SessionPalette& palette);
 
 	private:
 		// What one bar of the chart stands for.

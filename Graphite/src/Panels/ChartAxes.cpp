@@ -6,6 +6,7 @@
 #include <implot.h>
 #include <implot_internal.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 
@@ -74,5 +75,32 @@ namespace Graphite {
 			const float width = ImGui::CalcTextSize(right).x;
 			list->AddText(ImVec2(plot.FrameRect.Max.x - style.PlotPadding.x - width, y), colour, right);
 		}
+	}
+
+	void DrawColumnBand(double x, double slot, ImU32 accent)
+	{
+		// How strongly the band is drawn, and its narrowest, in font sizes.
+		constexpr float kBandAlpha = 0.18f;
+		constexpr float kMinBandEms = 0.5f;
+
+		float left = ImPlot::PlotToPixels(x - slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+		float right = ImPlot::PlotToPixels(x + slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+
+		// Widened symmetrically about the column's centre, which left and right already are
+		// equidistant from.
+		const float widen = std::max(0.0f, ImGui::GetFontSize() * kMinBandEms - (right - left)) * 0.5f;
+		left -= widen;
+		right += widen;
+
+		ImVec4 colour = ImGui::ColorConvertU32ToFloat4(accent);
+		colour.w *= kBandAlpha;
+
+		const ImVec2 plotPos = ImPlot::GetPlotPos();
+		const ImVec2 plotSize = ImPlot::GetPlotSize();
+
+		ImPlot::PushPlotClipRect();
+		ImPlot::GetPlotDrawList()->AddRectFilled(ImVec2(left, plotPos.y), ImVec2(right, plotPos.y + plotSize.y),
+												 ImGui::GetColorU32(colour));
+		ImPlot::PopPlotClipRect();
 	}
 }

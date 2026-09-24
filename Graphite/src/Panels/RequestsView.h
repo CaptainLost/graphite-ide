@@ -33,6 +33,9 @@ namespace Graphite {
 		// earlier reading of the transcript names some other request, and is dropped.
 		void Reveal(std::size_t requestIndex, std::uint64_t generation);
 
+		// The picked request's position in GetRequests(), for the Cost tab to mark on its chart.
+		std::optional<std::size_t> GetSelected() const { return m_Selected; }
+
 	private:
 		void Rebuild(const RequestTimeline& timeline, const Session& session);
 		void PriceRequests(const RequestTimeline& timeline, const Pricing& pricing);

@@ -211,7 +211,8 @@ namespace Graphite {
 						if (progress.FirstPassDone)
 						{
 							if (const std::optional<std::size_t> clicked =
-									entry.Cost.Draw(entry.Data, entry.Summary, entry.Timeline, m_Settings.GetPricing(), palette))
+									entry.Cost.Draw(entry.Data, entry.Summary, entry.Timeline, m_Settings.GetPricing(),
+													entry.Requests.GetSelected(), palette))
 								entry.PendingRequest = clicked;
 						}
 						else
