@@ -16,9 +16,10 @@ schemas of the first request were missing.
 
 Since Claude Code 2.1.260 every attachment the model sees carries `rendered`,
 the exact text sent; the reader takes it from there. From 2.1.260 on an
-attachment without `rendered` is treated as not sent. An older record, or one
-with no readable `version`, is reconstructed from its fields as before and
-marked approximate. `prompt_snapshot` — written once before and once after the
+attachment without `rendered` is treated as not sent, with one exception: a
+`queued_command`, which is always reconstructed. An older record, or one with
+no readable `version`, is reconstructed from its fields as before and marked
+approximate. `prompt_snapshot` — written once before and once after the
 first request — supplies that request's system prompt and full tool schemas;
 the latest snapshot replaces the earlier one at the head of request #1.
 
@@ -27,7 +28,10 @@ the latest snapshot replaces the earlier one at the head of request #1.
 `rendered` is Claude Code's own statement of what it sent, so reading it
 removes a heuristic that drifted with every attachment type. The version
 boundary was measured across all local transcripts (2.1.241–2.1.259 never
-write `rendered`; from 2.1.260 every sent attachment does). Showing an old
+write `rendered`; from 2.1.260 every sent attachment does, except queued
+commands: 2.1.261 wrote a queued prompt without `rendered` that the model then
+answered, so it was sent all the same). A queued prompt is what the user typed,
+and hiding one would hide the very message a request answered. Showing an old
 transcript's reconstruction, marked, is more useful than hiding it.
 
 ## Consequences
@@ -47,6 +51,15 @@ transcript's reconstruction, marked, is more useful than hiding it.
 
 ### Neutral
 
+- `prompt_snapshot` is Claude Code's own record, not something sent: it is read
+  for the system prompt and tools it describes and is never listed as an item.
+- Only the first request gets the snapshot's items. Every later request sends
+  the system prompt and tools again, but they are not listed there: a request's
+  items are what it added to the context, and those were already in it.
+- A first request with no snapshot, as in every transcript older than 2.1.260,
+  gets no token estimates: its context is mostly the system prompt and tools it
+  cannot list.
+
 ## Alternatives Considered
 
 - **Keep the field-by-field heuristic for every version.** Simpler — one code
@@ -60,3 +73,4 @@ transcript's reconstruction, marked, is more useful than hiding it.
 
 ## Related
 
+- ADR 0517 (the transcript reader and index this reading is part of)
