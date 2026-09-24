@@ -188,4 +188,22 @@ namespace Graphite {
 	// request's own deltas announced any. Either count is left out when it is zero, and both
 	// being zero reads as "Tools: none recorded".
 	std::string ToolsAvailableLabel(const ApiRequest& request);
+
+	// What the Sent section's heading says, naming the request that the items since it are new
+	// against: "Sent to the model — first request", "New since #4 — sent to the model", or, when
+	// Sent is empty, "Nothing sent" (#1) or "Nothing new since #4".
+	std::string SentHeading(const ApiRequest& request);
+
+	// "6 items · 30.8 KB", "1 item · 73 B": how many items Sent carries and their bytes together,
+	// via FormatBytes. Empty when Sent is empty — the heading alone says that.
+	std::string SentSummary(const ApiRequest& request);
+
+	// "Model's reply", or "Model's reply — nothing yet" when Response is empty.
+	std::string ReplyHeading(const ApiRequest& request);
+
+	// The Response section's parts joined by " · ", each present only when Response has one:
+	// "thinking" (or "<N> thinking blocks" past one), "text" (or "<N> texts" past one), "<N> tool
+	// call(s)", "<N> other" for ResponseKind::Other. E.g. "thinking · 1 tool call",
+	// "thinking · 2 texts · 3 tool calls". Empty when Response is empty.
+	std::string ReplySummary(const ApiRequest& request);
 }

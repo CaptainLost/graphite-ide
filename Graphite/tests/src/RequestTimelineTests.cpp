@@ -620,6 +620,114 @@ TEST_CASE("A snapshot with no system prompt changes nothing")
 	CHECK(requests[0].Sent[0].Kind == SentKind::Prompt);
 }
 
+TEST_CASE("The Sent heading names the first request, or the request the new items are since")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
+		Fixtures::UserPrompt("again", "2026-09-17T09:00:02.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:03.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	CHECK(SentHeading(requests[0]) == "Sent to the model \xe2\x80\x94 first request");
+	CHECK(SentHeading(requests[1]) == "New since #1 \xe2\x80\x94 sent to the model");
+}
+
+TEST_CASE("The Sent heading says nothing was sent, naming the previous request past #1")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+							"2026-09-17T09:00:02.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	CHECK(requests[0].Sent.empty());
+	CHECK(requests[1].Sent.empty());
+	CHECK(SentHeading(requests[0]) == "Nothing sent");
+	CHECK(SentHeading(requests[1]) == "Nothing new since #1");
+}
+
+TEST_CASE("The Sent summary counts items and their bytes, singular and plural, and is empty with nothing sent")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests.size() == 1);
+	CHECK(SentSummary(requests[0]) == "1 item \xc2\xb7 2 B");
+	CHECK(SentSummary(requests[0]).empty() == false);
+
+	const std::vector<ApiRequest> empty =
+		Build(Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)));
+	CHECK(SentSummary(empty[0]).empty());
+}
+
+TEST_CASE("The Sent summary adds every item's bytes together")
+{
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Read", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
+		Fixtures::ToolResult("t1", std::string(1000, 'x')) +
+		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "tokens"}}) +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 5, 0, 0, 1100), "claude-opus-5",
+							"2026-09-17T09:00:04.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[1].Sent.size() == 2);
+	CHECK(SentSummary(requests[1]) == "2 items \xc2\xb7 1006 B");
+}
+
+TEST_CASE("The Reply heading says nothing came back when Response is empty")
+{
+	const std::vector<ApiRequest> requests =
+		Build(AssistantStopReasonOnly("r1", "end_turn", "2026-09-17T09:00:01.000Z"));
+
+	REQUIRE(requests.size() == 1);
+	CHECK(requests[0].Response.empty());
+	CHECK(ReplyHeading(requests[0]) == "Model's reply \xe2\x80\x94 nothing yet");
+	CHECK(ReplySummary(requests[0]).empty());
+}
+
+TEST_CASE("The Reply summary joins thinking, texts, tool calls and other blocks in that order")
+{
+	const std::vector<ApiRequest> withTextOnly =
+		Build(Fixtures::Assistant("r1", Fixtures::TextBlock("hi"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(withTextOnly.size() == 1);
+	CHECK(ReplyHeading(withTextOnly[0]) == "Model's reply");
+	CHECK(ReplySummary(withTextOnly[0]) == "text");
+
+	const std::vector<ApiRequest> thinkingAndCall = Build(
+		Fixtures::Assistant("r1", Fixtures::ThinkingBlock("hmm"), Fixtures::Usage(0, 1, 0, 0, 100)) +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {{"command", "ls"}}), Fixtures::Usage(0, 1, 0, 0, 100)));
+
+	REQUIRE(thinkingAndCall.size() == 1);
+	CHECK(ReplySummary(thinkingAndCall[0]) == "thinking \xc2\xb7 1 tool call");
+
+	const std::vector<ApiRequest> severalTextsAndCalls = Build(
+		Fixtures::Assistant("r1", Fixtures::ThinkingBlock("hmm"), Fixtures::Usage(0, 1, 0, 0, 100)) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(0, 1, 0, 0, 100)) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("b"), Fixtures::Usage(0, 1, 0, 0, 100)) +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {{"command", "ls"}}), Fixtures::Usage(0, 1, 0, 0, 100)) +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t2", "Bash", {{"command", "pwd"}}), Fixtures::Usage(0, 1, 0, 0, 100)) +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t3", "Bash", {{"command", "id"}}), Fixtures::Usage(0, 1, 0, 0, 100)));
+
+	REQUIRE(severalTextsAndCalls.size() == 1);
+	CHECK(ReplySummary(severalTextsAndCalls[0]) == "thinking \xc2\xb7 2 texts \xc2\xb7 3 tool calls");
+}
+
+TEST_CASE("The Reply summary names an Other block")
+{
+	const std::vector<ApiRequest> requests =
+		Build(KeylessAssistant({{"type", "redacted_thinking"}}, Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests.size() == 1);
+	REQUIRE(requests[0].Response.size() == 1);
+	CHECK(requests[0].Response[0].Kind == ResponseKind::Other);
+	CHECK(ReplySummary(requests[0]) == "1 other");
+}
+
 TEST_CASE("Reset forgets the snapshot too")
 {
 	RequestTimeline timeline;

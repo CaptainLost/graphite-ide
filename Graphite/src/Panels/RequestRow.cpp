@@ -62,6 +62,27 @@ namespace Graphite {
 
 			return outcome;
 		}
+
+		// A section's own heading: the label left in TextDisabled, a right-aligned summary in
+		// the same colour, the label giving way to it the way ItemLine's does. Not selectable,
+		// but the row still ends with an item, per ImGui's rule.
+		void SectionHeading(const std::string& heading, const std::string& summary, const SessionPalette& palette)
+		{
+			const ImVec2 start = ImGui::GetCursorScreenPos();
+			const float right = start.x + ImGui::GetContentRegionAvail().x;
+			const float space = ImGui::GetStyle().ItemSpacing.x;
+			const float height = ImGui::GetTextLineHeight();
+
+			ImVec2 at = start;
+			const float columnX = std::max(right - ImGui::CalcTextSize(summary.c_str()).x, at.x);
+
+			DrawPiece(at, palette.TextDisabled, Fitted(heading, columnX - space - at.x));
+
+			at.x = columnX;
+			DrawPiece(at, palette.TextDisabled, Fitted(summary, right - at.x));
+
+			ImGui::Dummy(ImVec2(0.0f, height));
+		}
 	}
 
 	ItemLook LookOf(const SentItem& item, const SessionPalette& palette)
@@ -218,18 +239,12 @@ namespace Graphite {
 				pick.Hovered = id;
 		};
 
-		ColouredText(palette.TextDisabled, "Sent");
-
-		if (request.Sent.empty())
-			ColouredText(palette.TextDisabled, "nothing new");
+		SectionHeading(SentHeading(request), SentSummary(request), palette);
 
 		for (std::size_t i = 0; i < request.Sent.size(); ++i)
 			line(LookOf(request.Sent[i], palette), request.Sent[i].Label, SentColumn(request.Sent[i]), i);
 
-		ColouredText(palette.TextDisabled, "Response");
-
-		if (request.Response.empty())
-			ColouredText(palette.TextDisabled, "nothing yet");
+		SectionHeading(ReplyHeading(request), ReplySummary(request), palette);
 
 		for (std::size_t i = 0; i < request.Response.size(); ++i)
 			line(LookOf(request.Response[i], palette), request.Response[i].Label, {}, request.Sent.size() + i);

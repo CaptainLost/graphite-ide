@@ -545,4 +545,68 @@ namespace Graphite {
 
 		return label;
 	}
+
+	std::string SentHeading(const ApiRequest& request)
+	{
+		if (request.Index == 1)
+			return request.Sent.empty() ? "Nothing sent" : "Sent to the model \xe2\x80\x94 first request";
+
+		const std::string previous = "#" + std::to_string(request.Index - 1);
+
+		return request.Sent.empty() ? "Nothing new since " + previous : "New since " + previous + " \xe2\x80\x94 sent to the model";
+	}
+
+	std::string SentSummary(const ApiRequest& request)
+	{
+		if (request.Sent.empty())
+			return {};
+
+		std::size_t bytes = 0;
+		for (const SentItem& item : request.Sent)
+			bytes += item.Bytes;
+
+		return std::to_string(request.Sent.size()) + (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " +
+			   FormatBytes(bytes);
+	}
+
+	std::string ReplyHeading(const ApiRequest& request)
+	{
+		return request.Response.empty() ? "Model's reply \xe2\x80\x94 nothing yet" : "Model's reply";
+	}
+
+	std::string ReplySummary(const ApiRequest& request)
+	{
+		if (request.Response.empty())
+			return {};
+
+		std::size_t thinking = 0, text = 0, toolCalls = 0, other = 0;
+
+		for (const ResponseItem& item : request.Response)
+		{
+			switch (item.Kind)
+			{
+			case ResponseKind::Thinking: ++thinking; break;
+			case ResponseKind::Text: ++text; break;
+			case ResponseKind::ToolCall: ++toolCalls; break;
+			case ResponseKind::Other: ++other; break;
+			}
+		}
+
+		std::vector<std::string> parts;
+
+		if (thinking > 0)
+			parts.push_back(thinking == 1 ? "thinking" : std::to_string(thinking) + " thinking blocks");
+		if (text > 0)
+			parts.push_back(text == 1 ? "text" : std::to_string(text) + " texts");
+		if (toolCalls > 0)
+			parts.push_back(std::to_string(toolCalls) + (toolCalls == 1 ? " tool call" : " tool calls"));
+		if (other > 0)
+			parts.push_back(std::to_string(other) + " other");
+
+		std::string summary;
+		for (std::size_t i = 0; i < parts.size(); ++i)
+			summary += (i == 0 ? "" : " \xc2\xb7 ") + parts[i];
+
+		return summary;
+	}
 }
