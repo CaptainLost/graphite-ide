@@ -21,8 +21,8 @@
 namespace Graphite {
 
 	// Every API request of a session: a chart of each one's context and cost, a table of them
-	// the reader sorts by any column, and under it, split by a handle the reader drags, what
-	// the selected request sent and returned.
+	// the reader sorts by any column, and — once a request is picked — under it, split by a
+	// divider the reader drags and closed from its corner, what that request sent and returned.
 	class RequestsView
 	{
 	public:
@@ -84,8 +84,9 @@ namespace Graphite {
 		std::optional<std::size_t> m_PendingReveal;
 		std::uint64_t m_RevealGeneration = 0;
 
-		// The table's height above the handle; below zero until the first draw picks one.
-		float m_ListHeight = -1.0f;
+		// The table's height above the details, as DrawSplitResults keeps it: zero until the
+		// first frame that shows both, and kept across the pane being closed and opened again.
+		float m_ListHeight = 0.0f;
 
 		// The item of the selected request that the list and the text beside it both show
 		// selected, by its position in Sent then Response; cleared when another request is

@@ -7,6 +7,7 @@
 #include "Sessions/SentTextLayout.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
+#include "UI/SplitResults.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -19,6 +20,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <utility>
@@ -706,18 +708,15 @@ namespace Graphite {
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
-		// The details have no side padding of their own (see Draw): the line above the two
-		// panes is moved in by it, to sit under the table's edge.
+		// Drawn as DrawSplitResults's preview, which Draw asks for only with a request selected
+		// and which pads all four sides itself: the line above the two panes needs no nudge in
+		// from the pane's edge to sit under the table's.
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const ImVec2 padding = style.WindowPadding;
 		const float width = ImGui::GetContentRegionAvail().x;
 
 		if (!m_Selected || *m_Selected >= requests.size())
-		{
-			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding.x);
-			ImGui::TextDisabled("Select a request to see what it sent and returned.");
 			return;
-		}
 
 		const ApiRequest& request = requests[*m_Selected];
 
@@ -737,17 +736,42 @@ namespace Graphite {
 		if (m_SelectedItem && *m_SelectedItem >= SegmentCount(request))
 			m_SelectedItem.reset();
 
-		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding.x);
+		// The line stops short of the close DrawPaneClose puts in the pane's corner, with an
+		// item's spacing between them, so a long line is cut rather than drawn under it.
+		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
-							width - 2.0f * padding.x));
+							width - closeWidth - style.ItemSpacing.x));
+
+		// Last on the line, the way the app's other detail panes end theirs: the close places
+		// itself at the right corner. Dismissing drops the request and what was picked in it, so
+		// the next frame draws the table alone; the rest of this one is not drawn, since it would
+		// be drawn for a request no longer selected.
+		if (DrawPaneClose())
+		{
+			m_Selected.reset();
+			m_SelectedItem.reset();
+			m_RevealItem.reset();
+			m_DetailsKey.clear();
+			m_DetailsIndex = 0;
+			m_DetailsSent = 0;
+			return;
+		}
 
 		// The items on the left, their text on the right, and between them a handle that moves
-		// the line between the two. Each side keeps some width however far it is dragged. The
-		// text stops a padding short of the right edge, so its scrollbar lines up with the
-		// table's above, which sits inside that padding.
+		// the line between the two. Each side keeps some width however far it is dragged.
+		//
+		// Each pane pads its sides, so what it draws at its right keeps a gap before its
+		// scrollbar, as the table's cells do; the rows run to the top and the bottom. The pane
+		// this is drawn in pads its sides too, and the items' rows would then start two paddings
+		// in, a padding right of the line above them — so the items pane starts a padding left
+		// of the cursor, on the pane's inner edge, and its own padding brings its rows back under
+		// the line. The text fills the rest to the content region's right edge and no further:
+		// that puts its scrollbar in line with the table's, which sits inside the same padding,
+		// and nothing reaches past the content region, where the pane's horizontal scrollbar
+		// would start counting it.
 		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
-		const float room = width - padding.x - handle - 2.0f * style.ItemSpacing.x;
+		const float room = width + padding.x - handle - 2.0f * style.ItemSpacing.x;
 		const float minimum = ImGui::GetFontSize() * 12.0f;
 
 		if (m_ItemsWidth < 0.0f)
@@ -756,8 +780,8 @@ namespace Graphite {
 		const float itemsWidth = std::max(std::min(m_ItemsWidth, room - minimum), minimum);
 		std::optional<std::size_t> hovered;
 
-		// Each pane pads its sides, so what it draws at its right keeps a gap before its
-		// scrollbar, as the table's cells do; the rows run to the top and the bottom.
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() - padding.x);
+
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding.x, 0.0f));
 		const bool itemsOpen = ImGui::BeginChild("##detailItems", ImVec2(itemsWidth, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding);
 		ImGui::PopStyleVar();
@@ -800,7 +824,7 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding.x, 0.0f));
-		const bool textOpen = ImGui::BeginChild("##sentText", ImVec2(-padding.x, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding);
+		const bool textOpen = ImGui::BeginChild("##sentText", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding);
 		ImGui::PopStyleVar();
 
 		if (textOpen)
@@ -832,59 +856,39 @@ namespace Graphite {
 		DrawChart(timeline, context);
 		DrawFilters(timeline, context.Prices);
 
-		// The table above, the selected request's details below, and between them a handle
-		// that moves the line between the two. Each side keeps a few lines however far it is
-		// dragged.
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
-		const float room = ImGui::GetContentRegionAvail().y - handle - 2.0f * style.ItemSpacing.y;
-		const float minimum = ImGui::GetFrameHeightWithSpacing() * 3.0f;
+		// The table fills the tab until a request is picked, and then shares it with that
+		// request's details below a divider the reader drags — the layout of the app's other
+		// lists with a detail pane, whose close in the corner hands the tab back to the table.
+		// A selection that names no request any more, after the timeline was read again, shows
+		// no pane rather than an empty one.
+		const bool hasSelection = m_Selected && *m_Selected < timeline.GetRequests().size();
 
-		if (m_ListHeight < 0.0f)
-			m_ListHeight = room * 0.55f;
+		// Inside a child of its own, with the flags and the padding the table had before it
+		// was drawn in DrawSplitResults: that child is unpadded and scrolls sideways, and the
+		// table is sized to fill whatever holds it and scrolls itself. Drawn straight into it,
+		// the table would lose the padding that sets it in from the chart and the filters above,
+		// and the wheel over it could move that child as well as the table.
+		const std::function<void()> drawList = [this, &timeline, &context] {
+			if (ImGui::BeginChild("##requestList", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding,
+								  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+			{
+				if (m_Shown.empty())
+					ImGui::TextDisabled("No request matches the filters.");
+				else
+					DrawTable(timeline, context);
+			}
 
-		const float listHeight = std::max(std::min(m_ListHeight, room - minimum), minimum);
+			ImGui::EndChild();
+		};
 
-		if (ImGui::BeginChild("##requestList", ImVec2(0.0f, listHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
-		{
-			if (m_Shown.empty())
-				ImGui::TextDisabled("No request matches the filters.");
-			else
-				DrawTable(timeline, context);
-		}
+		const std::function<void()> drawDetails = [this, &timeline, &context] { DrawDetails(timeline, context); };
 
-		ImGui::EndChild();
-
-		const ImVec2 handleAt = ImGui::GetCursorScreenPos();
-		const float handleWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
-
-		ImGui::InvisibleButton("##requestSplit", ImVec2(handleWidth, handle));
-
-		if (ImGui::IsItemActive())
-			m_ListHeight = std::max(std::min(listHeight + ImGui::GetIO().MouseDelta.y, room - minimum), minimum);
-
-		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
-			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-
-		const ImGuiCol lineColour = ImGui::IsItemActive()	 ? ImGuiCol_SeparatorActive
-									: ImGui::IsItemHovered() ? ImGuiCol_SeparatorHovered
-															 : ImGuiCol_Separator;
-		const float lineY = std::floor(handleAt.y + handle * 0.5f);
-		ImGui::GetWindowDrawList()->AddLine(ImVec2(handleAt.x, lineY), ImVec2(handleAt.x + handleWidth, lineY),
-											ImGui::GetColorU32(lineColour));
-
-		// Padded above and below only: the two panes inside pad their own sides, and padded here
-		// as well the list's rows would start two paddings in, a padding right of the table's
-		// edge and of the line above them.
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, style.WindowPadding.y));
-		const bool detailsOpen = ImGui::BeginChild("##requestDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding,
-												   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-		ImGui::PopStyleVar();
-
-		if (detailsOpen)
-			DrawDetails(timeline, context);
-
-		ImGui::EndChild();
+		DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
+										   .ResultsHeight = m_ListHeight,
+										   .DrawResults = drawList,
+										   .DrawPreview = drawDetails,
+										   .ResultsChildId = "##requestResults",
+										   .PreviewChildId = "##requestDetails",
+										   .SplitterId = "##requestSplit"});
 	}
 }
