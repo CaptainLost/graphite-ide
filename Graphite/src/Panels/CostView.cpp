@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <format>
 #include <utility>
 #include <string>
 #include <vector>
@@ -151,9 +150,13 @@ namespace Graphite {
 			return item == nullptr || item->Show;
 		}
 
+		// Written as the Requests tab writes a cost, in its table and its chart's tooltip, so the
+		// same request reads the same in both tabs.
 		std::string Dollars(double dollars)
 		{
-			return std::format("${:.3f}", dollars);
+			CostResult cost;
+			cost.Dollars = dollars;
+			return FormatCost(cost);
 		}
 
 		// Laid out as the Requests chart's tooltip is: the heading, the bar's cost, its buckets in
