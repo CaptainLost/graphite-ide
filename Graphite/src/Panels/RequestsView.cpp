@@ -808,7 +808,12 @@ namespace Graphite {
 		const float room = width + padding.x - handle - 2.0f * style.ItemSpacing.x;
 		const float minimum = ImGui::GetFontSize() * 12.0f;
 
-		if (m_ItemsWidth < 0.0f && room > 0.0f)
+		// Waits for room to clear twice the minimum before locking in 40% of it: a dock node
+		// still being laid out can hand this a room that is transiently tiny for a frame, and
+		// storing 40% of that would stick the split at the minimum instead of the width it is
+		// meant to open at. Below that threshold SplitSideBySide is still called, with
+		// m_ItemsWidth left negative, and falls back to its own default for the frame.
+		if (m_ItemsWidth < 0.0f && room >= minimum * 2.0f)
 			m_ItemsWidth = room * 0.4f;
 
 		const SideBySideWidths widths = SplitSideBySide(room, m_ItemsWidth, minimum);

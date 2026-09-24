@@ -103,7 +103,8 @@ namespace Graphite {
 		std::size_t m_DetailsIndex = 0;
 		std::size_t m_DetailsSent = 0;
 
-		// The list's width left of the handle; below zero until the first draw picks one.
+		// The list's width left of the handle; below zero until a draw with enough room picks
+		// one — see DrawDetails, which waits for twice the split's minimum before storing it.
 		float m_ItemsWidth = -1.0f;
 
 		SentTextView m_SentText;
