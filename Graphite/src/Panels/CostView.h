@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Panels/ChartAxes.h"
+#include "Panels/LocalClock.h"
 #include "Sessions/Pricing.h"
 #include "Sessions/RequestChart.h"
 #include "Sessions/RequestTimeline.h"
@@ -16,6 +17,15 @@
 #include <vector>
 
 namespace Graphite {
+
+	// What one bar of the Cost chart stands for, for its tooltip: a heading naming it, and
+	// whether its buckets are the whole of its cost — false for one that used a model with no
+	// price, whose numbers then read "?".
+	struct CostBar
+	{
+		std::string Heading;
+		bool Known = true;
+	};
 
 	// A session's Cost tab: its totals by model, a chart of what each turn or each request
 	// cost, stacked by bucket under the session's running total, and a table of the turns.
@@ -51,7 +61,10 @@ namespace Graphite {
 		// the timeline or the prices change.
 		std::vector<CostLayers> m_RequestLayers;
 		std::vector<double> m_RequestTotal;
+		std::vector<CostBar> m_RequestBars;
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 		std::map<std::string, Price> m_PricedWith;
+
+		LocalClock m_Clock;
 	};
 }

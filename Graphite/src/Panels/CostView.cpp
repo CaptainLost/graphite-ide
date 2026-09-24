@@ -2,6 +2,7 @@
 
 #include "Panels/CostView.h"
 
+#include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"
 #include "Sessions/SessionText.h"
 
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <utility>
 #include <string>
 #include <vector>
@@ -98,6 +100,9 @@ namespace Graphite {
 		// The chart's height, in lines of text.
 		constexpr float kChartLines = 16.0f;
 
+		// The tooltip's widest line, in font sizes, before a long heading is cut.
+		constexpr float kTooltipEms = 36.0f;
+
 		// Room left above the tallest bar and the total's end, so neither is drawn on the plot's
 		// edge. ImPlot pads each end of a fit by half of this; both value axes hold their floor
 		// at zero, so all of it goes on top.
@@ -146,11 +151,80 @@ namespace Graphite {
 			return item == nullptr || item->Show;
 		}
 
+		std::string Dollars(double dollars)
+		{
+			return std::format("${:.3f}", dollars);
+		}
+
+		// The bar's buckets top down, as they are stacked, each after a swatch in its colour and
+		// with the dollars lined up on the right of one column; then the bar's cost and the
+		// session's up to it.
+		void DrawBarTooltip(const CostBar& bar, const CostLayers& layers, double total, const SessionPalette& palette)
+		{
+			if (!ImGui::BeginTooltip())
+				return;
+
+			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+			ColouredText(ink, Fitted(bar.Heading, ImGui::GetFontSize() * kTooltipEms));
+
+			// A bar with an unpriced model shows only its priced part, so none of its numbers is
+			// its cost: "?" rather than a confident, wrong figure, as the turn table says.
+			const auto money = [&bar](double dollars) { return bar.Known ? Dollars(dollars) : std::string("?"); };
+
+			std::array<std::string, kCostLayers> numbers;
+			float labelWidth = 0.0f;
+			float numberWidth = 0.0f;
+
+			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
+			{
+				numbers[layer] = money(layers[layer]);
+				labelWidth = std::max(labelWidth, ImGui::CalcTextSize(kLayerNames[layer]).x);
+				numberWidth = std::max(numberWidth, ImGui::CalcTextSize(numbers[layer].c_str()).x);
+			}
+
+			const float lineHeight = ImGui::GetTextLineHeight();
+			const float space = ImGui::GetStyle().ItemSpacing.x;
+			const float indent = ImGui::GetFontSize();
+			const float swatch = std::round(lineHeight * 0.55f);
+
+			for (std::size_t layer = kCostLayers; layer-- > 0;)
+			{
+				const ImVec2 start = ImGui::GetCursorScreenPos();
+				const float swatchTop = std::floor(start.y + (lineHeight - swatch) * 0.5f);
+
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(start.x + indent, swatchTop),
+														  ImVec2(start.x + indent + swatch, swatchTop + swatch),
+														  LayerColour(palette, layer));
+
+				ImVec2 at(start.x + indent + swatch + space, start.y);
+				const float numbersRight = at.x + labelWidth + 2.0f * space + numberWidth;
+
+				DrawPiece(at, ink, kLayerNames[layer]);
+
+				at.x = numbersRight - ImGui::CalcTextSize(numbers[layer].c_str()).x;
+				DrawPiece(at, ink, numbers[layer]);
+
+				// The pieces go through the draw list; this is the line's one item, as wide as
+				// they reach, so the tooltip is sized to them.
+				ImGui::Dummy(ImVec2(numbersRight - start.x, lineHeight));
+			}
+
+			double cost = 0.0;
+			for (const double dollars : layers)
+				cost += dollars;
+
+			ColouredText(ink, "Cost " + money(cost));
+			ColouredText(palette.TextDisabled, "Session so far " + Dollars(total));
+
+			ImGui::EndTooltip();
+		}
+
 		// One stacked bar per turn or request, numbered from 1, with the session's running total
 		// on a second axis. Returns the index of the bar clicked, if any.
 		std::optional<std::size_t> DrawChart(const char* title, const char* axisLabel,
 											 const std::vector<CostLayers>& layers, const std::vector<double>& total,
-											 const SessionPalette& palette, FollowingAxis& xAxis)
+											 const std::vector<CostBar>& bars, const SessionPalette& palette,
+											 FollowingAxis& xAxis)
 		{
 			const int count = static_cast<int>(layers.size());
 
@@ -244,14 +318,22 @@ namespace Graphite {
 			// lands here.
 			std::optional<std::size_t> clicked;
 
-			if (ImPlot::IsPlotHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-				!ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
+			if (ImPlot::IsPlotHovered())
 			{
 				// Only over the bars: the chart pans past them, and a click out there is no bar's.
 				const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
+				const double nearest = std::clamp(std::round(x), 1.0, static_cast<double>(count));
+				const std::size_t index = static_cast<std::size_t>(nearest) - 1;
 
-				if (x >= 0.5 && x <= static_cast<double>(count) + 0.5)
-					clicked = static_cast<std::size_t>(std::clamp(std::round(x), 1.0, static_cast<double>(count))) - 1;
+				if (x >= 0.5 && x <= static_cast<double>(count) + 0.5 && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
+					!ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
+					clicked = index;
+
+				// The tooltip over the bar itself, not the gap beside it, and not while the chart
+				// is being panned under the mouse.
+				if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) && std::abs(x - nearest) <= kBarFraction * 0.5 &&
+					index < bars.size())
+					DrawBarTooltip(bars[index], layers[index], total[index], palette);
 			}
 
 			ImPlot::EndPlot();
@@ -345,12 +427,20 @@ namespace Graphite {
 			// part of one.
 			std::vector<CostLayers> layers;
 			std::vector<CostResult> costs;
+			std::vector<CostBar> bars;
 			layers.reserve(turns.size());
 			costs.reserve(turns.size());
+			bars.reserve(turns.size());
 
-			for (const TurnCost& turn : turns)
+			for (std::size_t index = 0; index < turns.size(); ++index)
 			{
+				const TurnCost& turn = turns[index];
 				layers.push_back(LayersOf(turn.Buckets));
+
+				// Named by the prompt that began it, as the table below names it.
+				bars.push_back({"Turn " + std::to_string(index + 1) + kDot +
+									SingleLineLabel(session.GetTurns()[index].Prompt, 200),
+								turn.Known});
 
 				CostResult cost;
 				cost.Dollars = turn.Buckets.Total();
@@ -362,7 +452,7 @@ namespace Graphite {
 			}
 
 			FitTo(layers.size());
-			DrawChart("Cost per turn", "Turn", layers, CumulativeCost(costs), palette, m_XAxis);
+			DrawChart("Cost per turn", "Turn", layers, CumulativeCost(costs), bars, palette, m_XAxis);
 		}
 		else
 		{
@@ -371,7 +461,8 @@ namespace Graphite {
 
 			// A click picks the request for the Requests tab to show.
 			FitTo(m_RequestLayers.size());
-			clicked = DrawChart("Cost per request", "Request", m_RequestLayers, m_RequestTotal, palette, m_XAxis);
+			clicked = DrawChart("Cost per request", "Request", m_RequestLayers, m_RequestTotal, m_RequestBars, palette,
+								m_XAxis);
 		}
 
 		ImGui::Spacing();
@@ -396,12 +487,26 @@ namespace Graphite {
 		costs.reserve(requests.size());
 		m_RequestLayers.clear();
 		m_RequestLayers.reserve(requests.size());
+		m_RequestBars.clear();
+		m_RequestBars.reserve(requests.size());
 
 		// A request with no price has no bar, and the total runs flat across it.
 		for (const ApiRequest& request : requests)
 		{
 			m_RequestLayers.push_back(CostLayersOf(request, pricing).value_or(CostLayers{}));
 			costs.push_back(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}));
+
+			// Named as the Requests tab's table names it: its number, when it was answered, and
+			// the model that answered.
+			std::string heading = "#" + std::to_string(request.Index);
+
+			if (const std::string time = m_Clock.Format(request.RespondedAt, ClockStyle::DateTime); !time.empty())
+				heading += kDot + time;
+
+			if (!request.Model.empty())
+				heading += kDot + ShortModelName(request.Model) + (request.Fast ? " fast" : "");
+
+			m_RequestBars.push_back({std::move(heading), costs.back().IsKnown()});
 		}
 
 		m_RequestTotal = CumulativeCost(costs);
