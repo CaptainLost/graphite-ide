@@ -129,9 +129,17 @@ namespace Graphite {
 			item.EstimatedTokens = 0;
 
 		// Against the previous request's context, what this one added. A request with no
-		// earlier context to measure against — the first — added all of its own. A context
-		// that shrank, or none at all, gives no estimate: splitting a negative or missing
-		// number across items would be a made-up one.
+		// earlier context to measure against added all of its own — but only one that lists
+		// its system prompt accounts for all of it: without the snapshot, the first request's
+		// context, most of it the prompt and the tools, would be put down to the few items it
+		// does list. A context that shrank, or none at all, gives no estimate: splitting a
+		// negative or missing number across items would be a made-up one.
+		const bool accountsForAll = std::any_of(request.Sent.begin(), request.Sent.end(), [](const SentItem& item)
+												{ return item.Kind == SentKind::SystemPrompt; });
+
+		if (!request.ContextDelta.has_value() && !accountsForAll)
+			return;
+
 		const std::int64_t delta = request.ContextDelta.has_value() ? *request.ContextDelta
 																	: static_cast<std::int64_t>(request.Context);
 

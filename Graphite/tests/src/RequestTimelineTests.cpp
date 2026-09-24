@@ -164,6 +164,44 @@ TEST_CASE("Every kind of attachment and user text is classified")
 	CHECK(requests[0].Sent[2].Label == "MCP: ghidra");
 	CHECK(requests[0].Sent[3].Label == "Edited D:\\a.cpp");
 	CHECK(requests[0].ToolsAvailable == 2);
+
+	CHECK(requests[0].Sent[4].Label == "also this");
+	CHECK(requests[0].Sent[4].Text == "also this");
+	CHECK(requests[0].Sent[5].Text == "skill body");
+	CHECK(requests[0].Sent[6].Text == "<system-reminder>be brief</system-reminder>");
+	CHECK(requests[0].Sent[7].Text == "real prompt");
+}
+
+TEST_CASE("A queued prompt with a pasted image is listed by its words, and its text names the image")
+{
+	const nlohmann::json blocks = nlohmann::json::array(
+		{Fixtures::TextBlock("look at this [Image #2]"), Fixtures::ImageBlock("image/png", std::string(4096, 'A'))});
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::VersionedAttachment(
+			{{"type", "queued_command"}, {"prompt", blocks}, {"origin", {{"kind", "human"}}}, {"commandMode", "prompt"}},
+			"2.1.261") +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("ok"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 1);
+	const SentItem& item = requests[0].Sent[0];
+	CHECK(item.Kind == SentKind::QueuedPrompt);
+	CHECK(item.Label == "look at this [Image #2]");
+	CHECK(item.Text == "look at this [Image #2]\n[image/png, 3.0 KB]");
+	CHECK(item.Approximate);
+}
+
+TEST_CASE("A first request with no snapshot gives no estimates rather than spread its whole context")
+{
+	// Without the system prompt and the tools listed, the first request's context — most of it
+	// theirs — would be put down to the few words it carried.
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("hi") +
+		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "tokens"}}) +
+		Fixtures::Assistant("r1", Fixtures::TextBlock("x"), Fixtures::Usage(20000, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 2);
+	CHECK(requests[0].Sent[0].EstimatedTokens == 0);
+	CHECK(requests[0].Sent[1].EstimatedTokens == 0);
 }
 
 TEST_CASE("Tools available follow additions and removals")
