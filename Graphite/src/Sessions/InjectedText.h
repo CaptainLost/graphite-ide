@@ -15,4 +15,10 @@ namespace Graphite {
 	// One line saying what injected text was: a notification's own summary where it has one,
 	// otherwise the kind of text it is.
 	std::string InjectedLabel(std::string_view text);
+
+	// One line saying what text with no known opening is: its first line, or for the line
+	// Claude Code writes beside a pasted image, "[Image: source: <path>]", the image's file
+	// name, since the path's head is what a cut would keep. At most `maxBytes` bytes; a label
+	// that had to be cut ends in an ellipsis, counted within them.
+	std::string FirstLineLabel(std::string_view text, std::size_t maxBytes);
 }

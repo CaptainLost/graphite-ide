@@ -16,13 +16,6 @@ namespace Graphite {
 
 	namespace {
 
-		std::string FirstLineTruncated(std::string_view text, std::size_t maxBytes)
-		{
-			const std::size_t newline = text.find('\n');
-			const std::string_view line = newline == std::string_view::npos ? text : text.substr(0, newline);
-			return TruncateUtf8(line, maxBytes);
-		}
-
 		// Up to `maxNames` names, comma-separated, then an ellipsis for the rest.
 		std::string JoinNames(const std::vector<std::string>& names, std::size_t maxNames)
 		{
@@ -326,14 +319,14 @@ namespace Graphite {
 					// Meta text with no known opening, a skill's body say, has no kind to name,
 					// so its first line says what it is.
 					const std::string label = IsInjectedText(block.Text) ? InjectedLabel(block.Text)
-																		 : FirstLineTruncated(block.Text, 120);
+																		 : FirstLineLabel(block.Text, 120);
 					m_Pending.push_back(
 						{.Kind = SentKind::Injected, .Label = label, .Bytes = block.Text.size(), .Text = block.Text});
 				}
 				else
 				{
 					m_Pending.push_back({.Kind = SentKind::Prompt,
-										 .Label = FirstLineTruncated(block.Text, 120),
+										 .Label = FirstLineLabel(block.Text, 120),
 										 .Bytes = block.Text.size(),
 										 .Text = block.Text});
 				}
@@ -364,7 +357,7 @@ namespace Graphite {
 		if (!record.QueuedPrompt.empty())
 		{
 			item.Kind = SentKind::QueuedPrompt;
-			item.Label = FirstLineTruncated(record.QueuedPrompt, 120);
+			item.Label = FirstLineLabel(record.QueuedPrompt, 120);
 		}
 		else if (record.AttachmentType == "deferred_tools_delta")
 		{

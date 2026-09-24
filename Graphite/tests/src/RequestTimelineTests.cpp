@@ -751,3 +751,15 @@ TEST_CASE("Reset forgets the snapshot too")
 
 	REQUIRE(timeline.GetRequests()[0].Sent.size() == 1);
 }
+
+TEST_CASE("Sent text is labelled by its first line, with an image's source line named by its file")
+{
+	const std::vector<ApiRequest> requests =
+		Build(Fixtures::MetaUser("[Image: source: C:\\Users\\m\\images\\17.png]") +
+			  Fixtures::UserPrompt(std::string(200, 'a')) +
+			  Fixtures::Assistant("r1", Fixtures::TextBlock("ok"), Fixtures::Usage(1, 1)));
+
+	REQUIRE(requests[0].Sent.size() == 2);
+	CHECK(requests[0].Sent[0].Label == "Image source: 17.png");
+	CHECK(requests[0].Sent[1].Label == std::string(117, 'a') + "\xe2\x80\xa6");
+}

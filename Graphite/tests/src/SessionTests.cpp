@@ -167,6 +167,15 @@ TEST_CASE("Injected meta text is an item too, labelled by its first line")
 	CHECK(session.GetTurns()[0].Items[0].Label == "Base directory for this skill");
 }
 
+TEST_CASE("Injected meta text naming a pasted image's source is labelled by the image's file name")
+{
+	const Session session =
+		Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("[Image: source: C:\\Users\\m\\images\\17.png]"));
+
+	REQUIRE(session.GetTurns()[0].Items.size() == 1);
+	CHECK(session.GetTurns()[0].Items[0].Label == "Image source: 17.png");
+}
+
 TEST_CASE("Each item knows its time and request, and a request's usage is kept once per turn")
 {
 	const Session session = Build(

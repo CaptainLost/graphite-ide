@@ -1,7 +1,6 @@
 #include "Sessions/Session.h"
 
 #include "Sessions/InjectedText.h"
-#include "Sessions/SessionSummary.h"
 
 namespace Graphite {
 
@@ -45,7 +44,7 @@ namespace Graphite {
 					// its first line says what it is.
 					const std::string label = IsInjectedText(block.Text)
 												  ? InjectedLabel(block.Text)
-												  : TruncateUtf8(block.Text.substr(0, block.Text.find('\n')), 120);
+												  : FirstLineLabel(block.Text, 120);
 					CurrentTurn().Items.push_back(
 						{.Kind = ItemKind::Injected, .Text = block.Text, .Label = label, .At = record.Timestamp});
 					continue;

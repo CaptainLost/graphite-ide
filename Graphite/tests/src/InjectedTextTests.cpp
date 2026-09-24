@@ -49,3 +49,32 @@ TEST_CASE("An interruption is injected text, labelled as one")
 
 	CHECK_FALSE(IsInjectedText("Why did I see [Request interrupted by user]?"));
 }
+
+TEST_CASE("A pasted image's source line is labelled by the image's file name")
+{
+	CHECK(FirstLineLabel("[Image: source: C:\\Users\\m\\.claude\\image-cache\\images\\17.png]", 120) ==
+		  "Image source: 17.png");
+	CHECK(FirstLineLabel("[Image: source: /home/m/images/shot.jpg]\nmore", 120) == "Image source: shot.jpg");
+}
+
+TEST_CASE("A first line that fits is its own label, and one that does not is cut with an ellipsis")
+{
+	CHECK(FirstLineLabel("Base directory for this skill\nmore", 120) == "Base directory for this skill");
+	CHECK(FirstLineLabel(std::string(120, 'a'), 120) == std::string(120, 'a'));
+	CHECK(FirstLineLabel(std::string(200, 'a'), 120) == std::string(117, 'a') + "\xe2\x80\xa6");
+}
+
+TEST_CASE("A label is cut before a character, never inside one")
+{
+	std::string text;
+	for (int i = 0; i < 100; ++i)
+		text += "\xc5\xbc";
+
+	// 117 bytes leave room for the ellipsis; the 117th is the first half of a character,
+	// so the cut backs off to 116.
+	std::string expected;
+	for (int i = 0; i < 58; ++i)
+		expected += "\xc5\xbc";
+
+	CHECK(FirstLineLabel(text, 120) == expected + "\xe2\x80\xa6");
+}
