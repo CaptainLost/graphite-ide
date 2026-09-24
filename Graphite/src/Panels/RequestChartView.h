@@ -85,6 +85,12 @@ namespace Graphite {
 		// the transcript or the prices change: each request's number, context layers, cost
 		// layers — zero for a request with no price — and the session's cost up to it.
 		std::vector<double> m_Index;
+
+		// When each request was answered, in UNIX seconds; NaN for one whose time does not
+		// parse, which has no place on the clock axis. And the bars' width on that axis.
+		std::vector<double> m_Times;
+		double m_ClockBarWidth = 60.0;
+
 		std::vector<ContextLayers> m_Context;
 		std::vector<CostLayers> m_CostLayers;
 		std::vector<double> m_Cumulative;

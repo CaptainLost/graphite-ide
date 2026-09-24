@@ -13,7 +13,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
+#include <utility>
 
 namespace Graphite {
 
@@ -161,6 +163,18 @@ namespace Graphite {
 		const int count = static_cast<int>(m_Points.size());
 		std::optional<std::size_t> clicked;
 
+		// The clock axis reads in the reader's time zone and on a 24-hour clock, as the table's
+		// Time column does. ImPlot keeps both in its global style, so they are set for this plot
+		// and put back after it.
+		ImPlotStyle& plotStyle = ImPlot::GetStyle();
+		const bool wasLocal = std::exchange(plotStyle.UseLocalTime, true);
+		const bool was24Hour = std::exchange(plotStyle.Use24HourClock, true);
+		const auto restoreStyle = [&plotStyle, wasLocal, was24Hour]
+		{
+			plotStyle.UseLocalTime = wasLocal;
+			plotStyle.Use24HourClock = was24Hour;
+		};
+
 		// Kept pushed through EndPlot, which is where ImPlot's ApplyFit reads it (BeginPlot's
 		// SetupFinish is too early), and popped on every path out of here, including the plot
 		// staying closed.
@@ -170,13 +184,17 @@ namespace Graphite {
 		if (!open)
 		{
 			ImPlot::PopStyleVar();
+			restoreStyle();
 			return clicked;
 		}
 
 		// The requests axis is fitted to every request when they change, until the reader pans
 		// or zooms it; the value axes follow whatever part of it is in view. Set with Always for
 		// that one frame only: an axis set with Always takes no input.
-		ImPlot::SetupAxis(ImAxis_X1, "Request", ImPlotAxisFlags_None);
+		ImPlot::SetupAxis(ImAxis_X1, m_Axis == ChartAxis::Index ? "Request" : nullptr, ImPlotAxisFlags_None);
+
+		if (m_Axis == ChartAxis::Clock)
+			ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Time);
 
 		if (m_FitPending && !m_ViewMoved && count > 0)
 		{
@@ -315,6 +333,7 @@ namespace Graphite {
 
 		ImPlot::EndPlot();
 		ImPlot::PopStyleVar();
+		restoreStyle();
 		return clicked;
 	}
 
@@ -334,6 +353,7 @@ namespace Graphite {
 		// Every request, not only the last: a pass over a few thousand requests on the frames
 		// the timeline changes costs less than keeping track of which ones could have.
 		m_Index.resize(count);
+		m_Times.resize(count);
 		m_Context.resize(count);
 		m_CostLayers.resize(count);
 		m_Wait.resize(count);
@@ -345,6 +365,7 @@ namespace Graphite {
 		{
 			const ApiRequest& request = requests[position];
 			m_Index[position] = static_cast<double>(request.Index);
+			m_Times[position] = ClockSeconds(request).value_or(kNaN);
 			m_Context[position] = LayersOf(request);
 			m_CostLayers[position] = CostLayersOf(request, pricing).value_or(CostLayers{});
 			m_Wait[position] = request.Waited ? static_cast<double>(request.Waited->count()) / 1000.0 : 0.0;
@@ -352,6 +373,10 @@ namespace Graphite {
 			m_Expired[position] = m_Gaps[position] && CacheExpired(requests[position - 1], *m_Gaps[position]);
 			m_Rate[position] = OutputRate(request).value_or(kNaN);
 		}
+
+		std::vector<double> timed;
+		std::copy_if(m_Times.begin(), m_Times.end(), std::back_inserter(timed), [](double time) { return !std::isnan(time); });
+		m_ClockBarWidth = ClockBarWidth(std::move(timed));
 
 		// From the costs RequestsView priced for its Cost column, so the line and the column
 		// never disagree. They are priced before the chart is drawn, so they cover every request.
@@ -387,6 +412,19 @@ namespace Graphite {
 		tab("Cost", ChartMode::Cost);
 		tab("Time", ChartMode::Time);
 
+		// At the bar's right end: what the requests are placed along. Switching fits the axis
+		// again, since a range in request numbers means nothing in seconds.
+		const char* axisLabel = m_Axis == ChartAxis::Index ? "X: Number###chartAxis" : "X: Clock###chartAxis";
+
+		if (ImGui::TabItemButton(axisLabel, ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+		{
+			m_Axis = m_Axis == ChartAxis::Index ? ChartAxis::Clock : ChartAxis::Index;
+			m_FitPending = true;
+			m_ViewMoved = false;
+		}
+
+		ImGui::SetItemTooltip("Place the requests by number or by the time they were answered");
+
 		ImGui::EndTabBar();
 	}
 
@@ -395,13 +433,18 @@ namespace Graphite {
 		m_Points.clear();
 		m_Xs.clear();
 
-		for (std::size_t position = 0; position < m_Index.size(); ++position)
+		const std::vector<double>& xs = m_Axis == ChartAxis::Clock ? m_Times : m_Index;
+
+		for (std::size_t position = 0; position < xs.size(); ++position)
 		{
+			if (std::isnan(xs[position]))
+				continue;
+
 			m_Points.push_back(position);
-			m_Xs.push_back(m_Index[position]);
+			m_Xs.push_back(xs[position]);
 		}
 
-		m_BarWidth = kBarFraction;
+		m_BarWidth = m_Axis == ChartAxis::Clock ? m_ClockBarWidth : kBarFraction;
 	}
 
 	RequestChartView::Layers RequestChartView::LayerValues(std::size_t position) const
