@@ -82,7 +82,11 @@ namespace Graphite {
 
 				ImGui::TableNextRow();
 				ImGui::TableNextColumn();
-				ImGui::Text("%s%s", key.Model.c_str(), key.Fast ? " (fast)" : "");
+				// Named as the Requests tab names a model; the full id is what Settings > Claude
+				// prices it by, so it stays a hover away.
+				const std::string model = ShortModelName(key.Model) + (key.Fast ? " fast" : "");
+				ImGui::TextUnformatted(model.c_str());
+				ImGui::SetItemTooltip("%s", key.Model.c_str());
 				ImGui::TableNextColumn();
 				// Shortened as the Requests tab writes tokens: "51.2M", not eight digits to count.
 				ImGui::TextUnformatted(FormatTokens(counts.Total()).c_str());
@@ -355,7 +359,9 @@ namespace Graphite {
 				return;
 
 			ImGui::TableSetupScrollFreeze(0, 1);
-			for (const char* column : {"#", "Prompt", "Input", "Output", "Cache write", "Cache read", "Cost"})
+			// The buckets in the order the chart's legend reads, left to right from the top of the
+			// stack, under the same names.
+			for (const char* column : {"#", "Prompt", "Output", "Uncached input", "Cache write", "Cache read", "Cost"})
 				ImGui::TableSetupColumn(column);
 			ImGui::TableHeadersRow();
 
@@ -378,17 +384,15 @@ namespace Graphite {
 					const BucketCosts& buckets = cost.Buckets;
 
 					for (const double dollars :
-						 {buckets.Input, buckets.Output, buckets.CacheWrite, buckets.CacheRead, buckets.Total()})
+						 {buckets.Output, buckets.Input, buckets.CacheWrite, buckets.CacheRead, buckets.Total()})
 					{
 						ImGui::TableNextColumn();
 
 						// A bucket of a turn that used an unpriced model is missing that model's
 						// share, so none of its numbers is the turn's: "?" rather than a
 						// confident, wrong figure.
-						if (cost.Known)
-							ImGui::Text("$%.3f", dollars);
-						else
-							ImGui::TextUnformatted("?");
+						ImGui::TextUnformatted(
+							(cost.Known ? FormatCost(CostResult{.Dollars = dollars}) : std::string{"?"}).c_str());
 					}
 				}
 			}
