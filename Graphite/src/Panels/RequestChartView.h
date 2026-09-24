@@ -9,6 +9,7 @@
 #include <imgui.h>
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -87,6 +88,14 @@ namespace Graphite {
 		std::vector<ContextLayers> m_Context;
 		std::vector<CostLayers> m_CostLayers;
 		std::vector<double> m_Cumulative;
+
+		// Each request's wait for the model in seconds (zero without one), the gap before it
+		// and whether that gap outlived the cache, and its output tokens per second (NaN
+		// without a wait).
+		std::vector<double> m_Wait;
+		std::vector<std::optional<std::chrono::milliseconds>> m_Gaps;
+		std::vector<bool> m_Expired;
+		std::vector<double> m_Rate;
 
 		std::uint64_t m_BuiltVersion = UINT64_MAX;
 		std::uint64_t m_BuiltGeneration = UINT64_MAX;

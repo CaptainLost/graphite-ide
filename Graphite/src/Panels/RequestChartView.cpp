@@ -44,6 +44,12 @@ namespace Graphite {
 		// names, and so its legend entries' shown state, and its colours.
 		constexpr const char* kCostNames[kCostLayers] = {"Cache read", "Cache write", "Uncached input", "Output"};
 
+		// The time's layers, bottom up: the wait for the model, then the gap before the request —
+		// drawn as one of two layers, by whether it outlived the cache, so the ones that did
+		// stand out and can be hidden on their own. One of the two is always zero.
+		constexpr std::size_t kTimeLayers = 3;
+		constexpr const char* kTimeNames[kTimeLayers] = {"Wait", "Gap", "Gap past cache life"};
+
 		constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
 		struct ChartLayer
@@ -114,6 +120,17 @@ namespace Graphite {
 				layout.LineColour = palette.Accent;
 				break;
 			case ChartMode::Time:
+				layout.Layers[0] = {kTimeNames[0], palette.Web};
+				layout.Layers[1] = {kTimeNames[1], palette.TextDisabled};
+				layout.Layers[2] = {kTimeNames[2], palette.Failed};
+				layout.LayerCount = kTimeLayers;
+
+				// One gap of an hour would otherwise flatten every wait of a few seconds.
+				layout.Y1Label = "Seconds";
+				layout.Y1Scale = ImPlotScale_SymLog;
+				layout.LineName = "Output tokens/s";
+				layout.Y2Label = "Tokens/s";
+				layout.LineColour = palette.Accent;
 				break;
 			}
 
@@ -319,6 +336,10 @@ namespace Graphite {
 		m_Index.resize(count);
 		m_Context.resize(count);
 		m_CostLayers.resize(count);
+		m_Wait.resize(count);
+		m_Gaps.resize(count);
+		m_Expired.resize(count);
+		m_Rate.resize(count);
 
 		for (std::size_t position = 0; position < count; ++position)
 		{
@@ -326,6 +347,10 @@ namespace Graphite {
 			m_Index[position] = static_cast<double>(request.Index);
 			m_Context[position] = LayersOf(request);
 			m_CostLayers[position] = CostLayersOf(request, pricing).value_or(CostLayers{});
+			m_Wait[position] = request.Waited ? static_cast<double>(request.Waited->count()) / 1000.0 : 0.0;
+			m_Gaps[position] = position > 0 ? GapBefore(requests[position - 1], request) : std::nullopt;
+			m_Expired[position] = m_Gaps[position] && CacheExpired(requests[position - 1], *m_Gaps[position]);
+			m_Rate[position] = OutputRate(request).value_or(kNaN);
 		}
 
 		// From the costs RequestsView priced for its Cost column, so the line and the column
@@ -360,6 +385,7 @@ namespace Graphite {
 
 		tab("Context", ChartMode::Context);
 		tab("Cost", ChartMode::Cost);
+		tab("Time", ChartMode::Time);
 
 		ImGui::EndTabBar();
 	}
@@ -392,7 +418,12 @@ namespace Graphite {
 			values = m_CostLayers[position];
 			break;
 		case ChartMode::Time:
+		{
+			const double gap = m_Gaps[position] ? static_cast<double>(m_Gaps[position]->count()) / 1000.0 : 0.0;
+			values[0] = m_Wait[position];
+			values[m_Expired[position] ? 2 : 1] = gap;
 			break;
+		}
 		}
 
 		return values;
@@ -403,8 +434,8 @@ namespace Graphite {
 		switch (m_Mode)
 		{
 		case ChartMode::Cost: return m_Cumulative[position];
-		case ChartMode::Context:
-		case ChartMode::Time: break;
+		case ChartMode::Time: return m_Rate[position];
+		case ChartMode::Context: break;
 		}
 
 		return kNaN;
@@ -608,6 +639,17 @@ namespace Graphite {
 
 		if (!outcome.empty())
 			ColouredText(ink, Fitted(outcome, maxWidth));
+
+		// What came before the request: the tools' or the reader's time, and whether the cache
+		// was still there when it was sent.
+		if (position < m_Gaps.size() && m_Gaps[position])
+		{
+			const bool expired = m_Expired[position];
+
+			// "—" is U+2014.
+			ColouredText(expired ? palette.Failed : palette.TextDisabled,
+						 "Gap before: " + WaitText(*m_Gaps[position]) + (expired ? " \xe2\x80\x94 past the cache's life" : ""));
+		}
 
 		if (position < input.ToolLabels.size() && !input.ToolLabels[position].empty())
 			ColouredText(palette.TextDisabled, Fitted("Tools: " + input.ToolLabels[position], maxWidth));
