@@ -95,6 +95,10 @@ namespace Graphite {
 		void DrawRow(const Session& session, std::size_t index, const ConversationContext& context,
 					 Core::EventBus& events);
 
+		// The time beside a User or Claude heading, dated because a session can run over several
+		// days; the full date with its year and weekday on hover.
+		void DrawHeaderTime(const std::string& at, const ConversationContext& context);
+
 		// A message from the user: the prompt that opened a turn, or one queued within it.
 		void DrawUser(const std::string& text, const std::string& at, const ConversationContext& context);
 		void DrawReply(const Turn& turn, const TurnPart& part, std::size_t row, const ConversationContext& context);

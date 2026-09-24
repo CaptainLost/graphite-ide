@@ -31,6 +31,12 @@ TEST_CASE("FormatLocalTime writes the date alone, zero-padded, with no time")
 	CHECK(FormatLocalTime(At(2026, 12, 31, 23, 59, 59), ClockStyle::Date) == "2026-12-31");
 }
 
+TEST_CASE("FormatLocalTime writes the month, day, hours and minutes without seconds")
+{
+	CHECK(FormatLocalTime(At(2026, 9, 3, 8, 5, 7), ClockStyle::MonthDayHoursMinutes) == "09-03 08:05");
+	CHECK(FormatLocalTime(At(2026, 12, 31, 23, 59, 59), ClockStyle::MonthDayHoursMinutes) == "12-31 23:59");
+}
+
 TEST_CASE("FormatLocalTime names the weekday in English, Sunday included")
 {
 	CHECK(FormatLocalTime(At(2026, 9, 23, 18, 52, 33), ClockStyle::DateTimeWeekday) ==

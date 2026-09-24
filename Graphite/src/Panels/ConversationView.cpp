@@ -299,17 +299,24 @@ namespace Graphite {
 		return line;
 	}
 
+	void ConversationView::DrawHeaderTime(const std::string& at, const ConversationContext& context)
+	{
+		const std::string time = m_Clock.Format(at, ClockStyle::MonthDayHoursMinutes);
+
+		if (time.empty())
+			return;
+
+		ImGui::SameLine();
+		ColouredText(context.Palette.TextDisabled, time);
+		ImGui::SetItemTooltip("%s", m_Clock.Format(at, ClockStyle::DateTimeWeekday).c_str());
+	}
+
 	void ConversationView::DrawUser(const std::string& text, const std::string& at, const ConversationContext& context)
 	{
 		const Block block = BeginBlock();
 
 		ColouredText(context.Palette.Accent, "User");
-
-		if (const std::string time = m_Clock.HoursMinutes(at); !time.empty())
-		{
-			ImGui::SameLine();
-			ColouredText(context.Palette.TextDisabled, time);
-		}
+		DrawHeaderTime(at, context);
 
 		// The prompt as the user typed it: not markdown, which a prompt rarely is on purpose.
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - kBlockPadding);
@@ -396,12 +403,7 @@ namespace Graphite {
 		const Block block = BeginBlock();
 
 		ColouredText(context.Palette.Accent, "Claude");
-
-		if (const std::string time = m_Clock.HoursMinutes(item.At); !time.empty())
-		{
-			ImGui::SameLine();
-			ColouredText(context.Palette.TextDisabled, time);
-		}
+		DrawHeaderTime(item.At, context);
 
 		if (part.Requests > 0)
 		{
@@ -676,7 +678,7 @@ namespace Graphite {
 		if (ImGui::Selectable("##injected", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
 			Toggle(m_OpenItems, key, row);
 
-		const std::string time = m_Clock.HoursMinutes(item.At);
+		const std::string time = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
 		const float timeWidth = ImGui::CalcTextSize(time.c_str()).x;
 		const float space = ImGui::GetStyle().ItemSpacing.x;
 
@@ -735,7 +737,7 @@ namespace Graphite {
 		// The label is cut to the width first; the rule shows only in whatever room is left
 		// either side of it, so at a narrow width the rule goes before any of the words do.
 		const std::string label = Fitted(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " +
-											 CompactionLabel(item.Compaction, m_Clock.HoursMinutes(item.At)),
+											 CompactionLabel(item.Compaction, m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes)),
 										 width);
 		const float labelWidth = ImGui::CalcTextSize(label.c_str()).x;
 		const float space = ImGui::GetStyle().ItemSpacing.x;
