@@ -620,7 +620,19 @@ namespace Graphite {
 										   ImGuiTableFlags_SizingStretchProp;
 
 		// Fills the child it is in; the table scrolls itself, under its frozen header.
-		if (!ImGui::BeginTable("##requestTable", kColumnCount, kFlags))
+		//
+		// Its id is a constant rather than BeginTable's hash of the label under the window it is
+		// drawn in. ImGui saves a table's column widths, order, visibility and sort under that
+		// id, so an id taken from the window path lost the reader's columns whenever the
+		// windows around the table were nested differently, and gave each session's tab a
+		// layout of its own that a newly opened session started without. With the constant, the
+		// saved layout outlives changes to what the table is drawn in — it resets once more,
+		// the time this id changed to the constant — and is one layout for every session's
+		// tab. Everything the table keys by id below it (its rows and cells, its header's
+		// context menu, its scrolling child) derives from this id, not from the window's.
+		static const ImGuiID kTableId = ImHashStr("RequestsView.RequestTable");
+
+		if (!ImGui::BeginTableEx("##requestTable", kTableId, kColumnCount, kFlags))
 			return;
 
 		// The mark's column is as wide as the mark and the sort arrow its header may show.
@@ -634,18 +646,28 @@ namespace Graphite {
 
 		ImGui::TableSetupScrollFreeze(0, 1);
 
-		if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs != nullptr && specs->SpecsDirty)
+		// Compared with this view's own order as well as read when dirty: the table, and so its
+		// sort, is shared by every session's tab, and whichever tab draws it first in a frame
+		// clears the flag — another tab visible beside it, or one opened after the sort was
+		// set, would otherwise keep an order the header no longer shows.
+		if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs != nullptr)
 		{
-			m_SortColumn = RequestColumn::Index;
-			m_SortAscending = true;
+			RequestColumn column = RequestColumn::Index;
+			bool ascending = true;
 
 			if (specs->SpecsCount > 0 && specs->Specs[0].ColumnUserID <= static_cast<ImGuiID>(RequestColumn::Rebuilt))
 			{
-				m_SortColumn = static_cast<RequestColumn>(specs->Specs[0].ColumnUserID);
-				m_SortAscending = specs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
+				column = static_cast<RequestColumn>(specs->Specs[0].ColumnUserID);
+				ascending = specs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
 			}
 
-			SortRequests(m_Shown, timeline.GetRequests(), m_SortColumn, m_SortAscending, context.Prices);
+			if (specs->SpecsDirty || column != m_SortColumn || ascending != m_SortAscending)
+			{
+				m_SortColumn = column;
+				m_SortAscending = ascending;
+				SortRequests(m_Shown, timeline.GetRequests(), m_SortColumn, m_SortAscending, context.Prices);
+			}
+
 			specs->SpecsDirty = false;
 		}
 
