@@ -148,9 +148,9 @@ namespace Graphite {
 
 		// One stacked bar per turn or request, numbered from 1, with the session's running total
 		// on a second axis. Returns the index of the bar clicked, if any.
-		std::optional<std::size_t> DrawChart(const char* axisLabel, const std::vector<CostLayers>& layers,
-											 const std::vector<double>& total, const SessionPalette& palette,
-											 FollowingAxis& xAxis)
+		std::optional<std::size_t> DrawChart(const char* title, const char* axisLabel,
+											 const std::vector<CostLayers>& layers, const std::vector<double>& total,
+											 const SessionPalette& palette, FollowingAxis& xAxis)
 		{
 			const int count = static_cast<int>(layers.size());
 
@@ -163,8 +163,11 @@ namespace Graphite {
 			// Kept pushed through EndPlot, which is where ImPlot reads it when it fits the axes.
 			ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
 
-			// The blank title keeps a line above the plot for DrawAxisCaptions.
-			if (!ImPlot::BeginPlot(" ##costChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
+			// The title's line is where DrawAxisCaptions writes too. The id behind "###" is one for
+			// both scopes, so a switch keeps the legend's state.
+			const std::string plotId = std::string(title) + "###costChart";
+
+			if (!ImPlot::BeginPlot(plotId.c_str(), ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
 			{
 				ImPlot::PopStyleVar();
 				return std::nullopt;
@@ -172,6 +175,7 @@ namespace Graphite {
 
 			// Numbered from 1, so the bars run from 1 to count, each half a slot wide either side.
 			ImPlot::SetupAxis(ImAxis_X1, axisLabel, ImPlotAxisFlags_None);
+			SetupCountedAxis();
 			xAxis.Setup(0.5, static_cast<double>(count) + 0.5);
 
 			// Both value axes stand on zero: with the floor free the fit would pad below it too, and
@@ -358,7 +362,7 @@ namespace Graphite {
 			}
 
 			FitTo(layers.size());
-			DrawChart("Turn", layers, CumulativeCost(costs), palette, m_XAxis);
+			DrawChart("Cost per turn", "Turn", layers, CumulativeCost(costs), palette, m_XAxis);
 		}
 		else
 		{
@@ -367,7 +371,7 @@ namespace Graphite {
 
 			// A click picks the request for the Requests tab to show.
 			FitTo(m_RequestLayers.size());
-			clicked = DrawChart("Request", m_RequestLayers, m_RequestTotal, palette, m_XAxis);
+			clicked = DrawChart("Cost per request", "Request", m_RequestLayers, m_RequestTotal, palette, m_XAxis);
 		}
 
 		ImGui::Spacing();

@@ -21,8 +21,9 @@ namespace Graphite {
 
 	namespace {
 		// The chart's height, in lines of text: tall enough to tell a cache rebuild from its
-		// neighbours, short enough to leave most of the tab to the table.
-		constexpr float kChartLines = 12.0f;
+		// neighbours, short enough to leave most of the tab to the table. As tall as the Cost
+		// tab's, so the two plots read at the same size under the same legend and title rows.
+		constexpr float kChartLines = 16.0f;
 
 		constexpr std::size_t kToolNameBytes = 80;
 
@@ -71,6 +72,9 @@ namespace Graphite {
 		// the second axis, if it has one.
 		struct ModeLayout
 		{
+			// Centred above the plot. Behind "###" in the plot's id, so a change of mode keeps
+			// the plot, and with it the reader's view and the legend's state.
+			const char* Title = nullptr;
 			std::array<ChartLayer, kContextLayers> Layers{};
 			std::size_t LayerCount = 0;
 			const char* Y1Label = nullptr;
@@ -114,6 +118,7 @@ namespace Graphite {
 				for (std::size_t layer = 0; layer < kContextLayers; ++layer)
 					layout.Layers[layer] = {kContextNames[layer], ContextColour(palette, layer)};
 
+				layout.Title = "Context per request";
 				layout.LayerCount = kContextLayers;
 				layout.Y1Label = "Tokens";
 				break;
@@ -121,6 +126,7 @@ namespace Graphite {
 				layout.Layers[0] = {kTimeNames[0], palette.Web};
 				layout.Layers[1] = {kTimeNames[1], palette.TextDisabled};
 				layout.Layers[2] = {kTimeNames[2], palette.Failed};
+				layout.Title = "Time per request";
 				layout.LayerCount = kTimeLayers;
 
 				// One gap of an hour would otherwise flatten every wait of a few seconds.
@@ -174,8 +180,9 @@ namespace Graphite {
 		// SetupFinish is too early), and popped on every path out of here, including the plot
 		// staying closed.
 		ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
-		// The blank title keeps a line above the plot for DrawAxisCaptions.
-		const bool open = ImPlot::BeginPlot(" ##requestsChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines));
+		// The title's line is where DrawAxisCaptions writes too.
+		const std::string plotId = std::string(layout.Title) + "###requestsChart";
+		const bool open = ImPlot::BeginPlot(plotId.c_str(), ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines));
 
 		if (!open)
 		{
@@ -205,6 +212,7 @@ namespace Graphite {
 			// vendor/implot/implot.cpp), so this alone is enough; no separate
 			// SetupAxisLimitsConstraints call is needed.
 			ImPlot::SetupAxisScale(ImAxis_X1, ImPlotScale_Linear);
+			SetupCountedAxis();
 		}
 
 		if (count > 0)

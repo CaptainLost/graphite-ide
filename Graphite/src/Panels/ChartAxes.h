@@ -37,8 +37,12 @@ namespace Graphite {
 
 	// The value axes' names, written level above each end of the plot instead of turned on
 	// their side beside it; `right` is null for a plot with no second axis. After SetupFinish,
-	// which has placed the plot. The plot is begun with a blank title — " ##id" — which has
-	// ImPlot keep a line of its own between the legend and the plot for these to go in:
-	// without it they would share the legend's band, and a wide legend would cover them.
+	// which has placed the plot. The plot is begun with a title, which ImPlot centres on a line
+	// of its own between the legend and the plot; these go at the two ends of that line.
+	// Without one they would share the legend's band, and a wide legend would cover them.
 	void DrawAxisCaptions(const char* left, const char* right);
+
+	// Labels only the whole numbers on the x axis: turns and requests are counted, and a tick
+	// at 1.5 names neither. Between SetupAxis(ImAxis_X1, ...) and SetupFinish.
+	void SetupCountedAxis();
 }

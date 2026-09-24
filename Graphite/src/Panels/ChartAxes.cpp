@@ -6,6 +6,9 @@
 #include <implot.h>
 #include <implot_internal.h>
 
+#include <cmath>
+#include <cstdio>
+
 namespace Graphite {
 
 	void FollowingAxis::Setup(double low, double high)
@@ -34,6 +37,23 @@ namespace Graphite {
 
 		if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 			m_ViewMoved = false;
+	}
+
+	void SetupCountedAxis()
+	{
+		ImPlot::SetupAxisFormat(
+			ImAxis_X1,
+			[](double value, char* buffer, int size, void*) -> int
+			{
+				// A tick between two whole numbers keeps its grid line and loses its label.
+				if (std::abs(value - std::round(value)) > 1e-9)
+				{
+					buffer[0] = '\0';
+					return 0;
+				}
+
+				return std::snprintf(buffer, static_cast<std::size_t>(size), "%.0f", value);
+			});
 	}
 
 	void DrawAxisCaptions(const char* left, const char* right)
