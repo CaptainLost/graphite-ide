@@ -63,17 +63,26 @@ namespace Graphite {
 		return std::format("{:02}:{:02}", clock.hours().count(), clock.minutes().count());
 	}
 
-	std::string LocalClock::HoursMinutesSeconds(const std::string& timestamp)
+	std::optional<std::chrono::local_seconds> LocalClock::LocalTime(const std::string& timestamp)
 	{
 		const auto parsed = ParseTimestamp(timestamp);
 
 		if (!parsed)
-			return {};
+			return std::nullopt;
 
-		const auto local = std::chrono::floor<std::chrono::seconds>(*parsed) + OffsetAt(*parsed);
-		const std::chrono::hh_mm_ss clock{local - std::chrono::floor<std::chrono::days>(local)};
+		// The offset at the instant itself, as for the other times, then read as the wall clock.
+		const auto shifted = std::chrono::floor<std::chrono::seconds>(*parsed) + OffsetAt(*parsed);
+		return std::chrono::local_seconds{shifted.time_since_epoch()};
+	}
 
-		return std::format("{:02}:{:02}:{:02}", clock.hours().count(), clock.minutes().count(),
-						   clock.seconds().count());
+	std::string LocalClock::Format(const std::string& timestamp, ClockStyle style)
+	{
+		const auto local = LocalTime(timestamp);
+		return local ? FormatLocalTime(*local, style) : std::string{};
+	}
+
+	std::string LocalClock::HoursMinutesSeconds(const std::string& timestamp)
+	{
+		return Format(timestamp, ClockStyle::Time);
 	}
 }

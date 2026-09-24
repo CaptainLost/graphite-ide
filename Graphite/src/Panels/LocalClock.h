@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Sessions/RequestChart.h"
+
 #include <chrono>
 #include <optional>
 #include <string>
@@ -16,6 +18,13 @@ namespace Graphite {
 
 		// "HH:MM:SS" in the reader's time zone, or nothing when the timestamp does not parse.
 		std::string HoursMinutesSeconds(const std::string& timestamp);
+
+		// The timestamp on the reader's clock, or nothing when it does not parse.
+		std::optional<std::chrono::local_seconds> LocalTime(const std::string& timestamp);
+
+		// The timestamp written in `style` on the reader's clock, or nothing when it does not
+		// parse.
+		std::string Format(const std::string& timestamp, ClockStyle style);
 
 	private:
 		// The reader's offset from UTC at `instant`; zero when the time zone is unknown.

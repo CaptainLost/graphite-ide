@@ -3,10 +3,12 @@
 #include "Panels/ConversationView.h"
 #include "Panels/LocalClock.h"
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestChart.h"
 #include "Sessions/RequestSort.h"
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -35,10 +37,12 @@ namespace Graphite {
 		void Rebuild(const RequestTimeline& timeline, const Session& session);
 		void PriceRequests(const RequestTimeline& timeline, const Pricing& pricing);
 		void Filter(const RequestTimeline& timeline, const Pricing& pricing);
-		void DrawChart(const SessionPalette& palette);
+		void DrawChart(const RequestTimeline& timeline, const ConversationContext& context);
+		void DrawBarTooltip(const ApiRequest& request, std::size_t position, const ConversationContext& context);
 		void DrawFilters(const RequestTimeline& timeline, const Pricing& pricing);
 		void DrawTable(const RequestTimeline& timeline, const ConversationContext& context);
-		void DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context);
+		void DrawTableRow(const ApiRequest& request, std::size_t position, const ApiRequest* previous,
+						  const ConversationContext& context);
 		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context);
 
 		// By position in GetRequests(), for every request: the tools it used, and the same names
@@ -49,11 +53,14 @@ namespace Graphite {
 		// Every tool any request used, for the filter.
 		std::set<std::string> m_AllTools;
 
-		// The chart's series, one value per request.
+		// The chart's series, one value per request: each request's context by layer, and the
+		// height each layer's bar reaches stacked from the layers the legend shows, which are
+		// what m_StackedFor records. A reader hiding a layer moves the ones above it, so the
+		// heights are stacked again only then or when the timeline changes.
 		std::vector<double> m_ChartX;
-		std::vector<double> m_ChartTotal;
-		std::vector<double> m_ChartCached;
-		std::vector<double> m_ChartRead;
+		std::vector<ContextLayers> m_Layers;
+		std::array<std::vector<double>, kContextLayers> m_ChartTops;
+		std::optional<std::array<bool, kContextLayers>> m_StackedFor;
 		std::vector<double> m_ChartCost;
 
 		// Each request's cost, for its cell and the chart's line, and the prices they were

@@ -34,8 +34,10 @@ namespace Graphite {
 
 	// "#42 18:12:11 · opus-5-5 · ctx 663.9k +2.3k · 99% cache · 1.1k out · $0.15 · 6.2 s".
 	// A part the request does not carry — a timestamp that does not parse, no usage, no wait
-	// before it — is left out rather than shown as zero.
-	std::string RequestLine(const ApiRequest& request, const Pricing& pricing, LocalClock& clock);
+	// before it — is left out rather than shown as zero. `time` is how the timestamp is written:
+	// the time alone in a list, the whole date where the request stands on its own.
+	std::string RequestLine(const ApiRequest& request, const Pricing& pricing, LocalClock& clock,
+							ClockStyle time = ClockStyle::Time);
 
 	// The folded row through the draw list, from `at` to `right`: RequestLine, the mark of a
 	// rebuilt cache, how the response stopped, and the tools the request used. Draws no item:

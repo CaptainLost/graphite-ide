@@ -127,12 +127,12 @@ namespace Graphite {
 		return ICON_MDI_HELP_CIRCLE_OUTLINE;
 	}
 
-	std::string RequestLine(const ApiRequest& request, const Pricing& pricing, LocalClock& clock)
+	std::string RequestLine(const ApiRequest& request, const Pricing& pricing, LocalClock& clock, ClockStyle time)
 	{
 		std::string line = "#" + std::to_string(request.Index);
 
-		if (const std::string time = clock.HoursMinutesSeconds(request.RespondedAt); !time.empty())
-			line += " " + time;
+		if (const std::string written = clock.Format(request.RespondedAt, time); !written.empty())
+			line += " " + written;
 
 		if (!request.Model.empty())
 			line += kDot + ShortModelName(request.Model) + (request.Fast ? " fast" : "");
