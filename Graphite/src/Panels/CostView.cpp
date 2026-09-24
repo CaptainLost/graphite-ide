@@ -156,9 +156,10 @@ namespace Graphite {
 			return std::format("${:.3f}", dollars);
 		}
 
-		// The bar's buckets top down, as they are stacked, each after a swatch in its colour and
-		// with the dollars lined up on the right of one column; then the bar's cost and the
-		// session's up to it.
+		// Laid out as the Requests chart's tooltip is: the heading, the bar's cost, its buckets in
+		// the order the legend's layers stack from the bottom, each after a swatch in its colour
+		// with the dollars lined up on the right of one column, and last the session's cost up
+		// to it.
 		void DrawBarTooltip(const CostBar& bar, const CostLayers& layers, double total, const SessionPalette& palette)
 		{
 			if (!ImGui::BeginTooltip())
@@ -170,6 +171,12 @@ namespace Graphite {
 			// A bar with an unpriced model shows only its priced part, so none of its numbers is
 			// its cost: "?" rather than a confident, wrong figure, as the turn table says.
 			const auto money = [&bar](double dollars) { return bar.Known ? Dollars(dollars) : std::string("?"); };
+
+			double cost = 0.0;
+			for (const double dollars : layers)
+				cost += dollars;
+
+			ColouredText(ink, "Cost " + money(cost));
 
 			std::array<std::string, kCostLayers> numbers;
 			float labelWidth = 0.0f;
@@ -187,7 +194,7 @@ namespace Graphite {
 			const float indent = ImGui::GetFontSize();
 			const float swatch = std::round(lineHeight * 0.55f);
 
-			for (std::size_t layer = kCostLayers; layer-- > 0;)
+			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
 			{
 				const ImVec2 start = ImGui::GetCursorScreenPos();
 				const float swatchTop = std::floor(start.y + (lineHeight - swatch) * 0.5f);
@@ -209,11 +216,6 @@ namespace Graphite {
 				ImGui::Dummy(ImVec2(numbersRight - start.x, lineHeight));
 			}
 
-			double cost = 0.0;
-			for (const double dollars : layers)
-				cost += dollars;
-
-			ColouredText(ink, "Cost " + money(cost));
 			ColouredText(palette.TextDisabled, "Session so far " + Dollars(total));
 
 			ImGui::EndTooltip();
