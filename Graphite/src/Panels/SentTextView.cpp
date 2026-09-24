@@ -28,6 +28,19 @@ namespace Graphite {
 			return ImGui::GetColorU32(tint);
 		}
 
+		// Whether `segment` is the empty-thinking block DisplayText adds its note to, so the
+		// note draws dimmed like other quiet text rather than at full strength.
+		bool IsHiddenThinkingNote(const ApiRequest& request, std::size_t segment)
+		{
+			if (segment < request.Sent.size())
+				return false;
+
+			const std::size_t response = segment - request.Sent.size();
+
+			return response < request.Response.size() && request.Response[response].Kind == ResponseKind::Thinking &&
+				   request.Response[response].Text.empty();
+		}
+
 		ItemLook LookOfSegment(const ApiRequest& request, std::size_t segment, const SessionPalette& palette)
 		{
 			if (segment < request.Sent.size())
@@ -100,7 +113,7 @@ namespace Graphite {
 			std::vector<std::string_view> texts;
 
 			for (std::size_t i = 0; i < SegmentCount(request); ++i)
-				texts.push_back(SegmentText(request, i));
+				texts.push_back(DisplayText(request, i));
 
 			m_Layout.Build(texts, columns);
 
@@ -183,9 +196,10 @@ namespace Graphite {
 				else
 				{
 					const std::string text =
-						Expanded(SegmentText(request, row.Segment).substr(row.Begin, row.End - row.Begin));
-					draw->AddText(mono, fontSize, textAt, IsQuiet(request, row.Segment) ? palette.TextDisabled : ink,
-								  text.data(), text.data() + text.size());
+						Expanded(DisplayText(request, row.Segment).substr(row.Begin, row.End - row.Begin));
+					const bool quiet = IsQuiet(request, row.Segment) || IsHiddenThinkingNote(request, row.Segment);
+					draw->AddText(mono, fontSize, textAt, quiet ? palette.TextDisabled : ink, text.data(),
+								  text.data() + text.size());
 				}
 
 				// The row's item: it makes the row one line tall and takes its clicks.

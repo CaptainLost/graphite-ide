@@ -248,7 +248,7 @@ namespace Graphite {
 			case BlockKind::Thinking:
 				request->Response.push_back(
 					{.Kind = ResponseKind::Thinking,
-					 .Label = block.Text.empty() ? "thinking"
+					 .Label = block.Text.empty() ? "thinking (empty)"
 												 : "thinking (" + std::to_string(CodePoints(block.Text)) + " chars)",
 					 .Text = block.Text});
 				changed = true;

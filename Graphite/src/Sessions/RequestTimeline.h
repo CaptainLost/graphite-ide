@@ -65,7 +65,8 @@ namespace Graphite {
 	struct ResponseItem
 	{
 		ResponseKind Kind = ResponseKind::Other;
-		std::string Label;    // Text: "N chars"; ToolCall: tool name + "  " + summary; Thinking: "thinking" or "thinking (N chars)"
+		std::string Label;    // Text: "N chars"; ToolCall: tool name + "  " + summary; Thinking: "thinking (empty)"
+							  // when Text is empty, else "thinking (N chars)"
 		std::string ToolName; // ToolCall only
 
 		// What the model wrote: the thinking, the reply, or a tool's name over its input

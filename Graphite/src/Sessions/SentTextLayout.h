@@ -27,6 +27,12 @@ namespace Graphite {
 	// The text of the item at `segment`, or nothing past the last one.
 	std::string_view SegmentText(const ApiRequest& request, std::size_t segment);
 
+	// What to show under a segment's header: SegmentText, except an empty thinking block gets a
+	// note explaining why there is nothing to show, since the API returns it with an empty text
+	// and only an encrypted signature. Copying an item still copies SegmentText, so Copy sees the
+	// real, empty text rather than this note.
+	std::string_view DisplayText(const ApiRequest& request, std::size_t segment);
+
 	// Every item's text, a blank line between items: what "copy all" copies.
 	std::string AllSegmentText(const ApiRequest& request);
 

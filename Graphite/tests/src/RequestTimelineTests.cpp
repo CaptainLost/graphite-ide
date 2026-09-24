@@ -97,6 +97,7 @@ TEST_CASE("A response written as several records is one request, and what preced
 	CHECK(request.Sent[0].Kind == SentKind::Prompt);
 	REQUIRE(request.Response.size() == 2);
 	CHECK(request.Response[0].Kind == ResponseKind::Thinking);
+	CHECK(request.Response[0].Label == "thinking (empty)");
 	CHECK(request.Response[1].Kind == ResponseKind::ToolCall);
 	CHECK(request.Response[1].ToolName == "Bash");
 }

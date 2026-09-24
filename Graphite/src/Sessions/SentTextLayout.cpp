@@ -115,6 +115,23 @@ namespace Graphite {
 		return segment < request.Response.size() ? std::string_view{request.Response[segment].Text} : std::string_view{};
 	}
 
+	std::string_view DisplayText(const ApiRequest& request, std::size_t segment)
+	{
+		if (segment >= request.Sent.size())
+		{
+			const std::size_t response = segment - request.Sent.size();
+
+			if (response < request.Response.size() && request.Response[response].Kind == ResponseKind::Thinking &&
+				request.Response[response].Text.empty())
+			{
+				return "The model reasoned here, but the API returns reasoning hidden: only an encrypted signature "
+					   "reaches Claude Code, so there is no text to show. Its tokens are part of this reply's output.";
+			}
+		}
+
+		return SegmentText(request, segment);
+	}
+
 	std::string AllSegmentText(const ApiRequest& request)
 	{
 		std::string all;

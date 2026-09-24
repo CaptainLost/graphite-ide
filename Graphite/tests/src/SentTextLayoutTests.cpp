@@ -113,3 +113,27 @@ TEST_CASE("A request's segments are what it sent, then what it returned")
 	CHECK(SegmentText(requests[0], 2).empty());
 	CHECK(AllSegmentText(requests[0]) == "go\n\ndone");
 }
+
+TEST_CASE("DisplayText notes an empty thinking block instead of showing nothing, but SegmentText stays empty")
+{
+	const std::vector<ApiRequest> requests = BuildRequestTimeline(
+		ParseTranscript(Fixtures::UserPrompt("go") +
+						 Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(1, 1)) +
+						 Fixtures::Assistant("r2", Fixtures::ThinkingBlock("hmm"), Fixtures::Usage(1, 1)))
+			.Records);
+
+	REQUIRE(requests.size() == 2);
+	REQUIRE(requests[0].Response.size() == 1);
+	REQUIRE(requests[1].Response.size() == 1);
+
+	const std::size_t emptySegment = requests[0].Sent.size();
+	const std::size_t fullSegment = requests[1].Sent.size();
+
+	CHECK(SegmentText(requests[0], emptySegment).empty());
+	CHECK(DisplayText(requests[0], emptySegment) ==
+		  "The model reasoned here, but the API returns reasoning hidden: only an encrypted signature reaches "
+		  "Claude Code, so there is no text to show. Its tokens are part of this reply's output.");
+
+	CHECK(SegmentText(requests[1], fullSegment) == "hmm");
+	CHECK(DisplayText(requests[1], fullSegment) == "hmm");
+}
