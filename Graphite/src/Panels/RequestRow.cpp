@@ -20,63 +20,34 @@ namespace Graphite {
 		// measures the text, and a tool result's summary can be long.
 		constexpr std::size_t kLabelBytes = 400;
 
-		struct Look
+		struct LineOutcome
 		{
-			const char* Icon = ICON_MDI_HELP_CIRCLE_OUTLINE;
-			ImU32 Colour = 0;
+			bool Clicked = false;
+			bool Hovered = false;
 		};
 
-		Look LookOf(const SentItem& item, const SessionPalette& palette)
-		{
-			switch (item.Kind)
-			{
-			case SentKind::ToolResult:
-			{
-				const ToolCategory category = CategoryOf(item.ToolName);
-				return {IconOf(category), item.IsError ? palette.Failed : palette.CategoryColor(category)};
-			}
-			case SentKind::Prompt:
-			case SentKind::QueuedPrompt: return {ICON_MDI_ACCOUNT_OUTLINE, palette.Accent};
-			case SentKind::Injected:
-			case SentKind::Reminder: return {ICON_MDI_BELL_OUTLINE, palette.Injected};
-			case SentKind::ToolsLoaded: return {ICON_MDI_TOOLS, palette.Agent};
-			case SentKind::Skills: return {ICON_MDI_PUZZLE_OUTLINE, palette.Agent};
-			case SentKind::McpInstructions: return {ICON_MDI_SERVER_NETWORK, palette.Agent};
-			case SentKind::EditedFile: return {ICON_MDI_PENCIL, palette.Edit};
-			case SentKind::Image: return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
-			case SentKind::SystemPrompt: return {ICON_MDI_TEXT_BOX_OUTLINE, palette.Injected};
-			case SentKind::ToolSchemas: return {ICON_MDI_CODE_BRACES, palette.Agent};
-			}
-
-			return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.Other};
-		}
-
-		Look LookOf(const ResponseItem& item, const SessionPalette& palette)
-		{
-			switch (item.Kind)
-			{
-			case ResponseKind::Thinking: return {ICON_MDI_BRAIN, palette.TextDisabled};
-			case ResponseKind::Text: return {ICON_MDI_MESSAGE_TEXT_OUTLINE, palette.Accent};
-			case ResponseKind::ToolCall:
-			{
-				const ToolCategory category = CategoryOf(item.ToolName);
-				return {IconOf(category), palette.CategoryColor(category)};
-			}
-			case ResponseKind::Other: break;
-			}
-
-			return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.TextDisabled};
-		}
-
 		// One item's line: its icon in its colour, its label cut to fit, and `column` pinned to
-		// the right edge, which the label gives way to. A Dummy makes it one line tall.
-		void ItemLine(const Look& look, const std::string& label, const std::string& column,
-					  const SessionPalette& palette)
+		// the right edge, which the label gives way to. A Selectable makes it one line tall
+		// and clickable; the text is drawn after it, so its highlight lies under the text.
+		LineOutcome ItemLine(const ItemLook& look, const std::string& label, const std::string& column,
+							 const SessionPalette& palette, std::size_t id, bool selected, bool reveal)
 		{
 			const ImVec2 start = ImGui::GetCursorScreenPos();
 			const float right = start.x + ImGui::GetContentRegionAvail().x;
 			const float space = ImGui::GetStyle().ItemSpacing.x;
+			const float height = ImGui::GetTextLineHeight();
 			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+
+			if (reveal && !ImGui::IsRectVisible(ImVec2(std::max(right - start.x, 1.0f), height)))
+				ImGui::SetScrollHereY(0.3f);
+
+			ImGui::PushID(static_cast<int>(id));
+
+			LineOutcome outcome;
+			outcome.Clicked = ImGui::Selectable("##item", selected, ImGuiSelectableFlags_None, ImVec2(0.0f, height));
+			outcome.Hovered = ImGui::IsItemHovered();
+
+			ImGui::PopID();
 
 			ImVec2 at = start;
 			DrawPiece(at, look.Colour, std::string{look.Icon} + " ");
@@ -89,8 +60,61 @@ namespace Graphite {
 			at.x = columnX;
 			DrawPiece(at, palette.TextDisabled, Fitted(column, right - at.x));
 
-			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
+			return outcome;
 		}
+	}
+
+	ItemLook LookOf(const SentItem& item, const SessionPalette& palette)
+	{
+		switch (item.Kind)
+		{
+		case SentKind::ToolResult:
+		{
+			const ToolCategory category = CategoryOf(item.ToolName);
+			return {IconOf(category), item.IsError ? palette.Failed : palette.CategoryColor(category)};
+		}
+		case SentKind::Prompt:
+		case SentKind::QueuedPrompt: return {ICON_MDI_ACCOUNT_OUTLINE, palette.Accent};
+		case SentKind::Injected:
+		case SentKind::Reminder: return {ICON_MDI_BELL_OUTLINE, palette.Injected};
+		case SentKind::ToolsLoaded: return {ICON_MDI_TOOLS, palette.Agent};
+		case SentKind::Skills: return {ICON_MDI_PUZZLE_OUTLINE, palette.Agent};
+		case SentKind::McpInstructions: return {ICON_MDI_SERVER_NETWORK, palette.Agent};
+		case SentKind::EditedFile: return {ICON_MDI_PENCIL, palette.Edit};
+		case SentKind::Image: return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
+		case SentKind::SystemPrompt: return {ICON_MDI_TEXT_BOX_OUTLINE, palette.Injected};
+		case SentKind::ToolSchemas: return {ICON_MDI_CODE_BRACES, palette.Agent};
+		}
+
+		return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.Other};
+	}
+
+	ItemLook LookOf(const ResponseItem& item, const SessionPalette& palette)
+	{
+		switch (item.Kind)
+		{
+		case ResponseKind::Thinking: return {ICON_MDI_BRAIN, palette.TextDisabled};
+		case ResponseKind::Text: return {ICON_MDI_MESSAGE_TEXT_OUTLINE, palette.Accent};
+		case ResponseKind::ToolCall:
+		{
+			const ToolCategory category = CategoryOf(item.ToolName);
+			return {IconOf(category), palette.CategoryColor(category)};
+		}
+		case ResponseKind::Other: break;
+		}
+
+		return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.TextDisabled};
+	}
+
+	std::string SentColumn(const SentItem& item)
+	{
+		std::string column = FormatBytes(item.Bytes);
+
+		if (item.EstimatedTokens > 0)
+			column += "  ~" + FormatTokens(static_cast<std::uint64_t>(item.EstimatedTokens)) + " tok";
+
+		// U+2248 ALMOST EQUAL TO.
+		return item.Approximate ? "\xe2\x89\x88 " + column : column;
 	}
 
 	std::string ShortModelName(std::string_view model)
@@ -182,30 +206,39 @@ namespace Graphite {
 		DrawPiece(at, palette.TextDisabled, Fitted(tools, right - at.x));
 	}
 
-	void DrawRequestDetails(const ApiRequest& request, const SessionPalette& palette)
+	DetailsPick DrawRequestDetails(const ApiRequest& request, const SessionPalette& palette,
+								   std::optional<std::size_t> selected, std::optional<std::size_t> reveal)
 	{
+		DetailsPick pick;
+
+		const auto line = [&](const ItemLook& look, const std::string& label, const std::string& column, std::size_t id)
+		{
+			const LineOutcome outcome = ItemLine(look, label, column, palette, id, selected == id, reveal == id);
+
+			if (outcome.Clicked)
+				pick.Clicked = id;
+			if (outcome.Hovered)
+				pick.Hovered = id;
+		};
+
 		ColouredText(palette.TextDisabled, "Sent");
 
 		if (request.Sent.empty())
 			ColouredText(palette.TextDisabled, "nothing new");
 
-		for (const SentItem& item : request.Sent)
-		{
-			std::string column = FormatBytes(item.Bytes);
-			if (item.EstimatedTokens > 0)
-				column += "  ~" + FormatTokens(static_cast<std::uint64_t>(item.EstimatedTokens)) + " tok";
-
-			ItemLine(LookOf(item, palette), item.Label, column, palette);
-		}
+		for (std::size_t i = 0; i < request.Sent.size(); ++i)
+			line(LookOf(request.Sent[i], palette), request.Sent[i].Label, SentColumn(request.Sent[i]), i);
 
 		ColouredText(palette.TextDisabled, "Response");
 
 		if (request.Response.empty())
 			ColouredText(palette.TextDisabled, "nothing yet");
 
-		for (const ResponseItem& item : request.Response)
-			ItemLine(LookOf(item, palette), item.Label, {}, palette);
+		for (std::size_t i = 0; i < request.Response.size(); ++i)
+			line(LookOf(request.Response[i], palette), request.Response[i].Label, {}, request.Sent.size() + i);
 
 		ColouredText(palette.TextDisabled, ToolsAvailableLabel(request));
+
+		return pick;
 	}
 }

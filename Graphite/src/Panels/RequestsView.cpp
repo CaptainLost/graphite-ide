@@ -715,7 +715,7 @@ namespace Graphite {
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
 							ImGui::GetContentRegionAvail().x));
-		DrawRequestDetails(request, context.Palette);
+		DrawRequestDetails(request, context.Palette, std::nullopt, std::nullopt);
 	}
 
 	void RequestsView::Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context)

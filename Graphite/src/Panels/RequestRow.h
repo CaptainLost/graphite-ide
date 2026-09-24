@@ -8,7 +8,9 @@
 #include <imgui.h>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -45,7 +47,31 @@ namespace Graphite {
 	void DrawRequestLine(ImVec2 at, float right, const ApiRequest& request, const Pricing& pricing,
 						 const SessionPalette& palette, LocalClock& clock);
 
-	// What the request sent, what it returned, and the tools the model had then, one line an
-	// item, laid out as ordinary items below the cursor.
-	void DrawRequestDetails(const ApiRequest& request, const SessionPalette& palette);
+	// How an item is drawn wherever it is listed: its icon, in its colour.
+	struct ItemLook
+	{
+		const char* Icon = nullptr;
+		ImU32 Colour = 0;
+	};
+
+	ItemLook LookOf(const SentItem& item, const SessionPalette& palette);
+	ItemLook LookOf(const ResponseItem& item, const SessionPalette& palette);
+
+	// "3.5 KB  ~880 tok": a sent item's size and its share of the context, with "≈ " in
+	// front when its text is a reconstruction.
+	std::string SentColumn(const SentItem& item);
+
+	// What the reader did to the list this frame, by the item's position in Sent then
+	// Response — the same index SegmentText takes.
+	struct DetailsPick
+	{
+		std::optional<std::size_t> Clicked;
+		std::optional<std::size_t> Hovered;
+	};
+
+	// What the request sent, what it returned, and the tools the model had then, one
+	// selectable line an item, laid out as ordinary items below the cursor. `selected` is drawn
+	// selected; `reveal` is scrolled into view when it is not.
+	DetailsPick DrawRequestDetails(const ApiRequest& request, const SessionPalette& palette,
+								   std::optional<std::size_t> selected, std::optional<std::size_t> reveal);
 }
