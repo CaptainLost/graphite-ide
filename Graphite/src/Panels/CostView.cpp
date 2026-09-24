@@ -84,7 +84,8 @@ namespace Graphite {
 				ImGui::TableNextColumn();
 				ImGui::Text("%s%s", key.Model.c_str(), key.Fast ? " (fast)" : "");
 				ImGui::TableNextColumn();
-				ImGui::Text("%llu", static_cast<unsigned long long>(counts.Total()));
+				// Shortened as the Requests tab writes tokens: "51.2M", not eight digits to count.
+				ImGui::TextUnformatted(FormatTokens(counts.Total()).c_str());
 				ImGui::TableNextColumn();
 				ImGui::TextUnformatted(FormatCost(cost).c_str());
 				ImGui::TableNextColumn();
