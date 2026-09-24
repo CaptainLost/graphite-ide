@@ -70,14 +70,13 @@ namespace Graphite {
 
 	std::optional<std::chrono::milliseconds> GapBefore(const ApiRequest& previous, const ApiRequest& request)
 	{
-		const auto before = ParseTimestamp(previous.RespondedAt);
-		const auto after = ParseTimestamp(request.RespondedAt);
+		const auto finished = ParseTimestamp(previous.FinishedAt);
+		const auto sent = ParseTimestamp(request.SentAt);
 
-		if (!before || !after || !request.Waited)
+		if (!finished || !sent)
 			return std::nullopt;
 
-		const std::chrono::milliseconds gap = (*after - *before) - *request.Waited;
-		return std::max(gap, std::chrono::milliseconds{0});
+		return std::max(std::chrono::milliseconds{*sent - *finished}, std::chrono::milliseconds{0});
 	}
 
 	bool CacheExpired(const ApiRequest& previous, std::chrono::milliseconds gap)

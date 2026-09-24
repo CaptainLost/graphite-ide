@@ -101,6 +101,19 @@ namespace Graphite {
 			return parsed.is_discarded() ? json : parsed.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
 		}
 
+		// From `sentAt` to `finishedAt`; nothing when either does not parse or the clock ran
+		// backwards between them.
+		std::optional<std::chrono::milliseconds> WaitBetween(const std::string& sentAt, const std::string& finishedAt)
+		{
+			const auto sent = ParseTimestamp(sentAt);
+			const auto finished = ParseTimestamp(finishedAt);
+
+			if (!sent.has_value() || !finished.has_value() || *finished < *sent)
+				return std::nullopt;
+
+			return *finished - *sent;
+		}
+
 		std::string McpLabel(const std::vector<std::string>& names)
 		{
 			std::string joined;
@@ -171,19 +184,9 @@ namespace Graphite {
 			fresh.Model = record.Model;
 			fresh.Fast = record.Fast;
 			fresh.RespondedAt = record.Timestamp;
-
-			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> respondedAt =
-				ParseTimestamp(record.Timestamp);
-			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> previousAt =
-				ParseTimestamp(m_LastTimestamp);
-
-			if (respondedAt.has_value() && previousAt.has_value())
-			{
-				const std::chrono::milliseconds waited = *respondedAt - *previousAt;
-
-				if (waited.count() >= 0)
-					fresh.Waited = waited;
-			}
+			fresh.SentAt = m_LastTimestamp;
+			fresh.FinishedAt = record.Timestamp;
+			fresh.Waited = WaitBetween(fresh.SentAt, fresh.FinishedAt);
 
 			fresh.Sent = std::move(m_Pending);
 			m_Pending.clear();
@@ -215,6 +218,18 @@ namespace Graphite {
 		{
 			index = found->second;
 			request = &m_Requests[index];
+
+			// Records of a response are written in order, so a later one moves its end; one
+			// whose timestamp does not parse, or reads earlier, leaves it where it was.
+			const auto at = ParseTimestamp(record.Timestamp);
+			const auto finished = ParseTimestamp(request->FinishedAt);
+
+			if (at.has_value() && (!finished.has_value() || *at > *finished))
+			{
+				request->FinishedAt = record.Timestamp;
+				request->Waited = WaitBetween(request->SentAt, request->FinishedAt);
+				changed = true;
+			}
 
 			// Session's rule: usage rides on every record of a response, and the counts kept
 			// are the ones MergeResponseUsage picks from all of them.

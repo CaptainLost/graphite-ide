@@ -74,10 +74,9 @@ namespace Graphite {
 	// timestamp does not parse.
 	std::optional<double> ClockSeconds(const ApiRequest& request);
 
-	// The time between `previous` being answered and `request` being sent: what the tools, or
-	// the reader, took. Nothing when either timestamp or the request's wait is missing; zero
-	// when the wait outlasts the time between the two responses, which a clock set back or a
-	// rounded timestamp can make it do.
+	// The time between the end of `previous` and `request` being sent: what the tools, or the
+	// reader, took beyond the response. Nothing when either timestamp does not parse; zero when
+	// the request reads as sent first, which a clock set back or a rounded timestamp can make it.
 	std::optional<std::chrono::milliseconds> GapBefore(const ApiRequest& previous, const ApiRequest& request);
 
 	// Whether a gap this long after `previous` outlived the prompt cache: five minutes, or an

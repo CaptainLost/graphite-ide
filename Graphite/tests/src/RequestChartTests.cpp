@@ -31,6 +31,15 @@ namespace {
 		return request;
 	}
 
+	// A request sent at `sentAt` whose response's last record was written at `finishedAt`.
+	ApiRequest Span(const char* sentAt, const char* finishedAt)
+	{
+		ApiRequest request;
+		request.SentAt = sentAt;
+		request.FinishedAt = finishedAt;
+		return request;
+	}
+
 	CostResult Known(double dollars)
 	{
 		CostResult cost;
@@ -167,32 +176,30 @@ TEST_CASE("ClockSeconds reads the response time and has nothing for one that doe
 	CHECK_FALSE(ClockSeconds(At("not a time")));
 }
 
-TEST_CASE("GapBefore is the time from the previous response to this request being sent")
+TEST_CASE("GapBefore is the time from the end of the previous response to this request being sent")
 {
 	using namespace std::chrono_literals;
 
-	const std::optional<std::chrono::milliseconds> gap =
-		GapBefore(At("2026-09-24T10:00:00.000Z"), At("2026-09-24T10:01:00.000Z", 10s));
+	const std::optional<std::chrono::milliseconds> gap = GapBefore(
+		Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:00:30.000Z"), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z"));
 
 	REQUIRE(gap);
-	CHECK(*gap == 50s);
+	CHECK(*gap == 30s);
 }
 
-TEST_CASE("GapBefore has nothing without both times and the wait")
+TEST_CASE("GapBefore has nothing without the previous response's end and this request's sending")
+{
+	CHECK_FALSE(GapBefore(Span("2026-09-24T10:00:00.000Z", ""), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z")));
+	CHECK_FALSE(GapBefore(Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:00:30.000Z"), Span("", "2026-09-24T10:01:10.000Z")));
+	CHECK_FALSE(GapBefore(Span("2026-09-24T10:00:00.000Z", "not a time"), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z")));
+}
+
+TEST_CASE("GapBefore is zero, never negative, when this request was sent before the previous response ended")
 {
 	using namespace std::chrono_literals;
 
-	CHECK_FALSE(GapBefore(At("2026-09-24T10:00:00.000Z"), At("2026-09-24T10:01:00.000Z")));
-	CHECK_FALSE(GapBefore(At(""), At("2026-09-24T10:01:00.000Z", 10s)));
-	CHECK_FALSE(GapBefore(At("2026-09-24T10:00:00.000Z"), At("", 10s)));
-}
-
-TEST_CASE("GapBefore is zero, never negative, when the wait outlasts the time between responses")
-{
-	using namespace std::chrono_literals;
-
-	const std::optional<std::chrono::milliseconds> gap =
-		GapBefore(At("2026-09-24T10:00:00.000Z"), At("2026-09-24T10:01:00.000Z", 90s));
+	const std::optional<std::chrono::milliseconds> gap = GapBefore(
+		Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:01:00.000Z"), Span("2026-09-24T10:00:59.000Z", "2026-09-24T10:01:10.000Z"));
 
 	REQUIRE(gap);
 	CHECK(*gap == 0ms);

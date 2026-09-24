@@ -82,7 +82,7 @@ TEST_CASE("A response written as several records is one request, and what preced
 		Fixtures::UserPrompt("go", "2026-09-17T09:00:00.000Z") +
 		Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(10, 5, 0, 0, 90), "claude-opus-5", "2026-09-17T09:00:04.000Z") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {{"command", "ls"}}), Fixtures::Usage(10, 5, 0, 0, 90), "claude-opus-5",
-							"2026-09-17T09:00:04.000Z", "tool_use"));
+							"2026-09-17T09:00:06.000Z", "tool_use"));
 
 	REQUIRE(requests.size() == 1);
 	const ApiRequest& request = requests[0];
@@ -92,7 +92,9 @@ TEST_CASE("A response written as several records is one request, and what preced
 	CHECK_FALSE(request.ContextDelta.has_value());
 	CHECK(request.CachedShare == doctest::Approx(0.9));
 	CHECK(request.StopReason == "tool_use");
-	CHECK(request.Waited == std::chrono::milliseconds{4000});
+	CHECK(request.SentAt == "2026-09-17T09:00:00.000Z");
+	CHECK(request.FinishedAt == "2026-09-17T09:00:06.000Z");
+	CHECK(request.Waited == std::chrono::milliseconds{6000});
 	REQUIRE(request.Sent.size() == 1);
 	CHECK(request.Sent[0].Kind == SentKind::Prompt);
 	REQUIRE(request.Response.size() == 2);
@@ -327,6 +329,44 @@ TEST_CASE("An unparseable timestamp does not hide the last good one for Waited")
 
 	REQUIRE(requests.size() == 2);
 	CHECK(requests[1].Waited == std::chrono::milliseconds{5000});
+}
+
+TEST_CASE("A response waits until its last record, even when a tool's result is written between its records")
+{
+	// Claude Code runs a tool while the response that called it is still being written, so
+	// the tool's result can land between two records of that response.
+	const std::vector<ApiRequest> requests = Build(
+		Fixtures::UserPrompt("go", "2026-09-17T09:00:00.000Z") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Read", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 9, 0, 0, 100),
+							"claude-opus-5", "2026-09-17T09:00:04.000Z") +
+		Fixtures::ToolResult("t1", "text", false, "2026-09-17T09:00:05.000Z") +
+		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t2", "Bash", {{"command", "ls"}}), Fixtures::Usage(0, 90, 0, 0, 100),
+							"claude-opus-5", "2026-09-17T09:00:09.000Z", "tool_use") +
+		Fixtures::ToolResult("t2", "out", false, "2026-09-17T09:00:12.000Z") +
+		Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 7, 0, 0, 200), "claude-opus-5",
+							"2026-09-17T09:00:20.000Z"));
+
+	REQUIRE(requests.size() == 2);
+	CHECK(requests[0].FinishedAt == "2026-09-17T09:00:09.000Z");
+	CHECK(requests[0].Waited == std::chrono::milliseconds{9000});
+	CHECK(requests[1].SentAt == "2026-09-17T09:00:12.000Z");
+	CHECK(requests[1].Waited == std::chrono::milliseconds{8000});
+}
+
+TEST_CASE("A response's later record moves its end, and the change bumps the version")
+{
+	RequestTimeline timeline;
+	timeline.Append(ParseTranscript(Fixtures::UserPrompt("go", "2026-09-17T09:00:00.000Z") +
+									Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(1, 1),
+														"claude-opus-5", "2026-09-17T09:00:02.000Z"))
+						.Records);
+	const std::uint64_t before = timeline.GetVersion();
+
+	timeline.Append(ParseTranscript(AssistantStopReasonOnly("r1", "end_turn", "2026-09-17T09:00:07.000Z")).Records);
+
+	CHECK(timeline.GetVersion() > before);
+	CHECK(timeline.GetRequests()[0].FinishedAt == "2026-09-17T09:00:07.000Z");
+	CHECK(timeline.GetRequests()[0].Waited == std::chrono::milliseconds{7000});
 }
 
 TEST_CASE("A tools delta says only what it did, and counts one tool as one")

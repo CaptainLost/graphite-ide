@@ -82,7 +82,18 @@ namespace Graphite {
 		std::string Key;       // requestId, else uuid
 		std::string Model;
 		bool Fast = false;
-		std::string RespondedAt;
+		std::string RespondedAt; // the response's first record
+
+		// When the request went out, read as the last record written before its response: the
+		// prompt, or the last tool result or attachment it carries. Empty when nothing preceded it.
+		std::string SentAt;
+
+		// The response's last record. A response is written a record per block, and the model
+		// is still writing it until the last one: Claude Code may already have run a tool the
+		// response called, and written its result, between two of them.
+		std::string FinishedAt;
+
+		// From SentAt to FinishedAt: the whole time the model took, not only to its first block.
 		std::optional<std::chrono::milliseconds> Waited;
 		TokenCounts Usage;
 		std::uint64_t Context = 0; // input + cache writes + cache read
