@@ -33,8 +33,8 @@ namespace Graphite {
 		// A bar's width, in requests: the gap between two bars is what is left of one.
 		constexpr double kBarWidth = 0.67;
 
-		// The bar tooltip's widest line, in lines of text, before a long label is cut.
-		constexpr float kTooltipLines = 36.0f;
+		// The bar tooltip's widest line, in font sizes, before a long label is cut.
+		constexpr float kTooltipEms = 36.0f;
 
 		// The chart's series, which name its legend entries too: the context's layers, indexed
 		// by ContextLayer, and the cost line.
@@ -304,30 +304,30 @@ namespace Graphite {
 		// The legend sits on the bars and its entries are buttons: a click there hides a series
 		// and must not also select a request. ImPlot works out the legend's hover as it draws it
 		// in EndPlot, so what is read here is the last frame's, which is where the mouse was
-		// when the button under it was pressed.
-		const bool overLegend = ImPlot::GetCurrentPlot()->Items.Legend.Hovered ||
-								ImPlot::IsLegendEntryHovered(kCostSeries) ||
-								std::any_of(std::begin(kLayerNames), std::end(kLayerNames),
-											[](const char* series) { return ImPlot::IsLegendEntryHovered(series); });
+		// when the button under it was pressed. The legend's box holds every entry, so its
+		// hover covers theirs.
+		const bool overLegend = ImPlot::GetCurrentPlot()->Items.Legend.Hovered;
 
 		if (count > 0 && ImPlot::IsPlotHovered() && !overLegend)
 		{
 			const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
 			const double nearest = std::clamp(std::round(x), 1.0, static_cast<double>(count));
 			const std::size_t position = static_cast<std::size_t>(nearest) - 1;
-			const bool dragging = ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left);
 
 			// A click anywhere over a request's column selects it in the table: the bars are too
 			// thin to be hit exactly once there are a few hundred of them. Taken on release and
-			// only without a drag, which pans the chart.
-			if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !dragging)
+			// only without a drag, which pans the chart. The drag distance outlives the release
+			// that ends it, which is what makes it the test here.
+			if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
 				Reveal(position, m_BuiltGeneration);
 
 			// The tooltip only over the bar itself, not the gap beside it, and not while the
-			// chart is being panned under the mouse.
+			// chart is being panned under the mouse. Asked of the button held now: the drag
+			// distance above is kept until the next click, and would hide the tooltip after any
+			// drag anywhere.
 			const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
-			if (!dragging && std::abs(x - nearest) <= kBarWidth * 0.5 && position < requests.size())
+			if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) && std::abs(x - nearest) <= kBarWidth * 0.5 && position < requests.size())
 				DrawBarTooltip(requests[position], position, context);
 		}
 
@@ -341,7 +341,7 @@ namespace Graphite {
 
 		const SessionPalette& palette = context.Palette;
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
-		const float maxWidth = ImGui::GetFontSize() * kTooltipLines;
+		const float maxWidth = ImGui::GetFontSize() * kTooltipEms;
 		const bool hasUsage = request.Usage.Total() > 0;
 
 		std::string header = "#" + std::to_string(request.Index);
