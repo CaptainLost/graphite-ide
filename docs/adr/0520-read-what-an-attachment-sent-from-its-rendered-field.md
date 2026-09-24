@@ -38,8 +38,8 @@ transcript's reconstruction, marked, is more useful than hiding it.
 
 ### Positive
 
-- Sizes and estimates rest on the real text; the first request's context adds
-  up; the details can show the text itself.
+- Sizes rest on the real text; the first request's context adds up; the
+  details can show the text itself.
 
 ### Negative
 
@@ -57,8 +57,8 @@ transcript's reconstruction, marked, is more useful than hiding it.
   the system prompt and tools again, but they are not listed there: a request's
   items are what it added to the context, and those were already in it.
 - A first request with no snapshot, as in every transcript older than 2.1.260,
-  gets no token estimates: its context is mostly the system prompt and tools it
-  cannot list.
+  lists none of the system prompt or the tools that make up most of its
+  context.
 
 ## Alternatives Considered
 
@@ -73,4 +73,5 @@ transcript's reconstruction, marked, is more useful than hiding it.
 
 ## Related
 
-- ADR 0517 (the transcript reader and index this reading is part of)
+- ADR [0517](0517-read-claude-transcripts-through-a-lazy-index-with-cached-summaries.md)
+  (the transcript reader and index this reading is part of)

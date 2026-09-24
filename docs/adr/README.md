@@ -550,4 +550,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0518](0518-add-implot-as-a-core-dependency.md) | Add ImPlot as a Core dependency | proposed | 2026-09-23 |
 | [0519](0519-run-claude-in-the-ide-s-terminal-rather-than-a-chat-of-our-own.md) | Run Claude in the IDE's terminal rather than a chat of our own | proposed | 2026-09-23 |
 | [0520](0520-read-what-an-attachment-sent-from-its-rendered-field.md) | Read what an attachment sent from its rendered field | proposed | 2026-09-24 |
+| [0521](0521-show-what-a-request-sent-by-size-not-by-guessed-tokens.md) | Show what a request sent by size, not by guessed tokens | proposed | 2026-09-24 |
 <!-- /adr-index -->
