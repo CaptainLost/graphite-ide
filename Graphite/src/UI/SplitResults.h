@@ -6,8 +6,10 @@ namespace Graphite {
 
 	// The stacked, splitter-divided layout used wherever a list sits above a detail pane: any
 	// list of hits, commits or records whose one picked entry is shown in more detail draws it,
-	// so the app's lists all open, divide and close their details the same way. Results on top,
-	// a preview pane below once something is selected, with a draggable divider between them.
+	// so the app's lists all open and divide their details the same way. Results on top, a
+	// preview pane below once something is selected, with a draggable divider between them. A
+	// preview the reader can dismiss closes through DrawPaneClose below — some, like search's
+	// and references', have nothing to dismiss and never call it.
 	// Stacked rather than side by side because what heads such a list — a query field and its
 	// row of toggles, a summary line, a chart and the filters under it — runs the full width
 	// above both, and a preview beside the results would make three columns of a panel that

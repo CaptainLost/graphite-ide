@@ -629,8 +629,10 @@ namespace Graphite {
 		// layout of its own that a newly opened session started without. With the constant, the
 		// saved layout outlives changes to what the table is drawn in — it resets once more,
 		// the time this id changed to the constant — and is one layout for every session's
-		// tab. Everything the table keys by id below it (its rows and cells, its header's
-		// context menu, its scrolling child) derives from this id, not from the window's.
+		// tab. Everything the table keys by id below it — its rows and cells, its header's
+		// context menu — derives from this id, not from the window's. Its scrolling child is
+		// the exception: ImGui names that after the enclosing window, so it and its scroll
+		// stay per session tab, which is what is wanted.
 		static const ImGuiID kTableId = ImHashStr("RequestsView.RequestTable");
 
 		if (!ImGui::BeginTableEx("##requestTable", kTableId, kColumnCount, kFlags))
