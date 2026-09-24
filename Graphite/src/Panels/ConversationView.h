@@ -59,7 +59,12 @@ namespace Graphite {
 			User,
 			Gap,
 			Part,
-			Step
+			Step,
+
+			// An open run's usage line, after its last step: the requests cover every step of
+			// the run, so under the header they would read as the steps' parent. A closed run
+			// draws the line as part of its header row instead.
+			RunUsage
 		};
 
 		struct Row
@@ -67,8 +72,8 @@ namespace Graphite {
 			RowKind Kind = RowKind::User;
 			std::size_t Turn = 0;
 
-			// Part and Step: the index in the turn's parts. Gap: the part it comes before, or
-			// kBeforeUser when it comes before the turn's user block.
+			// Part, Step and RunUsage: the index in the turn's parts. Gap: the part it comes
+			// before, or kBeforeUser when it comes before the turn's user block.
 			std::size_t Part = 0;
 
 			// Step: the index in Turn::Items. Otherwise unused.
@@ -76,6 +81,11 @@ namespace Graphite {
 
 			// Gap: the pause.
 			std::chrono::milliseconds Gap{0};
+
+			// Part: whether it is a run of steps that was open when the rows were built. The
+			// header is a line shorter open than closed, so a height measured in one state must
+			// not be kept for the other.
+			bool Open = false;
 		};
 
 		static constexpr std::size_t kBeforeUser = SIZE_MAX;
@@ -90,6 +100,7 @@ namespace Graphite {
 		void DrawReply(const Turn& turn, const TurnPart& part, std::size_t row, const ConversationContext& context);
 		void DrawStepsHeader(const Session& session, const Turn& turn, const TurnPart& part, std::size_t row,
 							 const ConversationContext& context);
+		void DrawRunUsage(const TurnPart& part, std::size_t row, const ConversationContext& context);
 		void DrawStep(const Session& session, const TurnItem& item, std::size_t row, const ConversationContext& context,
 					  Core::EventBus& events);
 		void DrawInjected(const TurnItem& item, std::size_t row, const ConversationContext& context);

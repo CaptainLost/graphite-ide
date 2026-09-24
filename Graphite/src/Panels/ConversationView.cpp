@@ -92,7 +92,7 @@ namespace Graphite {
 			draw->ChannelsMerge();
 		}
 
-		using RowIdentity = std::tuple<int, std::size_t, std::size_t, std::size_t>;
+		using RowIdentity = std::tuple<int, std::size_t, std::size_t, std::size_t, bool>;
 	}
 
 	void ConversationView::Toggle(std::set<std::pair<std::size_t, std::size_t>>& open,
@@ -125,7 +125,7 @@ namespace Graphite {
 		}
 
 		const auto identity = [](const Row& row)
-		{ return RowIdentity{static_cast<int>(row.Kind), row.Turn, row.Part, row.Item}; };
+		{ return RowIdentity{static_cast<int>(row.Kind), row.Turn, row.Part, row.Item, row.Open}; };
 
 		// Heights are kept by what a row shows, not by its index: opening a run of steps
 		// inserts rows in the middle, and every row after it would otherwise take the height of
@@ -181,12 +181,18 @@ namespace Graphite {
 					continue;
 
 				gapTo(current.Items[split.Items.front()].At, turn, part);
-				rows.push_back({RowKind::Part, turn, part, 0, {}});
 
-				if (split.Kind == PartKind::Steps && m_OpenParts.contains({turn, part}))
+				const bool open = split.Kind == PartKind::Steps && m_OpenParts.contains({turn, part});
+				rows.push_back({RowKind::Part, turn, part, 0, {}, open});
+
+				if (open)
 				{
 					for (const std::size_t item : split.Items)
 						rows.push_back({RowKind::Step, turn, part, item, {}});
+
+					// The usage line closes the run, below whatever its steps opened to.
+					if (split.Requests > 0)
+						rows.push_back({RowKind::RunUsage, turn, part, 0, {}});
 				}
 
 				// When the part last did anything, not when its last item was written: a tool
@@ -237,6 +243,7 @@ namespace Graphite {
 		case RowKind::Step:
 			return line;
 		case RowKind::Part:
+		case RowKind::RunUsage:
 			break;
 		}
 
@@ -246,6 +253,9 @@ namespace Graphite {
 		const float requests =
 			m_OpenUsage.contains({row.Turn, row.Part}) ? line * static_cast<float>(part.RequestKeys.size()) : 0.0f;
 
+		if (row.Kind == RowKind::RunUsage)
+			return line + requests;
+
 		switch (part.Kind)
 		{
 		case PartKind::Reply:
@@ -254,6 +264,10 @@ namespace Graphite {
 			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y * 1.1f + 2.0f * line + requests;
 		}
 		case PartKind::Steps:
+			// An open run's usage line is a row of its own, after its steps.
+			if (row.Open)
+				return line;
+
 			return (part.Requests > 0 ? 2.0f * line : line) + requests;
 		case PartKind::Injected:
 			return line;
@@ -459,12 +473,25 @@ namespace Graphite {
 		DrawPiece(at, context.Palette.TextDisabled, duration + statusDot);
 		DrawPiece(at, part.Failures > 0 ? context.Palette.Failed : ink, status);
 
-		if (part.Requests > 0)
+		// Open, the run's usage line is a row of its own after the steps: see DrawRunUsage.
+		if (part.Requests > 0 && !open)
 		{
 			ImGui::Indent(kBarGap);
 			DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
 			ImGui::Unindent(kBarGap);
 		}
+	}
+
+	void ConversationView::DrawRunUsage(const TurnPart& part, std::size_t row, const ConversationContext& context)
+	{
+		// Indented as a step row is, and past the gap a step leaves for its bar, so the line
+		// starts where the steps' text does. It draws no bar of its own: it is no tool, and a
+		// closed run's usage line has none either.
+		ImGui::Indent();
+		ImGui::Indent(kBarGap);
+		DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
+		ImGui::Unindent(kBarGap);
+		ImGui::Unindent();
 	}
 
 	void ConversationView::DrawStep(const Session& session, const TurnItem& item, std::size_t row,
@@ -864,6 +891,9 @@ namespace Graphite {
 			ImGui::Indent();
 			DrawStep(session, turn.Items[row.Item], index, context, events);
 			ImGui::Unindent();
+			break;
+		case RowKind::RunUsage:
+			DrawRunUsage(m_Parts[row.Turn][row.Part], index, context);
 			break;
 		}
 
