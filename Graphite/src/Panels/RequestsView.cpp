@@ -14,37 +14,18 @@
 
 #include <imgui.h>
 #include <imgui_internal.h>
-#include <implot.h>
-#include <implot_internal.h>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <functional>
 #include <iterator>
-#include <limits>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
-		// The chart's height, in lines of text: tall enough to tell a cache rebuild from its
-		// neighbours, short enough to leave most of the tab to the table.
-		constexpr float kChartLines = 12.0f;
-
 		constexpr std::size_t kToolNameBytes = 80;
-
-		// A bar's width, in requests: the gap between two bars is what is left of one.
-		constexpr double kBarWidth = 0.67;
-
-		// The bar tooltip's widest line, in font sizes, before a long label is cut.
-		constexpr float kTooltipEms = 36.0f;
-
-		// The chart's series, which name its legend entries too: the context's layers, indexed
-		// by ContextLayer, and the cost line.
-		constexpr const char* kLayerNames[kContextLayers] = {"Cache read", "Cache write", "Uncached input"};
-		constexpr const char* kCostSeries = "Cost";
 
 		// The table's columns, in the order they start in. The sort column travels as the
 		// column's user id, so a reader's reordering or hiding never changes what a sort means.
@@ -74,32 +55,6 @@ namespace Graphite {
 		};
 
 		constexpr int kColumnCount = static_cast<int>(std::size(kColumns));
-
-		ImVec4 Colour(ImU32 colour)
-		{
-			return ImGui::ColorConvertU32ToFloat4(colour);
-		}
-
-		ImU32 LayerColour(const SessionPalette& palette, std::size_t layer)
-		{
-			switch (static_cast<ContextLayer>(layer))
-			{
-			case ContextLayer::CacheRead: return palette.Web;
-			case ContextLayer::CacheWrite: return palette.Edit;
-			case ContextLayer::Uncached: return palette.Run;
-			}
-
-			return palette.Other;
-		}
-
-		// Whether the legend shows the series: an item ImPlot has not seen yet is shown, which
-		// is how it starts. Only after SetupFinish, which pushes the id the items are hashed
-		// under.
-		bool SeriesShown(const char* label)
-		{
-			const ImPlotItem* item = ImPlot::GetItem(label);
-			return item == nullptr || item->Show;
-		}
 
 		// One cell's text, cut to the column so it never runs into the next, and pushed to the
 		// right edge for a number so a column of them lines up.
@@ -156,7 +111,7 @@ namespace Graphite {
 		}
 
 		// Within one generation the timeline only grows. Of what is kept here per request — the
-		// tools it used, its chart layers — only the last request's can still change: the rest of
+		// tools it used — only the last request's can still change: the rest of
 		// its response is still being written. An earlier request can change too, when a prompt
 		// snapshot puts the system prompt and the tools at the head of the first one, but those
 		// are neither tool results nor usage, and nothing kept here reads them. So the ones before
@@ -173,9 +128,6 @@ namespace Graphite {
 
 		m_ToolNames.resize(requests.size());
 		m_ToolLabels.resize(requests.size());
-		m_ChartX.resize(requests.size());
-		m_Layers.resize(requests.size());
-		m_StackedFor.reset();
 
 		for (std::size_t position = from; position < requests.size(); ++position)
 		{
@@ -188,9 +140,6 @@ namespace Graphite {
 			for (const std::string& name : m_ToolNames[position])
 				label += (label.empty() ? "" : ", ") + SingleLineLabel(name, kToolNameBytes);
 			m_ToolLabels[position] = std::move(label);
-
-			m_ChartX[position] = static_cast<double>(request.Index);
-			m_Layers[position] = LayersOf(request);
 		}
 
 		m_PriceFrom = std::min(m_PriceFrom, from);
@@ -216,15 +165,11 @@ namespace Graphite {
 			return;
 
 		m_Costs.resize(requests.size());
-		m_ChartCost.resize(requests.size());
 
-		// A request with no price has no point on the line, rather than a point at zero.
 		for (std::size_t position = std::min(m_PriceFrom, requests.size()); position < requests.size(); ++position)
 		{
 			const ApiRequest& request = requests[position];
 			m_Costs[position] = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}});
-			m_ChartCost[position] =
-				m_Costs[position].IsKnown() ? m_Costs[position].Dollars : std::numeric_limits<double>::quiet_NaN();
 		}
 
 		m_PriceFrom = requests.size();
@@ -234,6 +179,7 @@ namespace Graphite {
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 		m_Shown.clear();
+		m_Passes.assign(requests.size(), false);
 
 		for (std::size_t position = 0; position < requests.size(); ++position)
 		{
@@ -246,231 +192,11 @@ namespace Graphite {
 				continue;
 
 			m_Shown.push_back(position);
+			m_Passes[position] = true;
 		}
 
 		SortRequests(m_Shown, requests, m_SortColumn, m_SortAscending, pricing);
 		m_FilterDirty = false;
-	}
-
-	void RequestsView::DrawChart(const RequestTimeline& timeline, const ConversationContext& context)
-	{
-		const SessionPalette& palette = context.Palette;
-		const int count = static_cast<int>(m_ChartX.size());
-
-		if (!ImPlot::BeginPlot("##requestsChart", ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
-			return;
-
-		// The requests axis is set once and then left to the reader to pan and zoom; the value
-		// axes follow whatever part of it is in view.
-		ImPlot::SetupAxis(ImAxis_X1, "Request", ImPlotAxisFlags_None);
-		ImPlot::SetupAxisLimits(ImAxis_X1, 0.5, static_cast<double>(count) + 0.5, ImPlotCond_Once);
-		ImPlot::SetupAxis(ImAxis_Y1, "Tokens", ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
-		ImPlot::SetupAxis(ImAxis_Y2, "Dollars",
-						  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
-		ImPlot::SetupLegend(ImPlotLocation_NorthWest);
-
-		// Finished by hand so the legend's show state can be read before anything is plotted.
-		ImPlot::SetupFinish();
-
-		// Stacked by drawing each layer's bar from the top down, every one over the last, to the
-		// height the layers the legend shows reach: PlotBarGroups takes its colours from the
-		// colormap and fixes them when an item is first seen, where this chart's must follow the
-		// scheme. A hidden layer is still plotted, so its legend entry stays to show it again;
-		// ImPlot draws nothing for it, and the layers above it come down by what it held.
-		std::array<bool, kContextLayers> shown{};
-		for (std::size_t layer = 0; layer < kContextLayers; ++layer)
-			shown[layer] = SeriesShown(kLayerNames[layer]);
-
-		if (m_StackedFor != shown)
-		{
-			for (std::vector<double>& tops : m_ChartTops)
-				tops.resize(m_Layers.size());
-
-			for (std::size_t position = 0; position < m_Layers.size(); ++position)
-			{
-				const ContextLayers tops = StackedTops(m_Layers[position], shown);
-
-				for (std::size_t layer = 0; layer < kContextLayers; ++layer)
-					m_ChartTops[layer][position] = tops[layer];
-			}
-
-			m_StackedFor = shown;
-		}
-
-		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
-
-		for (std::size_t layer = kContextLayers; layer-- > 0;)
-		{
-			ImPlot::SetNextFillStyle(Colour(LayerColour(palette, layer)));
-			ImPlot::PlotBars(kLayerNames[layer], m_ChartX.data(), m_ChartTops[layer].data(), count, kBarWidth);
-		}
-
-		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
-		ImPlot::SetNextLineStyle(Colour(palette.Accent));
-		ImPlot::PlotLine(kCostSeries, m_ChartX.data(), m_ChartCost.data(), count, ImPlotLineFlags_SkipNaN);
-
-		// The legend sits on the bars and its entries are buttons: a click there hides a series
-		// and must not also select a request. ImPlot works out the legend's hover as it draws it
-		// in EndPlot, so what is read here is the last frame's, which is where the mouse was
-		// when the button under it was pressed. The legend's box holds every entry, so its
-		// hover covers theirs.
-		const bool overLegend = ImPlot::GetCurrentPlot()->Items.Legend.Hovered;
-
-		if (count > 0 && ImPlot::IsPlotHovered() && !overLegend)
-		{
-			const double x = ImPlot::GetPlotMousePos(ImAxis_X1, ImAxis_Y1).x;
-			const double nearest = std::clamp(std::round(x), 1.0, static_cast<double>(count));
-			const std::size_t position = static_cast<std::size_t>(nearest) - 1;
-
-			// A click anywhere over a request's column selects it in the table: the bars are too
-			// thin to be hit exactly once there are a few hundred of them. Taken on release and
-			// only without a drag, which pans the chart. The drag distance outlives the release
-			// that ends it, which is what makes it the test here.
-			if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
-				Reveal(position, m_BuiltGeneration);
-
-			// The tooltip only over the bar itself, not the gap beside it, and not while the
-			// chart is being panned under the mouse. Asked of the button held now: the drag
-			// distance above is kept until the next click, and would hide the tooltip after any
-			// drag anywhere.
-			const std::vector<ApiRequest>& requests = timeline.GetRequests();
-
-			if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) && std::abs(x - nearest) <= kBarWidth * 0.5 && position < requests.size())
-				DrawBarTooltip(requests[position], position, context);
-		}
-
-		ImPlot::EndPlot();
-	}
-
-	void RequestsView::DrawBarTooltip(const ApiRequest& request, std::size_t position, const ConversationContext& context)
-	{
-		if (!ImGui::BeginTooltip())
-			return;
-
-		const SessionPalette& palette = context.Palette;
-		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
-		const float maxWidth = ImGui::GetFontSize() * kTooltipEms;
-		const bool hasUsage = request.Usage.Total() > 0;
-
-		std::string header = "#" + std::to_string(request.Index);
-
-		if (const std::string time = m_Clock.Format(request.RespondedAt, ClockStyle::DateTime); !time.empty())
-			header += kDot + time;
-
-		if (!request.Model.empty())
-			header += kDot + SingleLineLabel(ShortModelName(request.Model), kToolNameBytes) + (request.Fast ? " fast" : "");
-
-		ColouredText(ink, Fitted(header, maxWidth));
-
-		// The context and its layers, each after a swatch in its bar's colour, the numbers lined
-		// up on the right of one column. A part the request does not carry is left out, as in
-		// its line.
-		if (hasUsage)
-		{
-			std::string total = "Context " + FormatTokens(request.Context);
-
-			if (request.ContextDelta)
-				total += " (" + SignedTokens(*request.ContextDelta) + ")";
-
-			ColouredText(ink, total);
-
-			const ContextLayers layers = LayersOf(request);
-			std::array<std::string, kContextLayers> numbers;
-			float labelWidth = 0.0f;
-			float numberWidth = 0.0f;
-
-			for (std::size_t layer = 0; layer < kContextLayers; ++layer)
-			{
-				numbers[layer] = FormatTokens(static_cast<std::uint64_t>(layers[layer]));
-				labelWidth = std::max(labelWidth, ImGui::CalcTextSize(kLayerNames[layer]).x);
-				numberWidth = std::max(numberWidth, ImGui::CalcTextSize(numbers[layer].c_str()).x);
-			}
-
-			const float lineHeight = ImGui::GetTextLineHeight();
-			const float space = ImGui::GetStyle().ItemSpacing.x;
-			const float indent = ImGui::GetFontSize();
-			const float swatch = std::round(lineHeight * 0.55f);
-
-			for (std::size_t layer = 0; layer < kContextLayers; ++layer)
-			{
-				const ImVec2 start = ImGui::GetCursorScreenPos();
-				const float swatchTop = std::floor(start.y + (lineHeight - swatch) * 0.5f);
-
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(start.x + indent, swatchTop),
-														  ImVec2(start.x + indent + swatch, swatchTop + swatch),
-														  LayerColour(palette, layer));
-
-				ImVec2 at(start.x + indent + swatch + space, start.y);
-				const float numbersRight = at.x + labelWidth + 2.0f * space + numberWidth;
-
-				DrawPiece(at, ink, kLayerNames[layer]);
-
-				at.x = numbersRight - ImGui::CalcTextSize(numbers[layer].c_str()).x;
-				DrawPiece(at, ink, numbers[layer]);
-
-				// The cached share, on the layer it is the share of.
-				if (static_cast<ContextLayer>(layer) == ContextLayer::CacheRead && request.Context > 0)
-				{
-					at.x = numbersRight + 2.0f * space;
-					DrawPiece(at, palette.TextDisabled,
-							  std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "%");
-				}
-
-				// The pieces go through the draw list; this is the line's one item, as wide as
-				// they reach, so the tooltip is sized to them.
-				ImGui::Dummy(ImVec2(std::max(at.x, numbersRight) - start.x, lineHeight));
-			}
-		}
-
-		std::string outcome;
-		const auto add = [&outcome](const std::string& part) { outcome += (outcome.empty() ? "" : kDot) + part; };
-
-		if (hasUsage)
-		{
-			add("Out " + FormatTokens(request.Usage.Output));
-
-			if (position < m_Costs.size())
-				add(FormatCost(m_Costs[position]));
-		}
-
-		if (request.Waited)
-			add("wait " + WaitText(*request.Waited));
-
-		if (!request.StopReason.empty())
-			add(SingleLineLabel(request.StopReason, 60));
-
-		if (!outcome.empty())
-			ColouredText(ink, Fitted(outcome, maxWidth));
-
-		if (position < m_ToolLabels.size() && !m_ToolLabels[position].empty())
-			ColouredText(palette.TextDisabled, Fitted("Tools: " + m_ToolLabels[position], maxWidth));
-
-		if (request.Sent.empty())
-		{
-			ColouredText(palette.TextDisabled, "Sent: nothing new");
-		}
-		else
-		{
-			// The biggest item is the one a reader looking at a jump in the context wants named.
-			const SentItem& largest =
-				*std::max_element(request.Sent.begin(), request.Sent.end(),
-								  [](const SentItem& a, const SentItem& b) { return a.Bytes < b.Bytes; });
-
-			// "—" is U+2014.
-			const std::size_t items = request.Sent.size();
-			const std::string prefix =
-				"Sent: " + std::to_string(items) + (items == 1 ? " item" : " items") + " \xe2\x80\x94 largest: ";
-			const std::string suffix = "  " + FormatBytes(largest.Bytes);
-
-			// The label gives way to the numbers after it, down to a few characters.
-			const float room =
-				std::max(maxWidth - ImGui::CalcTextSize(prefix.c_str()).x - ImGui::CalcTextSize(suffix.c_str()).x,
-						 ImGui::GetFontSize() * 6.0f);
-
-			ColouredText(palette.TextDisabled, prefix + Fitted(SingleLineLabel(largest.Label, 400), room) + suffix);
-		}
-
-		ImGui::EndTooltip();
 	}
 
 	void RequestsView::DrawFilters(const RequestTimeline& timeline, const Pricing& pricing)
@@ -897,7 +623,21 @@ namespace Graphite {
 			return;
 		}
 
-		DrawChart(timeline, context);
+		// Filtered before the chart is drawn, so it dims what the table leaves out from the
+		// frame a request arrives. A filter the reader changes below is taken on the next frame.
+		if (m_FilterDirty)
+			Filter(timeline, context.Prices);
+
+		const RequestChartInput chartInput{.Timeline = timeline,
+										   .Costs = m_Costs,
+										   .ToolLabels = m_ToolLabels,
+										   .Passes = m_Passes,
+										   .Selected = m_Selected,
+										   .Generation = m_BuiltGeneration};
+
+		if (const std::optional<std::size_t> clicked = m_Chart.Draw(chartInput, context))
+			Reveal(*clicked, m_BuiltGeneration);
+
 		DrawFilters(timeline, context.Prices);
 
 		// The table fills the tab until a request is picked, and then shares it with that
