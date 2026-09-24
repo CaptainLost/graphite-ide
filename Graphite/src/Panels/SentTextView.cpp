@@ -106,8 +106,10 @@ namespace Graphite {
 
 			if (otherRequest)
 			{
+				// A scroll asked for on the request shown before names an item of that one.
 				ImGui::SetScrollY(0.0f);
 				m_MenuSegment.reset();
+				m_PendingScroll.reset();
 			}
 
 			m_BuiltKey = request.Key;

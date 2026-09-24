@@ -95,8 +95,12 @@ namespace Graphite {
 		// The item the list scrolls to on the next draw: one clicked in the text.
 		std::optional<std::size_t> m_RevealItem;
 
-		// The request the details last drew, to notice another one.
-		std::optional<std::size_t> m_DetailsFor;
+		// The request the details last drew — its Key, and its Index for a request with no key —
+		// and how many items it had sent, to notice another request, or items put ahead of the
+		// selected one. Index 0 is no request: a request's Index starts at 1.
+		std::string m_DetailsKey;
+		std::size_t m_DetailsIndex = 0;
+		std::size_t m_DetailsSent = 0;
 
 		// The list's width left of the handle; below zero until the first draw picks one.
 		float m_ItemsWidth = -1.0f;

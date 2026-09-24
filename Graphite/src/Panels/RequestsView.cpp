@@ -152,9 +152,12 @@ namespace Graphite {
 			m_PriceFrom = 0;
 		}
 
-		// Within one generation the timeline only grows, and of the requests already built only
-		// the last can still change: the rest of its response is still being written. The ones
-		// before it are kept as they are. A timeline that shrank all the same is built again.
+		// Within one generation the timeline only grows. Of what is kept here per request — the
+		// tools it used, its chart layers — only the last request's can still change: the rest of
+		// its response is still being written. An earlier request can change too, when a prompt
+		// snapshot puts the system prompt and the tools at the head of the first one, but those
+		// are neither tool results nor usage, and nothing kept here reads them. So the ones before
+		// the last are kept as they are. A timeline that shrank all the same is built again.
 		if (requests.size() < m_ToolNames.size())
 		{
 			m_ToolNames.clear();
@@ -706,34 +709,48 @@ namespace Graphite {
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
+		// The details have no side padding of their own (see Draw): the line above the two
+		// panes is moved in by it, to sit under the table's edge.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const ImVec2 padding = style.WindowPadding;
+		const float width = ImGui::GetContentRegionAvail().x;
+
 		if (!m_Selected || *m_Selected >= requests.size())
 		{
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding.x);
 			ImGui::TextDisabled("Select a request to see what it sent and returned.");
 			return;
 		}
 
 		const ApiRequest& request = requests[*m_Selected];
 
-		if (m_DetailsFor != m_Selected)
+		// Another request, or new items put ahead of the ones this one had — a prompt snapshot
+		// arriving under the first request — and the selected position names some other item.
+		// Items added after them, as a response is written, move nothing.
+		if (request.Key != m_DetailsKey || request.Index != m_DetailsIndex || request.Sent.size() != m_DetailsSent)
 		{
 			m_SelectedItem.reset();
 			m_RevealItem.reset();
-			m_DetailsFor = m_Selected;
+			m_DetailsKey = request.Key;
+			m_DetailsIndex = request.Index;
+			m_DetailsSent = request.Sent.size();
 		}
 
 		// A request whose items shrank under a live transcript's rewrite has no such item.
 		if (m_SelectedItem && *m_SelectedItem >= SegmentCount(request))
 			m_SelectedItem.reset();
 
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding.x);
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
-							ImGui::GetContentRegionAvail().x));
+							width - 2.0f * padding.x));
 
 		// The items on the left, their text on the right, and between them a handle that moves
-		// the line between the two. Each side keeps some width however far it is dragged.
-		const ImGuiStyle& style = ImGui::GetStyle();
+		// the line between the two. Each side keeps some width however far it is dragged. The
+		// text stops a padding short of the right edge, so its scrollbar lines up with the
+		// table's above, which sits inside that padding.
 		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
-		const float room = ImGui::GetContentRegionAvail().x - handle - 2.0f * style.ItemSpacing.x;
+		const float room = width - padding.x - handle - 2.0f * style.ItemSpacing.x;
 		const float minimum = ImGui::GetFontSize() * 12.0f;
 
 		if (m_ItemsWidth < 0.0f)
@@ -742,7 +759,13 @@ namespace Graphite {
 		const float itemsWidth = std::max(std::min(m_ItemsWidth, room - minimum), minimum);
 		std::optional<std::size_t> hovered;
 
-		if (ImGui::BeginChild("##detailItems", ImVec2(itemsWidth, 0.0f)))
+		// Each pane pads its sides, so what it draws at its right keeps a gap before its
+		// scrollbar, as the table's cells do; the rows run to the top and the bottom.
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding.x, 0.0f));
+		const bool itemsOpen = ImGui::BeginChild("##detailItems", ImVec2(itemsWidth, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding);
+		ImGui::PopStyleVar();
+
+		if (itemsOpen)
 		{
 			const DetailsPick pick =
 				DrawRequestDetails(request, context.Palette, m_SelectedItem, std::exchange(m_RevealItem, std::nullopt));
@@ -779,7 +802,11 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (ImGui::BeginChild("##sentText", ImVec2(0.0f, 0.0f)))
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding.x, 0.0f));
+		const bool textOpen = ImGui::BeginChild("##sentText", ImVec2(-padding.x, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding);
+		ImGui::PopStyleVar();
+
+		if (textOpen)
 		{
 			if (const std::optional<std::size_t> clicked =
 					m_SentText.Draw(request, timeline.GetVersion(), m_SelectedItem, hovered, context.Palette))
@@ -850,8 +877,15 @@ namespace Graphite {
 		ImGui::GetWindowDrawList()->AddLine(ImVec2(handleAt.x, lineY), ImVec2(handleAt.x + handleWidth, lineY),
 											ImGui::GetColorU32(lineColour));
 
-		if (ImGui::BeginChild("##requestDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+		// Padded above and below only: the two panes inside pad their own sides, and padded here
+		// as well the list's rows would start two paddings in, a padding right of the table's
+		// edge and of the line above them.
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, style.WindowPadding.y));
+		const bool detailsOpen = ImGui::BeginChild("##requestDetails", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding,
+												   ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+		ImGui::PopStyleVar();
+
+		if (detailsOpen)
 			DrawDetails(timeline, context);
 
 		ImGui::EndChild();
