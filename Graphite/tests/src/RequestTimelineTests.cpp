@@ -67,7 +67,9 @@ namespace {
 		{
 			attachment["cliPrefix"] = "Prefix.";
 			attachment["tools"] = nlohmann::json::array(
-				{nlohmann::json{{"name", "Read"}, {"description", "Reads."}, {"input_schema", {{"type", "object"}}}}});
+				{nlohmann::json{{"name", "Read"},
+								{"description", "Reads."},
+								{"schema", {{"name", "Read"}, {"description", "Reads."}, {"input_schema", {{"type", "object"}}}}}}});
 		}
 
 		return Fixtures::VersionedAttachment(attachment, "2.1.280");

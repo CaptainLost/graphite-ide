@@ -45,6 +45,10 @@ namespace Graphite {
 
 	std::string FormatBytes(std::uint64_t bytes);
 
+	// An image in the text a request sent, "[image/png, 3.0 KB]": what it is and how big, since
+	// its pixels are not text. Whatever is not known is left out, down to "[image]".
+	std::string ImageText(std::string_view mediaType, std::uint64_t bytes);
+
 	// The share of `context` read from the cache, as a whole percent cut rather than rounded:
 	// 99.9% is not all of it. Zero for no context.
 	int CachedPercent(std::uint64_t cacheRead, std::uint64_t context);

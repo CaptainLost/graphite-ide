@@ -521,13 +521,25 @@ TEST_CASE("An image block with a missing or mistyped source is still an image, w
 
 TEST_CASE("A prompt snapshot carries the system prompt and the tool schemas as text")
 {
+	// As Claude Code writes a tool: its name and description, and the definition the API got
+	// nested under `schema`, the input schema inside it.
 	const nlohmann::json schema = {{"type", "object"}};
+	const auto tool = [&schema](const char* name, const char* description)
+	{
+		return nlohmann::json{{"name", name},
+							  {"description", description},
+							  {"schema",
+							   {{"name", name},
+								{"description", description},
+								{"input_schema", schema},
+								{"eager_input_streaming", true}}}};
+	};
+
 	const std::string bytes = Fixtures::VersionedAttachment(
 		{{"type", "prompt_snapshot"},
 		 {"cliPrefix", "You are Claude Code."},
 		 {"systemPrompt", nlohmann::json::array({"First.", "Second."})},
-		 {"tools", nlohmann::json::array({nlohmann::json{{"name", "Read"}, {"description", "Reads a file."}, {"input_schema", schema}},
-										  nlohmann::json{{"name", "Bash"}, {"description", "Runs."}, {"input_schema", schema}}})}},
+		 {"tools", nlohmann::json::array({tool("Read", "Reads a file."), tool("Bash", "Runs.")})}},
 		"2.1.280");
 
 	const TranscriptChunk chunk = ParseTranscript(bytes);
@@ -564,6 +576,86 @@ TEST_CASE("A prompt snapshot without tools, or without a system prompt, says onl
 	CHECK(chunk.Records[1].SystemPromptText.empty());
 	CHECK(chunk.Records[1].ToolSchemaCount == 1);
 	CHECK(chunk.Records[1].ToolSchemasText == "Read");
+}
+
+TEST_CASE("A tool with its input schema at the top rather than nested is read all the same")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
+		{{"type", "prompt_snapshot"},
+		 {"systemPrompt", nlohmann::json::array({"Only."})},
+		 {"tools", nlohmann::json::array({nlohmann::json{{"name", "Read"}, {"input_schema", {{"type", "object"}}}}})}},
+		"2.1.280"));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].ToolSchemasText == "Read\n\n{\n  \"type\": \"object\"\n}");
+}
+
+TEST_CASE("The system prompt leaves out the marker Claude Code splits its cache at")
+{
+	// The marker is Claude Code's own, where the cached part of the prompt ends; it is not
+	// text the model reads.
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
+		{{"type", "prompt_snapshot"},
+		 {"systemPrompt",
+		  nlohmann::json::array({"First.", "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__", "Second.", " __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__\n",
+								 "Mentions __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__ in passing."})}},
+		"2.1.280"));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].SystemPromptText ==
+		  "First.\n\nSecond.\n\nMentions __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__ in passing.");
+}
+
+TEST_CASE("A system prompt that is only the marker is no system prompt")
+{
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
+		{{"type", "prompt_snapshot"},
+		 {"cliPrefix", "Prefix."},
+		 {"systemPrompt", nlohmann::json::array({"__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__"})}},
+		"2.1.280"));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].SystemPromptText.empty());
+}
+
+TEST_CASE("A queued prompt without rendered text was still sent, and is reconstructed")
+{
+	// A queued prompt the model answered was sent whatever the version says: 2.1.261 wrote
+	// some without `rendered`.
+	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
+		{{"type", "queued_command"}, {"prompt", "also this"}, {"origin", {{"kind", "human"}}}, {"commandMode", "prompt"}},
+		"2.1.280"));
+
+	REQUIRE(chunk.Records.size() == 1);
+	CHECK(chunk.Records[0].AttachmentSent);
+	CHECK(chunk.Records[0].AttachmentApproximate);
+	CHECK(chunk.Records[0].AttachmentText == "also this");
+	CHECK(chunk.Records[0].QueuedPrompt == "also this");
+}
+
+TEST_CASE("A queued prompt given as blocks is its text with a placeholder for each image, not the image's data")
+{
+	// 4096 characters of base64 decode to 3072 bytes.
+	const nlohmann::json blocks = nlohmann::json::array(
+		{Fixtures::TextBlock("look at this [Image #2]"), Fixtures::ImageBlock("image/png", std::string(4096, 'A'))});
+	const nlohmann::json imageOnly = nlohmann::json::array({Fixtures::ImageBlock("image/png", std::string(4096, 'A'))});
+
+	const TranscriptChunk chunk = ParseTranscript(
+		Fixtures::VersionedAttachment(
+			{{"type", "queued_command"}, {"prompt", blocks}, {"origin", {{"kind", "human"}}}, {"commandMode", "prompt"}},
+			"2.1.261") +
+		Fixtures::VersionedAttachment(
+			{{"type", "queued_command"}, {"prompt", imageOnly}, {"origin", {{"kind", "human"}}}, {"commandMode", "prompt"}},
+			"2.1.261"));
+
+	REQUIRE(chunk.Records.size() == 2);
+	CHECK(chunk.Records[0].AttachmentSent);
+	CHECK(chunk.Records[0].AttachmentApproximate);
+	CHECK(chunk.Records[0].AttachmentText == "look at this [Image #2]\n[image/png, 3.0 KB]");
+	CHECK(chunk.Records[0].QueuedPrompt == "look at this [Image #2]\n[image/png, 3.0 KB]");
+
+	CHECK(chunk.Records[1].AttachmentText == "[image/png, 3.0 KB]");
+	CHECK(chunk.Records[1].QueuedPrompt == "[image/png, 3.0 KB]");
 }
 
 TEST_CASE("Only a prompt snapshot fills the snapshot fields")

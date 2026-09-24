@@ -1,5 +1,7 @@
 #include "Sessions/TranscriptReader.h"
 
+#include "Sessions/ToolFacts.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -262,11 +264,60 @@ namespace Graphite {
 			return joined;
 		}
 
-		// The CLI prefix and the system prompt's blocks, a blank line between. A snapshot with
-		// no blocks has no system prompt, whatever prefix it carries.
+		// A queued prompt as the model got it: the text typed, or, for a prompt Claude Code kept
+		// as blocks because an image was pasted into it, each text block a line apiece and each
+		// image named as the request's own images are, never its data. Nothing when the field
+		// is neither.
+		std::optional<std::string> PromptText(const nlohmann::json& attachment)
+		{
+			const auto found = attachment.find("prompt");
+
+			if (found == attachment.end())
+				return std::nullopt;
+			if (found->is_string())
+				return found->get<std::string>();
+			if (!found->is_array())
+				return std::nullopt;
+
+			std::vector<std::string> lines;
+
+			// Base64 carries three bytes in every four characters. A block of any other kind
+			// is not part of what the user typed.
+			for (const nlohmann::json& element : *found)
+			{
+				const ContentBlock block = ParseBlock(element);
+
+				if (block.Kind == BlockKind::Text)
+					lines.push_back(block.Text);
+				else if (block.Kind == BlockKind::Image)
+					lines.push_back(ImageText(block.Text, block.DataBytes * 3 / 4));
+			}
+
+			return JoinedWith(lines, "\n");
+		}
+
+		// Where Claude Code splits the system prompt between the part it caches and the part it
+		// does not: a block of its own, not text the model reads.
+		constexpr std::string_view kDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
+
+		bool IsDynamicBoundary(std::string_view block)
+		{
+			constexpr std::string_view whitespace = " \t\r\n";
+			const std::size_t first = block.find_first_not_of(whitespace);
+
+			if (first == std::string_view::npos)
+				return false;
+
+			return block.substr(first, block.find_last_not_of(whitespace) + 1 - first) == kDynamicBoundary;
+		}
+
+		// The CLI prefix and the system prompt's blocks, a blank line between, less the cache
+		// marker. A snapshot with no other blocks has no system prompt, whatever prefix it
+		// carries.
 		std::string SystemPromptText(const nlohmann::json& snapshot)
 		{
 			std::vector<std::string> blocks = StringsAt(snapshot, "systemPrompt");
+			std::erase_if(blocks, [](const std::string& block) { return IsDynamicBoundary(block); });
 
 			if (blocks.empty())
 				return {};
@@ -275,6 +326,21 @@ namespace Graphite {
 				blocks.insert(blocks.begin(), std::move(prefix));
 
 			return JoinedWith(blocks, "\n\n");
+		}
+
+		// A tool's input schema: Claude Code nests the definition it sent under `schema`; one
+		// written with the input schema beside the name is read from there. Nothing when
+		// neither has it.
+		const nlohmann::json* InputSchemaOf(const nlohmann::json& tool)
+		{
+			if (const auto nested = tool.find("schema"); nested != tool.end() && nested->is_object())
+			{
+				if (const auto schema = nested->find("input_schema"); schema != nested->end())
+					return &*schema;
+			}
+
+			const auto schema = tool.find("input_schema");
+			return schema != tool.end() ? &*schema : nullptr;
 		}
 
 		// Each tool as the model reads its definition: name, description, and input schema
@@ -297,7 +363,7 @@ namespace Graphite {
 					if (std::string description = StringAt(tool, "description"); !description.empty())
 						parts.push_back(std::move(description));
 
-					if (const auto schema = tool.find("input_schema"); schema != tool.end())
+					if (const nlohmann::json* schema = InputSchemaOf(tool))
 						parts.push_back(schema->dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
 
 					tools.push_back(JoinedWith(parts, "\n\n"));
@@ -393,20 +459,25 @@ namespace Graphite {
 		{
 			record.AttachmentType = StringAt(*attachment, "type");
 
+			// A queued prompt goes to the model whatever the record says of it: 2.1.261 wrote
+			// some without `rendered` that the model then answered.
+			const bool queued = record.AttachmentType == "queued_command";
+
 			if (std::optional<std::string> rendered = RenderedText(json))
 			{
 				record.AttachmentText = std::move(*rendered);
 			}
 			else if (const std::optional<Version> version = ParseVersion(StringAt(json, "version"));
-					 version.has_value() && *version >= kRenderedSince)
+					 !queued && version.has_value() && *version >= kRenderedSince)
 			{
 				record.AttachmentSent = false;
 			}
 			else
 			{
-				// Older than `rendered`, or silent about its version: showing a reconstruction
-				// is better than hiding something that may well have been sent.
-				record.AttachmentText = ReconstructedText(*attachment);
+				// Older than `rendered`, silent about its version, or queued: showing a
+				// reconstruction is better than hiding something that may well have been sent.
+				std::optional<std::string> prompt = queued ? PromptText(*attachment) : std::nullopt;
+				record.AttachmentText = prompt ? std::move(*prompt) : ReconstructedText(*attachment);
 				record.AttachmentApproximate = true;
 			}
 
@@ -427,7 +498,7 @@ namespace Graphite {
 				record.ToolSchemasText = ToolSchemasText(*attachment, record.ToolSchemaCount);
 			}
 
-			if (record.AttachmentType == "queued_command")
+			if (queued)
 			{
 				const auto origin = attachment->find("origin");
 				const bool human = origin != attachment->end() && origin->is_object() &&
@@ -437,7 +508,7 @@ namespace Graphite {
 				const std::string mode = StringAt(*attachment, "commandMode");
 
 				if (human && (mode.empty() || mode == "prompt"))
-					record.QueuedPrompt = StringAt(*attachment, "prompt");
+					record.QueuedPrompt = PromptText(*attachment).value_or(std::string{});
 			}
 		}
 

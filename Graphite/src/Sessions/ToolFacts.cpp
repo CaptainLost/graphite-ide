@@ -142,6 +142,16 @@ namespace Graphite {
 		return buffer;
 	}
 
+	std::string ImageText(std::string_view mediaType, std::uint64_t bytes)
+	{
+		std::string text = "[" + (mediaType.empty() ? std::string{"image"} : std::string{mediaType});
+
+		if (bytes > 0)
+			text += ", " + FormatBytes(bytes);
+
+		return text + "]";
+	}
+
 	int CachedPercent(std::uint64_t cacheRead, std::uint64_t context)
 	{
 		if (context == 0)

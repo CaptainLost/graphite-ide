@@ -99,17 +99,6 @@ namespace Graphite {
 			return parts.empty() ? label : label + ")";
 		}
 
-		// An image in the sent text: what it is and how big, since its pixels are not text.
-		std::string ImageText(std::string_view mediaType, std::size_t bytes)
-		{
-			std::string text = "[" + (mediaType.empty() ? std::string{"image"} : std::string{mediaType});
-
-			if (bytes > 0)
-				text += ", " + FormatBytes(bytes);
-
-			return text + "]";
-		}
-
 		// A tool call's input laid out two spaces an indent; the input as written when it does
 		// not parse.
 		std::string PrettyJson(const std::string& json)

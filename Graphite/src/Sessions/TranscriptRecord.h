@@ -99,7 +99,8 @@ namespace Graphite {
 
 		// A message the user typed while Claude was working, which Claude Code queues and
 		// writes as a `queued_command` attachment. Empty for every other record, including a
-		// queued command the user did not type (a hook's, say).
+		// queued command the user did not type (a hook's, say). A message with a pasted image
+		// has a placeholder line naming the image, as the requests' sent text does.
 		std::string QueuedPrompt;
 
 		// Text Claude Code injected as if the user had said it (a skill's body, a reminder):
