@@ -34,6 +34,17 @@ namespace Graphite {
 
 			while (start < end)
 			{
+				// A row the width broke right before a space would start with it; the space is
+				// the break, so the row starts after it. Only on a row a break began: a line's
+				// own leading space is part of its text.
+				if (start > begin && text[start] == ' ')
+				{
+					++start;
+
+					if (start == end)
+						break;
+				}
+
 				std::size_t at = start;
 				std::size_t used = 0;
 				std::size_t afterSpace = start;

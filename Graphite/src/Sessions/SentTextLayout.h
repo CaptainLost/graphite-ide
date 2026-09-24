@@ -15,9 +15,9 @@ namespace Graphite {
 
 	// Where `text` breaks into lines no wider than `columns` characters: its own line ends
 	// first, a carriage return before one dropped, then after the last space that fits, or
-	// where the width runs out when none does — never inside a character. Each line is a
-	// half-open byte range of `text`. An empty text has no lines, and a final line end adds
-	// no empty one after it.
+	// where the width runs out when none does — never inside a character. A row a break began
+	// skips one space it would otherwise start with. Each line is a half-open byte range of
+	// `text`. An empty text has no lines, and a final line end adds no empty one after it.
 	std::vector<std::pair<std::size_t, std::size_t>> WrapLines(std::string_view text, std::size_t columns);
 
 	// A request's items in the order its details list them — what it sent, then what it
