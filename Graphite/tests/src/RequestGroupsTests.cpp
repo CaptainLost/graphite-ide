@@ -4,7 +4,6 @@
 
 #include <chrono>
 #include <cstddef>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -121,27 +120,39 @@ TEST_CASE("Sorted by #, turns and their requests run in session order")
 	CHECK(groups[1].Summary.Turn == 1);
 	CHECK(groups[1].Positions == std::vector<std::size_t>{2, 3});
 
-	const std::vector<TurnGroup> descending = Grouped(requests, turns, {3, 2, 1, 0}, RequestColumn::Index, false);
+	const std::vector<TurnGroup> descending = Grouped(requests, turns, All(requests), RequestColumn::Index, false);
 	CHECK(TurnsOf(descending) == std::vector<std::size_t>{1, 0});
 	CHECK(descending[0].Positions == std::vector<std::size_t>{3, 2});
 }
 
-TEST_CASE("Turns sort by their total, and keep their requests in the order given")
+TEST_CASE("Turns move whole by their total, their requests staying in session order")
 {
-	// The turn of two small outputs costs less than the turn of one large one.
-	const std::vector<ApiRequest> requests{Request(1, 10, 100), Request(2, 10, 100), Request(3, 10, 5000)};
+	// The turn of two small outputs costs less than the turn of one large one. Within the first
+	// turn the second request's output is the smaller, and still it comes after the first.
+	const std::vector<ApiRequest> requests{Request(1, 10, 300), Request(2, 10, 100), Request(3, 10, 5000)};
 	const std::vector<Turn> turns{TurnOf("fix", {1, 2}), TurnOf("commit", {3})};
 
-	const std::vector<TurnGroup> groups = Grouped(requests, turns, {2, 1, 0}, RequestColumn::Output, false);
+	const std::vector<TurnGroup> descending = Grouped(requests, turns, {2, 0, 1}, RequestColumn::Output, false);
+	CHECK(TurnsOf(descending) == std::vector<std::size_t>{1, 0});
+	CHECK(descending[1].Positions == std::vector<std::size_t>{0, 1});
+
+	const std::vector<TurnGroup> ascending = Grouped(requests, turns, {1, 0, 2}, RequestColumn::Output, true);
+	CHECK(TurnsOf(ascending) == std::vector<std::size_t>{0, 1});
+	CHECK(ascending[0].Positions == std::vector<std::size_t>{0, 1});
+}
+
+TEST_CASE("Sorted back to front by time, a turn's requests run back to front too")
+{
+	const std::vector<ApiRequest> requests{Request(1, 10), Request(2, 20), Request(3, 30)};
+	const std::vector<Turn> turns{TurnOf("fix", {1, 2}), TurnOf("commit", {3})};
+
+	const std::vector<TurnGroup> groups = Grouped(requests, turns, All(requests), RequestColumn::Time, false);
 
 	CHECK(TurnsOf(groups) == std::vector<std::size_t>{1, 0});
 	CHECK(groups[1].Positions == std::vector<std::size_t>{1, 0});
-
-	CHECK(TurnsOf(Grouped(requests, turns, All(requests), RequestColumn::Output, true)) ==
-		  std::vector<std::size_t>{0, 1});
 }
 
-TEST_CASE("A turn sorts by its prompt under Tools, where its row shows the prompt")
+TEST_CASE("A turn sorts by its prompt under Tools")
 {
 	const std::vector<ApiRequest> requests{Request(1, 10), Request(2, 20)};
 	const std::vector<Turn> turns{TurnOf("zebra", {1}), TurnOf("apple", {2})};
@@ -216,7 +227,7 @@ TEST_CASE("A turn whose requests ran on different models says so")
 	CHECK(groups[0].Summary.MixedModels);
 }
 
-TEST_CASE("A turn on mixed models sorts under the word its row shows, not with the blanks")
+TEST_CASE("A turn on mixed models sorts as \"mixed\", not with the blanks")
 {
 	ApiRequest other = Request(2, 10);
 	other.Model = "claude-haiku-4-5";
@@ -243,27 +254,4 @@ TEST_CASE("A turn the filters leave nothing of is not shown, and the rest count 
 	CHECK(groups[0].Summary.Count == 1);
 	CHECK(groups[0].Summary.Output == 200);
 	CHECK(groups[0].Summary.FirstIndex == 2);
-}
-
-TEST_CASE("Flattened, a turn's requests follow it only while it is expanded")
-{
-	const std::vector<ApiRequest> requests{Request(1, 10), Request(2, 20), Request(3, 30)};
-	const std::vector<Turn> turns{TurnOf("fix", {1, 2}), TurnOf("commit", {3})};
-	const std::vector<TurnGroup> groups = Grouped(requests, turns, All(requests), RequestColumn::Index, true);
-
-	const std::vector<GroupedRow> collapsed = FlattenGroups(groups, {});
-	REQUIRE(collapsed.size() == 2);
-	CHECK(collapsed[0].IsTurn);
-	CHECK(collapsed[0].Group == 0);
-	CHECK(collapsed[1].IsTurn);
-	CHECK(collapsed[1].Group == 1);
-
-	const std::vector<GroupedRow> expanded = FlattenGroups(groups, std::set<std::size_t>{0});
-	REQUIRE(expanded.size() == 4);
-	CHECK(expanded[0].IsTurn);
-	CHECK_FALSE(expanded[1].IsTurn);
-	CHECK(expanded[1].Position == 0);
-	CHECK(expanded[2].Position == 1);
-	CHECK(expanded[3].IsTurn);
-	CHECK(expanded[3].Group == 1);
 }

@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -21,15 +20,16 @@ namespace Graphite {
 	// request before it, and a first one with the first turn.
 	std::vector<std::size_t> TurnOfRequests(const std::vector<ApiRequest>& requests, const std::vector<Turn>& turns);
 
-	// What a turn's row in the Requests table shows, worked out from the requests of it the
-	// filters let through.
+	// What the Requests table knows of a turn — what its turns sort by, and what the turn's
+	// mark beside its requests says — worked out from the requests of it the filters let
+	// through.
 	struct TurnSummary
 	{
 		std::size_t Turn = 0; // index in Session::GetTurns()
 		std::size_t Count = 0;
 
 		// The earliest request's Index and RespondedAt — not Turn::StartedAt, the prompt's time:
-		// the row reads like the requests under it.
+		// the turn sorts like the requests in it.
 		std::size_t FirstIndex = 0;
 		std::string FirstRespondedAt;
 
@@ -68,28 +68,19 @@ namespace Graphite {
 	{
 		TurnSummary Summary;
 
-		// The turn's requests, as positions in `requests`, in the order they were given.
+		// The turn's requests, as positions in `requests`, in the order the table shows them.
 		std::vector<std::size_t> Positions;
 	};
 
-	// Groups `order` — positions in `requests`, already sorted and filtered for the table — by
-	// the turn each belongs to, keeping their order within a turn, and sorts the turns by their
-	// summary's value for `column` the way SortRequests sorts requests: blanks last, ties in
-	// session order. Under Tools a turn's value is its prompt, from `prompts` by turn index,
-	// since that is what its row shows there. A turn none of `order` belongs to is left out.
+	// Groups `order` — positions in `requests`, filtered for the table — by the turn each
+	// belongs to, and sorts the turns by their summary's value for `column` the way SortRequests
+	// sorts requests: blanks last, ties in session order. Under # a turn's value is its first
+	// request's number, under Model "mixed" when its requests ran on more than one, and under
+	// Tools its prompt, from `prompts` by turn index. Within a turn the requests stay in session
+	// order, back to front only when `column` is # or Time sorted descending. A turn none of
+	// `order` belongs to is left out.
 	std::vector<TurnGroup> GroupByTurn(const std::vector<std::size_t>& order, const std::vector<std::size_t>& turnOf,
 									   const std::vector<ApiRequest>& requests, const std::vector<std::string>& prompts,
 									   RequestColumn column, bool ascending, const Pricing& pricing);
 
-	// One row of the grouped table: a turn's, naming its index in the groups, or a request's,
-	// naming its position in `requests`.
-	struct GroupedRow
-	{
-		bool IsTurn = false;
-		std::size_t Group = 0;
-		std::size_t Position = 0;
-	};
-
-	// The table's rows: each turn, followed by its requests when its turn index is in `expanded`.
-	std::vector<GroupedRow> FlattenGroups(const std::vector<TurnGroup>& groups, const std::set<std::size_t>& expanded);
 }

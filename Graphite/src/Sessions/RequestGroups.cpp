@@ -93,9 +93,7 @@ namespace Graphite {
 			return {.Has = has, .Text = std::move(text)};
 		}
 
-		// The same columns SortRequests reads, from what the turn's row shows in them — except
-		// under #, where the row shows how many requests it holds but the turns sort in session
-		// order, by their first request's number.
+		// The same columns SortRequests reads, for a turn as a whole.
 		SortValue ValueOf(const TurnSummary& summary, RequestColumn column, const std::vector<std::string>& prompts)
 		{
 			switch (column)
@@ -182,8 +180,20 @@ namespace Graphite {
 			groups[found->second].Positions.push_back(position);
 		}
 
+		// A turn's requests in session order, whatever order `order` gave them in: the turn moves
+		// as a whole, and its requests read as they happened. Only a column that is itself the
+		// session's order, run back to front, turns them round too, so the whole table does.
+		const bool backwards = !ascending && (column == RequestColumn::Index || column == RequestColumn::Time);
+
 		for (TurnGroup& group : groups)
+		{
+			std::sort(group.Positions.begin(), group.Positions.end());
+
+			if (backwards)
+				std::reverse(group.Positions.begin(), group.Positions.end());
+
 			group.Summary = Summarise(group.Summary.Turn, group.Positions, requests, pricing);
+		}
 
 		const bool textual = IsTextColumn(column);
 		std::vector<SortValue> values;
@@ -213,21 +223,4 @@ namespace Graphite {
 		return result;
 	}
 
-	std::vector<GroupedRow> FlattenGroups(const std::vector<TurnGroup>& groups, const std::set<std::size_t>& expanded)
-	{
-		std::vector<GroupedRow> rows;
-
-		for (std::size_t group = 0; group < groups.size(); ++group)
-		{
-			rows.push_back({.IsTurn = true, .Group = group});
-
-			if (!expanded.contains(groups[group].Summary.Turn))
-				continue;
-
-			for (const std::size_t position : groups[group].Positions)
-				rows.push_back({.Group = group, .Position = position});
-		}
-
-		return rows;
-	}
 }

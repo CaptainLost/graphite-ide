@@ -22,8 +22,9 @@ namespace Graphite {
 
 	// Every API request of a session: a chart of them (RequestChartView), a table of them the
 	// reader sorts by any column, and — once a request is picked — under it, split by a divider
-	// the reader drags and closed from its corner, what that request sent and returned. The
-	// table groups the requests by the turn each belongs to, unless the reader turns that off.
+	// the reader drags and closed from its corner, what that request sent and returned. Unless
+	// the reader turns it off, the table keeps each turn's requests together and marks them, a
+	// bar at the row's left edge whose colour changes from one turn to the next.
 	class RequestsView
 	{
 	public:
@@ -46,8 +47,9 @@ namespace Graphite {
 		void RebuildTurns(const Session& session, const RequestTimeline& timeline);
 		void DrawFilters(const RequestTimeline& timeline, const Pricing& pricing);
 		void DrawTable(const RequestTimeline& timeline, const ConversationContext& context);
-		void DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context);
-		void DrawTurnRow(const TurnGroup& group, const ConversationContext& context);
+		void DrawTableRow(const ApiRequest& request, std::size_t position, std::size_t row,
+						  const ConversationContext& context);
+		void DrawTurnMark(std::size_t row, const SessionPalette& palette);
 		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context);
 
 		// By position in GetRequests(), for every request: the tools it used, and the same names
@@ -76,16 +78,11 @@ namespace Graphite {
 		std::uint64_t m_TurnsVersion = UINT64_MAX;
 		std::uint64_t m_TurnsTimelineVersion = UINT64_MAX;
 
-		// With the table grouped: m_Shown gathered into its turns, sorted, and the rows that
-		// show them — each turn, and the requests of the ones the reader expanded, by turn index.
+		// With the table grouped: m_Shown's turns, sorted, and by row of m_Shown — which then
+		// runs turn by turn — the index in m_Groups of the turn the row's request belongs to.
 		bool m_GroupByTurn = true;
 		std::vector<TurnGroup> m_Groups;
-		std::vector<GroupedRow> m_Rows;
-		std::set<std::size_t> m_Expanded;
-
-		// A turn row clicked this frame, toggled once the table is drawn: its rows are the
-		// ones the clipper is walking.
-		std::optional<std::size_t> m_ToggleTurn;
+		std::vector<std::size_t> m_RowGroup;
 
 		// By position in GetRequests(): whether the filters let the request through, for the
 		// chart to dim the ones they leave out.
