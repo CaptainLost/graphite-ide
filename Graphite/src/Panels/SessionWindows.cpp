@@ -141,7 +141,7 @@ namespace Graphite {
 			// A view still waiting to be selected is reported as the one shown: the tab bar has
 			// not been drawn yet, so what it last selected says nothing about the reader.
 			sessions.push_back(
-				SessionTabState{entry->Id, entry->Title, entry->PendingTab.value_or(entry->Selected)});
+				SessionTabState{entry->Id, entry->Title, entry->RestoredTab.Reported(entry->Selected)});
 		}
 
 		return sessions;
@@ -170,7 +170,7 @@ namespace Graphite {
 			auto entry = Core::CreateScope<Entry>();
 			entry->Id = session.Id;
 			entry->Title = session.Title;
-			entry->PendingTab = session.Tab;
+			entry->RestoredTab.Restore(session.Tab);
 			entry->Restored = true;
 			entry->Looking = true;
 
@@ -290,10 +290,10 @@ namespace Graphite {
 				else if (ImGui::BeginTabBar("##sessionTabs"))
 				{
 					// A restored view is selected once, on the first frame the tab bar is drawn.
-					const std::optional<SessionTab> pendingTab = std::exchange(entry.PendingTab, std::nullopt);
-					const auto restoredFlag = [&pendingTab](SessionTab tab)
+					const auto restoredFlag = [&entry](SessionTab tab)
 					{
-						return pendingTab == tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+						return entry.RestoredTab.ShouldSelect(tab) ? ImGuiTabItemFlags_SetSelected
+																	: ImGuiTabItemFlags_None;
 					};
 
 					if (ImGui::BeginTabItem("Conversation", nullptr, restoredFlag(SessionTab::Conversation)))
@@ -376,6 +376,8 @@ namespace Graphite {
 
 						ImGui::EndTabItem();
 					}
+
+					entry.RestoredTab.AfterTabBar(entry.Selected);
 
 					ImGui::EndTabBar();
 				}

@@ -4,6 +4,7 @@
 #include "Panels/CostView.h"
 #include "Panels/RequestsView.h"
 #include "Persistence/PersistedState.h"
+#include "Persistence/RestoredTabSelection.h"
 #include "Sessions/LiveTranscript.h"
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
@@ -107,9 +108,9 @@ namespace Graphite {
 			SessionTab Selected = SessionTab::Conversation;
 
 			// A view restored from the last launch, selected once on the first frame the tab bar
-			// is drawn - which is not before the transcript is found - then cleared. Selecting it
-			// every frame would pin the reader to it.
-			std::optional<SessionTab> PendingTab;
+			// is drawn - which is not before the transcript is found - and reported as the
+			// window's view until the tab bar has switched to it.
+			RestoredTabSelection RestoredTab;
 
 			// Reopened by RestoreState and not yet drawn: its first frame leaves it wherever
 			// imgui.ini remembers it, when it remembers anywhere it can still go.
