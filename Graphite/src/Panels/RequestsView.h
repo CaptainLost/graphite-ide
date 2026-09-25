@@ -5,6 +5,7 @@
 #include "Panels/RequestChartView.h"
 #include "Panels/SentTextView.h"
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestGroups.h"
 #include "Sessions/RequestSort.h"
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
@@ -21,7 +22,8 @@ namespace Graphite {
 
 	// Every API request of a session: a chart of them (RequestChartView), a table of them the
 	// reader sorts by any column, and — once a request is picked — under it, split by a divider
-	// the reader drags and closed from its corner, what that request sent and returned.
+	// the reader drags and closed from its corner, what that request sent and returned. The
+	// table groups the requests by the turn each belongs to, unless the reader turns that off.
 	class RequestsView
 	{
 	public:
@@ -40,9 +42,12 @@ namespace Graphite {
 		void Rebuild(const RequestTimeline& timeline, const Session& session);
 		void PriceRequests(const RequestTimeline& timeline, const Pricing& pricing);
 		void Filter(const RequestTimeline& timeline, const Pricing& pricing);
+		void Regroup(const RequestTimeline& timeline, const Pricing& pricing);
+		void RebuildTurns(const Session& session, const RequestTimeline& timeline);
 		void DrawFilters(const RequestTimeline& timeline, const Pricing& pricing);
 		void DrawTable(const RequestTimeline& timeline, const ConversationContext& context);
 		void DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context);
+		void DrawTurnRow(const TurnGroup& group, const ConversationContext& context);
 		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context);
 
 		// By position in GetRequests(), for every request: the tools it used, and the same names
@@ -63,6 +68,24 @@ namespace Graphite {
 
 		// The positions the filters let through, in the table's order.
 		std::vector<std::size_t> m_Shown;
+
+		// By position in GetRequests(), the turn each request belongs to; by turn, its prompt.
+		// Worked out again whenever the session or the timeline moves.
+		std::vector<std::size_t> m_TurnOf;
+		std::vector<std::string> m_TurnPrompts;
+		std::uint64_t m_TurnsVersion = UINT64_MAX;
+		std::uint64_t m_TurnsTimelineVersion = UINT64_MAX;
+
+		// With the table grouped: m_Shown gathered into its turns, sorted, and the rows that
+		// show them — each turn, and the requests of the ones the reader expanded, by turn index.
+		bool m_GroupByTurn = true;
+		std::vector<TurnGroup> m_Groups;
+		std::vector<GroupedRow> m_Rows;
+		std::set<std::size_t> m_Expanded;
+
+		// A turn row clicked this frame, toggled once the table is drawn: its rows are the
+		// ones the clipper is walking.
+		std::optional<std::size_t> m_ToggleTurn;
 
 		// By position in GetRequests(): whether the filters let the request through, for the
 		// chart to dim the ones they leave out.

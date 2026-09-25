@@ -4,6 +4,7 @@
 #include "Sessions/RequestTimeline.h"
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace Graphite {
@@ -25,6 +26,22 @@ namespace Graphite {
 		Tools,
 		Rebuilt
 	};
+
+	// One column's value for one row, as the table compares them. A row without the value —
+	// the cell shows nothing — has Has false.
+	struct SortValue
+	{
+		bool Has = false;
+		double Number = 0.0;
+		std::string Text;
+	};
+
+	// Whether `column` compares its values as text rather than as numbers.
+	bool IsTextColumn(RequestColumn column);
+
+	// Below zero when `left` goes ahead of `right` in a column sorted `ascending`, above zero when
+	// it goes after, zero when neither does. A blank goes after any value, in either direction.
+	int CompareSortValues(const SortValue& left, const SortValue& right, bool textual, bool ascending);
 
 	// Sorts `order` — positions in `requests` — by `column`. A value the request does not
 	// have (no usage, no delta, no wait, a cost with no price, no stop reason, no tools) sorts

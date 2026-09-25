@@ -11,14 +11,9 @@ namespace Graphite {
 
 	namespace {
 
-		// A column's value for one request, worked out once before sorting rather than in
+		// A column's value for one request is worked out once before sorting rather than in
 		// every comparison: a cost or a request's tools take a moment to find.
-		struct SortKey
-		{
-			bool Has = false;
-			double Number = 0.0;
-			std::string Text;
-		};
+		using SortKey = SortValue;
 
 		SortKey Numeric(std::optional<double> value)
 		{
@@ -79,6 +74,25 @@ namespace Graphite {
 		}
 	}
 
+	bool IsTextColumn(RequestColumn column)
+	{
+		return column == RequestColumn::Model || column == RequestColumn::Stop || column == RequestColumn::Tools;
+	}
+
+	int CompareSortValues(const SortValue& left, const SortValue& right, bool textual, bool ascending)
+	{
+		if (left.Has != right.Has)
+			return left.Has ? -1 : 1;
+
+		if (!left.Has)
+			return 0;
+
+		const int compared = textual ? left.Text.compare(right.Text)
+									 : (left.Number < right.Number ? -1 : (right.Number < left.Number ? 1 : 0));
+
+		return ascending ? compared : -compared;
+	}
+
 	void SortRequests(std::vector<std::size_t>& order, const std::vector<ApiRequest>& requests, RequestColumn column,
 					  bool ascending, const Pricing& pricing)
 	{
@@ -86,29 +100,15 @@ namespace Graphite {
 		for (const std::size_t position : order)
 			keys[position] = KeyOf(requests[position], column, pricing);
 
-		const bool textual = column == RequestColumn::Model || column == RequestColumn::Stop || column == RequestColumn::Tools;
+		const bool textual = IsTextColumn(column);
 
 		// A total order on (blank last, value in the asked direction, position), so the result
 		// does not depend on the order `order` came in.
 		std::sort(order.begin(), order.end(),
 				  [&keys, textual, ascending](std::size_t a, std::size_t b)
 				  {
-					  const SortKey& left = keys[a];
-					  const SortKey& right = keys[b];
-
-					  if (left.Has != right.Has)
-						  return left.Has;
-
-					  if (left.Has)
-					  {
-						  const int compared = textual ? left.Text.compare(right.Text)
-													   : (left.Number < right.Number ? -1 : (right.Number < left.Number ? 1 : 0));
-
-						  if (compared != 0)
-							  return ascending ? compared < 0 : compared > 0;
-					  }
-
-					  return a < b;
+					  const int compared = CompareSortValues(keys[a], keys[b], textual, ascending);
+					  return compared != 0 ? compared < 0 : a < b;
 				  });
 	}
 }

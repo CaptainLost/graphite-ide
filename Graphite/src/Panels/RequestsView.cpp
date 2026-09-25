@@ -108,6 +108,11 @@ namespace Graphite {
 			m_AllTools.clear();
 			m_Costs.clear();
 			m_PriceFrom = 0;
+
+			m_Expanded.clear();
+			m_Groups.clear();
+			m_Rows.clear();
+			m_TurnsVersion = UINT64_MAX;
 		}
 
 		// Within one generation the timeline only grows. Of what is kept here per request — the
@@ -146,6 +151,22 @@ namespace Graphite {
 		m_BuiltVersion = timeline.GetVersion();
 		m_BuiltGeneration = session.GetGeneration();
 		m_FilterDirty = true;
+	}
+
+	void RequestsView::RebuildTurns(const Session& session, const RequestTimeline& timeline)
+	{
+		m_TurnOf = TurnOfRequests(timeline.GetRequests(), session.GetTurns());
+
+		m_TurnPrompts.clear();
+		for (const Turn& turn : session.GetTurns())
+			m_TurnPrompts.push_back(turn.Prompt);
+
+		m_TurnsVersion = session.GetVersion();
+		m_TurnsTimelineVersion = timeline.GetVersion();
+
+		// Only the grouped table reads the turns; the flat one has nothing to redo.
+		if (m_GroupByTurn)
+			m_FilterDirty = true;
 	}
 
 	void RequestsView::PriceRequests(const RequestTimeline& timeline, const Pricing& pricing)
@@ -208,11 +229,35 @@ namespace Graphite {
 		}
 
 		SortRequests(m_Shown, requests, m_SortColumn, m_SortAscending, pricing);
+		Regroup(timeline, pricing);
 		m_FilterDirty = false;
+	}
+
+	void RequestsView::Regroup(const RequestTimeline& timeline, const Pricing& pricing)
+	{
+		if (!m_GroupByTurn)
+		{
+			m_Groups.clear();
+			m_Rows.clear();
+			return;
+		}
+
+		// A request asked to be shown is inside its turn, so that turn opens.
+		if (m_PendingReveal && *m_PendingReveal < m_TurnOf.size())
+			m_Expanded.insert(m_TurnOf[*m_PendingReveal]);
+
+		m_Groups = GroupByTurn(m_Shown, m_TurnOf, timeline.GetRequests(), m_TurnPrompts, m_SortColumn, m_SortAscending,
+							   pricing);
+		m_Rows = FlattenGroups(m_Groups, m_Expanded);
 	}
 
 	void RequestsView::DrawFilters(const RequestTimeline& timeline, const Pricing& pricing)
 	{
+		if (ImGui::Checkbox("Group by turn", &m_GroupByTurn))
+			m_FilterDirty = true;
+
+		ImGui::SameLine();
+
 		if (ImGui::Checkbox("Cache rebuilt only", &m_RebuiltOnly))
 			m_FilterDirty = true;
 
@@ -256,10 +301,14 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (m_Shown.size() == total)
-			ImGui::TextDisabled("%zu %s", total, noun);
-		else
-			ImGui::TextDisabled("%zu of %zu %s", m_Shown.size(), total, noun);
+		std::string count = m_Shown.size() == total
+								? std::to_string(total) + " " + noun
+								: std::to_string(m_Shown.size()) + " of " + std::to_string(total) + " " + noun;
+
+		if (m_GroupByTurn)
+			count += " in " + std::to_string(m_Groups.size()) + (m_Groups.size() == 1 ? " turn" : " turns");
+
+		ImGui::TextDisabled("%s", count.c_str());
 	}
 
 	void RequestsView::DrawTableRow(const ApiRequest& request, std::size_t position, const ConversationContext& context)
@@ -351,6 +400,129 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
+	void RequestsView::DrawTurnRow(const TurnGroup& group, const ConversationContext& context)
+	{
+		const SessionPalette& palette = context.Palette;
+		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+		const TurnSummary& summary = group.Summary;
+		const bool expanded = m_Expanded.contains(summary.Turn);
+
+		ImGui::TableNextRow();
+		ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImGuiCol_TableHeaderBg));
+
+		// Under a scope of its own: a request's row pushes its bare position, which a turn's
+		// index would otherwise share.
+		ImGui::PushID("turn");
+		ImGui::PushID(static_cast<int>(summary.Turn));
+
+		for (int column = 0; column < kColumnCount; ++column)
+		{
+			if (!ImGui::TableSetColumnIndex(column))
+				continue;
+
+			const ColumnSpec& spec = kColumns[column];
+
+			switch (spec.Id)
+			{
+			case RequestColumn::Index:
+			{
+				// A click anywhere on the row opens or closes the turn, once the table is drawn. No
+				// tooltip of its own: spanning the row, it stays hovered over every cell, and would
+				// open ahead of the Time and prompt cells' tooltips in the same box.
+				if (ImGui::Selectable("##turn", false, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+					m_ToggleTurn = summary.Turn;
+
+				// The chevron, then the count of requests where a request's row has its number.
+				ImGui::SameLine(0.0f, 0.0f);
+				ColouredText(palette.TextDisabled, expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT);
+				ImGui::SameLine();
+				Cell(std::to_string(summary.Count) + "\xc3\x97", ink, spec.Numeric);
+				break;
+			}
+			case RequestColumn::Time:
+			{
+				const auto local = m_Clock.LocalTime(summary.FirstRespondedAt);
+
+				if (!local)
+				{
+					Cell({}, ink, false);
+					break;
+				}
+
+				Cell(FormatLocalTime(*local, ClockStyle::MonthDayTime), ink, false);
+				ImGui::SetItemTooltip("%s", FormatLocalTime(*local, ClockStyle::DateTimeWeekday).c_str());
+				break;
+			}
+			case RequestColumn::Model:
+				if (summary.MixedModels)
+					Cell("mixed", palette.TextDisabled, false);
+				else
+					Cell(summary.Model.empty()
+							 ? std::string{}
+							 : SingleLineLabel(ShortModelName(summary.Model), 80) + (summary.Fast ? " fast" : ""),
+						 ink, false);
+				break;
+			case RequestColumn::Context:
+				Cell(summary.HasUsage ? FormatTokens(summary.Context) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Delta:
+				Cell(summary.Delta ? SignedTokens(*summary.Delta) : std::string{}, ink, true);
+				break;
+			case RequestColumn::CachedShare:
+				Cell(summary.ContextSum > 0 ? std::to_string(CachedPercent(summary.CacheRead, summary.ContextSum)) + "%"
+											: std::string{},
+					 ink, true);
+				break;
+			case RequestColumn::Output:
+				Cell(summary.HasUsage ? FormatTokens(summary.Output) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Cost:
+				Cell(summary.HasUsage ? FormatCost(summary.Cost) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Wait:
+				Cell(summary.Waited ? WaitText(*summary.Waited) : std::string{}, ink, true);
+				break;
+			case RequestColumn::Stop:
+				Cell(std::string{StopGlyph(summary.StopReason)} +
+						 (summary.StopReason.empty() ? "" : " " + SingleLineLabel(summary.StopReason, 60)),
+					 palette.TextDisabled, false);
+				break;
+			case RequestColumn::Tools:
+			{
+				// The turn's prompt, where a request's row lists its tools: the widest column.
+				static const std::string kNoPrompt;
+				const std::string& prompt = summary.Turn < m_TurnPrompts.size() ? m_TurnPrompts[summary.Turn] : kNoPrompt;
+
+				if (prompt.empty())
+				{
+					Cell("(no prompt)", palette.TextDisabled, false);
+					break;
+				}
+
+				Cell(SingleLineLabel(prompt, 200), ink, false);
+
+				if (ImGui::BeginItemTooltip())
+				{
+					constexpr std::size_t kTooltipBytes = 2000;
+					const std::string shown = prompt.size() > kTooltipBytes ? SingleLineLabel(prompt, kTooltipBytes) : prompt;
+
+					ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+					ImGui::TextUnformatted(shown.c_str(), shown.c_str() + shown.size());
+					ImGui::PopTextWrapPos();
+					ImGui::EndTooltip();
+				}
+				break;
+			}
+			case RequestColumn::Rebuilt:
+				Cell(summary.Rebuilt > 0 ? std::string{ICON_MDI_CACHED} : std::string{}, palette.Edit, false);
+				break;
+			}
+		}
+
+		ImGui::PopID();
+		ImGui::PopID();
+	}
+
 	void RequestsView::DrawTable(const RequestTimeline& timeline, const ConversationContext& context)
 	{
 		constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_Sortable | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |
@@ -407,6 +579,7 @@ namespace Graphite {
 				m_SortColumn = column;
 				m_SortAscending = ascending;
 				SortRequests(m_Shown, timeline.GetRequests(), m_SortColumn, m_SortAscending, context.Prices);
+				Regroup(timeline, context.Prices);
 			}
 
 			specs->SpecsDirty = false;
@@ -430,23 +603,37 @@ namespace Graphite {
 			ImGui::PopID();
 		}
 
-		// The row to scroll to, in the table's order. The filters were cleared by Reveal, so it
-		// is there unless the timeline no longer has it.
+		// The row to scroll to, in the table's order. Filter dropped whichever filters would hide
+		// the request, and Regroup opened its turn, so it is there unless the timeline no longer
+		// has it.
 		std::optional<int> revealRow;
 
 		if (m_PendingReveal)
 		{
-			const auto found = std::find(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
+			if (m_GroupByTurn)
+			{
+				const std::size_t wanted = *m_PendingReveal;
+				const auto found = std::find_if(m_Rows.begin(), m_Rows.end(), [wanted](const GroupedRow& row)
+												{ return !row.IsTurn && row.Position == wanted; });
 
-			if (found != m_Shown.end())
-				revealRow = static_cast<int>(found - m_Shown.begin());
+				if (found != m_Rows.end())
+					revealRow = static_cast<int>(found - m_Rows.begin());
+			}
+			else
+			{
+				const auto found = std::find(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
+
+				if (found != m_Shown.end())
+					revealRow = static_cast<int>(found - m_Shown.begin());
+			}
 
 			m_PendingReveal.reset();
 		}
 
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
+		const std::size_t rowCount = m_GroupByTurn ? m_Rows.size() : m_Shown.size();
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(m_Shown.size()));
+		clipper.Begin(static_cast<int>(rowCount));
 
 		// Drawn whether or not it is in view, so it has a place to scroll to.
 		if (revealRow)
@@ -456,8 +643,20 @@ namespace Graphite {
 		{
 			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 			{
-				const std::size_t position = m_Shown[static_cast<std::size_t>(row)];
-				DrawTableRow(requests[position], position, context);
+				if (m_GroupByTurn)
+				{
+					const GroupedRow& grouped = m_Rows[static_cast<std::size_t>(row)];
+
+					if (grouped.IsTurn)
+						DrawTurnRow(m_Groups[grouped.Group], context);
+					else
+						DrawTableRow(requests[grouped.Position], grouped.Position, context);
+				}
+				else
+				{
+					const std::size_t position = m_Shown[static_cast<std::size_t>(row)];
+					DrawTableRow(requests[position], position, context);
+				}
 
 				if (revealRow && row == *revealRow)
 					ImGui::SetScrollHereY(0.5f);
@@ -465,6 +664,14 @@ namespace Graphite {
 		}
 
 		ImGui::EndTable();
+
+		if (const std::optional<std::size_t> turn = std::exchange(m_ToggleTurn, std::nullopt))
+		{
+			if (m_Expanded.erase(*turn) == 0)
+				m_Expanded.insert(*turn);
+
+			m_Rows = FlattenGroups(m_Groups, m_Expanded);
+		}
 	}
 
 	void RequestsView::DrawDetails(const RequestTimeline& timeline, const ConversationContext& context)
@@ -626,6 +833,9 @@ namespace Graphite {
 	{
 		if (session.GetGeneration() != m_BuiltGeneration || timeline.GetVersion() != m_BuiltVersion)
 			Rebuild(timeline, session);
+
+		if (session.GetVersion() != m_TurnsVersion || timeline.GetVersion() != m_TurnsTimelineVersion)
+			RebuildTurns(session, timeline);
 
 		PriceRequests(timeline, context.Prices);
 
