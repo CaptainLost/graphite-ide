@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <cwctype>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 
 namespace Graphite {
 
@@ -27,8 +29,28 @@ namespace Graphite {
 		constexpr std::string_view kTabCount = "restore.tab.count";
 		constexpr std::string_view kActive = "restore.active";
 
+		constexpr std::string_view kSessionCount = "restore.session.count";
+		constexpr std::string_view kDiffCount = "restore.diff.count";
+
 		// More tabs than anybody keeps open, and a ceiling on what a damaged count can cost.
+		// Sessions and diffs are windows of the same kind and share it.
 		constexpr std::size_t kMaximumTabs = 256;
+
+		// The words each enum is written as. Written out rather than numbered, so reordering an
+		// enum in a later version cannot quietly turn one saved value into another.
+		constexpr std::pair<SessionTab, std::string_view> kSessionTabNames[] = {
+			{SessionTab::Conversation, "conversation"},
+			{SessionTab::Cost, "cost"},
+			{SessionTab::Requests, "requests"},
+		};
+
+		constexpr std::pair<Core::DiffTarget, std::string_view> kDiffTargetNames[] = {
+			{Core::DiffTarget::WorkTreeToIndex, "unstaged"},
+			{Core::DiffTarget::IndexToHead, "staged"},
+			{Core::DiffTarget::WorkTreeToHead, "working"},
+			{Core::DiffTarget::CommitToParent, "commit"},
+			{Core::DiffTarget::RevisionToRevision, "range"},
+		};
 
 		template <typename Number>
 		std::optional<Number> ParseNumber(const std::string& text)
@@ -58,6 +80,142 @@ namespace Graphite {
 		std::string TabKey(std::size_t index, std::string_view field)
 		{
 			return "restore.tab." + std::to_string(index) + "." + std::string{field};
+		}
+
+		std::string SessionKey(std::size_t index, std::string_view field)
+		{
+			return "restore.session." + std::to_string(index) + "." + std::string{field};
+		}
+
+		std::string DiffKey(std::size_t index, std::string_view field)
+		{
+			return "restore.diff." + std::to_string(index) + "." + std::string{field};
+		}
+
+		std::size_t ReadCount(const Core::JsonFile& file, std::string_view key)
+		{
+			return std::min(ParseNumber<std::size_t>(file.Get(key)).value_or(0), kMaximumTabs);
+		}
+
+		template <typename Value, std::size_t Size>
+		std::string_view NameOf(const std::pair<Value, std::string_view> (&names)[Size], Value value)
+		{
+			for (const auto& [candidate, name] : names)
+			{
+				if (candidate == value)
+				{
+					return name;
+				}
+			}
+
+			return {};
+		}
+
+		template <typename Value, std::size_t Size>
+		std::optional<Value> ValueNamed(const std::pair<Value, std::string_view> (&names)[Size],
+										std::string_view text)
+		{
+			for (const auto& [value, name] : names)
+			{
+				if (name == text)
+				{
+					return value;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<std::uint8_t> HexDigit(char digit)
+		{
+			if (digit >= '0' && digit <= '9')
+			{
+				return static_cast<std::uint8_t>(digit - '0');
+			}
+
+			if (digit >= 'a' && digit <= 'f')
+			{
+				return static_cast<std::uint8_t>(digit - 'a' + 10);
+			}
+
+			if (digit >= 'A' && digit <= 'F')
+			{
+				return static_cast<std::uint8_t>(digit - 'A' + 10);
+			}
+
+			return std::nullopt;
+		}
+
+		// The whole forty digits or nothing: an abbreviated id could name more than one commit.
+		std::optional<Core::Oid> ParseOid(const std::string& text)
+		{
+			Core::Oid id;
+
+			if (text.size() != id.Bytes.size() * 2)
+			{
+				return std::nullopt;
+			}
+
+			for (std::size_t index = 0; index < id.Bytes.size(); ++index)
+			{
+				const std::optional<std::uint8_t> high = HexDigit(text[index * 2]);
+				const std::optional<std::uint8_t> low = HexDigit(text[index * 2 + 1]);
+
+				if (!high || !low)
+				{
+					return std::nullopt;
+				}
+
+				id.Bytes[index] = static_cast<std::uint8_t>((*high << 4) | *low);
+			}
+
+			return id;
+		}
+
+		// The targets a working-tree tab can show. Every other one is a commit's, and asks for
+		// the commit it is of.
+		bool IsWorkingTreeTarget(Core::DiffTarget target)
+		{
+			return target == Core::DiffTarget::WorkTreeToIndex || target == Core::DiffTarget::IndexToHead ||
+				   target == Core::DiffTarget::WorkTreeToHead;
+		}
+
+		std::optional<DiffTabState> ReadDiff(const Core::JsonFile& file, std::size_t index)
+		{
+			const std::string path = file.Get(DiffKey(index, "path"));
+			const std::optional<Core::DiffTarget> target =
+				ValueNamed(kDiffTargetNames, file.Get(DiffKey(index, "target")));
+
+			if (path.empty() || !target)
+			{
+				return std::nullopt;
+			}
+
+			DiffTabState diff;
+			diff.Target = *target;
+
+			// Relative to the repository and never to the folder, as the window holds it: the
+			// window is keyed by this path, and imgui.ini remembers its place under that key.
+			diff.Path = Core::FromUtf8(path);
+
+			if (const std::string commit = file.Get(DiffKey(index, "commit")); !commit.empty())
+			{
+				diff.Commit = ParseOid(commit);
+
+				if (!diff.Commit)
+				{
+					return std::nullopt;
+				}
+			}
+
+			// A commit's diff without its commit, or the working tree's with one, is no diff the
+			// window can show.
+			if (diff.Commit.has_value() == IsWorkingTreeTarget(diff.Target))
+			{
+				return std::nullopt;
+			}
+
+			return diff;
 		}
 
 		void RemoveKeysStartingWith(Core::JsonFile& file, std::string_view prefix)
@@ -239,14 +397,35 @@ namespace Graphite {
 		{
 			file.Set(kActive, EncodePath(*state.Active, root));
 		}
+
+		file.Set(kSessionCount, std::to_string(state.Sessions.size()));
+
+		for (std::size_t index = 0; index < state.Sessions.size(); ++index)
+		{
+			const SessionTabState& session = state.Sessions[index];
+
+			file.Set(SessionKey(index, "id"), session.Id);
+			file.Set(SessionKey(index, "title"), session.Title);
+			file.Set(SessionKey(index, "tab"), std::string{NameOf(kSessionTabNames, session.Tab)});
+		}
+
+		file.Set(kDiffCount, std::to_string(state.Diffs.size()));
+
+		for (std::size_t index = 0; index < state.Diffs.size(); ++index)
+		{
+			const DiffTabState& diff = state.Diffs[index];
+
+			file.Set(DiffKey(index, "commit"), diff.Commit ? diff.Commit->ToHex() : std::string{});
+			file.Set(DiffKey(index, "target"), std::string{NameOf(kDiffTargetNames, diff.Target)});
+			file.Set(DiffKey(index, "path"), Core::ToUtf8(diff.Path));
+		}
 	}
 
 	WorkspaceState ReadWorkspaceState(const Core::JsonFile& file, const std::filesystem::path& root)
 	{
 		WorkspaceState state;
 
-		const std::size_t count =
-			std::min(ParseNumber<std::size_t>(file.Get(kTabCount)).value_or(0), kMaximumTabs);
+		const std::size_t count = ReadCount(file, kTabCount);
 
 		for (std::size_t index = 0; index < count; ++index)
 		{
@@ -270,6 +449,36 @@ namespace Graphite {
 		if (const std::string active = file.Get(kActive); !active.empty())
 		{
 			state.Active = DecodePath(active, root);
+		}
+
+		const std::size_t sessions = ReadCount(file, kSessionCount);
+
+		for (std::size_t index = 0; index < sessions; ++index)
+		{
+			SessionTabState session;
+			session.Id = file.Get(SessionKey(index, "id"));
+
+			// The id is what finds the session again; without one there is nothing to look for.
+			if (session.Id.empty())
+			{
+				continue;
+			}
+
+			session.Title = file.Get(SessionKey(index, "title"));
+			session.Tab = ValueNamed(kSessionTabNames, file.Get(SessionKey(index, "tab")))
+							  .value_or(SessionTab::Conversation);
+
+			state.Sessions.push_back(std::move(session));
+		}
+
+		const std::size_t diffs = ReadCount(file, kDiffCount);
+
+		for (std::size_t index = 0; index < diffs; ++index)
+		{
+			if (std::optional<DiffTabState> diff = ReadDiff(file, index))
+			{
+				state.Diffs.push_back(std::move(*diff));
+			}
 		}
 
 		return state;

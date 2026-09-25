@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Git/Oid.h"
+#include "Core/Git/Requests.h"
 #include "Core/Platform/WindowPlacement.h"
 
 #include <cstddef>
@@ -41,10 +43,47 @@ namespace Graphite {
 		friend bool operator==(const TabState&, const TabState&) = default;
 	};
 
+	// The three views a session's window holds. Here rather than beside that window, so the
+	// state can name one without reaching for the code that draws it.
+	enum class SessionTab
+	{
+		Conversation,
+		Cost,
+		Requests
+	};
+
+	// One open session window. The title is what the tab said when it was closed, shown
+	// until the session is found again and its own title replaces it.
+	struct SessionTabState
+	{
+		std::string Id;
+		std::string Title;
+		SessionTab Tab = SessionTab::Conversation;
+
+		friend bool operator==(const SessionTabState&, const SessionTabState&) = default;
+	};
+
+	// One open diff window: a file in one commit against its parent, or a file in the working
+	// tree against the index or HEAD. The same three things the window is keyed by, kept apart
+	// from the window's own type so this stays plain data.
+	struct DiffTabState
+	{
+		// Absent for the working tree.
+		std::optional<Core::Oid> Commit;
+		Core::DiffTarget Target = Core::DiffTarget::CommitToParent;
+
+		// Relative to the repository's working directory, as git reports it.
+		std::filesystem::path Path;
+
+		friend bool operator==(const DiffTabState&, const DiffTabState&) = default;
+	};
+
 	struct WorkspaceState
 	{
 		std::vector<TabState> Tabs;
 		std::optional<std::filesystem::path> Active;
+		std::vector<SessionTabState> Sessions;
+		std::vector<DiffTabState> Diffs;
 
 		friend bool operator==(const WorkspaceState&, const WorkspaceState&) = default;
 	};
