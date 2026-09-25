@@ -34,6 +34,10 @@ project "GraphiteTests"
         -- live under Panels, so the whole folder is globbed.
         "%{wks.location}/Graphite/src/Sessions/**.h",
         "%{wks.location}/Graphite/src/Sessions/**.cpp",
+        -- Persistence is plain state and its encoding: it draws nothing, so the whole folder
+        -- is globbed.
+        "%{wks.location}/Graphite/src/Persistence/**.h",
+        "%{wks.location}/Graphite/src/Persistence/**.cpp",
         -- Editor is named file by file rather than globbed: most of it is widget code that
         -- drags in ImGui and the application's own layers. The units named here are the parts
         -- that are only logic, drawing nothing and reaching no further than Core and the
