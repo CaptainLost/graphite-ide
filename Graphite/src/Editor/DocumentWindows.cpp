@@ -133,14 +133,20 @@ namespace Graphite {
 			return message;
 		}
 
-		// Whether imgui.ini holds a dock node for this window that still exists.
-		bool HasRememberedDock(const std::string& windowName)
+		// Whether imgui.ini remembers a place for this window that it can still go back to:
+		// floating on its own (no dock id), or in a dock node that still exists. A window that
+		// was floating is left to float; docking it would move it somewhere it never was.
+		bool HasRememberedPlace(const std::string& windowName)
 		{
 			const ImGuiWindowSettings* settings =
 				ImGui::FindWindowSettingsByID(ImHashStr(windowName.c_str()));
 
-			return settings != nullptr && settings->DockId != 0 &&
-				   ImGui::DockBuilderGetNode(settings->DockId) != nullptr;
+			if (settings == nullptr)
+			{
+				return false;
+			}
+
+			return settings->DockId == 0 || ImGui::DockBuilderGetNode(settings->DockId) != nullptr;
 		}
 	}
 
@@ -1922,11 +1928,12 @@ namespace Graphite {
 
 			if (IsNewSinceLastFrame(identity))
 			{
-				// A document reopened from the last launch goes back to the node it was in, which
-				// imgui.ini already carries; docking it anywhere else here would override that.
+				// A document reopened from the last launch goes back to where it was — the node it
+				// was in, or floating — which imgui.ini already carries; docking it anywhere else
+				// here would override that.
 				const bool restored = m_RestoredIdentities.erase(identity) > 0;
 
-				if (!restored || !HasRememberedDock(name))
+				if (!restored || !HasRememberedPlace(name))
 				{
 					if (const unsigned int targetNode = ChooseDockTarget(identity, fallbackDockNode);
 						targetNode != 0)
