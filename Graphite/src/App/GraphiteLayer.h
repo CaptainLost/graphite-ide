@@ -19,10 +19,13 @@
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Panels/SessionWindows.h"
+#include "Persistence/StateKeeper.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Sessions/ClaudeSettings.h"
 #include "Settings/AnalysisSettings.h"
+#include "Settings/AppSettings.h"
+#include "Settings/WorkspaceSettings.h"
 #include "Theme/ActiveScheme.h"
 #include "Workspace/DroppedPaths.h"
 #include "Workspace/Workspace.h"
@@ -56,6 +59,7 @@ namespace Graphite {
 		GraphiteLayer(Core::Ref<Core::RingBufferSink> sink, std::filesystem::path initialFolder);
 
 		void OnAttach() override;
+		void OnDetach() override;
 		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;
 		void OnEvent(Core::Event& event) override;
@@ -113,6 +117,8 @@ namespace Graphite {
 		void UpdateFocusReload(Core::Timestep ts);
 
 		void ApplyChromeIfSchemeChanged();
+
+		GlobalState CaptureGlobalState();
 
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
@@ -286,5 +292,11 @@ namespace Graphite {
 		// OnImGuiRender. Starts at AnalysisSettings' own default, so a session that loads that
 		// default sees no edge at all on its first frame.
 		bool m_AnalysisWasEnabled = true;
+
+		StateKeeper m_StateKeeper{
+			[](const GlobalState& state) { AppSettings::SaveGlobalState(state); },
+			[](const std::filesystem::path& root, const WorkspaceState& state) {
+				WorkspaceSettings{root}.SaveState(state);
+			}};
 	};
 }

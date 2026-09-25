@@ -1,5 +1,7 @@
 #include "Settings/WorkspaceSettings.h"
 
+#include "Persistence/StateCodec.h"
+
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileOperations.h"
@@ -61,5 +63,31 @@ namespace Graphite {
 
 		if (!file.Save(GetFilePath()))
 			APP_WARN("Cannot write '{}'", GetFilePath().string());
+	}
+
+	WorkspaceState WorkspaceSettings::LoadState() const
+	{
+		if (m_Root.empty())
+		{
+			return {};
+		}
+
+		return ReadWorkspaceState(Core::JsonFile::Load(GetFilePath()), m_Root);
+	}
+
+	void WorkspaceSettings::SaveState(const WorkspaceState& state)
+	{
+		if (m_Root.empty() || !EnsureDirectoryExists(m_Root / kDirectory))
+		{
+			return;
+		}
+
+		Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
+		WriteWorkspaceState(state, m_Root, file);
+
+		if (!file.Save(GetFilePath()))
+		{
+			APP_WARN("Cannot write '{}'", GetFilePath().string());
+		}
 	}
 }

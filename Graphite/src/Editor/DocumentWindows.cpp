@@ -212,6 +212,13 @@ namespace Graphite {
 				continue;
 			}
 
+			// Already open — a folder dropped over another can share files with it — and the
+			// tab someone is using keeps its own caret and view.
+			if (m_Documents.Find(tab.Path))
+			{
+				continue;
+			}
+
 			// Confirmed: a large file's size question was answered in the launch it was opened
 			// in, and asking again every launch would be a question about nothing.
 			LoadConfirmed(tab.Path, !tab.Preview);

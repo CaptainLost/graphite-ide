@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Persistence/PersistedState.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <string>
@@ -95,5 +97,10 @@ namespace Graphite {
 		static void LoadKeyBindings(Core::Keymap& keys);
 
 		static void SaveKeyBindings(const Core::Keymap& keys);
+
+		// The window's placement and which panels differ from their default. Written by
+		// StateKeeper; read once at startup.
+		static GlobalState LoadGlobalState();
+		static void SaveGlobalState(const GlobalState& state);
 	};
 }

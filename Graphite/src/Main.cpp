@@ -2,6 +2,8 @@
 
 #include "App/Version.h"
 
+#include "Settings/AppSettings.h"
+
 #include "Core.h"
 #include "Core/App/EntryPoint.h"
 
@@ -52,7 +54,11 @@ namespace Graphite {
 	public:
 		GraphiteApplication(Core::Ref<Core::RingBufferSink> sink,
 							std::filesystem::path initialFolder)
-			: Core::Application(Core::ApplicationSpec{"Graphite IDE", 1600, 900, true}),
+			: Core::Application(Core::ApplicationSpec{.Name = "Graphite IDE",
+													  .Width = 1600,
+													  .Height = 900,
+													  .CustomTitleBar = true,
+													  .Placement = AppSettings::LoadGlobalState().Window}),
 			  m_Sink(std::move(sink)),
 			  m_InitialFolder(std::move(initialFolder))
 		{

@@ -1,5 +1,7 @@
 #include "Settings/AppSettings.h"
 
+#include "Persistence/StateCodec.h"
+
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/Command/Binding.h"
@@ -345,6 +347,22 @@ namespace Graphite {
 
 		keys.ForEachOverride(
 			[&file](const std::string& id, const Core::Binding& binding) { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });
+
+		if (!file.Save(SettingsPath()))
+		{
+			APP_WARN("Cannot write '{}'", SettingsPath().string());
+		}
+	}
+
+	GlobalState AppSettings::LoadGlobalState()
+	{
+		return ReadGlobalState(Core::JsonFile::Load(SettingsPath()));
+	}
+
+	void AppSettings::SaveGlobalState(const GlobalState& state)
+	{
+		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+		WriteGlobalState(state, file);
 
 		if (!file.Save(SettingsPath()))
 		{

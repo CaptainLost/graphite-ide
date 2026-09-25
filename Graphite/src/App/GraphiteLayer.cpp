@@ -180,6 +180,16 @@ namespace Graphite {
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
 
+		// After every panel is registered and before the first frame draws any of them.
+		const GlobalState stored = AppSettings::LoadGlobalState();
+
+		for (const auto& [id, visible] : stored.PanelVisibility)
+		{
+			(void)m_Panels.SetVisible(id, visible);
+		}
+
+		m_StateKeeper.AdoptGlobal(stored);
+
 		APP_INFO("Registered panels: {}", m_Panels.GetCount());
 
 		explorer->LoadSettings();
@@ -319,6 +329,14 @@ namespace Graphite {
 		m_Git.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
+			// A folder dropped over another replaces it without a WorkspaceClosedEvent, so the
+			// one being replaced is written here, before the new folder's tabs join the list.
+			m_StateKeeper.CloseWorkspace();
+
+			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
+			m_DocumentWindows.RestoreState(stored);
+			m_StateKeeper.AdoptWorkspace(event.Root, stored);
+
 			m_GitPort.SetRoot(event.Root);
 
 			// A drop that replaces the workspace publishes no WorkspaceClosedEvent for the
@@ -340,6 +358,10 @@ namespace Graphite {
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
+			// From the last frame's snapshot, so it does not matter that the documents are
+			// closed just below.
+			m_StateKeeper.CloseWorkspace();
+
 			m_Documents.CloseAll();
 
 			// Without this, GitModel stops asking - it handles this same event - but the
@@ -359,6 +381,7 @@ namespace Graphite {
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
 			m_DocumentWindows.HandleRootMoved(event.From, event.To);
+			m_StateKeeper.MoveWorkspace(event.To);
 		});
 
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
@@ -398,6 +421,11 @@ namespace Graphite {
 		// Watchers drop events — buffer overflow, or a tool touching many files at once — and
 		// returning from another application is exactly when that matters.
 		m_DocumentWindows.NotifyWindowFocus(MainWindowHasFocus());
+
+		m_StateKeeper.Observe(ts.GetSeconds(), CaptureGlobalState(),
+							  m_Workspace.IsOpen()
+								  ? std::optional<WorkspaceState>{m_DocumentWindows.CaptureState()}
+								  : std::nullopt);
 	}
 
 	void GraphiteLayer::UpdateFocusReload(Core::Timestep ts)
@@ -425,6 +453,26 @@ namespace Graphite {
 
 			m_SecondsInBackground = 0.0f;
 		}
+	}
+
+	GlobalState GraphiteLayer::CaptureGlobalState()
+	{
+		GlobalState state;
+		state.Window = Core::Application::Get().GetWindow().GetPlacement();
+
+		m_Panels.ForEach([&state](Core::Panel& panel) {
+			if (panel.IsVisible() != panel.IsDefaultVisible())
+			{
+				state.PanelVisibility[panel.GetId()] = panel.IsVisible();
+			}
+		});
+
+		return state;
+	}
+
+	void GraphiteLayer::OnDetach()
+	{
+		m_StateKeeper.Flush();
 	}
 
 	void GraphiteLayer::ApplyChromeIfSchemeChanged()
