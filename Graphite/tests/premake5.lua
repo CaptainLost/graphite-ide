@@ -99,6 +99,10 @@ project "GraphiteTests"
         -- watcher and libgit2, so it is named here rather than globbed.
         "%{wks.location}/Graphite/src/Workspace/DroppedPaths.h",
         "%{wks.location}/Graphite/src/Workspace/DroppedPaths.cpp",
+        -- OwnStateChanges is the same kind of rule, for which watcher batches are the IDE's own
+        -- writing, and reaches no further than Core's path helpers.
+        "%{wks.location}/Graphite/src/Workspace/OwnStateChanges.h",
+        "%{wks.location}/Graphite/src/Workspace/OwnStateChanges.cpp",
         "%{wks.location}/Graphite/src/Git/**.h",
         "%{wks.location}/Graphite/src/Git/**.cpp",
         -- The menu tree is data: it names commands and groups without reaching for any of

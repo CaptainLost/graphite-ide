@@ -1,6 +1,7 @@
 #include "Workspace/Workspace.h"
 
 #include "Settings/AppSettings.h"
+#include "Workspace/OwnStateChanges.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Command/CommandRegistry.h"
@@ -265,6 +266,15 @@ namespace Graphite {
 		// re-parses the whole solution.
 		if (TouchesSolution(changed.Directories))
 			LoadSolution();
+
+		// The IDE writing its own state — workspace.json every couple of seconds while the caret
+		// moves — is not news about the folder's files. The tree above still catches up, since
+		// .graphite is a directory like any other there, but nobody is told: git status, above
+		// all, would otherwise be asked again after every write.
+		if (OnlyOwnStateChanged(changed.Directories, m_Root))
+		{
+			return;
+		}
 
 		// Published after the tree has caught up, so a subscriber sees one picture.
 		m_Events.Publish(WorkspaceFilesChangedEvent{changed.Directories, false});
