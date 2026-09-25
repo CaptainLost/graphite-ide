@@ -4,6 +4,8 @@
 #include "Git/GitModel.h"
 #include "Git/GitPalette.h"
 
+#include "Persistence/PersistedState.h"
+
 #include "Core/Git/Oid.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
@@ -88,6 +90,16 @@ namespace Graphite {
 		// into the same slot the new tab now owns. Commit tabs are untouched.
 		void CloseWorkingTree();
 
+		// The open diffs, in tab order, for the next launch.
+		std::vector<DiffTabState> CaptureState() const;
+
+		// Reopens what CaptureState returned last time, after CloseAll has emptied the list for
+		// the folder being opened. A restored tab goes back to the place imgui.ini remembers for
+		// it rather than to the centre node, and none of them is brought forward: the tab the
+		// reader was looking at is whichever one the dock node itself remembers as selected.
+		// Only the first working-tree diff is reopened, for the reason CloseWorkingTree gives.
+		void RestoreState(const std::vector<DiffTabState>& diffs);
+
 		// centreNode is where a window is placed the first time its identity appears —
 		// after that ImGui remembers, including across a restart through imgui.ini.
 		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
@@ -110,6 +122,10 @@ namespace Graphite {
 			// that already has a tab must raise that tab, not silently do nothing.
 			bool Fresh = true;
 			bool Focus = false;
+
+			// Reopened by RestoreState and not yet drawn: its first frame leaves it wherever
+			// imgui.ini remembers it, when it remembers anywhere it can still go.
+			bool Restored = false;
 
 			// The whole-file texts for this tab's file, the tokens lexed from them, and which
 			// file they are for. Held here rather than inside DiffView, which must not reach

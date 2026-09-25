@@ -4,6 +4,9 @@
 
 #include "Sessions/ClaudeSettings.h"
 #include "Sessions/SessionText.h"
+#include "UI/RememberedPlace.h"
+
+#include "Core/Base/Log.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -69,6 +72,7 @@ namespace Graphite {
 	{
 		entry.Title = summary.DisplayTitle();
 		entry.Summary = summary;
+		entry.Looking = false;
 
 		if (!entry.Live)
 		{
@@ -87,6 +91,9 @@ namespace Graphite {
 			if (!existing->Live)
 				Attach(*existing, summary);
 
+			// Opened from the folder that is open now, so it belongs to this one, even if its
+			// tab was carried over from the one before.
+			existing->CarriedOver = false;
 			existing->Focus = true;
 			return;
 		}
@@ -101,6 +108,7 @@ namespace Graphite {
 	{
 		if (Entry* existing = Find(id))
 		{
+			existing->CarriedOver = false;
 			existing->Focus = true;
 			return;
 		}
@@ -115,6 +123,94 @@ namespace Graphite {
 	{
 		if (Entry* entry = Find(summary.Id))
 			Attach(*entry, summary);
+	}
+
+	std::vector<SessionTabState> SessionWindows::CaptureState() const
+	{
+		std::vector<SessionTabState> sessions;
+		sessions.reserve(m_Open.size());
+
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			// Still open from the folder this one replaced: written to that folder already.
+			if (entry->CarriedOver)
+			{
+				continue;
+			}
+
+			// A view still waiting to be selected is reported as the one shown: the tab bar has
+			// not been drawn yet, so what it last selected says nothing about the reader.
+			sessions.push_back(
+				SessionTabState{entry->Id, entry->Title, entry->PendingTab.value_or(entry->Selected)});
+		}
+
+		return sessions;
+	}
+
+	void SessionWindows::CarryOverOpenSessions()
+	{
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			entry->CarriedOver = true;
+		}
+	}
+
+	void SessionWindows::RestoreState(const std::vector<SessionTabState>& sessions)
+	{
+		for (const SessionTabState& session : sessions)
+		{
+			// Already open - a folder opened over another can share a session with it - and the
+			// window someone is using keeps its own view. It belongs to this folder too now.
+			if (Entry* existing = Find(session.Id))
+			{
+				existing->CarriedOver = false;
+				continue;
+			}
+
+			auto entry = Core::CreateScope<Entry>();
+			entry->Id = session.Id;
+			entry->Title = session.Title;
+			entry->PendingTab = session.Tab;
+			entry->Restored = true;
+			entry->Looking = true;
+
+			// A restored window does not pull itself forward: the one the reader was looking at
+			// is whichever its dock node remembers as selected.
+			entry->Focus = false;
+
+			m_Open.push_back(std::move(entry));
+		}
+	}
+
+	bool SessionWindows::IsLookingForSessions() const
+	{
+		return std::any_of(m_Open.begin(), m_Open.end(),
+						   [](const Core::Scope<Entry>& entry) { return entry->Looking; });
+	}
+
+	void SessionWindows::SettleRestored(const std::function<const SessionSummary*(const std::string& id)>& find)
+	{
+		for (std::size_t index = 0; index < m_Open.size();)
+		{
+			Entry& entry = *m_Open[index];
+
+			if (!entry.Looking)
+			{
+				++index;
+				continue;
+			}
+
+			if (const SessionSummary* summary = find(entry.Id))
+			{
+				Attach(entry, *summary);
+				++index;
+				continue;
+			}
+
+			APP_INFO("Not reopening Claude session '{}' ({}): the index has no transcript for it", entry.Title,
+					 entry.Id);
+			m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
+		}
 	}
 
 	void SessionWindows::NotifyChanged(const std::vector<std::filesystem::path>& directories)
@@ -163,9 +259,18 @@ namespace Graphite {
 				ICON_MDI_ROBOT_OUTLINE "  " + SingleLineLabel(entry.Title, kTabTitleBytes) + "###session-" + entry.Id;
 
 			// Docked only on the frame this identity is new, as DiffWindows does: every frame
-			// would fight a reader who dragged the tab elsewhere.
-			if (std::exchange(entry.Fresh, false) && centreNode != 0)
-				ImGui::DockBuilderDockWindow(name.c_str(), centreNode);
+			// would fight a reader who dragged the tab elsewhere. A window reopened from the last
+			// launch goes back to where it was instead, which imgui.ini already carries - unless
+			// that place is gone, and then it goes where a new one would.
+			if (std::exchange(entry.Fresh, false))
+			{
+				const bool restored = std::exchange(entry.Restored, false);
+
+				if (centreNode != 0 && (!restored || !HasRememberedPlace(name)))
+				{
+					ImGui::DockBuilderDockWindow(name.c_str(), centreNode);
+				}
+			}
 
 			if (std::exchange(entry.Focus, false))
 				ImGui::SetNextWindowFocus();
@@ -176,12 +281,25 @@ namespace Graphite {
 			{
 				if (!entry.Live)
 				{
-					ImGui::TextDisabled("Waiting for Claude to write the session's first lines...");
+					// A restored window is waiting for the index to find a transcript that already
+					// exists; a new one for Claude to start writing it.
+					ImGui::TextDisabled("%s", entry.Looking
+												  ? "Looking for this session\xe2\x80\xa6"
+												  : "Waiting for Claude to write the session's first lines...");
 				}
 				else if (ImGui::BeginTabBar("##sessionTabs"))
 				{
-					if (ImGui::BeginTabItem("Conversation"))
+					// A restored view is selected once, on the first frame the tab bar is drawn.
+					const std::optional<SessionTab> pendingTab = std::exchange(entry.PendingTab, std::nullopt);
+					const auto restoredFlag = [&pendingTab](SessionTab tab)
 					{
+						return pendingTab == tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+					};
+
+					if (ImGui::BeginTabItem("Conversation", nullptr, restoredFlag(SessionTab::Conversation)))
+					{
+						entry.Selected = SessionTab::Conversation;
+
 						if (const std::size_t skipped = entry.Live->GetSkipped(); skipped > 0)
 							ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
 
@@ -200,8 +318,10 @@ namespace Graphite {
 						ImGui::EndTabItem();
 					}
 
-					if (ImGui::BeginTabItem("Cost"))
+					if (ImGui::BeginTabItem("Cost", nullptr, restoredFlag(SessionTab::Cost)))
 					{
+						entry.Selected = SessionTab::Cost;
+
 						// The same rule as the conversation: a cost summed over half a transcript
 						// is a wrong number, not a partial one.
 						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
@@ -227,7 +347,7 @@ namespace Graphite {
 					// this tab once; the tab bar moves to it on the next frame. SetSelected on every
 					// frame would pin the reader to it.
 					const ImGuiTabItemFlags requestsFlags =
-						entry.PendingRequest ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+						entry.PendingRequest ? ImGuiTabItemFlags_SetSelected : restoredFlag(SessionTab::Requests);
 					const bool requestsOpen = ImGui::BeginTabItem("Requests", nullptr, requestsFlags);
 
 					// Revealed whether or not the tab is drawn this frame: the view keeps it for its
@@ -237,6 +357,8 @@ namespace Graphite {
 
 					if (requestsOpen)
 					{
+						entry.Selected = SessionTab::Requests;
+
 						// The same rule again: a request's context delta and the tools it had are
 						// only right once every record before it has been read.
 						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();

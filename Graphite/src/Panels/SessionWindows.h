@@ -3,6 +3,7 @@
 #include "Panels/ConversationView.h"
 #include "Panels/CostView.h"
 #include "Panels/RequestsView.h"
+#include "Persistence/PersistedState.h"
 #include "Sessions/LiveTranscript.h"
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
@@ -16,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -39,6 +41,35 @@ namespace Graphite {
 		void OpenPending(const std::string& id, std::string title);
 
 		void UpdateSummary(const SessionSummary& summary);
+
+		// The open session windows, in tab order, each with the view it shows, for the next
+		// launch. A window carried over from a folder this one replaced is left out (see
+		// CarryOverOpenSessions).
+		std::vector<SessionTabState> CaptureState() const;
+
+		// Marks every open session window as carried over from the folder about to be replaced.
+		// They stay open, but a folder's windows are written to that folder and never to
+		// another, so CaptureState leaves these out. One stops being carried over when it closes,
+		// when the Sessions panel opens it again, or when the new folder's restored state names
+		// it too. The same rule DocumentWindows::CarryOverOpenDocuments keeps for file tabs.
+		void CarryOverOpenSessions();
+
+		// Reopens what CaptureState returned last time. A session's transcript is only known
+		// once the index reports it, so each window starts out looking for it, under the title
+		// it had, and settles once the index has either found it or finished without it (see
+		// SettleRestored). None is brought forward, and each goes back to the place imgui.ini
+		// remembers for it.
+		void RestoreState(const std::vector<SessionTabState>& sessions);
+
+		// Whether a restored window is still waiting for the index to find its session: the
+		// Sessions panel starts the index for this even if the list itself has never been shown.
+		bool IsLookingForSessions() const;
+
+		// Called once the index has finished a full scan, with a way to find what it knows by
+		// session id. A restored window still looking attaches to what `find` returns, or, when
+		// that is nothing, closes: the transcript is gone, as a restored file tab whose file is
+		// gone does not reopen.
+		void SettleRestored(const std::function<const SessionSummary*(const std::string& id)>& find);
 		void NotifyChanged(const std::vector<std::filesystem::path>& directories);
 
 		// Applies what each tab's reader delivered. UI thread, once per frame.
@@ -71,6 +102,24 @@ namespace Graphite {
 			std::optional<std::size_t> PendingRequest;
 			bool Fresh = true;
 			bool Focus = true;
+
+			// The view the tab bar showed last frame: whichever BeginTabItem returned true.
+			SessionTab Selected = SessionTab::Conversation;
+
+			// A view restored from the last launch, selected once on the first frame the tab bar
+			// is drawn - which is not before the transcript is found - then cleared. Selecting it
+			// every frame would pin the reader to it.
+			std::optional<SessionTab> PendingTab;
+
+			// Reopened by RestoreState and not yet drawn: its first frame leaves it wherever
+			// imgui.ini remembers it, when it remembers anywhere it can still go.
+			bool Restored = false;
+
+			// Reopened by RestoreState and not yet matched to a transcript. Cleared by Attach.
+			bool Looking = false;
+
+			// Still open from a folder another one replaced. See CarryOverOpenSessions.
+			bool CarriedOver = false;
 		};
 
 		Entry* Find(const std::string& id);

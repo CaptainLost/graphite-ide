@@ -120,6 +120,9 @@ namespace Graphite {
 
 		GlobalState CaptureGlobalState();
 
+		// The open folder's file tabs, session windows and diff windows, as one snapshot.
+		WorkspaceState CaptureWorkspaceState() const;
+
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
 		bool m_CustomTitleBar = false;

@@ -2,6 +2,8 @@
 
 #include "Git/CommitLabels.h"
 
+#include "UI/RememberedPlace.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 
@@ -222,6 +224,51 @@ namespace Graphite {
 		std::erase_if(m_Open, [](const Entry& entry) { return !entry.Diff.Commit.has_value(); });
 	}
 
+	std::vector<DiffTabState> DiffWindows::CaptureState() const
+	{
+		std::vector<DiffTabState> diffs;
+		diffs.reserve(m_Open.size());
+
+		for (const Entry& entry : m_Open)
+		{
+			diffs.push_back(DiffTabState{entry.Diff.Commit, entry.Diff.Target, entry.Diff.Path});
+		}
+
+		return diffs;
+	}
+
+	void DiffWindows::RestoreState(const std::vector<DiffTabState>& diffs)
+	{
+		bool workingTreeOpen = std::any_of(m_Open.begin(), m_Open.end(),
+										   [](const Entry& entry) { return !entry.Diff.Commit.has_value(); });
+
+		for (const DiffTabState& stored : diffs)
+		{
+			const OpenDiff diff{.Commit = stored.Commit, .Target = stored.Target, .Path = stored.Path};
+
+			if (IsOpen(diff))
+			{
+				continue;
+			}
+
+			// GitModel keeps one slot for the working-tree diff, so a second such tab would take
+			// turns with the first asking into it.
+			if (!diff.Commit.has_value())
+			{
+				if (workingTreeOpen)
+				{
+					continue;
+				}
+
+				workingTreeOpen = true;
+			}
+
+			Entry entry{diff, DiffView{}};
+			entry.Restored = true;
+			m_Open.push_back(std::move(entry));
+		}
+	}
+
 	void DiffWindows::FollowFile(Entry& entry, const GitModel& model)
 	{
 		if (entry.Diff.Commit.has_value())
@@ -270,11 +317,17 @@ namespace Graphite {
 
 			// Dock only on the frame this identity is new, exactly as DocumentWindows does:
 			// docking every frame would fight a user who dragged the tab elsewhere.
+			//
+			// A tab reopened from the last launch goes back to where it was instead, which
+			// imgui.ini already carries - unless that place is gone, in which case it is new
+			// as far as anyone can tell and goes where a new one would.
 			if (entry.Fresh)
 			{
 				entry.Fresh = false;
 
-				if (centreNode != 0)
+				const bool restored = std::exchange(entry.Restored, false);
+
+				if (centreNode != 0 && (!restored || !HasRememberedPlace(name)))
 				{
 					ImGui::DockBuilderDockWindow(name.c_str(), centreNode);
 				}

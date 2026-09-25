@@ -338,8 +338,13 @@ namespace Graphite {
 			// is open, so nothing is carried.
 			m_DocumentWindows.CarryOverOpenDocuments();
 
+			// Session windows follow the same rule: a session is not tied to a folder, so its
+			// window stays open, but it was the replaced folder's to record.
+			m_SessionWindows.CarryOverOpenSessions();
+
 			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
 			m_DocumentWindows.RestoreState(stored);
+			m_SessionWindows.RestoreState(stored.Sessions);
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
@@ -350,6 +355,10 @@ namespace Graphite {
 			// repository survives into the new one, showing "no longer loaded" and offering
 			// a Reload that would ask the new repository for a commit it never had.
 			m_DiffWindows.CloseAll();
+
+			// After CloseAll, never before: the diffs this folder had open last time are the
+			// only ones that belong to it.
+			m_DiffWindows.RestoreState(stored.Diffs);
 
 			// Same trap, same reason: an expectation registered against the folder this drop
 			// replaced has no business claiming a path in the one that just opened. Dropping a
@@ -428,9 +437,8 @@ namespace Graphite {
 		m_DocumentWindows.NotifyWindowFocus(MainWindowHasFocus());
 
 		m_StateKeeper.Observe(ts.GetSeconds(), CaptureGlobalState(),
-							  m_Workspace.IsOpen()
-								  ? std::optional<WorkspaceState>{m_DocumentWindows.CaptureState()}
-								  : std::nullopt);
+							  m_Workspace.IsOpen() ? std::optional<WorkspaceState>{CaptureWorkspaceState()}
+												   : std::nullopt);
 	}
 
 	void GraphiteLayer::UpdateFocusReload(Core::Timestep ts)
@@ -471,6 +479,15 @@ namespace Graphite {
 				state.PanelVisibility[panel.GetId()] = panel.IsVisible();
 			}
 		});
+
+		return state;
+	}
+
+	WorkspaceState GraphiteLayer::CaptureWorkspaceState() const
+	{
+		WorkspaceState state = m_DocumentWindows.CaptureState();
+		state.Sessions = m_SessionWindows.CaptureState();
+		state.Diffs = m_DiffWindows.CaptureState();
 
 		return state;
 	}

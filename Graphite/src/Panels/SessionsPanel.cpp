@@ -225,8 +225,12 @@ namespace Graphite {
 		// never shows this panel still pays nothing until it is drawn once.
 		if (!m_Started)
 		{
-			if (!WasDrawn())
+			// A session window restored from the last launch needs the index to find its
+			// transcript, whether or not this list has been shown yet.
+			if (!WasDrawn() && !m_Windows.IsLookingForSessions())
+			{
 				return;
+			}
 
 			m_Started = true;
 			FindProjectsDirectory();
@@ -236,11 +240,37 @@ namespace Graphite {
 
 		if (m_Indexing)
 		{
+			// Asked before taking: the worker delivers every summary before it stops counting as
+			// scanning, so an index idle here has nothing left to deliver once the take below is
+			// done. Asked after, it could have finished in between and left its last summaries
+			// for the next frame - after the scan had already been declared complete.
+			const bool scanning = m_Index.IsScanning();
+
 			TakeFromIndex();
 			TakeFromWatcher();
 
-			if (m_InitialScan && !m_Index.IsScanning())
+			if (m_InitialScan && !scanning)
+			{
 				m_InitialScan = false;
+			}
+
+			// Every session there is is known once the first full scan is in, so a restored
+			// window still looking for its session now either finds it or never will.
+			if (!m_InitialScan && m_Windows.IsLookingForSessions())
+			{
+				m_Windows.SettleRestored([this](const std::string& id) -> const SessionSummary*
+				{
+					for (const auto& [file, summary] : m_Sessions)
+					{
+						if (SameSessionId(summary.Id, id))
+						{
+							return &summary;
+						}
+					}
+
+					return nullptr;
+				});
+			}
 
 			SaveCacheWhenSettled();
 		}
