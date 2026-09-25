@@ -148,3 +148,34 @@ TEST_CASE("A pending top line the view never reaches gives up after its frames")
 
 	CHECK(pending.Settle(drawn));
 }
+
+TEST_CASE("A pending top line is still wanted while nothing has moved the caret or the view")
+{
+	const PendingTopLine pending{.Line = 40, .CaretOffset = 812};
+
+	CHECK(pending.StillWanted(812, false, false));
+}
+
+TEST_CASE("A pending top line is dropped once the caret leaves where the restore put it")
+{
+	// A Problems hit or a go-to-definition into the restored tab: the caret is somewhere new and
+	// the view has to go there, not back to the line the last launch was looking at.
+	const PendingTopLine pending{.Line = 40, .CaretOffset = 812};
+
+	CHECK_FALSE(pending.StillWanted(4096, false, false));
+}
+
+TEST_CASE("A pending top line is dropped when somebody asked for the caret to be scrolled to")
+{
+	// Navigation that lands on the very offset the restore put the caret at still moves the view.
+	const PendingTopLine pending{.Line = 40, .CaretOffset = 812};
+
+	CHECK_FALSE(pending.StillWanted(812, true, false));
+}
+
+TEST_CASE("A pending top line is dropped when the reader scrolls the view themselves")
+{
+	const PendingTopLine pending{.Line = 40, .CaretOffset = 812};
+
+	CHECK_FALSE(pending.StillWanted(812, false, true));
+}

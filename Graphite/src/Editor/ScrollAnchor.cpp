@@ -40,6 +40,12 @@ namespace Graphite {
 		return anchor;
 	}
 
+	bool PendingTopLine::StillWanted(std::size_t caretOffset, bool pendingScroll,
+									 bool userScrolled) const
+	{
+		return caretOffset == CaretOffset && !pendingScroll && !userScrolled;
+	}
+
 	bool PendingTopLine::Settle(const ScrollAnchor& drawn)
 	{
 		if (drawn.Taken && drawn.Line == Line)

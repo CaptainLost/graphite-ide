@@ -248,7 +248,7 @@ namespace Graphite {
 
 			if (const std::size_t top = RestoredTopLine(buffer, tab.Top); top > 0)
 			{
-				m_PendingTopLines[tab.Path] = PendingTopLine{.Line = top};
+				m_PendingTopLines[tab.Path] = PendingTopLine{.Line = top, .CaretOffset = offset};
 			}
 		}
 
@@ -2016,7 +2016,24 @@ namespace Graphite {
 				// and the widget skips it.
 				view.Anchor = &m_Anchors[item.Path];
 
-				const auto pendingTop = m_PendingTopLines.find(item.Path);
+				auto pendingTop = m_PendingTopLines.find(item.Path);
+
+				// A restored line gives way the moment the reader goes somewhere else: navigation
+				// into this tab moved the caret or asked for it to be scrolled to, or the wheel
+				// turned over it. Seeding again after that would drag the view back to where the
+				// last launch left it. The wheel is read here, before the editor draws, because the
+				// seed below would otherwise overwrite the scroll it asked for.
+				if (pendingTop != m_PendingTopLines.end())
+				{
+					const bool wheeled = ImGui::GetIO().MouseWheel != 0.0f &&
+										 ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+
+					if (!pendingTop->second.StillWanted(item.Caret.Offset, item.PendingScroll, wheeled))
+					{
+						m_PendingTopLines.erase(pendingTop);
+						pendingTop = m_PendingTopLines.end();
+					}
+				}
 
 				if (pendingTop != m_PendingTopLines.end())
 				{
@@ -2025,7 +2042,10 @@ namespace Graphite {
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 
-				if (pendingTop != m_PendingTopLines.end() && pendingTop->second.Settle(*view.Anchor))
+				// Only a frame that drew rows has anything to say: one that drew none left the seed
+				// above in the anchor untouched, and Settle would read its own seed as arrival.
+				if (pendingTop != m_PendingTopLines.end() && editorResult.DrewRows &&
+					pendingTop->second.Settle(*view.Anchor))
 				{
 					m_PendingTopLines.erase(pendingTop);
 				}

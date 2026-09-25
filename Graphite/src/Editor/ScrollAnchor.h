@@ -83,10 +83,24 @@ namespace Graphite {
 		static constexpr int kFrames = 30;
 
 		std::size_t Line = 0;
+
+		// Where the restore put the caret. While it is still there, and nothing asked for the view
+		// to go anywhere, the reader has not yet done anything the restored line should give way to.
+		std::size_t CaretOffset = 0;
+
 		int FramesLeft = kFrames;
 
-		// Called after each frame that drew the document, with the anchor that frame took.
-		// True once there is nothing left to do.
+		// Whether the restored line should still be pressed on the view this frame, given where the
+		// caret is now, whether somebody asked for the view to follow it, and whether the reader
+		// scrolled it themselves. Asked before each frame: a Problems hit or a go-to-definition
+		// into a restored tab that is still settling moves the caret and asks for a scroll, and
+		// pressing the old line again on the next frame would put the place they asked for
+		// off-screen. Once false, it stays false — the entry is dropped rather than resumed.
+		bool StillWanted(std::size_t caretOffset, bool pendingScroll, bool userScrolled) const;
+
+		// Called after each frame that drew rows of the document, with the anchor that frame took.
+		// True once there is nothing left to do. Only frames that drew rows count: a frame that
+		// drew none leaves the seeded anchor in place, and it would look like the line had arrived.
 		bool Settle(const ScrollAnchor& drawn);
 	};
 }
