@@ -9,8 +9,21 @@
 #include "Core/Events/ApplicationEvent.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/Events/MouseEvent.h"
+#include "Core/Platform/WindowPlacement.h"
+
+#include <vector>
+
+#ifdef CORE_PLATFORM_WINDOWS
+#include <windows.h>
+
+#define GLFW_EXPOSE_NATIVE_WIN32
 
 #include <GLFW/glfw3.h>
+
+#include <GLFW/glfw3native.h>
+#else
+#include <GLFW/glfw3.h>
+#endif
 
 namespace Core {
 
@@ -22,6 +35,43 @@ namespace Core {
 			CORE_ERROR("GLFW ({}): {}", code, description);
 		}
 	}
+
+#ifdef CORE_PLATFORM_WINDOWS
+	namespace {
+		ScreenRect ToScreenRect(const RECT& rect)
+		{
+			return ScreenRect{rect.left, rect.top, rect.right, rect.bottom};
+		}
+
+		BOOL CALLBACK CollectWorkArea(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+		{
+			MONITORINFO info{};
+			info.cbSize = sizeof(info);
+
+			if (GetMonitorInfoW(monitor, &info) != 0)
+			{
+				reinterpret_cast<std::vector<ScreenRect>*>(data)->push_back(ToScreenRect(info.rcWork));
+			}
+
+			return TRUE;
+		}
+
+		std::vector<ScreenRect> MonitorWorkAreas()
+		{
+			std::vector<ScreenRect> areas;
+			EnumDisplayMonitors(nullptr, nullptr, &CollectWorkArea, reinterpret_cast<LPARAM>(&areas));
+			return areas;
+		}
+
+		MONITORINFO PrimaryMonitor()
+		{
+			MONITORINFO info{};
+			info.cbSize = sizeof(info);
+			GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &info);
+			return info;
+		}
+	}
+#endif
 
 	GlfwWindow::GlfwWindow(GLFWwindow* handle) : m_Handle(handle) {}
 
@@ -293,6 +343,84 @@ namespace Core {
 		return glfwGetWindowAttrib(m_Handle, GLFW_MAXIMIZED) == GLFW_TRUE;
 	}
 
+	WindowPlacement GlfwWindow::GetPlacement() const
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		WINDOWPLACEMENT native{};
+		native.length = sizeof(native);
+
+		if (GetWindowPlacement(glfwGetWin32Window(m_Handle), &native) != 0)
+		{
+			const RECT& rect = native.rcNormalPosition;
+
+			// A window minimized from maximized comes back maximized, and that is what the next
+			// launch should do too.
+			const bool maximized =
+				native.showCmd == SW_SHOWMAXIMIZED ||
+				(native.showCmd == SW_SHOWMINIMIZED && (native.flags & WPF_RESTORETOMAXIMIZED) != 0);
+
+			return WindowPlacement{rect.left, rect.top, rect.right - rect.left,
+								   rect.bottom - rect.top, maximized};
+		}
+#endif
+		WindowPlacement placement;
+		glfwGetWindowPos(m_Handle, &placement.X, &placement.Y);
+		glfwGetWindowSize(m_Handle, &placement.Width, &placement.Height);
+		placement.Maximized = IsMaximized();
+		return placement;
+	}
+
+	void GlfwWindow::Show(const std::optional<WindowPlacement>& placement)
+	{
+		if (!placement)
+		{
+			glfwShowWindow(m_Handle);
+			return;
+		}
+
+#ifdef CORE_PLATFORM_WINDOWS
+		// rcNormalPosition is in workspace coordinates, which are screen coordinates shifted by
+		// a taskbar docked on the primary monitor's top or left. The monitors report screen
+		// coordinates, so the fit happens there and the result is shifted back.
+		const MONITORINFO primary = PrimaryMonitor();
+		const int shiftX = primary.rcWork.left - primary.rcMonitor.left;
+		const int shiftY = primary.rcWork.top - primary.rcMonitor.top;
+
+		WindowPlacement onScreen = *placement;
+		onScreen.X += shiftX;
+		onScreen.Y += shiftY;
+
+		const std::vector<ScreenRect> areas = MonitorWorkAreas();
+		const WindowPlacement fitted = FitToMonitors(onScreen, areas, ToScreenRect(primary.rcWork));
+
+		WINDOWPLACEMENT native{};
+		native.length = sizeof(native);
+		native.showCmd = fitted.Maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+		native.rcNormalPosition = RECT{fitted.X - shiftX, fitted.Y - shiftY,
+									   fitted.X - shiftX + fitted.Width,
+									   fitted.Y - shiftY + fitted.Height};
+
+		// SetWindowPlacement shows the window itself, with showCmd.
+		if (SetWindowPlacement(glfwGetWin32Window(m_Handle), &native) != 0)
+		{
+			return;
+		}
+
+		CORE_WARN("Cannot restore the window's placement (error {}), opening it at the default",
+				  GetLastError());
+		glfwShowWindow(m_Handle);
+#else
+		glfwSetWindowPos(m_Handle, placement->X, placement->Y);
+		glfwSetWindowSize(m_Handle, placement->Width, placement->Height);
+		glfwShowWindow(m_Handle);
+
+		if (placement->Maximized)
+		{
+			glfwMaximizeWindow(m_Handle);
+		}
+#endif
+	}
+
 	bool GlfwWindow::HasCustomTitleBar() const
 	{
 		return m_Frame != nullptr;
@@ -331,8 +459,15 @@ namespace Core {
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
+		// Created hidden and shown once it is where it belongs, so a restored window does not
+		// flash up at the default size first.
+		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+
 		GLFWwindow* handle =
 			glfwCreateWindow(spec.Width, spec.Height, spec.Title.c_str(), nullptr, nullptr);
+
+		// Hints outlive the call, and ImGui's platform windows are GLFW windows too.
+		glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
 
 		if (handle == nullptr)
 		{
@@ -361,6 +496,8 @@ namespace Core {
 				CORE_WARN("Keeping the system title bar: {}", frame.GetError().Message);
 			}
 		}
+
+		window->Show(spec.Placement);
 
 		CORE_INFO("Window created: {}x{} \"{}\"", spec.Width, spec.Height, spec.Title);
 		return Result<Scope<Window>>{std::move(window)};

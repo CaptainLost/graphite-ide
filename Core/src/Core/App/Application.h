@@ -8,6 +8,7 @@
 #include "Core/Platform/Window.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,8 @@ namespace Core {
 		int Height = 900;
 
 		bool CustomTitleBar = false;
+
+		std::optional<WindowPlacement> Placement;
 	};
 
 	class Application : NonCopyable

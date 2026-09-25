@@ -6,6 +6,7 @@
 #include "Core/Platform/WindowFrame.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 struct GLFWwindow;
@@ -39,6 +40,13 @@ namespace Core {
 		void Minimize() override;
 		void ToggleMaximize() override;
 		bool IsMaximized() const override;
+		WindowPlacement GetPlacement() const override;
+
+		// Shows a window created hidden, at `placement` when there is one. Called once, by
+		// Window::Create, after the frame is adopted: the frame changes the non-client area, and
+		// a placement applied before that would be measured against the old one.
+		void Show(const std::optional<WindowPlacement>& placement);
+
 		bool HasCustomTitleBar() const override;
 		void SetCaptionMetrics(const CaptionMetrics& metrics) override;
 		void SetBorderColor(const Color& color) override;

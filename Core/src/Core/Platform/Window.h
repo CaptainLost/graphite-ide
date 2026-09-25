@@ -7,10 +7,12 @@
 #include "Core/Base/Result.h"
 #include "Core/Events/Event.h"
 #include "Core/Platform/Caption.h"
+#include "Core/Platform/WindowPlacement.h"
 
 #include <functional>
 
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace Core {
@@ -25,6 +27,10 @@ namespace Core {
 		bool CustomTitleBar = false;
 
 		Color BorderColor;
+
+		// Where to put the window, when there is somewhere it was before. Empty means the
+		// platform's default position at Width x Height.
+		std::optional<WindowPlacement> Placement;
 	};
 
 	class Window : NonCopyable
@@ -54,6 +60,10 @@ namespace Core {
 
 		virtual void ToggleMaximize() = 0;
 		virtual bool IsMaximized() const = 0;
+
+		// The window's restored rectangle and whether it is maximized, in the form Placement
+		// takes back. Reported for a maximized window too: the rectangle is the one it returns to.
+		virtual WindowPlacement GetPlacement() const = 0;
 
 		virtual bool HasCustomTitleBar() const = 0;
 

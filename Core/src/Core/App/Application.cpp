@@ -95,6 +95,7 @@ namespace Core {
 		windowSpec.Width = m_Spec.Width;
 		windowSpec.Height = m_Spec.Height;
 		windowSpec.CustomTitleBar = m_Spec.CustomTitleBar;
+		windowSpec.Placement = m_Spec.Placement;
 		// The window is created before the ImGui context exists, so the border colour is asked
 		// of the theme here — the one layer that can see both — and travels down as a value.
 		windowSpec.BorderColor = Theme::GetBorderColor();
