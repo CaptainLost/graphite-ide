@@ -77,6 +77,14 @@ namespace Core {
 		return true;
 	}
 
+	void PanelManager::ForEach(const std::function<void(Panel&)>& visit)
+	{
+		for (const Scope<Panel>& panel : m_Panels)
+		{
+			visit(*panel);
+		}
+	}
+
 	void PanelManager::OnUpdate(Timestep ts)
 	{
 		for (auto& panel : m_Panels)

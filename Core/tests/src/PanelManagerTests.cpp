@@ -283,3 +283,15 @@ TEST_CASE("A panel's toggle carries the panel's icon for the menu to draw")
 	CHECK(members[0]->Label == "Terminal");
 	CHECK(members[1]->Icon.empty());
 }
+
+TEST_CASE("ForEach visits every panel in the order they were added")
+{
+	Core::PanelManager panels;
+	panels.Add(std::make_unique<CountingPanel>("first", "First"));
+	panels.Add(std::make_unique<CountingPanel>("second", "Second", "tools", false));
+
+	std::vector<std::string> seen;
+	panels.ForEach([&seen](Core::Panel& panel) { seen.push_back(panel.GetId()); });
+
+	CHECK(seen == std::vector<std::string>{"first", "second"});
+}

@@ -7,6 +7,7 @@
 #include "Core/UI/Panel.h"
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -24,6 +25,8 @@ namespace Core {
 		std::size_t GetCount() const { return m_Panels.size(); }
 
 		bool SetVisible(std::string_view id, bool visible);
+
+		void ForEach(const std::function<void(Panel&)>& visit);
 
 		void OnUpdate(Timestep ts);
 		void OnImGuiRender();
