@@ -104,6 +104,20 @@ TEST_CASE("Paths inside the folder are stored relative to it, so the folder can 
 	CHECK(read.Active == moved / "src" / "Main.cpp");
 }
 
+TEST_CASE("A path differing from the folder only in case is still stored relative to it")
+{
+	const std::filesystem::path root{"D:\\Work\\Repo"};
+	const std::filesystem::path tab{"d:\\work\\REPO\\src\\Main.cpp"};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(WorkspaceState{.Tabs = {TabState{tab}}}, root, file);
+
+	CHECK(file.Get("restore.tab.0.path") == "src\\Main.cpp");
+
+	const std::filesystem::path moved{"E:\\Elsewhere\\Repo"};
+	CHECK(ReadWorkspaceState(file, moved).Tabs[0].Path == moved / "src" / "Main.cpp");
+}
+
 TEST_CASE("A path outside the folder is stored whole")
 {
 	const std::filesystem::path outside{"C:\\Other\\notes.txt"};

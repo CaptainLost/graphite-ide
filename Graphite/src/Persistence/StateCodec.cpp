@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cwctype>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -70,15 +71,68 @@ namespace Graphite {
 			}
 		}
 
+		// Windows paths are case-insensitive, but std::filesystem compares path elements
+		// case-sensitively. A root typed in one case and a tab path drawn from the file tree in
+		// another must still be recognised as the same folder.
+		bool EqualElementIgnoringCase(const std::filesystem::path& a, const std::filesystem::path& b)
+		{
+			const auto& left = a.native();
+			const auto& right = b.native();
+
+			if (left.size() != right.size())
+			{
+				return false;
+			}
+
+			for (std::size_t index = 0; index < left.size(); ++index)
+			{
+				if (std::towlower(static_cast<std::wint_t>(left[index])) !=
+					std::towlower(static_cast<std::wint_t>(right[index])))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
 		std::string EncodePath(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
 			if (!root.empty())
 			{
-				const std::filesystem::path relative =
-					path.lexically_normal().lexically_relative(root.lexically_normal());
+				const std::filesystem::path normalizedPath = path.lexically_normal();
+				const std::filesystem::path normalizedRoot = root.lexically_normal();
 
-				if (!relative.empty() && *relative.begin() != "..")
+				auto rootIt = normalizedRoot.begin();
+				auto pathIt = normalizedPath.begin();
+				bool inside = true;
+
+				for (; rootIt != normalizedRoot.end(); ++rootIt, ++pathIt)
 				{
+					if (pathIt == normalizedPath.end() || !EqualElementIgnoringCase(*rootIt, *pathIt))
+					{
+						inside = false;
+						break;
+					}
+				}
+
+				if (inside)
+				{
+					std::filesystem::path relative;
+
+					if (pathIt == normalizedPath.end())
+					{
+						// path is the root itself.
+						relative = ".";
+					}
+					else
+					{
+						for (; pathIt != normalizedPath.end(); ++pathIt)
+						{
+							relative /= *pathIt;
+						}
+					}
+
 					return Core::ToUtf8(relative);
 				}
 			}
