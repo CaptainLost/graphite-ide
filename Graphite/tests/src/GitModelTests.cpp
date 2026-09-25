@@ -826,6 +826,35 @@ TEST_CASE("A failed diff can be asked for again once forgotten")
 	REQUIRE(model.GetDiffFor(IdOf(1)) != nullptr);
 }
 
+TEST_CASE("A commit's diff reports failed only while a failed answer is held")
+{
+	FakePort port;
+	port.FailDiff = true;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	// Never asked about, and asked but not yet answered: neither is a failure, and a diff
+	// tab restored from the last launch must not be closed for either.
+	CHECK_FALSE(model.IsDiffFailed(IdOf(1)));
+	model.RequestDiffFor(IdOf(1));
+	CHECK_FALSE(model.IsDiffFailed(IdOf(1)));
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	CHECK(model.IsDiffFailed(IdOf(1)));
+
+	model.ForgetFailedDiffFor(IdOf(1));
+	CHECK_FALSE(model.IsDiffFailed(IdOf(1)));
+
+	port.FailDiff = false;
+	port.Diff = DiffNaming("a.txt");
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK_FALSE(model.IsDiffFailed(IdOf(1)));
+	CHECK(model.GetDiffFor(IdOf(1)) != nullptr);
+}
+
 TEST_CASE("Forgetting a failed diff clears the error it left behind")
 {
 	FakePort port;

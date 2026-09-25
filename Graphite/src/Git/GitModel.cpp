@@ -552,6 +552,13 @@ namespace Graphite {
 		m_CommitDiffError.reset();
 	}
 
+	bool GitModel::IsDiffFailed(const Core::Oid& commit) const
+	{
+		const auto entry = m_CommitDiffs.find(commit);
+
+		return entry != m_CommitDiffs.end() && entry->second.Failed;
+	}
+
 	std::shared_ptr<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
 	{
 		const auto entry = m_CommitDiffs.find(commit);

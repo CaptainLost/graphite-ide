@@ -127,6 +127,13 @@ namespace Graphite {
 			// imgui.ini remembers it, when it remembers anywhere it can still go.
 			bool Restored = false;
 
+			// A commit's diff reopened by RestoreState whose diff has not come back yet. The
+			// commit may be gone - rebased away, or the branch deleted, since the last launch -
+			// and a tab restored for it would only ever say its diff is no longer loaded, with
+			// a Reload the model would ignore. So its first answer decides: a diff clears this,
+			// a failure closes the tab. A diff the reader opens keeps its tab either way.
+			bool AwaitingFirstAnswer = false;
+
 			// The whole-file texts for this tab's file, the tokens lexed from them, and which
 			// file they are for. Held here rather than inside DiffView, which must not reach
 			// for the model: Render calls Update, which does the asking, and hands the texts

@@ -4,6 +4,7 @@
 
 #include "UI/RememberedPlace.h"
 
+#include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 
@@ -265,6 +266,7 @@ namespace Graphite {
 
 			Entry entry{diff, DiffView{}};
 			entry.Restored = true;
+			entry.AwaitingFirstAnswer = diff.Commit.has_value();
 			m_Open.push_back(std::move(entry));
 		}
 	}
@@ -307,6 +309,32 @@ namespace Graphite {
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
 			Entry& entry = m_Open[index];
+
+			// Asked for whether or not the window is in front - a background tab's Begin returns
+			// false and asks for nothing - so a restored tab for a commit that is gone closes
+			// rather than waiting to be looked at.
+			if (entry.AwaitingFirstAnswer)
+			{
+				const Core::Oid& commit = *entry.Diff.Commit;
+				model.RequestDiffFor(commit);
+
+				if (model.IsDiffFailed(commit))
+				{
+					APP_INFO("Not reopening the diff of '{}' in {}: that commit could not be read",
+							 Core::ToUtf8(entry.Diff.Path), commit.ShortHex());
+
+					// Forgotten so the failure does not stay behind, suppressing a later ask for
+					// the same commit from the history list.
+					model.ForgetFailedDiffFor(commit);
+					m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
+					continue;
+				}
+
+				if (model.GetDiffFor(commit) != nullptr)
+				{
+					entry.AwaitingFirstAnswer = false;
+				}
+			}
 
 			// Before the name is taken, because the name is the window: a tab that follows
 			// its file to the other side is, to ImGui, a different window from this frame

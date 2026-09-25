@@ -101,6 +101,11 @@ namespace Graphite {
 		// row it described.
 		void ForgetFailedDiffFor(const Core::Oid& commit);
 
+		// Whether the last answer for this commit's diff was a failure, still held. True until
+		// ForgetFailedDiffFor drops it; false while the answer is in flight, once it has arrived
+		// whole, and for a commit never asked about or since evicted.
+		bool IsDiffFailed(const Core::Oid& commit) const;
+
 		// Null while the answer is in flight, after a failure, and for a commit that was
 		// evicted. In every case the caller's response is the same: draw nothing under
 		// that row yet.
