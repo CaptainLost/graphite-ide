@@ -349,11 +349,13 @@ namespace Graphite {
 			// A tab reopened from the last launch goes back to where it was instead, which
 			// imgui.ini already carries - unless that place is gone, in which case it is new
 			// as far as anyone can tell and goes where a new one would.
+			bool restored = false;
+
 			if (entry.Fresh)
 			{
 				entry.Fresh = false;
 
-				const bool restored = std::exchange(entry.Restored, false);
+				restored = std::exchange(entry.Restored, false);
 
 				if (centreNode != 0 && (!restored || !HasRememberedPlace(name)))
 				{
@@ -372,9 +374,15 @@ namespace Graphite {
 
 			bool open = true;
 
+			// Restored windows must not take focus on the frame they appear: ImGui focuses every
+			// window then, focusing a docked window selects its tab, and so the last one drawn
+			// would take the front of its node from whatever imgui.ini remembers there.
+			const ImGuiWindowFlags windowFlags =
+				restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
+
 			// Begin() returning false still needs its End() - that is the Begin/End rule,
 			// unlike BeginTable, which must not be ended when it returns false.
-			if (ImGui::Begin(name.c_str(), &open))
+			if (ImGui::Begin(name.c_str(), &open, windowFlags))
 			{
 				std::shared_ptr<const Core::Diff> diff;
 

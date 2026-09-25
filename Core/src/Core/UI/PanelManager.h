@@ -38,6 +38,12 @@ namespace Core {
 
 	private:
 		std::vector<Scope<Panel>> m_Panels;
+
+		// ImGui focuses a window on the frame it appears, and focusing a docked window selects
+		// its tab. On the first frame every panel appears at once, so the last one drawn in each
+		// dock node would take its front from whatever imgui.ini remembers there. A panel shown
+		// later - from a menu, a shortcut - does appear in front, which is what asking for it means.
+		bool m_FirstRender = true;
 		CommandRegistry* m_Commands = nullptr;
 	};
 }

@@ -10,6 +10,8 @@
 
 #include <imgui.h>
 
+#include <utility>
+
 namespace Core {
 
 	namespace {
@@ -93,6 +95,9 @@ namespace Core {
 
 	void PanelManager::OnImGuiRender()
 	{
+		const ImGuiWindowFlags windowFlags =
+			std::exchange(m_FirstRender, false) ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
+
 		for (auto& panel : m_Panels)
 		{
 			if (!panel->IsVisible())
@@ -106,7 +111,7 @@ namespace Core {
 
 			// Begin returns false when the window is collapsed or another tab of the same dock
 			// node is selected: the panel got its turn, but its body did not run.
-			const bool drawn = ImGui::Begin(label.c_str(), &open);
+			const bool drawn = ImGui::Begin(label.c_str(), &open, windowFlags);
 			panel->SetWasDrawn(drawn);
 
 			if (drawn)

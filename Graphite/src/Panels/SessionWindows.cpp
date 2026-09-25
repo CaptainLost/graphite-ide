@@ -262,9 +262,11 @@ namespace Graphite {
 			// would fight a reader who dragged the tab elsewhere. A window reopened from the last
 			// launch goes back to where it was instead, which imgui.ini already carries - unless
 			// that place is gone, and then it goes where a new one would.
+			bool restored = false;
+
 			if (std::exchange(entry.Fresh, false))
 			{
-				const bool restored = std::exchange(entry.Restored, false);
+				restored = std::exchange(entry.Restored, false);
 
 				if (centreNode != 0 && (!restored || !HasRememberedPlace(name)))
 				{
@@ -277,7 +279,13 @@ namespace Graphite {
 
 			bool open = true;
 
-			if (ImGui::Begin(name.c_str(), &open))
+			// Restored windows must not take focus on the frame they appear: ImGui focuses every
+			// window then, focusing a docked window selects its tab, and so the last one drawn
+			// would take the front of its node from whatever imgui.ini remembers there.
+			const ImGuiWindowFlags windowFlags =
+				restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
+
+			if (ImGui::Begin(name.c_str(), &open, windowFlags))
 			{
 				if (!entry.Live)
 				{

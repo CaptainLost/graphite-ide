@@ -273,8 +273,10 @@ namespace Graphite {
 		{
 			if (const auto index = m_Documents.Find(*state.Active))
 			{
+				// Active, so commands act on it, but not brought forward: which tab of each node
+				// is in front is what imgui.ini remembers, and the reader may have left another
+				// kind of window - a panel, a session - in front of it.
 				m_Documents.Activate(*index);
-				m_Documents.At(*index).PendingFocus = true;
 			}
 		}
 	}
@@ -1971,12 +1973,14 @@ namespace Graphite {
 			const std::string identity = Identity(m_Documents, index);
 			const std::string name = WindowName(m_Documents, index);
 
+			bool restored = false;
+
 			if (IsNewSinceLastFrame(identity))
 			{
 				// A document reopened from the last launch goes back to where it was — the node it
 				// was in, or floating — which imgui.ini already carries; docking it anywhere else
 				// here would override that.
-				const bool restored = m_RestoredIdentities.erase(identity) > 0;
+				restored = m_RestoredIdentities.erase(identity) > 0;
 
 				if (!restored || !HasRememberedPlace(name))
 				{
@@ -2007,8 +2011,16 @@ namespace Graphite {
 			// if Render stops resubmitting it, which the dirty-close branch below refuses to
 			// do until the question resolves.
 			const bool modified = item.Document && item.Document->IsModified();
-			const ImGuiWindowFlags windowFlags =
+			ImGuiWindowFlags windowFlags =
 				modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
+
+			// ImGui focuses every window on the frame it appears, and focusing a docked window
+			// selects its tab — so on the first frame after a launch the last restored window
+			// drawn would take the front of its node from whatever imgui.ini remembers there.
+			if (restored)
+			{
+				windowFlags |= ImGuiWindowFlags_NoFocusOnAppearing;
+			}
 
 			// Begin() is what turns this into the selected tab of a docked window, which
 			// SetWindowFocus called from outside a frame could not do against a window not yet
