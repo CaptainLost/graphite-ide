@@ -18,6 +18,7 @@
 #include "Lang/Syntax/SyntaxCache.h"
 
 #include "Panels/ReferencesPanel.h"
+#include "Persistence/PersistedState.h"
 #include "Search/PreviewContent.h"
 
 #include "Core/Base/Timestep.h"
@@ -89,6 +90,14 @@ namespace Graphite {
 					ReferencesPanel& referencesPanel);
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
+
+		// The open file documents as they stand, for the next launch. A tab holding no
+		// document — its file went missing or would not load — is left out.
+		WorkspaceState CaptureState() const;
+
+		// Reopens what CaptureState returned last time: tabs whose files are gone are skipped,
+		// each caret and view goes back where it was, and the active tab is brought forward.
+		void RestoreState(const WorkspaceState& state);
 
 		void HandleRootMoved(const std::filesystem::path& from, const std::filesystem::path& to);
 
@@ -515,6 +524,14 @@ namespace Graphite {
 		// was noticed, but rewrapping moves rows in a plain text file just as well, and an anchor
 		// costs three numbers.
 		std::map<std::filesystem::path, ScrollAnchor> m_Anchors;
+
+		// Top lines restored from the last launch that no frame has shown yet. See PendingTopLine.
+		std::map<std::filesystem::path, PendingTopLine> m_PendingTopLines;
+
+		// Identities of documents reopened by RestoreState whose window has not been submitted
+		// yet. Their first frame docks them where imgui.ini remembers rather than where the
+		// user last focused.
+		std::set<std::string> m_RestoredIdentities;
 
 		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
 		// and the generation of the answer m_Diagnostics held for this path, so a rebuild is

@@ -31,4 +31,23 @@ namespace Graphite {
 
 		return std::max(0.0f, anchor.ScrollY + static_cast<float>(moved * lineHeight));
 	}
+
+	ScrollAnchor AnchorAtLine(std::size_t line)
+	{
+		ScrollAnchor anchor;
+		anchor.Line = line;
+		anchor.Taken = true;
+		return anchor;
+	}
+
+	bool PendingTopLine::Settle(const ScrollAnchor& drawn)
+	{
+		if (drawn.Taken && drawn.Line == Line)
+		{
+			return true;
+		}
+
+		--FramesLeft;
+		return FramesLeft <= 0;
+	}
 }

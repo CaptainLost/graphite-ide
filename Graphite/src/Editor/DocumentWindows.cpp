@@ -8,6 +8,9 @@
 #include "Lang/Server/LspClient.h"
 #include "Lang/Server/ServerRegistry.h"
 
+#include "Persistence/CaretRestore.h"
+
+#include "Core/Base/Log.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
@@ -28,6 +31,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace Graphite {
@@ -128,6 +132,16 @@ namespace Graphite {
 
 			return message;
 		}
+
+		// Whether imgui.ini holds a dock node for this window that still exists.
+		bool HasRememberedDock(const std::string& windowName)
+		{
+			const ImGuiWindowSettings* settings =
+				ImGui::FindWindowSettingsByID(ImHashStr(windowName.c_str()));
+
+			return settings != nullptr && settings->DockId != 0 &&
+				   ImGui::DockBuilderGetNode(settings->DockId) != nullptr;
+		}
 	}
 
 	void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
@@ -140,6 +154,105 @@ namespace Graphite {
 			return;
 
 		AskAboutSize(path, permanent);
+	}
+
+	WorkspaceState DocumentWindows::CaptureState() const
+	{
+		WorkspaceState state;
+
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			const Core::OpenItem& item = m_Documents.At(index);
+
+			if (!item.Document)
+			{
+				continue;
+			}
+
+			const Core::Position caret = item.Document->GetBuffer().ToPosition(item.Caret.Offset);
+
+			TabState tab;
+			tab.Path = item.Path;
+			tab.Preview = item.Preview;
+			tab.Line = caret.Line;
+			tab.Column = caret.Column;
+
+			// A view still on its way to a restored line is reported as going there: the anchor
+			// says where its first frames happened to land, not where the reader was.
+			if (const auto pending = m_PendingTopLines.find(item.Path); pending != m_PendingTopLines.end())
+			{
+				tab.Top = pending->second.Line;
+			}
+			else if (const auto anchor = m_Anchors.find(item.Path);
+					 anchor != m_Anchors.end() && anchor->second.Taken)
+			{
+				tab.Top = anchor->second.Line;
+			}
+
+			state.Tabs.push_back(std::move(tab));
+		}
+
+		if (const auto active = m_Documents.GetActive(); active && m_Documents.At(*active).Document)
+		{
+			state.Active = m_Documents.At(*active).Path;
+		}
+
+		return state;
+	}
+
+	void DocumentWindows::RestoreState(const WorkspaceState& state)
+	{
+		for (const TabState& tab : state.Tabs)
+		{
+			std::error_code error;
+
+			if (!std::filesystem::is_regular_file(tab.Path, error))
+			{
+				APP_INFO("Not reopening '{}': it is no longer there", Core::ToUtf8(tab.Path));
+				continue;
+			}
+
+			// Confirmed: a large file's size question was answered in the launch it was opened
+			// in, and asking again every launch would be a question about nothing.
+			LoadConfirmed(tab.Path, !tab.Preview);
+
+			const auto index = m_Documents.Find(tab.Path);
+
+			if (!index)
+			{
+				continue;
+			}
+
+			Core::OpenItem& item = m_Documents.At(*index);
+
+			// Only the active tab is brought forward, below; every open marked its own.
+			item.PendingFocus = false;
+			m_RestoredIdentities.insert(Identity(m_Documents, *index));
+
+			if (!item.Document)
+			{
+				continue;
+			}
+
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const std::size_t offset = RestoredCaretOffset(buffer, tab.Line, tab.Column);
+
+			item.Caret = Core::Caret{.Offset = offset, .Anchor = offset};
+
+			if (const std::size_t top = RestoredTopLine(buffer, tab.Top); top > 0)
+			{
+				m_PendingTopLines[tab.Path] = PendingTopLine{.Line = top};
+			}
+		}
+
+		if (state.Active)
+		{
+			if (const auto index = m_Documents.Find(*state.Active))
+			{
+				m_Documents.Activate(*index);
+				m_Documents.At(*index).PendingFocus = true;
+			}
+		}
 	}
 
 	void DocumentWindows::LoadConfirmed(const std::filesystem::path& path, bool permanent)
@@ -472,6 +585,7 @@ namespace Graphite {
 		// was months ago — and imgui.ini stops collecting a dead section per file.
 		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
 		m_Syntax.erase(m_Documents.At(index).Path);
+		m_RestoredIdentities.erase(Identity(m_Documents, index));
 		m_Documents.Close(index);
 		// After the close, so the prune sees the document gone and tells the server so. Erasing
 		// here directly would be the same thing minus the CloseDocument the prune sends.
@@ -895,6 +1009,18 @@ namespace Graphite {
 			else
 			{
 				it = m_Anchors.erase(it);
+			}
+		}
+
+		for (auto it = m_PendingTopLines.begin(); it != m_PendingTopLines.end();)
+		{
+			if (m_Documents.Find(it->first))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_PendingTopLines.erase(it);
 			}
 		}
 
@@ -1789,9 +1915,18 @@ namespace Graphite {
 
 			if (IsNewSinceLastFrame(identity))
 			{
-				if (const unsigned int targetNode = ChooseDockTarget(identity, fallbackDockNode);
-					targetNode != 0)
-					ImGui::DockBuilderDockWindow(name.c_str(), targetNode);
+				// A document reopened from the last launch goes back to the node it was in, which
+				// imgui.ini already carries; docking it anywhere else here would override that.
+				const bool restored = m_RestoredIdentities.erase(identity) > 0;
+
+				if (!restored || !HasRememberedDock(name))
+				{
+					if (const unsigned int targetNode = ChooseDockTarget(identity, fallbackDockNode);
+						targetNode != 0)
+					{
+						ImGui::DockBuilderDockWindow(name.c_str(), targetNode);
+					}
+				}
 			}
 
 			const bool preview = item.Preview;
@@ -1874,7 +2009,19 @@ namespace Graphite {
 				// and the widget skips it.
 				view.Anchor = &m_Anchors[item.Path];
 
+				const auto pendingTop = m_PendingTopLines.find(item.Path);
+
+				if (pendingTop != m_PendingTopLines.end())
+				{
+					*view.Anchor = AnchorAtLine(pendingTop->second.Line);
+				}
+
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
+
+				if (pendingTop != m_PendingTopLines.end() && pendingTop->second.Settle(*view.Anchor))
+				{
+					m_PendingTopLines.erase(pendingTop);
+				}
 
 				// Recorded every frame the document draws, not only when something asks: a
 				// keyboard-triggered request reads this back later, from whichever frame drew

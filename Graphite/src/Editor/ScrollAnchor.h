@@ -68,4 +68,25 @@ namespace Graphite {
 	// was scroll to give back, and a negative offset is not a position.
 	std::optional<float> ScrollKeepingAnchor(const ScrollAnchor& anchor, std::size_t screenRowNow,
 											 float lineHeight);
+
+	// An anchor asking for `line` at the top of the viewport. ScrollKeepingAnchor reads it as
+	// that line having drawn at screen row zero with nothing scrolled, so the first frame that
+	// draws the document scrolls to wherever the line draws now, lens rows included.
+	ScrollAnchor AnchorAtLine(std::size_t line);
+
+	// A top line restored from the last launch, held until a frame has actually shown it. One
+	// frame is not always enough: ImGui clamps a scroll to the content size the previous frame
+	// measured, and a document's first frame measured none. And not held forever: a line near
+	// the end of the file can never reach the top.
+	struct PendingTopLine
+	{
+		static constexpr int kFrames = 30;
+
+		std::size_t Line = 0;
+		int FramesLeft = kFrames;
+
+		// Called after each frame that drew the document, with the anchor that frame took.
+		// True once there is nothing left to do.
+		bool Settle(const ScrollAnchor& drawn);
+	};
 }

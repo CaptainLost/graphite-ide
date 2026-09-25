@@ -106,3 +106,45 @@ TEST_CASE("A line with no rows resolves to where the line begins")
 	// far past the end of the document.
 	CHECK(AnchoredRow(anchor, 100, 0) == 100);
 }
+
+TEST_CASE("An anchor at a line scrolls that line to the top of the first frame that draws it")
+{
+	const ScrollAnchor anchor = AnchorAtLine(40);
+
+	// The line draws at screen row 40 when nothing above it adds rows.
+	CHECK(ScrollKeepingAnchor(anchor, 40, kLineHeight) == 40 * kLineHeight);
+}
+
+TEST_CASE("An anchor at line zero asks for no scroll")
+{
+	CHECK_FALSE(ScrollKeepingAnchor(AnchorAtLine(0), 0, kLineHeight).has_value());
+}
+
+TEST_CASE("A pending top line settles once a frame shows it")
+{
+	PendingTopLine pending{.Line = 40};
+
+	ScrollAnchor drawn;
+	drawn.Taken = true;
+	drawn.Line = 0;
+	CHECK_FALSE(pending.Settle(drawn));
+
+	drawn.Line = 40;
+	CHECK(pending.Settle(drawn));
+}
+
+TEST_CASE("A pending top line the view never reaches gives up after its frames")
+{
+	PendingTopLine pending{.Line = 40};
+
+	ScrollAnchor drawn;
+	drawn.Taken = true;
+	drawn.Line = 12;
+
+	for (int frame = 1; frame < PendingTopLine::kFrames; ++frame)
+	{
+		CHECK_FALSE(pending.Settle(drawn));
+	}
+
+	CHECK(pending.Settle(drawn));
+}
