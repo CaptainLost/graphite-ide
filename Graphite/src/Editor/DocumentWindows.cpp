@@ -10,6 +10,8 @@
 
 #include "Persistence/CaretRestore.h"
 
+#include "UI/RememberedPlace.h"
+
 #include "Core/Base/Log.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
@@ -131,22 +133,6 @@ namespace Graphite {
 			message += std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
 
 			return message;
-		}
-
-		// Whether imgui.ini remembers a place for this window that it can still go back to:
-		// floating on its own (no dock id), or in a dock node that still exists. A window that
-		// was floating is left to float; docking it would move it somewhere it never was.
-		bool HasRememberedPlace(const std::string& windowName)
-		{
-			const ImGuiWindowSettings* settings =
-				ImGui::FindWindowSettingsByID(ImHashStr(windowName.c_str()));
-
-			if (settings == nullptr)
-			{
-				return false;
-			}
-
-			return settings->DockId == 0 || ImGui::DockBuilderGetNode(settings->DockId) != nullptr;
 		}
 	}
 
