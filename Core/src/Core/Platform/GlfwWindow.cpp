@@ -401,8 +401,17 @@ namespace Core {
 									   fitted.Y - shiftY + fitted.Height};
 
 		// SetWindowPlacement shows the window itself, with showCmd.
-		if (SetWindowPlacement(glfwGetWin32Window(m_Handle), &native) != 0)
+		const HWND hwnd = glfwGetWin32Window(m_Handle);
+		if (SetWindowPlacement(hwnd, &native) != 0)
 		{
+			// The window was created on the primary monitor, at that monitor's DPI. When the
+			// placement lands it on a monitor with a different DPI, Windows sends WM_DPICHANGED
+			// and the window, which scales to its monitor, resizes to the suggested rectangle:
+			// the restored one scaled by the ratio of the two DPIs. A size saved at 150% would
+			// come back half as large again, and grow on every launch. By now the window is at
+			// the target monitor's DPI, so placing it once more is not rescaled and leaves
+			// exactly the saved rectangle.
+			SetWindowPlacement(hwnd, &native);
 			return;
 		}
 
