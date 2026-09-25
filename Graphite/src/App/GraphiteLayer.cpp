@@ -333,6 +333,11 @@ namespace Graphite {
 			// one being replaced is written here, before the new folder's tabs join the list.
 			m_StateKeeper.CloseWorkspace();
 
+			// Its documents stay open, but they are that folder's tabs, already written to it
+			// just above, and recording them for this one would mix the two. At startup nothing
+			// is open, so nothing is carried.
+			m_DocumentWindows.CarryOverOpenDocuments();
+
 			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
 			m_DocumentWindows.RestoreState(stored);
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);

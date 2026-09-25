@@ -44,9 +44,12 @@ folder's part is also written outright, bypassing the delay, whenever that
 folder closes or is about to be replaced — dropping a new folder onto the
 window, or opening one over another, writes the old folder's state first,
 before the new folder's tabs are captured. The old folder's documents are not
-closed by this: today's replace-in-place behaviour keeps them open, and they
-are then recorded in the new folder's own state, with absolute paths, since
-they are outside it. `StateKeeper` also flushes unconditionally on detach, so
+closed by this: today's replace-in-place behaviour keeps them open. They are
+carried over, and a carried-over document is not recorded for the new folder
+— a folder's tabs are written to that folder and never to another. A document
+stops being carried over when its tab closes, when it is opened again from
+the new folder, or when the new folder's own saved tabs name it too; from then
+on it belongs to the folder open at the time. `StateKeeper` also flushes unconditionally on detach, so
 a normal exit never depends on the two-second delay.
 
 Dock placement is not duplicated into either file: `imgui.ini` already keys
@@ -74,11 +77,12 @@ without separately tracking whether anything changed.
 - A crash loses at most two seconds of state, not the whole session.
 - A moved or cloned folder keeps its tabs: paths are relative to the folder,
   not to the machine.
+
+### Negative
+
 - Closing a folder and reopening it in the same run restores its tabs into
   the central node, because closing documents clears their `imgui.ini`
   settings and the restore has nothing else to defer to.
-
-### Negative
 
 - Two files means two failure surfaces and two places a reader's edit to one
   can leave the other stale — a `graphite.json` deleted by hand still leaves
@@ -88,11 +92,12 @@ without separately tracking whether anything changed.
   different encoding assumption, can land the caret mid-character if the
   snapping logic is ever bypassed. It is not bypassed today, but the format
   itself does not prevent it.
-- A folder dropped over another leaves the old folder's documents open under
-  the new folder's workspace state rather than closing them, which is a
-  choice this record inherits from existing behaviour rather than one it
-  makes — the tabs are recorded correctly, but a reader who expected the drop
-  to also close what was open will not get that from persistence alone.
+- A folder dropped over another leaves the old folder's documents open rather
+  than closing them, which is a choice this record inherits from existing
+  behaviour rather than one it makes. They stay open but are not recorded for
+  the new folder, so a relaunch into the new folder does not bring them back
+  — a reader who kept working in a carried-over tab finds it in the folder it
+  came from, not in the one that was open when they closed the application.
 
 ### Neutral
 
@@ -128,7 +133,9 @@ costs less than carrying two representations of the same position.
 - `Graphite/src/Persistence/CaretRestore.h` — where a saved line and byte
   column land in the document as it is now.
 - `Graphite/src/Editor/DocumentWindows.cpp` — `CaptureState` and
-  `RestoreState`, including the already-open skip.
+  `RestoreState`, including the already-open skip, and
+  `CarryOverOpenDocuments`, which keeps a replaced folder's tabs out of the
+  new folder's state.
 - `Graphite/src/App/GraphiteLayer.cpp` — `SubscribeToWorkspaceEvents`, where a
   folder being replaced writes the old folder's state before the new one's
   tabs are captured.

@@ -92,8 +92,16 @@ namespace Graphite {
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
 
 		// The open file documents as they stand, for the next launch. A tab holding no
-		// document — its file went missing or would not load — is left out.
+		// document — its file went missing or would not load — is left out, and so is one
+		// carried over from a folder this one replaced (see CarryOverOpenDocuments).
 		WorkspaceState CaptureState() const;
+
+		// Marks every open document as carried over from the folder about to be replaced.
+		// Opening another folder over one leaves its documents open, but a folder's tabs are
+		// written to that folder and never to another, so CaptureState leaves these out. A path
+		// stops being carried over when its tab closes, when RequestOpen opens it again from the
+		// new folder, or when the new folder's restored tabs name it too.
+		void CarryOverOpenDocuments();
 
 		// Reopens what CaptureState returned last time: tabs whose files are gone are skipped,
 		// each caret and view goes back where it was, and the active tab is brought forward.
@@ -527,6 +535,10 @@ namespace Graphite {
 
 		// Top lines restored from the last launch that no frame has shown yet. See PendingTopLine.
 		std::map<std::filesystem::path, PendingTopLine> m_PendingTopLines;
+
+		// Documents still open from a folder another one replaced. See CarryOverOpenDocuments.
+		// Swept with m_Anchors when their tabs close.
+		std::set<std::filesystem::path> m_CarriedOver;
 
 		// Identities of documents reopened by RestoreState whose window has not been submitted
 		// yet. Their first frame docks them where imgui.ini remembers rather than where the

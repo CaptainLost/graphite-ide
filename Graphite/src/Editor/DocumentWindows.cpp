@@ -156,6 +156,10 @@ namespace Graphite {
 		// OpenItem::PendingFocus and the render pass below is what spends it.
 		const Core::OpenOutcome outcome = m_Documents.Open(path, permanent);
 
+		// Opened from inside the folder that is open now, so it belongs to that folder, even if
+		// its tab was carried over from the one before.
+		m_CarriedOver.erase(path);
+
 		if (outcome != Core::OpenOutcome::NeedsConfirmation)
 			return;
 
@@ -171,6 +175,13 @@ namespace Graphite {
 			const Core::OpenItem& item = m_Documents.At(index);
 
 			if (!item.Document)
+			{
+				continue;
+			}
+
+			// Still open from the folder this one replaced: its tabs were written to that folder,
+			// and recording them here too would mix two folders' tabs into one.
+			if (m_CarriedOver.contains(item.Path))
 			{
 				continue;
 			}
@@ -198,7 +209,9 @@ namespace Graphite {
 			state.Tabs.push_back(std::move(tab));
 		}
 
-		if (const auto active = m_Documents.GetActive(); active && m_Documents.At(*active).Document)
+		if (const auto active = m_Documents.GetActive();
+			active && m_Documents.At(*active).Document &&
+			!m_CarriedOver.contains(m_Documents.At(*active).Path))
 		{
 			state.Active = m_Documents.At(*active).Path;
 		}
@@ -206,10 +219,22 @@ namespace Graphite {
 		return state;
 	}
 
+	void DocumentWindows::CarryOverOpenDocuments()
+	{
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			m_CarriedOver.insert(m_Documents.At(index).Path);
+		}
+	}
+
 	void DocumentWindows::RestoreState(const WorkspaceState& state)
 	{
 		for (const TabState& tab : state.Tabs)
 		{
+			// The new folder's own tabs name this file, so it belongs to this folder as well, and
+			// the tab it already has — carried over or not — is recorded here from now on.
+			m_CarriedOver.erase(tab.Path);
+
 			std::error_code error;
 
 			if (!std::filesystem::is_regular_file(tab.Path, error))
@@ -312,6 +337,26 @@ namespace Graphite {
 		const std::vector<std::string> oldIdentities = CurrentIdentities(m_Documents);
 
 		m_Documents.RewritePaths(from, to);
+
+		// Moved the same way RewritePaths moved the tabs, so a carried-over tab under the moved
+		// directory is still recognised as carried over under its new path.
+		std::set<std::filesystem::path> carriedOver;
+
+		for (const std::filesystem::path& path : m_CarriedOver)
+		{
+			const auto relative = Core::RelativeTo(path, from);
+
+			if (!relative)
+			{
+				carriedOver.insert(path);
+			}
+			else
+			{
+				carriedOver.insert(*relative == "." ? to : to / *relative);
+			}
+		}
+
+		m_CarriedOver = std::move(carriedOver);
 
 		const std::vector<std::string> newIdentities = CurrentIdentities(m_Documents);
 
@@ -1034,6 +1079,20 @@ namespace Graphite {
 			else
 			{
 				it = m_PendingTopLines.erase(it);
+			}
+		}
+
+		// A carried-over tab that closed is no longer carried: the same file opened again later
+		// is opened from the folder open then.
+		for (auto it = m_CarriedOver.begin(); it != m_CarriedOver.end();)
+		{
+			if (m_Documents.Find(*it))
+			{
+				++it;
+			}
+			else
+			{
+				it = m_CarriedOver.erase(it);
 			}
 		}
 
