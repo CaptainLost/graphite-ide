@@ -25,5 +25,11 @@ namespace Graphite {
 		ImU32 UnmatchedBracket = 0;
 		ImU32 DiagnosticError = 0;
 		ImU32 DiagnosticWarning = 0;
+
+		// The git change markers in the gutter. Read from the scheme's git colours, the same
+		// ones the Changes panel uses, so a marker and the panel's row agree.
+		ImU32 ChangeAdded = 0;
+		ImU32 ChangeModified = 0;
+		ImU32 ChangeRemoved = 0;
 	};
 }

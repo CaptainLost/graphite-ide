@@ -26,6 +26,7 @@ namespace Graphite {
 	class SyntaxCache;
 	class SemanticOverlay;
 	class DiagnosticOverlay;
+	struct ChangeMarkers;
 	struct ResolvedScheme;
 
 	struct CommandContext
@@ -114,6 +115,11 @@ namespace Graphite {
 		// handing the widget the model: the widget draws what it is given and has no business
 		// holding something it could query.
 		bool DiagnosticsStale = false;
+
+		// How each line differs from git, drawn in the gutter's change column. Null when there
+		// is nothing to draw: no repository, an untracked-by-git file, or no answer yet. The
+		// column stays reserved either way.
+		const ChangeMarkers* Changes = nullptr;
 
 		// Where this document's viewport was last time it drew, so a screen-row mapping that
 		// changes between frames does not slide the content out from under the reader. Owned by

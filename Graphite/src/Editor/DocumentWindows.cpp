@@ -1099,6 +1099,11 @@ namespace Graphite {
 				it = m_DiagnosticOverlays.erase(it);
 			}
 		}
+
+		// The same rule as the sweeps above: a closed tab's markers, and anything still being
+		// computed for it, are dropped.
+		m_ChangeMarkers.Retain(
+			[this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); });
 	}
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
@@ -2074,6 +2079,11 @@ namespace Graphite {
 				}
 
 				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
+
+				// Kept alive in this scope, since the widget holds only a raw pointer while it draws.
+				m_ChangeMarkers.Update(item.Path, item.Document->GetBuffer());
+				const std::shared_ptr<const ChangeMarkers> changes = m_ChangeMarkers.Get(item.Path);
+				view.Changes = changes.get();
 
 				// Created on first sight and kept until the tab goes, like the overlays above.
 				// The widget fills it in as it draws; until then it is an anchor nobody has taken

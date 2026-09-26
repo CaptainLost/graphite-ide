@@ -11,6 +11,8 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Git/ChangeMarkersModel.h"
+
 #include "Lang/Analysis/AnalysisStore.h"
 #include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Diagnostics/DiagnosticsModel.h"
@@ -69,11 +71,12 @@ namespace Graphite {
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						LanguageServices& languageServices, const DiagnosticsModel& diagnostics,
-						PreviewSemantics& previewSemantics, AnalysisCache& analysis,
+						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
 						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis)
 			: m_Documents(documents),
 			  m_LanguageServices(languageServices),
 			  m_Diagnostics(diagnostics),
+			  m_ChangeMarkers(changeMarkers),
 			  m_PreviewSemantics(previewSemantics),
 			  m_Analysis(analysis),
 			  m_AnalysisStore(analysisStore),
@@ -406,6 +409,11 @@ namespace Graphite {
 		// that order matters. Held by reference: GraphiteLayer owns it and feeds it once a frame,
 		// before this class ever reads it.
 		const DiagnosticsModel& m_Diagnostics;
+
+		// The git change markers for every open document. Held by reference like m_Diagnostics
+		// above: GraphiteLayer owns it and drives it once a frame. Not const, because drawing a
+		// document is what tells the model its buffer changed.
+		ChangeMarkersModel& m_ChangeMarkers;
 
 		// The preview panes' own mediator to the language servers, held by reference like
 		// m_LanguageServices above and declared right after it for the same reason: this class

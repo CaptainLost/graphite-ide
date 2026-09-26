@@ -333,6 +333,7 @@ namespace Graphite {
 	void GraphiteLayer::SubscribeToWorkspaceEvents()
 	{
 		m_Git.SubscribeTo(m_Events);
+		m_ChangeMarkers.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
 			// A folder dropped over another replaces it without a WorkspaceClosedEvent, so the
@@ -429,6 +430,7 @@ namespace Graphite {
 		// and picks up any workspace event just published - before any panel reads a
 		// snapshot this frame.
 		m_Git.OnUpdate(ts);
+		m_ChangeMarkers.OnUpdate(ts);
 
 		m_Panels.OnUpdate(ts);
 

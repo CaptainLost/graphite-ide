@@ -9,6 +9,7 @@
 #include "Editor/ModalQuestion.h"
 #include "Editor/PreviewSemantics.h"
 #include "App/TitleBar.h"
+#include "Git/ChangeMarkersModel.h"
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
@@ -201,9 +202,13 @@ namespace Graphite {
 		// with the matching server and feeds the reference-count rows from the answers. After
 		// m_Analysis, m_AnalysisStore and m_WorkspaceAnalysis too, all three of which it now holds
 		// by reference.
+		//
+		// m_ChangeMarkers is declared further down, with the git group, and so is not yet
+		// constructed here. That is fine: only a reference to it is bound, and nothing reaches
+		// through that reference until the first frame.
 		DocumentWindows m_DocumentWindows{m_Documents,     m_Modals,   m_LanguageServices,
-										  m_Diagnostics,   m_PreviewSemantics, m_Analysis,
-										  m_AnalysisStore, m_WorkspaceAnalysis};
+										  m_Diagnostics,   m_ChangeMarkers, m_PreviewSemantics,
+										  m_Analysis,      m_AnalysisStore, m_WorkspaceAnalysis};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.
@@ -240,7 +245,7 @@ namespace Graphite {
 		// Declared before m_Panels for the same reason as m_Search: the git views will hold
 		// references to these.
 		//
-		// The order among these three is not the declaration order the naive reading suggests.
+		// The order among these four is not the declaration order the naive reading suggests.
 		// Every job GitModel submits captures `this`, so the queue behind the submitter must
 		// be destroyed - and its workers joined - before the model goes away, and the port
 		// must outlive every query a worker might still be running against it. Members are
@@ -248,6 +253,8 @@ namespace Graphite {
 		// destructor runs FIRST, joining every worker before m_Git or m_GitPort can be torn
 		// down. Declaring m_Jobs first would compile without complaint and fail only under
 		// real threading, when a worker is mid-query as the model it points into disappears.
+		// m_ChangeMarkers sits with m_Git before m_Jobs for the same reason: every job it submits
+		// captures `this` and reads the port as a ChangeBasePort.
 		//
 		// m_Events, declared far above, is a related trap: it is destroyed AFTER m_Git even
 		// though m_Git subscribes handlers into it that capture `this`. That is not reachable
@@ -257,6 +264,8 @@ namespace Graphite {
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort,
 					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		ChangeMarkersModel m_ChangeMarkers{
+			m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::JobQueue m_Jobs;
 
 		// Holds no reference to m_Git or the queue above, so its place in this group is only

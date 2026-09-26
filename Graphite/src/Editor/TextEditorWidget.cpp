@@ -9,6 +9,7 @@
 #include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
 #include "Editor/SemanticOverlay.h"
+#include "Git/ChangeMarkers.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
 
@@ -58,6 +59,15 @@ namespace Graphite {
 		constexpr float kBreakpointColumnCells = 1.0f;
 
 		constexpr float kFoldColumnCells = 1.0f;
+
+		// The git change column, left of the line numbers. In pixels rather than cells: it holds
+		// a bar, not a character.
+		constexpr float kChangeColumnWidth = 5.0f;
+		constexpr float kChangeBarWidth = 3.0f;
+
+		// A staged change is settled as far as the reader is concerned. It is dimmed so the
+		// unstaged ones stand out.
+		constexpr float kStagedChangeAlpha = 0.45f;
 
 		constexpr double kCaretBlinkPeriod = 1.0;
 
@@ -188,14 +198,17 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", message.c_str());
 		}
 
-		// [ breakpoint margin ][ line number ][ fold arrow ]  code
+		// [ breakpoint margin ][ change ][ line number ][ fold arrow ]  code
 		//
-		// Only the number column draws anything today; the other two are reserved so that the
-		// debugger and code folding — separate stages, still ahead — do not shift every
-		// horizontal position the user has already looked at when they arrive.
+		// Only the number and change columns draw anything today; the other two are reserved so
+		// that the debugger and code folding — separate stages, still ahead — do not shift every
+		// horizontal position the user has already looked at when they arrive. The change column
+		// is reserved whether or not git is present, so code never shifts when a repository
+		// appears.
 		struct GutterMetrics
 		{
 			float BreakpointWidth = 0.0f;
+			float ChangeWidth = 0.0f;
 			float NumberWidth = 0.0f;
 			float FoldWidth = 0.0f;
 			float TotalWidth = 0.0f;
@@ -218,11 +231,12 @@ namespace Graphite {
 			const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.GetLineCount()));
 
 			metrics.Gutter.BreakpointWidth = kBreakpointColumnCells * metrics.CellWidth;
+			metrics.Gutter.ChangeWidth = kChangeColumnWidth;
 			metrics.Gutter.FoldWidth = kFoldColumnCells * metrics.CellWidth;
 			metrics.Gutter.NumberWidth =
 				static_cast<float>(digits) * metrics.CellWidth + kGutterPaddingX * 2.0f;
-			metrics.Gutter.TotalWidth = metrics.Gutter.BreakpointWidth + metrics.Gutter.NumberWidth +
-										metrics.Gutter.FoldWidth;
+			metrics.Gutter.TotalWidth = metrics.Gutter.BreakpointWidth + metrics.Gutter.ChangeWidth +
+										metrics.Gutter.NumberWidth + metrics.Gutter.FoldWidth;
 
 			return metrics;
 		}
@@ -1453,6 +1467,18 @@ namespace Graphite {
 			draw(slice.ToByte, canvas.Palette.Text);
 		}
 
+		// The colour's own alpha scaled down, for a stale diagnostic drawn in the same colour a
+		// fresh one would use. Goes through ImGui's own float round trip rather than shifting the
+		// packed byte directly, so this makes no assumption about which byte of the ImU32 the
+		// alpha channel sits in.
+		ImU32 WithAlpha(ImU32 colour, float scale)
+		{
+			ImVec4 rgba = ImGui::ColorConvertU32ToFloat4(colour);
+			rgba.w *= scale;
+
+			return ImGui::ColorConvertFloat4ToU32(rgba);
+		}
+
 		// Drawn last and offset by the horizontal scroll, so the gutter stays pinned to the left
 		// while the text slides under it. The fill spans the whole gutter — both reserved margins
 		// included — so nothing scrolled draws through where they sit; the number itself stays
@@ -1479,17 +1505,71 @@ namespace Graphite {
 				canvas.Palette.GutterFill);
 		}
 
-		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine)
+		// The bar runs down every row of a wrapped line, since it marks the line, not the row.
+		// A deletion is a small triangle on the boundary above its anchor line. One past the end
+		// sits on the bottom edge of the last line.
+		void DrawChangeMarker(const RowCanvas& canvas, const RowSlice& slice,
+							  const ChangeMarkers* changes, std::size_t lineCount)
+		{
+			if (changes == nullptr)
+				return;
+
+			const float columnX = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.BreakpointWidth;
+			const float top = slice.Y;
+			const float bottom = slice.Y + canvas.Metrics.LineHeight;
+
+			// Bounds-checked because the markers may describe a buffer a few edits old.
+			if (slice.Line < changes->Lines.size())
+			{
+				const LineChange change = changes->Lines[slice.Line];
+
+				if (change.Kind != ChangeKind::None)
+				{
+					const ImU32 base = change.Kind == ChangeKind::Added ? canvas.Palette.ChangeAdded
+																		: canvas.Palette.ChangeModified;
+
+					canvas.Draw->AddRectFilled(ImVec2(columnX, top), ImVec2(columnX + kChangeBarWidth, bottom),
+											   change.Staged ? WithAlpha(base, kStagedChangeAlpha) : base);
+				}
+			}
+
+			if (slice.SubRow != 0 || changes->Deletions.empty())
+				return;
+
+			const std::size_t lastLine = lineCount == 0 ? 0 : lineCount - 1;
+
+			const auto drawAnchor = [&](const DeletionAnchor& anchor, float y) {
+				const ImU32 colour = anchor.Staged ? WithAlpha(canvas.Palette.ChangeRemoved, kStagedChangeAlpha)
+												   : canvas.Palette.ChangeRemoved;
+				const float size = kChangeColumnWidth;
+
+				canvas.Draw->AddTriangleFilled(ImVec2(columnX, y - size), ImVec2(columnX + size, y),
+											   ImVec2(columnX, y + size), colour);
+			};
+
+			const auto at = std::ranges::lower_bound(changes->Deletions, slice.Line, {}, &DeletionAnchor::Line);
+
+			if (at != changes->Deletions.end() && at->Line == slice.Line)
+				drawAnchor(*at, top);
+
+			if (slice.Line == lastLine && changes->Deletions.back().Line > lastLine)
+				drawAnchor(changes->Deletions.back(), bottom);
+		}
+
+		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine,
+						const ChangeMarkers* changes, std::size_t lineCount)
 		{
 			const float gutterX = canvas.Origin.x + canvas.ScrollX;
 
 			DrawGutterFill(canvas, slice.Y);
+			DrawChangeMarker(canvas, slice, changes, lineCount);
 
 			if (slice.SubRow != 0)
 				return;
 
 			const std::string number = std::to_string(slice.Line + 1);
 			const float numberColumnRight = gutterX + canvas.Metrics.Gutter.BreakpointWidth +
+											canvas.Metrics.Gutter.ChangeWidth +
 											canvas.Metrics.Gutter.NumberWidth;
 			const float numberX = numberColumnRight - kGutterPaddingX -
 								  static_cast<float>(number.size()) * canvas.Metrics.CellWidth;
@@ -1836,18 +1916,6 @@ namespace Graphite {
 			ImGui::EndTooltip();
 		}
 
-		// The colour's own alpha scaled down, for a stale diagnostic drawn in the same colour a
-		// fresh one would use. Goes through ImGui's own float round trip rather than shifting the
-		// packed byte directly, so this makes no assumption about which byte of the ImU32 the
-		// alpha channel sits in.
-		ImU32 WithAlpha(ImU32 colour, float scale)
-		{
-			ImVec4 rgba = ImGui::ColorConvertU32ToFloat4(colour);
-			rgba.w *= scale;
-
-			return ImGui::ColorConvertFloat4ToU32(rgba);
-		}
-
 		// The wavy underline every editor uses for "a language server called this wrong" — a
 		// shape distinct at a glance from the hover underline's straight line, so the two never
 		// read as the same kind of mark. Built as one polyline rather than a run of AddLine calls,
@@ -1956,7 +2024,8 @@ namespace Graphite {
 					 const VisibleLineCache& cache, const RowSlice& slice,
 					 const std::vector<Token>& tokens, const std::vector<SemanticSpan>& semantic,
 					 const std::vector<DiagnosticSpan>& diagnostics, bool diagnosticsStale,
-					 const CaretPaint& caret, const HoverIdentifier& hover)
+					 const ChangeMarkers* changes, const CaretPaint& caret,
+					 const HoverIdentifier& hover)
 		{
 			if (slice.Line == caret.Line)
 				DrawCurrentLineHighlight(canvas, slice);
@@ -1976,7 +2045,8 @@ namespace Graphite {
 
 			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
 			DrawRowDiagnostics(canvas, slice, cache, diagnostics, diagnosticsStale, item.TabWidth);
-			DrawGutter(canvas, slice, slice.Line == caret.Line);
+			DrawGutter(canvas, slice, slice.Line == caret.Line, changes,
+					   item.Document->GetBuffer().GetLineCount());
 			DrawHoverUnderline(canvas, slice, hover);
 
 			// Tested against the caret's *row*, not its line: a wrapped line occupies several rows
@@ -2102,7 +2172,7 @@ namespace Graphite {
 							 const ResolvedScheme& scheme, const LensModel* lensModel,
 							 const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
-							 EditorFrameResult& result)
+							 const ChangeMarkers* changes, EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2250,7 +2320,7 @@ namespace Graphite {
 													 : kNoDiagnostics;
 
 					DrawRow(canvas, item, cache, slice, tokens, semantic, diagnostics,
-							diagnosticsStale, caret, hover);
+							diagnosticsStale, changes, caret, hover);
 				}
 			}
 
@@ -2425,7 +2495,8 @@ namespace Graphite {
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax,
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
-							view.Semantic, view.Diagnostics, view.DiagnosticsStale, result);
+							view.Semantic, view.Diagnostics, view.DiagnosticsStale, view.Changes,
+							result);
 
 			// Taken after the rows, because FirstVisibleRow is what the rows just worked out, and
 			// taken every frame so the anchor describes where the reader is now rather than where

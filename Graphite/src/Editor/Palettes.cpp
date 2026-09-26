@@ -57,6 +57,9 @@ namespace Graphite {
 			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::DiagnosticError)]);
 		palette.DiagnosticWarning =
 			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::DiagnosticWarning)]);
+		palette.ChangeAdded = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::GutterAdded)]);
+		palette.ChangeModified = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::GutterModified)]);
+		palette.ChangeRemoved = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::GutterRemoved)]);
 
 		return palette;
 	}
