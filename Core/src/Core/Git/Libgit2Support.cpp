@@ -2,6 +2,7 @@
 
 #include "Core/Git/Libgit2Support.h"
 
+#include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 
 #include <git2.h>
@@ -53,5 +54,13 @@ namespace Core {
 		}
 
 		return text;
+	}
+
+	void EnsureLibgit2Initialised()
+	{
+		static const int result = git_libgit2_init();
+
+		if (result < 0)
+			CORE_ERROR("libgit2 failed to initialise (code {})", result);
 	}
 }

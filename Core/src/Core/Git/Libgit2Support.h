@@ -33,4 +33,8 @@ namespace Core {
 	// git speaks forward slashes on every platform; a relative path may carry native
 	// separators.
 	std::string ToGitPath(const std::filesystem::path& relative);
+
+	// Idempotent and thread-safe. Every entry point that calls libgit2 without first opening
+	// a Repository needs this, since Repository::Open is otherwise what initialises it.
+	void EnsureLibgit2Initialised();
 }

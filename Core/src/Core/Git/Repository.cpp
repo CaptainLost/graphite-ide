@@ -13,14 +13,6 @@
 namespace Core {
 
 	namespace {
-		void EnsureInitialised()
-		{
-			static const int result = git_libgit2_init();
-
-			if (result < 0)
-				CORE_ERROR("libgit2 failed to initialise (code {})", result);
-		}
-
 		// Compared as components rather than as a string, so an in-tree file called "..config"
 		// is not mistaken for a leading "..".
 		bool LeadsOutOfTree(const std::filesystem::path& relative)
@@ -31,7 +23,7 @@ namespace Core {
 
 	Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
 	{
-		EnsureInitialised();
+		EnsureLibgit2Initialised();
 
 		git_repository* handle = nullptr;
 		const std::string path = ToUtf8(anyPathInside);
