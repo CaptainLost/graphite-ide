@@ -1969,8 +1969,8 @@ namespace Graphite {
 
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
-		unsigned int fallbackDockNode, bool wordWrap, const ResolvedScheme& scheme,
-		ReferencesPanel& referencesPanel)
+		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
+		const ResolvedScheme& scheme, ReferencesPanel& referencesPanel)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -2060,6 +2060,7 @@ namespace Graphite {
 				view.FontSize = fontSize;
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
+				view.ChangeDisplay = changeDisplay;
 				view.Syntax = &SyntaxFor(item);
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
@@ -2082,13 +2083,19 @@ namespace Graphite {
 
 				// A tab whose open failed has no buffer to diff and draws its failure instead;
 				// Get below still answers null for it, so the view needs no branch of its own.
-				if (item.Document)
+				//
+				// With both kinds of marker switched off nothing is asked for, so no document is
+				// diffed at all. Switching one back on starts over as a first sight would.
+				const bool wantsChanges = changeDisplay.Gutter || changeDisplay.Scrollbar;
+
+				if (wantsChanges && item.Document)
 				{
 					m_ChangeMarkers.Update(item.Path, item.Document->GetBuffer());
 				}
 
 				// Kept alive in this scope, since the widget holds only a raw pointer while it draws.
-				const std::shared_ptr<const ChangeMarkers> changes = m_ChangeMarkers.Get(item.Path);
+				const std::shared_ptr<const ChangeMarkers> changes =
+					wantsChanges ? m_ChangeMarkers.Get(item.Path) : nullptr;
 				view.Changes = changes.get();
 
 				// Created on first sight and kept until the tab goes, like the overlays above.
@@ -2213,7 +2220,7 @@ namespace Graphite {
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.Scheme, referencesPanel);
+							  frame.WordWrap, frame.ChangeMarkers, frame.Scheme, referencesPanel);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
 		// above would cost a walk of m_Syntax for every open document instead of one for the

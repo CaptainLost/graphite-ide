@@ -95,3 +95,28 @@ TEST_CASE("EditorSettings keeps an indent width exactly on the maximum")
 
 	CHECK(settings.GetIndentStyle().Width == 8);
 }
+
+TEST_CASE("EditorSettings shows both kinds of change marker by default")
+{
+	const Graphite::EditorSettings settings;
+
+	CHECK(settings.ShowsGutterChangeMarkers());
+	CHECK(settings.ShowsScrollbarChangeMarkers());
+}
+
+TEST_CASE("EditorSettings turns each kind of change marker off on its own")
+{
+	Graphite::EditorSettings settings;
+
+	settings.SetGutterChangeMarkers(false);
+	CHECK_FALSE(settings.ShowsGutterChangeMarkers());
+	CHECK(settings.ShowsScrollbarChangeMarkers());
+
+	settings.SetScrollbarChangeMarkers(false);
+	CHECK_FALSE(settings.ShowsScrollbarChangeMarkers());
+
+	settings.SetGutterChangeMarkers(true);
+	settings.SetScrollbarChangeMarkers(true);
+	CHECK(settings.ShowsGutterChangeMarkers());
+	CHECK(settings.ShowsScrollbarChangeMarkers());
+}

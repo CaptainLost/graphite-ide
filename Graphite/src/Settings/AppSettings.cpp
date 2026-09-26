@@ -27,6 +27,8 @@ namespace Graphite {
 		constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
 		constexpr const char* kIndentWidthKey = "indentWidth";
 		constexpr const char* kWordWrapKey = "wordWrap";
+		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
+		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
 		constexpr const char* kColorSchemeKey = "colorScheme";
 		constexpr const char* kLanguageServerBinaryKey = "languageServerBinary";
 		constexpr const char* kClaudeBinaryKey = "claude.binary";
@@ -185,6 +187,28 @@ namespace Graphite {
 	void AppSettings::SaveWordWrap(bool wrap)
 	{
 		WriteValue(kWordWrapKey, wrap ? "1" : "0");
+	}
+
+	// Both default on: a file that predates the switches, and so has neither key, keeps showing
+	// the markers it always showed.
+	bool AppSettings::LoadGutterChangeMarkers()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kGutterChangeMarkersKey) != "0";
+	}
+
+	void AppSettings::SaveGutterChangeMarkers(bool show)
+	{
+		WriteValue(kGutterChangeMarkersKey, show ? "1" : "0");
+	}
+
+	bool AppSettings::LoadScrollbarChangeMarkers()
+	{
+		return Core::JsonFile::Load(SettingsPath()).Get(kScrollbarChangeMarkersKey) != "0";
+	}
+
+	void AppSettings::SaveScrollbarChangeMarkers(bool show)
+	{
+		WriteValue(kScrollbarChangeMarkersKey, show ? "1" : "0");
 	}
 
 	bool AppSettings::LoadSearchRespectGitIgnore()

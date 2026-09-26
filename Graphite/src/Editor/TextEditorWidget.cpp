@@ -223,7 +223,10 @@ namespace Graphite {
 			GutterMetrics Gutter;
 		};
 
-		EditorMetrics MeasureEditor(const Core::TextBuffer& buffer)
+		// The change column is kept whether or not git is present (ADR 0525), and dropped only
+		// when the reader switches the gutter's change markers off: then the text moves once, at
+		// their own request, rather than whenever a repository comes or goes.
+		EditorMetrics MeasureEditor(const Core::TextBuffer& buffer, bool changeColumn)
 		{
 			EditorMetrics metrics;
 
@@ -233,7 +236,7 @@ namespace Graphite {
 			const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.GetLineCount()));
 
 			metrics.Gutter.BreakpointWidth = kBreakpointColumnCells * metrics.CellWidth;
-			metrics.Gutter.ChangeWidth = kChangeColumnWidth;
+			metrics.Gutter.ChangeWidth = changeColumn ? kChangeColumnWidth : 0.0f;
 			metrics.Gutter.FoldWidth = kFoldColumnCells * metrics.CellWidth;
 			metrics.Gutter.NumberWidth =
 				static_cast<float>(digits) * metrics.CellWidth + kGutterPaddingX * 2.0f;
@@ -2423,7 +2426,8 @@ namespace Graphite {
 							 const ResolvedScheme& scheme, const LensModel* lensModel,
 							 const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
-							 const ChangeMarkers* changes, EditorFrameResult& result)
+							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
+							 EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2491,7 +2495,7 @@ namespace Graphite {
 			DrawChangeTooltip(ComputeChangeHover(item, canvas, lenses, changes), buffer,
 							  canvas.Palette, item.TabWidth);
 
-			DrawChangeOverview(item, canvas, lenses, changes);
+			DrawChangeOverview(item, canvas, lenses, scrollbarChanges);
 
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
@@ -2603,7 +2607,7 @@ namespace Graphite {
 		// Read before anything in this function can move the caret — the mouse below moves it
 		// as readily as the keyboard does, and the blink has to restart for both.
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
-		const EditorMetrics metrics = MeasureEditor(buffer);
+		const EditorMetrics metrics = MeasureEditor(buffer, view.ChangeDisplay.Gutter);
 
 		// Asked of the document window, before the child below becomes the current one. True
 		// when this document holds the keyboard, whether the focus sits on the tab itself or
@@ -2753,8 +2757,9 @@ namespace Graphite {
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax,
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
-							view.Semantic, view.Diagnostics, view.DiagnosticsStale, view.Changes,
-							result);
+							view.Semantic, view.Diagnostics, view.DiagnosticsStale,
+							view.ChangeDisplay.Gutter ? view.Changes : nullptr,
+							view.ChangeDisplay.Scrollbar ? view.Changes : nullptr, result);
 
 			// Taken after the rows, because FirstVisibleRow is what the rows just worked out, and
 			// taken every frame so the anchor describes where the reader is now rather than where

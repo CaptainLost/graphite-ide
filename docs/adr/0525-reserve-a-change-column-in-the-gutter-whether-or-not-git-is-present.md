@@ -41,6 +41,12 @@ markers, would push the text sideways under the caret.
 - Bounds-check every line against the markers before drawing: the markers
   may describe a buffer a few edits old (0524), and a line they do not cover
   simply draws no bar.
+- Drop the column, and with it the markers and their tooltip, only when the
+  reader turns off "Change markers in the gutter" in the editor settings.
+  The text then moves once, at the reader's own request. The reservation
+  exists to stop it moving on its own when a repository comes or goes, which
+  a deliberate switch is not. With the scrollbar's markers (0527) off as
+  well, no document is diffed at all.
 
 ## Rationale
 

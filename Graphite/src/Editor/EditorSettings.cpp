@@ -55,6 +55,8 @@ namespace Graphite {
 		}
 
 		m_WordWrap = AppSettings::LoadWordWrap();
+		m_GutterChangeMarkers = AppSettings::LoadGutterChangeMarkers();
+		m_ScrollbarChangeMarkers = AppSettings::LoadScrollbarChangeMarkers();
 	}
 
 	void EditorSettings::SetFontSize(float size)
@@ -98,6 +100,18 @@ namespace Graphite {
 	{
 		m_WordWrap = wrap;
 		AppSettings::SaveWordWrap(m_WordWrap);
+	}
+
+	void EditorSettings::SetGutterChangeMarkers(bool show)
+	{
+		m_GutterChangeMarkers = show;
+		AppSettings::SaveGutterChangeMarkers(m_GutterChangeMarkers);
+	}
+
+	void EditorSettings::SetScrollbarChangeMarkers(bool show)
+	{
+		m_ScrollbarChangeMarkers = show;
+		AppSettings::SaveScrollbarChangeMarkers(m_ScrollbarChangeMarkers);
 	}
 
 	void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)

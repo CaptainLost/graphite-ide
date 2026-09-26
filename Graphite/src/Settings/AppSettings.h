@@ -38,6 +38,12 @@ namespace Graphite {
 		static bool LoadWordWrap();
 		static void SaveWordWrap(bool wrap);
 
+		static bool LoadGutterChangeMarkers();
+		static void SaveGutterChangeMarkers(bool show);
+
+		static bool LoadScrollbarChangeMarkers();
+		static void SaveScrollbarChangeMarkers(bool show);
+
 		static bool LoadSearchRespectGitIgnore();
 		static void SaveSearchRespectGitIgnore(bool respect);
 

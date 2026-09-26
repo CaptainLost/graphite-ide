@@ -839,6 +839,8 @@ namespace Graphite {
 											 .Indent = m_EditorSettings.GetIndentStyle(),
 											 .FallbackDockNode = m_DockSpace.GetCenterNodeId(),
 											 .WordWrap = m_EditorSettings.IsWordWrap(),
+											 .ChangeMarkers = {.Gutter = m_EditorSettings.ShowsGutterChangeMarkers(),
+															   .Scrollbar = m_EditorSettings.ShowsScrollbarChangeMarkers()},
 											 .Scheme = m_ActiveScheme.Get()},
 								 *m_ReferencesPanel);
 

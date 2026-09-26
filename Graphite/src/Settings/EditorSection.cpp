@@ -78,6 +78,24 @@ namespace Graphite {
 
 		RenderCommandCheckbox("Word wrap", "editor.toggleWordWrap");
 
+		ImGui::SeparatorText("Git");
+
+		// Plain checkboxes rather than commands like word wrap above: nobody toggles these while
+		// typing, so they need neither a shortcut nor a menu entry.
+		bool gutterChanges = m_Settings.ShowsGutterChangeMarkers();
+
+		if (ImGui::Checkbox("Change markers in the gutter", &gutterChanges))
+		{
+			m_Settings.SetGutterChangeMarkers(gutterChanges);
+		}
+
+		bool scrollbarChanges = m_Settings.ShowsScrollbarChangeMarkers();
+
+		if (ImGui::Checkbox("Change markers on the scrollbar", &scrollbarChanges))
+		{
+			m_Settings.SetScrollbarChangeMarkers(scrollbarChanges);
+		}
+
 		ImGui::SeparatorText("Indentation");
 
 		bool useSpaces = m_Settings.GetIndentStyle().UseSpaces;

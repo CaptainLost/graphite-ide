@@ -63,6 +63,7 @@ namespace Graphite {
 		Core::IndentStyle Indent;
 		unsigned int FallbackDockNode;
 		bool WordWrap;
+		ChangeMarkerDisplay ChangeMarkers;
 		const ResolvedScheme& Scheme;
 	};
 
@@ -367,8 +368,8 @@ namespace Graphite {
 
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
-								   bool wordWrap, const ResolvedScheme& scheme,
-								   ReferencesPanel& referencesPanel);
+								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
+								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
 

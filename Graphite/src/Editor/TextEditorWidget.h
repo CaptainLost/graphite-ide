@@ -41,6 +41,17 @@ namespace Graphite {
 		const Core::FrameInput* Input = nullptr;
 	};
 
+	// Which of the git change markers the reader has switched on. Both on by default, which is
+	// also what a document outside any repository is drawn with: it has no markers to show, and
+	// the gutter keeps its change column either way.
+	struct ChangeMarkerDisplay
+	{
+		// The gutter's bars and triangles, the tooltip over them, and the column they sit in.
+		bool Gutter = true;
+
+		bool Scrollbar = true;
+	};
+
 	struct EditorFrameResult
 	{
 		bool Edited = false;
@@ -118,8 +129,11 @@ namespace Graphite {
 
 		// How each line differs from git, drawn in the gutter's change column. Null when there
 		// is nothing to draw: no repository, an untracked-by-git file, or no answer yet. The
-		// column stays reserved either way.
+		// column stays reserved either way, unless the reader has switched the gutter's markers
+		// off below.
 		const ChangeMarkers* Changes = nullptr;
+
+		ChangeMarkerDisplay ChangeDisplay;
 
 		// Where this document's viewport was last time it drew, so a screen-row mapping that
 		// changes between frames does not slide the content out from under the reader. Owned by
