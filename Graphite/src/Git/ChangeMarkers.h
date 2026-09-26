@@ -118,4 +118,9 @@ namespace Graphite {
 
 	// The hunk behind the deletion marker drawn above `line`. Null when there is none.
 	const ChangeHunk* FindDeletionHunk(const ChangeMarkers& markers, std::size_t line);
+
+	// The tooltip's first line: the kind, how many lines, and the shade, plus which version the
+	// old lines beneath it come from when there are any. A modification that changed the number
+	// of lines says how many replaced how many, since a single count would describe neither side.
+	std::string DescribeHunk(const ChangeHunk& hunk);
 }

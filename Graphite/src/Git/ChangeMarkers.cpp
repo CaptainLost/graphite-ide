@@ -251,4 +251,42 @@ namespace Graphite {
 
 		return nullptr;
 	}
+
+	std::string DescribeHunk(const ChangeHunk& hunk)
+	{
+		const auto lines = [](std::size_t count) {
+			return std::to_string(count) + (count == 1 ? " line" : " lines");
+		};
+
+		std::string heading;
+
+		switch (hunk.Kind)
+		{
+		case HunkKind::Added:
+			heading = "Added · " + lines(hunk.MarkedCount);
+			break;
+
+		case HunkKind::Modified:
+			// Only an intact hunk still shows all the lines it introduced; one that unstaged edits
+			// have split or partly rewritten would report a replacement count it never made.
+			if (hunk.Intact && hunk.OldCount != hunk.MarkedCount)
+				heading = "Modified · " + lines(hunk.OldCount) + " replaced by " + std::to_string(hunk.MarkedCount);
+			else
+				heading = "Modified · " + lines(hunk.MarkedCount);
+
+			break;
+
+		case HunkKind::Deleted:
+			heading = "Deleted · " + lines(hunk.OldCount);
+			break;
+		}
+
+		heading += hunk.Staged ? " · staged" : " · unstaged";
+
+		// Only where old lines follow, so the reader knows which version they are reading.
+		if (!hunk.OldLines.empty())
+			heading += hunk.Staged ? " (against HEAD)" : " (against the index)";
+
+		return heading;
+	}
 }

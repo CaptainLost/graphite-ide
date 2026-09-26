@@ -1989,26 +1989,6 @@ namespace Graphite {
 			return FindLineHunk(*changes, ref.Line);
 		}
 
-		std::string ChangeHeading(const ChangeHunk& hunk)
-		{
-			const char* kind = hunk.Kind == HunkKind::Added	   ? "Added"
-							   : hunk.Kind == HunkKind::Modified ? "Modified"
-																 : "Deleted";
-
-			// A deletion is counted in the lines it took away; anything else in the lines it marks.
-			const std::size_t count = hunk.Kind == HunkKind::Deleted ? hunk.OldCount : hunk.MarkedCount;
-
-			std::string heading = std::string(kind) + " · " + std::to_string(count) +
-								  (count == 1 ? " line · " : " lines · ") +
-								  (hunk.Staged ? "staged" : "unstaged");
-
-			// Only where old lines follow, so the reader knows which version they are reading.
-			if (!hunk.OldLines.empty())
-				heading += hunk.Staged ? " (against HEAD)" : " (against the index)";
-
-			return heading;
-		}
-
 		// One old line, cut to kChangeTooltipLineBytes on a character boundary. Tabs are expanded
 		// per piece rather than across the line, so a tab after the removed part may land a column
 		// off from where the file puts it; the tooltip is read, not aligned against anything.
@@ -2075,7 +2055,7 @@ namespace Graphite {
 			if (hunk == nullptr || !ImGui::BeginTooltip())
 				return;
 
-			ImGui::TextUnformatted(ChangeHeading(*hunk).c_str());
+			ImGui::TextUnformatted(DescribeHunk(*hunk).c_str());
 
 			for (std::size_t index = 0; index < hunk->OldLines.size(); ++index)
 			{

@@ -321,3 +321,30 @@ TEST_CASE("A deletion at the end of the file is found past the last line")
 	REQUIRE(hunk != nullptr);
 	CHECK(hunk->OldLines == std::vector<std::string>{"c"});
 }
+
+TEST_CASE("A heading names the kind the count and the shade")
+{
+	const Graphite::ChangeHunk added{.Kind = Graphite::HunkKind::Added, .Staged = false, .LineCount = 3, .MarkedCount = 3};
+	CHECK(Graphite::DescribeHunk(added) == "Added · 3 lines · unstaged");
+
+	const Graphite::ChangeHunk one{.Kind = Graphite::HunkKind::Added, .Staged = true, .LineCount = 1, .MarkedCount = 1};
+	CHECK(Graphite::DescribeHunk(one) == "Added · 1 line · staged");
+}
+
+TEST_CASE("A heading over old lines says which version they are")
+{
+	const Graphite::ChangeHunk deleted{.Kind = Graphite::HunkKind::Deleted, .Staged = true, .OldCount = 2, .OldLines = {"a", "b"}};
+	CHECK(Graphite::DescribeHunk(deleted) == "Deleted · 2 lines · staged (against HEAD)");
+
+	const Graphite::ChangeHunk modified{.Kind = Graphite::HunkKind::Modified, .Staged = false, .LineCount = 2, .MarkedCount = 2, .OldCount = 2, .OldLines = {"a", "b"}};
+	CHECK(Graphite::DescribeHunk(modified) == "Modified · 2 lines · unstaged (against the index)");
+}
+
+TEST_CASE("A modification that changed the line count says how many replaced how many")
+{
+	const Graphite::ChangeHunk grown{.Kind = Graphite::HunkKind::Modified, .Staged = false, .LineCount = 254, .MarkedCount = 254, .OldCount = 2, .OldLines = {"a", "b"}};
+	CHECK(Graphite::DescribeHunk(grown) == "Modified · 2 lines replaced by 254 · unstaged (against the index)");
+
+	const Graphite::ChangeHunk shrunk{.Kind = Graphite::HunkKind::Modified, .Staged = true, .LineCount = 1, .MarkedCount = 1, .OldCount = 3, .OldLines = {"a", "b", "c"}};
+	CHECK(Graphite::DescribeHunk(shrunk) == "Modified · 3 lines replaced by 1 · staged (against HEAD)");
+}
