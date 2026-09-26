@@ -555,4 +555,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0523](0523-draw-change-markers-from-the-live-buffer-against-the-index-and-head.md) | Draw change markers from the live buffer against the index and HEAD | proposed | 2026-09-26 |
 | [0524](0524-hold-change-markers-in-a-model-of-their-own-apart-from-gitmodel.md) | Hold change markers in a model of their own apart from GitModel | proposed | 2026-09-26 |
 | [0525](0525-reserve-a-change-column-in-the-gutter-whether-or-not-git-is-present.md) | Reserve a change column in the gutter whether or not git is present | proposed | 2026-09-26 |
+| [0526](0526-highlight-what-a-changed-line-lost-by-its-shared-prefix-and-suffix.md) | Highlight what a changed line lost by its shared prefix and suffix | proposed | 2026-09-27 |
 <!-- /adr-index -->

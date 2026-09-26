@@ -212,8 +212,14 @@ namespace Graphite {
 				return;
 			}
 
+			// The same two texts the diffs were taken against, so the tooltip's old lines are the
+			// lines the hunks actually replaced.
+			const OldTexts old{
+				.Head = bases->Texts.Head ? std::string_view{*bases->Texts.Head} : std::string_view{},
+				.Index = index};
+
 			auto markers = std::make_shared<const ChangeMarkers>(
-				BuildChangeMarkers(bases->HeadToIndex, hunks.GetValue(), lines));
+				BuildChangeMarkers(bases->HeadToIndex, hunks.GetValue(), lines, old));
 
 			Deliver([this, path, generation, markers = std::move(markers)]() {
 				const auto found = m_Entries.find(path);

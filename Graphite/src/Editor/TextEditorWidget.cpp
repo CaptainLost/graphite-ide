@@ -10,6 +10,7 @@
 #include "Editor/Palettes.h"
 #include "Editor/SemanticOverlay.h"
 #include "Git/ChangeMarkers.h"
+#include "Git/LineSpans.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
 
@@ -1920,6 +1921,185 @@ namespace Graphite {
 			ImGui::EndTooltip();
 		}
 
+		// How far past the change column the pointer still counts as over it. The bar is three
+		// pixels wide, which is a target to hit rather than to rest on; this widens it without
+		// reaching the line numbers.
+		constexpr float kChangeHoverSlack = 3.0f;
+
+		// A tooltip line longer than this is cut: the old text of a minified file would otherwise
+		// make a tooltip wider than the screen.
+		constexpr std::size_t kChangeTooltipLineBytes = 160;
+
+		// The hunk whose marker the pointer rests on, if any. A deletion's triangle sits on the
+		// boundary between two lines and overlaps the bars on either side, so it is tested first:
+		// within its own height of the boundary, the pointer is over the triangle.
+		const ChangeHunk* ComputeChangeHover(const Core::OpenItem& item, const RowCanvas& canvas,
+											 const LensRows& lenses, const ChangeMarkers* changes)
+		{
+			if (changes == nullptr || changes->Hunks.empty() || !ImGui::IsWindowHovered())
+				return nullptr;
+
+			const ImVec2 mouse = ImGui::GetMousePos();
+			const float columnX = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.BreakpointWidth;
+
+			if (mouse.x < columnX - kChangeHoverSlack ||
+				mouse.x > columnX + kChangeColumnWidth + kChangeHoverSlack || mouse.y < canvas.Origin.y)
+				return nullptr;
+
+			const float relativeY = mouse.y - canvas.Origin.y;
+			const auto screenRow = static_cast<std::size_t>(relativeY / canvas.Metrics.LineHeight);
+			const float inRow = relativeY - static_cast<float>(screenRow) * canvas.Metrics.LineHeight;
+
+			// ADR 0486's translation, as every other pointer test here makes it: a lens row holds
+			// no line and so no marker.
+			const LensRows::Row hit = lenses.At(screenRow);
+
+			if (hit.IsLens || hit.DocumentRow >= item.Rows.TotalRows())
+				return nullptr;
+
+			const Core::RowRef ref = item.Rows.RowAt(hit.DocumentRow);
+			const bool lastRowOfLine = ref.SubRow + 1 >= item.Rows.RowsOf(ref.Line);
+
+			if (ref.SubRow == 0 && inRow <= kChangeColumnWidth)
+			{
+				if (const ChangeHunk* above = FindDeletionHunk(*changes, ref.Line))
+					return above;
+			}
+
+			// A lens row between this line and the next holds the upper half of the next line's
+			// triangle instead, so the bottom of this row is then only this line's bar.
+			if (lastRowOfLine && inRow >= canvas.Metrics.LineHeight - kChangeColumnWidth &&
+				!lenses.At(screenRow + 1).IsLens)
+			{
+				if (const ChangeHunk* below = FindDeletionHunk(*changes, ref.Line + 1))
+					return below;
+
+				// Past the last line, the triangle drawn is whichever anchor lies beyond it, even
+				// one a shrinking buffer has left further out than the line after.
+				const bool lastLine = ref.Line + 1 >= item.Rows.GetLineCount();
+
+				if (lastLine && !changes->Deletions.empty() && changes->Deletions.back().Line > ref.Line)
+				{
+					if (const ChangeHunk* beyond = FindDeletionHunk(*changes, changes->Deletions.back().Line))
+						return beyond;
+				}
+			}
+
+			// Bounds-checked inside: the markers may describe a buffer a few edits old.
+			return FindLineHunk(*changes, ref.Line);
+		}
+
+		std::string ChangeHeading(const ChangeHunk& hunk)
+		{
+			const char* kind = hunk.Kind == HunkKind::Added	   ? "Added"
+							   : hunk.Kind == HunkKind::Modified ? "Modified"
+																 : "Deleted";
+
+			// A deletion is counted in the lines it took away; anything else in the lines it marks.
+			const std::size_t count = hunk.Kind == HunkKind::Deleted ? hunk.OldCount : hunk.MarkedCount;
+
+			std::string heading = std::string(kind) + " · " + std::to_string(count) +
+								  (count == 1 ? " line · " : " lines · ") +
+								  (hunk.Staged ? "staged" : "unstaged");
+
+			// Only where old lines follow, so the reader knows which version they are reading.
+			if (!hunk.OldLines.empty())
+				heading += hunk.Staged ? " (against HEAD)" : " (against the index)";
+
+			return heading;
+		}
+
+		// One old line, cut to kChangeTooltipLineBytes on a character boundary. Tabs are expanded
+		// per piece rather than across the line, so a tab after the removed part may land a column
+		// off from where the file puts it; the tooltip is read, not aligned against anything.
+		void DrawOldLine(std::string_view line, ChangedSpan removed, const EditorPalette& palette,
+						 std::size_t tabWidth)
+		{
+			bool cut = false;
+
+			if (line.size() > kChangeTooltipLineBytes)
+			{
+				std::size_t end = kChangeTooltipLineBytes;
+
+				while (end > 0 && (static_cast<unsigned char>(line[end]) & 0xC0u) == 0x80u)
+					--end;
+
+				line = line.substr(0, end);
+				cut = true;
+			}
+
+			removed.From = std::min(removed.From, line.size());
+			removed.To = std::min(removed.To, line.size());
+
+			ImGui::PushStyleColor(ImGuiCol_Text, palette.ChangeOldText);
+			ImGui::TextUnformatted("- ");
+
+			const auto piece = [&](std::string_view text, bool gone) {
+				if (text.empty())
+					return;
+
+				const std::string expanded = Core::ExpandTabs(text, tabWidth);
+
+				ImGui::SameLine(0.0f, 0.0f);
+
+				if (gone)
+				{
+					const ImVec2 at = ImGui::GetCursorScreenPos();
+					const ImVec2 size = ImGui::CalcTextSize(expanded.c_str(), expanded.c_str() + expanded.size());
+
+					ImGui::GetWindowDrawList()->AddRectFilled(at, ImVec2(at.x + size.x, at.y + size.y),
+															  palette.ChangeOldRemoved);
+				}
+
+				ImGui::TextUnformatted(expanded.c_str(), expanded.c_str() + expanded.size());
+			};
+
+			piece(line.substr(0, removed.From), false);
+			piece(line.substr(removed.From, removed.To - removed.From), true);
+			piece(line.substr(removed.To), false);
+
+			if (cut)
+				piece("…", false);
+
+			ImGui::PopStyleColor();
+		}
+
+		// The change under the pointer: what it is, and the lines it replaced. A modified line is
+		// paired with the buffer line in the same position of the hunk, and only what is gone from
+		// it is highlighted; an old line with no partner, or in a hunk too broken up to pair, is
+		// gone whole. A deletion's lines are all
+		// gone, so highlighting them would say nothing the heading has not.
+		void DrawChangeTooltip(const ChangeHunk* hunk, const Core::TextBuffer& buffer,
+							   const EditorPalette& palette, std::size_t tabWidth)
+		{
+			if (hunk == nullptr || !ImGui::BeginTooltip())
+				return;
+
+			ImGui::TextUnformatted(ChangeHeading(*hunk).c_str());
+
+			for (std::size_t index = 0; index < hunk->OldLines.size(); ++index)
+			{
+				const std::string& old = hunk->OldLines[index];
+				ChangedSpan removed{0, hunk->Kind == HunkKind::Deleted ? 0 : old.size()};
+
+				const std::size_t partner = hunk->FirstLine + index;
+
+				// Paired only while the hunk's new lines sit where it put them. Once unstaged edits
+				// have split or rewritten a staged hunk, the line in position k is not its k-th new
+				// line, and comparing against it would highlight almost everything.
+				if (hunk->Kind == HunkKind::Modified && hunk->Intact && index < hunk->LineCount &&
+					partner < buffer.GetLineCount())
+					removed = RemovedSpan(old, buffer.LineText(partner));
+
+				DrawOldLine(old, removed, palette, tabWidth);
+			}
+
+			if (hunk->OldCount > hunk->OldLines.size())
+				ImGui::TextDisabled("… and %zu more", hunk->OldCount - hunk->OldLines.size());
+
+			ImGui::EndTooltip();
+		}
+
 		// The wavy underline every editor uses for "a language server called this wrong" — a
 		// shape distinct at a glance from the hover underline's straight line, so the two never
 		// read as the same kind of mark. Built as one polyline rather than a run of AddLine calls,
@@ -2238,6 +2418,11 @@ namespace Graphite {
 			DrawDiagnosticTooltip(ComputeDiagnosticHover(buffer, item, metrics, origin,
 														 canvas.TextOriginX, lenses,
 														 diagnosticOverlay));
+
+			// The same once-a-frame rule. The two never show together: one needs the pointer over
+			// the text, the other over the gutter.
+			DrawChangeTooltip(ComputeChangeHover(item, canvas, lenses, changes), buffer,
+							  canvas.Palette, item.TabWidth);
 
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 

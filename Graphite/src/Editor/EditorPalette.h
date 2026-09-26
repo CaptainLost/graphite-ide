@@ -31,5 +31,11 @@ namespace Graphite {
 		ImU32 ChangeAdded = 0;
 		ImU32 ChangeModified = 0;
 		ImU32 ChangeRemoved = 0;
+
+		// The old lines in a change marker's tooltip, and the background behind the part of each
+		// that is gone. The diff view's removed-text and removed-line colours, so a line reads
+		// the same in the tooltip as it does there.
+		ImU32 ChangeOldText = 0;
+		ImU32 ChangeOldRemoved = 0;
 	};
 }

@@ -101,6 +101,31 @@ TEST_CASE("Markers are computed once the bases have arrived")
 	CHECK_FALSE(markers->Lines[1].Staged);
 }
 
+TEST_CASE("The markers carry the lines each change replaced")
+{
+	FakeBasePort port;
+	port.Bases.Tracked = true;
+	port.Bases.Head = "a\nb\nc\n";
+	port.Bases.Index = "a\nB\nc\n";
+	HeldJobs jobs;
+	ChangeMarkersModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\nB\nX\n"};
+	Settle(model, jobs, buffer);
+
+	const auto markers = model.Get(kPath);
+	REQUIRE(markers != nullptr);
+
+	const Graphite::ChangeHunk* unstaged = Graphite::FindLineHunk(*markers, 2);
+	REQUIRE(unstaged != nullptr);
+	CHECK(unstaged->OldLines == std::vector<std::string>{"c"});
+
+	const Graphite::ChangeHunk* staged = Graphite::FindLineHunk(*markers, 1);
+	REQUIRE(staged != nullptr);
+	CHECK(staged->Staged);
+	CHECK(staged->OldLines == std::vector<std::string>{"b"});
+}
+
 TEST_CASE("An edit is diffed only once the buffer has gone quiet")
 {
 	FakeBasePort port;
