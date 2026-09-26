@@ -2,6 +2,8 @@
 
 #include "Git/RepositoryGitPort.h"
 
+#include "TempDirectory.h"
+
 #include "Core/Fs/FileSystem.h"
 
 #include <git2.h>
@@ -286,6 +288,37 @@ TEST_CASE("A file outside the repository is not tracked")
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
 	const auto bases = port.ReadBases(elsewhere.GetPath() / "a.txt");
+	REQUIRE(bases.HasValue());
+
+	CHECK_FALSE(bases.GetValue().Tracked);
+}
+
+TEST_CASE("An oversized staged file is tracked but unusable rather than a failure")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		const std::string bytes(static_cast<std::size_t>(Core::MaximumDiffTextSize) + 1, 'a');
+		file << bytes << "\n";
+	}
+
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	REQUIRE(bases.HasValue());
+
+	CHECK(bases.GetValue().Tracked);
+	CHECK(bases.GetValue().Unusable);
+}
+
+TEST_CASE("A file read with no repository open at all is not tracked")
+{
+	TempDirectory plain;
+	Graphite::RepositoryGitPort port{plain.GetPath()};
+
+	const auto bases = port.ReadBases(plain.GetPath() / "a.txt");
 	REQUIRE(bases.HasValue());
 
 	CHECK_FALSE(bases.GetValue().Tracked);

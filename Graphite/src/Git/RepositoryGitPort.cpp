@@ -425,13 +425,20 @@ namespace Graphite {
 
 		auto head = ReadOneSide(*repository, TextSide::Head, relative);
 
+		// A side too large to read at all is the same answer as a side that decodes to
+		// nothing: the file stays Tracked, but nothing is drawn for it, rather than the
+		// whole call failing over a side ReadBases was never going to diff anyway.
 		if (!head.HasValue())
-			return head.GetError();
+			return head.GetError().Code == Core::ErrorCode::InvalidArgument
+				? ChangeBases{.Tracked = true, .Unusable = true}
+				: Core::Result<ChangeBases>{head.GetError()};
 
 		auto index = ReadOneSide(*repository, TextSide::Index, relative);
 
 		if (!index.HasValue())
-			return index.GetError();
+			return index.GetError().Code == Core::ErrorCode::InvalidArgument
+				? ChangeBases{.Tracked = true, .Unusable = true}
+				: Core::Result<ChangeBases>{index.GetError()};
 
 		SideText headSide = std::move(head).GetValue();
 		SideText indexSide = std::move(index).GetValue();
