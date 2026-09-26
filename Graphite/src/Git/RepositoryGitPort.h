@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Git/Repository.h"
+#include "Git/ChangeBases.h"
 #include "Git/GitPort.h"
 
 #include <atomic>
@@ -13,7 +14,7 @@
 
 namespace Graphite {
 
-	// Answers GitModel's questions from a real repository on disk.
+	// Answers both GitModel's and ChangeMarkersModel's questions from a real repository on disk.
 	//
 	// Each worker thread gets its own libgit2 handle, because a git_repository must not be
 	// used from two threads at once. They are cached per thread and per root, so a blame
@@ -21,7 +22,7 @@ namespace Graphite {
 	// behind one another. A handle lives until its thread ends or its root is superseded;
 	// there are a handful of worker threads and one root at a time, so that costs nothing
 	// worth reclaiming beyond what SetRoot already invalidates.
-	class RepositoryGitPort final : public GitPort
+	class RepositoryGitPort final : public GitPort, public ChangeBasePort
 	{
 	public:
 		explicit RepositoryGitPort(std::filesystem::path root);
@@ -48,6 +49,9 @@ namespace Graphite {
 			Core::DiffTarget target,
 			const std::filesystem::path& oldPath,
 			const std::filesystem::path& newPath) override;
+
+		// ChangeBasePort. Uses the same per-thread handle as every query above.
+		Core::Result<ChangeBases> ReadBases(const std::filesystem::path& absolutePath) override;
 
 		void SetRoot(std::filesystem::path root);
 

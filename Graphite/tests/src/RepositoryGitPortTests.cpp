@@ -222,3 +222,71 @@ TEST_CASE("A file deleted from the working tree has no newer side to show")
 	CHECK(texts.GetValue().HasOld);
 	CHECK_FALSE(texts.GetValue().HasNew);
 }
+
+TEST_CASE("A staged new file has an index side and no HEAD side")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		file << "one\n";
+	}
+
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	REQUIRE(bases.HasValue());
+
+	CHECK(bases.GetValue().Tracked);
+	CHECK_FALSE(bases.GetValue().Head.has_value());
+	CHECK(bases.GetValue().Index == std::optional<std::string>{"one\n"});
+}
+
+TEST_CASE("An untracked file is tracked with neither side")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		file << "one\n";
+	}
+
+	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	REQUIRE(bases.HasValue());
+
+	CHECK(bases.GetValue().Tracked);
+	CHECK_FALSE(bases.GetValue().Head.has_value());
+	CHECK_FALSE(bases.GetValue().Index.has_value());
+}
+
+TEST_CASE("An ignored file is not tracked")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream ignore{repo.GetPath() / ".gitignore", std::ios::binary};
+		ignore << "*.log\n";
+		std::ofstream file{repo.GetPath() / "build.log", std::ios::binary};
+		file << "noise\n";
+	}
+
+	const auto bases = port.ReadBases(repo.GetPath() / "build.log");
+	REQUIRE(bases.HasValue());
+
+	CHECK_FALSE(bases.GetValue().Tracked);
+}
+
+TEST_CASE("A file outside the repository is not tracked")
+{
+	TempRepo repo;
+	TempRepo elsewhere;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const auto bases = port.ReadBases(elsewhere.GetPath() / "a.txt");
+	REQUIRE(bases.HasValue());
+
+	CHECK_FALSE(bases.GetValue().Tracked);
+}

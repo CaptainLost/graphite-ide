@@ -2,6 +2,7 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include <system_error>
 #include <unordered_map>
 #include <utility>
 
@@ -402,5 +403,41 @@ namespace Graphite {
 		texts.New = std::move(newText.Text);
 
 		return texts;
+	}
+
+	Core::Result<ChangeBases> RepositoryGitPort::ReadBases(const std::filesystem::path& absolutePath)
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		// No repository is an answer, not a failure: the column is simply empty.
+		if (repository == nullptr)
+			return ChangeBases{};
+
+		std::error_code code;
+		const std::filesystem::path relative =
+			std::filesystem::relative(absolutePath, repository->GetWorkingDirectory(), code);
+
+		if (code || relative.empty() || *relative.begin() == "..")
+			return ChangeBases{};
+
+		if (repository->IsIgnored(absolutePath))
+			return ChangeBases{};
+
+		auto head = ReadOneSide(*repository, TextSide::Head, relative);
+
+		if (!head.HasValue())
+			return head.GetError();
+
+		auto index = ReadOneSide(*repository, TextSide::Index, relative);
+
+		if (!index.HasValue())
+			return index.GetError();
+
+		SideText headSide = std::move(head).GetValue();
+		SideText indexSide = std::move(index).GetValue();
+
+		return MakeChangeBases(
+			headSide.Present ? std::optional<std::string>{std::move(headSide.Text)} : std::nullopt,
+			indexSide.Present ? std::optional<std::string>{std::move(indexSide.Text)} : std::nullopt);
 	}
 }
