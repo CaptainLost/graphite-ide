@@ -271,6 +271,21 @@ namespace Graphite {
 		}
 	}
 
+	std::function<void(const std::filesystem::path&)> DiffWindows::OpenFileIn(
+		const GitModel& model) const
+	{
+		if (!OpenFile)
+		{
+			return nullptr;
+		}
+
+		// Joined onto the working directory and not the workspace root: Repository::Open
+		// searches upward for a .git, so only the former is what a diff's paths are relative to.
+		return [this, &model](const std::filesystem::path& relative) {
+			OpenFile(model.GetWorkingDirectory() / relative);
+		};
+	}
+
 	void DiffWindows::FollowFile(Entry& entry, const GitModel& model)
 	{
 		if (entry.Diff.Commit.has_value())
@@ -439,6 +454,8 @@ namespace Graphite {
 							// the same moment of a file the reader may still be typing in.
 							entry.Texts.UpdateFromWorkingTree(model, file);
 						}
+
+						entry.View.OnOpenFile = OpenFileIn(model);
 
 						entry.View.Render(file, palette, syntax, entry.Texts.Texts,
 										  entry.Texts.Tokens);

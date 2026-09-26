@@ -8,6 +8,7 @@
 
 #include "Core/Git/Diff.h"
 
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string_view>
@@ -56,6 +57,11 @@ namespace Graphite {
 		// because it is set once by whoever owns this view and does not vary call to call,
 		// the way the file and palette do every frame.
 		std::function<void()> OnOpenAsTab;
+
+		// Opens the file in the editor, given its path relative to the working directory —
+		// the form a diff carries it in, which the owner joins onto the directory it knows.
+		// Unset hides the button; so does a file the diff deletes, having nothing left on disk.
+		std::function<void(const std::filesystem::path&)> OnOpenFile;
 
 		// Dismisses the pane. Left unset inside a tab, the way OnOpenAsTab is: a tab is
 		// closed by its own close button, and a second one inside it would be two answers to

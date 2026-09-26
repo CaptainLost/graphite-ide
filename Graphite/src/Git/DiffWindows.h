@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -104,6 +105,16 @@ namespace Graphite {
 		// after that ImGui remembers, including across a restart through imgui.ini.
 		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
 					unsigned int centreNode);
+
+		// Opens a file in the editor, given its absolute path. Set once by whoever owns the
+		// editor's tabs; every diff this draws offers it, and so does the docked history
+		// pane, which reaches it through here for the same reason it opens tabs through here.
+		std::function<void(const std::filesystem::path&)> OpenFile;
+
+		// OpenFile bound to `model`'s working directory, which is what a diff's paths are
+		// relative to; empty while OpenFile is. Reassigned each frame by whoever draws a
+		// DiffView, since the working directory moves with the folder that is open.
+		std::function<void(const std::filesystem::path&)> OpenFileIn(const GitModel& model) const;
 
 	private:
 		struct Entry;

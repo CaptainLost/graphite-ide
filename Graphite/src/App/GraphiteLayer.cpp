@@ -121,6 +121,12 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_ActiveScheme));
 
+		// Permanent, not a preview: pressing a button to open the file is as deliberate as
+		// choosing "Open File" from the Changes panel's menu.
+		m_DiffWindows.OpenFile = [this](const std::filesystem::path& path) {
+			m_DocumentWindows.RequestOpen(path, true);
+		};
+
 		auto* gitView = static_cast<GitView*>(
 			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows)));
 		gitView->SubscribeTo(m_Events);

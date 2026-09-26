@@ -77,6 +77,12 @@ namespace Core {
 			ICON_MDI_BRAIN,
 			ICON_MDI_ARROW_RIGHT,
 			ICON_MDI_IMAGE_OUTLINE,
+			ICON_MDI_VIEW_SPLIT_VERTICAL,
+			ICON_MDI_VIEW_AGENDA_OUTLINE,
+			ICON_MDI_ARROW_EXPAND_VERTICAL,
+			ICON_MDI_PALETTE_OUTLINE,
+			ICON_MDI_FILE_EDIT_OUTLINE,
+			ICON_MDI_TAB_PLUS,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);

@@ -2,6 +2,7 @@
 
 #include "Git/CommitLabels.h"
 #include "Git/DiffPanes.h"
+#include "UI/IconButton.h"
 #include "UI/SplitResults.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -20,6 +21,7 @@ namespace Graphite {
 
 		constexpr float kLineNumberColumns = 5.0f;
 		constexpr float kNumberPaddingX = 6.0f;
+		constexpr float kModeButtonGap = 2.0f;
 
 		ImU32 BandFor(DiffRowKind kind, const GitPalette& palette)
 		{
@@ -168,28 +170,69 @@ namespace Graphite {
 	void DiffView::RenderToolbar(const Core::FileDiff& file)
 	{
 		const std::filesystem::path& path = ShownPath(file);
+
+		// A frame tall, so the icon buttons after it share its centre line.
+		ImGui::AlignTextToFramePadding();
 		ImGui::TextUnformatted(path.string().c_str());
 
+		// The two modes as a pair with the current one engaged, rather than one button naming
+		// the mode it would switch to: an icon for "the other one" reads as the state it is in.
 		ImGui::SameLine();
 
-		if (ImGui::SmallButton(m_Mode == DiffViewMode::SideBySide ? "Unified" : "Side by side"))
+		if (DrawIconButton("##sideBySide", ICON_MDI_VIEW_SPLIT_VERTICAL,
+						   m_Mode == DiffViewMode::SideBySide, "Side by side"))
 		{
-			m_Mode = m_Mode == DiffViewMode::SideBySide ? DiffViewMode::Unified
-														: DiffViewMode::SideBySide;
+			m_Mode = DiffViewMode::SideBySide;
 		}
 
+		// Closer than ordinary spacing, so the two read as one control, but not touching: with
+		// both filled — one engaged, the other hovered — flush fills run together into one blob.
+		ImGui::SameLine(0.0f, kModeButtonGap);
+
+		if (DrawIconButton("##unified", ICON_MDI_VIEW_AGENDA_OUTLINE,
+						   m_Mode == DiffViewMode::Unified, "Unified"))
+		{
+			m_Mode = DiffViewMode::Unified;
+		}
+
+		// How the diff is laid out, then what it shows, then what can be done with the file.
+		ImGui::SameLine();
+		DrawIconSeparator();
 		ImGui::SameLine();
 
-		if (ImGui::SmallButton(m_ShowWholeFile ? "Changes only" : "Whole file"))
+		if (DrawIconButton("##wholeFile", ICON_MDI_ARROW_EXPAND_VERTICAL, m_ShowWholeFile,
+						   "Whole file"))
 		{
 			m_ShowWholeFile = !m_ShowWholeFile;
 		}
 
 		ImGui::SameLine();
 
-		if (ImGui::SmallButton(m_ColourSyntax ? "Plain text" : "Colour syntax"))
+		if (DrawIconButton("##colourSyntax", ICON_MDI_PALETTE_OUTLINE, m_ColourSyntax,
+						   "Colour syntax"))
 		{
 			m_ColourSyntax = !m_ColourSyntax;
+		}
+
+		// The file as it is on disk now, which a deleted file no longer has. NewPath and not
+		// ShownPath: the latter falls back to OldPath for exactly that case.
+		const bool canOpenFile = OnOpenFile && !file.NewPath.empty();
+
+		// Only when something follows it: a divider with nothing after it divides nothing.
+		if (canOpenFile || OnOpenAsTab)
+		{
+			ImGui::SameLine();
+			DrawIconSeparator();
+		}
+
+		if (canOpenFile)
+		{
+			ImGui::SameLine();
+
+			if (DrawIconButton("##openFile", ICON_MDI_FILE_EDIT_OUTLINE, false, "Open file"))
+			{
+				OnOpenFile(file.NewPath);
+			}
 		}
 
 		// Absent inside a tab: OnOpenAsTab is left unset there, so a diff already open as a
@@ -198,7 +241,7 @@ namespace Graphite {
 		{
 			ImGui::SameLine();
 
-			if (ImGui::SmallButton("Open as tab"))
+			if (DrawIconButton("##openAsTab", ICON_MDI_TAB_PLUS, false, "Open as tab"))
 			{
 				OnOpenAsTab();
 			}

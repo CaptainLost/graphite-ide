@@ -470,6 +470,7 @@ namespace Graphite {
 			// reason is unreachable rather than something that is simply not there.
 			m_Diff.OnOpenAsTab = nullptr;
 			m_Diff.OnClose = nullptr;
+			m_Diff.OnOpenFile = nullptr;
 			ImGui::TextUnformatted("Select a commit or a file to see what changed.");
 			return;
 		}
@@ -487,6 +488,8 @@ namespace Graphite {
 		// Cleared alongside OnOpenAsTab above when nothing is selected, and reassigned here
 		// every frame for the same reason: this pane is shared across every selection.
 		m_Diff.OnClose = [this] { m_Commits.ClearSelection(); };
+
+		m_Diff.OnOpenFile = m_DiffWindows.OpenFileIn(m_Model);
 
 		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
