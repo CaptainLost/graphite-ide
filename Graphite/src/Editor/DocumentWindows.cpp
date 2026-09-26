@@ -2080,8 +2080,14 @@ namespace Graphite {
 
 				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
 
+				// A tab whose open failed has no buffer to diff and draws its failure instead;
+				// Get below still answers null for it, so the view needs no branch of its own.
+				if (item.Document)
+				{
+					m_ChangeMarkers.Update(item.Path, item.Document->GetBuffer());
+				}
+
 				// Kept alive in this scope, since the widget holds only a raw pointer while it draws.
-				m_ChangeMarkers.Update(item.Path, item.Document->GetBuffer());
 				const std::shared_ptr<const ChangeMarkers> changes = m_ChangeMarkers.Get(item.Path);
 				view.Changes = changes.get();
 

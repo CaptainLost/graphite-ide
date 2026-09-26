@@ -1506,8 +1506,11 @@ namespace Graphite {
 		}
 
 		// The bar runs down every row of a wrapped line, since it marks the line, not the row.
-		// A deletion is a small triangle on the boundary above its anchor line. One past the end
-		// sits on the bottom edge of the last line.
+		// A deletion is a small triangle on the boundary above its anchor line, drawn on the
+		// line's first row. One past the end sits on the bottom edge of the last line, so it is
+		// drawn on that line's last row: drawn on the first row of a wrapped last line, it would
+		// sit between two rows of the same line and the next row's gutter fill would cover half
+		// of it.
 		void DrawChangeMarker(const RowCanvas& canvas, const RowSlice& slice,
 							  const ChangeMarkers* changes, std::size_t lineCount)
 		{
@@ -1533,7 +1536,7 @@ namespace Graphite {
 				}
 			}
 
-			if (slice.SubRow != 0 || changes->Deletions.empty())
+			if (changes->Deletions.empty())
 				return;
 
 			const std::size_t lastLine = lineCount == 0 ? 0 : lineCount - 1;
@@ -1549,10 +1552,10 @@ namespace Graphite {
 
 			const auto at = std::ranges::lower_bound(changes->Deletions, slice.Line, {}, &DeletionAnchor::Line);
 
-			if (at != changes->Deletions.end() && at->Line == slice.Line)
+			if (slice.SubRow == 0 && at != changes->Deletions.end() && at->Line == slice.Line)
 				drawAnchor(*at, top);
 
-			if (slice.Line == lastLine && changes->Deletions.back().Line > lastLine)
+			if (slice.LastRowOfLine && slice.Line == lastLine && changes->Deletions.back().Line > lastLine)
 				drawAnchor(changes->Deletions.back(), bottom);
 		}
 
