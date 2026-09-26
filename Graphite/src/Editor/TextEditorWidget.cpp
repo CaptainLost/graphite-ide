@@ -2085,8 +2085,13 @@ namespace Graphite {
 		// thousands still shows.
 		constexpr float kOverviewMinHeight = 2.0f;
 
-		// The document's changes on the vertical scrollbar, in the gutter's colours and shades, over
-		// the left half of the track so the grab stays visible beside them. Drawn only: the marks
+		// How wide a change is on the scrollbar, centred on the track. Narrower than the grab, so
+		// the grab still shows on both sides of a mark it passes over.
+		constexpr float kOverviewMarkWidth = 4.0f;
+
+		// The document's changes on the vertical scrollbar, in the gutter's colours and shades, as a
+		// narrow strip down the middle of the track so the grab stays visible either side of them.
+		// Drawn only: the marks
 		// take no input, and clicking or dragging the scrollbar behaves exactly as it did.
 		//
 		// Positions go through the same screen rows the document is laid out in, wrapped lines and
@@ -2137,8 +2142,10 @@ namespace Graphite {
 			const std::vector<OverviewMark> marks =
 				BuildChangeOverview(*changes, lineTop, kOverviewMinHeight / trackHeight);
 
-			const float left = bar.Min.x + inset;
-			const float right = bar.Min.x + bar.GetWidth() * 0.5f;
+			const float centre = (bar.Min.x + bar.Max.x) * 0.5f;
+			const float half = ImMin(kOverviewMarkWidth, bar.GetWidth() - inset * 2.0f) * 0.5f;
+			const float left = IM_TRUNC(centre - half);
+			const float right = left + half * 2.0f;
 
 			// The window's own clip rectangle stops short of its scrollbar, so the bar gets its own,
 			// kept within what of the window is actually visible.

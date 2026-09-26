@@ -17,8 +17,8 @@ clicking or dragging it must behave as before.
 
 ## Decision
 
-- Draw each hunk of `ChangeMarkers::Hunks` on the vertical scrollbar, over
-  the left half of its track. Use the gutter's colours: added, modified and
+- Draw each hunk of `ChangeMarkers::Hunks` on the vertical scrollbar, as a
+  4 px strip centred on its track. Use the gutter's colours: added, modified and
   removed. Draw staged changes at the same 0.45 alpha the gutter uses.
 - Place a hunk by where its lines sit in the laid-out document, in screen
   rows, with wrapped lines and lens rows included (0486). Measure against
@@ -38,8 +38,8 @@ clicking or dragging it must behave as before.
 
 ## Rationale
 
-The left half keeps the grab readable without moving or resizing ImGui's
-scrollbar. Placing marks by screen row rather than by line number is what
+A narrow strip down the middle keeps the grab readable on both sides of it
+without moving or resizing ImGui's scrollbar. Placing marks by screen row rather than by line number is what
 keeps them honest in a wrapped document or one with many lenses. Working
 from the hunk list rather than the per-line markers keeps the cost per frame
 to the number of changes, not the length of the file.
@@ -58,8 +58,8 @@ to the number of changes, not the length of the file.
   there, so the picture reads right, but the staged mark is not exact.
 - A file with no scrollbar shows nothing, even when it has changes. The
   gutter already shows all of them there.
-- The marks cover the left half of the grab where the two meet, since they
-  are drawn after it.
+- The marks cover the middle of the grab where the two meet, since they are
+  drawn after it.
 - Once a very long file shrinks the grab to its minimum size, the grab and
   the marks drift apart towards the bottom of the track, by up to that
   minimum size. The marks stay proportional to the document, while the grab
@@ -81,6 +81,8 @@ to the number of changes, not the length of the file.
   and duplicates what the scrollbar already maps.
 - **Marks across the full track width.** Simpler, but they hide the grab
   wherever a change sits under it.
+- **Marks over the left half of the track.** Tried first. The grab then
+  showed only on its right, and next to a bright mark it was barely visible.
 
 ## Related
 
