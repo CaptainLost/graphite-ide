@@ -67,7 +67,7 @@ namespace Graphite {
 
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
 								 SessionWindows& windows, LaunchClaude launch)
-		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_MDI_ROBOT_OUTLINE),
+		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_MDI_ROBOT_OUTLINE, false),
 		  m_Workspace(workspace), m_Settings(settings), m_Windows(windows), m_Launch(std::move(launch))
 	{
 	}
