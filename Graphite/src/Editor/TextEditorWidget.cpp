@@ -10,6 +10,7 @@
 #include "Editor/Palettes.h"
 #include "Editor/SemanticOverlay.h"
 #include "Git/ChangeMarkers.h"
+#include "Git/ChangeOverview.h"
 #include "Git/LineSpans.h"
 
 #include "Lang/Syntax/SyntaxCache.h"
@@ -2080,6 +2081,85 @@ namespace Graphite {
 			ImGui::EndTooltip();
 		}
 
+		// A change on the scrollbar is never shorter than this, so one changed line in a file of
+		// thousands still shows.
+		constexpr float kOverviewMinHeight = 2.0f;
+
+		// The document's changes on the vertical scrollbar, in the gutter's colours and shades, over
+		// the left half of the track so the grab stays visible beside them. Drawn only: the marks
+		// take no input, and clicking or dragging the scrollbar behaves exactly as it did.
+		//
+		// Positions go through the same screen rows the document is laid out in, wrapped lines and
+		// lens rows included (ADR 0486). They are measured against the content height ImGui's own
+		// scrollbar spans, inside the same inset its grab moves within, so a mark sits where the
+		// grab stands when its line is at the top of the view. That holds while the grab is sized
+		// by the view; once a very long file shrinks it to its minimum size, the two drift apart
+		// towards the bottom by up to that size.
+		void DrawChangeOverview(const Core::OpenItem& item, const RowCanvas& canvas,
+								const LensRows& lenses, const ChangeMarkers* changes)
+		{
+			if (changes == nullptr || changes->Hunks.empty())
+				return;
+
+			ImGuiWindow* window = ImGui::GetCurrentWindow();
+
+			if (!window->ScrollbarY)
+				return;
+
+			const ImRect bar = ImGui::GetWindowScrollbarRect(window, ImGuiAxis_Y);
+
+			// A bar shorter than it is wide is one ImGui fades its own grab out of; there is no
+			// track worth marking.
+			if (bar.GetHeight() < bar.GetWidth())
+				return;
+
+			// ImGui's own grab inset, from the style rather than a copy of its value.
+			const float inset = IM_TRUNC(
+				ImMin(ImGui::GetStyle().ScrollbarPadding, ImMin(bar.GetWidth(), bar.GetHeight()) * 0.5f));
+			const float trackTop = bar.Min.y + inset;
+			const float trackHeight = bar.GetHeight() - inset * 2.0f;
+			const float content = std::max(window->ContentSize.y + window->WindowPadding.y * 2.0f,
+										   window->InnerRect.GetHeight());
+
+			if (trackHeight < 1.0f || content <= 0.0f)
+				return;
+
+			const std::size_t lineCount = item.Rows.GetLineCount();
+			const std::size_t totalRows = item.Rows.TotalRows();
+
+			const auto lineTop = [&](std::size_t line) {
+				const std::size_t screenRow = line >= lineCount ? lenses.TotalScreenRows(totalRows)
+																: lenses.ScreenRowOf(item.Rows.FirstRowOf(line));
+
+				return static_cast<float>(screenRow) * canvas.Metrics.LineHeight / content;
+			};
+
+			const std::vector<OverviewMark> marks =
+				BuildChangeOverview(*changes, lineTop, kOverviewMinHeight / trackHeight);
+
+			const float left = bar.Min.x + inset;
+			const float right = bar.Min.x + bar.GetWidth() * 0.5f;
+
+			// The window's own clip rectangle stops short of its scrollbar, so the bar gets its own,
+			// kept within what of the window is actually visible.
+			ImRect clip = bar;
+			clip.ClipWith(window->OuterRectClipped);
+			window->DrawList->PushClipRect(clip.Min, clip.Max, false);
+
+			for (const OverviewMark& mark : marks)
+			{
+				const ImU32 base = mark.Kind == HunkKind::Added		? canvas.Palette.ChangeAdded
+								   : mark.Kind == HunkKind::Modified ? canvas.Palette.ChangeModified
+																	 : canvas.Palette.ChangeRemoved;
+
+				window->DrawList->AddRectFilled(ImVec2(left, trackTop + mark.From * trackHeight),
+												ImVec2(right, trackTop + mark.To * trackHeight),
+												mark.Staged ? WithAlpha(base, kStagedChangeAlpha) : base);
+			}
+
+			window->DrawList->PopClipRect();
+		}
+
 		// The wavy underline every editor uses for "a language server called this wrong" — a
 		// shape distinct at a glance from the hover underline's straight line, so the two never
 		// read as the same kind of mark. Built as one polyline rather than a run of AddLine calls,
@@ -2403,6 +2483,8 @@ namespace Graphite {
 			// the text, the other over the gutter.
 			DrawChangeTooltip(ComputeChangeHover(item, canvas, lenses, changes), buffer,
 							  canvas.Palette, item.TabWidth);
+
+			DrawChangeOverview(item, canvas, lenses, changes);
 
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
