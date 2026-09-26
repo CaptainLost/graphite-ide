@@ -17,7 +17,7 @@ happening to the repository. Folding that into `GitModel` would mean giving
 one model two unrelated notions of staleness, each ticking on its own
 clock.
 
-`ChangeBasePort` (from the previous task) already draws the line: it is the
+`ChangeBasePort` already draws the line: it is the
 one question the markers need answered about git, kept apart from `GitPort`
 so it can be tested without a repository. `BuildChangeMarkers` is a pure
 function of two diffs and a line count. What is still missing is the thing
@@ -33,18 +33,26 @@ its own, next to `GitModel` rather than inside it, built the same way:
 
 - A path starts being tracked on its first `Update` call, which is also
   what "track on open" comes to — the model only reads bases for a document
-  it is actually asked to draw, and a hidden tab costs nothing.
+  it is actually asked to draw.
 - Bases are read once per path and kept until they are invalidated, not
   re-read on every edit: `WorkspaceOpenedEvent` and `WorkspaceClosedEvent`
   clear every entry outright, and `WorkspaceFilesChangedEvent` or
   `RepositoryChangedEvent` mark the model dirty under the same debounce
   `GitModel` uses (0.15 s quiet, capped at 1.0 s), after which every
-  tracked path's bases are re-read.
+  tracked path's bases are re-read — hidden or not: this refresh is keyed
+  to the repository, not to what is on screen, so an open tab nobody is
+  looking at still gets its bases re-read alongside every other one.
 - The index→buffer diff is a separate, per-document timer: an edit marks
   the entry pending and resets a 0.1 s quiet timer; once it elapses and the
   bases have arrived, the buffer is copied and handed to a worker. A
   document opened for the first time is not made to wait out this timer —
-  it has not been typed into, so there is nothing to debounce.
+  it has not been typed into, so there is nothing to debounce. This is the
+  part that a hidden document skips: with no `Update` call there is no
+  edit to detect and no buffer to copy, so a tab nobody is looking at gets
+  no index→buffer diff until it is shown again.
+- `RepositoryGitPort` implements `ChangeBasePort`, so a bases read reuses
+  the same per-thread libgit2 handle every other query on that port
+  already uses (0492), rather than opening a repository handle of its own.
 - Every request — for bases or for markers — takes a generation from one
   model-wide counter, mirroring `GitModel`: a slow answer that lands after
   a newer request for the same path is dropped rather than overwriting a
@@ -94,6 +102,11 @@ confirms the two behave alike where they are supposed to.
   `JobSubmitter` must declare the model before the queue, so the queue and
   its workers are torn down first — the same lifetime rule `GitModel`
   already documents on itself.
+- The previous markers stay on screen until fresh ones land, even once the
+  buffer has moved on from the revision they describe — the same policy
+  0506 already applies to a stale diagnostic. The drawing code must
+  bounds-check against the buffer's current line count rather than assume
+  `ChangeMarkers::Lines` still has one entry per line.
 
 ## Alternatives Considered
 
@@ -121,5 +134,10 @@ reader is actively typing.
 - [0523](0523-draw-change-markers-from-the-live-buffer-against-the-index-and-head.md)
   — `BuildChangeMarkers`, the pure function this model calls once both
   diffs are in hand.
+- [0492](0492-give-each-worker-thread-its-own-repository-handle.md) — the
+  per-thread libgit2 handle `RepositoryGitPort` reuses when it answers
+  `ChangeBasePort::ReadBases`.
+- [0506](0506-dim-a-diagnostic-the-buffer-has-outrun-rather-than-dropping-it.md)
+  — the stale-result-stays-on-screen policy this model's markers follow too.
 - `Graphite/src/Git/GitModel.h` — the debounce, generation and delivery
   pattern this model mirrors.
