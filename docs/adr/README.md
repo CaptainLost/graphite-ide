@@ -553,4 +553,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0521](0521-show-what-a-request-sent-by-size-not-by-guessed-tokens.md) | Show what a request sent by size, not by guessed tokens | proposed | 2026-09-24 |
 | [0522](0522-persist-session-state-in-two-scopes-global-window-and-panels-per-workspace-tabs.md) | Persist session state in two scopes: global window and panels, per-workspace tabs | proposed | 2026-09-25 |
 | [0523](0523-draw-change-markers-from-the-live-buffer-against-the-index-and-head.md) | Draw change markers from the live buffer against the index and HEAD | proposed | 2026-09-26 |
+| [0524](0524-hold-change-markers-in-a-model-of-their-own-apart-from-gitmodel.md) | Hold change markers in a model of their own apart from GitModel | proposed | 2026-09-26 |
 <!-- /adr-index -->
