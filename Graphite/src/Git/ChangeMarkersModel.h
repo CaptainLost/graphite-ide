@@ -51,14 +51,22 @@ namespace Graphite {
 
 		// Called every frame for each document on screen. The first call for a path starts
 		// reading its bases. After an edit, the buffer is copied and diffed once it has been
-		// quiet for kEditQuietSeconds. A hidden document is not called, and so costs nothing
-		// until it is shown again.
+		// quiet for kEditQuietSeconds. A hidden document is not called, so its buffer is
+		// neither copied nor diffed until it is shown again; its bases are still re-read when
+		// the repository changes, like every other open document's.
+		//
+		// A buffer longer than Core::MaximumDiffTextSize draws nothing and is never copied.
 		void Update(const std::filesystem::path& path, const Core::TextBuffer& buffer);
 
 		// Forgets every path the predicate rejects, and with it any answer still in flight.
 		void Retain(const std::function<bool(const std::filesystem::path&)>& isOpen);
 
 		void Clear();
+
+		// Re-reads every open document's bases, debounced like a repository event. For a change
+		// this process made itself, such as a stage or a commit from the Changes panel, which
+		// the file watcher may never report.
+		void Invalidate();
 
 		// Null while nothing has been computed, and for a file git does not track, cannot diff
 		// or failed to read. In every case the column is empty.
@@ -71,7 +79,7 @@ namespace Graphite {
 		static constexpr float kMaxDebounceSeconds = 1.0f;
 
 	private:
-		struct Bases
+		struct BaseTexts
 		{
 			ChangeBases Texts;
 			std::vector<Core::LineHunk> HeadToIndex;
@@ -80,7 +88,7 @@ namespace Graphite {
 		struct Entry
 		{
 			std::uint64_t BasesRequested = 0;
-			std::shared_ptr<const Bases> Bases;
+			std::shared_ptr<const BaseTexts> Bases;
 
 			// The revision Update last saw, and how long the buffer has sat at it.
 			std::optional<std::size_t> Revision;

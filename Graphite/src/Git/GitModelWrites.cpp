@@ -204,6 +204,8 @@ namespace Graphite {
 		// a list that can be missing something.
 		MarkDirty();
 
+		++m_AppliedWrites;
+
 		PumpWrites();
 	}
 }

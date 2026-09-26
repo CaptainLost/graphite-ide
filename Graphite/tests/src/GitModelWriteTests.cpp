@@ -229,6 +229,29 @@ TEST_CASE("A failed write reports itself and refreshes nothing")
 	CHECK_FALSE(model.GetWriteError().has_value());
 }
 
+TEST_CASE("The applied write count grows with each successful write and only then")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	CHECK(model.GetAppliedWriteCount() == 0);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	CHECK(model.GetAppliedWriteCount() == 1);
+
+	model.RequestCommit({.Message = "one"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	CHECK(model.GetAppliedWriteCount() == 2);
+
+	port.Fail = true;
+	model.RequestUnstage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(model.GetWriteError().has_value());
+	CHECK(model.GetAppliedWriteCount() == 2);
+}
+
 TEST_CASE("TakeCommitted answers once")
 {
 	WritePort port;

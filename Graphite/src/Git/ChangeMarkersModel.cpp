@@ -1,6 +1,7 @@
 #include "Git/ChangeMarkersModel.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Git/Repository.h"
 #include "Core/Git/TextDiff.h"
 #include "Core/Text/TextBuffer.h"
 #include "Workspace/Workspace.h"
@@ -26,6 +27,11 @@ namespace Graphite {
 
 		// A commit, a checkout or a stage moves HEAD or the index under every open document.
 		events.Subscribe<RepositoryChangedEvent>([this](const RepositoryChangedEvent&) { MarkDirty(); });
+	}
+
+	void ChangeMarkersModel::Invalidate()
+	{
+		MarkDirty();
 	}
 
 	void ChangeMarkersModel::MarkDirty()
@@ -115,12 +121,12 @@ namespace Graphite {
 		m_Submit([this, path, generation]() {
 			auto read = m_Port.ReadBases(path);
 
-			std::shared_ptr<const Bases> bases;
+			std::shared_ptr<const BaseTexts> bases;
 			std::optional<Core::Error> error;
 
 			if (read.HasValue())
 			{
-				auto fresh = std::make_shared<Bases>();
+				auto fresh = std::make_shared<BaseTexts>();
 				fresh->Texts = std::move(read).GetValue();
 
 				// Diffed once here rather than on every keystroke: HEAD and the index change only
@@ -173,6 +179,15 @@ namespace Graphite {
 											const Core::TextBuffer& buffer)
 	{
 		if (!entry.Bases->Texts.Tracked || entry.Bases->Texts.Unusable)
+		{
+			entry.Markers.reset();
+			return;
+		}
+
+		// The same ceiling the bases are read under. Checked before the copy, so a large
+		// untracked file, or a tracked one grown past it, is neither copied on this thread nor
+		// diffed on every quiet edit.
+		if (buffer.GetLength() > Core::MaximumDiffTextSize)
 		{
 			entry.Markers.reset();
 			return;

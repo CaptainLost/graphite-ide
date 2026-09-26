@@ -42,6 +42,17 @@ its own, next to `GitModel` rather than inside it, built the same way:
   tracked path's bases are re-read — hidden or not: this refresh is keyed
   to the repository, not to what is on screen, so an open tab nobody is
   looking at still gets its bases re-read alongside every other one.
+- A write this process makes itself — a stage, unstage, discard, delete or
+  commit applied by `GitModel` — marks the model dirty directly, through
+  the same debounce, rather than relying on the file watcher to report it.
+  The watcher only raises `RepositoryChangedEvent` when `.git/` lies under
+  the watched workspace root, which is not the case for a workspace opened
+  on a subfolder of the repository or in a linked worktree. `GitModel`
+  exposes a monotonic `GetAppliedWriteCount()`; `GraphiteLayer` compares it
+  each frame with the value it last saw and calls
+  `ChangeMarkersModel::Invalidate()` when it has moved. A counter rather
+  than a one-shot `Take…`, so it cannot be consumed out from under another
+  reader.
 - The index→buffer diff is a separate, per-document timer: an edit marks
   the entry pending and resets a 0.1 s quiet timer; once it elapses and the
   bases have arrived, the buffer is copied and handed to a worker. A
@@ -50,6 +61,11 @@ its own, next to `GitModel` rather than inside it, built the same way:
   part that a hidden document skips: with no `Update` call there is no
   edit to detect and no buffer to copy, so a tab nobody is looking at gets
   no index→buffer diff until it is shown again.
+- A buffer longer than `Core::MaximumDiffTextSize` (the same 2 MB ceiling
+  the bases are read under) has nothing drawn for it, and the check comes
+  before the buffer is copied: a large untracked file, or a tracked one
+  grown past the limit, is neither copied on the UI thread nor diffed on
+  every quiet edit.
 - `RepositoryGitPort` implements `ChangeBasePort`, so a bases read reuses
   the same per-thread libgit2 handle every other query on that port
   already uses (0492), rather than opening a repository handle of its own.

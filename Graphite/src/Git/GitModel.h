@@ -237,6 +237,14 @@ namespace Graphite {
 		// it is about to see came from here.
 		std::vector<std::filesystem::path> TakeDiscarded();
 
+		// How many writes - stage, unstage, discard, delete, commit - this model has applied
+		// successfully. Only ever grows, so any number of readers can each compare it against
+		// the value they last saw, where a one-shot Take would let the first reader starve the
+		// rest. This is how something outside the model learns that HEAD or the index moved
+		// under it without waiting for the file watcher, which does not see `.git/` when the
+		// workspace is a subfolder of the repository or a linked worktree.
+		std::uint64_t GetAppliedWriteCount() const { return m_AppliedWrites; }
+
 		// Without a root the model answers nothing: a file-change event that arrives
 		// before a folder is open has no repository to ask about.
 		void SetRoot(std::filesystem::path root);
@@ -430,6 +438,7 @@ namespace Graphite {
 		std::optional<Core::Error> m_WriteError;
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;
+		std::uint64_t m_AppliedWrites = 0;
 
 		std::uint64_t m_StatusRequested = 0;
 		std::uint64_t m_StatusApplied = 0;

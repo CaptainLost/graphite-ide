@@ -430,6 +430,16 @@ namespace Graphite {
 		// and picks up any workspace event just published - before any panel reads a
 		// snapshot this frame.
 		m_Git.OnUpdate(ts);
+
+		// A stage, discard or commit from this process reaches the gutter here, not only
+		// through the watcher, which never sees `.git/` when the workspace is a subfolder of the
+		// repository or a linked worktree.
+		if (const std::uint64_t writes = m_Git.GetAppliedWriteCount(); writes != m_SeenGitWrites)
+		{
+			m_SeenGitWrites = writes;
+			m_ChangeMarkers.Invalidate();
+		}
+
 		m_ChangeMarkers.OnUpdate(ts);
 
 		m_Panels.OnUpdate(ts);

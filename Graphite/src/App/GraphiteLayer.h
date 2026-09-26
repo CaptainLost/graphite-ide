@@ -249,9 +249,9 @@ namespace Graphite {
 		// Every job GitModel submits captures `this`, so the queue behind the submitter must
 		// be destroyed - and its workers joined - before the model goes away, and the port
 		// must outlive every query a worker might still be running against it. Members are
-		// destroyed in reverse declaration order, so m_Jobs is declared LAST of the three: its
-		// destructor runs FIRST, joining every worker before m_Git or m_GitPort can be torn
-		// down. Declaring m_Jobs first would compile without complaint and fail only under
+		// destroyed in reverse declaration order, so m_Jobs is declared LAST of the four: its
+		// destructor runs FIRST, joining every worker before m_Git, m_ChangeMarkers or m_GitPort
+		// can be torn down. Declaring m_Jobs first would compile without complaint and fail only under
 		// real threading, when a worker is mid-query as the model it points into disappears.
 		// m_ChangeMarkers sits with m_Git before m_Jobs for the same reason: every job it submits
 		// captures `this` and reads the port as a ChangeBasePort.
@@ -267,6 +267,11 @@ namespace Graphite {
 		ChangeMarkersModel m_ChangeMarkers{
 			m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::JobQueue m_Jobs;
+
+		// GitModel's applied-write count as OnUpdate last saw it. A change means this process
+		// moved HEAD or the index itself, and the change markers are told directly rather than
+		// left to the file watcher.
+		std::uint64_t m_SeenGitWrites = 0;
 
 		// Holds no reference to m_Git or the queue above, so its place in this group is only
 		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be

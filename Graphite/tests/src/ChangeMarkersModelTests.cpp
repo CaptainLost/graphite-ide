@@ -3,6 +3,7 @@
 #include "Git/ChangeMarkersModel.h"
 
 #include "Core/Events/EventBus.h"
+#include "Core/Git/Repository.h"
 #include "Core/Text/TextBuffer.h"
 #include "Workspace/Workspace.h"
 
@@ -190,6 +191,63 @@ TEST_CASE("The bases are read again after the repository changes")
 	Settle(model, jobs, buffer);
 
 	CHECK(model.Get(kPath)->Lines[1].Kind == ChangeKind::None);
+}
+
+TEST_CASE("Invalidate reads the bases again without any event")
+{
+	FakeBasePort port;
+	port.Bases = Committed("a\nb\n");
+	HeldJobs jobs;
+	ChangeMarkersModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\nX\n"};
+	Settle(model, jobs, buffer);
+	REQUIRE(port.Calls == 1);
+	REQUIRE(model.Get(kPath)->Lines[1].Kind == ChangeKind::Modified);
+
+	// Staged from this process: the index now matches the buffer.
+	ChangeBases staged = Committed("a\nb\n");
+	staged.Index = "a\nX\n";
+	port.Bases = staged;
+	model.Invalidate();
+
+	// Debounced like a repository event.
+	model.OnUpdate(kFrame);
+	jobs.RunAll();
+	CHECK(port.Calls == 1);
+
+	model.OnUpdate(Core::Timestep{0.2f});
+	jobs.RunAll();
+	CHECK(port.Calls == 2);
+
+	model.OnUpdate(kFrame);
+	Settle(model, jobs, buffer);
+
+	CHECK(model.Get(kPath)->Lines[1].Kind == ChangeKind::Modified);
+	CHECK(model.Get(kPath)->Lines[1].Staged);
+}
+
+TEST_CASE("A buffer past the diff size limit has nothing to draw and is never diffed")
+{
+	FakeBasePort port;
+	port.Bases.Tracked = true;
+	HeldJobs jobs;
+	ChangeMarkersModel model{port, jobs.Submitter()};
+
+	Core::TextBuffer buffer{"a\n"};
+	Settle(model, jobs, buffer);
+	REQUIRE(model.Get(kPath) != nullptr);
+
+	buffer.Insert(0, std::string(static_cast<std::size_t>(Core::MaximumDiffTextSize), 'x'));
+	REQUIRE(buffer.GetLength() > Core::MaximumDiffTextSize);
+
+	// The edit, then long enough for it to count as quiet.
+	model.Update(kPath, buffer);
+	model.OnUpdate(Core::Timestep{0.2f});
+	model.Update(kPath, buffer);
+
+	CHECK(jobs.Jobs.empty());
+	CHECK(model.Get(kPath) == nullptr);
 }
 
 TEST_CASE("A file git does not track has nothing to draw")

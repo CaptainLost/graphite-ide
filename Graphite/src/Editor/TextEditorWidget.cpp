@@ -1467,8 +1467,9 @@ namespace Graphite {
 			draw(slice.ToByte, canvas.Palette.Text);
 		}
 
-		// The colour's own alpha scaled down, for a stale diagnostic drawn in the same colour a
-		// fresh one would use. Goes through ImGui's own float round trip rather than shifting the
+		// The colour's own alpha scaled down, for something drawn in the same colour as its
+		// full-strength counterpart but dimmer: a stale diagnostic beside a fresh one, and a
+		// staged change marker beside an unstaged one. Goes through ImGui's own float round trip rather than shifting the
 		// packed byte directly, so this makes no assumption about which byte of the ImU32 the
 		// alpha channel sits in.
 		ImU32 WithAlpha(ImU32 colour, float scale)
