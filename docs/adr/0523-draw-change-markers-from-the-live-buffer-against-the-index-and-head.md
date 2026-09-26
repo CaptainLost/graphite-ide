@@ -77,6 +77,13 @@ third pass over the text for every buffer redraw.
 - An untracked file is added throughout, consistent with
   [0504](0504-treat-an-untracked-file-as-an-added-file-in-a-working-tree-diff.md):
   `headToIndex` is empty and `indexToBuffer` covers every line as `Added`.
+- A file inside a submodule of the open repository — some directory above
+  it is a gitlink (mode 160000) in the index — gets no markers at all, the
+  same as an ignored file or one outside the repository. It belongs to the
+  submodule's own repository; read against this one it would have neither
+  side and so be drawn as added throughout. `Core::Repository::IsInsideSubmodule`
+  answers the question, and `RepositoryGitPort::ReadBases` returns
+  untracked for such a path before reading either side.
 - A newly staged file is staged-added throughout in the same way, with
   `headToIndex` covering every line and no unstaged hunk to map it through.
 - Diffing the buffer against a branch other than the current HEAD is not

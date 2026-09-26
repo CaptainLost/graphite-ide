@@ -313,6 +313,47 @@ TEST_CASE("An oversized staged file is tracked but unusable rather than a failur
 	CHECK(bases.GetValue().Unusable);
 }
 
+TEST_CASE("A file inside a submodule is not tracked")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	std::error_code code;
+	std::filesystem::create_directories(repo.GetPath() / "vendor" / "lib", code);
+	REQUIRE_FALSE(code);
+
+	{
+		std::ofstream file{repo.GetPath() / "vendor" / "lib" / "lib.cpp", std::ios::binary};
+		file << "one\n";
+	}
+
+	// The gitlink `git submodule add` leaves in the index: mode 160000, naming a commit of
+	// the submodule's own repository.
+	{
+		git_repository* raw = nullptr;
+		REQUIRE(git_repository_open(&raw, Core::ToUtf8(repo.GetPath()).c_str()) == 0);
+
+		git_index* index = nullptr;
+		REQUIRE(git_repository_index(&index, raw) == 0);
+
+		git_index_entry entry{};
+		entry.path = "vendor/lib";
+		entry.mode = GIT_FILEMODE_COMMIT;
+		REQUIRE(git_oid_fromstr(&entry.id, "0123456789abcdef0123456789abcdef01234567") == 0);
+
+		REQUIRE(git_index_add(index, &entry) == 0);
+		REQUIRE(git_index_write(index) == 0);
+
+		git_index_free(index);
+		git_repository_free(raw);
+	}
+
+	const auto bases = port.ReadBases(repo.GetPath() / "vendor" / "lib" / "lib.cpp");
+	REQUIRE(bases.HasValue());
+
+	CHECK_FALSE(bases.GetValue().Tracked);
+}
+
 TEST_CASE("A file read with no repository open at all is not tracked")
 {
 	TempDirectory plain;

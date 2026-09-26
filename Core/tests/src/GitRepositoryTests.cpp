@@ -24,6 +24,65 @@ namespace {
 		REQUIRE(result == 0);
 		git_repository_free(repository);
 	}
+
+	// Records a submodule the way `git submodule add` leaves it in the index: a gitlink entry,
+	// mode 160000, naming a commit of the submodule's own repository. The commit does not have
+	// to exist here - it never does in the superproject's object store.
+	void AddGitlink(const std::filesystem::path& root, const std::string& path)
+	{
+		git_repository* repository = nullptr;
+		REQUIRE(git_repository_open(&repository, Core::ToUtf8(root).c_str()) == 0);
+
+		git_index* index = nullptr;
+		REQUIRE(git_repository_index(&index, repository) == 0);
+
+		git_index_entry entry{};
+		entry.path = path.c_str();
+		entry.mode = GIT_FILEMODE_COMMIT;
+		REQUIRE(git_oid_fromstr(&entry.id, "0123456789abcdef0123456789abcdef01234567") == 0);
+
+		REQUIRE(git_index_add(index, &entry) == 0);
+		REQUIRE(git_index_write(index) == 0);
+
+		git_index_free(index);
+		git_repository_free(repository);
+	}
+}
+
+TEST_CASE("A file under a gitlink is inside a submodule")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile("vendor/lib/src/lib.cpp", "x");
+	temp.MakeFile("vendor/other.txt", "x");
+	temp.MakeFile("main.cpp", "x");
+	AddGitlink(temp.GetPath(), "vendor/lib");
+
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
+	const Repository& repository = opened.GetValue();
+
+	CHECK(repository.IsInsideSubmodule(std::filesystem::path{"vendor"} / "lib" / "src" / "lib.cpp"));
+	CHECK(repository.IsInsideSubmodule(std::filesystem::path{"vendor"} / "lib" / "lib.h"));
+
+	// The gitlink itself, a sibling of it and a file elsewhere are not inside it.
+	CHECK_FALSE(repository.IsInsideSubmodule(std::filesystem::path{"vendor"} / "lib"));
+	CHECK_FALSE(repository.IsInsideSubmodule(std::filesystem::path{"vendor"} / "other.txt"));
+	CHECK_FALSE(repository.IsInsideSubmodule("main.cpp"));
+	CHECK_FALSE(repository.IsInsideSubmodule(std::filesystem::path{"vendor"} / "library" / "x.cpp"));
+}
+
+TEST_CASE("A repository with no submodules has nothing inside one")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile("a/b/c.txt", "x");
+
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
+
+	CHECK_FALSE(opened.GetValue().IsInsideSubmodule(std::filesystem::path{"a"} / "b" / "c.txt"));
+	CHECK_FALSE(opened.GetValue().IsInsideSubmodule(std::filesystem::path{".."} / "a.txt"));
 }
 
 TEST_CASE("Opening a directory that is not a repository fails")

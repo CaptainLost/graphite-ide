@@ -8,6 +8,8 @@
 
 #include <git2.h>
 
+#include <cstdint>
+#include <string>
 #include <utility>
 
 namespace Core {
@@ -102,5 +104,41 @@ namespace Core {
 		}
 
 		return ignored != 0;
+	}
+
+	bool Repository::IsInsideSubmodule(const std::filesystem::path& relative) const
+	{
+		if (m_Handle == nullptr || relative.empty() || LeadsOutOfTree(relative))
+			return false;
+
+		git_index* index = nullptr;
+
+		if (git_repository_index(&index, m_Handle) != 0)
+		{
+			CORE_TRACE("Cannot read the index to look for a submodule above '{}'", ToGitPath(relative));
+			return false;
+		}
+
+		bool inside = false;
+		std::filesystem::path prefix;
+
+		// Only the directories above the path: a gitlink at the path itself is the submodule's
+		// root directory, not a file inside it.
+		for (const std::filesystem::path& part : relative.parent_path())
+		{
+			prefix /= part;
+
+			const std::string text = ToGitPath(prefix);
+			const git_index_entry* entry = git_index_get_bypath(index, text.c_str(), 0);
+
+			if (entry != nullptr && entry->mode == static_cast<std::uint32_t>(GIT_FILEMODE_COMMIT))
+			{
+				inside = true;
+				break;
+			}
+		}
+
+		git_index_free(index);
+		return inside;
 	}
 }

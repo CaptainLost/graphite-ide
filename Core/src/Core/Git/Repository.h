@@ -39,6 +39,15 @@ namespace Core {
 
 		bool IsIgnored(const std::filesystem::path& path) const;
 
+		// Whether the path, relative to the working directory, lies inside a submodule: some
+		// directory above it is a gitlink in the index. Such a file belongs to the
+		// submodule's own repository, so this one has nothing to say about it - neither side
+		// of it is here, and reading it as untracked would be wrong.
+		//
+		// The index rather than HEAD, because the index is what a checkout, a submodule add
+		// and a submodule removal all update first.
+		bool IsInsideSubmodule(const std::filesystem::path& relative) const;
+
 		// Newest first, in topological then date order — the order a history is read in.
 		// A repository whose HEAD is unborn answers with an empty, complete page, not an
 		// error.

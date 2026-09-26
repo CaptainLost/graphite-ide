@@ -423,6 +423,11 @@ namespace Graphite {
 		if (repository->IsIgnored(absolutePath))
 			return ChangeBases{};
 
+		// A file inside a submodule belongs to the submodule's repository, not this one. Read
+		// here it would have neither side and so be drawn as added from top to bottom.
+		if (repository->IsInsideSubmodule(relative))
+			return ChangeBases{};
+
 		auto head = ReadOneSide(*repository, TextSide::Head, relative);
 
 		// A side too large to read at all is the same answer as a side that decodes to
