@@ -8,8 +8,10 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -24,21 +26,26 @@ namespace Graphite {
 	// letter when there is no name, and to "?" when there is neither.
 	std::string AuthorInitials(const Core::Signature& who);
 
-	// The author's name in exactly `width` display columns: padded with spaces when
-	// short, and cut with a single-character ellipsis when long, so every summary in the
-	// list starts at the same column and the list reads as a table rather than as ragged
-	// text. Width is code points, not bytes, so a multi-byte UTF-8 name still lines up —
-	// except for a code point a font renders double-wide (CJK, most emoji), which still
-	// counts as one column here and will shift what follows it; that case is out of scope.
-	//
-	// Falls back to the part of the email before the '@' when there is no name, and to
-	// "unknown" when there is neither — a commit with no author is malformed but real,
-	// and a blank column tells the reader nothing.
-	std::string PaddedAuthor(const Core::Signature& who, std::size_t width);
+	// The author as the list names them: the name git recorded, or the part of the email
+	// before the '@' when there is no name, or "unknown" when there is neither — a commit
+	// with no author is malformed but real, and a blank cell tells the reader nothing.
+	std::string AuthorName(const Core::Signature& who);
 
-	// RelativeAge in exactly `width` display columns, padded or cut the same way.
-	std::string PaddedAge(std::chrono::sys_seconds when, std::chrono::sys_seconds now,
-						  std::size_t width);
+	// The single-character ellipsis (U+2026) a cut cell ends in, as its UTF-8 bytes.
+	inline constexpr std::string_view Ellipsis = "\xE2\x80\xA6";
+
+	// How many bytes of `text` a cell `maxWidth` wide can show, when it cannot show all of
+	// it: the longest prefix that still leaves `ellipsisWidth` for the ellipsis drawn after
+	// it. Nothing when the whole text fits, which is the ordinary case and draws no ellipsis.
+	//
+	// Cut on a code point boundary, so a multi-byte character is kept or dropped whole, and
+	// with trailing spaces dropped, so the ellipsis sits against the word it cuts short.
+	//
+	// `widthOf` measures a piece of text. It is handed in rather than asked of the font so
+	// the rule can be checked with fixed widths; it must not shrink as the text grows,
+	// which every font's measure satisfies.
+	std::optional<std::size_t> CutToFit(std::string_view text, float maxWidth, float ellipsisWidth,
+										const std::function<float(std::string_view)>& widthOf);
 
 	// One letter for the badge beside a changed file: A/M/D/R/C/T. Unmodified never reaches
 	// a diff's file list in practice, and gets a blank rather than a claim about a change

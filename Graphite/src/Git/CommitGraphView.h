@@ -5,6 +5,8 @@
 
 #include "Core/Git/GraphLayout.h"
 
+#include <imgui.h>
+
 #include <cstddef>
 #include <vector>
 
@@ -19,10 +21,15 @@ namespace Graphite {
 		// rowOfCommit maps a commit's index in the graph to its display row — with files
 		// interleaved between commits, those are no longer the same number. firstRow and
 		// lastRow bound the display rows the list is drawing this frame. Edges that leave
-		// the range are still drawn, clipped by the child window, so a line entering from
-		// above does not appear out of nowhere.
+		// the range are still drawn, clipped by whatever clip rect is current, so a line
+		// entering from above does not appear out of nowhere.
+		//
+		// `origin` is the screen position of the top-left of display row 0, which may be far
+		// above the visible part of the list. Handed in rather than read from the cursor:
+		// the list draws this from inside a table cell, where moving the cursor to row 0 and
+		// submitting nothing after it is what ImGui asserts on.
 		void Render(const Core::CommitGraph& graph, const GitPalette& palette,
 					const GraphMetrics& metrics, const std::vector<std::size_t>& rowOfCommit,
-					int firstRow, int lastRow);
+					int firstRow, int lastRow, ImVec2 origin);
 	};
 }

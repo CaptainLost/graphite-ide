@@ -9,7 +9,7 @@ namespace Graphite {
 
 	void CommitGraphView::Render(const Core::CommitGraph& graph, const GitPalette& palette,
 								 const GraphMetrics& metrics, const std::vector<std::size_t>& rowOfCommit,
-								 int firstRow, int lastRow)
+								 int firstRow, int lastRow, ImVec2 origin)
 	{
 		if (graph.Nodes.empty())
 		{
@@ -17,7 +17,6 @@ namespace Graphite {
 		}
 
 		ImDrawList* draw = ImGui::GetWindowDrawList();
-		const ImVec2 origin = ImGui::GetCursorScreenPos();
 
 		const auto centre = [&](std::size_t row, std::size_t lane) {
 			return ImVec2{origin.x + LaneCentreX(metrics, lane), origin.y + RowCentreY(metrics, row)};

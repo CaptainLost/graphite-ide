@@ -325,11 +325,9 @@ namespace Graphite {
 		// query's answer. Cleared on an error too: a failed query leaves the old page
 		// standing, and a "Searching…" that never ends would be the only thing the reader
 		// is told about it.
-		// No child of its own: this is called as DrawSplitResults's DrawResults callback, which
-		// already opened one sized to the split the user dragged. Opening a second here would
-		// nest a child inside a child, each with its own scrollbar and its own scroll position —
-		// and CommitListView::Render's load-more latch reads ImGui::GetScrollY() against
-		// whichever window is current when it runs, so it has to be this one.
+		// Called as DrawSplitResults's DrawResults callback, inside the child it opened sized
+		// to the split the user dragged. The list's table fills that child and scrolls itself,
+		// so its header can stay put while the rows move under it.
 		if (!page)
 		{
 			ImGui::TextUnformatted("Loading history…");
@@ -342,7 +340,7 @@ namespace Graphite {
 				return m_Model.GetDiffFor(commit);
 			};
 
-			m_Commits.Render(*page, graph, palette, diffOf, m_Filter.Get().Text,
+			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, m_Filter.Get().Text,
 							 m_Filter.Get().Path);
 
 			// Driven from here, not from inside the list: the widget must not know the

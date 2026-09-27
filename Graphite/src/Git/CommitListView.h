@@ -8,6 +8,7 @@
 #include "Core/Git/Diff.h"
 #include "Core/Git/GraphLayout.h"
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -51,6 +52,9 @@ namespace Graphite {
 	class CommitListView
 	{
 	public:
+		// `offset` is the reader's distance from UTC, for the exact time the tooltip over a
+		// date gives. Handed in because the list does not read the time zone itself.
+		//
 		// `diffOf` answers a commit's diff, or null while it is being fetched. The list
 		// asks for every commit it draws; the model is what decides whether that costs a
 		// query.
@@ -66,7 +70,7 @@ namespace Graphite {
 		// path it selected — which is the honest outcome rather than marking the extension
 		// the path happens to end with.
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
-					const GitPalette& palette,
+					const GitPalette& palette, std::chrono::minutes offset,
 					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
 					std::string_view highlight = {}, std::string_view pathHighlight = {});
 
@@ -115,6 +119,15 @@ namespace Graphite {
 		bool TakeLoadMoreRequest();
 
 	private:
+		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
+							 const GitPalette& palette, std::string_view highlight,
+							 std::chrono::sys_seconds now, std::chrono::minutes offset);
+
+		void RenderFileRow(const Core::CommitSummary& commit, std::size_t fileIndex,
+						   const GitPalette& palette,
+						   const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+						   std::string_view pathHighlight);
+
 		std::unordered_set<Core::Oid> m_Expanded;
 		std::optional<FileSelection> m_SelectedFile;
 		std::optional<Core::Oid> m_SelectedCommit;
