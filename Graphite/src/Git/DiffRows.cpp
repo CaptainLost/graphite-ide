@@ -2,6 +2,8 @@
 
 #include "Git/CommitLabels.h"
 
+#include <algorithm>
+
 namespace Graphite {
 
 	namespace {
@@ -368,6 +370,160 @@ namespace Graphite {
 		// The terminator comes off by the same rule SplitTextLines uses, so the bytes drawn for
 		// a changed row and the bytes drawn for an Unchanged one are stripped identically.
 		return ResolvedLine{StripLineTerminator(line->Text), lineTokens};
+	}
+
+	std::optional<DiffLineAnchor> AnchorOf(const DiffRow& row)
+	{
+		if (row.NewLine > 0)
+		{
+			return DiffLineAnchor{DiffSide::New, row.NewLine};
+		}
+
+		if (row.OldLine > 0)
+		{
+			return DiffLineAnchor{DiffSide::Old, row.OldLine};
+		}
+
+		return std::nullopt;
+	}
+
+	std::optional<DiffLineAnchor> AnchorOf(const DiffPair& pair)
+	{
+		if (pair.Right.has_value())
+		{
+			if (const std::optional<DiffLineAnchor> right = AnchorOf(*pair.Right))
+			{
+				return right;
+			}
+		}
+
+		return pair.Left.has_value() ? AnchorOf(*pair.Left) : std::nullopt;
+	}
+
+	namespace {
+
+		int LineOn(const DiffRow& row, DiffSide side)
+		{
+			return side == DiffSide::New ? row.NewLine : row.OldLine;
+		}
+
+		// A pair's old-side line lives in its left half and its new-side line in its right.
+		int LineOn(const DiffPair& pair, DiffSide side)
+		{
+			const std::optional<DiffRow>& half = side == DiffSide::New ? pair.Right : pair.Left;
+			return half.has_value() ? LineOn(*half, side) : 0;
+		}
+
+		// Shared by both layouts, which differ only in where a row keeps its line numbers. A
+		// linear walk: it runs once per switch of layout, never per frame. Rows without a line
+		// on the anchor's side — headers, and lines only the other side has — are passed over,
+		// and among the rest each side's numbers only ever rise, which is what lets the first
+		// one at or past the anchor stand for it.
+		template <typename Row>
+		DiffRowAt FindRow(std::span<const Row> rows, DiffLineAnchor anchor)
+		{
+			for (std::size_t index = 0; index < rows.size(); ++index)
+			{
+				const int line = LineOn(rows[index], anchor.Side);
+
+				if (line <= 0 || line < anchor.Line)
+				{
+					continue;
+				}
+
+				if (line == anchor.Line)
+				{
+					return DiffRowAt{index, true};
+				}
+
+				// Back over whatever precedes it with no line on this side — the hunk's
+				// header, and lines only the other side has — which belongs before the line
+				// that was asked for and not after it.
+				while (index > 0 && LineOn(rows[index - 1], anchor.Side) <= 0)
+				{
+					--index;
+				}
+
+				return DiffRowAt{index, false};
+			}
+
+			return DiffRowAt{rows.empty() ? 0 : rows.size() - 1, false};
+		}
+	}
+
+	namespace {
+
+		bool IsUnchanged(const DiffRow& row) { return row.Kind == DiffRowKind::Unchanged; }
+
+		// Both halves of an Unchanged pair are Unchanged, so either answers for the pair.
+		bool IsUnchanged(const DiffPair& pair)
+		{
+			const std::optional<DiffRow>& half = pair.Right.has_value() ? pair.Right : pair.Left;
+			return half.has_value() && IsUnchanged(*half);
+		}
+
+		template <typename Row>
+		std::optional<std::size_t> FindRowToKeep(std::span<const Row> rows, std::size_t first,
+												 std::size_t end)
+		{
+			end = std::min(end, rows.size());
+
+			if (first >= end)
+			{
+				return std::nullopt;
+			}
+
+			// Doubled, so the middle of an even count sits between two rows without a fraction.
+			const std::size_t middle = first + end - 1;
+
+			std::optional<std::size_t> best;
+			bool bestInHunk = false;
+			std::size_t bestDistance = 0;
+
+			for (std::size_t index = first; index < end; ++index)
+			{
+				if (!AnchorOf(rows[index]).has_value())
+				{
+					continue;
+				}
+
+				const bool inHunk = !IsUnchanged(rows[index]);
+				const std::size_t twice = index * 2;
+				const std::size_t distance = twice > middle ? twice - middle : middle - twice;
+
+				if (!best.has_value() || (inHunk && !bestInHunk)
+					|| (inHunk == bestInHunk && distance < bestDistance))
+				{
+					best = index;
+					bestInHunk = inHunk;
+					bestDistance = distance;
+				}
+			}
+
+			return best;
+		}
+	}
+
+	std::optional<std::size_t> RowToKeep(std::span<const DiffRow> rows, std::size_t first,
+										 std::size_t end)
+	{
+		return FindRowToKeep(rows, first, end);
+	}
+
+	std::optional<std::size_t> RowToKeep(std::span<const DiffPair> pairs, std::size_t first,
+										 std::size_t end)
+	{
+		return FindRowToKeep(pairs, first, end);
+	}
+
+	DiffRowAt RowAt(std::span<const DiffRow> rows, DiffLineAnchor anchor)
+	{
+		return FindRow(rows, anchor);
+	}
+
+	DiffRowAt RowAt(std::span<const DiffPair> pairs, DiffLineAnchor anchor)
+	{
+		return FindRow(pairs, anchor);
 	}
 
 	DiffMeasurement MeasurementOf(const Core::FileDiff& file, bool wholeFile)

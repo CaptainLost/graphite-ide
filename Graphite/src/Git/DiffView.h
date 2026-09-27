@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -77,6 +79,20 @@ namespace Graphite {
 							  const GitPalette& palette, const SyntaxPalette& syntax,
 							  const FileTokens& tokens);
 
+		// Where the region about to open should be scrolled to, when this frame's layout is a
+		// different one than last frame's: the line kept from last frame, found in `rows` and
+		// put back as far below the top edge as it was. `startY` is where the region's first
+		// row will sit, which it cannot be asked for until it has opened. Answers once per
+		// switch; null every other frame, leaving the scroll to the reader.
+		template <typename Row>
+		std::optional<float> TakeRestoredScroll(std::span<const Row> rows, float startY);
+
+		// Notes which line on screen in the region now open a switch should keep in place —
+		// see RowToKeep for which — for TakeRestoredScroll to find again should the next frame
+		// lay the file out differently.
+		template <typename Row>
+		void RememberKeptLine(std::span<const Row> rows, const Core::FileDiff& file, float startY);
+
 		// Splits `texts` into raw lines via SplitTextLines — the same split LexAllLines lexes
 		// each line of — but only when `texts` is a different object than the one already
 		// cached; see the class comment. Never called with a null `texts`: Render clears the
@@ -87,6 +103,36 @@ namespace Graphite {
 		DiffViewMode m_Mode = DiffViewMode::SideBySide;
 		bool m_ShowWholeFile = false;
 		bool m_ColourSyntax = true;
+
+		// What was drawn last frame: the mode, and whether the whole file was — which is not
+		// m_ShowWholeFile alone, since that waits on the texts. Only a change in what was drawn
+		// moves the reader, so that is what decides to put them back.
+		struct Layout
+		{
+			DiffViewMode Mode = DiffViewMode::SideBySide;
+			bool WholeFile = false;
+
+			bool operator==(const Layout& other) const = default;
+		};
+
+		// The line a switch of layout keeps in place, as last frame had it, and how far below
+		// the region's top edge its row sat — negative when it was scrolled partly out of sight. Kept with the
+		// file's path, so a layout that changes because another file arrived does not scroll
+		// that file to a line number that meant something only in the previous one.
+		struct KeptLine
+		{
+			std::filesystem::path Path;
+			DiffLineAnchor Anchor;
+			float Offset = 0.0f;
+		};
+
+		Layout m_Layout;
+		std::optional<KeptLine> m_KeptLine;
+		bool m_RestoreKeptLine = false;
+
+		// The height of one row last frame, in the diff's mono font, which is not pushed yet
+		// when the scroll for this one has to be decided.
+		float m_RowHeight = 0.0f;
 
 		// Identity-compared against the texts Render is next called with, so the split below
 		// is redone only when the file actually changed to a different one, not every frame.

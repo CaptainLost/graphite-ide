@@ -12,8 +12,10 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <string>
+#include <utility>
 
 namespace Graphite {
 
@@ -22,6 +24,15 @@ namespace Graphite {
 		constexpr float kLineNumberColumns = 5.0f;
 		constexpr float kNumberPaddingX = 6.0f;
 		constexpr float kModeButtonGap = 2.0f;
+
+		// How tall a region's content is once the clipper has walked `count` rows: every row's
+		// height, less the spacing ImGui leaves out after the last item. Declared up front only
+		// on the frame the scroll is restored, which ImGui would otherwise clamp to the height
+		// it measured for last frame's rows.
+		float RowsHeight(std::size_t count, float rowHeight)
+		{
+			return static_cast<float>(count) * rowHeight - ImGui::GetStyle().ItemSpacing.y;
+		}
 
 		ImU32 BandFor(DiffRowKind kind, const GitPalette& palette)
 		{
@@ -134,7 +145,18 @@ namespace Graphite {
 		// Unchanged row says; while they are still in flight (or the owner has not asked for
 		// them at all) this draws the hunks-only view instead, which needs no text and is what
 		// the reader already had — so nothing on screen blinks once the texts land.
-		if (m_ShowWholeFile && texts != nullptr)
+		const bool wholeFile = m_ShowWholeFile && texts != nullptr;
+
+		// A different layout is a different set of rows under the same scroll position, which
+		// left alone would show whatever those rows happen to have there. Decided here, from
+		// what is drawn rather than from the buttons, so that whole-file mode arriving a few
+		// frames late with its texts still keeps the reader's line.
+		const Layout layout{m_Mode, wholeFile};
+		m_RestoreKeptLine = layout != m_Layout && m_KeptLine.has_value()
+						   && m_KeptLine->Path == ShownPath(file);
+		m_Layout = layout;
+
+		if (wholeFile)
 		{
 			RebuildLineCache(texts);
 
@@ -273,6 +295,13 @@ namespace Graphite {
 								 const GitPalette& palette, const SyntaxPalette& syntax,
 								 const FileTokens& tokens)
 	{
+		// No border, so ImGui gives the region no padding and its first row sits at its top.
+		if (const std::optional<float> scroll = TakeRestoredScroll(std::span(rows), 0.0f))
+		{
+			ImGui::SetNextWindowScroll(ImVec2(-1.0f, *scroll));
+			ImGui::SetNextWindowContentSize(ImVec2(0.0f, RowsHeight(rows.size(), m_RowHeight)));
+		}
+
 		if (!ImGui::BeginChild("unified", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							   ImGuiWindowFlags_HorizontalScrollbar))
 		{
@@ -287,6 +316,9 @@ namespace Graphite {
 		const float numberWidth =
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float startY = ImGui::GetCursorPosY();
+
+		m_RowHeight = rowHeight;
 
 		// Only the visible rows are laid out. A diff of a generated file runs to tens of
 		// thousands of lines and drawing them all costs the frame. The clipper is told the
@@ -344,6 +376,8 @@ namespace Graphite {
 			}
 		}
 
+		RememberKeptLine(std::span(rows), file, startY);
+
 		ImGui::PopFont();
 		ImGui::EndChild();
 	}
@@ -377,8 +411,18 @@ namespace Graphite {
 									 : ImGui::GetContentRegionAvail().x;
 		const float padding = ImGui::GetStyle().WindowPadding.x;
 
+		// Bordered, so ImGui pads the region and its first row sits that far below its top.
+		const std::optional<float> scroll =
+			TakeRestoredScroll(std::span(pairs), ImGui::GetStyle().WindowPadding.y);
+
+		if (scroll.has_value())
+		{
+			ImGui::SetNextWindowScroll(ImVec2(-1.0f, *scroll));
+		}
+
 		ImGui::SetNextWindowContentSize(
-			ImVec2(SideBySideContentWidth(innerWidth, m_WidestSideLine, padding), 0.0f));
+			ImVec2(SideBySideContentWidth(innerWidth, m_WidestSideLine, padding),
+				   scroll.has_value() ? RowsHeight(pairs.size(), m_RowHeight) : 0.0f));
 
 		// One region for both halves, so there is one scroll position rather than two that have
 		// to be kept equal; see SideBySidePanes for why that is worth the shared scrollbar.
@@ -394,6 +438,9 @@ namespace Graphite {
 		const float numberWidth =
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float startY = ImGui::GetCursorPosY();
+
+		m_RowHeight = rowHeight;
 
 		// The region's own clipping rectangle is what the reader can actually see — the border
 		// and any scrollbar already taken off — so the split lands halfway across that rather
@@ -522,6 +569,8 @@ namespace Graphite {
 
 		m_WidestSideLine = std::max(m_WidestSideLine, widest);
 
+		RememberKeptLine(std::span(pairs), file, startY);
+
 		// Drawn after the halves and outside their clipping rectangles, so it is not cut off by
 		// either and does not slide when the reader scrolls across. A filled rectangle rather
 		// than a line, which AddLine would centre on the split and so lay half of over the
@@ -533,5 +582,55 @@ namespace Graphite {
 
 		ImGui::PopFont();
 		ImGui::EndChild();
+	}
+
+	template <typename Row>
+	std::optional<float> DiffView::TakeRestoredScroll(std::span<const Row> rows, float startY)
+	{
+		const bool restore = std::exchange(m_RestoreKeptLine, false);
+
+		if (!restore || !m_KeptLine.has_value() || rows.empty() || m_RowHeight <= 0.0f)
+		{
+			return std::nullopt;
+		}
+
+		// A line the new rows do not have — only when nothing of a hunk was on screen, leaving
+		// the whole file — is stood in for by the hunk after it, put where the line was.
+		const DiffRowAt at = RowAt(rows, m_KeptLine->Anchor);
+
+		return std::max(0.0f, startY + static_cast<float>(at.Row) * m_RowHeight
+								  - m_KeptLine->Offset);
+	}
+
+	template <typename Row>
+	void DiffView::RememberKeptLine(std::span<const Row> rows, const Core::FileDiff& file,
+								   float startY)
+	{
+		const float scrollY = ImGui::GetScrollY();
+
+		if (m_RowHeight <= 0.0f)
+		{
+			m_KeptLine.reset();
+			return;
+		}
+
+		// The rows the region shows, from the one cut by its top edge to the one cut by its
+		// bottom: the same span the clipper drew, worked out again rather than taken from it,
+		// because the clipper's own also counts the rows it lays out to measure.
+		const float top = std::max(0.0f, scrollY - startY);
+		const float bottom = std::max(0.0f, scrollY + ImGui::GetWindowHeight() - startY);
+		const auto first = static_cast<std::size_t>(top / m_RowHeight);
+		const auto end = static_cast<std::size_t>(std::ceil(bottom / m_RowHeight));
+
+		const std::optional<std::size_t> index = RowToKeep(rows, first, end);
+
+		if (!index.has_value())
+		{
+			m_KeptLine.reset();
+			return;
+		}
+
+		const float rowTop = startY + static_cast<float>(*index) * m_RowHeight;
+		m_KeptLine = KeptLine{ShownPath(file), *AnchorOf(rows[*index]), rowTop - scrollY};
 	}
 }

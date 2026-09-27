@@ -2,6 +2,8 @@
 
 #include "Git/DiffRows.h"
 
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -835,4 +837,109 @@ TEST_CASE("A changed row whose indices no longer fit resolves to nothing")
 							 std::vector<std::string_view>{}, Graphite::FileTokens{});
 
 	CHECK_FALSE(resolved.Text.has_value());
+}
+
+TEST_CASE("A row stands for its new-side line, a deleted line for its old one, a header for none")
+{
+	const Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Removed, 4, 0, "gone\n"),
+										  Line(Core::DiffLineKind::Added, 0, 4, "come\n"),
+										  Line(Core::DiffLineKind::Context, 5, 6, "kept\n")});
+
+	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(file);
+	REQUIRE(rows.size() == 4);
+
+	CHECK_FALSE(Graphite::AnchorOf(rows[0]).has_value());
+	CHECK(Graphite::AnchorOf(rows[1]) == Graphite::DiffLineAnchor{Graphite::DiffSide::Old, 4});
+	CHECK(Graphite::AnchorOf(rows[2]) == Graphite::DiffLineAnchor{Graphite::DiffSide::New, 4});
+	CHECK(Graphite::AnchorOf(rows[3]) == Graphite::DiffLineAnchor{Graphite::DiffSide::New, 6});
+
+	// The removed and added lines share a row side by side, which stands for the added one.
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+	REQUIRE(pairs.size() == 3);
+
+	CHECK_FALSE(Graphite::AnchorOf(pairs[0]).has_value());
+	CHECK(Graphite::AnchorOf(pairs[1]) == Graphite::DiffLineAnchor{Graphite::DiffSide::New, 4});
+}
+
+TEST_CASE("A line of a hunk is found again in every layout of the same file")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	const Graphite::WholeFileRows whole = Graphite::BuildWholeFileRows(file, 6, 7);
+	const std::vector<DiffRow> unified = Graphite::BuildUnifiedRows(file);
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	// The second added line: row 5 of the whole file, after two Unchanged rows, the header,
+	// the removed line and the first added one.
+	const std::optional<Graphite::DiffLineAnchor> added = Graphite::AnchorOf(whole.Unified[5]);
+	REQUIRE(added.has_value());
+
+	CHECK(Graphite::RowAt(unified, *added) == Graphite::DiffRowAt{3, true});
+	CHECK(Graphite::RowAt(pairs, *added) == Graphite::DiffRowAt{2, true});
+	CHECK(Graphite::RowAt(whole.SideBySide, *added) == Graphite::DiffRowAt{4, true});
+
+	// The removed line is found by its old number, in the row that pairs it off.
+	const Graphite::DiffLineAnchor removed{Graphite::DiffSide::Old, 3};
+
+	CHECK(Graphite::RowAt(unified, removed) == Graphite::DiffRowAt{1, true});
+	CHECK(Graphite::RowAt(whole.SideBySide, removed) == Graphite::DiffRowAt{3, true});
+}
+
+TEST_CASE("A line outside every hunk lands on the header of the next hunk, not inside it")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	const std::vector<DiffRow> unified = Graphite::BuildUnifiedRows(file);
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+	const Graphite::DiffLineAnchor first{Graphite::DiffSide::New, 1};
+
+	// The first row with a new-side line is the first added one, behind the header and a
+	// removed line that has none.
+	CHECK(Graphite::RowAt(unified, first) == Graphite::DiffRowAt{0, false});
+	CHECK(Graphite::RowAt(pairs, first) == Graphite::DiffRowAt{0, false});
+}
+
+TEST_CASE("A line past the last hunk lands on the last row, and no rows land on none")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	const std::vector<DiffRow> unified = Graphite::BuildUnifiedRows(file);
+	const Graphite::DiffLineAnchor tail{Graphite::DiffSide::New, 7};
+
+	CHECK(Graphite::RowAt(unified, tail) == Graphite::DiffRowAt{3, false});
+	CHECK(Graphite::RowAt(std::span<const DiffRow>{}, tail) == Graphite::DiffRowAt{0, false});
+}
+
+TEST_CASE("A switch keeps the row nearest the middle of the view, preferring one of a hunk")
+{
+	Core::FileDiff file;
+	file.Change = Core::FileChange::Modified;
+	file.Hunks.push_back(ExpandingHunk(3, 3));
+
+	// Two Unchanged rows, the header, the removed line, two added, three Unchanged.
+	const Graphite::WholeFileRows whole = Graphite::BuildWholeFileRows(file, 6, 7);
+
+	// The middle of rows 0 to 8 is row 4, which is in the hunk.
+	CHECK(Graphite::RowToKeep(whole.Unified, 0, 9) == std::optional<std::size_t>{4});
+
+	// The middle of rows 5 to 8 falls between 6 and 7, both Unchanged; the added line at 5
+	// is further from it but is kept, being the one the hunks-only rows also have.
+	CHECK(Graphite::RowToKeep(whole.Unified, 5, 9) == std::optional<std::size_t>{5});
+
+	// Nothing of the hunk on screen: the Unchanged row nearest the middle.
+	CHECK(Graphite::RowToKeep(whole.Unified, 6, 9) == std::optional<std::size_t>{7});
+
+	// A view down to the header alone keeps nothing, and a span past the rows is cut to them.
+	CHECK_FALSE(Graphite::RowToKeep(whole.Unified, 2, 3).has_value());
+	CHECK(Graphite::RowToKeep(whole.Unified, 8, 50) == std::optional<std::size_t>{8});
+	CHECK_FALSE(Graphite::RowToKeep(whole.Unified, 9, 12).has_value());
+
+	// Side by side the same: the pair of the removed and first added line sits at 3.
+	CHECK(Graphite::RowToKeep(whole.SideBySide, 0, 7) == std::optional<std::size_t>{3});
 }

@@ -121,6 +121,54 @@ namespace Graphite {
 							std::span<const std::string_view> newLines,
 							const FileTokens& tokens);
 
+	// A line of the file, named by its number on one side, which a view can find again after
+	// its rows are rebuilt in another layout — hunks-only or whole file, unified or side by
+	// side — so that switching between them leaves the reader looking at the same line
+	// rather than wherever the old scroll position happens to land in the new rows.
+	struct DiffLineAnchor
+	{
+		DiffSide Side = DiffSide::New;
+		int Line = 0;
+
+		bool operator==(const DiffLineAnchor& other) const = default;
+	};
+
+	// The line a row stands for: its new-side number when it has one, since that is the file
+	// as it is now, and its old-side number for a line that was only deleted. Absent for a
+	// hunk header, which is no line of the file at all.
+	std::optional<DiffLineAnchor> AnchorOf(const DiffRow& row);
+
+	// The same for a side-by-side row: the right half's line when it has one, else the left's.
+	std::optional<DiffLineAnchor> AnchorOf(const DiffPair& pair);
+
+	// Where an anchor lands in a layout's rows. `Exact` is false when the line is not among
+	// them — a line outside every hunk, looked for in the hunks-only rows — in which case
+	// `Row` is the first row past it, stepped back over the rows just before that one with no
+	// line on the anchor's side — its hunk's header, and lines only the other side has — so the
+	// reader sees the hunk begin rather than arriving just inside it. Past the last row it is
+	// the last row; in no rows at all it is zero.
+	struct DiffRowAt
+	{
+		std::size_t Row = 0;
+		bool Exact = false;
+
+		bool operator==(const DiffRowAt& other) const = default;
+	};
+
+	DiffRowAt RowAt(std::span<const DiffRow> rows, DiffLineAnchor anchor);
+	DiffRowAt RowAt(std::span<const DiffPair> pairs, DiffLineAnchor anchor);
+
+	// Which of the rows on screen, `first` up to but not including `end`, a switch of layout
+	// should keep where it is. The one nearest the middle of the view, since that is where the
+	// reader is looking rather than the top edge — and among those, first a row of a hunk,
+	// which every layout has, over an Unchanged line that the hunks-only one leaves out:
+	// keeping a change in place matters more than keeping a line near it that is about to
+	// vanish. Absent when no row on screen is a line of the file at all.
+	std::optional<std::size_t> RowToKeep(std::span<const DiffRow> rows, std::size_t first,
+										 std::size_t end);
+	std::optional<std::size_t> RowToKeep(std::span<const DiffPair> pairs, std::size_t first,
+										 std::size_t end);
+
 	// What a measured width belongs to.
 	//
 	// The side-by-side view keeps the widest line it has drawn rather than remeasuring the
