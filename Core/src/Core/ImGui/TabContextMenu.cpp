@@ -71,8 +71,11 @@ namespace Core {
 
 	void DrawTabContextMenu(TabCloseRequests& requests, const std::function<void()>& extraItems)
 	{
-		// Read before the popup begins: inside it the current window is the popup itself.
-		const ImGuiWindow& window = *ImGui::GetCurrentWindow();
+		// Read before the popup begins: inside it the current window is the popup itself. Read,
+		// not GetCurrentWindow: that one marks the window as written to, and ImGui then stops
+		// reporting the tab Begin left as the last item as hovered - so the menu below would
+		// never open, and an owner asking about its tab afterwards would be told no.
+		const ImGuiWindow& window = *ImGui::GetCurrentWindowRead();
 
 		// The popup id lives in the window's own id stack, so every tab has its own menu.
 		if (!BeginRightClickPopup("##tabContextMenu"))
