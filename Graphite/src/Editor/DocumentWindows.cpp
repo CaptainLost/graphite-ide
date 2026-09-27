@@ -19,6 +19,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
+#include "Core/Platform/Shell.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -547,6 +548,39 @@ namespace Graphite {
 		}
 
 		SaveOne(index);
+	}
+
+	void DocumentWindows::DrawFileTabItems(std::size_t index, const std::filesystem::path& workspaceRoot)
+	{
+		const Core::OpenItem& item = m_Documents.At(index);
+
+		// A tab whose open failed has nothing to write.
+		if (ImGui::MenuItem("Save", nullptr, false, static_cast<bool>(item.Document)))
+			RequestSave(index);
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem("Copy Path"))
+			ImGui::SetClipboardText(Core::ToUtf8(item.Path).c_str());
+
+		if (ImGui::MenuItem("Copy Relative Path"))
+		{
+			std::error_code code;
+			const std::filesystem::path relative =
+				workspaceRoot.empty() ? std::filesystem::path{}
+									  : std::filesystem::relative(item.Path, workspaceRoot, code);
+
+			// With no folder open, or when the two share no prefix, the absolute path is
+			// still worth copying.
+			const bool usable = !workspaceRoot.empty() && !code && !relative.empty();
+			ImGui::SetClipboardText(Core::ToUtf8(usable ? relative : item.Path).c_str());
+		}
+
+		if (ImGui::MenuItem("Show in Explorer"))
+		{
+			if (const auto revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)
+				APP_ERROR("{}", revealed.GetError().Message);
+		}
 	}
 
 	bool DocumentWindows::SaveAllModified()
@@ -1972,7 +2006,7 @@ namespace Graphite {
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
 		const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
-		Core::TabCloseRequests& closeRequests, [[maybe_unused]] const std::filesystem::path& workspaceRoot)
+		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -2049,7 +2083,8 @@ namespace Graphite {
 			if (closeRequests.Take(name))
 				open = false;
 
-			Core::DrawTabContextMenu(closeRequests);
+			Core::DrawTabContextMenu(closeRequests,
+									 [this, index, &workspaceRoot] { DrawFileTabItems(index, workspaceRoot); });
 
 			if (visible)
 			{

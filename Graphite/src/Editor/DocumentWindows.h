@@ -352,6 +352,9 @@ namespace Graphite {
 
 		void RequestSave(std::size_t index);
 
+		// What a file tab's context menu offers above the close actions every tab has.
+		void DrawFileTabItems(std::size_t index, const std::filesystem::path& workspaceRoot);
+
 		void SetTransientMessage(std::string text);
 
 		unsigned int DockNodeForIdentity(const std::string& identity) const;
