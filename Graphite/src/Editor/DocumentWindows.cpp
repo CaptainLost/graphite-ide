@@ -554,8 +554,11 @@ namespace Graphite {
 	{
 		const Core::OpenItem& item = m_Documents.At(index);
 
-		// A tab whose open failed has nothing to write.
-		if (ImGui::MenuItem("Save", nullptr, false, static_cast<bool>(item.Document)))
+		// Enabled only when there is something to write: a document with no unsaved changes, or
+		// a tab whose open failed, has nothing the file on disk does not already hold.
+		const bool unsaved = item.Document && item.Document->IsModified();
+
+		if (ImGui::MenuItem("Save", nullptr, false, unsaved))
 			RequestSave(index);
 
 		ImGui::Separator();
