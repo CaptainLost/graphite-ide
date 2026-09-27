@@ -52,6 +52,8 @@
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/TabCloseRequests.h"
+#include "Core/ImGui/TabContextMenu.h"
 #include "Core/ImGui/Theme.h"
 // -----------------------------------
 
