@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -46,6 +48,42 @@ namespace Graphite {
 	// Each turn's cost. A chart may draw the priced part of a turn that is not Known; a
 	// number shown as the turn's cost may not.
 	std::vector<TurnCost> TurnCosts(const Session& session, const Pricing& pricing);
+
+	// One of a turn's requests, as the Cost tab lists them under the turn.
+	struct TurnRequest
+	{
+		// requestId, else uuid: the key the timeline knows it by.
+		std::string Key;
+
+		// Its position in the timeline, for the Requests tab to show it; nothing when the
+		// timeline has no request by that key.
+		std::optional<std::size_t> Position;
+
+		CostResult Cost;
+	};
+
+	struct ToolCount
+	{
+		std::string Name;
+		std::size_t Count = 0;
+	};
+
+	// Where a turn's money went: its requests, the dearest first and any with no price last,
+	// since its cost cannot be placed among the others; and the tools it called, the most used
+	// first and by name among equals.
+	struct TurnBreakdown
+	{
+		std::vector<TurnRequest> Requests;
+		std::vector<ToolCount> Tools;
+	};
+
+	// The turn at `turn` in `session` broken down, or nothing for a turn it does not have.
+	TurnBreakdown BreakDownTurn(const Session& session, std::size_t turn, const RequestTimeline& timeline,
+								const Pricing& pricing);
+
+	// What a request did, a line each: every tool it called, as "Read src/a.cpp", or when it
+	// called none, the start of its reply in quotes. Nothing for a request that did neither.
+	std::vector<std::string> RequestActivity(const ApiRequest& request);
 
 	// `text` as an ImGui label: on one line, with every run of whitespace a single space, and
 	// with no "##", which ImGui would take as the start of the widget's id and hide the rest

@@ -5,7 +5,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cstdio>
+#include <map>
 #include <utility>
 
 namespace Graphite {
@@ -159,6 +161,69 @@ namespace Graphite {
 		}
 
 		return costs;
+	}
+
+	TurnBreakdown BreakDownTurn(const Session& session, std::size_t turn, const RequestTimeline& timeline,
+								const Pricing& pricing)
+	{
+		TurnBreakdown breakdown;
+
+		if (turn >= session.GetTurns().size())
+			return breakdown;
+
+		const Turn& at = session.GetTurns()[turn];
+
+		for (const auto& [key, request] : at.Requests)
+			breakdown.Requests.push_back({.Key = key,
+										  .Position = timeline.IndexOf(key),
+										  .Cost = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}})});
+
+		// Stable, so requests that cost the same keep the order of their keys.
+		std::ranges::stable_sort(breakdown.Requests, [](const TurnRequest& a, const TurnRequest& b) {
+			if (a.Cost.IsKnown() != b.Cost.IsKnown())
+				return a.Cost.IsKnown();
+			return a.Cost.Dollars > b.Cost.Dollars;
+		});
+
+		std::map<std::string, std::size_t> counts;
+		for (const TurnItem& item : at.Items)
+			if (item.Kind == ItemKind::Tool && item.Tool < session.GetTools().size())
+				++counts[session.GetTools()[item.Tool].Name];
+
+		for (const auto& [name, count] : counts)
+			breakdown.Tools.push_back({name, count});
+
+		// Stable over the map's order, so tools used as often read by name.
+		std::ranges::stable_sort(breakdown.Tools,
+								 [](const ToolCount& a, const ToolCount& b) { return a.Count > b.Count; });
+
+		return breakdown;
+	}
+
+	std::vector<std::string> RequestActivity(const ApiRequest& request)
+	{
+		// Long enough for any path a row has room for; the row cuts it to its width.
+		constexpr std::size_t kActivityBytes = 300;
+
+		std::vector<std::string> activity;
+
+		for (const ResponseItem& item : request.Response)
+			if (item.Kind == ResponseKind::ToolCall)
+				activity.push_back(SingleLineLabel(item.Label, kActivityBytes));
+
+		if (!activity.empty())
+			return activity;
+
+		for (const ResponseItem& item : request.Response)
+		{
+			if (item.Kind == ResponseKind::Text && !item.Text.empty())
+			{
+				activity.push_back("\xe2\x80\x9c" + SingleLineLabel(item.Text, kActivityBytes) + "\xe2\x80\x9d");
+				break;
+			}
+		}
+
+		return activity;
 	}
 
 	std::string SingleLineLabel(std::string_view text, std::size_t maxBytes)
