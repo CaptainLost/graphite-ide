@@ -60,8 +60,11 @@ every request by one frame makes the order in which owners draw irrelevant.
 
 ### Neutral
 
-- Requests are matched by window name, so two windows must not share a name.
-  ImGui already requires this, because the name is also the window's identity.
+- Requests are matched by window identity, the part ImGui identifies a window
+  by: from `###` on when the name has one, the whole name otherwise. A title
+  whose visible part changes between the frame a request is asked and the
+  frame it is taken still matches, and two windows cannot share an identity
+  because ImGui already treats them as one window.
 
 ## Alternatives Considered
 

@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <optional>
-#include <utility>
 
 namespace Core {
 
@@ -111,8 +110,8 @@ namespace Core {
 
 		if (picked)
 		{
-			for (std::string& name : TabsToClose(tabs, clicked, *picked))
-				requests.Request(std::move(name));
+			for (const std::string& name : TabsToClose(tabs, clicked, *picked))
+				requests.Request(name);
 		}
 	}
 }

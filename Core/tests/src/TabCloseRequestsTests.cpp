@@ -45,3 +45,35 @@ TEST_CASE("Taking one name leaves the others due")
 	CHECK(requests.Take("a"));
 	CHECK_FALSE(requests.Take("c"));
 }
+
+TEST_CASE("A close request survives the visible part of the name changing")
+{
+	// A session's title can update, or a document gain a disambiguating suffix, between the
+	// frame the menu asks and the frame the owner takes; ImGui still sees the same window.
+	TabCloseRequests requests;
+	requests.Request("Old title###session-1");
+	requests.EndFrame();
+
+	CHECK(requests.Take("New title###session-1"));
+}
+
+TEST_CASE("A name without an identity marker matches only itself")
+{
+	TabCloseRequests requests;
+	requests.Request("Settings");
+	requests.EndFrame();
+
+	CHECK_FALSE(requests.Take("Settings 2"));
+	CHECK_FALSE(requests.Take("x###Settings"));
+	CHECK(requests.Take("Settings"));
+}
+
+TEST_CASE("Names with different identities do not match")
+{
+	TabCloseRequests requests;
+	requests.Request("a###x");
+	requests.EndFrame();
+
+	CHECK_FALSE(requests.Take("a###y"));
+	CHECK(requests.Take("a###x"));
+}
