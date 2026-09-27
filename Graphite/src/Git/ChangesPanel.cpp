@@ -354,7 +354,15 @@ namespace Graphite {
 						 drawnAbove;
 
 			m_Section = Section::Unstaged;
-			RenderSection("CHANGES", sections.Unstaged, *status, palette, drawnAbove);
+			const bool drawnUnstaged =
+				RenderSection("CHANGES", sections.Unstaged, *status, palette, drawnAbove);
+
+			// A clean tree draws no section, which would leave the child ending on the
+			// SetCursorPosY above with no item after it - an assertion in EndChild.
+			if (!drawnAbove && !drawnUnstaged)
+			{
+				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+			}
 		}
 
 		ImGui::EndChild();
