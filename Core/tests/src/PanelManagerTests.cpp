@@ -112,7 +112,7 @@ TEST_CASE("OnUpdate reaches all panels, including hidden ones")
 	CHECK(hidden->updates == 1);
 }
 
-TEST_CASE("RegisterCommands gives every panel a visibility toggle in the panels group")
+TEST_CASE("RegisterCommands gives every panel a command in the panels group")
 {
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
@@ -129,7 +129,7 @@ TEST_CASE("RegisterCommands gives every panel a visibility toggle in the panels 
 	CHECK(members[1]->Id == "panel.console");
 }
 
-TEST_CASE("A panel's toggle lands in the menu group the panel names")
+TEST_CASE("A panel's command lands in the menu group the panel names")
 {
 	// The menu draws one section per group, so this is what decides where a panel appears
 	// in it - not the order the panels were added in.
@@ -149,20 +149,50 @@ TEST_CASE("A panel's toggle lands in the menu group the panel names")
 	CHECK(tools[0]->Id == "panel.console");
 }
 
-TEST_CASE("A panel's command toggles it and reports its state")
+TEST_CASE("A panel's command opens a hidden panel, asks for focus and reports its state")
 {
+	Core::PanelManager panels;
+	Core::CommandRegistry commands;
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "tools", false));
+	panels.RegisterCommands(commands);
+
+	REQUIRE_FALSE(commands.Find("panel.files")->Checked());
+
+	commands.Run("panel.files");
+
+	CHECK(files->IsVisible());
+	CHECK(commands.Find("panel.files")->Checked());
+	CHECK(files->ConsumeFocusRequest());
+}
+
+TEST_CASE("A panel's command leaves an open panel open and brings it forward")
+{
+	// The menu is where a buried panel is gone looking for; were the command a toggle, the
+	// click meant to find a panel behind another tab would close it instead.
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
 	panels.RegisterCommands(commands);
 
 	REQUIRE(files->IsVisible());
-	REQUIRE(commands.Find("panel.files")->Checked());
 
 	commands.Run("panel.files");
+	commands.Run("panel.files");
 
-	CHECK_FALSE(files->IsVisible());
-	CHECK_FALSE(commands.Find("panel.files")->Checked());
+	CHECK(files->IsVisible());
+	CHECK(files->ConsumeFocusRequest());
+}
+
+TEST_CASE("A focus request is consumed once")
+{
+	CountingPanel panel("files", "Explorer");
+
+	CHECK_FALSE(panel.ConsumeFocusRequest());
+
+	panel.RequestFocus();
+
+	CHECK(panel.ConsumeFocusRequest());
+	CHECK_FALSE(panel.ConsumeFocusRequest());
 }
 
 TEST_CASE("A panel added after RegisterCommands still gets its command")
@@ -261,7 +291,7 @@ TEST_CASE("A panel's window name shows its icon before the title and keeps its i
 	CHECK(withIcon.GetWindowName() == "*  Terminal###terminal");
 }
 
-TEST_CASE("A panel's toggle carries the panel's icon for the menu to draw")
+TEST_CASE("A panel's command carries the panel's icon for the menu to draw")
 {
 	class IconPanel final : public Core::Panel
 	{

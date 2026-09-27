@@ -42,9 +42,10 @@ namespace Graphite {
 		std::optional<std::string> GetStatusMessage() const;
 
 		// Shows the panel and moves the keyboard into the query field. Kept distinct from the
-		// plain show/hide toggle PanelManager already registers for every panel (which never
-		// touches focus): a command named "Find in Files" that only unhid a window and left the
-		// user still clicking into the field would not be doing what its name says.
+		// command PanelManager already registers for every panel (which brings the window forward
+		// but leaves the keyboard where it was): a command named "Find in Files" that only raised
+		// a window and left the user still clicking into the field would not be doing what its
+		// name says.
 		void Focus();
 
 	private:

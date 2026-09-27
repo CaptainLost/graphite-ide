@@ -44,13 +44,19 @@ namespace Core {
 			return shown + "###" + m_Id;
 		}
 
-		// Which block of the view menu this panel's toggle belongs to.
+		// Which block of the view menu this panel's command belongs to.
 		const std::string& GetMenuGroup() const { return m_MenuGroup; }
 
 		bool IsVisible() const { return m_Visible; }
 		void SetVisible(bool visible) { m_Visible = visible; }
 
 		bool IsDefaultVisible() const { return m_DefaultVisible; }
+
+		// Asks for the window to be brought forward the next time it is drawn: selected if it
+		// sits behind another tab of its dock node, and focused. Kept as a request rather than
+		// done on the spot because a panel that was hidden has no window yet for ImGui to focus.
+		void RequestFocus() { m_FocusRequested = true; }
+		bool ConsumeFocusRequest() { return std::exchange(m_FocusRequested, false); }
 
 		// Whether this panel's body ran on the last frame, and so whether it is entitled to an
 		// event. Hidden, collapsed and tab-hidden all come out the same way.
@@ -65,5 +71,6 @@ namespace Core {
 		bool m_Visible = true;
 		bool m_DefaultVisible = true;
 		bool m_WasDrawn = false;
+		bool m_FocusRequested = false;
 	};
 }
