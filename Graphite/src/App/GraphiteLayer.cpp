@@ -830,7 +830,7 @@ namespace Graphite {
 
 		// Panels render outside the host window — inside it they would dock as ordinary child
 		// windows instead of landing in the dockspace nodes.
-		m_Panels.OnImGuiRender();
+		m_Panels.OnImGuiRender(m_TabCloseRequests);
 
 		const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router, &m_FrameInput};
 
@@ -841,13 +841,21 @@ namespace Graphite {
 											 .WordWrap = m_EditorSettings.IsWordWrap(),
 											 .ChangeMarkers = {.Gutter = m_EditorSettings.ShowsGutterChangeMarkers(),
 															   .Scrollbar = m_EditorSettings.ShowsScrollbarChangeMarkers()},
-											 .Scheme = m_ActiveScheme.Get()},
+											 .Scheme = m_ActiveScheme.Get(),
+											 .CloseRequests = m_TabCloseRequests,
+											 .WorkspaceRoot = m_Workspace.GetRoot()},
 								 *m_ReferencesPanel);
 
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
-							 ReadSyntaxPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId());
+							 ReadSyntaxPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId(),
+							 m_TabCloseRequests);
 
-		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()));
+		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()),
+								m_TabCloseRequests);
+
+		// After every owner has drawn: what nobody took this frame belonged to a window that
+		// went some other way, and what the menus asked this frame becomes due for the next.
+		m_TabCloseRequests.EndFrame();
 
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.

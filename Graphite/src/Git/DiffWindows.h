@@ -9,6 +9,7 @@
 #include "Core/Git/Oid.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
+#include "Core/ImGui/TabCloseRequests.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -104,7 +105,7 @@ namespace Graphite {
 		// centreNode is where a window is placed the first time its identity appears —
 		// after that ImGui remembers, including across a restart through imgui.ini.
 		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-					unsigned int centreNode);
+					unsigned int centreNode, Core::TabCloseRequests& closeRequests);
 
 		// Opens a file in the editor, given its absolute path. Set once by whoever owns the
 		// editor's tabs; every diff this draws offers it, and so does the docked history

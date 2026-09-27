@@ -8,6 +8,8 @@
 
 #include "Core/Command/CommandRegistry.h"
 
+#include "Core/ImGui/TabContextMenu.h"
+
 #include <imgui.h>
 
 #include <utility>
@@ -102,7 +104,7 @@ namespace Core {
 			panel->OnUpdate(ts);
 	}
 
-	void PanelManager::OnImGuiRender()
+	void PanelManager::OnImGuiRender(TabCloseRequests& closeRequests)
 	{
 		const ImGuiWindowFlags windowFlags =
 			std::exchange(m_FirstRender, false) ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
@@ -127,6 +129,12 @@ namespace Core {
 			// node is selected: the panel got its turn, but its body did not run.
 			const bool drawn = ImGui::Begin(label.c_str(), &open, windowFlags);
 			panel->SetWasDrawn(drawn);
+
+			// A tab's menu asked for this one last frame: the same as its close button.
+			if (closeRequests.Take(label))
+				open = false;
+
+			DrawTabContextMenu(closeRequests);
 
 			if (drawn)
 			{

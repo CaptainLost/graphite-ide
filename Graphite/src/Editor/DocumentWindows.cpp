@@ -18,6 +18,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/TabContextMenu.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -1970,7 +1971,8 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
-		const ResolvedScheme& scheme, ReferencesPanel& referencesPanel)
+		const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
+		Core::TabCloseRequests& closeRequests, [[maybe_unused]] const std::filesystem::path& workspaceRoot)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -2041,6 +2043,13 @@ namespace Graphite {
 			// title bar without following it into the editor's own contents.
 			if (preview)
 				ImGui::PopStyleColor();
+
+			// A tab's menu asked for this one last frame: the same as its close button, so an
+			// unsaved document is asked about below rather than closed.
+			if (closeRequests.Take(name))
+				open = false;
+
+			Core::DrawTabContextMenu(closeRequests);
 
 			if (visible)
 			{
@@ -2220,7 +2229,8 @@ namespace Graphite {
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.ChangeMarkers, frame.Scheme, referencesPanel);
+							  frame.WordWrap, frame.ChangeMarkers, frame.Scheme, referencesPanel,
+							  frame.CloseRequests, frame.WorkspaceRoot);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
 		// above would cost a walk of m_Syntax for every open document instead of one for the

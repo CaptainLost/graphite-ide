@@ -24,6 +24,7 @@
 #include "Search/PreviewContent.h"
 
 #include "Core/Base/Timestep.h"
+#include "Core/ImGui/TabCloseRequests.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
@@ -65,6 +66,8 @@ namespace Graphite {
 		bool WordWrap;
 		ChangeMarkerDisplay ChangeMarkers;
 		const ResolvedScheme& Scheme;
+		Core::TabCloseRequests& CloseRequests;
+		const std::filesystem::path& WorkspaceRoot;
 	};
 
 	class DocumentWindows
@@ -369,7 +372,9 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
-								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel);
+								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
+								   Core::TabCloseRequests& closeRequests,
+								   const std::filesystem::path& workspaceRoot);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
 

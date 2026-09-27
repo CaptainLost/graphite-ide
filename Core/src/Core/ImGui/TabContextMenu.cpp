@@ -2,9 +2,37 @@
 
 #include "Core/ImGui/TabContextMenu.h"
 
+#include "Core/ImGui/ContextMenu.h"
+
+#include <imgui_internal.h>
+
 #include <algorithm>
+#include <optional>
+#include <utility>
 
 namespace Core {
+
+	namespace {
+		// The tabs of the node `window` is docked in, in the order the bar shows them. A
+		// floating window, or a node whose tab bar is hidden, is a node of one tab.
+		std::vector<std::string> NodeTabs(const ImGuiWindow& window)
+		{
+			const ImGuiDockNode* node = window.DockNode;
+
+			if (node == nullptr || node->TabBar == nullptr)
+				return {window.Name};
+
+			std::vector<std::string> names;
+
+			for (const ImGuiTabItem& tab : node->TabBar->Tabs)
+			{
+				if (tab.Window != nullptr)
+					names.emplace_back(tab.Window->Name);
+			}
+
+			return names;
+		}
+	}
 
 	std::vector<std::string> TabsToClose(std::span<const std::string> tabs, std::string_view clicked,
 										 TabCloseAction action)
@@ -41,7 +69,47 @@ namespace Core {
 		return {};
 	}
 
-	void DrawTabContextMenu(TabCloseRequests&, const std::function<void()>&)
+	void DrawTabContextMenu(TabCloseRequests& requests, const std::function<void()>& extraItems)
 	{
+		// Read before the popup begins: inside it the current window is the popup itself.
+		const ImGuiWindow& window = *ImGui::GetCurrentWindow();
+
+		// The popup id lives in the window's own id stack, so every tab has its own menu.
+		if (!BeginRightClickPopup("##tabContextMenu"))
+			return;
+
+		const std::vector<std::string> tabs = NodeTabs(window);
+		const std::string_view clicked = window.Name;
+
+		if (extraItems)
+		{
+			extraItems();
+			ImGui::Separator();
+		}
+
+		const bool hasOthers = !TabsToClose(tabs, clicked, TabCloseAction::Others).empty();
+		const bool hasRight = !TabsToClose(tabs, clicked, TabCloseAction::ToTheRight).empty();
+
+		std::optional<TabCloseAction> picked;
+
+		if (ImGui::MenuItem("Close"))
+			picked = TabCloseAction::This;
+
+		if (ImGui::MenuItem("Close Others", nullptr, false, hasOthers))
+			picked = TabCloseAction::Others;
+
+		if (ImGui::MenuItem("Close to the Right", nullptr, false, hasRight))
+			picked = TabCloseAction::ToTheRight;
+
+		if (ImGui::MenuItem("Close All"))
+			picked = TabCloseAction::All;
+
+		ImGui::EndPopup();
+
+		if (picked)
+		{
+			for (std::string& name : TabsToClose(tabs, clicked, *picked))
+				requests.Request(std::move(name));
+		}
 	}
 }

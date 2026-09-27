@@ -40,6 +40,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/DockSpaceHost.h"
+#include "Core/ImGui/TabCloseRequests.h"
 #include "Core/Jobs/JobQueue.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/PanelManager.h"
@@ -197,6 +198,9 @@ namespace Graphite {
 		// joined before anything it feeds goes away. It holds no reference to the members above -
 		// its findings are drained on the UI thread - so this is the cheap end of the order.
 		AnalysisWalk m_AnalysisWalk;
+
+		// Tabs a context menu asked to close, taken by their owners on the next frame.
+		Core::TabCloseRequests m_TabCloseRequests;
 
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers. After

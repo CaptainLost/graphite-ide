@@ -7,6 +7,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/TabContextMenu.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -319,7 +320,7 @@ namespace Graphite {
 	}
 
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-							 unsigned int centreNode)
+							 unsigned int centreNode, Core::TabCloseRequests& closeRequests)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
@@ -397,7 +398,15 @@ namespace Graphite {
 
 			// Begin() returning false still needs its End() - that is the Begin/End rule,
 			// unlike BeginTable, which must not be ended when it returns false.
-			if (ImGui::Begin(name.c_str(), &open, windowFlags))
+			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
+
+			// A tab's menu asked for this one last frame: the same as its close button.
+			if (closeRequests.Take(name))
+				open = false;
+
+			Core::DrawTabContextMenu(closeRequests);
+
+			if (visible)
 			{
 				std::shared_ptr<const Core::Diff> diff;
 

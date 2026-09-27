@@ -7,6 +7,7 @@
 #include "UI/RememberedPlace.h"
 
 #include "Core/Base/Log.h"
+#include "Core/ImGui/TabContextMenu.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -250,7 +251,8 @@ namespace Graphite {
 		}
 	}
 
-	void SessionWindows::Render(unsigned int centreNode, const SessionPalette& palette)
+	void SessionWindows::Render(unsigned int centreNode, const SessionPalette& palette,
+								 Core::TabCloseRequests& closeRequests)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
@@ -285,7 +287,15 @@ namespace Graphite {
 			const ImGuiWindowFlags windowFlags =
 				restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
 
-			if (ImGui::Begin(name.c_str(), &open, windowFlags))
+			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
+
+			// A tab's menu asked for this one last frame: the same as its close button.
+			if (closeRequests.Take(name))
+				open = false;
+
+			Core::DrawTabContextMenu(closeRequests);
+
+			if (visible)
 			{
 				if (!entry.Live)
 				{

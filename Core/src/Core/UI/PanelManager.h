@@ -15,6 +15,7 @@
 namespace Core {
 
 	class CommandRegistry;
+	class TabCloseRequests;
 
 	class PanelManager final : NonCopyable
 	{
@@ -29,7 +30,7 @@ namespace Core {
 		void ForEach(const std::function<void(Panel&)>& visit);
 
 		void OnUpdate(Timestep ts);
-		void OnImGuiRender();
+		void OnImGuiRender(TabCloseRequests& closeRequests);
 		void OnEvent(Event& event);
 
 		void RegisterCommands(CommandRegistry& commands);

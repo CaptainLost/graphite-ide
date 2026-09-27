@@ -14,6 +14,7 @@
 
 #include "Core/Base/Base.h"
 #include "Core/Events/EventBus.h"
+#include "Core/ImGui/TabCloseRequests.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -76,7 +77,8 @@ namespace Graphite {
 		// Applies what each tab's reader delivered. UI thread, once per frame.
 		void Update();
 
-		void Render(unsigned int centreNode, const SessionPalette& palette);
+		void Render(unsigned int centreNode, const SessionPalette& palette,
+					Core::TabCloseRequests& closeRequests);
 
 	private:
 		struct Entry
