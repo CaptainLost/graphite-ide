@@ -113,6 +113,10 @@ namespace Graphite {
 		std::string m_Symbol;
 		bool m_Working = false;
 
+		// Set by the first ShowWorking or ShowResults. Not m_Symbol.empty(): a search from an
+		// empty document asks about an empty word, and its results must still be shown.
+		bool m_Asked = false;
+
 		HitGroups m_Groups;
 
 		std::optional<HitSelection> m_Selected;

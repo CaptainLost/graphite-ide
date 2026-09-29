@@ -6,6 +6,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 
@@ -428,9 +429,9 @@ namespace Graphite {
 					// A tab that vanished because a cache evicted something would be worse
 					// than one that says the diff is no longer loaded; re-requesting it is
 					// one call.
-					ImGui::TextUnformatted("This diff is no longer loaded.");
+					const char* reload = entry.Diff.Commit.has_value() ? "Reload" : nullptr;
 
-					if (entry.Diff.Commit.has_value() && ImGui::SmallButton("Reload"))
+					if (Core::EmptyState("This diff is no longer loaded.", reload))
 					{
 						model.RequestDiffFor(*entry.Diff.Commit);
 					}
@@ -442,7 +443,7 @@ namespace Graphite {
 
 					if (!fileIndex.has_value())
 					{
-						ImGui::TextUnformatted(EmptyDiffMessage(entry.Diff).c_str());
+						Core::EmptyState(EmptyDiffMessage(entry.Diff));
 					}
 					else
 					{

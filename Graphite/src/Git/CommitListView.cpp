@@ -1,5 +1,7 @@
 #include "Git/CommitListView.h"
 
+#include "Core/ImGui/EmptyState.h"
+
 #include "Git/CommitDetails.h"
 #include "Git/CommitLabels.h"
 #include "Git/CommitRows.h"
@@ -249,7 +251,7 @@ namespace Graphite {
 	{
 		if (page.Commits.empty())
 		{
-			ImGui::TextUnformatted("No commits yet.");
+			Core::EmptyState("No commits yet.");
 			return;
 		}
 

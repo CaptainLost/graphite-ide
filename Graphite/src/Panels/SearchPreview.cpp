@@ -6,6 +6,7 @@
 #include "Search/PreviewContent.h"
 #include "Search/PreviewWindow.h"
 
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/TextBuffer.h"
@@ -39,7 +40,7 @@ namespace Graphite {
 
 		void DrawMessage(const char* message)
 		{
-			ImGui::TextDisabled("%s", message);
+			Core::EmptyState(message);
 		}
 
 		// Every hit on `line` as document byte ranges, ascending, plus which of them is the

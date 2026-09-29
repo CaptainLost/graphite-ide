@@ -5,6 +5,7 @@
 #include "UI/IconButton.h"
 #include "UI/SplitResults.h"
 
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -236,7 +237,7 @@ namespace Graphite {
 		{
 			// libgit2 emits no hunks for a binary delta, so there is nothing to lay out.
 			// Saying so is better than an empty pane that looks like a failure.
-			ImGui::TextUnformatted("Binary file — no textual diff.");
+			Core::EmptyState("Binary file — no textual diff.");
 			return;
 		}
 
@@ -273,7 +274,7 @@ namespace Graphite {
 
 		if (file.Hunks.empty())
 		{
-			ImGui::TextUnformatted("No changes in this file.");
+			Core::EmptyState("No changes in this file.");
 			return;
 		}
 

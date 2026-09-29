@@ -1,4 +1,5 @@
 #include "Core/Base/Base.h"
+#include "Core/ImGui/EmptyState.h"
 
 #include "Panels/RequestsView.h"
 
@@ -751,7 +752,7 @@ namespace Graphite {
 
 		if (timeline.GetRequests().empty())
 		{
-			ImGui::TextDisabled("No requests yet.");
+			Core::EmptyState("No requests yet.");
 			return;
 		}
 
@@ -789,7 +790,7 @@ namespace Graphite {
 								  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 			{
 				if (m_Shown.empty())
-					ImGui::TextDisabled("No request matches the filters.");
+					Core::EmptyState("No request matches the filters.");
 				else
 					DrawTable(timeline, context);
 			}

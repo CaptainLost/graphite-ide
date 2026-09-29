@@ -5,6 +5,7 @@
 
 #include "Lang/Server/LspClient.h"
 
+#include "Core/ImGui/EmptyState.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
@@ -175,6 +176,14 @@ namespace Graphite {
 
 	void ReferencesPanel::OnImGuiRender()
 	{
+		// Nothing asked for yet: the whole panel says how to ask, rather than a summary line
+		// over an empty list.
+		if (!m_Asked)
+		{
+			Core::EmptyState("Shift+F12, or click a reference count, to list a symbol's references.");
+			return;
+		}
+
 		RenderSummary();
 		ImGui::Separator();
 
@@ -194,6 +203,7 @@ namespace Graphite {
 	{
 		m_Symbol = symbol;
 		m_Working = true;
+		m_Asked = true;
 
 		m_Groups.Clear();
 		m_Groups.SetRoot(m_Workspace.GetRoot());
@@ -206,6 +216,7 @@ namespace Graphite {
 	{
 		m_Symbol = symbol;
 		m_Working = false;
+		m_Asked = true;
 
 		m_Groups.Clear();
 		m_Groups.SetRoot(m_Workspace.GetRoot());
@@ -244,12 +255,6 @@ namespace Graphite {
 
 	void ReferencesPanel::RenderSummary()
 	{
-		if (m_Symbol.empty())
-		{
-			ImGui::TextUnformatted("Shift+F12, or click a reference count, to list a symbol's references.");
-			return;
-		}
-
 		std::string summary = "References to " + m_Symbol;
 
 		if (m_Working)

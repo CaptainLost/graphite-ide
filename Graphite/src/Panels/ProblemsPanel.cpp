@@ -5,6 +5,7 @@
 #include "Lang/Server/LspClient.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
@@ -84,7 +85,7 @@ namespace Graphite {
 		{
 			// Not a bare window: an empty problems list is a state worth naming, the same way an
 			// empty search result is.
-			ImGui::TextUnformatted("No problems in open documents.");
+			Core::EmptyState("No problems in open documents.");
 			return;
 		}
 

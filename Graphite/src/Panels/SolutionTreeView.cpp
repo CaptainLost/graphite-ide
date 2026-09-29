@@ -3,6 +3,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Platform/FileDialog.h"
 #include "Sln/SolutionEditor.h"
@@ -221,17 +222,17 @@ namespace Graphite {
 	{
 		if (!m_Workspace.IsOpen())
 		{
-			ImGui::TextUnformatted("Open a folder to see its Visual Studio solution.");
+			Core::EmptyState("Open a folder to see its Visual Studio solution.");
 			return;
 		}
 
 		if (m_Workspace.GetSolutionCandidates().empty())
 		{
-			ImGui::TextUnformatted("No Visual Studio solution in this folder.");
+			Core::EmptyState("No Visual Studio solution in this folder.");
 			return;
 		}
 
-		ImGui::TextUnformatted("This Visual Studio solution could not be read. See the console.");
+		Core::EmptyState("This Visual Studio solution could not be read. See the console.");
 	}
 
 	void SolutionTreeView::RenderContextMenu(const Folder& folder,

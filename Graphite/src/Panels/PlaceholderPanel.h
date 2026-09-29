@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/ImGui/EmptyState.h"
 #include "Core/UI/Panel.h"
 
 #include <imgui.h>
@@ -19,7 +20,7 @@ namespace Graphite {
 
 		void OnImGuiRender() override
 		{
-			ImGui::TextDisabled("%s", m_Message.c_str());
+			Core::EmptyState(m_Message);
 		}
 
 		void SetMessage(std::string message) { m_Message = std::move(message); }

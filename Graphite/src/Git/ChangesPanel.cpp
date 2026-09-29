@@ -7,6 +7,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
@@ -319,7 +320,7 @@ namespace Graphite {
 			// about are gone in any case, so there is nothing left to answer.
 			m_DiscardQuestion.Withdraw();
 
-			ImGui::TextUnformatted("No repository.");
+			Core::EmptyState("No repository.");
 			return;
 		}
 

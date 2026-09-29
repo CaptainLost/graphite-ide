@@ -9,6 +9,8 @@
 #include "Sessions/ToolFacts.h"
 #include "UI/SplitResults.h"
 
+#include "Core/ImGui/EmptyState.h"
+
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <implot.h>
@@ -279,7 +281,8 @@ namespace Graphite {
 
 			if (count == 0)
 			{
-				ImGui::TextDisabled("Nothing to chart yet.");
+				// The chart's own height, so what follows starts where it would under a chart.
+				Core::EmptyState("Nothing to chart yet.", nullptr, ImVec2(0.0f, ImGui::GetFontSize() * kChartLines));
 				return std::nullopt;
 			}
 

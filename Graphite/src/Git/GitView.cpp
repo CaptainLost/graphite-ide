@@ -1,5 +1,7 @@
 #include "Git/GitView.h"
 
+#include "Core/ImGui/EmptyState.h"
+
 #include "Editor/Palettes.h"
 #include "Git/GitPalette.h"
 #include "Git/HistoryFilter.h"
@@ -330,7 +332,7 @@ namespace Graphite {
 		// so its header can stay put while the rows move under it.
 		if (!page)
 		{
-			ImGui::TextUnformatted("Loading history…");
+			Core::EmptyState("Loading history…");
 		}
 		else
 		{
@@ -469,7 +471,7 @@ namespace Graphite {
 			m_Diff.OnOpenAsTab = nullptr;
 			m_Diff.OnClose = nullptr;
 			m_Diff.OnOpenFile = nullptr;
-			ImGui::TextUnformatted("Select a commit or a file to see what changed.");
+			Core::EmptyState("Select a commit or a file to see what changed.");
 			return;
 		}
 
@@ -493,7 +495,7 @@ namespace Graphite {
 
 		if (!diff)
 		{
-			ImGui::TextUnformatted("Loading…");
+			Core::EmptyState("Loading…");
 			return;
 		}
 
@@ -501,7 +503,7 @@ namespace Graphite {
 
 		if (!index.has_value())
 		{
-			ImGui::TextUnformatted("That file is not in this diff.");
+			Core::EmptyState("That file is not in this diff.");
 			return;
 		}
 

@@ -11,6 +11,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -442,7 +443,7 @@ namespace Graphite {
 
 		if (visible.empty())
 		{
-			ImGui::TextDisabled("%s", m_InitialScan ? "" : "No sessions.");
+			Core::EmptyState(m_InitialScan ? "" : "No sessions.");
 			return;
 		}
 

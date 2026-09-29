@@ -4,6 +4,7 @@
 #include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
@@ -18,12 +19,6 @@
 namespace Graphite {
 
 	namespace {
-		void CenterNextItem(float availableWidth, float itemWidth)
-		{
-			if (availableWidth > itemWidth)
-				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availableWidth - itemWidth) * 0.5f);
-		}
-
 		void PushFadedHighlight()
 		{
 			constexpr float kFadedAlpha = 0.45f;
@@ -104,20 +99,7 @@ namespace Graphite {
 
 	void FileTreeView::RenderEmptyState()
 	{
-		constexpr const char* kMessage = "No folder open.";
-		constexpr float kDownFromTheTop = 0.33f;
-		const ImVec2 buttonSize{140.0f, 0.0f};
-		const float available = ImGui::GetContentRegionAvail().x;
-
-		ImGui::Dummy(ImVec2(0.0f, ImGui::GetContentRegionAvail().y * kDownFromTheTop));
-
-		CenterNextItem(available, ImGui::CalcTextSize(kMessage).x);
-		ImGui::TextDisabled("%s", kMessage);
-		ImGui::Spacing();
-
-		CenterNextItem(available, buttonSize.x);
-
-		if (ImGui::Button("Open Folder", buttonSize))
+		if (Core::EmptyState("No folder open.", "Open Folder"))
 			OpenFolderInteractively(m_Workspace);
 	}
 
