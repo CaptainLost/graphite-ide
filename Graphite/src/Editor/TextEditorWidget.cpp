@@ -2092,45 +2092,82 @@ namespace Graphite {
 		// the grab still shows on both sides of a mark it passes over.
 		constexpr float kOverviewMarkWidth = 4.0f;
 
+		// How thick the caret's line is on the scrollbar. It spans the whole track, wider than a
+		// change's strip, so the two never read as the same kind of mark.
+		constexpr float kOverviewCaretHeight = 2.0f;
+
+		// The part of the vertical scrollbar the grab moves within, and the content height it
+		// spans. Everything drawn on the scrollbar is placed against these, so a mark sits where
+		// the grab stands when its row is at the top of the view. That holds while the grab is
+		// sized by the view; once a very long file shrinks it to its minimum size, the two drift
+		// apart towards the bottom by up to that size.
+		struct OverviewTrack
+		{
+			ImRect Bar;
+			float Inset = 0.0f;
+			float Top = 0.0f;
+			float Height = 0.0f;
+			float Content = 0.0f;
+
+			// Where a screen row's top falls on the track, as a fraction of its height.
+			float RowFraction(std::size_t screenRow, float lineHeight) const
+			{
+				return static_cast<float>(screenRow) * lineHeight / Content;
+			}
+		};
+
+		std::optional<OverviewTrack> OverviewTrackOf(ImGuiWindow* window)
+		{
+			if (!window->ScrollbarY)
+				return std::nullopt;
+
+			OverviewTrack track;
+
+			track.Bar = ImGui::GetWindowScrollbarRect(window, ImGuiAxis_Y);
+
+			// A bar shorter than it is wide is one ImGui fades its own grab out of; there is no
+			// track worth marking.
+			if (track.Bar.GetHeight() < track.Bar.GetWidth())
+				return std::nullopt;
+
+			// ImGui's own grab inset, from the style rather than a copy of its value.
+			track.Inset = IM_TRUNC(ImMin(ImGui::GetStyle().ScrollbarPadding,
+										 ImMin(track.Bar.GetWidth(), track.Bar.GetHeight()) * 0.5f));
+			track.Top = track.Bar.Min.y + track.Inset;
+			track.Height = track.Bar.GetHeight() - track.Inset * 2.0f;
+			track.Content = std::max(window->ContentSize.y + window->WindowPadding.y * 2.0f,
+									 window->InnerRect.GetHeight());
+
+			if (track.Height < 1.0f || track.Content <= 0.0f)
+				return std::nullopt;
+
+			return track;
+		}
+
+		// The window's own clip rectangle stops short of its scrollbar, so the bar gets its own,
+		// kept within what of the window is actually visible.
+		void PushOverviewClip(ImGuiWindow* window, const OverviewTrack& track)
+		{
+			ImRect clip = track.Bar;
+			clip.ClipWith(window->OuterRectClipped);
+			window->DrawList->PushClipRect(clip.Min, clip.Max, false);
+		}
+
 		// The document's changes on the vertical scrollbar, in the gutter's colours and shades, as a
 		// narrow strip down the middle of the track so the grab stays visible either side of them.
-		// Drawn only: the marks
-		// take no input, and clicking or dragging the scrollbar behaves exactly as it did.
+		// Drawn only: the marks take no input, and clicking or dragging the scrollbar behaves
+		// exactly as it did.
 		//
 		// Positions go through the same screen rows the document is laid out in, wrapped lines and
-		// lens rows included (ADR 0486). They are measured against the content height ImGui's own
-		// scrollbar spans, inside the same inset its grab moves within, so a mark sits where the
-		// grab stands when its line is at the top of the view. That holds while the grab is sized
-		// by the view; once a very long file shrinks it to its minimum size, the two drift apart
-		// towards the bottom by up to that size.
+		// lens rows included (ADR 0486).
 		void DrawChangeOverview(const Core::OpenItem& item, const RowCanvas& canvas,
-								const LensRows& lenses, const ChangeMarkers* changes)
+								const LensRows& lenses, const ChangeMarkers* changes,
+								const OverviewTrack& track)
 		{
 			if (changes == nullptr || changes->Hunks.empty())
 				return;
 
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
-
-			if (!window->ScrollbarY)
-				return;
-
-			const ImRect bar = ImGui::GetWindowScrollbarRect(window, ImGuiAxis_Y);
-
-			// A bar shorter than it is wide is one ImGui fades its own grab out of; there is no
-			// track worth marking.
-			if (bar.GetHeight() < bar.GetWidth())
-				return;
-
-			// ImGui's own grab inset, from the style rather than a copy of its value.
-			const float inset = IM_TRUNC(
-				ImMin(ImGui::GetStyle().ScrollbarPadding, ImMin(bar.GetWidth(), bar.GetHeight()) * 0.5f));
-			const float trackTop = bar.Min.y + inset;
-			const float trackHeight = bar.GetHeight() - inset * 2.0f;
-			const float content = std::max(window->ContentSize.y + window->WindowPadding.y * 2.0f,
-										   window->InnerRect.GetHeight());
-
-			if (trackHeight < 1.0f || content <= 0.0f)
-				return;
 
 			const std::size_t lineCount = item.Rows.GetLineCount();
 			const std::size_t totalRows = item.Rows.TotalRows();
@@ -2139,22 +2176,18 @@ namespace Graphite {
 				const std::size_t screenRow = line >= lineCount ? lenses.TotalScreenRows(totalRows)
 																: lenses.ScreenRowOf(item.Rows.FirstRowOf(line));
 
-				return static_cast<float>(screenRow) * canvas.Metrics.LineHeight / content;
+				return track.RowFraction(screenRow, canvas.Metrics.LineHeight);
 			};
 
 			const std::vector<OverviewMark> marks =
-				BuildChangeOverview(*changes, lineTop, kOverviewMinHeight / trackHeight);
+				BuildChangeOverview(*changes, lineTop, kOverviewMinHeight / track.Height);
 
-			const float centre = (bar.Min.x + bar.Max.x) * 0.5f;
-			const float half = ImMin(kOverviewMarkWidth, bar.GetWidth() - inset * 2.0f) * 0.5f;
+			const float centre = (track.Bar.Min.x + track.Bar.Max.x) * 0.5f;
+			const float half = ImMin(kOverviewMarkWidth, track.Bar.GetWidth() - track.Inset * 2.0f) * 0.5f;
 			const float left = IM_TRUNC(centre - half);
 			const float right = left + half * 2.0f;
 
-			// The window's own clip rectangle stops short of its scrollbar, so the bar gets its own,
-			// kept within what of the window is actually visible.
-			ImRect clip = bar;
-			clip.ClipWith(window->OuterRectClipped);
-			window->DrawList->PushClipRect(clip.Min, clip.Max, false);
+			PushOverviewClip(window, track);
 
 			for (const OverviewMark& mark : marks)
 			{
@@ -2162,10 +2195,32 @@ namespace Graphite {
 								   : mark.Kind == HunkKind::Modified ? canvas.Palette.ChangeModified
 																	 : canvas.Palette.ChangeRemoved;
 
-				window->DrawList->AddRectFilled(ImVec2(left, trackTop + mark.From * trackHeight),
-												ImVec2(right, trackTop + mark.To * trackHeight),
+				window->DrawList->AddRectFilled(ImVec2(left, track.Top + mark.From * track.Height),
+												ImVec2(right, track.Top + mark.To * track.Height),
 												mark.Staged ? WithAlpha(base, kStagedChangeAlpha) : base);
 			}
+
+			window->DrawList->PopClipRect();
+		}
+
+		// Where the caret stands, as a line across the whole track in the caret's colour, drawn
+		// over the change marks. Drawn only, like them. Placed at the caret row's top, centred on
+		// it, so it sits where the grab's top edge stands when the caret's row is at the top of the
+		// view.
+		void DrawCaretOverview(const RowCanvas& canvas, std::size_t caretScreenRow,
+							   const OverviewTrack& track)
+		{
+			ImGuiWindow* window = ImGui::GetCurrentWindow();
+
+			const float fraction =
+				ImMin(track.RowFraction(caretScreenRow, canvas.Metrics.LineHeight), 1.0f);
+			const float top = IM_TRUNC(track.Top + fraction * track.Height - kOverviewCaretHeight * 0.5f);
+
+			PushOverviewClip(window, track);
+
+			window->DrawList->AddRectFilled(ImVec2(track.Bar.Min.x + track.Inset, top),
+											ImVec2(track.Bar.Max.x - track.Inset, top + kOverviewCaretHeight),
+											canvas.Palette.Caret);
 
 			window->DrawList->PopClipRect();
 		}
@@ -2495,7 +2550,11 @@ namespace Graphite {
 			DrawChangeTooltip(ComputeChangeHover(item, canvas, lenses, changes), buffer,
 							  canvas.Palette, item.TabWidth);
 
-			DrawChangeOverview(item, canvas, lenses, scrollbarChanges);
+			if (const std::optional<OverviewTrack> track = OverviewTrackOf(ImGui::GetCurrentWindow()))
+			{
+				DrawChangeOverview(item, canvas, lenses, scrollbarChanges, *track);
+				DrawCaretOverview(canvas, lenses.ScreenRowOf(caret.Visual.Row), *track);
+			}
 
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
