@@ -9,6 +9,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <chrono>
@@ -42,6 +43,27 @@ namespace Graphite {
 			DateColumn,
 			ColumnCount
 		};
+
+		// Pulls the right edge of the table just begun `gap` away from its vertical scrollbar,
+		// when it has one. ImGui runs a scrolling table's rows, header and highlights right up
+		// to the bar, with no style setting to leave room, so the table is told its work area
+		// ends earlier: the stretched column takes its width from what is left, and the row
+		// backgrounds and the cells are clipped short of the bar. The clip rects are the ones
+		// ImGui itself trims for an outer border; the layout that reads them runs later, at
+		// the first row.
+		void KeepClearOfScrollbar(float gap)
+		{
+			ImGuiTable* table = ImGui::GetCurrentTable();
+
+			if (table == nullptr || !table->InnerWindow->ScrollbarY)
+				return;
+
+			const float right = std::max(table->WorkRect.Min.x, table->WorkRect.Max.x - gap);
+
+			table->WorkRect.Max.x = right;
+			table->InnerClipRect.Max.x = std::min(table->InnerClipRect.Max.x, right);
+			table->HostClipRect.Max.x = std::min(table->HostClipRect.Max.x, right);
+		}
 
 		float WidthOf(std::string_view text)
 		{
@@ -299,11 +321,18 @@ namespace Graphite {
 		//
 		// A resizable table keeps its widths in the ImGui settings, so a column dragged wider
 		// stays that way the next time the application opens.
+		//
+		// A table without outer borders gives its first and last cells no padding on their
+		// outer side, so the last column's text would run into the scrollbar; PadOuterX gives
+		// the table's edges the same padding as the gaps between its columns.
 		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-										  ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY;
+										  ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY |
+										  ImGuiTableFlags_PadOuterX;
 
 		if (ImGui::BeginTable("##commits", ColumnCount, flags))
 		{
+			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
+
 			const auto widthOf = [](const char* sample) { return ImGui::CalcTextSize(sample).x; };
 
 			// The lanes and the arrow are not the reader's to resize: the graph is as wide as
