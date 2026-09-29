@@ -6,6 +6,7 @@
 #include <vector>
 
 using Graphite::DiffMeasurement;
+using Graphite::DiffScope;
 using Graphite::MeasurementOf;
 
 namespace {
@@ -45,12 +46,14 @@ namespace {
 
 TEST_CASE("The same diff measures the same, so a kept width survives scrolling")
 {
-	CHECK(MeasurementOf(Simple("a.cpp"), false) == MeasurementOf(Simple("a.cpp"), false));
+	CHECK(MeasurementOf(Simple("a.cpp"), DiffScope::Hunks)
+		  == MeasurementOf(Simple("a.cpp"), DiffScope::Hunks));
 }
 
 TEST_CASE("A different file measures differently")
 {
-	CHECK_FALSE(MeasurementOf(Simple("a.cpp"), false) == MeasurementOf(Simple("b.cpp"), false));
+	CHECK_FALSE(MeasurementOf(Simple("a.cpp"), DiffScope::Hunks)
+				== MeasurementOf(Simple("b.cpp"), DiffScope::Hunks));
 }
 
 TEST_CASE("The same path in a different commit measures differently")
@@ -61,7 +64,7 @@ TEST_CASE("The same path in a different commit measures differently")
 	const Core::FileDiff before = FileWith("a.cpp", {{Line(1, 1, "one"), Line(2, 2, "two")}});
 	const Core::FileDiff after = FileWith("a.cpp", {{Line(1, 1, "one")}});
 
-	CHECK_FALSE(MeasurementOf(before, false) == MeasurementOf(after, false));
+	CHECK_FALSE(MeasurementOf(before, DiffScope::Hunks) == MeasurementOf(after, DiffScope::Hunks));
 }
 
 TEST_CASE("An edit at the bottom measures differently from one of the same shape at the top")
@@ -71,7 +74,7 @@ TEST_CASE("An edit at the bottom measures differently from one of the same shape
 	const Core::FileDiff top = FileWith("a.cpp", {{Line(1, 1, "one"), Line(2, 2, "two")}});
 	const Core::FileDiff bottom = FileWith("a.cpp", {{Line(90, 90, "one"), Line(91, 91, "two")}});
 
-	CHECK_FALSE(MeasurementOf(top, false) == MeasurementOf(bottom, false));
+	CHECK_FALSE(MeasurementOf(top, DiffScope::Hunks) == MeasurementOf(bottom, DiffScope::Hunks));
 }
 
 TEST_CASE("Splitting the same lines across two hunks measures differently")
@@ -79,7 +82,7 @@ TEST_CASE("Splitting the same lines across two hunks measures differently")
 	const Core::FileDiff one = FileWith("a.cpp", {{Line(1, 1, "one"), Line(2, 2, "two")}});
 	const Core::FileDiff two = FileWith("a.cpp", {{Line(1, 1, "one")}, {Line(2, 2, "two")}});
 
-	CHECK_FALSE(MeasurementOf(one, false) == MeasurementOf(two, false));
+	CHECK_FALSE(MeasurementOf(one, DiffScope::Hunks) == MeasurementOf(two, DiffScope::Hunks));
 }
 
 TEST_CASE("Switching to the whole file measures differently from the changes alone")
@@ -88,7 +91,7 @@ TEST_CASE("Switching to the whole file measures differently from the changes alo
 	// where the long lines a hunk never showed come from.
 	const Core::FileDiff file = Simple("a.cpp");
 
-	CHECK_FALSE(MeasurementOf(file, true) == MeasurementOf(file, false));
+	CHECK_FALSE(MeasurementOf(file, DiffScope::WholeFile) == MeasurementOf(file, DiffScope::Hunks));
 }
 
 TEST_CASE("A deleted file measures by the path that names it")
@@ -102,8 +105,9 @@ TEST_CASE("A deleted file measures by the path that names it")
 	other.Change = Core::FileChange::Deleted;
 
 	// Both have an empty new path; keying on that alone would call them the same file.
-	CHECK_FALSE(MeasurementOf(deleted, false) == MeasurementOf(other, false));
-	CHECK(MeasurementOf(deleted, false).Path == "a.cpp");
+	CHECK_FALSE(MeasurementOf(deleted, DiffScope::Hunks)
+				== MeasurementOf(other, DiffScope::Hunks));
+	CHECK(MeasurementOf(deleted, DiffScope::Hunks).Path == "a.cpp");
 }
 
 TEST_CASE("A file with no hunks measures without reading a line that is not there")
@@ -112,7 +116,7 @@ TEST_CASE("A file with no hunks measures without reading a line that is not ther
 	empty.OldPath = "a.cpp";
 	empty.NewPath = "a.cpp";
 
-	const DiffMeasurement measurement = MeasurementOf(empty, false);
+	const DiffMeasurement measurement = MeasurementOf(empty, DiffScope::Hunks);
 
 	CHECK(measurement.Hunks == 0);
 	CHECK(measurement.Lines == 0);
@@ -127,7 +131,7 @@ TEST_CASE("A hunk with no lines measures without reading past its end")
 	file.NewPath = "a.cpp";
 	file.Hunks.push_back(Core::Hunk{});
 
-	const DiffMeasurement measurement = MeasurementOf(file, false);
+	const DiffMeasurement measurement = MeasurementOf(file, DiffScope::Hunks);
 
 	CHECK(measurement.Hunks == 1);
 	CHECK(measurement.Lines == 0);

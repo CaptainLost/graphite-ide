@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -17,6 +18,15 @@ namespace Graphite {
 	{
 		// The "@@ -a,b +c,d @@" banner that opens a hunk.
 		HunkHeader,
+
+		// The enclosing scope git named after the header's second "@@", on a row of its own
+		// under it. Only for a header that names one; like the header, it names no line.
+		HunkSignature,
+
+		// The blank row ahead of every hunk's header but the first, in the hunks-only rows:
+		// it stands for the lines between two hunks that those rows leave out. Names no line,
+		// like the header, and belongs to the hunk it opens.
+		HunkGap,
 		Context,
 		Added,
 		Removed,
@@ -59,17 +69,25 @@ namespace Graphite {
 		std::optional<DiffRow> Right;
 	};
 
-	// The diff's own order, hunk headers included. This is what a reviewer reading a patch
-	// expects, and it is what the unified view draws.
+	// How much of the file a diff shows: only the hunks, or every line with the hunks in place.
+	enum class DiffScope
+	{
+		Hunks,
+		WholeFile
+	};
+
+	// The diff's own order, hunk headers included, with a gap row between one hunk and the
+	// next. This is what a reviewer reading a patch expects, and it is what the unified view
+	// draws.
 	std::vector<DiffRow> BuildUnifiedRows(const Core::FileDiff& file);
 
 	// The same content, with each removed line paired against the added line that replaced
 	// it, so an edit reads as one row rather than as a deletion above an insertion.
 	std::vector<DiffPair> BuildSideBySideRows(const Core::FileDiff& file);
 
-	// The line a row draws, or null for a hunk header, for an Unchanged row (which names no
-	// hunk to look a line up in), and for a row whose indices no longer fit the file — which
-	// can only happen if a caller keeps rows past the snapshot they were built from.
+	// The line a row draws, or null for a hunk header or gap, for an Unchanged row (which
+	// names no hunk to look a line up in), and for a row whose indices no longer fit the file
+	// — which can only happen if a caller keeps rows past the snapshot they were built from.
 	const Core::DiffLine* LineOf(const Core::FileDiff& file, const DiffRow& row);
 
 	// Both views of a whole file, hunks in place and Unchanged rows filling every gap.
@@ -81,10 +99,10 @@ namespace Graphite {
 
 	// Lays out every line of the file, not just the hunks: the lines a hunk covers keep the
 	// rows BuildUnifiedRows/BuildSideBySideRows would give them, and every line outside a hunk
-	// becomes an Unchanged row. Takes line counts rather than the texts themselves — the
-	// builder only decides which lines exist and how they pair, never what they say — so the
-	// widget looks a line's text up by number exactly as it already looks a diff line up by
-	// index.
+	// becomes an Unchanged row — so no gap rows, since nothing between the hunks is left out.
+	// Takes line counts rather than the texts themselves — the builder only decides which
+	// lines exist and how they pair, never what they say — so the widget looks a line's text
+	// up by number exactly as it already looks a diff line up by index.
 	WholeFileRows BuildWholeFileRows(const Core::FileDiff& file, std::size_t oldLineCount,
 									  std::size_t newLineCount);
 
@@ -184,7 +202,7 @@ namespace Graphite {
 	struct DiffMeasurement
 	{
 		std::filesystem::path Path;
-		bool WholeFile = false;
+		DiffScope Scope = DiffScope::Hunks;
 		std::size_t Hunks = 0;
 		std::size_t Lines = 0;
 		int LastOldLine = 0;
@@ -197,5 +215,21 @@ namespace Graphite {
 	// numbers, rather than hashing the text. Two diffs it cannot tell apart agree on the path,
 	// the hunk count, the line count and where the last line sits in both files — in which
 	// case they are near enough the same shape that a width measured for one fits the other.
-	DiffMeasurement MeasurementOf(const Core::FileDiff& file, bool wholeFile);
+	DiffMeasurement MeasurementOf(const Core::FileDiff& file, DiffScope scope);
+
+	// The enclosing scope git puts after a hunk header's second "@@" — the nearest line above
+	// the change that looks like the start of a function or a namespace — without the line
+	// break. Empty when the header names none, or is not shaped like a header at all.
+	std::string_view HunkScope(std::string_view header);
+
+	// The line of `lines` git found `scope` on: the nearest one above line `before` — a hunk's
+	// start — that begins with it, indentation aside, since git may have cut a long line short
+	// and HunkScope trims whatever indentation it kept. Zero when no line matches, which is
+	// also the answer for an empty scope. One-based, like every line number here.
+	int SignatureLine(std::span<const std::string_view> lines, int before, std::string_view scope);
+
+	// The lines a hunk covers on one side, as "first–last", or the one number when it covers
+	// one line. A dash when it covers none: that side's start then names only where the other
+	// side's change sits, not a line of its own.
+	std::string LineRangeLabel(int start, int count);
 }

@@ -24,7 +24,7 @@ namespace Graphite {
 		Unified
 	};
 
-	// Draws one file's diff. Holds the mode and the two toggles below, plus a small cache of
+	// Draws one file's diff. Holds the mode, the scope and the syntax toggle below, plus a small cache of
 	// the file's own lines split out of its texts — rebuilt only when the FileTexts pointer
 	// changes, for the same reason the caller's token cache is: splitting a whole file's text
 	// on every frame is the same wasted pass LexFileText's own header warns against, just for
@@ -47,8 +47,8 @@ namespace Graphite {
 		void SetMode(DiffViewMode mode) { m_Mode = mode; }
 		DiffViewMode GetMode() const { return m_Mode; }
 
-		void SetShowWholeFile(bool show) { m_ShowWholeFile = show; }
-		bool GetShowWholeFile() const { return m_ShowWholeFile; }
+		void SetScope(DiffScope scope) { m_Scope = scope; }
+		DiffScope GetScope() const { return m_Scope; }
 
 		void SetColourSyntax(bool colour) { m_ColourSyntax = colour; }
 		bool GetColourSyntax() const { return m_ColourSyntax; }
@@ -101,16 +101,16 @@ namespace Graphite {
 		void RebuildLineCache(const std::shared_ptr<const FileTexts>& texts);
 
 		DiffViewMode m_Mode = DiffViewMode::SideBySide;
-		bool m_ShowWholeFile = false;
+		DiffScope m_Scope = DiffScope::Hunks;
 		bool m_ColourSyntax = true;
 
-		// What was drawn last frame: the mode, and whether the whole file was — which is not
-		// m_ShowWholeFile alone, since that waits on the texts. Only a change in what was drawn
+		// What was drawn last frame: the mode, and the scope — which is not m_Scope alone,
+		// since the whole file waits on the texts. Only a change in what was drawn
 		// moves the reader, so that is what decides to put them back.
 		struct Layout
 		{
 			DiffViewMode Mode = DiffViewMode::SideBySide;
-			bool WholeFile = false;
+			DiffScope Scope = DiffScope::Hunks;
 
 			bool operator==(const Layout& other) const = default;
 		};

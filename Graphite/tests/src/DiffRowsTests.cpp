@@ -227,14 +227,16 @@ TEST_CASE("Rows from a second hunk name their own hunk")
 
 	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(file);
 
-	REQUIRE(rows.size() == 4);
+	// The second hunk opens with the gap standing for the lines between the two.
+	REQUIRE(rows.size() == 5);
 	CHECK(rows[0].Hunk == 0);
 	CHECK(rows[1].Hunk == 0);
 	CHECK(rows[2].Hunk == 1);
 	CHECK(rows[3].Hunk == 1);
+	CHECK(rows[4].Hunk == 1);
 
 	// Staging works by hunk, so a row that cannot name its hunk cannot be acted on.
-	const Core::DiffLine* line = Graphite::LineOf(file, rows[3]);
+	const Core::DiffLine* line = Graphite::LineOf(file, rows[4]);
 	REQUIRE(line != nullptr);
 	CHECK(line->Text == "twenty\n");
 }
@@ -252,15 +254,16 @@ TEST_CASE("Side by side rows from a second hunk name their own hunk")
 
 	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
 
-	// Header + context row for the first hunk, header + one insertion row for the second.
-	REQUIRE(pairs.size() == 4);
+	// Header + context row for the first hunk; gap, header + one insertion row for the second.
+	REQUIRE(pairs.size() == 5);
 	CHECK(pairs[0].Left->Hunk == 0);
 	CHECK(pairs[1].Left->Hunk == 0);
 	CHECK(pairs[2].Left->Hunk == 1);
+	CHECK(pairs[3].Left->Hunk == 1);
 
-	REQUIRE(pairs[3].Right.has_value());
-	CHECK(pairs[3].Right->Hunk == 1);
-	CHECK_FALSE(pairs[3].Left.has_value());
+	REQUIRE(pairs[4].Right.has_value());
+	CHECK(pairs[4].Right->Hunk == 1);
+	CHECK_FALSE(pairs[4].Left.has_value());
 }
 
 TEST_CASE("Side by side pairs an added line with an empty left half when the hunk opens on an insertion")
@@ -336,9 +339,9 @@ TEST_CASE("A hunk in the middle leaves Unchanged rows before and after it, resum
 	// the hunk replaces that one line with two.
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 6, 7);
 
-	// Two Unchanged rows before the hunk, a header plus three hunk lines, three Unchanged
-	// rows after: 2 + 4 + 3 = 9.
-	REQUIRE(rows.Unified.size() == 9);
+	// Two Unchanged rows before the hunk, its three lines — no header, since nothing is left
+	// out for one to introduce — and three Unchanged rows after: 2 + 3 + 3 = 8.
+	REQUIRE(rows.Unified.size() == 8);
 
 	CHECK(rows.Unified[0].Kind == DiffRowKind::Unchanged);
 	CHECK(rows.Unified[0].OldLine == 1);
@@ -347,20 +350,19 @@ TEST_CASE("A hunk in the middle leaves Unchanged rows before and after it, resum
 	CHECK(rows.Unified[1].OldLine == 2);
 	CHECK(rows.Unified[1].NewLine == 2);
 
-	CHECK(rows.Unified[2].Kind == DiffRowKind::HunkHeader);
-	CHECK(rows.Unified[3].Kind == DiffRowKind::Removed);
+	CHECK(rows.Unified[2].Kind == DiffRowKind::Removed);
+	CHECK(rows.Unified[3].Kind == DiffRowKind::Added);
 	CHECK(rows.Unified[4].Kind == DiffRowKind::Added);
-	CHECK(rows.Unified[5].Kind == DiffRowKind::Added);
 
 	// The old side resumes at 4, the new side at 5 — the hunk turned one old line into two
 	// new ones, so the two sides have drifted a line apart from here on.
-	CHECK(rows.Unified[6].Kind == DiffRowKind::Unchanged);
-	CHECK(rows.Unified[6].OldLine == 4);
-	CHECK(rows.Unified[6].NewLine == 5);
-	CHECK(rows.Unified[7].OldLine == 5);
-	CHECK(rows.Unified[7].NewLine == 6);
-	CHECK(rows.Unified[8].OldLine == 6);
-	CHECK(rows.Unified[8].NewLine == 7);
+	CHECK(rows.Unified[5].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[5].OldLine == 4);
+	CHECK(rows.Unified[5].NewLine == 5);
+	CHECK(rows.Unified[6].OldLine == 5);
+	CHECK(rows.Unified[6].NewLine == 6);
+	CHECK(rows.Unified[7].OldLine == 6);
+	CHECK(rows.Unified[7].NewLine == 7);
 }
 
 TEST_CASE("Side by side keeps an Unchanged row's two halves in step before a hunk and drifts "
@@ -372,9 +374,9 @@ TEST_CASE("Side by side keeps an Unchanged row's two halves in step before a hun
 
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 6, 7);
 
-	// Header + 2 zipped rows for the hunk (1 removal against 2 insertions), not 4: the
-	// side-by-side view zips a hunk's runs exactly as BuildSideBySideRows does.
-	REQUIRE(rows.SideBySide.size() == 8);
+	// 2 zipped rows for the hunk (1 removal against 2 insertions), not 3: the side-by-side
+	// view zips a hunk's runs exactly as BuildSideBySideRows does.
+	REQUIRE(rows.SideBySide.size() == 7);
 
 	// Before the hunk, nothing has shifted yet: both halves name the same line number.
 	REQUIRE(rows.SideBySide[0].Left.has_value());
@@ -383,10 +385,10 @@ TEST_CASE("Side by side keeps an Unchanged row's two halves in step before a hun
 	CHECK(rows.SideBySide[0].Right->NewLine == 1);
 
 	// After the hunk, the insertion has pushed the new side one line further along.
-	REQUIRE(rows.SideBySide[5].Left.has_value());
-	REQUIRE(rows.SideBySide[5].Right.has_value());
-	CHECK(rows.SideBySide[5].Left->OldLine == 4);
-	CHECK(rows.SideBySide[5].Right->NewLine == 5);
+	REQUIRE(rows.SideBySide[4].Left.has_value());
+	REQUIRE(rows.SideBySide[4].Right.has_value());
+	CHECK(rows.SideBySide[4].Left->OldLine == 4);
+	CHECK(rows.SideBySide[4].Right->NewLine == 5);
 }
 
 TEST_CASE("A hunk at the very first line leaves no Unchanged row ahead of it")
@@ -397,13 +399,13 @@ TEST_CASE("A hunk at the very first line leaves no Unchanged row ahead of it")
 
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 4, 5);
 
-	// A header plus three hunk lines, then Unchanged rows to the end of each side.
-	REQUIRE(rows.Unified.size() == 4 + 3);
-	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+	// Three hunk lines, then Unchanged rows to the end of each side.
+	REQUIRE(rows.Unified.size() == 3 + 3);
+	CHECK(rows.Unified[0].Kind == DiffRowKind::Removed);
 
-	CHECK(rows.Unified[4].Kind == DiffRowKind::Unchanged);
-	CHECK(rows.Unified[4].OldLine == 2);
-	CHECK(rows.Unified[4].NewLine == 3);
+	CHECK(rows.Unified[3].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[3].OldLine == 2);
+	CHECK(rows.Unified[3].NewLine == 3);
 }
 
 TEST_CASE("A hunk at the very last line leaves no Unchanged row after it")
@@ -416,7 +418,7 @@ TEST_CASE("A hunk at the very last line leaves no Unchanged row after it")
 	// where it starts to the end of both sides.
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 3, 4);
 
-	REQUIRE(rows.Unified.size() == 2 + 4);
+	REQUIRE(rows.Unified.size() == 2 + 3);
 	CHECK(rows.Unified.back().Kind == DiffRowKind::Added);
 	CHECK(rows.Unified.back().NewLine == 4);
 }
@@ -432,12 +434,12 @@ TEST_CASE("Two hunks with a gap between them get Unchanged rows in the gap")
 	// ahead of the old side by the end of the file.
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 12, 14);
 
-	// Leading gap: old/new line 1 (1 line). Hunk 1: header + 3 lines. Gap between the hunks:
-	// old lines 3..9 (7 lines), new lines 4..10 (7 lines). Hunk 2: header + 3 lines. Tail:
-	// old lines 11..12, new lines 13..14 (2 lines).
-	REQUIRE(rows.Unified.size() == 1 + 4 + 7 + 4 + 2);
+	// Leading gap: old/new line 1 (1 line). Hunk 1: 3 lines. Gap between the hunks: old
+	// lines 3..9 (7 lines), new lines 4..10 (7 lines). Hunk 2: 3 lines. Tail: old lines
+	// 11..12, new lines 13..14 (2 lines).
+	REQUIRE(rows.Unified.size() == 1 + 3 + 7 + 3 + 2);
 
-	std::size_t index = 1 + 4; // Past the one-line leading gap and the first hunk.
+	std::size_t index = 1 + 3; // Past the one-line leading gap and the first hunk.
 
 	for (int oldLine = 3; oldLine <= 9; ++oldLine, ++index)
 	{
@@ -447,7 +449,7 @@ TEST_CASE("Two hunks with a gap between them get Unchanged rows in the gap")
 		CHECK(rows.Unified[index].NewLine == oldLine + 1);
 	}
 
-	CHECK(rows.Unified[index].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[index].Kind == DiffRowKind::Removed);
 	CHECK(rows.Unified[index].Hunk == 1);
 }
 
@@ -470,16 +472,15 @@ TEST_CASE("An added file has no old side in its whole-file rows")
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 0, 2);
 
 	// No gap on either side: the whole file is the one hunk's added lines.
-	REQUIRE(rows.Unified.size() == 3);
-	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+	REQUIRE(rows.Unified.size() == 2);
+	CHECK(rows.Unified[0].OldLine == 0);
 	CHECK(rows.Unified[1].OldLine == 0);
-	CHECK(rows.Unified[2].OldLine == 0);
 
-	REQUIRE(rows.SideBySide.size() == 3);
+	REQUIRE(rows.SideBySide.size() == 2);
+	CHECK_FALSE(rows.SideBySide[0].Left.has_value());
 	CHECK_FALSE(rows.SideBySide[1].Left.has_value());
-	CHECK_FALSE(rows.SideBySide[2].Left.has_value());
+	REQUIRE(rows.SideBySide[0].Right.has_value());
 	REQUIRE(rows.SideBySide[1].Right.has_value());
-	REQUIRE(rows.SideBySide[2].Right.has_value());
 }
 
 TEST_CASE("A deleted file has no new side in its whole-file rows")
@@ -500,16 +501,15 @@ TEST_CASE("A deleted file has no new side in its whole-file rows")
 
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 2, 0);
 
-	REQUIRE(rows.Unified.size() == 3);
-	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
+	REQUIRE(rows.Unified.size() == 2);
+	CHECK(rows.Unified[0].NewLine == 0);
 	CHECK(rows.Unified[1].NewLine == 0);
-	CHECK(rows.Unified[2].NewLine == 0);
 
-	REQUIRE(rows.SideBySide.size() == 3);
+	REQUIRE(rows.SideBySide.size() == 2);
+	CHECK_FALSE(rows.SideBySide[0].Right.has_value());
 	CHECK_FALSE(rows.SideBySide[1].Right.has_value());
-	CHECK_FALSE(rows.SideBySide[2].Right.has_value());
+	REQUIRE(rows.SideBySide[0].Left.has_value());
 	REQUIRE(rows.SideBySide[1].Left.has_value());
-	REQUIRE(rows.SideBySide[2].Left.has_value());
 }
 
 TEST_CASE("LineOf returns null for an Unchanged row, which names no hunk to look a line up in")
@@ -552,7 +552,7 @@ TEST_CASE("A pure insertion inside a two-sided file resumes both sides at the ri
 	// Old file: 6 lines. New file: 8, since 2 were inserted after old line 3 / new line 3.
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 6, 8);
 
-	REQUIRE(rows.Unified.size() == 9);
+	REQUIRE(rows.Unified.size() == 8);
 
 	CHECK(rows.Unified[0].Kind == DiffRowKind::Unchanged);
 	CHECK(rows.Unified[0].OldLine == 1);
@@ -562,34 +562,33 @@ TEST_CASE("A pure insertion inside a two-sided file resumes both sides at the ri
 	CHECK(rows.Unified[2].OldLine == 3);
 	CHECK(rows.Unified[2].NewLine == 3);
 
-	CHECK(rows.Unified[3].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[3].Kind == DiffRowKind::Added);
+	CHECK(rows.Unified[3].NewLine == 4);
 	CHECK(rows.Unified[4].Kind == DiffRowKind::Added);
-	CHECK(rows.Unified[4].NewLine == 4);
-	CHECK(rows.Unified[5].Kind == DiffRowKind::Added);
-	CHECK(rows.Unified[5].NewLine == 5);
+	CHECK(rows.Unified[4].NewLine == 5);
 
 	// The old side did not move at all — it resumes at old line 4, right where it left off —
 	// while the new side has jumped ahead by the two inserted lines.
-	CHECK(rows.Unified[6].Kind == DiffRowKind::Unchanged);
-	CHECK(rows.Unified[6].OldLine == 4);
-	CHECK(rows.Unified[6].NewLine == 6);
-	CHECK(rows.Unified[7].OldLine == 5);
-	CHECK(rows.Unified[7].NewLine == 7);
-	CHECK(rows.Unified[8].OldLine == 6);
-	CHECK(rows.Unified[8].NewLine == 8);
+	CHECK(rows.Unified[5].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[5].OldLine == 4);
+	CHECK(rows.Unified[5].NewLine == 6);
+	CHECK(rows.Unified[6].OldLine == 5);
+	CHECK(rows.Unified[6].NewLine == 7);
+	CHECK(rows.Unified[7].OldLine == 6);
+	CHECK(rows.Unified[7].NewLine == 8);
 
-	REQUIRE(rows.SideBySide.size() == 9);
+	REQUIRE(rows.SideBySide.size() == 8);
+	CHECK_FALSE(rows.SideBySide[3].Left.has_value());
+	REQUIRE(rows.SideBySide[3].Right.has_value());
+	CHECK(rows.SideBySide[3].Right->NewLine == 4);
 	CHECK_FALSE(rows.SideBySide[4].Left.has_value());
 	REQUIRE(rows.SideBySide[4].Right.has_value());
-	CHECK(rows.SideBySide[4].Right->NewLine == 4);
-	CHECK_FALSE(rows.SideBySide[5].Left.has_value());
-	REQUIRE(rows.SideBySide[5].Right.has_value());
-	CHECK(rows.SideBySide[5].Right->NewLine == 5);
+	CHECK(rows.SideBySide[4].Right->NewLine == 5);
 
-	REQUIRE(rows.SideBySide[6].Left.has_value());
-	REQUIRE(rows.SideBySide[6].Right.has_value());
-	CHECK(rows.SideBySide[6].Left->OldLine == 4);
-	CHECK(rows.SideBySide[6].Right->NewLine == 6);
+	REQUIRE(rows.SideBySide[5].Left.has_value());
+	REQUIRE(rows.SideBySide[5].Right.has_value());
+	CHECK(rows.SideBySide[5].Left->OldLine == 4);
+	CHECK(rows.SideBySide[5].Right->NewLine == 6);
 }
 
 // The symmetric case: a pure deletion, which git writes as "@@ -4,2 +3,0 @@". Here NewStart
@@ -615,7 +614,7 @@ TEST_CASE("A pure deletion inside a two-sided file resumes both sides at the rig
 	// Old file: 8 lines. New file: 6, since old lines 4-5 were deleted with nothing added.
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 8, 6);
 
-	REQUIRE(rows.Unified.size() == 9);
+	REQUIRE(rows.Unified.size() == 8);
 
 	CHECK(rows.Unified[0].Kind == DiffRowKind::Unchanged);
 	CHECK(rows.Unified[0].OldLine == 1);
@@ -625,34 +624,33 @@ TEST_CASE("A pure deletion inside a two-sided file resumes both sides at the rig
 	CHECK(rows.Unified[2].OldLine == 3);
 	CHECK(rows.Unified[2].NewLine == 3);
 
-	CHECK(rows.Unified[3].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows.Unified[3].Kind == DiffRowKind::Removed);
+	CHECK(rows.Unified[3].OldLine == 4);
 	CHECK(rows.Unified[4].Kind == DiffRowKind::Removed);
-	CHECK(rows.Unified[4].OldLine == 4);
-	CHECK(rows.Unified[5].Kind == DiffRowKind::Removed);
-	CHECK(rows.Unified[5].OldLine == 5);
+	CHECK(rows.Unified[4].OldLine == 5);
 
 	// The new side did not move — it resumes at new line 4 — while the old side has jumped
 	// ahead by the two deleted lines.
-	CHECK(rows.Unified[6].Kind == DiffRowKind::Unchanged);
-	CHECK(rows.Unified[6].OldLine == 6);
-	CHECK(rows.Unified[6].NewLine == 4);
-	CHECK(rows.Unified[7].OldLine == 7);
-	CHECK(rows.Unified[7].NewLine == 5);
-	CHECK(rows.Unified[8].OldLine == 8);
-	CHECK(rows.Unified[8].NewLine == 6);
+	CHECK(rows.Unified[5].Kind == DiffRowKind::Unchanged);
+	CHECK(rows.Unified[5].OldLine == 6);
+	CHECK(rows.Unified[5].NewLine == 4);
+	CHECK(rows.Unified[6].OldLine == 7);
+	CHECK(rows.Unified[6].NewLine == 5);
+	CHECK(rows.Unified[7].OldLine == 8);
+	CHECK(rows.Unified[7].NewLine == 6);
 
-	REQUIRE(rows.SideBySide.size() == 9);
+	REQUIRE(rows.SideBySide.size() == 8);
+	REQUIRE(rows.SideBySide[3].Left.has_value());
+	CHECK_FALSE(rows.SideBySide[3].Right.has_value());
+	CHECK(rows.SideBySide[3].Left->OldLine == 4);
 	REQUIRE(rows.SideBySide[4].Left.has_value());
 	CHECK_FALSE(rows.SideBySide[4].Right.has_value());
-	CHECK(rows.SideBySide[4].Left->OldLine == 4);
-	REQUIRE(rows.SideBySide[5].Left.has_value());
-	CHECK_FALSE(rows.SideBySide[5].Right.has_value());
-	CHECK(rows.SideBySide[5].Left->OldLine == 5);
+	CHECK(rows.SideBySide[4].Left->OldLine == 5);
 
-	REQUIRE(rows.SideBySide[6].Left.has_value());
-	REQUIRE(rows.SideBySide[6].Right.has_value());
-	CHECK(rows.SideBySide[6].Left->OldLine == 6);
-	CHECK(rows.SideBySide[6].Right->NewLine == 4);
+	REQUIRE(rows.SideBySide[5].Left.has_value());
+	REQUIRE(rows.SideBySide[5].Right.has_value());
+	CHECK(rows.SideBySide[5].Left->OldLine == 6);
+	CHECK(rows.SideBySide[5].Right->NewLine == 4);
 }
 
 // DiffRows.h warns that a caller can hand in line counts from a different snapshot than the
@@ -687,21 +685,19 @@ TEST_CASE("A line count smaller than the hunk's own numbers does not blow up the
 	const Graphite::WholeFileRows rows = Graphite::BuildWholeFileRows(file, 1, 1);
 
 	// No leading gap (the hunk starts at line 1) and no tail (the clamp floors it at zero):
-	// just the header and the hunk's own 3 lines, exactly.
-	REQUIRE(rows.Unified.size() == 4);
-	CHECK(rows.Unified[0].Kind == DiffRowKind::HunkHeader);
-	CHECK(rows.Unified[1].Kind == DiffRowKind::Context);
-	CHECK(rows.Unified[1].OldLine == 1);
-	CHECK(rows.Unified[1].NewLine == 1);
-	CHECK(rows.Unified[2].OldLine == 2);
-	CHECK(rows.Unified[2].NewLine == 2);
-	CHECK(rows.Unified[3].OldLine == 3);
-	CHECK(rows.Unified[3].NewLine == 3);
+	// just the hunk's own 3 lines, exactly.
+	REQUIRE(rows.Unified.size() == 3);
+	CHECK(rows.Unified[0].Kind == DiffRowKind::Context);
+	CHECK(rows.Unified[0].OldLine == 1);
+	CHECK(rows.Unified[0].NewLine == 1);
+	CHECK(rows.Unified[1].OldLine == 2);
+	CHECK(rows.Unified[1].NewLine == 2);
+	CHECK(rows.Unified[2].OldLine == 3);
+	CHECK(rows.Unified[2].NewLine == 3);
 
-	REQUIRE(rows.SideBySide.size() == 4);
-	CHECK(rows.SideBySide[0].Left->Kind == DiffRowKind::HunkHeader);
-	CHECK(rows.SideBySide[3].Left->OldLine == 3);
-	CHECK(rows.SideBySide[3].Right->NewLine == 3);
+	REQUIRE(rows.SideBySide.size() == 3);
+	CHECK(rows.SideBySide[2].Left->OldLine == 3);
+	CHECK(rows.SideBySide[2].Right->NewLine == 3);
 }
 
 namespace {
@@ -871,20 +867,20 @@ TEST_CASE("A line of a hunk is found again in every layout of the same file")
 	const std::vector<DiffRow> unified = Graphite::BuildUnifiedRows(file);
 	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
 
-	// The second added line: row 5 of the whole file, after two Unchanged rows, the header,
-	// the removed line and the first added one.
-	const std::optional<Graphite::DiffLineAnchor> added = Graphite::AnchorOf(whole.Unified[5]);
+	// The second added line: row 4 of the whole file, after two Unchanged rows, the removed
+	// line and the first added one.
+	const std::optional<Graphite::DiffLineAnchor> added = Graphite::AnchorOf(whole.Unified[4]);
 	REQUIRE(added.has_value());
 
 	CHECK(Graphite::RowAt(unified, *added) == Graphite::DiffRowAt{3, true});
 	CHECK(Graphite::RowAt(pairs, *added) == Graphite::DiffRowAt{2, true});
-	CHECK(Graphite::RowAt(whole.SideBySide, *added) == Graphite::DiffRowAt{4, true});
+	CHECK(Graphite::RowAt(whole.SideBySide, *added) == Graphite::DiffRowAt{3, true});
 
 	// The removed line is found by its old number, in the row that pairs it off.
 	const Graphite::DiffLineAnchor removed{Graphite::DiffSide::Old, 3};
 
 	CHECK(Graphite::RowAt(unified, removed) == Graphite::DiffRowAt{1, true});
-	CHECK(Graphite::RowAt(whole.SideBySide, removed) == Graphite::DiffRowAt{3, true});
+	CHECK(Graphite::RowAt(whole.SideBySide, removed) == Graphite::DiffRowAt{2, true});
 }
 
 TEST_CASE("A line outside every hunk lands on the header of the next hunk, not inside it")
@@ -922,24 +918,189 @@ TEST_CASE("A switch keeps the row nearest the middle of the view, preferring one
 	file.Change = Core::FileChange::Modified;
 	file.Hunks.push_back(ExpandingHunk(3, 3));
 
-	// Two Unchanged rows, the header, the removed line, two added, three Unchanged.
+	// Two Unchanged rows, the removed line, two added, three Unchanged.
 	const Graphite::WholeFileRows whole = Graphite::BuildWholeFileRows(file, 6, 7);
 
-	// The middle of rows 0 to 8 is row 4, which is in the hunk.
-	CHECK(Graphite::RowToKeep(whole.Unified, 0, 9) == std::optional<std::size_t>{4});
+	// The middle of rows 0 to 7 falls between 3 and 4, both in the hunk; the first wins.
+	CHECK(Graphite::RowToKeep(whole.Unified, 0, 8) == std::optional<std::size_t>{3});
 
-	// The middle of rows 5 to 8 falls between 6 and 7, both Unchanged; the added line at 5
+	// The middle of rows 4 to 7 falls between 5 and 6, both Unchanged; the added line at 4
 	// is further from it but is kept, being the one the hunks-only rows also have.
-	CHECK(Graphite::RowToKeep(whole.Unified, 5, 9) == std::optional<std::size_t>{5});
+	CHECK(Graphite::RowToKeep(whole.Unified, 4, 8) == std::optional<std::size_t>{4});
 
 	// Nothing of the hunk on screen: the Unchanged row nearest the middle.
-	CHECK(Graphite::RowToKeep(whole.Unified, 6, 9) == std::optional<std::size_t>{7});
+	CHECK(Graphite::RowToKeep(whole.Unified, 5, 8) == std::optional<std::size_t>{6});
 
-	// A view down to the header alone keeps nothing, and a span past the rows is cut to them.
-	CHECK_FALSE(Graphite::RowToKeep(whole.Unified, 2, 3).has_value());
-	CHECK(Graphite::RowToKeep(whole.Unified, 8, 50) == std::optional<std::size_t>{8});
-	CHECK_FALSE(Graphite::RowToKeep(whole.Unified, 9, 12).has_value());
+	// A span past the rows is cut to them.
+	CHECK(Graphite::RowToKeep(whole.Unified, 7, 50) == std::optional<std::size_t>{7});
+	CHECK_FALSE(Graphite::RowToKeep(whole.Unified, 8, 12).has_value());
 
-	// Side by side the same: the pair of the removed and first added line sits at 3.
+	// A view down to a header alone keeps nothing.
+	const std::vector<DiffRow> unified = Graphite::BuildUnifiedRows(file);
+	CHECK_FALSE(Graphite::RowToKeep(unified, 0, 1).has_value());
+
+	// Side by side the same: the second added line, alone in its pair, sits in the middle.
 	CHECK(Graphite::RowToKeep(whole.SideBySide, 0, 7) == std::optional<std::size_t>{3});
+}
+
+namespace {
+
+	Core::FileDiff TwoHunks()
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Modified;
+		file.Hunks.push_back(ExpandingHunk(3, 3));
+		file.Hunks.push_back(ExpandingHunk(20, 21));
+		return file;
+	}
+}
+
+TEST_CASE("Hunks-only rows put a gap before every hunk but the first")
+{
+	const Core::FileDiff file = TwoHunks();
+
+	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(file);
+
+	// Header and three lines per hunk, and one gap between them.
+	REQUIRE(rows.size() == 9);
+	CHECK(rows[0].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows[4].Kind == DiffRowKind::HunkGap);
+	CHECK(rows[4].Hunk == 1);
+	CHECK(rows[5].Kind == DiffRowKind::HunkHeader);
+
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	// Header, removed-against-added, the second added line: three pairs per hunk.
+	REQUIRE(pairs.size() == 7);
+	REQUIRE(pairs[3].Left.has_value());
+	REQUIRE(pairs[3].Right.has_value());
+	CHECK(pairs[3].Left->Kind == DiffRowKind::HunkGap);
+	CHECK(pairs[3].Right->Kind == DiffRowKind::HunkGap);
+	CHECK(pairs[4].Left->Kind == DiffRowKind::HunkHeader);
+}
+
+TEST_CASE("Whole-file rows have no headers or gaps, since nothing is left out")
+{
+	const Graphite::WholeFileRows whole = Graphite::BuildWholeFileRows(TwoHunks(), 24, 26);
+
+	const auto marks = [](const std::optional<DiffRow>& row) {
+		return row.has_value()
+			   && (row->Kind == DiffRowKind::HunkHeader || row->Kind == DiffRowKind::HunkSignature
+				   || row->Kind == DiffRowKind::HunkGap);
+	};
+
+	for (const DiffRow& row : whole.Unified)
+	{
+		CHECK_FALSE(marks(row));
+	}
+
+	for (const DiffPair& pair : whole.SideBySide)
+	{
+		CHECK_FALSE(marks(pair.Left));
+		CHECK_FALSE(marks(pair.Right));
+	}
+}
+
+TEST_CASE("A gap names no line and is never the row a switch keeps")
+{
+	const Core::FileDiff file = TwoHunks();
+	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(file);
+
+	CHECK(Graphite::LineOf(file, rows[4]) == nullptr);
+	CHECK_FALSE(Graphite::AnchorOf(rows[4]).has_value());
+	CHECK_FALSE(Graphite::RowToKeep(rows, 4, 6).has_value());
+}
+
+TEST_CASE("A line between two hunks lands on the gap before the second")
+{
+	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(TwoHunks());
+
+	// Line 10 of the new file is between the hunks, which the hunks-only rows leave out.
+	CHECK(Graphite::RowAt(rows, Graphite::DiffLineAnchor{Graphite::DiffSide::New, 10})
+		  == Graphite::DiffRowAt{4, false});
+}
+
+TEST_CASE("A hunk's scope is what follows its second @@, without the line break")
+{
+	using Graphite::HunkScope;
+
+	CHECK(HunkScope("@@ -297,11 +319,18 @@ namespace Graphite {\n") == "namespace Graphite {");
+	CHECK(HunkScope("@@ -1,2 +1,3 @@ int main()\r\n") == "int main()");
+	CHECK(HunkScope("@@ -1,2 +1,3 @@\n").empty());
+	CHECK(HunkScope("@@ -1,2 +1,3 @@").empty());
+
+	// Not a header at all, or one missing its closing marker: nothing to show.
+	CHECK(HunkScope("").empty());
+	CHECK(HunkScope("namespace Graphite {").empty());
+	CHECK(HunkScope("@@ -1,2 +1,3 namespace").empty());
+}
+
+TEST_CASE("A hunk's range reads as the lines it covers on that side")
+{
+	using Graphite::LineRangeLabel;
+
+	CHECK(LineRangeLabel(297, 11) == "297–307");
+	CHECK(LineRangeLabel(5, 1) == "5");
+
+	// A side the hunk has no lines on — a pure insertion's old side — covers nothing.
+	CHECK(LineRangeLabel(4, 0) == "—");
+}
+
+TEST_CASE("A hunk whose header names a scope gets a row for it under the header")
+{
+	Core::FileDiff file = FileWith({Line(Core::DiffLineKind::Context, 1, 1, "one\n")});
+	file.Hunks[0].Header = "@@ -1 +1 @@ namespace Graphite {\n";
+	file.Hunks[0].OldCount = 1;
+	file.Hunks[0].NewCount = 1;
+
+	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(file);
+
+	REQUIRE(rows.size() == 3);
+	CHECK(rows[0].Kind == DiffRowKind::HunkHeader);
+	CHECK(rows[1].Kind == DiffRowKind::HunkSignature);
+	CHECK(rows[1].Hunk == 0);
+	CHECK(rows[2].Kind == DiffRowKind::Context);
+
+	// It names no line, so nothing can resolve it or keep it.
+	CHECK(Graphite::LineOf(file, rows[1]) == nullptr);
+	CHECK_FALSE(Graphite::AnchorOf(rows[1]).has_value());
+
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	REQUIRE(pairs.size() == 3);
+	REQUIRE(pairs[1].Left.has_value());
+	REQUIRE(pairs[1].Right.has_value());
+	CHECK(pairs[1].Left->Kind == DiffRowKind::HunkSignature);
+	CHECK(pairs[1].Right->Kind == DiffRowKind::HunkSignature);
+
+	// The whole file has neither: nothing is left out for them to introduce.
+	const Graphite::WholeFileRows whole = Graphite::BuildWholeFileRows(file, 1, 1);
+
+	REQUIRE(whole.Unified.size() == 1);
+	CHECK(whole.Unified[0].Kind == DiffRowKind::Context);
+}
+
+TEST_CASE("A signature is found as the nearest line above the hunk that starts with it")
+{
+	using Graphite::SignatureLine;
+
+	const std::vector<std::string_view> lines{"namespace Graphite {", "",   "    int Foo()",
+											  "    {",                 "        return 1;",
+											  "    }"};
+
+	// Searched upward from the line before the hunk, which starts at line 5 here. Indentation
+	// is not compared: HunkScope trims it off the scope, having no way to tell it from the
+	// space git puts after the second "@@".
+	CHECK(SignatureLine(lines, 5, "int Foo()") == 3);
+	CHECK(SignatureLine(lines, 5, "namespace Graphite {") == 1);
+	CHECK(SignatureLine(lines, 5, "int Bar()") == 0);
+
+	// Git cuts a long line short, so the scope may be only the line's beginning.
+	CHECK(SignatureLine(lines, 5, "namespace Gra") == 1);
+
+	// Never the hunk's own lines or past the file, and never an empty scope.
+	CHECK(SignatureLine(lines, 3, "int Foo()") == 0);
+	CHECK(SignatureLine(lines, 99, "int Foo()") == 3);
+	CHECK(SignatureLine(lines, 5, "") == 0);
+	CHECK(SignatureLine(std::span<const std::string_view>{}, 5, "namespace") == 0);
 }

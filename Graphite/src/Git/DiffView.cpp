@@ -14,7 +14,9 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace Graphite {
@@ -41,6 +43,8 @@ namespace Graphite {
 				case DiffRowKind::Added: return palette.DiffAddedLine;
 				case DiffRowKind::Removed: return palette.DiffRemovedLine;
 				case DiffRowKind::HunkHeader:
+				case DiffRowKind::HunkSignature: return ImGui::GetColorU32(ImGuiCol_FrameBg);
+				case DiffRowKind::HunkGap:
 				case DiffRowKind::Context:
 				case DiffRowKind::Unchanged: break;
 			}
@@ -55,6 +59,8 @@ namespace Graphite {
 				case DiffRowKind::Added: return palette.DiffAddedText;
 				case DiffRowKind::Removed: return palette.DiffRemovedText;
 				case DiffRowKind::HunkHeader:
+				case DiffRowKind::HunkSignature:
+				case DiffRowKind::HunkGap:
 				case DiffRowKind::Context:
 				case DiffRowKind::Unchanged: break;
 			}
@@ -74,6 +80,93 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(ImVec2(x + width - textWidth - kNumberPaddingX, y));
 			ImGui::TextUnformatted(text.c_str());
+		}
+
+		// What a hunk's two opening rows say in place of git's "@@ -297,11 +319,18 @@ scope".
+		// The header row names the hunk and where it stands among the file's others, then the
+		// lines it covers; `side` picks one half for the side-by-side view, and the unified
+		// view has both with an arrow from the old range to the new. The signature row under it
+		// has the scope as git wrote it, for when the line it came from cannot be found.
+		std::string HeaderTextFor(const Core::FileDiff& file, std::size_t index, DiffRowKind kind,
+								  std::optional<DiffSide> side)
+		{
+			const Core::Hunk& hunk = file.Hunks[index];
+
+			if (kind == DiffRowKind::HunkSignature)
+			{
+				return std::string(HunkScope(hunk.Header));
+			}
+
+			// Named, because a bare pair of numbers above the code says nothing about being one
+			// changed stretch of the file, or about how many more there are to read.
+			std::string text = "Hunk " + std::to_string(index + 1) + " of "
+							   + std::to_string(file.Hunks.size());
+
+			// A half the hunk has no lines on says so in words: a bare dash reads as a range
+			// that failed to show rather than as an added or deleted file's empty side.
+			if (side.has_value()
+				&& (*side == DiffSide::Old ? hunk.OldCount : hunk.NewCount) <= 0)
+			{
+				return text + " | no lines";
+			}
+
+			text += " | lines ";
+
+			if (side != DiffSide::New)
+			{
+				text += LineRangeLabel(hunk.OldStart, hunk.OldCount);
+			}
+
+			if (!side.has_value())
+			{
+				text += " → ";
+			}
+
+			if (side != DiffSide::Old)
+			{
+				text += LineRangeLabel(hunk.NewStart, hunk.NewCount);
+			}
+
+			return text;
+		}
+
+		// The line of the file a hunk's signature row names, as the Unchanged row that line
+		// would be — so it draws, numbers and colours exactly as it does in the whole file.
+		// Absent when neither side has it: no texts yet, or a scope git took from somewhere
+		// the search does not reach, and the row then shows the scope as git wrote it.
+		std::optional<DiffRow> SignatureRowFor(const Core::Hunk& hunk,
+											   std::span<const std::string_view> oldLines,
+											   std::span<const std::string_view> newLines)
+		{
+			const std::string_view scope = HunkScope(hunk.Header);
+
+			// A side with no lines in the hunk names the line its change sits after, so the
+			// search starts below that line rather than above it.
+			DiffRow row;
+			row.Kind = DiffRowKind::Unchanged;
+			row.OldLine = SignatureLine(
+				oldLines, hunk.OldCount > 0 ? hunk.OldStart : hunk.OldStart + 1, scope);
+			row.NewLine = SignatureLine(
+				newLines, hunk.NewCount > 0 ? hunk.NewStart : hunk.NewStart + 1, scope);
+
+			if (row.OldLine == 0 && row.NewLine == 0)
+			{
+				return std::nullopt;
+			}
+
+			return row;
+		}
+
+		// Draws a header row's text from `origin`, dimmed as a whole: it describes the code below
+		// rather than being any of it. Returns how wide it came out.
+		float DrawHeader(const ImVec2& origin, const std::string& text)
+		{
+			ImGui::SetCursorPos(origin);
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+			ImGui::TextUnformatted(text.c_str());
+			ImGui::PopStyleColor();
+
+			return ImGui::CalcTextSize(text.c_str()).x;
 		}
 
 		// Draws the runs RunsFor works out for the line — which of them there are, and that
@@ -117,7 +210,13 @@ namespace Graphite {
 	{
 		RenderToolbar(file);
 
-		if (texts == nullptr)
+		if (texts != nullptr)
+		{
+			// Whole-file mode draws every line from these, and the hunks-only one the line each
+			// hunk's signature row names.
+			RebuildLineCache(texts);
+		}
+		else
 		{
 			// The owner's file changed to one whose texts are not ready (or not asked for), or
 			// the previous file's entry was evicted. Either way the cache below is for a file
@@ -145,21 +244,19 @@ namespace Graphite {
 		// Unchanged row says; while they are still in flight (or the owner has not asked for
 		// them at all) this draws the hunks-only view instead, which needs no text and is what
 		// the reader already had — so nothing on screen blinks once the texts land.
-		const bool wholeFile = m_ShowWholeFile && texts != nullptr;
+		const bool wholeFile = m_Scope == DiffScope::WholeFile && texts != nullptr;
 
 		// A different layout is a different set of rows under the same scroll position, which
 		// left alone would show whatever those rows happen to have there. Decided here, from
 		// what is drawn rather than from the buttons, so that whole-file mode arriving a few
 		// frames late with its texts still keeps the reader's line.
-		const Layout layout{m_Mode, wholeFile};
+		const Layout layout{m_Mode, wholeFile ? DiffScope::WholeFile : DiffScope::Hunks};
 		m_RestoreKeptLine = layout != m_Layout && m_KeptLine.has_value()
 						   && m_KeptLine->Path == ShownPath(file);
 		m_Layout = layout;
 
 		if (wholeFile)
 		{
-			RebuildLineCache(texts);
-
 			const WholeFileRows rows = BuildWholeFileRows(file, m_OldLines.size(), m_NewLines.size());
 
 			if (m_Mode == DiffViewMode::Unified)
@@ -222,11 +319,24 @@ namespace Graphite {
 		DrawIconSeparator();
 		ImGui::SameLine();
 
-		if (DrawIconButton("##wholeFile", ICON_MDI_ARROW_EXPAND_VERTICAL, m_ShowWholeFile,
-						   "Whole file"))
+		// The scopes as a pair like the modes, for the same reason; room for a third follows
+		// the same pattern.
+		if (DrawIconButton("##hunks", ICON_MDI_ARROW_COLLAPSE_VERTICAL,
+						   m_Scope == DiffScope::Hunks, "Hunks only"))
 		{
-			m_ShowWholeFile = !m_ShowWholeFile;
+			m_Scope = DiffScope::Hunks;
 		}
+
+		ImGui::SameLine(0.0f, kModeButtonGap);
+
+		if (DrawIconButton("##wholeFile", ICON_MDI_ARROW_EXPAND_VERTICAL,
+						   m_Scope == DiffScope::WholeFile, "Whole file"))
+		{
+			m_Scope = DiffScope::WholeFile;
+		}
+
+		ImGui::SameLine();
+		DrawIconSeparator();
 
 		ImGui::SameLine();
 
@@ -347,26 +457,45 @@ namespace Graphite {
 						band);
 				}
 
-				if (row.Kind == DiffRowKind::HunkHeader)
+				// The signature row draws as the line of the file it names, once that is found.
+				DiffRow drawn = row;
+
+				if (row.Kind == DiffRowKind::HunkSignature)
 				{
-					ImGui::SetCursorPos(rowPos);
-					ImGui::TextUnformatted(file.Hunks[row.Hunk].Header.c_str());
+					drawn = SignatureRowFor(file.Hunks[row.Hunk], m_OldLines, m_NewLines)
+								.value_or(row);
+				}
+
+				if (drawn.Kind == DiffRowKind::HunkHeader
+					|| drawn.Kind == DiffRowKind::HunkSignature)
+				{
+					// In the text column, past both line numbers, so it lines up with the code
+					// it introduces rather than hanging off the region's edge.
+					DrawHeader(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y),
+							   HeaderTextFor(file, row.Hunk, row.Kind, std::nullopt));
 					continue;
 				}
 
-				DrawNumber(rowPos.x, rowPos.y, numberWidth, row.OldLine);
-				DrawNumber(rowPos.x + numberWidth, rowPos.y, numberWidth, row.NewLine);
+				if (row.Kind == DiffRowKind::HunkGap)
+				{
+					ImGui::SetCursorPos(rowPos);
+					ImGui::NewLine();
+					continue;
+				}
+
+				DrawNumber(rowPos.x, rowPos.y, numberWidth, drawn.OldLine);
+				DrawNumber(rowPos.x + numberWidth, rowPos.y, numberWidth, drawn.NewLine);
 
 				// One text column standing for both sides, so it resolves for New — which is
 				// what this view drew before the two halves could differ.
 				const ResolvedLine resolved =
-					ResolveRow(file, row, DiffSide::New, m_OldLines, m_NewLines, tokens);
+					ResolveRow(file, drawn, DiffSide::New, m_OldLines, m_NewLines, tokens);
 
 				if (resolved.Text.has_value())
 				{
 					DrawLine(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y), *resolved.Text,
 							 m_ColourSyntax ? resolved.Tokens : nullptr,
-							 TextFor(row.Kind, palette), syntax);
+							 TextFor(drawn.Kind, palette), syntax);
 				}
 				else
 				{
@@ -396,7 +525,7 @@ namespace Graphite {
 		// the long line they came to read — and ImGui then clamps their position back to the
 		// left. Keeping it means knowing when it stops applying, which is what the measurement
 		// answers; see its own comment for why the path alone does not.
-		if (const DiffMeasurement measurement = MeasurementOf(file, m_ShowWholeFile);
+		if (const DiffMeasurement measurement = MeasurementOf(file, m_Scope);
 			measurement != m_WidestFor)
 		{
 			m_WidestFor = measurement;
@@ -499,18 +628,31 @@ namespace Graphite {
 						band);
 				}
 
-				if (row->Kind == DiffRowKind::HunkHeader)
+				// The signature row draws as the line of the file it names, once that is found.
+				DiffRow drawn = *row;
+
+				if (row->Kind == DiffRowKind::HunkSignature)
 				{
-					const std::string& header = file.Hunks[row->Hunk].Header;
+					drawn = SignatureRowFor(file.Hunks[row->Hunk], m_OldLines, m_NewLines)
+								.value_or(*row);
+				}
 
-					ImGui::SetCursorPos(rowPos);
-					ImGui::TextUnformatted(header.c_str());
+				if (drawn.Kind == DiffRowKind::HunkHeader
+					|| drawn.Kind == DiffRowKind::HunkSignature)
+				{
+					// Measured like any other line, so a long scope shown as git wrote it is
+					// not left beyond anything scrolling could reach.
+					const float width =
+						DrawHeader(ImVec2(rowPos.x + numberWidth, rowPos.y),
+								   HeaderTextFor(file, row->Hunk, row->Kind,
+												 leftSide ? DiffSide::Old : DiffSide::New));
+					widest = std::max(widest, numberWidth + width);
+					continue;
+				}
 
-					// Measured like any other line: libgit2 puts the enclosing function's
-					// signature in the header, which is routinely the widest thing here, and
-					// leaving it out would put its tail beyond anything scrolling could reach.
-					// It starts at the half's edge rather than past the line numbers.
-					widest = std::max(widest, ImGui::CalcTextSize(header.c_str()).x);
+				// Blank on both halves: its height is the whole of what it says.
+				if (row->Kind == DiffRowKind::HunkGap)
+				{
 					continue;
 				}
 
@@ -518,10 +660,10 @@ namespace Graphite {
 				// matching the unified view — a blank line number then costs nothing instead
 				// of leaving the text column's position dependent on it.
 				DrawNumber(rowPos.x, rowPos.y, numberWidth,
-						   leftSide ? row->OldLine : row->NewLine);
+						   leftSide ? drawn.OldLine : drawn.NewLine);
 
 				const ResolvedLine resolved =
-					ResolveRow(file, *row, leftSide ? DiffSide::Old : DiffSide::New, m_OldLines,
+					ResolveRow(file, drawn, leftSide ? DiffSide::Old : DiffSide::New, m_OldLines,
 							   m_NewLines, tokens);
 
 				if (!resolved.Text.has_value())
@@ -530,7 +672,7 @@ namespace Graphite {
 				}
 
 				DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
-						 m_ColourSyntax ? resolved.Tokens : nullptr, TextFor(row->Kind, palette),
+						 m_ColourSyntax ? resolved.Tokens : nullptr, TextFor(drawn.Kind, palette),
 						 syntax);
 
 				widest = std::max(widest, numberWidth +

@@ -3,6 +3,9 @@
 #include "Git/CommitLabels.h"
 
 #include <algorithm>
+#include <iterator>
+#include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -31,22 +34,44 @@ namespace Graphite {
 			return row;
 		}
 
-		DiffRow HeaderFor(std::size_t hunk)
+		// A row of a hunk that names no line of it: the header, the scope under it, the gap.
+		DiffRow MarkerFor(DiffRowKind kind, std::size_t hunk)
 		{
 			DiffRow row;
-			row.Kind = DiffRowKind::HunkHeader;
+			row.Kind = kind;
 			row.Hunk = hunk;
 			return row;
 		}
 
-		// Appends one hunk's own rows in the diff's order, header included. Shared by
-		// BuildUnifiedRows and BuildWholeFileRows so the hunks-only and whole-file layouts
-		// agree exactly on what a hunk looks like.
+		// The rows that open a hunk in the hunks-only layout, which leaves out the lines between
+		// hunks and so has to say where each one starts: a gap for what was left out before it
+		// (none before the first), the header, and the scope git named, if it named one. The
+		// whole-file layout leaves nothing out and has none of them.
+		std::vector<DiffRow> MarkersFor(const Core::FileDiff& file, std::size_t hunk)
+		{
+			std::vector<DiffRow> markers;
+
+			if (hunk > 0)
+			{
+				markers.push_back(MarkerFor(DiffRowKind::HunkGap, hunk));
+			}
+
+			markers.push_back(MarkerFor(DiffRowKind::HunkHeader, hunk));
+
+			if (!HunkScope(file.Hunks[hunk].Header).empty())
+			{
+				markers.push_back(MarkerFor(DiffRowKind::HunkSignature, hunk));
+			}
+
+			return markers;
+		}
+
+		// Appends one hunk's own lines in the diff's order. Shared by BuildUnifiedRows and
+		// BuildWholeFileRows so the hunks-only and whole-file layouts agree exactly on what a
+		// hunk looks like.
 		void AppendUnifiedHunk(std::vector<DiffRow>& rows, const Core::FileDiff& file,
 								std::size_t hunk)
 		{
-			rows.push_back(HeaderFor(hunk));
-
 			const std::vector<Core::DiffLine>& lines = file.Hunks[hunk].Lines;
 
 			for (std::size_t index = 0; index < lines.size(); ++index)
@@ -61,8 +86,6 @@ namespace Graphite {
 		void AppendSideBySideHunk(std::vector<DiffPair>& pairs, const Core::FileDiff& file,
 								   std::size_t hunk)
 		{
-			pairs.push_back(DiffPair{HeaderFor(hunk), HeaderFor(hunk)});
-
 			const std::vector<Core::DiffLine>& lines = file.Hunks[hunk].Lines;
 
 			std::size_t index = 0;
@@ -147,6 +170,7 @@ namespace Graphite {
 
 		for (std::size_t hunk = 0; hunk < file.Hunks.size(); ++hunk)
 		{
+			std::ranges::copy(MarkersFor(file, hunk), std::back_inserter(rows));
 			AppendUnifiedHunk(rows, file, hunk);
 		}
 
@@ -159,6 +183,12 @@ namespace Graphite {
 
 		for (std::size_t hunk = 0; hunk < file.Hunks.size(); ++hunk)
 		{
+			// Both halves of a marker say the same thing, each for its own side.
+			for (const DiffRow& marker : MarkersFor(file, hunk))
+			{
+				pairs.push_back(DiffPair{marker, marker});
+			}
+
 			AppendSideBySideHunk(pairs, file, hunk);
 		}
 
@@ -167,10 +197,11 @@ namespace Graphite {
 
 	const Core::DiffLine* LineOf(const Core::FileDiff& file, const DiffRow& row)
 	{
-		// A header names no line, and an Unchanged row names no hunk at all — its Hunk and
-		// Line fields are left at their default zero, which would otherwise resolve to
-		// file.Hunks[0].Lines[0] for any file whose first hunk is non-empty.
-		if (row.Kind == DiffRowKind::HunkHeader || row.Kind == DiffRowKind::Unchanged
+		// A header, its scope or a gap names no line, and an Unchanged row names no hunk at all
+		// — its Hunk and Line fields are left at their default zero, which would otherwise
+		// resolve to file.Hunks[0].Lines[0] for any file whose first hunk is non-empty.
+		if (row.Kind == DiffRowKind::HunkHeader || row.Kind == DiffRowKind::HunkSignature
+			|| row.Kind == DiffRowKind::HunkGap || row.Kind == DiffRowKind::Unchanged
 			|| row.Hunk >= file.Hunks.size())
 		{
 			return nullptr;
@@ -416,9 +447,9 @@ namespace Graphite {
 
 		// Shared by both layouts, which differ only in where a row keeps its line numbers. A
 		// linear walk: it runs once per switch of layout, never per frame. Rows without a line
-		// on the anchor's side — headers, and lines only the other side has — are passed over,
-		// and among the rest each side's numbers only ever rise, which is what lets the first
-		// one at or past the anchor stand for it.
+		// on the anchor's side — headers, gaps, and lines only the other side has — are passed
+		// over, and among the rest each side's numbers only ever rise, which is what lets the
+		// first one at or past the anchor stand for it.
 		template <typename Row>
 		DiffRowAt FindRow(std::span<const Row> rows, DiffLineAnchor anchor)
 		{
@@ -437,8 +468,9 @@ namespace Graphite {
 				}
 
 				// Back over whatever precedes it with no line on this side — the hunk's
-				// header, and lines only the other side has — which belongs before the line
-				// that was asked for and not after it.
+				// header, the gap before it, and lines only the other side has — which belongs
+				// before the line that was asked for and not after it. A line the hunks-only
+				// rows leave out lands on the gap standing for it.
 				while (index > 0 && LineOn(rows[index - 1], anchor.Side) <= 0)
 				{
 					--index;
@@ -526,11 +558,11 @@ namespace Graphite {
 		return FindRow(pairs, anchor);
 	}
 
-	DiffMeasurement MeasurementOf(const Core::FileDiff& file, bool wholeFile)
+	DiffMeasurement MeasurementOf(const Core::FileDiff& file, DiffScope scope)
 	{
 		DiffMeasurement measurement;
 		measurement.Path = ShownPath(file);
-		measurement.WholeFile = wholeFile;
+		measurement.Scope = scope;
 		measurement.Hunks = file.Hunks.size();
 
 		for (const Core::Hunk& hunk : file.Hunks)
@@ -548,5 +580,76 @@ namespace Graphite {
 		}
 
 		return measurement;
+	}
+
+	std::string_view HunkScope(std::string_view header)
+	{
+		constexpr std::string_view marker = "@@";
+
+		if (!header.starts_with(marker))
+		{
+			return {};
+		}
+
+		const std::size_t close = header.find(marker, marker.size());
+
+		if (close == std::string_view::npos)
+		{
+			return {};
+		}
+
+		std::string_view scope = header.substr(close + marker.size());
+
+		const std::size_t first = scope.find_first_not_of(" \t");
+		const std::size_t last = scope.find_last_not_of(" \t\r\n");
+
+		if (first == std::string_view::npos || last == std::string_view::npos || last < first)
+		{
+			return {};
+		}
+
+		return scope.substr(first, last - first + 1);
+	}
+
+	std::string LineRangeLabel(int start, int count)
+	{
+		if (count <= 0)
+		{
+			return "—";
+		}
+
+		if (count == 1)
+		{
+			return std::to_string(start);
+		}
+
+		return std::to_string(start) + "–" + std::to_string(start + count - 1);
+	}
+
+	int SignatureLine(std::span<const std::string_view> lines, int before, std::string_view scope)
+	{
+		const auto unindented = [](std::string_view text) {
+			const std::size_t first = text.find_first_not_of(" \t");
+			return first == std::string_view::npos ? std::string_view{} : text.substr(first);
+		};
+
+		scope = unindented(scope);
+
+		if (scope.empty() || before <= 1)
+		{
+			return 0;
+		}
+
+		const std::size_t start = std::min(static_cast<std::size_t>(before - 1), lines.size());
+
+		for (std::size_t number = start; number >= 1; --number)
+		{
+			if (unindented(lines[number - 1]).starts_with(scope))
+			{
+				return static_cast<int>(number);
+			}
+		}
+
+		return 0;
 	}
 }
