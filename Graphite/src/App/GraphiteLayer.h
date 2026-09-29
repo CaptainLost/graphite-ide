@@ -102,6 +102,8 @@ namespace Graphite {
 
 		void RenderDropConfirm();
 
+		void RenderEmptyEditorArea();
+
 		void QueueForFocusedEditor(Core::Event& event);
 
 		void RequestCloseConfirmation(ClosePurpose purpose);

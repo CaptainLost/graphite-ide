@@ -820,6 +820,7 @@ namespace Graphite {
 		m_DockSpace.Begin(m_Layout);
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
 						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
+		RenderEmptyEditorArea();
 		m_DockSpace.End();
 
 		// Outside the dockspace host's Begin/End above, and outside every other window: a
@@ -951,6 +952,22 @@ namespace Graphite {
 				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
 			break;
 		}
+	}
+
+	void GraphiteLayer::RenderEmptyEditorArea()
+	{
+		// The explorer beside it already says no folder is open, so this says what can be done
+		// instead. The button stays: the explorer can be closed, and then this is the only way
+		// in on screen. A file dropped without a folder still opens as a document.
+		if (!m_Workspace.IsOpen())
+		{
+			if (m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.", "Open Folder"))
+				OpenFolderInteractively(m_Workspace);
+
+			return;
+		}
+
+		m_DockSpace.CenterEmptyState("Open a file from the Explorer, or drop one here.");
 	}
 
 	void GraphiteLayer::RenderDropConfirm()

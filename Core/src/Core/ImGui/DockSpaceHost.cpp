@@ -3,6 +3,7 @@
 #include "Core/ImGui/DockSpaceHost.h"
 
 #include "Core/Base/Log.h"
+#include "Core/ImGui/EmptyState.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -124,5 +125,38 @@ namespace Core {
 
 		const ImGuiDockNode* centerNode = ImGui::DockBuilderGetCentralNode(m_DockSpaceId);
 		return centerNode != nullptr ? centerNode->ID : 0;
+	}
+
+	bool DockSpaceHost::IsCenterEmpty() const
+	{
+		const ImGuiDockNode* node = ImGui::DockBuilderGetNode(GetCenterNodeId());
+
+		return node != nullptr && node->IsEmpty();
+	}
+
+	bool DockSpaceHost::CenterEmptyState(std::string_view message, const char* action) const
+	{
+		if (!IsCenterEmpty())
+			return false;
+
+		// Into the window DockSpace() opened inside the host, not the host itself: that window
+		// paints the empty node's background over anything the host drew there. Beginning it
+		// again this frame appends to it, above that background, and it is also the window
+		// the node's clicks go to. Every docked window draws above it in turn, so the message
+		// cannot land on a tab that arrives later in the frame.
+		const ImGuiDockNode* node = ImGui::DockBuilderGetNode(GetCenterNodeId());
+		ImGuiWindow* dockSpaceWindow = node->HostWindow;
+
+		if (dockSpaceWindow == nullptr)
+			return false;
+
+		ImGui::Begin(dockSpaceWindow->Name, nullptr, dockSpaceWindow->Flags);
+
+		ImGui::SetCursorScreenPos(node->Pos);
+		const bool clicked = EmptyState(message, action, node->Size);
+
+		ImGui::End();
+
+		return clicked;
 	}
 }
