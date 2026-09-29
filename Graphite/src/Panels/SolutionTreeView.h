@@ -59,6 +59,7 @@ namespace Graphite {
 		void RenderRemoveConfirmation();
 		void ExecutePendingAction();
 		Core::Result<void> Apply(const PendingAction& action);
+		void ApplyAndReport(const PendingAction& action);
 
 		Workspace& m_Workspace;
 		ImGuiTextFilter m_Filter;

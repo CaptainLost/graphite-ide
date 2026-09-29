@@ -213,6 +213,9 @@ namespace Graphite {
 
 	void Workspace::Update()
 	{
+		// Before the watcher check: a dialog is answered whether or not a folder is open.
+		m_Dialog.Poll();
+
 		if (!m_Watcher)
 			return;
 
@@ -676,28 +679,34 @@ namespace Graphite {
 	{
 		commands.Add({.Id = "workspace.openFolder",
 					  .Label = "Open Folder...",
-					  .Run = [this] { OpenFolderInteractively(*this); }});
+					  .Run = [this] { OpenFolderInteractively(*this); },
+					  .Enabled = [this] { return !IsDialogOpen(); }});
 
 		commands.Add({.Id = "workspace.openSolution",
 					  .Label = "Open Solution...",
-					  .Run = [this] { OpenSolutionInteractively(*this); }});
+					  .Run = [this] { OpenSolutionInteractively(*this); },
+					  .Enabled = [this] { return !IsDialogOpen(); }});
 	}
 
+	// Both answer on a later frame, from Workspace::Update: the dialog runs on a thread of its
+	// own. The callbacks can hold the workspace by reference because it owns the dialog.
 	void OpenFolderInteractively(Workspace& workspace)
 	{
-		auto picked = Core::FileDialog::PickFolder("Open Folder");
-		if (!picked)
-		{
-			APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
-			return;
-		}
+		workspace.Dialog().Start([] { return Core::FileDialog::PickFolder("Open Folder"); },
+								 [&workspace](Core::Result<std::filesystem::path> picked) {
+									 if (!picked)
+									 {
+										 APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
+										 return;
+									 }
 
-		const bool cancelled = picked.GetValue().empty();
+									 const bool cancelled = picked.GetValue().empty();
 
-		if (cancelled)
-			return;
+									 if (cancelled)
+										 return;
 
-		(void)workspace.OpenFolder(picked.GetValue());
+									 (void)workspace.OpenFolder(picked.GetValue());
+								 });
 	}
 
 	void OpenSolutionInteractively(Workspace& workspace)
@@ -706,20 +715,22 @@ namespace Graphite {
 			{"Visual Studio solutions", "*.sln;*.slnx"},
 			{"All files", "*.*"}};
 
-		auto picked = Core::FileDialog::PickFile("Open Solution", filters);
+		workspace.Dialog().Start(
+			[filters] { return Core::FileDialog::PickFile("Open Solution", filters); },
+			[&workspace](Core::Result<std::filesystem::path> picked) {
+				if (!picked)
+				{
+					APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+					return;
+				}
 
-		if (!picked)
-		{
-			APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
-			return;
-		}
+				const bool cancelled = picked.GetValue().empty();
 
-		const bool cancelled = picked.GetValue().empty();
+				if (cancelled)
+					return;
 
-		if (cancelled)
-			return;
-
-		if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
-			APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+				if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
+					APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+			});
 	}
 }

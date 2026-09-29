@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,23 +35,12 @@ namespace Graphite {
 			}
 		}
 
-		std::optional<std::filesystem::path> PickProjectFile()
+		Core::Result<std::filesystem::path> PickProjectFile()
 		{
 			const std::vector<Core::FileDialog::Filter> filters = {
 				{"Visual Studio projects", "*.vcxproj"}, {"All files", "*.*"}};
 
-			auto picked = Core::FileDialog::PickFile("Add Existing Project", filters);
-
-			if (!picked)
-			{
-				APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
-				return std::nullopt;
-			}
-
-			if (picked.GetValue().empty())
-				return std::nullopt;
-
-			return picked.GetValue();
+			return Core::FileDialog::PickFile("Add Existing Project", filters);
 		}
 	}
 
@@ -245,7 +233,7 @@ namespace Graphite {
 
 		const bool isRoot = path.empty();
 
-		if (ImGui::MenuItem("Add Existing Project..."))
+		if (ImGui::MenuItem("Add Existing Project...", nullptr, false, !m_Workspace.IsDialogOpen()))
 			m_Pending = PendingAction{PendingAction::Kind::AddProject, {}, path, {}};
 
 		if (ImGui::MenuItem("New Folder"))
@@ -415,19 +403,33 @@ namespace Graphite {
 		PendingAction action = std::move(m_Pending);
 		m_Pending = PendingAction{};
 
-		// Picked here rather than from the menu that recorded the action: a system dialog
-		// opened from inside the tree walk would be modal over a window whose draw is not
-		// finished.
+		// The dialog is started here rather than from the menu that recorded the action, and
+		// answers on a later frame: it runs on a thread of its own. By then the solution may
+		// have closed, which Apply already reports.
 		if (action.kind == PendingAction::Kind::AddProject)
 		{
-			const std::optional<std::filesystem::path> chosen = PickProjectFile();
+			m_Workspace.Dialog().Start(PickProjectFile,
+									   [this, action = std::move(action)](Core::Result<std::filesystem::path> picked) mutable {
+										   if (!picked)
+										   {
+											   APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+											   return;
+										   }
 
-			if (!chosen.has_value())
-				return;
+										   if (picked.GetValue().empty())
+											   return;
 
-			action.project = *chosen;
+										   action.project = std::move(picked).GetValue();
+										   ApplyAndReport(action);
+									   });
+			return;
 		}
 
+		ApplyAndReport(action);
+	}
+
+	void SolutionTreeView::ApplyAndReport(const PendingAction& action)
+	{
 		// No reload here: writing the file wakes the directory watcher, and the reload
 		// arrives through that path.
 		if (const auto applied = Apply(action); !applied)

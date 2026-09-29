@@ -961,7 +961,13 @@ namespace Graphite {
 		// in on screen. A file dropped without a folder still opens as a document.
 		if (!m_Workspace.IsOpen())
 		{
-			if (m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.", "Open Folder"))
+			// Greyed out while a dialog is open, as the explorer's button is.
+			ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
+			const bool clicked =
+				m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.", "Open Folder");
+			ImGui::EndDisabled();
+
+			if (clicked)
 				OpenFolderInteractively(m_Workspace);
 
 			return;

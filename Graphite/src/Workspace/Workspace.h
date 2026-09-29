@@ -8,6 +8,7 @@
 #include "Core/Fs/DirectoryWatcher.h"
 #include "Core/Fs/FileTree.h"
 #include "Core/Git/Repository.h"
+#include "Core/Platform/AsyncDialog.h"
 #include "Sln/SolutionReader.h"
 
 #include <filesystem>
@@ -111,6 +112,12 @@ namespace Graphite {
 
 		WorkspaceSettings& FolderSettings() { return m_Settings; }
 
+		// The one system dialog the application has open at a time. Here because every dialog
+		// there is picks something for the workspace, and every place that opens one already
+		// holds it. Polled by Update, so an answer arrives on a later frame.
+		Core::AsyncDialog& Dialog() { return m_Dialog; }
+		bool IsDialogOpen() const { return m_Dialog.IsOpen(); }
+
 		void RegisterCommands(Core::CommandRegistry& commands);
 
 	private:
@@ -161,6 +168,8 @@ namespace Graphite {
 		bool m_SolutionAttempted = false;
 
 		WorkspaceSettings m_Settings{std::filesystem::path{}};
+
+		Core::AsyncDialog m_Dialog;
 	};
 
 	void OpenFolderInteractively(Workspace& workspace);

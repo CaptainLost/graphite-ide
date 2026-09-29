@@ -558,4 +558,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0526](0526-highlight-what-a-changed-line-lost-by-its-shared-prefix-and-suffix.md) | Highlight what a changed line lost by its shared prefix and suffix | proposed | 2026-09-27 |
 | [0527](0527-show-change-markers-on-the-editor-s-vertical-scrollbar.md) | Show change markers on the editor's vertical scrollbar | proposed | 2026-09-27 |
 | [0528](0528-close-windows-from-outside-through-their-owner-s-own-close-path.md) | Close windows from outside through their owner's own close path | accepted | 2026-09-27 |
+| [0529](0529-run-system-dialogs-on-a-thread-of-their-own.md) | Run system dialogs on a thread of their own | accepted | 2026-09-29 |
 <!-- /adr-index -->

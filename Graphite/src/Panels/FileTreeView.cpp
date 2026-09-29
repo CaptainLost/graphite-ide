@@ -99,7 +99,13 @@ namespace Graphite {
 
 	void FileTreeView::RenderEmptyState()
 	{
-		if (Core::EmptyState("No folder open.", "Open Folder"))
+		// Greyed out while a dialog is open: the dialog runs on its own thread, so the
+		// application stays clickable underneath it and only one may be open at a time.
+		ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
+		const bool clicked = Core::EmptyState("No folder open.", "Open Folder");
+		ImGui::EndDisabled();
+
+		if (clicked)
 			OpenFolderInteractively(m_Workspace);
 	}
 
