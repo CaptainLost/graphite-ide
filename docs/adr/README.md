@@ -561,4 +561,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0529](0529-run-system-dialogs-on-a-thread-of-their-own.md) | Run system dialogs on a thread of their own | accepted | 2026-09-29 |
 | [0530](0530-draw-a-frame-only-when-there-is-reason-to.md) | Draw a frame only when there is reason to | proposed | 2026-09-29 |
 | [0531](0531-keep-per-user-state-in-the-user-s-profile-not-beside-the-executable.md) | Keep per-user state in the user's profile, not beside the executable | proposed | 2026-09-30 |
+| [0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md) | Open an unknown folder in restricted mode until the user trusts it | proposed | 2026-09-30 |
 <!-- /adr-index -->
