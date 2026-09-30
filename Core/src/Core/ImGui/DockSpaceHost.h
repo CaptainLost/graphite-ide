@@ -2,6 +2,7 @@
 
 #include "Core/Base/NonCopyable.h"
 
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,7 +24,10 @@ namespace Core {
 	class DockSpaceHost final : NonCopyable
 	{
 	public:
-		void Begin(const DockLayout& layout);
+		// `aboveDockSpace`, when given, is drawn at the top of the host window, below the menu
+		// bar, and the dockspace takes the space left under it - a place for a bar that has to
+		// sit above every docked panel without being one.
+		void Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace = {});
 		void End();
 
 		void RequestLayoutReset()

@@ -54,7 +54,7 @@ namespace Core {
 		}
 	}
 
-	void DockSpaceHost::Begin(const DockLayout& layout)
+	void DockSpaceHost::Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace)
 	{
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
@@ -92,6 +92,11 @@ namespace Core {
 		}
 
 		ImGui::PopStyleVar(3);
+
+		if (aboveDockSpace)
+		{
+			aboveDockSpace();
+		}
 
 		const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);
 		m_DockSpaceId = dockSpaceId;

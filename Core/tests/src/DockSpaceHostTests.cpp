@@ -159,3 +159,33 @@ TEST_CASE("CenterEmptyState submits nothing while a window is docked in the cent
 		CHECK(ImGui::GetCursorScreenPos().y == doctest::Approx(cursor.y));
 	});
 }
+
+
+TEST_CASE("DockSpaceHost draws what it is given above the dockspace and gives the dockspace the rest")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	bool drawn = false;
+	float bannerBottom = 0.0f;
+
+	const auto banner = [&] {
+		drawn = true;
+		ImGui::Dummy(ImVec2(10.0f, 24.0f));
+		bannerBottom = ImGui::GetCursorScreenPos().y;
+	};
+
+	// A few frames: the dockspace's node takes its position from the frame it is laid out in.
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		ImGui::NewFrame();
+		host.Begin(DockLayout{}, banner);
+		host.End();
+		ImGui::EndFrame();
+	}
+
+	const ImGuiDockNode* node = ImGui::DockBuilderGetNode(host.GetCenterNodeId());
+
+	CHECK(drawn);
+	REQUIRE(node != nullptr);
+	CHECK(node->Pos.y >= bannerBottom - 1.0f);
+}
