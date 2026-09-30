@@ -48,6 +48,9 @@
 #include "Settings/SchemeSection.h"
 #include "Settings/SearchSection.h"
 #include "Settings/SettingsPanel.h"
+#include "Settings/TrustSection.h"
+#include "UI/RestrictedModeBar.h"
+#include "Workspace/WorkspaceTrust.h"
 
 #include "Core/Fs/FileSystem.h"
 
@@ -170,6 +173,10 @@ namespace Graphite {
 			m_LanguageServices.SetConfiguredBinary(LanguageId::Cpp, std::move(binary));
 		}
 
+		// Set before any document opens, for the reason SetConfiguredBinary is: the first
+		// EnsureStarted is where a refused root must already be refused (ADR 0532).
+		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root) { return m_Trust.IsTrusted(root); });
+
 		std::vector<Core::Scope<SettingsSection>> sections;
 
 		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
@@ -179,6 +186,7 @@ namespace Graphite {
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
 		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings));
+		sections.push_back(Core::CreateScope<TrustSection>(m_Trust));
 		sections.push_back(Core::CreateScope<ClaudeSection>(m_ClaudeSettings));
 
 		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
@@ -226,6 +234,31 @@ namespace Graphite {
 						.Label = "Close Workspace",
 						.Run = [this] { RequestCloseConfirmation(ClosePurpose::CloseWorkspace); },
 						.Enabled = [this] { return m_Workspace.IsOpen(); }});
+
+		// Enabled only where the toggle can say something true: with a folder open, and not when
+		// an entry above the folder is what trusts it - revoking the folder itself would change
+		// nothing, and the settings section is where that entry is.
+		m_Commands.Add({.Id = "workspace.toggleTrust",
+						.Label = "Trust This Folder",
+						.Run =
+							[this] {
+								const std::filesystem::path& root = m_Workspace.GetRoot();
+
+								if (m_Trust.IsTrusted(root))
+								{
+									m_Trust.Revoke(root);
+								}
+								else
+								{
+									m_Trust.Trust(root);
+								}
+							},
+						.Enabled =
+							[this] {
+								const std::filesystem::path& root = m_Workspace.GetRoot();
+								return m_Workspace.IsOpen() && (!m_Trust.IsTrusted(root) || m_Trust.IsEntry(root));
+							},
+						.Checked = [this] { return m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot()); }});
 
 		// Through the window's close flag, not Application::Close(): the main loop only asks
 		// a layer's OnCloseRequested when Window::ShouldClose() is true, and Close() alone
@@ -542,8 +575,14 @@ namespace Graphite {
 		// Read once and spent everywhere below - the walk's trigger, the pass, and what the status
 		// bar is told about walking. Three separate reads of the same getter are three chances for
 		// those to disagree, and a bar saying "finding files" for a walk that was switched off is
-		// exactly what disagreement looks like.
-		const bool analysisEnabled = m_AnalysisSettings.IsEnabled();
+		// exactly what disagreement looks like. The flag includes trust: an untrusted folder is one
+		// where the analysis is off.
+		const bool workspaceTrusted = m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot());
+
+		// Trust folds into the switch rather than beside it: every edge below - walk, queue,
+		// store - already follows this flag, so an untrusted folder is simply one where the
+		// analysis is off, and trusting it is the same rising edge as turning the setting on.
+		const bool analysisEnabled = m_AnalysisSettings.IsEnabled() && workspaceTrusted;
 
 		// The rising edge of that flag, noticed the way the changed root below is: a compare
 		// against a remembered value each frame catches every way the setting can move, including
@@ -561,14 +600,26 @@ namespace Graphite {
 
 		m_AnalysisWasEnabled = analysisEnabled;
 
+		// Any change to the list, from anywhere, reaches the servers here - before Poll, so a
+		// server trust has just started is drained on this same frame.
+		if (m_Trust.Revision() != m_SeenTrustRevision)
+		{
+			m_SeenTrustRevision = m_Trust.Revision();
+			m_LanguageServices.Revalidate();
+		}
+
+		const bool rootChanged = m_Workspace.GetRoot() != m_WarmedRoot;
+		const bool trustSwitchedOn = workspaceTrusted && !m_WasTrusted;
+		m_WasTrusted = workspaceTrusted;
+
 		// Noticed here rather than hooked onto the two places a folder can be opened from: a
 		// root comparison per frame catches every way it can change, including ones added later,
 		// and costs a path compare against a path that almost never differs.
-		if (m_Workspace.GetRoot() != m_WarmedRoot)
+		if (rootChanged)
 		{
 			m_WarmedRoot = m_Workspace.GetRoot();
 
-			if (!m_WarmedRoot.empty())
+			if (!m_WarmedRoot.empty() && workspaceTrusted)
 			{
 				// Ignored trees skipped: this walk exists to find one source file per language as
 				// cheaply as it can, and build outputs hold plenty of files that answer nothing.
@@ -626,6 +677,13 @@ namespace Graphite {
 			// The other half of the same rule, and no root check: detaching a store that was
 			// already detached costs one empty listing and keeps the two edges symmetrical.
 			m_AnalysisStore.SetRoot({});
+		}
+
+		// The folder stayed and became trusted. A folder that arrived trusted was warmed in the
+		// root-change branch above, which is why this is not part of it.
+		if (trustSwitchedOn && !rootChanged)
+		{
+			m_LanguageServices.WarmUp(m_WarmedRoot, true);
 		}
 
 		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
@@ -802,6 +860,14 @@ namespace Graphite {
 			messages.Server = ServerStatusText(*overall);
 			messages.ServerDetail = ServerStatusDetail(*overall);
 		}
+		else if (m_Workspace.IsOpen() && !workspaceTrusted)
+		{
+			// Nothing has been refused yet - no file of a served language opened - but the folder
+			// is restricted all the same, and a blank slot would hide why nothing will start.
+			messages.Server = "Restricted mode";
+			messages.ServerDetail = "This folder is not trusted, so the language server and the background analysis "
+									"do not run in it. Trust it from the bar above the editor or the File menu.";
+		}
 
 		// Its own slot beside the server's, because it answers a different question: the server
 		// phrase is about the file on screen, this one is about the tree behind it. Empty while
@@ -817,7 +883,7 @@ namespace Graphite {
 
 		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
 
-		m_DockSpace.Begin(m_Layout);
+		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted] { RenderRestrictedModeBar(workspaceTrusted); });
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
 						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		RenderEmptyEditorArea();
@@ -974,6 +1040,33 @@ namespace Graphite {
 		}
 
 		m_DockSpace.CenterEmptyState("Open a file from the Explorer, or drop one here.");
+	}
+
+	void GraphiteLayer::RenderRestrictedModeBar(bool trusted)
+	{
+		if (!m_Workspace.IsOpen() || trusted)
+		{
+			return;
+		}
+
+		// Copied: trusting writes the list, and nothing here should hold a reference into state
+		// that the click is about to change.
+		const std::filesystem::path root = m_Workspace.GetRoot();
+		const std::optional<std::filesystem::path> parent = ParentWorthTrusting(root);
+
+		switch (DrawRestrictedModeBar(parent))
+		{
+			case RestrictedBarChoice::None:
+				break;
+
+			case RestrictedBarChoice::TrustFolder:
+				m_Trust.Trust(root);
+				break;
+
+			case RestrictedBarChoice::TrustParent:
+				m_Trust.Trust(*parent);
+				break;
+		}
 	}
 
 	void GraphiteLayer::RenderDropConfirm()

@@ -13,6 +13,7 @@ namespace Graphite {
 								  MenuItem::Command("workspace.openSolution"),
 								  MenuItem::Separator(),
 								  MenuItem::Command("workspace.close"),
+								  MenuItem::Command("workspace.toggleTrust"),
 								  MenuItem::Separator(),
 								  MenuItem::Command("document.saveAll"),
 								  MenuItem::Separator(),

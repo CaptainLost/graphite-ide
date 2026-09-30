@@ -177,3 +177,27 @@ TEST_CASE("The settings panel is reached from the top level, not from among the 
 	REQUIRE(std::next(window) != top.end());
 	CHECK(std::next(window)->GetText() == "view.resetLayout");
 }
+
+TEST_CASE("The File menu offers to trust the open folder, after closing it")
+{
+	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
+	const MenuItem* file = FindSubmenu(tree, "File");
+	REQUIRE(file != nullptr);
+
+	std::vector<std::string> commands;
+
+	for (const MenuItem& item : file->GetChildren())
+	{
+		if (item.GetKind() == MenuItem::Kind::Command)
+		{
+			commands.push_back(item.GetText());
+		}
+	}
+
+	const auto close = std::find(commands.begin(), commands.end(), "workspace.close");
+	const auto trust = std::find(commands.begin(), commands.end(), "workspace.toggleTrust");
+
+	REQUIRE(close != commands.end());
+	REQUIRE(trust != commands.end());
+	CHECK(trust == close + 1);
+}

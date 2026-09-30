@@ -28,8 +28,10 @@
 #include "Settings/AppSettings.h"
 #include "Settings/WorkspaceSettings.h"
 #include "Theme/ActiveScheme.h"
+#include "Settings/UserDirectories.h"
 #include "Workspace/DroppedPaths.h"
 #include "Workspace/Workspace.h"
+#include "Workspace/WorkspaceTrust.h"
 
 #include "Core/App/Layer.h"
 #include "Core/Base/RingBufferSink.h"
@@ -102,6 +104,8 @@ namespace Graphite {
 
 		void RenderDropConfirm();
 
+		void RenderRestrictedModeBar(bool trusted);
+
 		void RenderEmptyEditorArea();
 
 		void QueueForFocusedEditor(Core::Event& event);
@@ -146,6 +150,9 @@ namespace Graphite {
 
 		Workspace m_Workspace{m_Events};
 		Core::DocumentSet m_Documents;
+
+		// Before m_LanguageServices, whose root permission reads it, so it is destroyed after.
+		WorkspaceTrust m_Trust{UserDirectories::TrustedFoldersFile()};
 
 		// Declared after m_Workspace so its fallback root can read m_Workspace's — member
 		// initialisers run in declaration order regardless of the order they are listed in.
@@ -315,6 +322,13 @@ namespace Graphite {
 		// OnImGuiRender. Starts at AnalysisSettings' own default, so a session that loads that
 		// default sees no edge at all on its first frame.
 		bool m_AnalysisWasEnabled = true;
+
+		// The trust list's revision last seen, so a change made anywhere - the bar, the menu, the
+		// settings section - reaches the language servers through one compare per frame.
+		std::uint64_t m_SeenTrustRevision = 0;
+
+		// Whether the open folder was trusted last frame, for the edge that warms its servers.
+		bool m_WasTrusted = false;
 
 		StateKeeper m_StateKeeper{
 			[](const GlobalState& state) { AppSettings::SaveGlobalState(state); },
