@@ -176,14 +176,9 @@ namespace Graphite {
 		// Set before any document opens, for the reason SetConfiguredBinary is: the first
 		// EnsureStarted is where a refused root must already be refused (ADR 0532).
 		//
-		// An empty root - RootFor found no marker above the file - is judged by the folder that is
-		// open, because that is the folder the user was asked about. WorkspaceTrust never trusts
-		// an empty path itself, so without this a trusted folder of loose sources would never get
-		// a server; and permitting an empty root outright would start one in an untrusted folder,
-		// where clangd still reads whatever configuration sits beside the sources.
-		m_LanguageServices.SetRootPermission(
-			[this](const std::filesystem::path& root)
-			{ return m_Trust.IsTrusted(root.empty() ? m_Workspace.GetRoot() : root); });
+		// Every root is judged by itself: LanguageServices gives a file with no marker above it the
+		// open folder or its own directory as a root, never an empty one.
+		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root) { return m_Trust.IsTrusted(root); });
 
 		std::vector<Core::Scope<SettingsSection>> sections;
 
@@ -611,14 +606,13 @@ namespace Graphite {
 		const bool rootChanged = m_Workspace.GetRoot() != m_WarmedRoot;
 
 		// Any change to the list, from anywhere, reaches the servers here - before Poll, so a
-		// server trust has just started is drained on this same frame. A change of folder counts
-		// too: an empty root is judged by the open folder (see SetRootPermission above), so the
-		// server for it has to follow the folder even when the list itself did not move.
-		if (m_Trust.Revision() != m_SeenTrustRevision || rootChanged)
+		// server trust has just started is drained on this same frame.
+		if (m_Trust.Revision() != m_SeenTrustRevision)
 		{
 			m_SeenTrustRevision = m_Trust.Revision();
 			m_LanguageServices.Revalidate();
 		}
+
 		const bool trustSwitchedOn = workspaceTrusted && !m_WasTrusted;
 		m_WasTrusted = workspaceTrusted;
 
@@ -628,6 +622,10 @@ namespace Graphite {
 		if (rootChanged)
 		{
 			m_WarmedRoot = m_Workspace.GetRoot();
+
+			// Before anything below resolves a root: a file with no marker above it inside the new
+			// folder is rooted at the folder, and judged by the folder's trust.
+			m_LanguageServices.SetFallbackRoot(m_WarmedRoot);
 
 			if (!m_WarmedRoot.empty() && workspaceTrusted)
 			{

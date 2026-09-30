@@ -38,9 +38,14 @@ namespace Graphite {
 	class LanguageServices
 	{
 	public:
-		// `fallbackRoot` is handed to `RootFor` for a file under no recognised project layout —
-		// ordinarily the workspace root.
+		// `fallbackRoot` is the root of a file that lies inside it but under no recognised project
+		// layout — ordinarily the workspace root. A file with no marker above it that lies outside
+		// the fallback root is rooted at its own directory instead (see Resolve).
 		explicit LanguageServices(std::filesystem::path fallbackRoot);
+
+		// Follows the open folder. Forgets every root resolved so far, since a directory that fell
+		// back to the old root, or to itself, may belong to the new one.
+		void SetFallbackRoot(std::filesystem::path root);
 
 		~LanguageServices();
 
@@ -274,6 +279,10 @@ namespace Graphite {
 		// active, so this is on the hot path. Not const: it consults and fills m_RootCache.
 		const ServerConfig* Resolve(const std::filesystem::path& path, LanguageId language,
 									Key& key);
+
+		// The root a file with no marker above it falls back to: the fallback root when the file
+		// lies inside it, the file's own directory otherwise.
+		std::filesystem::path FallbackFor(const std::filesystem::path& path) const;
 
 		std::filesystem::path ConfiguredBinaryFor(LanguageId language) const;
 

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <optional>
 #include <thread>
+#include <vector>
 
 TEST_CASE("A language with no configured server reports NotConfigured")
 {
@@ -567,4 +568,103 @@ TEST_CASE("A trusted root's server outranks a restricted one for the workspace")
 
 	REQUIRE(overall.has_value());
 	CHECK(overall->State == Graphite::ServerState::NotFound);
+}
+
+// A file with no marker above it used to resolve to one shared empty root, whatever folder it
+// came from, so one trust answer covered files from folders the user had judged differently.
+// Each such file now gets a root of its own to be judged by: the open folder when it lies inside
+// it, its own directory otherwise. The roots are observed through the permission callback, which
+// is asked about exactly the root a server would be started for.
+TEST_CASE("A file with no marker inside the fallback root resolves to the fallback root")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	std::vector<std::filesystem::path> asked;
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&asked](const std::filesystem::path& root)
+							   {
+								   asked.push_back(root);
+								   return false;
+							   });
+
+	services.EnsureStarted(temp.GetPath() / "workspace" / "src" / "main.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.size() == 1);
+	CHECK(asked.front() == temp.GetPath() / "workspace");
+}
+
+TEST_CASE("A file with no marker outside the fallback root resolves to its own directory")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/readme.txt", "\n");
+	temp.MakeFile("elsewhere/loose.cpp", "int x;\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	std::vector<std::filesystem::path> asked;
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&asked](const std::filesystem::path& root)
+							   {
+								   asked.push_back(root);
+								   return false;
+							   });
+
+	services.EnsureStarted(temp.GetPath() / "elsewhere" / "loose.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.size() == 1);
+	CHECK(asked.front() == temp.GetPath() / "elsewhere");
+}
+
+// No folder open is an empty fallback root, and the file still gets a root it can be judged by
+// rather than an empty one no trust entry can ever cover.
+TEST_CASE("A file with no marker and no fallback root resolves to its own directory")
+{
+	TempDirectory temp;
+	temp.MakeFile("loose/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{{}};
+	std::vector<std::filesystem::path> asked;
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&asked](const std::filesystem::path& root)
+							   {
+								   asked.push_back(root);
+								   return false;
+							   });
+
+	services.EnsureStarted(temp.GetPath() / "loose" / "main.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.size() == 1);
+	CHECK(asked.front() == temp.GetPath() / "loose");
+}
+
+// The fallback follows the open folder, and a directory resolved against the previous one must
+// not keep that answer.
+TEST_CASE("Changing the fallback root re-resolves a directory already seen")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{{}};
+	std::vector<std::filesystem::path> asked;
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&asked](const std::filesystem::path& root)
+							   {
+								   asked.push_back(root);
+								   return false;
+							   });
+
+	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.SetFallbackRoot(temp.GetPath() / "workspace");
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.size() == 2);
+	CHECK(asked[0] == temp.GetPath() / "workspace" / "src");
+	CHECK(asked[1] == temp.GetPath() / "workspace");
 }

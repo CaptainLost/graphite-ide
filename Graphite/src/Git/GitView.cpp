@@ -5,6 +5,7 @@
 #include "Editor/Palettes.h"
 #include "Git/GitPalette.h"
 #include "Git/HistoryFilter.h"
+#include "Git/HistoryPlaceholder.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
@@ -332,19 +333,8 @@ namespace Graphite {
 		// so its header can stay put while the rows move under it.
 		if (!page)
 		{
-			// A folder that is not a repository answers every query with an error, the status
-			// first among them, and never delivers a page - so without this the column would say
-			// it is loading for as long as that folder stays open. A repository always has a
-			// status to show, which is what tells the two apart - the error is required as well, so
-			// a repository whose first status is merely still on its way keeps saying it is loading.
-			if (!m_Model.GetStatus() && m_Model.GetLastError().has_value())
-			{
-				Core::EmptyState("No repository.");
-			}
-			else
-			{
-				Core::EmptyState("Loading history…");
-			}
+			Core::EmptyState(HistoryPlaceholder(m_Model.GetStatus() != nullptr, m_Model.GetStatusError(),
+												m_Model.GetLogError()));
 		}
 		else
 		{

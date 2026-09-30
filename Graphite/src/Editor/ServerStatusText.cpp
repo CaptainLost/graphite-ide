@@ -130,9 +130,11 @@ namespace Graphite {
 			}
 			else
 			{
+				// "With it open" rather than a pointer at the bar alone: a file opened with no folder,
+				// or from outside the open one, has no bar offering its own folder.
 				detail = "The folder " + status.Detail + " is not trusted, so " + status.Name +
-						 " does not run for it. Trust it, or a folder above it, from the bar above "
-						 "the editor, the File menu, or by adding it to trusted-folders.json.";
+						 " does not run for it. With it, or a folder above it, open as the workspace, "
+						 "trust it from the bar above the editor or the File menu.";
 			}
 			break;
 

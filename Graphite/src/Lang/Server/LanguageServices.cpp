@@ -85,10 +85,34 @@ namespace Graphite {
 			return config;
 		}
 
-		key.Root = RootFor(*config, path, m_FallbackRoot);
+		key.Root = RootFor(*config, path, FallbackFor(path));
 		m_RootCache.emplace(cacheKey, key.Root);
 
 		return config;
+	}
+
+	// Every file gets a root it can be judged by (ADR 0532). One shared empty root for every
+	// file with no marker would make one trust answer cover files from folders the user judged
+	// differently, and would be a root no trust entry can ever name.
+	std::filesystem::path LanguageServices::FallbackFor(const std::filesystem::path& path) const
+	{
+		if (!m_FallbackRoot.empty())
+		{
+			const std::filesystem::path relative = path.lexically_relative(m_FallbackRoot);
+
+			if (!relative.empty() && *relative.begin() != "..")
+			{
+				return m_FallbackRoot;
+			}
+		}
+
+		return path.parent_path();
+	}
+
+	void LanguageServices::SetFallbackRoot(std::filesystem::path root)
+	{
+		m_FallbackRoot = std::move(root);
+		m_RootCache.clear();
 	}
 
 	std::filesystem::path LanguageServices::ConfiguredBinaryFor(LanguageId language) const

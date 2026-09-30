@@ -180,6 +180,11 @@ namespace Graphite {
 		// working-tree diff, commit diff, file texts - status is checked most often and is
 		// the one a user most needs to see fail, and a file-texts failure is the least
 		// likely of the six to be what a user needs told first.
+		// Each query's own failure, for a reader that has to tell one kind of failure from
+		// another rather than show whichever came first (see HistoryPlaceholder).
+		const std::optional<Core::Error>& GetStatusError() const { return m_StatusError; }
+		const std::optional<Core::Error>& GetLogError() const { return m_LogError; }
+
 		const std::optional<Core::Error>& GetLastError() const
 		{
 			if (m_StatusError.has_value())

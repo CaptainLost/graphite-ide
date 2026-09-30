@@ -176,5 +176,6 @@ TEST_CASE("A restricted server names the folder that is not trusted")
 
 	CHECK(detail.find("D:\\Elsewhere\\Project") != std::string::npos);
 	CHECK(detail.find("not trusted") != std::string::npos);
-	CHECK(detail.find("trusted-folders.json") != std::string::npos);
+	// The remedy must be reachable with no folder open, where no bar is on screen to offer it.
+	CHECK(detail.find("open as the workspace") != std::string::npos);
 }

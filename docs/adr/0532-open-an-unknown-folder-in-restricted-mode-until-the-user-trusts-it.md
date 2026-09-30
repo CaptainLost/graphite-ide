@@ -42,9 +42,9 @@ answer.
   entry with a Remove button.
 - In restricted mode editing, browsing, search, Git, the terminal and Claude
   sessions work as before. The language server and the background analysis do
-  not start, and the status bar's server slot says "Restricted mode". Its
-  detail names the server root that is not trusted, since that root can lie
-  above the open folder or be another folder altogether.
+  not start, and the status bar's server slot says "Restricted mode". When a
+  document's own server is restricted, the detail names that server's root,
+  since it can lie above the open folder or be another folder altogether.
 - Gate the language server in `LanguageServices`, not in its callers. It takes
   a predicate over a server's root that defaults to permitting everything. A
   refused root gets an entry in `ServerState::Restricted` with no process,
@@ -53,16 +53,16 @@ answer.
   replaying the kept documents. Files outside the workspace resolve their own
   root and are judged by it, and a document's status is its own root's server,
   never another root's of the same language.
-- Judge an empty root by the folder that is open. A file with no marker above
-  it resolves to an empty root, and `WorkspaceTrust` never trusts an empty
-  path, so without this a trusted folder of loose sources would never get a
-  server. Permitting an empty root outright would start clangd in an untrusted
-  folder, where it still reads whatever configuration sits beside the
-  sources. Because the answer now depends on the open folder, `Revalidate()`
-  also runs when the folder changes, not only when the list does.
+- Give every file a root it can be judged by. A file with no marker above it
+  is rooted at the open folder when it lies inside it, and at its own
+  directory otherwise - never at an empty root, which no entry can name and
+  which would put files from differently judged folders behind one answer.
+  `LanguageServices::SetFallbackRoot` follows the open folder.
 - Treat `build/compile_commands.json` as a C++ project marker. clangd reads
   it under every ancestor of a file, so a directory holding one is the root
-  the trust check has to judge.
+  the trust check has to judge. A subdirectory with its own `build/` is
+  therefore a project of its own: it gets its own server, and the
+  background analysis of the enclosing folder does not descend into it.
 - Fold the analysis into the same switch: it runs only when its setting is on
   and the folder is trusted. `GraphiteLayer` computes trust once per frame and
   reacts to the edge. Falling: `Revalidate()`, cancel the walk, clear its
@@ -119,8 +119,9 @@ frictionless and keeps the choice visible and reversible.
 - The terminal and Claude sessions are not gated: both start only on the
   user's command.
 - There is no way yet to trust a single file's root from the interface when no
-  folder is open. Such a file gets a server only when its root already lies
-  under a trusted entry. The settings section lists and removes entries and
+  folder is open. Such a file gets a server only when its root - its project,
+  or its own directory - already lies under a trusted entry; otherwise its
+  folder has to be opened and trusted. The settings section lists and removes entries and
   does not add them.
 
 ## Alternatives Considered
