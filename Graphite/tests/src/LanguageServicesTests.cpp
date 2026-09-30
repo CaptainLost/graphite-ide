@@ -344,3 +344,127 @@ TEST_CASE("A document a server never received produces no note")
 	CHECK(update.Versions.empty());
 	CHECK(update.Closed.empty());
 }
+
+// Every case below configures a binary that does not exist, as the NotFound cases above do:
+// NotFound is only reachable by having tried to start, so it tells "started" from "refused"
+// without a clangd installed.
+
+TEST_CASE("A root the permission refuses gets no server, only a restricted entry")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([](const std::filesystem::path&) { return false; });
+
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	const Graphite::ServerStatus status = services.StatusFor(Graphite::LanguageId::Cpp);
+
+	CHECK(status.State == Graphite::ServerState::Restricted);
+	CHECK(status.Name == "clangd");
+}
+
+TEST_CASE("Revalidate starts a restricted server once its root is permitted")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	bool permitted = false;
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&permitted](const std::filesystem::path&) { return permitted; });
+
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+	REQUIRE(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::Restricted);
+
+	permitted = true;
+	services.Revalidate();
+
+	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotFound);
+}
+
+TEST_CASE("Revalidate restricts a server whose root is no longer permitted")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	bool permitted = true;
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&permitted](const std::filesystem::path&) { return permitted; });
+
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+	REQUIRE(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotFound);
+
+	permitted = false;
+	services.Revalidate();
+
+	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::Restricted);
+}
+
+TEST_CASE("A ticket asked of a restricted server comes back Failed")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([](const std::filesystem::path&) { return false; });
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+
+	Graphite::FilePosition where;
+	where.Path = source;
+	where.Line = 0;
+	where.Column = Graphite::Utf16Column(0);
+
+	const Graphite::LanguageServices::Ticket ticket =
+		services.AskDefinition(source, Graphite::LanguageId::Cpp, where);
+
+	services.Poll();
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].For == ticket);
+	CHECK(answers[0].Failed);
+}
+
+TEST_CASE("Warming up a refused root starts nothing")
+{
+	TempDirectory temp;
+	temp.MakeFile("src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([](const std::filesystem::path&) { return false; });
+
+	services.WarmUp(temp.GetPath(), false);
+
+	// Long enough for the permitted case above to have found main.cpp many times over. A
+	// negative can only be bounded, never proven, so this gives the walk every chance.
+	for (int attempt = 0; attempt < 50; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotConfigured);
+}
+
+TEST_CASE("A restricted server is reported for the workspace when nothing else is")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([](const std::filesystem::path&) { return false; });
+
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	const std::optional<Graphite::ServerStatus> overall = services.OverallStatus();
+
+	REQUIRE(overall.has_value());
+	CHECK(overall->State == Graphite::ServerState::Restricted);
+}

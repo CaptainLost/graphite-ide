@@ -36,6 +36,9 @@ namespace Graphite {
 		case ServerState::NotFound:
 			return status.Name + ": not found";
 
+		case ServerState::Restricted:
+			return status.Name + ": restricted mode";
+
 		case ServerState::Starting:
 			return status.Name + ": starting";
 
@@ -113,6 +116,12 @@ namespace Graphite {
 			detail = "No compile_commands.json, compile_flags.txt or .clangd was found for this "
 					 "project, so " + status.Name +
 					 " can see only the files that are open rather than the whole project.";
+			break;
+
+		case ServerState::Restricted:
+			detail = "This folder is not trusted, so " + status.Name +
+					 " does not run for it. Trust the folder from the bar above the editor or "
+					 "the File menu to start it.";
 			break;
 
 		case ServerState::Starting:

@@ -77,6 +77,20 @@ namespace Graphite {
 		// before the first `EnsureStarted` for it to take effect.
 		void SetConfiguredBinary(LanguageId language, std::filesystem::path path);
 
+		// Decides whether a server may run for a project root - whether its folder is trusted.
+		// A refused root still gets an entry, in ServerState::Restricted, so the documents opened
+		// against it are remembered for the moment it is permitted. Permits every root until set.
+		using RootPermission = std::function<bool(const std::filesystem::path& root)>;
+
+		void SetRootPermission(RootPermission permission);
+
+		// Brings every server into line with the permission after it has changed: a restricted
+		// server whose root is now permitted starts and is told every document it was sent while
+		// restricted; a server whose root is now refused is shut down, its outstanding tickets
+		// answered Failed, and left restricted. Cheap when nothing changed - call it on a change
+		// rather than every frame all the same.
+		void Revalidate();
+
 		// The status of some server for this language, or a default (State == NotConfigured) if
 		// none has ever been started. When more than one root is running the same language, this
 		// reports whichever the map happens to order first — every caller in this codebase works
@@ -253,6 +267,13 @@ namespace Graphite {
 		// have ended, so an `LspClient` whose process died is finished for good — the only way
 		// back is a brand new instance, which is what this does.
 		void RestartServer(const Key& key, ManagedServer& server);
+
+		bool Permits(const std::filesystem::path& root) const;
+		void MarkRestricted(ManagedServer& server);
+		void Restrict(ManagedServer& server);
+		void ReplayOpenDocuments(ManagedServer& server);
+
+		RootPermission m_RootPermission;
 
 		Ticket IssueTicket();
 

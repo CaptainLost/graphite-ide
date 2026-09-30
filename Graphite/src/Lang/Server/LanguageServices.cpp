@@ -162,7 +162,14 @@ namespace Graphite {
 		server.Config = config;
 		server.Root = key.Root;
 
-		StartServer(server, key);
+		if (Permits(key.Root))
+		{
+			StartServer(server, key);
+		}
+		else
+		{
+			MarkRestricted(server);
+		}
 
 		m_Servers.emplace(key, std::move(server));
 	}
@@ -194,6 +201,7 @@ namespace Graphite {
 				case ServerState::Failed:
 				case ServerState::NotFound:
 				case ServerState::NoCompileDatabase:
+				case ServerState::Restricted:
 					return 2; // something is wrong and will not fix itself
 				case ServerState::Ready:
 					return 1; // up and answering, which is worth saying when nothing else is
@@ -505,13 +513,7 @@ namespace Graphite {
 		// again, in no particular order - didOpen does not depend on prior state - and each is
 		// reported both closed and reopened, so a reader holding a stale entry for it drops that
 		// entry before it ever compares the wrong process's version against the new one.
-		for (auto& [path, document] : server.OpenDocuments)
-		{
-			document.Version = server.Client->OpenDocument(path, document.Text);
-
-			m_Diagnostics.Closed.push_back(path);
-			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, document.Version});
-		}
+		ReplayOpenDocuments(server);
 
 		server.Restarts += 1;
 		server.RestartPending = false;
@@ -519,6 +521,90 @@ namespace Graphite {
 		server.Status.State = ServerState::Starting;
 		server.Status.Detail = Core::ToUtf8(server.Binary);
 		server.Status.Restarts = server.Restarts;
+	}
+
+	void LanguageServices::SetRootPermission(RootPermission permission)
+	{
+		m_RootPermission = std::move(permission);
+	}
+
+	bool LanguageServices::Permits(const std::filesystem::path& root) const
+	{
+		return !m_RootPermission || m_RootPermission(root);
+	}
+
+	void LanguageServices::MarkRestricted(ManagedServer& server)
+	{
+		server.Status.Name = std::string(server.Config->Command);
+		server.Status.State = ServerState::Restricted;
+		server.Status.Detail = Core::ToUtf8(server.Root);
+		server.Status.Percent = -1;
+		server.Status.Restarts = 0;
+	}
+
+	void LanguageServices::Restrict(ManagedServer& server)
+	{
+		if (server.Client)
+		{
+			server.Client->RequestShutdown();
+
+			// Whatever it published is about a process that is going away. A closed note is
+			// what makes a reader drop it, the same as a restart's.
+			for (const auto& [path, document] : server.OpenDocuments)
+			{
+				m_Diagnostics.Closed.push_back(path);
+			}
+
+			// The destructor terminates the process and joins its threads, as it does at exit.
+			server.Client.reset();
+		}
+
+		for (auto& entry : server.Pending)
+		{
+			Fail(entry.second);
+		}
+		server.Pending.clear();
+
+		server.Restarts = 0;
+		server.RestartPending = false;
+
+		MarkRestricted(server);
+	}
+
+	void LanguageServices::ReplayOpenDocuments(ManagedServer& server)
+	{
+		for (auto& [path, document] : server.OpenDocuments)
+		{
+			document.Version = server.Client->OpenDocument(path, document.Text);
+
+			m_Diagnostics.Closed.push_back(path);
+			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, document.Version});
+		}
+	}
+
+	void LanguageServices::Revalidate()
+	{
+		for (auto& [key, server] : m_Servers)
+		{
+			const bool permitted = Permits(key.Root);
+			const bool restricted = server.Status.State == ServerState::Restricted;
+
+			if (permitted && restricted)
+			{
+				// A fresh start, not a restart: the documents it holds were never sent to any
+				// process, so this is their first didOpen, and no restart is counted.
+				StartServer(server, key);
+
+				if (server.Client)
+				{
+					ReplayOpenDocuments(server);
+				}
+			}
+			else if (!permitted && !restricted)
+			{
+				Restrict(server);
+			}
+		}
 	}
 
 	void LanguageServices::WarmUp(std::filesystem::path root, bool respectGitIgnore)
@@ -531,6 +617,12 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
 			m_Warm->Found.clear();
+		}
+
+		// After the cancel, so a walk already running for this root stops too.
+		if (!Permits(root))
+		{
+			return;
 		}
 
 		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root),

@@ -152,3 +152,13 @@ TEST_CASE("The background tooltip says what is kept against what may be")
 	CHECK(detail.find("34 MB") != std::string::npos);
 	CHECK(detail.find("128 MB") != std::string::npos);
 }
+
+TEST_CASE("A restricted server says so and says why")
+{
+	Graphite::ServerStatus status;
+	status.Name = "clangd";
+	status.State = Graphite::ServerState::Restricted;
+
+	CHECK(Graphite::ServerStatusText(status) == "clangd: restricted mode");
+	CHECK(Graphite::ServerStatusDetail(status).find("not trusted") != std::string::npos);
+}

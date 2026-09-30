@@ -196,7 +196,11 @@ namespace Graphite {
 
 	enum class ServerState : std::uint8_t
 	{
-		NotConfigured, NotFound, Starting, Indexing, NoCompileDatabase, Ready, Failed
+		NotConfigured, NotFound, Starting, Indexing, NoCompileDatabase, Ready, Failed,
+
+		// The root's folder is not trusted: the entry exists, and keeps what documents were
+		// sent to it, but no process runs until trust is granted (ADR 0532).
+		Restricted
 	};
 
 	struct ServerStatus
