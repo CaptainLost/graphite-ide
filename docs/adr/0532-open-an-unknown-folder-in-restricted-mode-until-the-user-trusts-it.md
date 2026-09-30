@@ -53,11 +53,16 @@ answer.
   replaying the kept documents. Files outside the workspace resolve their own
   root and are judged by it, and a document's status is its own root's server,
   never another root's of the same language.
-- Permit an empty root. A file with no `.clangd`, compile database or
-  repository above it resolves to one, and then there is no
-  repository-controlled configuration for clangd to read. `WorkspaceTrust`
-  never trusts an empty path, so refusing it would keep such a file restricted
-  even after its folder is trusted.
+- Judge an empty root by the folder that is open. A file with no marker above
+  it resolves to an empty root, and `WorkspaceTrust` never trusts an empty
+  path, so without this a trusted folder of loose sources would never get a
+  server. Permitting an empty root outright would start clangd in an untrusted
+  folder, where it still reads whatever configuration sits beside the
+  sources. Because the answer now depends on the open folder, `Revalidate()`
+  also runs when the folder changes, not only when the list does.
+- Treat `build/compile_commands.json` as a C++ project marker. clangd reads
+  it under every ancestor of a file, so a directory holding one is the root
+  the trust check has to judge.
 - Fold the analysis into the same switch: it runs only when its setting is on
   and the folder is trusted. `GraphiteLayer` computes trust once per frame and
   reacts to the edge. Falling: `Revalidate()`, cancel the walk, clear its
@@ -115,7 +120,7 @@ frictionless and keeps the choice visible and reversible.
   user's command.
 - There is no way yet to trust a single file's root from the interface when no
   folder is open. Such a file gets a server only when its root already lies
-  under a trusted entry, or when no marker above it gives it a root at all. The settings section lists and removes entries and
+  under a trusted entry. The settings section lists and removes entries and
   does not add them.
 
 ## Alternatives Considered

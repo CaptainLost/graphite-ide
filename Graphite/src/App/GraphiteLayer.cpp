@@ -176,12 +176,14 @@ namespace Graphite {
 		// Set before any document opens, for the reason SetConfiguredBinary is: the first
 		// EnsureStarted is where a refused root must already be refused (ADR 0532).
 		//
-		// An empty root is permitted: it means RootFor found no .clangd, compile database or
-		// repository above the file, so there is no repository-controlled configuration for clangd
-		// to read - and WorkspaceTrust never trusts an empty path, so refusing it would keep such a
-		// file restricted even after its folder is trusted.
-		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root)
-											 { return root.empty() || m_Trust.IsTrusted(root); });
+		// An empty root - RootFor found no marker above the file - is judged by the folder that is
+		// open, because that is the folder the user was asked about. WorkspaceTrust never trusts
+		// an empty path itself, so without this a trusted folder of loose sources would never get
+		// a server; and permitting an empty root outright would start one in an untrusted folder,
+		// where clangd still reads whatever configuration sits beside the sources.
+		m_LanguageServices.SetRootPermission(
+			[this](const std::filesystem::path& root)
+			{ return m_Trust.IsTrusted(root.empty() ? m_Workspace.GetRoot() : root); });
 
 		std::vector<Core::Scope<SettingsSection>> sections;
 
@@ -606,15 +608,17 @@ namespace Graphite {
 
 		m_AnalysisWasEnabled = analysisEnabled;
 
+		const bool rootChanged = m_Workspace.GetRoot() != m_WarmedRoot;
+
 		// Any change to the list, from anywhere, reaches the servers here - before Poll, so a
-		// server trust has just started is drained on this same frame.
-		if (m_Trust.Revision() != m_SeenTrustRevision)
+		// server trust has just started is drained on this same frame. A change of folder counts
+		// too: an empty root is judged by the open folder (see SetRootPermission above), so the
+		// server for it has to follow the folder even when the list itself did not move.
+		if (m_Trust.Revision() != m_SeenTrustRevision || rootChanged)
 		{
 			m_SeenTrustRevision = m_Trust.Revision();
 			m_LanguageServices.Revalidate();
 		}
-
-		const bool rootChanged = m_Workspace.GetRoot() != m_WarmedRoot;
 		const bool trustSwitchedOn = workspaceTrusted && !m_WasTrusted;
 		m_WasTrusted = workspaceTrusted;
 
@@ -857,6 +861,15 @@ namespace Graphite {
 			messages.Server = std::move(unserved);
 			messages.ServerDetail = NoServerDetail(activeLanguage);
 		}
+		else if (m_Workspace.IsOpen() && !workspaceTrusted)
+		{
+			// Ahead of the workspace-wide status below, not after it: that one reports the best
+			// server anywhere, which may belong to a trusted folder whose tabs are still open, and
+			// "ready" beside the restricted-mode bar reads as the bar being wrong.
+			messages.Server = "Restricted mode";
+			messages.ServerDetail = "This folder is not trusted, so the language server and the background analysis "
+									"do not run in it. Trust it from the bar above the editor or the File menu.";
+		}
 		else if (const std::optional<ServerStatus> overall = m_LanguageServices.OverallStatus())
 		{
 			// Nothing to say about what is open - plain text, or no document at all - so the
@@ -865,14 +878,6 @@ namespace Graphite {
 			// is opened, which looks like the feature is not working.
 			messages.Server = ServerStatusText(*overall);
 			messages.ServerDetail = ServerStatusDetail(*overall);
-		}
-		else if (m_Workspace.IsOpen() && !workspaceTrusted)
-		{
-			// Nothing has been refused yet - no file of a served language opened - but the folder
-			// is restricted all the same, and a blank slot would hide why nothing will start.
-			messages.Server = "Restricted mode";
-			messages.ServerDetail = "This folder is not trusted, so the language server and the background analysis "
-									"do not run in it. Trust it from the bar above the editor or the File menu.";
 		}
 
 		// Its own slot beside the server's, because it answers a different question: the server

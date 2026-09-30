@@ -14,8 +14,13 @@ namespace Graphite {
 		// when both exist above the same file — which RootFor's proximity-first walk already
 		// guarantees without this ordering doing any work. It is kept last anyway because it
 		// documents the reasoning for a reader who has not seen RootFor yet.
-		constexpr std::array<std::string_view, 4> kCppRootMarkers{
-			"compile_commands.json", "compile_flags.txt", ".clangd", ".git"};
+		//
+		// build/compile_commands.json is here because clangd itself reads it under every ancestor
+		// of a file (see LacksCompileDatabase). Without it a project laid out that way, with no
+		// .git, resolved to the fallback root, and the trust check judged a root other than the
+		// directory whose compile database the server was about to read (ADR 0532).
+		constexpr std::array<std::string_view, 5> kCppRootMarkers{
+			"compile_commands.json", "compile_flags.txt", ".clangd", "build/compile_commands.json", ".git"};
 
 		constexpr ServerConfig kCpp{"clangd", "cpp", kCppRootMarkers};
 
