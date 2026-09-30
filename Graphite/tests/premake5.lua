@@ -103,6 +103,11 @@ project "GraphiteTests"
         -- writing, and reaches no further than Core's path helpers.
         "%{wks.location}/Graphite/src/Workspace/OwnStateChanges.h",
         "%{wks.location}/Graphite/src/Workspace/OwnStateChanges.cpp",
+        -- WorkspaceTrust is the list of trusted folders and its file; it reaches no further
+        -- than Core's path and file helpers. The trust settings section, which Settings'
+        -- glob brings in, links against it.
+        "%{wks.location}/Graphite/src/Workspace/WorkspaceTrust.h",
+        "%{wks.location}/Graphite/src/Workspace/WorkspaceTrust.cpp",
         "%{wks.location}/Graphite/src/Git/**.h",
         "%{wks.location}/Graphite/src/Git/**.cpp",
         -- The menu tree is data: it names commands and groups without reaching for any of

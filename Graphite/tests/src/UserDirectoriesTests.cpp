@@ -26,6 +26,7 @@ TEST_CASE("Every user file lives under the redirected root while tests run")
 	CHECK(IsWithin(Graphite::UserDirectories::ThemesDirectory(), root));
 	CHECK(IsWithin(Graphite::UserDirectories::SessionsCacheFile(), root));
 	CHECK(IsWithin(Graphite::UserDirectories::LogFile(), root));
+	CHECK(IsWithin(Graphite::UserDirectories::TrustedFoldersFile(), root));
 }
 
 TEST_CASE("No user file resolves into the real profile while tests run")

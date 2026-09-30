@@ -1,0 +1,182 @@
+#include <doctest/doctest.h>
+
+#include "Workspace/WorkspaceTrust.h"
+
+#include "TempDirectory.h"
+
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+
+// Every path below is judged lexically, so none of them has to exist.
+
+namespace {
+	std::string ReadText(const std::filesystem::path& file)
+	{
+		std::ifstream in(file, std::ios::binary);
+		return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+	}
+}
+
+TEST_CASE("A new trust list trusts nothing")
+{
+	const Graphite::WorkspaceTrust trust;
+
+	CHECK_FALSE(trust.IsTrusted("D:\\Repos"));
+	CHECK(trust.Entries().empty());
+}
+
+TEST_CASE("A trusted folder trusts itself and everything inside it")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+
+	CHECK(trust.IsTrusted("D:\\Repos"));
+	CHECK(trust.IsTrusted("D:\\Repos\\IDE"));
+	CHECK(trust.IsTrusted("D:\\Repos\\IDE\\Core\\src"));
+	CHECK_FALSE(trust.IsTrusted("D:\\Other"));
+}
+
+TEST_CASE("Trust ignores case, slash direction and a trailing separator")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:/Repos/");
+
+	CHECK(trust.IsTrusted("d:\\repos"));
+	CHECK(trust.IsTrusted("D:\\REPOS\\ide\\"));
+	CHECK(trust.Entries().front() == std::filesystem::path{"D:\\Repos"});
+}
+
+// The prefix trap: as strings, "D:\Repos2" starts with "D:\Repos".
+TEST_CASE("A sibling whose name starts with a trusted folder's is not trusted")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+
+	CHECK_FALSE(trust.IsTrusted("D:\\Repos2"));
+	CHECK_FALSE(trust.IsTrusted("D:\\Repos2\\IDE"));
+}
+
+TEST_CASE("A trusted drive root trusts every folder on the drive")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\");
+
+	CHECK(trust.IsTrusted("D:\\Anything\\At\\All"));
+	CHECK_FALSE(trust.IsTrusted("E:\\Anything"));
+}
+
+TEST_CASE("A relative or empty path is never trusted and never becomes an entry")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("Repos");
+	trust.Trust("");
+
+	CHECK(trust.Entries().empty());
+	CHECK_FALSE(trust.IsTrusted(""));
+	CHECK_FALSE(trust.IsTrusted("Repos"));
+}
+
+TEST_CASE("TrustedThrough names the entry that grants the trust")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+
+	CHECK(trust.TrustedThrough("D:\\Repos\\IDE") == std::filesystem::path{"D:\\Repos"});
+	CHECK_FALSE(trust.TrustedThrough("D:\\Other").has_value());
+}
+
+TEST_CASE("IsEntry tells a listed folder from one trusted through a parent")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+
+	CHECK(trust.IsEntry("d:/repos/"));
+	CHECK_FALSE(trust.IsEntry("D:\\Repos\\IDE"));
+}
+
+TEST_CASE("Trusting a listed folder again changes nothing")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+	const std::uint64_t revision = trust.Revision();
+
+	trust.Trust("d:\\repos\\");
+
+	CHECK(trust.Entries().size() == 1);
+	CHECK(trust.Revision() == revision);
+}
+
+TEST_CASE("Revoking an entry, however it is spelled, removes it and moves the revision")
+{
+	Graphite::WorkspaceTrust trust;
+	trust.Trust("D:\\Repos");
+	const std::uint64_t revision = trust.Revision();
+
+	trust.Revoke("d:/repos");
+
+	CHECK(trust.Entries().empty());
+	CHECK_FALSE(trust.IsTrusted("D:\\Repos\\IDE"));
+	CHECK(trust.Revision() > revision);
+}
+
+TEST_CASE("The trust list survives being written and read back")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "trusted-folders.json";
+
+	{
+		Graphite::WorkspaceTrust trust{file};
+		trust.Trust("D:\\Repos");
+		trust.Trust("C:\\Work\\Zażółć");
+	}
+
+	const Graphite::WorkspaceTrust reread{file};
+
+	CHECK(reread.IsTrusted("D:\\Repos\\IDE"));
+	CHECK(reread.IsTrusted("C:\\Work\\Zażółć\\src"));
+	CHECK(reread.Entries().size() == 2);
+}
+
+// Failing closed: a list nobody can read trusts nothing, rather than guessing.
+TEST_CASE("An unreadable trust file trusts nothing")
+{
+	TempDirectory temp;
+	temp.MakeFile("trusted-folders.json", "{ this is not json");
+
+	const Graphite::WorkspaceTrust trust{temp.GetPath() / "trusted-folders.json"};
+
+	CHECK(trust.Entries().empty());
+}
+
+TEST_CASE("A trust file from a newer version is read but never written")
+{
+	TempDirectory temp;
+	const std::string newer = R"({"version": 99, "folders": ["D:\\Repos"]})";
+	temp.MakeFile("trusted-folders.json", newer);
+	const std::filesystem::path file = temp.GetPath() / "trusted-folders.json";
+
+	Graphite::WorkspaceTrust trust{file};
+	trust.Trust("E:\\Else");
+
+	CHECK(trust.IsTrusted("D:\\Repos\\IDE"));
+	CHECK(trust.IsTrusted("E:\\Else"));
+	CHECK(ReadText(file) == newer);
+}
+
+TEST_CASE("The parent offered for trust is the folder's own parent")
+{
+	CHECK(Graphite::ParentWorthTrusting("D:\\Downloads\\evil-repo") ==
+		  std::filesystem::path{"D:\\Downloads"});
+	CHECK(Graphite::ParentWorthTrusting("D:/Downloads/evil-repo/") ==
+		  std::filesystem::path{"D:\\Downloads"});
+}
+
+// One click must not trust a whole drive.
+TEST_CASE("No parent is offered when it would be a drive root")
+{
+	CHECK_FALSE(Graphite::ParentWorthTrusting("D:\\evil-repo").has_value());
+	CHECK_FALSE(Graphite::ParentWorthTrusting("D:\\").has_value());
+	CHECK_FALSE(Graphite::ParentWorthTrusting("relative\\folder").has_value());
+}

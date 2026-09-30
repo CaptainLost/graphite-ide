@@ -111,6 +111,13 @@ namespace Graphite {
 		return GetRoots().Local / "sessions-cache.json";
 	}
 
+	// Local, not roaming: the entries are paths on this machine, and trusting D:\Repos here says
+	// nothing about whatever D:\Repos is on another one.
+	std::filesystem::path UserDirectories::TrustedFoldersFile()
+	{
+		return GetRoots().Local / "trusted-folders.json";
+	}
+
 	std::filesystem::path UserDirectories::LogFile()
 	{
 		static const std::filesystem::path file = [] {
