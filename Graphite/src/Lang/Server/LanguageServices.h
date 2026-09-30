@@ -31,6 +31,12 @@ namespace Graphite {
 	// and a wait implemented by blocking would freeze the application for the length of it.
 	std::chrono::steady_clock::duration RestartBackoff(std::size_t restarts);
 
+	// How long a server outside the open folder may have nothing to do before it is shut down.
+	// Long enough that closing a file to reopen it, or stepping through a run of F12 targets, does
+	// not restart clangd each time; short enough that a one-off look at a stray file does not keep
+	// a server of about 100 MB alive for the rest of the session.
+	inline constexpr std::chrono::minutes kIdleShutdown{2};
+
 	// Owns every language server the application runs: at most one `LspClient` per
 	// (language, project root), started the first time a document in that language and root is
 	// seen, restarted a bounded number of times if its process dies, and shut down when this
@@ -94,6 +100,16 @@ namespace Graphite {
 		using RootPermission = std::function<bool(const std::filesystem::path& root)>;
 
 		void SetRootPermission(RootPermission permission);
+
+		// Where Poll reads the time from; the steady clock until set. A seam so the idle delay can
+		// be tested without waiting for it.
+		using Clock = std::function<std::chrono::steady_clock::time_point()>;
+
+		void SetClock(Clock clock);
+
+		// Whether a server entry exists for the key this file resolves to, whether or not it has a
+		// process. What shows that an idle server has been shut down.
+		bool IsRunningFor(const std::filesystem::path& path, LanguageId language);
 
 		// Brings every server into line with the permission after it has changed: a restricted
 		// server whose root is now permitted starts and is told every document it was sent while
@@ -277,6 +293,11 @@ namespace Graphite {
 			// makes that pairing explicit, and it is why the ticket, not the RequestId, is what a
 			// caller outside this class ever holds.
 			std::unordered_map<RequestId, Ticket> Pending;
+
+			// When this server was first seen with nothing to do - no open document, no pending
+			// ticket - and not the workspace's own; nullopt while it has work or is the
+			// workspace's. See ReapIdle.
+			std::optional<std::chrono::steady_clock::time_point> IdleSince;
 		};
 
 		// Resolves the config and the root for (path, language); null when the language has no
@@ -304,6 +325,12 @@ namespace Graphite {
 		// have ended, so an `LspClient` whose process died is finished for good — the only way
 		// back is a brand new instance, which is what this does.
 		void RestartServer(const Key& key, ManagedServer& server);
+
+		// Shuts down, and forgets, every server outside the workspace that has held no document
+		// for kIdleShutdown, along with the files it named. Called at the end of every Poll.
+		void ReapIdle(std::chrono::steady_clock::time_point now);
+
+		Clock m_Clock;
 
 		bool Permits(const std::filesystem::path& root) const;
 		void MarkRestricted(ManagedServer& server);

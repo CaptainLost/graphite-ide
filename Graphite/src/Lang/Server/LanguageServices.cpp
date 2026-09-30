@@ -851,7 +851,7 @@ namespace Graphite {
 			}
 		}
 
-		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		const std::chrono::steady_clock::time_point now = m_Clock ? m_Clock() : std::chrono::steady_clock::now();
 
 		for (auto& [key, server] : m_Servers)
 		{
@@ -971,6 +971,72 @@ namespace Graphite {
 			}
 
 			RestartServer(key, server);
+		}
+
+		ReapIdle(now);
+	}
+
+	void LanguageServices::SetClock(Clock clock)
+	{
+		m_Clock = std::move(clock);
+	}
+
+	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language)
+	{
+		Key key;
+
+		return Resolve(path, language, key) != nullptr && m_Servers.contains(key);
+	}
+
+	void LanguageServices::ReapIdle(std::chrono::steady_clock::time_point now)
+	{
+		for (auto it = m_Servers.begin(); it != m_Servers.end();)
+		{
+			ManagedServer& server = it->second;
+			const std::filesystem::path& root = it->first.Root;
+
+			// The workspace's own servers - rooted at the open folder, inside it, or above it when
+			// a subfolder of a project is open - hold the background index and are never reaped.
+			// Pending is checked even though only a live client can have any: a server is never
+			// destroyed with an answer still owed.
+			const bool workspaces = Core::IsSameOrWithin(root, m_FallbackRoot) || Core::IsSameOrWithin(m_FallbackRoot, root);
+			const bool idle = !workspaces && server.OpenDocuments.empty() && server.Pending.empty();
+
+			if (!idle)
+			{
+				server.IdleSince.reset();
+				++it;
+				continue;
+			}
+
+			if (!server.IdleSince)
+			{
+				server.IdleSince = now;
+				++it;
+				continue;
+			}
+
+			if (now - *server.IdleSince < kIdleShutdown)
+			{
+				++it;
+				continue;
+			}
+
+			if (server.Client)
+			{
+				APP_INFO("Stopping {} for {} at {}: unused for {} minutes", server.Status.Name,
+						 LanguageDisplayName(it->first.Language), Core::ToUtf8(root),
+						 std::chrono::duration_cast<std::chrono::minutes>(kIdleShutdown).count());
+				server.Client->RequestShutdown();
+			}
+
+			// What this server named goes with it, so the map stays bounded by the servers alive:
+			// a file it pointed at is judged by its own directory again, not by a root nothing runs at.
+			std::erase_if(m_NamedBy, [&](const auto& named) { return !(it->first < named.second) && !(named.second < it->first); });
+
+			// Erasing the entry is the whole shutdown: the client's destructor ends the process,
+			// and the next EnsureStarted for this root starts a fresh one, as for a first open.
+			it = m_Servers.erase(it);
 		}
 	}
 }

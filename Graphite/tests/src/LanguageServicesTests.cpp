@@ -835,3 +835,148 @@ TEST_CASE("A markerless file inside the open folder stays the folder's when anot
 	REQUIRE(asked.Roots.size() == 2);
 	CHECK(asked.Roots[1] == temp.GetPath() / "workspace");
 }
+
+namespace {
+	struct FakeClock
+	{
+		std::chrono::steady_clock::time_point Now = std::chrono::steady_clock::time_point{} + std::chrono::hours(1);
+
+		Graphite::LanguageServices::Clock Get()
+		{
+			return [this] { return Now; };
+		}
+	};
+}
+
+TEST_CASE("An idle server outside the open folder is shut down after the idle delay, not before")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/readme.txt", "\n");
+	temp.MakeFile("elsewhere/compile_flags.txt", "\n");
+	temp.MakeFile("elsewhere/loose.cpp", "int x;\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	FakeClock clock;
+	services.SetClock(clock.Get());
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	const std::filesystem::path loose = temp.GetPath() / "elsewhere" / "loose.cpp";
+
+	services.EnsureStarted(loose, Graphite::LanguageId::Cpp);
+	services.Poll();
+
+	clock.Now += Graphite::kIdleShutdown - std::chrono::seconds(1);
+	services.Poll();
+	CHECK(services.IsRunningFor(loose, Graphite::LanguageId::Cpp));
+
+	clock.Now += std::chrono::seconds(2);
+	services.Poll();
+	CHECK_FALSE(services.IsRunningFor(loose, Graphite::LanguageId::Cpp));
+}
+
+TEST_CASE("The open folder's server is never shut down for being idle")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/compile_flags.txt", "\n");
+	temp.MakeFile("workspace/main.cpp", "\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	FakeClock clock;
+	services.SetClock(clock.Get());
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	const std::filesystem::path source = temp.GetPath() / "workspace" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.Poll();
+	clock.Now += Graphite::kIdleShutdown * 3;
+	services.Poll();
+
+	CHECK(services.IsRunningFor(source, Graphite::LanguageId::Cpp));
+}
+
+// A subfolder of a repository opened on its own: the server is rooted at the repository, above
+// the open folder, and it is still the workspace's server.
+TEST_CASE("A server rooted above the open folder is never shut down for being idle")
+{
+	TempDirectory temp;
+	temp.MakeFile("repo/compile_flags.txt", "\n");
+	temp.MakeFile("repo/sub/main.cpp", "\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "repo" / "sub"};
+	FakeClock clock;
+	services.SetClock(clock.Get());
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	const std::filesystem::path source = temp.GetPath() / "repo" / "sub" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.Poll();
+	clock.Now += Graphite::kIdleShutdown * 3;
+	services.Poll();
+
+	CHECK(services.IsRunningFor(source, Graphite::LanguageId::Cpp));
+}
+
+TEST_CASE("A server holding an open document is never shut down for being idle")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/readme.txt", "\n");
+	temp.MakeFile("elsewhere/compile_flags.txt", "\n");
+	temp.MakeFile("elsewhere/loose.cpp", "int x;\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	FakeClock clock;
+	services.SetClock(clock.Get());
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	const std::filesystem::path loose = temp.GetPath() / "elsewhere" / "loose.cpp";
+
+	services.EnsureStarted(loose, Graphite::LanguageId::Cpp);
+	services.OpenDocument(loose, Graphite::LanguageId::Cpp, "int x;\n");
+	services.Poll();
+	clock.Now += Graphite::kIdleShutdown * 3;
+	services.Poll();
+
+	CHECK(services.IsRunningFor(loose, Graphite::LanguageId::Cpp));
+
+	// And once it is closed, the delay starts from the close, not from when it was opened.
+	services.CloseDocument(loose, Graphite::LanguageId::Cpp);
+	services.Poll();
+	clock.Now += std::chrono::seconds(1);
+	services.Poll();
+	CHECK(services.IsRunningFor(loose, Graphite::LanguageId::Cpp));
+}
+
+// A reaped server's name for a file goes with it: the header's server is gone, so the header is
+// judged by its own directory again rather than by a root nothing runs at.
+TEST_CASE("Reaping a server forgets the files it named")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/readme.txt", "\n");
+	temp.MakeFile("elsewhere/compile_flags.txt", "\n");
+	temp.MakeFile("elsewhere/loose.cpp", "int x;\n");
+	temp.MakeFile("sdk/include/vector", "// header\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	FakeClock clock;
+	AskedRoots asked;
+	services.SetClock(clock.Get());
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	const std::filesystem::path loose = temp.GetPath() / "elsewhere" / "loose.cpp";
+	const std::filesystem::path header = temp.GetPath() / "sdk" / "include" / "vector";
+
+	services.EnsureStarted(loose, Graphite::LanguageId::Cpp);
+	services.NoteNamed(header, loose, Graphite::LanguageId::Cpp);
+	services.Poll();
+	clock.Now += Graphite::kIdleShutdown + std::chrono::seconds(1);
+	services.Poll();
+	REQUIRE(asked.Roots.size() == 1);
+
+	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.Roots.size() == 2);
+	CHECK(asked.Roots[1] == temp.GetPath() / "sdk" / "include");
+}
