@@ -178,3 +178,35 @@ TEST_CASE("RelativeTo gives \".\" for a path equal to the base")
 	REQUIRE(relative.has_value());
 	CHECK(*relative == ".");
 }
+
+TEST_CASE("IsSameOrWithin accepts the root itself and anything below it")
+{
+	CHECK(Core::IsSameOrWithin("D:\\Repos\\IDE", "D:\\Repos\\IDE"));
+	CHECK(Core::IsSameOrWithin("D:\\Repos\\IDE\\Core\\src\\a.cpp", "D:\\Repos\\IDE"));
+	CHECK_FALSE(Core::IsSameOrWithin("D:\\Repos", "D:\\Repos\\IDE"));
+	CHECK_FALSE(Core::IsSameOrWithin("E:\\Repos\\IDE", "D:\\Repos\\IDE"));
+}
+
+TEST_CASE("IsSameOrWithin ignores case, slash direction and a trailing separator")
+{
+	CHECK(Core::IsSameOrWithin("d:/repos/ide/core/", "D:\\Repos\\IDE\\"));
+	CHECK(Core::IsSameOrWithin("D:\\REPOS\\IDE\\x.cpp", "d:\\repos\\ide"));
+}
+
+// The prefix trap, the same one WorkspaceTrust guards against.
+TEST_CASE("IsSameOrWithin does not treat a sibling sharing a prefix as inside")
+{
+	CHECK_FALSE(Core::IsSameOrWithin("D:\\Repos\\IDE2\\a.cpp", "D:\\Repos\\IDE"));
+}
+
+TEST_CASE("IsSameOrWithin is false for an empty root or a relative path")
+{
+	CHECK_FALSE(Core::IsSameOrWithin("D:\\Repos\\IDE", ""));
+	CHECK_FALSE(Core::IsSameOrWithin("Repos\\IDE", "D:\\Repos"));
+	CHECK_FALSE(Core::IsSameOrWithin("D:\\Repos\\IDE", "Repos"));
+}
+
+TEST_CASE("IsSameOrWithin treats a drive root as containing the whole drive")
+{
+	CHECK(Core::IsSameOrWithin("D:\\anything\\at\\all", "D:\\"));
+}

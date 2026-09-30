@@ -168,4 +168,31 @@ namespace Core {
 
 		return relative;
 	}
+
+	bool IsSameOrWithin(const std::filesystem::path& path, const std::filesystem::path& root)
+	{
+		if (root.empty() || !root.is_absolute() || !path.is_absolute())
+		{
+			return false;
+		}
+
+		const std::filesystem::path normalizedPath = NormalizeDirectory(path);
+		const std::filesystem::path normalizedRoot = NormalizeDirectory(root);
+
+		auto inPath = normalizedPath.begin();
+
+		for (const std::filesystem::path& component : normalizedRoot)
+		{
+			// A drive root's trailing separator is a component of its own ("D:", "\\"); an empty
+			// final element never appears here because NormalizeDirectory removed it.
+			if (inPath == normalizedPath.end() || CompareNames(ToUtf8(*inPath), ToUtf8(component)) != 0)
+			{
+				return false;
+			}
+
+			++inPath;
+		}
+
+		return true;
+	}
 }
