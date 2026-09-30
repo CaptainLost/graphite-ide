@@ -1,8 +1,11 @@
 #include "Git/GitModel.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Fs/FileSystem.h"
 #include "Workspace/Workspace.h"
 
+#include <algorithm>
+#include <chrono>
 #include <utility>
 
 namespace Graphite {
@@ -14,8 +17,12 @@ namespace Graphite {
 
 	void GitModel::Deliver(Delivery delivery)
 	{
-		const std::lock_guard<std::mutex> lock{m_InboxMutex};
-		m_Inbox.push_back(std::move(delivery));
+		{
+			const std::lock_guard<std::mutex> lock{m_InboxMutex};
+			m_Inbox.push_back(std::move(delivery));
+		}
+
+		Core::Redraw::Request();
 	}
 
 	void GitModel::SetRoot(std::filesystem::path root)
@@ -86,6 +93,21 @@ namespace Graphite {
 
 		m_Dirty = true;
 		m_DirtyFor = 0.0f;
+
+		RequestDebounceFrame();
+	}
+
+	void GitModel::RequestDebounceFrame() const
+	{
+		if (!m_Dirty)
+		{
+			return;
+		}
+
+		const float remaining =
+			std::min(kDebounceSeconds - m_DirtyFor, kMaxDebounceSeconds - m_DirtySince);
+
+		Core::Redraw::RequestIn(std::chrono::duration<double>(std::max(remaining, 0.0f)));
 	}
 
 	void GitModel::SubscribeTo(Core::EventBus& events)
@@ -145,6 +167,8 @@ namespace Graphite {
 				}
 			}
 		}
+
+		RequestDebounceFrame();
 
 		std::vector<Delivery> ready;
 

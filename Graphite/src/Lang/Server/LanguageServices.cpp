@@ -1,5 +1,6 @@
 #include "Lang/Server/LanguageServices.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
@@ -584,8 +585,12 @@ namespace Graphite {
 				// class does not do.
 				std::string text = ReadAll(file);
 
-				const std::lock_guard<std::mutex> guard(warm->Mutex);
-				warm->Found.push_back(WarmFinding{language, file, std::move(text)});
+				{
+					const std::lock_guard<std::mutex> guard(warm->Mutex);
+					warm->Found.push_back(WarmFinding{language, file, std::move(text)});
+				}
+
+				Core::Redraw::Request();
 			});
 		});
 	}

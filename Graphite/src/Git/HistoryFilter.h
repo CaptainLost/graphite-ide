@@ -46,7 +46,8 @@ namespace Graphite {
 		// True on the single frame a change has settled — the caller's cue to query.
 		// Compared against what was last asked for rather than merely consumed: text typed
 		// and erased back to where it started needs no query at all, since the page on
-		// screen already answers it.
+		// screen already answers it. The first call after a change does not count its
+		// seconds: they belong to the frame the change was typed in.
 		bool Advance(float seconds);
 
 		const HistoryFilter& Get() const { return m_Pending; }
@@ -71,6 +72,9 @@ namespace Graphite {
 		HistoryFilter m_Requested;
 
 		float m_Since = 0.0f;
+
+		// Set changed the filter since the last Advance.
+		bool m_JustSet = false;
 	};
 
 	// The query one column state asks for. A function rather than a few lines inside the

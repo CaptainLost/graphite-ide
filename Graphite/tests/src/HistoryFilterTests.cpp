@@ -103,6 +103,13 @@ namespace {
 	// not about how many frames it took to get there.
 	constexpr float kSettled = SettlingFilter::kSettleSeconds + 0.01f;
 
+	// The frame a change is typed in. Its step never counts toward the wait, however long it
+	// is — after the loop has slept, it is the whole sleep.
+	void KeystrokeFrame(SettlingFilter& settling)
+	{
+		REQUIRE_FALSE(settling.Advance(kSettled));
+	}
+
 	HistoryFilter TextOf(std::string text)
 	{
 		HistoryFilter filter;
@@ -133,6 +140,7 @@ TEST_CASE("A change asks once it has settled")
 {
 	SettlingFilter settling;
 	settling.Set(TextOf("enc"));
+	KeystrokeFrame(settling);
 
 	CHECK(settling.Advance(kSettled));
 	CHECK(settling.Get().Text == "enc");
@@ -142,6 +150,7 @@ TEST_CASE("A settled change asks exactly once")
 {
 	SettlingFilter settling;
 	settling.Set(TextOf("enc"));
+	KeystrokeFrame(settling);
 
 	REQUIRE(settling.Advance(kSettled));
 	CHECK_FALSE(settling.Advance(kSettled));
@@ -151,10 +160,12 @@ TEST_CASE("Typing again before the wait is over starts the wait over")
 {
 	SettlingFilter settling;
 	settling.Set(TextOf("enc"));
+	KeystrokeFrame(settling);
 
 	REQUIRE_FALSE(settling.Advance(SettlingFilter::kSettleSeconds * 0.75f));
 
 	settling.Set(TextOf("enco"));
+	KeystrokeFrame(settling);
 
 	CHECK_FALSE(settling.Advance(SettlingFilter::kSettleSeconds * 0.75f));
 	CHECK(settling.Advance(SettlingFilter::kSettleSeconds * 0.75f));
@@ -165,6 +176,7 @@ TEST_CASE("Text erased back to what was already asked for asks nothing")
 {
 	SettlingFilter settling;
 	settling.Set(TextOf("enc"));
+	KeystrokeFrame(settling);
 	REQUIRE(settling.Advance(kSettled));
 
 	settling.Set(TextOf("encoding"));
@@ -182,6 +194,7 @@ TEST_CASE("A change to the path alone settles the same way")
 	HistoryFilter filter;
 	filter.Path = "Core/src/Core/Git/Repository.cpp";
 	settling.Set(filter);
+	KeystrokeFrame(settling);
 
 	CHECK(settling.Advance(kSettled));
 	CHECK(settling.Get().Path == "Core/src/Core/Git/Repository.cpp");
@@ -220,7 +233,20 @@ TEST_CASE("A filter changed after being asked for still settles")
 	settling.Accept();
 
 	settling.Set(TextOf("encoding"));
+	KeystrokeFrame(settling);
 
 	CHECK(settling.Advance(kSettled));
 	CHECK(settling.Get().Text == "encoding");
+}
+
+TEST_CASE("The frame a change is typed in does not count toward its wait")
+{
+	SettlingFilter settling;
+	settling.Set(TextOf("e"));
+
+	// The frame loop sleeps when idle, so the keystroke that wakes it arrives on a frame
+	// whose step is the whole sleep. Counting it would query the history for one letter.
+	CHECK_FALSE(settling.Advance(10.0f));
+	CHECK_FALSE(settling.Advance(SettlingFilter::kSettleSeconds / 2.0f));
+	CHECK(settling.Advance(SettlingFilter::kSettleSeconds));
 }

@@ -107,6 +107,11 @@ namespace Graphite {
 		void Deliver(std::function<void()> delivery);
 		void MarkDirty();
 
+		// Asks the frame loop for the frame the debounce runs out on. A mark can come from a
+		// result that woke the loop for a few frames only, and the loop would otherwise sleep
+		// through the debounce until its idle tick.
+		void RequestDebounceFrame() const;
+
 		ChangeBasePort& m_Port;
 		JobSubmitter m_Submit;
 

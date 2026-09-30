@@ -2,11 +2,15 @@
 
 #include "Core/App/Application.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Assert.h"
 #include "Core/Base/Log.h"
 #include "Core/ImGui/Theme.h"
 
 #include <GLFW/glfw3.h>
+
+#include <chrono>
+#include <utility>
 
 namespace Core {
 
@@ -14,6 +18,8 @@ namespace Core {
 
 	void Application::OnEvent(Event& event)
 	{
+		m_EventArrived = true;
+
 		// Nothing here handles WindowClose; that runs through EveryLayerAllowsClose instead.
 		m_Gui.OnEvent(event);
 
@@ -119,6 +125,40 @@ namespace Core {
 		return Result<void>::Ok();
 	}
 
+	// A minimized window draws nothing, so it never polls: with nothing to swap there is no
+	// vsync to hold the loop back, and polling would spin a core. It still wakes for events
+	// and for the idle tick, so a close from the taskbar is seen.
+	void Application::WaitForReasonToDraw()
+	{
+		FramePacer::Clock::duration sleep =
+			m_Minimized ? FramePacer::IdleTick
+						: m_Pacer.SleepFor(FramePacer::Clock::now(), m_Gui.IsPointerHeld(),
+										   Redraw::TakeDeadline());
+
+		// A request already standing means its wake may be gone: anything on this thread that
+		// pumps messages mid-frame — the shell's file operations do — can swallow the posted
+		// one, and the wait would then sleep through a result it was told about.
+		if (!m_Minimized && Redraw::IsRequested())
+			sleep = FramePacer::Clock::duration::zero();
+
+		if (sleep > FramePacer::Clock::duration::zero())
+			m_Window->WaitEvents(std::chrono::duration<double>(sleep).count());
+		else
+			m_Window->PollEvents();
+
+		// Each source is taken every time, not short-circuited: a request left untaken would
+		// count as activity a second time on the next pass.
+		const bool requested = Redraw::TakeRequest();
+		const bool pendingInput = m_Gui.HasPendingInput();
+		const bool evented = std::exchange(m_EventArrived, false);
+
+		if (pendingInput || evented)
+			m_Pacer.NoteInput(FramePacer::Clock::now());
+
+		if (requested)
+			m_Pacer.NoteRequest();
+	}
+
 	Result<void> Application::Run()
 	{
 		if (auto opened = OpenWindowAndGui(); !opened)
@@ -129,18 +169,29 @@ namespace Core {
 
 		OnInit();
 
+		// The loop's wait ends early on glfwPostEmptyEvent, which is safe from any thread
+		// between glfwInit and glfwTerminate — the window's lifetime, so the waker is set for
+		// exactly that long.
+		Redraw::SetWaker(&glfwPostEmptyEvent);
+
 		m_Running = true;
 		m_LastFrameTime = glfwGetTime();
 
+		// Startup counts as input: the first frames lay out the docked windows and load what
+		// the layers restore, none of which arrives as an event.
+		m_Pacer.NoteInput(FramePacer::Clock::now());
+
 		while (m_Running)
 		{
+			WaitForReasonToDraw();
+
 			// glfwGetTime counts in double from process start, so the subtraction happens
-			// there and only the much smaller frame step narrows to float.
+			// there and only the much smaller frame step narrows to float. After a sleep the
+			// step covers all of it, so a timer advanced by it catches up in one frame.
 			const double now = glfwGetTime();
 			const Timestep ts = static_cast<float>(now - m_LastFrameTime);
 			m_LastFrameTime = now;
 
-			m_Window->PollEvents();
 			RefreshFrameLayers();
 
 			if (m_Window->ShouldClose())
@@ -156,21 +207,24 @@ namespace Core {
 			// taskbar.
 			m_Minimized = HasNoPixels();
 
-			if (!m_Minimized)
-			{
-				for (Layer* layer : m_FrameLayers)
-					layer->OnUpdate(ts);
+			if (m_Minimized)
+				continue;
 
-				m_Gui.BeginFrame();
+			for (Layer* layer : m_FrameLayers)
+				layer->OnUpdate(ts);
 
-				for (Layer* layer : m_FrameLayers)
-					layer->OnImGuiRender();
+			m_Gui.BeginFrame();
 
-				m_Gui.EndFrame(*m_Window);
-			}
+			for (Layer* layer : m_FrameLayers)
+				layer->OnImGuiRender();
+
+			m_Gui.EndFrame(*m_Window);
 
 			m_Window->SwapBuffers();
+			m_Pacer.FrameDrawn();
 		}
+
+		Redraw::SetWaker(nullptr);
 
 		OnShutdown();
 

@@ -37,4 +37,13 @@ namespace Core {
 
 		return settled;
 	}
+
+	std::optional<ChangeCollector::Clock::time_point> ChangeCollector::SettlesAt(
+		std::chrono::milliseconds quietPeriod) const
+	{
+		if (!m_HasPending)
+			return std::nullopt;
+
+		return m_LastChange + quietPeriod;
+	}
 }

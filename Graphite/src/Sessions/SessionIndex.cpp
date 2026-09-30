@@ -1,5 +1,7 @@
 #include "Sessions/SessionIndex.h"
 
+#include "Core/App/Redraw.h"
+
 #include <set>
 
 namespace Graphite {
@@ -157,8 +159,13 @@ namespace Graphite {
 			if (!token.IsCancelled())
 				work(*inbox, *known);
 
-			const std::lock_guard<std::mutex> guard(inbox->Mutex);
-			--inbox->Pending;
+			{
+				const std::lock_guard<std::mutex> guard(inbox->Mutex);
+				--inbox->Pending;
+			}
+
+			// Covers whatever the work delivered last, and the end of scanning itself.
+			Core::Redraw::Request();
 		});
 	}
 
@@ -178,8 +185,12 @@ namespace Graphite {
 				known.Prints[summary.File] = summary.Print;
 
 				// Delivered one at a time, so the list fills while the scan runs.
-				const std::lock_guard<std::mutex> guard(inbox.Mutex);
-				inbox.Ready.Updated.push_back(std::move(summary));
+				{
+					const std::lock_guard<std::mutex> guard(inbox.Mutex);
+					inbox.Ready.Updated.push_back(std::move(summary));
+				}
+
+				Core::Redraw::Request();
 			});
 
 			// The caller shows the cache before the scan confirms it, so a session whose file

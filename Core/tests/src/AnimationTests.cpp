@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/App/Redraw.h"
 #include "Core/ImGui/Animation.h"
 
 #include <imgui.h>
@@ -141,4 +142,20 @@ TEST_CASE("Blend goes from one colour to the other, alpha included")
 	CHECK(middle.w == doctest::Approx(0.5f));
 	CHECK(end.x == doctest::Approx(1.0f));
 	CHECK(end.w == doctest::Approx(1.0f));
+}
+
+TEST_CASE("A hover under way asks for the next frame, and a settled one does not")
+{
+	Frames frames;
+	frames.Next(kItem, false);
+	(void)Core::Redraw::TakeDeadline();
+
+	frames.Next(kItem, true);
+	CHECK(Core::Redraw::TakeDeadline().has_value());
+
+	frames.After(Core::Animation::kHoverInSeconds + 0.05f, kItem, true);
+	(void)Core::Redraw::TakeDeadline();
+
+	frames.Next(kItem, true);
+	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }

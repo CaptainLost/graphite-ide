@@ -2,6 +2,8 @@
 
 #include "Core/Platform/AsyncDialog.h"
 
+#include "Core/App/Redraw.h"
+
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -30,8 +32,12 @@ namespace Core {
 		std::thread([pending, picker = std::move(picker)] {
 			Result<std::filesystem::path> answer = picker();
 
-			const std::lock_guard lock(pending->Mutex);
-			pending->Answer.emplace(std::move(answer));
+			{
+				const std::lock_guard lock(pending->Mutex);
+				pending->Answer.emplace(std::move(answer));
+			}
+
+			Redraw::Request();
 		}).detach();
 
 		m_Pending = std::move(pending);

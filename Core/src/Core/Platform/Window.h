@@ -44,6 +44,11 @@ namespace Core {
 		virtual void SetEventCallback(EventCallbackFn callback) = 0;
 
 		virtual void PollEvents() = 0;
+
+		// PollEvents, but first sleeps until an event arrives, Redraw's waker fires, or the
+		// timeout passes — or a millisecond after it, never before.
+		virtual void WaitEvents(double timeoutSeconds) = 0;
+
 		virtual void SwapBuffers() = 0;
 
 		virtual bool ShouldClose() const = 0;

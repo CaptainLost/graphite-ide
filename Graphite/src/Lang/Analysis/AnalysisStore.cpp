@@ -2,6 +2,7 @@
 
 #include "Lang/Analysis/AnalysisRecord.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Fs/AtomicWrite.h"
 #include "Core/Fs/FileSystem.h"
 
@@ -115,6 +116,7 @@ namespace Graphite {
 		m_Jobs.Submit([listing = m_Listing, token = m_Token, directory = Directory()]
 		{
 			ReadIndexInto(directory, token, *listing);
+			Core::Redraw::Request();
 		});
 	}
 

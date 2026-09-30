@@ -17,7 +17,8 @@ namespace Core::Animation {
 
 	// How far an item is into its hover, from 0 at rest to 1 fully hovered, eased both ways.
 	// The id is what keeps one item's fade apart from another's, so pass the item's own id -
-	// ImGui::GetItemID() straight after the widget is the usual source.
+	// ImGui::GetItemID() straight after the widget is the usual source. Asks the frame loop
+	// for the next frame for as long as the fade is under way.
 	float HoverAmount(ImGuiID id, bool hovered);
 
 	// A colour part of the way from one to the other, alpha included.

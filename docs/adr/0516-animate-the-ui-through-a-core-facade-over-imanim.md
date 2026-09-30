@@ -13,9 +13,10 @@ after each.
 
 Nothing in the codebase tweens anything; the caret blink is the only
 time-based drawing, and it is a square wave on `ImGui::GetTime()`. The frame
-loop polls rather than waits, with vsync, so a frame is drawn every refresh
-whether or not input arrived — an animation needs no extra wake-ups to keep
-moving.
+loop sleeps when nothing happens
+([0530](0530-draw-a-frame-only-when-there-is-reason-to.md)), so an animation
+has to ask for its frames. The facade does that for every tween it returns
+that has not reached its target.
 
 ## Decision
 
@@ -87,3 +88,4 @@ motion" setting has one place to take effect.
 ## Related
 
 - [0001](0001-record-architecture-decisions.md)
+- [0530](0530-draw-a-frame-only-when-there-is-reason-to.md)

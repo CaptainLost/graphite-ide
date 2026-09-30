@@ -273,6 +273,11 @@ namespace Graphite {
 
 		void MarkDirty();
 
+		// Asks the frame loop for the frame the debounce runs out on. A mark can come from a
+		// result that woke the loop for a few frames only, and the loop would otherwise sleep
+		// through the debounce until its idle tick.
+		void RequestDebounceFrame() const;
+
 		struct CachedDiff
 		{
 			// Generations from the model-wide m_CommitDiffGeneration counter, never from a

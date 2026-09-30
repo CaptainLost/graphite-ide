@@ -1,5 +1,7 @@
 #include "Sessions/LiveTranscript.h"
 
+#include "Core/App/Redraw.h"
+
 #include "Sessions/SessionSummary.h"
 #include "Sessions/TranscriptReader.h"
 
@@ -55,6 +57,9 @@ namespace Graphite {
 			inbox.Offset = value.NextOffset;
 			inbox.Progress.Bytes = value.NextOffset;
 			inbox.Progress.Total = value.FileSize;
+
+			// Per chunk, so a long transcript fills in and its progress bar moves as it loads.
+			Core::Redraw::Request();
 
 			if (inbox.Stopping)
 				return false;
@@ -117,6 +122,8 @@ namespace Graphite {
 				if (counting)
 					inbox.Progress.SubagentsDone = index;
 			}
+
+			Core::Redraw::Request();
 
 			const std::filesystem::path& path = present[index];
 
@@ -213,6 +220,12 @@ namespace Graphite {
 
 		m_Jobs.Submit([inbox = m_Inbox, subagentFiles = m_Subagents, file = m_File]
 		{
+			// However the read ends, what it published last has to be drawn.
+			struct WakeOnExit
+			{
+				~WakeOnExit() { Core::Redraw::Request(); }
+			} wakeOnExit;
+
 			while (true)
 			{
 				{

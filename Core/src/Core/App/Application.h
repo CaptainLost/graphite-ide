@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/App/FramePacer.h"
 #include "Core/App/LayerStack.h"
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
@@ -63,6 +64,7 @@ namespace Core {
 
 	private:
 		Result<void> OpenWindowAndGui();
+		void WaitForReasonToDraw();
 		void RefreshFrameLayers();
 		bool EveryLayerAllowsClose();
 		bool HasNoPixels() const;
@@ -74,6 +76,8 @@ namespace Core {
 		std::vector<Layer*> m_FrameLayers;
 		bool m_Running = false;
 		bool m_Minimized = false;
+		FramePacer m_Pacer;
+		bool m_EventArrived = false;
 		double m_LastFrameTime = 0.0;
 
 		static Application* s_Instance;

@@ -1,5 +1,6 @@
 #include "Lang/Server/LspClient.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Fs/FileSystem.h"
 #include "Lang/Server/MessageStream.h"
 
@@ -1308,6 +1309,10 @@ namespace Graphite {
 			{
 				HandleBody(*shared, *body);
 			}
+
+			// Once per read rather than per message: whatever the batch changed — answers,
+			// diagnostics, progress — is drained by the same frame.
+			Core::Redraw::Request();
 		}
 
 		std::vector<RequestId> abandoned;
@@ -1353,6 +1358,8 @@ namespace Graphite {
 			shared->Status.Detail = "the language server stopped";
 			shared->Status.Percent = -1;
 		}
+
+		Core::Redraw::Request();
 	}
 
 	void LspClient::HandleBody(Shared& shared, const std::string& body)

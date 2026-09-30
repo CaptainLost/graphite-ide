@@ -1,11 +1,14 @@
 #include "Git/ChangeMarkersModel.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/Git/Repository.h"
 #include "Core/Git/TextDiff.h"
 #include "Core/Text/TextBuffer.h"
 #include "Workspace/Workspace.h"
 
+#include <algorithm>
+#include <chrono>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -43,12 +46,29 @@ namespace Graphite {
 
 		m_Dirty = true;
 		m_DirtyFor = 0.0f;
+
+		RequestDebounceFrame();
+	}
+
+	void ChangeMarkersModel::RequestDebounceFrame() const
+	{
+		if (!m_Dirty)
+			return;
+
+		const float remaining =
+			std::min(kDebounceSeconds - m_DirtyFor, kMaxDebounceSeconds - m_DirtySince);
+
+		Core::Redraw::RequestIn(std::chrono::duration<double>(std::max(remaining, 0.0f)));
 	}
 
 	void ChangeMarkersModel::Deliver(std::function<void()> delivery)
 	{
-		const std::lock_guard<std::mutex> lock{m_InboxMutex};
-		m_Inbox.push_back(std::move(delivery));
+		{
+			const std::lock_guard<std::mutex> lock{m_InboxMutex};
+			m_Inbox.push_back(std::move(delivery));
+		}
+
+		Core::Redraw::Request();
 	}
 
 	void ChangeMarkersModel::OnUpdate(Core::Timestep ts)
@@ -70,6 +90,8 @@ namespace Graphite {
 					RequestBases(path, entry);
 			}
 		}
+
+		RequestDebounceFrame();
 
 		for (auto& [path, entry] : m_Entries)
 			entry.QuietFor += seconds;
@@ -110,6 +132,14 @@ namespace Graphite {
 		{
 			entry.Pending = false;
 			RequestMarkers(path, entry, buffer);
+		}
+		else if (entry.Pending && entry.QuietFor < kEditQuietSeconds)
+		{
+			// Typing keeps the loop drawing, but a revision can also change on a reload from
+			// disk, which buys only a few frames; the one that ends the quiet has to be asked
+			// for.
+			Core::Redraw::RequestIn(
+				std::chrono::duration<double>(kEditQuietSeconds - entry.QuietFor));
 		}
 	}
 

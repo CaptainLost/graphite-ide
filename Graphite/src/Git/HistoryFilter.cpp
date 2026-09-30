@@ -38,6 +38,7 @@ namespace Graphite {
 
 		m_Pending = std::move(filter);
 		m_Since = 0.0f;
+		m_JustSet = true;
 	}
 
 	bool SettlingFilter::Advance(float seconds)
@@ -47,7 +48,11 @@ namespace Graphite {
 			return false;
 		}
 
-		m_Since += seconds;
+		// The frame the change was made in does not count: the frame loop sleeps when idle,
+		// so the step the keystroke's frame carries is the whole sleep before it, and
+		// counting it would settle the first letter typed at once.
+		if (!std::exchange(m_JustSet, false))
+			m_Since += seconds;
 
 		if (m_Since < kSettleSeconds)
 		{
@@ -62,6 +67,7 @@ namespace Graphite {
 	{
 		m_Requested = m_Pending;
 		m_Since = 0.0f;
+		m_JustSet = false;
 	}
 
 	void SettlingFilter::Reset()
@@ -69,6 +75,7 @@ namespace Graphite {
 		m_Pending = HistoryFilter{};
 		m_Requested = HistoryFilter{};
 		m_Since = 0.0f;
+		m_JustSet = false;
 	}
 
 	bool MatchesRefFilter(std::string_view name, std::string_view text)

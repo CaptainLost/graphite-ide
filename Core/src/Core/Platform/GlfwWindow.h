@@ -26,6 +26,7 @@ namespace Core {
 		void InstallCallbacks();
 
 		void PollEvents() override;
+		void WaitEvents(double timeoutSeconds) override;
 		void SwapBuffers() override;
 
 		bool ShouldClose() const override;

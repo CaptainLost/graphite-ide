@@ -2,6 +2,8 @@
 
 #include "Core/Term/TerminalSession.h"
 
+#include "Core/App/Redraw.h"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -130,9 +132,16 @@ namespace Core {
 			}
 
 			m_Incoming.append(buffer.data(), read);
+
+			// Without the wake a sleeping UI never pumps, the queue fills, and the shell
+			// blocks on its own output.
+			Redraw::Request();
 		}
 
 		m_Alive.store(false, std::memory_order_relaxed);
+
+		// So the tab of a shell that exited goes away without waiting for input.
+		Redraw::Request();
 	}
 
 	void TerminalSession::Pump()

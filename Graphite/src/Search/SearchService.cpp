@@ -1,5 +1,6 @@
 #include "Search/SearchService.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/Codec.h"
@@ -178,6 +179,8 @@ namespace Graphite {
 						shared->Progress.Unreadable += 1;
 						break;
 					}
+
+					Core::Redraw::Request();
 				};
 
 				const auto scanFile = [&](const std::filesystem::path& file)
@@ -290,6 +293,8 @@ namespace Graphite {
 				{
 					shared->Progress.Running = false;
 				}
+
+				Core::Redraw::Request();
 			});
 	}
 

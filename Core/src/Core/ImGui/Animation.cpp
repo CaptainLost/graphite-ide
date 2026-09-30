@@ -2,12 +2,25 @@
 
 #include "Core/ImGui/Animation.h"
 
+#include "Core/App/Redraw.h"
+
+#include <algorithm>
+#include <cmath>
+
 #include <im_anim.h>
 #include <imgui_internal.h>
 
 namespace Core::Animation {
 
 	namespace {
+		// Closer than this to its target a fade is finished: a thousandth of a colour channel
+		// is below what a display shows.
+		constexpr float kSettledEpsilon = 0.001f;
+
+		// Longer than any real frame, even a slow Debug one, so it never slows a fade in
+		// motion.
+		constexpr float kLongestStepSeconds = 0.1f;
+
 		// ImAnim keys a tween by item and channel; every hover shares this channel, so an item
 		// animating something else under its own id does not collide with its hover.
 		ImGuiID HoverChannel()
@@ -33,9 +46,24 @@ namespace Core::Animation {
 
 		// Crossfade rather than queue: a pointer that crosses an item and comes back mid-fade
 		// turns the fade around from where it is instead of finishing it first.
-		return iam_tween_float(id, HoverChannel(), target, seconds,
-							   iam_ease_preset(iam_ease_out_quad), iam_policy_crossfade,
-							   ImGui::GetIO().DeltaTime);
+		// The step is capped because the first frame after the loop has slept carries the
+		// whole sleep in DeltaTime, and a fade starting on that frame would arrive at once:
+		// whether a hover faded would depend on how long the pointer had rested. A fade asks
+		// for its own frames below, so the cap only ever shortens that first step.
+		const float step = std::min(ImGui::GetIO().DeltaTime, kLongestStepSeconds);
+
+		const float amount = iam_tween_float(id, HoverChannel(), target, seconds,
+											 iam_ease_preset(iam_ease_out_quad),
+											 iam_policy_crossfade, step);
+
+		// A fade still under way asks for the next frame itself. It usually starts on pointer
+		// movement, whose frames outlast it anyway; but one started by the layout shifting
+		// under a still pointer, on a frame no event asked for, would otherwise freeze
+		// mid-way until the loop's idle tick.
+		if (std::fabs(amount - target) > kSettledEpsilon)
+			Redraw::RequestIn(Redraw::Clock::duration::zero());
+
+		return amount;
 	}
 
 	ImVec4 Blend(const ImVec4& from, const ImVec4& to, float amount)

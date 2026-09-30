@@ -4,6 +4,7 @@
 #include "Lang/Server/ServerRegistry.h"
 #include "Search/FileEnumerator.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Git/Repository.h"
 
 #include <optional>
@@ -118,12 +119,20 @@ namespace Graphite {
 					return;
 				}
 
-				const std::lock_guard<std::mutex> guard(findings->Mutex);
-				findings->Paths.push_back(file);
+				{
+					const std::lock_guard<std::mutex> guard(findings->Mutex);
+					findings->Paths.push_back(file);
+				}
+
+				Core::Redraw::Request();
 			});
 
-			const std::lock_guard<std::mutex> guard(findings->Mutex);
-			findings->Walking = false;
+			{
+				const std::lock_guard<std::mutex> guard(findings->Mutex);
+				findings->Walking = false;
+			}
+
+			Core::Redraw::Request();
 		});
 	}
 

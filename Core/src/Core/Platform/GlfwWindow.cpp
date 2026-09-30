@@ -291,6 +291,14 @@ namespace Core {
 		glfwPollEvents();
 	}
 
+	void GlfwWindow::WaitEvents(double timeoutSeconds)
+	{
+		// GLFW truncates the timeout to whole milliseconds, which wakes a hair before the
+		// deadline, finds it not yet due, and spends another frame asking again. A millisecond
+		// late is invisible.
+		glfwWaitEventsTimeout(timeoutSeconds + 0.001);
+	}
+
 	void GlfwWindow::SwapBuffers()
 	{
 		glfwSwapBuffers(m_Handle);

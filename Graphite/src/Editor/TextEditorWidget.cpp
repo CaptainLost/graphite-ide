@@ -19,6 +19,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 
+#include "Core/App/Redraw.h"
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -37,6 +38,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -1676,8 +1678,14 @@ namespace Graphite {
 			// caret from being invisible under a held arrow key: every move restarts the cycle at
 			// its lit half.
 			const double phase = std::fmod(ImGui::GetTime() - s_CaretMovedAt, kCaretBlinkPeriod);
+			const double half = kCaretBlinkPeriod * 0.5;
 
-			if (phase < kCaretBlinkPeriod * 0.5)
+			// The loop sleeps when nothing happens, and a blink is not an event: the frame that
+			// flips the caret has to be asked for.
+			const double untilFlip = phase < half ? half - phase : kCaretBlinkPeriod - phase;
+			Core::Redraw::RequestIn(std::chrono::duration<double>(untilFlip));
+
+			if (phase < half)
 			{
 				canvas.Draw->AddLine(ImVec2(caretX, slice.Y),
 									 ImVec2(caretX, slice.Y + canvas.Metrics.LineHeight),

@@ -11,6 +11,7 @@
 #include "Core/Platform/Window.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <implot.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
@@ -242,6 +243,16 @@ namespace Core {
 		{
 			event.Handled = true;
 		}
+	}
+
+	bool ImGuiRenderer::HasPendingInput() const
+	{
+		return m_Initialized && !ImGui::GetCurrentContext()->InputEventsQueue.empty();
+	}
+
+	bool ImGuiRenderer::IsPointerHeld() const
+	{
+		return m_Initialized && ImGui::IsAnyMouseDown();
 	}
 
 	void ImGuiRenderer::BeginFrame()

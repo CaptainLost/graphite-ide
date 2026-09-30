@@ -4,6 +4,7 @@
 
 #include "Core/Fs/DirectoryWatcher.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -274,6 +275,7 @@ namespace Core {
 				if (::GetLastError() == ERROR_NOTIFY_ENUM_DIR)
 				{
 					RecordOverflow();
+					Redraw::Request();
 					continue;
 				}
 
@@ -286,10 +288,15 @@ namespace Core {
 			if (bytes == 0)
 			{
 				RecordOverflow();
+				Redraw::Request();
 				continue;
 			}
 
 			RecordChangesIn(buffer.data(), bytes);
+
+			// Nothing is settled yet — that takes a quiet period — but a take in the frames
+			// this buys learns when it will be, and asks for a frame then.
+			Redraw::Request();
 		}
 
 		::CloseHandle(ioEvent);
@@ -414,6 +421,7 @@ namespace Core {
 		// in the next batch looking perfectly current.
 		m_Collector = ChangeCollector{};
 		m_MovedTo = current;
+		Redraw::Request();
 #endif
 	}
 
@@ -512,6 +520,11 @@ namespace Core {
 		changes.Overflowed = m_Collector.HasOverflowed();
 		changes.RepositoryState = std::exchange(m_RepositoryState, false);
 		changes.MovedTo = std::exchange(m_MovedTo, std::nullopt);
+
+		// The change woke the loop for a few frames, not for the quiet period, so the frame
+		// that finds the batch settled has to be asked for.
+		if (const auto settlesAt = m_Collector.SettlesAt(kQuietPeriod))
+			Redraw::RequestIn(*settlesAt - ChangeCollector::Clock::now());
 
 		return changes;
 	}

@@ -100,3 +100,29 @@ TEST_CASE("Overflow settles alongside ordinary changes")
 	CHECK(settled.size() == 1);
 	CHECK(collector.HasOverflowed());
 }
+
+TEST_CASE("Nothing pending settles at no time")
+{
+	ChangeCollector collector;
+
+	CHECK_FALSE(collector.SettlesAt(kQuiet).has_value());
+}
+
+TEST_CASE("Pending changes settle a quiet period after the last one")
+{
+	ChangeCollector collector;
+	collector.Add("C:/a", At(0));
+	collector.Add("C:/b", At(100));
+
+	REQUIRE(collector.SettlesAt(kQuiet).has_value());
+	CHECK(*collector.SettlesAt(kQuiet) == At(350));
+}
+
+TEST_CASE("Settled changes taken leave nothing to settle")
+{
+	ChangeCollector collector;
+	collector.Add("C:/a", At(0));
+	(void)collector.TakeSettled(At(300), kQuiet);
+
+	CHECK_FALSE(collector.SettlesAt(kQuiet).has_value());
+}

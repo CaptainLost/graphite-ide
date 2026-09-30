@@ -33,6 +33,14 @@ namespace Core {
 		// text field never also reaches whatever is listening for shortcuts below.
 		void OnEvent(Event& event);
 
+		// Input the platform backend has queued and no frame has consumed yet. It covers every
+		// viewport, where OnEvent sees only the main window's events; and ImGui trickles fast
+		// input over several frames, so a queue left non-empty needs another one.
+		bool HasPendingInput() const;
+
+		// Whether any mouse button was down as of the last frame.
+		bool IsPointerHeld() const;
+
 		static ImFont* GetMonoFont();
 
 		// The way to put a palette on screen. Theme::Apply paints the colours; this also runs

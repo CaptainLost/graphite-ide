@@ -1,5 +1,6 @@
 #include "Lang/Analysis/FileTextSource.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
 
@@ -109,8 +110,12 @@ namespace Graphite {
 		{
 			FileText read = ReadFileText(path);
 
-			const std::lock_guard<std::mutex> guard(ready->Mutex);
-			ready->Texts.push_back(std::move(read));
+			{
+				const std::lock_guard<std::mutex> guard(ready->Mutex);
+				ready->Texts.push_back(std::move(read));
+			}
+
+			Core::Redraw::Request();
 		});
 	}
 
