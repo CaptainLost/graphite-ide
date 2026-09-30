@@ -980,3 +980,67 @@ TEST_CASE("Reaping a server forgets the files it named")
 	REQUIRE(asked.Roots.size() == 2);
 	CHECK(asked.Roots[1] == temp.GetPath() / "sdk" / "include");
 }
+
+// The sticky key lives exactly as long as the document is open: a file closed and opened again
+// resolves afresh, so a fallback root set in between is honoured.
+TEST_CASE("Closing a document releases its server key so a reopened file resolves afresh")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{{}};
+	AskedRoots asked;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "x\n");
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots[0] == temp.GetPath() / "workspace" / "src");
+
+	services.CloseDocument(source, Graphite::LanguageId::Cpp);
+	services.SetFallbackRoot(temp.GetPath() / "workspace");
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "x\n");
+
+	REQUIRE(asked.Roots.size() == 2);
+	CHECK(asked.Roots[1] == temp.GetPath() / "workspace");
+}
+
+// Withdrawing trust from a server takes back what it named, the same as reaping it does.
+TEST_CASE("Restricting a server forgets the files it named")
+{
+	TempDirectory temp;
+	temp.MakeFile("project/compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("project/main.cpp", "#include <vector>\n");
+	temp.MakeFile("sdk/include/vector", "// header\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "project"};
+	std::vector<std::filesystem::path> asked;
+	bool permitProject = true;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&](const std::filesystem::path& root)
+	{
+		asked.push_back(root);
+		return permitProject;
+	});
+
+	const std::filesystem::path source = temp.GetPath() / "project" / "main.cpp";
+	const std::filesystem::path header = temp.GetPath() / "sdk" / "include" / "vector";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.NoteNamed(header, source, Graphite::LanguageId::Cpp);
+	REQUIRE(asked.size() == 1);
+
+	permitProject = false;
+	services.Revalidate();
+	asked.clear();
+
+	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.size() == 1);
+	CHECK(asked[0] == temp.GetPath() / "sdk" / "include");
+}

@@ -51,7 +51,7 @@ namespace Core {
 
 	// Whether `path` is `root` or lies below it, compared the way Windows compares paths:
 	// component by component through CompareNames, so case and slash direction do not matter and
-	// "D:\\Repos2" is not inside "D:\\Repos". Lexical - neither path has to exist. False for an
+	// "D:\Repos2" is not inside "D:\Repos". Lexical - neither path has to exist. False for an
 	// empty root and for a relative path on either side, neither of which names a place.
 	bool IsSameOrWithin(const std::filesystem::path& path, const std::filesystem::path& root);
 }

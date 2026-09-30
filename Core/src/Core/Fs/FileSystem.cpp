@@ -183,7 +183,7 @@ namespace Core {
 
 		for (const std::filesystem::path& component : normalizedRoot)
 		{
-			// A drive root's trailing separator is a component of its own ("D:", "\\"); an empty
+			// A drive root's trailing separator is a component of its own ("D:", "\"); an empty
 			// final element never appears here because NormalizeDirectory removed it.
 			if (inPath == normalizedPath.end() || CompareNames(ToUtf8(*inPath), ToUtf8(component)) != 0)
 			{

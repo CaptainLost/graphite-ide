@@ -627,7 +627,10 @@ namespace Graphite {
 
 		// Noticed here rather than hooked onto the two places a folder can be opened from: a
 		// root comparison per frame catches every way it can change, including ones added later,
-		// and costs a path compare against a path that almost never differs.
+		// and costs a path compare against a path that almost never differs. The language servers'
+		// fallback root is the exception: it is set from the workspace events instead (see the
+		// WorkspaceOpenedEvent handler), because it must be in place before the folder's tabs are
+		// restored, which happens before this per-frame check runs.
 		if (rootChanged)
 		{
 			m_WarmedRoot = m_Workspace.GetRoot();

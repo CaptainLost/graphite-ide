@@ -334,7 +334,9 @@ namespace Graphite {
 
 		bool Permits(const std::filesystem::path& root) const;
 		void MarkRestricted(ManagedServer& server);
-		void Restrict(ManagedServer& server);
+		void Restrict(const Key& key, ManagedServer& server);
+		// Drops every m_NamedBy entry that points at this server.
+		void ForgetNamedBy(const Key& key);
 		void ReplayOpenDocuments(ManagedServer& server);
 
 		RootPermission m_RootPermission;

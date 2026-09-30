@@ -62,7 +62,9 @@ answer.
   one answer. `LanguageServices::SetFallbackRoot` is set from the workspace
   open and close events, before the folder's tabs are restored. A server
   outside the open folder - neither containing it nor inside it - that has
-  held no document and no pending ticket for two minutes is shut down.
+  held no document and no pending ticket for two minutes is shut down. A
+  server that loses its trust likewise forgets the files it named, which are
+  then judged by their own directories again.
 - Treat `build/compile_commands.json` as a C++ project marker. clangd reads
   it under every ancestor of a file, so a directory holding one is the root
   the trust check has to judge. A subdirectory with its own `build/` is
@@ -127,8 +129,8 @@ frictionless and keeps the choice visible and reversible.
   folder is open. Such a file gets a server only when its root - its project,
   or its own directory - already lies under a trusted entry; otherwise its
   folder has to be opened and trusted. A header reached by go-to-definition is
-  served by the project that named it, so it needs no entry of its own. The settings section lists and removes entries and
-  does not add them.
+  served by the project that named it, so it needs no entry of its own. The
+  settings section lists and removes entries and does not add them.
 
 ## Alternatives Considered
 

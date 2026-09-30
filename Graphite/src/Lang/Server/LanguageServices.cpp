@@ -645,8 +645,17 @@ namespace Graphite {
 		server.Status.Restarts = 0;
 	}
 
-	void LanguageServices::Restrict(ManagedServer& server)
+	void LanguageServices::ForgetNamedBy(const Key& key)
 	{
+		std::erase_if(m_NamedBy, [&](const auto& named) { return !(key < named.second) && !(named.second < key); });
+	}
+
+	void LanguageServices::Restrict(const Key& key, ManagedServer& server)
+	{
+		// A restricted server is no authority on any file's root: what it named is judged by its
+		// own directory again, the same as when a server is reaped.
+		ForgetNamedBy(key);
+
 		if (server.Client)
 		{
 			server.Client->RequestShutdown();
@@ -705,7 +714,7 @@ namespace Graphite {
 			}
 			else if (!permitted && !restricted)
 			{
-				Restrict(server);
+				Restrict(key, server);
 			}
 		}
 	}
@@ -1032,7 +1041,7 @@ namespace Graphite {
 
 			// What this server named goes with it, so the map stays bounded by the servers alive:
 			// a file it pointed at is judged by its own directory again, not by a root nothing runs at.
-			std::erase_if(m_NamedBy, [&](const auto& named) { return !(it->first < named.second) && !(named.second < it->first); });
+			ForgetNamedBy(it->first);
 
 			// Erasing the entry is the whole shutdown: the client's destructor ends the process,
 			// and the next EnsureStarted for this root starts a fresh one, as for a first open.
