@@ -27,9 +27,13 @@ answer.
   `D:\Repos`. A relative or empty path is never trusted.
 - Persist the list in `%LOCALAPPDATA%\Graphite\trusted-folders.json`, resolved
   by `UserDirectories::TrustedFoldersFile()`. The file holds a version and an
-  array of UTF-8 paths. Load it at startup and write it on every change.
+  array of UTF-8 paths. Load it at startup and write it on every change,
+  unless it was written by a newer version or exists but could not be opened.
 - Fail closed. An unreadable file means an empty list. A file stamped with a
-  newer version than the build's own is read but never written.
+  newer version than the build's own is read but never written. A file that
+  exists but cannot be opened, as when something holds it without sharing,
+  trusts nothing for the session and is never written, so a passing lock does
+  not wipe the list.
 - Do not ask when a folder is opened. An unknown folder opens in restricted
   mode. A bar above the editor area offers "Trust Folder" and "Trust All in
   <parent>", the second absent when the parent is a drive root. File menu >
@@ -38,14 +42,22 @@ answer.
   entry with a Remove button.
 - In restricted mode editing, browsing, search, Git, the terminal and Claude
   sessions work as before. The language server and the background analysis do
-  not start, and the status bar's server slot says "Restricted mode".
+  not start, and the status bar's server slot says "Restricted mode". Its
+  detail names the server root that is not trusted, since that root can lie
+  above the open folder or be another folder altogether.
 - Gate the language server in `LanguageServices`, not in its callers. It takes
   a predicate over a server's root that defaults to permitting everything. A
   refused root gets an entry in `ServerState::Restricted` with no process,
   which keeps the documents sent to it. `Revalidate()` shuts down servers whose
   root the predicate now refuses and starts restricted ones it now permits,
   replaying the kept documents. Files outside the workspace resolve their own
-  root and are judged by it.
+  root and are judged by it, and a document's status is its own root's server,
+  never another root's of the same language.
+- Permit an empty root. A file with no `.clangd`, compile database or
+  repository above it resolves to one, and then there is no
+  repository-controlled configuration for clangd to read. `WorkspaceTrust`
+  never trusts an empty path, so refusing it would keep such a file restricted
+  even after its folder is trusted.
 - Fold the analysis into the same switch: it runs only when its setting is on
   and the folder is trusted. `GraphiteLayer` computes trust once per frame and
   reacts to the edge. Falling: `Revalidate()`, cancel the walk, clear its
@@ -67,8 +79,10 @@ frictionless and keeps the choice visible and reversible.
 
 ### Positive
 
-- Opening a cloned repository starts nothing that reads its configuration or
-  writes into it, and later stages have one place to ask.
+- Opening a cloned repository starts no process that reads the repository's
+  configuration, and writes no index or analysis output into it. Graphite's own
+  view state in `.graphite/workspace.json` and in-process Git reads continue.
+  Later stages have one place to ask.
 - Trusting and revoking act at once, with no restart and no reopening of tabs.
 - Trust is granted by the user's action in the interface, never by the contents
   of the folder being opened.
@@ -101,7 +115,7 @@ frictionless and keeps the choice visible and reversible.
   user's command.
 - There is no way yet to trust a single file's root from the interface when no
   folder is open. Such a file gets a server only when its root already lies
-  under a trusted entry. The settings section lists and removes entries and
+  under a trusted entry, or when no marker above it gives it a root at all. The settings section lists and removes entries and
   does not add them.
 
 ## Alternatives Considered
