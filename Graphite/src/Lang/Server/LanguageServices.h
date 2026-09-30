@@ -40,12 +40,18 @@ namespace Graphite {
 	public:
 		// `fallbackRoot` is the root of a file that lies inside it but under no recognised project
 		// layout — ordinarily the workspace root. A file with no marker above it that lies outside
-		// the fallback root is rooted at its own directory instead (see Resolve).
+		// the fallback root is rooted at the root of the server that named it, if one did, and at
+		// its own directory otherwise (see Resolve).
 		explicit LanguageServices(std::filesystem::path fallbackRoot);
 
 		// Follows the open folder. Forgets every root resolved so far, since a directory that fell
 		// back to the old root, or to itself, may belong to the new one.
 		void SetFallbackRoot(std::filesystem::path root);
+
+		// Records that the server serving `by` named `named`, so `named`, if it has no project of
+		// its own, resolves to that server's root. Poll records every answered location this way;
+		// public so the rule can be exercised without a live server.
+		void NoteNamed(const std::filesystem::path& named, const std::filesystem::path& by, LanguageId language);
 
 		~LanguageServices();
 
@@ -284,6 +290,10 @@ namespace Graphite {
 		// lies inside it, the file's own directory otherwise.
 		std::filesystem::path FallbackFor(const std::filesystem::path& path) const;
 
+		// NoteNamed once `by` has been resolved; what Poll calls with the key of the server whose
+		// answer it is reading. A map insert and nothing else - Poll runs every frame.
+		void NoteNamedByKey(const std::filesystem::path& named, const Key& key);
+
 		std::filesystem::path ConfiguredBinaryFor(LanguageId language) const;
 
 		// Resolves the binary and either constructs the client or records why it could not.
@@ -342,8 +352,10 @@ namespace Graphite {
 
 		std::map<Key, ManagedServer> m_Servers;
 
-		// A document's directory resolves to the same root every time RootFor would walk it, for
-		// as long as this object lives — a project's layout does not move mid-session. Keyed on
+		// A document's directory resolves to the same root every time RootFor would walk it, until
+		// SetFallbackRoot clears this — a project's layout does not move mid-session, but the
+		// open folder a markerless directory falls back to does. An open document is unaffected
+		// by that clearing, because Resolve consults m_DocumentKeys before this. Keyed on
 		// (language, parent directory) rather than the full file path, so every document in the
 		// same directory shares one entry. Without this, EnsureStarted — called every frame a
 		// document is active, per its own contract — would call RootFor, and so
@@ -353,6 +365,19 @@ namespace Graphite {
 		// is wrong but not silently so — restarting the application re-walks from scratch — and
 		// is a better trade than stat-ing the filesystem on every frame forever.
 		std::map<std::pair<LanguageId, std::filesystem::path>, std::filesystem::path> m_RootCache;
+
+		// The key each open document was opened under. A document belongs to one server for as
+		// long as it is open (see the server-roots spec): every per-document call goes through
+		// Resolve, and Resolve answers from here first, so a later change to how a path would
+		// resolve - a new fallback root, a newly named file - never moves an open document to a
+		// server that was not told about it. Filled by OpenDocument, emptied by CloseDocument.
+		std::map<std::filesystem::path, Key> m_DocumentKeys;
+
+		// Files a server has named in an answer - a definition, a reference - with that server's
+		// key, last answer winning. A file with no project of its own that is reached this way
+		// belongs to the server that pointed at it: a system header opened by F12 is served by
+		// the project that includes it, with that project's flags and that project's trust.
+		std::map<std::filesystem::path, Key> m_NamedBy;
 
 		std::uint64_t m_NextTicket = 1;
 		std::vector<Answer> m_Answers;

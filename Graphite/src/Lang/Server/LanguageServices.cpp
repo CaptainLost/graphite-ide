@@ -74,6 +74,26 @@ namespace Graphite {
 
 		key.Language = language;
 
+		// An open document answers with the key it was opened under, before anything that could
+		// have changed since.
+		if (const auto open = m_DocumentKeys.find(path); open != m_DocumentKeys.end() && open->second.Language == language)
+		{
+			key.Root = open->second.Root;
+			return config;
+		}
+
+		// Per file, so ahead of the per-directory cache: one named header does not decide for
+		// every file beside it. A marker of its own still wins - RootFor only returns the
+		// fallback when it finds none - and so does the open folder, which comes before the
+		// server that named a file (see the server-roots spec).
+		if (const auto named = m_NamedBy.find(path); named != m_NamedBy.end() && named->second.Language == language)
+		{
+			const bool inFolder = Core::IsSameOrWithin(path, m_FallbackRoot);
+
+			key.Root = RootFor(*config, path, inFolder ? m_FallbackRoot : named->second.Root);
+			return config;
+		}
+
 		// The directory, not the full path: every document in it resolves to the same root, and
 		// most callers here are one call per open document, not one per unique file name.
 		const auto cacheKey = std::make_pair(language, path.parent_path());
@@ -96,14 +116,11 @@ namespace Graphite {
 	// differently, and would be a root no trust entry can ever name.
 	std::filesystem::path LanguageServices::FallbackFor(const std::filesystem::path& path) const
 	{
-		if (!m_FallbackRoot.empty())
+		// Case-insensitive, as the trust store compares roots: a path from a URI or the command
+		// line can spell the open folder in another case and still lie inside it.
+		if (Core::IsSameOrWithin(path, m_FallbackRoot))
 		{
-			const std::filesystem::path relative = path.lexically_relative(m_FallbackRoot);
-
-			if (!relative.empty() && *relative.begin() != "..")
-			{
-				return m_FallbackRoot;
-			}
+			return m_FallbackRoot;
 		}
 
 		return path.parent_path();
@@ -113,6 +130,26 @@ namespace Graphite {
 	{
 		m_FallbackRoot = std::move(root);
 		m_RootCache.clear();
+	}
+
+	void LanguageServices::NoteNamed(const std::filesystem::path& named, const std::filesystem::path& by,
+									 LanguageId language)
+	{
+		Key key;
+
+		if (Resolve(by, language, key) != nullptr)
+		{
+			NoteNamedByKey(named, key);
+		}
+	}
+
+	void LanguageServices::NoteNamedByKey(const std::filesystem::path& named, const Key& key)
+	{
+		// An open document already belongs somewhere, and nothing moves it.
+		if (!m_DocumentKeys.contains(named))
+		{
+			m_NamedBy[named] = key;
+		}
 	}
 
 	std::filesystem::path LanguageServices::ConfiguredBinaryFor(LanguageId language) const
@@ -415,6 +452,10 @@ namespace Graphite {
 			return;
 		}
 
+		// Recorded whether or not the server has a process: a NotFound or Restricted entry keeps
+		// the document too, and a later Revalidate replays it to that same entry.
+		m_DocumentKeys[path] = key;
+
 		ManagedServer& server = found->second;
 
 		// Remembered before forwarding, not instead of it: a restart needs the text on hand with
@@ -516,6 +557,11 @@ namespace Graphite {
 		{
 			return;
 		}
+
+		// Resolve has read the document's key by now, and the document is closed whatever the
+		// server makes of it: forgotten on every way out, so the path resolves afresh when it
+		// is next opened.
+		m_DocumentKeys.erase(path);
 
 		const auto found = m_Servers.find(key);
 
@@ -830,6 +876,14 @@ namespace Graphite {
 				if (pending == server.Pending.end())
 				{
 					continue;
+				}
+
+				// Every file this server pointed at is remembered against it, so one with no
+				// project of its own is served here when it is opened. A map insert per location;
+				// nothing touches the filesystem until such a file is actually opened.
+				for (const Location& location : answer.Locations)
+				{
+					NoteNamedByKey(location.Path, key);
 				}
 
 				Answer delivered;

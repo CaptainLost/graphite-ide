@@ -4,7 +4,9 @@
 #include "TempDirectory.h"
 
 #include <chrono>
+#include <cwctype>
 #include <optional>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -667,4 +669,169 @@ TEST_CASE("Changing the fallback root re-resolves a directory already seen")
 	REQUIRE(asked.size() == 2);
 	CHECK(asked[0] == temp.GetPath() / "workspace" / "src");
 	CHECK(asked[1] == temp.GetPath() / "workspace");
+}
+
+namespace {
+	// Every root the permission is asked about, in order: a new server entry is created exactly
+	// when its root is asked about, so this is how a test sees which server a call went to.
+	struct AskedRoots
+	{
+		std::vector<std::filesystem::path> Roots;
+
+		Graphite::LanguageServices::RootPermission Refusing()
+		{
+			return [this](const std::filesystem::path& root)
+			{
+				Roots.push_back(root);
+				return false;
+			};
+		}
+	};
+}
+
+// The orphaning 76d329b introduced: re-resolving an open document after the fallback moved sent
+// its edits and its close to a server that never received didOpen.
+TEST_CASE("An open document keeps its server when the fallback root moves")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{{}};
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int main() { return 0; }\n");
+	REQUIRE(services.Holds(source, Graphite::LanguageId::Cpp));
+
+	services.SetFallbackRoot(temp.GetPath() / "workspace");
+
+	CHECK(services.Holds(source, Graphite::LanguageId::Cpp));
+
+	services.ChangeDocument(source, Graphite::LanguageId::Cpp, "int main() { return 1; }\n");
+	CHECK(services.Holds(source, Graphite::LanguageId::Cpp));
+
+	services.CloseDocument(source, Graphite::LanguageId::Cpp);
+	CHECK_FALSE(services.Holds(source, Graphite::LanguageId::Cpp));
+}
+
+TEST_CASE("An open document's status is its own server's after the fallback root moves")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{{}};
+	AskedRoots asked;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "x\n");
+	services.SetFallbackRoot(temp.GetPath() / "workspace");
+
+	// Per-frame EnsureStarted for the active tab must not start a second server for it.
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+
+	CHECK(asked.Roots.size() == 1);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State == Graphite::ServerState::Restricted);
+}
+
+TEST_CASE("A markerless file inside the open folder resolves to it whatever the case of its path")
+{
+	TempDirectory temp;
+	temp.MakeFile("Workspace/Src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "Workspace"};
+	AskedRoots asked;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	// The same file spelled in another case, as a path from a URI or the command line can be.
+	std::wstring lowered = (temp.GetPath() / "Workspace" / "Src" / "main.cpp").native();
+	for (wchar_t& character : lowered)
+	{
+		character = static_cast<wchar_t>(towlower(character));
+	}
+
+	services.EnsureStarted(std::filesystem::path{lowered}, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots.front() == temp.GetPath() / "Workspace");
+}
+
+// F12 into a header outside the folder, with no marker of its own - the system and SDK headers.
+TEST_CASE("A markerless file a server named resolves to that server's root")
+{
+	TempDirectory temp;
+	temp.MakeFile("project/compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("project/main.cpp", "#include <vector>\n");
+	temp.MakeFile("sdk/include/vector", "// header\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "project"};
+	AskedRoots asked;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	const std::filesystem::path source = temp.GetPath() / "project" / "main.cpp";
+	const std::filesystem::path header = temp.GetPath() / "sdk" / "include" / "vector";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.NoteNamed(header, source, Graphite::LanguageId::Cpp);
+	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots.front() == temp.GetPath() / "project");
+}
+
+// A header that has a project of its own is that project's, however it was reached.
+TEST_CASE("A named file with a marker of its own keeps its own root")
+{
+	TempDirectory temp;
+	temp.MakeFile("project/compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("project/main.cpp", "\n");
+	temp.MakeFile("library/compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("library/lib.h", "\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "project"};
+	AskedRoots asked;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	const std::filesystem::path source = temp.GetPath() / "project" / "main.cpp";
+	const std::filesystem::path header = temp.GetPath() / "library" / "lib.h";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.NoteNamed(header, source, Graphite::LanguageId::Cpp);
+	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.Roots.size() == 2);
+	CHECK(asked.Roots[1] == temp.GetPath() / "library");
+}
+
+// The open folder comes before the server that named a file: a markerless file inside the folder
+// is the folder's, even when a server rooted elsewhere pointed at it.
+TEST_CASE("A markerless file inside the open folder stays the folder's when another server names it")
+{
+	TempDirectory temp;
+	temp.MakeFile("workspace/src/shared.h", "\n");
+	temp.MakeFile("library/compile_flags.txt", "-std=c++20\n");
+	temp.MakeFile("library/lib.cpp", "\n");
+
+	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
+	AskedRoots asked;
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission(asked.Refusing());
+
+	const std::filesystem::path source = temp.GetPath() / "library" / "lib.cpp";
+	const std::filesystem::path header = temp.GetPath() / "workspace" / "src" / "shared.h";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.NoteNamed(header, source, Graphite::LanguageId::Cpp);
+	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
+
+	REQUIRE(asked.Roots.size() == 2);
+	CHECK(asked.Roots[1] == temp.GetPath() / "workspace");
 }
