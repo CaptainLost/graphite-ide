@@ -36,28 +36,6 @@ namespace Core {
 
 		ImFont* g_monoFont = nullptr;
 
-		// ImGui stores the pointer rather than copying the string, so the storage has to
-		// outlive the context.
-		const char* PersistentIniPath()
-		{
-			static const std::string path = [] {
-				const auto directory = ExecutableDirectory();
-
-				if (directory)
-					return ToUtf8(directory.GetValue() / "imgui.ini");
-
-				// Falling back to the working directory keeps the layout working rather than
-				// losing it, but a layout that silently moves between launches is otherwise
-				// very hard to explain.
-				CORE_WARN("Cannot locate the executable directory, using 'imgui.ini' as-is: {}",
-						  directory.GetError().Message);
-
-				return std::string{"imgui.ini"};
-			}();
-
-			return path.c_str();
-		}
-
 		ImFont* LoadTextFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
 		{
 			ImFontConfig config;
@@ -157,7 +135,7 @@ namespace Core {
 		Shutdown();
 	}
 
-	Result<void> ImGuiRenderer::Init(Window& window)
+	Result<void> ImGuiRenderer::Init(Window& window, const std::filesystem::path& layoutFile)
 	{
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
@@ -170,7 +148,8 @@ namespace Core {
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-		io.IniFilename = PersistentIniPath();
+		m_LayoutFile = layoutFile.empty() ? std::string{} : ToUtf8(layoutFile);
+		io.IniFilename = m_LayoutFile.empty() ? nullptr : m_LayoutFile.c_str();
 
 		// Otherwise a window can be dragged by any empty part of its body, which makes
 		// context menus and popups draggable — they have no title bar, so their whole

@@ -11,7 +11,7 @@ namespace Graphite {
 
 	// The scheme the settings section is looking at, and every decision it can make about it.
 	// Takes its directory rather than asking AppSettings for one, so the whole of this class can
-	// be exercised against a temporary directory instead of the file beside the executable.
+	// be exercised against a temporary directory instead of the user's own themes directory.
 	//
 	// Holds the sparse ColorScheme, not the resolved one: what a person edits is the set of
 	// overrides, and keeping it sparse here is what keeps it sparse in the file.

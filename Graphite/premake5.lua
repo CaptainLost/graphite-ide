@@ -27,20 +27,11 @@ project "Graphite"
     -- committed to this repository, so it is absent on every machine until someone places it.
     -- {COPYFILE} would fail the build in that — currently universal — case; the guard makes a
     -- missing server binary the degraded-but-working state ADR 0488 intends, not a build error.
-    -- The theme copies are guarded by `if not exist` for a different reason: the themes
-    -- directory beside the executable is also where the settings panel saves a user's own
-    -- edits, and a shipped gruvbox file is an ordinary editable scheme, not a read-only
-    -- built-in — copying it outright on every build would overwrite an edit made through
-    -- the settings panel.
     postbuildcommands
     {
         '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
-        'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"',
-        'if not exist "%{cfg.targetdir}\\themes" mkdir "%{cfg.targetdir}\\themes"',
-        'if not exist "%{cfg.targetdir}\\themes\\gruvbox-dark-hard.json" copy /Y "themes\\gruvbox-dark-hard.json" "%{cfg.targetdir}\\themes"',
-        'if not exist "%{cfg.targetdir}\\themes\\gruvbox-dark-medium.json" copy /Y "themes\\gruvbox-dark-medium.json" "%{cfg.targetdir}\\themes"',
-        'if not exist "%{cfg.targetdir}\\themes\\gruvbox-dark-soft.json" copy /Y "themes\\gruvbox-dark-soft.json" "%{cfg.targetdir}\\themes"'
+        'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"'
     }
 
     files { "src/**.h", "src/**.cpp" }

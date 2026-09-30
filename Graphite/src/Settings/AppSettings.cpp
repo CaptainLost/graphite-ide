@@ -1,5 +1,8 @@
 #include "Settings/AppSettings.h"
 
+#include "Settings/SettingsVersion.h"
+#include "Settings/UserDirectories.h"
+
 #include "Persistence/StateCodec.h"
 
 #include "Core/Base/JsonFile.h"
@@ -7,7 +10,6 @@
 #include "Core/Command/Binding.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
-#include "Core/Platform/Process.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -45,19 +47,24 @@ namespace Graphite {
 
 		const std::filesystem::path& SettingsPath()
 		{
-			static const std::filesystem::path path = [] {
-				const auto directory = Core::ExecutableDirectory();
-
-				if (directory)
-					return directory.GetValue() / "graphite.json";
-
-				APP_WARN("Cannot locate the executable directory, using 'graphite.json' as-is: {}",
-						 directory.GetError().Message);
-
-				return std::filesystem::path{"graphite.json"};
-			}();
-
+			static const std::filesystem::path path = UserDirectories::SettingsFile();
 			return path;
+		}
+
+		// Every write of graphite.json goes through here, so none of them can skip the
+		// version check and overwrite a file a newer build wrote.
+		void SaveSettings(Core::JsonFile& file)
+		{
+			if (!StampSettingsVersion(file))
+			{
+				APP_WARN("Not writing '{}': a newer version of Graphite wrote it", Core::ToUtf8(SettingsPath()));
+				return;
+			}
+
+			if (!file.Save(SettingsPath()))
+			{
+				APP_WARN("Cannot write '{}'", Core::ToUtf8(SettingsPath()));
+			}
 		}
 
 		float ParseFontSizeOrZero(const std::string& stored)
@@ -123,9 +130,7 @@ namespace Graphite {
 		{
 			Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 			file.Set(key, std::move(value));
-
-			if (!file.Save(SettingsPath()))
-				APP_WARN("Cannot write '{}'", SettingsPath().string());
+			SaveSettings(file);
 		}
 	}
 
@@ -321,22 +326,12 @@ namespace Graphite {
 	{
 		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 		file.Remove(std::string{kClaudePricePrefix} + std::string{model});
-
-		if (!file.Save(SettingsPath()))
-			APP_WARN("Cannot write '{}'", SettingsPath().string());
+		SaveSettings(file);
 	}
 
 	std::filesystem::path AppSettings::ThemesDirectory()
 	{
-		const auto directory = Core::ExecutableDirectory();
-
-		if (directory)
-			return directory.GetValue() / "themes";
-
-		APP_WARN("Cannot locate the executable directory, using 'themes' as-is: {}",
-				 directory.GetError().Message);
-
-		return std::filesystem::path{"themes"};
+		return UserDirectories::ThemesDirectory();
 	}
 
 	void AppSettings::LoadKeyBindings(Core::Keymap& keys)
@@ -372,10 +367,7 @@ namespace Graphite {
 		keys.ForEachOverride(
 			[&file](const std::string& id, const Core::Binding& binding) { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });
 
-		if (!file.Save(SettingsPath()))
-		{
-			APP_WARN("Cannot write '{}'", SettingsPath().string());
-		}
+		SaveSettings(file);
 	}
 
 	GlobalState AppSettings::LoadGlobalState()
@@ -388,9 +380,6 @@ namespace Graphite {
 		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 		WriteGlobalState(state, file);
 
-		if (!file.Save(SettingsPath()))
-		{
-			APP_WARN("Cannot write '{}'", SettingsPath().string());
-		}
+		SaveSettings(file);
 	}
 }

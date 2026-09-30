@@ -6,6 +6,7 @@
 #include "Sessions/ClaudeSettings.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/SummaryCache.h"
+#include "Settings/UserDirectories.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/Base/Ascii.h"
@@ -124,8 +125,7 @@ namespace Graphite {
 	{
 		m_Indexing = true;
 
-		if (const Core::Result<std::filesystem::path> directory = Core::ExecutableDirectory())
-			m_CacheFile = directory.GetValue() / "sessions-cache.json";
+		m_CacheFile = UserDirectories::SessionsCacheFile();
 
 		std::vector<SessionSummary> cached = m_CacheFile.empty() ? std::vector<SessionSummary>{}
 																 : LoadSummaryCache(m_CacheFile);

@@ -8,6 +8,7 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/Platform/Window.h"
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +37,10 @@ namespace Core {
 		bool CustomTitleBar = false;
 
 		std::optional<WindowPlacement> Placement;
+
+		// Where the GUI keeps its window and docking layout between runs. Empty keeps none:
+		// the layout lives only as long as the process.
+		std::filesystem::path LayoutFile;
 	};
 
 	class Application : NonCopyable

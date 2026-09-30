@@ -40,6 +40,26 @@ TEST_CASE("The home directory is the user's profile and exists")
 	CHECK(home.GetValue() == Core::EnvironmentPath(L"USERPROFILE").value());
 }
 
+TEST_CASE("The roaming data directory is the profile's AppData and exists")
+{
+	const Core::Result<std::filesystem::path> roaming = Core::RoamingDataDirectory();
+
+	REQUIRE(roaming.HasValue());
+	CHECK(roaming.GetValue().is_absolute());
+	CHECK(std::filesystem::is_directory(roaming.GetValue()));
+	CHECK(roaming.GetValue() == Core::EnvironmentPath(L"APPDATA").value());
+}
+
+TEST_CASE("The local data directory is the profile's LocalAppData and exists")
+{
+	const Core::Result<std::filesystem::path> local = Core::LocalDataDirectory();
+
+	REQUIRE(local.HasValue());
+	CHECK(local.GetValue().is_absolute());
+	CHECK(std::filesystem::is_directory(local.GetValue()));
+	CHECK(local.GetValue() == Core::EnvironmentPath(L"LOCALAPPDATA").value());
+}
+
 TEST_CASE("An unset environment variable is no path rather than an empty one")
 {
 	CHECK_FALSE(Core::EnvironmentPath(L"GRAPHITE_TESTS_SURELY_UNSET_VARIABLE").has_value());

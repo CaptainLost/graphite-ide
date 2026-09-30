@@ -96,8 +96,9 @@ namespace Graphite {
 		static void SaveClaudePrice(std::string_view model, std::string_view price);
 		static void RemoveClaudePrice(std::string_view model);
 
-		// The executable directory's themes subdirectory, whether or not it exists yet — the
-		// same directory ResolveNamed reads from and the settings panel writes into.
+		// The user's own colour schemes (see UserDirectories), whether or not the directory
+		// exists yet — the same directory ResolveNamed reads from and the settings panel
+		// writes into.
 		static std::filesystem::path ThemesDirectory();
 
 		static void LoadKeyBindings(Core::Keymap& keys);

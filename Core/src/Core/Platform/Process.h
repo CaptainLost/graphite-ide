@@ -19,4 +19,12 @@ namespace Core {
 	// The signed-in user's profile directory. An error when USERPROFILE is unset or names
 	// something that is not a directory, so a caller never builds paths under nothing.
 	Result<std::filesystem::path> HomeDirectory();
+
+	// Where an application keeps what follows the user from machine to machine - settings,
+	// preferences, things they made (%APPDATA% on Windows).
+	Result<std::filesystem::path> RoamingDataDirectory();
+
+	// Where an application keeps what belongs to this machine alone - caches, logs
+	// (%LOCALAPPDATA% on Windows).
+	Result<std::filesystem::path> LocalDataDirectory();
 }

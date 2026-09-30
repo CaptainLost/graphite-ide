@@ -4,6 +4,9 @@
 #include "Core/Base/Result.h"
 #include "Core/Events/Event.h"
 
+#include <filesystem>
+#include <string>
+
 struct ImFont;
 
 namespace Core {
@@ -23,7 +26,7 @@ namespace Core {
 		ImGuiRenderer() = default;
 		~ImGuiRenderer();
 
-		Result<void> Init(Window& window);
+		Result<void> Init(Window& window, const std::filesystem::path& layoutFile);
 		void Shutdown();
 
 		void BeginFrame();
@@ -49,6 +52,9 @@ namespace Core {
 		static void ApplyTheme(const ChromePalette& palette);
 
 	private:
+		// ImGui stores the pointer rather than copying the string, so the storage has to
+		// outlive the context.
+		std::string m_LayoutFile;
 		bool m_Initialized = false;
 	};
 }

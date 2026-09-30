@@ -3,14 +3,13 @@
 #include "App/Version.h"
 
 #include "Settings/AppSettings.h"
+#include "Settings/UserDirectories.h"
 
 #include "Core.h"
 #include "Core/App/EntryPoint.h"
 
 #include <cstddef>
-#include <cstdlib>
 #include <filesystem>
-#include <system_error>
 #include <utility>
 
 namespace Graphite {
@@ -19,34 +18,6 @@ namespace Graphite {
 		constexpr std::size_t kConsoleCapacity = 4096;
 		constexpr std::size_t kLogFileSize = 5u * 1024u * 1024u;
 		constexpr std::size_t kLogFileCount = 3;
-
-		// Read as wide characters so a user name outside the machine's ANSI codepage still
-		// resolves.
-		std::filesystem::path LocalAppData()
-		{
-			wchar_t* value = nullptr;
-			std::size_t size = 0;
-			if (_wdupenv_s(&value, &size, L"LOCALAPPDATA") != 0 || !value)
-				return {};
-
-			std::filesystem::path path{value};
-			std::free(value);
-			return path;
-		}
-
-		std::filesystem::path LogFilePath()
-		{
-			std::filesystem::path root = LocalAppData();
-			if (root.empty())
-			{
-				std::error_code code;
-				root = std::filesystem::temp_directory_path(code);
-				if (code)
-					return {};
-			}
-
-			return root / "Graphite" / "logs" / "graphite.log";
-		}
 	}
 
 	class GraphiteApplication final : public Core::Application
@@ -58,7 +29,8 @@ namespace Graphite {
 													  .Width = 1600,
 													  .Height = 900,
 													  .CustomTitleBar = true,
-													  .Placement = AppSettings::LoadGlobalState().Window}),
+													  .Placement = AppSettings::LoadGlobalState().Window,
+													  .LayoutFile = UserDirectories::LayoutFile()}),
 			  m_Sink(std::move(sink)),
 			  m_InitialFolder(std::move(initialFolder))
 		{
@@ -83,7 +55,7 @@ namespace Graphite {
 Core::LogSpec Core::CreateLogSpec()
 {
 	Core::LogSpec spec;
-	spec.FilePath = Graphite::LogFilePath();
+	spec.FilePath = Graphite::UserDirectories::LogFile();
 	spec.MaxFileSize = Graphite::kLogFileSize;
 	spec.MaxFiles = Graphite::kLogFileCount;
 	spec.ConsoleCapacity = Graphite::kConsoleCapacity;

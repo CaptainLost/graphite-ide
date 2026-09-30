@@ -114,7 +114,7 @@ namespace Core {
 
 		m_Window = std::move(windowResult).GetValue();
 
-		if (auto init = m_Gui.Init(*m_Window); !init)
+		if (auto init = m_Gui.Init(*m_Window, m_Spec.LayoutFile); !init)
 		{
 			m_Window.reset();
 			return init.GetError();

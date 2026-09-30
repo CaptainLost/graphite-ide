@@ -4,9 +4,36 @@
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
+
+#include <ShlObj.h>
 #endif
 
 namespace Core {
+
+#ifdef CORE_PLATFORM_WINDOWS
+	namespace {
+		// Asked of the shell rather than read from APPDATA / LOCALAPPDATA: the variables are
+		// inherited and can be overridden or missing in a child's environment, while the
+		// known folder is what the profile actually has - redirected folders included.
+		Result<std::filesystem::path> KnownFolder(REFKNOWNFOLDERID id, const char* name)
+		{
+			PWSTR raw = nullptr;
+			const HRESULT result = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &raw);
+
+			// The buffer is the caller's to free on failure as well as on success.
+			std::filesystem::path path = SUCCEEDED(result) ? std::filesystem::path{raw}
+														   : std::filesystem::path{};
+			CoTaskMemFree(raw);
+
+			if (FAILED(result))
+			{
+				return Error{ErrorCode::NotFound, std::format("cannot locate the {} folder", name)};
+			}
+
+			return path;
+		}
+	}
+#endif
 
 	Result<std::filesystem::path> ExecutableDirectory()
 	{
@@ -80,6 +107,26 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "USERPROFILE does not name a directory"};
 
 		return std::move(*home);
+	}
+
+	Result<std::filesystem::path> RoamingDataDirectory()
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		return KnownFolder(FOLDERID_RoamingAppData, "roaming application data");
+#else
+		return Error{ErrorCode::Unsupported,
+					 "the roaming data directory is not implemented on this platform"};
+#endif
+	}
+
+	Result<std::filesystem::path> LocalDataDirectory()
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		return KnownFolder(FOLDERID_LocalAppData, "local application data");
+#else
+		return Error{ErrorCode::Unsupported,
+					 "the local data directory is not implemented on this platform"};
+#endif
 	}
 
 	bool IsForeground()
