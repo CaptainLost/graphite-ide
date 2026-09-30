@@ -1471,7 +1471,7 @@ namespace Graphite {
 		// failed every request it was holding. Those failures leave their rows in Asked, where
 		// nothing else would ever take them out, so the counts visible at the moment of the crash
 		// would stay blank while every row scrolled into view afterwards got one.
-		if (const ServerState now = m_LanguageServices.StatusFor(LanguageOfPath(item.Path)).State;
+		if (const ServerState now = m_LanguageServices.StatusFor(item.Path, LanguageOfPath(item.Path)).State;
 			now != state.LastServerState)
 		{
 			state.LastServerState = now;

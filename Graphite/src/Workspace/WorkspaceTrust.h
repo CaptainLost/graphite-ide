@@ -22,7 +22,7 @@ namespace Graphite {
 
 		// Reads `file` if it exists. No file trusts nothing; an unreadable one trusts nothing
 		// too, and says so in the log; one written by a newer version is read but never
-		// written back. An empty path keeps the list in memory, which is what tests use.
+		// written back, and neither is one that exists but cannot be opened. An empty path keeps the list in memory, which is what tests use.
 		explicit WorkspaceTrust(std::filesystem::path file = {});
 
 		bool IsTrusted(const std::filesystem::path& folder) const;

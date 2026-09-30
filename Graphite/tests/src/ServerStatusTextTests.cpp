@@ -162,3 +162,19 @@ TEST_CASE("A restricted server says so and says why")
 	CHECK(Graphite::ServerStatusText(status) == "clangd: restricted mode");
 	CHECK(Graphite::ServerStatusDetail(status).find("not trusted") != std::string::npos);
 }
+
+// The root can lie above the open folder, or be a different folder altogether, so the detail
+// has to say which one it means for the remedy to be something the user can act on.
+TEST_CASE("A restricted server names the folder that is not trusted")
+{
+	Graphite::ServerStatus status;
+	status.Name = "clangd";
+	status.State = Graphite::ServerState::Restricted;
+	status.Detail = "D:\\Elsewhere\\Project";
+
+	const std::string detail = Graphite::ServerStatusDetail(status);
+
+	CHECK(detail.find("D:\\Elsewhere\\Project") != std::string::npos);
+	CHECK(detail.find("not trusted") != std::string::npos);
+	CHECK(detail.find("trusted-folders.json") != std::string::npos);
+}

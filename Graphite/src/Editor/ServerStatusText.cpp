@@ -119,9 +119,21 @@ namespace Graphite {
 			break;
 
 		case ServerState::Restricted:
-			detail = "This folder is not trusted, so " + status.Name +
-					 " does not run for it. Trust the folder from the bar above the editor or "
-					 "the File menu to start it.";
+			// Detail holds the server's root. It is named because it need not be the open folder -
+			// it can lie above it, or be another folder a single file was opened from - and the
+			// remedy is phrased to stay true when the bar is not there to offer it.
+			if (status.Detail.empty())
+			{
+				detail = "This folder is not trusted, so " + status.Name +
+						 " does not run for it. Trust the folder from the bar above the editor or "
+						 "the File menu to start it.";
+			}
+			else
+			{
+				detail = "The folder " + status.Detail + " is not trusted, so " + status.Name +
+						 " does not run for it. Trust it, or a folder above it, from the bar above "
+						 "the editor, the File menu, or by adding it to trusted-folders.json.";
+			}
 			break;
 
 		case ServerState::Starting:

@@ -453,6 +453,38 @@ TEST_CASE("Warming up a refused root starts nothing")
 	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotConfigured);
 }
 
+// A tab open on the very file the warm-up walk happens to find - a tab restored at startup, or
+// one kept on a restricted server that has just been trusted. The warm-up's own open and close
+// must not touch it: a close there would make the server forget the tab, and every edit after
+// would be dropped as a change to a document it was never told about.
+TEST_CASE("Warming up leaves a document the server already holds open")
+{
+	TempDirectory temp;
+	temp.MakeFile("src/main.cpp", "int main() { return 0; }\n");
+
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+
+	const std::filesystem::path source = temp.GetPath() / "src" / "main.cpp";
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "edited in the tab\n");
+	REQUIRE(services.Holds(source, Graphite::LanguageId::Cpp));
+
+	services.WarmUp(temp.GetPath(), false);
+
+	// Long enough for the walk to have found main.cpp many times over, as the permitted warm-up
+	// test above shows; what it found is only acted on inside Poll.
+	for (int attempt = 0; attempt < 50; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(services.Holds(source, Graphite::LanguageId::Cpp));
+}
+
 TEST_CASE("A restricted server is reported for the workspace when nothing else is")
 {
 	TempDirectory temp;
@@ -467,4 +499,72 @@ TEST_CASE("A restricted server is reported for the workspace when nothing else i
 
 	REQUIRE(overall.has_value());
 	CHECK(overall->State == Graphite::ServerState::Restricted);
+}
+
+// A trusted workspace with one file opened from an untrusted folder elsewhere. The untrusted
+// folder's restricted entry is about that folder alone; a tab in the trusted one has to be told
+// about its own server, whatever order the two roots sort in.
+TEST_CASE("A document's status is its own root's, not another root's of the same language")
+{
+	TempDirectory temp;
+
+	// compile_flags.txt is where RootFor stops, so each folder is a root of its own. The refused
+	// one sorts first, so a lookup by language alone would answer with it.
+	temp.MakeFile("other/compile_flags.txt", "");
+	temp.MakeFile("work/compile_flags.txt", "");
+
+	const std::filesystem::path refused = temp.GetPath() / "other" / "main.cpp";
+	const std::filesystem::path permitted = temp.GetPath() / "work" / "main.cpp";
+	const std::filesystem::path refusedRoot = temp.GetPath() / "other";
+
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&refusedRoot](const std::filesystem::path& root)
+							   { return root != refusedRoot; });
+
+	services.EnsureStarted(refused, Graphite::LanguageId::Cpp);
+	services.EnsureStarted(permitted, Graphite::LanguageId::Cpp);
+
+	CHECK(services.StatusFor(permitted, Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::NotFound);
+	CHECK(services.StatusFor(refused, Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::Restricted);
+}
+
+TEST_CASE("A document with no server entry of its own reports NotConfigured")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	CHECK(services.StatusFor(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::NotConfigured);
+}
+
+// A trusted server is the more useful thing for the workspace slot to show than an untrusted one
+// somewhere else, which already speaks for itself in its own tabs. Ready cannot be reached
+// without a live clangd, so this pins the ordering through NotFound, which ranks with it above
+// Restricted; the refused root sorts first, so a tie would still answer Restricted.
+TEST_CASE("A trusted root's server outranks a restricted one for the workspace")
+{
+	TempDirectory temp;
+
+	temp.MakeFile("other/compile_flags.txt", "");
+	temp.MakeFile("work/compile_flags.txt", "");
+
+	const std::filesystem::path refusedRoot = temp.GetPath() / "other";
+
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
+	services.SetRootPermission([&refusedRoot](const std::filesystem::path& root)
+							   { return root != refusedRoot; });
+
+	services.EnsureStarted(temp.GetPath() / "other" / "main.cpp", Graphite::LanguageId::Cpp);
+	services.EnsureStarted(temp.GetPath() / "work" / "main.cpp", Graphite::LanguageId::Cpp);
+
+	const std::optional<Graphite::ServerStatus> overall = services.OverallStatus();
+
+	REQUIRE(overall.has_value());
+	CHECK(overall->State == Graphite::ServerState::NotFound);
 }

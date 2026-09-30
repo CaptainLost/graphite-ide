@@ -4,6 +4,8 @@
 
 #include "TempDirectory.h"
 
+#include <Windows.h>
+
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -163,6 +165,30 @@ TEST_CASE("A trust file from a newer version is read but never written")
 	CHECK(trust.IsTrusted("D:\\Repos\\IDE"));
 	CHECK(trust.IsTrusted("E:\\Else"));
 	CHECK(ReadText(file) == newer);
+}
+
+// A trust file that is there but cannot be opened - held open without sharing by something else
+// for the moment Graphite starts - is not the same as no file. Loading it as empty and then
+// writing the next change over it would wipe every folder the user had trusted.
+TEST_CASE("A trust file that exists but cannot be opened is never written")
+{
+	TempDirectory temp;
+	const std::string listed = R"({"version": 1, "folders": ["D:\\Repos"]})";
+	temp.MakeFile("trusted-folders.json", listed);
+	const std::filesystem::path file = temp.GetPath() / "trusted-folders.json";
+
+	// No sharing at all, so the constructor's open fails the way a transient lock makes it fail.
+	const HANDLE held = CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
+									FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(held != INVALID_HANDLE_VALUE);
+
+	Graphite::WorkspaceTrust trust{file};
+	CloseHandle(held);
+
+	trust.Trust("E:\\Else");
+
+	CHECK(trust.IsTrusted("E:\\Else"));
+	CHECK(ReadText(file) == listed);
 }
 
 TEST_CASE("The parent offered for trust is the folder's own parent")

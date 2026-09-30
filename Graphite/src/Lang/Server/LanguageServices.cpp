@@ -189,6 +189,20 @@ namespace Graphite {
 		return {};
 	}
 
+	ServerStatus LanguageServices::StatusFor(const std::filesystem::path& path, LanguageId language)
+	{
+		Key key;
+
+		if (Resolve(path, language, key) == nullptr)
+		{
+			return {};
+		}
+
+		const auto found = m_Servers.find(key);
+
+		return found != m_Servers.end() ? found->second.Status : ServerStatus{};
+	}
+
 	std::optional<ServerStatus> LanguageServices::OverallStatus() const
 	{
 		const auto rank = [](ServerState state) -> int
@@ -197,14 +211,19 @@ namespace Graphite {
 			{
 				case ServerState::Indexing:
 				case ServerState::Starting:
-					return 3; // something is happening and will stop happening
+					return 4; // something is happening and will stop happening
 				case ServerState::Failed:
 				case ServerState::NotFound:
 				case ServerState::NoCompileDatabase:
-				case ServerState::Restricted:
-					return 2; // something is wrong and will not fix itself
+					return 3; // something is wrong and will not fix itself
 				case ServerState::Ready:
-					return 1; // up and answering, which is worth saying when nothing else is
+					return 2; // up and answering, which is worth saying when nothing else is
+				case ServerState::Restricted:
+					// Below Ready: a trusted server that is up is more use to show than an
+					// untrusted one somewhere else - one file opened from another folder would
+					// otherwise speak for the whole workspace for the rest of the session. Its own
+					// tabs still say it, through StatusFor for their path.
+					return 1;
 				case ServerState::NotConfigured:
 					return 0; // no server here at all - the one case with nothing to report
 			}
@@ -498,6 +517,20 @@ namespace Graphite {
 		}
 	}
 
+	bool LanguageServices::Holds(const std::filesystem::path& path, LanguageId language)
+	{
+		Key key;
+
+		if (Resolve(path, language, key) == nullptr)
+		{
+			return false;
+		}
+
+		const auto found = m_Servers.find(key);
+
+		return found != m_Servers.end() && found->second.OpenDocuments.contains(path);
+	}
+
 	void LanguageServices::RestartServer(const Key& key, ManagedServer& server)
 	{
 		// A dead LspClient's reader and writer threads have already stopped for good — that flag
@@ -735,7 +768,13 @@ namespace Graphite {
 			// If clangd ever loads its database eagerly, this stops having any effect and
 			// nothing breaks - the failure mode is a return to indexing on first open, not a
 			// wrong answer.
-			if (!finding.Text.empty())
+			//
+			// Skipped when the server already holds that document: a tab open on it - restored at
+			// startup, or replayed by Revalidate the moment its folder was trusted - has already
+			// sent it and primed the database. Opening it again would overwrite the tab's text with
+			// the disk's, and the close would make the server forget the tab, so every edit after
+			// it would be dropped as a change to a document it was never told about.
+			if (!finding.Text.empty() && !Holds(finding.Path, finding.Language))
 			{
 				OpenDocument(finding.Path, finding.Language, std::move(finding.Text));
 				CloseDocument(finding.Path, finding.Language);

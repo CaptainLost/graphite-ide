@@ -175,7 +175,13 @@ namespace Graphite {
 
 		// Set before any document opens, for the reason SetConfiguredBinary is: the first
 		// EnsureStarted is where a refused root must already be refused (ADR 0532).
-		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root) { return m_Trust.IsTrusted(root); });
+		//
+		// An empty root is permitted: it means RootFor found no .clangd, compile database or
+		// repository above the file, so there is no repository-controlled configuration for clangd
+		// to read - and WorkspaceTrust never trusts an empty path, so refusing it would keep such a
+		// file restricted even after its folder is trusted.
+		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root)
+											 { return root.empty() || m_Trust.IsTrusted(root); });
 
 		std::vector<Core::Scope<SettingsSection>> sections;
 
@@ -824,7 +830,7 @@ namespace Graphite {
 
 			m_LanguageServices.EnsureStarted(path, activeLanguage);
 
-			status = m_LanguageServices.StatusFor(activeLanguage);
+			status = m_LanguageServices.StatusFor(path, activeLanguage);
 		}
 
 		if (status.State != ServerState::NotConfigured)

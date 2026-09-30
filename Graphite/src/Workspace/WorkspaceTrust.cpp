@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <system_error>
 #include <utility>
 
 namespace Graphite {
@@ -82,6 +83,20 @@ namespace Graphite {
 
 		if (!in)
 		{
+			// No file is an empty list. A file that is there but cannot be opened - held without
+			// sharing by something else for a moment - is a list that could not be read, and
+			// writing the next change over it would wipe every folder it names. When existence
+			// itself cannot be told, the same caution applies.
+			std::error_code failed;
+
+			if (std::filesystem::exists(m_File, failed) || failed)
+			{
+				m_Writable = false;
+				APP_WARN("Cannot open '{}': no folder is trusted this session, and changes to trust "
+						 "will not be saved",
+						 Core::ToUtf8(m_File));
+			}
+
 			return;
 		}
 
@@ -192,7 +207,9 @@ namespace Graphite {
 
 		if (!m_Writable)
 		{
-			APP_WARN("Not writing '{}': a newer version of Graphite wrote it", Core::ToUtf8(m_File));
+			APP_WARN("Not writing '{}': it was written by a newer version of Graphite, or could "
+					 "not be opened",
+					 Core::ToUtf8(m_File));
 			return;
 		}
 

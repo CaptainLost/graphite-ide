@@ -95,7 +95,17 @@ namespace Graphite {
 		// none has ever been started. When more than one root is running the same language, this
 		// reports whichever the map happens to order first — every caller in this codebase works
 		// with one project root at a time, so that ambiguity has never mattered in practice.
+		// A caller with a document in hand asks the overload below instead, since a trusted
+		// workspace and an untrusted file opened beside it are two roots of the same language.
 		ServerStatus StatusFor(LanguageId language) const;
+
+		// The status of the server for this document's own (language, root), or a default
+		// (State == NotConfigured) when there is none. What a caller with a document in hand
+		// asks, rather than the overload above: once two roots run the same language - a trusted
+		// workspace and one file opened from an untrusted folder elsewhere - the first in map
+		// order is the wrong answer for half the tabs. Not const: resolving the root consults and
+		// fills the root cache, as it does for every other per-document method.
+		ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language);
 
 		// The state of the workspace's language servers as a whole, for the status bar to fall
 		// back on when the active document's own language has nothing to say — which is most of
@@ -103,10 +113,11 @@ namespace Graphite {
 		// and a README is a perfectly ordinary thing to be looking at while one indexes behind it.
 		//
 		// Busy first (Starting, Indexing), then broken (Failed, NotFound, NoCompileDatabase),
-		// then Ready. Ready is included: a server that is up and answering is worth saying so,
-		// the slot is empty anyway, and leaving it silent means the bar comes alive only when a
-		// file of that language is opened — which reads as the feature not working rather than as
-		// a deliberately quiet resting state.
+		// then Ready, then Restricted. Ready is included: a server that is up and answering is
+		// worth saying so, the slot is empty anyway, and leaving it silent means the bar comes
+		// alive only when a file of that language is opened — which reads as the feature not
+		// working rather than as a deliberately quiet resting state. Restricted comes last because
+		// it may be one file opened from another folder, and it is said in that file's own tabs.
 		//
 		// Nothing at all when no server has been started, which is the one case with genuinely
 		// nothing to report.
@@ -194,6 +205,13 @@ namespace Graphite {
 		void SaveDocument(const std::filesystem::path& path, LanguageId language);
 
 		void CloseDocument(const std::filesystem::path& path, LanguageId language);
+
+		// Whether the server for this document's (language, root) keeps it open - that is, whether
+		// a ChangeDocument for it would be kept and forwarded rather than dropped. True from
+		// OpenDocument to CloseDocument whether or not the server has a process, since a
+		// restricted or binary-less server remembers what it was sent for the moment it has one.
+		// Not const for the same reason Resolve is not: it consults and fills the root cache.
+		bool Holds(const std::filesystem::path& path, LanguageId language);
 
 	private:
 		// Identifies one server: a language and the project root it was started for. Two files of
