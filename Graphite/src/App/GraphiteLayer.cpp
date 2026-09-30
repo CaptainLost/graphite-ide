@@ -372,6 +372,12 @@ namespace Graphite {
 		m_ChangeMarkers.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
+			// First, before RestoreState below adds this folder's tabs: a tab opened with the
+			// server resolves its root once and keeps it (server-roots spec), so the fallback must
+			// already name this folder the first time any of them is resolved - including when the
+			// folder is opened from the menu in the middle of a frame.
+			m_LanguageServices.SetFallbackRoot(event.Root);
+
 			// A folder dropped over another replaces it without a WorkspaceClosedEvent, so the
 			// one being replaced is written here, before the new folder's tabs join the list.
 			m_StateKeeper.CloseWorkspace();
@@ -415,6 +421,9 @@ namespace Graphite {
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
+			// No folder is open, so a file with no marker is rooted at its own directory again.
+			m_LanguageServices.SetFallbackRoot({});
+
 			// From the last frame's snapshot, so it does not matter that the documents are
 			// closed just below.
 			m_StateKeeper.CloseWorkspace();
@@ -622,10 +631,6 @@ namespace Graphite {
 		if (rootChanged)
 		{
 			m_WarmedRoot = m_Workspace.GetRoot();
-
-			// Before anything below resolves a root: a file with no marker above it inside the new
-			// folder is rooted at the folder, and judged by the folder's trust.
-			m_LanguageServices.SetFallbackRoot(m_WarmedRoot);
 
 			if (!m_WarmedRoot.empty() && workspaceTrusted)
 			{

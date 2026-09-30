@@ -53,11 +53,16 @@ answer.
   replaying the kept documents. Files outside the workspace resolve their own
   root and are judged by it, and a document's status is its own root's server,
   never another root's of the same language.
-- Give every file a root it can be judged by. A file with no marker above it
-  is rooted at the open folder when it lies inside it, and at its own
-  directory otherwise - never at an empty root, which no entry can name and
-  which would put files from differently judged folders behind one answer.
-  `LanguageServices::SetFallbackRoot` follows the open folder.
+- Give every file a root it can be judged by, and keep a document on the
+  server it was opened on for as long as it is open. A file with no marker
+  above it is rooted at the open folder when it lies inside it (compared
+  case-insensitively), else at the root of the server that named it in an
+  answer, else at its own directory - never at an empty root, which no entry
+  can name and which would put files from differently judged folders behind
+  one answer. `LanguageServices::SetFallbackRoot` is set from the workspace
+  open and close events, before the folder's tabs are restored. A server
+  outside the open folder - neither containing it nor inside it - that has
+  held no document and no pending ticket for two minutes is shut down.
 - Treat `build/compile_commands.json` as a C++ project marker. clangd reads
   it under every ancestor of a file, so a directory holding one is the root
   the trust check has to judge. A subdirectory with its own `build/` is
@@ -121,7 +126,8 @@ frictionless and keeps the choice visible and reversible.
 - There is no way yet to trust a single file's root from the interface when no
   folder is open. Such a file gets a server only when its root - its project,
   or its own directory - already lies under a trusted entry; otherwise its
-  folder has to be opened and trusted. The settings section lists and removes entries and
+  folder has to be opened and trusted. A header reached by go-to-definition is
+  served by the project that named it, so it needs no entry of its own. The settings section lists and removes entries and
   does not add them.
 
 ## Alternatives Considered
