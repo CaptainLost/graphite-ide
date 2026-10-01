@@ -183,6 +183,9 @@ namespace Graphite {
 
 		for (const TranscriptRecord& record : records)
 		{
+			if (record.Timestamp > m_LastWrittenAt)
+				m_LastWrittenAt = record.Timestamp;
+
 			if (record.Kind == RecordKind::User)
 				AddUser(record);
 			else if (record.Kind == RecordKind::Assistant)
@@ -206,6 +209,7 @@ namespace Graphite {
 		m_Tools.clear();
 		m_ToolById.clear();
 		m_RequestTurn.clear();
+		m_LastWrittenAt.clear();
 		m_Version = 0;
 		++m_Generation;
 	}

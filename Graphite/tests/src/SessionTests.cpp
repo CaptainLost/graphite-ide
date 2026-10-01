@@ -345,3 +345,19 @@ TEST_CASE("A message queued mid-turn is an item of the current turn, not a new t
 	CHECK(turn.Items[1].At == "2026-09-17T09:00:03.000Z");
 	CHECK(turn.Items[1].RequestId.empty());
 }
+
+TEST_CASE("A session knows when it was last written, and forgets it on a restart")
+{
+	Session session;
+	CHECK(session.GetLastWrittenAt().empty());
+
+	session.Append(ParseTranscript(Fixtures::UserPrompt("one", "2026-09-17T09:05:00.000Z") +
+								   Fixtures::UserPrompt("two", "2026-09-17T09:01:00.000Z")).Records);
+	CHECK(session.GetLastWrittenAt() == "2026-09-17T09:05:00.000Z");
+
+	session.Append(ParseTranscript(Fixtures::UserPrompt("three", "2026-09-17T09:07:00.000Z")).Records);
+	CHECK(session.GetLastWrittenAt() == "2026-09-17T09:07:00.000Z");
+
+	session.Reset();
+	CHECK(session.GetLastWrittenAt().empty());
+}

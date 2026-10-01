@@ -87,6 +87,9 @@ namespace Graphite {
 
 	std::optional<std::chrono::sys_time<std::chrono::milliseconds>> ParseTimestamp(std::string_view text);
 
+	// A transcript written to within this long ago is taken to be live.
+	inline constexpr std::chrono::minutes kLiveWindow{2};
+
 	// Whether `inner` is `outer` or a directory below it, compared as Windows compares paths:
 	// without regard to case or to a trailing separator.
 	bool IsWithinDirectory(const std::filesystem::path& inner, const std::filesystem::path& outer);

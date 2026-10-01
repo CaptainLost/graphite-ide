@@ -25,9 +25,6 @@
 namespace Graphite {
 
 	namespace {
-		// A session whose transcript moved this recently is taken to be running.
-		constexpr std::chrono::minutes kLiveWindow{2};
-
 		// How often a missing projects directory is looked for, and how often the cache may be
 		// rewritten while summaries keep arriving.
 		constexpr std::chrono::seconds kDirectoryCheckInterval{5};

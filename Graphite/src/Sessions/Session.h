@@ -110,6 +110,11 @@ namespace Graphite {
 		// already built rows for.
 		std::uint64_t GetGeneration() const { return m_Generation; }
 
+		// The latest time any record appended since the last Reset was written, as the
+		// transcript spells it; empty when none said. Timestamps share one fixed-width UTC
+		// format, so the latest is the greatest string.
+		const std::string& GetLastWrittenAt() const { return m_LastWrittenAt; }
+
 	private:
 		Turn& CurrentTurn();
 		void AddAssistant(const TranscriptRecord& record);
@@ -126,6 +131,7 @@ namespace Graphite {
 		std::unordered_map<std::string, std::size_t> m_ToolById;
 		// The turn each request's usage was counted in, by request key.
 		std::unordered_map<std::string, std::size_t> m_RequestTurn;
+		std::string m_LastWrittenAt;
 		std::uint64_t m_Version = 0;
 		std::uint64_t m_Generation = 0;
 	};
