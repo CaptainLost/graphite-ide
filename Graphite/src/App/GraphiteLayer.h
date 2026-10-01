@@ -50,6 +50,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 namespace Graphite {
@@ -125,6 +126,8 @@ namespace Graphite {
 		void UpdateFocusReload(Core::Timestep ts);
 
 		void ApplyChromeIfSchemeChanged();
+
+		void RevealPanel(std::string_view id);
 
 		GlobalState CaptureGlobalState();
 

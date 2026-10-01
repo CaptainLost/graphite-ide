@@ -10,7 +10,9 @@
 
 #include "Git/ChangesPanel.h"
 #include "Git/GitPalette.h"
+#include "Git/GitStatusText.h"
 #include "Git/GitView.h"
+#include "Git/HistoryPlaceholder.h"
 
 #include "Panels/ConsolePanel.h"
 
@@ -30,6 +32,7 @@
 #include "App/GraphiteMenu.h"
 
 #include "Core/App/Application.h"
+#include "Core/App/Redraw.h"
 
 #include "Core/Base/Log.h"
 
@@ -561,6 +564,20 @@ namespace Graphite {
 		m_StateKeeper.Flush();
 	}
 
+	// Shows a panel that was hidden and brings it to the front of its dock node. The focus
+	// is applied on the panel's next Begin, which is next frame for a panel just made visible.
+	void GraphiteLayer::RevealPanel(std::string_view id)
+	{
+		Core::Panel* panel = m_Panels.Find(id);
+
+		if (panel == nullptr)
+			return;
+
+		m_Panels.SetVisible(id, true);
+		panel->RequestFocus();
+		Core::Redraw::Request();
+	}
+
 	void GraphiteLayer::ApplyChromeIfSchemeChanged()
 	{
 		if (m_AppliedSchemeVersion == m_ActiveScheme.GetVersion())
@@ -899,7 +916,33 @@ namespace Graphite {
 				m_WorkspaceAnalysis.Progress(), m_Analysis.GetBytes(), m_Analysis.GetBudget());
 		}
 
-		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
+		{
+			const auto head = m_Git.GetHead();
+			const auto branches = m_Git.GetBranches();
+			const auto gitStatus = m_Git.GetStatus();
+
+			messages.Git = GitStatusText({
+				.FolderOpen = m_Workspace.IsOpen(),
+				.MissingRepository = IsMissingRepository(gitStatus != nullptr, m_Git.GetStatusError()),
+				.Head = head.get(),
+				.Branches = branches.get(),
+				.Status = gitStatus.get(),
+			});
+		}
+
+		switch (DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages))
+		{
+		case StatusBarClick::GitBranch:
+			RevealPanel("git");
+			break;
+
+		case StatusBarClick::GitChanges:
+			RevealPanel("changes");
+			break;
+
+		case StatusBarClick::None:
+			break;
+		}
 
 		// Every frame rather than once: the caption follows the interface scale, which the
 		// monitor the window is on or the settings can change at any moment.

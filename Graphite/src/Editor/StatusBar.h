@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Git/GitStatusText.h"
+
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -51,9 +53,22 @@ namespace Graphite {
 		// its whole right-hand side, because splitting that into separately hoverable items is a
 		// change to how the bar draws for the sake of a second tooltip.
 		std::optional<std::string> BackgroundDetail;
+
+		// GitStatusText's output. Unset when there is nothing to say about git at all — no
+		// folder open, or a head not delivered yet.
+		std::optional<GitStatusSegment> Git;
 	};
 
-	void DrawStatusBar(const Core::DocumentSet& documents,
+	// Which piece of the bar was clicked this frame. The bar itself does nothing with a
+	// click: what a click opens is the layer's business, and the bar stays read-only.
+	enum class StatusBarClick
+	{
+		None,
+		GitBranch,
+		GitChanges
+	};
+
+	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
 					   const std::filesystem::path& root,
 					   const StatusMessages& messages);
 

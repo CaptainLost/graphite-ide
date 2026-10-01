@@ -58,6 +58,56 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.c_str());
 		}
 
+		// One piece of the git segment. Clickable pieces show a hand and take a click; the
+		// greyed "No repository" is inert.
+		bool DrawGitPiece(const std::string& text, bool clickable, const std::string& tooltip)
+		{
+			if (clickable)
+				ImGui::TextUnformatted(text.c_str());
+			else
+				ImGui::TextDisabled("%s", text.c_str());
+
+			if (!ImGui::IsItemHovered())
+				return false;
+
+			if (!tooltip.empty())
+				ImGui::SetTooltip("%s", tooltip.c_str());
+
+			if (!clickable)
+				return false;
+
+			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+			return ImGui::IsItemClicked(ImGuiMouseButton_Left);
+		}
+
+		// Laid out left to right from the bar's own left edge, each piece a separate item so
+		// each has its own hover and click. Returns the piece clicked, if any.
+		StatusBarClick DrawGitSegment(const GitStatusSegment& segment, float barHeight)
+		{
+			StatusBarClick clicked = StatusBarClick::None;
+
+			ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
+
+			if (DrawGitPiece(segment.Branch, segment.HasRepository, segment.BranchTooltip))
+				clicked = StatusBarClick::GitBranch;
+
+			if (!segment.Distance.empty())
+			{
+				ImGui::SameLine();
+				ImGui::TextUnformatted(segment.Distance.c_str());
+			}
+
+			if (!segment.Changes.empty())
+			{
+				ImGui::SameLine(0.0f, ImGui::GetFontSize());
+
+				if (DrawGitPiece(segment.Changes, true, {}))
+					clicked = StatusBarClick::GitChanges;
+			}
+
+			return clicked;
+		}
+
 		std::string DescribeDocument(const Core::OpenItem& item, const std::filesystem::path& root)
 		{
 			std::string description = RelativePath(item.Path, root);
@@ -98,9 +148,9 @@ namespace Graphite {
 		}
 	}
 
-	void DrawStatusBar(const Core::DocumentSet& documents,
-					   const std::filesystem::path& root,
-					   const StatusMessages& messages)
+	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
+						   const std::filesystem::path& root,
+						   const StatusMessages& messages)
 	{
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const float height = ImGui::GetFrameHeight();
@@ -111,14 +161,26 @@ namespace Graphite {
 		if (!ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags))
 		{
 			ImGui::End();
-			return;
+			return StatusBarClick::None;
 		}
 
 		const auto active = documents.GetActive();
 		const bool hasDocument = active && documents.At(*active).Document.has_value();
 
+		StatusBarClick clicked = StatusBarClick::None;
+
+		if (messages.Git)
+		{
+			clicked = DrawGitSegment(*messages.Git, height);
+		}
+
 		if (hasDocument)
 		{
+			// Beside the git segment when there is one, a font-size gap apart; at the bar's
+			// left edge otherwise, where it has always been.
+			if (messages.Git)
+				ImGui::SameLine(0.0f, ImGui::GetFontSize() * 2.0f);
+
 			ImGui::SetCursorPosY(CentredTextY(height));
 			ImGui::TextUnformatted(DescribeDocument(documents.At(*active), root).c_str());
 		}
@@ -215,5 +277,7 @@ namespace Graphite {
 		}
 
 		ImGui::End();
+
+		return clicked;
 	}
 }
