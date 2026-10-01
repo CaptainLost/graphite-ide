@@ -142,3 +142,28 @@ TEST_CASE("Popping onto a conflicting change fails and keeps the stash")
 	CHECK(repository.QueryStashes().GetValue().size() == 1);
 	CHECK(Read(fixture.GetPath() / "a.txt") == "local edit\n");
 }
+
+TEST_CASE("Stashing untracked files keeps ignored ones, even inside an untracked directory")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Tester", "tester@example.com");
+	fixture.Write(".gitignore", "*.log\n");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Write("scratch/note.txt", "untracked\n");
+	fixture.Write("scratch/build.log", "ignored inside an untracked directory\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+
+	auto saved = repository.StashSave("with untracked", true);
+	REQUIRE(saved.HasValue());
+	CHECK(saved.GetValue());
+
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "scratch" / "note.txt"));
+	REQUIRE(std::filesystem::exists(fixture.GetPath() / "scratch" / "build.log"));
+	CHECK(Read(fixture.GetPath() / "scratch" / "build.log") == "ignored inside an untracked directory\n");
+
+	const Core::Oid id = repository.QueryStashes().GetValue()[0].Id;
+	REQUIRE(repository.StashApply(id).HasValue());
+	CHECK(Read(fixture.GetPath() / "scratch" / "note.txt") == "untracked\n");
+}

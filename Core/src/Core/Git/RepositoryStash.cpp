@@ -94,8 +94,14 @@ namespace Core {
 						 std::format("cannot stash without a git identity: {}", LastLibgit2Message())};
 		}
 
+		// libgit2 records the stash and then clears the tree itself, but with untracked files
+		// it clears through REMOVE_UNTRACKED, which deletes an untracked directory whole -
+		// ignored files inside it included, though the stash never took them. So the stash
+		// only records, and the tree is cleared by DiscardAll, which removes untracked files
+		// one by one and leaves ignored ones where they are.
 		git_oid id{};
-		const std::uint32_t flags = includeUntracked ? GIT_STASH_INCLUDE_UNTRACKED : GIT_STASH_DEFAULT;
+		const std::uint32_t flags =
+			GIT_STASH_KEEP_ALL | (includeUntracked ? GIT_STASH_INCLUDE_UNTRACKED : GIT_STASH_DEFAULT);
 		const int result = git_stash_save(&id, m_Handle, stasher.get(),
 										  message.empty() ? nullptr : message.c_str(), flags);
 
@@ -104,6 +110,17 @@ namespace Core {
 
 		if (result != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot stash: {}", LastLibgit2Message())};
+
+		// The work is safe in the stash by now; a failure here leaves it on the tree as well.
+		auto cleared = DiscardAll(includeUntracked);
+
+		if (!cleared.HasValue())
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("the changes were stashed as stash@{{0}} but could not be cleared from "
+									 "the working tree: {}",
+									 cleared.GetError().Message)};
+		}
 
 		return true;
 	}
