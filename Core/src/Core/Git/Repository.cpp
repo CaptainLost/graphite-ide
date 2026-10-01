@@ -57,6 +57,35 @@ namespace Core {
 		return repository;
 	}
 
+	Result<Repository> Repository::Init(const std::filesystem::path& directory)
+	{
+		EnsureLibgit2Initialised();
+
+		git_repository_init_options options = GIT_REPOSITORY_INIT_OPTIONS_INIT;
+
+		// Without MKPATH, the default: the folder is the one open in the IDE, so it exists,
+		// and creating a missing one would hide a wrong path behind a fresh repository.
+		options.flags = 0;
+
+		git_repository* handle = nullptr;
+		const std::string path = ToUtf8(directory);
+
+		if (git_repository_init_ext(&handle, path.c_str(), &options) != 0 || handle == nullptr)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot initialise a git repository at '{}': {}", path,
+									 LastLibgit2Message())};
+		}
+
+		Repository repository;
+		repository.m_Handle = handle;
+
+		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
+			repository.m_WorkingDirectory = FromUtf8(workdir);
+
+		return repository;
+	}
+
 	Repository::~Repository()
 	{
 		if (m_Handle != nullptr)

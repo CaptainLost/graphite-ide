@@ -30,6 +30,11 @@ namespace Core {
 	public:
 		static Result<Repository> Open(const std::filesystem::path& anyPathInside);
 
+		// Creates a repository in an existing folder, as `git init` does there. The first
+		// branch is named from the user's init.defaultBranch. A folder that is already a
+		// repository is re-initialised in place, which git treats as harmless.
+		static Result<Repository> Init(const std::filesystem::path& directory);
+
 		~Repository();
 
 		Repository(Repository&& other) noexcept;
