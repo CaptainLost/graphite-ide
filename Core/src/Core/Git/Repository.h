@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
@@ -183,6 +184,17 @@ namespace Core {
 		Result<void> StashApply(const Oid& id);
 		Result<void> StashPop(const Oid& id);
 		Result<void> StashDrop(const Oid& id);
+
+		// A dry run: changes nothing on disk, in the index or in HEAD.
+		Result<CheckoutPlan> PlanCheckout(const CheckoutTarget& target) const;
+
+		// A safe checkout: either the whole tree moves to the target and HEAD follows, or
+		// nothing changes and an error says why. Returns the paths it changed on disk.
+		Result<std::vector<std::filesystem::path>> Checkout(const CheckoutTarget& target);
+
+		// Resets the index and the working tree to HEAD; removes untracked files only when
+		// asked. Ignored files are never touched.
+		Result<void> DiscardAll(bool includeUntracked);
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
