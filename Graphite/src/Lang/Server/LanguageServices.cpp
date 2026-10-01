@@ -41,6 +41,17 @@ namespace Graphite {
 		return std::chrono::seconds(static_cast<long long>(restarts) * 2);
 	}
 
+	bool MayRestart(std::size_t restarts)
+	{
+		return restarts < kMaximumRestarts;
+	}
+
+	bool RestartBudgetRefilled(std::optional<std::chrono::steady_clock::time_point> readySince,
+							   std::chrono::steady_clock::time_point now)
+	{
+		return readySince.has_value() && now - *readySince >= kStableAfter;
+	}
+
 	LanguageServices::LanguageServices(std::filesystem::path fallbackRoot)
 		: m_FallbackRoot(std::move(fallbackRoot))
 	{
@@ -925,6 +936,24 @@ namespace Graphite {
 										   std::make_move_iterator(drained.Diagnostics.begin()),
 										   std::make_move_iterator(drained.Diagnostics.end()));
 
+			// Ready for long enough earns the restart budget back, measured on the same clock as
+			// the backoff below.
+			if (drained.Status.State == ServerState::Ready)
+			{
+				if (!server.ReadySince)
+				{
+					server.ReadySince = now;
+				}
+				else if (server.Restarts != 0 && RestartBudgetRefilled(server.ReadySince, now))
+				{
+					server.Restarts = 0;
+				}
+			}
+			else
+			{
+				server.ReadySince.reset();
+			}
+
 			drained.Status.Restarts = server.Restarts;
 
 			// Logged on the change, not on the state: Poll runs every frame, so anything keyed on
@@ -970,9 +999,9 @@ namespace Graphite {
 			}
 			server.Pending.clear();
 
-			if (server.Restarts >= 3)
+			if (!MayRestart(server.Restarts))
 			{
-				// Settled: three attempts have already failed, and Status.State == Failed is
+				// Settled: kMaximumRestarts attempts have already failed, and Status.State == Failed is
 				// exactly what a caller reading StatusFor should see from here on.
 				continue;
 			}
