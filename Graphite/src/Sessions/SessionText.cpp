@@ -1,5 +1,6 @@
 #include "Sessions/SessionText.h"
 
+#include "Sessions/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/ToolFacts.h"
 
@@ -14,18 +15,6 @@ namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kRawSummaryBytes = 80;
-
-		nlohmann::json InputOf(const ToolCall& tool)
-		{
-			nlohmann::json input = nlohmann::json::parse(tool.InputJson, nullptr, false);
-			return input.is_object() ? input : nlohmann::json::object();
-		}
-
-		std::string Field(const nlohmann::json& input, const char* key)
-		{
-			const auto found = input.find(key);
-			return found != input.end() && found->is_string() ? found->get<std::string>() : std::string{};
-		}
 
 		void AddLines(std::vector<std::string>& out, const std::string& text, const char* prefix)
 		{
@@ -89,13 +78,13 @@ namespace Graphite {
 
 	std::string ToolSummary(const ToolCall& tool)
 	{
-		const nlohmann::json input = InputOf(tool);
+		const nlohmann::json input = ObjectOf(tool.InputJson);
 
 		// A subagent is named by its task and the kind of agent given it.
 		if (tool.Name == "Agent")
 		{
-			const std::string task = Field(input, "description");
-			const std::string type = Field(input, "subagent_type");
+			const std::string task = StringAt(input, "description");
+			const std::string type = StringAt(input, "subagent_type");
 
 			if (!task.empty())
 				return type.empty() ? task : task + " (" + type + ")";
@@ -103,7 +92,7 @@ namespace Graphite {
 
 		for (const char* key : {"command", "file_path", "pattern", "description", "url", "query", "skill"})
 		{
-			if (std::string value = Field(input, key); !value.empty())
+			if (std::string value = StringAt(input, key); !value.empty())
 				return value;
 		}
 
@@ -117,15 +106,15 @@ namespace Graphite {
 		if (tool.Name != "Edit")
 			return lines;
 
-		const nlohmann::json input = InputOf(tool);
-		AddLines(lines, Field(input, "old_string"), "- ");
-		AddLines(lines, Field(input, "new_string"), "+ ");
+		const nlohmann::json input = ObjectOf(tool.InputJson);
+		AddLines(lines, StringAt(input, "old_string"), "- ");
+		AddLines(lines, StringAt(input, "new_string"), "+ ");
 		return lines;
 	}
 
 	std::optional<std::filesystem::path> ToolFilePath(const ToolCall& tool)
 	{
-		const std::string path = Field(InputOf(tool), "file_path");
+		const std::string path = StringAt(ObjectOf(tool.InputJson), "file_path");
 
 		if (path.empty())
 			return std::nullopt;

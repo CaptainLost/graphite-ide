@@ -1,6 +1,7 @@
 #include "Sessions/Session.h"
 
 #include "Sessions/InjectedText.h"
+#include "Sessions/RequestUsageAccumulator.h"
 
 namespace Graphite {
 
@@ -118,8 +119,11 @@ namespace Graphite {
 
 			if (seen == m_RequestTurn.end())
 			{
-				turn.Usage[{record.Model, record.Fast}] += *record.Usage;
-				turn.Requests[key] = {record.Model, record.Fast, *record.Usage};
+				RequestUsage& request = turn.Requests[key];
+				request = {record.Model, record.Fast, {}};
+				RequestUsageAccumulator counted;
+				counted.Add(*record.Usage, &turn.Usage[{record.Model, record.Fast}]);
+				request.Usage = counted.Counts();
 
 				if (!key.empty())
 					m_RequestTurn.emplace(key, m_Turns.size() - 1);
@@ -128,11 +132,9 @@ namespace Graphite {
 			{
 				Turn& owner = m_Turns[seen->second];
 				RequestUsage& request = owner.Requests[key];
-				const TokenCounts merged = MergeResponseUsage(request.Usage, *record.Usage);
-				TokenCounts& total = owner.Usage[{request.Model, request.Fast}];
-				total -= request.Usage;
-				total += merged;
-				request.Usage = merged;
+				RequestUsageAccumulator counted{request.Usage};
+				counted.Add(*record.Usage, &owner.Usage[{request.Model, request.Fast}]);
+				request.Usage = counted.Counts();
 			}
 		}
 

@@ -1,6 +1,7 @@
 #include "Sessions/RequestTimeline.h"
 
 #include "Sessions/InjectedText.h"
+#include "Sessions/RequestUsageAccumulator.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
@@ -235,13 +236,13 @@ namespace Graphite {
 			// are the ones MergeResponseUsage picks from all of them.
 			if (record.Usage.has_value())
 			{
-				const TokenCounts merged =
-					m_HasUsage[index] ? MergeResponseUsage(request->Usage, *record.Usage) : *record.Usage;
+				RequestUsageAccumulator counted =
+					m_HasUsage[index] ? RequestUsageAccumulator{request->Usage} : RequestUsageAccumulator{};
 
-				if (!m_HasUsage[index] || merged != request->Usage)
+				if (counted.Add(*record.Usage))
 				{
 					const std::uint64_t context = request->Context;
-					ApplyUsage(*request, index, merged);
+					ApplyUsage(*request, index, counted.Counts());
 					m_HasUsage[index] = true;
 					changed = true;
 

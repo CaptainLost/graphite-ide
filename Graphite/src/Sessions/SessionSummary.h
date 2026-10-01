@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestUsageAccumulator.h"
 #include "Sessions/TranscriptRecord.h"
 
 #include <chrono>
@@ -31,7 +32,7 @@ namespace Graphite {
 		struct Counted
 		{
 			UsageKey Key;
-			TokenCounts Usage;
+			RequestUsageAccumulator Usage;
 		};
 
 		std::unordered_map<std::string, Counted> m_Counted;

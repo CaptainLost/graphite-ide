@@ -2,6 +2,7 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include "Sessions/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/TranscriptReader.h"
@@ -15,26 +16,6 @@ namespace Graphite {
 
 	namespace {
 		const char* const kDot = " \xc2\xb7 ";
-
-		nlohmann::json ObjectOf(const std::string& json)
-		{
-			nlohmann::json parsed = nlohmann::json::parse(json, nullptr, false);
-			return parsed.is_object() ? parsed : nlohmann::json::object();
-		}
-
-		std::optional<std::uint64_t> CountAt(const nlohmann::json& object, const char* key)
-		{
-			const auto found = object.find(key);
-			if (found == object.end() || !found->is_number_integer() || found->get<std::int64_t>() < 0)
-				return std::nullopt;
-			return static_cast<std::uint64_t>(found->get<std::int64_t>());
-		}
-
-		std::string StringAt(const nlohmann::json& object, const char* key)
-		{
-			const auto found = object.find(key);
-			return found != object.end() && found->is_string() ? found->get<std::string>() : std::string{};
-		}
 
 		std::string ShortModel(std::string_view model)
 		{
@@ -203,14 +184,14 @@ namespace Graphite {
 		if (tool.Name == "Read")
 		{
 			if (const auto file = result.find("file"); file != result.end() && file->is_object())
-				if (const auto lines = CountAt(*file, "numLines"))
+				if (const auto lines = OptionalCountAt(*file, "numLines"))
 					facts.Size = LinesText(*lines);
 		}
 		else if (tool.Name == "Bash" || tool.Name == "PowerShell")
 		{
 			// Output that was too large to keep inline is stored apart; its size says how big
 			// it really was, where stdout holds only the head.
-			if (const auto stored = CountAt(result, "persistedOutputSize"))
+			if (const auto stored = OptionalCountAt(result, "persistedOutputSize"))
 				facts.Size = FormatBytes(*stored);
 			else if (result.contains("stdout") || result.contains("stderr"))
 				facts.Size = FormatBytes(StringAt(result, "stdout").size() + StringAt(result, "stderr").size());
@@ -225,8 +206,8 @@ namespace Graphite {
 		}
 		else if (tool.Name == "Grep")
 		{
-			const auto files = CountAt(result, "numFiles");
-			const auto lines = CountAt(result, "numLines");
+			const auto files = OptionalCountAt(result, "numFiles");
+			const auto lines = OptionalCountAt(result, "numLines");
 
 			if (StringAt(result, "mode") == "content" && lines && files)
 				facts.Detail = std::to_string(*lines) + " matches in " + std::to_string(*files) + " files";
@@ -249,9 +230,9 @@ namespace Graphite {
 		}
 		else if (tool.Name == "WebFetch")
 		{
-			if (const auto bytes = CountAt(result, "bytes"))
+			if (const auto bytes = OptionalCountAt(result, "bytes"))
 				facts.Size = FormatBytes(*bytes);
-			if (const auto code = CountAt(result, "code"))
+			if (const auto code = OptionalCountAt(result, "code"))
 				facts.Detail = "HTTP " + std::to_string(*code);
 		}
 

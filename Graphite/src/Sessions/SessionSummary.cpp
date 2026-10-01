@@ -102,20 +102,10 @@ namespace Graphite {
 			return;
 		}
 
-		const auto [found, inserted] = m_Counted.try_emplace(key, Counted{model, *record.Usage});
+		Counted& counted = m_Counted.try_emplace(key, Counted{model, {}}).first->second;
 
-		if (inserted)
-		{
-			m_Usage[model] += *record.Usage;
-			return;
-		}
-
-		Counted& counted = found->second;
-		const TokenCounts merged = MergeResponseUsage(counted.Usage, *record.Usage);
-		TokenCounts& total = m_Usage[counted.Key];
-		total -= counted.Usage;
-		total += merged;
-		counted.Usage = merged;
+		// The first record names the model, and the rest only revise the counts it put there.
+		counted.Usage.Add(*record.Usage, &m_Usage[counted.Key]);
 	}
 
 	std::filesystem::path SubagentDirectory(const std::filesystem::path& sessionFile)

@@ -1,5 +1,6 @@
 #include "Sessions/TranscriptReader.h"
 
+#include "Sessions/JsonAccess.h"
 #include "Sessions/ToolFacts.h"
 
 #include <nlohmann/json.hpp>
@@ -19,15 +20,8 @@ namespace Graphite {
 
 	namespace {
 
-		// Every accessor below answers a wrong type with a default instead of throwing: a
-		// field whose type changed in a newer Claude Code must cost that field, not the line.
-		std::string StringAt(const nlohmann::json& object, const char* key)
-		{
-			const auto found = object.find(key);
-			return found != object.end() && found->is_string() ? found->get<std::string>()
-															   : std::string{};
-		}
-
+		// Like the accessors in JsonAccess.h, these answer a wrong type with a default
+		// instead of throwing.
 		bool BoolAt(const nlohmann::json& object, const char* key)
 		{
 			const auto found = object.find(key);
@@ -51,39 +45,6 @@ namespace Graphite {
 			}
 
 			return values;
-		}
-
-		std::uint64_t CountAt(const nlohmann::json& object, const char* key)
-		{
-			const auto found = object.find(key);
-
-			if (found == object.end())
-				return 0;
-			if (found->is_number_unsigned())
-				return found->get<std::uint64_t>();
-			if (found->is_number_integer() && found->get<std::int64_t>() > 0)
-				return static_cast<std::uint64_t>(found->get<std::int64_t>());
-
-			return 0;
-		}
-
-		// A count that may be missing: nothing for an absent field, a wrong type or a negative
-		// number, where CountAt would give a zero indistinguishable from a real one. Zero itself
-		// is kept (>= 0, not CountAt's > 0) because a boundary can genuinely report zero pre or
-		// post tokens; CountAt's callers have no field that is meaningfully absent, so 0 already
-		// says "none" for them.
-		std::optional<std::uint64_t> OptionalCountAt(const nlohmann::json& object, const char* key)
-		{
-			const auto found = object.find(key);
-
-			if (found == object.end())
-				return std::nullopt;
-			if (found->is_number_unsigned())
-				return found->get<std::uint64_t>();
-			if (found->is_number_integer() && found->get<std::int64_t>() >= 0)
-				return static_cast<std::uint64_t>(found->get<std::int64_t>());
-
-			return std::nullopt;
 		}
 
 		CompactionFacts CompactionOf(const nlohmann::json& json)
