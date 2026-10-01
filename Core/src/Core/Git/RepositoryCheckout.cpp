@@ -350,7 +350,7 @@ namespace Core {
 		{
 			const std::filesystem::path git = FromUtf8(git_repository_path(handle));
 
-			for (const char* name : {"MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "AUTO_MERGE", "SQUASH_MSG",
+			for (const char* name : {"MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "MERGE_RR", "AUTO_MERGE", "SQUASH_MSG",
 									 "CHERRY_PICK_HEAD", "REVERT_HEAD"})
 			{
 				std::error_code code;
@@ -578,14 +578,17 @@ namespace Core {
 		if (git_index_read_tree(index.get(), tree.get()) != 0 || git_index_write(index.get()) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot reset the index: {}", LastLibgit2Message())};
 
-		auto ended = EndPendingCommit(m_Handle);
+		// The untracked files before git's state: a marker that cannot be removed is reported,
+		// but by then the tree is as clean as it was asked to be - a stash that took the
+		// untracked files does not leave them on disk as well.
+		if (includeUntracked)
+		{
+			auto removed = RemoveUntracked(m_Handle, m_WorkingDirectory);
 
-		if (!ended.HasValue())
-			return ended.GetError();
+			if (!removed.HasValue())
+				return removed.GetError();
+		}
 
-		if (!includeUntracked)
-			return Result<void>::Ok();
-
-		return RemoveUntracked(m_Handle, m_WorkingDirectory);
+		return EndPendingCommit(m_Handle);
 	}
 }

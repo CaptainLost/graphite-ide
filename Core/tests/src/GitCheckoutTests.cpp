@@ -90,7 +90,7 @@ namespace {
 			fixture.Write(std::string(".git/") + name, head + "\n");
 		}
 
-		for (const char* name : {"MERGE_MSG", "MERGE_MODE", "SQUASH_MSG", "BISECT_LOG"})
+		for (const char* name : {"MERGE_MSG", "MERGE_MODE", "MERGE_RR", "SQUASH_MSG", "BISECT_LOG"})
 		{
 			fixture.Write(std::string(".git/") + name, "\n");
 		}
@@ -105,7 +105,7 @@ namespace {
 		const std::filesystem::path git = fixture.GetPath() / ".git";
 
 		for (const char* name : {"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "AUTO_MERGE", "MERGE_MSG",
-								 "MERGE_MODE", "SQUASH_MSG"})
+								 "MERGE_MODE", "MERGE_RR", "SQUASH_MSG"})
 		{
 			CAPTURE(name);
 			CHECK_FALSE(std::filesystem::exists(git / name));
