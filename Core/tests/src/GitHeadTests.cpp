@@ -65,6 +65,25 @@ TEST_CASE("A detached head names its commit and no branch")
 	CHECK(head.Commit->ToHex() == tip);
 }
 
+// The shape a real rebase leaves while it is stopped: git detaches HEAD onto the commit being
+// replayed, so the detached kind and the rebase operation have to be read side by side rather
+// than one hiding the other.
+TEST_CASE("A rebase in progress on a detached head reads as both detached and rebasing")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string tip = fixture.Commit("add a");
+	fixture.Detach();
+	fixture.Write(".git/rebase-merge/head-name", "refs/heads/master\n");
+
+	const Core::HeadState head = HeadOf(fixture);
+
+	CHECK(head.Kind == HeadKind::Detached);
+	CHECK(head.Operation == RepositoryOperation::Rebase);
+	REQUIRE(head.Commit.has_value());
+	CHECK(head.Commit->ToHex() == tip);
+}
+
 TEST_CASE("A repository with no commits has an unborn head that still names its branch")
 {
 	GitFixture fixture;
