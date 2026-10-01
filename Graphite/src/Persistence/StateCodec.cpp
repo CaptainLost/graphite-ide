@@ -30,9 +30,10 @@ namespace Graphite {
 
 		constexpr std::string_view kSessionCount = "restore.session.count";
 		constexpr std::string_view kDiffCount = "restore.diff.count";
+		constexpr std::string_view kTerminalCount = "restore.terminal.count";
 
 		// More tabs than anybody keeps open, and a ceiling on what a damaged count can cost.
-		// Sessions and diffs are windows of the same kind and share it.
+		// Sessions, diffs and terminals are windows of the same kind and share it.
 		constexpr std::size_t kMaximumTabs = 256;
 
 		// The words each enum is written as. Written out rather than numbered, so reordering an
@@ -70,6 +71,11 @@ namespace Graphite {
 		std::string DiffKey(std::size_t index, std::string_view field)
 		{
 			return IndexedKey("restore.diff", index, field);
+		}
+
+		std::string TerminalKey(std::size_t index, std::string_view field)
+		{
+			return IndexedKey("restore.terminal", index, field);
 		}
 
 		std::size_t ReadCount(const Core::JsonFile& file, std::string_view key)
@@ -399,6 +405,20 @@ namespace Graphite {
 			file.Set(DiffKey(index, "target"), std::string{NameOf(kDiffTargetNames, diff.Target)});
 			file.Set(DiffKey(index, "path"), Core::ToUtf8(diff.Path));
 		}
+
+		if (state.Terminals)
+		{
+			file.Set(kTerminalCount, std::to_string(state.Terminals->size()));
+
+			for (std::size_t index = 0; index < state.Terminals->size(); ++index)
+			{
+				const TerminalTabState& terminal = (*state.Terminals)[index];
+
+				file.Set(TerminalKey(index, "id"), terminal.Id);
+				file.Set(TerminalKey(index, "profile"), terminal.ProfileName);
+				file.Set(TerminalKey(index, "directory"), EncodePath(terminal.WorkingDirectory, root));
+			}
+		}
 	}
 
 	WorkspaceState ReadWorkspaceState(const Core::JsonFile& file, const std::filesystem::path& root)
@@ -459,6 +479,36 @@ namespace Graphite {
 			{
 				state.Diffs.push_back(std::move(*diff));
 			}
+		}
+
+		// The count's presence is what tells "never kept" from "kept, and empty".
+		if (!file.Get(kTerminalCount).empty())
+		{
+			std::vector<TerminalTabState> terminals;
+			const std::size_t terminalCount = ReadCount(file, kTerminalCount);
+
+			for (std::size_t index = 0; index < terminalCount; ++index)
+			{
+				TerminalTabState terminal;
+				terminal.Id = file.Get(TerminalKey(index, "id"));
+				terminal.ProfileName = file.Get(TerminalKey(index, "profile"));
+
+				// Without an id there is no place to go back to, and without a profile no shell
+				// to start.
+				if (terminal.Id.empty() || terminal.ProfileName.empty())
+				{
+					continue;
+				}
+
+				if (const std::string directory = file.Get(TerminalKey(index, "directory")); !directory.empty())
+				{
+					terminal.WorkingDirectory = DecodePath(directory, root);
+				}
+
+				terminals.push_back(std::move(terminal));
+			}
+
+			state.Terminals = std::move(terminals);
 		}
 
 		return state;

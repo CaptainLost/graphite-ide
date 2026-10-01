@@ -372,6 +372,77 @@ TEST_CASE("A file written before sessions and diffs were kept reads as none of e
 	CHECK(read.Tabs.size() == 1);
 	CHECK(read.Sessions.empty());
 	CHECK(read.Diffs.empty());
+	CHECK_FALSE(read.Terminals.has_value());
+}
+
+TEST_CASE("Terminal windows survive a write and a read, their directory relative to the folder")
+{
+	WorkspaceState state;
+	state.Terminals = std::vector<TerminalTabState>{
+		TerminalTabState{"{A1}", "PowerShell 7", kRoot / "src"},
+		TerminalTabState{"{B2}", "Command Prompt", std::filesystem::path{"E:\\Elsewhere"}}};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(state, kRoot, file);
+
+	CHECK(ReadWorkspaceState(file, kRoot) == state);
+	CHECK(file.Get("restore.terminal.count") == "2");
+	CHECK(file.Get("restore.terminal.0.profile") == "PowerShell 7");
+	CHECK(file.Get("restore.terminal.0.directory") == "src");
+}
+
+TEST_CASE("No terminals written at all reads as absent, and an empty list as empty")
+{
+	// Absent is a folder never opened with this version, and opens one default terminal;
+	// empty is a folder whose terminals were all closed, and opens none.
+	Core::JsonFile never;
+	WriteWorkspaceState(WorkspaceState{}, kRoot, never);
+
+	CHECK_FALSE(ReadWorkspaceState(never, kRoot).Terminals.has_value());
+
+	WorkspaceState closed;
+	closed.Terminals = std::vector<TerminalTabState>{};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(closed, kRoot, file);
+
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	REQUIRE(read.Terminals.has_value());
+	CHECK(read.Terminals->empty());
+}
+
+TEST_CASE("A terminal with no id or no profile is dropped, and the rest are kept")
+{
+	Core::JsonFile file;
+	file.Set("restore.terminal.count", "3");
+	file.Set("restore.terminal.0.profile", "cmd");
+	file.Set("restore.terminal.1.id", "{B}");
+	file.Set("restore.terminal.2.id", "{C}");
+	file.Set("restore.terminal.2.profile", "cmd");
+
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	REQUIRE(read.Terminals.has_value());
+	REQUIRE(read.Terminals->size() == 1);
+	CHECK((*read.Terminals)[0].Id == "{C}");
+}
+
+TEST_CASE("A shorter terminal list leaves none of the longer one's keys behind")
+{
+	WorkspaceState longer;
+	longer.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{A}", "cmd", kRoot},
+													 TerminalTabState{"{B}", "cmd", kRoot}};
+
+	WorkspaceState shorter;
+	shorter.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{A}", "cmd", kRoot}};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(longer, kRoot, file);
+	WriteWorkspaceState(shorter, kRoot, file);
+
+	CHECK(file.Get("restore.terminal.1.id").empty());
+	CHECK(ReadWorkspaceState(file, kRoot) == shorter);
 }
 
 TEST_CASE("A flag reads as what was written, and anything else as the stated default")

@@ -78,12 +78,30 @@ namespace Graphite {
 		friend bool operator==(const DiffTabState&, const DiffTabState&) = default;
 	};
 
+	// One open terminal window, as the next launch starts it again: a fresh process of the same
+	// shell, in the same directory, under the same window identity - which is what imgui.ini
+	// keeps the window's place by. The id is a Uuid rather than a counter so two folders'
+	// terminals never share a remembered place.
+	struct TerminalTabState
+	{
+		std::string Id;
+		std::string ProfileName;
+		std::filesystem::path WorkingDirectory;
+
+		friend bool operator==(const TerminalTabState&, const TerminalTabState&) = default;
+	};
+
 	struct WorkspaceState
 	{
 		std::vector<TabState> Tabs;
 		std::optional<std::filesystem::path> Active;
 		std::vector<SessionTabState> Sessions;
 		std::vector<DiffTabState> Diffs;
+
+		// Absent when this folder's state was written before terminals were kept, or never
+		// written: the folder then opens one default terminal. Present and empty when every
+		// terminal was closed, and then none opens.
+		std::optional<std::vector<TerminalTabState>> Terminals;
 
 		friend bool operator==(const WorkspaceState&, const WorkspaceState&) = default;
 	};
