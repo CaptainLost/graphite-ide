@@ -2,10 +2,12 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
+#include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
@@ -56,6 +58,13 @@ namespace Core {
 
 			return index;
 		}
+
+		bool IsBlank(const std::string& text)
+		{
+			return std::ranges::all_of(text, [](char c) {
+				return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+			});
+		}
 	}
 
 	Result<void> Repository::Stage(const std::vector<std::filesystem::path>& paths)
@@ -83,6 +92,16 @@ namespace Core {
 			// because the index is exactly what is being brought up to date.
 			std::error_code code;
 			const bool onDisk = std::filesystem::exists(m_WorkingDirectory / path, code);
+
+			// exists() answers false on an error too. Taking that for "gone" would record a
+			// file that is still there as deleted, so an error stops the stage here. The index
+			// is only written at the end, so nothing of it has been touched.
+			if (code)
+			{
+				git_index_free(index);
+				return Error{ErrorCode::IoFailure,
+							 std::format("cannot stage '{}': {}", ToGenericUtf8(path), code.message())};
+			}
 
 			int result = 0;
 
@@ -250,6 +269,14 @@ namespace Core {
 		if (m_Handle == nullptr)
 		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		// git refuses a commit with nothing to say, and so does this: the panel stops it
+		// first, but the engine is the backstop. An amend may leave the message empty, which
+		// means keeping the one it replaces.
+		if (!request.Amend && IsBlank(request.Message))
+		{
+			return Error{ErrorCode::InvalidArgument, "the commit message is empty"};
 		}
 
 		git_signature* who = nullptr;

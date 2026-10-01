@@ -332,6 +332,34 @@ TEST_CASE("Commit writes the index as a commit the log then finds")
 	CHECK(StatusOf(repository.GetValue(), "a.txt").Index == Core::StatusFlags::None);
 }
 
+TEST_CASE("Commit refuses an empty message and creates no commit")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+	fixture.Write("a.txt", "changed\n");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+
+	const auto before = repository.GetValue().QueryLog({});
+	REQUIRE(before.HasValue());
+
+	for (const char* message : {"", "   ", "\t\r\n  \n"})
+	{
+		const auto committed = repository.GetValue().Commit({.Message = message});
+		REQUIRE_FALSE(committed.HasValue());
+		CHECK(committed.GetError().Code == Core::ErrorCode::InvalidArgument);
+	}
+
+	const auto after = repository.GetValue().QueryLog({});
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue().Commits.size() == before.GetValue().Commits.size());
+	CHECK(after.GetValue().Commits.front().Id == before.GetValue().Commits.front().Id);
+}
+
 TEST_CASE("Commit fails rather than inventing an author it cannot resolve")
 {
 	GitFixture fixture;
