@@ -662,3 +662,25 @@ TEST_CASE("VtParser RIS restores every mode the screen tracks")
 	CHECK(screen.GetScrollbackCount() == 1);
 	CHECK(RowText(screen, 0) == U"        ");
 }
+
+TEST_CASE("VtParser abandons an ignored CSI on a control byte")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// CAN cancels the sequence, as it does in the states that interpret one.
+	parser.Consume("\x1B[4:\x18" "abc");
+
+	CHECK(RowText(screen, 0) == U"abc     ");
+}
+
+TEST_CASE("VtParser RIS forgets the saved cursor")
+{
+	Core::TerminalScreen screen(8, 4);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[3;5H\x1B" "7\x1B[1;1H\x1B" "c\x1B" "8");
+
+	CHECK(screen.GetCursor().Row == 0);
+	CHECK(screen.GetCursor().Column == 0);
+}

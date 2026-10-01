@@ -254,6 +254,13 @@ namespace Core {
 		}
 		case State::CsiIgnore:
 		{
+			// A control byte abandons the sequence, as it does in the states that interpret one.
+			if (static_cast<unsigned char>(byte) < 0x20)
+			{
+				Reset();
+				return;
+			}
+
 			if (IsCsiFinal(byte))
 			{
 				Reset();
@@ -462,6 +469,9 @@ namespace Core {
 			m_Screen.SetCursorVisible(true);
 			m_Screen.EraseInDisplay(EraseExtent::All);
 			m_Screen.SetCursor(0, 0);
+			// The screen has no call to clear the saved cursor, but saving home overwrites it with
+			// the power-on value.
+			m_Screen.SaveCursor();
 			m_Screen.SetPen(Pen{});
 			break;
 		default:
