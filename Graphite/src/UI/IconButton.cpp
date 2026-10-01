@@ -1,6 +1,7 @@
 #include "UI/IconButton.h"
 
 #include "Core/ImGui/Animation.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
 
@@ -10,7 +11,7 @@ namespace Graphite {
 
 	float IconButtonSize()
 	{
-		return std::floor(ImGui::GetFontSize() + 4.0f);
+		return std::floor(ImGui::GetFontSize() + Core::Scaled(4.0f));
 	}
 
 	// Drawn rather than submitted as an ImGui::Button, which is what put the glyphs off centre:
@@ -82,10 +83,10 @@ namespace Graphite {
 		const float top = at.y + std::floor((ImGui::GetFrameHeight() - height) * 0.5f);
 
 		ImGui::GetWindowDrawList()->AddLine(ImVec2(at.x, top), ImVec2(at.x, top + height),
-										   ImGui::GetColorU32(ImGuiCol_Separator));
+										   ImGui::GetColorU32(ImGuiCol_Separator), Core::Scaled(kIconSeparatorWidth));
 
 		// Claims the line it drew on, so the spacing either side of it is the ordinary item
 		// spacing and nothing has to know a line went past.
-		ImGui::Dummy(ImVec2(kIconSeparatorWidth, ImGui::GetFrameHeight()));
+		ImGui::Dummy(ImVec2(Core::Scaled(kIconSeparatorWidth), ImGui::GetFrameHeight()));
 	}
 }

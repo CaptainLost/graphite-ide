@@ -3,6 +3,7 @@
 #include "Editor/FindNavigation.h"
 #include "UI/IconButton.h"
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
@@ -159,11 +160,11 @@ namespace Graphite {
 			widths.Field = FindFieldWidth();
 			widths.Counter = MatchCounterWidth();
 
-			widths.RightOfField = style.ItemSpacing.x + kIconSeparatorWidth +
+			widths.RightOfField = style.ItemSpacing.x + Core::Scaled(kIconSeparatorWidth) +
 								  style.ItemSpacing.x + widths.Counter +
 								  (style.ItemSpacing.x + IconButtonSize()) * 5.0f;
 
-			widths.Total = kFindBarPaddingX * 2.0f + widths.Field + widths.RightOfField;
+			widths.Total = Core::Scaled(kFindBarPaddingX) * 2.0f + widths.Field + widths.RightOfField;
 
 			return widths;
 		}
@@ -232,11 +233,11 @@ namespace Graphite {
 			// Less whatever the vertical scrollbar is taking and a margin, so the bar hangs beside
 			// the scrollbar with air around it rather than wedged against it and against the top.
 			const float usable = ImGui::GetWindowWidth() -
-								 ImGui::GetCurrentWindow()->ScrollbarSizes.x - kFindBarMargin;
+								 ImGui::GetCurrentWindow()->ScrollbarSizes.x - Core::Scaled(kFindBarMargin);
 
 			frame.Corner = ImVec2(ImGui::GetWindowPos().x + usable,
-								  ImGui::GetWindowPos().y + kFindBarMargin);
-			frame.Width = usable - kFindBarMargin;
+								  ImGui::GetWindowPos().y + Core::Scaled(kFindBarMargin));
+			frame.Width = usable - Core::Scaled(kFindBarMargin);
 			frame.DocumentFocused = documentFocused;
 
 			return frame;
@@ -298,7 +299,7 @@ namespace Graphite {
 		const float barWidth = std::min(widths.Total, frame.Width);
 
 		ImGui::SetCursorScreenPos(ImVec2(frame.Corner.x - barWidth, frame.Corner.y));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kFindBarPaddingX, 0.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(Core::Scaled(kFindBarPaddingX), 0.0f));
 
 		// Opaque, and drawn as a child window rather than as a rectangle on the editor's own
 		// draw list: a nested child is painted above everything its parent drew, so the text

@@ -7,6 +7,7 @@
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/Theme.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Window.h"
 
@@ -100,13 +101,9 @@ namespace Core {
 			}
 		}
 
-		// An undocked panel gets its own system window, where rounding and transparency would
-		// look out of place.
-		void SquareOffViewportWindows()
+		bool ViewportsEnabled()
 		{
-			ImGuiStyle& style = ImGui::GetStyle();
-			style.WindowRounding = 0.0f;
-			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+			return (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0;
 		}
 	}
 
@@ -116,18 +113,41 @@ namespace Core {
 	}
 
 	// Exists because applying a palette is not a complete operation on its own: Theme::Apply
-	// paints the colours and sets the rounding it wants, and the viewport fixup above has to
-	// run after it or the rounded corners it just set survive onto the undocked windows. Every
-	// caller outside Core reaches for this rather than Theme::Apply, so a re-apply mid-run
-	// leaves the style where startup left it.
+	// paints the colours, and an undocked panel's system window needs an opaque background
+	// that the palette's own may not be. Every caller outside Core reaches for this rather
+	// than Theme::Apply, so a re-apply mid-run leaves the style where startup left it.
 	void ImGuiRenderer::ApplyTheme(const ChromePalette& palette)
 	{
 		Theme::Apply(palette);
 
-		if ((ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
+		if (ViewportsEnabled())
 		{
-			SquareOffViewportWindows();
+			ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.0f;
 		}
+	}
+
+	void ImGuiRenderer::SetInterfaceScale(float scale)
+	{
+		ImGui::GetStyle().FontScaleMain = scale;
+	}
+
+	void ImGuiRenderer::UpdateStyleScale()
+	{
+		// Zero until ImGui has placed the main viewport on a monitor, at the end of the first
+		// frame's NewFrame.
+		const float viewportDpi = ImGui::GetMainViewport()->DpiScale;
+		const float dpi = viewportDpi > 0.0f ? viewportDpi : m_InitialDpiScale;
+
+		ImGuiStyle& style = ImGui::GetStyle();
+		const float scale = style.FontScaleMain * dpi;
+
+		if (scale == m_StyleScale)
+		{
+			return;
+		}
+
+		style = ScaledStyle(style, scale, ViewportsEnabled());
+		m_StyleScale = scale;
 	}
 
 	ImGuiRenderer::ImGuiRenderer()
@@ -162,6 +182,11 @@ namespace Core {
 		// surface counts.
 		io.ConfigWindowsMoveFromTitleBarOnly = true;
 
+		// The text in each window follows the scale of the monitor that window is on. The
+		// style's sizes cannot follow per window - ImGui has one style - so they follow the
+		// main window's monitor, in UpdateStyleScale.
+		io.ConfigDpiScaleFonts = true;
+
 #ifndef CORE_DEBUG
 		// A misuse of ImGui's API that it knows how to recover from - an unbalanced
 		// Begin/End, a cursor moved past the last item - asserts by default, which a user
@@ -180,6 +205,11 @@ namespace Core {
 		ApplyTheme(Theme::DefaultPalette());
 
 		auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
+
+		float contentScaleY = 1.0f;
+		glfwGetWindowContentScale(handle, &m_InitialDpiScale, &contentScaleY);
+		ImGui::GetStyle().FontScaleDpi = m_InitialDpiScale;
+		m_StyleScale = 0.0f;
 		if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
 		{
 			ImPlot::DestroyContext();
@@ -252,6 +282,8 @@ namespace Core {
 
 	void ImGuiRenderer::BeginFrame()
 	{
+		UpdateStyleScale();
+
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();

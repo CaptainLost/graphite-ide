@@ -1,5 +1,6 @@
 #include "Panels/FileTreeView.h"
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileOperations.h"
 #include "Core/Fs/FileSystem.h"
@@ -36,7 +37,7 @@ namespace Graphite {
 			const float fitted =
 				ImGui::CalcTextSize(text).x + paddingX * 2.0f + ImGui::GetFontSize();
 
-			return std::clamp(fitted, kMinFieldWidth, ImGui::GetContentRegionAvail().x);
+			return std::clamp(fitted, Core::Scaled(kMinFieldWidth), ImGui::GetContentRegionAvail().x);
 		}
 	}
 
@@ -436,15 +437,15 @@ namespace Graphite {
 		// arrow and need no shift.
 		constexpr float kFieldPaddingX = 2.0f;
 		const float indent =
-			node.IsDirectory ? ImGui::GetTreeNodeToLabelSpacing() - kFieldPaddingX : 0.0f;
+			node.IsDirectory ? ImGui::GetTreeNodeToLabelSpacing() - Core::Scaled(kFieldPaddingX) : 0.0f;
 
 		if (indent > 0.0f)
 			ImGui::Indent(indent);
 
 		// The theme's frame padding is sized for buttons and would make the edited row
 		// taller than its neighbours.
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(kFieldPaddingX, 0.0f));
-		ImGui::SetNextItemWidth(FitWidthToText(m_RenameBuffer.data(), kFieldPaddingX));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Core::Scaled(kFieldPaddingX), 0.0f));
+		ImGui::SetNextItemWidth(FitWidthToText(m_RenameBuffer.data(), Core::Scaled(kFieldPaddingX)));
 
 		const bool committed =
 			ImGui::InputText("##renameField", m_RenameBuffer.data(), m_RenameBuffer.size(),

@@ -1,5 +1,7 @@
 #include "Settings/SettingsPanel.h"
 
+#include "Core/ImGui/UiScale.h"
+
 #include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
@@ -67,7 +69,7 @@ namespace Graphite {
 
 		// No splitter: an adjustable divider over a handful of entries is a control nobody
 		// moves and everybody maintains.
-		if (ImGui::BeginChild("sections", ImVec2(kSectionListWidth, 0.0f),
+		if (ImGui::BeginChild("sections", ImVec2(Core::Scaled(kSectionListWidth), 0.0f),
 							  ImGuiChildFlags_Borders))
 		{
 			for (std::size_t index = 0; index < m_Sections.size(); ++index)

@@ -1,5 +1,6 @@
 #include "Settings/AppSettings.h"
 
+#include "Settings/InterfaceScale.h"
 #include "Settings/SettingsVersion.h"
 #include "Settings/UserDirectories.h"
 
@@ -25,6 +26,7 @@ namespace Graphite {
 
 		constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
 
+		constexpr const char* kInterfaceScaleKey = "interfaceScale";
 		constexpr const char* kEditorFontSizeKey = "editorFontSize";
 		constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
 		constexpr const char* kIndentWidthKey = "indentWidth";
@@ -152,6 +154,17 @@ namespace Graphite {
 	void AppSettings::SaveGitIgnoredDisplay(std::string_view mode)
 	{
 		WriteValue(kIgnoredDisplayKey, std::string{mode});
+	}
+
+	int AppSettings::LoadInterfaceScalePercent()
+	{
+		return InterfaceScalePercentOrDefault(
+			Core::JsonFile::Load(SettingsPath()).Get(kInterfaceScaleKey));
+	}
+
+	void AppSettings::SaveInterfaceScalePercent(int percent)
+	{
+		WriteValue(kInterfaceScaleKey, std::to_string(percent));
 	}
 
 	float AppSettings::LoadEditorFontSize()

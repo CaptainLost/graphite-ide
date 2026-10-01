@@ -2,6 +2,7 @@
 
 #include "App/Version.h"
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/CaptionLayout.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/Platform/Caption.h"
@@ -84,7 +85,7 @@ namespace Graphite {
 			// top-left; a bar docked along the top or the left would need the offset between
 			// GetWindowPos() and the viewport's Pos added here.
 			Core::CaptionMetrics metrics;
-			metrics.Height = kCaptionHeight;
+			metrics.Height = Core::Scaled(kCaptionHeight);
 			metrics.DragBegin = dragBegin;
 			metrics.DragEnd = dragEnd;
 
@@ -169,7 +170,7 @@ namespace Graphite {
 		const float barWidth = ImGui::GetWindowWidth();
 
 		const Core::CaptionLayout layout = Core::LayOutCaption(
-			barWidth, kCaptionHeight, kButtonWidth, versionWidth, kVersionGap, menuEnd);
+			barWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kButtonWidth), versionWidth, Core::Scaled(kVersionGap), menuEnd);
 
 		if (layout.VersionVisible)
 		{

@@ -19,6 +19,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/App/Redraw.h"
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
@@ -238,10 +239,10 @@ namespace Graphite {
 			const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.GetLineCount()));
 
 			metrics.Gutter.BreakpointWidth = kBreakpointColumnCells * metrics.CellWidth;
-			metrics.Gutter.ChangeWidth = changeColumn ? kChangeColumnWidth : 0.0f;
+			metrics.Gutter.ChangeWidth = changeColumn ? Core::Scaled(kChangeColumnWidth) : 0.0f;
 			metrics.Gutter.FoldWidth = kFoldColumnCells * metrics.CellWidth;
 			metrics.Gutter.NumberWidth =
-				static_cast<float>(digits) * metrics.CellWidth + kGutterPaddingX * 2.0f;
+				static_cast<float>(digits) * metrics.CellWidth + Core::Scaled(kGutterPaddingX) * 2.0f;
 			metrics.Gutter.TotalWidth = metrics.Gutter.BreakpointWidth + metrics.Gutter.ChangeWidth +
 										metrics.Gutter.NumberWidth + metrics.Gutter.FoldWidth;
 
@@ -1539,7 +1540,7 @@ namespace Graphite {
 					const ImU32 base = change.Kind == ChangeKind::Added ? canvas.Palette.ChangeAdded
 																		: canvas.Palette.ChangeModified;
 
-					canvas.Draw->AddRectFilled(ImVec2(columnX, top), ImVec2(columnX + kChangeBarWidth, bottom),
+					canvas.Draw->AddRectFilled(ImVec2(columnX, top), ImVec2(columnX + Core::Scaled(kChangeBarWidth), bottom),
 											   change.Staged ? WithAlpha(base, kStagedChangeAlpha) : base);
 				}
 			}
@@ -1552,7 +1553,7 @@ namespace Graphite {
 			const auto drawAnchor = [&](const DeletionAnchor& anchor, float y) {
 				const ImU32 colour = anchor.Staged ? WithAlpha(canvas.Palette.ChangeRemoved, kStagedChangeAlpha)
 												   : canvas.Palette.ChangeRemoved;
-				const float size = kChangeColumnWidth;
+				const float size = Core::Scaled(kChangeColumnWidth);
 
 				canvas.Draw->AddTriangleFilled(ImVec2(columnX, y - size), ImVec2(columnX + size, y),
 											   ImVec2(columnX, y + size), colour);
@@ -1582,7 +1583,7 @@ namespace Graphite {
 			const float numberColumnRight = gutterX + canvas.Metrics.Gutter.BreakpointWidth +
 											canvas.Metrics.Gutter.ChangeWidth +
 											canvas.Metrics.Gutter.NumberWidth;
-			const float numberX = numberColumnRight - kGutterPaddingX -
+			const float numberX = numberColumnRight - Core::Scaled(kGutterPaddingX) -
 								  static_cast<float>(number.size()) * canvas.Metrics.CellWidth;
 
 			canvas.Draw->AddText(ImVec2(numberX, slice.Y),
@@ -1846,9 +1847,9 @@ namespace Graphite {
 			const float toX =
 				canvas.TextOriginX +
 				static_cast<float>(clippedTo - slice.FromColumn) * canvas.Metrics.CellWidth;
-			const float y = slice.Y + canvas.Metrics.LineHeight - 1.0f;
+			const float y = slice.Y + canvas.Metrics.LineHeight - Core::Scaled(1.0f);
 
-			canvas.Draw->AddLine(ImVec2(fromX, y), ImVec2(toX, y), canvas.Palette.Text, 1.0f);
+			canvas.Draw->AddLine(ImVec2(fromX, y), ImVec2(toX, y), canvas.Palette.Text, Core::Scaled(1.0f));
 		}
 
 		// Every diagnostic span on the row the mouse sits over, whose range covers the pointer's
@@ -1954,8 +1955,8 @@ namespace Graphite {
 			const ImVec2 mouse = ImGui::GetMousePos();
 			const float columnX = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.BreakpointWidth;
 
-			if (mouse.x < columnX - kChangeHoverSlack ||
-				mouse.x > columnX + kChangeColumnWidth + kChangeHoverSlack || mouse.y < canvas.Origin.y)
+			if (mouse.x < columnX - Core::Scaled(kChangeHoverSlack) ||
+				mouse.x > columnX + Core::Scaled(kChangeColumnWidth) + Core::Scaled(kChangeHoverSlack) || mouse.y < canvas.Origin.y)
 				return nullptr;
 
 			const float relativeY = mouse.y - canvas.Origin.y;
@@ -1972,7 +1973,7 @@ namespace Graphite {
 			const Core::RowRef ref = item.Rows.RowAt(hit.DocumentRow);
 			const bool lastRowOfLine = ref.SubRow + 1 >= item.Rows.RowsOf(ref.Line);
 
-			if (ref.SubRow == 0 && inRow <= kChangeColumnWidth)
+			if (ref.SubRow == 0 && inRow <= Core::Scaled(kChangeColumnWidth))
 			{
 				if (const ChangeHunk* above = FindDeletionHunk(*changes, ref.Line))
 					return above;
@@ -1980,7 +1981,7 @@ namespace Graphite {
 
 			// A lens row between this line and the next holds the upper half of the next line's
 			// triangle instead, so the bottom of this row is then only this line's bar.
-			if (lastRowOfLine && inRow >= canvas.Metrics.LineHeight - kChangeColumnWidth &&
+			if (lastRowOfLine && inRow >= canvas.Metrics.LineHeight - Core::Scaled(kChangeColumnWidth) &&
 				!lenses.At(screenRow + 1).IsLens)
 			{
 				if (const ChangeHunk* below = FindDeletionHunk(*changes, ref.Line + 1))
@@ -2188,10 +2189,10 @@ namespace Graphite {
 			};
 
 			const std::vector<OverviewMark> marks =
-				BuildChangeOverview(*changes, lineTop, kOverviewMinHeight / track.Height);
+				BuildChangeOverview(*changes, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
 
 			const float centre = (track.Bar.Min.x + track.Bar.Max.x) * 0.5f;
-			const float half = ImMin(kOverviewMarkWidth, track.Bar.GetWidth() - track.Inset * 2.0f) * 0.5f;
+			const float half = ImMin(Core::Scaled(kOverviewMarkWidth), track.Bar.GetWidth() - track.Inset * 2.0f) * 0.5f;
 			const float left = IM_TRUNC(centre - half);
 			const float right = left + half * 2.0f;
 
@@ -2222,12 +2223,12 @@ namespace Graphite {
 
 			const float fraction =
 				ImMin(track.RowFraction(caretScreenRow, canvas.Metrics.LineHeight), 1.0f);
-			const float top = IM_TRUNC(track.Top + fraction * track.Height - kOverviewCaretHeight * 0.5f);
+			const float top = IM_TRUNC(track.Top + fraction * track.Height - Core::Scaled(kOverviewCaretHeight) * 0.5f);
 
 			PushOverviewClip(window, track);
 
 			window->DrawList->AddRectFilled(ImVec2(track.Bar.Min.x + track.Inset, top),
-											ImVec2(track.Bar.Max.x - track.Inset, top + kOverviewCaretHeight),
+											ImVec2(track.Bar.Max.x - track.Inset, top + Core::Scaled(kOverviewCaretHeight)),
 											canvas.Palette.Caret);
 
 			window->DrawList->PopClipRect();
@@ -2248,7 +2249,7 @@ namespace Graphite {
 			constexpr float kAmplitude = 1.5f;
 
 			std::vector<ImVec2> points;
-			points.reserve(static_cast<std::size_t>((toX - fromX) / kHalfPeriod) + 2);
+			points.reserve(static_cast<std::size_t>((toX - fromX) / Core::Scaled(kHalfPeriod)) + 2);
 			points.push_back(ImVec2(fromX, baselineY));
 
 			float x = fromX;
@@ -2256,8 +2257,8 @@ namespace Graphite {
 
 			while (x < toX)
 			{
-				x = std::min(x + kHalfPeriod, toX);
-				points.push_back(ImVec2(x, crest ? baselineY - kAmplitude : baselineY + kAmplitude));
+				x = std::min(x + Core::Scaled(kHalfPeriod), toX);
+				points.push_back(ImVec2(x, crest ? baselineY - Core::Scaled(kAmplitude) : baselineY + Core::Scaled(kAmplitude)));
 				crest = !crest;
 			}
 

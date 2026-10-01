@@ -63,6 +63,23 @@ namespace Core {
 		return DefaultPalette().Border;
 	}
 
+	void Theme::SetMetrics(ImGuiStyle& style)
+	{
+		style.WindowRounding = 4.0f;
+		style.ChildRounding = 4.0f;
+		style.FrameRounding = 3.0f;
+		style.PopupRounding = 4.0f;
+		style.ScrollbarRounding = 6.0f;
+		style.TabRounding = 3.0f;
+		style.GrabRounding = 3.0f;
+		style.WindowBorderSize = 1.0f;
+		style.FrameBorderSize = 0.0f;
+		style.WindowPadding = ImVec2(8.0f, 8.0f);
+		style.FramePadding = ImVec2(8.0f, 4.0f);
+		style.ItemSpacing = ImVec2(8.0f, 5.0f);
+		style.WindowMenuButtonPosition = ImGuiDir_None;
+	}
+
 	void Theme::Apply(const ChromePalette& palette)
 	{
 		// Around forty ImGuiCol_ entries are never named below — the scrollbar, the table
@@ -85,20 +102,6 @@ namespace Core {
 		}
 
 		ImGuiStyle& style = ImGui::GetStyle();
-
-		style.WindowRounding = 4.0f;
-		style.ChildRounding = 4.0f;
-		style.FrameRounding = 3.0f;
-		style.PopupRounding = 4.0f;
-		style.ScrollbarRounding = 6.0f;
-		style.TabRounding = 3.0f;
-		style.GrabRounding = 3.0f;
-		style.WindowBorderSize = 1.0f;
-		style.FrameBorderSize = 0.0f;
-		style.WindowPadding = ImVec2(8.0f, 8.0f);
-		style.FramePadding = ImVec2(8.0f, 4.0f);
-		style.ItemSpacing = ImVec2(8.0f, 5.0f);
-		style.WindowMenuButtonPosition = ImGuiDir_None;
 
 		const ImVec4 background = ToImVec4(palette.Background);
 		const ImVec4 surface = ToImVec4(palette.Surface);

@@ -1,5 +1,7 @@
 #include "Git/CommitGraphView.h"
 
+#include "Core/ImGui/UiScale.h"
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -60,7 +62,7 @@ namespace Graphite {
 
 			if (ShapeOf(edge) == EdgeShape::Straight)
 			{
-				draw->AddLine(from, to, colour, 1.5f);
+				draw->AddLine(from, to, colour, Core::Scaled(1.5f));
 				continue;
 			}
 
@@ -69,8 +71,8 @@ namespace Graphite {
 			// source lane from the very next row down — a line that ran down the source
 			// lane first would be drawn straight through it. GraphLayout.h documents this.
 			const ImVec2 corner = ImVec2{to.x, from.y};
-			draw->AddLine(from, corner, colour, 1.5f);
-			draw->AddLine(corner, to, colour, 1.5f);
+			draw->AddLine(from, corner, colour, Core::Scaled(1.5f));
+			draw->AddLine(corner, to, colour, Core::Scaled(1.5f));
 		}
 
 		for (const Core::GraphNode& node : graph.Nodes)

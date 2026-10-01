@@ -26,6 +26,10 @@ namespace Graphite {
 		static std::string LoadGitIgnoredDisplay();
 		static void SaveGitIgnoredDisplay(std::string_view mode);
 
+		// In percent of the size the system asks for; 100 when nothing usable is stored.
+		static int LoadInterfaceScalePercent();
+		static void SaveInterfaceScalePercent(int percent);
+
 		static float LoadEditorFontSize();
 		static void SaveEditorFontSize(float size);
 

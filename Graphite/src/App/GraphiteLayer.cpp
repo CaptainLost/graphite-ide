@@ -34,6 +34,7 @@
 #include "Core/Base/Log.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/Theme.h"
 
 #include "Theme/ChromePalette.h"
@@ -43,6 +44,7 @@
 
 #include "Settings/ClaudeSection.h"
 #include "Settings/EditorSection.h"
+#include "Settings/InterfaceSection.h"
 #include "Settings/KeyBindingsSection.h"
 #include "Settings/LanguageSection.h"
 #include "Settings/SchemeSection.h"
@@ -98,15 +100,13 @@ namespace Graphite {
 		// system one, and then TitleBar::Render draws nothing and the taller row would be
 		// empty. The layer is constructed after Window::Create, so the window can answer.
 		m_CustomTitleBar = Core::Application::Get().GetWindow().HasCustomTitleBar();
-
-		if (m_CustomTitleBar)
-		{
-			m_Layout.MenuBarHeight = kCaptionHeight;
-		}
 	}
 
 	void GraphiteLayer::OnAttach()
 	{
+		Core::ImGuiRenderer::SetInterfaceScale(
+			static_cast<float>(AppSettings::LoadInterfaceScalePercent()) / 100.0f);
+
 		auto* explorer = static_cast<ExplorerPanel*>(
 			m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents)));
 
@@ -184,6 +184,7 @@ namespace Graphite {
 
 		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
 		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_Modals));
+		sections.push_back(Core::CreateScope<InterfaceSection>());
 		sections.push_back(Core::CreateScope<KeyBindingsSection>(
 			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
 		sections.push_back(
@@ -900,6 +901,9 @@ namespace Graphite {
 
 		DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages);
 
+		// Every frame rather than once: the caption follows the interface scale, which the
+		// monitor the window is on or the settings can change at any moment.
+		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
 		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted] { RenderRestrictedModeBar(workspaceTrusted); });
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
 						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });

@@ -1,3 +1,4 @@
+#include "Core/ImGui/UiScale.h"
 #include "Core/Base/Base.h"
 
 #include "Panels/ConsolePanel.h"
@@ -112,7 +113,7 @@ namespace Graphite {
 		ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
 
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(240.0f);
+		ImGui::SetNextItemWidth(Core::Scaled(240.0f));
 		m_Filter.Draw("##consoleFilter");
 
 		ImGui::SameLine();
@@ -130,9 +131,9 @@ namespace Graphite {
 
 		constexpr float kRowSpacing = 1.0f;
 
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f, kRowSpacing));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Core::Scaled(4.0f), Core::Scaled(kRowSpacing)));
 
-		const ConsoleLayout layout = MeasureRows(kRowSpacing);
+		const ConsoleLayout layout = MeasureRows(Core::Scaled(kRowSpacing));
 
 		HandleSweep(layout);
 

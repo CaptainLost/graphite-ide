@@ -76,8 +76,11 @@ namespace Graphite {
 		// `text` in `color` — zero for the theme's own — with the needle marked, cut with an
 		// ellipsis to whatever is left of the current cell.
 		//
-		// Measured with CalcTextSize, which rounds up: at worst a text that would just have
-		// fitted is cut a character early, which is the harmless direction for a cut.
+		// Measured with CalcTextSize, which rounds up by less than a pixel, so the cell is
+		// given that pixel back. Without it a column sized to its text by a rescale - a
+		// width ImGui saved at one interface scale and multiplied on loading at another -
+		// cuts a seven-digit hash it has room for. What overshoots now overshoots by under a
+		// pixel, into the cell's own padding.
 		void FittedText(std::string_view text, ImU32 color, std::string_view needle)
 		{
 			if (text.empty())
@@ -85,8 +88,8 @@ namespace Graphite {
 				return;
 			}
 
-			const std::optional<std::size_t> cut =
-				CutToFit(text, ImGui::GetContentRegionAvail().x, WidthOf(Ellipsis), WidthOf);
+			const std::optional<std::size_t> cut = CutToFit(
+				text, ImGui::GetContentRegionAvail().x + 1.0f, WidthOf(Ellipsis), WidthOf);
 
 			const HighlightedLabel split =
 				SplitHighlight(cut.has_value() ? text.substr(0, *cut) : text, needle);

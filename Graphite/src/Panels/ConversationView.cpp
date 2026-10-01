@@ -1,3 +1,4 @@
+#include "Core/ImGui/UiScale.h"
 #include "Core/Base/Base.h"
 
 #include "Panels/ConversationView.h"
@@ -76,13 +77,13 @@ namespace Graphite {
 
 			// The top padding, as tall as the item spacing the last line leaves below it.
 			ImGui::Dummy(ImVec2(0.0f, 0.0f));
-			ImGui::Indent(kBlockPadding);
+			ImGui::Indent(Core::Scaled(kBlockPadding));
 			return block;
 		}
 
 		void EndBlock(const Block& block, ImU32 colour)
 		{
-			ImGui::Unindent(kBlockPadding);
+			ImGui::Unindent(Core::Scaled(kBlockPadding));
 
 			const float bottom = ImGui::GetCursorScreenPos().y;
 			ImDrawList* draw = ImGui::GetWindowDrawList();
@@ -319,7 +320,7 @@ namespace Graphite {
 		DrawHeaderTime(at, context);
 
 		// The prompt as the user typed it: not markdown, which a prompt rarely is on purpose.
-		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - kBlockPadding);
+		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding));
 		ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
 		ImGui::PopTextWrapPos();
 
@@ -408,7 +409,7 @@ namespace Graphite {
 		if (part.Requests > 0)
 		{
 			ImGui::SameLine();
-			DrawUsage(part, row, ImGui::GetContentRegionAvail().x - kBlockPadding, context);
+			DrawUsage(part, row, ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding), context);
 		}
 
 		DrawMarkdown(item.Text, key, context);
@@ -487,7 +488,7 @@ namespace Graphite {
 		const std::string statusDot = showStatus ? kDot : "";
 
 		const float tail = ImGui::CalcTextSize((duration + statusDot + status).c_str()).x;
-		ImVec2 at(start.x + kBarGap, start.y);
+		ImVec2 at(start.x + Core::Scaled(kBarGap), start.y);
 
 		DrawPiece(at, ink, Fitted(head, right - at.x - tail));
 		DrawPiece(at, context.Palette.TextDisabled, duration + statusDot);
@@ -496,9 +497,9 @@ namespace Graphite {
 		// Open, the run's usage line is a row of its own after the steps: see DrawRunUsage.
 		if (part.Requests > 0 && !open)
 		{
-			ImGui::Indent(kBarGap);
+			ImGui::Indent(Core::Scaled(kBarGap));
 			DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
-			ImGui::Unindent(kBarGap);
+			ImGui::Unindent(Core::Scaled(kBarGap));
 		}
 	}
 
@@ -508,9 +509,9 @@ namespace Graphite {
 		// starts where the steps' text does. It draws no bar of its own: it is no tool, and a
 		// closed run's usage line has none either.
 		ImGui::Indent();
-		ImGui::Indent(kBarGap);
+		ImGui::Indent(Core::Scaled(kBarGap));
 		DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
-		ImGui::Unindent(kBarGap);
+		ImGui::Unindent(Core::Scaled(kBarGap));
 		ImGui::Unindent();
 	}
 
@@ -599,7 +600,7 @@ namespace Graphite {
 		const float rightWidth = ImGui::CalcTextSize(column.c_str()).x +
 								 (status.empty() ? 0.0f : space + ImGui::CalcTextSize(status.c_str()).x);
 
-		ImVec2 at(start.x + kBarGap, start.y);
+		ImVec2 at(start.x + Core::Scaled(kBarGap), start.y);
 
 		DrawPiece(at, colour, std::string{IconOf(facts.Category)} + " ");
 
@@ -682,7 +683,7 @@ namespace Graphite {
 		const float timeWidth = ImGui::CalcTextSize(time.c_str()).x;
 		const float space = ImGui::GetStyle().ItemSpacing.x;
 
-		ImVec2 at(start.x + kBarGap, start.y);
+		ImVec2 at(start.x + Core::Scaled(kBarGap), start.y);
 
 		DrawPiece(at, colour, std::string{ICON_MDI_BELL_OUTLINE} + " ");
 
@@ -783,7 +784,7 @@ namespace Graphite {
 	{
 		// Never negative: a split dragged narrower than the block's padding still lays out, one
 		// word to a line, rather than handing the layout and the code box a width below zero.
-		const float width = std::max(0.0f, ImGui::GetContentRegionAvail().x - kBlockPadding);
+		const float width = std::max(0.0f, ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding));
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
 		MarkdownCache& cache = m_Markdown[key];

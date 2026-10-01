@@ -5,6 +5,7 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/Platform/FileDialog.h"
 #include "Sln/SolutionEditor.h"
 
@@ -324,7 +325,7 @@ namespace Graphite {
 			m_FocusRenameField = false;
 		}
 
-		ImGui::SetNextItemWidth(200.0f);
+		ImGui::SetNextItemWidth(Core::Scaled(200.0f));
 
 		const bool committed =
 			ImGui::InputText("##renameSlnFolder", m_RenameBuffer.data(), m_RenameBuffer.size(),

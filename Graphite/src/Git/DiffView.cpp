@@ -5,6 +5,7 @@
 #include "UI/IconButton.h"
 #include "UI/SplitResults.h"
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 
@@ -79,7 +80,7 @@ namespace Graphite {
 			const std::string text = std::to_string(number);
 			const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
 
-			ImGui::SetCursorPos(ImVec2(x + width - textWidth - kNumberPaddingX, y));
+			ImGui::SetCursorPos(ImVec2(x + width - textWidth - Core::Scaled(kNumberPaddingX), y));
 			ImGui::TextUnformatted(text.c_str());
 		}
 
@@ -307,7 +308,7 @@ namespace Graphite {
 
 		// Closer than ordinary spacing, so the two read as one control, but not touching: with
 		// both filled — one engaged, the other hovered — flush fills run together into one blob.
-		ImGui::SameLine(0.0f, kModeButtonGap);
+		ImGui::SameLine(0.0f, Core::Scaled(kModeButtonGap));
 
 		if (DrawIconButton("##unified", ICON_MDI_VIEW_AGENDA_OUTLINE,
 						   m_Mode == DiffViewMode::Unified, "Unified"))
@@ -328,7 +329,7 @@ namespace Graphite {
 			m_Scope = DiffScope::Hunks;
 		}
 
-		ImGui::SameLine(0.0f, kModeButtonGap);
+		ImGui::SameLine(0.0f, Core::Scaled(kModeButtonGap));
 
 		if (DrawIconButton("##wholeFile", ICON_MDI_ARROW_EXPAND_VERTICAL,
 						   m_Scope == DiffScope::WholeFile, "Whole file"))
@@ -425,7 +426,7 @@ namespace Graphite {
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
 
 		const float numberWidth =
-			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
+			ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float startY = ImGui::GetCursorPosY();
 
@@ -566,7 +567,7 @@ namespace Graphite {
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
 
 		const float numberWidth =
-			ImGui::CalcTextSize("0").x * kLineNumberColumns + kNumberPaddingX * 2.0f;
+			ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float startY = ImGui::GetCursorPosY();
 
