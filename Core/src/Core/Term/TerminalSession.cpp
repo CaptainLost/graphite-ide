@@ -33,7 +33,9 @@ namespace Core {
 		std::string bytes;
 		bytes.reserve(text.size() + 12);
 		bytes += "\x1B[200~";
-		bytes += text;
+		// Pasted text must not contain ESC: an embedded ESC[201~ would end the paste early and
+		// the rest would run as typed input. Dropping every ESC defuses all control sequences.
+		std::ranges::copy_if(text, std::back_inserter(bytes), [](char c) { return c != '\x1B'; });
 		bytes += "\x1B[201~";
 
 		return bytes;

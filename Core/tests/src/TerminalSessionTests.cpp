@@ -285,3 +285,19 @@ TEST_CASE("BracketedPasteBytes wraps a paste only when the shell asked for the m
 	REQUIRE_FALSE(screen.IsBracketedPaste());
 	CHECK(Core::BracketedPasteBytes("one\ntwo", screen.IsBracketedPaste()) == "one\ntwo");
 }
+
+TEST_CASE("BracketedPasteBytes strips ESC so pasted text cannot close the paste early")
+{
+	const std::string bytes = Core::BracketedPasteBytes("a\x1B[201~rm -rf x\x1B[200~b", true);
+
+	CHECK(bytes == "\x1B[200~a[201~rm -rf x[200~b\x1B[201~");
+
+	std::size_t closers = 0;
+	for (std::size_t at = bytes.find("\x1B[201~"); at != std::string::npos;
+		 at = bytes.find("\x1B[201~", at + 1))
+	{
+		++closers;
+	}
+	CHECK(closers == 1);
+	CHECK(bytes.rfind("\x1B[201~") == bytes.size() - 6);
+}
