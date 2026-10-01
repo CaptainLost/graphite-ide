@@ -584,3 +584,81 @@ TEST_CASE("VtParser clamps a repetition count to the screen")
 	CHECK(screen.GetColumns() == 8);
 	CHECK(RowText(screen, 0) == U"        ");
 }
+
+TEST_CASE("VtParser drops a CSI with a colon sub-parameter whole")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// The sequence is dropped rather than interpreted, but its tail must not print.
+	parser.Consume("\x1B[4:3mX");
+
+	CHECK(RowText(screen, 0) == U"X       ");
+}
+
+TEST_CASE("VtParser drops a colon-separated true-colour sequence whole")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[38:2::1:2:3mX");
+
+	CHECK(RowText(screen, 0) == U"X       ");
+}
+
+TEST_CASE("VtParser drops a CSI with a private byte after the first parameter byte")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[1?2mX");
+
+	CHECK(RowText(screen, 0) == U"X       ");
+}
+
+TEST_CASE("VtParser resumes normally after a dropped CSI")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\x1B[4:3m\x1B[2;3Hx");
+
+	CHECK(screen.At(1, 2).Code == U'x');
+}
+
+TEST_CASE("VtParser ignores DEL in the ground state")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("a\x7F" "b");
+
+	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser RIS restores every mode the screen tracks")
+{
+	Core::TerminalScreen screen(8, 6);
+	Core::VtParser parser(screen);
+
+	parser.Consume("main");
+	parser.Consume("\x1B[?1049h\x1B[2;4r\x1B[?7l\x1B[?2004h\x1B[?25l");
+
+	REQUIRE(screen.IsAlternateBuffer());
+	REQUIRE_FALSE(screen.IsAutoWrap());
+	REQUIRE(screen.IsBracketedPaste());
+	REQUIRE_FALSE(screen.IsCursorVisible());
+
+	parser.Consume("\x1B" "c");
+
+	CHECK_FALSE(screen.IsAlternateBuffer());
+	CHECK(screen.IsAutoWrap());
+	CHECK_FALSE(screen.IsBracketedPaste());
+	CHECK(screen.IsCursorVisible());
+
+	// A full-height scroll region again: a line feed on the last row scrolls into history.
+	parser.Consume("\x1B[6;1H\n");
+	CHECK(screen.GetScrollbackCount() == 1);
+	CHECK(RowText(screen, 0) == U"        ");
+}

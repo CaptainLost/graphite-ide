@@ -11,6 +11,7 @@ namespace Core {
 	namespace {
 		constexpr char Escape = '\x1B';
 		constexpr char Bell = '\x07';
+		constexpr char Delete = '\x7F';
 
 		// This parser is where bytes from an arbitrary program enter the process, so neither
 		// buffer may grow with the stream: a run of ';' or an OSC that never terminates would
@@ -93,6 +94,12 @@ namespace Core {
 			if (static_cast<unsigned char>(byte) < 0x20)
 			{
 				HandleControl(byte);
+				return;
+			}
+
+			// DEL has no glyph and no effect; a terminal discards it.
+			if (byte == Delete)
+			{
 				return;
 			}
 
@@ -233,7 +240,25 @@ namespace Core {
 				return;
 			}
 
+			// A ':' sub-parameter separator ("ESC[4:3m", "ESC[38:2::r:g:bm") or a prefix byte
+			// that is not first is a well-formed sequence this parser does not interpret.
+			// Dropping it at the final byte keeps its tail off the screen.
+			if (byte == ':' || IsCsiPrefix(byte))
+			{
+				m_State = State::CsiIgnore;
+				return;
+			}
+
 			Reset();
+			return;
+		}
+		case State::CsiIgnore:
+		{
+			if (IsCsiFinal(byte))
+			{
+				Reset();
+			}
+
 			return;
 		}
 		case State::CsiIntermediate:
@@ -250,6 +275,13 @@ namespace Core {
 			if (IsCsiFinal(byte))
 			{
 				HandleCsi(byte, replies);
+			}
+			else if (byte >= '0' && byte <= '?')
+			{
+				// A parameter byte after an intermediate is malformed; the sequence is
+				// consumed to its final byte and dispatches nothing.
+				m_State = State::CsiIgnore;
+				return;
 			}
 
 			Reset();
@@ -421,6 +453,13 @@ namespace Core {
 			m_Screen.LineFeed();
 			break;
 		case 'c':
+			// Full reset: every mode the screen tracks returns to its power-on value. The
+			// alternate buffer goes first so the erase below clears the primary screen.
+			m_Screen.UseAlternateBuffer(false);
+			m_Screen.ResetScrollRegion();
+			m_Screen.SetAutoWrap(true);
+			m_Screen.SetBracketedPaste(false);
+			m_Screen.SetCursorVisible(true);
 			m_Screen.EraseInDisplay(EraseExtent::All);
 			m_Screen.SetCursor(0, 0);
 			m_Screen.SetPen(Pen{});

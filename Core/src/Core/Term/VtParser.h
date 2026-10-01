@@ -39,6 +39,9 @@ namespace Core {
 			CsiEntry,
 			CsiParam,
 			CsiIntermediate,
+			// A CSI this parser does not interpret (colon sub-parameters, a misplaced
+			// prefix byte): consumed up to its final byte, which dispatches nothing.
+			CsiIgnore,
 			OscString,
 			// An ESC arrived inside an OSC: the next byte decides whether it was the string
 			// terminator ESC \ or an abort.
