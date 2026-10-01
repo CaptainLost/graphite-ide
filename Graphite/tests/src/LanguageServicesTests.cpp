@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cwctype>
+#include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <thread>
@@ -1066,4 +1068,48 @@ TEST_CASE("Restricting a server forgets the files it named")
 
 	REQUIRE(asked.size() == 1);
 	CHECK(asked[0] == temp.GetPath() / "sdk" / "include");
+}
+
+TEST_CASE("Destroying the services while a warm-up walk is running does not wait for the walk to finish")
+{
+	TempDirectory temp;
+
+	// A tree with no source of any configured language, so nothing ends the walk early and
+	// it has to visit every entry.
+	for (int dir = 0; dir < 200; ++dir)
+	{
+		for (int file = 0; file < 100; ++file)
+		{
+			temp.MakeFile("d" + std::to_string(dir) + "/f" + std::to_string(file) + ".txt", "x");
+		}
+	}
+
+	// What the walk costs when nothing stops it, measured on the same tree.
+	const auto walkStart = std::chrono::steady_clock::now();
+	std::size_t entries = 0;
+	for (const auto& entry : std::filesystem::recursive_directory_iterator(temp.GetPath()))
+	{
+		(void)entry;
+		++entries;
+	}
+	const auto fullWalk = std::chrono::steady_clock::now() - walkStart;
+	REQUIRE(entries >= 20000);
+
+	std::chrono::steady_clock::duration closing{};
+	{
+		auto services = std::make_unique<Graphite::LanguageServices>(temp.GetPath());
+		services->WarmUp(temp.GetPath(), false);
+
+		// Let the worker get going, then close the way the app does.
+		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+		const auto closeStart = std::chrono::steady_clock::now();
+		services.reset();
+		closing = std::chrono::steady_clock::now() - closeStart;
+	}
+
+	// The walk visits each entry and tests it against the ignore rules, so it costs more
+	// than the bare iteration above; closing in under half of that bare cost means it stopped
+	// early rather than finishing.
+	CHECK(closing < fullWalk / 2);
 }

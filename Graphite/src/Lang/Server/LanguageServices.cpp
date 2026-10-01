@@ -48,6 +48,10 @@ namespace Graphite {
 
 	LanguageServices::~LanguageServices()
 	{
+		// m_Jobs joins the warm-up walk, which otherwise runs to the end of a tree with no source
+		// of any server.
+		m_WarmToken.Cancel();
+
 		// Asked to leave politely, but not waited on: a server wedged on something has no way to
 		// tell us apart from one that is merely slow, and the UI thread closing down cannot sit
 		// here to find out which. Each client's own destructor is what actually bounds this —
