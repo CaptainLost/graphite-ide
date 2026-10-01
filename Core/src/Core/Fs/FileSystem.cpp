@@ -36,7 +36,7 @@ namespace Core {
 
 			return (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0;
 #else
-			const std::string name = path.filename().string();
+			const std::string name = ToUtf8(path.filename());
 			return !name.empty() && name.front() == '.';
 #endif
 		}
@@ -67,7 +67,7 @@ namespace Core {
 		if (code)
 		{
 			return Error{TranslateError(code),
-						 std::format("cannot read directory '{}': {}", path.string(), code.message())};
+						 std::format("cannot read directory '{}': {}", ToUtf8(path), code.message())};
 		}
 
 		std::vector<DirectoryEntry> entries;
@@ -77,7 +77,7 @@ namespace Core {
 			if (code)
 			{
 				return Error{TranslateError(code),
-							 std::format("cannot enumerate '{}': {}", path.string(), code.message())};
+							 std::format("cannot enumerate '{}': {}", ToUtf8(path), code.message())};
 			}
 
 			DirectoryEntry entry;

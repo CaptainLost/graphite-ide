@@ -3,6 +3,7 @@
 #include "corepch.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 
 #include "Core/Base/RingBufferSink.h"
 
@@ -157,7 +158,7 @@ namespace Core {
 			try
 			{
 				auto file = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-					spec.FilePath.string(), spec.MaxFileSize, spec.MaxFiles);
+					ToUtf8(spec.FilePath), spec.MaxFileSize, spec.MaxFiles);
 				file->set_pattern(kFilePattern);
 				sinks.push_back(std::move(file));
 			}
@@ -166,7 +167,7 @@ namespace Core {
 				// Reported straight to stderr: the loggers are mid-reconfiguration, so
 				// this is the one message that cannot go through them.
 				std::fprintf(stderr, "Cannot write the log file '%s': %s\n",
-							 spec.FilePath.string().c_str(), e.what());
+							 ToUtf8(spec.FilePath).c_str(), e.what());
 			}
 		}
 

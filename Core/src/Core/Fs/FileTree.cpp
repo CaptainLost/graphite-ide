@@ -24,7 +24,7 @@ namespace Core {
 		if (!std::filesystem::is_directory(root, code))
 		{
 			return Error{ErrorCode::InvalidArgument,
-						 std::format("'{}' is not a directory", root.string())};
+						 std::format("'{}' is not a directory", ToUtf8(root))};
 		}
 
 		m_Root = FileNode{};
@@ -37,7 +37,7 @@ namespace Core {
 		m_Root.IsDirectory = true;
 		m_HasRoot = true;
 
-		CORE_INFO("Workspace root set to '{}'", root.string());
+		CORE_INFO("Workspace root set to '{}'", ToUtf8(root));
 		return Result<void>::Ok();
 	}
 
@@ -65,7 +65,7 @@ namespace Core {
 			// One unreadable folder must not break browsing the rest of the tree.
 			node.Accessible = false;
 			node.Children.clear();
-			CORE_WARN("Cannot read '{}': {}", node.Path.string(), entries.GetError().Message);
+			CORE_WARN("Cannot read '{}': {}", ToUtf8(node.Path), entries.GetError().Message);
 			return Result<void>::Ok();
 		}
 
@@ -103,7 +103,7 @@ namespace Core {
 		{
 			node.Accessible = false;
 			node.Children.clear();
-			CORE_WARN("Cannot refresh '{}': {}", node.Path.string(), entries.GetError().Message);
+			CORE_WARN("Cannot refresh '{}': {}", ToUtf8(node.Path), entries.GetError().Message);
 			return;
 		}
 

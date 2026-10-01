@@ -1,9 +1,12 @@
 #include <doctest/doctest.h>
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Fs/FileTree.h"
 
 #include "TempDirectory.h"
 
+#include <filesystem>
+#include <fstream>
 #include <utility>
 #include <vector>
 
@@ -492,4 +495,34 @@ TEST_CASE("Rebase onto a drive root leaves the node with a usable name")
 	// A drive root has no filename component, so the plain answer would be an empty
 	// label rendering as a blank row.
 	CHECK_FALSE(tree.GetRoot().Name.empty());
+}
+
+TEST_CASE("A root named with characters outside every ANSI code page is accepted and logged")
+{
+	TempDirectory temp;
+	const std::filesystem::path unicodeRoot = temp.GetPath() / L"中文-\U0001F600";
+	std::filesystem::create_directory(unicodeRoot);
+	std::filesystem::create_directory(unicodeRoot / L"中");
+
+	FileTree tree;
+	const auto result = tree.SetRoot(unicodeRoot);
+
+	REQUIRE(result.HasValue());
+	CHECK(tree.GetRoot().Name == Core::ToUtf8(unicodeRoot.filename()));
+
+	CHECK_NOTHROW(static_cast<void>(tree.Expand(tree.GetRoot())));
+	std::filesystem::remove_all(unicodeRoot / L"中");
+}
+
+TEST_CASE("Rejecting a file named with characters outside every ANSI code page does not throw")
+{
+	TempDirectory temp;
+	const std::filesystem::path unicodeFile = temp.GetPath() / L"中文-\U0001F600.txt";
+	std::ofstream{unicodeFile} << "x";
+
+	FileTree tree;
+	Core::Result<void> result = Core::Result<void>::Ok();
+
+	CHECK_NOTHROW(result = tree.SetRoot(unicodeFile));
+	CHECK_FALSE(result.HasValue());
 }

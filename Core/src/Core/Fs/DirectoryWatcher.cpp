@@ -6,6 +6,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 
@@ -120,7 +121,7 @@ namespace Core {
 		if (directory == INVALID_HANDLE_VALUE)
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("cannot watch '{}'", root.string())};
+						 std::format("cannot watch '{}'", ToUtf8(root))};
 		}
 
 		const HANDLE stopEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -151,7 +152,7 @@ namespace Core {
 			// Not an escape hatch from a stuck worker: returning destroys `watcher`, whose
 			// destructor joins it. A worker merely not yet scheduled joins at once.
 			return Error{ErrorCode::IoFailure,
-						 std::format("timed out arming the watch on '{}'", root.string())};
+						 std::format("timed out arming the watch on '{}'", ToUtf8(root))};
 		}
 
 		if (const Result<void> outcome = armed.get(); !outcome)
@@ -227,13 +228,13 @@ namespace Core {
 				if (armSignal.answered)
 				{
 					CORE_WARN("Stopped watching '{}': the directory is no longer readable",
-							  m_Root.string());
+							  ToUtf8(m_Root));
 				}
 
 				armSignal.Report(Error{
 					ErrorCode::IoFailure,
 					std::format("cannot watch '{}': the directory is not readable",
-								m_Root.string())});
+								ToUtf8(m_Root))});
 
 				break;
 			}
@@ -251,7 +252,7 @@ namespace Core {
 				if (signalled == WAIT_FAILED)
 				{
 					CORE_WARN("Stopped watching '{}': the change wait failed",
-							  m_Root.string());
+							  ToUtf8(m_Root));
 				}
 
 				// The kernel keeps writing into `buffer` until the outstanding read is
@@ -280,7 +281,7 @@ namespace Core {
 				}
 
 				CORE_WARN("Stopped watching '{}': the change notification failed",
-						  m_Root.string());
+						  ToUtf8(m_Root));
 				break;
 			}
 
@@ -324,7 +325,7 @@ namespace Core {
 				offset + headerBytes + record->FileNameLength > bytes)
 			{
 				CORE_WARN("Discarding a truncated change record while watching '{}'",
-						  m_Root.string());
+						  ToUtf8(m_Root));
 				return;
 			}
 
@@ -405,8 +406,8 @@ namespace Core {
 		if (current == m_WatchedPath)
 			return;
 
-		CORE_INFO("The watched directory moved from '{}' to '{}'", m_WatchedPath.string(),
-				  current.string());
+		CORE_INFO("The watched directory moved from '{}' to '{}'", ToUtf8(m_WatchedPath),
+				  ToUtf8(current));
 
 		// Both are touched only by this thread after Start returns, so neither needs the
 		// lock. Advancing the baseline is what reports the move once rather than every poll.
