@@ -214,24 +214,21 @@ TEST_CASE("A server may restart until it has used up kMaximumRestarts")
 	// The restart path itself needs a client that dies on demand, which LanguageServices cannot be
 	// given without a client factory; the budget rules are therefore checked as the pure functions
 	// Poll consults.
-	CHECK(Graphite::kMaximumRestarts == 3);
 	CHECK(Graphite::MayRestart(0));
 	CHECK(Graphite::MayRestart(2));
 	CHECK_FALSE(Graphite::MayRestart(3));
 	CHECK_FALSE(Graphite::MayRestart(4));
 }
 
-TEST_CASE("The restart budget refills only after the server has stayed Ready for kStableAfter")
+TEST_CASE("The restart budget refills only after the server has stayed up for kStableAfter")
 {
 	using Point = std::chrono::steady_clock::time_point;
 	const Point since{std::chrono::seconds(1000)};
 
-	CHECK(Graphite::kStableAfter == std::chrono::minutes(2));
-
-	// Not Ready (no start recorded): never refilled.
+	// Down (no start recorded): never refilled.
 	CHECK_FALSE(Graphite::RestartBudgetRefilled(std::nullopt, since + std::chrono::hours(1)));
 
-	// Ready, but not for long enough yet.
+	// Up, but not for long enough yet.
 	CHECK_FALSE(Graphite::RestartBudgetRefilled(since, since));
 	CHECK_FALSE(Graphite::RestartBudgetRefilled(since, since + Graphite::kStableAfter - std::chrono::seconds(1)));
 

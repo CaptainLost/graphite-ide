@@ -46,10 +46,10 @@ namespace Graphite {
 		return restarts < kMaximumRestarts;
 	}
 
-	bool RestartBudgetRefilled(std::optional<std::chrono::steady_clock::time_point> readySince,
+	bool RestartBudgetRefilled(std::optional<std::chrono::steady_clock::time_point> upSince,
 							   std::chrono::steady_clock::time_point now)
 	{
-		return readySince.has_value() && now - *readySince >= kStableAfter;
+		return upSince.has_value() && now - *upSince >= kStableAfter;
 	}
 
 	LanguageServices::LanguageServices(std::filesystem::path fallbackRoot)
@@ -936,22 +936,28 @@ namespace Graphite {
 										   std::make_move_iterator(drained.Diagnostics.begin()),
 										   std::make_move_iterator(drained.Diagnostics.end()));
 
-			// Ready for long enough earns the restart budget back, measured on the same clock as
-			// the backoff below.
-			if (drained.Status.State == ServerState::Ready)
+			// A server that stays up without crashing earns the restart budget back, measured on
+			// the same clock as the backoff below. Moving between up states (indexing finishing,
+			// a compile database appearing) does not restart the clock; only a crash or a
+			// restart does.
+			const ServerState state = drained.Status.State;
+			const bool up = state == ServerState::Ready || state == ServerState::Indexing ||
+							state == ServerState::NoCompileDatabase;
+
+			if (up)
 			{
-				if (!server.ReadySince)
+				if (!server.UpSince)
 				{
-					server.ReadySince = now;
+					server.UpSince = now;
 				}
-				else if (server.Restarts != 0 && RestartBudgetRefilled(server.ReadySince, now))
+				else if (RestartBudgetRefilled(server.UpSince, now))
 				{
 					server.Restarts = 0;
 				}
 			}
 			else
 			{
-				server.ReadySince.reset();
+				server.UpSince.reset();
 			}
 
 			drained.Status.Restarts = server.Restarts;

@@ -34,17 +34,17 @@ namespace Graphite {
 	// How many times a server that keeps dying is restarted before it is left at Failed.
 	inline constexpr std::size_t kMaximumRestarts = 3;
 
-	// How long a server must stay Ready before its restarts are forgiven. Without this the
-	// workspace server, which is never reaped, would spend its budget on crashes spread over a
+	// How long a server must stay up (Ready, Indexing or without a compile database) before its
+	// restarts are forgiven. Without this the workspace server, which is never reaped, would spend its budget on crashes spread over a
 	// whole session and stay dead until the application restarted.
 	inline constexpr std::chrono::minutes kStableAfter{2};
 
 	// Whether a server that has already been restarted `restarts` times may be restarted again.
 	bool MayRestart(std::size_t restarts);
 
-	// Whether a server Ready since `readySince` (empty when it is not Ready) has been stable long
+	// Whether a server up since `upSince` (empty when it is down) has been stable long
 	// enough, at `now`, to have its restart count reset to zero.
-	bool RestartBudgetRefilled(std::optional<std::chrono::steady_clock::time_point> readySince,
+	bool RestartBudgetRefilled(std::optional<std::chrono::steady_clock::time_point> upSince,
 							   std::chrono::steady_clock::time_point now);
 
 	// How long a server outside the open folder may have nothing to do before it is shut down.
@@ -287,9 +287,9 @@ namespace Graphite {
 			ServerStatus Status;
 			std::size_t Restarts = 0;
 
-			// When this server was first seen Ready since it last was not; empty otherwise.
+			// When this server was first seen up since it last crashed or restarted; empty otherwise.
 			// Restarts is forgiven once it has been set for kStableAfter.
-			std::optional<std::chrono::steady_clock::time_point> ReadySince;
+			std::optional<std::chrono::steady_clock::time_point> UpSince;
 
 			// Set the moment a Poll first sees this server Failed, cleared once it restarts (or
 			// once it settles for good at kMaximumRestarts). Comparing against `RestartAt` rather than
