@@ -23,14 +23,31 @@ terminal that comes back after a restart has to come back under the same name.
   terminal. A window's identity is `###terminal-<Id>`, where `Id` is a
   `Core::Uuid` string; the text before `###` is the visible title and may change.
 - The Terminal panel is removed, and with it the `terminal` entry in the panel
-  registry and the bottom layout. Starting a shell is the `Terminal` menu:
-  `terminal.new` opens the default shell, and each discovered shell gets a
-  `terminal.new.<slug>` command, keyed by the profile's name rather than its
-  position.
+  registry and the bottom layout. There is no Terminal menu either. A shell is
+  started from the place a terminal is wanted:
+  - a `+` and a `▾` trail the dock tab bar of every node that holds a terminal,
+    and of the node that holds the Console panel. They are added through ImGui's
+    `DockNodeBeginAmendTabBar`, so ImGui's own bar is extended rather than drawn
+    over. `+` opens the default shell and `▾` lists the discovered shells; the
+    new terminal docks into that node;
+  - a terminal tab's right-click menu has `New Terminal` with the same shell
+    list, docking into that tab's node;
+  - a terminal that floats on its own keeps a tab bar
+    (`ImGuiWindowClass::DockingAlwaysTabBar`), so it has the same buttons and
+    menu as a docked one;
+  - `Open in Terminal` on a folder or file in the Explorer starts a shell in
+    that folder (`OpenTerminalRequested`), the file's folder for a file;
+  - `terminal.new` opens the default shell and is bound to Ctrl+Shift+`, and
+    each discovered shell has a `terminal.new.<slug>` command, keyed by the
+    profile's name rather than its position, for the command palette.
 - A new window is docked on its first frame only, afterwards `imgui.ini` owns
-  its place. The target is the first that exists: beside the terminal focused
-  last (into its dock node, or onto it as a tab when it floats), else the node
-  of the Console panel, else the central node.
+  its place. The target is the first that exists: the node whose button or menu
+  asked for it, else beside the terminal focused last (into its dock node, or
+  onto it as a tab when it floats), else the node of the Console panel, else
+  the node of any other terminal, else a new bottom row made by splitting the
+  central node downward, else the central node. The new row is what a start
+  makes when no terminal and no Console is on screen; no tab bar is left to
+  carry a `+` then, and the shortcut is the way back to a terminal.
 - Shell terminals are kept per folder (0522) as `restore.terminal.*`: `Id`,
   profile name and starting directory. A folder with no saved list is told apart
   from a folder with an empty one: absent opens one default shell, empty opens
@@ -45,8 +62,9 @@ terminal that comes back after a restart has to come back under the same name.
 
 Docking is a property of windows, so the only way for a terminal to dock like a
 document tab is to be a window. Placing a new one beside the terminal last used
-puts it where the reader's attention already is; the fallbacks cover the first
-terminal of a session. Remembering the profile and directory rather than the
+puts it where the reader's attention already is, and a node's own `+` says more
+than which terminal had focus last; the fallbacks cover the first terminal of a
+session. Remembering the profile and directory rather than the
 process keeps the feature small and honest: the layout returns, the shell is
 new.
 
@@ -70,11 +88,15 @@ new.
 - Docking a new window onto a floating terminal takes one frame, because the
   window to be docked must exist before the dock can be queued. The new window
   is drawn over its target for that frame so the move is not seen.
+- The tab-bar buttons are added to a bar that was drawn this frame, so they
+  appear one frame after a node first shows.
+- A bottom row made again by splitting the central node moves the open documents
+  up at once, to give the row its share of the height.
 
 ### Neutral
 
-- There is no longer a single Terminal view-menu entry. Which terminals are open
-  is whatever windows exist.
+- There is no longer a single Terminal view-menu entry, nor a menu-bar menu.
+  Which terminals are open is whatever windows exist.
 
 ## Alternatives Considered
 
@@ -84,10 +106,15 @@ new.
   got there: two ways to be a terminal to keep consistent.
 - **Keep the panel as a launcher beside free terminal windows.** This lost
   because the panel would be an empty tab whose only job is a shell chooser and
-  a new button, which the menu and the keymap do better.
+  a new button, which the tab-bar buttons and the keymap do better.
 - **Always dock new terminals at the bottom.** This lost because a reader who
   has moved their terminals elsewhere would find each new one back where they
   took the last one from.
+- **A top-level Terminal menu.** This was built first and rejected after use:
+  terminal creation in the menu bar was not wanted.
+- **A terminal button in the status bar.** This lost because, although it is
+  always present whatever the layout, it is away from where terminals are; the
+  tab-bar buttons plus the shortcut cover the same cases.
 
 ## Related
 
