@@ -40,9 +40,9 @@ namespace Graphite {
 		void RenderFile(const std::filesystem::path& path, const DiagnosticsModel::Entry& entry,
 						const EditorPalette& palette);
 
-		// Draws one row and, on a click, navigates to it — copying
-		// ReferencesPanel::OpenAndSelect: opened permanently, not as a preview tab, because a
-		// problem clicked from this list is somewhere the user meant to go.
+		// Draws one row and, on a click, navigates to it through
+		// SelectInDocument: opened permanently, not as a preview tab, because a problem clicked
+		// from this list is somewhere the user meant to go.
 		void RenderRow(const std::filesystem::path& path, const Diagnostic& diagnostic, int rowId,
 					   const EditorPalette& palette);
 

@@ -88,7 +88,12 @@ namespace Graphite {
 
 		void SelectFile(const std::filesystem::path& path);
 
-		void RequestOpenFile(const std::filesystem::path& path, bool permanent);
+		// Inline so a panel built into the tests, which do not link Workspace.cpp, can call it:
+		// all it does is publish.
+		void RequestOpenFile(const std::filesystem::path& path, bool permanent)
+		{
+			m_Events.Publish(OpenFileRequested{path, permanent});
+		}
 
 		bool IsOpen() const { return m_Tree.HasRoot(); }
 		const std::filesystem::path& GetRoot() const { return m_Root; }

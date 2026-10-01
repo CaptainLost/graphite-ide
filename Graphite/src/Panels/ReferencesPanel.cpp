@@ -1,5 +1,6 @@
 #include "Panels/ReferencesPanel.h"
 
+#include "Editor/SelectInDocument.h"
 #include "Panels/SearchPreview.h"
 #include "UI/SplitResults.h"
 
@@ -59,7 +60,7 @@ namespace Graphite {
 			const std::size_t from = std::min(FromUtf16Column(text, column), text.size());
 			const std::string_view name = UnqualifiedName(symbol);
 
-			const bool spansOneLine = endLine == line && endColumn.Value > column.Value;
+			const bool spansOneLine = SpansOneLine(line, column, endLine, endColumn);
 			const std::size_t to =
 				spansOneLine ? std::min(FromUtf16Column(text, endColumn), text.size())
 							 : std::min(from + name.size(), text.size());
@@ -148,7 +149,7 @@ namespace Graphite {
 		return hits;
 	}
 
-	ReferencesPanel::ReferencesPanel(const Workspace& workspace, Core::DocumentSet& documents,
+	ReferencesPanel::ReferencesPanel(Workspace& workspace, Core::DocumentSet& documents,
 									 const ActiveScheme& scheme, const EditorSettings& editor,
 									 PreviewSemantics& semantics)
 		// Hidden until asked for, like the search panel: it opens with nothing to show, so it
@@ -319,36 +320,12 @@ namespace Graphite {
 
 	void ReferencesPanel::OpenAndSelect(const SearchHit& hit)
 	{
-		// Opened permanently, not as a preview tab: like DefinitionNavigation::Jump, this is
-		// somewhere the user meant to go, not a file they are skimming past.
-		m_Documents.Open(hit.File, true);
-
-		const auto index = m_Documents.Find(hit.File);
-
-		if (!index)
-		{
-			return;
-		}
-
-		Core::OpenItem& item = m_Documents.At(*index);
-
-		if (!item.Document)
-		{
-			return;
-		}
-
-		Core::TextBuffer& buffer = item.Document->GetBuffer();
-		const std::size_t lineStart = buffer.LineStart(hit.Line);
-
-		// The range comes from a reply that may be some frames old; the file may have changed
-		// since. PlaceAt runs every offset through SnapToBoundary, which clamps to the buffer's
-		// current length, so a stale range lands at the nearest valid position instead of
-		// reading past the end of a document that has since shrunk.
-		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.From, false, item.TabWidth);
-		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.To, true, item.TabWidth);
-
-		item.RowAimAt = Core::NoRowAim;
-		item.PendingScroll = true;
+		// Through the Workspace, like a search hit: a reference can be in a file that is not
+		// open yet, and only that path asks the large-file question instead of dropping the
+		// click. Permanent, because this is somewhere the user meant to go.
+		SelectInDocument(m_Documents, hit.File, hit.Line, hit.From, hit.To,
+						 [this](const std::filesystem::path& file)
+						 { m_Workspace.RequestOpenFile(file, true); });
 	}
 
 	std::optional<std::string> ReferencesPanel::LineTextInOpenDocument(

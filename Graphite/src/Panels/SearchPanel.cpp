@@ -1,5 +1,7 @@
 #include "Panels/SearchPanel.h"
 
+#include "Editor/SelectInDocument.h"
+
 #include "Panels/SearchPreview.h"
 #include "Search/FileEnumerator.h"
 #include "Search/HitList.h"
@@ -266,39 +268,12 @@ namespace Graphite {
 
 	void SearchPanel::OpenAndSelect(const SearchHit& hit)
 	{
-		m_Workspace.RequestOpenFile(hit.File, true);
-
 		// RequestOpenFile publishes synchronously, and DocumentWindows::RequestOpen opens or
-		// activates the tab inline, so by the time control returns here the document is either
-		// in the set already or never will be this frame (a large file still waiting on the
-		// size confirmation, say) — either way Find is the right thing to check.
-		const auto index = m_Documents.Find(hit.File);
-
-		if (!index)
-			return;
-
-		Core::OpenItem& item = m_Documents.At(*index);
-
-		if (!item.Document)
-			return;
-
-		Core::TextBuffer& buffer = item.Document->GetBuffer();
-		const std::size_t lineStart = buffer.LineStart(hit.Line);
-
-		// Line and byte offsets both come from the search that ran some time ago; the file may
-		// have changed since. PlaceAt runs every offset through SnapToBoundary, which clamps to
-		// the buffer's current length, so a stale range lands at the nearest valid position
-		// instead of reading past the end of a document that has since shrunk.
-		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.From, false, item.TabWidth);
-		item.Caret = Core::PlaceAt(buffer, item.Caret, lineStart + hit.To, true, item.TabWidth);
-
-		// The vertical aim was measured, if at all, against wherever the caret used to sit; the
-		// next Up or Down should resolve it fresh from here rather than carry that forward.
-		item.RowAimAt = Core::NoRowAim;
-
-		// This runs during the panels' turn, before DocumentWindows renders the editor later in
-		// the same frame — so by the editor's own reckoning the caret never moved this frame,
-		// and it would not otherwise scroll to it. See PendingScroll's comment in DocumentSet.h.
-		item.PendingScroll = true;
+		// activates the tab inline, so by the time it returns the document is either in the set
+		// already or never will be this frame (a large file still waiting on the size
+		// confirmation, say).
+		SelectInDocument(m_Documents, hit.File, hit.Line, hit.From, hit.To,
+						 [this](const std::filesystem::path& file)
+						 { m_Workspace.RequestOpenFile(file, true); });
 	}
 }

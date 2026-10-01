@@ -1,6 +1,7 @@
 #include "Panels/ProblemsPanel.h"
 
 #include "Editor/Palettes.h"
+#include "Editor/SelectInDocument.h"
 
 #include "Lang/Server/LspClient.h"
 
@@ -203,48 +204,12 @@ namespace Graphite {
 	void ProblemsPanel::OpenAndSelect(const std::filesystem::path& path,
 									  const Diagnostic& diagnostic)
 	{
-		// Opened permanently, not as a preview tab: copying ReferencesPanel::OpenAndSelect, this
-		// is somewhere the user clicked to go, not a file they are skimming past.
-		m_Documents.Open(path, true);
-
-		const auto index = m_Documents.Find(path);
-
-		if (!index)
-		{
-			return;
-		}
-
-		Core::OpenItem& item = m_Documents.At(*index);
-
-		if (!item.Document)
-		{
-			return;
-		}
-
-		Core::TextBuffer& buffer = item.Document->GetBuffer();
-
-		// Only reached for a document Find already answered for, so this line exists in the
-		// buffer as it stands right now — no disk read and no stale span to guard against.
-		const std::string lineText = buffer.LineText(diagnostic.Line);
-		const std::size_t lineStart = buffer.LineStart(diagnostic.Line);
-
-		const std::size_t from =
-			lineStart + std::min(FromUtf16Column(lineText, diagnostic.Column), lineText.size());
-
-		// The diagnostic's own span, when it names one on the same line — otherwise just the
-		// point it starts at, which is all a multi-line span could mean here without pulling in
-		// every line between the two.
-		const bool spansOneLine = diagnostic.EndLine == diagnostic.Line &&
-								  diagnostic.EndColumn.Value > diagnostic.Column.Value;
-		const std::size_t to =
-			spansOneLine ? lineStart + std::min(FromUtf16Column(lineText, diagnostic.EndColumn),
-												lineText.size())
-						 : from;
-
-		item.Caret = Core::PlaceAt(buffer, item.Caret, from, false, item.TabWidth);
-		item.Caret = Core::PlaceAt(buffer, item.Caret, to, true, item.TabWidth);
-
-		item.RowAimAt = Core::NoRowAim;
-		item.PendingScroll = true;
+		// Only reached for a document Find already answered for, so this opens nothing and only
+		// activates its tab: there is no size question to ask and no Workspace to ask it
+		// through. Permanent, not a preview tab - a problem clicked from this list is somewhere
+		// the user meant to go, not a file they are skimming past.
+		SelectInDocument(m_Documents, path, diagnostic.Line, diagnostic.Column, diagnostic.EndLine,
+						 diagnostic.EndColumn,
+						 [this](const std::filesystem::path& file) { m_Documents.Open(file, true); });
 	}
 }

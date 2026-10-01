@@ -57,7 +57,7 @@ namespace Graphite {
 	class ReferencesPanel final : public Core::Panel
 	{
 	public:
-		ReferencesPanel(const Workspace& workspace, Core::DocumentSet& documents,
+		ReferencesPanel(Workspace& workspace, Core::DocumentSet& documents,
 						const ActiveScheme& scheme, const EditorSettings& editor,
 						PreviewSemantics& semantics);
 
@@ -105,7 +105,7 @@ namespace Graphite {
 		// asks for one file's lines at a time.
 		std::string LineTextFor(const std::filesystem::path& path, std::size_t line);
 
-		const Workspace& m_Workspace;
+		Workspace& m_Workspace;
 		Core::DocumentSet& m_Documents;
 		const ActiveScheme& m_Scheme;
 		const EditorSettings& m_Editor;

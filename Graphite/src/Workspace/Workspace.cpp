@@ -206,11 +206,6 @@ namespace Graphite {
 		m_Events.Publish(FileSelectedEvent{path});
 	}
 
-	void Workspace::RequestOpenFile(const std::filesystem::path& path, bool permanent)
-	{
-		m_Events.Publish(OpenFileRequested{path, permanent});
-	}
-
 	void Workspace::Update()
 	{
 		// Before the watcher check: a dialog is answered whether or not a folder is open.
