@@ -20,6 +20,8 @@
 #include "Core/Git/Stash.h"
 #include "Core/UI/Panel.h"
 
+#include <imgui.h>
+
 #include <array>
 #include <cstddef>
 #include <filesystem>
@@ -178,6 +180,7 @@ namespace Graphite {
 		void WithdrawQuestions();
 
 		// In GitViewDialogs.cpp.
+		ImVec4 DangerColour() const;
 		void RenderCheckoutDialog();
 		void RenderBranchNameDialog(ModalQuestion<BranchNamePayload>& question);
 		void RenderDeleteBranchDialog();

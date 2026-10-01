@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <concepts>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -47,20 +48,34 @@ namespace Graphite {
 		bool Begin(Predicate stillWorthAsking)
 		{
 			OpenNext(stillWorthAsking);
-
-			if (ImGui::BeginPopupModal(m_Title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-			{
-				return true;
-			}
-
-			WithdrawIfNoLongerOnScreen();
-
-			return false;
+			return BeginNamed(m_Title);
 		}
 
 		bool Begin()
 		{
 			return Begin([](const Payload&) { return true; });
+		}
+
+		// For a title that names what is being asked about - "Delete branch feature/x". The
+		// question's own title has to start with "###": ImGui identifies a window by its name
+		// from "###" on and shows only what comes before it, so the popup, and the gate held
+		// under the stable title, stay the same while the visible part follows the payload.
+		template<std::predicate<const Payload&> Predicate, std::invocable<const Payload&> TitleOf>
+		bool Begin(Predicate stillWorthAsking, TitleOf titleOf)
+		{
+			OpenNext(stillWorthAsking);
+
+			std::string name = m_Current ? std::string(titleOf(std::as_const(*m_Current))) : std::string();
+
+			// A branch may be called "a###b"; ImGui would read that as the window's identity
+			// and the popup opened under m_Title would never be found again.
+			for (std::size_t at = name.find("##"); at != std::string::npos; at = name.find("##", at + 2))
+			{
+				name.insert(at + 1, " ");
+			}
+
+			name += m_Title;
+			return BeginNamed(name.c_str());
 		}
 
 		void Answer()
@@ -101,6 +116,18 @@ namespace Graphite {
 		}
 
 	private:
+		bool BeginNamed(const char* name)
+		{
+			if (ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+			{
+				return true;
+			}
+
+			WithdrawIfNoLongerOnScreen();
+
+			return false;
+		}
+
 		// ImGui closes a popup on Escape, and destroys it when another opens over it,
 		// without either reaching the code that asked the question.
 		void WithdrawIfNoLongerOnScreen()

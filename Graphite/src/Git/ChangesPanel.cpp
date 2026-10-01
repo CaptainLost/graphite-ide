@@ -1,9 +1,11 @@
 #include "Git/ChangesPanel.h"
 
 #include "Editor/DocumentWindows.h"
+#include "Editor/Palettes.h"
 #include "Git/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
+#include "UI/DialogLayout.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
@@ -1414,7 +1416,11 @@ namespace Graphite {
 
 	void ChangesPanel::RenderStashDialog()
 	{
-		if (!m_StashQuestion.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const bool open = m_StashQuestion.Begin();
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			// Begin withdraws the question itself when ImGui closes the popup (Escape), which
 			// reaches nothing here - so the edits are dropped on the frame it notices.
@@ -1436,23 +1442,35 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 24.0f);
+		// The field is the one thing to fill in, so it takes the keyboard as the dialog opens.
+		if (ImGui::IsWindowAppearing())
+		{
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
 		ImGui::InputTextWithHint("##stash-message", "Message (optional)", m_StashMessage.data(),
 								 m_StashMessage.size() + 1, ImGuiInputTextFlags_CallbackResize,
 								 ResizeMessageCallback, &m_StashMessage);
 
-		ImGui::Checkbox("Include untracked", &m_StashIncludeUntracked);
+		DialogLayout::Gap();
+		ImGui::Checkbox("Include untracked files", &m_StashIncludeUntracked);
+		DialogLayout::Gap();
 
-		// Drawn even when empty, so the dialog does not change height when saving fails.
-		ImGui::TextDisabled("%s", m_StashSaveFailed
-									  ? "Could not save every file; nothing was stashed."
-									  : "");
+		const ImVec4 danger = ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);
 
-		ImGui::Separator();
+		if (m_StashSaveFailed)
+		{
+			// Which file failed is already in the status bar.
+			DialogLayout::ErrorText("Could not save every file; nothing was stashed.", danger);
+			DialogLayout::Gap();
+		}
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		// Enter stashes, from the field too: it is the dialog's one action, and it loses nothing.
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow({.Label = "Stash", .Enabled = !m_Model.IsWriteInFlight()}, {}, danger);
 
-		if (ImGui::Button("Stash"))
+		if (choice == DialogLayout::Choice::Safe)
 		{
 			// Saved first, so the stash holds the edits on screen. A file that cannot be
 			// written stops everything: stashing the older copy would hide the edit from
@@ -1468,12 +1486,7 @@ namespace Graphite {
 				m_StashSaveFailed = true;
 			}
 		}
-
-		ImGui::EndDisabled();
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_StashQuestion.Answer();
 			ResetStashDialog();

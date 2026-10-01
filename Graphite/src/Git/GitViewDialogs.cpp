@@ -1,14 +1,18 @@
 // The Git panel's modal questions: checking out over changes, naming a branch, deleting a
 // branch and dropping a stash. Members of GitView, kept apart from GitView.cpp so the panel's
-// drawing of refs and history does not have to be read past four dialogs.
+// drawing of refs and history does not have to be read past four dialogs. Their shape - the
+// padding, the list, the button row and its keys - is DialogLayout's, shared with the
+// Changes panel's stash dialog.
 
 #include "Git/GitView.h"
 
+#include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/Icons.h"
 #include "Editor/Palettes.h"
+#include "UI/DialogLayout.h"
 
 #include <imgui.h>
 
-#include <algorithm>
 #include <cstddef>
 #include <format>
 #include <string>
@@ -18,13 +22,23 @@ namespace Graphite {
 
 	namespace {
 
-		ImVec4 Scaled(const ImVec4& colour, float factor)
+		// What makes a row of the checkout dialog matter, said beside its path.
+		std::string CheckoutRowTag(const CheckoutQuestionRow& row)
 		{
-			return ImVec4(std::min(colour.x * factor, 1.0f), std::min(colour.y * factor, 1.0f),
-						  std::min(colour.z * factor, 1.0f), colour.w);
+			if (row.Unsaved && row.Blocks)
+			{
+				return "unsaved, blocks checkout";
+			}
+
+			if (row.Blocks)
+			{
+				return "blocks checkout";
+			}
+
+			return row.Unsaved ? "unsaved" : "";
 		}
 
-		// The rows of one group in the checkout dialog, each marked with what makes it matter.
+		// The rows of one group in the checkout dialog, under a header naming the group.
 		void CheckoutRows(const char* heading, const std::vector<CheckoutQuestionRow>& rows)
 		{
 			if (rows.empty())
@@ -32,21 +46,33 @@ namespace Graphite {
 				return;
 			}
 
-			ImGui::TextUnformatted(heading);
-			ImGui::Indent();
+			DialogLayout::FileGroupHeader(heading);
 
 			for (const CheckoutQuestionRow& row : rows)
 			{
-				ImGui::TextUnformatted(CheckoutRowLabel(row).c_str());
+				DialogLayout::FileRow(Core::IconForExtension(Core::ToUtf8(row.Path.extension())),
+									  Core::ToGenericUtf8(row.Path), CheckoutRowTag(row));
 			}
-
-			ImGui::Unindent();
 		}
+	}
+
+	ImVec4 GitView::DangerColour() const
+	{
+		return ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);
 	}
 
 	void GitView::RenderCheckoutDialog()
 	{
-		if (!m_CheckoutQuestion.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kWideWidth);
+
+		const bool open = m_CheckoutQuestion.Begin([](const CheckoutQuestionPayload&) { return true; },
+												   [](const CheckoutQuestionPayload& payload) {
+													   return "Checkout " + CheckoutTargetLabel(payload.Target);
+												   });
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			m_CheckoutDialogOpen = false;
 			return;
@@ -73,25 +99,18 @@ namespace Graphite {
 
 		const CheckoutQuestion& question = current->Question;
 
-		ImGui::TextUnformatted(question.Title.c_str());
-		ImGui::Separator();
+		DialogLayout::Text(question.Title + ".");
+		DialogLayout::Gap();
 
 		// Every change, not only the blocking ones, since both answers act on every change -
 		// so the list can be long, and scrolls rather than pushing the buttons off screen.
 		const std::size_t lines = question.Changed.size() + question.Untracked.size() +
 								  (question.Changed.empty() ? 0 : 1) + (question.Untracked.empty() ? 0 : 1);
 
-		const float listHeight =
-			static_cast<float>(std::min<std::size_t>(lines, 14)) * ImGui::GetTextLineHeightWithSpacing();
-
-		const float listWidth =
-			std::max(ImGui::CalcTextSize(question.Title.c_str()).x, ImGui::GetFontSize() * 28.0f);
-
-		if (ImGui::BeginChild("checkout.files", ImVec2(listWidth, listHeight), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_HorizontalScrollbar))
+		if (DialogLayout::BeginFileList("checkout.files", lines))
 		{
-			CheckoutRows("Changed:", question.Changed);
-			CheckoutRows("Untracked:", question.Untracked);
+			CheckoutRows("CHANGED", question.Changed);
+			CheckoutRows("UNTRACKED", question.Untracked);
 
 			// BuildCheckoutQuestion is only asked when there is something to list. Should both
 			// lists ever be empty, the child still ends on an item, as every window here does.
@@ -101,7 +120,8 @@ namespace Graphite {
 			}
 		}
 
-		ImGui::EndChild();
+		DialogLayout::EndFileList();
+		DialogLayout::Gap();
 
 		// Locked on when an untracked file blocks: leaving it out would leave the checkout
 		// refused over the very file it was asked about.
@@ -117,7 +137,16 @@ namespace Graphite {
 			ImGui::Checkbox("Include untracked files in Discard and Stash", &m_IncludeUntracked);
 		}
 
-		ImGui::Separator();
+		DialogLayout::Gap();
+
+		if (m_StashSaveFailed)
+		{
+			// Which file failed is already in the status bar - see EditorBuffers::Save.
+			DialogLayout::ErrorText("Could not save every file; nothing was stashed.", DangerColour());
+		}
+
+		DialogLayout::MutedText("Discard cannot be undone.");
+		DialogLayout::Gap();
 
 		// Copied out before Answer(), which drops the payload `current` points at.
 		const Core::CheckoutTarget target = current->Target;
@@ -132,38 +161,15 @@ namespace Graphite {
 			m_CheckoutDialogOpen = false;
 		};
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		const bool writable = !m_Model.IsWriteInFlight();
 
-		// Red, from the scheme's own error colour: this is the one button here that loses
-		// work for good.
-		const ImVec4 danger = ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);
+		// Stash is the safe answer, so it is the one Enter gives; Discard is the one button
+		// here that loses work for good, and only a click reaches it.
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow({.Label = "Stash", .Enabled = writable}, {.Label = "Discard", .Enabled = writable},
+									DangerColour());
 
-		ImGui::PushStyleColor(ImGuiCol_Button, danger);
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Scaled(danger, 1.15f));
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, Scaled(danger, 0.85f));
-		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
-
-		const bool discard = ImGui::Button("Discard");
-
-		ImGui::PopStyleColor(4);
-
-		ImGui::SameLine();
-		const bool stash = ImGui::Button("Stash");
-
-		ImGui::EndDisabled();
-
-		ImGui::SameLine();
-		const bool cancel = ImGui::Button("Cancel");
-
-		ImGui::TextDisabled("Discard cannot be undone.");
-
-		if (m_StashSaveFailed)
-		{
-			// Which file failed is already in the status bar - see EditorBuffers::Save.
-			ImGui::TextUnformatted("Could not save every file; nothing was stashed.");
-		}
-
-		if (discard)
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			// The editor's copies first: the checkout is about to write over the files, and a
 			// buffer still holding the old edits would then disagree with the disk.
@@ -173,7 +179,7 @@ namespace Graphite {
 													.IncludeUntracked = includeUntracked});
 			answer();
 		}
-		else if (stash)
+		else if (choice == DialogLayout::Choice::Safe)
 		{
 			// A stash takes what is on disk, so the unsaved edits have to get there first - and
 			// if any cannot, stashing the rest would leave those edits behind on this branch.
@@ -191,7 +197,7 @@ namespace Graphite {
 				answer();
 			}
 		}
-		else if (cancel)
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			answer();
 		}
@@ -201,7 +207,18 @@ namespace Graphite {
 
 	void GitView::RenderBranchNameDialog(ModalQuestion<BranchNamePayload>& question)
 	{
-		if (!question.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+
+		const bool open = question.Begin([](const BranchNamePayload&) { return true; },
+										 [](const BranchNamePayload& payload) {
+											 return payload.Mode == BranchNameMode::New
+														? "New branch from " + payload.From
+														: "Rename " + payload.From;
+										 });
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			if (m_BranchNameFor == &question)
 			{
@@ -235,17 +252,16 @@ namespace Graphite {
 		const std::string from = current->From;
 		const Core::Oid at = current->At;
 
-		ImGui::TextUnformatted((mode == BranchNameMode::New ? "New branch from " + from : "Rename " + from).c_str());
-
 		// The field is what the dialog is for, so it takes the keyboard as it opens.
 		if (first)
 		{
 			ImGui::SetKeyboardFocusHere();
 		}
 
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 24.0f);
-		const bool entered = ImGui::InputText("##branchName", m_BranchNameBuffer.data(), m_BranchNameBuffer.size(),
-											  ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		const bool entered =
+			ImGui::InputTextWithHint("##branchName", "Branch name", m_BranchNameBuffer.data(),
+									 m_BranchNameBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
 
 		const std::string name(m_BranchNameBuffer.data());
 
@@ -253,26 +269,27 @@ namespace Graphite {
 		const std::optional<std::string> problem =
 			BranchNameProblem(name, branches ? *branches : std::vector<Core::Branch>{});
 
-		// Drawn even when empty, so the dialog does not change height under the reader's typing.
-		ImGui::TextDisabled("%s", problem.has_value() ? problem->c_str() : "");
+		// An empty field says so through its hint and the disabled button; anything typed that
+		// will not do is said under it, and only then does the dialog grow a line.
+		if (problem.has_value() && !name.empty())
+		{
+			DialogLayout::ErrorText(*problem, DangerColour());
+		}
 
 		if (mode == BranchNameMode::New)
 		{
+			DialogLayout::Gap();
 			ImGui::Checkbox("Checkout after creating", &m_CheckoutAfter);
 		}
 
-		ImGui::Separator();
+		DialogLayout::Gap();
 
 		const bool acceptable = !problem.has_value() && !m_Model.IsWriteInFlight();
 
-		ImGui::BeginDisabled(!acceptable);
-		const bool ok = ImGui::Button("OK");
-		ImGui::EndDisabled();
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{.Label = mode == BranchNameMode::New ? "Create" : "Rename", .Enabled = acceptable}, {}, DangerColour());
 
-		ImGui::SameLine();
-		const bool cancel = ImGui::Button("Cancel");
-
-		if (acceptable && (ok || entered))
+		if (acceptable && (choice == DialogLayout::Choice::Safe || entered))
 		{
 			if (mode == BranchNameMode::New)
 			{
@@ -299,7 +316,7 @@ namespace Graphite {
 			question.Answer();
 			m_BranchNameFor = nullptr;
 		}
-		else if (cancel)
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			question.Answer();
 			m_BranchNameFor = nullptr;
@@ -310,7 +327,16 @@ namespace Graphite {
 
 	void GitView::RenderDeleteBranchDialog()
 	{
-		if (!m_DeleteBranchQuestion.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+
+		const bool open = m_DeleteBranchQuestion.Begin([](const DeleteBranchPayload&) { return true; },
+													   [](const DeleteBranchPayload& payload) {
+														   return "Delete branch " + payload.Branch;
+													   });
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			return;
 		}
@@ -327,34 +353,32 @@ namespace Graphite {
 		const std::string branch = current->Branch;
 		const std::size_t unmerged = current->Unmerged;
 
-		ImGui::TextUnformatted(("Delete branch " + branch + "?").c_str());
-
 		if (unmerged == 0)
 		{
-			ImGui::TextDisabled("This branch has no commits that other branches lack.");
+			DialogLayout::Text("Delete branch " + branch + "? It has no commits that other branches lack.");
 		}
 		else
 		{
-			ImGui::TextUnformatted(
-				std::format("{} commit(s) on this branch are on no other branch and will be lost.", unmerged).c_str());
+			DialogLayout::Text(std::format(
+				"Delete branch {}? {} commit(s) on it are on no other branch and will be lost.", branch, unmerged));
 		}
 
-		ImGui::Separator();
+		DialogLayout::Gap();
+		DialogLayout::MutedText("Deleting a branch cannot be undone here.");
+		DialogLayout::Gap();
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		// Worded for what it costs: past this button, those commits have no name left. No
+		// safe action, so Enter does nothing; Escape cancels.
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{}, {.Label = unmerged == 0 ? "Delete" : "Delete anyway", .Enabled = !m_Model.IsWriteInFlight()},
+			DangerColour());
 
-		// Worded for what it costs: past this button, those commits have no name left.
-		if (ImGui::Button(unmerged == 0 ? "Delete" : "Delete anyway"))
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			m_Model.RequestDeleteBranch(branch);
 			m_DeleteBranchQuestion.Answer();
 		}
-
-		ImGui::EndDisabled();
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_DeleteBranchQuestion.Answer();
 		}
@@ -364,7 +388,16 @@ namespace Graphite {
 
 	void GitView::RenderDropStashDialog()
 	{
-		if (!m_DropStashQuestion.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+
+		const bool open = m_DropStashQuestion.Begin([](const DropStashPayload&) { return true; },
+													[](const DropStashPayload& payload) {
+														return std::format("Drop stash@{{{}}}", payload.Index);
+													});
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			return;
 		}
@@ -380,24 +413,20 @@ namespace Graphite {
 
 		const Core::Oid id = current->Id;
 
-		ImGui::TextUnformatted(std::format("Drop stash@{{{}}}?", current->Index).c_str());
-		ImGui::TextDisabled("A dropped stash cannot be recovered.");
+		DialogLayout::Text(std::format("Drop stash@{{{}}}? The changes it holds are deleted with it.", current->Index));
+		DialogLayout::Gap();
+		DialogLayout::MutedText("A dropped stash cannot be recovered.");
+		DialogLayout::Gap();
 
-		ImGui::Separator();
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{}, {.Label = "Drop", .Enabled = !m_Model.IsWriteInFlight()}, DangerColour());
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
-
-		if (ImGui::Button("Drop"))
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			m_Model.RequestStashDrop(id);
 			m_DropStashQuestion.Answer();
 		}
-
-		ImGui::EndDisabled();
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_DropStashQuestion.Answer();
 		}

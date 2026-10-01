@@ -120,9 +120,9 @@ namespace Graphite {
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
 					 EditorBuffers& buffers)
 		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
-		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_CheckoutQuestion(modals, "Checkout"),
-		  m_NewBranchQuestion(modals, "New Branch"), m_RenameBranchQuestion(modals, "Rename Branch"),
-		  m_DeleteBranchQuestion(modals, "Delete Branch"), m_DropStashQuestion(modals, "Drop Stash")
+		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_CheckoutQuestion(modals, "###GitCheckout"),
+		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
+		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
 	{
 	}
 
