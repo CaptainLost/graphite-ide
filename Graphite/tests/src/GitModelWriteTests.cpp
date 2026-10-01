@@ -2,7 +2,9 @@
 
 #include "Git/GitModel.h"
 
+#include "Core/Events/EventBus.h"
 #include "Core/Fs/FileSystem.h"
+#include "Workspace/Workspace.h"
 
 #include <filesystem>
 #include <functional>
@@ -34,11 +36,23 @@ namespace {
 
 		Core::Result<void> Init() override { return Record("init", {}); }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
-		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override
+		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override
 		{
 			++DiffCalls;
+			DiffTargets.push_back(request.Target);
+
+			if (FailDiff)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
 			return Core::Diff{};
 		}
+
+		// Which target each diff query asked about, in order, so a test can tell a
+		// resubmitted request from the one that was already in flight.
+		std::vector<Core::DiffTarget> DiffTargets;
+		bool FailDiff = false;
 
 		Core::Result<Graphite::FileTexts> ReadFileTexts(
 			const Core::Oid&, const std::filesystem::path&, const std::filesystem::path&) override
@@ -399,9 +413,138 @@ TEST_CASE("Requesting the working tree diff repeatedly submits only one query")
 	model.OnUpdate(Core::Timestep{0.016f});
 	CHECK(port.DiffCalls == 1);
 
-	// Once the first answer has landed, a fresh request is free to submit again.
+	// Once the answer has landed, asking the same question again submits nothing: nothing
+	// has been marked dirty since, so the slot already answers it. Resubmitting here is what
+	// kept the frame loop from ever idling while a working-tree tab was on screen.
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+
+	CHECK(port.DiffCalls == 1);
+	CHECK(model.GetWorkingTreeDiff() != nullptr);
+}
+
+TEST_CASE("A refresh after the working tree diff landed submits it exactly once more")
+{
+	WritePort port;
+	Core::EventBus events;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+	model.SubscribeTo(events);
+
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(port.DiffCalls == 1);
+
+	// The same debounced refresh that re-asks the log: once it has run, the slot no longer
+	// counts as answering the request, and the next frame's ask goes through - once.
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	CHECK(port.DiffCalls == 2);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	CHECK(port.DiffCalls == 2);
+}
+
+TEST_CASE("A refresh that runs while the working tree diff is in flight asks again after it lands")
+{
+	WritePort port;
+	Core::EventBus events;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+	model.SubscribeTo(events);
+
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	REQUIRE(port.DiffCalls == 1);
+
+	// The query already running may have read the file before the change that marked the
+	// model dirty, so its answer cannot count as fresh.
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
+
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	CHECK(port.DiffCalls == 2);
+}
+
+TEST_CASE("Switching the working tree diff's target shows no stale answer and asks once")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	const Core::DiffRequest unstaged{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
+	const Core::DiffRequest staged{.Target = Core::DiffTarget::IndexToHead, .File = "a.txt"};
+
+	model.RequestWorkingTreeDiff(unstaged);
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+
+	// A tab following its file to the other side: the same path, a different question. The
+	// unstaged hunks must not be drawn as the staged ones while the new answer is on its way.
+	model.RequestWorkingTreeDiff(staged);
+	CHECK(model.GetWorkingTreeDiff() == nullptr);
+	CHECK(model.GetWorkingTreeTexts() == nullptr);
+
+	model.RequestWorkingTreeDiff(staged);
+	CHECK(port.DiffCalls == 2);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	model.RequestWorkingTreeDiff(staged);
+
+	CHECK(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(port.DiffCalls == 2);
+	CHECK(port.DiffTargets == std::vector<Core::DiffTarget>{Core::DiffTarget::WorkTreeToIndex, Core::DiffTarget::IndexToHead});
+}
+
+TEST_CASE("A working tree diff asked for while another is in flight is sent when that one lands")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	const Core::DiffRequest unstaged{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
+	const Core::DiffRequest staged{.Target = Core::DiffTarget::IndexToHead, .File = "a.txt"};
+
+	model.RequestWorkingTreeDiff(unstaged);
+	model.RequestWorkingTreeDiff(staged);
+
+	// One in flight at a time, but the changed question is remembered rather than dropped.
+	CHECK(port.DiffCalls == 1);
+
+	// Landing the unstaged answer submits the staged one without anyone asking again, and
+	// the unstaged answer is not passed off as the staged one.
+	model.OnUpdate(Core::Timestep{0.016f});
+	CHECK(port.DiffCalls == 2);
+	CHECK(model.GetWorkingTreeDiff() == nullptr);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	CHECK(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(port.DiffTargets == std::vector<Core::DiffTarget>{Core::DiffTarget::WorkTreeToIndex, Core::DiffTarget::IndexToHead});
+}
+
+TEST_CASE("A failed working tree diff is not asked again every frame")
+{
+	WritePort port;
+	port.FailDiff = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetLastError().has_value());
+
+	// A failure answers the request as surely as a success does; only a refresh or a
+	// different request asks again.
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	model.OnUpdate(Core::Timestep{0.016f});
+	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+
+	CHECK(port.DiffCalls == 1);
 }
 
 TEST_CASE("An init goes through the write queue like any other write")

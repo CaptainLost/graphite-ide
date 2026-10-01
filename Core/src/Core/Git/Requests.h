@@ -81,6 +81,8 @@ namespace Core {
 
 		// Relative to the working directory. Without it, the whole tree.
 		std::optional<std::filesystem::path> File;
+
+		friend bool operator==(const DiffRequest&, const DiffRequest&) = default;
 	};
 
 	// What a commit needs and nothing more. No author override, no sign-off, no signing:

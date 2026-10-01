@@ -617,13 +617,19 @@ TEST_CASE("A failed diff keeps the last good one and reports the error")
 	file.NewPath = "a.txt";
 	port.Diff.Files.push_back(file);
 
+	Core::EventBus events;
 	Graphite::GitModel model{port, Inline()};
 	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
 
+	// The same request is only asked again after a refresh has marked its answer stale.
 	port.FailDiff = true;
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	model.OnUpdate(Core::Timestep{0.2f});
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
+	REQUIRE(port.DiffCalls == 2);
 	model.OnUpdate(Core::Timestep{0.016f});
 
 	REQUIRE(model.GetWorkingTreeDiff() != nullptr);

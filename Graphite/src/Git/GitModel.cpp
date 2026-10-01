@@ -51,6 +51,10 @@ namespace Graphite {
 		m_LastLogRequest.reset();
 		m_WorkingTreeDiff.reset();
 		m_WorkingTreeTexts.reset();
+		m_WantedWorkingTreeDiff.reset();
+		m_WorkingTreeDiffFor.reset();
+		m_WorkingTreeDiffSettled.reset();
+		m_WorkingTreeDiffStale = false;
 		m_CommitDiffs.clear();
 		m_Texts.clear();
 		m_Untracked.clear();
@@ -170,6 +174,11 @@ namespace Graphite {
 				{
 					RequestLog(*m_LastLogRequest);
 				}
+
+				// The working-tree diff is only marked, not re-asked: the diff window asks every
+				// frame it is visible, so a tab that is open sends the query on its next frame,
+				// and a tab that has closed or gone behind another sends nothing.
+				m_WorkingTreeDiffStale = true;
 			}
 		}
 
@@ -348,16 +357,39 @@ namespace Graphite {
 			return;
 		}
 
-		// The diff window's Render calls this every frame it is open, the same way the log
-		// list asks RequestDiffFor about every expanded commit every frame. Without this
-		// guard a diff that takes longer than a frame would resubmit a worker job many
-		// times a second and never drain while the tab stayed open.
+		m_WantedWorkingTreeDiff = std::move(request);
+		PumpWorkingTreeDiff();
+	}
+
+	void GitModel::PumpWorkingTreeDiff()
+	{
+		if (!m_WantedWorkingTreeDiff.has_value())
+		{
+			return;
+		}
+
+		// The diff window's Render asks every frame it is open, the same way the log list
+		// asks RequestDiffFor about every expanded commit every frame. Without this guard a
+		// diff that takes longer than a frame would resubmit a worker job many times a
+		// second and never drain while the tab stayed open. A request that changes while
+		// one is in flight is not lost: the landing calls this again.
 		if (m_WorkingTreeDiffRequested != m_WorkingTreeDiffApplied)
 		{
 			return;
 		}
 
+		// Already answered, and nothing has changed since the question was sent. Without
+		// this every landing would be followed by another full query on the next frame, and
+		// the frame loop would never idle while the tab is on screen.
+		if (m_WorkingTreeDiffSettled == m_WantedWorkingTreeDiff && !m_WorkingTreeDiffStale)
+		{
+			return;
+		}
+
+		m_WorkingTreeDiffStale = false;
+
 		const std::uint64_t generation = ++m_WorkingTreeDiffRequested;
+		Core::DiffRequest request = *m_WantedWorkingTreeDiff;
 
 		m_Submit([this, generation, request = std::move(request)]() {
 			auto result = m_Port.QueryDiff(request);
@@ -388,23 +420,27 @@ namespace Graphite {
 				}
 			}
 
-			Deliver([this, generation, result = std::move(result), texts = std::move(texts)]() mutable {
+			Deliver([this, generation, request = std::move(request), result = std::move(result),
+					 texts = std::move(texts)]() mutable {
 				if (generation <= m_WorkingTreeDiffApplied)
 				{
 					return;
 				}
 
 				m_WorkingTreeDiffApplied = generation;
+				m_WorkingTreeDiffSettled = request;
 
 				if (!result.HasValue())
 				{
 					m_WorkingTreeDiffError = result.GetError();
+					PumpWorkingTreeDiff();
 					return;
 				}
 
 				m_WorkingTreeDiffError.reset();
 				m_WorkingTreeDiff =
 					std::make_shared<const Core::Diff>(std::move(result).GetValue());
+				m_WorkingTreeDiffFor = std::move(request);
 
 				// Replaced rather than kept: unlike a commit's text, which cannot change, this one
 				// is different every time the file is touched. Cleared when there is none, so a
@@ -412,6 +448,8 @@ namespace Graphite {
 				m_WorkingTreeTexts = texts.has_value()
 					? std::make_shared<const FileTexts>(std::move(*texts))
 					: nullptr;
+
+				PumpWorkingTreeDiff();
 			});
 		});
 	}

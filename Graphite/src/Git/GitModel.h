@@ -83,6 +83,13 @@ namespace Graphite {
 		// nothing to hold past the next refresh. One slot, replaced whenever a fresher answer
 		// lands, the same way m_Status and m_Branches are - unlike a commit's diff, which
 		// never changes and is therefore kept in the keyed cache below (RequestDiffFor).
+		//
+		// Called every frame the diff window is open, so this registers the request the
+		// window wants rather than submitting it. A query goes out only when the slot does
+		// not already answer that request - a different request, or none yet - or when a
+		// refresh (the same debounced one that re-asks the log) has run since the slot's
+		// query was sent. One is in flight at a time; a request that changes meanwhile is
+		// sent as soon as the one in flight lands.
 		void RequestWorkingTreeDiff(Core::DiffRequest request);
 
 		// The diff of one commit against its first parent. Requested by expanding a row,
@@ -170,13 +177,23 @@ namespace Graphite {
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
 		std::shared_ptr<const Core::HeadState> GetHead() const { return m_Head; }
 		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
-		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const { return m_WorkingTreeDiff; }
+		// Also null while the slot holds the answer to a different request than the one last
+		// passed to RequestWorkingTreeDiff: a tab that follows its file to the other side asks
+		// a new question, and the old side's hunks are not an answer to it.
+		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const
+		{
+			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff : nullptr;
+		}
 
 		// The whole file's text on both sides of the working-tree diff above, fetched with it
 		// and replaced with it. Null while none has arrived, and null for a file that is binary
 		// or too large to lex - in every case the caller's answer is the same: draw the diff
-		// without the colouring and the whole-file view that this text feeds.
-		std::shared_ptr<const FileTexts> GetWorkingTreeTexts() const { return m_WorkingTreeTexts; }
+		// without the colouring and the whole-file view that this text feeds. Null, too,
+		// whenever GetWorkingTreeDiff is, for the same reason.
+		std::shared_ptr<const FileTexts> GetWorkingTreeTexts() const
+		{
+			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTexts : nullptr;
+		}
 
 		// The failure a panel should show, if any. Each query kind keeps its own error, set
 		// by its own failure and cleared only by its own success, so a branches refresh
@@ -304,6 +321,16 @@ namespace Graphite {
 		// result that woke the loop for a few frames only, and the loop would otherwise sleep
 		// through the debounce until its idle tick.
 		void RequestDebounceFrame() const;
+
+		// Sends the wanted working-tree diff if nothing is in flight and the slot does not
+		// already answer it fresh. Called on every ask and on every landing, which is what
+		// sends a request that changed while another was in flight.
+		void PumpWorkingTreeDiff();
+
+		bool AnswersWantedWorkingTreeDiff() const
+		{
+			return m_WorkingTreeDiffFor.has_value() && m_WorkingTreeDiffFor == m_WantedWorkingTreeDiff;
+		}
 
 		struct CachedDiff
 		{
@@ -503,6 +530,22 @@ namespace Graphite {
 		std::optional<Core::LogRequest> m_LastLogRequest;
 		std::shared_ptr<const Core::Diff> m_WorkingTreeDiff;
 		std::shared_ptr<const FileTexts> m_WorkingTreeTexts;
+
+		// The request the diff window last asked about, and the one m_WorkingTreeDiff and
+		// m_WorkingTreeTexts answer. They differ between a tab changing its question and the
+		// new answer landing, and the getters answer null for that long.
+		std::optional<Core::DiffRequest> m_WantedWorkingTreeDiff;
+		std::optional<Core::DiffRequest> m_WorkingTreeDiffFor;
+
+		// The request the last landed query answered, success or failure. Kept apart from
+		// m_WorkingTreeDiffFor, which only a success moves: a failure must count as an answer
+		// too, or a permanent one would be retried every frame the tab stays open.
+		std::optional<Core::DiffRequest> m_WorkingTreeDiffSettled;
+
+		// Set by every debounced refresh and cleared when a query is sent, so a refresh that
+		// runs while a query is in flight still asks again once it lands: that query may have
+		// read the file before the change that caused the refresh.
+		bool m_WorkingTreeDiffStale = false;
 
 		// Mutable because GetDiffFor is const and still counts as a use — an entry the
 		// reader is looking at every frame must not be the one evicted.
