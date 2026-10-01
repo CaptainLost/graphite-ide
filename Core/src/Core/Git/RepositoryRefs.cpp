@@ -2,6 +2,7 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -67,9 +68,9 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		git_branch_iterator* iterator = nullptr;
+		BranchIteratorHandle iterator;
 
-		if (git_branch_iterator_new(&iterator, m_Handle, GIT_BRANCH_ALL) != 0)
+		if (git_branch_iterator_new(Out(iterator), m_Handle, GIT_BRANCH_ALL) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot list the branches: {}", LastLibgit2Message())};
@@ -77,51 +78,59 @@ namespace Core {
 
 		std::vector<Branch> branches;
 
-		git_reference* reference = nullptr;
 		git_branch_t type = GIT_BRANCH_LOCAL;
 
 		int next = 0;
 
-		while ((next = git_branch_next(&reference, &type, iterator)) == 0)
+		while (true)
 		{
+			ReferenceHandle reference;
+			next = git_branch_next(Out(reference), &type, iterator.get());
+
+			if (next != 0)
+			{
+				break;
+			}
+
 			Branch branch;
 			branch.Kind = type == GIT_BRANCH_REMOTE ? RefKind::Remote : RefKind::Local;
 
-			if (const char* name = nullptr; git_branch_name(&name, reference) == 0
+			if (const char* name = nullptr; git_branch_name(&name, reference.get()) == 0
 										   && name != nullptr)
 			{
 				branch.Name = name;
 			}
 
-			if (const char* full = git_reference_name(reference); full != nullptr)
+			if (const char* full = git_reference_name(reference.get()); full != nullptr)
 			{
 				branch.FullName = full;
 			}
 
 			// A symbolic ref such as refs/remotes/origin/HEAD has no direct target. It
 			// names another branch rather than a commit, so there is nothing to show.
-			const git_oid* target = git_reference_target(reference);
+			const git_oid* target = git_reference_target(reference.get());
 
 			if (target == nullptr)
 			{
-				git_reference_free(reference);
 				continue;
 			}
 
 			branch.Tip = ToOid(*target);
-			branch.IsHead = git_branch_is_head(reference) == 1;
+			branch.IsHead = git_branch_is_head(reference.get()) == 1;
 
-			git_reference* upstream = nullptr;
+			ReferenceHandle upstream;
 
-			if (git_branch_upstream(&upstream, reference) == 0 && upstream != nullptr)
+			const int tracked = git_branch_upstream(Out(upstream), reference.get());
+
+			if (tracked == 0 && upstream != nullptr)
 			{
-				if (const char* name = nullptr; git_branch_name(&name, upstream) == 0
+				if (const char* name = nullptr; git_branch_name(&name, upstream.get()) == 0
 											   && name != nullptr)
 				{
 					branch.Upstream = name;
 				}
 
-				if (const git_oid* upstreamTarget = git_reference_target(upstream);
+				if (const git_oid* upstreamTarget = git_reference_target(upstream.get());
 					upstreamTarget != nullptr)
 				{
 					std::size_t ahead = 0;
@@ -135,12 +144,9 @@ namespace Core {
 						branch.DistanceKnown = true;
 					}
 				}
-
-				git_reference_free(upstream);
 			}
 
 			branches.push_back(std::move(branch));
-			git_reference_free(reference);
 		}
 
 		// GIT_ITEROVER is the ordinary end. Anything else means the listing stopped
@@ -148,11 +154,8 @@ namespace Core {
 		if (next != GIT_ITEROVER)
 		{
 			const std::string message = LastLibgit2Message();
-			git_branch_iterator_free(iterator);
 			return Error{ErrorCode::IoFailure, std::format("cannot list the branches: {}", message)};
 		}
-
-		git_branch_iterator_free(iterator);
 
 		std::sort(branches.begin(), branches.end(), [](const Branch& left, const Branch& right) {
 			if (left.Kind != right.Kind)
@@ -188,30 +191,28 @@ namespace Core {
 		{
 			head.Kind = HeadKind::Unborn;
 
-			git_reference* symbolic = nullptr;
+			ReferenceHandle symbolic;
 
-			if (git_reference_lookup(&symbolic, m_Handle, "HEAD") == 0)
+			if (git_reference_lookup(Out(symbolic), m_Handle, "HEAD") == 0)
 			{
-				if (const char* target = git_reference_symbolic_target(symbolic); target != nullptr)
+				if (const char* target = git_reference_symbolic_target(symbolic.get()); target != nullptr)
 				{
 					head.BranchName = ShortBranchName(target);
 				}
-
-				git_reference_free(symbolic);
 			}
 
 			return head;
 		}
 
-		git_reference* reference = nullptr;
+		ReferenceHandle reference;
 
-		if (git_repository_head(&reference, m_Handle) != 0)
+		if (git_repository_head(Out(reference), m_Handle) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
 		}
 
-		if (const git_oid* target = git_reference_target(reference); target != nullptr)
+		if (const git_oid* target = git_reference_target(reference.get()); target != nullptr)
 		{
 			head.Commit = ToOid(*target);
 		}
@@ -223,10 +224,9 @@ namespace Core {
 		else
 		{
 			head.Kind = HeadKind::Branch;
-			head.BranchName = git_reference_shorthand(reference);
+			head.BranchName = git_reference_shorthand(reference.get());
 		}
 
-		git_reference_free(reference);
 		return head;
 	}
 }

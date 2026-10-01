@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -140,9 +141,9 @@ namespace Core {
 		if (m_Handle == nullptr || relative.empty() || LeadsOutOfTree(relative))
 			return false;
 
-		git_index* index = nullptr;
+		IndexHandle index;
 
-		if (git_repository_index(&index, m_Handle) != 0)
+		if (git_repository_index(Out(index), m_Handle) != 0)
 		{
 			CORE_TRACE("Cannot read the index to look for a submodule above '{}'", ToGitPath(relative));
 			return false;
@@ -158,7 +159,7 @@ namespace Core {
 			prefix /= part;
 
 			const std::string text = ToGitPath(prefix);
-			const git_index_entry* entry = git_index_get_bypath(index, text.c_str(), 0);
+			const git_index_entry* entry = git_index_get_bypath(index.get(), text.c_str(), 0);
 
 			if (entry != nullptr && entry->mode == static_cast<std::uint32_t>(GIT_FILEMODE_COMMIT))
 			{
@@ -167,7 +168,6 @@ namespace Core {
 			}
 		}
 
-		git_index_free(index);
 		return inside;
 	}
 }

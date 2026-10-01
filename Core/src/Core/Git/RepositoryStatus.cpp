@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -56,21 +57,21 @@ namespace Core {
 						| GIT_STATUS_OPT_RENAMES_INDEX_TO_WORKDIR
 						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY;
 
-		git_status_list* list = nullptr;
+		StatusListHandle list;
 
-		if (git_status_list_new(&list, m_Handle, &options) != 0)
+		if (git_status_list_new(Out(list), m_Handle, &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read the working tree status: {}", LastLibgit2Message())};
 		}
 
 		WorkingTreeStatus status;
-		const std::size_t count = git_status_list_entrycount(list);
+		const std::size_t count = git_status_list_entrycount(list.get());
 		status.Entries.reserve(count);
 
 		for (std::size_t index = 0; index < count; ++index)
 		{
-			const git_status_entry* entry = git_status_byindex(list, index);
+			const git_status_entry* entry = git_status_byindex(list.get(), index);
 
 			if (entry == nullptr || entry->status == GIT_STATUS_CURRENT)
 			{
@@ -126,7 +127,6 @@ namespace Core {
 			status.Entries.push_back(std::move(file));
 		}
 
-		git_status_list_free(list);
 		return status;
 	}
 
@@ -159,9 +159,9 @@ namespace Core {
 		options.pathspec.strings = entries;
 		options.pathspec.count = 1;
 
-		git_status_list* list = nullptr;
+		StatusListHandle list;
 
-		if (git_status_list_new(&list, m_Handle, &options) != 0)
+		if (git_status_list_new(Out(list), m_Handle, &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot list the untracked files in '{}': {}", spec,
@@ -169,11 +169,11 @@ namespace Core {
 		}
 
 		WorkingTreeStatus status;
-		const std::size_t count = git_status_list_entrycount(list);
+		const std::size_t count = git_status_list_entrycount(list.get());
 
 		for (std::size_t index = 0; index < count; ++index)
 		{
-			const git_status_entry* entry = git_status_byindex(list, index);
+			const git_status_entry* entry = git_status_byindex(list.get(), index);
 
 			if (entry == nullptr || (entry->status & GIT_STATUS_WT_NEW) == 0)
 			{
@@ -195,7 +195,6 @@ namespace Core {
 			status.Entries.push_back(std::move(file));
 		}
 
-		git_status_list_free(list);
 		return status;
 	}
 }

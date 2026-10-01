@@ -6,6 +6,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Git/CommitFilter.h"
 #include "Core/Git/LineRangeTracking.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -163,11 +164,11 @@ namespace Core {
 		{
 			UnpushedSet unpushed;
 
-			git_reference* branch = nullptr;
+			ReferenceHandle branch;
 
 			const int found = ref.has_value()
-								  ? git_reference_lookup(&branch, repository, ref->c_str())
-								  : git_repository_head(&branch, repository);
+								  ? git_reference_lookup(Out(branch), repository, ref->c_str())
+								  : git_repository_head(Out(branch), repository);
 
 			if (found != 0)
 			{
@@ -177,26 +178,25 @@ namespace Core {
 			// Only a local branch has an upstream. A detached HEAD resolves to a direct
 			// reference still named "HEAD", and a remote-tracking ref is not a branch here
 			// either — both mean the same thing, that there is nothing to compare against.
-			git_reference* upstream = nullptr;
+			ReferenceHandle upstream;
 
-			if (git_reference_is_branch(branch) == 0 ||
-				git_branch_upstream(&upstream, branch) != 0)
+			if (git_reference_is_branch(branch.get()) == 0 ||
+				git_branch_upstream(Out(upstream), branch.get()) != 0)
 			{
-				git_reference_free(branch);
 				return unpushed;
 			}
 
-			git_revwalk* walk = nullptr;
+			RevwalkHandle walk;
 
-			if (git_revwalk_new(&walk, repository) == 0)
+			if (git_revwalk_new(Out(walk), repository) == 0)
 			{
-				if (git_revwalk_push_ref(walk, git_reference_name(branch)) == 0 &&
-					git_revwalk_hide_ref(walk, git_reference_name(upstream)) == 0)
+				if (git_revwalk_push_ref(walk.get(), git_reference_name(branch.get())) == 0 &&
+					git_revwalk_hide_ref(walk.get(), git_reference_name(upstream.get())) == 0)
 				{
 					git_oid id{};
 					std::size_t walked = 0;
 
-					while (walked < maxWalk && git_revwalk_next(&id, walk) == 0)
+					while (walked < maxWalk && git_revwalk_next(&id, walk.get()) == 0)
 					{
 						unpushed.Commits.insert(ToOid(id));
 						++walked;
@@ -213,12 +213,7 @@ namespace Core {
 						unpushed.Commits.clear();
 					}
 				}
-
-				git_revwalk_free(walk);
 			}
-
-			git_reference_free(upstream);
-			git_reference_free(branch);
 
 			return unpushed;
 		}
@@ -237,9 +232,9 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		git_revwalk* walk = nullptr;
+		RevwalkHandle walk;
 
-		if (git_revwalk_new(&walk, m_Handle) != 0)
+		if (git_revwalk_new(Out(walk), m_Handle) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot walk the history: {}", LastLibgit2Message())};
@@ -247,11 +242,11 @@ namespace Core {
 
 		// Topological first so a branch stays contiguous, date second so two unrelated
 		// branches interleave the way a reader expects.
-		git_revwalk_sorting(walk, GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
+		git_revwalk_sorting(walk.get(), GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
 
 		const int pushed = request.Ref.has_value()
-							   ? git_revwalk_push_ref(walk, request.Ref->c_str())
-							   : git_revwalk_push_head(walk);
+							   ? git_revwalk_push_ref(walk.get(), request.Ref->c_str())
+							   : git_revwalk_push_head(walk.get());
 
 		if (pushed != 0)
 		{
@@ -259,7 +254,6 @@ namespace Core {
 			// panel listing it and this call. Neither is worth a failure the user has to
 			// read; both mean "there is nothing to show".
 			const std::string message = LastLibgit2Message();
-			git_revwalk_free(walk);
 
 			if (request.Ref.has_value())
 			{
@@ -315,7 +309,7 @@ namespace Core {
 				break;
 			}
 
-			if (git_revwalk_next(&id, walk) != 0)
+			if (git_revwalk_next(&id, walk.get()) != 0)
 			{
 				// The walk ran out of commits on its own: this page is the whole history.
 				break;
@@ -323,17 +317,16 @@ namespace Core {
 
 			++walked;
 
-			git_commit* commit = nullptr;
+			CommitHandle commit;
 
-			if (git_commit_lookup(&commit, m_Handle, &id) != 0)
+			if (git_commit_lookup(Out(commit), m_Handle, &id) != 0)
 			{
 				CORE_TRACE("Skipping an unreadable commit while walking the history");
 				complete = false;
 				continue;
 			}
 
-			CommitSummary summary = ToSummary(commit);
-			git_commit_free(commit);
+			CommitSummary summary = ToSummary(commit.get());
 
 			if (!tracked.has_value())
 			{
@@ -434,7 +427,6 @@ namespace Core {
 			}
 		}
 
-		git_revwalk_free(walk);
 		return LogPage{std::move(commits), complete, std::move(unpushed.Commits), unpushed.Known};
 	}
 }

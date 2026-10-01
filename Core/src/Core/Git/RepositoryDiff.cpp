@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -158,10 +159,10 @@ namespace Core {
 		// The tree of a commit, or null for a side that is genuinely absent. A null tree is
 		// the empty tree to libgit2, so a lookup that merely failed must never come back as
 		// one: it is reported, or the diff would read as every file added or deleted.
-		const auto treeOfCommit = [](git_commit* commit) -> Result<git_tree*> {
-			git_tree* tree = nullptr;
+		const auto treeOfCommit = [](git_commit* commit) -> Result<TreeHandle> {
+			TreeHandle tree;
 
-			if (git_commit_tree(&tree, commit) != 0)
+			if (git_commit_tree(Out(tree), commit) != 0)
 			{
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot read a commit's tree: {}", LastLibgit2Message())};
@@ -170,30 +171,28 @@ namespace Core {
 			return tree;
 		};
 
-		const auto treeOf = [this, &treeOfCommit](const std::optional<Oid>& id) -> Result<git_tree*> {
+		const auto treeOf = [this, &treeOfCommit](const std::optional<Oid>& id) -> Result<TreeHandle> {
 			if (!id.has_value())
 			{
-				return static_cast<git_tree*>(nullptr);
+				return TreeHandle{};
 			}
 
 			git_oid raw = ToGitOid(*id);
 
-			git_commit* commit = nullptr;
-			if (git_commit_lookup(&commit, m_Handle, &raw) != 0)
+			CommitHandle commit;
+			if (git_commit_lookup(Out(commit), m_Handle, &raw) != 0)
 			{
 				return Error{ErrorCode::NotFound,
 							 std::format("cannot find commit {}: {}", id->ToHex(),
 										 LastLibgit2Message())};
 			}
 
-			Result<git_tree*> tree = treeOfCommit(commit);
-			git_commit_free(commit);
-			return tree;
+			return treeOfCommit(commit.get());
 		};
 
 		// An unborn HEAD has no tree, and that is an answer: the index is then all new.
 		// Any other failure to read HEAD is not.
-		const auto headTree = [this, &treeOfCommit]() -> Result<git_tree*> {
+		const auto headTree = [this, &treeOfCommit]() -> Result<TreeHandle> {
 			const int unborn = git_repository_head_unborn(m_Handle);
 
 			if (unborn < 0)
@@ -204,7 +203,7 @@ namespace Core {
 
 			if (unborn == 1)
 			{
-				return static_cast<git_tree*>(nullptr);
+				return TreeHandle{};
 			}
 
 			git_oid headId{};
@@ -215,49 +214,42 @@ namespace Core {
 							 std::format("cannot read HEAD: {}", LastLibgit2Message())};
 			}
 
-			git_commit* commit = nullptr;
-			if (git_commit_lookup(&commit, m_Handle, &headId) != 0)
+			CommitHandle commit;
+			if (git_commit_lookup(Out(commit), m_Handle, &headId) != 0)
 			{
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot read the HEAD commit: {}", LastLibgit2Message())};
 			}
 
-			Result<git_tree*> tree = treeOfCommit(commit);
-			git_commit_free(commit);
-			return tree;
+			return treeOfCommit(commit.get());
 		};
 
-		git_diff* diff = nullptr;
-		git_tree* left = nullptr;
-		git_tree* right = nullptr;
+		// Declared before the diff, so the diff is freed before the trees it was made from.
+		TreeHandle left;
+		TreeHandle right;
+		DiffHandle diff;
 		int created = -1;
-
-		const auto fail = [&](Error error) -> Result<Diff> {
-			git_tree_free(right);
-			git_tree_free(left);
-			return error;
-		};
 
 		switch (request.Target)
 		{
 			case DiffTarget::WorkTreeToIndex:
-				created = git_diff_index_to_workdir(&diff, m_Handle, nullptr, &options);
+				created = git_diff_index_to_workdir(Out(diff), m_Handle, nullptr, &options);
 				break;
 
 			case DiffTarget::IndexToHead:
 			case DiffTarget::WorkTreeToHead:
 			{
-				Result<git_tree*> head = headTree();
+				Result<TreeHandle> head = headTree();
 
 				if (!head.HasValue())
 				{
 					return head.GetError();
 				}
 
-				left = head.GetValue();
+				left = std::move(head).GetValue();
 				created = request.Target == DiffTarget::IndexToHead
-							  ? git_diff_tree_to_index(&diff, m_Handle, left, nullptr, &options)
-							  : git_diff_tree_to_workdir_with_index(&diff, m_Handle, left, &options);
+							  ? git_diff_tree_to_index(Out(diff), m_Handle, left.get(), nullptr, &options)
+							  : git_diff_tree_to_workdir_with_index(Out(diff), m_Handle, left.get(), &options);
 				break;
 			}
 
@@ -271,79 +263,73 @@ namespace Core {
 
 				git_oid raw = ToGitOid(*request.From);
 
-				git_commit* commit = nullptr;
-				if (git_commit_lookup(&commit, m_Handle, &raw) != 0)
+				CommitHandle commit;
+				if (git_commit_lookup(Out(commit), m_Handle, &raw) != 0)
 				{
 					return Error{ErrorCode::NotFound,
 								 std::format("cannot find commit {}: {}", request.From->ToHex(),
 											 LastLibgit2Message())};
 				}
 
-				Result<git_tree*> commitTree = treeOfCommit(commit);
+				Result<TreeHandle> commitTree = treeOfCommit(commit.get());
 
 				if (!commitTree.HasValue())
 				{
-					git_commit_free(commit);
 					return commitTree.GetError();
 				}
 
-				right = commitTree.GetValue();
+				right = std::move(commitTree).GetValue();
 
 				// First parent only. A merge shown against every parent at once reads
 				// as a diff nobody wrote; the view offers the other parents separately.
 				// A root commit has no parent, and diffing it against nothing is the
 				// right answer; a parent that exists but cannot be read is not.
-				if (git_commit_parentcount(commit) > 0)
+				if (git_commit_parentcount(commit.get()) > 0)
 				{
-					git_commit* parent = nullptr;
+					CommitHandle parent;
 
-					if (git_commit_parent(&parent, commit, 0) != 0)
+					if (git_commit_parent(Out(parent), commit.get(), 0) != 0)
 					{
 						const std::string message = LastLibgit2Message();
-						git_commit_free(commit);
-						return fail(Error{ErrorCode::IoFailure,
-										  std::format("cannot read the parent of {}: {}",
-													  request.From->ToHex(), message)});
+						return Error{ErrorCode::IoFailure,
+									 std::format("cannot read the parent of {}: {}",
+												 request.From->ToHex(), message)};
 					}
 
-					Result<git_tree*> parentTree = treeOfCommit(parent);
-					git_commit_free(parent);
+					Result<TreeHandle> parentTree = treeOfCommit(parent.get());
 
 					if (!parentTree.HasValue())
 					{
-						git_commit_free(commit);
-						return fail(parentTree.GetError());
+						return parentTree.GetError();
 					}
 
-					left = parentTree.GetValue();
+					left = std::move(parentTree).GetValue();
 				}
 
-				git_commit_free(commit);
-
-				created = git_diff_tree_to_tree(&diff, m_Handle, left, right, &options);
+				created = git_diff_tree_to_tree(Out(diff), m_Handle, left.get(), right.get(), &options);
 				break;
 			}
 
 			case DiffTarget::RevisionToRevision:
 			{
-				Result<git_tree*> from = treeOf(request.From);
+				Result<TreeHandle> from = treeOf(request.From);
 
 				if (!from.HasValue())
 				{
 					return from.GetError();
 				}
 
-				left = from.GetValue();
+				left = std::move(from).GetValue();
 
-				Result<git_tree*> to = treeOf(request.To);
+				Result<TreeHandle> to = treeOf(request.To);
 
 				if (!to.HasValue())
 				{
-					return fail(to.GetError());
+					return to.GetError();
 				}
 
-				right = to.GetValue();
-				created = git_diff_tree_to_tree(&diff, m_Handle, left, right, &options);
+				right = std::move(to).GetValue();
+				created = git_diff_tree_to_tree(Out(diff), m_Handle, left.get(), right.get(), &options);
 				break;
 			}
 		}
@@ -352,27 +338,21 @@ namespace Core {
 		{
 			const std::string message = LastLibgit2Message();
 
-			return fail(Error{ErrorCode::IoFailure, std::format("cannot diff: {}", message)});
+			return Error{ErrorCode::IoFailure, std::format("cannot diff: {}", message)};
 		}
 
 		git_diff_find_options findOptions = GIT_DIFF_FIND_OPTIONS_INIT;
 		findOptions.flags = GIT_DIFF_FIND_RENAMES | GIT_DIFF_FIND_COPIES;
 
-		if (git_diff_find_similar(diff, &findOptions) != 0)
+		if (git_diff_find_similar(diff.get(), &findOptions) != 0)
 		{
 			const std::string message = LastLibgit2Message();
 
-			git_diff_free(diff);
-			return fail(Error{ErrorCode::IoFailure,
-							  std::format("cannot detect renames: {}", message)});
+			return Error{ErrorCode::IoFailure, std::format("cannot detect renames: {}", message)};
 		}
 
 		Collector collector;
-		const int walked = git_diff_foreach(diff, OnFile, nullptr, OnHunk, OnLine, &collector);
-
-		git_diff_free(diff);
-		git_tree_free(right);
-		git_tree_free(left);
+		const int walked = git_diff_foreach(diff.get(), OnFile, nullptr, OnHunk, OnLine, &collector);
 
 		if (walked != 0)
 		{

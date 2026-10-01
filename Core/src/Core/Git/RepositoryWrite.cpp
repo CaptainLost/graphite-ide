@@ -4,6 +4,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -46,11 +47,11 @@ namespace Core {
 
 		// Every write below opens the index the same way and reports the same failure when
 		// it cannot, so the three lines live here once.
-		Result<git_index*> OpenIndex(git_repository* handle)
+		Result<IndexHandle> OpenIndex(git_repository* handle)
 		{
-			git_index* index = nullptr;
+			IndexHandle index;
 
-			if (git_repository_index(&index, handle) != 0)
+			if (git_repository_index(Out(index), handle) != 0)
 			{
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot read the index: {}", LastLibgit2Message())};
@@ -74,7 +75,7 @@ namespace Core {
 			return opened.GetError();
 		}
 
-		git_index* index = opened.GetValue();
+		const IndexHandle index = std::move(opened).GetValue();
 
 		for (const std::filesystem::path& path : paths)
 		{
@@ -91,7 +92,6 @@ namespace Core {
 			// is only written at the end, so nothing of it has been touched.
 			if (code)
 			{
-				git_index_free(index);
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot stage '{}': {}", ToGenericUtf8(path), code.message())};
 			}
@@ -100,7 +100,7 @@ namespace Core {
 
 			if (!onDisk)
 			{
-				result = git_index_remove_bypath(index, text.c_str());
+				result = git_index_remove_bypath(index.get(), text.c_str());
 			}
 			else if (std::filesystem::is_directory(m_WorkingDirectory / path, code))
 			{
@@ -116,13 +116,12 @@ namespace Core {
 
 				if (!files.HasValue())
 				{
-					git_index_free(index);
 					return files.GetError();
 				}
 
 				for (const FileStatus& file : files.GetValue().Entries)
 				{
-					result = git_index_add_bypath(index, ToGitPath(file.Path).c_str());
+					result = git_index_add_bypath(index.get(), ToGitPath(file.Path).c_str());
 
 					if (result != 0)
 					{
@@ -132,19 +131,17 @@ namespace Core {
 			}
 			else
 			{
-				result = git_index_add_bypath(index, text.c_str());
+				result = git_index_add_bypath(index.get(), text.c_str());
 			}
 
 			if (result != 0)
 			{
-				git_index_free(index);
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot stage '{}': {}", text, LastLibgit2Message())};
 			}
 		}
 
-		const int written = git_index_write(index);
-		git_index_free(index);
+		const int written = git_index_write(index.get());
 
 		if (written != 0)
 		{
@@ -166,15 +163,10 @@ namespace Core {
 
 		// A null target means "reset to nothing", which removes the entries — the right
 		// answer under an unborn HEAD, where there is no commit to restore from.
-		git_object* head = nullptr;
-		const bool born = git_revparse_single(&head, m_Handle, "HEAD") == 0;
+		ObjectHandle head;
+		const bool born = git_revparse_single(Out(head), m_Handle, "HEAD") == 0;
 
-		const int result = git_reset_default(m_Handle, born ? head : nullptr, &spec.Array);
-
-		if (head != nullptr)
-		{
-			git_object_free(head);
-		}
+		const int result = git_reset_default(m_Handle, born ? head.get() : nullptr, &spec.Array);
 
 		if (result != 0)
 		{
@@ -272,12 +264,12 @@ namespace Core {
 			return Error{ErrorCode::InvalidArgument, "the commit message is empty"};
 		}
 
-		git_signature* who = nullptr;
+		SignatureHandle who;
 
 		// git's own resolution: repository config, then global, then the environment. A
 		// repository with no identity fails here, which is the honest answer — the
 		// alternative is inventing an author that outlives the mistake in the history.
-		if (git_signature_default(&who, m_Handle) != 0)
+		if (git_signature_default(Out(who), m_Handle) != 0)
 		{
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("cannot determine who is committing: {}", LastLibgit2Message())};
@@ -287,28 +279,22 @@ namespace Core {
 
 		if (!opened.HasValue())
 		{
-			git_signature_free(who);
 			return opened.GetError();
 		}
 
-		git_index* index = opened.GetValue();
-
 		git_oid treeId{};
-		const int written = git_index_write_tree(&treeId, index);
-		git_index_free(index);
+		const int written = git_index_write_tree(&treeId, opened.GetValue().get());
 
 		if (written != 0)
 		{
-			git_signature_free(who);
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot write a tree from the index: {}", LastLibgit2Message())};
 		}
 
-		git_tree* tree = nullptr;
+		TreeHandle tree;
 
-		if (git_tree_lookup(&tree, m_Handle, &treeId) != 0)
+		if (git_tree_lookup(Out(tree), m_Handle, &treeId) != 0)
 		{
-			git_signature_free(who);
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read the tree just written: {}", LastLibgit2Message())};
 		}
@@ -316,12 +302,10 @@ namespace Core {
 		git_oid headId{};
 		const bool born = git_reference_name_to_id(&headId, m_Handle, "HEAD") == 0;
 
-		git_commit* head = nullptr;
+		CommitHandle head;
 
-		if (born && git_commit_lookup(&head, m_Handle, &headId) != 0)
+		if (born && git_commit_lookup(Out(head), m_Handle, &headId) != 0)
 		{
-			git_tree_free(tree);
-			git_signature_free(who);
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
 		}
@@ -333,8 +317,6 @@ namespace Core {
 		{
 			if (!born)
 			{
-				git_tree_free(tree);
-				git_signature_free(who);
 				return Error{ErrorCode::InvalidArgument,
 							 "there is no commit to amend: HEAD is unborn"};
 			}
@@ -348,9 +330,9 @@ namespace Core {
 
 			// git_commit_amend keeps the parents of the commit it replaces, which is the
 			// whole reason amend is not just "commit with HEAD^ as the parent".
-			if (git_commit_amend(&commitId, head, "HEAD", who, who,
+			if (git_commit_amend(&commitId, head.get(), "HEAD", who.get(), who.get(),
 								 keepMessage ? nullptr : "UTF-8",
-								 keepMessage ? nullptr : request.Message.c_str(), tree) == 0)
+								 keepMessage ? nullptr : request.Message.c_str(), tree.get()) == 0)
 			{
 				answer = ToOid(commitId);
 			}
@@ -362,10 +344,10 @@ namespace Core {
 		}
 		else
 		{
-			const git_commit* parents[1] = {head};
+			const git_commit* parents[1] = {head.get()};
 
-			if (git_commit_create(&commitId, m_Handle, "HEAD", who, who, "UTF-8",
-								  request.Message.c_str(), tree, born ? 1u : 0u,
+			if (git_commit_create(&commitId, m_Handle, "HEAD", who.get(), who.get(), "UTF-8",
+								  request.Message.c_str(), tree.get(), born ? 1u : 0u,
 								  born ? parents : nullptr) == 0)
 			{
 				answer = ToOid(commitId);
@@ -376,14 +358,6 @@ namespace Core {
 							   std::format("cannot commit: {}", LastLibgit2Message())};
 			}
 		}
-
-		if (head != nullptr)
-		{
-			git_commit_free(head);
-		}
-
-		git_tree_free(tree);
-		git_signature_free(who);
 
 		return answer;
 	}

@@ -2,6 +2,7 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -26,12 +27,12 @@ namespace Core {
 		{
 			auto& collected = *static_cast<Collected*>(payload);
 
-			git_commit* commit = nullptr;
+			CommitHandle commit;
 
 			// A stash whose commit cannot be read is reported, not listed with a zero time:
 			// the list is what the writes resolve an id against, and a half-read entry would
 			// make a present stash look absent or a stale one look current.
-			if (git_commit_lookup(&commit, collected.Handle, id) != 0)
+			if (git_commit_lookup(Out(commit), collected.Handle, id) != 0)
 			{
 				collected.CommitUnreadable = true;
 				return -1;
@@ -41,8 +42,7 @@ namespace Core {
 			entry.Index = index;
 			entry.Message = message != nullptr ? message : "";
 			entry.Id = ToOid(*id);
-			entry.Time = static_cast<std::int64_t>(git_commit_time(commit));
-			git_commit_free(commit);
+			entry.Time = static_cast<std::int64_t>(git_commit_time(commit.get()));
 
 			collected.Entries.push_back(std::move(entry));
 			return 0;
@@ -86,9 +86,9 @@ namespace Core {
 		if (m_Handle == nullptr)
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 
-		git_signature* stasher = nullptr;
+		SignatureHandle stasher;
 
-		if (git_signature_default(&stasher, m_Handle) != 0)
+		if (git_signature_default(Out(stasher), m_Handle) != 0)
 		{
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("cannot stash without a git identity: {}", LastLibgit2Message())};
@@ -96,9 +96,8 @@ namespace Core {
 
 		git_oid id{};
 		const std::uint32_t flags = includeUntracked ? GIT_STASH_INCLUDE_UNTRACKED : GIT_STASH_DEFAULT;
-		const int result = git_stash_save(&id, m_Handle, stasher,
+		const int result = git_stash_save(&id, m_Handle, stasher.get(),
 										  message.empty() ? nullptr : message.c_str(), flags);
-		git_signature_free(stasher);
 
 		if (result == GIT_ENOTFOUND)
 			return false;

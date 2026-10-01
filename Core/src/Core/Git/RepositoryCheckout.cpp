@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
@@ -29,8 +30,8 @@ namespace Core {
 		// evidence the branch is absent, and reading it so would create a second one.
 		Result<bool> LocalExists(git_repository* handle, const std::string& name)
 		{
-			git_reference* reference = nullptr;
-			const int result = git_branch_lookup(&reference, handle, name.c_str(), GIT_BRANCH_LOCAL);
+			ReferenceHandle reference;
+			const int result = git_branch_lookup(Out(reference), handle, name.c_str(), GIT_BRANCH_LOCAL);
 
 			if (result == GIT_ENOTFOUND)
 				return false;
@@ -41,15 +42,13 @@ namespace Core {
 							 std::format("cannot look up branch '{}': {}", name, LastLibgit2Message())};
 			}
 
-			git_reference_free(reference);
 			return true;
 		}
 
 		// The commit the target resolves to, and - for a branch - the ref HEAD should name.
-		// Owns Commit; the caller frees it on every path.
 		struct Resolved
 		{
-			git_object* Commit = nullptr;
+			ObjectHandle Commit;
 			std::string HeadRef;
 			bool CreateTracking = false;
 			std::string LocalName;
@@ -95,7 +94,7 @@ namespace Core {
 				break;
 			}
 
-			const int result = git_revparse_single(&resolved.Commit, handle, (spec + "^{commit}").c_str());
+			const int result = git_revparse_single(Out(resolved.Commit), handle, (spec + "^{commit}").c_str());
 
 			if (result != 0)
 			{
@@ -123,34 +122,31 @@ namespace Core {
 			if (unborn == 1)
 				return removed;
 
-			git_object* headTree = nullptr;
+			ObjectHandle headTree;
 
-			if (git_revparse_single(&headTree, handle, "HEAD^{tree}") != 0)
+			if (git_revparse_single(Out(headTree), handle, "HEAD^{tree}") != 0)
 				return Error{ErrorCode::IoFailure, std::format("cannot read HEAD's tree: {}", LastLibgit2Message())};
 
-			git_tree* targetTree = nullptr;
+			TreeHandle targetTree;
 
-			if (git_commit_tree(&targetTree, reinterpret_cast<git_commit*>(target)) != 0)
+			if (git_commit_tree(Out(targetTree), reinterpret_cast<git_commit*>(target)) != 0)
 			{
-				git_object_free(headTree);
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot read the target's tree: {}", LastLibgit2Message())};
 			}
 
-			git_diff* diff = nullptr;
-			const int diffed = git_diff_tree_to_tree(&diff, handle, reinterpret_cast<git_tree*>(headTree),
-													 targetTree, nullptr);
-			git_tree_free(targetTree);
-			git_object_free(headTree);
+			DiffHandle diff;
+			const int diffed = git_diff_tree_to_tree(Out(diff), handle, reinterpret_cast<git_tree*>(headTree.get()),
+													 targetTree.get(), nullptr);
 
 			if (diffed != 0)
 				return Error{ErrorCode::IoFailure, std::format("cannot compare the trees: {}", LastLibgit2Message())};
 
-			const std::size_t count = git_diff_num_deltas(diff);
+			const std::size_t count = git_diff_num_deltas(diff.get());
 
 			for (std::size_t i = 0; i < count; ++i)
 			{
-				const git_diff_delta* delta = git_diff_get_delta(diff, i);
+				const git_diff_delta* delta = git_diff_get_delta(diff.get(), i);
 
 				if (delta->status != GIT_DELTA_DELETED)
 					continue;
@@ -162,7 +158,6 @@ namespace Core {
 					removed.push_back(std::move(relative));
 			}
 
-			git_diff_free(diff);
 			return removed;
 		}
 
@@ -212,23 +207,21 @@ namespace Core {
 			options.show = GIT_STATUS_SHOW_WORKDIR_ONLY;
 			options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS;
 
-			git_status_list* list = nullptr;
+			StatusListHandle list;
 
-			if (git_status_list_new(&list, handle, &options) != 0)
+			if (git_status_list_new(Out(list), handle, &options) != 0)
 				return Error{ErrorCode::IoFailure, std::format("cannot list untracked files: {}", LastLibgit2Message())};
 
 			std::vector<std::filesystem::path> files;
-			const std::size_t count = git_status_list_entrycount(list);
+			const std::size_t count = git_status_list_entrycount(list.get());
 
 			for (std::size_t i = 0; i < count; ++i)
 			{
-				const git_status_entry* entry = git_status_byindex(list, i);
+				const git_status_entry* entry = git_status_byindex(list.get(), i);
 
 				if ((entry->status & GIT_STATUS_WT_NEW) != 0 && entry->index_to_workdir != nullptr)
 					files.push_back(FromUtf8(entry->index_to_workdir->old_file.path));
 			}
-
-			git_status_list_free(list);
 
 			for (const std::filesystem::path& relative : files)
 			{
@@ -290,12 +283,11 @@ namespace Core {
 		if (!resolved.HasValue())
 			return resolved.GetError();
 
-		git_object* commit = resolved.GetValue().Commit;
+		git_object* commit = resolved.GetValue().Commit.get();
 		auto removed = Removals(m_Handle, commit, m_WorkingDirectory);
 
 		if (!removed.HasValue())
 		{
-			git_object_free(commit);
 			return removed.GetError();
 		}
 
@@ -305,7 +297,6 @@ namespace Core {
 		// A dry run that finds conflicts answers GIT_ECONFLICT, having notified every one of
 		// them first; that is the answer, not a failure.
 		const int result = git_checkout_tree(m_Handle, commit, &options);
-		git_object_free(commit);
 
 		if (result != 0 && result != GIT_ECONFLICT)
 		{
@@ -330,38 +321,34 @@ namespace Core {
 			return failed(resolved.GetError());
 
 		const Resolved& r = resolved.GetValue();
-		auto removed = Removals(m_Handle, r.Commit, m_WorkingDirectory);
+		auto removed = Removals(m_Handle, r.Commit.get(), m_WorkingDirectory);
 
 		if (!removed.HasValue())
 		{
-			git_object_free(r.Commit);
 			return failed(removed.GetError());
 		}
 
 		// The tracking branch is created before the files move, so that a failure to create it
 		// stops the checkout before anything changes; a failed checkout deletes it again.
-		git_reference* created = nullptr;
+		ReferenceHandle created;
 
 		if (r.CreateTracking)
 		{
-			if (git_branch_create(&created, m_Handle, r.LocalName.c_str(),
-								  reinterpret_cast<git_commit*>(r.Commit), 0) != 0)
+			if (git_branch_create(Out(created), m_Handle, r.LocalName.c_str(),
+								  reinterpret_cast<git_commit*>(r.Commit.get()), 0) != 0)
 			{
-				git_object_free(r.Commit);
 				return failed(Error{ErrorCode::InvalidArgument,
 									std::format("cannot create branch '{}': {}", r.LocalName, LastLibgit2Message())});
 			}
 
-			if (git_branch_set_upstream(created, target.Name.c_str()) != 0)
+			if (git_branch_set_upstream(created.get(), target.Name.c_str()) != 0)
 			{
 				std::string message = std::format("cannot make '{}' track '{}': {}", r.LocalName,
 												  target.Name, LastLibgit2Message());
 
-				if (git_branch_delete(created) != 0)
+				if (git_branch_delete(created.get()) != 0)
 					message += std::format("; the new branch could not be removed: {}", LastLibgit2Message());
 
-				git_reference_free(created);
-				git_object_free(r.Commit);
 				return failed(Error{ErrorCode::IoFailure, std::move(message)});
 			}
 		}
@@ -373,7 +360,7 @@ namespace Core {
 		// is refused with the working tree and the index exactly as they were, and by the time
 		// any other failure can happen, Updated already holds everything the checkout meant to
 		// write.
-		const int checkedOut = git_checkout_tree(m_Handle, r.Commit, &options);
+		const int checkedOut = git_checkout_tree(m_Handle, r.Commit.get(), &options);
 		AddRemovals(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
 
 		if (checkedOut != 0)
@@ -387,13 +374,9 @@ namespace Core {
 
 			if (created != nullptr)
 			{
-				if (git_branch_delete(created) != 0)
+				if (git_branch_delete(created.get()) != 0)
 					message += std::format("; the new branch could not be removed: {}", LastLibgit2Message());
-
-				git_reference_free(created);
 			}
-
-			git_object_free(r.Commit);
 
 			// A refusal changed nothing. Any other failure may have written or removed any of
 			// the planned paths, so all of them are named.
@@ -404,12 +387,10 @@ namespace Core {
 		}
 
 		const int moved = target.Kind == CheckoutKind::Commit
-							  ? git_repository_set_head_detached(m_Handle, git_object_id(r.Commit))
+							  ? git_repository_set_head_detached(m_Handle, git_object_id(r.Commit.get()))
 							  : git_repository_set_head(m_Handle, r.HeadRef.c_str());
 
 		const bool branchCreated = created != nullptr;
-		git_reference_free(created);
-		git_object_free(r.Commit);
 
 		if (moved != 0)
 		{
@@ -430,15 +411,14 @@ namespace Core {
 		if (m_Handle == nullptr)
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 
-		git_object* head = nullptr;
+		ObjectHandle head;
 
-		if (git_revparse_single(&head, m_Handle, "HEAD^{commit}") != 0)
+		if (git_revparse_single(Out(head), m_Handle, "HEAD^{commit}") != 0)
 			return Error{ErrorCode::NotFound, std::format("cannot read HEAD: {}", LastLibgit2Message())};
 
 		// A hard reset replaces the checkout strategy it is given with FORCE, so untracked
 		// files cannot be removed through it - and would not be removed right by it anyway.
-		const int result = git_reset(m_Handle, head, GIT_RESET_HARD, nullptr);
-		git_object_free(head);
+		const int result = git_reset(m_Handle, head.get(), GIT_RESET_HARD, nullptr);
 
 		if (result != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot discard changes: {}", LastLibgit2Message())};
