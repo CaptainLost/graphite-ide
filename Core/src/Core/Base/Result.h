@@ -26,7 +26,7 @@ namespace Core {
 	};
 
 	template<typename T>
-	class Result
+	class [[nodiscard]] Result
 	{
 	public:
 		Result(T value) : m_Data(std::move(value)) {}
@@ -69,7 +69,7 @@ namespace Core {
 	};
 
 	template<>
-	class Result<void>
+	class [[nodiscard]] Result<void>
 	{
 	public:
 		Result() = default;

@@ -3,6 +3,7 @@
 #include "Core/Term/TerminalSession.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Log.h"
 
 #include <algorithm>
 #include <array>
@@ -204,9 +205,15 @@ namespace Core {
 
 		m_Screen.Resize(columns, rows);
 
+		// Once the shell has exited, its console refusing a resize is expected and not worth a
+		// line per column of a window drag; while it runs, a refusal leaves the shell wrapping
+		// at the old width, which the log should explain.
 		if (m_Console)
 		{
-			(void)m_Console->Resize(columns, rows);
+			if (const auto resized = m_Console->Resize(columns, rows); !resized && m_Console->IsRunning())
+			{
+				CORE_WARN("Cannot resize the terminal to {}x{}: {}", columns, rows, resized.GetError().Message);
+			}
 		}
 	}
 }
