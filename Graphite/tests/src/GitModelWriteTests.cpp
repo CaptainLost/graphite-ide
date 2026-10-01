@@ -94,6 +94,11 @@ namespace {
 
 		Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) override
 		{
+			if (FailDelete)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "cannot delete"};
+			}
+
 			return Record("delete", paths);
 		}
 
@@ -111,6 +116,9 @@ namespace {
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
+
+		// Fails only the untracked-file deletion, so a discard can restore and then stop.
+		bool FailDelete = false;
 		int DiffCalls = 0;
 
 		// Deliberately distinct from the "C:/repo" OpenA() gives GitModel::SetRoot(), so a
@@ -294,6 +302,31 @@ TEST_CASE("TakeDiscarded names every path the discard touched")
 	const std::vector<std::filesystem::path> touched = model.TakeDiscarded();
 	CHECK(touched.size() == 2);
 	CHECK(model.TakeDiscarded().empty());
+}
+
+TEST_CASE("A discard that restored files and then failed to delete still announces and refreshes")
+{
+	WritePort port;
+	port.FailDelete = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDiscard({.Restore = {"a.txt"}, .Delete = {"new.txt"}});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.GetWriteError().has_value());
+	CHECK(model.GetAppliedWriteCount() == 1);
+
+	// Only the restored path: the delete never happened, and the editor must not be told
+	// about a file that is still as it was.
+	const std::vector<std::filesystem::path> touched = model.TakeDiscarded();
+	REQUIRE(touched.size() == 1);
+	CHECK(touched[0] == std::filesystem::path{"a.txt"});
+
+	// The refresh is debounced, so it shows once the clock passes the mark.
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(model.GetStatus() != nullptr);
 }
 
 TEST_CASE("GetWorkingDirectory reports the repository's working directory, not the folder that was opened")

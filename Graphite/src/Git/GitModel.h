@@ -457,11 +457,14 @@ namespace Graphite {
 			std::uint64_t Generation = 0;
 		};
 
-		// What a write came back with. An error or, for a commit, an id; never both.
+		// What a write came back with. For a commit, an id or an error, never both. A discard
+		// can be both halves of a result: Changed names the paths it did restore or delete,
+		// and Failure the step that then stopped it.
 		struct WriteOutcome
 		{
 			std::optional<Core::Error> Failure;
 			std::optional<Core::Oid> Committed;
+			std::vector<std::filesystem::path> Changed;
 		};
 
 		void Enqueue(WriteJob job);

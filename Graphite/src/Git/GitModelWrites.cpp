@@ -124,6 +124,8 @@ namespace Graphite {
 						outcome.Failure = result.GetError();
 						break;
 					}
+
+					outcome.Changed = job.Discard.Restore;
 				}
 
 				if (!job.Discard.Delete.empty())
@@ -131,7 +133,11 @@ namespace Graphite {
 					if (const auto result = m_Port.DeleteUntracked(job.Discard.Delete); !result.HasValue())
 					{
 						outcome.Failure = result.GetError();
+						break;
 					}
+
+					outcome.Changed.insert(
+						outcome.Changed.end(), job.Discard.Delete.begin(), job.Discard.Delete.end());
 				}
 
 				break;
@@ -193,6 +199,21 @@ namespace Graphite {
 		if (outcome.Failure.has_value())
 		{
 			m_WriteError = std::move(outcome.Failure);
+
+			// A discard that stopped halfway has still changed files the user confirmed
+			// discarding: the editor must be told (ADR 0501) and the status must refresh,
+			// whatever the error says about the rest.
+			if (job.Kind == WriteKind::Discard)
+			{
+				if (!outcome.Changed.empty())
+				{
+					m_Discarded = std::move(outcome.Changed);
+					++m_AppliedWrites;
+				}
+
+				MarkDirty();
+			}
+
 			PumpWrites();
 			return;
 		}
@@ -209,8 +230,7 @@ namespace Graphite {
 			// Replaced rather than appended: safe only because at most one write is applied
 			// per OnUpdate, so a second discard's Deliver cannot land until this one's inbox
 			// entry has already been drained and TakeDiscarded has had its chance to read it.
-			m_Discarded = job.Discard.Restore;
-			m_Discarded.insert(m_Discarded.end(), job.Discard.Delete.begin(), job.Discard.Delete.end());
+			m_Discarded = std::move(outcome.Changed);
 		}
 
 		// The same mark a file change or a RepositoryChangedEvent makes, so status, branches
