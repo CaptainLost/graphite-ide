@@ -1,6 +1,6 @@
 #include "Editor/DefinitionNavigation.h"
 
-#include "Lang/Server/LspClient.h"
+#include "Lang/Server/LspProtocol.h"
 
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"

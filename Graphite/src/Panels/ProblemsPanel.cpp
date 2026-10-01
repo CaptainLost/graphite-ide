@@ -3,7 +3,7 @@
 #include "Editor/Palettes.h"
 #include "Editor/SelectInDocument.h"
 
-#include "Lang/Server/LspClient.h"
+#include "Lang/Server/LspProtocol.h"
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
