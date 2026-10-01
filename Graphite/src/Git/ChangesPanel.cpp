@@ -1401,10 +1401,9 @@ namespace Graphite {
 
 		for (std::filesystem::path& path : DirtyDocuments())
 		{
-			// A path outside the working directory relates to it through "..".
-			const std::filesystem::path relative = path.lexically_relative(root);
-
-			if (!relative.empty() && *relative.begin() != "..")
+			// An empty root - no repository open yet - matches nothing, deliberately: with no
+			// working directory there is nothing a stash could take, so nothing is saved.
+			if (Core::IsSameOrWithin(path, root))
 			{
 				inside.push_back(std::move(path));
 			}
@@ -1417,6 +1416,13 @@ namespace Graphite {
 	{
 		if (!m_StashQuestion.Begin())
 		{
+			// Begin withdraws the question itself when ImGui closes the popup (Escape), which
+			// reaches nothing here - so the edits are dropped on the frame it notices.
+			if (!m_StashQuestion.IsAsked())
+			{
+				ResetStashDialog();
+			}
+
 			return;
 		}
 
