@@ -617,15 +617,18 @@ namespace Graphite {
 		ImGui::SeparatorText("Stashes");
 
 		const std::shared_ptr<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
+		const std::optional<Core::Error>& error = m_Model.GetStashesError();
+
+		// A list that could not be read says why rather than claiming there is nothing - and
+		// above an older list too, which may no longer be what is stashed.
+		if (error.has_value())
+		{
+			ImGui::TextDisabled("%s", error->Message.c_str());
+		}
 
 		if (!stashes || stashes->empty())
 		{
-			// A list that could not be read says why rather than claiming there is nothing.
-			if (const std::optional<Core::Error>& error = m_Model.GetStashesError(); error.has_value())
-			{
-				ImGui::TextDisabled("%s", error->Message.c_str());
-			}
-			else
+			if (!error.has_value())
 			{
 				ImGui::TextDisabled("No stashes");
 			}
