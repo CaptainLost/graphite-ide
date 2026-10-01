@@ -114,3 +114,5 @@ record superseding this one, not an edit to it.
   cross.
 - [0005](0005-target-c-20-with-headers-not-modules.md) — why `std::expected` was
   not on the table.
+- [0537](0537-mark-result-nodiscard-on-the-type-not-on-functions.md) — amends
+  this record: the attribute sits on the type, and a deliberate discard says why.

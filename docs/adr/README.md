@@ -566,4 +566,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0534](0534-scale-the-interface-by-the-monitor-and-by-a-user-setting-and-keep-code-text-size-separate.md) | Scale the interface by the monitor and by a user setting, and keep code text size separate | proposed | 2026-10-01 |
 | [0535](0535-show-git-state-in-the-status-bar-read-only-and-keep-git-actions-in-the-panels.md) | Show git state in the status bar read-only and keep git actions in the panels | proposed | 2026-10-01 |
 | [0536](0536-initialise-a-repository-without-asking-for-confirmation.md) | Initialise a repository without asking for confirmation | proposed | 2026-10-01 |
+| [0537](0537-mark-result-nodiscard-on-the-type-not-on-functions.md) | Mark Result nodiscard on the type, not on functions | accepted | 2026-10-01 |
 <!-- /adr-index -->

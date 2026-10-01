@@ -123,3 +123,5 @@ it replaced, so cost is now part of the naming rule rather than an afterthought.
 - [0386](0386-sf-22-use-an-unnamed-anonymous-namespace-for-all-internal-non-exported-entities.md) —
   explicitly not overridden.
 - [0060](0060-c-37-make-destructors-noexcept.md) — contradicted in letter.
+- [0537](0537-mark-result-nodiscard-on-the-type-not-on-functions.md) — amends
+  this record: `Result` is `[[nodiscard]]` on the type; functions still are not.
