@@ -107,12 +107,28 @@ namespace Graphite {
 			std::optional<std::size_t> PendingRequest;
 		};
 
+		// A subagent's conversation shown in its session's window in place of the session's,
+		// until the reader goes back. Not remembered across launches.
+		struct OpenedAgent
+		{
+			SubagentInfo Info;
+			TranscriptViews Views;
+		};
+
 		struct Entry
 		{
 			std::string Id;
 			std::string Title;
 			std::optional<SessionSummary> Summary;
 			TranscriptViews Main;
+
+			// The subagent being read in this window, if any. The session's own views are left
+			// as they were while it is shown, so going back finds them where the reader left them.
+			Core::Scope<OpenedAgent> Agent;
+
+			// A subagent the conversation asked to show this frame, by the id of the call that
+			// started it. Opened once the tab bar is done, never while it is being drawn.
+			std::optional<std::string> PendingAgent;
 			bool Fresh = true;
 			bool Focus = true;
 
@@ -141,10 +157,16 @@ namespace Graphite {
 		// Applies what a transcript's reader delivered since the last call.
 		static void Take(TranscriptViews& views);
 
-		// The tab bar - Conversation, Cost, Requests - drawn from `views`. The selection is the
-		// entry's whichever transcript is drawn. `summary` is what the Cost tab splits the total by.
-		void DrawTabs(Entry& entry, TranscriptViews& views, const std::optional<SessionSummary>& summary,
-					  const SessionPalette& palette);
+		// The tab bar - Conversation, Cost, Requests - drawn from the session's transcript, or from
+		// `agent`'s when it is given. The selection is the entry's whichever is drawn.
+		void DrawTabs(Entry& entry, const SessionPalette& palette, OpenedAgent* agent);
+
+		// The row above the tab bar while a subagent is shown. True when the reader asked to go
+		// back to the session: its arrow or title, Esc, or the mouse's back button.
+		static bool DrawBreadcrumb(const Entry& entry);
+
+		// Starts reading the subagent started by call `toolUseId`, when the session knows it.
+		static void OpenAgent(Entry& entry, const std::string& toolUseId);
 
 		Core::EventBus& m_Events;
 		const ClaudeSettings& m_Settings;

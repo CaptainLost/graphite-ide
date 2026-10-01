@@ -5,6 +5,7 @@
 #include "Sessions/Pricing.h"
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
+#include "Sessions/SubagentLinks.h"
 #include "Sessions/ToolFacts.h"
 #include "Sessions/TurnParts.h"
 #include "Theme/SessionPalette.h"
@@ -41,6 +42,12 @@ namespace Graphite {
 		// Shows a request in the Requests tab, by its position in Timeline->GetRequests().
 		// Without it the table's rows have no button to go there.
 		std::function<void(std::size_t)> OpenRequest;
+
+		// The subagents this transcript started, by the id of the call that started each, and a
+		// way to show one's conversation. An Agent call offers that only when both are given and
+		// it is among Links.
+		const SubagentLinks* Links = nullptr;
+		std::function<void(const std::string& toolUseId)> OpenAgent;
 	};
 
 	// A session drawn for reading: a block per user message, Claude's replies with their

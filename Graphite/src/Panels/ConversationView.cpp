@@ -633,6 +633,13 @@ namespace Graphite {
 				events.Publish(OpenFileRequested{*path, false});
 		}
 
+		if (context.OpenAgent && context.Links != nullptr && (tool.Name == "Agent" || tool.Name == "Task") &&
+			context.Links->contains(tool.Id))
+		{
+			if (ImGui::SmallButton("Open conversation " ICON_MDI_ARROW_RIGHT))
+				context.OpenAgent(tool.Id);
+		}
+
 		if (const std::vector<std::string> lines = EditLines(tool); !lines.empty())
 		{
 			for (const std::string& line : lines)

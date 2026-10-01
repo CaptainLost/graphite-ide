@@ -3,6 +3,7 @@
 #include "Panels/SessionWindows.h"
 
 #include "Sessions/ClaudeSettings.h"
+#include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "UI/RememberedPlace.h"
 
@@ -15,6 +16,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <format>
 #include <string>
@@ -54,6 +56,37 @@ namespace Graphite {
 				ImGui::TextDisabled("Reading subagents\xe2\x80\xa6 %zu / %zu", progress.SubagentsDone,
 									progress.SubagentsTotal);
 			}
+		}
+
+		// A subagent's views draw under an id of their own, so they share no scroll or table
+		// state with the session's. The tab bar is outside it: its selection carries across.
+		class AgentIdScope
+		{
+		public:
+			explicit AgentIdScope(bool active) : m_Active(active)
+			{
+				if (m_Active)
+					ImGui::PushID("agent");
+			}
+
+			~AgentIdScope()
+			{
+				if (m_Active)
+					ImGui::PopID();
+			}
+
+			AgentIdScope(const AgentIdScope&) = delete;
+			AgentIdScope& operator=(const AgentIdScope&) = delete;
+
+		private:
+			bool m_Active;
+		};
+
+		// Written to within the live window, by the transcript's own clock rather than a stat per frame.
+		bool WrittenLately(const Session& session)
+		{
+			const auto at = ParseTimestamp(session.GetLastWrittenAt());
+			return at.has_value() && std::chrono::system_clock::now() - *at < kLiveWindow;
 		}
 	}
 
@@ -233,8 +266,15 @@ namespace Graphite {
 													 IsWithinDirectory(file, directory);
 										  });
 
+			// A subagent's transcript lies inside its session's folder, so whatever moves the
+			// session can move it.
 			if (mine)
+			{
 				entry->Main.Live->Poll();
+
+				if (entry->Agent)
+					entry->Agent->Views.Live->Poll();
+			}
 		}
 	}
 
@@ -251,12 +291,72 @@ namespace Graphite {
 	void SessionWindows::Update()
 	{
 		for (const Core::Scope<Entry>& entry : m_Open)
+		{
 			Take(entry->Main);
+
+			// The session keeps being read while a subagent is shown, so going back finds it current.
+			if (entry->Agent)
+				Take(entry->Agent->Views);
+		}
 	}
 
-	void SessionWindows::DrawTabs(Entry& entry, TranscriptViews& views, const std::optional<SessionSummary>& summary,
-								  const SessionPalette& palette)
+	bool SessionWindows::DrawBreadcrumb(const Entry& entry)
 	{
+		const SubagentInfo& info = entry.Agent->Info;
+
+		bool back = ImGui::SmallButton(ICON_MDI_ARROW_LEFT "##agentBack");
+		ImGui::SameLine();
+
+		// The session's title goes back too: it is where the reader came from.
+		back = ImGui::SmallButton((SingleLineLabel(entry.Title, kTabTitleBytes) + "##agentSession").c_str()) || back;
+		ImGui::SameLine();
+		ImGui::TextDisabled(ICON_MDI_CHEVRON_RIGHT);
+		ImGui::SameLine();
+
+		std::string name = info.Description.empty() ? "agent " + info.AgentId : info.Description;
+		if (!info.AgentType.empty())
+			name += " \xc2\xb7 " + info.AgentType;
+
+		ImGui::TextUnformatted(name.c_str());
+
+		if (WrittenLately(entry.Agent->Views.Data))
+		{
+			ImGui::SameLine();
+			ImGui::TextDisabled("\xe2\x97\x8f live");
+		}
+
+		// Esc only while this window has the keyboard and nothing in it is being edited, so it
+		// never takes Esc from a field elsewhere. Mouse button 3 is the side "back" button.
+		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+		back = back || (focused && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false));
+		back = back || (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && ImGui::IsMouseClicked(3));
+
+		return back;
+	}
+
+	void SessionWindows::OpenAgent(Entry& entry, const std::string& toolUseId)
+	{
+		const auto found = entry.Main.Links.find(toolUseId);
+		if (!entry.Main.Live || found == entry.Main.Links.end())
+			return;
+
+		auto agent = Core::CreateScope<OpenedAgent>();
+		agent->Info = found->second;
+		agent->Views.Live =
+			Core::CreateScope<LiveTranscript>(SubagentTranscriptPath(entry.Main.Live->GetFile(), found->second.AgentId));
+		agent->Views.Live->Poll();
+		entry.Agent = std::move(agent);
+	}
+
+	void SessionWindows::DrawTabs(Entry& entry, const SessionPalette& palette, OpenedAgent* agent)
+	{
+		TranscriptViews& views = agent != nullptr ? agent->Views : entry.Main;
+
+		// A subagent has no summary of its own: the Cost tab then leaves out the split between
+		// the session and its subagents.
+		const std::optional<SessionSummary> noSummary;
+		const std::optional<SessionSummary>& summary = agent != nullptr ? noSummary : entry.Summary;
+
 		if (!ImGui::BeginTabBar("##sessionTabs"))
 			return;
 
@@ -271,6 +371,8 @@ namespace Graphite {
 		{
 			entry.Selected = SessionTab::Conversation;
 
+			const AgentIdScope idScope{agent != nullptr};
+
 			if (const std::size_t skipped = views.Live->GetSkipped(); skipped > 0)
 				ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
 
@@ -279,9 +381,16 @@ namespace Graphite {
 
 			if (progress.FirstPassDone)
 			{
-				const ConversationContext context{
+				ConversationContext context{
 					m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion, &views.Timeline,
 					[&views](std::size_t request) { views.PendingRequest = request; }};
+
+				// Subagents of a subagent are not followed: there is one level to go into.
+				if (agent == nullptr)
+				{
+					context.Links = &views.Links;
+					context.OpenAgent = [&entry](const std::string& toolUseId) { entry.PendingAgent = toolUseId; };
+				}
 
 				views.Conversation.Draw(views.Data, context, m_Events);
 			}
@@ -292,6 +401,8 @@ namespace Graphite {
 		if (ImGui::BeginTabItem("Cost", nullptr, restoredFlag(SessionTab::Cost)))
 		{
 			entry.Selected = SessionTab::Cost;
+
+			const AgentIdScope idScope{agent != nullptr};
 
 			// The same rule as the conversation: a cost summed over half a transcript
 			// is a wrong number, not a partial one.
@@ -329,6 +440,8 @@ namespace Graphite {
 		if (requestsOpen)
 		{
 			entry.Selected = SessionTab::Requests;
+
+			const AgentIdScope idScope{agent != nullptr};
 
 			// The same rule again: a request's context delta and the tools it had are
 			// only right once every record before it has been read.
@@ -409,7 +522,27 @@ namespace Graphite {
 				}
 				else
 				{
-					DrawTabs(entry, entry.Main, entry.Summary, palette);
+					if (entry.Agent && DrawBreadcrumb(entry))
+						entry.Agent.reset();
+
+					if (!entry.Agent)
+					{
+						DrawTabs(entry, palette, nullptr);
+					}
+					else if (const LiveTranscript::LoadProgress progress = entry.Agent->Views.Live->GetProgress();
+							 progress.FirstPassDone && progress.Total == 0)
+					{
+						// Read once and found nothing: deleted since the session listed it, or not
+						// written to yet. A write brings the tabs back.
+						ImGui::TextDisabled("This agent's transcript is empty or gone.");
+					}
+					else
+					{
+						DrawTabs(entry, palette, entry.Agent.get());
+					}
+
+					if (const std::optional<std::string> toolUseId = std::exchange(entry.PendingAgent, std::nullopt))
+						OpenAgent(entry, *toolUseId);
 				}
 			}
 
