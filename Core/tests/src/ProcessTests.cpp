@@ -86,7 +86,7 @@ TEST_CASE("A program on PATH is found and a missing one is not")
 TEST_CASE("A program in a non-ANSI directory on PATH is found")
 {
 	namespace fs = std::filesystem;
-	const fs::path directory = fs::temp_directory_path() / L"graphite-łż-path";
+	const fs::path directory = fs::temp_directory_path() / L"graphite-中文-\U0001F600-path";
 	std::error_code status;
 	fs::create_directories(directory, status);
 	REQUIRE_FALSE(status);
@@ -103,8 +103,9 @@ TEST_CASE("A program in a non-ANSI directory on PATH is found")
 	const fs::path found = Core::FindOnPath("graphite-wide-path-probe.exe");
 
 	// Restore before asserting so a failure cannot leave later tests with a broken PATH.
-	_wputenv_s(L"PATH", original->wstring().c_str());
+	const errno_t restored = _wputenv_s(L"PATH", original->wstring().c_str());
 	fs::remove_all(directory, status);
 
+	CHECK(restored == 0);
 	CHECK(found == directory / L"graphite-wide-path-probe.exe");
 }
