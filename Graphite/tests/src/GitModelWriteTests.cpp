@@ -526,6 +526,41 @@ TEST_CASE("A working tree diff asked for while another is in flight is sent when
 	CHECK(port.DiffTargets == std::vector<Core::DiffTarget>{Core::DiffTarget::WorkTreeToIndex, Core::DiffTarget::IndexToHead});
 }
 
+TEST_CASE("The working tree diff is loading until the wanted request has been answered")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	// Nothing asked yet: nothing is on its way, so there is nothing to wait for.
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
+
+	const Core::DiffRequest unstaged{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
+	const Core::DiffRequest staged{.Target = Core::DiffTarget::IndexToHead, .File = "a.txt"};
+
+	model.RequestWorkingTreeDiff(unstaged);
+	CHECK(model.IsWorkingTreeDiffLoading());
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
+
+	// A tab following its file to the other side waits for the new answer rather than
+	// reading as a diff that was lost.
+	model.RequestWorkingTreeDiff(staged);
+	CHECK(model.IsWorkingTreeDiffLoading());
+
+	model.OnUpdate(Core::Timestep{0.016f});
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
+
+	// A failure is an answer too: the tab shows it rather than waiting forever.
+	port.FailDiff = true;
+	model.RequestWorkingTreeDiff(unstaged);
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
+	CHECK(model.GetWorkingTreeDiff() == nullptr);
+}
+
 TEST_CASE("A failed working tree diff is not asked again every frame")
 {
 	WritePort port;

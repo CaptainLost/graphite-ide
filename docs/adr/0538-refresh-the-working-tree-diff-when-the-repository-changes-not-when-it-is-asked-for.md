@@ -64,6 +64,8 @@ another's.
   already names for its allowlist, and it now applies to this diff too.
 - Between a tab changing its question and the answer landing, the tab has no
   diff to draw rather than a stale one.
+- A transient failure, such as a query that lost a race on `index.lock`, is
+  not retried until the next refresh or a change of request.
 
 ### Neutral
 

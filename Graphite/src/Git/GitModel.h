@@ -185,6 +185,14 @@ namespace Graphite {
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff : nullptr;
 		}
 
+		// True while the request last passed to RequestWorkingTreeDiff has not been answered
+		// yet, by a success or a failure. Tells a null GetWorkingTreeDiff that is still on its
+		// way apart from one whose query failed.
+		bool IsWorkingTreeDiffLoading() const
+		{
+			return m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled != m_WantedWorkingTreeDiff;
+		}
+
 		// The whole file's text on both sides of the working-tree diff above, fetched with it
 		// and replaced with it. Null while none has arrived, and null for a file that is binary
 		// or too large to lex - in every case the caller's answer is the same: draw the diff

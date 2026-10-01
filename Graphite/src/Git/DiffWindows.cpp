@@ -424,7 +424,13 @@ namespace Graphite {
 					diff = model.GetWorkingTreeDiff();
 				}
 
-				if (!diff)
+				if (!diff && !entry.Diff.Commit.has_value() && model.IsWorkingTreeDiffLoading())
+				{
+					// First opened, or following its file to the other side: the answer is on its
+					// way, which is not the same as a diff that was lost.
+					Core::EmptyState("Loading…");
+				}
+				else if (!diff)
 				{
 					// A tab that vanished because a cache evicted something would be worse
 					// than one that says the diff is no longer loaded; re-requesting it is
