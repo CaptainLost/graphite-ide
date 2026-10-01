@@ -123,8 +123,7 @@ namespace Core {
 		// process holds at that instant, including ones belonging to unrelated work on other
 		// threads. The list names exactly the three the child is meant to have; all are distinct
 		// handles this call owns, as the list requires.
-		const std::array<HANDLE, 3> inheritedHandles{childStdinRead, childStdoutWrite,
-													 childStdError};
+		std::array<HANDLE, 3> inheritedHandles{childStdinRead, childStdoutWrite, childStdError};
 
 		const auto closeAll = [&]
 		{
