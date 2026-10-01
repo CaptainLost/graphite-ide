@@ -19,6 +19,7 @@
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Panels/SessionWindows.h"
+#include "Panels/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
@@ -316,6 +317,10 @@ namespace Graphite {
 
 		Core::CommandRegistry m_Commands;
 		Core::Keymap m_Keys;
+
+		// After m_Keys and m_Workspace, which it refers to. Owns a reader thread per terminal;
+		// they join in its destructor.
+		TerminalWindows m_Terminals{m_Workspace, m_Keys};
 		Core::ShortcutRouter m_Router;
 		Core::MenuBar m_MenuBar;
 

@@ -61,6 +61,14 @@ namespace Graphite {
 					MenuItem::Group("panels.window"),
 					MenuItem::Command("view.resetLayout"),
 				}),
+			// A terminal is not a panel to show or hide but a thing to start, any number of
+			// times, so it has a menu of its own rather than a row under View.
+			MenuItem::Submenu("Terminal",
+							  {
+								  MenuItem::Command("terminal.new"),
+								  MenuItem::Separator(),
+								  MenuItem::Group("terminal.shells"),
+							  }),
 			MenuItem::Submenu("Help",
 							  {
 								  MenuItem::Command("help.logTestEntries"),
