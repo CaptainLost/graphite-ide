@@ -1119,11 +1119,13 @@ namespace Graphite {
 		const float amendWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
 								 ImGui::CalcTextSize("Amend").x;
 
+		// Stash is a square icon button, so Commit keeps its label: the row's one wide control
+		// is the one the panel exists for.
+		const float stashWidth = ImGui::GetFrameHeight();
+
 		// Held above zero: ImGui reads a negative width as "all but this much" and zero as
-		// "as wide as the label", so a panel narrower than the two together would otherwise
+		// "as wide as the label", so a panel narrower than the three together would otherwise
 		// turn the button full-width at the very moment there is least room for it.
-		const char* stashLabel = "Stash Changes\xE2\x80\xA6";
-		const float stashWidth = ButtonWidth(stashLabel);
 		const float commitWidth = std::max(
 			width - amendWidth - stashWidth - ImGui::GetStyle().ItemSpacing.x * 2.0f, 1.0f);
 
@@ -1170,12 +1172,16 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(!canStash);
 
-		if (ImGui::Button(stashLabel) && !m_StashQuestion.IsAsked())
+		if (ImGui::Button(ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE "##stash", ImVec2(stashWidth, 0.0f)) &&
+			!m_StashQuestion.IsAsked())
 		{
 			m_StashQuestion.Ask({});
 		}
 
 		ImGui::EndDisabled();
+
+		// Said while disabled too, which is when the reader most wants to know what it is.
+		ImGui::SetItemTooltip("Stash changes\xE2\x80\xA6");
 
 		ImGui::SameLine();
 

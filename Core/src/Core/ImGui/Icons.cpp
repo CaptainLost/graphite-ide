@@ -90,6 +90,7 @@ namespace Core {
 			ICON_MDI_ARROW_UP,
 			ICON_MDI_ARROW_DOWN,
 			ICON_MDI_CIRCLE_MEDIUM,
+			ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
