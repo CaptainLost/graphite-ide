@@ -172,3 +172,11 @@ TEST_CASE("A request with no usage sorts last on every usage column")
 		CHECK(Sorted(requests, column, false).back() == 0);
 	}
 }
+
+TEST_CASE("A fast request sorts as dearer than the same usage at standard speed")
+{
+	std::vector<ApiRequest> requests{Request(1, 1'000), Request(2, 1'000), Request(3, 1'000)};
+	requests[1].Fast = true;
+
+	CHECK(Sorted(requests, RequestColumn::Cost, true) == std::vector<std::size_t>{0, 2, 1});
+}

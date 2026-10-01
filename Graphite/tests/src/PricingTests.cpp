@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/Pricing.h"
+#include "Sessions/RequestTimeline.h"
 
 using namespace Graphite;
 
@@ -108,4 +109,41 @@ TEST_CASE("Bucket costs add up to the cost of the same usage")
 
 	REQUIRE(buckets.has_value());
 	CHECK(buckets->Total() == doctest::Approx(pricing.CostOf({{{"claude-sonnet-5", false}, counts}}).Dollars));
+}
+
+TEST_CASE("A request is priced as its usage under its model and speed")
+{
+	const Pricing pricing = Pricing::Defaults();
+	ApiRequest request;
+	request.Model = "claude-opus-5";
+	request.Usage = {kMillion, kMillion, 0, 0, 0};
+
+	CHECK(pricing.CostOf(request).Dollars ==
+		  doctest::Approx(pricing.CostOf({{{"claude-opus-5", false}, request.Usage}}).Dollars));
+
+	request.Fast = true;
+	CHECK(pricing.CostOf(request).Dollars ==
+		  doctest::Approx(pricing.CostOf({{{"claude-opus-5", true}, request.Usage}}).Dollars));
+
+	request.Model = "mystery";
+	CHECK(pricing.CostOf(request).UnknownModels == std::vector<std::string>{"mystery"});
+}
+
+TEST_CASE("Adding a cost adds the dollars and lists each unknown model once")
+{
+	CostResult total{1.5, {"a"}};
+
+	total += CostResult{2.0, {"b", "a"}};
+
+	CHECK(total.Dollars == doctest::Approx(3.5));
+	CHECK(total.UnknownModels == std::vector<std::string>{"a", "b"});
+	CHECK(CostResult{}.IsKnown());
+}
+
+TEST_CASE("A model's label drops the claude prefix and marks a fast request")
+{
+	CHECK(ModelLabel("claude-opus-5-5", false) == "opus-5-5");
+	CHECK(ModelLabel("claude-opus-5-5", true) == "opus-5-5 fast");
+	CHECK(ModelLabel("mystery", false) == "mystery");
+	CHECK(ModelLabel("", false).empty());
 }

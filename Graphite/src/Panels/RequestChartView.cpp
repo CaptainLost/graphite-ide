@@ -599,7 +599,7 @@ namespace Graphite {
 			header += kDot + time;
 
 		if (!request.Model.empty())
-			header += kDot + SingleLineLabel(ShortModelName(request.Model), kToolNameBytes) + (request.Fast ? " fast" : "");
+			header += kDot + SingleLineLabel(ModelLabel(request.Model, request.Fast), kToolNameBytes);
 
 		ColouredText(ink, Fitted(header, maxWidth));
 

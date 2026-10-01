@@ -403,9 +403,7 @@ namespace Graphite {
 		const CostResult main = pricing.CostOf(summary.Main);
 		CostResult all = main;
 		const CostResult subagents = pricing.CostOf(summary.Subagents);
-		all.Dollars += subagents.Dollars;
-		all.UnknownModels.insert(all.UnknownModels.end(), subagents.UnknownModels.begin(),
-								 subagents.UnknownModels.end());
+		all += subagents;
 
 		const std::string title =
 			(IsLive(summary) ? "\xe2\x97\x8f " : "") + SingleLineLabel(summary.DisplayTitle(), kTitleBytes);
@@ -473,10 +471,7 @@ namespace Graphite {
 				{
 					for (const UsageByModel* usage : {&visible[other].Summary->Main, &visible[other].Summary->Subagents})
 					{
-						const CostResult part = pricing.CostOf(*usage);
-						total.Dollars += part.Dollars;
-						total.UnknownModels.insert(total.UnknownModels.end(), part.UnknownModels.begin(),
-												   part.UnknownModels.end());
+						total += pricing.CostOf(*usage);
 					}
 				}
 

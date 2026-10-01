@@ -176,7 +176,7 @@ namespace Graphite {
 		for (const auto& [key, request] : at.Requests)
 			breakdown.Requests.push_back({.Key = key,
 										  .Position = timeline.IndexOf(key),
-										  .Cost = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}})});
+										  .Cost = pricing.CostOf(UsageKey{request.Model, request.Fast}, request.Usage)});
 
 		// Stable, so requests that cost the same keep the order of their keys.
 		std::ranges::stable_sort(breakdown.Requests, [](const TurnRequest& a, const TurnRequest& b) {

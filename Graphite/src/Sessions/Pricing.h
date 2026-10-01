@@ -48,7 +48,17 @@ namespace Graphite {
 		std::vector<std::string> UnknownModels;
 
 		bool IsKnown() const { return UnknownModels.empty(); }
+
+		// Adds another cost in: the dollars sum, and a model unknown to either side stays
+		// unknown. A model named twice is listed once.
+		CostResult& operator+=(const CostResult& other);
 	};
+
+	struct ApiRequest;
+
+	// How a model is named where a request is shown: the id without its `claude-` prefix, and
+	// " fast" after it for a fast request. Truncation is left to the caller.
+	std::string ModelLabel(std::string_view model, bool fast);
 
 	struct BucketCosts
 	{
@@ -77,6 +87,12 @@ namespace Graphite {
 		const Price* Find(std::string_view model) const;
 
 		CostResult CostOf(const UsageByModel& usage) const;
+
+		// What one request cost: the same figure CostOf makes of its usage under its model and speed.
+		CostResult CostOf(const ApiRequest& request) const;
+
+		// The same for one model and speed's usage, for a caller that holds them apart.
+		CostResult CostOf(const UsageKey& key, const TokenCounts& counts) const;
 
 		std::optional<BucketCosts> BucketsOf(const UsageKey& key, const TokenCounts& counts) const;
 

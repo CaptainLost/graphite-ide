@@ -1,5 +1,7 @@
 #include "Sessions/Pricing.h"
 
+#include "Sessions/RequestTimeline.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -121,6 +123,39 @@ namespace Graphite {
 						   dollars(counts.CacheWrite1h, price->CacheWrite1h);
 		costs.CacheRead = dollars(counts.CacheRead, price->CacheRead);
 		return costs;
+	}
+
+	CostResult& CostResult::operator+=(const CostResult& other)
+	{
+		Dollars += other.Dollars;
+
+		for (const std::string& model : other.UnknownModels)
+		{
+			if (std::find(UnknownModels.begin(), UnknownModels.end(), model) == UnknownModels.end())
+				UnknownModels.push_back(model);
+		}
+
+		return *this;
+	}
+
+	std::string ModelLabel(std::string_view model, bool fast)
+	{
+		std::string label{model.starts_with("claude-") ? model.substr(7) : model};
+
+		if (fast)
+			label += " fast";
+
+		return label;
+	}
+
+	CostResult Pricing::CostOf(const ApiRequest& request) const
+	{
+		return CostOf(UsageKey{request.Model, request.Fast}, request.Usage);
+	}
+
+	CostResult Pricing::CostOf(const UsageKey& key, const TokenCounts& counts) const
+	{
+		return CostOf(UsageByModel{{key, counts}});
 	}
 
 	CostResult Pricing::CostOf(const UsageByModel& usage) const

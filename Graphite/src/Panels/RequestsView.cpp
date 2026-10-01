@@ -190,7 +190,7 @@ namespace Graphite {
 		for (std::size_t position = std::min(m_PriceFrom, requests.size()); position < requests.size(); ++position)
 		{
 			const ApiRequest& request = requests[position];
-			m_Costs[position] = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}});
+			m_Costs[position] = pricing.CostOf(request);
 		}
 
 		m_PriceFrom = requests.size();
@@ -371,7 +371,7 @@ namespace Graphite {
 			}
 			case RequestColumn::Model:
 				Cell(request.Model.empty() ? std::string{}
-										   : SingleLineLabel(ShortModelName(request.Model), 80) + (request.Fast ? " fast" : ""),
+										   : SingleLineLabel(ModelLabel(request.Model, request.Fast), 80),
 					 ink, false);
 				break;
 			case RequestColumn::Context:

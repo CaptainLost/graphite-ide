@@ -239,3 +239,24 @@ TEST_CASE("A compaction's label leaves out what it does not know, and the counts
 	CHECK(CompactionLabel(facts, "") == "Context compacted");
 	CHECK(CompactionLabel(CompactionFacts{}, "18:33") == "Context compacted \xc2\xb7 18:33");
 }
+
+TEST_CASE("A turn's request costs are what the pricing makes of each request")
+{
+	const std::vector<TranscriptRecord> records = ParseTranscript(TwoTurnsTranscript()).Records;
+	Session session;
+	session.Append(records);
+	RequestTimeline timeline;
+	timeline.Append(records);
+	const Pricing pricing = Pricing::Defaults();
+
+	const TurnBreakdown breakdown = BreakDownTurn(session, 0, timeline, pricing);
+
+	REQUIRE_FALSE(breakdown.Requests.empty());
+
+	for (const TurnRequest& request : breakdown.Requests)
+	{
+		REQUIRE(request.Position.has_value());
+		CHECK(request.Cost.Dollars ==
+			  doctest::Approx(pricing.CostOf(timeline.GetRequests()[*request.Position]).Dollars));
+	}
+}

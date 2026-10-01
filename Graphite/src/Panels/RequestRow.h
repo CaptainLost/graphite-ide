@@ -23,9 +23,6 @@ namespace Graphite {
 	// The pieces a request's line and its row in the Requests table are made of, so the two
 	// read the same.
 
-	// "opus-5-5" for "claude-opus-5-5".
-	std::string ShortModelName(std::string_view model);
-
 	// "+2.3k", or "−2.3k" with U+2212 MINUS SIGN for a context that shrank.
 	std::string SignedTokens(std::int64_t tokens);
 

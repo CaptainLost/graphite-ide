@@ -54,7 +54,7 @@ namespace Graphite {
 				if (!hasUsage)
 					return {};
 
-				const CostResult cost = pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}});
+				const CostResult cost = pricing.CostOf(request);
 				return cost.IsKnown() ? Numeric(cost.Dollars) : SortKey{};
 			}
 			case RequestColumn::Wait:

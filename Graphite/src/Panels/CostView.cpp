@@ -37,8 +37,8 @@ namespace Graphite {
 
 		void DrawTotals(const Session& session, const std::optional<SessionSummary>& summary, const Pricing& pricing)
 		{
-			// The session's own usage comes from the summary when there is one â€” it covers the
-			// whole file â€” and from the turns read so far otherwise.
+			// The session's own usage comes from the summary when there is one — it covers the
+			// whole file — and from the turns read so far otherwise.
 			UsageByModel main;
 
 			if (summary.has_value())
@@ -56,9 +56,7 @@ namespace Graphite {
 			const CostResult subagents = summary.has_value() ? Sum(pricing, summary->Subagents) : CostResult{};
 
 			CostResult total = own;
-			total.Dollars += subagents.Dollars;
-			total.UnknownModels.insert(total.UnknownModels.end(), subagents.UnknownModels.begin(),
-									   subagents.UnknownModels.end());
+			total += subagents;
 
 			ImGui::Text("Total %s   session %s   subagents %s", FormatCost(total).c_str(), FormatCost(own).c_str(),
 						FormatCost(subagents).c_str());
@@ -88,13 +86,13 @@ namespace Graphite {
 
 			for (const auto& [key, counts] : all)
 			{
-				const CostResult cost = pricing.CostOf({{key, counts}});
+				const CostResult cost = pricing.CostOf(key, counts);
 
 				ImGui::TableNextRow();
 				ImGui::TableNextColumn();
 				// Named as the Requests tab names a model; the full id is what Settings > Claude
 				// prices it by, so it stays a hover away.
-				const std::string model = ShortModelName(key.Model) + (key.Fast ? " fast" : "");
+				const std::string model = ModelLabel(key.Model, key.Fast);
 				ImGui::TextUnformatted(model.c_str());
 				ImGui::SetItemTooltip("%s", key.Model.c_str());
 				ImGui::TableNextColumn();
@@ -1267,7 +1265,7 @@ namespace Graphite {
 		for (const ApiRequest& request : requests)
 		{
 			m_RequestLayers.push_back(CostLayersOf(request, pricing).value_or(CostLayers{}));
-			costs.push_back(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}));
+			costs.push_back(pricing.CostOf(request));
 
 			// Named as the Requests tab's table names it: its number, when it was answered, and
 			// the model that answered.
@@ -1277,7 +1275,7 @@ namespace Graphite {
 				heading += kDot + time;
 
 			if (!request.Model.empty())
-				heading += kDot + ShortModelName(request.Model) + (request.Fast ? " fast" : "");
+				heading += kDot + ModelLabel(request.Model, request.Fast);
 
 			m_RequestBars.push_back({std::move(heading), costs.back().IsKnown()});
 		}

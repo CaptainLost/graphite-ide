@@ -135,11 +135,6 @@ namespace Graphite {
 		return item.Approximate ? "\xe2\x89\x88 " + column : column;
 	}
 
-	std::string ShortModelName(std::string_view model)
-	{
-		return std::string{model.starts_with("claude-") ? model.substr(7) : model};
-	}
-
 	std::string SignedTokens(std::int64_t tokens)
 	{
 		const std::uint64_t magnitude =
@@ -179,7 +174,7 @@ namespace Graphite {
 			line += " " + written;
 
 		if (!request.Model.empty())
-			line += kDot + ShortModelName(request.Model) + (request.Fast ? " fast" : "");
+			line += kDot + ModelLabel(request.Model, request.Fast);
 
 		if (request.Usage.Total() > 0)
 		{
@@ -192,7 +187,7 @@ namespace Graphite {
 				line += kDot + std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "% cache";
 
 			line += kDot + FormatTokens(request.Usage.Output) + " out";
-			line += kDot + FormatCost(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}));
+			line += kDot + FormatCost(pricing.CostOf(request));
 		}
 
 		if (request.Waited)
