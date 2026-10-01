@@ -2,23 +2,26 @@
 
 #include "Core/ImGui/Icons.h"
 
+#include "Core/Base/Assert.h"
+#include "Core/Text/Utf8.h"
+
 #include <IconsMaterialDesignIcons.h>
 
 #include <cctype>
+#include <optional>
 
 namespace Core {
 
 	namespace {
-		// Every icon used here sits above U+FFFF, which is always a 4-byte UTF-8 sequence.
-		// Decoded by hand because ImGui's own decoder is not part of its public API.
+		// Decoded here because ImGui's own decoder is not part of its public API. The icon
+		// strings are the font header's own constants, so one that is not UTF-8 is a broken
+		// header: asserted, and baked as U+FFFD rather than as a range that ends the list.
 		ImWchar DecodeIcon(const char* utf8)
 		{
-			const auto b0 = static_cast<unsigned char>(utf8[0]);
-			const auto b1 = static_cast<unsigned char>(utf8[1]);
-			const auto b2 = static_cast<unsigned char>(utf8[2]);
-			const auto b3 = static_cast<unsigned char>(utf8[3]);
-			return static_cast<ImWchar>(((b0 & 0x07u) << 18) | ((b1 & 0x3Fu) << 12) |
-										((b2 & 0x3Fu) << 6) | (b3 & 0x3Fu));
+			std::size_t offset = 0;
+			const std::optional<char32_t> codePoint = DecodeUtf8(utf8, offset);
+			CORE_ASSERT(codePoint.has_value(), "An icon constant is not valid UTF-8");
+			return static_cast<ImWchar>(codePoint.value_or(kReplacementCharacter));
 		}
 
 		// The one list UsedGlyphRanges bakes from: an icon added here is baked, and one that

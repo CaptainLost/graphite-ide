@@ -5,6 +5,7 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Term/KeyEncoding.h"
+#include "Core/Text/Utf8.h"
 
 // For SetKeyOwner: taking the mouse wheel away from the window's own scrolling has no
 // public entry point, and the same header is already used elsewhere in this project.
@@ -26,46 +27,6 @@ namespace Graphite {
 		// One wheel notch moves this many lines, matching what a scrollbar drag of the same
 		// gesture would do elsewhere in the application.
 		constexpr int kWheelLines = 3;
-
-		void AppendUtf8(std::string& text, char32_t code)
-		{
-			const auto value = static_cast<std::uint32_t>(code);
-
-			if (value < 0x80u)
-			{
-				text.push_back(static_cast<char>(value));
-				return;
-			}
-
-			if (value < 0x800u)
-			{
-				text.push_back(static_cast<char>(0xC0u | (value >> 6)));
-				text.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
-				return;
-			}
-
-			if (value < 0x10000u)
-			{
-				text.push_back(static_cast<char>(0xE0u | (value >> 12)));
-				text.push_back(static_cast<char>(0x80u | ((value >> 6) & 0x3Fu)));
-				text.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
-				return;
-			}
-
-			if (value <= 0x10FFFFu)
-			{
-				text.push_back(static_cast<char>(0xF0u | (value >> 18)));
-				text.push_back(static_cast<char>(0x80u | ((value >> 12) & 0x3Fu)));
-				text.push_back(static_cast<char>(0x80u | ((value >> 6) & 0x3Fu)));
-				text.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
-				return;
-			}
-
-			// A code point outside Unicode reached the screen, which means the byte stream was
-			// malformed. Showing the replacement is better than emitting invalid UTF-8 into a
-			// string the clipboard and the draw list both take as valid.
-			text.append("\xEF\xBF\xBD");
-		}
 
 		ImU32 ChannelOf(ImU32 colour, int shift)
 		{
@@ -354,7 +315,7 @@ namespace Graphite {
 					if (!Core::HasFlag(cell.Flags, Core::CellFlags::Hidden) && !cell.WideTrailer)
 					{
 						std::string glyph;
-						AppendUtf8(glyph, cell.Code);
+						Core::AppendUtf8(glyph, cell.Code);
 
 						drawList.AddText(topLeft, background, glyph.c_str(),
 										 glyph.c_str() + glyph.size());
@@ -601,7 +562,7 @@ namespace Graphite {
 					break;
 				}
 
-				AppendUtf8(run, cell.Code);
+				Core::AppendUtf8(run, cell.Code);
 				++end;
 
 				// A double-width character ends the run. One AddText call advances by the face's
@@ -721,7 +682,7 @@ namespace Graphite {
 		{
 			for (int index = 0; index < io.InputQueueCharacters.Size; ++index)
 			{
-				AppendUtf8(typed, static_cast<char32_t>(io.InputQueueCharacters[index]));
+				Core::AppendUtf8(typed, static_cast<char32_t>(io.InputQueueCharacters[index]));
 			}
 
 			if (!typed.empty())
@@ -1029,7 +990,7 @@ namespace Graphite {
 					continue;
 				}
 
-				AppendUtf8(line, cell.Code);
+				Core::AppendUtf8(line, cell.Code);
 			}
 
 			// The grid is space-filled out to its right edge, so without this every copied line
