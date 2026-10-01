@@ -185,6 +185,10 @@ namespace Graphite {
 		//   OutboundMutex  The outbound queue and nothing else. Held to push or to pop, never
 		//                  across the write itself.
 		//
+		// When two are held at once ProtocolMutex is always the outer one: StateMutex or
+		// OutboundMutex may be taken inside it, never the other way round, and those two are never
+		// held together.
+		//
 		// Nothing ever writes to the pipe while holding a lock: a synchronous write into a full
 		// pipe blocks until the server reads, the server does not read until we read, and our
 		// reader cannot read while it is waiting on a lock the blocked writer holds. The writer

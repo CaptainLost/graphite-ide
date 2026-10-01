@@ -352,6 +352,18 @@ namespace Graphite {
 			return;
 		}
 
+		// Publications for this document that arrived while it was open but have not been drained
+		// yet go with it. Drained after the close, they would reach DiagnosticsModel in the same
+		// update as the close's own note and be applied after it, recreating the entry the close
+		// erases. Together with PublishDiagnostics holding ProtocolMutex across its open check and
+		// its push, nothing published for this path survives the close.
+		{
+			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
+
+			std::erase_if(m_Shared->Diagnostics, [&uri](const PublishedDiagnostics& published)
+						  { return ToFileUri(published.Path) == uri; });
+		}
+
 		nlohmann::json params;
 		params["textDocument"]["uri"] = uri;
 
@@ -761,29 +773,22 @@ namespace Graphite {
 		// this check costs a lookup.
 		const std::string uri = ToFileUri(published.Path);
 
-		bool open = false;
+		// ProtocolMutex is held across both the check and the push, so a CloseDocument for this
+		// path lands either before the check - and the publication is dropped here - or after the
+		// push, and CloseDocument takes what was pushed back out. Without that, a close landing
+		// between the two let a publication for a document that had just closed through, and
+		// DiagnosticsModel's close-then-publish order recreated an entry no later Closed would ever
+		// erase. Nesting StateMutex inside ProtocolMutex is the order Ask, CompleteHandshake and
+		// CloseDocument already take them in, and nothing takes them the other way round.
+		const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 
+		if (!shared.Documents.contains(uri))
 		{
-			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
-			open = shared.Documents.contains(uri);
+			return;
 		}
 
-		// ProtocolMutex is released before StateMutex is taken, deliberately - holding both at
-		// once, nested with the lock CloseDocument takes, is the deadlock this file's whole
-		// locking order exists to avoid. The cost is a window: a CloseDocument for this same path
-		// can land between the check above and the push below, so a publication for a document
-		// that is closing gets through anyway. The next update then carries both a Closed note
-		// and this publication, and DiagnosticsModel::Apply's fixed close-then-publish order
-		// erases the entry the close names and recreates it from the publication - no later
-		// Closed can ever arrive to erase it again, because CloseDocument has already taken this
-		// path out of Documents. Both readers filter on Core::DocumentSet::Find, so the
-		// resurrected entry is invisible to either one: a bounded leak in the model, never a
-		// wrong answer shown to anyone.
-		if (open)
-		{
-			const std::lock_guard<std::mutex> state(shared.StateMutex);
-			shared.Diagnostics.push_back(std::move(published));
-		}
+		const std::lock_guard<std::mutex> state(shared.StateMutex);
+		shared.Diagnostics.push_back(std::move(published));
 	}
 
 	void LspClient::HandleReply(Shared& shared, const IncomingMessage& reply)

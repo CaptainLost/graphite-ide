@@ -650,6 +650,34 @@ TEST_CASE("A publication arriving after the document was closed is dropped")
 	CHECK(drained.Diagnostics.empty());
 }
 
+TEST_CASE("A publication still waiting to be drained when its document closes is dropped with it")
+{
+	// Published while the document was open, so the open check let it through, but not yet
+	// drained when the close went out. Drained afterwards it would reach DiagnosticsModel in the
+	// same update as the close's own note, and the model's close-then-publish order would recreate
+	// the entry the close had just erased - with no later close left to erase it again.
+	Graphite::LspClient client = Offline("C:/src");
+
+	client.OpenDocument("C:/src/Main.cpp", "int main() {}\n");
+	client.OpenDocument("C:/src/Other.cpp", "int other() {}\n");
+
+	for (const char* uri : {"file:///C:/src/Main.cpp", "file:///C:/src/Other.cpp"})
+	{
+		client.Deliver(std::string(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":")") +
+					   uri + R"(","version":1,"diagnostics":[{"range":{"start":{"line":0,"character":0},
+			"end":{"line":0,"character":1}},"severity":1,"message":"boom"}]}})");
+	}
+
+	client.CloseDocument("C:/src/Main.cpp");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	// Only the closed document's publication goes; the one still open keeps its own.
+	REQUIRE(drained.Diagnostics.size() == 1);
+	CHECK(drained.Diagnostics[0].Path == std::filesystem::path{"C:/src/Other.cpp"});
+}
+
 TEST_CASE("The version a document is sent under is the one that goes out on the wire")
 {
 	Graphite::LspClient client = Offline("C:/src");
