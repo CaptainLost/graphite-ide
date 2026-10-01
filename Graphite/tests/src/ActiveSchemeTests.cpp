@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "TempAppSettings.h"
 #include "TempDirectory.h"
 #include "Theme/ActiveScheme.h"
 #include "Theme/BuiltInSchemes.h"
@@ -72,4 +73,18 @@ TEST_CASE("The active scheme's version moves whenever the colours do")
 	active.Set(Graphite::DarkScheme());
 
 	CHECK(active.GetVersion() != afterSet);
+}
+
+TEST_CASE("The active scheme loads the one the settings name")
+{
+	TempAppSettings store;
+	store.Get().SetColorScheme("light");
+
+	Graphite::ActiveScheme active;
+	active.Load(store.Get());
+
+	const std::size_t background = static_cast<std::size_t>(Graphite::EditorColor::Background);
+
+	CHECK(active.Get().Editor[background].R ==
+		  doctest::Approx(Graphite::LightScheme().Editor[background].R));
 }

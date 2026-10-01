@@ -11,9 +11,13 @@ namespace Core {
 }
 namespace Graphite {
 
+	class AppSettings;
+
 	class EditorSettings final
 	{
 	public:
+		explicit EditorSettings(AppSettings& settings) : m_Store(settings) {}
+
 		void Load();
 
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
@@ -44,6 +48,8 @@ namespace Graphite {
 
 	private:
 		void SetWordWrap(bool wrap);
+
+		AppSettings& m_Store;
 
 		static constexpr float kMinimumFontSize = 8.0f;
 		static constexpr float kMaximumFontSize = 32.0f;

@@ -2,6 +2,8 @@
 
 #include "Persistence/PersistedState.h"
 
+#include "Core/Base/JsonFile.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <string>
@@ -17,101 +19,134 @@ namespace Core {
 
 namespace Graphite {
 
+	// graphite.json, read once and then kept in memory. Getters read the copy in memory; setters
+	// change it and mark it unwritten, and Flush writes it back in one go. The file is never
+	// read again after construction, so a key added to it by hand while the application runs is
+	// lost at the next write.
+	//
+	// One instance per process, owned by GraphiteApplication — which needs the window placement
+	// before any layer exists — and handed by reference to everything that reads or writes a
+	// setting. Not thread-safe: every caller is on the main thread.
 	class AppSettings
 	{
 	public:
-		static std::filesystem::path LoadLastFolder();
-		static void SaveLastFolder(const std::filesystem::path& folder);
+		// Reads `file`. A missing file and one that does not parse both read as empty, so every
+		// value is its default; neither is written to until a setter changes something.
+		explicit AppSettings(std::filesystem::path file);
 
-		static std::string LoadGitIgnoredDisplay();
-		static void SaveGitIgnoredDisplay(std::string_view mode);
+		AppSettings(AppSettings&&) noexcept = default;
+		AppSettings& operator=(AppSettings&&) noexcept = default;
+
+		AppSettings(const AppSettings&) = delete;
+		AppSettings& operator=(const AppSettings&) = delete;
+
+		// Writes the file if any setter changed something since the last write. A file a newer
+		// version of Graphite wrote is never written (see StampSettingsVersion); a write that
+		// fails is logged and not retried until the next change.
+		void Flush();
+
+		std::filesystem::path GetLastFolder() const;
+		void SetLastFolder(const std::filesystem::path& folder);
+
+		std::string GetGitIgnoredDisplay() const;
+		void SetGitIgnoredDisplay(std::string_view mode);
 
 		// In percent of the size the system asks for; 100 when nothing usable is stored.
-		static int LoadInterfaceScalePercent();
-		static void SaveInterfaceScalePercent(int percent);
+		int GetInterfaceScalePercent() const;
+		void SetInterfaceScalePercent(int percent);
 
-		static float LoadEditorFontSize();
-		static void SaveEditorFontSize(float size);
+		float GetEditorFontSize() const;
+		void SetEditorFontSize(float size);
 
-		static bool LoadIndentWithSpaces();
-		static void SaveIndentWithSpaces(bool useSpaces);
+		bool GetIndentWithSpaces() const;
+		void SetIndentWithSpaces(bool useSpaces);
 
-		static std::size_t LoadIndentWidth();
-		static void SaveIndentWidth(std::size_t width);
+		std::size_t GetIndentWidth() const;
+		void SetIndentWidth(std::size_t width);
 
-		static bool LoadWordWrap();
-		static void SaveWordWrap(bool wrap);
+		bool GetWordWrap() const;
+		void SetWordWrap(bool wrap);
 
-		static bool LoadGutterChangeMarkers();
-		static void SaveGutterChangeMarkers(bool show);
+		bool GetGutterChangeMarkers() const;
+		void SetGutterChangeMarkers(bool show);
 
-		static bool LoadScrollbarChangeMarkers();
-		static void SaveScrollbarChangeMarkers(bool show);
+		bool GetScrollbarChangeMarkers() const;
+		void SetScrollbarChangeMarkers(bool show);
 
-		static bool LoadSearchRespectGitIgnore();
-		static void SaveSearchRespectGitIgnore(bool respect);
+		bool GetSearchRespectGitIgnore() const;
+		void SetSearchRespectGitIgnore(bool respect);
 
-		static bool LoadSearchProjectsOnly();
-		static void SaveSearchProjectsOnly(bool projectsOnly);
+		bool GetSearchProjectsOnly() const;
+		void SetSearchProjectsOnly(bool projectsOnly);
 
 		// Whether the workspace is analysed ahead of being read. See WorkspaceAnalysis for
 		// what that costs; the switch exists because the cost is a processor working through
 		// a tree nobody asked it to, which on a small machine or an enormous repository is a
 		// fair thing to decline.
-		static bool LoadBackgroundAnalysis();
-		static void SaveBackgroundAnalysis(bool enabled);
+		bool GetBackgroundAnalysis() const;
+		void SetBackgroundAnalysis(bool enabled);
 
 		// How much analysis may be kept, in megabytes. Megabytes because that is the unit the
 		// panel offers and the only one a person can reason about — the cache itself budgets
 		// in bytes, which is the unit it can actually measure an entry in.
-		static std::size_t LoadAnalysisBudgetMegabytes();
-		static void SaveAnalysisBudgetMegabytes(std::size_t megabytes);
+		std::size_t GetAnalysisBudgetMegabytes() const;
+		void SetAnalysisBudgetMegabytes(std::size_t megabytes);
 
 		// How many files the background analysis may have outstanding at once, or zero for the
 		// figure derived from the machine. Zero rather than a sentinel like -1 because absent and
 		// automatic are the same thing here: a settings file written before this existed, and one
 		// written by somebody who ticked the box back on, should read alike.
-		static std::size_t LoadAnalysisConcurrency();
-		static void SaveAnalysisConcurrency(std::size_t concurrency);
+		std::size_t GetAnalysisConcurrency() const;
+		void SetAnalysisConcurrency(std::size_t concurrency);
 
-		static std::string LoadColorScheme();
-		static void SaveColorScheme(std::string_view name);
+		std::string GetColorScheme() const;
+		void SetColorScheme(std::string_view name);
 
 		// Where to find the C++ language server, for a user who wants neither the copy beside the
 		// application nor whichever one is on PATH. Empty — the default — means "search as usual".
 		// This is the "configured location" the status bar's "not found" message names, and the
 		// only thing that makes that sentence true.
 		//
-		// `languageServerBinary` is hand-edited in `graphite.json` today: a settings-panel widget
+		// `languageServerBinary` is hand-edited in `graphite.json` today, with the application
+		// closed, since a running one writes over the file from memory: a settings-panel widget
 		// for it is deliberately not part of this pass, since the message promises a configured
-		// location rather than a particular way of configuring it. `SaveLanguageServerBinary` is
+		// location rather than a particular way of configuring it. `SetLanguageServerBinary` is
 		// therefore uncalled by design, kept as the writing half of the pair so that a widget, or
 		// a "locate clangd" prompt, has somewhere to write without reopening the JSON key.
-		static std::filesystem::path LoadLanguageServerBinary();
-		static void SaveLanguageServerBinary(const std::filesystem::path& binary);
+		std::filesystem::path GetLanguageServerBinary() const;
+		void SetLanguageServerBinary(const std::filesystem::path& binary);
 
 		// Where claude.exe is, when it is not the one on PATH. Empty means "use PATH".
-		static std::filesystem::path LoadClaudeBinary();
-		static void SaveClaudeBinary(const std::filesystem::path& binary);
+		std::filesystem::path GetClaudeBinary() const;
+		void SetClaudeBinary(const std::filesystem::path& binary);
 
 		// Price overrides as model → "input,output,write5m,write1h,read", one key per model
 		// under "claude.price.". Read as text; Pricing decides what is a valid price.
-		static std::vector<std::pair<std::string, std::string>> LoadClaudePrices();
-		static void SaveClaudePrice(std::string_view model, std::string_view price);
-		static void RemoveClaudePrice(std::string_view model);
+		std::vector<std::pair<std::string, std::string>> GetClaudePrices() const;
+		void SetClaudePrice(std::string_view model, std::string_view price);
+		void RemoveClaudePrice(std::string_view model);
 
 		// The user's own colour schemes (see UserDirectories), whether or not the directory
 		// exists yet — the same directory ResolveNamed reads from and the settings panel
-		// writes into.
+		// writes into. Not a value in the file, so static.
 		static std::filesystem::path ThemesDirectory();
 
-		static void LoadKeyBindings(Core::Keymap& keys);
-
-		static void SaveKeyBindings(const Core::Keymap& keys);
+		// Overrides `keys`' defaults with every binding stored, skipping (and logging) one that
+		// does not parse.
+		void ApplyKeyBindings(Core::Keymap& keys) const;
+		void SetKeyBindings(const Core::Keymap& keys);
 
 		// The window's placement and which panels differ from their default. Written by
 		// StateKeeper; read once at startup.
-		static GlobalState LoadGlobalState();
-		static void SaveGlobalState(const GlobalState& state);
+		GlobalState GetGlobalState() const;
+		void SetGlobalState(const GlobalState& state);
+
+	private:
+		std::string Get(std::string_view key) const;
+		void Set(std::string_view key, std::string value);
+
+		std::filesystem::path m_File;
+		Core::JsonFile m_Document;
+		bool m_Unwritten = false;
 	};
 }

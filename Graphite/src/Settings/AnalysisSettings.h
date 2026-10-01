@@ -5,6 +5,8 @@
 
 namespace Graphite {
 
+	class AppSettings;
+
 	// One owner of the two persisted background-analysis settings. The section edits it and
 	// GraphiteLayer reads it; without this they would each hold their own copy and drift apart the
 	// first time one of them forgot to reload. The same reason SearchSettings exists next door.
@@ -17,6 +19,8 @@ namespace Graphite {
 
 		static constexpr std::size_t kMinimumConcurrency = 1;
 		static constexpr std::size_t kMaximumConcurrency = 8;
+
+		explicit AnalysisSettings(AppSettings& settings) : m_Store(settings) {}
 
 		void Load();
 
@@ -49,6 +53,8 @@ namespace Graphite {
 		void SetConcurrency(std::size_t concurrency);
 
 	private:
+		AppSettings& m_Store;
+
 		bool m_Enabled = true;
 		std::size_t m_BudgetMegabytes = kDefaultBudgetMegabytes;
 

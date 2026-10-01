@@ -7,11 +7,15 @@
 
 namespace Graphite {
 
+	class AppSettings;
+
 	// What the user configured about Claude: which program to run and what each model costs.
-	// Changes persist at once, as every other setting here does.
+	// Changes go to AppSettings at once, as every other setting here does.
 	class ClaudeSettings
 	{
 	public:
+		explicit ClaudeSettings(AppSettings& settings) : m_Store(settings) {}
+
 		void Load();
 
 		const std::filesystem::path& GetBinary() const { return m_Binary; }
@@ -25,6 +29,7 @@ namespace Graphite {
 		std::filesystem::path ResolveProgram() const;
 
 	private:
+		AppSettings& m_Store;
 		std::filesystem::path m_Binary;
 		Pricing m_Pricing = Pricing::Defaults();
 	};

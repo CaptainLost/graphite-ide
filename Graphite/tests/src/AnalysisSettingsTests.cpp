@@ -2,14 +2,14 @@
 
 #include "Settings/AnalysisSettings.h"
 
-// None of these call Load(). AppSettings writes beside the test executable, so a Load() here
-// would read whatever an earlier case's setter left behind and make the suite order-dependent.
-// The setters below do still write a real graphite.json next to the test executable — that is
-// deliberate and harmless, since nothing in this suite reads it back, and the directory is
-// disposable build output.
+#include "TempAppSettings.h"
+
+// Every case gets its own AppSettings over a temporary file (TempAppSettings), so a case starts
+// from the defaults whatever an earlier one set, and the user's own settings are never touched.
 TEST_CASE("The budget is offered in megabytes and used in bytes")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 	settings.SetBudgetMegabytes(64);
 
 	CHECK(settings.GetBudgetMegabytes() == 64);
@@ -18,7 +18,8 @@ TEST_CASE("The budget is offered in megabytes and used in bytes")
 
 TEST_CASE("A budget outside what the panel offers is clamped rather than accepted")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	settings.SetBudgetMegabytes(0);
 	CHECK(settings.GetBudgetMegabytes() == Graphite::AnalysisSettings::kMinimumBudgetMegabytes);
@@ -29,7 +30,8 @@ TEST_CASE("A budget outside what the panel offers is clamped rather than accepte
 
 TEST_CASE("Background analysis is on until it is turned off")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	CHECK(settings.IsEnabled());
 
@@ -48,7 +50,8 @@ TEST_CASE("The automatic concurrency is derived from the machine and stays in it
 
 TEST_CASE("A concurrency outside what the panel offers is clamped rather than accepted")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	settings.SetConcurrencyAutomatic(false);
 
@@ -61,7 +64,8 @@ TEST_CASE("A concurrency outside what the panel offers is clamped rather than ac
 
 TEST_CASE("Concurrency is automatic until somebody says otherwise")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	CHECK(settings.IsConcurrencyAutomatic());
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
@@ -80,7 +84,8 @@ TEST_CASE("Concurrency is automatic until somebody says otherwise")
 
 TEST_CASE("Unticking automatic keeps the figure it had rather than dropping to the minimum")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	CHECK(settings.IsConcurrencyAutomatic());
 
@@ -93,7 +98,8 @@ TEST_CASE("Unticking automatic keeps the figure it had rather than dropping to t
 
 TEST_CASE("A round trip through automatic returns the number that was chosen, not the machine's")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	settings.SetConcurrencyAutomatic(false);
 	settings.SetConcurrency(2);
@@ -107,7 +113,8 @@ TEST_CASE("A round trip through automatic returns the number that was chosen, no
 
 TEST_CASE("While automatic is on, the remembered choice does not leak into what is reported")
 {
-	Graphite::AnalysisSettings settings;
+	TempAppSettings store;
+	Graphite::AnalysisSettings settings{store.Get()};
 
 	settings.SetConcurrencyAutomatic(false);
 	settings.SetConcurrency(2);
@@ -117,4 +124,24 @@ TEST_CASE("While automatic is on, the remembered choice does not leak into what 
 	// Automatic means automatic: the number on screen is the machine's, not the one that was
 	// typed before the box was ticked back on.
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
+}
+
+TEST_CASE("AnalysisSettings loads back what it set, after a restart")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::AnalysisSettings settings{store.Get()};
+		settings.SetEnabled(false);
+		settings.SetBudgetMegabytes(64);
+		settings.SetConcurrency(3);
+	}
+
+	Graphite::AnalysisSettings reloaded{store.Reload()};
+	reloaded.Load();
+
+	CHECK_FALSE(reloaded.IsEnabled());
+	CHECK(reloaded.GetBudgetMegabytes() == 64);
+	CHECK_FALSE(reloaded.IsConcurrencyAutomatic());
+	CHECK(reloaded.GetConcurrency() == 3);
 }

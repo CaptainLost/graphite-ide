@@ -60,7 +60,10 @@ namespace Graphite {
 	class GraphiteLayer final : public Core::Layer
 	{
 	public:
-		GraphiteLayer(Core::Ref<Core::RingBufferSink> sink, std::filesystem::path initialFolder);
+		// `settings` is the application's, and outlives the layer: the layer reads and changes it, and
+		// writes it at the end of every frame that changed it.
+		GraphiteLayer(Core::Ref<Core::RingBufferSink> sink, std::filesystem::path initialFolder,
+					  AppSettings& settings);
 
 		void OnAttach() override;
 		void OnDetach() override;
@@ -144,13 +147,17 @@ namespace Graphite {
 
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::filesystem::path m_InitialFolder;
+
+		// Before every member below that holds it: they are all constructed from this reference.
+		AppSettings& m_AppSettings;
+
 		Core::EventBus m_Events;
 
 		// Keyboard input that reached neither a panel nor the shortcut router, kept for the
 		// editors to read while they draw.
 		Core::FrameInput m_FrameInput;
 
-		Workspace m_Workspace{m_Events};
+		Workspace m_Workspace{m_Events, m_AppSettings};
 		Core::DocumentSet m_Documents;
 
 		// Before m_LanguageServices, whose root permission reads it, so it is destroyed after.
@@ -176,7 +183,7 @@ namespace Graphite {
 
 		// Read by LanguageSection, which m_Panels owns, so this is declared before m_Panels for
 		// the same reason m_EditorSettings is.
-		AnalysisSettings m_AnalysisSettings;
+		AnalysisSettings m_AnalysisSettings{m_AppSettings};
 
 		// Ahead of both its producers, so it outlives them: m_AnalysisCoordinator's pass writes
 		// entries into it and m_DocumentWindows reads them back when a tab opens, and either
@@ -227,7 +234,7 @@ namespace Graphite {
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.
 		SearchService m_Search;
-		SearchSettings m_SearchSettings;
+		SearchSettings m_SearchSettings{m_AppSettings};
 
 		// Declared before m_Panels for the same reason as m_Search: SearchSection holds a
 		// reference to this, and a member declared after m_Panels would be destroyed first.
@@ -240,7 +247,7 @@ namespace Graphite {
 		// reference to each — it previews a file in the editor's font, at the editor's tab
 		// width, in the editor's colours — and a member declared after m_Panels would be
 		// destroyed while the panel still held it.
-		EditorSettings m_EditorSettings;
+		EditorSettings m_EditorSettings{m_AppSettings};
 		ActiveScheme m_ActiveScheme;
 
 		// The scheme version the chrome was last painted from. Zero is "never", and
@@ -295,7 +302,7 @@ namespace Graphite {
 		// Before m_Panels: SessionsPanel holds a reference to each, and ClaudeSection to the
 		// settings. m_SessionWindows owns a worker per open session; those join in its own
 		// destructor, and nothing it refers to is declared after it.
-		ClaudeSettings m_ClaudeSettings;
+		ClaudeSettings m_ClaudeSettings{m_AppSettings};
 		SessionWindows m_SessionWindows{m_Events, m_ClaudeSettings};
 
 		Core::PanelManager m_Panels;
@@ -314,7 +321,7 @@ namespace Graphite {
 		ReferencesPanel* m_ReferencesPanel = nullptr;
 
 		StateKeeper m_StateKeeper{
-			[](const GlobalState& state) { AppSettings::SaveGlobalState(state); },
+			[this](const GlobalState& state) { m_AppSettings.SetGlobalState(state); },
 			[](const std::filesystem::path& root, const WorkspaceState& state) {
 				WorkspaceSettings{root}.SaveState(state);
 			}};

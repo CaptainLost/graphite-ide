@@ -9,15 +9,15 @@ namespace Graphite {
 
 	void AnalysisSettings::Load()
 	{
-		m_Enabled = AppSettings::LoadBackgroundAnalysis();
+		m_Enabled = m_Store.GetBackgroundAnalysis();
 
-		const std::size_t saved = AppSettings::LoadAnalysisBudgetMegabytes();
+		const std::size_t saved = m_Store.GetAnalysisBudgetMegabytes();
 
 		m_BudgetMegabytes = saved == 0
 								 ? kDefaultBudgetMegabytes
 								 : std::clamp(saved, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
 
-		const std::size_t savedConcurrency = AppSettings::LoadAnalysisConcurrency();
+		const std::size_t savedConcurrency = m_Store.GetAnalysisConcurrency();
 
 		m_ConcurrencyAutomatic = savedConcurrency == 0;
 
@@ -39,7 +39,7 @@ namespace Graphite {
 		}
 
 		m_Enabled = enabled;
-		AppSettings::SaveBackgroundAnalysis(enabled);
+		m_Store.SetBackgroundAnalysis(enabled);
 	}
 
 	void AnalysisSettings::SetBudgetMegabytes(std::size_t megabytes)
@@ -52,7 +52,7 @@ namespace Graphite {
 		}
 
 		m_BudgetMegabytes = clamped;
-		AppSettings::SaveAnalysisBudgetMegabytes(clamped);
+		m_Store.SetAnalysisBudgetMegabytes(clamped);
 	}
 
 	std::size_t AnalysisSettings::AutomaticConcurrency()
@@ -95,7 +95,7 @@ namespace Graphite {
 		}
 
 		// Zero means automatic to AppSettings, the same idiom the budget uses for "absent".
-		AppSettings::SaveAnalysisConcurrency(automatic ? 0 : m_Concurrency);
+		m_Store.SetAnalysisConcurrency(automatic ? 0 : m_Concurrency);
 	}
 
 	void AnalysisSettings::SetConcurrency(std::size_t concurrency)
@@ -111,6 +111,6 @@ namespace Graphite {
 
 		m_ConcurrencyAutomatic = false;
 		m_Concurrency = clamped;
-		AppSettings::SaveAnalysisConcurrency(clamped);
+		m_Store.SetAnalysisConcurrency(clamped);
 	}
 }

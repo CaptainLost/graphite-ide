@@ -36,9 +36,10 @@ namespace Graphite {
 		};
 	}
 
-	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents)
+	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
+								 AppSettings& settings)
 		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
-		  m_Files(workspace, documents), m_Solution(workspace)
+		  m_AppSettings(settings), m_Files(workspace, documents), m_Solution(workspace)
 	{
 	}
 
@@ -130,7 +131,7 @@ namespace Graphite {
 
 	void ExplorerPanel::LoadSettings()
 	{
-		Apply(GitIgnoredDisplayFromString(AppSettings::LoadGitIgnoredDisplay()), false);
+		Apply(GitIgnoredDisplayFromString(m_AppSettings.GetGitIgnoredDisplay()), false);
 	}
 
 	void ExplorerPanel::RegisterCommands(Core::CommandRegistry& commands)
@@ -151,7 +152,7 @@ namespace Graphite {
 
 		if (persist)
 		{
-			AppSettings::SaveGitIgnoredDisplay(GitIgnoredDisplayToString(display));
+			m_AppSettings.SetGitIgnoredDisplay(GitIgnoredDisplayToString(display));
 		}
 	}
 }

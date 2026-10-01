@@ -10,13 +10,14 @@
 namespace Graphite {
 
 	class ActiveScheme;
+	class AppSettings;
 
 	// Chooses the editor's colour scheme and edits the ones that are not built in. Holds a
 	// SchemeDraft for every decision and keeps only what ImGui needs on top of it.
 	class SchemeSection : public SettingsSection
 	{
 	public:
-		SchemeSection(ActiveScheme& scheme, ModalGate& modals);
+		SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals);
 
 		std::string_view GetTitle() const override { return "Colours"; }
 
@@ -40,6 +41,7 @@ namespace Graphite {
 		void RenderGroup(const char* title, std::size_t count);
 
 		ActiveScheme& m_Active;
+		AppSettings& m_Settings;
 
 		SchemeDraft m_Draft;
 

@@ -35,15 +35,15 @@ namespace Graphite {
 		}
 	}
 
-	SchemeSection::SchemeSection(ActiveScheme& scheme, ModalGate& modals)
-		: m_Active(scheme), m_Draft(AppSettings::ThemesDirectory()),
+	SchemeSection::SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals)
+		: m_Active(scheme), m_Settings(settings), m_Draft(AppSettings::ThemesDirectory()),
 		  m_DeleteQuestion(modals, "Delete colour scheme?")
 	{
 		// Constructed before GraphiteLayer calls ActiveScheme::Load, so this reads the setting
 		// rather than the resolved value — the two agree, because Load reads the same key. An
 		// unset key is handled by Select, not guarded against here: one place should know what an
 		// empty name means.
-		m_Draft.Select(AppSettings::LoadColorScheme());
+		m_Draft.Select(m_Settings.GetColorScheme());
 	}
 
 	void SchemeSection::Apply()
@@ -57,7 +57,7 @@ namespace Graphite {
 		// section's render can release the gate — so it has to be given back here.
 		m_DeleteQuestion.Withdraw();
 
-		m_Draft.Select(AppSettings::LoadColorScheme());
+		m_Draft.Select(m_Settings.GetColorScheme());
 		Apply();
 	}
 
@@ -75,7 +75,7 @@ namespace Graphite {
 			if (ImGui::Selectable(name.c_str(), selected) && !selected)
 			{
 				m_Draft.Select(name);
-				AppSettings::SaveColorScheme(name);
+				m_Settings.SetColorScheme(name);
 				Apply();
 			}
 		}
@@ -174,7 +174,7 @@ namespace Graphite {
 		{
 			if (m_Draft.Duplicate())
 			{
-				AppSettings::SaveColorScheme(m_Draft.GetSelected());
+				m_Settings.SetColorScheme(m_Draft.GetSelected());
 				Apply();
 			}
 		}
@@ -215,7 +215,7 @@ namespace Graphite {
 			{
 				if (m_Draft.DeleteSelected())
 				{
-					AppSettings::SaveColorScheme(m_Draft.GetSelected());
+					m_Settings.SetColorScheme(m_Draft.GetSelected());
 					Apply();
 				}
 

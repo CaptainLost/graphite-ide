@@ -36,27 +36,27 @@ namespace Graphite {
 
 	void EditorSettings::Load()
 	{
-		const float storedFontSize = AppSettings::LoadEditorFontSize();
+		const float storedFontSize = m_Store.GetEditorFontSize();
 
 		if (storedFontSize >= kMinimumFontSize && storedFontSize <= kMaximumFontSize)
 		{
 			m_FontSize = storedFontSize;
 		}
 
-		m_IndentWithSpaces = AppSettings::LoadIndentWithSpaces();
+		m_IndentWithSpaces = m_Store.GetIndentWithSpaces();
 
 		// Clamped, not merely accepted: a hand-edited graphite.json is as untrusted as the
 		// slider. A malformed width, "-1" included, reads as absent; a well-formed but absurd one
 		// such as "999" is what this clamp is for.
-		if (const std::size_t storedIndentWidth = AppSettings::LoadIndentWidth();
+		if (const std::size_t storedIndentWidth = m_Store.GetIndentWidth();
 			storedIndentWidth != 0)
 		{
 			m_IndentWidth = std::clamp(storedIndentWidth, kMinimumIndentWidth, kMaximumIndentWidth);
 		}
 
-		m_WordWrap = AppSettings::LoadWordWrap();
-		m_GutterChangeMarkers = AppSettings::LoadGutterChangeMarkers();
-		m_ScrollbarChangeMarkers = AppSettings::LoadScrollbarChangeMarkers();
+		m_WordWrap = m_Store.GetWordWrap();
+		m_GutterChangeMarkers = m_Store.GetGutterChangeMarkers();
+		m_ScrollbarChangeMarkers = m_Store.GetScrollbarChangeMarkers();
 	}
 
 	void EditorSettings::SetFontSize(float size)
@@ -69,13 +69,13 @@ namespace Graphite {
 		}
 
 		m_FontSize = clamped;
-		AppSettings::SaveEditorFontSize(m_FontSize);
+		m_Store.SetEditorFontSize(m_FontSize);
 	}
 
 	void EditorSettings::SetIndentWithSpaces(bool useSpaces)
 	{
 		m_IndentWithSpaces = useSpaces;
-		AppSettings::SaveIndentWithSpaces(m_IndentWithSpaces);
+		m_Store.SetIndentWithSpaces(m_IndentWithSpaces);
 	}
 
 	// Zero is refused rather than clamped: Load treats a stored zero as "use the default", so
@@ -93,25 +93,25 @@ namespace Graphite {
 		}
 
 		m_IndentWidth = std::clamp(width, kMinimumIndentWidth, kMaximumIndentWidth);
-		AppSettings::SaveIndentWidth(m_IndentWidth);
+		m_Store.SetIndentWidth(m_IndentWidth);
 	}
 
 	void EditorSettings::SetWordWrap(bool wrap)
 	{
 		m_WordWrap = wrap;
-		AppSettings::SaveWordWrap(m_WordWrap);
+		m_Store.SetWordWrap(m_WordWrap);
 	}
 
 	void EditorSettings::SetGutterChangeMarkers(bool show)
 	{
 		m_GutterChangeMarkers = show;
-		AppSettings::SaveGutterChangeMarkers(m_GutterChangeMarkers);
+		m_Store.SetGutterChangeMarkers(m_GutterChangeMarkers);
 	}
 
 	void EditorSettings::SetScrollbarChangeMarkers(bool show)
 	{
 		m_ScrollbarChangeMarkers = show;
-		AppSettings::SaveScrollbarChangeMarkers(m_ScrollbarChangeMarkers);
+		m_Store.SetScrollbarChangeMarkers(m_ScrollbarChangeMarkers);
 	}
 
 	void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)

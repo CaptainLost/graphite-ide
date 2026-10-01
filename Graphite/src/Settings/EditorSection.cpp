@@ -58,9 +58,9 @@ namespace Graphite {
 		// the size is, which is the right shape for a shortcut and the wrong one for a control
 		// you drag. SetFontSize clamps, so a drag past either end settles on the bound.
 		//
-		// Written on release, not on every frame of the drag: SetFontSize rewrites the whole
-		// settings file (AppSettings::WriteValue does a full JsonFile load, Set and Save), and a
-		// drag across the range produces a new value every frame at "%.1f". This does mean the
+		// Set on release, not on every frame of the drag: a drag across the range produces a new
+		// value every frame at "%.1f", and a frame that changed a setting ends by writing the whole
+		// settings file (GraphiteLayer flushes AppSettings once per frame). This does mean the
 		// editor's own font does not change live while dragging — it updates on release, along
 		// with the file.
 		float fontSize = m_Settings.GetFontSize();

@@ -25,6 +25,8 @@ namespace Core {
 
 namespace Graphite {
 
+	class AppSettings;
+
 	struct WorkspaceOpenedEvent
 	{
 		std::filesystem::path Root;
@@ -71,7 +73,10 @@ namespace Graphite {
 	class Workspace final
 	{
 	public:
-		explicit Workspace(Core::EventBus& events) : m_Events(events) {}
+		Workspace(Core::EventBus& events, AppSettings& settings)
+			: m_Events(events), m_AppSettings(settings)
+		{
+		}
 
 		Workspace(Workspace&&) = delete;
 		Workspace& operator=(Workspace&&) = delete;
@@ -155,6 +160,7 @@ namespace Graphite {
 		void ResetSolutionState();
 
 		Core::EventBus& m_Events;
+		AppSettings& m_AppSettings;
 		std::optional<Core::Repository> m_Repository;
 		Core::FileTree m_Tree;
 		Core::Scope<Core::DirectoryWatcher> m_Watcher;

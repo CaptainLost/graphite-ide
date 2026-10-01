@@ -2,14 +2,14 @@
 
 #include "Editor/EditorSettings.h"
 
-// None of these call Load(). AppSettings writes beside the test executable, so a Load() here
-// would read whatever an earlier case's setter left behind and make the suite order-dependent.
-// The setters below do still write a real graphite.json next to the test executable — that is
-// deliberate and harmless, since nothing in this suite reads it back, and the directory is
-// disposable build output.
+#include "TempAppSettings.h"
+
+// Every case gets its own AppSettings over a temporary file (TempAppSettings), so a case starts
+// from the defaults whatever an earlier one set, and the user's own settings are never touched.
 TEST_CASE("EditorSettings starts at its documented defaults")
 {
-	const Graphite::EditorSettings settings;
+	TempAppSettings store;
+	const Graphite::EditorSettings settings{store.Get()};
 
 	CHECK(settings.GetFontSize() == doctest::Approx(13.0f));
 	CHECK(settings.GetIndentStyle().UseSpaces);
@@ -21,7 +21,8 @@ TEST_CASE("EditorSettings starts at its documented defaults")
 // 1.0 from a known value. A slider hands it whatever the user drags to.
 TEST_CASE("EditorSettings clamps the font size to its range")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetFontSize(1.0f);
 	CHECK(settings.GetFontSize() == doctest::Approx(8.0f));
@@ -32,7 +33,8 @@ TEST_CASE("EditorSettings clamps the font size to its range")
 
 TEST_CASE("EditorSettings keeps a font size exactly on the bounds")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetFontSize(8.0f);
 	CHECK(settings.GetFontSize() == doctest::Approx(8.0f));
@@ -43,7 +45,8 @@ TEST_CASE("EditorSettings keeps a font size exactly on the bounds")
 
 TEST_CASE("EditorSettings accepts a font size inside the range unchanged")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetFontSize(17.5f);
 	CHECK(settings.GetFontSize() == doctest::Approx(17.5f));
@@ -51,7 +54,8 @@ TEST_CASE("EditorSettings accepts a font size inside the range unchanged")
 
 TEST_CASE("EditorSettings round-trips the indent style")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetIndentWithSpaces(false);
 	CHECK_FALSE(settings.GetIndentStyle().UseSpaces);
@@ -67,7 +71,8 @@ TEST_CASE("EditorSettings round-trips the indent style")
 // would make that branch reachable from the UI and an indent of zero columns possible.
 TEST_CASE("EditorSettings refuses an indent width of zero")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetIndentWidth(2);
 	settings.SetIndentWidth(0);
@@ -80,7 +85,8 @@ TEST_CASE("EditorSettings refuses an indent width of zero")
 // hold the line too, since the same value can arrive from a hand-edited graphite.json.
 TEST_CASE("EditorSettings clamps an indent width above its maximum")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetIndentWidth(999999999);
 
@@ -89,7 +95,8 @@ TEST_CASE("EditorSettings clamps an indent width above its maximum")
 
 TEST_CASE("EditorSettings keeps an indent width exactly on the maximum")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetIndentWidth(8);
 
@@ -98,7 +105,8 @@ TEST_CASE("EditorSettings keeps an indent width exactly on the maximum")
 
 TEST_CASE("EditorSettings shows both kinds of change marker by default")
 {
-	const Graphite::EditorSettings settings;
+	TempAppSettings store;
+	const Graphite::EditorSettings settings{store.Get()};
 
 	CHECK(settings.ShowsGutterChangeMarkers());
 	CHECK(settings.ShowsScrollbarChangeMarkers());
@@ -106,7 +114,8 @@ TEST_CASE("EditorSettings shows both kinds of change marker by default")
 
 TEST_CASE("EditorSettings turns each kind of change marker off on its own")
 {
-	Graphite::EditorSettings settings;
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetGutterChangeMarkers(false);
 	CHECK_FALSE(settings.ShowsGutterChangeMarkers());
@@ -119,4 +128,26 @@ TEST_CASE("EditorSettings turns each kind of change marker off on its own")
 	settings.SetScrollbarChangeMarkers(true);
 	CHECK(settings.ShowsGutterChangeMarkers());
 	CHECK(settings.ShowsScrollbarChangeMarkers());
+}
+
+TEST_CASE("EditorSettings loads back what it set, after a restart")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.SetFontSize(17.0f);
+		settings.SetIndentWithSpaces(false);
+		settings.SetIndentWidth(2);
+		settings.SetGutterChangeMarkers(false);
+	}
+
+	Graphite::EditorSettings reloaded{store.Reload()};
+	reloaded.Load();
+
+	CHECK(reloaded.GetFontSize() == doctest::Approx(17.0f));
+	CHECK_FALSE(reloaded.GetIndentStyle().UseSpaces);
+	CHECK(reloaded.GetIndentStyle().Width == 2);
+	CHECK_FALSE(reloaded.ShowsGutterChangeMarkers());
+	CHECK(reloaded.ShowsScrollbarChangeMarkers());
 }

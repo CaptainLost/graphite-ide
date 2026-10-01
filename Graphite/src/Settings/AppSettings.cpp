@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -46,261 +47,257 @@ namespace Graphite {
 
 		constexpr std::string_view kKeyBindingPrefix = "key.";
 
-		const std::filesystem::path& SettingsPath()
+		// Zero is "absent" for every number stored here, so a malformed one reads as absent too.
+		template<typename Number>
+		Number NumberOrZero(std::string_view stored)
 		{
-			static const std::filesystem::path path = UserDirectories::SettingsFile();
-			return path;
+			return ParseNumber<Number>(stored).value_or(Number{});
 		}
+	}
+
+	AppSettings::AppSettings(std::filesystem::path file)
+		: m_File(std::move(file)), m_Document(Core::JsonFile::Load(m_File))
+	{
+	}
+
+	void AppSettings::Flush()
+	{
+		if (!m_Unwritten)
+		{
+			return;
+		}
+
+		// Cleared before writing, not after: a write that fails is logged once rather than on
+		// every frame until something else changes.
+		m_Unwritten = false;
 
 		// Every write of graphite.json goes through here, so none of them can skip the
 		// version check and overwrite a file a newer build wrote.
-		void SaveSettings(Core::JsonFile& file)
+		if (!StampSettingsVersion(m_Document))
 		{
-			if (!StampSettingsVersion(file))
-			{
-				APP_WARN("Not writing '{}': a newer version of Graphite wrote it", Core::ToUtf8(SettingsPath()));
-				return;
-			}
-
-			if (!file.Save(SettingsPath()))
-			{
-				APP_WARN("Cannot write '{}'", Core::ToUtf8(SettingsPath()));
-			}
+			APP_WARN("Not writing '{}': a newer version of Graphite wrote it", Core::ToUtf8(m_File));
+			return;
 		}
 
-		// Loads graphite.json, lets `edit` change it and saves it back through SaveSettings.
-		template <typename Edit>
-		void ModifySettings(Edit&& edit)
+		if (!m_Document.Save(m_File))
 		{
-			Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
-			edit(file);
-			SaveSettings(file);
-		}
-
-		void WriteValue(std::string_view key, std::string value)
-		{
-			ModifySettings([&](Core::JsonFile& file) { file.Set(key, std::move(value)); });
-		}
-
-		std::string ReadValue(std::string_view key)
-		{
-			return Core::JsonFile::Load(SettingsPath()).Get(key);
-		}
-
-		// Zero is "absent" for every number stored here, so a malformed one reads as absent too.
-		template <typename Number>
-		Number ReadNumberOrZero(std::string_view key)
-		{
-			return ParseNumber<Number>(ReadValue(key)).value_or(Number{});
-		}
-
-		bool ReadStoredFlag(std::string_view key, bool fallback)
-		{
-			return ReadFlag(ReadValue(key), fallback);
+			APP_WARN("Cannot write '{}'", Core::ToUtf8(m_File));
 		}
 	}
 
-	std::filesystem::path AppSettings::LoadLastFolder()
+	std::string AppSettings::Get(std::string_view key) const
 	{
-		return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kLastFolderKey));
+		return m_Document.Get(key);
 	}
 
-	void AppSettings::SaveLastFolder(const std::filesystem::path& folder)
+	void AppSettings::Set(std::string_view key, std::string value)
 	{
-		WriteValue(kLastFolderKey, Core::ToUtf8(folder));
+		m_Document.Set(key, std::move(value));
+		m_Unwritten = true;
 	}
 
-	std::string AppSettings::LoadGitIgnoredDisplay()
+	std::filesystem::path AppSettings::GetLastFolder() const
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kIgnoredDisplayKey);
+		return Core::FromUtf8(Get(kLastFolderKey));
 	}
 
-	void AppSettings::SaveGitIgnoredDisplay(std::string_view mode)
+	void AppSettings::SetLastFolder(const std::filesystem::path& folder)
 	{
-		WriteValue(kIgnoredDisplayKey, std::string{mode});
+		Set(kLastFolderKey, Core::ToUtf8(folder));
 	}
 
-	int AppSettings::LoadInterfaceScalePercent()
+	std::string AppSettings::GetGitIgnoredDisplay() const
 	{
-		return InterfaceScalePercentOrDefault(
-			Core::JsonFile::Load(SettingsPath()).Get(kInterfaceScaleKey));
+		return Get(kIgnoredDisplayKey);
 	}
 
-	void AppSettings::SaveInterfaceScalePercent(int percent)
+	void AppSettings::SetGitIgnoredDisplay(std::string_view mode)
 	{
-		WriteValue(kInterfaceScaleKey, std::to_string(percent));
+		Set(kIgnoredDisplayKey, std::string{mode});
 	}
 
-	float AppSettings::LoadEditorFontSize()
+	int AppSettings::GetInterfaceScalePercent() const
 	{
-		return ReadNumberOrZero<float>(kEditorFontSizeKey);
+		return InterfaceScalePercentOrDefault(Get(kInterfaceScaleKey));
 	}
 
-	void AppSettings::SaveEditorFontSize(float size)
+	void AppSettings::SetInterfaceScalePercent(int percent)
 	{
-		WriteValue(kEditorFontSizeKey, std::to_string(size));
+		Set(kInterfaceScaleKey, std::to_string(percent));
 	}
 
-	bool AppSettings::LoadIndentWithSpaces()
+	float AppSettings::GetEditorFontSize() const
 	{
-		return ReadStoredFlag(kIndentWithSpacesKey, true);
+		return NumberOrZero<float>(Get(kEditorFontSizeKey));
 	}
 
-	void AppSettings::SaveIndentWithSpaces(bool useSpaces)
+	void AppSettings::SetEditorFontSize(float size)
 	{
-		WriteValue(kIndentWithSpacesKey, Flag(useSpaces));
+		Set(kEditorFontSizeKey, std::to_string(size));
 	}
 
-	std::size_t AppSettings::LoadIndentWidth()
+	bool AppSettings::GetIndentWithSpaces() const
 	{
-		return ReadNumberOrZero<std::size_t>(kIndentWidthKey);
+		return ReadFlag(Get(kIndentWithSpacesKey), true);
 	}
 
-	void AppSettings::SaveIndentWidth(std::size_t width)
+	void AppSettings::SetIndentWithSpaces(bool useSpaces)
 	{
-		WriteValue(kIndentWidthKey, std::to_string(width));
+		Set(kIndentWithSpacesKey, Flag(useSpaces));
 	}
 
-	bool AppSettings::LoadWordWrap()
+	std::size_t AppSettings::GetIndentWidth() const
 	{
-		return ReadStoredFlag(kWordWrapKey, false);
+		return NumberOrZero<std::size_t>(Get(kIndentWidthKey));
 	}
 
-	void AppSettings::SaveWordWrap(bool wrap)
+	void AppSettings::SetIndentWidth(std::size_t width)
 	{
-		WriteValue(kWordWrapKey, Flag(wrap));
+		Set(kIndentWidthKey, std::to_string(width));
+	}
+
+	bool AppSettings::GetWordWrap() const
+	{
+		return ReadFlag(Get(kWordWrapKey), false);
+	}
+
+	void AppSettings::SetWordWrap(bool wrap)
+	{
+		Set(kWordWrapKey, Flag(wrap));
 	}
 
 	// Both default on: a file that predates the switches, and so has neither key, keeps showing
 	// the markers it always showed.
-	bool AppSettings::LoadGutterChangeMarkers()
+	bool AppSettings::GetGutterChangeMarkers() const
 	{
-		return ReadStoredFlag(kGutterChangeMarkersKey, true);
+		return ReadFlag(Get(kGutterChangeMarkersKey), true);
 	}
 
-	void AppSettings::SaveGutterChangeMarkers(bool show)
+	void AppSettings::SetGutterChangeMarkers(bool show)
 	{
-		WriteValue(kGutterChangeMarkersKey, Flag(show));
+		Set(kGutterChangeMarkersKey, Flag(show));
 	}
 
-	bool AppSettings::LoadScrollbarChangeMarkers()
+	bool AppSettings::GetScrollbarChangeMarkers() const
 	{
-		return ReadStoredFlag(kScrollbarChangeMarkersKey, true);
+		return ReadFlag(Get(kScrollbarChangeMarkersKey), true);
 	}
 
-	void AppSettings::SaveScrollbarChangeMarkers(bool show)
+	void AppSettings::SetScrollbarChangeMarkers(bool show)
 	{
-		WriteValue(kScrollbarChangeMarkersKey, Flag(show));
+		Set(kScrollbarChangeMarkersKey, Flag(show));
 	}
 
-	bool AppSettings::LoadSearchRespectGitIgnore()
+	bool AppSettings::GetSearchRespectGitIgnore() const
 	{
-		return ReadStoredFlag(kSearchRespectGitIgnoreKey, true);
+		return ReadFlag(Get(kSearchRespectGitIgnoreKey), true);
 	}
 
-	void AppSettings::SaveSearchRespectGitIgnore(bool respect)
+	void AppSettings::SetSearchRespectGitIgnore(bool respect)
 	{
-		WriteValue(kSearchRespectGitIgnoreKey, Flag(respect));
+		Set(kSearchRespectGitIgnoreKey, Flag(respect));
 	}
 
-	bool AppSettings::LoadSearchProjectsOnly()
+	bool AppSettings::GetSearchProjectsOnly() const
 	{
-		return ReadStoredFlag(kSearchProjectsOnlyKey, false);
+		return ReadFlag(Get(kSearchProjectsOnlyKey), false);
 	}
 
-	void AppSettings::SaveSearchProjectsOnly(bool projectsOnly)
+	void AppSettings::SetSearchProjectsOnly(bool projectsOnly)
 	{
-		WriteValue(kSearchProjectsOnlyKey, Flag(projectsOnly));
+		Set(kSearchProjectsOnlyKey, Flag(projectsOnly));
 	}
 
-	bool AppSettings::LoadBackgroundAnalysis()
+	bool AppSettings::GetBackgroundAnalysis() const
 	{
 		// Absent means on: the feature is the default, and a settings file written before it
 		// existed must not read as a decision to switch it off.
-		return ReadStoredFlag(kBackgroundAnalysisKey, true);
+		return ReadFlag(Get(kBackgroundAnalysisKey), true);
 	}
 
-	void AppSettings::SaveBackgroundAnalysis(bool enabled)
+	void AppSettings::SetBackgroundAnalysis(bool enabled)
 	{
-		WriteValue(kBackgroundAnalysisKey, Flag(enabled));
+		Set(kBackgroundAnalysisKey, Flag(enabled));
 	}
 
-	std::size_t AppSettings::LoadAnalysisBudgetMegabytes()
+	std::size_t AppSettings::GetAnalysisBudgetMegabytes() const
 	{
-		return ReadNumberOrZero<std::size_t>(kAnalysisBudgetKey);
+		return NumberOrZero<std::size_t>(Get(kAnalysisBudgetKey));
 	}
 
-	void AppSettings::SaveAnalysisBudgetMegabytes(std::size_t megabytes)
+	void AppSettings::SetAnalysisBudgetMegabytes(std::size_t megabytes)
 	{
-		WriteValue(kAnalysisBudgetKey, std::to_string(megabytes));
+		Set(kAnalysisBudgetKey, std::to_string(megabytes));
 	}
 
-	std::size_t AppSettings::LoadAnalysisConcurrency()
+	std::size_t AppSettings::GetAnalysisConcurrency() const
 	{
-		return ReadNumberOrZero<std::size_t>(kAnalysisConcurrencyKey);
+		return NumberOrZero<std::size_t>(Get(kAnalysisConcurrencyKey));
 	}
 
-	void AppSettings::SaveAnalysisConcurrency(std::size_t concurrency)
+	void AppSettings::SetAnalysisConcurrency(std::size_t concurrency)
 	{
-		WriteValue(kAnalysisConcurrencyKey, std::to_string(concurrency));
+		Set(kAnalysisConcurrencyKey, std::to_string(concurrency));
 	}
 
-	std::string AppSettings::LoadColorScheme()
+	std::string AppSettings::GetColorScheme() const
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kColorSchemeKey);
+		return Get(kColorSchemeKey);
 	}
 
-	void AppSettings::SaveColorScheme(std::string_view name)
+	void AppSettings::SetColorScheme(std::string_view name)
 	{
-		WriteValue(kColorSchemeKey, std::string{name});
+		Set(kColorSchemeKey, std::string{name});
 	}
 
-	std::filesystem::path AppSettings::LoadLanguageServerBinary()
+	std::filesystem::path AppSettings::GetLanguageServerBinary() const
 	{
 		// Through FromUtf8, like the folder above it: the settings file is UTF-8 and a path on
 		// this platform is not.
-		return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kLanguageServerBinaryKey));
+		return Core::FromUtf8(Get(kLanguageServerBinaryKey));
 	}
 
-	void AppSettings::SaveLanguageServerBinary(const std::filesystem::path& binary)
+	void AppSettings::SetLanguageServerBinary(const std::filesystem::path& binary)
 	{
-		WriteValue(kLanguageServerBinaryKey, Core::ToUtf8(binary));
+		Set(kLanguageServerBinaryKey, Core::ToUtf8(binary));
 	}
 
-	std::filesystem::path AppSettings::LoadClaudeBinary()
+	std::filesystem::path AppSettings::GetClaudeBinary() const
 	{
-		return Core::FromUtf8(Core::JsonFile::Load(SettingsPath()).Get(kClaudeBinaryKey));
+		return Core::FromUtf8(Get(kClaudeBinaryKey));
 	}
 
-	void AppSettings::SaveClaudeBinary(const std::filesystem::path& binary)
+	void AppSettings::SetClaudeBinary(const std::filesystem::path& binary)
 	{
-		WriteValue(kClaudeBinaryKey, Core::ToUtf8(binary));
+		Set(kClaudeBinaryKey, Core::ToUtf8(binary));
 	}
 
-	std::vector<std::pair<std::string, std::string>> AppSettings::LoadClaudePrices()
+	std::vector<std::pair<std::string, std::string>> AppSettings::GetClaudePrices() const
 	{
-		const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
 		std::vector<std::pair<std::string, std::string>> prices;
 
-		for (const std::string& key : file.GetKeys())
+		for (const std::string& key : m_Document.GetKeys())
 		{
 			if (!std::string_view{key}.starts_with(kClaudePricePrefix))
+			{
 				continue;
+			}
 
-			prices.emplace_back(key.substr(kClaudePricePrefix.size()), file.Get(key));
+			prices.emplace_back(key.substr(kClaudePricePrefix.size()), m_Document.Get(key));
 		}
 
 		return prices;
 	}
 
-	void AppSettings::SaveClaudePrice(std::string_view model, std::string_view price)
+	void AppSettings::SetClaudePrice(std::string_view model, std::string_view price)
 	{
-		WriteValue(std::string{kClaudePricePrefix} + std::string{model}, std::string{price});
+		Set(std::string{kClaudePricePrefix} + std::string{model}, std::string{price});
 	}
 
 	void AppSettings::RemoveClaudePrice(std::string_view model)
 	{
-		ModifySettings([&](Core::JsonFile& file) { file.Remove(std::string{kClaudePricePrefix} + std::string{model}); });
+		m_Document.Remove(std::string{kClaudePricePrefix} + std::string{model});
+		m_Unwritten = true;
 	}
 
 	std::filesystem::path AppSettings::ThemesDirectory()
@@ -308,11 +305,9 @@ namespace Graphite {
 		return UserDirectories::ThemesDirectory();
 	}
 
-	void AppSettings::LoadKeyBindings(Core::Keymap& keys)
+	void AppSettings::ApplyKeyBindings(Core::Keymap& keys) const
 	{
-		const Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
-
-		for (const std::string& key : file.GetKeys())
+		for (const std::string& key : m_Document.GetKeys())
 		{
 			if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
 			{
@@ -320,7 +315,7 @@ namespace Graphite {
 			}
 
 			const std::string id = key.substr(kKeyBindingPrefix.size());
-			const std::optional<Core::Binding> binding = Core::ParseBinding(file.Get(key));
+			const std::optional<Core::Binding> binding = Core::ParseBinding(m_Document.Get(key));
 
 			if (!binding.has_value())
 			{
@@ -332,24 +327,25 @@ namespace Graphite {
 		}
 	}
 
-	void AppSettings::SaveKeyBindings(const Core::Keymap& keys)
+	void AppSettings::SetKeyBindings(const Core::Keymap& keys)
 	{
-		ModifySettings([&keys](Core::JsonFile& file) {
-			RemoveKeysStartingWith(file, kKeyBindingPrefix);
+		RemoveKeysStartingWith(m_Document, kKeyBindingPrefix);
 
-			keys.ForEachOverride([&file](const std::string& id, const Core::Binding& binding) {
-				file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding));
-			});
+		keys.ForEachOverride([this](const std::string& id, const Core::Binding& binding) {
+			m_Document.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding));
 		});
+
+		m_Unwritten = true;
 	}
 
-	GlobalState AppSettings::LoadGlobalState()
+	GlobalState AppSettings::GetGlobalState() const
 	{
-		return ReadGlobalState(Core::JsonFile::Load(SettingsPath()));
+		return ReadGlobalState(m_Document);
 	}
 
-	void AppSettings::SaveGlobalState(const GlobalState& state)
+	void AppSettings::SetGlobalState(const GlobalState& state)
 	{
-		ModifySettings([&state](Core::JsonFile& file) { WriteGlobalState(state, file); });
+		WriteGlobalState(state, m_Document);
+		m_Unwritten = true;
 	}
 }

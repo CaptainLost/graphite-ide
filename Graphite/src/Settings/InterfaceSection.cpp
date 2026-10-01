@@ -11,8 +11,7 @@
 
 namespace Graphite {
 
-	InterfaceSection::InterfaceSection()
-		: m_ScalePercent(AppSettings::LoadInterfaceScalePercent())
+	InterfaceSection::InterfaceSection(AppSettings& settings) : m_Settings(settings)
 	{
 	}
 
@@ -20,20 +19,21 @@ namespace Graphite {
 	{
 		ImGui::SeparatorText("Scale");
 
-		const std::string current = std::to_string(m_ScalePercent) + "%";
+		const int scalePercent = m_Settings.GetInterfaceScalePercent();
+
+		const std::string current = std::to_string(scalePercent) + "%";
 
 		if (ImGui::BeginCombo("Interface scale", current.c_str()))
 		{
 			for (const int percent : kInterfaceScalePercents)
 			{
 				const std::string label = std::to_string(percent) + "%";
-				const bool selected = percent == m_ScalePercent;
+				const bool selected = percent == scalePercent;
 
 				if (ImGui::Selectable(label.c_str(), selected) && !selected)
 				{
-					m_ScalePercent = percent;
 					Core::ImGuiRenderer::SetInterfaceScale(static_cast<float>(percent) / 100.0f);
-					AppSettings::SaveInterfaceScalePercent(percent);
+					m_Settings.SetInterfaceScalePercent(percent);
 				}
 
 				if (selected)

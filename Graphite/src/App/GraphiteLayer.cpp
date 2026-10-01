@@ -88,8 +88,9 @@ namespace Graphite {
 	}
 
 	GraphiteLayer::GraphiteLayer(Core::Ref<Core::RingBufferSink> sink,
-								 std::filesystem::path initialFolder)
+								 std::filesystem::path initialFolder, AppSettings& settings)
 		: Core::Layer("Ide"), m_Sink(std::move(sink)), m_InitialFolder(std::move(initialFolder)),
+		  m_AppSettings(settings),
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
 		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle)
 	{
@@ -110,10 +111,10 @@ namespace Graphite {
 	void GraphiteLayer::OnAttach()
 	{
 		Core::ImGuiRenderer::SetInterfaceScale(
-			static_cast<float>(AppSettings::LoadInterfaceScalePercent()) / 100.0f);
+			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
 		auto* explorer = static_cast<ExplorerPanel*>(
-			m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents)));
+			m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings)));
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
 
@@ -168,12 +169,12 @@ namespace Graphite {
 
 		// After every default registered above, so an override shadows the binding it
 		// replaces rather than being shadowed by it.
-		AppSettings::LoadKeyBindings(m_Keys);
+		m_AppSettings.ApplyKeyBindings(m_Keys);
 
 		// Before any document opens, which is when the first server is started: SetConfiguredBinary
 		// deliberately does not touch a server already running, so a setting read after that point
 		// would not take effect until the next session.
-		if (std::filesystem::path binary = AppSettings::LoadLanguageServerBinary();
+		if (std::filesystem::path binary = m_AppSettings.GetLanguageServerBinary();
 			!binary.empty())
 		{
 			m_LanguageServices.SetConfiguredBinary(LanguageId::Cpp, std::move(binary));
@@ -189,10 +190,10 @@ namespace Graphite {
 		std::vector<Core::Scope<SettingsSection>> sections;
 
 		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
-		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_Modals));
-		sections.push_back(Core::CreateScope<InterfaceSection>());
+		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_AppSettings, m_Modals));
+		sections.push_back(Core::CreateScope<InterfaceSection>(m_AppSettings));
 		sections.push_back(Core::CreateScope<KeyBindingsSection>(
-			m_Commands, m_Keys, m_Modals, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
+			m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
 		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings));
@@ -205,7 +206,7 @@ namespace Graphite {
 		SubscribeToWorkspaceEvents();
 
 		// After every panel is registered and before the first frame draws any of them.
-		const GlobalState stored = AppSettings::LoadGlobalState();
+		const GlobalState stored = m_AppSettings.GetGlobalState();
 
 		for (const auto& [id, visible] : stored.PanelVisibility)
 		{
@@ -219,7 +220,7 @@ namespace Graphite {
 		explorer->LoadSettings();
 
 		m_EditorSettings.Load();
-		m_ActiveScheme.Load();
+		m_ActiveScheme.Load(m_AppSettings);
 		m_SearchSettings.Load();
 
 		// Beside the other settings, and before OpenStartupFolder below sets the root the first
@@ -467,7 +468,7 @@ namespace Graphite {
 		std::filesystem::path startFolder = m_InitialFolder;
 
 		if (startFolder.empty())
-			startFolder = AppSettings::LoadLastFolder();
+			startFolder = m_AppSettings.GetLastFolder();
 
 		if (!startFolder.empty())
 		{
@@ -567,6 +568,9 @@ namespace Graphite {
 	void GraphiteLayer::OnDetach()
 	{
 		m_StateKeeper.Flush();
+
+		// After StateKeeper, whose flush hands the window state to the settings.
+		m_AppSettings.Flush();
 	}
 
 	// Shows a panel that was hidden and brings it to the front of its dock node. The focus
@@ -798,6 +802,10 @@ namespace Graphite {
 		// The last point in the frame that reads the queue: what a frame drains is exactly
 		// what arrived since the previous one was drawn.
 		m_FrameInput.Clear();
+
+		// Last, after everything that can change a setting this frame - the panels and the commands
+		// they ran here, StateKeeper in OnUpdate - so one frame's changes make one write.
+		m_AppSettings.Flush();
 	}
 
 	void GraphiteLayer::OnEvent(Core::Event& event)

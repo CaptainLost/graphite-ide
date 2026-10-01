@@ -32,9 +32,9 @@ namespace Graphite {
 
 		int budget = static_cast<int>(m_Settings.GetBudgetMegabytes());
 
-		// Written on release, not on every frame of the drag: SetBudgetMegabytes persists through
-		// AppSettings::SaveAnalysisBudgetMegabytes, which does a full JsonFile load, Set and Save,
-		// and a drag across the range produces a new value every frame. Same shape EditorSection
+		// Set on release, not on every frame of the drag: SetBudgetMegabytes changes AppSettings,
+		// which GraphiteLayer writes out at the end of any frame that changed it, and a drag across
+		// the range produces a new value every frame. Same shape EditorSection
 		// uses for its font-size and tab-width sliders, and the same reason.
 		if (ImGui::SliderInt("Analysis kept (MB)", &budget,
 							  static_cast<int>(AnalysisSettings::kMinimumBudgetMegabytes),

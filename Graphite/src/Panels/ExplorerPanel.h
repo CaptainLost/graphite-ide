@@ -24,10 +24,12 @@ namespace Core {
 
 namespace Graphite {
 
+	class AppSettings;
+
 	class ExplorerPanel final : public Core::Panel
 	{
 	public:
-		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents);
+		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents, AppSettings& settings);
 
 		void OnImGuiRender() override;
 
@@ -55,6 +57,7 @@ namespace Graphite {
 		void Apply(GitIgnoredDisplay display, bool persist);
 
 		Workspace& m_Workspace;
+		AppSettings& m_AppSettings;
 		FileTreeView m_Files;
 		SolutionTreeView m_Solution;
 		Mode m_Mode = Mode::Files;

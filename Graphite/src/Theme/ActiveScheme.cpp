@@ -25,9 +25,8 @@ namespace Graphite {
 		return Resolve(scheme, SchemeFor(scheme.Base));
 	}
 
-	void ActiveScheme::Load()
+	void ActiveScheme::Load(const AppSettings& settings)
 	{
-		const std::string name = AppSettings::LoadColorScheme();
-		Set(ResolveNamed(name, AppSettings::ThemesDirectory()));
+		Set(ResolveNamed(settings.GetColorScheme(), AppSettings::ThemesDirectory()));
 	}
 }

@@ -6,19 +6,19 @@ namespace Graphite {
 
 	void SearchSettings::Load()
 	{
-		m_Options.RespectGitIgnore = AppSettings::LoadSearchRespectGitIgnore();
-		m_Options.ProjectsOnly = AppSettings::LoadSearchProjectsOnly();
+		m_Options.RespectGitIgnore = m_Store.GetSearchRespectGitIgnore();
+		m_Options.ProjectsOnly = m_Store.GetSearchProjectsOnly();
 	}
 
 	void SearchSettings::SetRespectGitIgnore(bool respect)
 	{
 		m_Options.RespectGitIgnore = respect;
-		AppSettings::SaveSearchRespectGitIgnore(respect);
+		m_Store.SetSearchRespectGitIgnore(respect);
 	}
 
 	void SearchSettings::SetProjectsOnly(bool projectsOnly)
 	{
 		m_Options.ProjectsOnly = projectsOnly;
-		AppSettings::SaveSearchProjectsOnly(projectsOnly);
+		m_Store.SetSearchProjectsOnly(projectsOnly);
 	}
 }

@@ -65,7 +65,7 @@ namespace Graphite {
 		FindSolutions();
 		LoadSolution();
 
-		AppSettings::SaveLastFolder(root);
+		m_AppSettings.SetLastFolder(root);
 		m_Events.Publish(WorkspaceOpenedEvent{root});
 
 		APP_INFO("Workspace opened: '{}'", Core::ToUtf8(root));
@@ -194,7 +194,7 @@ namespace Graphite {
 
 		// An empty stored value reads back as "nothing remembered", so this is how the
 		// closed state survives a restart.
-		AppSettings::SaveLastFolder({});
+		m_AppSettings.SetLastFolder({});
 		m_Events.Publish(WorkspaceClosedEvent{});
 
 		APP_INFO("Workspace closed: '{}'", Core::ToUtf8(closed));
@@ -436,7 +436,7 @@ namespace Graphite {
 
 		RereadEverything();
 
-		AppSettings::SaveLastFolder(to);
+		m_AppSettings.SetLastFolder(to);
 		m_Events.Publish(WorkspaceRootMovedEvent{from, to});
 	}
 
