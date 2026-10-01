@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -201,9 +202,8 @@ TEST_CASE("EnsureStarted is idempotent for the same root")
 TEST_CASE("Restart backoff grows with the number of restarts already attempted")
 {
 	// Pure policy, checked without a process: the delay before restart attempt N is N*2 seconds,
-	// so the first attempt after a death is immediate and each further one waits longer. This is
-	// the half of the restart path Poll can exercise deterministically — the other half needs a
-	// server that actually dies, which nothing on this machine can be relied on to provide.
+	// so the first attempt after a death is immediate and each further one waits longer. Poll
+	// waiting it out is tested through a client factory further down.
 	CHECK(Graphite::RestartBackoff(0) == std::chrono::seconds(0));
 	CHECK(Graphite::RestartBackoff(1) == std::chrono::seconds(2));
 	CHECK(Graphite::RestartBackoff(2) == std::chrono::seconds(4));
@@ -211,9 +211,8 @@ TEST_CASE("Restart backoff grows with the number of restarts already attempted")
 
 TEST_CASE("A server may restart until it has used up kMaximumRestarts")
 {
-	// The restart path itself needs a client that dies on demand, which LanguageServices cannot be
-	// given without a client factory; the budget rules are therefore checked as the pure functions
-	// Poll consults.
+	// The budget rule on its own, as the pure function Poll consults. The restart path that obeys it
+	// is driven through a client factory further down.
 	CHECK(Graphite::MayRestart(0));
 	CHECK(Graphite::MayRestart(2));
 	CHECK_FALSE(Graphite::MayRestart(3));
@@ -1140,4 +1139,204 @@ TEST_CASE("Destroying the services while a warm-up walk is running does not wait
 	// than the bare iteration above; closing in under half of that bare cost means it stopped
 	// early rather than finishing.
 	CHECK(closing < fullWalk / 2);
+}
+
+namespace {
+	// Hands LanguageServices clients with no process behind them, and keeps a pointer to the
+	// newest one so a test can kill it or finish its handshake. The pointer is only good until
+	// the next restart destroys that client, which is why it is re-read after every Poll.
+	struct ClientFactorySpy
+	{
+		std::size_t Made = 0;
+		Graphite::LspClient* Latest = nullptr;
+
+		Graphite::LanguageServices::ClientFactory Get()
+		{
+			return [this](const Graphite::ServerConfig& config, const std::filesystem::path&,
+						  const std::filesystem::path& root)
+			{
+				auto client = std::make_unique<Graphite::LspClient>(config, root,
+																	Graphite::LspClient::WithoutServer{});
+				Latest = client.get();
+				++Made;
+				return client;
+			};
+		}
+
+		// Refuses the handshake, which is the shortest way a client without a process reports
+		// Failed: the same state a crashed clangd's reader leaves behind.
+		void Kill() const
+		{
+			Latest->Deliver(R"({"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"gone"}})");
+		}
+
+		void Answer() const
+		{
+			Latest->Deliver(R"({"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}})");
+		}
+	};
+
+	// A services object whose C++ server is built by `spy`, started for `source` under `temp`.
+	// The binary must exist for StartServer to get as far as the factory; nothing ever runs it.
+	void StartWithSpy(Graphite::LanguageServices& services, TempDirectory& temp,
+					  ClientFactorySpy& spy, FakeClock& clock,
+					  const std::filesystem::path& source)
+	{
+		temp.MakeFile("stand-in-clangd.exe", "");
+
+		services.SetClock(clock.Get());
+		services.SetClientFactory(spy.Get());
+		services.SetConfiguredBinary(Graphite::LanguageId::Cpp,
+									 temp.GetPath() / "stand-in-clangd.exe");
+		services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	}
+
+	bool AnySentContaining(const std::vector<std::string>& sent, std::string_view needle)
+	{
+		for (const std::string& message : sent)
+		{
+			if (message.find(needle) != std::string::npos)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+TEST_CASE("A dead client is replaced through the factory and told every open document again")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	REQUIRE(spy.Made == 1);
+
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int replayed;\n");
+
+	spy.Kill();
+	services.Poll();
+
+	// The first restart waits for nothing: RestartBackoff(0) is zero.
+	CHECK(spy.Made == 2);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::Starting);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 1);
+
+	// The replay is held behind the new client's handshake, like anything else it is sent.
+	spy.Answer();
+
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+	CHECK(AnySentContaining(sent, "int replayed;"));
+}
+
+TEST_CASE("A server that dies again waits out its backoff on the services clock before restarting")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+
+	spy.Kill();
+	services.Poll();
+	REQUIRE(spy.Made == 2);
+
+	spy.Kill();
+	services.Poll();
+
+	// Noticed, but RestartBackoff(1) has not elapsed.
+	CHECK(spy.Made == 2);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::Failed);
+
+	clock.Now += Graphite::RestartBackoff(1) - std::chrono::milliseconds(1);
+	services.Poll();
+	CHECK(spy.Made == 2);
+
+	clock.Now += std::chrono::milliseconds(1);
+	services.Poll();
+	CHECK(spy.Made == 3);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 2);
+}
+
+TEST_CASE("A server that keeps dying is left Failed after kMaximumRestarts restarts")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+
+	for (std::size_t death = 0; death < Graphite::kMaximumRestarts; ++death)
+	{
+		spy.Kill();
+		services.Poll();
+
+		// Far past any backoff, and well short of kStableAfter: a dead server is never up, so
+		// the budget cannot refill however long this waits.
+		clock.Now += std::chrono::seconds(30);
+		services.Poll();
+	}
+
+	REQUIRE(spy.Made == 1 + Graphite::kMaximumRestarts);
+
+	spy.Kill();
+
+	for (int frame = 0; frame < 10; ++frame)
+	{
+		services.Poll();
+		clock.Now += std::chrono::minutes(1);
+	}
+
+	CHECK(spy.Made == 1 + Graphite::kMaximumRestarts);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State ==
+		  Graphite::ServerState::Failed);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts ==
+		  Graphite::kMaximumRestarts);
+}
+
+TEST_CASE("A restarted server that stays up for kStableAfter earns its restarts back")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+
+	spy.Kill();
+	services.Poll();
+	REQUIRE(spy.Made == 2);
+
+	spy.Answer();
+	services.Poll();
+	REQUIRE(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 1);
+
+	clock.Now += Graphite::kStableAfter - std::chrono::seconds(1);
+	services.Poll();
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 1);
+
+	clock.Now += std::chrono::seconds(1);
+	services.Poll();
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 0);
+
+	// Not killed again to watch the zero backoff come back: a client without a process can only
+	// fail its handshake, and this one has finished it. What the restart path reads is
+	// server.Restarts, and the status above is that number as Poll left it.
 }

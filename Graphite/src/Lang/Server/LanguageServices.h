@@ -123,6 +123,16 @@ namespace Graphite {
 
 		void SetClock(Clock clock);
 
+		// Builds the client for a server whose binary has been found, both at first start and at
+		// every restart; a real LspClient over that binary until set. A seam so the restart path -
+		// a death noticed, the backoff, the replay, the cap - can be driven with clients that have
+		// no process behind them (LspClient::WithoutServer) instead of a server that dies on cue.
+		using ClientFactory = std::function<std::unique_ptr<LspClient>(
+			const ServerConfig& config, const std::filesystem::path& binary,
+			const std::filesystem::path& root)>;
+
+		void SetClientFactory(ClientFactory factory);
+
 		// Whether a server entry exists for the key this file resolves to, whether or not it has a
 		// process. What shows that an idle server has been shut down.
 		bool IsRunningFor(const std::filesystem::path& path, LanguageId language);
@@ -351,6 +361,11 @@ namespace Graphite {
 		void ReapIdle(std::chrono::steady_clock::time_point now);
 
 		Clock m_Clock;
+
+		ClientFactory m_ClientFactory;
+
+		// The one place a client is constructed: through m_ClientFactory when one is set.
+		std::unique_ptr<LspClient> MakeClient(const ManagedServer& server, const Key& key) const;
 
 		bool Permits(const std::filesystem::path& root) const;
 		void MarkRestricted(ManagedServer& server);

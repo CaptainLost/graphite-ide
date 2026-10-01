@@ -186,7 +186,7 @@ namespace Graphite {
 		APP_INFO("Starting {} for {} at {}", server.Config->Command,
 				 LanguageDisplayName(key.Language), Core::ToUtf8(key.Root));
 
-		server.Client = std::make_unique<LspClient>(*server.Config, server.Binary, key.Root);
+		server.Client = MakeClient(server, key);
 
 		// The client's own Drain reports the real state — Starting, then Indexing/Ready/Failed —
 		// from the next Poll onward. This is only what a caller sees before that first Poll.
@@ -613,7 +613,7 @@ namespace Graphite {
 		// Destroying the old client here is safe: its threads are already joined, so this runs
 		// the same teardown a normal destruction would, just without a live process to terminate.
 		server.Client.reset();
-		server.Client = std::make_unique<LspClient>(*server.Config, server.Binary, key.Root);
+		server.Client = MakeClient(server, key);
 
 		// A fresh server knows nothing about what is open, and its numbering restarts at 1 - the
 		// old process's diagnostics, measured against the old numbering, are no longer about
@@ -1021,6 +1021,22 @@ namespace Graphite {
 	void LanguageServices::SetClock(Clock clock)
 	{
 		m_Clock = std::move(clock);
+	}
+
+	void LanguageServices::SetClientFactory(ClientFactory factory)
+	{
+		m_ClientFactory = std::move(factory);
+	}
+
+	std::unique_ptr<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
+															const Key& key) const
+	{
+		if (m_ClientFactory)
+		{
+			return m_ClientFactory(*server.Config, server.Binary, key.Root);
+		}
+
+		return std::make_unique<LspClient>(*server.Config, server.Binary, key.Root);
 	}
 
 	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language)
