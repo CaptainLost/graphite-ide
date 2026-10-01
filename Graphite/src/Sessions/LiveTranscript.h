@@ -132,9 +132,9 @@ namespace Graphite {
 
 		// Brings every subagent transcript up to date, reading each only from where its last
 		// read stopped. Returns the whole state when any of them moved on — appeared, grew,
-		// shrank, went, or had its meta file found — and nothing when none did, or when the transcript is being closed.
-		// A file that grew only by a line still being written is looked at again next time,
-		// but moves nothing. Worker only.
+		// shrank, went, or had its meta file found — and nothing when none did, or when the
+		// transcript is being closed. A file that grew only by a line still being written is
+		// looked at again next time, but moves nothing. Worker only.
 		static std::optional<SubagentState> FollowSubagents(const std::filesystem::path& sessionFile,
 														   SubagentFiles& subagents, Inbox& inbox);
 

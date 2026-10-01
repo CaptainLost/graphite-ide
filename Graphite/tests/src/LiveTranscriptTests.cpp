@@ -202,15 +202,16 @@ TEST_CASE("Subagent usage arrives with the transcript and again when a subagent 
 
 namespace {
 	// Takes the subagents' usage until agent `id` has `expected`, or fails after five seconds.
+	// The links taken together with that usage land in `links`, for a test that checks the pair.
 	void WaitForSubagent(LiveTranscript& live, SubagentUsage& subagents, const std::string& id,
-						 const UsageByModel& expected)
+						 const UsageByModel& expected, SubagentLinks* links = nullptr)
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
-		SubagentLinks links;
+		SubagentLinks discarded;
 
 		while (!subagents.contains(id) || subagents.at(id) != expected)
 		{
-			live.TakeSubagents(subagents, links);
+			live.TakeSubagents(subagents, links ? *links : discarded);
 			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
@@ -476,9 +477,8 @@ TEST_CASE("A meta file written after its transcript is linked on a later walk")
 	SubagentLinks links;
 
 	live.Poll();
-	WaitForSubagent(live, usage, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
+	WaitForSubagent(live, usage, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}}, &links);
 	WaitForWalk(live);
-	live.TakeSubagents(usage, links);
 	CHECK(links.empty());
 
 	// The transcript has not moved; only the meta file is new.
@@ -501,9 +501,8 @@ TEST_CASE("A subagent whose meta file names no call is counted but not linked")
 	SubagentLinks links;
 
 	live.Poll();
-	WaitForSubagent(live, usage, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
+	WaitForSubagent(live, usage, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}}, &links);
 	WaitForWalk(live);
-	live.TakeSubagents(usage, links);
 
 	CHECK(links.empty());
 }
