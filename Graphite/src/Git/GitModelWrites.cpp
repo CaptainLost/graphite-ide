@@ -32,11 +32,9 @@ namespace Graphite {
 		Enqueue({.Kind = WriteKind::Init});
 	}
 
-	void GitModel::RequestCreateBranch(
-		std::string name, Core::Oid from, std::optional<Core::CheckoutTarget> thenCheckout)
+	void GitModel::RequestCreateBranch(std::string name, Core::Oid from)
 	{
-		Enqueue({.Kind = WriteKind::CreateBranch, .Name = std::move(name), .Id = from,
-				 .Target = std::move(thenCheckout)});
+		Enqueue({.Kind = WriteKind::CreateBranch, .Name = std::move(name), .Id = from});
 	}
 
 	void GitModel::RequestRenameBranch(std::string from, std::string to)
@@ -248,16 +246,6 @@ namespace Graphite {
 				if (const auto result = m_Port.CreateBranch(job.Name, job.Id); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
-					break;
-				}
-
-				if (job.Target.has_value())
-				{
-					// A checkout that fails partway still names every path it may have
-					// changed, so both halves are kept.
-					Core::CheckoutOutcome checkout = m_Port.Checkout(*job.Target);
-					outcome.Changed = std::move(checkout.Changed);
-					outcome.Failure = std::move(checkout.Failure);
 				}
 
 				break;
@@ -499,9 +487,8 @@ namespace Graphite {
 
 			// The same for a checkout: one that failed partway, or after its preparation ran,
 			// has still rewritten files under the editor. A preparation that failed may have
-			// got partway too, and a new branch whose checkout then failed exists all the
-			// same, so the refresh runs in every case.
-			if (job.Kind == WriteKind::Checkout || job.Kind == WriteKind::CreateBranch)
+			// got partway too, so the refresh runs in every case.
+			if (job.Kind == WriteKind::Checkout)
 			{
 				if (!outcome.Changed.empty())
 				{
@@ -518,10 +505,8 @@ namespace Graphite {
 
 		m_WriteError.reset();
 
-		// Replaced rather than appended, for the reason given on m_Discarded below. A new
-		// branch made without a checkout changed no file, and must not wipe an earlier
-		// checkout's paths that nobody has taken yet.
-		if (job.Kind == WriteKind::Checkout || (job.Kind == WriteKind::CreateBranch && job.Target.has_value()))
+		// Replaced rather than appended, for the reason given on m_Discarded below.
+		if (job.Kind == WriteKind::Checkout)
 		{
 			m_CheckedOut = std::move(outcome.Changed);
 		}

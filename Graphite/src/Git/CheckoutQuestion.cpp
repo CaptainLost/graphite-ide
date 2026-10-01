@@ -1,5 +1,6 @@
 #include "Git/CheckoutQuestion.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
 
 #include <algorithm>
@@ -134,6 +135,29 @@ namespace Graphite {
 		}
 
 		return question;
+	}
+
+	std::vector<std::filesystem::path> SilentReloads(const std::vector<std::filesystem::path>& changed,
+	                                                 const std::vector<std::filesystem::path>& unsavedNow,
+	                                                 const std::vector<std::filesystem::path>& confirmed)
+	{
+		const auto contains = [](const std::vector<std::filesystem::path>& paths, const std::filesystem::path& path)
+		{
+			const std::filesystem::path normal = Core::NormalizePath(path);
+			return std::any_of(paths.begin(), paths.end(), [&normal](const std::filesystem::path& other)
+			                   { return Core::SamePath(Core::NormalizePath(other), normal); });
+		};
+
+		std::vector<std::filesystem::path> silent;
+		for (const std::filesystem::path& path : changed)
+		{
+			if (!contains(unsavedNow, path) || contains(confirmed, path))
+			{
+				silent.push_back(path);
+			}
+		}
+
+		return silent;
 	}
 
 	std::optional<std::string> BranchNameProblem(const std::string& name, const std::vector<Core::Branch>& branches)

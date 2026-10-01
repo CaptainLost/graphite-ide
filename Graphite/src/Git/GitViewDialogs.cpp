@@ -180,9 +180,10 @@ namespace Graphite {
 			// The editor's copies first: the checkout is about to write over the files, and a
 			// buffer still holding the old edits would then disagree with the disk.
 			m_Buffers.Revert(unsaved);
-			m_Model.RequestCheckout(CheckoutRequest{.Target = target,
-													.Preparation = CheckoutPreparation::Discard,
-													.IncludeUntracked = includeUntracked});
+			RequestCheckout(CheckoutRequest{.Target = target,
+											.Preparation = CheckoutPreparation::Discard,
+											.IncludeUntracked = includeUntracked},
+							unsaved);
 			answer();
 		}
 		else if (stash)
@@ -195,11 +196,11 @@ namespace Graphite {
 			}
 			else
 			{
-				m_Model.RequestCheckout(CheckoutRequest{.Target = target,
-														.Preparation = CheckoutPreparation::Stash,
-														.IncludeUntracked = includeUntracked,
-														.StashMessage = "Before checking out " +
-																		CheckoutTargetLabel(target)});
+				RequestCheckout(CheckoutRequest{.Target = target,
+												.Preparation = CheckoutPreparation::Stash,
+												.IncludeUntracked = includeUntracked,
+												.StashMessage = "Before checking out " + CheckoutTargetLabel(target)},
+								unsaved);
 				answer();
 			}
 		}
@@ -288,14 +289,14 @@ namespace Graphite {
 		{
 			if (mode == BranchNameMode::New)
 			{
-				std::optional<Core::CheckoutTarget> thenCheckout;
+				m_Model.RequestCreateBranch(name, at);
 
+				// The same way as any other checkout - planned, and asked about when it would
+				// overwrite something. The plan queues behind the create, so it finds the branch.
 				if (m_CheckoutAfter)
 				{
-					thenCheckout = Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = name};
+					BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = name});
 				}
-
-				m_Model.RequestCreateBranch(name, at, std::move(thenCheckout));
 			}
 			else
 			{

@@ -313,12 +313,9 @@ namespace Graphite {
 
 		// Branch and stash writes. Every one of them queues behind the writes before it, the
 		// plan and the delete check included: those answer about the tree as the writes
-		// before them left it, not as it was when the button was drawn.
-		//
-		// With `thenCheckout` the new branch is checked out in the same job, so nothing
-		// queued meanwhile can land between the two.
-		void RequestCreateBranch(
-			std::string name, Core::Oid from, std::optional<Core::CheckoutTarget> thenCheckout);
+		// before them left it, not as it was when the button was drawn - so a plan asked for
+		// right after a new branch finds that branch.
+		void RequestCreateBranch(std::string name, Core::Oid from);
 		void RequestRenameBranch(std::string from, std::string to);
 		void RequestDeleteBranch(std::string branch);
 
@@ -556,7 +553,7 @@ namespace Graphite {
 			// A stash's include-untracked.
 			bool Flag = false;
 
-			// A plan's target, or the checkout that follows a new branch.
+			// A plan's target.
 			std::optional<Core::CheckoutTarget> Target;
 			CheckoutRequest Checkout;
 

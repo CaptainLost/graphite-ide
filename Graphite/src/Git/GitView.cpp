@@ -178,7 +178,9 @@ namespace Graphite {
 				absolute.push_back(root / path);
 			}
 
-			m_Buffers.ExpectExternalWrite(absolute);
+			// Checked against the documents as they are now, not as the question saw them:
+			// an edit made while the checkout ran must not be reloaded away unasked.
+			m_Buffers.ExpectExternalWrite(SilentReloads(absolute, m_Buffers.ModifiedUnder(root), m_ConfirmedUnsaved));
 		}
 	}
 
@@ -222,13 +224,14 @@ namespace Graphite {
 	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
 	{
 		m_ActionError.reset();
-
-		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
-
 		m_PendingCheckout = target;
-		m_PendingUnsaved = root.empty() ? std::vector<std::filesystem::path>{} : m_Buffers.ModifiedUnder(root);
-
 		m_Model.RequestCheckoutPlan(target);
+	}
+
+	void GitView::RequestCheckout(CheckoutRequest request, std::vector<std::filesystem::path> confirmedUnsaved)
+	{
+		m_ConfirmedUnsaved = std::move(confirmedUnsaved);
+		m_Model.RequestCheckout(std::move(request));
 	}
 
 	void GitView::ApplyCheckoutPlan(CheckoutPlanAnswer answer)
@@ -249,17 +252,22 @@ namespace Graphite {
 			return;
 		}
 
-		std::vector<std::filesystem::path> unsavedRelative;
-		unsavedRelative.reserve(m_PendingUnsaved.size());
+		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
+		std::vector<std::filesystem::path> unsaved =
+			root.empty() ? std::vector<std::filesystem::path>{} : m_Buffers.ModifiedUnder(root);
 
-		for (const std::filesystem::path& path : m_PendingUnsaved)
+		std::vector<std::filesystem::path> unsavedRelative;
+		unsavedRelative.reserve(unsaved.size());
+
+		for (const std::filesystem::path& path : unsaved)
 		{
-			unsavedRelative.push_back(RelativeTo(path, m_Model.GetWorkingDirectory()));
+			unsavedRelative.push_back(RelativeTo(path, root));
 		}
 
 		if (!NeedsCheckoutDialog(*answer.Plan, unsavedRelative))
 		{
-			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
+			// Nothing unsaved was asked about, so nothing unsaved is confirmed.
+			RequestCheckout(CheckoutRequest{.Target = answer.Target}, {});
 			return;
 		}
 
@@ -273,7 +281,7 @@ namespace Graphite {
 
 		AskOnce(m_CheckoutQuestion, CheckoutQuestionPayload{.Target = std::move(answer.Target),
 															.Question = std::move(question),
-															.UnsavedAbsolute = m_PendingUnsaved,
+															.UnsavedAbsolute = std::move(unsaved),
 															.IncludeUntracked = forced});
 	}
 
@@ -347,7 +355,7 @@ namespace Graphite {
 			// Withdrawn here, outside any popup, which is the only place Withdraw is valid.
 			WithdrawQuestions();
 			m_PendingCheckout.reset();
-			m_PendingUnsaved.clear();
+			m_ConfirmedUnsaved.clear();
 			m_PendingDelete.reset();
 			m_ActionError.reset();
 		};

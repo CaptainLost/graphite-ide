@@ -176,3 +176,31 @@ TEST_CASE("Staged-only and conflicted entries are listed as changes")
 	CHECK(question.Changed[0].Path == "conflict.cpp");
 	CHECK(question.Changed[1].Path == "staged.cpp");
 }
+
+TEST_CASE("A checkout's files reload silently except a document left unsaved that nobody confirmed losing")
+{
+	const std::vector<std::filesystem::path> changed = {"C:/repo/a.txt", "C:/repo/b.txt", "C:/repo/c.txt"};
+
+	// b.txt was edited after the question was answered; c.txt was in the question and the
+	// reader chose what happens to it.
+	const auto silent =
+		Graphite::SilentReloads(changed, {"C:/repo/b.txt", "C:/repo/c.txt"}, {"C:/repo/c.txt"});
+
+	CHECK(silent == std::vector<std::filesystem::path>{"C:/repo/a.txt", "C:/repo/c.txt"});
+}
+
+TEST_CASE("A checkout that asked nothing reloads no document with unsaved edits silently")
+{
+	const auto silent = Graphite::SilentReloads({"C:/repo/a.txt", "C:/repo/b.txt"}, {"C:/repo/b.txt"}, {});
+
+	CHECK(silent == std::vector<std::filesystem::path>{"C:/repo/a.txt"});
+}
+
+TEST_CASE("Silent reloads match documents whatever the case and separators")
+{
+	const auto silent = Graphite::SilentReloads({"C:/Repo/Src/A.txt", "C:/repo/src/b.txt"},
+												{"c:\\repo\\src\\a.TXT", "C:\\REPO\\SRC\\B.txt"},
+												{"c:/REPO/src/b.txt"});
+
+	CHECK(silent == std::vector<std::filesystem::path>{"C:/repo/src/b.txt"});
+}

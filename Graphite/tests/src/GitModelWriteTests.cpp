@@ -1085,44 +1085,28 @@ TEST_CASE("A failed plan answers through its own one-shot, not the write error")
 	CHECK_FALSE(model.GetWriteError().has_value());
 }
 
-TEST_CASE("Creating a branch and checking it out is one job")
+TEST_CASE("A plan asked for right after a new branch reaches the port after the branch exists")
 {
 	WritePort port;
-	port.CheckoutResult.Changed = {"a.txt"};
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);
 
-	model.RequestCreateBranch("topic", Core::Oid{},
-							  Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = "topic"});
+	model.RequestCreateBranch("topic", Core::Oid{});
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "topic"});
+	model.OnUpdate(Core::Timestep{0.0f});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	CHECK(port.Calls == std::vector<std::string>{"branch:topic", "checkout:topic"});
-	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt"});
+	CHECK(port.Calls == std::vector<std::string>{"branch:topic", "plan:topic"});
+	CHECK(model.TakeCheckoutPlan().has_value());
 }
 
-TEST_CASE("Creating a branch whose checkout fails partway still reports what the checkout changed")
-{
-	WritePort port;
-	port.CheckoutResult.Changed = {"a.txt"};
-	port.CheckoutResult.Failure = Core::Error{Core::ErrorCode::IoFailure, "no"};
-	Graphite::GitModel model{port, Inline()};
-	OpenA(model);
-
-	model.RequestCreateBranch("topic", Core::Oid{},
-							  Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = "topic"});
-	model.OnUpdate(Core::Timestep{0.0f});
-
-	CHECK(model.GetWriteError().has_value());
-	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt"});
-}
-
-TEST_CASE("Creating a branch without a checkout reports nothing checked out")
+TEST_CASE("Creating a branch reports nothing checked out")
 {
 	WritePort port;
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);
 
-	model.RequestCreateBranch("topic", Core::Oid{}, std::nullopt);
+	model.RequestCreateBranch("topic", Core::Oid{});
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(port.Calls == std::vector<std::string>{"branch:topic"});

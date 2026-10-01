@@ -76,8 +76,8 @@ namespace Graphite {
 			Core::CheckoutTarget Target;
 			CheckoutQuestion Question;
 
-			// The editor's unsaved documents as they were when the checkout was asked for:
-			// what Discard reverts and Stash saves first.
+			// The editor's unsaved documents as they were when the plan answered: what Discard
+			// reverts and Stash saves first.
 			std::vector<std::filesystem::path> UnsavedAbsolute;
 
 			// The checkbox's starting state - ticked, and locked, when an untracked file blocks.
@@ -141,8 +141,8 @@ namespace Graphite {
 		// made - each with a way to dismiss it. Lines, not modals, like ChangesPanel's.
 		void RenderErrors();
 
-		// The first step of every checkout: note what the editor holds unsaved and ask the
-		// model what the checkout would touch. OnUpdate takes it from there.
+		// The first step of every checkout - a new branch's "Checkout after creating"
+		// included: ask the model what the checkout would touch. OnUpdate takes it from there.
 		void BeginCheckout(const Core::CheckoutTarget& target);
 		// `suggested` pre-fills the field; empty leaves it empty.
 		void BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested = {});
@@ -151,8 +151,14 @@ namespace Graphite {
 		// What a commit row's menu asked for, acted on.
 		void ApplyCommitAction();
 
-		// The plan answered: check out at once, or ask.
+		// The plan answered: note what the editor holds unsaved now, then check out at once
+		// or ask. Noted here rather than at the click, so a document edited while the plan
+		// was being made is part of the decision too.
 		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
+
+		// Sends the checkout, noting which unsaved documents the reader chose to revert or
+		// save: the only ones the editor may then reload without asking.
+		void RequestCheckout(CheckoutRequest request, std::vector<std::filesystem::path> confirmedUnsaved);
 
 		// Asks unless the same question is already asked: a second click on a menu item while
 		// the first is still queued or open must not ask it twice.
@@ -278,10 +284,15 @@ namespace Graphite {
 		// detached tabs hold one of these per tab, for the same reason and by the same rules.
 		FileTextsBinding m_Texts;
 
-		// The checkout whose plan is in flight, and the unsaved documents noted when it was
-		// asked for. A plan answering any other target is one this panel no longer wants.
+		// The checkout whose plan is in flight. A plan answering any other target is one this
+		// panel no longer wants.
 		std::optional<Core::CheckoutTarget> m_PendingCheckout;
-		std::vector<std::filesystem::path> m_PendingUnsaved;
+
+		// The unsaved documents the last checkout sent was confirmed over - reverted or saved
+		// through the dialog; none when it went ahead without asking. Any other document
+		// with unsaved edits when the checkout lands was edited after the question, and gets
+		// the editor's own question rather than a silent reload.
+		std::vector<std::filesystem::path> m_ConfirmedUnsaved;
 
 		// The branch whose delete check is in flight, for the same reason.
 		std::optional<std::string> m_PendingDelete;
