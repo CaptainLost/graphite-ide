@@ -12,10 +12,12 @@ namespace Graphite {
 	namespace {
 
 		// Editor paths and git paths name the same file in different spellings: separators,
-		// and on Windows the case. Every comparison goes through this key.
+		// and on Windows the case. Every comparison goes through this key. UTF-8 rather than
+		// generic_string(), which narrows through the ANSI code page and throws on a name
+		// outside it; folding ASCII only leaves every byte of a multi-byte character alone.
 		std::string Key(const std::filesystem::path& path)
 		{
-			std::string key = path.lexically_normal().generic_string();
+			std::string key = Core::ToGenericUtf8(path.lexically_normal());
 			while (!key.empty() && key.back() == '/')
 			{
 				key.pop_back();
@@ -51,6 +53,23 @@ namespace Graphite {
 			return std::any_of(keys.begin(), keys.end(), [&prefix](const std::string& key)
 			                   { return key.compare(0, prefix.size(), prefix) == 0; });
 		}
+	}
+
+	std::string CheckoutRowLabel(const CheckoutQuestionRow& row)
+	{
+		std::string line = Core::ToGenericUtf8(row.Path);
+
+		if (row.Unsaved)
+		{
+			line += " (unsaved in the editor)";
+		}
+
+		if (row.Blocks)
+		{
+			line += " (blocks checkout)";
+		}
+
+		return line;
 	}
 
 	bool NeedsCheckoutDialog(const Core::CheckoutPlan& plan, const std::vector<std::filesystem::path>& unsaved)

@@ -1,5 +1,6 @@
 #include "Git/GitView.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 
@@ -59,8 +60,10 @@ namespace Graphite {
 		std::filesystem::path RelativeTo(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
 			const auto same = [](const std::filesystem::path& a, const std::filesystem::path& b) {
-				const std::string left = a.generic_string();
-				const std::string right = b.generic_string();
+				// UTF-8: generic_string() narrows through the ANSI code page, and throws on a
+				// name outside it.
+				const std::string left = Core::ToGenericUtf8(a);
+				const std::string right = Core::ToGenericUtf8(b);
 
 				return std::equal(left.begin(), left.end(), right.begin(), right.end(), [](char x, char y) {
 					return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));

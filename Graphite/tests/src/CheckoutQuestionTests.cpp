@@ -204,3 +204,41 @@ TEST_CASE("Silent reloads match documents whatever the case and separators")
 
 	CHECK(silent == std::vector<std::filesystem::path>{"C:/repo/src/b.txt"});
 }
+
+namespace {
+
+	// UTF-8 bytes as std::string, the way the dialog hands text to ImGui.
+	std::string Utf8(const char8_t* text)
+	{
+		return std::string(reinterpret_cast<const char*>(text));
+	}
+}
+
+TEST_CASE("Paths outside the ANSI code page are matched and labelled as UTF-8")
+{
+	Core::CheckoutPlan plan;
+	plan.Updated = {std::filesystem::path{u8"źródło/日本.cpp"}};
+
+	// Two names the ANSI code page would both narrow to question marks.
+	CHECK(Graphite::NeedsCheckoutDialog(plan, {std::filesystem::path{u8"źródło/日本.cpp"}}));
+	CHECK_FALSE(Graphite::NeedsCheckoutDialog(plan, {std::filesystem::path{u8"źródło/中国.cpp"}}));
+
+	Core::CheckoutPlan overwritten;
+	overwritten.Overwritten = {std::filesystem::path{u8"źródło/plik.cpp"}};
+
+	Core::FileStatus entry;
+	entry.Path = std::filesystem::path{u8"źródło/plik.cpp"};
+	entry.WorkTree = Core::StatusFlags::Modified;
+
+	Core::WorkingTreeStatus status;
+	status.Entries = {entry};
+
+	const auto question = Graphite::BuildCheckoutQuestion("feature", overwritten, status,
+														  {std::filesystem::path{u8"źródło/plik.cpp"}});
+
+	REQUIRE(question.Changed.size() == 1);
+	CHECK(question.Changed[0].Blocks);
+	CHECK(question.Changed[0].Unsaved);
+	CHECK(Graphite::CheckoutRowLabel(question.Changed[0]) ==
+		  Utf8(u8"źródło/plik.cpp (unsaved in the editor) (blocks checkout)"));
+}

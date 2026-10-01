@@ -37,19 +37,7 @@ namespace Graphite {
 
 			for (const CheckoutQuestionRow& row : rows)
 			{
-				std::string line = row.Path.generic_string();
-
-				if (row.Unsaved)
-				{
-					line += " (unsaved in the editor)";
-				}
-
-				if (row.Blocks)
-				{
-					line += " (blocks checkout)";
-				}
-
-				ImGui::TextUnformatted(line.c_str());
+				ImGui::TextUnformatted(CheckoutRowLabel(row).c_str());
 			}
 
 			ImGui::Unindent();
