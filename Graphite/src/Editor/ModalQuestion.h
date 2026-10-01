@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Base/Assert.h"
 #include "Editor/ModalGate.h"
 #include "UI/DialogLayout.h"
 
@@ -9,10 +10,33 @@
 #include <concepts>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace Graphite {
+
+	// The ImGui window name for a modal shown as `visible` and known to ImGui as `stableId`,
+	// which starts with "###". ImGui identifies a window by its name from the first "###" on,
+	// so nothing in the visible part may start one: a branch may be called "a###b", and one
+	// called "fix#" would run into the stable part as "fix####...". Either way the popup
+	// opened under the stable id would never be found again - and the modal gate would stay
+	// held by a question nobody can see.
+	inline std::string ModalWindowName(std::string visible, std::string_view stableId)
+	{
+		for (std::size_t at = visible.find("##"); at != std::string::npos; at = visible.find("##", at + 2))
+		{
+			visible.insert(at + 1, " ");
+		}
+
+		if (!visible.empty() && visible.back() == '#')
+		{
+			visible += ' ';
+		}
+
+		visible += stableId;
+		return visible;
+	}
 
 	template<std::movable Payload>
 	class ModalQuestion
@@ -64,18 +88,14 @@ namespace Graphite {
 		template<std::predicate<const Payload&> Predicate, std::invocable<const Payload&> TitleOf>
 		bool Begin(Predicate stillWorthAsking, TitleOf titleOf)
 		{
+			CORE_ASSERT(std::string_view(m_Title).starts_with("###"),
+						"a question with a visible title needs a title of its own that starts with ###");
+
 			OpenNext(stillWorthAsking);
 
-			std::string name = m_Current ? std::string(titleOf(std::as_const(*m_Current))) : std::string();
+			const std::string name =
+				ModalWindowName(m_Current ? std::string(titleOf(std::as_const(*m_Current))) : std::string(), m_Title);
 
-			// A branch may be called "a###b"; ImGui would read that as the window's identity
-			// and the popup opened under m_Title would never be found again.
-			for (std::size_t at = name.find("##"); at != std::string::npos; at = name.find("##", at + 2))
-			{
-				name.insert(at + 1, " ");
-			}
-
-			name += m_Title;
 			return BeginNamed(name.c_str());
 		}
 
