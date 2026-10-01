@@ -5,6 +5,15 @@ workspace "Graphite"
     flags { "MultiProcessorCompile" }
     defines { "IMGUI_USE_WCHAR32" }
 
+    -- The C assert() is how ImGui, nlohmann/json and pugixml check their invariants, and
+    -- MSVC leaves it on unless NDEBUG is defined - premake does not define it for an
+    -- optimised configuration. Without this a failed check in any of them ends the process
+    -- in the build a user runs. Our own checks go through CORE_ASSERT, which keys off
+    -- CORE_DEBUG and is unaffected.
+    filter "configurations:Release or Dist"
+        defines { "NDEBUG" }
+    filter {}
+
 outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 IncludeDir = {}

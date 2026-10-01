@@ -3,6 +3,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/Events/Event.h"
+#include "Core/ImGui/ImGuiErrorLog.h"
 
 #include <filesystem>
 #include <string>
@@ -23,7 +24,7 @@ namespace Core {
 	class ImGuiRenderer final : NonCopyable
 	{
 	public:
-		ImGuiRenderer() = default;
+		ImGuiRenderer();
 		~ImGuiRenderer();
 
 		Result<void> Init(Window& window, const std::filesystem::path& layoutFile);
@@ -55,6 +56,7 @@ namespace Core {
 		// ImGui stores the pointer rather than copying the string, so the storage has to
 		// outlive the context.
 		std::string m_LayoutFile;
+		ImGuiErrorLog m_ErrorLog;
 		bool m_Initialized = false;
 	};
 }

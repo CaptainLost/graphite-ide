@@ -130,6 +130,11 @@ namespace Core {
 		}
 	}
 
+	ImGuiRenderer::ImGuiRenderer()
+		: m_ErrorLog(*Log::GetEngineLogger())
+	{
+	}
+
 	ImGuiRenderer::~ImGuiRenderer()
 	{
 		Shutdown();
@@ -139,6 +144,7 @@ namespace Core {
 	{
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
+		m_ErrorLog.Attach(*ImGui::GetCurrentContext());
 
 		// Beside ImGui's own and for exactly as long: every plot call reads it through a
 		// global, as ImGui's calls read theirs.
@@ -155,6 +161,16 @@ namespace Core {
 		// context menus and popups draggable — they have no title bar, so their whole
 		// surface counts.
 		io.ConfigWindowsMoveFromTitleBarOnly = true;
+
+#ifndef CORE_DEBUG
+		// A misuse of ImGui's API that it knows how to recover from - an unbalanced
+		// Begin/End, a cursor moved past the last item - asserts by default, which a user
+		// sees as the IDE vanishing. Outside Debug it is recovered from and written to the
+		// log instead; the tooltip ImGui would otherwise draw over the window is for the
+		// developer, not the user.
+		io.ConfigErrorRecoveryEnableAssert = false;
+		io.ConfigErrorRecoveryEnableTooltip = false;
+#endif
 
 		const auto executableDirectory = ExecutableDirectory();
 
