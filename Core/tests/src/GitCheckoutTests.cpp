@@ -436,3 +436,63 @@ TEST_CASE("An untracked file the target tracks is planned as overwritten")
 	REQUIRE(plan.HasValue());
 	CHECK(Contains(plan.GetValue().Overwritten, "notes.txt"));
 }
+
+namespace {
+
+	// master and side both changed a.txt; master is mid-merge of side with a.txt conflicted.
+	// "elsewhere" is a branch at the base that also adds c.txt.
+	void ConflictedMerge(GitFixture& fixture)
+	{
+		fixture.Write("a.txt", "base\n");
+		fixture.Write("b.txt", "same\n");
+		fixture.Commit("base");
+		fixture.Branch("side");
+		fixture.Branch("elsewhere");
+		fixture.Write("a.txt", "ours\n");
+		fixture.Commit("ours");
+		fixture.Checkout("side");
+		fixture.Write("a.txt", "theirs\n");
+		fixture.Commit("theirs");
+		fixture.Checkout("elsewhere");
+		fixture.Write("c.txt", "only elsewhere\n");
+		fixture.Commit("elsewhere");
+		fixture.Checkout("master");
+		fixture.StartConflict("side");
+	}
+}
+
+TEST_CASE("Unresolved conflicts in the index are planned as overwritten, beside what the checkout would write")
+{
+	GitFixture fixture;
+	ConflictedMerge(fixture);
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	auto plan = repository.PlanCheckout(Local("elsewhere"));
+
+	REQUIRE(plan.HasValue());
+	CHECK(Contains(plan.GetValue().Overwritten, "a.txt"));
+	CHECK(Contains(plan.GetValue().Updated, "c.txt"));
+	CHECK_FALSE(Contains(plan.GetValue().Updated, "a.txt"));
+}
+
+TEST_CASE("Checkout over unresolved conflicts is refused as such, and goes ahead once they are discarded")
+{
+	GitFixture fixture;
+	ConflictedMerge(fixture);
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	const Core::CheckoutOutcome refused = repository.Checkout(Local("elsewhere"));
+
+	REQUIRE(refused.Failure.has_value());
+	CHECK(refused.Failure->Code == Core::ErrorCode::InvalidArgument);
+	CHECK(refused.Failure->Message.find("resolve or discard the conflicts first") != std::string::npos);
+	CHECK(refused.Changed.empty());
+	CHECK(repository.QueryHead().GetValue().BranchName == "master");
+
+	REQUIRE(repository.DiscardAll(false).HasValue());
+
+	const Core::CheckoutOutcome outcome = repository.Checkout(Local("elsewhere"));
+	CHECK_FALSE(outcome.Failure.has_value());
+	CHECK(repository.QueryHead().GetValue().BranchName == "elsewhere");
+	CHECK(Read(fixture.GetPath() / "c.txt") == "only elsewhere\n");
+}

@@ -167,3 +167,26 @@ TEST_CASE("Stashing untracked files keeps ignored ones, even inside an untracked
 	REQUIRE(repository.StashApply(id).HasValue());
 	CHECK(Read(fixture.GetPath() / "scratch" / "note.txt") == "untracked\n");
 }
+
+TEST_CASE("Stashing over unresolved conflicts fails with the reason and changes nothing")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Branch("side");
+	fixture.Write("a.txt", "ours\n");
+	fixture.Commit("ours");
+	fixture.Checkout("side");
+	fixture.Write("a.txt", "theirs\n");
+	fixture.Commit("theirs");
+	fixture.Checkout("master");
+	fixture.StartConflict("side");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	const std::string before = Read(fixture.GetPath() / "a.txt");
+
+	auto saved = repository.StashSave("over a conflict", false);
+	REQUIRE_FALSE(saved.HasValue());
+	CHECK(saved.GetError().Message.find("resolve or discard the conflicts first") != std::string::npos);
+	CHECK(Read(fixture.GetPath() / "a.txt") == before);
+	CHECK(repository.QueryStashes().GetValue().empty());
+}

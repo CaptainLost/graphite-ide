@@ -108,6 +108,14 @@ namespace Core {
 		if (result == GIT_ENOTFOUND)
 			return false;
 
+		// libgit2 cannot write a tree from a conflicted index, and says so in its own terms;
+		// it refuses before recording anything.
+		if (result == GIT_EUNMERGED)
+		{
+			return Error{ErrorCode::InvalidArgument,
+						 "cannot stash: the index has unresolved conflicts; resolve or discard the conflicts first"};
+		}
+
 		if (result != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot stash: {}", LastLibgit2Message())};
 

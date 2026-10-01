@@ -9,6 +9,7 @@
 #include <git2.h>
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <optional>
 #include <string>
@@ -105,22 +106,18 @@ namespace Core {
 			return resolved;
 		}
 
-		// Files the checkout would remove from disk. libgit2 notifies a removal only when it
-		// conflicts; a clean one is queued without any notification, so the list is read from
-		// the same two trees the checkout diffs - HEAD's and the target's - keeping only what
-		// is on disk to be removed. Read before the checkout, which would leave nothing to see.
-		Result<std::vector<std::filesystem::path>> Removals(git_repository* handle, git_object* target,
-															const std::filesystem::path& workingDirectory)
+		// HEAD's tree against the target's: what a checkout of a clean working tree would do.
+		// Empty with no HEAD yet, which has no tree to compare.
+		Result<DiffHandle> HeadToTarget(git_repository* handle, git_object* target)
 		{
-			std::vector<std::filesystem::path> removed;
+			DiffHandle diff;
 			const int unborn = git_repository_head_unborn(handle);
 
 			if (unborn < 0)
 				return Error{ErrorCode::IoFailure, std::format("cannot read HEAD: {}", LastLibgit2Message())};
 
-			// No HEAD tree, so nothing tracked to remove.
 			if (unborn == 1)
-				return removed;
+				return diff;
 
 			ObjectHandle headTree;
 
@@ -135,18 +132,34 @@ namespace Core {
 							 std::format("cannot read the target's tree: {}", LastLibgit2Message())};
 			}
 
-			DiffHandle diff;
 			const int diffed = git_diff_tree_to_tree(Out(diff), handle, reinterpret_cast<git_tree*>(headTree.get()),
 													 targetTree.get(), nullptr);
 
 			if (diffed != 0)
 				return Error{ErrorCode::IoFailure, std::format("cannot compare the trees: {}", LastLibgit2Message())};
 
-			const std::size_t count = git_diff_num_deltas(diff.get());
+			return diff;
+		}
+
+		// Files the checkout would remove from disk. libgit2 notifies a removal only when it
+		// conflicts; a clean one is queued without any notification, so the list is read from
+		// the same two trees the checkout diffs - HEAD's and the target's - keeping only what
+		// is on disk to be removed. Read before the checkout, which would leave nothing to see.
+		Result<std::vector<std::filesystem::path>> Removals(git_repository* handle, git_object* target,
+															const std::filesystem::path& workingDirectory)
+		{
+			auto diff = HeadToTarget(handle, target);
+
+			if (!diff.HasValue())
+				return diff.GetError();
+
+			std::vector<std::filesystem::path> removed;
+			const git_diff* deltas = diff.GetValue().get();
+			const std::size_t count = deltas != nullptr ? git_diff_num_deltas(deltas) : 0;
 
 			for (std::size_t i = 0; i < count; ++i)
 			{
-				const git_diff_delta* delta = git_diff_get_delta(diff.get(), i);
+				const git_diff_delta* delta = git_diff_get_delta(deltas, i);
 
 				if (delta->status != GIT_DELTA_DELETED)
 					continue;
@@ -160,6 +173,74 @@ namespace Core {
 
 			return removed;
 		}
+
+		// Every file HEAD and the target differ in. With unresolved conflicts libgit2 refuses
+		// even a dry run before it looks at a single file, so this is the plan's best word on
+		// what the checkout will write: the conflicts have to be discarded or stashed before
+		// it can go ahead, and that leaves the tree at HEAD.
+		Result<std::vector<std::filesystem::path>> Differing(git_repository* handle, git_object* target)
+		{
+			auto diff = HeadToTarget(handle, target);
+
+			if (!diff.HasValue())
+				return diff.GetError();
+
+			std::vector<std::filesystem::path> differing;
+			const git_diff* deltas = diff.GetValue().get();
+			const std::size_t count = deltas != nullptr ? git_diff_num_deltas(deltas) : 0;
+
+			for (std::size_t i = 0; i < count; ++i)
+			{
+				const git_diff_delta* delta = git_diff_get_delta(deltas, i);
+				const char* path = delta->status == GIT_DELTA_DELETED ? delta->old_file.path : delta->new_file.path;
+				differing.push_back(FromUtf8(path));
+			}
+
+			return differing;
+		}
+
+		// Paths with unresolved conflicts in the index, each once. The index is re-read
+		// first: libgit2 keeps one per repository handle, and a merge or a pop that
+		// conflicted since it was last read is exactly what this looks for.
+		Result<std::vector<std::filesystem::path>> Conflicted(git_repository* handle)
+		{
+			IndexHandle index;
+
+			// Two statements: Out hands the index over only at the end of the full expression.
+			if (git_repository_index(Out(index), handle) != 0)
+				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+
+			if (git_index_read(index.get(), false) != 0)
+				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+
+			std::vector<std::filesystem::path> conflicted;
+
+			if (!git_index_has_conflicts(index.get()))
+				return conflicted;
+
+			// The entries are sorted by path and then stage, so a conflict's two or three
+			// stages sit next to each other.
+			const std::size_t count = git_index_entrycount(index.get());
+			const char* previous = nullptr;
+
+			for (std::size_t i = 0; i < count; ++i)
+			{
+				const git_index_entry* entry = git_index_get_byindex(index.get(), i);
+
+				if (entry == nullptr || GIT_INDEX_ENTRY_STAGE(entry) == 0)
+					continue;
+
+				if (previous == nullptr || std::strcmp(previous, entry->path) != 0)
+					conflicted.push_back(FromUtf8(entry->path));
+
+				previous = entry->path;
+			}
+
+			return conflicted;
+		}
+
+		const char* const ResolveConflictsFirst =
+			"the index has unresolved conflicts; resolve or discard the conflicts first";
 
 		struct Notified
 		{
@@ -261,11 +342,11 @@ namespace Core {
 			return Result<void>::Ok();
 		}
 
-		// A removal that conflicts is the user's work, not something the checkout would do.
-		void AddRemovals(std::vector<std::filesystem::path>& updated, std::vector<std::filesystem::path> removed,
-						 const std::vector<std::filesystem::path>& overwritten)
+		// A path that conflicts is the user's work, not something the checkout would do.
+		void AddUnlessOverwritten(std::vector<std::filesystem::path>& updated, std::vector<std::filesystem::path> paths,
+								  const std::vector<std::filesystem::path>& overwritten)
 		{
-			for (std::filesystem::path& path : removed)
+			for (std::filesystem::path& path : paths)
 			{
 				if (std::find(overwritten.begin(), overwritten.end(), path) == overwritten.end())
 					updated.push_back(std::move(path));
@@ -284,6 +365,27 @@ namespace Core {
 			return resolved.GetError();
 
 		git_object* commit = resolved.GetValue().Commit.get();
+		auto conflicted = Conflicted(m_Handle);
+
+		if (!conflicted.HasValue())
+			return conflicted.GetError();
+
+		// libgit2 refuses a checkout - a dry run too - over unresolved conflicts without
+		// naming a file, which would read as a plan with nothing in the way. They are what
+		// is in the way: listed as overwritten, the question opens on them, and Discard or
+		// Stash is what clears them.
+		if (!conflicted.GetValue().empty())
+		{
+			auto differing = Differing(m_Handle, commit);
+
+			if (!differing.HasValue())
+				return differing.GetError();
+
+			CheckoutPlan plan{std::move(conflicted).GetValue(), {}};
+			AddUnlessOverwritten(plan.Updated, std::move(differing).GetValue(), plan.Overwritten);
+			return plan;
+		}
+
 		auto removed = Removals(m_Handle, commit, m_WorkingDirectory);
 
 		if (!removed.HasValue())
@@ -304,7 +406,7 @@ namespace Core {
 						 std::format("cannot plan the checkout: {}", LastLibgit2Message())};
 		}
 
-		AddRemovals(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
+		AddUnlessOverwritten(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
 		return CheckoutPlan{std::move(notified.Overwritten), std::move(notified.Updated)};
 	}
 
@@ -321,6 +423,16 @@ namespace Core {
 			return failed(resolved.GetError());
 
 		const Resolved& r = resolved.GetValue();
+		auto conflicted = Conflicted(m_Handle);
+
+		if (!conflicted.HasValue())
+			return failed(conflicted.GetError());
+
+		// Refused here, in words that say why: libgit2's own refusal looks like any other
+		// "would overwrite changes" one.
+		if (!conflicted.GetValue().empty())
+			return failed(Error{ErrorCode::InvalidArgument, ResolveConflictsFirst});
+
 		auto removed = Removals(m_Handle, r.Commit.get(), m_WorkingDirectory);
 
 		if (!removed.HasValue())
@@ -361,7 +473,7 @@ namespace Core {
 		// any other failure can happen, Updated already holds everything the checkout meant to
 		// write.
 		const int checkedOut = git_checkout_tree(m_Handle, r.Commit.get(), &options);
-		AddRemovals(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
+		AddUnlessOverwritten(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
 
 		if (checkedOut != 0)
 		{
