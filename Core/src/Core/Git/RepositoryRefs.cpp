@@ -80,7 +80,9 @@ namespace Core {
 		git_reference* reference = nullptr;
 		git_branch_t type = GIT_BRANCH_LOCAL;
 
-		while (git_branch_next(&reference, &type, iterator) == 0)
+		int next = 0;
+
+		while ((next = git_branch_next(&reference, &type, iterator)) == 0)
 		{
 			Branch branch;
 			branch.Kind = type == GIT_BRANCH_REMOTE ? RefKind::Remote : RefKind::Local;
@@ -139,6 +141,15 @@ namespace Core {
 
 			branches.push_back(std::move(branch));
 			git_reference_free(reference);
+		}
+
+		// GIT_ITEROVER is the ordinary end. Anything else means the listing stopped
+		// partway, and a partial list must not pass for the whole one.
+		if (next != GIT_ITEROVER)
+		{
+			const std::string message = LastLibgit2Message();
+			git_branch_iterator_free(iterator);
+			return Error{ErrorCode::IoFailure, std::format("cannot list the branches: {}", message)};
 		}
 
 		git_branch_iterator_free(iterator);

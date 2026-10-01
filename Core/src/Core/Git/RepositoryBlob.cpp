@@ -15,6 +15,25 @@
 
 namespace Core {
 
+	namespace {
+
+		// An empty blob is an ordinary thing to commit or stage, and libgit2 may hand back
+		// a null pointer for it. std::string's (pointer, count) constructor requires a
+		// non-null pointer even when count is zero, so a zero-byte blob needs its own path
+		// rather than trusting the pointer unconditionally.
+		std::string BlobBytes(const git_blob* blob)
+		{
+			const std::size_t size = static_cast<std::size_t>(git_blob_rawsize(blob));
+
+			if (size == 0)
+			{
+				return std::string();
+			}
+
+			return std::string(static_cast<const char*>(git_blob_rawcontent(blob)), size);
+		}
+	}
+
 	Result<std::string> Repository::ReadBlob(const std::filesystem::path& path, const Oid& revision) const
 	{
 		if (m_Handle == nullptr)
@@ -86,13 +105,7 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot read the blob: {}", message)};
 		}
 
-		const std::size_t size = static_cast<std::size_t>(git_blob_rawsize(blob));
-
-		// An empty blob is an ordinary thing to commit, and libgit2 may hand back a null
-		// pointer for it. std::string's (pointer, count) constructor requires a non-null
-		// pointer even when count is zero, so a zero-byte blob needs its own path rather
-		// than trusting the pointer unconditionally.
-		std::string bytes = size == 0 ? std::string() : std::string(static_cast<const char*>(git_blob_rawcontent(blob)), size);
+		std::string bytes = BlobBytes(blob);
 
 		git_blob_free(blob);
 		git_tree_free(tree);
@@ -193,8 +206,7 @@ namespace Core {
 						 std::format("'{}' is too large to show as text ({} bytes)", gitPath, size)};
 		}
 
-		std::string bytes{static_cast<const char*>(git_blob_rawcontent(blob)),
-						  static_cast<std::size_t>(size)};
+		std::string bytes = BlobBytes(blob);
 
 		git_blob_free(blob);
 		return bytes;

@@ -280,6 +280,22 @@ TEST_CASE("The index side of a file is read as it was staged")
 	CHECK(staged.GetValue() == "staged\n");
 }
 
+TEST_CASE("An empty staged file is read as empty text")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+
+	Repository repository = OpenAt(fixture.GetPath());
+
+	fixture.Write("empty.txt", "");
+	REQUIRE(repository.Stage({"empty.txt"}).HasValue());
+
+	const auto staged = repository.ReadIndexBlob("empty.txt");
+	REQUIRE(staged.HasValue());
+	CHECK(staged.GetValue().empty());
+}
+
 TEST_CASE("The index has nothing to say about a file that was never staged")
 {
 	GitFixture fixture;

@@ -328,6 +328,7 @@ namespace Core {
 			if (git_commit_lookup(&commit, m_Handle, &id) != 0)
 			{
 				CORE_TRACE("Skipping an unreadable commit while walking the history");
+				complete = false;
 				continue;
 			}
 
@@ -375,9 +376,9 @@ namespace Core {
 			// A rename moves the name older commits know this file by. The tracked path is
 			// updated before the keep/drop decision below, not after it: a commit that
 			// renames the file and also edits lines outside the tracked range touches no
-			// hunk in range, so the old code's early continue below would skip this block
-			// entirely and leave `tracked` holding a name only this commit and its
-			// descendants ever used, silently ending the walk one commit early.
+			// hunk in range, and would otherwise leave `tracked` holding a name only this
+			// commit and its descendants ever used, silently ending the walk one commit
+			// early.
 			// Only for a pattern that names one file and says so exactly. A pattern with a
 			// wildcard names a set, and a set has no one identity for a rename to carry:
 			// swapping "*.txt" for the renamed file's old path would drop every other .txt
