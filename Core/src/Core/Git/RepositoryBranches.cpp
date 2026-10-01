@@ -147,7 +147,16 @@ namespace Core {
 		if (!reference.HasValue())
 			return reference.GetError();
 
-		if (git_branch_is_checked_out(reference.GetValue()) == 1)
+		const int checkedOut = git_branch_is_checked_out(reference.GetValue());
+
+		if (checkedOut < 0)
+		{
+			git_reference_free(reference.GetValue());
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot tell whether '{}' is checked out: {}", name, LastLibgit2Message())};
+		}
+
+		if (checkedOut == 1)
 		{
 			git_reference_free(reference.GetValue());
 			return Error{ErrorCode::InvalidArgument,

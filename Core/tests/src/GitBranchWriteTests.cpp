@@ -4,6 +4,8 @@
 
 #include "GitFixture.h"
 
+#include <git2.h>
+
 #include <algorithm>
 #include <string>
 
@@ -122,4 +124,51 @@ TEST_CASE("A branch is deleted, but never the checked out one")
 
 	CHECK_FALSE(repository.DeleteBranch("master").HasValue());
 	CHECK(HasLocal(repository, "master"));
+}
+
+TEST_CASE("Commits a remote-tracking branch also holds are not counted as unmerged")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Branch("work");
+	fixture.Checkout("work");
+	fixture.Write("a.txt", "two\n");
+	const std::string tip = fixture.Commit("two");
+	fixture.Checkout("master");
+	fixture.PushTo("work", tip);
+
+	const Core::Repository repository = OpenAt(fixture.GetPath());
+
+	CHECK(repository.CountUnmergedCommits("work").GetValue() == 0);
+}
+
+TEST_CASE("A symbolic origin/HEAD neither breaks the count nor changes it")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Branch("work");
+	fixture.Checkout("work");
+	fixture.Write("a.txt", "two\n");
+	const std::string tip = fixture.Commit("two");
+	fixture.Checkout("master");
+	fixture.PushTo("master", tip);
+
+	// origin/HEAD is a symbolic reference; branch iteration yields it and it resolves to the
+	// tip of origin/master, which here is the commit "work" owns.
+	git_repository* raw = nullptr;
+	REQUIRE(git_repository_open(&raw, fixture.GetPath().string().c_str()) == 0);
+	git_reference* symbolic = nullptr;
+	REQUIRE(git_reference_symbolic_create(&symbolic, raw, "refs/remotes/origin/HEAD",
+										  "refs/remotes/origin/master", 1, nullptr) == 0);
+	git_reference_free(symbolic);
+	git_repository_free(raw);
+
+	const Core::Repository repository = OpenAt(fixture.GetPath());
+
+	// origin/master holds "two", so "work" has nothing of its own whether or not the
+	// symbolic origin/HEAD is also hidden.
+	CHECK(repository.CountUnmergedCommits("work").GetValue() == 0);
+	CHECK(repository.CountUnmergedCommits("master").GetValue() == 0);
 }
