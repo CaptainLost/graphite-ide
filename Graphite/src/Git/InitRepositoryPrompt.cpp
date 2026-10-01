@@ -16,7 +16,7 @@ namespace Graphite {
 
 		if (const auto& error = model.GetWriteError(); error.has_value())
 		{
-			message += "\n\nCould not initialise it: " + error->Message;
+			message += "\n\nCould not initialize it: " + error->Message;
 		}
 
 		ImGui::BeginDisabled(model.IsWriteInFlight() || model.IsAwaitingStatusAfterInit());
