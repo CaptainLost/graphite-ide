@@ -59,20 +59,28 @@ namespace Graphite {
 		}
 
 		// A subagent's views draw under an id of their own, so they share no scroll or table
-		// state with the session's. The tab bar is outside it: its selection carries across.
+		// state with the session's, and each open has a serial of its own, so no open inherits the
+		// scroll position of whichever agent ImGui last drew under "agent". The tab bar is outside
+		// it: its selection carries across. Closed before EndTabItem, which pops the tab's own id.
 		class AgentIdScope
 		{
 		public:
-			explicit AgentIdScope(bool active) : m_Active(active)
+			explicit AgentIdScope(bool active, std::uint64_t serial) : m_Active(active)
 			{
 				if (m_Active)
+				{
 					ImGui::PushID("agent");
+					ImGui::PushID(static_cast<int>(serial));
+				}
 			}
 
 			~AgentIdScope()
 			{
 				if (m_Active)
+				{
 					ImGui::PopID();
+					ImGui::PopID();
+				}
 			}
 
 			AgentIdScope(const AgentIdScope&) = delete;
@@ -327,8 +335,13 @@ namespace Graphite {
 
 		// Esc only while this window has the keyboard and nothing in it is being edited, so it
 		// never takes Esc from a field elsewhere. Mouse button 3 is the side "back" button.
+		// ImGui does not mark Esc as used when it acts on it: NavUpdateCancelRequest (imgui.cpp, run
+		// in NewFrame before this) reads it with no owner and then, in this order, clears the active
+		// item, leaves the menu layer, exits a child window, or closes the topmost popup. By the time
+		// this runs the state that told those apart has changed, so entry.EscBusy holds what it was
+		// at the end of last frame: Esc goes back only when none of those applied.
 		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-		back = back || (focused && !ImGui::IsAnyItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape, false));
+		back = back || (focused && !entry.EscBusy && ImGui::IsKeyPressed(ImGuiKey_Escape, false));
 		back = back || (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && ImGui::IsMouseClicked(3));
 
 		return back;
@@ -340,7 +353,11 @@ namespace Graphite {
 		if (!entry.Main.Live || found == entry.Main.Links.end())
 			return;
 
+		// Only grows, so a reopened agent is a new window state to ImGui as well.
+		static std::uint64_t serial = 0;
+
 		auto agent = Core::CreateScope<OpenedAgent>();
+		agent->Views.Serial = ++serial;
 		agent->Info = found->second;
 		agent->Views.Live =
 			Core::CreateScope<LiveTranscript>(SubagentTranscriptPath(entry.Main.Live->GetFile(), found->second.AgentId));
@@ -371,28 +388,30 @@ namespace Graphite {
 		{
 			entry.Selected = SessionTab::Conversation;
 
-			const AgentIdScope idScope{agent != nullptr};
-
-			if (const std::size_t skipped = views.Live->GetSkipped(); skipped > 0)
-				ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
-
-			const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
-			DrawProgress(progress);
-
-			if (progress.FirstPassDone)
 			{
-				ConversationContext context{
-					m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion, &views.Timeline,
-					[&views](std::size_t request) { views.PendingRequest = request; }};
+				const AgentIdScope idScope{agent != nullptr, views.Serial};
 
-				// Subagents of a subagent are not followed: there is one level to go into.
-				if (agent == nullptr)
+				if (const std::size_t skipped = views.Live->GetSkipped(); skipped > 0)
+					ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
+
+				const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
+				DrawProgress(progress);
+
+				if (progress.FirstPassDone)
 				{
-					context.Links = &views.Links;
-					context.OpenAgent = [&entry](const std::string& toolUseId) { entry.PendingAgent = toolUseId; };
-				}
+					ConversationContext context{
+						m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion, &views.Timeline,
+						[&views](std::size_t request) { views.PendingRequest = request; }};
 
-				views.Conversation.Draw(views.Data, context, m_Events);
+					// Subagents of a subagent are not followed: there is one level to go into.
+					if (agent == nullptr)
+					{
+						context.Links = &views.Links;
+						context.OpenAgent = [&entry](const std::string& toolUseId) { entry.PendingAgent = toolUseId; };
+					}
+
+					views.Conversation.Draw(views.Data, context, m_Events);
+				}
 			}
 
 			ImGui::EndTabItem();
@@ -402,24 +421,26 @@ namespace Graphite {
 		{
 			entry.Selected = SessionTab::Cost;
 
-			const AgentIdScope idScope{agent != nullptr};
-
-			// The same rule as the conversation: a cost summed over half a transcript
-			// is a wrong number, not a partial one.
-			const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
-
-			// A request clicked on its chart is shown in the Requests tab, as one picked
-			// in the conversation is.
-			if (progress.FirstPassDone)
 			{
-				if (const std::optional<std::size_t> clicked =
-						views.Cost.Draw(views.Data, summary, views.Timeline, m_Settings.GetPricing(),
-										views.Requests.GetSelected(), palette))
-					views.PendingRequest = clicked;
-			}
-			else
-			{
-				DrawProgress(progress);
+				const AgentIdScope idScope{agent != nullptr, views.Serial};
+
+				// The same rule as the conversation: a cost summed over half a transcript
+				// is a wrong number, not a partial one.
+				const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
+
+				// A request clicked on its chart is shown in the Requests tab, as one picked
+				// in the conversation is.
+				if (progress.FirstPassDone)
+				{
+					if (const std::optional<std::size_t> clicked =
+							views.Cost.Draw(views.Data, summary, views.Timeline, m_Settings.GetPricing(),
+											views.Requests.GetSelected(), palette))
+						views.PendingRequest = clicked;
+				}
+				else
+				{
+					DrawProgress(progress);
+				}
 			}
 
 			ImGui::EndTabItem();
@@ -441,21 +462,23 @@ namespace Graphite {
 		{
 			entry.Selected = SessionTab::Requests;
 
-			const AgentIdScope idScope{agent != nullptr};
-
-			// The same rule again: a request's context delta and the tools it had are
-			// only right once every record before it has been read.
-			const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
-
-			if (progress.FirstPassDone)
 			{
-				views.Requests.Draw(
-					views.Timeline, views.Data,
-					ConversationContext{m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion});
-			}
-			else
-			{
-				DrawProgress(progress);
+				const AgentIdScope idScope{agent != nullptr, views.Serial};
+
+				// The same rule again: a request's context delta and the tools it had are
+				// only right once every record before it has been read.
+				const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
+
+				if (progress.FirstPassDone)
+				{
+					views.Requests.Draw(
+						views.Timeline, views.Data,
+						ConversationContext{m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion});
+				}
+				else
+				{
+					DrawProgress(progress);
+				}
 			}
 
 			ImGui::EndTabItem();
@@ -539,6 +562,13 @@ namespace Graphite {
 					else
 					{
 						DrawTabs(entry, palette, entry.Agent.get());
+					}
+
+					if (entry.Agent)
+					{
+						const ImGuiContext& g = *ImGui::GetCurrentContext();
+						entry.EscBusy = g.ActiveId != 0 || g.NavLayer != ImGuiNavLayer_Main || g.OpenPopupStack.Size > 0 ||
+										(g.NavWindow != nullptr && g.NavWindow != ImGui::GetCurrentWindowRead());
 					}
 
 					if (const std::optional<std::string> toolUseId = std::exchange(entry.PendingAgent, std::nullopt))

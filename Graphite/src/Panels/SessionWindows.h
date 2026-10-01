@@ -105,6 +105,9 @@ namespace Graphite {
 			// timeline: the Requests tab is selected and the request revealed on the next frame,
 			// then cleared.
 			std::optional<std::size_t> PendingRequest;
+
+			// Tells one opened subagent from another in ImGui's ids. Zero for a session's own.
+			std::uint64_t Serial = 0;
 		};
 
 		// A subagent's conversation shown in its session's window in place of the session's,
@@ -129,6 +132,10 @@ namespace Graphite {
 			// A subagent the conversation asked to show this frame, by the id of the call that
 			// started it. Opened once the tab bar is done, never while it is being drawn.
 			std::optional<std::string> PendingAgent;
+
+			// Whether ImGui could have spent an Esc on something else at the end of last frame: an
+			// item being edited, a popup, a child window with the nav focus. See DrawBreadcrumb.
+			bool EscBusy = false;
 			bool Fresh = true;
 			bool Focus = true;
 
