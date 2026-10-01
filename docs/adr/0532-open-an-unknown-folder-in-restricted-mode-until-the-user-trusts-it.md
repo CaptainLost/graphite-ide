@@ -72,9 +72,9 @@ answer.
   background analysis of the enclosing folder does not descend into it.
 - Fold the analysis into the same switch: it runs only when its setting is on
   and the folder is trusted. `GraphiteLayer` computes trust once per frame and
-  reacts to the edge. Falling: `Revalidate()`, cancel the walk, clear its
-  queue, detach the store. Rising: `WarmUp`, and attach the store and start
-  the walk if the setting is on.
+  `WorkspaceAnalysisCoordinator` reacts to the edge. Falling: `Revalidate()`,
+  cancel the walk, clear its queue, detach the store. Rising: `WarmUp`, and
+  attach the store and start the walk if the setting is on.
 - Build, run and debug must ask `WorkspaceTrust` before they start anything,
   and refuse for a folder it does not trust.
 

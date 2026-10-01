@@ -14,10 +14,8 @@
 #include "Git/DiffWindows.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
-#include "Lang/Analysis/AnalysisStore.h"
-#include "Lang/Analysis/AnalysisWalk.h"
 #include "Lang/Analysis/FileTextSource.h"
-#include "Lang/Analysis/WorkspaceAnalysis.h"
+#include "Lang/Analysis/WorkspaceAnalysisCoordinator.h"
 #include "Lang/Diagnostics/DiagnosticsModel.h"
 #include "Lang/Server/LanguageServices.h"
 #include "Panels/SessionWindows.h"
@@ -180,52 +178,47 @@ namespace Graphite {
 		// the same reason m_EditorSettings is.
 		AnalysisSettings m_AnalysisSettings;
 
-		// Ahead of both its producers, so it outlives them: m_WorkspaceAnalysis writes entries
-		// into it and m_DocumentWindows reads them back when a tab opens, and either holding a
-		// reference to a destroyed cache is the failure this order prevents.
+		// Ahead of both its producers, so it outlives them: m_AnalysisCoordinator's pass writes
+		// entries into it and m_DocumentWindows reads them back when a tab opens, and either
+		// holding a reference to a destroyed cache is the failure this order prevents.
 		AnalysisCache m_Analysis{AnalysisSettings::kDefaultBudgetMegabytes * 1024ull * 1024ull};
 
-		// Beside the cache it is the second tier of, and ahead of the same two readers for the same
-		// reason: m_WorkspaceAnalysis holds it as a pointer and writes every finished file into it,
-		// and m_DocumentWindows holds it by reference and reads one back whenever a tab opens. Both
-		// are declared below, so both are destroyed first and neither can outlive what it points
-		// at. Its own worker is joined by its destructor, which is why nothing above it has to wait
-		// for the disk.
-		AnalysisStore m_AnalysisStore;
-
-		// The reader's worker, declared before the class that asks it for text so the requests
-		// stop arriving before the thread is joined.
+		// The reader's worker, declared before the coordinator whose pass asks it for text, so the
+		// requests stop arriving before the thread is joined.
 		DiskFileTexts m_AnalysisTexts;
 
-		// Declared after m_LanguageServices, which the port forwards to, and before
-		// m_WorkspaceAnalysis, which holds the port: the pass closes whatever it had open from its
-		// own destructor, so the port and the servers behind it must both still be there.
+		// Declared after m_LanguageServices, which both ports forward to, and before
+		// m_AnalysisCoordinator, which holds them: the pass closes whatever it had open from its
+		// own destructor, so the ports and the servers behind them must both still be there.
 		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices};
-		// Both tiers, and both declared above so both outlive this: the pass writes a finished file
-		// into the cache and the store together, and it goes on writing until its own destructor
-		// has run.
-		WorkspaceAnalysis m_WorkspaceAnalysis{m_AnalysisPort, m_AnalysisTexts, m_Analysis,
-											  &m_AnalysisStore};
+		LanguageServicesWorkspacePort m_AnalysisServers{m_LanguageServices};
 
-		// Last of this group, so its destructor runs first and the walking thread is cancelled and
-		// joined before anything it feeds goes away. It holds no reference to the members above -
-		// its findings are drained on the UI thread - so this is the cheap end of the order.
-		AnalysisWalk m_AnalysisWalk;
+		// Owns the background analysis - its store, its pass and its walk, in that order inside
+		// it - and notices the folder, its trust and the setting changing. After everything it
+		// holds a reference to (the ports and the reader just above, m_Analysis further up), so
+		// all of them outlive it. Before m_DocumentWindows, which holds its store and its pass by
+		// reference and reads both back whenever a tab opens: declared first, it is destroyed
+		// last, so neither reference can dangle. Inside it the walk is destroyed first, joining
+		// its thread before the pass it feeds goes away, and the store last, after the pass that
+		// writes into it.
+		WorkspaceAnalysisCoordinator m_AnalysisCoordinator{m_AnalysisServers, m_AnalysisPort,
+														   m_AnalysisTexts, m_Analysis};
 
 		// Tabs a context menu asked to close, taken by their owners on the next frame.
 		Core::TabCloseRequests m_TabCloseRequests;
 
 		// Declared after m_LanguageServices, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers. After
-		// m_Analysis, m_AnalysisStore and m_WorkspaceAnalysis too, all three of which it now holds
-		// by reference.
+		// m_Analysis and m_AnalysisCoordinator too, whose cache, store and pass it holds by
+		// reference.
 		//
 		// m_ChangeMarkers is declared further down, with the git group, and so is not yet
 		// constructed here. That is fine: only a reference to it is bound, and nothing reaches
 		// through that reference until the first frame.
 		DocumentWindows m_DocumentWindows{m_Documents,     m_Modals,   m_LanguageServices,
 										  m_Diagnostics,   m_ChangeMarkers, m_PreviewSemantics,
-										  m_Analysis,      m_AnalysisStore, m_WorkspaceAnalysis};
+										  m_Analysis,      m_AnalysisCoordinator.GetStore(),
+										  m_AnalysisCoordinator.GetPass()};
 
 		// The Git panel's view of the editor, over the two members above. Declared after both
 		// and before m_Panels, where GitView holds it by reference.
@@ -319,24 +312,6 @@ namespace Graphite {
 
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
-
-		// The root the language servers were last warmed for, so the comparison in OnImGuiRender
-		// fires once per folder rather than once per frame.
-		std::filesystem::path m_WarmedRoot;
-
-		// What the background-analysis setting was last frame, so switching it back on can restart
-		// the walk. Remembered rather than hooked onto the settings section for the reason
-		// m_WarmedRoot is remembered rather than hooked onto the places a folder opens — see
-		// OnImGuiRender. Starts at AnalysisSettings' own default, so a session that loads that
-		// default sees no edge at all on its first frame.
-		bool m_AnalysisWasEnabled = true;
-
-		// The trust list's revision last seen, so a change made anywhere - the bar, the menu, the
-		// settings section - reaches the language servers through one compare per frame.
-		std::uint64_t m_SeenTrustRevision = 0;
-
-		// Whether the open folder was trusted last frame, for the edge that warms its servers.
-		bool m_WasTrusted = false;
 
 		StateKeeper m_StateKeeper{
 			[](const GlobalState& state) { AppSettings::SaveGlobalState(state); },

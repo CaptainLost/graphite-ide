@@ -47,6 +47,9 @@ namespace Graphite {
 		// which is what "no folder is open" looks like from here.
 		void SetRoot(std::filesystem::path root);
 
+		// The workspace the store is pointed at, empty while detached.
+		const std::filesystem::path& GetRoot() const { return m_Root; }
+
 		// UI thread, once a frame: takes in a finished listing.
 		void Poll();
 

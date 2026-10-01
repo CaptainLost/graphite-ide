@@ -227,7 +227,7 @@ namespace Graphite {
 		// resized would evict its way down to the saved one for nothing.
 		m_AnalysisSettings.Load();
 		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
-		m_WorkspaceAnalysis.SetEnabled(m_AnalysisSettings.IsEnabled());
+		m_AnalysisCoordinator.GetPass().SetEnabled(m_AnalysisSettings.IsEnabled());
 
 		OpenStartupFolder();
 
@@ -607,123 +607,20 @@ namespace Graphite {
 		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
 								 m_SearchPanel->GetStatusMessage()};
 
-		// Read once and spent everywhere below - the walk's trigger, the pass, and what the status
-		// bar is told about walking. Three separate reads of the same getter are three chances for
-		// those to disagree, and a bar saying "finding files" for a walk that was switched off is
-		// exactly what disagreement looks like. The flag includes trust: an untrusted folder is one
-		// where the analysis is off.
+		// Read once and spent everywhere below - the analysis's switches, the status bar's server
+		// slot and the restricted-mode bar. Separate reads of the same getter are chances for those
+		// to disagree, and a bar saying "finding files" for a walk that was switched off is
+		// exactly what disagreement looks like. Includes whether a folder is open: an empty root is
+		// never trusted.
 		const bool workspaceTrusted = m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot());
 
-		// Trust folds into the switch rather than beside it: every edge below - walk, queue,
-		// store - already follows this flag, so an untrusted folder is simply one where the
-		// analysis is off, and trusting it is the same rising edge as turning the setting on.
-		const bool analysisEnabled = m_AnalysisSettings.IsEnabled() && workspaceTrusted;
-
-		// The rising edge of that flag, noticed the way the changed root below is: a compare
-		// against a remembered value each frame catches every way the setting can move, including
-		// from places added later, and costs a bool compare. Switching the feature off cancels the
-		// walk and empties the queue, so switching it back on has nothing left to run — without
-		// this, it would stay inert until the folder was reopened, which reads as a switch that
-		// does not work.
-		const bool analysisSwitchedOn = analysisEnabled && !m_AnalysisWasEnabled;
-
-		// The falling edge, for the store alone. The walk is cancelled unconditionally further
-		// down, which it can be because Cancel on a walk that is not running does nothing; SetRoot
-		// cannot be called that way, because every call tears down the current listing and submits
-		// a new one, and a frame that did that sixty times a second would never be ready.
-		const bool analysisSwitchedOff = !analysisEnabled && m_AnalysisWasEnabled;
-
-		m_AnalysisWasEnabled = analysisEnabled;
-
-		const bool rootChanged = m_Workspace.GetRoot() != m_WarmedRoot;
-
-		// Any change to the list, from anywhere, reaches the servers here - before Poll, so a
-		// server trust has just started is drained on this same frame.
-		if (m_Trust.Revision() != m_SeenTrustRevision)
-		{
-			m_SeenTrustRevision = m_Trust.Revision();
-			m_LanguageServices.Revalidate();
-		}
-
-		const bool trustSwitchedOn = workspaceTrusted && !m_WasTrusted;
-		m_WasTrusted = workspaceTrusted;
-
-		// Noticed here rather than hooked onto the two places a folder can be opened from: a
-		// root comparison per frame catches every way it can change, including ones added later,
-		// and costs a path compare against a path that almost never differs. The language servers'
-		// fallback root is the exception: it is set from the workspace events instead (see the
-		// WorkspaceOpenedEvent handler), because it must be in place before the folder's tabs are
-		// restored, which happens before this per-frame check runs.
-		if (rootChanged)
-		{
-			m_WarmedRoot = m_Workspace.GetRoot();
-
-			if (!m_WarmedRoot.empty() && workspaceTrusted)
-			{
-				// Ignored trees skipped: this walk exists to find one source file per language as
-				// cheaply as it can, and build outputs hold plenty of files that answer nothing.
-				m_LanguageServices.WarmUp(m_WarmedRoot, true);
-			}
-
-			// The same trigger as the warm-up above, and the same ignore rule: a tree's build
-			// output holds plenty of files a server has nothing to say about.
-			//
-			// Outside the branch, unlike the warm-up: a folder closing has to drop the queue as
-			// surely as a folder opening replaces it.
-			m_WorkspaceAnalysis.Clear();
-
-			// The store follows the folder for the same reason the walk does, and on the same
-			// comparison: an analysis kept for one workspace says nothing about the next. Outside
-			// the branch too — an empty root detaches it, which is what "no folder is open" looks
-			// like from there.
-			//
-			// And the empty root is what a switched-off feature looks like from there as well.
-			// Handing the store the real root while the setting is off would create, sweep and
-			// fill `.graphite/analysis` under the tree of a user who asked for none of it — the
-			// same spending the walk is cancelled below to avoid, and the store's detached path
-			// already refuses every lookup and drops every write, so nothing new is needed for it.
-			m_AnalysisStore.SetRoot(analysisEnabled ? m_WarmedRoot : std::filesystem::path{});
-
-			if (!m_WarmedRoot.empty() && analysisEnabled)
-			{
-				m_AnalysisWalk.Start(m_WarmedRoot, true);
-			}
-			else
-			{
-				m_AnalysisWalk.Cancel();
-			}
-		}
-		else if (analysisSwitchedOn && !m_WarmedRoot.empty())
-		{
-			// An `else if` rather than a second branch of its own: a frame that changed the root
-			// has already started the walk for it above, and this must not start a second one over
-			// the top. Start cancels whatever was running, so a double call would cost a wasted
-			// walk rather than corrupt anything - but which branch owns the call is worth being
-			// able to read off the code.
-			//
-			// Nothing to start with no folder open, hence the root check. The queue needs no
-			// clearing: switching the feature off emptied it on the way down.
-			m_AnalysisWalk.Start(m_WarmedRoot, true);
-
-			// Re-attached here, with the walk, because this is the transition that undoes the
-			// detach above: the store was pointed at nothing while the setting was off, and a
-			// pass restarted against a detached store would ask the server about every file the
-			// last session already answered for.
-			m_AnalysisStore.SetRoot(m_WarmedRoot);
-		}
-		else if (analysisSwitchedOff)
-		{
-			// The other half of the same rule, and no root check: detaching a store that was
-			// already detached costs one empty listing and keeps the two edges symmetrical.
-			m_AnalysisStore.SetRoot({});
-		}
-
-		// The folder stayed and became trusted. A folder that arrived trusted was warmed in the
-		// root-change branch above, which is why this is not part of it.
-		if (trustSwitchedOn && !rootChanged)
-		{
-			m_LanguageServices.WarmUp(m_WarmedRoot, true);
-		}
+		// The folder, its trust and the setting, compared against last frame's: warms the servers,
+		// revalidates them when the trust list moves, and starts, restarts or stops the walk and
+		// the store. Before Poll, so a server this starts is drained on this same frame.
+		m_AnalysisCoordinator.Update(AnalysisSwitches{.Root = m_Workspace.GetRoot(),
+													  .Trusted = workspaceTrusted,
+													  .SettingEnabled = m_AnalysisSettings.IsEnabled(),
+													  .TrustRevision = m_Trust.Revision()});
 
 		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
 		// started servers and what moves a running one from Starting to Indexing to Ready — so a
@@ -756,70 +653,32 @@ namespace Graphite {
 		m_PreviewSemantics.Tick(static_cast<std::size_t>(ImGui::GetFrameCount()),
 								ImGui::GetTime());
 
-		// Read every frame rather than on a change notification: both are a comparison against a
-		// value that almost never differs, and a settings object with no observers is one less
-		// thing to keep in step. Both setters return without work when nothing moved.
-		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
-		m_WorkspaceAnalysis.SetEnabled(analysisEnabled);
-
-		// One read, whatever the mode: GetConcurrency answers with the machine's figure while
-		// automatic is on and with the chosen number otherwise, so nothing here branches on which.
-		m_WorkspaceAnalysis.SetConcurrency(m_AnalysisSettings.GetConcurrency());
-
-		if (!analysisEnabled)
-		{
-			// Cancelled rather than merely ignored. A walk left running would keep a worker
-			// traversing the whole tree to fill a queue Enqueue now drops on the floor - the
-			// setting is about not spending the machine on this, and a thread reading every
-			// directory under the root is most of that spending.
-			m_AnalysisWalk.Cancel();
-		}
-
-		// Read before the drain below, not after. The walker can push its last findings and clear
-		// this flag between the two calls, and a frame that reported "not walking" while still
-		// holding undrained paths would show a Total that jumps the frame after - which is the
-		// count appearing to go backwards, the one thing SetWalking exists to prevent. Reading it
-		// first costs at worst one extra frame of "finding files", which is the harmless
-		// direction.
-		const bool walking = analysisEnabled && m_AnalysisWalk.IsWalking();
-
-		// What the walk has found so far, handed over on the UI thread. Drained every frame
-		// rather than once at the end: a tree of any size takes a while to walk, and there is no
-		// reason for the first file found to wait for the last.
-		std::vector<std::filesystem::path> found;
-		m_AnalysisWalk.Take(found);
-
-		m_WorkspaceAnalysis.SetWalking(walking);
-		m_WorkspaceAnalysis.SetTabWidth(m_EditorSettings.GetIndentStyle().Width);
-		m_WorkspaceAnalysis.Enqueue(std::move(found));
-
 		// The open document's own questions come first. IsAnalysing is what the Server slot below
 		// already asks to decide whether to say "analysing" rather than "ready", which makes it
 		// exactly the condition worth yielding to.
 		const std::optional<std::filesystem::path> activeDocument = ActiveTextDocument(m_Documents);
 		const bool foregroundBusy = activeDocument && m_DocumentWindows.IsAnalysing(*activeDocument);
 
-		// Before the pass ticks, for the reason m_LanguageServices.Poll runs before anything reads a
-		// status: this is what turns a finished index listing into an answerable store, and a Tick
-		// ahead of it spends a frame asking a store that cannot yet say what it already knows.
+		// After Poll and after PreviewSemantics::Tick: the pass asks whether a server is ready and
+		// whether a preview pane holds a document, and both are settled for this frame only now.
 		//
-		// Unconditional, and the Tick below is too: the store states its own readiness to
-		// StartNext, which is the only place that has to honour it. Gating the whole Tick here
-		// would also stop the pass finishing files whose answers have arrived and timing out ones
-		// that have gone silent, neither of which has anything to do with the disk.
-		m_AnalysisStore.Poll();
-
+		// The budget and the concurrency are read every frame rather than on a change
+		// notification: both are a comparison against a value that almost never differs, and a
+		// settings object with no observers is one less thing to keep in step.
+		//
 		// "Somebody else already holds this document with the server", not "a tab does".
 		// LanguageServices::OpenDocuments counts no references, so whichever of the three openers
-		// sends a didClose takes the file away from all of them — and a preview pane holds no
+		// sends a didClose takes the file away from all of them - and a preview pane holds no
 		// DocumentSet entry, so a tab check alone would let the background pass close a document a
 		// pane is still asking about. See ADR 0512.
-		m_WorkspaceAnalysis.Tick(ImGui::GetTime(), foregroundBusy,
-								 [this](const std::filesystem::path& path)
-								 {
-									 return m_Documents.Find(path).has_value() ||
-											m_PreviewSemantics.Holds(path);
-								 });
+		m_AnalysisCoordinator.Tick(AnalysisTickInputs{
+			.Now = ImGui::GetTime(),
+			.ForegroundBusy = foregroundBusy,
+			.BudgetBytes = m_AnalysisSettings.GetBudgetBytes(),
+			.Concurrency = m_AnalysisSettings.GetConcurrency(),
+			.TabWidth = m_EditorSettings.GetIndentStyle().Width,
+			.HeldElsewhere = [this](const std::filesystem::path& path)
+			{ return m_Documents.Find(path).has_value() || m_PreviewSemantics.Holds(path); }});
 
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup.
@@ -856,12 +715,12 @@ namespace Graphite {
 		// phrase is about the file on screen, this one is about the tree behind it. Empty while
 		// there is nothing to say, which is what leaves the slot unoccupied rather than resting on
 		// a finished count nobody is waiting for.
-		if (std::string background = BackgroundAnalysisText(m_WorkspaceAnalysis.Progress());
+		if (std::string background = BackgroundAnalysisText(m_AnalysisCoordinator.GetPass().Progress());
 			!background.empty())
 		{
 			messages.Background = std::move(background);
 			messages.BackgroundDetail = BackgroundAnalysisDetail(
-				m_WorkspaceAnalysis.Progress(), m_Analysis.GetBytes(), m_Analysis.GetBudget());
+				m_AnalysisCoordinator.GetPass().Progress(), m_Analysis.GetBytes(), m_Analysis.GetBudget());
 		}
 
 		{

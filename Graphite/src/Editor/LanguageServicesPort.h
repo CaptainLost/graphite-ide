@@ -2,6 +2,7 @@
 
 #include "Editor/PreviewSemantics.h"
 #include "Lang/Analysis/WorkspaceAnalysis.h"
+#include "Lang/Analysis/WorkspaceAnalysisCoordinator.h"
 #include "Lang/Server/LanguageServices.h"
 
 namespace Graphite {
@@ -85,6 +86,24 @@ namespace Graphite {
 			// improve, and what such a server says is the best this file will ever get. Reading it
 			// this way round also means a language nobody has configured never holds the pass.
 			return state != ServerState::Starting && state != ServerState::Indexing;
+		}
+
+	private:
+		LanguageServices& m_Services;
+	};
+
+	// The production WorkspaceServersPort, beside the two above and for the same reason: the
+	// coordinator talks to this, the tests talk to a fake, and neither knows about the other.
+	class LanguageServicesWorkspacePort final : public WorkspaceServersPort
+	{
+	public:
+		explicit LanguageServicesWorkspacePort(LanguageServices& services) : m_Services(services) {}
+
+		void Revalidate() override { m_Services.Revalidate(); }
+
+		void WarmUp(const std::filesystem::path& root, bool respectGitIgnore) override
+		{
+			m_Services.WarmUp(root, respectGitIgnore);
 		}
 
 	private:
