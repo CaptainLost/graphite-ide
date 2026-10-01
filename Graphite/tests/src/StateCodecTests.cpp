@@ -486,3 +486,39 @@ TEST_CASE("A negative stored count or caret falls back to zero")
 	REQUIRE(read.Tabs.size() == 1);
 	CHECK(read.Tabs[0].Line == 0);
 }
+
+TEST_CASE("A path that is the folder itself reads back as the folder, a drive root included")
+{
+	// (a) Regular root: a terminal whose WorkingDirectory == kRoot round-trips equal to kRoot
+	{
+		WorkspaceState state;
+		state.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{T}", "cmd", kRoot}};
+
+		Core::JsonFile file;
+		WriteWorkspaceState(state, kRoot, file);
+
+		const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+		REQUIRE(read.Terminals.has_value());
+		REQUIRE(read.Terminals->size() == 1);
+		CHECK((*read.Terminals)[0].WorkingDirectory == kRoot);
+	}
+
+	// (b) Drive root: with root D:\ and WorkingDirectory D:\, it round-trips equal to D:\
+	// (both parts of comment need escaping to avoid line continuation)
+	{
+		const std::filesystem::path driveRoot = std::filesystem::path{R"(D:\)"};
+
+		WorkspaceState state;
+		state.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{D}", "cmd", driveRoot}};
+
+		Core::JsonFile file;
+		WriteWorkspaceState(state, driveRoot, file);
+
+		const WorkspaceState read = ReadWorkspaceState(file, driveRoot);
+
+		REQUIRE(read.Terminals.has_value());
+		REQUIRE(read.Terminals->size() == 1);
+		CHECK((*read.Terminals)[0].WorkingDirectory == driveRoot);
+	}
+}
