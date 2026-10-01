@@ -4,6 +4,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Glob.h"
+#include "Core/Fs/FileSystem.h"
 
 #include <string_view>
 
@@ -63,14 +64,14 @@ namespace Core {
 
 		// Git writes its paths with forward slashes whatever the platform, and so must
 		// whichever side of this comparison came from a filesystem::path.
-		const std::string text = path.generic_string();
+		const std::string text = ToGenericUtf8(path);
 
 		if (pattern.find('/') != std::string_view::npos)
 		{
 			return GlobMatches(pattern, text);
 		}
 
-		const std::string name = std::filesystem::path{text}.filename().generic_string();
+		const std::string name = ToGenericUtf8(FromUtf8(text).filename());
 
 		// A wildcard is the reader saying where the loose part of the name is, so the
 		// pattern is honoured as written, against the whole name.

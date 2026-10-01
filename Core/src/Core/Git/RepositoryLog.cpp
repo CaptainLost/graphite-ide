@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Git/CommitFilter.h"
 #include "Core/Git/LineRangeTracking.h"
 #include "Core/Git/Libgit2Support.h"
@@ -124,7 +125,7 @@ namespace Core {
 
 		PathMatch FindPath(const Diff& diff, const std::filesystem::path& pattern)
 		{
-			const std::string text = pattern.generic_string();
+			const std::string text = ToGenericUtf8(pattern);
 
 			PathMatch match;
 
@@ -224,7 +225,7 @@ namespace Core {
 
 		bool HasWildcard(const std::filesystem::path& pattern)
 		{
-			const std::string text = pattern.generic_string();
+			const std::string text = ToGenericUtf8(pattern);
 			return text.find('*') != std::string::npos || text.find('?') != std::string::npos;
 		}
 	}

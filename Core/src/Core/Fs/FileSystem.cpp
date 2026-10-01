@@ -4,6 +4,7 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include <algorithm>
 #include <system_error>
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -46,6 +47,13 @@ namespace Core {
 	{
 		const std::u8string utf8 = path.u8string();
 		return std::string{reinterpret_cast<const char*>(utf8.data()), utf8.size()};
+	}
+
+	std::string ToGenericUtf8(const std::filesystem::path& path)
+	{
+		std::string text = ToUtf8(path);
+		std::ranges::replace(text, '\\', '/');
+		return text;
 	}
 
 	std::filesystem::path FromUtf8(std::string_view text)

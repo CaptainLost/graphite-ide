@@ -24,6 +24,9 @@ namespace Core {
 
 	std::string ToUtf8(const std::filesystem::path& path);
 
+	// ToUtf8 with every separator written as a forward slash, the way git spells paths.
+	std::string ToGenericUtf8(const std::filesystem::path& path);
+
 	std::filesystem::path FromUtf8(std::string_view text);
 
 	int CompareNames(std::string_view left, std::string_view right);

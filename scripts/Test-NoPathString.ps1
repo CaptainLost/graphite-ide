@@ -7,7 +7,7 @@
     On MSVC, std::filesystem::path::string() converts through the ANSI code page
     and throws for characters it cannot map. Paths go through Core::ToUtf8
     instead. This scans Core/src and Graphite/src and reports every line that
-    contains .string() and does not end with the marker comment "// not a path",
+    contains .string() or .generic_string() and does not end with the marker comment "// not a path",
     which marks the rare call on a type that is not a path. Exits 1 on any
     finding.
 
@@ -42,7 +42,7 @@ foreach ($directory in $SourceDirectory) {
         $lineNumber = 0
         foreach ($line in [System.IO.File]::ReadLines($file.FullName)) {
             $lineNumber++
-            if ($line -match '\.string\s*\(' -and -not $line.TrimEnd().EndsWith($marker)) {
+            if ($line -match '(\.|->)(generic_)?string\s*\(' -and -not $line.TrimEnd().EndsWith($marker)) {
                 Write-Output ('{0}({1}): .string() on a path breaks on non-ANSI names; use Core::ToUtf8, or end the line with "{2}"' -f $file.FullName, $lineNumber, $marker)
                 $problems++
             }

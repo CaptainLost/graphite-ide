@@ -497,7 +497,7 @@ TEST_CASE("Rebase onto a drive root leaves the node with a usable name")
 	CHECK_FALSE(tree.GetRoot().Name.empty());
 }
 
-TEST_CASE("A root named with characters outside every ANSI code page is accepted and logged")
+TEST_CASE("A root named with characters outside every ANSI code page is accepted")
 {
 	TempDirectory temp;
 	const std::filesystem::path unicodeRoot = temp.GetPath() / L"中文-\U0001F600";
