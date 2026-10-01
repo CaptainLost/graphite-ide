@@ -190,3 +190,34 @@ TEST_CASE("Stashing over unresolved conflicts fails with the reason and changes 
 	CHECK(Read(fixture.GetPath() / "a.txt") == before);
 	CHECK(repository.QueryStashes().GetValue().empty());
 }
+
+TEST_CASE("Popping a stash that conflicts with the branch keeps the stash and says so")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Branch("feature");
+	fixture.Checkout("feature");
+	fixture.Write("a.txt", "feature\n");
+	fixture.Commit("feature");
+	fixture.Checkout("master");
+	fixture.Write("a.txt", "my edit\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	REQUIRE(repository.StashSave("on master", false).HasValue());
+	const Core::Oid id = repository.QueryStashes().GetValue()[0].Id;
+	REQUIRE_FALSE(repository.Checkout({Core::CheckoutKind::LocalBranch, "feature", {}}).Failure.has_value());
+
+	// libgit2 applies a conflicting stash with the conflict in the index and reports
+	// success; git keeps the stash then, and so must a pop.
+	auto popped = repository.StashPop(id);
+
+	REQUIRE_FALSE(popped.HasValue());
+	CHECK(popped.GetError().Message.find("kept as stash@{0}") != std::string::npos);
+	CHECK(repository.QueryStashes().GetValue().size() == 1);
+
+	auto status = repository.QueryStatus();
+	REQUIRE(status.HasValue());
+	REQUIRE(status.GetValue().Entries.size() == 1);
+	CHECK(status.GetValue().Entries[0].Path == std::filesystem::path{"a.txt"});
+	CHECK(status.GetValue().Entries[0].IsConflicted);
+}

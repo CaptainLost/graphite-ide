@@ -173,9 +173,42 @@ namespace Core {
 		git_stash_apply_options options = GIT_STASH_APPLY_OPTIONS_INIT;
 		options.flags = GIT_STASH_APPLY_REINSTATE_INDEX;
 
-		// libgit2 keeps the stash when applying it fails, so a conflict loses nothing.
-		if (git_stash_pop(m_Handle, index.GetValue(), &options) != 0)
+		// Applied and dropped here rather than by git_stash_pop. A stash that collides with a
+		// local change is refused before anything is written, but one that collides with the
+		// branch is applied with the conflict left in the index and reported as a success -
+		// and git_stash_pop then drops it. git keeps the stash in that case, and so does this:
+		// it is the only copy of the work until the conflict is resolved.
+		if (git_stash_apply(m_Handle, index.GetValue(), &options) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot pop the stash: {}", LastLibgit2Message())};
+
+		IndexHandle repositoryIndex;
+
+		// Two statements: Out hands the index over only at the end of the full expression.
+		if (git_repository_index(Out(repositoryIndex), m_Handle) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("the stash was applied but kept: cannot read the index: {}", LastLibgit2Message())};
+		}
+
+		if (git_index_read(repositoryIndex.get(), false) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("the stash was applied but kept: cannot read the index: {}", LastLibgit2Message())};
+		}
+
+		if (git_index_has_conflicts(repositoryIndex.get()))
+		{
+			return Error{ErrorCode::InvalidArgument,
+						 std::format("the stash was applied with conflicts and kept as stash@{{{}}}; resolve the "
+									 "conflicts, then drop it",
+									 index.GetValue())};
+		}
+
+		if (git_stash_drop(m_Handle, index.GetValue()) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("the stash was applied but could not be dropped: {}", LastLibgit2Message())};
+		}
 
 		return Result<void>::Ok();
 	}
