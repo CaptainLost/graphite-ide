@@ -156,6 +156,21 @@ namespace Core {
 		// history.
 		Result<Oid> Commit(const CommitRequest& request);
 
+		// The rules git applies to a name under refs/heads/. Static: a name typed into a
+		// dialog is judged before anything is asked of a repository.
+		static bool IsValidBranchName(const std::string& name);
+
+		Result<void> CreateBranch(const std::string& name, const Oid& from);
+		Result<void> RenameBranch(const std::string& from, const std::string& to);
+
+		// Commits only this branch reaches - none of the other local or remote branches
+		// does. What deleting it would lose, so the UI can say so before it asks.
+		Result<std::size_t> CountUnmergedCommits(const std::string& name) const;
+
+		// Deletes whatever its merge state: asking first is the caller's job. Refuses a
+		// branch checked out here or in another worktree.
+		Result<void> DeleteBranch(const std::string& name);
+
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
 			return m_WorkingDirectory;
