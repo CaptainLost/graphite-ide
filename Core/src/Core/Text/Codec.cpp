@@ -2,6 +2,8 @@
 
 #include "Core/Text/Codec.h"
 
+#include "Core/Text/Utf8.h"
+
 #include <cstdint>
 #include <string>
 
@@ -32,32 +34,6 @@ namespace Core {
 
 			out.push_back(littleEndian ? low : high);
 			out.push_back(littleEndian ? high : low);
-		}
-
-		void AppendUtf8(std::string& out, std::uint32_t codepoint)
-		{
-			if (codepoint < 0x80u)
-			{
-				out.push_back(static_cast<char>(codepoint));
-			}
-			else if (codepoint < 0x800u)
-			{
-				out.push_back(static_cast<char>(0xC0u | (codepoint >> 6)));
-				out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
-			}
-			else if (codepoint < kFirstSupplementary)
-			{
-				out.push_back(static_cast<char>(0xE0u | (codepoint >> 12)));
-				out.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu)));
-				out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
-			}
-			else
-			{
-				out.push_back(static_cast<char>(0xF0u | (codepoint >> 18)));
-				out.push_back(static_cast<char>(0x80u | ((codepoint >> 12) & 0x3Fu)));
-				out.push_back(static_cast<char>(0x80u | ((codepoint >> 6) & 0x3Fu)));
-				out.push_back(static_cast<char>(0x80u | (codepoint & 0x3Fu)));
-			}
 		}
 
 		Result<std::string> DecodeUtf16(std::string_view bytes,
@@ -101,12 +77,12 @@ namespace Core {
 									 "UTF-16 file is damaged: a high surrogate at byte " + std::to_string(at) + " is not followed by a low one"};
 					}
 
-					AppendUtf8(out, kFirstSupplementary + ((unit - kHighSurrogateFirst) << 10) + (low - kLowSurrogateFirst));
+					AppendUtf8(out, static_cast<char32_t>(kFirstSupplementary + ((unit - kHighSurrogateFirst) << 10) + (low - kLowSurrogateFirst)));
 					at += 4;
 					continue;
 				}
 
-				AppendUtf8(out, unit);
+				AppendUtf8(out, static_cast<char32_t>(unit));
 				at += 2;
 			}
 
@@ -122,32 +98,9 @@ namespace Core {
 
 			while (at < utf8.size())
 			{
-				const auto lead = static_cast<unsigned char>(utf8[at]);
-
-				std::size_t length = 1;
-				std::uint32_t codepoint = lead;
-
-				if ((lead & 0xE0u) == 0xC0u)
-				{
-					length = 2;
-					codepoint = lead & 0x1Fu;
-				}
-				else if ((lead & 0xF0u) == 0xE0u)
-				{
-					length = 3;
-					codepoint = lead & 0x0Fu;
-				}
-				else if ((lead & 0xF8u) == 0xF0u)
-				{
-					length = 4;
-					codepoint = lead & 0x07u;
-				}
-
-				for (std::size_t index = 1; index < length && at + index < utf8.size();
-					 ++index)
-				{
-					codepoint = (codepoint << 6) | (static_cast<unsigned char>(utf8[at + index]) & 0x3Fu);
-				}
+				// Text that is not UTF-8 has no UTF-16 form; each broken sequence is written as
+				// U+FFFD rather than as whatever its bits happen to assemble into.
+				const auto codepoint = static_cast<std::uint32_t>(DecodeUtf8(utf8, at).value_or(kReplacementCharacter));
 
 				if (codepoint < kFirstSupplementary)
 				{
@@ -160,8 +113,6 @@ namespace Core {
 					AppendUnit(out, kHighSurrogateFirst + (offset >> 10), littleEndian);
 					AppendUnit(out, kLowSurrogateFirst + (offset & 0x3FFu), littleEndian);
 				}
-
-				at += length;
 			}
 
 			return out;

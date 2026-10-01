@@ -158,6 +158,16 @@ TEST_CASE("Encoding writes the byte order it was asked for")
 	CHECK(Encode("Hi", Encoding::Utf16Be) == kHiBe);
 }
 
+TEST_CASE("Encoding to UTF-16 writes a replacement for each byte that is not UTF-8")
+{
+	// A stray continuation byte is not U+0080, and F5 cannot lead at all: assembling their
+	// bits anyway gave a C1 control for the first and a lone low surrogate for the second.
+	const std::string replacement = std::string("\xFD\xFF", 2);
+
+	CHECK(Encode("a\x80!", Encoding::Utf16Le) == std::string("a\0", 2) + replacement + std::string("!\0", 2));
+	CHECK(Encode("\xF5\x80\x80\x80", Encoding::Utf16Le) == replacement + replacement + replacement + replacement);
+}
+
 TEST_CASE("A byte order mark settles the encoding on its own")
 {
 	CHECK(SniffEncoding("\xEF\xBB\xBFhello") == Encoding::Utf8Bom);
