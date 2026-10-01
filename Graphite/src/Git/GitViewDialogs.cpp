@@ -22,22 +22,6 @@ namespace Graphite {
 
 	namespace {
 
-		// What makes a row of the checkout dialog matter, said beside its path.
-		std::string CheckoutRowTag(const CheckoutQuestionRow& row)
-		{
-			if (row.Unsaved && row.Blocks)
-			{
-				return "unsaved, blocks checkout";
-			}
-
-			if (row.Blocks)
-			{
-				return "blocks checkout";
-			}
-
-			return row.Unsaved ? "unsaved" : "";
-		}
-
 		// The rows of one group in the checkout dialog, under a header naming the group.
 		void CheckoutRows(const char* heading, const std::vector<CheckoutQuestionRow>& rows)
 		{

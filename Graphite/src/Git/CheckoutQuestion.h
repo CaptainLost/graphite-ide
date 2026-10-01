@@ -36,8 +36,9 @@ namespace Graphite {
 		bool UntrackedForced = false;
 	};
 
-	// A row as the dialog lists it: the path, in UTF-8, with what makes it matter.
-	std::string CheckoutRowLabel(const CheckoutQuestionRow& row);
+	// What makes a row matter, as the dialog says it beside the path: "unsaved", "blocks
+	// checkout", both, or nothing.
+	std::string CheckoutRowTag(const CheckoutQuestionRow& row);
 
 	// All paths are relative to the working directory. Matching between them ignores
 	// separator style and ASCII case, because the editor and git spell the same file

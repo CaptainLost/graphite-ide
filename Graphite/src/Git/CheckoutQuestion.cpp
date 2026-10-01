@@ -55,21 +55,19 @@ namespace Graphite {
 		}
 	}
 
-	std::string CheckoutRowLabel(const CheckoutQuestionRow& row)
+	std::string CheckoutRowTag(const CheckoutQuestionRow& row)
 	{
-		std::string line = Core::ToGenericUtf8(row.Path);
-
-		if (row.Unsaved)
+		if (row.Unsaved && row.Blocks)
 		{
-			line += " (unsaved in the editor)";
+			return "unsaved, blocks checkout";
 		}
 
 		if (row.Blocks)
 		{
-			line += " (blocks checkout)";
+			return "blocks checkout";
 		}
 
-		return line;
+		return row.Unsaved ? "unsaved" : "";
 	}
 
 	bool NeedsCheckoutDialog(const Core::CheckoutPlan& plan, const std::vector<std::filesystem::path>& unsaved)

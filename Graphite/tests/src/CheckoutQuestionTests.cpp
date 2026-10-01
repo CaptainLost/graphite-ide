@@ -2,6 +2,8 @@
 
 #include "Git/CheckoutQuestion.h"
 
+#include "Core/Fs/FileSystem.h"
+
 namespace {
 
 	Core::FileStatus Modified(const char* path)
@@ -238,6 +240,15 @@ TEST_CASE("Paths outside the ANSI code page are matched and labelled as UTF-8")
 	REQUIRE(question.Changed.size() == 1);
 	CHECK(question.Changed[0].Blocks);
 	CHECK(question.Changed[0].Unsaved);
-	CHECK(Graphite::CheckoutRowLabel(question.Changed[0]) ==
-		  Utf8(u8"źródło/plik.cpp (unsaved in the editor) (blocks checkout)"));
+	CHECK(Core::ToGenericUtf8(question.Changed[0].Path) == Utf8(u8"źródło/plik.cpp"));
+	CHECK(Graphite::CheckoutRowTag(question.Changed[0]) == "unsaved, blocks checkout");
+}
+
+TEST_CASE("A row's tag says what makes it matter, and nothing for a plain change")
+{
+	CHECK(Graphite::CheckoutRowTag({.Path = "a.txt", .Unsaved = false, .Blocks = false}).empty());
+	CHECK(Graphite::CheckoutRowTag({.Path = "a.txt", .Unsaved = true, .Blocks = false}) == "unsaved");
+	CHECK(Graphite::CheckoutRowTag({.Path = "a.txt", .Unsaved = false, .Blocks = true}) == "blocks checkout");
+	CHECK(Graphite::CheckoutRowTag({.Path = "a.txt", .Unsaved = true, .Blocks = true}) ==
+		  "unsaved, blocks checkout");
 }
