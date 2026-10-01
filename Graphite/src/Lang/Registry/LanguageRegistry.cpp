@@ -1,6 +1,7 @@
 #include "Lang/Registry/LanguageRegistry.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Fs/FileSystem.h"
 #include "Lang/Syntax/CppLexer.h"
 
 #include <array>
@@ -35,7 +36,7 @@ namespace Graphite {
 			return LanguageId::PlainText;
 		}
 
-		const std::string extension = Core::Lowered(path.extension().string());
+		const std::string extension = Core::Lowered(Core::ToUtf8(path.extension()));
 
 		for (const auto& [suffix, language] : kByExtension)
 		{

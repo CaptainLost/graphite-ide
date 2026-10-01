@@ -265,7 +265,7 @@ namespace Graphite {
 		}
 
 		return Core::Error{Core::ErrorCode::NotFound,
-						   std::format("'{}' is not in the solution", project.string())};
+						   std::format("'{}' is not in the solution", Core::ToUtf8(project))};
 	}
 
 	Core::Result<std::size_t> SlnxEditor::FindContainer(const std::string& folder) const
@@ -333,7 +333,7 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("'{}' is not under the same root as the solution, so the "
 										   "solution cannot name it",
-										   project.string())};
+										   Core::ToUtf8(project))};
 		}
 
 		std::error_code code;
@@ -341,13 +341,13 @@ namespace Graphite {
 		if (!std::filesystem::is_regular_file(project, code))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
-							   std::format("no project file at '{}'", project.string())};
+							   std::format("no project file at '{}'", Core::ToUtf8(project))};
 		}
 
 		if (FindProject(project).HasValue())
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
-							   std::format("'{}' is already in the solution", project.string())};
+							   std::format("'{}' is already in the solution", Core::ToUtf8(project))};
 		}
 
 		const std::string id = NewGuid();

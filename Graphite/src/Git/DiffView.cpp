@@ -8,6 +8,7 @@
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/Fs/FileSystem.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -294,7 +295,7 @@ namespace Graphite {
 
 		// A frame tall, so the icon buttons after it share its centre line.
 		ImGui::AlignTextToFramePadding();
-		ImGui::TextUnformatted(path.string().c_str());
+		ImGui::TextUnformatted(Core::ToUtf8(path).c_str());
 
 		// The two modes as a pair with the current one engaged, rather than one button naming
 		// the mode it would switch to: an icon for "the other one" reads as the state it is in.

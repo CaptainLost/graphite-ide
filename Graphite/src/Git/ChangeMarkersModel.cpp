@@ -2,6 +2,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Git/TextDiff.h"
 #include "Core/Text/TextBuffer.h"
@@ -192,7 +193,7 @@ namespace Graphite {
 
 				if (error)
 				{
-					CORE_WARN("Cannot read the git bases for '{}': {}", path.string(), error->Message);
+					CORE_WARN("Cannot read the git bases for '{}': {}", Core::ToUtf8(path), error->Message);
 					target.Bases.reset();
 					target.Markers.reset();
 					return;
@@ -238,7 +239,7 @@ namespace Graphite {
 
 			if (!hunks.HasValue())
 			{
-				CORE_WARN("Cannot diff '{}' against the index: {}", path.string(), hunks.GetError().Message);
+				CORE_WARN("Cannot diff '{}' against the index: {}", Core::ToUtf8(path), hunks.GetError().Message);
 				return;
 			}
 

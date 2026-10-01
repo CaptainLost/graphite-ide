@@ -136,7 +136,7 @@ namespace Graphite {
 		if (!std::filesystem::is_regular_file(project, code))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
-							   std::format("no project file at '{}'", project.string())};
+							   std::format("no project file at '{}'", Core::ToUtf8(project))};
 		}
 
 		pugi::xml_document document;
@@ -145,7 +145,7 @@ namespace Graphite {
 		if (!parsed)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
-							   std::format("cannot parse '{}': {}", project.string(),
+							   std::format("cannot parse '{}': {}", Core::ToUtf8(project),
 										   parsed.description())};
 		}
 

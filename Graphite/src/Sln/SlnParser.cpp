@@ -243,7 +243,7 @@ namespace Graphite {
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("'{}' does not begin like a solution file",
-										   path.string())};
+										   Core::ToUtf8(path))};
 		}
 
 		const Body body = ReadBody(stream);

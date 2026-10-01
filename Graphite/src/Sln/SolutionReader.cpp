@@ -126,7 +126,7 @@ namespace Graphite {
 					// structure around it is still true.
 					if (!content)
 					{
-						APP_TRACE("Cannot read '{}': {}", project.Path.string(),
+						APP_TRACE("Cannot read '{}': {}", Core::ToUtf8(project.Path),
 								  content.GetError().Message);
 						break;
 					}
@@ -161,7 +161,7 @@ namespace Graphite {
 			if (!parsed)
 			{
 				return Core::Error{Core::ErrorCode::InvalidArgument,
-								   std::format("cannot parse '{}': {}", path.string(),
+								   std::format("cannot parse '{}': {}", Core::ToUtf8(path),
 											   parsed.description())};
 			}
 
@@ -170,7 +170,7 @@ namespace Graphite {
 			if (!root)
 			{
 				return Core::Error{Core::ErrorCode::InvalidArgument,
-								   std::format("'{}' has no Solution element", path.string())};
+								   std::format("'{}' has no Solution element", Core::ToUtf8(path))};
 			}
 
 			Solution solution;
@@ -203,7 +203,7 @@ namespace Graphite {
 			if (!stream.is_open())
 			{
 				return Core::Error{Core::ErrorCode::IoFailure,
-								   std::format("cannot open '{}'", path.string())};
+								   std::format("cannot open '{}'", Core::ToUtf8(path))};
 			}
 
 			std::ostringstream buffer;
@@ -227,7 +227,7 @@ namespace Graphite {
 		if (!std::filesystem::is_regular_file(requested, code))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
-							   std::format("no solution file at '{}'", requested.string())};
+							   std::format("no solution file at '{}'", Core::ToUtf8(requested))};
 		}
 
 		// Every project path is built by appending to this one, and the model promises
@@ -241,7 +241,7 @@ namespace Graphite {
 		{
 			return Core::Error{Core::ErrorCode::Unsupported,
 							   std::format("'{}' is not a solution format this build can read",
-										   path.string())};
+										   Core::ToUtf8(path))};
 		}
 
 		Core::Result<Solution> parsed =

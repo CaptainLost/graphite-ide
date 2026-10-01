@@ -3,6 +3,7 @@
 #include "Core/Base/Color.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Theme/BuiltInSchemes.h"
 
 #include <optional>
@@ -98,7 +99,7 @@ namespace Graphite {
 		// when the drive does, and the caller falls back to a built-in meanwhile.
 		if (!std::filesystem::exists(file, ec))
 		{
-			APP_WARN("Colour scheme '{}' is not there", file.string());
+			APP_WARN("Colour scheme '{}' is not there", Core::ToUtf8(file));
 			return scheme;
 		}
 
@@ -112,7 +113,7 @@ namespace Graphite {
 		{
 			// A base nobody has heard of, or none at all. Dark is the fallback and the scheme's
 			// own overrides still apply on top of it.
-			APP_WARN("Colour scheme '{}' names an unknown base '{}'", file.string(),
+			APP_WARN("Colour scheme '{}' names an unknown base '{}'", Core::ToUtf8(file),
 					 json.Get("base"));
 		}
 
@@ -129,7 +130,7 @@ namespace Graphite {
 			{
 				// The key is skipped, not the file. Its colour then comes from the base, which
 				// is what an unset colour does anyway.
-				APP_WARN("Colour scheme '{}' has an unreadable colour for '{}'", file.string(),
+				APP_WARN("Colour scheme '{}' has an unreadable colour for '{}'", Core::ToUtf8(file),
 						 key);
 				continue;
 			}
@@ -178,7 +179,7 @@ namespace Graphite {
 			}
 
 			// A scheme written against a newer version, naming a colour this one does not have.
-			APP_WARN("Colour scheme '{}' names an unknown colour '{}'", file.string(), key);
+			APP_WARN("Colour scheme '{}' names an unknown colour '{}'", Core::ToUtf8(file), key);
 		}
 
 		return scheme;
@@ -280,7 +281,7 @@ namespace Graphite {
 				continue;
 			}
 
-			const std::string stem = entry.path().stem().string();
+			const std::string stem = Core::ToUtf8(entry.path().stem());
 
 			if (ParseBuiltInName(stem).has_value())
 			{

@@ -1,5 +1,7 @@
 #include "Sessions/ToolFacts.h"
 
+#include "Core/Fs/FileSystem.h"
+
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/TranscriptReader.h"
@@ -109,7 +111,7 @@ namespace Graphite {
 		for (std::filesystem::directory_iterator it{SubagentDirectory(sessionFile), status}, end;
 			 !status && it != end; it.increment(status))
 		{
-			const std::string stem = it->path().stem().string();
+			const std::string stem = Core::ToUtf8(it->path().stem());
 
 			if (it->path().extension() != ".jsonl" || !stem.starts_with("agent-"))
 				continue;

@@ -95,7 +95,7 @@ namespace Graphite {
 		if (!std::filesystem::is_regular_file(project, code))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
-							   std::format("no project file at '{}'", project.string())};
+							   std::format("no project file at '{}'", Core::ToUtf8(project))};
 		}
 
 		ProjectContent content;

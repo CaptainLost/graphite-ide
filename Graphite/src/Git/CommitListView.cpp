@@ -1,6 +1,7 @@
 #include "Git/CommitListView.h"
 
 #include "Core/ImGui/EmptyState.h"
+#include "Core/Fs/FileSystem.h"
 
 #include "Git/CommitDetails.h"
 #include "Git/CommitLabels.h"
@@ -581,6 +582,6 @@ namespace Graphite {
 
 		FittedText(letter, ChangeColor(file->Change, palette), {});
 		ImGui::SameLine(0.0f, 0.0f);
-		FittedText(std::format("  {}", path.string()), 0, pathHighlight);
+		FittedText(std::format("  {}", Core::ToUtf8(path)), 0, pathHighlight);
 	}
 }

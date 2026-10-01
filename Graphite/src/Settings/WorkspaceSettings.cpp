@@ -4,6 +4,7 @@
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Fs/FileOperations.h"
 
 #include <filesystem>
@@ -25,7 +26,7 @@ namespace Graphite {
 
 			if (const auto made = Core::MakeDirectory(directory); !made)
 			{
-				APP_WARN("Cannot create '{}': {}", directory.string(), made.GetError().Message);
+				APP_WARN("Cannot create '{}': {}", Core::ToUtf8(directory), made.GetError().Message);
 				return false;
 			}
 
@@ -62,7 +63,7 @@ namespace Graphite {
 		file.Set(key, std::move(value));
 
 		if (!file.Save(GetFilePath()))
-			APP_WARN("Cannot write '{}'", GetFilePath().string());
+			APP_WARN("Cannot write '{}'", Core::ToUtf8(GetFilePath()));
 	}
 
 	WorkspaceState WorkspaceSettings::LoadState() const
@@ -87,7 +88,7 @@ namespace Graphite {
 
 		if (!file.Save(GetFilePath()))
 		{
-			APP_WARN("Cannot write '{}'", GetFilePath().string());
+			APP_WARN("Cannot write '{}'", Core::ToUtf8(GetFilePath()));
 		}
 	}
 }

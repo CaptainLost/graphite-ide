@@ -1,6 +1,7 @@
 #include "Lang/Server/ServerDiscovery.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Platform/Process.h"
 
 #include <cstdlib>
@@ -31,7 +32,7 @@ namespace Graphite {
 		{
 			std::filesystem::path name{command};
 
-			if (Core::Lowered(name.extension().string()) != ".exe")
+			if (Core::Lowered(Core::ToUtf8(name.extension())) != ".exe")
 			{
 				name += ".exe";
 			}

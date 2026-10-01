@@ -1,5 +1,7 @@
 #include "Sessions/SessionSummary.h"
 
+#include "Core/Fs/FileSystem.h"
+
 #include "Sessions/InjectedText.h"
 #include "Sessions/TranscriptReader.h"
 
@@ -147,7 +149,7 @@ namespace Graphite {
 		// What the callers of this form have always had for a file that could not be read:
 		// the session's identity and fingerprint, and nothing else.
 		SessionSummary empty;
-		empty.Id = sessionFile.stem().string();
+		empty.Id = Core::ToUtf8(sessionFile.stem());
 		empty.File = sessionFile;
 		empty.Print = FingerprintOf(sessionFile);
 		return empty;
@@ -164,7 +166,7 @@ namespace Graphite {
 			return std::nullopt;
 
 		SessionSummary summary;
-		summary.Id = sessionFile.stem().string();
+		summary.Id = Core::ToUtf8(sessionFile.stem());
 		summary.File = sessionFile;
 		summary.Print = print;
 		summary.SkippedLines = read.GetValue().Chunk.Skipped;

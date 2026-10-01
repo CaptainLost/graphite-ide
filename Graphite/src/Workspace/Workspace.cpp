@@ -37,13 +37,13 @@ namespace Graphite {
 		// Built first: a failed open must leave the current tree untouched.
 		if (const auto rooted = candidate.SetRoot(root); !rooted)
 		{
-			APP_ERROR("Cannot open folder '{}': {}", root.string(), rooted.GetError().Message);
+			APP_ERROR("Cannot open folder '{}': {}", Core::ToUtf8(root), rooted.GetError().Message);
 			return rooted;
 		}
 
 		if (const auto expanded = candidate.Expand(candidate.GetRoot()); !expanded)
 		{
-			APP_ERROR("Cannot read folder '{}': {}", root.string(), expanded.GetError().Message);
+			APP_ERROR("Cannot read folder '{}': {}", Core::ToUtf8(root), expanded.GetError().Message);
 			return expanded;
 		}
 
@@ -68,7 +68,7 @@ namespace Graphite {
 		AppSettings::SaveLastFolder(root);
 		m_Events.Publish(WorkspaceOpenedEvent{root});
 
-		APP_INFO("Workspace opened: '{}'", root.string());
+		APP_INFO("Workspace opened: '{}'", Core::ToUtf8(root));
 		return Core::Result<void>::Ok();
 	}
 
@@ -82,7 +82,7 @@ namespace Graphite {
 		if (!watcher)
 		{
 			// Not fatal: the tree still works, it just will not notice outside changes.
-			APP_WARN("Cannot watch '{}'{}: {}", root.string(), failureContext,
+			APP_WARN("Cannot watch '{}'{}: {}", Core::ToUtf8(root), failureContext,
 					 watcher.GetError().Message);
 			return;
 		}
@@ -130,7 +130,7 @@ namespace Graphite {
 		if (!std::filesystem::is_regular_file(solutionPath, code))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
-							   std::format("no solution file at '{}'", solutionPath.string())};
+							   std::format("no solution file at '{}'", Core::ToUtf8(solutionPath))};
 		}
 
 		// Refused before anything is touched: by the time ReadSolution could recognise the
@@ -139,7 +139,7 @@ namespace Graphite {
 		if (!IsSolutionFile(solutionPath))
 		{
 			return Core::Error{Core::ErrorCode::Unsupported,
-							   std::format("'{}' is not a solution file", solutionPath.string())};
+							   std::format("'{}' is not a solution file", Core::ToUtf8(solutionPath))};
 		}
 
 		std::filesystem::path chosen = std::filesystem::absolute(solutionPath, code);
@@ -162,7 +162,7 @@ namespace Graphite {
 		if (!m_Solution)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
-							   std::format("cannot read '{}'", chosen.string())};
+							   std::format("cannot read '{}'", Core::ToUtf8(chosen))};
 		}
 
 		return Core::Result<void>::Ok();
@@ -197,7 +197,7 @@ namespace Graphite {
 		AppSettings::SaveLastFolder({});
 		m_Events.Publish(WorkspaceClosedEvent{});
 
-		APP_INFO("Workspace closed: '{}'", closed.string());
+		APP_INFO("Workspace closed: '{}'", Core::ToUtf8(closed));
 	}
 
 	void Workspace::SelectFile(const std::filesystem::path& path)
@@ -361,7 +361,7 @@ namespace Graphite {
 		// libgit2 does not notice this on its own: with .git gone it keeps answering from
 		// the handle it already holds, reading .gitignore straight out of the working tree.
 		APP_INFO("The git repository at '{}' is gone",
-				 m_Repository->GetWorkingDirectory().string());
+				 Core::ToUtf8(m_Repository->GetWorkingDirectory()));
 
 		m_Tree.SetIgnoreQuery({});
 		m_Repository.reset();
@@ -378,7 +378,7 @@ namespace Graphite {
 		if (m_WatcherResumed)
 		{
 			APP_WARN("Giving up watching '{}' for changes: it failed twice",
-					 m_Root.string());
+					 Core::ToUtf8(m_Root));
 			return;
 		}
 
@@ -390,7 +390,7 @@ namespace Graphite {
 		{
 			// The tree stays as it is rather than being closed: a stale view the user can
 			// act on beats one that vanishes without being asked.
-			APP_WARN("Cannot resume watching '{}': {}", m_Root.string(),
+			APP_WARN("Cannot resume watching '{}': {}", Core::ToUtf8(m_Root),
 					 watcher.GetError().Message);
 			return;
 		}
@@ -402,7 +402,7 @@ namespace Graphite {
 		(void)SyncRepository();
 		m_Tree.Refresh(m_Tree.GetRoot());
 
-		APP_INFO("Resumed watching '{}' after a failure", m_Root.string());
+		APP_INFO("Resumed watching '{}' after a failure", Core::ToUtf8(m_Root));
 	}
 
 	void Workspace::HandleRootMoved(const std::filesystem::path& destination)
@@ -410,7 +410,7 @@ namespace Graphite {
 		const std::filesystem::path from = m_Root;
 		const std::filesystem::path to = Core::NormalizeDirectory(destination);
 
-		APP_INFO("Workspace moved from '{}' to '{}'", from.string(), to.string());
+		APP_INFO("Workspace moved from '{}' to '{}'", Core::ToUtf8(from), Core::ToUtf8(to));
 
 		m_Root = to;
 		m_Tree.Rebase(to);
@@ -490,7 +490,7 @@ namespace Graphite {
 
 		if (!repository)
 		{
-			APP_TRACE("'{}' is not inside a git repository: {}", m_Root.string(),
+			APP_TRACE("'{}' is not inside a git repository: {}", Core::ToUtf8(m_Root),
 					  repository.GetError().Message);
 			return;
 		}
@@ -500,7 +500,7 @@ namespace Graphite {
 		m_Tree.SetIgnoreQuery(
 			[this](const std::filesystem::path& path, bool) -> bool { return m_Repository && m_Repository->IsIgnored(path); });
 
-		APP_INFO("Git repository detected at '{}'", m_Repository->GetWorkingDirectory().string());
+		APP_INFO("Git repository detected at '{}'", Core::ToUtf8(m_Repository->GetWorkingDirectory()));
 	}
 
 	void Workspace::FindSolutions()
@@ -603,7 +603,7 @@ namespace Graphite {
 
 		if (!solution)
 		{
-			APP_WARN("Cannot read '{}': {}", m_SelectedSolution.string(),
+			APP_WARN("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution),
 					 solution.GetError().Message);
 			return;
 		}

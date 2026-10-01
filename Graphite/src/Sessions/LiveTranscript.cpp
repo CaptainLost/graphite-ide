@@ -1,6 +1,7 @@
 #include "Sessions/LiveTranscript.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Fs/FileSystem.h"
 
 #include "Sessions/SessionSummary.h"
 #include "Sessions/TranscriptReader.h"
@@ -87,7 +88,7 @@ namespace Graphite {
 		{
 			const std::filesystem::path& path = it->path();
 
-			if (path.extension() == ".jsonl" && path.stem().string().starts_with("agent-"))
+			if (path.extension() == ".jsonl" && Core::ToUtf8(path.stem()).starts_with("agent-"))
 				present.push_back(path);
 		}
 
@@ -191,7 +192,7 @@ namespace Graphite {
 
 		SubagentUsage usage;
 		for (const auto& [path, file] : files)
-			usage[path.stem().string().substr(6)] = file.Tally.Get();
+			usage[Core::ToUtf8(path.stem()).substr(6)] = file.Tally.Get();
 
 		return usage;
 	}
