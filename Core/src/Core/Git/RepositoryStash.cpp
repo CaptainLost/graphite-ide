@@ -79,6 +79,22 @@ namespace Core {
 
 			return Error{ErrorCode::NotFound, "that stash no longer exists"};
 		}
+
+		// Whether applying a stash left conflicts. The index is re-read first: libgit2 keeps
+		// one per repository handle, and the apply wrote the file.
+		Result<bool> HasConflicts(git_repository* handle)
+		{
+			IndexHandle index;
+
+			// Two statements: Out hands the index over only at the end of the full expression.
+			if (git_repository_index(Out(index), handle) != 0)
+				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+
+			if (git_index_read(index.get(), false) != 0)
+				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+
+			return git_index_has_conflicts(index.get()) != 0;
+		}
 	}
 
 	Result<bool> Repository::StashSave(const std::string& message, bool includeUntracked)
@@ -157,6 +173,19 @@ namespace Core {
 		if (git_stash_apply(m_Handle, index.GetValue(), &options) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot apply the stash: {}", LastLibgit2Message())};
 
+		// Reported as a success by libgit2 - see StashPop - but the reader has conflicts to
+		// resolve now, and the Changes list alone does not say where they came from.
+		const auto conflicted = HasConflicts(m_Handle);
+
+		if (!conflicted.HasValue())
+			return Error{ErrorCode::IoFailure, std::format("the stash was applied: {}", conflicted.GetError().Message)};
+
+		if (conflicted.GetValue())
+		{
+			return Error{ErrorCode::InvalidArgument,
+						 "the stash was applied with conflicts in the index; the stash is kept"};
+		}
+
 		return Result<void>::Ok();
 	}
 
@@ -181,22 +210,15 @@ namespace Core {
 		if (git_stash_apply(m_Handle, index.GetValue(), &options) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot pop the stash: {}", LastLibgit2Message())};
 
-		IndexHandle repositoryIndex;
+		const auto conflicted = HasConflicts(m_Handle);
 
-		// Two statements: Out hands the index over only at the end of the full expression.
-		if (git_repository_index(Out(repositoryIndex), m_Handle) != 0)
+		if (!conflicted.HasValue())
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("the stash was applied but kept: cannot read the index: {}", LastLibgit2Message())};
+						 std::format("the stash was applied but kept: {}", conflicted.GetError().Message)};
 		}
 
-		if (git_index_read(repositoryIndex.get(), false) != 0)
-		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("the stash was applied but kept: cannot read the index: {}", LastLibgit2Message())};
-		}
-
-		if (git_index_has_conflicts(repositoryIndex.get()))
+		if (conflicted.GetValue())
 		{
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("the stash was applied with conflicts and kept as stash@{{{}}}; resolve the "

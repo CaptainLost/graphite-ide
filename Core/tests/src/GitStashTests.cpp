@@ -252,3 +252,32 @@ TEST_CASE("Stashing ends a merge, a cherry-pick or a revert, as git does, but no
 		CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / ".git" / "MERGE_MSG"));
 	}
 }
+
+TEST_CASE("Applying a stash that conflicts with the branch says so, and keeps the stash")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Branch("feature");
+	fixture.Checkout("feature");
+	fixture.Write("a.txt", "feature\n");
+	fixture.Commit("feature");
+	fixture.Checkout("master");
+	fixture.Write("a.txt", "my edit\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	REQUIRE(repository.StashSave("on master", false).HasValue());
+	const Core::Oid id = repository.QueryStashes().GetValue()[0].Id;
+	REQUIRE_FALSE(repository.Checkout({Core::CheckoutKind::LocalBranch, "feature", {}}).Failure.has_value());
+
+	auto applied = repository.StashApply(id);
+
+	REQUIRE_FALSE(applied.HasValue());
+	CHECK(applied.GetError().Message.find("applied with conflicts in the index; the stash is kept") !=
+		  std::string::npos);
+	CHECK(repository.QueryStashes().GetValue().size() == 1);
+
+	auto status = repository.QueryStatus();
+	REQUIRE(status.HasValue());
+	REQUIRE(status.GetValue().Entries.size() == 1);
+	CHECK(status.GetValue().Entries[0].IsConflicted);
+}
