@@ -568,4 +568,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0536](0536-initialise-a-repository-without-asking-for-confirmation.md) | Initialise a repository without asking for confirmation | proposed | 2026-10-01 |
 | [0537](0537-mark-result-nodiscard-on-the-type-not-on-functions.md) | Mark Result nodiscard on the type, not on functions | accepted | 2026-10-01 |
 | [0538](0538-refresh-the-working-tree-diff-when-the-repository-changes-not-when-it-is-asked-for.md) | Refresh the working-tree diff when the repository changes, not when it is asked for | proposed | 2026-10-01 |
+| [0539](0539-plan-every-checkout-and-ask-before-it-would-overwrite-work.md) | Plan every checkout and ask before it would overwrite work | proposed | 2026-10-01 |
+| [0540](0540-discard-or-stash-every-change-on-the-way-to-a-checkout-untracked-files-only-on-request.md) | Discard or stash every change on the way to a checkout, untracked files only on request | proposed | 2026-10-01 |
+| [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md) | Put branch and stash actions in the Git panel's right-click menus | proposed | 2026-10-01 |
 <!-- /adr-index -->
