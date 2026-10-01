@@ -46,8 +46,8 @@ namespace Graphite {
 		m_IndentWithSpaces = AppSettings::LoadIndentWithSpaces();
 
 		// Clamped, not merely accepted: a hand-edited graphite.json is as untrusted as the
-		// slider, and ParseIndentWidthOrZero's strtoul reads a stored "-1" as ULONG_MAX, so
-		// this branch is a real entry point for an unbounded width, not a formality.
+		// slider. A malformed width, "-1" included, reads as absent; a well-formed but absurd one
+		// such as "999" is what this clamp is for.
 		if (const std::size_t storedIndentWidth = AppSettings::LoadIndentWidth();
 			storedIndentWidth != 0)
 		{

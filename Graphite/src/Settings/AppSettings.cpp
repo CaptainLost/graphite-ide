@@ -12,7 +12,6 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 
-#include <cstdlib>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -69,70 +68,35 @@ namespace Graphite {
 			}
 		}
 
-		float ParseFontSizeOrZero(const std::string& stored)
-		{
-			char* end = nullptr;
-			const float size = std::strtof(stored.c_str(), &end);
-
-			// strtof leaves end at the start of the string when it parsed nothing.
-			if (end == stored.c_str())
-				return 0.0f;
-
-			return size;
-		}
-
-		std::size_t ParseIndentWidthOrZero(const std::string& stored)
-		{
-			char* end = nullptr;
-			const unsigned long width = std::strtoul(stored.c_str(), &end, 10);
-
-			// strtoul leaves end at the start of the string when it parsed nothing.
-			if (end == stored.c_str())
-				return 0;
-
-			return static_cast<std::size_t>(width);
-		}
-
-		// Shared by every stored value that is "a small non-negative number, or absent" —
-		// the analysis budget and the analysis concurrency both read this way, and zero
-		// already means "absent" or "automatic" for each of them.
-		std::size_t ParseSizeOrZero(const std::string& stored)
-		{
-			char* end = nullptr;
-			const unsigned long value = std::strtoul(stored.c_str(), &end, 10);
-
-			// strtoul leaves end at the start of the string when it parsed nothing.
-			if (end == stored.c_str())
-			{
-				return 0;
-			}
-
-			return static_cast<std::size_t>(value);
-		}
-
-		void RemoveStoredKeyBindings(Core::JsonFile& file)
-		{
-			std::vector<std::string> stored;
-
-			for (const std::string& key : file.GetKeys())
-			{
-				if (std::string_view{key}.starts_with(kKeyBindingPrefix))
-				{
-					stored.push_back(key);
-				}
-			}
-
-			for (const std::string& key : stored)
-			{
-				file.Remove(key);
-			}
-		}
-
-		void WriteValue(const char* key, std::string value)
+		// Loads graphite.json, lets `edit` change it and saves it back through SaveSettings.
+		template <typename Edit>
+		void ModifySettings(Edit&& edit)
 		{
 			Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
-			file.Set(key, std::move(value));
+			edit(file);
 			SaveSettings(file);
+		}
+
+		void WriteValue(std::string_view key, std::string value)
+		{
+			ModifySettings([&](Core::JsonFile& file) { file.Set(key, std::move(value)); });
+		}
+
+		std::string ReadValue(std::string_view key)
+		{
+			return Core::JsonFile::Load(SettingsPath()).Get(key);
+		}
+
+		// Zero is "absent" for every number stored here, so a malformed one reads as absent too.
+		template <typename Number>
+		Number ReadNumberOrZero(std::string_view key)
+		{
+			return ParseNumber<Number>(ReadValue(key)).value_or(Number{});
+		}
+
+		bool ReadStoredFlag(std::string_view key, bool fallback)
+		{
+			return ReadFlag(ReadValue(key), fallback);
 		}
 	}
 
@@ -169,7 +133,7 @@ namespace Graphite {
 
 	float AppSettings::LoadEditorFontSize()
 	{
-		return ParseFontSizeOrZero(Core::JsonFile::Load(SettingsPath()).Get(kEditorFontSizeKey));
+		return ReadNumberOrZero<float>(kEditorFontSizeKey);
 	}
 
 	void AppSettings::SaveEditorFontSize(float size)
@@ -179,17 +143,17 @@ namespace Graphite {
 
 	bool AppSettings::LoadIndentWithSpaces()
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kIndentWithSpacesKey) != "0";
+		return ReadStoredFlag(kIndentWithSpacesKey, true);
 	}
 
 	void AppSettings::SaveIndentWithSpaces(bool useSpaces)
 	{
-		WriteValue(kIndentWithSpacesKey, useSpaces ? "1" : "0");
+		WriteValue(kIndentWithSpacesKey, Flag(useSpaces));
 	}
 
 	std::size_t AppSettings::LoadIndentWidth()
 	{
-		return ParseIndentWidthOrZero(Core::JsonFile::Load(SettingsPath()).Get(kIndentWidthKey));
+		return ReadNumberOrZero<std::size_t>(kIndentWidthKey);
 	}
 
 	void AppSettings::SaveIndentWidth(std::size_t width)
@@ -199,72 +163,71 @@ namespace Graphite {
 
 	bool AppSettings::LoadWordWrap()
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kWordWrapKey) == "1";
+		return ReadStoredFlag(kWordWrapKey, false);
 	}
 
 	void AppSettings::SaveWordWrap(bool wrap)
 	{
-		WriteValue(kWordWrapKey, wrap ? "1" : "0");
+		WriteValue(kWordWrapKey, Flag(wrap));
 	}
 
 	// Both default on: a file that predates the switches, and so has neither key, keeps showing
 	// the markers it always showed.
 	bool AppSettings::LoadGutterChangeMarkers()
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kGutterChangeMarkersKey) != "0";
+		return ReadStoredFlag(kGutterChangeMarkersKey, true);
 	}
 
 	void AppSettings::SaveGutterChangeMarkers(bool show)
 	{
-		WriteValue(kGutterChangeMarkersKey, show ? "1" : "0");
+		WriteValue(kGutterChangeMarkersKey, Flag(show));
 	}
 
 	bool AppSettings::LoadScrollbarChangeMarkers()
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kScrollbarChangeMarkersKey) != "0";
+		return ReadStoredFlag(kScrollbarChangeMarkersKey, true);
 	}
 
 	void AppSettings::SaveScrollbarChangeMarkers(bool show)
 	{
-		WriteValue(kScrollbarChangeMarkersKey, show ? "1" : "0");
+		WriteValue(kScrollbarChangeMarkersKey, Flag(show));
 	}
 
 	bool AppSettings::LoadSearchRespectGitIgnore()
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kSearchRespectGitIgnoreKey) != "0";
+		return ReadStoredFlag(kSearchRespectGitIgnoreKey, true);
 	}
 
 	void AppSettings::SaveSearchRespectGitIgnore(bool respect)
 	{
-		WriteValue(kSearchRespectGitIgnoreKey, respect ? "1" : "0");
+		WriteValue(kSearchRespectGitIgnoreKey, Flag(respect));
 	}
 
 	bool AppSettings::LoadSearchProjectsOnly()
 	{
-		return Core::JsonFile::Load(SettingsPath()).Get(kSearchProjectsOnlyKey) == "1";
+		return ReadStoredFlag(kSearchProjectsOnlyKey, false);
 	}
 
 	void AppSettings::SaveSearchProjectsOnly(bool projectsOnly)
 	{
-		WriteValue(kSearchProjectsOnlyKey, projectsOnly ? "1" : "0");
+		WriteValue(kSearchProjectsOnlyKey, Flag(projectsOnly));
 	}
 
 	bool AppSettings::LoadBackgroundAnalysis()
 	{
-		// Absent means on, which is why this compares against "0" rather than for "1": the
-		// feature is the default, and a settings file written before it existed must not read as
-		// a decision to switch it off.
-		return Core::JsonFile::Load(SettingsPath()).Get(kBackgroundAnalysisKey) != "0";
+		// Absent means on: the feature is the default, and a settings file written before it
+		// existed must not read as a decision to switch it off.
+		return ReadStoredFlag(kBackgroundAnalysisKey, true);
 	}
 
 	void AppSettings::SaveBackgroundAnalysis(bool enabled)
 	{
-		WriteValue(kBackgroundAnalysisKey, enabled ? "1" : "0");
+		WriteValue(kBackgroundAnalysisKey, Flag(enabled));
 	}
 
 	std::size_t AppSettings::LoadAnalysisBudgetMegabytes()
 	{
-		return ParseSizeOrZero(Core::JsonFile::Load(SettingsPath()).Get(kAnalysisBudgetKey));
+		return ReadNumberOrZero<std::size_t>(kAnalysisBudgetKey);
 	}
 
 	void AppSettings::SaveAnalysisBudgetMegabytes(std::size_t megabytes)
@@ -274,7 +237,7 @@ namespace Graphite {
 
 	std::size_t AppSettings::LoadAnalysisConcurrency()
 	{
-		return ParseSizeOrZero(Core::JsonFile::Load(SettingsPath()).Get(kAnalysisConcurrencyKey));
+		return ReadNumberOrZero<std::size_t>(kAnalysisConcurrencyKey);
 	}
 
 	void AppSettings::SaveAnalysisConcurrency(std::size_t concurrency)
@@ -332,14 +295,12 @@ namespace Graphite {
 
 	void AppSettings::SaveClaudePrice(std::string_view model, std::string_view price)
 	{
-		WriteValue((std::string{kClaudePricePrefix} + std::string{model}).c_str(), std::string{price});
+		WriteValue(std::string{kClaudePricePrefix} + std::string{model}, std::string{price});
 	}
 
 	void AppSettings::RemoveClaudePrice(std::string_view model)
 	{
-		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
-		file.Remove(std::string{kClaudePricePrefix} + std::string{model});
-		SaveSettings(file);
+		ModifySettings([&](Core::JsonFile& file) { file.Remove(std::string{kClaudePricePrefix} + std::string{model}); });
 	}
 
 	std::filesystem::path AppSettings::ThemesDirectory()
@@ -373,14 +334,13 @@ namespace Graphite {
 
 	void AppSettings::SaveKeyBindings(const Core::Keymap& keys)
 	{
-		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
+		ModifySettings([&keys](Core::JsonFile& file) {
+			RemoveKeysStartingWith(file, kKeyBindingPrefix);
 
-		RemoveStoredKeyBindings(file);
-
-		keys.ForEachOverride(
-			[&file](const std::string& id, const Core::Binding& binding) { file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding)); });
-
-		SaveSettings(file);
+			keys.ForEachOverride([&file](const std::string& id, const Core::Binding& binding) {
+				file.Set(std::string{kKeyBindingPrefix} + id, Core::ToString(binding));
+			});
+		});
 	}
 
 	GlobalState AppSettings::LoadGlobalState()
@@ -390,9 +350,6 @@ namespace Graphite {
 
 	void AppSettings::SaveGlobalState(const GlobalState& state)
 	{
-		Core::JsonFile file = Core::JsonFile::Load(SettingsPath());
-		WriteGlobalState(state, file);
-
-		SaveSettings(file);
+		ModifySettings([&state](Core::JsonFile& file) { WriteGlobalState(state, file); });
 	}
 }

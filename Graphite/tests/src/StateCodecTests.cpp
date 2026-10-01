@@ -373,3 +373,45 @@ TEST_CASE("A file written before sessions and diffs were kept reads as none of e
 	CHECK(read.Sessions.empty());
 	CHECK(read.Diffs.empty());
 }
+
+TEST_CASE("A flag reads as what was written, and anything else as the stated default")
+{
+	CHECK(ReadFlag(Flag(true), false));
+	CHECK_FALSE(ReadFlag(Flag(false), true));
+
+	// Absent, empty or hand-mangled: the call site's default, whichever way it points.
+	for (const std::string stored : {std::string{}, std::string{"yes"}, std::string{"2"}, std::string{"true"}})
+	{
+		CHECK(ReadFlag(stored, true));
+		CHECK_FALSE(ReadFlag(stored, false));
+	}
+}
+
+TEST_CASE("A number is read whole or not at all")
+{
+	CHECK(ParseNumber<std::size_t>("42") == 42);
+	CHECK(ParseNumber<float>("14.500000") == 14.5f);
+
+	// A negative number is rejected for an unsigned target rather than wrapped to a huge one.
+	CHECK_FALSE(ParseNumber<std::size_t>("-1"));
+	CHECK_FALSE(ParseNumber<std::size_t>(""));
+	CHECK_FALSE(ParseNumber<std::size_t>("12abc"));
+	CHECK_FALSE(ParseNumber<std::size_t>("abc"));
+	CHECK(ParseNumber<int>("-1") == -1);
+}
+
+TEST_CASE("A negative stored count or caret falls back to zero")
+{
+	Core::JsonFile file;
+	file.Set("restore.tab.count", "-1");
+	CHECK(ReadWorkspaceState(file, kRoot).Tabs.empty());
+
+	file.Set("restore.tab.count", "1");
+	file.Set("restore.tab.0.path", "a.cpp");
+	file.Set("restore.tab.0.line", "-1");
+
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	REQUIRE(read.Tabs.size() == 1);
+	CHECK(read.Tabs[0].Line == 0);
+}

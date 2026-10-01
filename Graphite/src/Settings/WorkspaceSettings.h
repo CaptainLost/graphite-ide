@@ -3,8 +3,15 @@
 #include "Persistence/PersistedState.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
+
+namespace Core {
+
+	class JsonFile;
+
+}
 
 namespace Graphite {
 
@@ -22,6 +29,10 @@ namespace Graphite {
 		void SaveState(const WorkspaceState& state);
 
 	private:
+		// Loads the workspace file, lets `edit` change it and saves it back, creating the
+		// directory on the way. Does nothing without a root.
+		void Modify(const std::function<void(Core::JsonFile&)>& edit);
+
 		std::filesystem::path GetFilePath() const;
 
 		std::filesystem::path m_Root;

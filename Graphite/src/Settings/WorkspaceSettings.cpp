@@ -53,17 +53,23 @@ namespace Graphite {
 
 	void WorkspaceSettings::Write(std::string_view key, std::string value)
 	{
-		if (m_Root.empty())
-			return;
+		Modify([&](Core::JsonFile& file) { file.Set(key, std::move(value)); });
+	}
 
-		if (!EnsureDirectoryExists(m_Root / kDirectory))
+	void WorkspaceSettings::Modify(const std::function<void(Core::JsonFile&)>& edit)
+	{
+		if (m_Root.empty() || !EnsureDirectoryExists(m_Root / kDirectory))
+		{
 			return;
+		}
 
 		Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
-		file.Set(key, std::move(value));
+		edit(file);
 
 		if (!file.Save(GetFilePath()))
+		{
 			APP_WARN("Cannot write '{}'", Core::ToUtf8(GetFilePath()));
+		}
 	}
 
 	WorkspaceState WorkspaceSettings::LoadState() const
@@ -78,17 +84,6 @@ namespace Graphite {
 
 	void WorkspaceSettings::SaveState(const WorkspaceState& state)
 	{
-		if (m_Root.empty() || !EnsureDirectoryExists(m_Root / kDirectory))
-		{
-			return;
-		}
-
-		Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
-		WriteWorkspaceState(state, m_Root, file);
-
-		if (!file.Save(GetFilePath()))
-		{
-			APP_WARN("Cannot write '{}'", Core::ToUtf8(GetFilePath()));
-		}
+		Modify([&](Core::JsonFile& file) { WriteWorkspaceState(state, m_Root, file); });
 	}
 }

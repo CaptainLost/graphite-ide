@@ -4,7 +4,6 @@
 #include "Core/Fs/FileSystem.h"
 
 #include <algorithm>
-#include <charconv>
 #include <cstdint>
 #include <cwctype>
 #include <optional>
@@ -52,44 +51,25 @@ namespace Graphite {
 			{Core::DiffTarget::RevisionToRevision, "range"},
 		};
 
-		template <typename Number>
-		std::optional<Number> ParseNumber(const std::string& text)
+		// "<prefix>.<index>.<field>": the key of one field of one entry in a numbered list.
+		std::string IndexedKey(std::string_view prefix, std::size_t index, std::string_view field)
 		{
-			if (text.empty())
-			{
-				return std::nullopt;
-			}
-
-			Number value{};
-			const char* last = text.data() + text.size();
-			const auto [end, error] = std::from_chars(text.data(), last, value);
-
-			if (error != std::errc{} || end != last)
-			{
-				return std::nullopt;
-			}
-
-			return value;
-		}
-
-		std::string Flag(bool value)
-		{
-			return value ? "1" : "0";
+			return std::string{prefix} + "." + std::to_string(index) + "." + std::string{field};
 		}
 
 		std::string TabKey(std::size_t index, std::string_view field)
 		{
-			return "restore.tab." + std::to_string(index) + "." + std::string{field};
+			return IndexedKey("restore.tab", index, field);
 		}
 
 		std::string SessionKey(std::size_t index, std::string_view field)
 		{
-			return "restore.session." + std::to_string(index) + "." + std::string{field};
+			return IndexedKey("restore.session", index, field);
 		}
 
 		std::string DiffKey(std::size_t index, std::string_view field)
 		{
-			return "restore.diff." + std::to_string(index) + "." + std::string{field};
+			return IndexedKey("restore.diff", index, field);
 		}
 
 		std::size_t ReadCount(const Core::JsonFile& file, std::string_view key)
@@ -218,17 +198,6 @@ namespace Graphite {
 			return diff;
 		}
 
-		void RemoveKeysStartingWith(Core::JsonFile& file, std::string_view prefix)
-		{
-			for (const std::string& key : file.GetKeys())
-			{
-				if (key.starts_with(prefix))
-				{
-					file.Remove(key);
-				}
-			}
-		}
-
 		// Windows paths are case-insensitive, but std::filesystem compares path elements
 		// case-sensitively. A root typed in one case and a tab path drawn from the file tree in
 		// another must still be recognised as the same folder.
@@ -311,6 +280,17 @@ namespace Graphite {
 		}
 	}
 
+	void RemoveKeysStartingWith(Core::JsonFile& file, std::string_view prefix)
+	{
+		for (const std::string& key : file.GetKeys())
+		{
+			if (key.starts_with(prefix))
+			{
+				file.Remove(key);
+			}
+		}
+	}
+
 	void WriteGlobalState(const GlobalState& state, Core::JsonFile& file)
 	{
 		if (state.Window)
@@ -349,7 +329,7 @@ namespace Graphite {
 		if (x && y && width && height && *width > 0 && *height > 0)
 		{
 			state.Window = Core::WindowPlacement{*x, *y, *width, *height,
-												 file.Get(kWindowMaximized) == "1"};
+												 ReadFlag(file.Get(kWindowMaximized), false)};
 		}
 
 		for (const std::string& key : file.GetKeys())
@@ -438,7 +418,7 @@ namespace Graphite {
 
 			TabState tab;
 			tab.Path = DecodePath(path, root);
-			tab.Preview = file.Get(TabKey(index, "preview")) == "1";
+			tab.Preview = ReadFlag(file.Get(TabKey(index, "preview")), false);
 			tab.Line = ParseNumber<std::size_t>(file.Get(TabKey(index, "line"))).value_or(0);
 			tab.Column = ParseNumber<std::size_t>(file.Get(TabKey(index, "column"))).value_or(0);
 			tab.Top = ParseNumber<std::size_t>(file.Get(TabKey(index, "top"))).value_or(0);
