@@ -67,7 +67,7 @@ namespace Core {
 		// the child's log lines into message bodies, so leave it on the parent's own stderr,
 		// where diagnostics already go.
 		HANDLE childStdError = ::GetStdHandle(STD_ERROR_HANDLE);
-		bool ownsChildStdError = false;
+		bool ownsChildStdError = true;
 
 		// Graphite is a windowed application with no console attached, so this is the normal
 		// case in the shipped product, not a rare one: GetStdHandle returns NULL there almost
@@ -75,13 +75,14 @@ namespace Core {
 		// handed a null one gets a broken stderr that fails far from here in ways that look
 		// unrelated to this. Opening the null device keeps the child's handle valid regardless
 		// of whether this process has a console; a real console handle, when there is one, is
-		// used as-is so a server's diagnostics still land there during development.
+		// duplicated into an inheritable copy so a server's diagnostics still land there during
+		// development. The copy is this call's own, so the process's real stderr handle is never
+		// modified.
 		if (childStdError == nullptr || childStdError == INVALID_HANDLE_VALUE)
 		{
 			childStdError = ::CreateFileW(L"NUL", GENERIC_WRITE,
 										  FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable,
 										  OPEN_EXISTING, 0, nullptr);
-			ownsChildStdError = true;
 
 			if (childStdError == INVALID_HANDLE_VALUE)
 			{
@@ -96,23 +97,34 @@ namespace Core {
 				return error;
 			}
 		}
+		else
+		{
+			HANDLE duplicate = nullptr;
+			const HANDLE self = ::GetCurrentProcess();
+
+			if (!::DuplicateHandle(self, childStdError, self, &duplicate, 0, TRUE,
+								   DUPLICATE_SAME_ACCESS))
+			{
+				const Error error{ErrorCodeFor(::GetLastError()),
+								  "cannot duplicate the process's stderr for the child"};
+
+				::CloseHandle(childStdinRead);
+				::CloseHandle(childStdinWrite);
+				::CloseHandle(childStdoutRead);
+				::CloseHandle(childStdoutWrite);
+
+				return error;
+			}
+
+			childStdError = duplicate;
+		}
 
 		// Without an explicit list CreateProcessW hands the child every inheritable handle this
 		// process holds at that instant, including ones belonging to unrelated work on other
-		// threads. The list names exactly the three the child is meant to have. It must not
-		// repeat a handle, so a stderr that is the same object as another entry is listed once.
-		std::array<HANDLE, 3> inheritedHandles{childStdinRead, childStdoutWrite, childStdError};
-		std::size_t inheritedCount = 2;
-
-		if (childStdError != childStdinRead && childStdError != childStdoutWrite)
-		{
-			inheritedHandles[inheritedCount++] = childStdError;
-		}
-
-		// A console stderr from GetStdHandle is not necessarily inheritable, and a handle in the
-		// list that is not makes CreateProcessW fail. Mark it so; the flag is a property of the
-		// handle and harmless for a handle the process already shares with its children.
-		::SetHandleInformation(childStdError, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+		// threads. The list names exactly the three the child is meant to have; all are distinct
+		// handles this call owns, as the list requires.
+		const std::array<HANDLE, 3> inheritedHandles{childStdinRead, childStdoutWrite,
+													 childStdError};
 
 		const auto closeAll = [&]
 		{
@@ -143,7 +155,7 @@ namespace Core {
 
 		if (!::UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
 										 inheritedHandles.data(),
-										 inheritedCount * sizeof(HANDLE), nullptr, nullptr))
+										 inheritedHandles.size() * sizeof(HANDLE), nullptr, nullptr))
 		{
 			const Error error{ErrorCodeFor(::GetLastError()),
 							  "cannot restrict the child's inherited handles"};
