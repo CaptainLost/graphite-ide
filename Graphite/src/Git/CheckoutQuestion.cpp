@@ -157,20 +157,19 @@ namespace Graphite {
 	}
 
 	std::vector<std::filesystem::path> SilentReloads(const std::vector<std::filesystem::path>& changed,
-	                                                 const std::vector<std::filesystem::path>& unsavedNow,
-	                                                 const std::vector<std::filesystem::path>& confirmed)
+	                                                 const std::vector<std::filesystem::path>& unsavedNow)
 	{
-		const auto contains = [](const std::vector<std::filesystem::path>& paths, const std::filesystem::path& path)
+		const auto unsaved = [&unsavedNow](const std::filesystem::path& path)
 		{
 			const std::filesystem::path normal = Core::NormalizePath(path);
-			return std::any_of(paths.begin(), paths.end(), [&normal](const std::filesystem::path& other)
+			return std::any_of(unsavedNow.begin(), unsavedNow.end(), [&normal](const std::filesystem::path& other)
 			                   { return Core::SamePath(Core::NormalizePath(other), normal); });
 		};
 
 		std::vector<std::filesystem::path> silent;
 		for (const std::filesystem::path& path : changed)
 		{
-			if (!contains(unsavedNow, path) || contains(confirmed, path))
+			if (!unsaved(path))
 			{
 				silent.push_back(path);
 			}

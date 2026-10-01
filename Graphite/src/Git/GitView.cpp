@@ -185,7 +185,7 @@ namespace Graphite {
 
 			// Checked against the documents as they are now, not as the question saw them:
 			// an edit made while the checkout ran must not be reloaded away unasked.
-			m_Buffers.ExpectExternalWrite(SilentReloads(absolute, m_Buffers.ModifiedUnder(root), m_ConfirmedUnsaved));
+			m_Buffers.ExpectExternalWrite(SilentReloads(absolute, m_Buffers.ModifiedUnder(root)));
 		}
 	}
 
@@ -273,12 +273,6 @@ namespace Graphite {
 		m_Model.RequestCheckoutPlan(target);
 	}
 
-	void GitView::RequestCheckout(CheckoutRequest request, std::vector<std::filesystem::path> confirmedUnsaved)
-	{
-		m_ConfirmedUnsaved = std::move(confirmedUnsaved);
-		m_Model.RequestCheckout(std::move(request));
-	}
-
 	void GitView::ApplyCheckoutPlan(CheckoutPlanAnswer answer)
 	{
 		if (m_PendingCheckout != answer.Target)
@@ -311,8 +305,7 @@ namespace Graphite {
 
 		if (!NeedsCheckoutDialog(*answer.Plan, unsavedRelative))
 		{
-			// Nothing unsaved was asked about, so nothing unsaved is confirmed.
-			RequestCheckout(CheckoutRequest{.Target = answer.Target}, {});
+			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
 			return;
 		}
 
@@ -402,7 +395,6 @@ namespace Graphite {
 			// Withdrawn here, outside any popup, which is the only place Withdraw is valid.
 			WithdrawQuestions();
 			m_PendingCheckout.reset();
-			m_ConfirmedUnsaved.clear();
 			m_PendingDelete.reset();
 			m_ActionError.reset();
 		};

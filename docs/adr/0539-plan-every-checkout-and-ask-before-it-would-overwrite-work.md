@@ -58,9 +58,10 @@ changed, and the editor is told all of them, so no open document keeps stale
 text.
 
 The editor reloads a changed file without asking only when its document has no
-unsaved edits at that moment, or the user chose in the dialog to revert or save
-that document. A document edited after the question - or on a checkout that
-asked nothing - gets the editor's own "file changed on disk" question instead.
+unsaved edits at the moment the checkout lands. A document the dialog reverted
+or saved is clean by then unless it was typed into again; that one, and any
+document edited after the plan, gets the editor's own "file changed on disk"
+question instead.
 
 Paths from git and from the editor are matched ignoring ASCII case and
 separator style, because the two spell the same file differently on Windows. A

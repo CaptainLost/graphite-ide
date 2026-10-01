@@ -51,15 +51,14 @@ namespace Graphite {
 	                                       const Core::WorkingTreeStatus& status,
 	                                       const std::vector<std::filesystem::path>& unsaved);
 
-	// The paths a finished checkout changed that the editor may reload without asking. A
-	// document with unsaved edits now that is not in `confirmed` - the documents the reader
-	// chose to revert or save in the checkout dialog, none when no dialog was shown - was
-	// edited after the question or never asked about, so it is left out: the editor's own
-	// "changed on disk" question then asks about it instead of a reload throwing the edits
-	// away. All paths absolute; matched without regard to case or separators.
+	// The paths a finished checkout changed that the editor may reload without asking: every
+	// one but a document with unsaved edits now. A document the dialog reverted or saved is
+	// clean by then unless it was typed into again, and one never asked about was edited
+	// after the plan; either way the editor's own "changed on disk" question asks about it
+	// instead of a reload throwing the edits away. All paths absolute; matched without
+	// regard to case or separators.
 	std::vector<std::filesystem::path> SilentReloads(const std::vector<std::filesystem::path>& changed,
-	                                                 const std::vector<std::filesystem::path>& unsavedNow,
-	                                                 const std::vector<std::filesystem::path>& confirmed);
+	                                                 const std::vector<std::filesystem::path>& unsavedNow);
 
 	// nullopt when the name is fine; otherwise the reason to show under the field.
 	std::optional<std::string> BranchNameProblem(const std::string& name, const std::vector<Core::Branch>& branches);

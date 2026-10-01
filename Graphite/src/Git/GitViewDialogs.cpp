@@ -168,10 +168,9 @@ namespace Graphite {
 			// The editor's copies first: the checkout is about to write over the files, and a
 			// buffer still holding the old edits would then disagree with the disk.
 			m_Buffers.Revert(unsaved);
-			RequestCheckout(CheckoutRequest{.Target = target,
-											.Preparation = CheckoutPreparation::Discard,
-											.IncludeUntracked = includeUntracked},
-							unsaved);
+			m_Model.RequestCheckout(CheckoutRequest{.Target = target,
+													.Preparation = CheckoutPreparation::Discard,
+													.IncludeUntracked = includeUntracked});
 			answer();
 		}
 		else if (stash)
@@ -184,11 +183,11 @@ namespace Graphite {
 			}
 			else
 			{
-				RequestCheckout(CheckoutRequest{.Target = target,
-												.Preparation = CheckoutPreparation::Stash,
-												.IncludeUntracked = includeUntracked,
-												.StashMessage = "Before checking out " + CheckoutTargetLabel(target)},
-								unsaved);
+				m_Model.RequestCheckout(CheckoutRequest{.Target = target,
+														.Preparation = CheckoutPreparation::Stash,
+														.IncludeUntracked = includeUntracked,
+														.StashMessage = "Before checking out " +
+																		CheckoutTargetLabel(target)});
 				answer();
 			}
 		}

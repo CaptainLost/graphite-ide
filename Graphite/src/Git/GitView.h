@@ -162,10 +162,6 @@ namespace Graphite {
 		// was being made is part of the decision too.
 		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
 
-		// Sends the checkout, noting which unsaved documents the reader chose to revert or
-		// save: the only ones the editor may then reload without asking.
-		void RequestCheckout(CheckoutRequest request, std::vector<std::filesystem::path> confirmedUnsaved);
-
 		// Asks unless the same question is already asked: a second click on a menu item while
 		// the first is still queued or open must not ask it twice.
 		template<typename Payload>
@@ -298,12 +294,6 @@ namespace Graphite {
 		// The checkout whose plan is in flight. A plan answering any other target is one this
 		// panel no longer wants.
 		std::optional<Core::CheckoutTarget> m_PendingCheckout;
-
-		// The unsaved documents the last checkout sent was confirmed over - reverted or saved
-		// through the dialog; none when it went ahead without asking. Any other document
-		// with unsaved edits when the checkout lands was edited after the question, and gets
-		// the editor's own question rather than a silent reload.
-		std::vector<std::filesystem::path> m_ConfirmedUnsaved;
 
 		// The branch whose delete check is in flight, for the same reason.
 		std::optional<std::string> m_PendingDelete;
