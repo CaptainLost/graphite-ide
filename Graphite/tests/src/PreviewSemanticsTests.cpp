@@ -371,8 +371,8 @@ TEST_CASE("A tab taking over a previewed file does not close it, and stays quiet
 TEST_CASE("A tab closing over a previewed file reopens it here")
 {
 	// The reverse gesture: a file with a tab is previewed (editorHolds == true, so this class
-	// never opened it), the tab closes, PruneLensStates sends its own didClose, and the pane
-	// keeps declaring the same path with editorHolds now false. Before the fix the entry
+	// never opened it), the tab closes, PruneDocumentStates sends its own didClose, and the
+	// pane keeps declaring the same path with editorHolds now false. Before the fix the entry
 	// ignored the flip, so the server was asked about a document it no longer had.
 	FakePort port;
 	PreviewSemantics semantics{port};

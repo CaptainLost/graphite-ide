@@ -35,8 +35,9 @@ namespace Graphite {
 	inline constexpr std::size_t kMaximumRestarts = 3;
 
 	// How long a server must stay up (Ready, Indexing or without a compile database) before its
-	// restarts are forgiven. Without this the workspace server, which is never reaped, would spend its budget on crashes spread over a
-	// whole session and stay dead until the application restarted.
+	// restarts are forgiven. Without this the workspace server, which is never reaped, would
+	// spend its budget on crashes spread over a whole session and stay dead until the
+	// application restarted.
 	inline constexpr std::chrono::minutes kStableAfter{2};
 
 	// Whether a server that has already been restarted `restarts` times may be restarted again.
