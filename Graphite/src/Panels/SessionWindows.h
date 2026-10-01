@@ -134,7 +134,7 @@ namespace Graphite {
 			std::optional<std::string> PendingAgent;
 
 			// Whether ImGui could have spent an Esc on something else at the end of last frame: an
-			// item being edited, a popup, a child window with the nav focus. See DrawBreadcrumb.
+			// item being edited, a popup, the nav on the menu layer. See DrawBreadcrumb.
 			bool EscBusy = false;
 			bool Fresh = true;
 			bool Focus = true;

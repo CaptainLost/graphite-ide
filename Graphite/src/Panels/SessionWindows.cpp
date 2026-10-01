@@ -339,7 +339,10 @@ namespace Graphite {
 		// in NewFrame before this) reads it with no owner and then, in this order, clears the active
 		// item, leaves the menu layer, exits a child window, or closes the topmost popup. By the time
 		// this runs the state that told those apart has changed, so entry.EscBusy holds what it was
-		// at the end of last frame: Esc goes back only when none of those applied.
+		// at the end of last frame: Esc goes back only when no item was active, no popup open and
+		// the nav not on the menu layer. Exiting a child is left out on purpose: it is invisible to
+		// the reader (a click in the conversation leaves the nav focus there), so the same Esc both
+		// leaves the child, as ImGui does in NewFrame, and goes back.
 		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 		back = back || (focused && !entry.EscBusy && ImGui::IsKeyPressed(ImGuiKey_Escape, false));
 		back = back || (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && ImGui::IsMouseClicked(3));
@@ -358,6 +361,9 @@ namespace Graphite {
 
 		auto agent = Core::CreateScope<OpenedAgent>();
 		agent->Views.Serial = ++serial;
+
+		// Not the previous agent's: the first frame of this one has no last frame of its own.
+		entry.EscBusy = false;
 		agent->Info = found->second;
 		agent->Views.Live =
 			Core::CreateScope<LiveTranscript>(SubagentTranscriptPath(entry.Main.Live->GetFile(), found->second.AgentId));
@@ -567,8 +573,7 @@ namespace Graphite {
 					if (entry.Agent)
 					{
 						const ImGuiContext& g = *ImGui::GetCurrentContext();
-						entry.EscBusy = g.ActiveId != 0 || g.NavLayer != ImGuiNavLayer_Main || g.OpenPopupStack.Size > 0 ||
-										(g.NavWindow != nullptr && g.NavWindow != ImGui::GetCurrentWindowRead());
+						entry.EscBusy = g.ActiveId != 0 || g.NavLayer != ImGuiNavLayer_Main || g.OpenPopupStack.Size > 0;
 					}
 
 					if (const std::optional<std::string> toolUseId = std::exchange(entry.PendingAgent, std::nullopt))
