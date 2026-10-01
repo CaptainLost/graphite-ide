@@ -6,6 +6,7 @@
 #include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
+#include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
 
 #include <cstdint>
@@ -170,6 +171,18 @@ namespace Core {
 		// Deletes whatever its merge state: asking first is the caller's job. Refuses a
 		// branch checked out here or in another worktree.
 		Result<void> DeleteBranch(const std::string& name);
+
+		// False when there was nothing to stash - git's own "No local changes to save" -
+		// which a caller stashing on the way to a checkout treats as done, not failed.
+		Result<bool> StashSave(const std::string& message, bool includeUntracked);
+
+		Result<std::vector<StashEntry>> QueryStashes() const;
+
+		// By id rather than index: an index names a different stash as soon as another is
+		// pushed or dropped. An id no longer in the list is NotFound.
+		Result<void> StashApply(const Oid& id);
+		Result<void> StashPop(const Oid& id);
+		Result<void> StashDrop(const Oid& id);
 
 		const std::filesystem::path& GetWorkingDirectory() const
 		{
