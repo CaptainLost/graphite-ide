@@ -8,10 +8,10 @@ Date: 2026-10-01
 The status bar is the one strip of the window that is always visible, and it
 carried nothing about the repository: the branch, whether HEAD is detached, and
 how many files had changed were only visible after opening the Changes or Git
-panel. Git support is growing in stages - writes are done, branches and
-checkout and then the network come next - and each stage adds actions that could
-be offered anywhere. A place has to be chosen for them now, or each stage will
-choose again.
+panel. Git support grows in stages, and each stage that adds actions - branch
+actions and the network among them, both outside this decision - could offer them
+anywhere. A place has to be chosen for them once, or each stage will choose
+again.
 
 The status bar is drawn by a function that knows nothing of `GitModel`; it
 receives the text to show. Its pieces are small, a click target is a few
@@ -21,11 +21,12 @@ confirmation, an error or a list of choices.
 ## Decision
 
 - Draw a git segment at the left edge of the status bar: the branch (or the
-  abbreviated commit when detached, or `(no commits)` when unborn), the distance
-  from upstream as `↑N ↓M` or `✓` when the branch has an upstream and the
-  distance is known, and the number of changed paths.
+  abbreviated commit when detached; followed by `(no commits)` when unborn),
+  the distance from upstream as `↑N ↓M` or `✓` when the branch has an upstream
+  and the distance is known, and the number of changed paths.
 - Show an operation in progress (`MERGING`, `REBASING`, `CHERRY-PICKING`,
-  `REVERTING`, `BISECTING`, `APPLYING`) in place of the plain branch name.
+  `REVERTING`, `BISECTING`, `APPLYING`) after the branch, separated by a middle
+  dot (`main · MERGING`), so the branch stays readable while it runs.
 - When the folder is not a repository show `No repository`, greyed and inert;
   when no folder is open or the head state has not arrived, show nothing rather
   than a guess.
@@ -61,15 +62,14 @@ click keeps the bar useful as a shortcut without making it a control surface.
 
 - Switching branches takes two steps: a click to reach the Git panel, then the
   action. The branch name looks as if it could do more than it does.
-- The distance behind upstream is only as fresh as the last fetch, which until
-  the network stage happens outside the IDE, so the bar can show `✓` when the
-  remote has moved on.
+- The distance behind upstream is only as fresh as the last fetch, which the
+  IDE does not make itself, so the bar can show `✓` when the remote has moved
+  on.
 
 ### Neutral
 
-- The segment is drawn from the same status and branch queries the panels use,
-  so it costs no additional git work; the head state is requested beside the
-  status.
+- The segment reuses the status and branch queries the panels already make,
+  and adds one cheap head query, requested beside each status refresh.
 
 ## Alternatives Considered
 

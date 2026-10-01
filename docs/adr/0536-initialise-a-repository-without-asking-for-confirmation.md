@@ -20,10 +20,14 @@ unset), so the user's own preference is already honoured.
 
 - Create the repository at the root of the open folder as soon as the button is
   clicked, with no confirmation dialog.
-- Offer the button only while no repository was found for the folder, so it
-  cannot be reached inside an existing one.
+- Offer the button only while opening the folder answered that no repository
+  exists - not when a repository is there but would not open, which is reported
+  as its own error - and have the init itself ask again and refuse when the
+  folder is inside a repository, found or refused, so it cannot run inside an
+  existing one.
 - Allow it in Restricted mode.
-- Disable the button while another write is in flight; run the init as one more
+- Disable the button while another write is in flight, and from a successful
+  init until the status asked for after it arrives; run the init as one more
   job on the write queue, so it is ordered with the rest and its success
   refreshes the status like any applied write.
 - Show a failed init as the error in the prompt itself, under its sentence, in
@@ -48,9 +52,10 @@ cost - an unwanted `.git` directory - that is smaller than the dialog.
 
 - A misclick leaves a `.git` directory the user did not want and has to delete
   by hand; the IDE offers no undo for it.
-- Initialising a folder that sits inside another repository's working tree is
-  allowed by git, and nothing in the action warns about nesting. It is guarded
-  only by the button appearing when no repository was found.
+- A folder that sits inside a repository the IDE cannot open - dubious
+  ownership, an unsupported format - cannot be initialised from the IDE either;
+  the panels show the open's error and the user has to fix the repository, or
+  its ownership, outside the IDE.
 
 ### Neutral
 
