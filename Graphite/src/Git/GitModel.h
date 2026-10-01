@@ -7,6 +7,7 @@
 #include "Git/DeliveryInbox.h"
 #include "Git/FileTexts.h"
 #include "Git/GitPort.h"
+#include "Git/LruResultCache.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -419,37 +420,8 @@ namespace Graphite {
 			return m_WorkingTreeDiffFor.has_value() && m_WorkingTreeDiffFor == m_WantedWorkingTreeDiff;
 		}
 
-		struct CachedDiff
-		{
-			// Generations from the model-wide m_CommitDiffGeneration counter, never from a
-			// counter local to the entry: Clear() erases the entry itself, and an entry
-			// recreated after a clear starts its Applied back at zero. If Requested also
-			// restarted at a small number local to the entry, a delivery from before the
-			// clear could out-rank a delivery from after it. Reusing the shared counter
-			// means every generation ever handed out is unique for the model's lifetime, so
-			// whichever delivery actually carries the larger generation is the newer one,
-			// clear or no clear.
-			std::uint64_t Requested = 0;
-			std::uint64_t Applied = 0;
-
-			std::shared_ptr<const Core::Diff> Diff;
-
-			// Set when the query answered with an error rather than a diff. Checked by
-			// RequestDiffFor so a permanent failure does not turn the list's every-frame ask
-			// into a worker job every frame — only ForgetFailedDiffFor clears it.
-			bool Failed = false;
-
-			// Counts up on every request and every read, so eviction can pick the entry
-			// nobody has looked at for longest. A counter rather than a clock: the model
-			// must stay testable without one.
-			std::uint64_t LastTouched = 0;
-		};
-
-		void Touch(CachedDiff& entry) const;
-		void EvictIfFull();
-
 		// One commit touches many files, so the texts cache is keyed by commit and the path
-		// that names the file together - the diff cache above needs only the commit, since it
+		// that names the file together - the commit-diff cache needs only the commit, since it
 		// holds one entry per commit rather than one per file. See RequestTextsFor for why
 		// that path is not the new path.
 		struct TextsKey
@@ -469,27 +441,6 @@ namespace Graphite {
 			}
 		};
 
-		struct CachedTexts
-		{
-			// From the model-wide m_TextsGeneration counter, for the same reason
-			// CachedDiff::Requested is - see that comment.
-			std::uint64_t Requested = 0;
-			std::uint64_t Applied = 0;
-
-			std::shared_ptr<const FileTexts> Texts;
-
-			// Suppresses a re-request the same way CachedDiff::Failed does.
-			// ForgetFailedTextsFor is what gives a failed entry a way back.
-			bool Failed = false;
-
-			// Same purpose as CachedDiff::LastTouched: lets eviction pick the entry nobody
-			// has looked at for longest.
-			std::uint64_t LastTouched = 0;
-		};
-
-		void Touch(CachedTexts& entry) const;
-		void EvictTextsIfFull();
-
 		struct CachedUntracked
 		{
 			std::uint64_t Requested = 0;
@@ -506,9 +457,9 @@ namespace Graphite {
 		// it, so there is nothing to accumulate.
 		std::unordered_map<std::string, CachedUntracked> m_Untracked;
 
-		// Model-wide and never restarts, for the reason spelled out on CachedDiff::Requested:
-		// an entry recreated after a Clear() would otherwise let a pre-clear delivery
-		// outrank a post-clear one.
+		// Model-wide and never restarts, for the reason LruResultCache spells out on its
+		// entries' Requested: an entry recreated after a Clear() would otherwise let a
+		// pre-clear delivery outrank a post-clear one.
 		std::uint64_t m_UntrackedGeneration = 0;
 
 		enum class WriteKind
@@ -668,22 +619,9 @@ namespace Graphite {
 		// read the file before the change that caused the refresh.
 		bool m_WorkingTreeDiffStale = false;
 
-		// Mutable because GetDiffFor is const and still counts as a use — an entry the
-		// reader is looking at every frame must not be the one evicted.
-		mutable std::unordered_map<Core::Oid, CachedDiff> m_CommitDiffs;
-		mutable std::uint64_t m_DiffClock = 0;
-
-		// Shared by every commit-diff request, never reset by Clear() - see the comment on
-		// CachedDiff::Requested for why a counter local to the entry cannot do this job.
-		std::uint64_t m_CommitDiffGeneration = 0;
-
-		// Mirrors m_CommitDiffs in every respect described on CachedTexts above.
-		mutable std::unordered_map<TextsKey, CachedTexts, TextsKeyHash> m_Texts;
-		mutable std::uint64_t m_TextsClock = 0;
-
-		// Shared by every texts request, never reset by Clear() - see the comment on
-		// CachedDiff::Requested for why a counter local to the entry cannot do this job.
-		std::uint64_t m_TextsGeneration = 0;
+		// See RequestDiffFor and RequestTextsFor for what each holds and why it is never refreshed.
+		LruResultCache<Core::Oid, Core::Diff> m_CommitDiffs{kCachedDiffs};
+		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_Texts{kCachedTexts};
 
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;

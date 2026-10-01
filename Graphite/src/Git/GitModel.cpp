@@ -51,8 +51,8 @@ namespace Graphite {
 		m_WorkingTreeDiffFor.reset();
 		m_WorkingTreeDiffSettled.reset();
 		m_WorkingTreeDiffStale = false;
-		m_CommitDiffs.clear();
-		m_Texts.clear();
+		m_CommitDiffs.Clear();
+		m_Texts.Clear();
 		m_Untracked.clear();
 
 		m_StatusError.reset();
@@ -435,48 +435,6 @@ namespace Graphite {
 		});
 	}
 
-	void GitModel::Touch(CachedDiff& entry) const
-	{
-		entry.LastTouched = ++m_DiffClock;
-	}
-
-	void GitModel::EvictIfFull()
-	{
-		// A loop, not one shot: a single eviction only ever drops one entry, so once the
-		// map is above the bound - which a run of requests that are all still in flight can
-		// leave it at, since none of them were evictable at the time - one-in-one-out on
-		// every later request would hold it there forever instead of bringing it back down.
-		while (m_CommitDiffs.size() >= kCachedDiffs)
-		{
-			auto oldest = m_CommitDiffs.end();
-
-			for (auto entry = m_CommitDiffs.begin(); entry != m_CommitDiffs.end(); ++entry)
-			{
-				// An entry still in flight is never evicted: its delivery would then arrive
-				// for a key nobody holds and be dropped, and the reader would sit looking
-				// at a row that never fills in.
-				if (entry->second.Requested != entry->second.Applied)
-				{
-					continue;
-				}
-
-				if (oldest == m_CommitDiffs.end() || entry->second.LastTouched < oldest->second.LastTouched)
-				{
-					oldest = entry;
-				}
-			}
-
-			// Nothing evictable this pass - every remaining entry is in flight. Stop rather
-			// than spin: the map stays over the bound until one of them lands.
-			if (oldest == m_CommitDiffs.end())
-			{
-				break;
-			}
-
-			m_CommitDiffs.erase(oldest);
-		}
-	}
-
 	void GitModel::RequestDiffFor(const Core::Oid& commit)
 	{
 		// Mirrors MarkDirty and RequestLog: nothing on screen has any business asking about
@@ -486,72 +444,42 @@ namespace Graphite {
 			return;
 		}
 
-		const auto existing = m_CommitDiffs.find(commit);
+		// Nothing when the commit is held, in flight or failed: the list asks about every
+		// expanded commit every frame, and without this a permanent failure would resubmit a
+		// worker job that many times a second. ForgetFailedDiffFor is the only way back in.
+		const std::optional<std::uint64_t> generation = m_CommitDiffs.Request(commit);
 
-		if (existing != m_CommitDiffs.end())
+		if (!generation.has_value())
 		{
-			const bool inFlight = existing->second.Requested != existing->second.Applied;
-
-			// A failed entry is suppressed the same way a held or in-flight one is: the list
-			// asks about every expanded commit every frame, and without this a permanent
-			// failure would resubmit a worker job that many times a second.
-			// ForgetFailedDiffFor is the only way back in.
-			if (inFlight || existing->second.Diff != nullptr || existing->second.Failed)
-			{
-				Touch(existing->second);
-				return;
-			}
+			return;
 		}
-		else
-		{
-			// Only when the key is absent: this is the only branch that grows the map. A
-			// held, in-flight or failed entry above returns before reaching here, so
-			// evicting there - where the key is already present and nothing will grow -
-			// would drop an unrelated entry for no reason.
-			EvictIfFull();
-		}
-
-		CachedDiff& entry = m_CommitDiffs[commit];
-		Touch(entry);
-
-		// From the model-wide counter, not a counter local to the entry - see the comment
-		// on CachedDiff::Requested.
-		const std::uint64_t generation = ++m_CommitDiffGeneration;
-		entry.Requested = generation;
 
 		Core::DiffRequest request;
 		request.Target = Core::DiffTarget::CommitToParent;
 		request.From = commit;
 
-		m_Submit([this, commit, generation, request]() {
+		m_Submit([this, commit, generation = *generation, request]() {
 			auto result = m_Port.QueryDiff(request);
 
 			Deliver([this, commit, generation, result = std::move(result)]() mutable {
-				const auto entry = m_CommitDiffs.find(commit);
-
-				// Evicted, or the workspace closed, while the query was running. Dropping
-				// it is right: nothing on screen is waiting for it.
-				if (entry == m_CommitDiffs.end() || generation <= entry->second.Applied)
-				{
-					return;
-				}
-
-				entry->second.Applied = generation;
-
+				// Dropped by the cache when the commit was evicted, or the workspace closed, while
+				// the query was running - nothing on screen is waiting for it then.
 				if (!result.HasValue())
 				{
-					// No last-good snapshot to keep, unlike the volatile diff: a commit
-					// that failed has nothing older to fall back to. Marked rather than left
-					// to imply itself from a null Diff, so RequestDiffFor can tell "still
-					// waiting" from "already tried and lost" without a second lookup.
-					m_CommitDiffError = result.GetError();
-					entry->second.Failed = true;
+					if (m_CommitDiffs.Fail(commit, generation))
+					{
+						m_CommitDiffError = result.GetError();
+					}
+
 					return;
 				}
 
-				m_CommitDiffError.reset();
-				entry->second.Diff =
-					std::make_shared<const Core::Diff>(std::move(result).GetValue());
+				auto diff = std::make_shared<const Core::Diff>(std::move(result).GetValue());
+
+				if (m_CommitDiffs.Succeed(commit, generation, std::move(diff)))
+				{
+					m_CommitDiffError.reset();
+				}
 			});
 		});
 	}
@@ -611,75 +539,24 @@ namespace Graphite {
 
 	void GitModel::ForgetFailedDiffFor(const Core::Oid& commit)
 	{
-		const auto entry = m_CommitDiffs.find(commit);
-
 		// A successful entry stays: this is what makes the cache hold recently-seen commits
 		// rather than only the currently-expanded ones. Only a failed entry is dropped, so
 		// collapsing and re-expanding the row is the reader's way to retry it.
-		if (entry == m_CommitDiffs.end() || !entry->second.Failed)
+		if (m_CommitDiffs.ForgetFailed(commit))
 		{
-			return;
+			// The error line must not outlive the row it described.
+			m_CommitDiffError.reset();
 		}
-
-		m_CommitDiffs.erase(entry);
-
-		// The error line must not outlive the row it described.
-		m_CommitDiffError.reset();
 	}
 
 	bool GitModel::IsDiffFailed(const Core::Oid& commit) const
 	{
-		const auto entry = m_CommitDiffs.find(commit);
-
-		return entry != m_CommitDiffs.end() && entry->second.Failed;
+		return m_CommitDiffs.IsFailed(commit);
 	}
 
 	std::shared_ptr<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
 	{
-		const auto entry = m_CommitDiffs.find(commit);
-
-		if (entry == m_CommitDiffs.end())
-		{
-			return nullptr;
-		}
-
-		Touch(entry->second);
-		return entry->second.Diff;
-	}
-
-	void GitModel::Touch(CachedTexts& entry) const
-	{
-		entry.LastTouched = ++m_TextsClock;
-	}
-
-	void GitModel::EvictTextsIfFull()
-	{
-		// Mirrors EvictIfFull exactly - see its comments for why this is a loop rather than
-		// one shot, and why an in-flight entry is never a candidate.
-		while (m_Texts.size() >= kCachedTexts)
-		{
-			auto oldest = m_Texts.end();
-
-			for (auto entry = m_Texts.begin(); entry != m_Texts.end(); ++entry)
-			{
-				if (entry->second.Requested != entry->second.Applied)
-				{
-					continue;
-				}
-
-				if (oldest == m_Texts.end() || entry->second.LastTouched < oldest->second.LastTouched)
-				{
-					oldest = entry;
-				}
-			}
-
-			if (oldest == m_Texts.end())
-			{
-				break;
-			}
-
-			m_Texts.erase(oldest);
-		}
+		return m_CommitDiffs.Get(commit);
 	}
 
 	void GitModel::RequestTextsFor(
@@ -695,95 +572,57 @@ namespace Graphite {
 			return;
 		}
 
-		const TextsKey key{commit, path};
-		const auto existing = m_Texts.find(key);
+		// Suppresses a held, in-flight or failed entry the same way RequestDiffFor does - see
+		// its comment.
+		const std::optional<std::uint64_t> generation = m_Texts.Request(TextsKey{commit, path});
 
-		if (existing != m_Texts.end())
+		if (!generation.has_value())
 		{
-			const bool inFlight = existing->second.Requested != existing->second.Applied;
-
-			// Suppresses a failed entry the same way RequestDiffFor does - see its comment.
-			if (inFlight || existing->second.Texts != nullptr || existing->second.Failed)
-			{
-				Touch(existing->second);
-				return;
-			}
-		}
-		else
-		{
-			// Only when the key is absent - see EvictIfFull's comment for why evicting on
-			// any other branch would drop an unrelated entry for no reason.
-			EvictTextsIfFull();
+			return;
 		}
 
-		CachedTexts& entry = m_Texts[key];
-		Touch(entry);
-
-		// From the model-wide counter, not a counter local to the entry - see the comment
-		// on CachedTexts::Requested.
-		const std::uint64_t generation = ++m_TextsGeneration;
-		entry.Requested = generation;
-
-		m_Submit([this, commit, path, oldPath, newPath, generation]() {
+		m_Submit([this, commit, path, oldPath, newPath, generation = *generation]() {
 			auto result = m_Port.ReadFileTexts(commit, oldPath, newPath);
 
 			Deliver([this, commit, path, generation, result = std::move(result)]() mutable {
 				const TextsKey key{commit, path};
-				const auto entry = m_Texts.find(key);
 
-				// Evicted, or the workspace closed, while the query was running. Dropping
-				// it is right: nothing on screen is waiting for it.
-				if (entry == m_Texts.end() || generation <= entry->second.Applied)
-				{
-					return;
-				}
-
-				entry->second.Applied = generation;
-
+				// Dropped by the cache when the file was evicted, or the workspace closed, while
+				// the query was running - nothing on screen is waiting for it then.
 				if (!result.HasValue())
 				{
-					// No last-good snapshot to keep, unlike the volatile working-tree diff:
-					// a file whose texts failed has nothing older to fall back to.
-					m_TextsError = result.GetError();
-					entry->second.Failed = true;
+					if (m_Texts.Fail(key, generation))
+					{
+						m_TextsError = result.GetError();
+					}
+
 					return;
 				}
 
-				m_TextsError.reset();
-				entry->second.Texts =
-					std::make_shared<const FileTexts>(std::move(result).GetValue());
+				auto texts = std::make_shared<const FileTexts>(std::move(result).GetValue());
+
+				if (m_Texts.Succeed(key, generation, std::move(texts)))
+				{
+					m_TextsError.reset();
+				}
 			});
 		});
 	}
 
 	void GitModel::ForgetFailedTextsFor(const Core::Oid& commit, const std::filesystem::path& path)
 	{
-		const auto entry = m_Texts.find(TextsKey{commit, path});
-
 		// Mirrors ForgetFailedDiffFor: a successful entry stays, only a failed one is
 		// dropped, so asking again for the same file is the reader's way to retry it.
-		if (entry == m_Texts.end() || !entry->second.Failed)
+		if (m_Texts.ForgetFailed(TextsKey{commit, path}))
 		{
-			return;
+			// The error line must not outlive the entry it described.
+			m_TextsError.reset();
 		}
-
-		m_Texts.erase(entry);
-
-		// The error line must not outlive the entry it described.
-		m_TextsError.reset();
 	}
 
 	std::shared_ptr<const FileTexts> GitModel::GetTextsFor(
 		const Core::Oid& commit, const std::filesystem::path& path) const
 	{
-		const auto entry = m_Texts.find(TextsKey{commit, path});
-
-		if (entry == m_Texts.end())
-		{
-			return nullptr;
-		}
-
-		Touch(entry->second);
-		return entry->second.Texts;
+		return m_Texts.Get(TextsKey{commit, path});
 	}
 }
