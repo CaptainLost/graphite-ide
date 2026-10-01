@@ -1,6 +1,8 @@
 #include "Git/ChangesPanel.h"
 
 #include "Editor/DocumentWindows.h"
+#include "Git/HistoryPlaceholder.h"
+#include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
 
 #include "Core/Base/Ascii.h"
@@ -320,7 +322,17 @@ namespace Graphite {
 			// about are gone in any case, so there is nothing left to answer.
 			m_DiscardQuestion.Withdraw();
 
-			Core::EmptyState("No repository.");
+			if (IsMissingRepository(false, m_Model.GetStatusError()))
+			{
+				DrawInitRepositoryPrompt(m_Model);
+			}
+			else
+			{
+				// Loading, not absent: until the first status lands there is no telling, and
+				// offering an init here would flash the button up in every real repository.
+				Core::EmptyState("Loading changes…");
+			}
+
 			return;
 		}
 

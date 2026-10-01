@@ -6,6 +6,7 @@
 #include "Git/GitPalette.h"
 #include "Git/HistoryFilter.h"
 #include "Git/HistoryPlaceholder.h"
+#include "Git/InitRepositoryPrompt.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
@@ -99,6 +100,14 @@ namespace Graphite {
 	void GitView::OnImGuiRender()
 	{
 		UpdateForNewPage();
+
+		// The whole panel rather than the history column: with no repository there are no
+		// refs to list either, and a prompt squeezed beside an empty column reads as broken.
+		if (IsMissingRepository(m_Model.GetStatus() != nullptr, m_Model.GetStatusError()))
+		{
+			DrawInitRepositoryPrompt(m_Model);
+			return;
+		}
 
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
