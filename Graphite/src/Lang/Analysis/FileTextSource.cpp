@@ -68,7 +68,9 @@ namespace Graphite {
 			return read;
 		}
 
-		Core::Result<std::string> file = Core::ReadFileBytes(path);
+		// Bounded, as the warm-up read is: the probe saw the size it had then, and a file that has
+		// grown past the limit since is refused here rather than read whole.
+		Core::Result<std::string> file = Core::ReadFileBytes(path, Core::MaximumFileSize);
 
 		if (!file)
 		{
