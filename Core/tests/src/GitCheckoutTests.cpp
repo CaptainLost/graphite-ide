@@ -330,6 +330,23 @@ TEST_CASE("Discarding everything resets tracked changes and removes untracked fi
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "new.txt"));
 }
 
+TEST_CASE("Discarding everything in the middle of a rebase or a merge leaves git's record of it alone")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	const std::string head = fixture.Commit("one");
+	fixture.Write(".git/rebase-merge/head-name", "refs/heads/master\n");
+	fixture.Write(".git/MERGE_HEAD", head + "\n");
+	fixture.Write("a.txt", "edit\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+
+	REQUIRE(repository.DiscardAll(false).HasValue());
+	CHECK(Read(fixture.GetPath() / "a.txt") == "one\n");
+	CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "rebase-merge" / "head-name"));
+	CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "MERGE_HEAD"));
+}
+
 TEST_CASE("Discarding untracked files leaves ignored ones, even inside an untracked directory")
 {
 	GitFixture fixture;

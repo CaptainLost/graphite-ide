@@ -221,3 +221,30 @@ TEST_CASE("Popping a stash that conflicts with the branch keeps the stash and sa
 	CHECK(status.GetValue().Entries[0].Path == std::filesystem::path{"a.txt"});
 	CHECK(status.GetValue().Entries[0].IsConflicted);
 }
+
+TEST_CASE("Stashing in the middle of a rebase or a merge leaves git's record of it alone")
+{
+	for (const bool includeUntracked : {false, true})
+	{
+		CAPTURE(includeUntracked);
+
+		GitFixture fixture;
+		Prepare(fixture);
+		const std::string head = fixture.Commit("two");
+		fixture.Write(".git/rebase-merge/head-name", "refs/heads/master\n");
+		fixture.Write(".git/MERGE_HEAD", head + "\n");
+		fixture.Write("a.txt", "changed\n");
+		fixture.Write("new.txt", "fresh\n");
+
+		Core::Repository repository = OpenAt(fixture.GetPath());
+
+		auto saved = repository.StashSave("mid-rebase", includeUntracked);
+		REQUIRE(saved.HasValue());
+		CHECK(saved.GetValue());
+
+		CHECK(Read(fixture.GetPath() / "a.txt") == "one\n");
+		CHECK(std::filesystem::exists(fixture.GetPath() / "new.txt") != includeUntracked);
+		CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "rebase-merge" / "head-name"));
+		CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "MERGE_HEAD"));
+	}
+}

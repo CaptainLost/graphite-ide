@@ -528,12 +528,30 @@ namespace Core {
 		if (git_revparse_single(Out(head), m_Handle, "HEAD^{commit}") != 0)
 			return Error{ErrorCode::NotFound, std::format("cannot read HEAD: {}", LastLibgit2Message())};
 
-		// A hard reset replaces the checkout strategy it is given with FORCE, so untracked
-		// files cannot be removed through it - and would not be removed right by it anyway.
-		const int result = git_reset(m_Handle, head.get(), GIT_RESET_HARD, nullptr);
+		TreeHandle tree;
 
-		if (result != 0)
+		if (git_commit_tree(Out(tree), reinterpret_cast<git_commit*>(head.get())) != 0)
+			return Error{ErrorCode::IoFailure, std::format("cannot read HEAD's tree: {}", LastLibgit2Message())};
+
+		IndexHandle index;
+
+		if (git_repository_index(Out(index), m_Handle) != 0)
+			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+
+		// What a hard reset does, less its last step: git_reset also deletes MERGE_HEAD,
+		// rebase-merge/ and the rest of git's record of an operation in progress, and
+		// discarding the changes - or stashing them - in the middle of a rebase must not end
+		// it. FORCE writes the tree over every change, conflicts included, and reading the
+		// tree into the index drops whatever was staged. Untracked files are not removed
+		// through REMOVE_UNTRACKED, which would take ignored files in an untracked directory.
+		git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
+		options.checkout_strategy = GIT_CHECKOUT_FORCE;
+
+		if (git_checkout_tree(m_Handle, reinterpret_cast<git_object*>(tree.get()), &options) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot discard changes: {}", LastLibgit2Message())};
+
+		if (git_index_read_tree(index.get(), tree.get()) != 0 || git_index_write(index.get()) != 0)
+			return Error{ErrorCode::IoFailure, std::format("cannot reset the index: {}", LastLibgit2Message())};
 
 		if (!includeUntracked)
 			return Result<void>::Ok();
