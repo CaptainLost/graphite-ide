@@ -27,7 +27,7 @@ namespace {
 		// A checkout writes the working tree's line endings, which core.autocrlf makes CRLF on
 		// a developer's machine; what is under test is the content, not that setting.
 		std::string content = text.str();
-		std::erase(content, '');
+		std::erase(content, '\r');
 		return content;
 	}
 
