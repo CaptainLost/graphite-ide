@@ -223,10 +223,22 @@ namespace Graphite::DialogLayout {
 
 		Choice clicked = Choice::None;
 
+		const bool safeOffered = safe.Label != nullptr && safe.Enabled;
+
 		if (ImGui::Button(cancelLabel, ImVec2(buttonWidth, 0.0f)))
 		{
 			clicked = Choice::Cancel;
 		}
+
+		// Where the keyboard starts when the dialog opens - ImGui would otherwise put it on the
+		// first item, a checkbox that Enter or Space would then flip. Cancel when there is no
+		// safe action to start on: never the destructive one.
+		if (!safeOffered)
+		{
+			ImGui::SetItemDefaultFocus();
+		}
+
+		ImGuiID safeId = 0;
 
 		if (safe.Label != nullptr)
 		{
@@ -237,6 +249,13 @@ namespace Graphite::DialogLayout {
 									 safe.Enabled))
 			{
 				clicked = Choice::Safe;
+			}
+
+			safeId = ImGui::GetItemID();
+
+			if (safeOffered)
+			{
+				ImGui::SetItemDefaultFocus();
 			}
 		}
 
@@ -269,11 +288,23 @@ namespace Graphite::DialogLayout {
 
 		const bool enter = ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false);
 
-		if (enter && safe.Label != nullptr && safe.Enabled)
+		if (!enter || !safeOffered)
 		{
-			return Choice::Safe;
+			return Choice::None;
 		}
 
-		return Choice::None;
+		// With the keyboard cursor shown on another item - Discard reached with Tab, or a
+		// checkbox - Enter is ImGui's to give to that item, and answering with the safe action
+		// as well would act twice. A field being typed into is the exception: Enter there
+		// means "done", and the field takes nothing from it.
+		const ImGuiContext& g = *ImGui::GetCurrentContext();
+		const bool typing = g.NavId != 0 && (g.ActiveId == g.NavId || g.ActiveIdPreviousFrame == g.NavId);
+
+		if (g.NavCursorVisible && g.NavId != safeId && !typing)
+		{
+			return Choice::None;
+		}
+
+		return Choice::Safe;
 	}
 }
