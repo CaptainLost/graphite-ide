@@ -282,7 +282,15 @@ namespace Graphite {
 				path = root / path;
 			}
 
-			return path.lexically_normal();
+			path = path.lexically_normal();
+
+			// The root is stored as "." and must read back as the root, without a trailing separator.
+			if (path.filename().empty())
+			{
+				path = path.parent_path();
+			}
+
+			return path;
 		}
 	}
 
