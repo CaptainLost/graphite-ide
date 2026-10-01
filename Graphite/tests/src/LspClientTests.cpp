@@ -316,6 +316,40 @@ TEST_CASE("A progress notification moves the percentage the status bar shows")
 	CHECK(status.Percent == -1);
 }
 
+TEST_CASE("Indexing ends only when the last of its progress tokens ends")
+{
+	// clangd can run more than one piece of work at once, each under its own token - the
+	// background index and a file's own build, say. The first to finish says nothing about the
+	// others, and reading its end as "indexing is over" turns the status back to Ready while the
+	// index the answers come from is still partial.
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+
+	client.Deliver(
+		R"({"method":"$/progress","params":{"token":"index","value":{"kind":"begin","title":"indexing"}}})");
+	client.Deliver(
+		R"({"method":"$/progress","params":{"token":7,"value":{"kind":"begin","title":"building"}}})");
+
+	client.Deliver(R"({"method":"$/progress","params":{"token":7,"value":{"kind":"end"}}})");
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Indexing);
+
+	// The same spelling of a different token - a string "7" is not the integer 7 - ends nothing.
+	client.Deliver(R"({"method":"$/progress","params":{"token":"7","value":{"kind":"end"}}})");
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Indexing);
+
+	client.Deliver(R"({"method":"$/progress","params":{"token":"index","value":{"kind":"end"}}})");
+
+	const Graphite::ServerStatus status = StatusOf(client);
+
+	CHECK(status.State == Graphite::ServerState::Ready);
+	CHECK(status.Percent == -1);
+}
+
 TEST_CASE("A configuration request is answered with one empty settings object per item")
 {
 	TempDirectory temp;

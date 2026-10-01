@@ -200,6 +200,12 @@ namespace Graphite {
 			ServerStatus Status;
 			std::vector<PublishedDiagnostics> Diagnostics;
 
+			// The $/progress tokens that have begun and not yet ended. A server may run several at
+			// once, and Indexing ends only when the last of them does - the first to finish says
+			// nothing about the rest. Kept as JSON because a token is an integer or a string and
+			// the two never name the same token. Under StateMutex, with the Status it decides.
+			std::vector<nlohmann::json> ProgressTokens;
+
 			std::mutex ProtocolMutex;
 			JsonRpc Rpc;
 			std::unordered_map<RequestId, Asked> Pending;

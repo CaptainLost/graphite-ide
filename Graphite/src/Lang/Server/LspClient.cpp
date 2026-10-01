@@ -1016,10 +1016,21 @@ namespace Graphite {
 			percent = static_cast<int>(percentage->get<double>());
 		}
 
+		// Null when the server named none, which then counts as one token like any other.
+		const auto token = params.find("token");
+		const nlohmann::json tokenId = token != params.end() ? *token : nlohmann::json();
+
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+		std::vector<nlohmann::json>& running = shared.ProgressTokens;
 
 		if (stage == "begin")
 		{
+			if (std::find(running.begin(), running.end(), tokenId) == running.end())
+			{
+				running.push_back(tokenId);
+			}
+
 			shared.Status.State = ServerState::Indexing;
 			shared.Status.Percent = percent < 0 ? 0 : percent;
 			return;
@@ -1037,6 +1048,16 @@ namespace Graphite {
 
 		if (stage == "end")
 		{
+			std::erase(running, tokenId);
+
+			// Something else is still running. An end for a token never seen to begin still
+			// settles the status when nothing else is: staying Indexing with nothing left that
+			// could ever end it is the worse of the two mistakes.
+			if (!running.empty())
+			{
+				return;
+			}
+
 			shared.Status.State = SettledState(shared.NoCompileDatabase);
 			shared.Status.Percent = -1;
 		}
