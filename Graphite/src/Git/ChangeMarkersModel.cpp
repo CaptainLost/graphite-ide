@@ -40,72 +40,28 @@ namespace Graphite {
 
 	void ChangeMarkersModel::MarkDirty()
 	{
-		// The burst's start is reset only when it was not already dirty, so a sustained stream
-		// of events still hits the cap.
-		if (!m_Dirty)
-			m_DirtySince = 0.0f;
-
-		m_Dirty = true;
-		m_DirtyFor = 0.0f;
-
-		RequestDebounceFrame();
-	}
-
-	void ChangeMarkersModel::RequestDebounceFrame() const
-	{
-		if (!m_Dirty)
-			return;
-
-		const float remaining =
-			std::min(kDebounceSeconds - m_DirtyFor, kMaxDebounceSeconds - m_DirtySince);
-
-		Core::Redraw::RequestIn(std::chrono::duration<double>(std::max(remaining, 0.0f)));
+		m_Debounce.Mark();
 	}
 
 	void ChangeMarkersModel::Deliver(std::function<void()> delivery)
 	{
-		{
-			const std::lock_guard<std::mutex> lock{m_InboxMutex};
-			m_Inbox.push_back(std::move(delivery));
-		}
-
-		Core::Redraw::Request();
+		m_Inbox.Post(std::move(delivery));
 	}
 
 	void ChangeMarkersModel::OnUpdate(Core::Timestep ts)
 	{
 		const float seconds = ts.GetSeconds();
 
-		if (m_Dirty)
+		if (m_Debounce.Advance(seconds))
 		{
-			m_DirtyFor += seconds;
-			m_DirtySince += seconds;
-
-			if (m_DirtyFor >= kDebounceSeconds || m_DirtySince >= kMaxDebounceSeconds)
-			{
-				m_Dirty = false;
-				m_DirtyFor = 0.0f;
-				m_DirtySince = 0.0f;
-
-				for (auto& [path, entry] : m_Entries)
-					RequestBases(path, entry);
-			}
+			for (auto& [path, entry] : m_Entries)
+				RequestBases(path, entry);
 		}
-
-		RequestDebounceFrame();
 
 		for (auto& [path, entry] : m_Entries)
 			entry.QuietFor += seconds;
 
-		std::vector<std::function<void()>> ready;
-
-		{
-			const std::lock_guard<std::mutex> lock{m_InboxMutex};
-			ready.swap(m_Inbox);
-		}
-
-		for (const auto& delivery : ready)
-			delivery();
+		m_Inbox.Drain();
 	}
 
 	void ChangeMarkersModel::Update(const std::filesystem::path& path, const Core::TextBuffer& buffer)
@@ -271,9 +227,7 @@ namespace Graphite {
 	void ChangeMarkersModel::Clear()
 	{
 		m_Entries.clear();
-		m_Dirty = false;
-		m_DirtyFor = 0.0f;
-		m_DirtySince = 0.0f;
+		m_Debounce.Reset();
 	}
 
 	std::shared_ptr<const ChangeMarkers> ChangeMarkersModel::Get(const std::filesystem::path& path) const

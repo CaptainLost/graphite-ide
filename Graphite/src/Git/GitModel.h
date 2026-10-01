@@ -3,6 +3,8 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
+#include "Git/Debouncer.h"
+#include "Git/DeliveryInbox.h"
 #include "Git/FileTexts.h"
 #include "Git/GitPort.h"
 
@@ -390,7 +392,7 @@ namespace Graphite {
 		// How long a burst of file-change events is allowed to keep coalescing. A save
 		// touches several files, and refreshing per file would run the same query five
 		// times for one action.
-		static constexpr float kDebounceSeconds = 0.15f;
+		static constexpr float kDebounceSeconds = Debouncer::kQuietSeconds;
 
 		// A ceiling on how long coalescing can postpone the refresh, measured from the first
 		// event of the burst rather than the most recent one. Without this, a sustained
@@ -398,19 +400,14 @@ namespace Graphite {
 		// Workspace::Update republishes per settled batch - would keep resetting the quiet
 		// timer and starve the refresh for as long as the stream continues, rather than
 		// coalescing to one refresh per quiet period.
-		static constexpr float kMaxDebounceSeconds = 1.0f;
+		static constexpr float kMaxDebounceSeconds = Debouncer::kMaxSeconds;
 
 	private:
-		using Delivery = std::function<void()>;
+		using Delivery = DeliveryInbox::Delivery;
 
 		void Deliver(Delivery delivery);
 
 		void MarkDirty();
-
-		// Asks the frame loop for the frame the debounce runs out on. A mark can come from a
-		// result that woke the loop for a few frames only, and the loop would otherwise sleep
-		// through the debounce until its idle tick.
-		void RequestDebounceFrame() const;
 
 		// Sends the wanted working-tree diff if nothing is in flight and the slot does not
 		// already answer it fresh. Called on every ask and on every landing, which is what
@@ -593,11 +590,7 @@ namespace Graphite {
 
 		std::filesystem::path m_Root;
 
-		bool m_Dirty = false;
-		float m_DirtyFor = 0.0f;
-
-		// Time since the burst's first mark, not its most recent one - see kMaxDebounceSeconds.
-		float m_DirtySince = 0.0f;
+		Debouncer m_Debounce;
 
 		GitPort& m_Port;
 		JobSubmitter m_Submit;
@@ -605,8 +598,7 @@ namespace Graphite {
 		// Written by workers, drained by OnUpdate. The mutex covers this and nothing else:
 		// every snapshot below is only ever touched on the UI thread — the write queue's
 		// state included, since PumpWrites, ApplyWrite and Enqueue all run there too.
-		std::mutex m_InboxMutex;
-		std::vector<Delivery> m_Inbox;
+		DeliveryInbox m_Inbox;
 
 		// Queued rather than concurrent, because a user clicking stage on three rows must
 		// get three writes rather than one and two dropped clicks — and because two writes

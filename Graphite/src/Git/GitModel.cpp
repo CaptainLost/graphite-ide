@@ -1,6 +1,5 @@
 #include "Git/GitModel.h"
 
-#include "Core/App/Redraw.h"
 #include "Core/Fs/FileSystem.h"
 #include "Workspace/Workspace.h"
 
@@ -17,12 +16,7 @@ namespace Graphite {
 
 	void GitModel::Deliver(Delivery delivery)
 	{
-		{
-			const std::lock_guard<std::mutex> lock{m_InboxMutex};
-			m_Inbox.push_back(std::move(delivery));
-		}
-
-		Core::Redraw::Request();
+		m_Inbox.Post(std::move(delivery));
 	}
 
 	void GitModel::SetRoot(std::filesystem::path root)
@@ -85,9 +79,7 @@ namespace Graphite {
 		m_CheckoutPlan.reset();
 		m_DeleteCheck.reset();
 
-		m_Dirty = false;
-		m_DirtyFor = 0.0f;
-		m_DirtySince = 0.0f;
+		m_Debounce.Reset();
 	}
 
 	void GitModel::MarkDirty()
@@ -97,31 +89,7 @@ namespace Graphite {
 			return;
 		}
 
-		// The burst's start is only reset when it was not already dirty: a mark that arrives
-		// mid-burst extends the quiet timer but must not push the cap out further, or a
-		// sustained stream of events would never hit it.
-		if (!m_Dirty)
-		{
-			m_DirtySince = 0.0f;
-		}
-
-		m_Dirty = true;
-		m_DirtyFor = 0.0f;
-
-		RequestDebounceFrame();
-	}
-
-	void GitModel::RequestDebounceFrame() const
-	{
-		if (!m_Dirty)
-		{
-			return;
-		}
-
-		const float remaining =
-			std::min(kDebounceSeconds - m_DirtyFor, kMaxDebounceSeconds - m_DirtySince);
-
-		Core::Redraw::RequestIn(std::chrono::duration<double>(std::max(remaining, 0.0f)));
+		m_Debounce.Mark();
 	}
 
 	void GitModel::SubscribeTo(Core::EventBus& events)
@@ -131,7 +99,7 @@ namespace Graphite {
 			// second folder onto the window replaces the workspace directly. Without Clear()
 			// here, GetStatus()/GetBranches() would keep answering with the previous folder's
 			// snapshot for the debounce window plus one query: a lie about the folder now
-			// open. Clear() before SetRoot and MarkDirty, since Clear() sets m_Dirty = false
+			// open. Clear() before SetRoot and MarkDirty, since Clear() resets the debounce
 			// and would otherwise undo the mark.
 			Clear();
 			SetRoot(event.Root);
@@ -155,53 +123,31 @@ namespace Graphite {
 
 	void GitModel::OnUpdate(Core::Timestep ts)
 	{
-		if (m_Dirty)
+		if (m_Debounce.Advance(ts.GetSeconds()))
 		{
-			m_DirtyFor += ts.GetSeconds();
-			m_DirtySince += ts.GetSeconds();
+			RequestStatus();
+			RequestBranches();
+			RequestHead();
+			RequestStashes();
 
-			if (m_DirtyFor >= kDebounceSeconds || m_DirtySince >= kMaxDebounceSeconds)
+			// A commit, an amend, a rebase or a fetch all change the history, and
+			// nothing else re-asks for it: without this the list keeps showing what it
+			// showed when the panel was opened. Only when something has already asked
+			// for a log - with no list on screen there is nothing to keep fresh, and
+			// walking the history for a panel the reader may never open is work spent
+			// on nobody.
+			if (m_LastLogRequest.has_value())
 			{
-				m_Dirty = false;
-				m_DirtyFor = 0.0f;
-				m_DirtySince = 0.0f;
-
-				RequestStatus();
-				RequestBranches();
-				RequestHead();
-				RequestStashes();
-
-				// A commit, an amend, a rebase or a fetch all change the history, and
-				// nothing else re-asks for it: without this the list keeps showing what it
-				// showed when the panel was opened. Only when something has already asked
-				// for a log - with no list on screen there is nothing to keep fresh, and
-				// walking the history for a panel the reader may never open is work spent
-				// on nobody.
-				if (m_LastLogRequest.has_value())
-				{
-					RequestLog(*m_LastLogRequest);
-				}
-
-				// The working-tree diff is only marked, not re-asked: the diff window asks every
-				// frame it is visible, so a tab that is open sends the query on its next frame,
-				// and a tab that has closed or gone behind another sends nothing.
-				m_WorkingTreeDiffStale = true;
+				RequestLog(*m_LastLogRequest);
 			}
+
+			// The working-tree diff is only marked, not re-asked: the diff window asks every
+			// frame it is visible, so a tab that is open sends the query on its next frame,
+			// and a tab that has closed or gone behind another sends nothing.
+			m_WorkingTreeDiffStale = true;
 		}
 
-		RequestDebounceFrame();
-
-		std::vector<Delivery> ready;
-
-		{
-			const std::lock_guard<std::mutex> lock{m_InboxMutex};
-			ready.swap(m_Inbox);
-		}
-
-		for (const Delivery& delivery : ready)
-		{
-			delivery();
-		}
+		m_Inbox.Drain();
 	}
 
 	void GitModel::RequestStatus()

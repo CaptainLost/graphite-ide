@@ -2,6 +2,8 @@
 
 #include "Git/ChangeBases.h"
 #include "Git/ChangeMarkers.h"
+#include "Git/DeliveryInbox.h"
+#include "Git/Debouncer.h"
 #include "Git/GitModel.h"
 
 #include "Core/Base/NonCopyable.h"
@@ -75,8 +77,8 @@ namespace Graphite {
 		static constexpr float kEditQuietSeconds = 0.1f;
 
 		// The same coalescing GitModel applies to the same events, for the same reasons.
-		static constexpr float kDebounceSeconds = 0.15f;
-		static constexpr float kMaxDebounceSeconds = 1.0f;
+		static constexpr float kDebounceSeconds = Debouncer::kQuietSeconds;
+		static constexpr float kMaxDebounceSeconds = Debouncer::kMaxSeconds;
 
 	private:
 		struct BaseTexts
@@ -107,11 +109,6 @@ namespace Graphite {
 		void Deliver(std::function<void()> delivery);
 		void MarkDirty();
 
-		// Asks the frame loop for the frame the debounce runs out on. A mark can come from a
-		// result that woke the loop for a few frames only, and the loop would otherwise sleep
-		// through the debounce until its idle tick.
-		void RequestDebounceFrame() const;
-
 		ChangeBasePort& m_Port;
 		JobSubmitter m_Submit;
 
@@ -121,11 +118,7 @@ namespace Graphite {
 		// after it.
 		std::uint64_t m_Generation = 0;
 
-		bool m_Dirty = false;
-		float m_DirtyFor = 0.0f;
-		float m_DirtySince = 0.0f;
-
-		std::mutex m_InboxMutex;
-		std::vector<std::function<void()>> m_Inbox;
+		Debouncer m_Debounce;
+		DeliveryInbox m_Inbox;
 	};
 }
