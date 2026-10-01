@@ -83,7 +83,13 @@ namespace Graphite::DialogLayout {
 	{
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
-		const float headerHeight = ImGui::GetFontSize() * kHeaderScale + style.ItemSpacing.y;
+
+		// Measured in the header's own font rather than as FontSize * kHeaderScale: ImGui
+		// rounds a pushed size, and a list a pixel short shows a scrollbar with nothing to
+		// scroll.
+		ImGui::PushFont(nullptr, style.FontSizeBase * kHeaderScale);
+		const float headerHeight = ImGui::GetTextLineHeightWithSpacing();
+		ImGui::PopFont();
 
 		const float content = static_cast<float>(rows) * rowHeight + static_cast<float>(headers) * headerHeight;
 		const float cap = static_cast<float>(kListRows) * rowHeight;
