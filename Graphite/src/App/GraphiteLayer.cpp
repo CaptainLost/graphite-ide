@@ -6,6 +6,7 @@
 #include "Editor/Palettes.h"
 #include "Editor/ServerStatusText.h"
 #include "Editor/StatusBar.h"
+#include "Editor/StatusLineComposer.h"
 #include "Editor/TextEditorWidget.h"
 #include "Lang/Registry/LanguageRegistry.h"
 
@@ -745,32 +746,9 @@ namespace Graphite {
 
 		// Preformatted here rather than handed to StatusBar.cpp as a Counts, the same way Server
 		// is preformatted from a ServerStatus below: it keeps DiagnosticsModel out of a file whose
-		// only other dependency is Core::DocumentSet. Left unset - not a zeroed string - when
-		// both counts are zero, which is what leaves the slot empty rather than reading "0
-		// errors".
-		if (const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
-			counts.Errors > 0 || counts.Warnings > 0)
-		{
-			std::string problems;
-
-			if (counts.Errors > 0)
-			{
-				problems = std::to_string(counts.Errors) + (counts.Errors == 1 ? " error" : " errors");
-			}
-
-			if (counts.Warnings > 0)
-			{
-				if (!problems.empty())
-				{
-					problems += ", ";
-				}
-
-				problems += std::to_string(counts.Warnings) +
-							(counts.Warnings == 1 ? " warning" : " warnings");
-			}
-
-			messages.Problems = std::move(problems);
-		}
+		// only other dependency is Core::DocumentSet.
+		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
+		messages.Problems = ProblemCountText(counts.Errors, counts.Warnings);
 
 		// Before the panels draw, so what they declare this frame is stamped with this frame's
 		// number, and so an entry nothing declared last frame is closed before anything asks
@@ -857,50 +835,21 @@ namespace Graphite {
 			status = m_LanguageServices.StatusFor(*activeDocument, activeLanguage);
 		}
 
-		// Checked for the path as well as the state, though a state other than NotConfigured is
-		// only ever read for the active text document above: the dereference below then needs no
-		// argument about which branch set what.
-		if (activeDocument && status.State != ServerState::NotConfigured)
-		{
-			// The active document's own language has something to say, and it outranks everything
-			// else: it is the one whose answers are about what is on screen.
-			//
-			// Named while its answers are still coming, because a ready server and a file whose
-			// colours have not arrived look identical from here otherwise - and that gap is
-			// exactly when someone wonders whether anything is happening at all.
-			const std::filesystem::path& path = *activeDocument;
+		ServerLineInputs serverInputs{.Active = status,
+									  .ActiveLanguage = activeLanguage,
+									  .FolderOpen = m_Workspace.IsOpen(),
+									  .FolderTrusted = workspaceTrusted,
+									  .Overall = m_LanguageServices.OverallStatus()};
 
-			messages.Server = m_DocumentWindows.IsAnalysing(path)
-								  ? AnalysingText(status, Core::ToUtf8(path.filename()))
-								  : ServerStatusText(status);
+		if (activeDocument && m_DocumentWindows.IsAnalysing(*activeDocument))
+		{
+			serverInputs.AnalysingFile = Core::ToUtf8(activeDocument->filename());
+		}
 
-			messages.ServerDetail = ServerStatusDetail(status);
-		}
-		else if (std::string unserved = NoServerText(activeLanguage); !unserved.empty())
+		if (std::optional<ServerLine> line = ChooseServerLine(serverInputs))
 		{
-			// A language recognised but unserved - a C# file with no OmniSharp. Said out loud,
-			// because the expectation of go to definition is reasonable here and silence would
-			// read as something broken rather than something absent.
-			messages.Server = std::move(unserved);
-			messages.ServerDetail = NoServerDetail(activeLanguage);
-		}
-		else if (m_Workspace.IsOpen() && !workspaceTrusted)
-		{
-			// Ahead of the workspace-wide status below, not after it: that one reports the best
-			// server anywhere, which may belong to a trusted folder whose tabs are still open, and
-			// "ready" beside the restricted-mode bar reads as the bar being wrong.
-			messages.Server = "Restricted mode";
-			messages.ServerDetail = "This folder is not trusted, so the language server and the background analysis "
-									"do not run in it. Trust it from the bar above the editor or the File menu.";
-		}
-		else if (const std::optional<ServerStatus> overall = m_LanguageServices.OverallStatus())
-		{
-			// Nothing to say about what is open - plain text, or no document at all - so the
-			// workspace's servers as a whole. This is what makes a server started by opening the
-			// folder visible at all: without it the bar stays blank until a file of its language
-			// is opened, which looks like the feature is not working.
-			messages.Server = ServerStatusText(*overall);
-			messages.ServerDetail = ServerStatusDetail(*overall);
+			messages.Server = std::move(line->Text);
+			messages.ServerDetail = std::move(line->Detail);
 		}
 
 		// Its own slot beside the server's, because it answers a different question: the server
