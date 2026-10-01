@@ -23,6 +23,17 @@ namespace Graphite::DialogLayout {
 	inline constexpr float kButtonMinWidth = 90.0f;
 	inline constexpr std::size_t kListRows = 12;
 
+	// The theme gives frames and popups the same surface colour, so a checkbox or a field in
+	// a modal had no edge at all. In a modal they take the window background instead: a well
+	// sunk into the popup, the same contrast a field in a panel has the other way round.
+	// ModalQuestion pushes this for every question it asks.
+	inline void PushModalFrameColours()
+	{
+		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
+	}
+
+	inline void PopModalFrameColours() { ImGui::PopStyleColor(); }
+
 	// Around the question's Begin. The padding is read by Begin and must not reach the
 	// children drawn inside, so it is popped straight after; the width is fixed so the dialog
 	// does not jump with the length of what it names.

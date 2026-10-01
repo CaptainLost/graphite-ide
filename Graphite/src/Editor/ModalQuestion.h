@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/ModalGate.h"
+#include "UI/DialogLayout.h"
 
 #include <imgui.h>
 
@@ -85,7 +86,11 @@ namespace Graphite {
 			ImGui::CloseCurrentPopup();
 		}
 
-		void End() { ImGui::EndPopup(); }
+		void End()
+		{
+			DialogLayout::PopModalFrameColours();
+			ImGui::EndPopup();
+		}
 
 		// Abandons the question and hands the gate back. Begin is the only other code that
 		// releases the gate, and it runs from the owner's render — an owner that stops being
@@ -120,6 +125,7 @@ namespace Graphite {
 		{
 			if (ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 			{
+				DialogLayout::PushModalFrameColours();
 				return true;
 			}
 
