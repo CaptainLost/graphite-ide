@@ -2,6 +2,7 @@
 
 #include "App/GraphiteLayer.h"
 
+#include "Editor/ActiveTextDocument.h"
 #include "Editor/Palettes.h"
 #include "Editor/ServerStatusText.h"
 #include "Editor/StatusBar.h"
@@ -299,14 +300,15 @@ namespace Graphite {
 		m_Commands.Add({.Id = "find.open",
 						.Label = "Find",
 						.Run = [this] {
-							if (const auto active = m_Documents.GetActive())
-								m_DocumentWindows.OpenFind(m_Documents.At(*active));
+							if (const auto path = ActiveTextDocument(m_Documents))
+							{
+								if (const auto index = m_Documents.Find(*path))
+								{
+									m_DocumentWindows.OpenFind(m_Documents.At(*index));
+								}
+							}
 						},
-						.Enabled = [this] {
-							const auto active = m_Documents.GetActive();
-
-							return active && m_Documents.At(*active).Document.has_value();
-						}});
+						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
 
 		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
 
@@ -316,16 +318,15 @@ namespace Graphite {
 		m_Commands.Add({.Id = "editor.goToDefinition",
 						.Label = "Go to Definition",
 						.Run = [this] {
-							if (const auto active = m_Documents.GetActive())
+							if (const auto path = ActiveTextDocument(m_Documents))
 							{
-								m_DocumentWindows.RequestDefinition(*active);
+								if (const auto index = m_Documents.Find(*path))
+								{
+									m_DocumentWindows.RequestDefinition(*index);
+								}
 							}
 						},
-						.Enabled = [this] {
-							const auto active = m_Documents.GetActive();
-
-							return active && m_Documents.At(*active).Document.has_value();
-						}});
+						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
 
 		m_Keys.SetDefault("editor.goToDefinition", {.Primary = Core::Chord::Key(ImGuiKey_F12)});
 
@@ -335,16 +336,15 @@ namespace Graphite {
 		m_Commands.Add({.Id = "editor.findReferences",
 						.Label = "Find All References",
 						.Run = [this] {
-							if (const auto active = m_Documents.GetActive())
+							if (const auto path = ActiveTextDocument(m_Documents))
 							{
-								m_DocumentWindows.RequestReferences(*active, *m_ReferencesPanel);
+								if (const auto index = m_Documents.Find(*path))
+								{
+									m_DocumentWindows.RequestReferences(*index, *m_ReferencesPanel);
+								}
 							}
 						},
-						.Enabled = [this] {
-							const auto active = m_Documents.GetActive();
-
-							return active && m_Documents.At(*active).Document.has_value();
-						}});
+						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
 
 		m_Keys.SetDefault("editor.findReferences",
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
@@ -818,13 +818,8 @@ namespace Graphite {
 		// The open document's own questions come first. IsAnalysing is what the Server slot below
 		// already asks to decide whether to say "analysing" rather than "ready", which makes it
 		// exactly the condition worth yielding to.
-		bool foregroundBusy = false;
-
-		if (const auto analysed = m_Documents.GetActive();
-			analysed && m_Documents.At(*analysed).Document)
-		{
-			foregroundBusy = m_DocumentWindows.IsAnalysing(m_Documents.At(*analysed).Path);
-		}
+		const std::optional<std::filesystem::path> activeDocument = ActiveTextDocument(m_Documents);
+		const bool foregroundBusy = activeDocument && m_DocumentWindows.IsAnalysing(*activeDocument);
 
 		// Before the pass ticks, for the reason m_LanguageServices.Poll runs before anything reads a
 		// status: this is what turns a finished index listing into an answerable store, and a Tick
@@ -853,19 +848,19 @@ namespace Graphite {
 		ServerStatus status;
 		LanguageId activeLanguage = LanguageId::PlainText;
 
-		if (const auto active = m_Documents.GetActive();
-			active && m_Documents.At(*active).Document)
+		if (activeDocument)
 		{
-			const std::filesystem::path& path = m_Documents.At(*active).Path;
+			activeLanguage = LanguageOfPath(*activeDocument);
 
-			activeLanguage = LanguageOfPath(path);
+			m_LanguageServices.EnsureStarted(*activeDocument, activeLanguage);
 
-			m_LanguageServices.EnsureStarted(path, activeLanguage);
-
-			status = m_LanguageServices.StatusFor(path, activeLanguage);
+			status = m_LanguageServices.StatusFor(*activeDocument, activeLanguage);
 		}
 
-		if (status.State != ServerState::NotConfigured)
+		// Checked for the path as well as the state, though a state other than NotConfigured is
+		// only ever read for the active text document above: the dereference below then needs no
+		// argument about which branch set what.
+		if (activeDocument && status.State != ServerState::NotConfigured)
 		{
 			// The active document's own language has something to say, and it outranks everything
 			// else: it is the one whose answers are about what is on screen.
@@ -873,7 +868,7 @@ namespace Graphite {
 			// Named while its answers are still coming, because a ready server and a file whose
 			// colours have not arrived look identical from here otherwise - and that gap is
 			// exactly when someone wonders whether anything is happening at all.
-			const std::filesystem::path& path = m_Documents.At(*m_Documents.GetActive()).Path;
+			const std::filesystem::path& path = *activeDocument;
 
 			messages.Server = m_DocumentWindows.IsAnalysing(path)
 								  ? AnalysingText(status, Core::ToUtf8(path.filename()))
