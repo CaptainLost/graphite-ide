@@ -572,5 +572,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0540](0540-discard-or-stash-every-change-on-the-way-to-a-checkout-untracked-files-only-on-request.md) | Discard or stash every change on the way to a checkout, untracked files only on request | proposed | 2026-10-01 |
 | [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md) | Put branch and stash actions in the Git panel's right-click menus | proposed | 2026-10-01 |
 | [0542](0542-build-the-application-as-a-static-library-its-tests-link.md) | Build the application as a static library its tests link | proposed | 2026-10-01 |
-| [0543](0543-load-the-settings-file-once-and-write-it-from-memory-at-the-end-of-a-frame.md) | Load the settings file once and write it from memory at the end of a frame | proposed | 2026-10-01 |
+| [0543](0543-load-the-settings-file-once-and-merge-its-changes-into-it-at-the-end-of-a-frame.md) | Load the settings file once and merge its changes into it at the end of a frame | proposed | 2026-10-01 |
 <!-- /adr-index -->

@@ -16,6 +16,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -58,6 +59,7 @@ namespace Graphite {
 	AppSettings::AppSettings(std::filesystem::path file)
 		: m_File(std::move(file)), m_Document(Core::JsonFile::Load(m_File))
 	{
+		m_Written = TakeSnapshot(m_Document);
 	}
 
 	void AppSettings::Flush()
@@ -67,22 +69,82 @@ namespace Graphite {
 			return;
 		}
 
-		// Cleared before writing, not after: a write that fails is logged once rather than on
-		// every frame until something else changes.
-		m_Unwritten = false;
+		Core::JsonFile onDisk = Core::JsonFile::Load(m_File);
+
+		// An empty read of a file that has bytes in it is a file that does not parse. There is
+		// nothing on disk to keep, so the copy in memory is written, as it always was.
+		std::error_code error;
+		const bool unreadable = onDisk.GetCount() == 0 && std::filesystem::file_size(m_File, error) > 0 && !error;
+
+		if (!unreadable)
+		{
+			// Only the keys this process changed since the last write go over what is on disk, so
+			// everything else there - a hand edit, another instance's change - is kept.
+			const Snapshot current = TakeSnapshot(m_Document);
+
+			for (const auto& [key, value] : current)
+			{
+				if (const auto written = m_Written.find(key); written == m_Written.end() || written->second != value)
+				{
+					onDisk.Set(key, value);
+				}
+			}
+
+			for (const auto& [key, value] : m_Written)
+			{
+				if (!current.contains(key))
+				{
+					onDisk.Remove(key);
+				}
+			}
+		}
+
+		Core::JsonFile& toWrite = unreadable ? m_Document : onDisk;
 
 		// Every write of graphite.json goes through here, so none of them can skip the
-		// version check and overwrite a file a newer build wrote.
-		if (!StampSettingsVersion(m_Document))
+		// version check and overwrite a file a newer build wrote. Not retried: the file will not
+		// get older by waiting.
+		if (!StampSettingsVersion(toWrite))
 		{
+			m_Unwritten = false;
 			APP_WARN("Not writing '{}': a newer version of Graphite wrote it", Core::ToUtf8(m_File));
 			return;
 		}
 
-		if (!m_Document.Save(m_File))
+		if (!toWrite.Save(m_File))
 		{
-			APP_WARN("Cannot write '{}'", Core::ToUtf8(m_File));
+			// Left unwritten so the next Flush tries again; logged once per run of failures rather
+			// than on every frame that retries.
+			if (!m_WriteFailed)
+			{
+				APP_WARN("Cannot write '{}'", Core::ToUtf8(m_File));
+			}
+
+			m_WriteFailed = true;
+			return;
 		}
+
+		// What was written is now what this process holds, hand edits from disk included.
+		if (!unreadable)
+		{
+			m_Document = std::move(onDisk);
+		}
+
+		m_Written = TakeSnapshot(m_Document);
+		m_Unwritten = false;
+		m_WriteFailed = false;
+	}
+
+	AppSettings::Snapshot AppSettings::TakeSnapshot(const Core::JsonFile& document)
+	{
+		Snapshot snapshot;
+
+		for (const std::string& key : document.GetKeys())
+		{
+			snapshot.emplace(key, document.Get(key));
+		}
+
+		return snapshot;
 	}
 
 	std::string AppSettings::Get(std::string_view key) const

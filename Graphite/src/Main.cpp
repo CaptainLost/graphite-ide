@@ -20,28 +20,41 @@ namespace Graphite {
 		constexpr std::size_t kLogFileCount = 3;
 	}
 
-	class GraphiteApplication final : public Core::Application
+	// The one copy of graphite.json for the whole process. The application owns it rather than
+	// GraphiteLayer because the window placement it holds is needed to open the window, before any
+	// layer exists; the layer is handed a reference.
+	//
+	// A base listed before Core::Application rather than a member: bases are constructed in order,
+	// so the placement can be read from it while Core::Application is built, and destroyed in
+	// reverse, so it outlives Core::Application's LayerStack. That matters when Run is left by an
+	// exception: the LayerStack then detaches GraphiteLayer from its own destructor, and the
+	// layer's OnDetach flushes these settings.
+	struct ApplicationSettings
+	{
+		AppSettings Settings;
+	};
+
+	class GraphiteApplication final : private ApplicationSettings, public Core::Application
 	{
 	public:
-		// `settings` is read here, before the window opens, for the placement it was left at.
 		GraphiteApplication(Core::Ref<Core::RingBufferSink> sink, std::filesystem::path initialFolder,
 							AppSettings settings)
-			: Core::Application(Core::ApplicationSpec{.Name = "Graphite IDE",
+			: ApplicationSettings{std::move(settings)},
+			  Core::Application(Core::ApplicationSpec{.Name = "Graphite IDE",
 													  .Width = 1600,
 													  .Height = 900,
 													  .CustomTitleBar = true,
-													  .Placement = settings.GetGlobalState().Window,
+													  .Placement = Settings.GetGlobalState().Window,
 													  .LayoutFile = UserDirectories::LayoutFile()}),
 			  m_Sink(std::move(sink)),
-			  m_InitialFolder(std::move(initialFolder)),
-			  m_Settings(std::move(settings))
+			  m_InitialFolder(std::move(initialFolder))
 		{
 		}
 
 	protected:
 		void OnInit() override
 		{
-			PushLayer(Core::CreateScope<GraphiteLayer>(m_Sink, m_InitialFolder, m_Settings));
+			PushLayer(Core::CreateScope<GraphiteLayer>(m_Sink, m_InitialFolder, Settings));
 		}
 
 		void OnShutdown() override
@@ -52,12 +65,6 @@ namespace Graphite {
 	private:
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::filesystem::path m_InitialFolder;
-
-		// The one copy of graphite.json for the whole process. Here rather than in GraphiteLayer
-		// because the window placement it holds is needed to open the window, before any layer
-		// exists; the layer is handed a reference, and is detached and destroyed in Run, while
-		// this is still alive.
-		AppSettings m_Settings;
 	};
 }
 Core::LogSpec Core::CreateLogSpec()

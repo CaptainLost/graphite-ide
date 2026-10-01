@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
+#include <map>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,9 +22,10 @@ namespace Core {
 namespace Graphite {
 
 	// graphite.json, read once and then kept in memory. Getters read the copy in memory; setters
-	// change it and mark it unwritten, and Flush writes it back in one go. The file is never
-	// read again after construction, so a key added to it by hand while the application runs is
-	// lost at the next write.
+	// change it and mark it unwritten. Nothing re-reads the file per value: Flush reads it once per
+	// write and lays only the keys this process set or removed over what is on disk, so a key
+	// edited by hand, or written by another instance, while the application runs survives the
+	// write and is read back into memory by it.
 	//
 	// One instance per process, owned by GraphiteApplication — which needs the window placement
 	// before any layer exists — and handed by reference to everything that reads or writes a
@@ -40,9 +43,11 @@ namespace Graphite {
 		AppSettings(const AppSettings&) = delete;
 		AppSettings& operator=(const AppSettings&) = delete;
 
-		// Writes the file if any setter changed something since the last write. A file a newer
-		// version of Graphite wrote is never written (see StampSettingsVersion); a write that
-		// fails is logged and not retried until the next change.
+		// Writes the file if any setter changed something since the last write: the file as it is
+		// on disk now, with this process's changes since then applied over it. A file that exists
+		// but does not parse is replaced by the copy in memory instead. A file a newer version of
+		// Graphite wrote is never written (see StampSettingsVersion). A write that fails stays
+		// unwritten, so the next Flush - the one on exit at the latest - tries again.
 		void Flush();
 
 		std::filesystem::path GetLastFolder() const;
@@ -107,10 +112,10 @@ namespace Graphite {
 		// This is the "configured location" the status bar's "not found" message names, and the
 		// only thing that makes that sentence true.
 		//
-		// `languageServerBinary` is hand-edited in `graphite.json` today, with the application
-		// closed, since a running one writes over the file from memory: a settings-panel widget
-		// for it is deliberately not part of this pass, since the message promises a configured
-		// location rather than a particular way of configuring it. `SetLanguageServerBinary` is
+		// `languageServerBinary` is hand-edited in `graphite.json` today, and read at startup: a
+		// settings-panel widget for it is deliberately not part of this pass, since the message
+		// promises a configured location rather than a particular way of configuring it.
+		// `SetLanguageServerBinary` is
 		// therefore uncalled by design, kept as the writing half of the pair so that a widget, or
 		// a "locate clangd" prompt, has somewhere to write without reopening the JSON key.
 		std::filesystem::path GetLanguageServerBinary() const;
@@ -145,8 +150,15 @@ namespace Graphite {
 		std::string Get(std::string_view key) const;
 		void Set(std::string_view key, std::string value);
 
+		// What the file held as of load or the last write, key by key, so Flush can tell which keys
+		// this process changed since.
+		using Snapshot = std::map<std::string, std::string, std::less<>>;
+		static Snapshot TakeSnapshot(const Core::JsonFile& document);
+
 		std::filesystem::path m_File;
 		Core::JsonFile m_Document;
+		Snapshot m_Written;
 		bool m_Unwritten = false;
+		bool m_WriteFailed = false;
 	};
 }
