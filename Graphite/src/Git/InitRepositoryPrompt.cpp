@@ -19,7 +19,7 @@ namespace Graphite {
 			message += "\n\nCould not initialise it: " + error->Message;
 		}
 
-		ImGui::BeginDisabled(model.IsWriteInFlight());
+		ImGui::BeginDisabled(model.IsWriteInFlight() || model.IsAwaitingStatusAfterInit());
 
 		if (Core::EmptyState(message, "Initialize Repository"))
 		{

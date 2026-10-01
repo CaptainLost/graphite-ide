@@ -240,6 +240,14 @@ namespace Graphite {
 		// it means nothing is happening at this instant.
 		bool IsWriteInFlight() const { return m_WriteInFlight; }
 
+		// True from a successful init until the first status asked for after it is applied.
+		// Between the two the write is done but the status still says the folder is not a
+		// repository, so a panel reading only IsWriteInFlight would offer the button again.
+		bool IsAwaitingStatusAfterInit() const
+		{
+			return m_InitSettlesAfter.has_value() && m_StatusApplied <= *m_InitSettlesAfter;
+		}
+
 		// Kept apart from GetLastError(): a write is the direct answer to a click, so it
 		// belongs to the panel that issued it rather than to the list of refresh failures,
 		// and a refresh succeeding must never clear it.
@@ -464,6 +472,11 @@ namespace Graphite {
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;
 		std::uint64_t m_AppliedWrites = 0;
+
+		// The last status generation requested when an init was applied. A status asked for
+		// before then - even one landing afterwards - still describes the folder without a
+		// repository, so only one numbered past this settles it.
+		std::optional<std::uint64_t> m_InitSettlesAfter;
 
 		std::uint64_t m_StatusRequested = 0;
 		std::uint64_t m_StatusApplied = 0;

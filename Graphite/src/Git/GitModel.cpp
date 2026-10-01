@@ -56,6 +56,7 @@ namespace Graphite {
 		m_Untracked.clear();
 
 		m_StatusError.reset();
+		m_InitSettlesAfter.reset();
 		m_BranchesError.reset();
 		m_HeadError.reset();
 		m_LogError.reset();

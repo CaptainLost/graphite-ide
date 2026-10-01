@@ -219,6 +219,11 @@ namespace Graphite {
 		// a list that can be missing something.
 		MarkDirty();
 
+		if (job.Kind == WriteKind::Init)
+		{
+			m_InitSettlesAfter = m_StatusRequested;
+		}
+
 		++m_AppliedWrites;
 
 		PumpWrites();

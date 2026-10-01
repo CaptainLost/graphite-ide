@@ -464,8 +464,8 @@ TEST_CASE("A second init queued behind the first is passed on, not dropped")
 	model.OnUpdate(Core::Timestep{0.0f});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	// git init on an existing repository re-initialises in place, so the second is harmless
-	// and the model need not know to suppress it.
+	// The real port refuses a second init over the repository the first one made, so the
+	// model need not know to suppress it - it only has to pass it on.
 	CHECK(port.Calls == std::vector<std::string>{"init:", "init:"});
 	CHECK_FALSE(model.GetWriteError().has_value());
 }
@@ -479,4 +479,56 @@ TEST_CASE("No init is sent with no folder open")
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(port.Calls.empty());
+}
+
+TEST_CASE("A successful init keeps the model settling until the next status lands")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	CHECK_FALSE(model.IsAwaitingStatusAfterInit());
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	// The write is done but the status that would show the new repository is not here yet:
+	// a panel still reading the folder as missing must not offer the button again.
+	CHECK_FALSE(model.IsWriteInFlight());
+	CHECK(model.IsAwaitingStatusAfterInit());
+
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	REQUIRE(model.GetStatus() != nullptr);
+	CHECK_FALSE(model.IsAwaitingStatusAfterInit());
+}
+
+TEST_CASE("A failed init leaves nothing to settle")
+{
+	WritePort port;
+	port.Fail = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.IsAwaitingStatusAfterInit());
+}
+
+TEST_CASE("Closing the folder forgets an init that was settling")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(model.IsAwaitingStatusAfterInit());
+
+	model.Clear();
+
+	CHECK_FALSE(model.IsAwaitingStatusAfterInit());
 }
