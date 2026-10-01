@@ -151,6 +151,12 @@ namespace Graphite {
 		// What a commit row's menu asked for, acted on.
 		void ApplyCommitAction();
 
+		// Keeps the history column on a branch that still exists. Run when a new branches
+		// snapshot lands: a selected branch that was renamed is followed to its new name,
+		// and one that is gone - deleted here or elsewhere - gives way to HEAD, since asking
+		// for it again would only show an error.
+		void FollowSelectedRef();
+
 		// The plan answered: note what the editor holds unsaved now, then check out at once
 		// or ask. Noted here rather than at the click, so a document edited while the plan
 		// was being made is part of the decision too.
@@ -233,6 +239,11 @@ namespace Graphite {
 		DiffView m_Diff;
 
 		std::optional<std::string> m_SelectedRef;
+
+		// The branches snapshot FollowSelectedRef last looked at, and the full names of a
+		// rename of the selected branch sent since: old, then new.
+		std::shared_ptr<const std::vector<Core::Branch>> m_LastSeenBranches;
+		std::optional<std::pair<std::string, std::string>> m_PendingRename;
 
 		// What the reader is typing, and when it has stood still long enough to be worth a
 		// query. The buffers are what ImGui writes into; SettlingFilter is what decides

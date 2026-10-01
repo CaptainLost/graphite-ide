@@ -136,6 +136,8 @@ namespace Graphite {
 			WithdrawQuestions();
 		}
 
+		FollowSelectedRef();
+
 		if (std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan())
 		{
 			ApplyCheckoutPlan(std::move(*answer));
@@ -185,6 +187,46 @@ namespace Graphite {
 			// an edit made while the checkout ran must not be reloaded away unasked.
 			m_Buffers.ExpectExternalWrite(SilentReloads(absolute, m_Buffers.ModifiedUnder(root), m_ConfirmedUnsaved));
 		}
+	}
+
+	void GitView::FollowSelectedRef()
+	{
+		const std::shared_ptr<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+
+		if (branches == m_LastSeenBranches)
+		{
+			return;
+		}
+
+		m_LastSeenBranches = branches;
+
+		if (!branches || !m_SelectedRef.has_value())
+		{
+			return;
+		}
+
+		const auto exists = [&branches](const std::string& fullName) {
+			return std::any_of(branches->begin(), branches->end(),
+							   [&fullName](const Core::Branch& branch) { return branch.FullName == fullName; });
+		};
+
+		if (exists(*m_SelectedRef))
+		{
+			return;
+		}
+
+		if (m_PendingRename.has_value() && m_PendingRename->first == *m_SelectedRef &&
+			exists(m_PendingRename->second))
+		{
+			m_SelectedRef = m_PendingRename->second;
+		}
+		else
+		{
+			m_SelectedRef.reset();
+		}
+
+		m_PendingRename.reset();
+		RequestLog(std::nullopt);
 	}
 
 	void GitView::WithdrawQuestions()
@@ -349,6 +391,8 @@ namespace Graphite {
 			// A ref chosen in the previous repository names a branch this one may not have, and
 			// asking for it shows an error instead of this folder's history.
 			m_SelectedRef.reset();
+			m_LastSeenBranches.reset();
+			m_PendingRename.reset();
 
 			m_PageWhenAsked.reset();
 			m_LastSeenPage.reset();

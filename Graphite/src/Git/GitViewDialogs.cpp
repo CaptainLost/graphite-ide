@@ -289,6 +289,12 @@ namespace Graphite {
 			else
 			{
 				m_Model.RequestRenameBranch(from, name);
+
+				// Followed once the branches list shows the new name - see FollowSelectedRef.
+				if (m_SelectedRef == "refs/heads/" + from)
+				{
+					m_PendingRename.emplace("refs/heads/" + from, "refs/heads/" + name);
+				}
 			}
 
 			question.Answer();
