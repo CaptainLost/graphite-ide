@@ -4,37 +4,18 @@
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
+#include "Core/Text/FileProbe.h"
 #include "Lang/Registry/LanguageRegistry.h"
 #include "Lang/Server/ServerDiscovery.h"
 #include "Search/FileEnumerator.h"
 
 #include <algorithm>
-#include <fstream>
 #include <iterator>
 #include <optional>
 #include <string_view>
 #include <utility>
 
 namespace Graphite {
-
-	namespace {
-
-		// Bytes as they sit on disk, which is what a server wants: it re-reads the file itself for
-		// its index, and this copy exists only to make it load the compilation database. A third
-		// copy of this three-line helper rather than a shared one, matching what PreviewContent
-		// and SearchService already do - worth extracting when something needs a fourth.
-		std::string ReadAll(const std::filesystem::path& path)
-		{
-			std::ifstream in(path, std::ios::binary);
-
-			if (!in)
-			{
-				return {};
-			}
-
-			return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-		}
-	}
 
 	std::chrono::steady_clock::duration RestartBackoff(std::size_t restarts)
 	{
@@ -810,8 +791,12 @@ namespace Graphite {
 
 				// Read here, on the walk's thread. Poll needs it to prime the server the moment
 				// it starts, and a file of unknown size read inside a frame is exactly what this
-				// class does not do.
-				std::string text = ReadAll(file);
+				// class does not do. Bytes as they sit on disk, which is what a server wants: it
+				// re-reads the file itself, and this copy only makes it load the compilation
+				// database. The ceiling is the editor's, so a warm-up never holds a file the
+				// editor would refuse; a file that cannot be read primes the server with nothing.
+				Core::Result<std::string> read = Core::ReadFileBytes(file, Core::MaximumFileSize);
+				std::string text = read ? std::move(read.GetValue()) : std::string{};
 
 				{
 					const std::lock_guard<std::mutex> guard(warm->Mutex);

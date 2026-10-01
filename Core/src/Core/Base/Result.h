@@ -16,7 +16,8 @@ namespace Core {
 		AccessDenied,
 		InvalidArgument,
 		IoFailure,
-		Unsupported
+		Unsupported,
+		TooLarge
 	};
 
 	struct Error

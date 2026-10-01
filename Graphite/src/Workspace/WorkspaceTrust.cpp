@@ -9,8 +9,6 @@
 #include <Windows.h>
 
 #include <algorithm>
-#include <fstream>
-#include <iterator>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -79,17 +77,15 @@ namespace Graphite {
 			return;
 		}
 
-		std::ifstream in(m_File, std::ios::binary);
+		const Core::Result<std::string> bytes = Core::ReadFileBytes(m_File);
 
-		if (!in)
+		if (!bytes)
 		{
-			// No file is an empty list. A file that is there but cannot be opened - held without
+			// No file is an empty list. A file that is there but cannot be read - held without
 			// sharing by something else for a moment - is a list that could not be read, and
 			// writing the next change over it would wipe every folder it names. When existence
-			// itself cannot be told, the same caution applies.
-			std::error_code failed;
-
-			if (std::filesystem::exists(m_File, failed) || failed)
+			// itself cannot be told, the same caution applies: only NotFound means absent.
+			if (bytes.GetError().Code != Core::ErrorCode::NotFound)
 			{
 				m_Writable = false;
 				APP_WARN("Cannot open '{}': no folder is trusted this session, and changes to trust "
@@ -100,8 +96,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-		const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
+		const nlohmann::json json = nlohmann::json::parse(bytes.GetValue(), nullptr, false);
 
 		if (json.is_discarded() || !json.is_object())
 		{

@@ -22,6 +22,14 @@ namespace Core {
 
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path);
 
+	// The whole file as bytes, untouched: no decoding, no newline translation. NotFound when
+	// there is no such file, AccessDenied when it exists but cannot be opened, IoFailure for
+	// anything else, and TooLarge when it holds more than `maximumBytes` - checked against the
+	// size before reading and again while reading, so a file that grows mid-read is still cut
+	// off. No limit when `maximumBytes` is empty.
+	Result<std::string> ReadFileBytes(const std::filesystem::path& path,
+									  std::optional<std::uintmax_t> maximumBytes = std::nullopt);
+
 	std::string ToUtf8(const std::filesystem::path& path);
 
 	// ToUtf8 with every separator written as a forward slash, the way git spells paths.

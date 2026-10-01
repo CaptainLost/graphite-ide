@@ -8,7 +8,6 @@
 #include "Search/FileEnumerator.h"
 #include "Search/Matcher.h"
 
-#include <fstream>
 #include <iterator>
 #include <optional>
 #include <system_error>
@@ -17,19 +16,6 @@
 namespace Graphite {
 
 	namespace {
-
-		std::optional<std::string> ReadAll(const std::filesystem::path& path)
-		{
-			std::ifstream in(path, std::ios::binary);
-
-			if (!in)
-			{
-				return std::nullopt;
-			}
-
-			return std::string(std::istreambuf_iterator<char>(in),
-							   std::istreambuf_iterator<char>());
-		}
 
 		const UnsavedFile* FindUnsaved(const std::vector<UnsavedFile>& unsaved,
 									   const std::filesystem::path& path)
@@ -226,7 +212,7 @@ namespace Graphite {
 						return;
 					}
 
-					const std::optional<std::string> bytes = ReadAll(file);
+					const Core::Result<std::string> bytes = Core::ReadFileBytes(file);
 
 					if (!bytes)
 					{
@@ -235,7 +221,7 @@ namespace Graphite {
 					}
 
 					const Core::Result<std::string> text =
-						Core::Decode(*bytes, probe.FileEncoding);
+						Core::Decode(bytes.GetValue(), probe.FileEncoding);
 
 					if (!text)
 					{

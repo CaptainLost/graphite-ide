@@ -1,11 +1,10 @@
 #include "Lang/Analysis/FileTextSource.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
 
-#include <fstream>
-#include <iterator>
 #include <optional>
 #include <system_error>
 #include <utility>
@@ -13,22 +12,6 @@
 namespace Graphite {
 
 	namespace {
-
-		// The same read PreviewContent does, deliberately: a file the background analysis decoded
-		// differently from the pane that shows it would put its colours on different bytes.
-		bool ReadAll(const std::filesystem::path& path, std::string& bytes)
-		{
-			std::ifstream in(path, std::ios::binary);
-
-			if (!in)
-			{
-				return false;
-			}
-
-			bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-
-			return true;
-		}
 
 		std::optional<std::filesystem::file_time_type> ReadStamp(const std::filesystem::path& path)
 		{
@@ -85,12 +68,14 @@ namespace Graphite {
 			return read;
 		}
 
-		std::string bytes;
+		Core::Result<std::string> file = Core::ReadFileBytes(path);
 
-		if (!ReadAll(path, bytes))
+		if (!file)
 		{
 			return read;
 		}
+
+		std::string bytes = std::move(file.GetValue());
 
 		// Bytes rather than probe.FileEncoding, for the reason TextDocument::FromContent
 		// computes it the same way: the probe only sniffed a sample, so the mark actually

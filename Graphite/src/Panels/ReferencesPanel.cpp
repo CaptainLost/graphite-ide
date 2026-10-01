@@ -5,6 +5,7 @@
 
 #include "Lang/Server/LspClient.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Codec.h"
@@ -18,8 +19,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <fstream>
-#include <iterator>
 #include <utility>
 
 namespace Graphite {
@@ -79,21 +78,6 @@ namespace Graphite {
 			}
 
 			return {from, to};
-		}
-
-		// The same read the search itself does, deliberately: a preview that decoded a file
-		// differently from the search that found the hit would disagree with the row above it.
-		std::optional<std::string> ReadAll(const std::filesystem::path& path)
-		{
-			std::ifstream in(path, std::ios::binary);
-
-			if (!in)
-			{
-				return std::nullopt;
-			}
-
-			return std::string(std::istreambuf_iterator<char>(in),
-							   std::istreambuf_iterator<char>());
 		}
 	}
 
@@ -436,10 +420,10 @@ namespace Graphite {
 			if (probe && probe.GetValue().Kind != Core::FileKind::Binary &&
 				probe.GetValue().Kind != Core::FileKind::TooLarge)
 			{
-				if (const std::optional<std::string> bytes = ReadAll(path))
+				if (const Core::Result<std::string> bytes = Core::ReadFileBytes(path))
 				{
 					if (const Core::Result<std::string> text =
-							Core::Decode(*bytes, probe.GetValue().FileEncoding))
+							Core::Decode(bytes.GetValue(), probe.GetValue().FileEncoding))
 					{
 						m_DiskBuffer = Core::TextBuffer{text.GetValue()};
 					}

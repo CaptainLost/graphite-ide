@@ -5,6 +5,8 @@
 #include "Core/Fs/FileSystem.h"
 
 #include <algorithm>
+#include <array>
+#include <fstream>
 #include <system_error>
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -202,5 +204,57 @@ namespace Core {
 		}
 
 		return true;
+	}
+
+	Result<std::string> ReadFileBytes(const std::filesystem::path& path,
+									  std::optional<std::uintmax_t> maximumBytes)
+	{
+		const auto tooLarge = [&path, maximumBytes]()
+		{
+			return Error{ErrorCode::TooLarge,
+						 "File is larger than " + std::to_string(*maximumBytes) +
+							 " bytes: " + ToUtf8(path)};
+		};
+
+		std::error_code code;
+		const std::uintmax_t size = std::filesystem::file_size(path, code);
+
+		if (code)
+		{
+			return Error{TranslateError(code), "Cannot read " + ToUtf8(path) + ": " + code.message()};
+		}
+
+		if (maximumBytes && size > *maximumBytes)
+		{
+			return tooLarge();
+		}
+
+		std::ifstream in(path, std::ios::binary);
+
+		if (!in)
+		{
+			return Error{ErrorCode::AccessDenied, "Cannot open " + ToUtf8(path)};
+		}
+
+		std::string bytes;
+		std::array<char, 64 * 1024> chunk;
+
+		while (in)
+		{
+			in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+			bytes.append(chunk.data(), static_cast<std::size_t>(in.gcount()));
+
+			if (maximumBytes && bytes.size() > *maximumBytes)
+			{
+				return tooLarge();
+			}
+		}
+
+		if (in.bad())
+		{
+			return Error{ErrorCode::IoFailure, "Read failed: " + ToUtf8(path)};
+		}
+
+		return bytes;
 	}
 }

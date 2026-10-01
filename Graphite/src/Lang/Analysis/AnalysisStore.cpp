@@ -6,7 +6,6 @@
 #include "Core/Fs/AtomicWrite.h"
 #include "Core/Fs/FileSystem.h"
 
-#include <fstream>
 #include <functional>
 #include <iterator>
 #include <set>
@@ -44,15 +43,9 @@ namespace Graphite {
 		// as the same answer, which is "ask the server again".
 		std::string ReadWholeFile(const std::filesystem::path& path)
 		{
-			std::ifstream stream{path, std::ios::binary};
+			Core::Result<std::string> bytes = Core::ReadFileBytes(path);
 
-			if (!stream)
-			{
-				return {};
-			}
-
-			return std::string{std::istreambuf_iterator<char>{stream},
-							   std::istreambuf_iterator<char>{}};
+			return bytes ? std::move(bytes.GetValue()) : std::string{};
 		}
 
 		// Empties the directory rather than removing it: the caller has just created it, and a

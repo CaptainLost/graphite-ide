@@ -210,3 +210,50 @@ TEST_CASE("IsSameOrWithin treats a drive root as containing the whole drive")
 {
 	CHECK(Core::IsSameOrWithin("D:\\anything\\at\\all", "D:\\"));
 }
+
+TEST_CASE("ReadFileBytes returns the bytes exactly as they sit on disk")
+{
+	TempDirectory temp;
+	const std::string content("a\r\nb\0c", 6);
+	temp.MakeFile("data.bin", content);
+
+	const auto result = Core::ReadFileBytes(temp.GetPath() / "data.bin");
+
+	REQUIRE(result.HasValue());
+	CHECK(result.GetValue() == content);
+}
+
+TEST_CASE("ReadFileBytes reports a missing file as NotFound")
+{
+	TempDirectory temp;
+
+	const auto result = Core::ReadFileBytes(temp.GetPath() / "missing.txt");
+
+	REQUIRE_FALSE(result.HasValue());
+	CHECK(result.GetError().Code == ErrorCode::NotFound);
+}
+
+TEST_CASE("ReadFileBytes refuses a file over the limit and accepts one exactly at it")
+{
+	TempDirectory temp;
+	temp.MakeFile("ten.txt", "0123456789");
+
+	const auto over = Core::ReadFileBytes(temp.GetPath() / "ten.txt", 9);
+	const auto exact = Core::ReadFileBytes(temp.GetPath() / "ten.txt", 10);
+
+	REQUIRE_FALSE(over.HasValue());
+	CHECK(over.GetError().Code == ErrorCode::TooLarge);
+	REQUIRE(exact.HasValue());
+	CHECK(exact.GetValue() == "0123456789");
+}
+
+TEST_CASE("ReadFileBytes reads an empty file as an empty string")
+{
+	TempDirectory temp;
+	temp.MakeFile("empty.txt", "");
+
+	const auto result = Core::ReadFileBytes(temp.GetPath() / "empty.txt", 0);
+
+	REQUIRE(result.HasValue());
+	CHECK(result.GetValue().empty());
+}

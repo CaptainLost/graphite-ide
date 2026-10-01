@@ -1,35 +1,16 @@
 #include "Search/PreviewContent.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
 #include "Editor/PreviewSemantics.h"
 #include "Lang/Registry/LanguageRegistry.h"
 
-#include <fstream>
-#include <iterator>
 #include <optional>
 #include <string>
 
 namespace Graphite {
-
-	namespace {
-
-		// The same read the search itself does, deliberately: a preview that decoded a file
-		// differently from the search that found the hit would disagree with the row above it.
-		std::optional<std::string> ReadAll(const std::filesystem::path& path)
-		{
-			std::ifstream in(path, std::ios::binary);
-
-			if (!in)
-			{
-				return std::nullopt;
-			}
-
-			return std::string(std::istreambuf_iterator<char>(in),
-							   std::istreambuf_iterator<char>());
-		}
-	}
 
 	void PreviewContent::Show(const std::filesystem::path& file, const Core::DocumentSet& documents)
 	{
@@ -175,7 +156,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<std::string> bytes = ReadAll(m_Path);
+		const Core::Result<std::string> bytes = Core::ReadFileBytes(m_Path);
 
 		if (!bytes)
 		{
@@ -184,7 +165,7 @@ namespace Graphite {
 			return;
 		}
 
-		const Core::Result<std::string> text = Core::Decode(*bytes, probe.FileEncoding);
+		const Core::Result<std::string> text = Core::Decode(bytes.GetValue(), probe.FileEncoding);
 
 		if (!text)
 		{
