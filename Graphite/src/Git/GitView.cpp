@@ -88,6 +88,10 @@ namespace Graphite {
 			m_RefFilterBuffer = {};
 			m_Filter.Reset();
 
+			// A ref chosen in the previous repository names a branch this one may not have, and
+			// asking for it shows an error instead of this folder's history.
+			m_SelectedRef.reset();
+
 			m_PageWhenAsked.reset();
 			m_LastSeenPage.reset();
 			m_Searching = false;
