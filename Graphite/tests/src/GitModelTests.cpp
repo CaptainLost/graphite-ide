@@ -183,6 +183,116 @@ namespace {
 			return CommittedOid;
 		}
 
+		Core::Result<void> CreateBranch(const std::string& name, const Core::Oid&) override
+		{
+			WriteCalls.push_back("branch:" + name);
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> RenameBranch(const std::string& from, const std::string& to) override
+		{
+			WriteCalls.push_back("rename:" + from + ">" + to);
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> DeleteBranch(const std::string& name) override
+		{
+			WriteCalls.push_back("delete-branch:" + name);
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> StashApply(const Core::Oid& id) override
+		{
+			WriteCalls.push_back("apply:" + id.ShortHex());
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> StashPop(const Core::Oid& id) override
+		{
+			WriteCalls.push_back("pop:" + id.ShortHex());
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> StashDrop(const Core::Oid& id) override
+		{
+			WriteCalls.push_back("drop:" + id.ShortHex());
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> DiscardAll(bool includeUntracked) override
+		{
+			WriteCalls.push_back(std::string{"discard-all:"} + (includeUntracked ? "1" : "0"));
+
+			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+									  : Core::Result<void>::Ok();
+		}
+
+		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override
+		{
+			return Unmerged;
+		}
+
+		Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) override
+		{
+			WriteCalls.push_back("stash:" + message + "|" + (includeUntracked ? "1" : "0"));
+
+			if (FailWrites)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return StashSaves;
+		}
+
+		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override
+		{
+			++StashCalls;
+			return Stashes;
+		}
+
+		Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) override
+		{
+			WriteCalls.push_back("plan:" + TargetLabel(target));
+
+			if (FailWrites)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Plan;
+		}
+
+		Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) override
+		{
+			WriteCalls.push_back("checkout:" + TargetLabel(target));
+
+			if (FailWrites)
+			{
+				return Core::CheckoutOutcome{{}, Core::Error{Core::ErrorCode::IoFailure, "no"}};
+			}
+
+			return CheckoutResult;
+		}
+
+		std::vector<Core::StashEntry> Stashes;
+		int StashCalls = 0;
+		Core::CheckoutPlan Plan;
+		Core::CheckoutOutcome CheckoutResult;
+		std::size_t Unmerged = 0;
+		bool StashSaves = true;
+
 		// Every write in the order it was asked for, as "kind:path,path". A vector of
 		// strings rather than of structures: a test asserting order reads better as a
 		// literal list than as five constructed objects.
@@ -221,6 +331,11 @@ namespace {
 		std::map<std::filesystem::path, Core::WorkingTreeStatus> UntrackedByDirectory;
 
 	private:
+		static std::string TargetLabel(const Core::CheckoutTarget& target)
+		{
+			return target.Kind == Core::CheckoutKind::Commit ? target.Commit.ShortHex() : target.Name;
+		}
+
 		Core::Result<void> Record(const std::string& kind,
 								  const std::vector<std::filesystem::path>& paths)
 		{

@@ -114,6 +114,105 @@ namespace {
 			return Committed;
 		}
 
+		Core::Result<void> CreateBranch(const std::string& name, const Core::Oid&) override
+		{
+			Calls.push_back("branch:" + name);
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> RenameBranch(const std::string& from, const std::string& to) override
+		{
+			Calls.push_back("rename:" + from + ">" + to);
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> DeleteBranch(const std::string& name) override
+		{
+			Calls.push_back("delete-branch:" + name);
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> StashApply(const Core::Oid& id) override
+		{
+			Calls.push_back("apply:" + id.ShortHex());
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> StashPop(const Core::Oid& id) override
+		{
+			Calls.push_back("pop:" + id.ShortHex());
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> StashDrop(const Core::Oid& id) override
+		{
+			Calls.push_back("drop:" + id.ShortHex());
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<void> DiscardAll(bool includeUntracked) override
+		{
+			Calls.push_back(std::string{"discard-all:"} + (includeUntracked ? "1" : "0"));
+
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+						: Core::Result<void>::Ok();
+		}
+
+		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override { return std::size_t{0}; }
+
+		Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) override
+		{
+			Calls.push_back("stash:" + message + "|" + (includeUntracked ? "1" : "0"));
+
+			if (Fail)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return true;
+		}
+
+		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override
+		{
+			return std::vector<Core::StashEntry>{};
+		}
+
+		Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) override
+		{
+			Calls.push_back("plan:" + TargetLabel(target));
+
+			if (Fail)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Core::CheckoutPlan{};
+		}
+
+		Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) override
+		{
+			Calls.push_back("checkout:" + TargetLabel(target));
+
+			if (Fail)
+			{
+				return Core::CheckoutOutcome{{}, Core::Error{Core::ErrorCode::IoFailure, "no"}};
+			}
+
+			return {};
+		}
+
 		std::vector<std::string> Calls;
 		bool Fail = false;
 
@@ -134,6 +233,11 @@ namespace {
 		Core::Oid Committed{};
 
 	private:
+		static std::string TargetLabel(const Core::CheckoutTarget& target)
+		{
+			return target.Kind == Core::CheckoutKind::Commit ? target.Commit.ShortHex() : target.Name;
+		}
+
 		Core::Result<void> Record(const std::string& kind,
 								  const std::vector<std::filesystem::path>& paths)
 		{

@@ -1,16 +1,20 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
+#include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
 #include "Git/FileTexts.h"
 
+#include <cstddef>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 namespace Graphite {
@@ -76,6 +80,29 @@ namespace Graphite {
 		virtual Core::Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths) = 0;
 		virtual Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) = 0;
 		virtual Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) = 0;
+
+		// Branches. A delete is the caller's decision to make after CountUnmergedCommits has
+		// said what would be lost; this interface does not second-guess it.
+		virtual Core::Result<void> CreateBranch(const std::string& name, const Core::Oid& from) = 0;
+		virtual Core::Result<void> RenameBranch(const std::string& from, const std::string& to) = 0;
+		virtual Core::Result<std::size_t> CountUnmergedCommits(const std::string& name) = 0;
+		virtual Core::Result<void> DeleteBranch(const std::string& name) = 0;
+
+		// Stashes. The writes take the stash commit's id rather than its index, because
+		// stash@{N} shifts whenever another stash is pushed or dropped. StashSave answers
+		// false when there was nothing to stash.
+		virtual Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) = 0;
+		virtual Core::Result<std::vector<Core::StashEntry>> QueryStashes() = 0;
+		virtual Core::Result<void> StashApply(const Core::Oid& id) = 0;
+		virtual Core::Result<void> StashPop(const Core::Oid& id) = 0;
+		virtual Core::Result<void> StashDrop(const Core::Oid& id) = 0;
+
+		// A dry run that changes nothing, then the checkout itself. Checkout reports through
+		// an outcome rather than a Result because a failure partway through still has to name
+		// the paths that may have changed.
+		virtual Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) = 0;
+		virtual Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) = 0;
+		virtual Core::Result<void> DiscardAll(bool includeUntracked) = 0;
 
 		// Creates a repository at the folder this port was given. NotFound when no folder is
 		// open.

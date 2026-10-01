@@ -8,6 +8,7 @@
 
 #include <git2.h>
 
+#include <algorithm>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -61,6 +62,37 @@ namespace {
 	private:
 		std::filesystem::path m_Path;
 	};
+
+	// An empty commit on the repository TempRepo made, so there is a tip to branch from.
+	// Done through libgit2 directly: the port under test has no way to make one.
+	Core::Oid CommitEmptyTree(const std::filesystem::path& path)
+	{
+		git_repository* repo = nullptr;
+		REQUIRE(git_repository_open(&repo, Core::ToUtf8(path).c_str()) == 0);
+
+		git_index* index = nullptr;
+		REQUIRE(git_repository_index(&index, repo) == 0);
+		git_oid treeId;
+		REQUIRE(git_index_write_tree(&treeId, index) == 0);
+		git_index_free(index);
+
+		git_tree* tree = nullptr;
+		REQUIRE(git_tree_lookup(&tree, repo, &treeId) == 0);
+
+		git_signature* signature = nullptr;
+		REQUIRE(git_signature_now(&signature, "Test", "test@example.com") == 0);
+
+		git_oid commitId;
+		REQUIRE(git_commit_create_v(&commitId, repo, "HEAD", signature, signature, nullptr, "first", tree, 0) == 0);
+
+		git_signature_free(signature);
+		git_tree_free(tree);
+		git_repository_free(repo);
+
+		Core::Oid result;
+		std::copy(commitId.id, commitId.id + 20, result.Bytes.begin());
+		return result;
+	}
 }
 
 // The cache RepositoryGitPort keeps is thread_local, so nothing outside the thread that
@@ -499,4 +531,30 @@ TEST_CASE("The port refuses to initialise a folder inside a repository it cannot
 	REQUIRE_FALSE(result.HasValue());
 	CHECK(result.GetError().Code != Core::ErrorCode::NotFound);
 	CHECK_FALSE(std::filesystem::exists(repo.GetPath() / "sub" / ".git"));
+}
+
+TEST_CASE("The port creates a branch that the next query lists, and has no stashes")
+{
+	TempRepo repo;
+	const Core::Oid tip = CommitEmptyTree(repo.GetPath());
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	REQUIRE(port.CreateBranch("feature/x", tip).HasValue());
+
+	auto branches = port.QueryBranches();
+	REQUIRE(branches.HasValue());
+
+	bool found = false;
+
+	for (const Core::Branch& branch : branches.GetValue())
+	{
+		found = found || branch.Name == "feature/x";
+	}
+
+	CHECK(found);
+
+	auto stashes = port.QueryStashes();
+	REQUIRE(stashes.HasValue());
+	CHECK(stashes.GetValue().empty());
 }

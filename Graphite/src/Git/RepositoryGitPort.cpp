@@ -353,6 +353,174 @@ namespace Graphite {
 		return repository->Commit(request);
 	}
 
+	Core::Result<void> RepositoryGitPort::CreateBranch(const std::string& name, const Core::Oid& from)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->CreateBranch(name, from);
+	}
+
+	Core::Result<void> RepositoryGitPort::RenameBranch(const std::string& from, const std::string& to)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->RenameBranch(from, to);
+	}
+
+	Core::Result<std::size_t> RepositoryGitPort::CountUnmergedCommits(const std::string& name)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->CountUnmergedCommits(name);
+	}
+
+	Core::Result<void> RepositoryGitPort::DeleteBranch(const std::string& name)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->DeleteBranch(name);
+	}
+
+	Core::Result<bool> RepositoryGitPort::StashSave(const std::string& message, bool includeUntracked)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->StashSave(message, includeUntracked);
+	}
+
+	Core::Result<std::vector<Core::StashEntry>> RepositoryGitPort::QueryStashes()
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->QueryStashes();
+	}
+
+	Core::Result<void> RepositoryGitPort::StashApply(const Core::Oid& id)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->StashApply(id);
+	}
+
+	Core::Result<void> RepositoryGitPort::StashPop(const Core::Oid& id)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->StashPop(id);
+	}
+
+	Core::Result<void> RepositoryGitPort::StashDrop(const Core::Oid& id)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->StashDrop(id);
+	}
+
+	Core::Result<Core::CheckoutPlan> RepositoryGitPort::PlanCheckout(const Core::CheckoutTarget& target)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->PlanCheckout(target);
+	}
+
+	Core::CheckoutOutcome RepositoryGitPort::Checkout(const Core::CheckoutTarget& target)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return Core::CheckoutOutcome{{}, opened.GetError()};
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->Checkout(target);
+	}
+
+	Core::Result<void> RepositoryGitPort::DiscardAll(bool includeUntracked)
+	{
+		auto opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->DiscardAll(includeUntracked);
+	}
+
 	Core::Result<Core::HeadState> RepositoryGitPort::QueryHead()
 	{
 		auto opened = RepositoryForThisThread();
