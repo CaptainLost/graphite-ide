@@ -564,4 +564,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md) | Open an unknown folder in restricted mode until the user trusts it | proposed | 2026-09-30 |
 | [0533](0533-recover-from-imgui-usage-errors-outside-debug-and-define-ndebug-in-optimised-builds.md) | Recover from ImGui usage errors outside Debug and define NDEBUG in optimised builds | proposed | 2026-10-01 |
 | [0534](0534-scale-the-interface-by-the-monitor-and-by-a-user-setting-and-keep-code-text-size-separate.md) | Scale the interface by the monitor and by a user setting, and keep code text size separate | proposed | 2026-10-01 |
+| [0535](0535-show-git-state-in-the-status-bar-read-only-and-keep-git-actions-in-the-panels.md) | Show git state in the status bar read-only and keep git actions in the panels | proposed | 2026-10-01 |
+| [0536](0536-initialise-a-repository-without-asking-for-confirmation.md) | Initialise a repository without asking for confirmation | proposed | 2026-10-01 |
 <!-- /adr-index -->
