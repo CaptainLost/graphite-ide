@@ -342,6 +342,31 @@ namespace Core {
 			return Result<void>::Ok();
 		}
 
+		// What `git reset --hard` removes: the state of a merge, a cherry-pick or a revert that
+		// was waiting for its commit, which no longer has anything to commit once the tree and
+		// the index are back at HEAD. A rebase, a sequence of picks and a bisect go on across
+		// the reset, so their files stay.
+		Result<void> EndPendingCommit(git_repository* handle)
+		{
+			const std::filesystem::path git = FromUtf8(git_repository_path(handle));
+
+			for (const char* name : {"MERGE_HEAD", "MERGE_MSG", "MERGE_MODE", "AUTO_MERGE", "SQUASH_MSG",
+									 "CHERRY_PICK_HEAD", "REVERT_HEAD"})
+			{
+				std::error_code code;
+				std::filesystem::remove(git / name, code);
+
+				if (code)
+				{
+					return Error{ErrorCode::IoFailure,
+								 std::format("the changes were discarded but '{}' could not be removed: {}", name,
+											 code.message())};
+				}
+			}
+
+			return Result<void>::Ok();
+		}
+
 		// A path that conflicts is the user's work, not something the checkout would do.
 		void AddUnlessOverwritten(std::vector<std::filesystem::path>& updated, std::vector<std::filesystem::path> paths,
 								  const std::vector<std::filesystem::path>& overwritten)
@@ -538,12 +563,12 @@ namespace Core {
 		if (git_repository_index(Out(index), m_Handle) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
 
-		// What a hard reset does, less its last step: git_reset also deletes MERGE_HEAD,
-		// rebase-merge/ and the rest of git's record of an operation in progress, and
-		// discarding the changes - or stashing them - in the middle of a rebase must not end
-		// it. FORCE writes the tree over every change, conflicts included, and reading the
-		// tree into the index drops whatever was staged. Untracked files are not removed
-		// through REMOVE_UNTRACKED, which would take ignored files in an untracked directory.
+		// What a hard reset does, but with git's own ending: git_reset also deletes
+		// rebase-merge/, rebase-apply/, sequencer/ and BISECT_LOG, and discarding the changes -
+		// or stashing them - in the middle of a rebase must not end it. FORCE writes the tree
+		// over every change, conflicts included, and reading the tree into the index drops
+		// whatever was staged. Untracked files are not removed through REMOVE_UNTRACKED, which
+		// would take ignored files in an untracked directory.
 		git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
 		options.checkout_strategy = GIT_CHECKOUT_FORCE;
 
@@ -552,6 +577,11 @@ namespace Core {
 
 		if (git_index_read_tree(index.get(), tree.get()) != 0 || git_index_write(index.get()) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot reset the index: {}", LastLibgit2Message())};
+
+		auto ended = EndPendingCommit(m_Handle);
+
+		if (!ended.HasValue())
+			return ended.GetError();
 
 		if (!includeUntracked)
 			return Result<void>::Ok();

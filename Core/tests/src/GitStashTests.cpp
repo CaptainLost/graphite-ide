@@ -222,7 +222,7 @@ TEST_CASE("Popping a stash that conflicts with the branch keeps the stash and sa
 	CHECK(status.GetValue().Entries[0].IsConflicted);
 }
 
-TEST_CASE("Stashing in the middle of a rebase or a merge leaves git's record of it alone")
+TEST_CASE("Stashing ends a merge, a cherry-pick or a revert, as git does, but not a rebase or a bisect")
 {
 	for (const bool includeUntracked : {false, true})
 	{
@@ -232,7 +232,9 @@ TEST_CASE("Stashing in the middle of a rebase or a merge leaves git's record of 
 		Prepare(fixture);
 		const std::string head = fixture.Commit("two");
 		fixture.Write(".git/rebase-merge/head-name", "refs/heads/master\n");
+		fixture.Write(".git/BISECT_LOG", "\n");
 		fixture.Write(".git/MERGE_HEAD", head + "\n");
+		fixture.Write(".git/MERGE_MSG", "\n");
 		fixture.Write("a.txt", "changed\n");
 		fixture.Write("new.txt", "fresh\n");
 
@@ -245,6 +247,8 @@ TEST_CASE("Stashing in the middle of a rebase or a merge leaves git's record of 
 		CHECK(Read(fixture.GetPath() / "a.txt") == "one\n");
 		CHECK(std::filesystem::exists(fixture.GetPath() / "new.txt") != includeUntracked);
 		CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "rebase-merge" / "head-name"));
-		CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "MERGE_HEAD"));
+		CHECK(std::filesystem::exists(fixture.GetPath() / ".git" / "BISECT_LOG"));
+		CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / ".git" / "MERGE_HEAD"));
+		CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / ".git" / "MERGE_MSG"));
 	}
 }
