@@ -88,17 +88,17 @@ namespace Graphite {
 
 		// Every change, not only the blocking ones, since both answers act on every change -
 		// so the list can be long, and scrolls rather than pushing the buttons off screen.
-		const std::size_t lines = question.Changed.size() + question.Untracked.size() +
-								  (question.Changed.empty() ? 0 : 1) + (question.Untracked.empty() ? 0 : 1);
+		const std::size_t rows = question.Changed.size() + question.Untracked.size();
+		const std::size_t headers = (question.Changed.empty() ? 0 : 1) + (question.Untracked.empty() ? 0 : 1);
 
-		if (DialogLayout::BeginFileList("checkout.files", lines))
+		if (DialogLayout::BeginFileList("checkout.files", rows, headers))
 		{
 			CheckoutRows("CHANGED", question.Changed);
 			CheckoutRows("UNTRACKED", question.Untracked);
 
 			// BuildCheckoutQuestion is only asked when there is something to list. Should both
 			// lists ever be empty, the child still ends on an item, as every window here does.
-			if (lines == 0)
+			if (rows == 0)
 			{
 				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 			}

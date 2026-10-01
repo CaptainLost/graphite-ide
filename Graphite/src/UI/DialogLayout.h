@@ -73,13 +73,22 @@ namespace Graphite::DialogLayout {
 		ImGui::PopStyleColor();
 	}
 
-	// A bordered, rounded list that scrolls past kListRows rows rather than pushing the
-	// buttons off screen. `lines` counts the group headers as well as the rows.
-	inline bool BeginFileList(const char* id, std::size_t lines)
+	// The group headers' size against the rows'.
+	inline constexpr float kHeaderScale = 0.85f;
+
+	// A bordered, rounded list sized to its `rows` and its group `headers` - each measured at
+	// its own height - and scrolling past kListRows rows' worth rather than pushing the
+	// buttons off screen.
+	inline bool BeginFileList(const char* id, std::size_t rows, std::size_t headers)
 	{
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float rows = static_cast<float>(std::clamp<std::size_t>(lines, 1, kListRows));
-		const float height = rows * ImGui::GetTextLineHeightWithSpacing() - style.ItemSpacing.y + style.WindowPadding.y * 2.0f;
+		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float headerHeight = ImGui::GetFontSize() * kHeaderScale + style.ItemSpacing.y;
+
+		const float content = static_cast<float>(rows) * rowHeight + static_cast<float>(headers) * headerHeight;
+		const float cap = static_cast<float>(kListRows) * rowHeight;
+		const float height =
+			std::clamp(content, rowHeight, cap) - style.ItemSpacing.y + style.WindowPadding.y * 2.0f;
 
 		return ImGui::BeginChild(id, ImVec2(0.0f, height), ImGuiChildFlags_Borders);
 	}
@@ -89,7 +98,7 @@ namespace Graphite::DialogLayout {
 	// "CHANGED", "UNTRACKED": small and muted, so the paths are what the eye lands on.
 	inline void FileGroupHeader(const char* text)
 	{
-		ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * 0.85f);
+		ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * kHeaderScale);
 		ImGui::TextDisabled("%s", text);
 		ImGui::PopFont();
 	}
