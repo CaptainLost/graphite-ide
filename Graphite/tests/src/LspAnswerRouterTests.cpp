@@ -350,6 +350,34 @@ TEST_CASE("One declarations question is outstanding at a time")
 	CHECK(h.Server.CountOf("symbols") == 1);
 }
 
+// A restart lets a second question go out while the dead client's is still unanswered. That
+// one's failure arriving late must not free the schedule while the second is in flight, or the
+// retry clock sends a third.
+TEST_CASE("A late failure of an older declarations question leaves the newer one outstanding")
+{
+	Harness h;
+
+	h.Router.Track(kSource);
+	CHECK_FALSE(h.Router.NoteServerState(kSource));
+
+	h.Router.AskSymbolsIfDue(kSource);
+	const Ticket older = h.Server.LastOf("symbols");
+
+	h.Server.State = ServerState::Starting;
+	REQUIRE(h.Router.NoteServerState(kSource));
+
+	h.Router.AskSymbolsIfDue(kSource);
+	REQUIRE(h.Server.CountOf("symbols") == 2);
+
+	h.Server.Reply(older, true);
+	h.Router.Collect(h.Target);
+
+	h.Now += LspAnswerRouter::kSymbolsRetrySeconds;
+	h.Router.AskSymbolsIfDue(kSource);
+
+	CHECK(h.Server.CountOf("symbols") == 2);
+}
+
 TEST_CASE("Declarations a document could not take stay wanted")
 {
 	Harness h;

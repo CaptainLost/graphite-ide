@@ -2,6 +2,7 @@
 
 #include "Lang/Registry/LanguageRegistry.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -279,7 +280,12 @@ namespace Graphite {
 
 				if (const auto schedule = m_Schedules.find(path); schedule != m_Schedules.end())
 				{
-					schedule->second.Outstanding = false;
+					// A restart lets a new question go out while the dead client's is still
+					// unanswered, so this answer may be the older of two. Freeing the schedule
+					// while the newer one is in flight would have the retry clock send a third.
+					schedule->second.Outstanding =
+						std::any_of(m_PendingSymbols.begin(), m_PendingSymbols.end(),
+									[&path](const auto& entry) { return entry.second == path; });
 
 					// A failure says nothing about whether the next attempt would succeed - a
 					// server that was still indexing answers this way - so Want is left standing
