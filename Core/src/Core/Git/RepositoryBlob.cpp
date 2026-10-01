@@ -260,10 +260,18 @@ namespace Core {
 
 		git_oid id{};
 
-		if (git_reference_name_to_id(&id, m_Handle, "HEAD") != 0)
+		const int found = git_reference_name_to_id(&id, m_Handle, "HEAD");
+
+		if (found == GIT_ENOTFOUND)
 		{
 			return Error{ErrorCode::NotFound,
 						 std::format("HEAD names no commit: {}", LastLibgit2Message())};
+		}
+
+		if (found != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
 		}
 
 		return ToOid(id);

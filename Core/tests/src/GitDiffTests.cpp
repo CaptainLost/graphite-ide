@@ -4,6 +4,10 @@
 
 #include "GitFixture.h"
 
+#include <git2.h>
+
+#include <git2.h>
+
 #include <string>
 
 using Core::DiffRequest;
@@ -270,4 +274,109 @@ TEST_CASE("An untracked file is an added file with its whole content, in both wo
 	REQUIRE(file.Hunks.size() == 1);
 	REQUIRE(file.Hunks.front().Lines.size() == 2);
 	CHECK(file.Hunks.front().Lines.front().Text == "first\n");
+}
+
+TEST_CASE("A revision diff naming a commit that does not exist is an error, not every file added")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	Core::Oid missing;
+	missing.Bytes.fill(0xAB);
+
+	DiffRequest request;
+	request.Target = DiffTarget::RevisionToRevision;
+
+	SUBCASE("on the older side")
+	{
+		request.From = missing;
+		request.To = HeadId(repository);
+	}
+
+	SUBCASE("on the newer side")
+	{
+		request.From = HeadId(repository);
+		request.To = missing;
+	}
+
+	auto diff = repository.QueryDiff(request);
+
+	REQUIRE_FALSE(diff.HasValue());
+	CHECK(diff.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("A commit-to-parent diff of a commit that does not exist is an error")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	Core::Oid missing;
+	missing.Bytes.fill(0xAB);
+
+	DiffRequest request;
+	request.Target = DiffTarget::CommitToParent;
+	request.From = missing;
+
+	CHECK_FALSE(repository.QueryDiff(request).HasValue());
+}
+
+TEST_CASE("With no commit yet, the index is all added in both HEAD diffs")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+
+	{
+		git_repository* raw = nullptr;
+		REQUIRE(git_repository_open(&raw, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+
+		git_index* index = nullptr;
+		REQUIRE(git_repository_index(&index, raw) == 0);
+		REQUIRE(git_index_add_bypath(index, "a.txt") == 0);
+		REQUIRE(git_index_write(index) == 0);
+
+		git_index_free(index);
+		git_repository_free(raw);
+	}
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	DiffRequest request;
+
+	SUBCASE("index against HEAD") { request.Target = DiffTarget::IndexToHead; }
+	SUBCASE("working tree against HEAD") { request.Target = DiffTarget::WorkTreeToHead; }
+
+	auto diff = repository.QueryDiff(request);
+
+	REQUIRE(diff.HasValue());
+	REQUIRE(diff.GetValue().Files.size() == 1);
+	CHECK(diff.GetValue().Files.front().Change == FileChange::Added);
+}
+
+TEST_CASE("A revision diff with no older side reports every file of the newer one as added")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenAt(fixture.GetPath());
+
+	DiffRequest request;
+	request.Target = DiffTarget::RevisionToRevision;
+	request.To = HeadId(repository);
+
+	auto diff = repository.QueryDiff(request);
+
+	REQUIRE(diff.HasValue());
+	REQUIRE(diff.GetValue().Files.size() == 1);
+	CHECK(diff.GetValue().Files.front().Change == FileChange::Added);
 }

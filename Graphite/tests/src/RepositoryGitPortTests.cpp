@@ -246,6 +246,29 @@ TEST_CASE("A staged new file has an index side and no HEAD side")
 	CHECK(bases.GetValue().Index == std::optional<std::string>{"one\n"});
 }
 
+TEST_CASE("A HEAD that cannot be read is a failure, not an absent HEAD side")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		std::ofstream file{repo.GetPath() / "a.txt", std::ios::binary};
+		file << "one\n";
+	}
+
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	// Garbage where HEAD should name a branch or a commit: not unborn, just broken.
+	{
+		std::ofstream head{repo.GetPath() / ".git" / "HEAD", std::ios::binary};
+		head << "not a reference\n";
+	}
+
+	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+
+	CHECK_FALSE(bases.HasValue());
+}
+
 TEST_CASE("An untracked file is tracked with neither side")
 {
 	TempRepo repo;

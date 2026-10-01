@@ -431,10 +431,17 @@ namespace Graphite {
 				auto head = repository.HeadCommit();
 
 				// An unborn HEAD is a repository with no commit yet, so there is no older
-				// side - the same answer as a file that did not exist then.
+				// side - the same answer as a file that did not exist then. Any other
+				// failure is not an absent side, and showing it as one would draw the
+				// whole file as added.
 				if (!head.HasValue())
 				{
-					return SideText{};
+					if (head.GetError().Code == Core::ErrorCode::NotFound)
+					{
+						return SideText{};
+					}
+
+					return head.GetError();
 				}
 
 				return ReadSideText(repository.ReadBlob(path, head.GetValue()));
