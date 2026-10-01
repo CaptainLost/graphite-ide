@@ -147,3 +147,12 @@ TEST_CASE("A cached share is a whole percent, cut rather than rounded")
 	const UsageByModel usage{{{"claude-opus-5", false}, {1, 1, 0, 0, 999}}};
 	CHECK(UsageLine(usage, 1, Pricing::Defaults()).find("(99% cache)") != std::string::npos);
 }
+
+TEST_CASE("Only Agent and Task calls start a subagent")
+{
+	CHECK(IsAgentCall(Call("Agent", nullptr)));
+	CHECK(IsAgentCall(Call("Task", nullptr)));
+	CHECK_FALSE(IsAgentCall(Call("Read", nullptr)));
+	CHECK_FALSE(IsAgentCall(Call("SendMessage", nullptr)));
+	CHECK_FALSE(IsAgentCall(Call("Workflow", nullptr)));
+}

@@ -633,7 +633,7 @@ namespace Graphite {
 				events.Publish(OpenFileRequested{*path, false});
 		}
 
-		if (context.OpenAgent && context.Links != nullptr && (tool.Name == "Agent" || tool.Name == "Task") &&
+		if (context.OpenAgent && context.Links != nullptr && IsAgentCall(tool) &&
 			context.Links->contains(tool.Id))
 		{
 			if (ImGui::SmallButton("Open conversation " ICON_MDI_ARROW_RIGHT))

@@ -84,6 +84,11 @@ namespace Graphite {
 		return ToolCategory::Other;
 	}
 
+	bool IsAgentCall(const ToolCall& tool)
+	{
+		return tool.Name == "Agent" || tool.Name == "Task";
+	}
+
 	SubagentUsage LoadSubagentUsage(const std::filesystem::path& sessionFile)
 	{
 		SubagentUsage usage;
@@ -214,7 +219,7 @@ namespace Graphite {
 			else if (files)
 				facts.Detail = std::to_string(*files) + " files";
 		}
-		else if (tool.Name == "Agent" || tool.Name == "Task")
+		else if (IsAgentCall(tool))
 		{
 			const nlohmann::json input = ObjectOf(tool.InputJson);
 			std::string detail = StringAt(input, "subagent_type");
@@ -236,7 +241,7 @@ namespace Graphite {
 				facts.Detail = "HTTP " + std::to_string(*code);
 		}
 
-		if (facts.Size.empty() && tool.ResultBytes > 0 && tool.Name != "Agent" && tool.Name != "Task")
+		if (facts.Size.empty() && tool.ResultBytes > 0 && !IsAgentCall(tool))
 			facts.Size = FormatBytes(tool.ResultBytes);
 
 		return facts;
