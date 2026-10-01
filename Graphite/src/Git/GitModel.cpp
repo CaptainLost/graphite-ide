@@ -26,26 +26,19 @@ namespace Graphite {
 
 	void GitModel::Clear()
 	{
-		// The generations move forward rather than resetting, so a query still in flight
-		// for the folder that was just closed is dropped when it lands.
-		m_StatusApplied = m_StatusRequested;
-		m_BranchesApplied = m_BranchesRequested;
-		m_StashesApplied = m_StashesRequested;
-		m_HeadApplied = m_HeadRequested;
-		m_LogApplied = m_LogRequested;
-		m_WorkingTreeDiffApplied = m_WorkingTreeDiffRequested;
-
-		m_Status.reset();
+		// Each slot's generations move forward rather than resetting, so a query still in
+		// flight for the folder that was just closed is dropped when it lands.
+		m_Status.Clear();
 		m_WorkingDirectory.clear();
-		m_Branches.reset();
-		m_Stashes.reset();
-		m_Head.reset();
-		m_Log.reset();
+		m_Branches.Clear();
+		m_Stashes.Clear();
+		m_Head.Clear();
+		m_Log.Clear();
 
 		// Forgotten with the snapshot it belongs to: the next folder's first refresh must
 		// not re-ask the previous folder's question, ref and filter and all.
 		m_LastLogRequest.reset();
-		m_WorkingTreeDiff.reset();
+		m_WorkingTreeDiff.Clear();
 		m_WorkingTreeTexts.reset();
 		m_WantedWorkingTreeDiff.reset();
 		m_WorkingTreeDiffFor.reset();
@@ -55,13 +48,7 @@ namespace Graphite {
 		m_Texts.Clear();
 		m_Untracked.clear();
 
-		m_StatusError.reset();
 		m_InitSettlesAfter.reset();
-		m_BranchesError.reset();
-		m_StashesError.reset();
-		m_HeadError.reset();
-		m_LogError.reset();
-		m_WorkingTreeDiffError.reset();
 		m_CommitDiffError.reset();
 		m_TextsError.reset();
 
@@ -152,7 +139,7 @@ namespace Graphite {
 
 	void GitModel::RequestStatus()
 	{
-		const std::uint64_t generation = ++m_StatusRequested;
+		const std::uint64_t generation = m_Status.Begin();
 
 		m_Submit([this, generation]() {
 			auto result = m_Port.QueryStatus();
@@ -167,26 +154,12 @@ namespace Graphite {
 
 			Deliver([this, generation, result = std::move(result),
 					 workingDirectory = std::move(workingDirectory)]() mutable {
-				// A query that started earlier and finished later would otherwise put a
-				// stale list back on screen.
-				if (generation <= m_StatusApplied)
+				// A stale answer is dropped and a failure keeps the last good snapshot - see
+				// GenerationSlot - and neither says anything new about the working tree.
+				if (m_Status.Land(generation, std::move(result)) != SlotLanding::Applied)
 				{
 					return;
 				}
-
-				m_StatusApplied = generation;
-
-				if (!result.HasValue())
-				{
-					// The last good snapshot stays. A panel that blanks itself because one
-					// refresh failed is worse than one showing data a second out of date.
-					m_StatusError = result.GetError();
-					return;
-				}
-
-				m_StatusError.reset();
-				m_Status = std::make_shared<const Core::WorkingTreeStatus>(
-					std::move(result).GetValue());
 
 				// What is untracked under an expanded directory changes as the working tree
 				// does, unlike a commit's diff - a fresh status means every listing held so
@@ -207,83 +180,39 @@ namespace Graphite {
 
 	void GitModel::RequestBranches()
 	{
-		const std::uint64_t generation = ++m_BranchesRequested;
+		const std::uint64_t generation = m_Branches.Begin();
 
 		m_Submit([this, generation]() {
 			auto result = m_Port.QueryBranches();
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
-				if (generation <= m_BranchesApplied)
-				{
-					return;
-				}
-
-				m_BranchesApplied = generation;
-
-				if (!result.HasValue())
-				{
-					m_BranchesError = result.GetError();
-					return;
-				}
-
-				m_BranchesError.reset();
-				m_Branches = std::make_shared<const std::vector<Core::Branch>>(
-					std::move(result).GetValue());
+				m_Branches.Land(generation, std::move(result));
 			});
 		});
 	}
 
 	void GitModel::RequestStashes()
 	{
-		const std::uint64_t generation = ++m_StashesRequested;
+		const std::uint64_t generation = m_Stashes.Begin();
 
 		m_Submit([this, generation]() {
 			auto result = m_Port.QueryStashes();
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
-				if (generation <= m_StashesApplied)
-				{
-					return;
-				}
-
-				m_StashesApplied = generation;
-
-				if (!result.HasValue())
-				{
-					m_StashesError = result.GetError();
-					return;
-				}
-
-				m_StashesError.reset();
-				m_Stashes = std::make_shared<const std::vector<Core::StashEntry>>(
-					std::move(result).GetValue());
+				m_Stashes.Land(generation, std::move(result));
 			});
 		});
 	}
 
 	void GitModel::RequestHead()
 	{
-		const std::uint64_t generation = ++m_HeadRequested;
+		const std::uint64_t generation = m_Head.Begin();
 
 		m_Submit([this, generation]() {
 			auto result = m_Port.QueryHead();
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
-				if (generation <= m_HeadApplied)
-				{
-					return;
-				}
-
-				m_HeadApplied = generation;
-
-				if (!result.HasValue())
-				{
-					m_HeadError = result.GetError();
-					return;
-				}
-
-				m_HeadError.reset();
-				m_Head = std::make_shared<const Core::HeadState>(std::move(result).GetValue());
+				m_Head.Land(generation, std::move(result));
 			});
 		});
 	}
@@ -299,7 +228,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::uint64_t generation = ++m_LogRequested;
+		const std::uint64_t generation = m_Log.Begin();
 
 		// Kept so a refresh can ask the same question again. The ref, the filter and the
 		// page size are all the reader's, and a refresh that dropped them would replace the
@@ -310,21 +239,7 @@ namespace Graphite {
 			auto result = m_Port.QueryLog(request);
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
-				if (generation <= m_LogApplied)
-				{
-					return;
-				}
-
-				m_LogApplied = generation;
-
-				if (!result.HasValue())
-				{
-					m_LogError = result.GetError();
-					return;
-				}
-
-				m_LogError.reset();
-				m_Log = std::make_shared<const Core::LogPage>(std::move(result).GetValue());
+				m_Log.Land(generation, std::move(result));
 			});
 		});
 	}
@@ -354,7 +269,7 @@ namespace Graphite {
 		// diff that takes longer than a frame would resubmit a worker job many times a
 		// second and never drain while the tab stayed open. A request that changes while
 		// one is in flight is not lost: the landing calls this again.
-		if (m_WorkingTreeDiffRequested != m_WorkingTreeDiffApplied)
+		if (m_WorkingTreeDiff.IsInFlight())
 		{
 			return;
 		}
@@ -369,7 +284,7 @@ namespace Graphite {
 
 		m_WorkingTreeDiffStale = false;
 
-		const std::uint64_t generation = ++m_WorkingTreeDiffRequested;
+		const std::uint64_t generation = m_WorkingTreeDiff.Begin();
 		Core::DiffRequest request = *m_WantedWorkingTreeDiff;
 
 		m_Submit([this, generation, request = std::move(request)]() {
@@ -403,24 +318,21 @@ namespace Graphite {
 
 			Deliver([this, generation, request = std::move(request), result = std::move(result),
 					 texts = std::move(texts)]() mutable {
-				if (generation <= m_WorkingTreeDiffApplied)
+				const SlotLanding landing = m_WorkingTreeDiff.Land(generation, std::move(result));
+
+				if (landing == SlotLanding::Stale)
 				{
 					return;
 				}
 
-				m_WorkingTreeDiffApplied = generation;
 				m_WorkingTreeDiffSettled = request;
 
-				if (!result.HasValue())
+				if (landing == SlotLanding::Failed)
 				{
-					m_WorkingTreeDiffError = result.GetError();
 					PumpWorkingTreeDiff();
 					return;
 				}
 
-				m_WorkingTreeDiffError.reset();
-				m_WorkingTreeDiff =
-					std::make_shared<const Core::Diff>(std::move(result).GetValue());
 				m_WorkingTreeDiffFor = std::move(request);
 
 				// Replaced rather than kept: unlike a commit's text, which cannot change, this one

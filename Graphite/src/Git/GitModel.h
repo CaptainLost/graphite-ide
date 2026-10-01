@@ -6,6 +6,7 @@
 #include "Git/Debouncer.h"
 #include "Git/DeliveryInbox.h"
 #include "Git/FileTexts.h"
+#include "Git/GenerationSlot.h"
 #include "Git/GitPort.h"
 #include "Git/LruResultCache.h"
 
@@ -221,17 +222,17 @@ namespace Graphite {
 		const std::filesystem::path& GetWorkingDirectory() const { return m_WorkingDirectory; }
 
 		// Null until the first result for that query has been applied.
-		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
-		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
-		std::shared_ptr<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes; }
-		std::shared_ptr<const Core::HeadState> GetHead() const { return m_Head; }
-		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
+		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status.Get(); }
+		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches.Get(); }
+		std::shared_ptr<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
+		std::shared_ptr<const Core::HeadState> GetHead() const { return m_Head.Get(); }
+		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log.Get(); }
 		// Also null while the slot holds the answer to a different request than the one last
 		// passed to RequestWorkingTreeDiff: a tab that follows its file to the other side asks
 		// a new question, and the old side's hunks are not an answer to it.
 		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const
 		{
-			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff : nullptr;
+			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff.Get() : nullptr;
 		}
 
 		// True while the request last passed to RequestWorkingTreeDiff has not been answered
@@ -261,38 +262,38 @@ namespace Graphite {
 		// likely of the six to be what a user needs told first.
 		// Each query's own failure, for a reader that has to tell one kind of failure from
 		// another rather than show whichever came first (see HistoryPlaceholder).
-		const std::optional<Core::Error>& GetStatusError() const { return m_StatusError; }
-		const std::optional<Core::Error>& GetLogError() const { return m_LogError; }
+		const std::optional<Core::Error>& GetStatusError() const { return m_Status.GetError(); }
+		const std::optional<Core::Error>& GetLogError() const { return m_Log.GetError(); }
 
 		// Not folded into GetLastError: the head is read only by the status bar, which draws
 		// nothing rather than an error when it has no head, and the panels that show
 		// GetLastError have their own status error to explain the same failure.
-		const std::optional<Core::Error>& GetHeadError() const { return m_HeadError; }
+		const std::optional<Core::Error>& GetHeadError() const { return m_Head.GetError(); }
 
 		// Not folded into GetLastError either: only the stash list reads it, and a failure
 		// there says nothing about the changes the panel's main list shows.
-		const std::optional<Core::Error>& GetStashesError() const { return m_StashesError; }
+		const std::optional<Core::Error>& GetStashesError() const { return m_Stashes.GetError(); }
 
 		const std::optional<Core::Error>& GetLastError() const
 		{
-			if (m_StatusError.has_value())
+			if (m_Status.GetError().has_value())
 			{
-				return m_StatusError;
+				return m_Status.GetError();
 			}
 
-			if (m_BranchesError.has_value())
+			if (m_Branches.GetError().has_value())
 			{
-				return m_BranchesError;
+				return m_Branches.GetError();
 			}
 
-			if (m_LogError.has_value())
+			if (m_Log.GetError().has_value())
 			{
-				return m_LogError;
+				return m_Log.GetError();
 			}
 
-			if (m_WorkingTreeDiffError.has_value())
+			if (m_WorkingTreeDiff.GetError().has_value())
 			{
-				return m_WorkingTreeDiffError;
+				return m_WorkingTreeDiff.GetError();
 			}
 
 			if (m_CommitDiffError.has_value())
@@ -355,7 +356,7 @@ namespace Graphite {
 		// repository, so a panel reading only IsWriteInFlight would offer the button again.
 		bool IsAwaitingStatusAfterInit() const
 		{
-			return m_InitSettlesAfter.has_value() && m_StatusApplied <= *m_InitSettlesAfter;
+			return m_InitSettlesAfter.has_value() && m_Status.GetApplied() <= *m_InitSettlesAfter;
 		}
 
 		// Kept apart from GetLastError(): a write is the direct answer to a click, so it
@@ -574,33 +575,26 @@ namespace Graphite {
 		// repository, so only one numbered past this settles it.
 		std::optional<std::uint64_t> m_InitSettlesAfter;
 
-		std::uint64_t m_StatusRequested = 0;
-		std::uint64_t m_StatusApplied = 0;
-		std::uint64_t m_BranchesRequested = 0;
-		std::uint64_t m_BranchesApplied = 0;
-		std::uint64_t m_StashesRequested = 0;
-		std::uint64_t m_StashesApplied = 0;
-		std::uint64_t m_HeadRequested = 0;
-		std::uint64_t m_HeadApplied = 0;
-		std::uint64_t m_LogRequested = 0;
-		std::uint64_t m_LogApplied = 0;
-		std::uint64_t m_WorkingTreeDiffRequested = 0;
-		std::uint64_t m_WorkingTreeDiffApplied = 0;
-
 		// See GetWorkingDirectory(): fetched and applied alongside m_Status, never lazily.
 		std::filesystem::path m_WorkingDirectory;
 
-		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
-		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
-		std::shared_ptr<const std::vector<Core::StashEntry>> m_Stashes;
-		std::shared_ptr<const Core::HeadState> m_Head;
-		std::shared_ptr<const Core::LogPage> m_Log;
+		// Each query kind's snapshot, generations and error together - see GenerationSlot. The
+		// errors are per slot so a branches refresh that succeeds can never hide a status
+		// refresh that is still failing.
+		GenerationSlot<Core::WorkingTreeStatus> m_Status;
+		GenerationSlot<std::vector<Core::Branch>> m_Branches;
+		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;
+		GenerationSlot<Core::HeadState> m_Head;
+		GenerationSlot<Core::LogPage> m_Log;
 
 		// The last question asked about the history, so a refresh can ask it again. Unset
 		// until something asks for a log, and dropped by Clear() with the rest of the
 		// folder's state - see RequestLog and OnUpdate for both halves of the reasoning.
 		std::optional<Core::LogRequest> m_LastLogRequest;
-		std::shared_ptr<const Core::Diff> m_WorkingTreeDiff;
+
+		// Replaced on every landing like the slots above, and also driven by the wanted,
+		// settled and stale state below - see PumpWorkingTreeDiff.
+		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
 		std::shared_ptr<const FileTexts> m_WorkingTreeTexts;
 
 		// The request the diff window last asked about, and the one m_WorkingTreeDiff and
@@ -623,14 +617,7 @@ namespace Graphite {
 		LruResultCache<Core::Oid, Core::Diff> m_CommitDiffs{kCachedDiffs};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_Texts{kCachedTexts};
 
-		std::optional<Core::Error> m_StatusError;
-		std::optional<Core::Error> m_BranchesError;
-		std::optional<Core::Error> m_StashesError;
-		std::optional<Core::Error> m_HeadError;
-		std::optional<Core::Error> m_LogError;
-		std::optional<Core::Error> m_WorkingTreeDiffError;
-
-		// Kept apart from m_WorkingTreeDiffError: a commit diff and the volatile working-tree
+		// Kept apart from m_WorkingTreeDiff's error: a commit diff and the volatile working-tree
 		// diff are different query kinds, and one succeeding must not hide the other still
 		// failing.
 		std::optional<Core::Error> m_CommitDiffError;

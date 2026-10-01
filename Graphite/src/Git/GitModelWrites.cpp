@@ -576,7 +576,7 @@ namespace Graphite {
 
 		if (job.Kind == WriteKind::Init)
 		{
-			m_InitSettlesAfter = m_StatusRequested;
+			m_InitSettlesAfter = m_Status.GetRequested();
 		}
 
 		++m_AppliedWrites;
