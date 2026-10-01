@@ -96,6 +96,18 @@ namespace Graphite {
 
 		void RenderDiscardConfirm();
 
+		// Asks about stashing, and what to do first: unsaved edits are saved before the stash
+		// so it takes what the reader sees on screen and not what was last on disk.
+		void RenderStashDialog();
+
+		// Drops the dialog's edits, for whichever way it ended - an answer, or a withdrawal
+		// from outside.
+		void ResetStashDialog();
+
+		// The open documents with unsaved edits that live inside the repository. Others are
+		// left alone: a stash cannot touch them, and saving them is not what was asked for.
+		std::vector<std::filesystem::path> DirtyDocumentsInRepository() const;
+
 		// The absolute path of every open document with unsaved changes. Which of them a
 		// discard would overwrite is PlanDiscard's decision, not this panel's - all that is
 		// wanted here is the list, which only the DocumentSet can give.
@@ -187,6 +199,22 @@ namespace Graphite {
 		};
 
 		ModalQuestion<DiscardQuestion> m_DiscardQuestion;
+
+		// The stash question carries nothing: what it asks is the same whenever it is asked,
+		// and the reader's edits live in the members below. Every one is equal to every
+		// other, so a second click on the button before the first is answered queues nothing.
+		struct StashQuestion
+		{
+			bool operator==(const StashQuestion&) const = default;
+		};
+
+		ModalQuestion<StashQuestion> m_StashQuestion;
+		std::string m_StashMessage;
+		bool m_StashIncludeUntracked = false;
+
+		// Set when saving the documents before the stash failed, and shown in the dialog,
+		// which stays open.
+		bool m_StashSaveFailed = false;
 
 		// The files a requested discard is about to take with it, by the subject path git
 		// will name in TakeDiscarded. Written when the reader confirms and read when the

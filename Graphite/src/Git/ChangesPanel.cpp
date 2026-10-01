@@ -199,7 +199,7 @@ namespace Graphite {
 							   DiffWindows& diffWindows)
 		: Core::Panel("changes", "Changes", "git", ICON_MDI_FILE_DOCUMENT_EDIT_OUTLINE), m_Model(model), m_Documents(documents),
 		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows),
-		  m_DiscardQuestion(modals, "Discard changes?")
+		  m_DiscardQuestion(modals, "Discard changes?"), m_StashQuestion(modals, "Stash changes")
 	{
 	}
 
@@ -219,6 +219,13 @@ namespace Graphite {
 		if (!WasDrawn() && m_DiscardQuestion.IsAsked())
 		{
 			m_DiscardQuestion.Withdraw();
+		}
+
+		// For the same reason, and with the dialog's edits dropped along with it.
+		if (!WasDrawn() && m_StashQuestion.IsAsked())
+		{
+			m_StashQuestion.Withdraw();
+			ResetStashDialog();
 		}
 
 		// Drained here, not in OnImGuiRender: Core::PanelManager calls OnUpdate on every
@@ -321,6 +328,8 @@ namespace Graphite {
 			// question anywhere in the application could be asked again. The rows it was asked
 			// about are gone in any case, so there is nothing left to answer.
 			m_DiscardQuestion.Withdraw();
+			m_StashQuestion.Withdraw();
+			ResetStashDialog();
 
 			if (IsMissingRepository(false, m_Model.GetStatusError()))
 			{
@@ -390,6 +399,7 @@ namespace Graphite {
 		RenderWriteError();
 		RenderCommitBox();
 		RenderDiscardConfirm();
+		RenderStashDialog();
 	}
 
 	bool ChangesPanel::RenderSection(const char* heading, const std::vector<std::size_t>& rows,
@@ -1110,8 +1120,10 @@ namespace Graphite {
 		// Held above zero: ImGui reads a negative width as "all but this much" and zero as
 		// "as wide as the label", so a panel narrower than the two together would otherwise
 		// turn the button full-width at the very moment there is least room for it.
-		const float commitWidth =
-			std::max(width - amendWidth - ImGui::GetStyle().ItemSpacing.x, 1.0f);
+		const char* stashLabel = "Stash Changes\xE2\x80\xA6";
+		const float stashWidth = ButtonWidth(stashLabel);
+		const float commitWidth = std::max(
+			width - amendWidth - stashWidth - ImGui::GetStyle().ItemSpacing.x * 2.0f, 1.0f);
 
 		ImGui::BeginDisabled(!canCommit);
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + pad);
@@ -1143,6 +1155,22 @@ namespace Graphite {
 		if (canCommit)
 		{
 			ImGui::PopStyleColor(4);
+		}
+
+		ImGui::EndDisabled();
+
+		ImGui::SameLine();
+
+		// Nothing to stash in a clean tree, and git would answer that with an error line the
+		// reader has to dismiss.
+		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		const bool canStash = !inFlight && status && !status->Entries.empty();
+
+		ImGui::BeginDisabled(!canStash);
+
+		if (ImGui::Button(stashLabel) && !m_StashQuestion.IsAsked())
+		{
+			m_StashQuestion.Ask({});
 		}
 
 		ImGui::EndDisabled();
@@ -1357,5 +1385,94 @@ namespace Graphite {
 		}
 
 		m_DiscardQuestion.End();
+	}
+
+	void ChangesPanel::ResetStashDialog()
+	{
+		m_StashMessage.clear();
+		m_StashIncludeUntracked = false;
+		m_StashSaveFailed = false;
+	}
+
+	std::vector<std::filesystem::path> ChangesPanel::DirtyDocumentsInRepository() const
+	{
+		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
+		std::vector<std::filesystem::path> inside;
+
+		for (std::filesystem::path& path : DirtyDocuments())
+		{
+			// A path outside the working directory relates to it through "..".
+			const std::filesystem::path relative = path.lexically_relative(root);
+
+			if (!relative.empty() && *relative.begin() != "..")
+			{
+				inside.push_back(std::move(path));
+			}
+		}
+
+		return inside;
+	}
+
+	void ChangesPanel::RenderStashDialog()
+	{
+		if (!m_StashQuestion.Begin())
+		{
+			return;
+		}
+
+		// A question withdrawn from outside leaves the popup up for this one frame with no
+		// payload; close it rather than draw an answer to nothing.
+		if (m_StashQuestion.GetCurrent() == nullptr)
+		{
+			ImGui::CloseCurrentPopup();
+			m_StashQuestion.End();
+			ResetStashDialog();
+			return;
+		}
+
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 24.0f);
+		ImGui::InputTextWithHint("##stash-message", "Message (optional)", m_StashMessage.data(),
+								 m_StashMessage.size() + 1, ImGuiInputTextFlags_CallbackResize,
+								 ResizeMessageCallback, &m_StashMessage);
+
+		ImGui::Checkbox("Include untracked", &m_StashIncludeUntracked);
+
+		// Drawn even when empty, so the dialog does not change height when saving fails.
+		ImGui::TextDisabled("%s", m_StashSaveFailed
+									  ? "Could not save every file; nothing was stashed."
+									  : "");
+
+		ImGui::Separator();
+
+		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+
+		if (ImGui::Button("Stash"))
+		{
+			// Saved first, so the stash holds the edits on screen. A file that cannot be
+			// written stops everything: stashing the older copy would hide the edit from
+			// the tree and the reader would think it was kept.
+			if (m_DocumentWindows.SaveDocuments(DirtyDocumentsInRepository()))
+			{
+				m_Model.RequestStashSave(m_StashMessage, m_StashIncludeUntracked);
+				m_StashQuestion.Answer();
+				ResetStashDialog();
+			}
+			else
+			{
+				m_StashSaveFailed = true;
+			}
+		}
+
+		ImGui::EndDisabled();
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Cancel"))
+		{
+			m_StashQuestion.Answer();
+			ResetStashDialog();
+		}
+
+		m_StashQuestion.End();
 	}
 }
