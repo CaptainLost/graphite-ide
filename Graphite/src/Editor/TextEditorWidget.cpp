@@ -3,6 +3,7 @@
 #include "Editor/BracketMatch.h"
 #include "Editor/DiagnosticOverlay.h"
 #include "Editor/EditorPalette.h"
+#include "Editor/EditorWidgetState.h"
 #include "Editor/FindBar.h"
 #include "Editor/FindNavigation.h"
 #include "Editor/LensModel.h"
@@ -38,11 +39,9 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
-#include <filesystem>
 #include <limits>
 #include <optional>
 #include <string>
@@ -101,71 +100,6 @@ namespace Graphite {
 		const LensRows& LensRowsOf(const LensModel* model)
 		{
 			return model != nullptr ? model->GetRows() : NoLenses();
-		}
-
-		double s_CaretMovedAt = 0.0;
-
-		// Which document the blink above is being timed for. One value for the whole
-		// application, like the clock itself: only the focused editor draws a caret, so only
-		// one document is ever being timed.
-		std::filesystem::path s_BlinkOwner;
-
-		// The blink is measured from the last caret movement, and switching documents is not
-		// one — so without this the caret in the newly chosen document inherits the phase of
-		// the one just left and can spend its first half-second dark, exactly when the user
-		// is looking for it. Keyed on the path rather than the item's address, which a
-		// reallocation of the open-document list can hand to a different document.
-		void RestartBlinkOnDocumentChange(const std::filesystem::path& path)
-		{
-			if (s_BlinkOwner == path)
-				return;
-
-			s_BlinkOwner = path;
-			s_CaretMovedAt = ImGui::GetTime();
-		}
-
-		// Stepping through the history runs on its own clock rather than on the keyboard's
-		// auto-repeat, which is tuned for typing: at the ~30 a second Windows delivers, a
-		// held undo is a dozen changes past the one being looked for before the key comes
-		// up. A history step is a whole change — a word, a line, a pasted block — so it
-		// wants to be slow enough to watch and stop.
-		constexpr double kHistoryHoldDelay = 0.4;
-
-		constexpr double kHistoryFirstInterval = 0.14;
-
-		constexpr double kHistoryFastestInterval = 0.06;
-
-		// How much of the interval a second of holding takes away, so the stream tightens
-		// from the first rate to the fastest over roughly three seconds.
-		constexpr double kHistoryRampPerSecond = 0.027;
-
-		double s_HistoryHoldBeganAt = 0.0;
-		double s_LastHistoryStepAt = 0.0;
-
-		// Whether a held undo or redo is allowed to take another step this instant.
-		bool HistoryStepIsDue(bool isRepeat, double now)
-		{
-			if (!isRepeat)
-			{
-				s_HistoryHoldBeganAt = now;
-				s_LastHistoryStepAt = now;
-				return true;
-			}
-
-			const double held = now - s_HistoryHoldBeganAt;
-
-			if (held < kHistoryHoldDelay)
-				return false;
-
-			const double interval =
-				std::max(kHistoryFastestInterval,
-						 kHistoryFirstInterval - (held - kHistoryHoldDelay) * kHistoryRampPerSecond);
-
-			if (now - s_LastHistoryStepAt < interval)
-				return false;
-
-			s_LastHistoryStepAt = now;
-			return true;
 		}
 
 		int DigitCount(std::size_t value)
@@ -821,7 +755,7 @@ namespace Graphite {
 
 		void ApplyEditKeys(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   const EditSinks& sinks, EditorFrameResult& result)
+						   const EditSinks& sinks, HistoryHold& history, EditorFrameResult& result)
 		{
 			for (const Core::KeyStroke& stroke : input.GetStrokes())
 			{
@@ -878,8 +812,10 @@ namespace Graphite {
 				// Asked once for the pair, so holding one and rolling onto the other does not
 				// restart the ramp mid-gesture.
 				if ((undoPressed || redoPressed) &&
-					HistoryStepIsDue(stroke.IsRepeat, ImGui::GetTime()))
+					HistoryStepIsDue(history, stroke.IsRepeat, ImGui::GetTime()))
 				{
+					history = TakeHistoryStep(history, stroke.IsRepeat, ImGui::GetTime());
+
 					// The caret cannot say what an undo or redo group touched: an undone group
 					// leaves no selection to read the start from, and a redo of a multi-edit
 					// group can leave the caret at the group's LAST edit while its first sat
@@ -944,7 +880,7 @@ namespace Graphite {
 
 		void ApplyKeyboard(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   const EditSinks& sinks, std::size_t pageRows,
+						   const EditSinks& sinks, HistoryHold& history, std::size_t pageRows,
 						   std::size_t caretAtFrameStart, EditorFrameResult& result)
 		{
 			// Movement first, in its own pass over the queue, and the edits in a second one after
@@ -964,7 +900,7 @@ namespace Graphite {
 
 			result.Edited |= InsertTypedCharacters(input, item, sinks);
 
-			ApplyEditKeys(input, buffer, item, indentStyle, sinks, result);
+			ApplyEditKeys(input, buffer, item, indentStyle, sinks, history, result);
 		}
 
 		// `scrollY` is where the view will be, which is not always what ImGui::GetScrollY() answers:
@@ -1670,7 +1606,8 @@ namespace Graphite {
 			DrawGutterFill(canvas, y);
 		}
 
-		void DrawCaret(const RowCanvas& canvas, const RowSlice& slice, std::size_t column)
+		void DrawCaret(const RowCanvas& canvas, const RowSlice& slice, std::size_t column,
+					   double movedAt)
 		{
 			const float caretX =
 				canvas.TextOriginX + static_cast<float>(column) * canvas.Metrics.CellWidth;
@@ -1678,7 +1615,7 @@ namespace Graphite {
 			// Measured from the last movement rather than from zero, which is what keeps the
 			// caret from being invisible under a held arrow key: every move restarts the cycle at
 			// its lit half.
-			const double phase = std::fmod(ImGui::GetTime() - s_CaretMovedAt, kCaretBlinkPeriod);
+			const double phase = std::fmod(ImGui::GetTime() - movedAt, kCaretBlinkPeriod);
 			const double half = kCaretBlinkPeriod * 0.5;
 
 			// The loop sleeps when nothing happens, and a blink is not an event: the frame that
@@ -2336,6 +2273,10 @@ namespace Graphite {
 			// unfocused pane still shows its selection — a user glancing at a split needs to see
 			// what is selected there — but only the editor receiving the keyboard blinks a caret.
 			bool Focused = false;
+
+			// When the caret last moved or the document last took the keyboard, which is what
+			// the blink is measured from.
+			double MovedAt = 0.0;
 		};
 
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
@@ -2372,7 +2313,7 @@ namespace Graphite {
 			// row. The column is already measured from this row's left edge, which is what makes
 			// this the same arithmetic whether the line wrapped or not.
 			if (caret.Focused && slice.Index == caret.Visual.Row)
-				DrawCaret(canvas, slice, caret.Visual.Column);
+				DrawCaret(canvas, slice, caret.Visual.Column, caret.MovedAt);
 		}
 
 		void ReserveDocumentExtent(const ImVec2& origin, float contentWidth, float documentHeight)
@@ -2397,91 +2338,27 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(origin);
 		}
 
-		// What the last bracket search was asked for one document, and what it answered. Finding
-		// a pair walks up to kBracketScanLines in each direction and re-lexes every line it
-		// reads, because the syntax cache holds exactly one line's tokens: cheap for a partner a
-		// few lines away, and the whole bound every time when the caret sits beside an unclosed
-		// brace — which is precisely the state a file is in while it is being typed into. So the
-		// answer is kept and only recomputed when one of its three inputs moved.
-		//
-		// Keyed on the path rather than the item's address, like the caret blink above, which a
-		// reallocation of the open-document list can hand to a different document.
-		struct BracketMemo
-		{
-			std::filesystem::path Path;
-			std::size_t Caret = 0;
-			std::size_t Revision = 0;
-			bool Filled = false;
-			std::optional<BracketPair> Pair;
-		};
-
-		// One slot per document on screen, because every visible document draws every frame:
-		// with a single slot two editors side by side — two splits of one file, or two different
-		// files in two dock nodes — would overwrite each other's answer and each pay the full
-		// scan on every frame, which is the cost this exists to remove.
-		//
-		// A fixed set of slots rather than a map, and bounded by construction rather than
-		// pruned: nothing tells this file when a document closes — the map of syntax caches is
-		// pruned by DocumentWindows, which owns it and can see the open list — so a map here
-		// could only ever grow. Eight is well past any dock layout a screen has room for, but
-		// the bound is not free: with more visible editors than slots the round-robin eviction
-		// walks the ring and every one of them misses and recomputes each frame, not merely the
-		// ones past the eighth. Nine is the number to keep an eye on, not the ninth editor.
-		constexpr std::size_t kBracketMemoSlots = 8;
-
-		// Returned by value: three words, and a reference into the store above would be left
-		// dangling-in-meaning by the next document's claim on the same slot.
-		//
-		// The buffer revision is the same staleness signal RefreshFindMatchesIfStale compares
-		// against, and it is the only one an edit can arrive through; the caret offset covers
-		// every move that leaves the text alone.
+		// The pair for the bracket beside the caret, searched for only when the caret or the buffer
+		// has moved since `memo` was filled. See BracketMemo for what the search costs. Returned by
+		// value: three words, and the memo is the document's own, so nothing else claims it.
 		std::optional<BracketPair> BracketPairFor(const Core::TextBuffer& buffer,
-												  const Core::OpenItem& item, SyntaxCache* syntax)
+												  const Core::OpenItem& item, SyntaxCache* syntax,
+												  BracketMemo& memo)
 		{
 			// No cache means no way to tell a bracket from one inside a string, so nothing is
 			// highlighted rather than the wrong thing.
 			if (syntax == nullptr)
 				return std::nullopt;
 
-			// Function-local rather than namespace-scope, per ADR 0033 on complex initialization
-			// of global objects: BracketMemo holds a std::filesystem::path, so the array cannot
-			// be constant-initialised and a namespace-scope definition would be built at an
-			// order nothing here decides.
-			static std::array<BracketMemo, kBracketMemoSlots> s_Brackets;
-
-			// Which slot the next document not already held takes. Round robin, so a layout that
-			// exceeds the slots degrades to recomputing rather than to anything worse.
-			static std::size_t s_NextBracketMemo = 0;
-
 			const std::size_t revision = buffer.GetRevision();
 
-			BracketMemo* slot = nullptr;
-
-			for (BracketMemo& candidate : s_Brackets)
+			if (!memo.Holds(item.Caret.Offset, revision))
 			{
-				if (candidate.Filled && candidate.Path == item.Path)
-				{
-					slot = &candidate;
-					break;
-				}
+				memo.Fill(item.Caret.Offset, revision,
+						  FindBracketPair(buffer, *syntax, item.Caret.Offset));
 			}
 
-			if (slot != nullptr && slot->Caret == item.Caret.Offset && slot->Revision == revision)
-				return slot->Pair;
-
-			if (slot == nullptr)
-			{
-				slot = &s_Brackets[s_NextBracketMemo];
-				s_NextBracketMemo = (s_NextBracketMemo + 1) % kBracketMemoSlots;
-			}
-
-			slot->Path = item.Path;
-			slot->Caret = item.Caret.Offset;
-			slot->Revision = revision;
-			slot->Filled = true;
-			slot->Pair = FindBracketPair(buffer, *syntax, item.Caret.Offset);
-
-			return slot->Pair;
+			return memo.Pair;
 		}
 
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
@@ -2491,7 +2368,7 @@ namespace Graphite {
 							 const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
 							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
-							 EditorFrameResult& result)
+							 EditorWidgetState& widget, EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2526,6 +2403,7 @@ namespace Graphite {
 			caret.Visual = Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset,
 											   item.TabWidth);
 			caret.Focused = focused;
+			caret.MovedAt = widget.CaretMovedAt;
 
 			// The same conversion DrawCaret uses to place the blinking line, computed here
 			// unconditionally — including on a frame nothing asked for it — so a request made
@@ -2573,7 +2451,7 @@ namespace Graphite {
 
 			// Once for the frame, ahead of the rows: every visible line is asked about the same
 			// pair, and the search itself is memoised on the caret and the buffer revision.
-			lineInput.Brackets = BracketPairFor(buffer, item, syntax);
+			lineInput.Brackets = BracketPairFor(buffer, item, syntax, widget.Brackets);
 
 			ReserveDocumentExtent(origin, canvas.ContentWidth,
 								  DocumentHeightOf(item, metrics, lenses));
@@ -2677,6 +2555,11 @@ namespace Graphite {
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
 		const EditorMetrics metrics = MeasureEditor(buffer, view.ChangeDisplay.Gutter);
 
+		// A view arriving without state is defence, not a supported mode: DocumentWindows always
+		// hands its own over. One without it draws as if every frame were the document's first.
+		EditorWidgetState noState;
+		EditorWidgetState& widget = view.Widget != nullptr ? *view.Widget : noState;
+
 		// Asked of the document window, before the child below becomes the current one. True
 		// when this document holds the keyboard, whether the focus sits on the tab itself or
 		// has already been taken by the surface inside it.
@@ -2763,7 +2646,14 @@ namespace Graphite {
 
 			if (focused)
 			{
-				RestartBlinkOnDocumentChange(item.Path);
+				const int frame = ImGui::GetFrameCount();
+
+				if (CaretBlinkRestarts(widget.LastFocusedFrame, frame))
+				{
+					widget.CaretMovedAt = ImGui::GetTime();
+				}
+
+				widget.LastFocusedFrame = frame;
 			}
 
 			// A context arriving without a queue is a caller that has no input to offer, not an
@@ -2772,7 +2662,7 @@ namespace Graphite {
 			{
 				const EditSinks sinks{view.Syntax, view.Lens};
 
-				ApplyKeyboard(*context.Input, buffer, item, view.Indent, sinks,
+				ApplyKeyboard(*context.Input, buffer, item, view.Indent, sinks, widget.History,
 							  RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 
@@ -2815,7 +2705,7 @@ namespace Graphite {
 			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
 				ScrollToCaret(buffer, item, metrics, view.WordWrap, lenses, scrollY);
-				s_CaretMovedAt = ImGui::GetTime();
+				widget.CaretMovedAt = ImGui::GetTime();
 				item.PendingScroll = false;
 			}
 
@@ -2827,7 +2717,7 @@ namespace Graphite {
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
 							view.Semantic, view.Diagnostics, view.DiagnosticsStale,
 							view.ChangeDisplay.Gutter ? view.Changes : nullptr,
-							view.ChangeDisplay.Scrollbar ? view.Changes : nullptr, result);
+							view.ChangeDisplay.Scrollbar ? view.Changes : nullptr, widget, result);
 
 			// Taken after the rows, because FirstVisibleRow is what the rows just worked out, and
 			// taken every frame so the anchor describes where the reader is now rather than where

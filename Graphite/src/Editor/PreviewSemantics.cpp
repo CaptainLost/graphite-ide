@@ -93,7 +93,7 @@ namespace Graphite {
 		}
 		else if (!editorHolds && entry.EditorHolds)
 		{
-			// The tab that was carrying this document closed. PruneLensStates already sent its
+			// The tab that was carrying this document closed. PruneDocumentStates already sent its
 			// didClose, so the server has no copy of the file left — this class has to open one
 			// again before it can keep asking about it.
 			entry.EditorHolds = false;

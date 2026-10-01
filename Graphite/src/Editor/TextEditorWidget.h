@@ -23,6 +23,7 @@ namespace Core {
 namespace Graphite {
 
 	class LensModel;
+	struct EditorWidgetState;
 	class SyntaxCache;
 	class SemanticOverlay;
 	class DiagnosticOverlay;
@@ -143,6 +144,12 @@ namespace Graphite {
 		// Null is a document nothing anchors — a legitimate mode, not a defect, and the widget
 		// simply skips both halves. See ScrollAnchor for what the correction is for.
 		ScrollAnchor* Anchor = nullptr;
+
+		// What the widget carries from one frame of this document to the next: the caret's blink,
+		// a held undo's ramp and the last bracket search. Owned by the caller and kept per
+		// document like Anchor above, so two editors on screen never share any of it. Null draws
+		// as if every frame were the document's first.
+		EditorWidgetState* Widget = nullptr;
 	};
 
 	class FindBar;

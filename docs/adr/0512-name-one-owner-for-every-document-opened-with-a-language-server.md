@@ -39,7 +39,7 @@ does, which is a narrower question and the one that was wrong.
 The three owners, and how each keeps the rule:
 
 - **`DocumentWindows`** owns the document behind a tab. `LensFor` opens it once
-  when the tab first needs a lens, `PruneLensStates` closes it when the tab
+  when the tab first needs a lens, `PruneDocumentStates` closes it when the tab
   goes. It is the strongest claim: everything else defers to it.
 - **`PreviewSemantics`** owns the document behind a preview pane, but only when
   no tab does. `Entry::Opened` records whether this class sent the `didOpen`;

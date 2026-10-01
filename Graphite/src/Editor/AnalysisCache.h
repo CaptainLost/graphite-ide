@@ -114,7 +114,7 @@ namespace Graphite {
 		// have to survive both.
 		std::list<Entry> m_Entries;
 
-		// Keyed on the path itself, as m_Lenses and m_Semantic next door are, so that two
+		// Keyed on the path itself, as DocumentWindows::m_States next door is, so that two
 		// spellings of one file - separators the other way round, a trailing one - are the same
 		// document here and there alike. Keying on the raw string would make this the only map in
 		// the class that disagreed, and it would disagree by silently never hitting.

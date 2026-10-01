@@ -146,7 +146,10 @@ namespace Graphite {
 
 		// Opened from inside the folder that is open now, so it belongs to that folder, even if
 		// its tab was carried over from the one before.
-		m_CarriedOver.erase(path);
+		if (const auto state = m_States.find(path); state != m_States.end())
+		{
+			state->second.CarriedOver = false;
+		}
 
 		if (outcome != Core::OpenOutcome::NeedsConfirmation)
 			return;
@@ -169,7 +172,10 @@ namespace Graphite {
 
 			// Still open from the folder this one replaced: its tabs were written to that folder,
 			// and recording them here too would mix two folders' tabs into one.
-			if (m_CarriedOver.contains(item.Path))
+			const auto found = m_States.find(item.Path);
+			const DocumentState* const kept = found != m_States.end() ? &found->second : nullptr;
+
+			if (kept != nullptr && kept->CarriedOver)
 			{
 				continue;
 			}
@@ -184,22 +190,20 @@ namespace Graphite {
 
 			// A view still on its way to a restored line is reported as going there: the anchor
 			// says where its first frames happened to land, not where the reader was.
-			if (const auto pending = m_PendingTopLines.find(item.Path); pending != m_PendingTopLines.end())
+			if (kept != nullptr && kept->PendingTop)
 			{
-				tab.Top = pending->second.Line;
+				tab.Top = kept->PendingTop->Line;
 			}
-			else if (const auto anchor = m_Anchors.find(item.Path);
-					 anchor != m_Anchors.end() && anchor->second.Taken)
+			else if (kept != nullptr && kept->Anchor.Taken)
 			{
-				tab.Top = anchor->second.Line;
+				tab.Top = kept->Anchor.Line;
 			}
 
 			state.Tabs.push_back(std::move(tab));
 		}
 
 		if (const auto active = m_Documents.GetActive();
-			active && m_Documents.At(*active).Document &&
-			!m_CarriedOver.contains(m_Documents.At(*active).Path))
+			active && m_Documents.At(*active).Document && !IsCarriedOver(m_Documents.At(*active).Path))
 		{
 			state.Active = m_Documents.At(*active).Path;
 		}
@@ -211,7 +215,7 @@ namespace Graphite {
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
-			m_CarriedOver.insert(m_Documents.At(index).Path);
+			StateFor(m_Documents.At(index).Path).CarriedOver = true;
 		}
 	}
 
@@ -221,7 +225,10 @@ namespace Graphite {
 		{
 			// The new folder's own tabs name this file, so it belongs to this folder as well, and
 			// the tab it already has — carried over or not — is recorded here from now on.
-			m_CarriedOver.erase(tab.Path);
+			if (const auto kept = m_States.find(tab.Path); kept != m_States.end())
+			{
+				kept->second.CarriedOver = false;
+			}
 
 			std::error_code error;
 
@@ -267,7 +274,7 @@ namespace Graphite {
 
 			if (const std::size_t top = RestoredTopLine(buffer, tab.Top); top > 0)
 			{
-				m_PendingTopLines[tab.Path] = PendingTopLine{.Line = top, .CaretOffset = offset};
+				StateFor(tab.Path).PendingTop = PendingTopLine{.Line = top, .CaretOffset = offset};
 			}
 		}
 
@@ -330,23 +337,26 @@ namespace Graphite {
 
 		// Moved the same way RewritePaths moved the tabs, so a carried-over tab under the moved
 		// directory is still recognised as carried over under its new path.
-		std::set<std::filesystem::path> carriedOver;
+		//
+		// Collected before any is moved, so a path moved onto cannot be mistaken for one still to
+		// move. The state left under the old path goes with the next prune, like the rest of it.
+		std::vector<std::filesystem::path> carriedOver;
 
-		for (const std::filesystem::path& path : m_CarriedOver)
+		for (auto& [path, state] : m_States)
 		{
-			const auto relative = Core::RelativeTo(path, from);
-
-			if (!relative)
+			if (state.CarriedOver && Core::RelativeTo(path, from))
 			{
-				carriedOver.insert(path);
-			}
-			else
-			{
-				carriedOver.insert(*relative == "." ? to : to / *relative);
+				carriedOver.push_back(path);
+				state.CarriedOver = false;
 			}
 		}
 
-		m_CarriedOver = std::move(carriedOver);
+		for (const std::filesystem::path& path : carriedOver)
+		{
+			const auto relative = Core::RelativeTo(path, from);
+
+			StateFor(*relative == "." ? to : to / *relative).CarriedOver = true;
+		}
 
 		const std::vector<std::string> newIdentities = CurrentIdentities(m_Documents);
 
@@ -799,12 +809,11 @@ namespace Graphite {
 		// file, so a reopened document lands where the user is working rather than where it
 		// was months ago — and imgui.ini stops collecting a dead section per file.
 		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
-		m_Syntax.erase(m_Documents.At(index).Path);
 		m_RestoredIdentities.erase(Identity(m_Documents, index));
 		m_Documents.Close(index);
 		// After the close, so the prune sees the document gone and tells the server so. Erasing
 		// here directly would be the same thing minus the CloseDocument the prune sends.
-		PruneLensStates();
+		PruneDocumentStates();
 	}
 
 	void DocumentWindows::CloseIfOpen(const std::filesystem::path& path)
@@ -1082,63 +1091,46 @@ namespace Graphite {
 			m_LastFocusedNode = window->DockNode->ID;
 	}
 
-	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
+	DocumentWindows::DocumentState& DocumentWindows::StateFor(const std::filesystem::path& path)
 	{
-		const auto [entry, inserted] = m_Syntax.try_emplace(item.Path);
-
-		if (inserted)
-		{
-			entry->second.SetLexer(LexerFor(LanguageOfPath(item.Path)));
-			// Keeps the cache's width equal to the item's when a fresh cache is inserted for an
-			// item that was already at a non-default width — the case being a path rewrite
-			// while the document stays open: RewritePaths changes item.Path (a rename of the
-			// file or of a directory it lives under), this try_emplace then inserts under the
-			// new key with `inserted` true, and without this seed the new cache would sit at
-			// Core::DefaultTabWidth forever. DrawEditor's compare-and-rebuild block in
-			// TextEditorWidget.cpp only fires on item.TabWidth != view.Indent.Width, which is
-			// already false the moment the item's own width was set correctly earlier — so
-			// nothing would ever re-lex the cache at the right width.
-			entry->second.SetTabWidth(item.TabWidth);
-		}
-
-		return entry->second;
+		return m_States[path];
 	}
 
-	// Drops every m_Syntax entry whose key is not the path of a currently open document. Run
-	// once a frame rather than at the one place a path changes: m_Syntax is a side-map keyed on
-	// an identity DocumentSet owns and can rewrite (a rename on disk, or of a directory an open
-	// document lives under) without this map hearing about it, so an entry orphaned that way
-	// would otherwise hold its std::vector<LineState> — one mode word and one std::string
-	// per line of the file — for the rest of the process. SyntaxFor already does the right
-	// thing after a rename (a fresh cache under the new path, lexed with whatever language the
-	// new extension implies), so this only ever removes what nothing can reach any more.
-	void DocumentWindows::PruneSyntaxCaches()
+	DocumentWindows::LensState* DocumentWindows::FindLens(const std::filesystem::path& path)
 	{
-		for (auto it = m_Syntax.begin(); it != m_Syntax.end();)
+		const auto state = m_States.find(path);
+
+		return state != m_States.end() && state->second.Lens ? &*state->second.Lens : nullptr;
+	}
+
+	bool DocumentWindows::IsCarriedOver(const std::filesystem::path& path) const
+	{
+		const auto state = m_States.find(path);
+
+		return state != m_States.end() && state->second.CarriedOver;
+	}
+
+	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
+	{
+		std::optional<SyntaxCache>& syntax = StateFor(item.Path).Syntax;
+
+		if (!syntax)
 		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_Syntax.erase(it);
-			}
+			syntax.emplace();
+			syntax->SetLexer(LexerFor(LanguageOfPath(item.Path)));
+			// Keeps the cache's width equal to the item's when a fresh cache is made for an item
+			// that was already at a non-default width — the case being a path rewrite while the
+			// document stays open: RewritePaths changes item.Path (a rename of the file or of a
+			// directory it lives under), the state under the new key starts with no cache, and
+			// without this seed the new cache would sit at Core::DefaultTabWidth forever.
+			// DrawEditor's compare-and-rebuild block in TextEditorWidget.cpp only fires on
+			// item.TabWidth != view.Indent.Width, which is already false the moment the item's own
+			// width was set correctly earlier — so nothing would ever re-lex the cache at the right
+			// width.
+			syntax->SetTabWidth(item.TabWidth);
 		}
 
-		// Same map, same reason: m_CaretScreen is keyed on a path DocumentSet can rewrite without
-		// telling it, and an entry orphaned that way would otherwise sit here for good.
-		for (auto it = m_CaretScreen.begin(); it != m_CaretScreen.end();)
-		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_CaretScreen.erase(it);
-			}
-		}
+		return *syntax;
 	}
 
 	DocumentWindows::LensState* DocumentWindows::LensFor(const Core::OpenItem& item)
@@ -1152,10 +1144,12 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const auto [entry, inserted] = m_Lenses.try_emplace(item.Path);
+		DocumentState& state = StateFor(item.Path);
 
-		if (inserted)
+		if (!state.Lens)
 		{
+			state.Lens.emplace();
+
 			// EnsureStarted before OpenDocument, in that order: OpenDocument is a no-op while no
 			// server runs for this root, and every answer afterwards would be about a file the
 			// server was never told exists. Both are safe to repeat, but this is the one moment
@@ -1165,24 +1159,30 @@ namespace Graphite {
 
 			// After the server is told, not before: this only fills the gap until the server
 			// answers, and the answer has to already be on its way for the gap to be a gap.
-			RestoreAnalysis(item, entry->second);
+			RestoreAnalysis(item, state);
 		}
 
-		return &entry->second;
+		return &*state.Lens;
 	}
 
-	// The same prune, for the same reason, as PruneSyntaxCaches next door — see its comment. The
-	// server is told the document closed from here as well, so its copy does not outlive the tab:
-	// a path that has gone from DocumentSet is one nothing will ask about again.
-	void DocumentWindows::PruneLensStates()
+	// Drops every entry whose key is not the path of a currently open document. Run once a frame
+	// rather than at the one place a path changes: m_States is a side-map keyed on an identity
+	// DocumentSet owns and can rewrite without this map hearing about it — see m_States. A
+	// closed tab goes the same way, from CloseAndForgetLayout.
+	//
+	// The server is told the document closed from here as well, so its copy does not outlive the
+	// tab: a path that has gone from DocumentSet is one nothing will ask about again.
+	void DocumentWindows::PruneDocumentStates()
 	{
-		for (auto it = m_Lenses.begin(); it != m_Lenses.end();)
+		for (auto it = m_States.begin(); it != m_States.end();)
 		{
 			if (m_Documents.Find(it->first))
 			{
 				++it;
+				continue;
 			}
-			else
+
+			if (const std::optional<LensState>& lens = it->second.Lens)
 			{
 				m_LanguageServices.CloseDocument(it->first, LanguageOfPath(it->first));
 
@@ -1190,106 +1190,28 @@ namespace Graphite {
 				// opens. The server is still told it closed: this remembers the answers, not the
 				// document, and holding the document open with the server would make it keep a
 				// full parse of every file ever glanced at.
-				KeepAnalysis(it->first, it->second);
+				//
+				// Before the entry is erased, never after: the colours it keeps are this entry's.
+				KeepAnalysis(it->first, *lens, it->second.Semantic);
 				ForgetPendingFor(it->first);
-
-				m_Semantic.erase(it->first);
-				m_DiagnosticOverlays.erase(it->first);
-				m_DiagnosticGuards.erase(it->first);
-				it = m_Lenses.erase(it);
 			}
+
+			it = m_States.erase(it);
 		}
 
-		// After the loop above, never before it: KeepAnalysis reads a closing document's colours
-		// out of m_Semantic, so a sweep that ran first would take them out from under it and the
-		// document would come back with its reference counts and none of its colours.
-		//
-		// Needed on top of the erase above because SemanticFor is called for every drawn document,
-		// including those no server serves, so m_Semantic collects entries m_Lenses never had and
-		// that the loop above therefore never visits.
-		for (auto it = m_Semantic.begin(); it != m_Semantic.end();)
-		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_Semantic.erase(it);
-			}
-		}
-
-		// The same sweep again, for the same reason: an anchor is taken for every drawn document,
-		// served or not, so this map collects entries the loop at the top never visits. A stale
-		// anchor would also be worse than a missing one — it would put a reopened tab back at a
-		// row from the last time the file was open.
-		for (auto it = m_Anchors.begin(); it != m_Anchors.end();)
-		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_Anchors.erase(it);
-			}
-		}
-
-		for (auto it = m_PendingTopLines.begin(); it != m_PendingTopLines.end();)
-		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_PendingTopLines.erase(it);
-			}
-		}
-
-		// A carried-over tab that closed is no longer carried: the same file opened again later
-		// is opened from the folder open then.
-		for (auto it = m_CarriedOver.begin(); it != m_CarriedOver.end();)
-		{
-			if (m_Documents.Find(*it))
-			{
-				++it;
-			}
-			else
-			{
-				it = m_CarriedOver.erase(it);
-			}
-		}
-
-		// The same sweep as above, and for the same reason: DiagnosticFor is called for every
-		// drawn document, so m_DiagnosticOverlays collects entries m_Lenses never had and the
-		// loop at the top of this function therefore never visits.
-		for (auto it = m_DiagnosticOverlays.begin(); it != m_DiagnosticOverlays.end();)
-		{
-			if (m_Documents.Find(it->first))
-			{
-				++it;
-			}
-			else
-			{
-				m_DiagnosticGuards.erase(it->first);
-				it = m_DiagnosticOverlays.erase(it);
-			}
-		}
-
-		// The same rule as the sweeps above: a closed tab's markers, and anything still being
-		// computed for it, are dropped.
+		// The same rule: a closed tab's markers, and anything still being computed for it, are
+		// dropped.
 		m_ChangeMarkers.Retain(
 			[this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); });
 	}
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
 	{
-		if (const auto state = m_Lenses.find(path); state != m_Lenses.end())
+		if (const auto state = m_States.find(path); state != m_States.end() && state->second.Lens)
 		{
 			// Wanted but not yet asked counts too: the retry clock is a delay before asking, not
 			// an answer, and a bar that went quiet during it would be saying the file had settled.
-			if (state->second.SymbolsOutstanding || state->second.WantSymbols)
+			if (state->second.Lens->SymbolsOutstanding || state->second.Lens->WantSymbols)
 			{
 				return true;
 			}
@@ -1326,19 +1248,16 @@ namespace Graphite {
 					  [&path](const auto& entry) { return entry.second.Path == path; });
 	}
 
-	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& state)
+	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
+									   const SemanticOverlay& semantic)
 	{
 		CachedAnalysis analysis;
-		analysis.Declarations = state.Declarations;
-		analysis.Counts = state.Model.KnownCounts();
-
-		if (const auto semantic = m_Semantic.find(path); semantic != m_Semantic.end())
-		{
-			analysis.Semantic = semantic->second;
-		}
+		analysis.Declarations = lens.Declarations;
+		analysis.Counts = lens.Model.KnownCounts();
+		analysis.Semantic = semantic;
 
 		std::optional<CachedAnalysis> worth =
-			AnalysisWorthKeeping(std::move(analysis), state.WasModified, ModifiedTimeOf(path));
+			AnalysisWorthKeeping(std::move(analysis), lens.WasModified, ModifiedTimeOf(path));
 
 		if (worth)
 		{
@@ -1356,7 +1275,7 @@ namespace Graphite {
 		}
 	}
 
-	void DocumentWindows::RestoreAnalysis(const Core::OpenItem& item, LensState& state)
+	void DocumentWindows::RestoreAnalysis(const Core::OpenItem& item, DocumentState& state)
 	{
 		const std::optional<std::filesystem::file_time_type> modified = ModifiedTimeOf(item.Path);
 
@@ -1380,9 +1299,11 @@ namespace Graphite {
 			return;
 		}
 
-		state.Declarations = std::move(restored->Declarations);
-		state.HaveDeclarations = !state.Declarations.empty();
-		state.Model.SeedCounts(std::move(restored->Counts));
+		LensState& lens = *state.Lens;
+
+		lens.Declarations = std::move(restored->Declarations);
+		lens.HaveDeclarations = !lens.Declarations.empty();
+		lens.Model.SeedCounts(std::move(restored->Counts));
 
 		// Asked for rather than done here, and this is the whole subtlety of restoring: a lens
 		// anchors to a ROW, and this runs before the document has been drawn even once, so its
@@ -1392,9 +1313,9 @@ namespace Graphite {
 		// The rebuild a frame later would fix the anchors and have nothing left to anchor.
 		//
 		// UpdateLenses runs after the editor has drawn, in this same frame, so nothing waits.
-		state.NeedsRebuild = true;
+		lens.NeedsRebuild = true;
 
-		m_Semantic[item.Path] = std::move(restored->Semantic);
+		state.Semantic = std::move(restored->Semantic);
 
 		// WantSymbols is left standing: this is what the file looked like when its tab closed, and
 		// the server is still asked. Its answer replaces all of this, and until it arrives the
@@ -1420,12 +1341,13 @@ namespace Graphite {
 
 	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
 	{
-		return m_Semantic[item.Path];
+		return StateFor(item.Path).Semantic;
 	}
 
 	DiagnosticOverlay& DocumentWindows::DiagnosticFor(const Core::OpenItem& item)
 	{
-		DiagnosticOverlay& overlay = m_DiagnosticOverlays[item.Path];
+		DocumentState& state = StateFor(item.Path);
+		DiagnosticOverlay& overlay = state.Diagnostics;
 
 		// Without a buffer there is nothing to convert positions against, so the overlay is left
 		// exactly as it stood - empty for a document that has never had one. Diagnostics are not
@@ -1445,7 +1367,7 @@ namespace Graphite {
 		const std::uint64_t generation = entry != documents.end() ? entry->second.Generation : 0;
 		const std::size_t revision = item.Document->GetBuffer().GetRevision();
 
-		DiagnosticGuard& guard = m_DiagnosticGuards[item.Path];
+		DiagnosticGuard& guard = state.DiagnosticsBuiltFrom;
 
 		// Every one of the three inputs to the conversion is unchanged: rebuilding would walk
 		// every line a diagnostic touches for no different a result, so the last-built overlay
@@ -1503,14 +1425,14 @@ namespace Graphite {
 		m_LanguageServices.ChangeDocument(item.Path, language,
 										  item.Document->GetBuffer().Materialize());
 
-		const auto entry = m_Lenses.find(item.Path);
+		LensState* const lens = FindLens(item.Path);
 
-		if (entry == m_Lenses.end())
+		if (lens == nullptr)
 		{
 			return;
 		}
 
-		LensState& state = entry->second;
+		LensState& state = *lens;
 
 		// Replaced wholesale, not edited: the declarations in hand describe text that need not
 		// resemble what is there now, so they are dropped outright rather than shifted the way an
@@ -1681,14 +1603,14 @@ namespace Graphite {
 	void DocumentWindows::ApplySymbolAnswer(const std::filesystem::path& path,
 											const LanguageServices::Answer& answer)
 	{
-		const auto entry = m_Lenses.find(path);
+		LensState* const lens = FindLens(path);
 
-		if (entry == m_Lenses.end())
+		if (lens == nullptr)
 		{
 			return;
 		}
 
-		LensState& state = entry->second;
+		LensState& state = *lens;
 
 		state.SymbolsOutstanding = false;
 
@@ -1774,11 +1696,11 @@ namespace Graphite {
 		const LanguageServices::Ticket ticket =
 			m_LanguageServices.AskDefinition(item.Path, language, where);
 
-		// Whatever this document's own last draw left in m_CaretScreen — default-constructed,
-		// screen position (0, 0), on the vanishingly unlikely frame nothing has drawn it yet.
-		const auto screen = m_CaretScreen.find(item.Path);
+		// Whatever this document's own last draw left in its state — default-constructed, screen
+		// position (0, 0), on the vanishingly unlikely frame nothing has drawn it yet.
+		const auto state = m_States.find(item.Path);
 		const CaretScreenPosition screenPosition =
-			screen != m_CaretScreen.end() ? screen->second : CaretScreenPosition{};
+			state != m_States.end() ? state->second.CaretScreen : CaretScreenPosition{};
 
 		m_PendingDefinition =
 			PendingDefinition{ticket, item.Path, item.Caret.Offset, where, screenPosition};
@@ -2090,8 +2012,8 @@ namespace Graphite {
 
 					if (item.Document)
 					{
-						m_Semantic[path].Set(answer.SemanticTokens, item.Document->GetBuffer(),
-											 item.TabWidth);
+						StateFor(path).Semantic.Set(answer.SemanticTokens, item.Document->GetBuffer(),
+													item.TabWidth);
 					}
 				}
 
@@ -2145,9 +2067,9 @@ namespace Graphite {
 				continue;
 			}
 
-			if (const auto entry = m_Lenses.find(pending.Path); entry != m_Lenses.end())
+			if (LensState* const lens = FindLens(pending.Path))
 			{
-				entry->second.Model.SetCount(pending.DocumentRow, answer.Locations.size());
+				lens->Model.SetCount(pending.DocumentRow, answer.Locations.size());
 			}
 		}
 	}
@@ -2259,6 +2181,7 @@ namespace Graphite {
 				// Null for a document no server serves, which is what spares the widget a branch
 				// on whether one exists — the same role an empty token list plays for SyntaxCache.
 				LensState* const lens = LensFor(item);
+				DocumentState& state = StateFor(item.Path);
 
 				EditorView view;
 				view.FontSize = fontSize;
@@ -2305,46 +2228,45 @@ namespace Graphite {
 				// Created on first sight and kept until the tab goes, like the overlays above.
 				// The widget fills it in as it draws; until then it is an anchor nobody has taken
 				// and the widget skips it.
-				view.Anchor = &m_Anchors[item.Path];
+				view.Anchor = &state.Anchor;
+				view.Widget = &state.Widget;
 
-				auto pendingTop = m_PendingTopLines.find(item.Path);
+				std::optional<PendingTopLine>& pendingTop = state.PendingTop;
 
 				// A restored line gives way the moment the reader goes somewhere else: navigation
 				// into this tab moved the caret or asked for it to be scrolled to, or the wheel
 				// turned over it. Seeding again after that would drag the view back to where the
 				// last launch left it. The wheel is read here, before the editor draws, because the
 				// seed below would otherwise overwrite the scroll it asked for.
-				if (pendingTop != m_PendingTopLines.end())
+				if (pendingTop)
 				{
 					const bool wheeled = ImGui::GetIO().MouseWheel != 0.0f &&
 										 ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
-					if (!pendingTop->second.StillWanted(item.Caret.Offset, item.PendingScroll, wheeled))
+					if (!pendingTop->StillWanted(item.Caret.Offset, item.PendingScroll, wheeled))
 					{
-						m_PendingTopLines.erase(pendingTop);
-						pendingTop = m_PendingTopLines.end();
+						pendingTop.reset();
 					}
 				}
 
-				if (pendingTop != m_PendingTopLines.end())
+				if (pendingTop)
 				{
-					*view.Anchor = AnchorAtLine(pendingTop->second.Line);
+					*view.Anchor = AnchorAtLine(pendingTop->Line);
 				}
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 
 				// Only a frame that drew rows has anything to say: one that drew none left the seed
 				// above in the anchor untouched, and Settle would read its own seed as arrival.
-				if (pendingTop != m_PendingTopLines.end() && editorResult.DrewRows &&
-					pendingTop->second.Settle(*view.Anchor))
+				if (pendingTop && editorResult.DrewRows && pendingTop->Settle(*view.Anchor))
 				{
-					m_PendingTopLines.erase(pendingTop);
+					pendingTop.reset();
 				}
 
 				// Recorded every frame the document draws, not only when something asks: a
 				// keyboard-triggered request reads this back later, from whichever frame drew
 				// last, so it has to already be here rather than computed on demand.
-				m_CaretScreen[item.Path] =
+				state.CaretScreen =
 					CaretScreenPosition{editorResult.CaretScreenX, editorResult.CaretScreenY};
 
 				// After the draw, not before: what to ask the server for depends on the rows the
@@ -2428,10 +2350,9 @@ namespace Graphite {
 							  frame.CloseRequests, frame.WorkspaceRoot);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
-		// above would cost a walk of m_Syntax for every open document instead of one for the
+		// above would cost a walk of m_States for every open document instead of one for the
 		// whole frame.
-		PruneSyntaxCaches();
-		PruneLensStates();
+		PruneDocumentStates();
 
 		// After the loop, not before: a renamed document's pending dock target has to be
 		// consumed by Begin() above before its old identity's node can be undocked and

@@ -2,11 +2,13 @@
 
 #include "Editor/ModalGate.h"
 #include "Editor/DiagnosticOverlay.h"
+#include "Editor/EditorWidgetState.h"
 #include "Editor/FindBar.h"
 #include "Editor/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/LensModel.h"
 #include "Editor/PreviewSemantics.h"
+#include "Editor/ScrollAnchor.h"
 #include "Editor/SemanticOverlay.h"
 #include "Editor/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
@@ -219,9 +221,19 @@ namespace Graphite {
 			bool NeedsRebuild = false;
 		};
 
-		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
+		// Everything this class keeps for one open document. Defined beside m_States below.
+		struct DocumentState;
 
-		void PruneSyntaxCaches();
+		// The state kept for `path`, created empty the first time it is asked for.
+		DocumentState& StateFor(const std::filesystem::path& path);
+
+		// The lens state of the document at `path`, or null when it has none: no tab, or no
+		// language server serving it.
+		LensState* FindLens(const std::filesystem::path& path);
+
+		bool IsCarriedOver(const std::filesystem::path& path) const;
+
+		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
 
 	public:
 		// Whether what this document looks like is still being settled - its declarations and its
@@ -257,20 +269,22 @@ namespace Graphite {
 		// Analysis outlives its tab: KeepAnalysis puts a closing document's answers away and
 		// RestoreAnalysis hands them to a reopening one. See AnalysisCache for why what comes back
 		// is a first frame rather than an answer - the server is asked either way.
-		void KeepAnalysis(const std::filesystem::path& path, const LensState& state);
+		void KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
+						  const SemanticOverlay& semantic);
 
 		// Drops the tickets outstanding for a document that has gone, so nothing waits on answers
 		// nobody will read.
 		void ForgetPendingFor(const std::filesystem::path& path);
 
-		void RestoreAnalysis(const Core::OpenItem& item, LensState& state);
+		void RestoreAnalysis(const Core::OpenItem& item, DocumentState& state);
 
 		static std::optional<std::filesystem::file_time_type> ModifiedTimeOf(
 			const std::filesystem::path& path);
 
-
-
-		void PruneLensStates();
+		// Drops the state of every document that is no longer open, telling the server about the
+		// ones it served and putting their analysis away first. See m_States for why this runs
+		// once a frame rather than where a path changes.
+		void PruneDocumentStates();
 
 		// Sends what the frame's edits and geometry mean for this document's lenses, and asks for
 		// the counts the rows on screen still need.
@@ -503,11 +517,6 @@ namespace Graphite {
 
 		std::optional<TransientMessage> m_TransientMessage;
 
-		// Keyed and pruned alongside m_Syntax, for the document it belongs to: RequestDefinition
-		// reads the entry for whichever document it was asked about, which for F12 is the last
-		// position that document's own draw left behind.
-		std::map<std::filesystem::path, CaretScreenPosition> m_CaretScreen;
-
 		// At most one definition request outstanding at a time: a second F12 (or Ctrl+click)
 		// before the first has answered cancels it, on the same reasoning as m_PendingCounts —
 		// only the most recent question is one the user is still waiting on.
@@ -543,54 +552,6 @@ namespace Graphite {
 
 		std::optional<PendingReferences> m_PendingReferences;
 
-		// Keyed by path rather than by index: the document list is reordered by dragging tabs
-		// and compacted on close, and either would hand a document another one's colours.
-		//
-		// A side-map on a container that owns the identity: Core::DocumentSet::RewritePaths can
-		// change item.Path (a rename on disk, or of a directory an open document lives under)
-		// without telling this map, so the entry under the old path would otherwise sit here
-		// for the rest of the process. PruneSyntaxCaches is what recovers that rather than a
-		// rewrite at the rename site — the rename happens in Core, this map is Graphite's own,
-		// and a prune is the one fix that does not need the rename to know this map exists.
-		std::map<std::filesystem::path, SyntaxCache> m_Syntax;
-
-		// Keyed and pruned exactly as m_Syntax is, and for the same reason: DocumentSet owns the
-		// path this is keyed on and can rewrite it without telling this map, so an entry orphaned
-		// by a rename would otherwise hold its declarations for the rest of the process.
-		std::map<std::filesystem::path, LensState> m_Lenses;
-
-		// What an outstanding ticket was asked for. Tickets are unique across every server, which
-		// is what lets one map per question kind route an answer back to the document — and to the
-		// row — that wanted it, without either server's numbering colliding with the other's.
-		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSymbols;
-
-		// The colours a server said this document's identifiers should take, one overlay per
-		// document, beside m_Syntax and m_Lenses and pruned with them. Separate from the lens
-		// state rather than folded into it: they answer different questions about the same file
-		// and nothing about one is needed to read the other.
-		std::map<std::filesystem::path, SemanticOverlay> m_Semantic;
-
-		// Where each document's viewport sat when it last drew, so a screen-row mapping that
-		// changes between frames — a lens row arriving, a narrower window rewrapping — does not
-		// slide the file out from under the reader. Beside m_Semantic and pruned with it.
-		//
-		// Kept for every document rather than only for served ones: lenses are the trigger that
-		// was noticed, but rewrapping moves rows in a plain text file just as well, and an anchor
-		// costs three numbers.
-		std::map<std::filesystem::path, ScrollAnchor> m_Anchors;
-
-		// Top lines restored from the last launch that no frame has shown yet. See PendingTopLine.
-		std::map<std::filesystem::path, PendingTopLine> m_PendingTopLines;
-
-		// Documents still open from a folder another one replaced. See CarryOverOpenDocuments.
-		// Swept with m_Anchors when their tabs close.
-		std::set<std::filesystem::path> m_CarriedOver;
-
-		// Identities of documents reopened by RestoreState whose window has not been submitted
-		// yet. Their first frame docks them where imgui.ini remembers rather than where the
-		// user last focused.
-		std::set<std::string> m_RestoredIdentities;
-
 		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
 		// and the generation of the answer m_Diagnostics held for this path, so a rebuild is
 		// skipped on every frame that changed none of them. Generation rather than the answered
@@ -605,11 +566,76 @@ namespace Graphite {
 			std::uint64_t Generation = 0;
 		};
 
-		// The drawable form of what m_Diagnostics holds for one document, beside m_Semantic and
-		// pruned with it for the same reason: DiagnosticFor is called for every drawn document,
-		// including those no server serves.
-		std::map<std::filesystem::path, DiagnosticOverlay> m_DiagnosticOverlays;
-		std::map<std::filesystem::path, DiagnosticGuard> m_DiagnosticGuards;
+		struct DocumentState
+		{
+			// Empty until the document first draws, which is when SyntaxFor gives it a lexer for
+			// the language its path implies.
+			std::optional<SyntaxCache> Syntax;
+
+			// Empty for a document no language server serves, which is what puts a null
+			// LensModel on EditorView. Filled by LensFor, which is also what opens the document
+			// with the server, so a value here is a document the server has been told about and
+			// PruneDocumentStates has to tell it closed.
+			std::optional<LensState> Lens;
+
+			// The colours a server said this document's identifiers should take. Separate from
+			// the lens state rather than folded into it: they answer different questions about
+			// the same file, nothing about one is needed to read the other, and a document no
+			// server serves still draws through an empty overlay.
+			SemanticOverlay Semantic;
+
+			// The drawable form of what m_Diagnostics holds for this document, and what it was
+			// last built from. See DiagnosticFor.
+			DiagnosticOverlay Diagnostics;
+			DiagnosticGuard DiagnosticsBuiltFrom;
+
+			// Where the viewport sat when the document last drew, so a screen-row mapping that
+			// changes between frames — a lens row arriving, a narrower window rewrapping — does
+			// not slide the file out from under the reader. Kept for every document rather than
+			// only for served ones: rewrapping moves rows in a plain text file just as well.
+			ScrollAnchor Anchor;
+
+			// A top line restored from the last launch that no frame has shown yet. See
+			// PendingTopLine.
+			std::optional<PendingTopLine> PendingTop;
+
+			// Still open from a folder another one replaced. See CarryOverOpenDocuments.
+			bool CarriedOver = false;
+
+			// Where the caret last drew. RequestDefinition reads it for whichever document it
+			// was asked about, which for F12 is the last position that document's own draw left
+			// behind.
+			CaretScreenPosition CaretScreen;
+
+			// The caret's blink, a held undo's ramp and the last bracket search.
+			EditorWidgetState Widget;
+		};
+
+		// One entry per open document, keyed by path rather than by index: the document list is
+		// reordered by dragging tabs and compacted on close, and either would hand a document
+		// another one's state.
+		//
+		// A side-map on a container that owns the identity: Core::DocumentSet::RewritePaths can
+		// change item.Path (a rename on disk, or of a directory an open document lives under)
+		// without telling this map, so the entry under the old path would otherwise sit here for
+		// the rest of the process. PruneDocumentStates is what recovers that rather than a
+		// rewrite at the rename site — the rename happens in Core, this map is Graphite's own,
+		// and a prune is the one fix that does not need the rename to know this map exists. The
+		// renamed document starts over under its new path: a fresh syntax cache lexed for
+		// whatever language the new extension implies, and a fresh didOpen with the server.
+		// Only CarriedOver follows the rename, moved by HandleRootMoved, which is the one rename
+		// this class hears about.
+		std::map<std::filesystem::path, DocumentState> m_States;
+
+		// What an outstanding ticket was asked for. Tickets are unique across every server, which
+		// is what lets one map per question kind route an answer back to the document — and to the
+		// row — that wanted it, without either server's numbering colliding with the other's.
+		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSymbols;
+
+		// Identities of documents reopened by RestoreState whose window has not been submitted
+		// yet. Their first frame docks them where imgui.ini remembers rather than where the
+		// user last focused.
+		std::set<std::string> m_RestoredIdentities;
 
 		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;
 
