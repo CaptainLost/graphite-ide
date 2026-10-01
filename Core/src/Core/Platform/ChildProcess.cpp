@@ -97,27 +97,25 @@ namespace Core {
 			}
 		}
 
-		STARTUPINFOW startupInfo{};
-		startupInfo.cb = sizeof(startupInfo);
-		startupInfo.dwFlags = STARTF_USESTDHANDLES;
-		startupInfo.hStdInput = childStdinRead;
-		startupInfo.hStdOutput = childStdoutWrite;
-		startupInfo.hStdError = childStdError;
+		// Without an explicit list CreateProcessW hands the child every inheritable handle this
+		// process holds at that instant, including ones belonging to unrelated work on other
+		// threads. The list names exactly the three the child is meant to have. It must not
+		// repeat a handle, so a stderr that is the same object as another entry is listed once.
+		std::array<HANDLE, 3> inheritedHandles{childStdinRead, childStdoutWrite, childStdError};
+		std::size_t inheritedCount = 2;
 
-		PROCESS_INFORMATION processInfo{};
-
-		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
-		const std::wstring directory = workingDirectory.wstring();
-
-		const BOOL created = ::CreateProcessW(
-			nullptr, commandLine.data(), nullptr, nullptr, TRUE,
-			CREATE_NO_WINDOW, nullptr, directory.c_str(), &startupInfo, &processInfo);
-
-		if (!created)
+		if (childStdError != childStdinRead && childStdError != childStdoutWrite)
 		{
-			const Error error{ErrorCodeFor(::GetLastError()),
-							  std::format("cannot start '{}'", ToUtf8(program))};
+			inheritedHandles[inheritedCount++] = childStdError;
+		}
 
+		// A console stderr from GetStdHandle is not necessarily inheritable, and a handle in the
+		// list that is not makes CreateProcessW fail. Mark it so; the flag is a property of the
+		// handle and harmless for a handle the process already shares with its children.
+		::SetHandleInformation(childStdError, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+
+		const auto closeAll = [&]
+		{
 			::CloseHandle(childStdinRead);
 			::CloseHandle(childStdinWrite);
 			::CloseHandle(childStdoutRead);
@@ -127,7 +125,60 @@ namespace Core {
 			{
 				::CloseHandle(childStdError);
 			}
+		};
 
+		SIZE_T attributeListSize = 0;
+		::InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeListSize);
+
+		std::vector<std::byte> attributeStorage(attributeListSize);
+		auto* attributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeStorage.data());
+
+		if (!::InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize))
+		{
+			const Error error{ErrorCodeFor(::GetLastError()),
+							  "cannot prepare the child's handle list"};
+			closeAll();
+			return error;
+		}
+
+		if (!::UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+										 inheritedHandles.data(),
+										 inheritedCount * sizeof(HANDLE), nullptr, nullptr))
+		{
+			const Error error{ErrorCodeFor(::GetLastError()),
+							  "cannot restrict the child's inherited handles"};
+			::DeleteProcThreadAttributeList(attributeList);
+			closeAll();
+			return error;
+		}
+
+		STARTUPINFOEXW startupInfo{};
+		startupInfo.StartupInfo.cb = sizeof(startupInfo);
+		startupInfo.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+		startupInfo.StartupInfo.hStdInput = childStdinRead;
+		startupInfo.StartupInfo.hStdOutput = childStdoutWrite;
+		startupInfo.StartupInfo.hStdError = childStdError;
+		startupInfo.lpAttributeList = attributeList;
+
+		PROCESS_INFORMATION processInfo{};
+
+		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
+		const std::wstring directory = workingDirectory.wstring();
+
+		const BOOL created = ::CreateProcessW(
+			nullptr, commandLine.data(), nullptr, nullptr, TRUE,
+			CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr, directory.c_str(),
+			&startupInfo.StartupInfo, &processInfo);
+
+		// Capture before DeleteProcThreadAttributeList can overwrite the thread's last error.
+		const DWORD createError = created ? ERROR_SUCCESS : ::GetLastError();
+		::DeleteProcThreadAttributeList(attributeList);
+
+		if (!created)
+		{
+			const Error error{ErrorCodeFor(createError),
+							  std::format("cannot start '{}'", ToUtf8(program))};
+			closeAll();
 			return error;
 		}
 
@@ -255,14 +306,10 @@ namespace Core {
 			return false;
 		}
 
-		DWORD exitCode = 0;
-
-		if (!::GetExitCodeProcess(static_cast<HANDLE>(m_Process), &exitCode))
-		{
-			return false;
-		}
-
-		return exitCode == STILL_ACTIVE;
+		// The exit code cannot answer this: a process may legitimately exit with 259, the value
+		// GetExitCodeProcess reports (as STILL_ACTIVE) for one that has not ended. The process
+		// object is signalled once it has ended, so a zero-timeout wait is the unambiguous test.
+		return ::WaitForSingleObject(static_cast<HANDLE>(m_Process), 0) == WAIT_TIMEOUT;
 #else
 		return false;
 #endif

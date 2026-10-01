@@ -4,6 +4,7 @@
 
 #include "TempDirectory.h"
 
+#include <chrono>
 #include <string>
 #include <thread>
 
@@ -20,6 +21,16 @@ namespace {
 		}
 
 		return text;
+	}
+
+	// The output pipe closes as the child is torn down, which can be a moment before its process
+	// object is signalled, so give the exit a bounded time to become visible.
+	void WaitForExit(const Core::ChildProcess& process)
+	{
+		for (int attempt = 0; attempt < 100 && process.IsRunning(); ++attempt)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+		}
 	}
 }
 
@@ -76,6 +87,7 @@ TEST_CASE("ChildProcess terminating the child releases a thread blocked in Read"
 
 	process.Terminate();
 	reader.join();
+	WaitForExit(process);
 
 	CHECK_FALSE(process.IsRunning());
 }
@@ -87,4 +99,22 @@ TEST_CASE("ChildProcess reports a program that does not exist")
 
 	CHECK_FALSE(process);
 	CHECK(process.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("ChildProcess reports a child that exited with code 259 as not running")
+{
+	// 259 is STILL_ACTIVE, the value GetExitCodeProcess reports for a live process, so a check
+	// that compares the exit code with it cannot tell this exit from a child that never ended.
+	auto started = Core::ChildProcess::Start("cmd.exe", {"/c", "exit 259"},
+											 std::filesystem::current_path());
+
+	REQUIRE(started);
+
+	Core::ChildProcess& process = *started.GetValue();
+
+	ReadAll(process);
+
+	WaitForExit(process);
+
+	CHECK_FALSE(process.IsRunning());
 }
