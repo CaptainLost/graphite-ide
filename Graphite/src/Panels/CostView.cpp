@@ -4,6 +4,7 @@
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"
+#include "Panels/StackedBarChart.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
@@ -14,7 +15,6 @@
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <implot.h>
-#include <implot_internal.h>
 
 #include <algorithm>
 #include <array>
@@ -110,12 +110,6 @@ namespace Graphite {
 			ImGui::EndTable();
 		}
 
-		// The chart's height, in lines of text.
-		constexpr float kChartLines = 16.0f;
-
-		// The tooltip's widest line, in font sizes, before a long heading is cut.
-		constexpr float kTooltipEms = 36.0f;
-
 		// The most of a prompt a tooltip shows. A pasted log can run to tens of thousands of
 		// bytes, which no tooltip has room for.
 		constexpr std::size_t kTooltipPromptBytes = 2000;
@@ -140,21 +134,11 @@ namespace Graphite {
 			ImGui::PopTextWrapPos();
 		}
 
-		// Room left above the tallest bar and the total's end, so neither is drawn on the plot's
-		// edge. ImPlot pads each end of a fit by half of this; both value axes hold their floor
-		// at zero, so all of it goes on top.
-		constexpr float kFitPadding = 0.12f;
-
 		// The cost's layers, bottom up and indexed by CostLayer: the three the context is made of,
 		// named and coloured as the Requests tab's context chart draws them, and the output on
 		// top. They name the legend entries too.
 		constexpr const char* kLayerNames[kCostLayers] = {"Cache read", "Cache write", "Uncached input", "Output"};
 		constexpr const char* kTotalSeries = "Total";
-
-		ImVec4 Colour(ImU32 colour)
-		{
-			return ImGui::ColorConvertU32ToFloat4(colour);
-		}
 
 		ImU32 LayerColour(const SessionPalette& palette, std::size_t layer)
 		{
@@ -177,15 +161,6 @@ namespace Graphite {
 			layers[static_cast<std::size_t>(CostLayer::Input)] = buckets.Input;
 			layers[static_cast<std::size_t>(CostLayer::Output)] = buckets.Output;
 			return layers;
-		}
-
-		// Whether the legend shows the series: an item ImPlot has not seen yet is shown, which
-		// is how it starts. Only after SetupFinish, which pushes the id the items are hashed
-		// under.
-		bool SeriesShown(const char* label)
-		{
-			const ImPlotItem* item = ImPlot::GetItem(label);
-			return item == nullptr || item->Show;
 		}
 
 		// Written as the Requests tab writes a cost, in its table and its chart's tooltip, so the
@@ -224,43 +199,13 @@ namespace Graphite {
 
 			ColouredText(ink, "Cost " + money(cost));
 
-			std::array<std::string, kCostLayers> numbers;
-			float labelWidth = 0.0f;
-			float numberWidth = 0.0f;
-
+			std::array<SwatchRow, kCostLayers> rows;
 			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
 			{
-				numbers[layer] = money(layers[layer]);
-				labelWidth = std::max(labelWidth, ImGui::CalcTextSize(kLayerNames[layer]).x);
-				numberWidth = std::max(numberWidth, ImGui::CalcTextSize(numbers[layer].c_str()).x);
+				rows[layer] = {.Colour = LayerColour(palette, layer), .Label = kLayerNames[layer], .Number = money(layers[layer])};
 			}
 
-			const float lineHeight = ImGui::GetTextLineHeight();
-			const float space = ImGui::GetStyle().ItemSpacing.x;
-			const float indent = ImGui::GetFontSize();
-			const float swatch = std::round(lineHeight * 0.55f);
-
-			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
-			{
-				const ImVec2 start = ImGui::GetCursorScreenPos();
-				const float swatchTop = std::floor(start.y + (lineHeight - swatch) * 0.5f);
-
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(start.x + indent, swatchTop),
-														  ImVec2(start.x + indent + swatch, swatchTop + swatch),
-														  LayerColour(palette, layer));
-
-				ImVec2 at(start.x + indent + swatch + space, start.y);
-				const float numbersRight = at.x + labelWidth + 2.0f * space + numberWidth;
-
-				DrawPiece(at, ink, kLayerNames[layer]);
-
-				at.x = numbersRight - ImGui::CalcTextSize(numbers[layer].c_str()).x;
-				DrawPiece(at, ink, numbers[layer]);
-
-				// The pieces go through the draw list; this is the line's one item, as wide as
-				// they reach, so the tooltip is sized to them.
-				ImGui::Dummy(ImVec2(numbersRight - start.x, lineHeight));
-			}
+			DrawSwatchRows(rows, ink);
 
 			ColouredText(palette.TextDisabled, "Session so far " + Dollars(total));
 
@@ -284,16 +229,9 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			// Kept pushed through EndPlot, which is where ImPlot reads it when it fits the axes.
-			ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
-
-			// The title's line is where DrawAxisCaptions writes too. The id behind "###" is one for
-			// both scopes, so a switch keeps the legend's state.
-			const std::string plotId = std::string(title) + "###costChart";
-
-			if (!ImPlot::BeginPlot(plotId.c_str(), ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines)))
+			// One id for both scopes, so a switch keeps the legend's state.
+			if (!BeginBarChart(title, "costChart"))
 			{
-				ImPlot::PopStyleVar();
 				return std::nullopt;
 			}
 
@@ -302,26 +240,9 @@ namespace Graphite {
 			SetupCountedAxis();
 			xAxis.Setup(0.5, static_cast<double>(count) + 0.5);
 
-			// Both value axes stand on zero: with the floor free the fit would pad below it too, and
-			// the running total, fitted to its own first and last values, would make any growth
-			// look like it filled the chart.
-			// Named above the plot by DrawAxisCaptions, level, rather than on their side. RangeFit
-			// fits them to the bars in view, so a zoomed-in stretch is not flattened by the rest.
-			ImPlot::SetupAxis(ImAxis_Y1, nullptr,
-							  ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin);
-			ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Once);
-			ImPlot::SetupAxis(ImAxis_Y2, nullptr,
-							  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit |
-								  ImPlotAxisFlags_LockMin);
-			ImPlot::SetupAxisLimits(ImAxis_Y2, 0.0, 1.0, ImPlotCond_Once);
-
-			// Outside and above, so it never covers the first bars.
-			ImPlot::SetupLegend(ImPlotLocation_North, ImPlotLegendFlags_Outside | ImPlotLegendFlags_Horizontal);
-
-			// Finished by hand so the legend's show state can be read before anything is plotted.
-			ImPlot::SetupFinish();
-
-			DrawAxisCaptions("Dollars", "Total dollars");
+			// Both value axes stand on zero: the running total, fitted to its own first and last
+			// values, would make any growth look like it filled the chart.
+			FinishBarChartSetup({.BarCaption = "Dollars", .LineCaption = "Total dollars", .LineFromZero = true});
 
 			// Under the bars, as the Requests chart bands its selection: a bar is one slot wide.
 			if (selected && *selected < layers.size())
@@ -346,30 +267,22 @@ namespace Graphite {
 					tops[layer][index] = stacked[layer];
 			}
 
-			// Stacked by drawing each layer's bar from the top down, every one over the last, to
-			// the height the layers the legend shows reach, in the scheme's colours rather than
-			// the colormap's. A hidden layer is still plotted, so its legend entry stays to show
-			// it again; ImPlot draws nothing for it, and the layers above it come down by what it
-			// held.
-			ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
-
-			for (std::size_t layer = kCostLayers; layer-- > 0;)
+			std::array<BarLayer, kCostLayers> barLayers{};
+			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
 			{
-				const ImVec4 colour = Colour(LayerColour(palette, layer));
-				ImPlot::SetNextFillStyle(colour);
-				ImPlot::SetNextLineStyle(colour);
-				ImPlot::PlotBars(kLayerNames[layer], xs.data(), tops[layer].data(), count, kBarFraction);
+				barLayers[layer] = {kLayerNames[layer], PlotColour(LayerColour(palette, layer)), tops[layer].data()};
 			}
 
+			PlotStackedBars(barLayers, xs.data(), count, kBarFraction);
+
 			ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
-			ImPlot::SetNextLineStyle(Colour(palette.Accent));
+			ImPlot::SetNextLineStyle(PlotColour(palette.Accent));
 			ImPlot::PlotLine(kTotalSeries, xs.data(), total.data(), count);
 
 			xAxis.Track();
 
-			// A click over a bar's column picks it, as in the Requests chart, and only without a
-			// drag, which pans the chart. The legend is outside the plot, so a click on it never
-			// lands here.
+			// A click over a bar's column picks it, as in the Requests chart. The legend is outside
+			// the plot, so a click on it never lands here.
 			std::optional<std::size_t> clicked;
 
 			if (ImPlot::IsPlotHovered())
@@ -379,19 +292,20 @@ namespace Graphite {
 				const double nearest = std::clamp(std::round(x), 1.0, static_cast<double>(count));
 				const std::size_t index = static_cast<std::size_t>(nearest) - 1;
 
-				if (x >= 0.5 && x <= static_cast<double>(count) + 0.5 && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
-					!ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
+				if (x >= 0.5 && x <= static_cast<double>(count) + 0.5 && ColumnClicked())
+				{
 					clicked = index;
+				}
 
 				// The tooltip over the bar itself, not the gap beside it, and not while the chart
 				// is being panned under the mouse.
-				if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) && std::abs(x - nearest) <= kBarFraction * 0.5 &&
-					index < bars.size())
+				if (!ChartPanning() && std::abs(x - nearest) <= kBarFraction * 0.5 && index < bars.size())
+				{
 					DrawBarTooltip(bars[index], layers[index], total[index], palette);
+				}
 			}
 
-			ImPlot::EndPlot();
-			ImPlot::PopStyleVar();
+			EndBarChart();
 			return clicked;
 		}
 
@@ -651,7 +565,7 @@ namespace Graphite {
 					// tab's rows are. The open turn's row is washed in the accent, so it is told
 					// apart from the row under the mouse, which the theme's header colour marks.
 					ImGui::PushID(row);
-					ImVec4 wash = Colour(palette.Accent);
+					ImVec4 wash = ImGui::ColorConvertU32ToFloat4(palette.Accent);
 					wash.w = 0.35f;
 					ImGui::PushStyleColor(ImGuiCol_Header, wash);
 					if (ImGui::Selectable("##row", selected == index,

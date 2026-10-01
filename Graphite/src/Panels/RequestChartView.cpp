@@ -4,6 +4,7 @@
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"
+#include "Panels/StackedBarChart.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
 
@@ -15,32 +16,17 @@
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <span>
+#include <string>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
-		// The chart's height, in lines of text: tall enough to tell a cache rebuild from its
-		// neighbours, short enough to leave most of the tab to the table. As tall as the Cost
-		// tab's, so the two plots read at the same size under the same legend and title rows.
-		constexpr float kChartLines = 16.0f;
-
 		constexpr std::size_t kToolNameBytes = 80;
-
-		// The bar tooltip's widest line, in font sizes, before a long label is cut.
-		constexpr float kTooltipEms = 36.0f;
 
 		// How strongly a request the filters leave out is drawn.
 		constexpr float kDimAlpha = 0.25f;
-
-		// Headroom added above the tallest bar and the line's peak when the value axes fit, as a
-		// share of what they show. ApplyFit pads each end of the range it fits by half of this,
-		// so it buys about 6% above the tallest bar and the line's peak (Y1's floor is held at
-		// zero, see SetupAxisLimits below, so this only ever adds room above; Y2 has no such
-		// floor and is padded on both ends) — on a SymLog axis, and whenever 6% is still only a
-		// few pixels, that is not enough room for the rebuild marker, which is why
-		// DrawRebuildMarkers clamps it into the plot instead of relying on this alone.
-		constexpr float kFitPadding = 0.12f;
 
 		// The tooltip's hit test's minimum size, in font sizes rather than in plot units: on the
 		// clock axis a bar is kBarFraction of the smallest gap between responses, which on a
@@ -82,14 +68,9 @@ namespace Graphite {
 			ImU32 LineColour = 0;
 		};
 
-		ImVec4 Colour(ImU32 colour)
-		{
-			return ImGui::ColorConvertU32ToFloat4(colour);
-		}
-
 		ImVec4 Faded(ImU32 colour, float alpha)
 		{
-			ImVec4 faded = Colour(colour);
+			ImVec4 faded = PlotColour(colour);
 			faded.w *= alpha;
 			return faded;
 		}
@@ -138,15 +119,6 @@ namespace Graphite {
 
 			return layout;
 		}
-
-		// Whether the legend shows the series: an item ImPlot has not seen yet is shown, which
-		// is how it starts. Only after SetupFinish, which pushes the id the items are hashed
-		// under.
-		bool SeriesShown(const char* label)
-		{
-			const ImPlotItem* item = ImPlot::GetItem(label);
-			return item == nullptr || item->Show;
-		}
 	}
 
 	std::optional<std::size_t> RequestChartView::Draw(const RequestChartInput& input, const ConversationContext& context)
@@ -174,17 +146,8 @@ namespace Graphite {
 			plotStyle.Use24HourClock = was24Hour;
 		};
 
-		// Kept pushed through EndPlot, which is where ImPlot's ApplyFit reads it (BeginPlot's
-		// SetupFinish is too early), and popped on every path out of here, including the plot
-		// staying closed.
-		ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
-		// The title's line is where DrawAxisCaptions writes too.
-		const std::string plotId = std::string(layout.Title) + "###requestsChart";
-		const bool open = ImPlot::BeginPlot(plotId.c_str(), ImVec2(-1.0f, ImGui::GetFontSize() * kChartLines));
-
-		if (!open)
+		if (!BeginBarChart(layout.Title, "requestsChart"))
 		{
-			ImPlot::PopStyleVar();
 			restoreStyle();
 			return clicked;
 		}
@@ -220,29 +183,12 @@ namespace Graphite {
 			m_XAxis.Setup(*low - pad, *high + pad);
 		}
 
-		// The value axes are named above the plot by DrawAxisCaptions, level, rather than on
-		// their side beside their ticks.
-		ImPlot::SetupAxis(ImAxis_Y1, nullptr,
-						  ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin);
-
-		// ApplyFit pads both ends of the range it fits, and with the floor free that lifts the
-		// bars off the axis; held at zero here, once, so they still stand on it.
-		ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Once);
-
-		if (layout.Y1Scale != ImPlotScale_Linear)
-			ImPlot::SetupAxisScale(ImAxis_Y1, layout.Y1Scale);
-
-		if (layout.LineName != nullptr)
-			ImPlot::SetupAxis(ImAxis_Y2, nullptr,
-							  ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit);
-
-		// Outside and above, so it never covers the first bars.
-		ImPlot::SetupLegend(ImPlotLocation_North, ImPlotLegendFlags_Outside | ImPlotLegendFlags_Horizontal);
-
-		// Finished by hand so the legend's show state can be read before anything is plotted.
-		ImPlot::SetupFinish();
-
-		DrawAxisCaptions(layout.Y1Label, layout.LineName != nullptr ? layout.Y2Label : nullptr);
+		// The line's axis, where the mode has one, is fitted to the line alone and padded at
+		// both ends: a rate has no floor worth standing on.
+		FinishBarChartSetup({.BarCaption = layout.Y1Label,
+							 .BarScale = layout.Y1Scale,
+							 .LineCaption = layout.LineName != nullptr ? layout.Y2Label : nullptr,
+							 .LineFromZero = false});
 
 		Shown shown{};
 		for (std::size_t layer = 0; layer < layout.LayerCount; ++layer)
@@ -253,50 +199,49 @@ namespace Graphite {
 		// Under the bars: drawn into the plot's draw list before any of them.
 		DrawSelectionBand(input.Selected, m_BarWidth / kBarFraction, palette.Accent);
 
-		// Stacked by drawing each layer's bar from the top down, every one over the last, to the
-		// height the layers the legend shows reach: PlotBarGroups takes its colours from the
-		// colormap and fixes them when an item is first seen, where this chart's must follow the
-		// scheme. A hidden layer is still plotted, so its legend entry stays to show it again;
-		// ImPlot draws nothing for it, and the layers above it come down by what it held. The
-		// requests the filters leave out are a second, faded set of bars with no legend entry
-		// of their own, left out with their layer.
-		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
+		// The requests the filters let through, a layer each with its legend entry; then the
+		// ones they leave out, a second, faded set of bars with no legend entry of their own,
+		// left out with their layer.
+		std::array<BarLayer, kMaxLayers> passing{};
+		for (std::size_t layer = 0; layer < layout.LayerCount; ++layer)
+		{
+			const ChartLayer& spec = layout.Layers[layer];
+			passing[layer] = {spec.Name, PlotColour(spec.Colour), m_PassTops[layer].data()};
+		}
+
+		PlotStackedBars(std::span(passing).first(layout.LayerCount), m_Xs.data(), count, m_BarWidth);
 
 		const bool anyLeftOut = std::any_of(m_Points.begin(), m_Points.end(), [&input](std::size_t position)
 											{ return position < input.Passes.size() && !input.Passes[position]; });
 
-		for (std::size_t layer = layout.LayerCount; layer-- > 0;)
-		{
-			const ChartLayer& spec = layout.Layers[layer];
-			const ImVec4 colour = Colour(spec.Colour);
-
-			ImPlot::SetNextFillStyle(colour);
-			ImPlot::SetNextLineStyle(colour);
-			ImPlot::PlotBars(spec.Name, m_Xs.data(), m_PassTops[layer].data(), count, m_BarWidth);
-		}
-
 		if (anyLeftOut)
 		{
-			for (std::size_t layer = layout.LayerCount; layer-- > 0;)
+			std::array<std::string, kMaxLayers> ids;
+			std::array<BarLayer, kMaxLayers> leftOut{};
+			std::size_t leftOutCount = 0;
+
+			for (std::size_t layer = 0; layer < layout.LayerCount; ++layer)
 			{
 				if (!shown[layer])
+				{
 					continue;
+				}
 
 				const ChartLayer& spec = layout.Layers[layer];
-				const std::string id = std::string("##leftOut") + spec.Name;
-				const ImVec4 colour = Faded(spec.Colour, kDimAlpha);
-
-				ImPlot::SetNextFillStyle(colour);
-				ImPlot::SetNextLineStyle(colour);
-				ImPlot::PlotBars(id.c_str(), m_Xs.data(), m_FailTops[layer].data(), count, m_BarWidth,
-								 ImPlotItemFlags_NoLegend);
+				ids[leftOutCount] = std::string("##leftOut") + spec.Name;
+				leftOut[leftOutCount] = {ids[leftOutCount].c_str(), Faded(spec.Colour, kDimAlpha),
+										 m_FailTops[layer].data()};
+				++leftOutCount;
 			}
+
+			PlotStackedBars(std::span(leftOut).first(leftOutCount), m_Xs.data(), count, m_BarWidth,
+							ImPlotItemFlags_NoLegend);
 		}
 
 		if (layout.LineName != nullptr)
 		{
 			ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
-			ImPlot::SetNextLineStyle(Colour(layout.LineColour));
+			ImPlot::SetNextLineStyle(PlotColour(layout.LineColour));
 			ImPlot::PlotLine(layout.LineName, m_Xs.data(), m_Line.data(), count, ImPlotLineFlags_SkipNaN);
 		}
 
@@ -322,16 +267,14 @@ namespace Graphite {
 				const std::size_t position = m_Points[nearest];
 
 				// A click anywhere over a request's column selects it in the table: the bars are
-				// too thin to be hit exactly once there are a few hundred of them. Taken on release
-				// and only without a drag, which pans the chart. The drag distance outlives the
-				// release that ends it, which is what makes it the test here.
-				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left))
+				// too thin to be hit exactly once there are a few hundred of them.
+				if (ColumnClicked())
+				{
 					clicked = position;
+				}
 
 				// The tooltip only over the bar itself, not the gap beside it, and not while the
-				// chart is being panned under the mouse. Asked of the button held now: the drag
-				// distance above is kept until the next click, and would hide the tooltip after
-				// any drag anywhere.
+				// chart is being panned under the mouse.
 				// Compared in pixels, not plot units: on the clock axis the bar is a fraction
 				// of a pixel wide, so half its width would almost never be hit. Floored at
 				// kMinHitEms of the font size, same reasoning as the selection band above.
@@ -342,14 +285,14 @@ namespace Graphite {
 				const float halfBarPixels = std::abs(barEdgePixelX - nearestPixelX);
 				const float hitHalfPixels = std::max(halfBarPixels, ImGui::GetFontSize() * kMinHitEms);
 
-				if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
-					std::abs(mousePixelX - nearestPixelX) <= hitHalfPixels)
+				if (!ChartPanning() && std::abs(mousePixelX - nearestPixelX) <= hitHalfPixels)
+				{
 					DrawTooltip(input, position, context);
+				}
 			}
 		}
 
-		ImPlot::EndPlot();
-		ImPlot::PopStyleVar();
+		EndBarChart();
 		restoreStyle();
 		return clicked;
 	}
@@ -616,51 +559,23 @@ namespace Graphite {
 			ColouredText(ink, total);
 
 			const ContextLayers layers = LayersOf(request);
-			std::array<std::string, kContextLayers> numbers;
-			float labelWidth = 0.0f;
-			float numberWidth = 0.0f;
+			std::array<SwatchRow, kContextLayers> rows;
 
 			for (std::size_t layer = 0; layer < kContextLayers; ++layer)
 			{
-				numbers[layer] = FormatTokens(static_cast<std::uint64_t>(layers[layer]));
-				labelWidth = std::max(labelWidth, ImGui::CalcTextSize(kContextNames[layer]).x);
-				numberWidth = std::max(numberWidth, ImGui::CalcTextSize(numbers[layer].c_str()).x);
-			}
-
-			const float lineHeight = ImGui::GetTextLineHeight();
-			const float space = ImGui::GetStyle().ItemSpacing.x;
-			const float indent = ImGui::GetFontSize();
-			const float swatch = std::round(lineHeight * 0.55f);
-
-			for (std::size_t layer = 0; layer < kContextLayers; ++layer)
-			{
-				const ImVec2 start = ImGui::GetCursorScreenPos();
-				const float swatchTop = std::floor(start.y + (lineHeight - swatch) * 0.5f);
-
-				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(start.x + indent, swatchTop),
-														  ImVec2(start.x + indent + swatch, swatchTop + swatch),
-														  ContextColour(palette, layer));
-
-				ImVec2 at(start.x + indent + swatch + space, start.y);
-				const float numbersRight = at.x + labelWidth + 2.0f * space + numberWidth;
-
-				DrawPiece(at, ink, kContextNames[layer]);
-
-				at.x = numbersRight - ImGui::CalcTextSize(numbers[layer].c_str()).x;
-				DrawPiece(at, ink, numbers[layer]);
+				rows[layer] = {.Colour = ContextColour(palette, layer),
+							   .Label = kContextNames[layer],
+							   .Number = FormatTokens(static_cast<std::uint64_t>(layers[layer]))};
 
 				// The cached share, on the layer it is the share of.
 				if (static_cast<ContextLayer>(layer) == ContextLayer::CacheRead && request.Context > 0)
 				{
-					at.x = numbersRight + 2.0f * space;
-					DrawPiece(at, palette.TextDisabled,
-							  std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "%");
+					rows[layer].Note = std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "%";
+					rows[layer].NoteColour = palette.TextDisabled;
 				}
-
-				// The pieces go through the draw list; this is the line's one item, as wide as
-				// they reach, so the tooltip is sized to them.
-				ImGui::Dummy(ImVec2(std::max(at.x, numbersRight) - start.x, lineHeight));
 			}
+
+			DrawSwatchRows(rows, ink);
 		}
 
 		std::string outcome;
