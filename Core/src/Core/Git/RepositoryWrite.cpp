@@ -2,12 +2,12 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Fs/FileSystem.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
-#include <algorithm>
 #include <format>
 #include <string>
 #include <vector>
@@ -57,13 +57,6 @@ namespace Core {
 			}
 
 			return index;
-		}
-
-		bool IsBlank(const std::string& text)
-		{
-			return std::ranges::all_of(text, [](char c) {
-				return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-			});
 		}
 	}
 
@@ -274,7 +267,7 @@ namespace Core {
 		// git refuses a commit with nothing to say, and so does this: the panel stops it
 		// first, but the engine is the backstop. An amend may leave the message empty, which
 		// means keeping the one it replaces.
-		if (!request.Amend && IsBlank(request.Message))
+		if (!request.Amend && Trimmed(request.Message).empty())
 		{
 			return Error{ErrorCode::InvalidArgument, "the commit message is empty"};
 		}
