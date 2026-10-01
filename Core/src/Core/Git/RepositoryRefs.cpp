@@ -9,8 +9,56 @@
 #include <algorithm>
 #include <format>
 #include <string>
+#include <string_view>
 
 namespace Core {
+
+	namespace {
+
+		RepositoryOperation OperationOf(int state)
+		{
+			switch (state)
+			{
+			case GIT_REPOSITORY_STATE_MERGE:
+				return RepositoryOperation::Merge;
+
+			case GIT_REPOSITORY_STATE_REVERT:
+			case GIT_REPOSITORY_STATE_REVERT_SEQUENCE:
+				return RepositoryOperation::Revert;
+
+			case GIT_REPOSITORY_STATE_CHERRYPICK:
+			case GIT_REPOSITORY_STATE_CHERRYPICK_SEQUENCE:
+				return RepositoryOperation::CherryPick;
+
+			case GIT_REPOSITORY_STATE_BISECT:
+				return RepositoryOperation::Bisect;
+
+			case GIT_REPOSITORY_STATE_REBASE:
+			case GIT_REPOSITORY_STATE_REBASE_INTERACTIVE:
+			case GIT_REPOSITORY_STATE_REBASE_MERGE:
+			case GIT_REPOSITORY_STATE_APPLY_MAILBOX_OR_REBASE:
+				return RepositoryOperation::Rebase;
+
+			case GIT_REPOSITORY_STATE_APPLY_MAILBOX:
+				return RepositoryOperation::ApplyMailbox;
+
+			default:
+				return RepositoryOperation::None;
+			}
+		}
+
+		// "refs/heads/main" to "main". An unborn HEAD is only a symbolic name, so there is
+		// no branch object to ask git_branch_name about.
+		std::string ShortBranchName(std::string_view full)
+		{
+			constexpr std::string_view prefix = "refs/heads/";
+
+			if (full.starts_with(prefix))
+				full.remove_prefix(prefix.size());
+
+			return std::string{full};
+		}
+	}
 
 	Result<std::vector<Branch>> Repository::QueryBranches() const
 	{
@@ -105,5 +153,69 @@ namespace Core {
 		});
 
 		return branches;
+	}
+
+	Result<HeadState> Repository::QueryHead() const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		HeadState head;
+		head.Operation = OperationOf(git_repository_state(m_Handle));
+
+		const int unborn = git_repository_head_unborn(m_Handle);
+
+		if (unborn < 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
+		}
+
+		if (unborn == 1)
+		{
+			head.Kind = HeadKind::Unborn;
+
+			git_reference* symbolic = nullptr;
+
+			if (git_reference_lookup(&symbolic, m_Handle, "HEAD") == 0)
+			{
+				if (const char* target = git_reference_symbolic_target(symbolic); target != nullptr)
+				{
+					head.BranchName = ShortBranchName(target);
+				}
+
+				git_reference_free(symbolic);
+			}
+
+			return head;
+		}
+
+		git_reference* reference = nullptr;
+
+		if (git_repository_head(&reference, m_Handle) != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
+		}
+
+		if (const git_oid* target = git_reference_target(reference); target != nullptr)
+		{
+			head.Commit = ToOid(*target);
+		}
+
+		if (git_repository_head_detached(m_Handle) == 1)
+		{
+			head.Kind = HeadKind::Detached;
+		}
+		else
+		{
+			head.Kind = HeadKind::Branch;
+			head.BranchName = git_reference_shorthand(reference);
+		}
+
+		git_reference_free(reference);
+		return head;
 	}
 }

@@ -3,6 +3,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Head.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Status.h"
@@ -83,6 +84,10 @@ namespace Core {
 		// no commit yet rather than a broken one - the same answer, and the same meaning, as
 		// asking a commit for a parent it does not have.
 		Result<Oid> HeadCommit() const;
+
+		// Where HEAD points and what git is in the middle of. Unlike HeadCommit, answers for
+		// a repository with no commits and for a detached HEAD rather than failing on them.
+		Result<HeadState> QueryHead() const;
 
 		// The file's bytes as they are staged. The two sides of a working-tree diff cannot
 		// both come from ReadBlob: a commit is the one thing neither of them is.

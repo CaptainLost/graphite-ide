@@ -160,6 +160,14 @@ public:
 		git_object_free(target);
 	}
 
+	// Points HEAD at the current commit directly, as `git checkout <hash>` does.
+	void Detach()
+	{
+		git_oid id{};
+		REQUIRE(git_reference_name_to_id(&id, m_Repository, "HEAD") == 0);
+		REQUIRE(git_repository_set_head_detached(m_Repository, &id) == 0);
+	}
+
 	std::string MergeCommit(const std::string& message, const std::string& otherBranch)
 	{
 		const git_oid treeId = StageEverything();
