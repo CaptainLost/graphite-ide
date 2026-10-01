@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Command/Chord.h"
+#include "Editor/ModalQuestion.h"
 #include "Settings/SettingsSection.h"
 
 #include <array>
@@ -21,7 +22,8 @@ namespace Graphite {
 	class KeyBindingsSection final : public SettingsSection
 	{
 	public:
-		KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys, std::function<void()> onChanged);
+		KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals,
+						   std::function<void()> onChanged);
 
 		std::string_view GetTitle() const override { return "Key Bindings"; }
 
@@ -29,9 +31,25 @@ namespace Graphite {
 
 		void OnEvent(Core::Event& event) override;
 
-		void OnDeactivated() override { CancelCapture(); }
+		// The question's popup is torn down with the section that renders it, and only this
+		// section's render can release the gate — so it has to be given back here.
+		void OnDeactivated() override;
 
 	private:
+		// One chord the user tried to bind and could not simply have, with the cell it was meant
+		// for. The owner is empty when the chord is one the toolkit keeps for itself, which is a
+		// refusal rather than a question: there is nobody to take it from, and Reason says why.
+		struct Conflict
+		{
+			Core::Chord Chord;
+			std::string Owner;
+			std::string Reason;
+			std::string Id;
+			std::size_t Slot = 0;
+
+			bool operator==(const Conflict&) const = default;
+		};
+
 		bool IsWaitingForChord() const;
 
 		void CancelCapture();
@@ -48,9 +66,11 @@ namespace Graphite {
 
 		void Apply(const std::string& id, std::size_t slot, const Core::Chord& chord);
 
-		void RenderConflictPopup();
+		void AskConflict(Conflict conflict);
 
-		void ForgetConflict();
+		void RenderConflictQuestion();
+
+		void TakeFromOwner(const Conflict& conflict);
 
 		bool Matches(const Core::Command& command) const;
 
@@ -69,14 +89,12 @@ namespace Graphite {
 		std::string m_Capturing;
 		std::size_t m_CapturingSlot = 0;
 
-		std::optional<Core::Chord> m_Conflict;
-		std::string m_ConflictOwner;
+		ModalQuestion<Conflict> m_ConflictQuestion;
 
-		// Set instead of the owner when the chord is one the toolkit keeps for itself, which
-		// is a refusal rather than a question: there is nobody to take it from.
-		std::string m_ConflictReason;
-
-		bool m_ConflictAsked = false;
+		// True from the moment a conflict is asked until the capture it belonged to is dealt
+		// with. A question that vanishes without an answer — Escape, or the panel hidden — is a
+		// "no", and the capture it interrupted must not resume.
+		bool m_ConflictPending = false;
 
 		std::array<char, 128> m_Filter{};
 	};

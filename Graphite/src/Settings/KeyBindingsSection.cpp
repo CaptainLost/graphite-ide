@@ -190,9 +190,17 @@ namespace Graphite {
 	}
 
 	KeyBindingsSection::KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys,
-										   std::function<void()> onChanged)
-		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged))
+										   ModalGate& modals, std::function<void()> onChanged)
+		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged)),
+		  m_ConflictQuestion(modals, kConflictPopup)
 	{
+	}
+
+	void KeyBindingsSection::OnDeactivated()
+	{
+		m_ConflictQuestion.Withdraw();
+		m_ConflictPending = false;
+		CancelCapture();
 	}
 
 	void KeyBindingsSection::OnImGuiRender()
@@ -226,7 +234,7 @@ namespace Graphite {
 			ImGui::EndTable();
 		}
 
-		RenderConflictPopup();
+		RenderConflictQuestion();
 	}
 
 	void KeyBindingsSection::OnEvent(Core::Event& event)
@@ -298,7 +306,7 @@ namespace Graphite {
 
 	bool KeyBindingsSection::IsWaitingForChord() const
 	{
-		return !m_Capturing.empty() && !m_Conflict.has_value() && m_WasFocused;
+		return !m_Capturing.empty() && !m_ConflictQuestion.IsAsked() && m_WasFocused;
 	}
 
 	void KeyBindingsSection::CancelCapture()
@@ -411,7 +419,7 @@ namespace Graphite {
 
 		// Not while the conflict question is up: the keys that answer it would otherwise
 		// read as a fresh capture.
-		if (capturing && !m_Conflict.has_value())
+		if (capturing && !m_ConflictQuestion.IsAsked())
 		{
 			// Capture reads raw key state, which no widget owns: without this fence, typing
 			// into the filter box while a cell waits would bind whatever was typed.
@@ -457,10 +465,7 @@ namespace Graphite {
 	{
 		if (const std::string_view reason = ReservedReasonFor(chord); !reason.empty())
 		{
-			m_Conflict = chord;
-			m_ConflictOwner.clear();
-			m_ConflictReason = std::string(reason);
-			m_ConflictAsked = false;
+			AskConflict(Conflict{chord, {}, std::string(reason), id, slot});
 			return;
 		}
 
@@ -472,9 +477,13 @@ namespace Graphite {
 			return;
 		}
 
-		m_Conflict = chord;
-		m_ConflictOwner = std::string(owner);
-		m_ConflictAsked = false;
+		AskConflict(Conflict{chord, std::string(owner), {}, id, slot});
+	}
+
+	void KeyBindingsSection::AskConflict(Conflict conflict)
+	{
+		m_ConflictQuestion.Ask(std::move(conflict));
+		m_ConflictPending = true;
 	}
 
 	void KeyBindingsSection::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
@@ -498,99 +507,85 @@ namespace Graphite {
 		m_OnChanged();
 	}
 
-	void KeyBindingsSection::RenderConflictPopup()
+	void KeyBindingsSection::RenderConflictQuestion()
 	{
-		if (!m_Conflict.has_value())
-		{
-			return;
-		}
-
-		// Opened here rather than where the conflict was noticed: a popup's id is relative
+		// Asked from here rather than where the conflict was noticed: a popup's id is relative
 		// to the ID stack it is opened under, and there it sits inside the table's per-row
 		// and per-cell PushIDs.
-		if (!m_ConflictAsked)
+		if (m_ConflictQuestion.Begin())
 		{
-			ImGui::OpenPopup(kConflictPopup);
-			m_ConflictAsked = true;
-		}
-		else if (!ImGui::IsPopupOpen(kConflictPopup))
-		{
-			// Closed by something other than the two buttons — Escape, or the panel being
-			// hidden and shown again. A dismissed question is a "no".
-			ForgetConflict();
-			return;
-		}
+			const Conflict& conflict = *m_ConflictQuestion.GetCurrent();
 
-		if (!ImGui::BeginPopupModal(kConflictPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			return;
-		}
-
-		// A reserved chord names no owner to take it from: the answer is only that it cannot
-		// be had, so the question loses its first button and becomes a statement.
-		if (!m_ConflictReason.empty())
-		{
-			ImGui::Text("%s cannot be bound: %s.", m_Conflict->ToString().c_str(),
-						m_ConflictReason.c_str());
-
-			if (ImGui::Button("OK"))
+			// A reserved chord names no owner to take it from: the answer is only that it cannot
+			// be had, so the question loses its first button and becomes a statement.
+			if (!conflict.Reason.empty())
 			{
-				ForgetConflict();
-				ImGui::CloseCurrentPopup();
+				ImGui::Text("%s cannot be bound: %s.", conflict.Chord.ToString().c_str(),
+							conflict.Reason.c_str());
+
+				if (ImGui::Button("OK"))
+				{
+					m_Capturing.clear();
+					m_ConflictPending = false;
+					m_ConflictQuestion.Answer();
+				}
+
+				m_ConflictQuestion.End();
+				return;
 			}
 
-			ImGui::EndPopup();
+			const Core::Command* owner = m_Commands.Find(conflict.Owner);
+			const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : conflict.Owner;
+
+			ImGui::Text("%s is already bound to %s.", conflict.Chord.ToString().c_str(),
+						ownerLabel.c_str());
+
+			if (ImGui::Button("Take it"))
+			{
+				// Copied out: Answer releases the question's payload.
+				const Conflict taken = conflict;
+
+				TakeFromOwner(taken);
+				m_ConflictPending = false;
+				m_ConflictQuestion.Answer();
+
+				APP_INFO("'{}' took {} from '{}'", taken.Id, taken.Chord.ToString(), taken.Owner);
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel"))
+			{
+				m_Capturing.clear();
+				m_ConflictPending = false;
+				m_ConflictQuestion.Answer();
+			}
+
+			m_ConflictQuestion.End();
 			return;
 		}
 
-		const Core::Command* owner = m_Commands.Find(m_ConflictOwner);
-		const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : m_ConflictOwner;
-
-		ImGui::Text("%s is already bound to %s.", m_Conflict->ToString().c_str(),
-					ownerLabel.c_str());
-
-		if (ImGui::Button("Take it"))
+		// Closed by something other than the buttons — Escape, or the panel being hidden and
+		// shown again. A dismissed question is a "no", and the capture it interrupted ends.
+		if (m_ConflictPending && !m_ConflictQuestion.IsAsked())
 		{
-			const std::string id = m_Capturing;
-			const std::size_t slot = m_CapturingSlot;
-			const Core::Chord chord = *m_Conflict;
-
-			if (const Core::Binding* current = m_Keys.For(m_ConflictOwner); current != nullptr)
-			{
-				std::vector<Core::Chord> chords = Flatten(current);
-				std::erase(chords, chord);
-
-				// Stored even when empty, as an override that binds nothing: clearing the
-				// override would hand the previous owner its factory chord straight back.
-				m_Keys.Override(m_ConflictOwner, Rebuild(std::move(chords)));
-			}
-
-			const std::string ownerId = m_ConflictOwner;
-
-			ForgetConflict();
-			Apply(id, slot, chord);
-			ImGui::CloseCurrentPopup();
-
-			CORE_INFO("'{}' took {} from '{}'", id, chord.ToString(), ownerId);
+			m_Capturing.clear();
+			m_ConflictPending = false;
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
-		{
-			ForgetConflict();
-			ImGui::CloseCurrentPopup();
-		}
-
-		ImGui::EndPopup();
 	}
 
-	void KeyBindingsSection::ForgetConflict()
+	void KeyBindingsSection::TakeFromOwner(const Conflict& conflict)
 	{
-		m_Conflict.reset();
-		m_ConflictOwner.clear();
-		m_ConflictReason.clear();
-		m_ConflictAsked = false;
-		m_Capturing.clear();
+		if (const Core::Binding* current = m_Keys.For(conflict.Owner); current != nullptr)
+		{
+			std::vector<Core::Chord> chords = Flatten(current);
+			std::erase(chords, conflict.Chord);
+
+			// Stored even when empty, as an override that binds nothing: clearing the
+			// override would hand the previous owner its factory chord straight back.
+			m_Keys.Override(conflict.Owner, Rebuild(std::move(chords)));
+		}
+
+		Apply(conflict.Id, conflict.Slot, conflict.Chord);
 	}
 }

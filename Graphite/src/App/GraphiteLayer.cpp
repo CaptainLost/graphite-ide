@@ -189,7 +189,7 @@ namespace Graphite {
 		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_Modals));
 		sections.push_back(Core::CreateScope<InterfaceSection>());
 		sections.push_back(Core::CreateScope<KeyBindingsSection>(
-			m_Commands, m_Keys, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
+			m_Commands, m_Keys, m_Modals, [this] { AppSettings::SaveKeyBindings(m_Keys); }));
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
 		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings));
