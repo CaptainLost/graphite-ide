@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/DocumentServerPort.h"
 #include "Editor/PreviewSemantics.h"
 #include "Lang/Analysis/WorkspaceAnalysis.h"
 #include "Lang/Analysis/WorkspaceAnalysisCoordinator.h"
@@ -92,7 +93,85 @@ namespace Graphite {
 		LanguageServices& m_Services;
 	};
 
-	// The production WorkspaceServersPort, beside the two above and for the same reason: the
+	// The production DocumentServerPort: DocumentWindows talks to this, the router's tests talk to
+	// a fake, and neither knows about the other. Every call is forwarded as it stands - the
+	// policy, such as starting a server before opening a document with it, stays with the caller
+	// that has always kept it.
+	class DocumentServicesPort final : public DocumentServerPort
+	{
+	public:
+		explicit DocumentServicesPort(LanguageServices& services) : m_Services(services) {}
+
+		void EnsureStarted(const std::filesystem::path& path, LanguageId language) override
+		{
+			m_Services.EnsureStarted(path, language);
+		}
+
+		void OpenDocument(const std::filesystem::path& path, LanguageId language,
+						  std::string text) override
+		{
+			m_Services.OpenDocument(path, language, std::move(text));
+		}
+
+		void ChangeDocument(const std::filesystem::path& path, LanguageId language,
+							std::string text) override
+		{
+			m_Services.ChangeDocument(path, language, std::move(text));
+		}
+
+		void SaveDocument(const std::filesystem::path& path, LanguageId language) override
+		{
+			m_Services.SaveDocument(path, language);
+		}
+
+		void CloseDocument(const std::filesystem::path& path, LanguageId language) override
+		{
+			m_Services.CloseDocument(path, language);
+		}
+
+		ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language) override
+		{
+			return m_Services.StatusFor(path, language);
+		}
+
+		LanguageServices::Ticket AskDefinition(const std::filesystem::path& path,
+											   LanguageId language,
+											   const FilePosition& where) override
+		{
+			return m_Services.AskDefinition(path, language, where);
+		}
+
+		LanguageServices::Ticket AskReferences(const std::filesystem::path& path,
+											   LanguageId language,
+											   const FilePosition& where) override
+		{
+			return m_Services.AskReferences(path, language, where);
+		}
+
+		LanguageServices::Ticket AskSymbols(const std::filesystem::path& path,
+											LanguageId language) override
+		{
+			return m_Services.AskSymbols(path, language);
+		}
+
+		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path& path,
+												   LanguageId language) override
+		{
+			return m_Services.AskSemanticTokens(path, language);
+		}
+
+		void Cancel(LanguageServices::Ticket ticket) override { m_Services.Cancel(ticket); }
+
+		void TakeAnswers(std::vector<LanguageServices::Answer>& answers) override
+		{
+			m_Services.TakeAnswers(answers);
+		}
+
+	private:
+		LanguageServices& m_Services;
+	};
+
+	// The production WorkspaceServersPort, beside the three above and for the same reason: the
 	// coordinator talks to this, the tests talk to a fake, and neither knows about the other.
 	class LanguageServicesWorkspacePort final : public WorkspaceServersPort
 	{

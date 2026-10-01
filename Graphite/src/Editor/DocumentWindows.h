@@ -2,11 +2,13 @@
 
 #include "Editor/ModalGate.h"
 #include "Editor/DiagnosticOverlay.h"
+#include "Editor/DocumentServerPort.h"
 #include "Editor/EditorWidgetState.h"
 #include "Editor/FindBar.h"
 #include "Editor/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/LensModel.h"
+#include "Editor/LspAnswerRouter.h"
 #include "Editor/PreviewSemantics.h"
 #include "Editor/ScrollAnchor.h"
 #include "Editor/SemanticOverlay.h"
@@ -76,11 +78,11 @@ namespace Graphite {
 	{
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
-						LanguageServices& languageServices, const DiagnosticsModel& diagnostics,
+						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
 						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
 						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis)
 			: m_Documents(documents),
-			  m_LanguageServices(languageServices),
+			  m_Server(server),
 			  m_Diagnostics(diagnostics),
 			  m_ChangeMarkers(changeMarkers),
 			  m_PreviewSemantics(previewSemantics),
@@ -91,7 +93,8 @@ namespace Graphite {
 			  m_SizeQuestion(modals, kSizeQuestionTitle),
 			  m_ReloadConflict(modals, kReloadConflictTitle),
 			  m_OverwriteConfirm(modals, kOverwriteConfirmTitle),
-			  m_CloseConfirm(modals, kCloseConfirmTitle)
+			  m_CloseConfirm(modals, kCloseConfirmTitle),
+			  m_Router(server, &DocumentWindows::FrameClock)
 		{
 		}
 
@@ -196,21 +199,6 @@ namespace Graphite {
 			// move, because the rows it holds no longer mean what they did.
 			std::set<std::size_t> Asked;
 
-			// Symbols are wanted from the moment the document opens and again after every edit.
-			// One request may be outstanding at a time, and a failed one — a server still
-			// starting, or still indexing — is retried on a clock rather than on the next frame,
-			// which would be one request per frame for as long as the server took.
-			bool WantSymbols = true;
-			bool SymbolsOutstanding = false;
-			double NextSymbolsAt = 0.0;
-
-			// What the serving server's state was the last frame this document drew, so a restart
-			// is noticed. A row already in `Asked` is never asked about again while it stays
-			// there, and the client that died failed everything it held outstanding — so without
-			// this the rows on screen at the moment of a crash keep a blank count for the rest of
-			// the session, however healthy the replacement server is.
-			ServerState LastServerState = ServerState::NotConfigured;
-
 			// Whether the document had unsaved edits the last frame it drew. Read at close, by
 			// which point the document is gone from DocumentSet and cannot be asked - and its
 			// answer decides whether this analysis is worth keeping at all.
@@ -272,10 +260,6 @@ namespace Graphite {
 		void KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
 						  const SemanticOverlay& semantic);
 
-		// Drops the tickets outstanding for a document that has gone, so nothing waits on answers
-		// nobody will read.
-		void ForgetPendingFor(const std::filesystem::path& path);
-
 		void RestoreAnalysis(const Core::OpenItem& item, DocumentState& state);
 
 		static std::optional<std::filesystem::file_time_type> ModifiedTimeOf(
@@ -302,17 +286,12 @@ namespace Graphite {
 		// longer looking at, with no symptom anywhere to say so.
 		void AnnounceReload(const Core::OpenItem& item);
 
-		void AskForSymbols(const Core::OpenItem& item, LensState& state);
-
-		void AskForSemanticTokens(const Core::OpenItem& item);
-
 		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 								 const EditorFrameResult& frame);
 
-		// The shared tail of both entry points: cancels whatever references request was already
-		// outstanding — a second question supersedes the first, on the same reasoning as
-		// m_PendingDefinition — issues the new one, and shows `panel` the symbol it is now
-		// working on.
+		// The shared tail of both entry points: asks through m_Router, which cancels whatever
+		// references request was already outstanding - a second question supersedes the first -
+		// and shows `panel` the symbol it is now working on.
 		void RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
 								 const FilePosition& where, const std::string& symbol,
 								 ReferencesPanel& panel);
@@ -324,38 +303,23 @@ namespace Graphite {
 									  std::size_t documentRow, ReferencesPanel& panel);
 
 		// Routes everything the servers have answered since the last frame to the document that
-		// asked. LanguageServices::TakeAnswers is the single drain point, so this is the only
-		// place answers are collected.
+		// asked, through m_Router. DocumentServerPort::TakeAnswers is the single drain point, so
+		// this is the only place answers are collected.
 		void CollectServerAnswers(ReferencesPanel& referencesPanel);
 
-		void ApplySymbolAnswer(const std::filesystem::path& path,
+		// What m_Router hands on. ApplySymbolAnswer says whether the document took them: false
+		// for one with no lens or no buffer to anchor them to.
+		bool ApplySymbolAnswer(const std::filesystem::path& path,
 							   const LanguageServices::Answer& answer);
 
-		// Where DrawEditor last put the caret on screen for a document, kept so a request that
-		// began at the keyboard — F12 never touches the mouse the way Ctrl+click does — still has
-		// somewhere on screen to open a popup near. One frame stale at worst: the value from the
-		// document's own last draw, read back before that document draws again.
-		struct CaretScreenPosition
-		{
-			float X = 0.0f;
-			float Y = 0.0f;
-		};
+		void ApplySemanticAnswer(const std::filesystem::path& path,
+								 const LanguageServices::Answer& answer);
 
-		// The caret's offset at the moment RequestDefinition asked stands in for a generation:
-		// nothing outside an edit moves it on its own, so an answer that finds a different offset
-		// there now is about a question the caret has since moved on from, and jumping on its
-		// strength would read as the editor jumping unprompted.
-		struct PendingDefinition
-		{
-			LanguageServices::Ticket Ticket{};
-			std::filesystem::path Path;
-			std::size_t CaretOffset = 0;
-			FilePosition From;
-			CaretScreenPosition Screen;
-		};
-
-		void ApplyDefinitionAnswer(const PendingDefinition& pending,
+		void ApplyDefinitionAnswer(const DefinitionQuestion& question,
 								   const LanguageServices::Answer& answer);
+
+		// The clock m_Router runs its retry delay on: ImGui's, in seconds.
+		static double FrameClock();
 
 		// Drawn like the other questions in Render(), before the per-document loop: OpenPopup is
 		// called from ApplyDefinitionAnswer, itself reached from CollectServerAnswers, which also
@@ -455,9 +419,9 @@ namespace Graphite {
 
 		Core::DocumentSet& m_Documents;
 
-		LanguageServices& m_LanguageServices;
+		DocumentServerPort& m_Server;
 
-		// Declared right after m_LanguageServices, which fills it - see GraphiteLayer.h for why
+		// Declared right after m_Server, whose services fill it - see GraphiteLayer.h for why
 		// that order matters. Held by reference: GraphiteLayer owns it and feeds it once a frame,
 		// before this class ever reads it.
 		const DiagnosticsModel& m_Diagnostics;
@@ -468,7 +432,7 @@ namespace Graphite {
 		ChangeMarkersModel& m_ChangeMarkers;
 
 		// The preview panes' own mediator to the language servers, held by reference like
-		// m_LanguageServices above and declared right after it for the same reason: this class
+		// m_Server above and declared right after it for the same reason: this class
 		// does not own it, GraphiteLayer does, and it must outlive every document window.
 		PreviewSemantics& m_PreviewSemantics;
 
@@ -517,11 +481,6 @@ namespace Graphite {
 
 		std::optional<TransientMessage> m_TransientMessage;
 
-		// At most one definition request outstanding at a time: a second F12 (or Ctrl+click)
-		// before the first has answered cancels it, on the same reasoning as m_PendingCounts —
-		// only the most recent question is one the user is still waiting on.
-		std::optional<PendingDefinition> m_PendingDefinition;
-
 		// What ResolveDefinition left to choose from, drawn by RenderDefinitionChoices until a
 		// choice is made or the popup is dismissed.
 		std::vector<Location> m_DefinitionChoices;
@@ -538,19 +497,6 @@ namespace Graphite {
 		// several different files, none of which need be open, and the popup outlives none of
 		// them — a fresh Show per row is what a search preview already does for the same reason.
 		PreviewContent m_DefinitionPreview;
-
-		// What a references request currently outstanding was asked about. At most one at a
-		// time, exactly like m_PendingDefinition: a second Shift+F12 or lens click before the
-		// first has answered cancels it, because only the most recent question is one the user
-		// is still waiting on, and its answer is dropped by generation — this ticket is the
-		// generation.
-		struct PendingReferences
-		{
-			LanguageServices::Ticket Ticket{};
-			std::string Symbol;
-		};
-
-		std::optional<PendingReferences> m_PendingReferences;
 
 		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
 		// and the generation of the answer m_Diagnostics held for this path, so a rebuild is
@@ -627,25 +573,15 @@ namespace Graphite {
 		// this class hears about.
 		std::map<std::filesystem::path, DocumentState> m_States;
 
-		// What an outstanding ticket was asked for. Tickets are unique across every server, which
-		// is what lets one map per question kind route an answer back to the document — and to the
-		// row — that wanted it, without either server's numbering colliding with the other's.
-		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSymbols;
-
 		// Identities of documents reopened by RestoreState whose window has not been submitted
 		// yet. Their first frame docks them where imgui.ini remembers rather than where the
 		// user last focused.
 		std::set<std::string> m_RestoredIdentities;
 
-		std::map<LanguageServices::Ticket, std::filesystem::path> m_PendingSemantic;
-
-		struct PendingCount
-		{
-			std::filesystem::path Path;
-			std::size_t DocumentRow = 0;
-		};
-
-		std::map<LanguageServices::Ticket, PendingCount> m_PendingCounts;
+		// Every question outstanding with the language servers - definition, references,
+		// declarations, colours, counts - and where its answer goes. Constructed after m_Server,
+		// which it holds.
+		LspAnswerRouter m_Router;
 
 		// One for every document rather than one each: what it holds is which document wants the
 		// keyboard next, and only one can.

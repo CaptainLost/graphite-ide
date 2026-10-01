@@ -181,6 +181,10 @@ namespace Graphite {
 		LanguageServicesPort m_PreviewPort{m_LanguageServices};
 		PreviewSemantics m_PreviewSemantics{m_PreviewPort};
 
+		// What m_DocumentWindows asks the servers through. Declared after m_LanguageServices,
+		// which it forwards to, and before m_DocumentWindows, which holds it by reference.
+		DocumentServicesPort m_DocumentPort{m_LanguageServices};
+
 		// Read by LanguageSection, which m_Panels owns, so this is declared before m_Panels for
 		// the same reason m_EditorSettings is.
 		AnalysisSettings m_AnalysisSettings{m_AppSettings};
@@ -214,7 +218,7 @@ namespace Graphite {
 		// Tabs a context menu asked to close, taken by their owners on the next frame.
 		Core::TabCloseRequests m_TabCloseRequests;
 
-		// Declared after m_LanguageServices, which it holds by reference: it opens each document
+		// Declared after m_DocumentPort, which it holds by reference: it opens each document
 		// with the matching server and feeds the reference-count rows from the answers. After
 		// m_Analysis and m_AnalysisCoordinator too, whose cache, store and pass it holds by
 		// reference.
@@ -222,9 +226,9 @@ namespace Graphite {
 		// m_ChangeMarkers is declared further down, with the git group, and so is not yet
 		// constructed here. That is fine: only a reference to it is bound, and nothing reaches
 		// through that reference until the first frame.
-		DocumentWindows m_DocumentWindows{m_Documents,     m_Modals,   m_LanguageServices,
-										  m_Diagnostics,   m_ChangeMarkers, m_PreviewSemantics,
-										  m_Analysis,      m_AnalysisCoordinator.GetStore(),
+		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_DocumentPort,
+										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
+										  m_Analysis, m_AnalysisCoordinator.GetStore(),
 										  m_AnalysisCoordinator.GetPass()};
 
 		// The Git panel's view of the editor, over the two members above. Declared after both

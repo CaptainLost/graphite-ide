@@ -158,7 +158,8 @@ namespace Graphite {
 			if (answer.Failed)
 			{
 				// Not asked again on the spot: a server that keeps failing would collect one
-				// request per frame. The same shape AskForSymbols uses for the same reason.
+				// request per frame. The same shape LspAnswerRouter::AskSymbolsIfDue uses for the
+				// same reason.
 				entry.NextAskAt = m_Now + kRetrySeconds;
 				return true;
 			}

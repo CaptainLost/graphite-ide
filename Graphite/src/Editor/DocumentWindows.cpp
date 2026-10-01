@@ -43,12 +43,6 @@ namespace Graphite {
 	namespace {
 		constexpr double kTransientMessageSeconds = 4.0;
 
-		// How long before a symbols request that came back Failed is tried again. A server is
-		// routinely still starting or still indexing when the first one goes out, and its answer
-		// then says nothing about whether a later one would succeed — but retrying on the next
-		// frame would be sixty requests a second at a server that is busy.
-		constexpr double kSymbolsRetrySeconds = 2.0;
-
 		std::string Join(const std::vector<std::string>& values)
 		{
 			std::string joined;
@@ -604,7 +598,7 @@ namespace Graphite {
 			// the server the file on disk matches what it has been sent, which is the one thing
 			// that is not true. Qualified against Core::SaveDocument above, which is the free
 			// function that does the writing.
-			m_LanguageServices.SaveDocument(item.Path, LanguageOfPath(item.Path));
+			m_Server.SaveDocument(item.Path, LanguageOfPath(item.Path));
 
 			SetTransientMessage(fileName + " saved");
 			return true;
@@ -1154,8 +1148,11 @@ namespace Graphite {
 			// server runs for this root, and every answer afterwards would be about a file the
 			// server was never told exists. Both are safe to repeat, but this is the one moment
 			// per document they are needed.
-			m_LanguageServices.EnsureStarted(item.Path, language);
-			m_LanguageServices.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
+			m_Server.EnsureStarted(item.Path, language);
+			m_Server.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
+
+			// Its declarations and colours are wanted from now on.
+			m_Router.Track(item.Path);
 
 			// After the server is told, not before: this only fills the gap until the server
 			// answers, and the answer has to already be on its way for the gap to be a gap.
@@ -1184,7 +1181,7 @@ namespace Graphite {
 
 			if (const std::optional<LensState>& lens = it->second.Lens)
 			{
-				m_LanguageServices.CloseDocument(it->first, LanguageOfPath(it->first));
+				m_Server.CloseDocument(it->first, LanguageOfPath(it->first));
 
 				// Kept rather than dropped, so reopening this document paints in the frame it
 				// opens. The server is still told it closed: this remembers the answers, not the
@@ -1193,7 +1190,7 @@ namespace Graphite {
 				//
 				// Before the entry is erased, never after: the colours it keeps are this entry's.
 				KeepAnalysis(it->first, *lens, it->second.Semantic);
-				ForgetPendingFor(it->first);
+				m_Router.Forget(it->first);
 			}
 
 			it = m_States.erase(it);
@@ -1207,45 +1204,7 @@ namespace Graphite {
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
 	{
-		if (const auto state = m_States.find(path); state != m_States.end() && state->second.Lens)
-		{
-			// Wanted but not yet asked counts too: the retry clock is a delay before asking, not
-			// an answer, and a bar that went quiet during it would be saying the file had settled.
-			if (state->second.Lens->SymbolsOutstanding || state->second.Lens->WantSymbols)
-			{
-				return true;
-			}
-		}
-
-		for (const auto& [ticket, pending] : m_PendingSemantic)
-		{
-			if (pending == path)
-			{
-				return true;
-			}
-		}
-
-		for (const auto& [ticket, pending] : m_PendingSymbols)
-		{
-			if (pending == path)
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	void DocumentWindows::ForgetPendingFor(const std::filesystem::path& path)
-	{
-		// A ticket is only ever taken out of these when its answer arrives, so a document closed
-		// with requests outstanding leaves entries behind that nothing collects if the server
-		// never answers them. IsAnalysing reads all three, and would then report that a file
-		// nobody has open is still being looked at - for the rest of the session.
-		std::erase_if(m_PendingSemantic, [&path](const auto& entry) { return entry.second == path; });
-		std::erase_if(m_PendingSymbols, [&path](const auto& entry) { return entry.second == path; });
-		std::erase_if(m_PendingCounts,
-					  [&path](const auto& entry) { return entry.second.Path == path; });
+		return m_Router.IsAnalysing(path);
 	}
 
 	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
@@ -1317,9 +1276,9 @@ namespace Graphite {
 
 		state.Semantic = std::move(restored->Semantic);
 
-		// WantSymbols is left standing: this is what the file looked like when its tab closed, and
-		// the server is still asked. Its answer replaces all of this, and until it arrives the
-		// reader has last time's answer rather than an empty margin.
+		// The router still wants symbols: this is what the file looked like when its tab closed,
+		// and the server is still asked. Its answer replaces all of this, and until it arrives
+		// the reader has last time's answer rather than an empty margin.
 	}
 
 	std::optional<std::filesystem::file_time_type> DocumentWindows::ModifiedTimeOf(
@@ -1394,18 +1353,7 @@ namespace Graphite {
 		// they arrive, and clearing the set lets the rows be asked about again.
 		state.Asked.clear();
 
-		for (auto it = m_PendingCounts.begin(); it != m_PendingCounts.end();)
-		{
-			if (it->second.Path == path)
-			{
-				m_LanguageServices.Cancel(it->first);
-				it = m_PendingCounts.erase(it);
-			}
-			else
-			{
-				++it;
-			}
-		}
+		m_Router.DropCounts(path);
 	}
 
 	void DocumentWindows::AnnounceReload(const Core::OpenItem& item)
@@ -1422,8 +1370,7 @@ namespace Graphite {
 		// from before the reload for as long as the tab stays open: F12 resolves a position
 		// against text nobody has, counts anchor to declarations that have moved, and the status
 		// bar says "ready" throughout, because from the server's side nothing went wrong.
-		m_LanguageServices.ChangeDocument(item.Path, language,
-										  item.Document->GetBuffer().Materialize());
+		m_Server.ChangeDocument(item.Path, language, item.Document->GetBuffer().Materialize());
 
 		LensState* const lens = FindLens(item.Path);
 
@@ -1443,41 +1390,9 @@ namespace Graphite {
 		state.Model.SetDeclarations(state.Declarations, item.Rows, item.Document->GetBuffer(),
 									item.TabWidth);
 		state.HaveDeclarations = false;
-		state.WantSymbols = true;
-		state.NextSymbolsAt = 0.0;
+		m_Router.WantSymbolsNow(item.Path);
 
 		DropInFlightCounts(item.Path, state);
-	}
-
-	void DocumentWindows::AskForSymbols(const Core::OpenItem& item, LensState& state)
-	{
-		const double now = ImGui::GetTime();
-
-		if (!state.WantSymbols || state.SymbolsOutstanding || now < state.NextSymbolsAt)
-		{
-			return;
-		}
-
-		const LanguageServices::Ticket ticket =
-			m_LanguageServices.AskSymbols(item.Path, LanguageOfPath(item.Path));
-
-		m_PendingSymbols.emplace(ticket, item.Path);
-
-		// On the same beat, because they answer the same question at different grain - what this
-		// document contains - and go stale together on the same edit. Asking on one schedule is
-		// one thing to reason about rather than two that drift.
-		AskForSemanticTokens(item);
-
-		state.SymbolsOutstanding = true;
-		state.NextSymbolsAt = now + kSymbolsRetrySeconds;
-	}
-
-	void DocumentWindows::AskForSemanticTokens(const Core::OpenItem& item)
-	{
-		const LanguageServices::Ticket colours =
-			m_LanguageServices.AskSemanticTokens(item.Path, LanguageOfPath(item.Path));
-
-		m_PendingSemantic.emplace(colours, item.Path);
 	}
 
 	void DocumentWindows::AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
@@ -1520,10 +1435,7 @@ namespace Graphite {
 			where.Line = lens->NameLine;
 			where.Column = lens->NameColumn;
 
-			const LanguageServices::Ticket ticket =
-				m_LanguageServices.AskReferences(item.Path, LanguageOfPath(item.Path), where);
-
-			m_PendingCounts.emplace(ticket, PendingCount{item.Path, row});
+			m_Router.AskCount(item.Path, row, where);
 		}
 	}
 
@@ -1532,37 +1444,14 @@ namespace Graphite {
 	{
 		state.WasModified = item.Document && item.Document->IsModified();
 
-		// A server that has just entered Starting is a server that has just been replaced —
-		// LanguageServices::RestartServer sets exactly that state, and the client it replaced
-		// failed every request it was holding. Those failures leave their rows in Asked, where
-		// nothing else would ever take them out, so the counts visible at the moment of the crash
-		// would stay blank while every row scrolled into view afterwards got one.
-		if (const ServerState now = m_LanguageServices.StatusFor(item.Path, LanguageOfPath(item.Path)).State;
-			now != state.LastServerState)
+		// A server that has just been replaced failed every request its old client was holding.
+		// Those failures leave their rows in Asked, where nothing else would ever take them out,
+		// so the counts visible at the moment of the crash would stay blank while every row
+		// scrolled into view afterwards got one. The router has already dropped the tickets and
+		// asked for everything else again.
+		if (m_Router.NoteServerState(item.Path))
 		{
-			const ServerState before = state.LastServerState;
-
-			state.LastServerState = now;
-
-			// The handshake is what gives the client its semantic legend, and a question asked
-			// before it is refused. The retry clock only re-asks while declarations are still
-			// wanted, so a server that answered symbols and then finished its handshake would
-			// otherwise leave the document uncoloured until the next edit.
-			if (before == ServerState::Starting &&
-				(now == ServerState::Ready || now == ServerState::Indexing ||
-				 now == ServerState::NoCompileDatabase))
-			{
-				AskForSemanticTokens(item);
-			}
-
-			if (now == ServerState::Starting)
-			{
-				state.WantSymbols = true;
-				state.NextSymbolsAt = 0.0;
-				state.SymbolsOutstanding = false;
-
-				DropInFlightCounts(item.Path, state);
-			}
+			state.Asked.clear();
 		}
 
 		if (frame.Edited)
@@ -1571,14 +1460,13 @@ namespace Graphite {
 			// changed the buffer, however many edits went into it, and a transaction touching
 			// twenty lines would otherwise send the whole file twenty times in one frame. The
 			// server only needs the state the frame ended in.
-			m_LanguageServices.ChangeDocument(item.Path, LanguageOfPath(item.Path),
-											  item.Document->GetBuffer().Materialize());
+			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path),
+									item.Document->GetBuffer().Materialize());
 
 			// The declarations the server last reported are now about text that has moved. The
 			// model has already shifted its anchors as a stopgap; what is asked for here is the
 			// exact set, at once rather than on the retry clock.
-			state.WantSymbols = true;
-			state.NextSymbolsAt = 0.0;
+			m_Router.WantSymbolsNow(item.Path);
 
 			DropInFlightCounts(item.Path, state);
 		}
@@ -1596,37 +1484,27 @@ namespace Graphite {
 			state.Asked.clear();
 		}
 
-		AskForSymbols(item, state);
+		m_Router.AskSymbolsIfDue(item.Path);
 		AskForVisibleCounts(item, state, frame);
 	}
 
-	void DocumentWindows::ApplySymbolAnswer(const std::filesystem::path& path,
+	bool DocumentWindows::ApplySymbolAnswer(const std::filesystem::path& path,
 											const LanguageServices::Answer& answer)
 	{
 		LensState* const lens = FindLens(path);
 
 		if (lens == nullptr)
 		{
-			return;
+			return false;
 		}
 
 		LensState& state = *lens;
-
-		state.SymbolsOutstanding = false;
-
-		// A failure says nothing about whether the next attempt would succeed — a server that was
-		// still indexing answers this way — so WantSymbols is left standing and the retry clock
-		// set in AskForSymbols decides when to try again.
-		if (answer.Failed)
-		{
-			return;
-		}
 
 		const auto index = m_Documents.Find(path);
 
 		if (!index || !m_Documents.At(*index).Document)
 		{
-			return;
+			return false;
 		}
 
 		const Core::OpenItem& item = m_Documents.At(*index);
@@ -1639,7 +1517,6 @@ namespace Graphite {
 		state.Declarations = answer.Declarations;
 
 		state.HaveDeclarations = true;
-		state.WantSymbols = false;
 		state.Model.SetDeclarations(state.Declarations, item.Rows, buffer, item.TabWidth);
 		state.BuiltAt = item.WrappedTo;
 
@@ -1648,6 +1525,27 @@ namespace Graphite {
 		// arrives for a dropped ticket is ignored, and the counts that survived the rebuild are
 		// already known, so only the genuinely unknown rows are asked about again.
 		state.Asked.clear();
+
+		return true;
+	}
+
+	void DocumentWindows::ApplySemanticAnswer(const std::filesystem::path& path,
+											  const LanguageServices::Answer& answer)
+	{
+		const auto index = m_Documents.Find(path);
+
+		if (!index)
+		{
+			return;
+		}
+
+		const Core::OpenItem& item = m_Documents.At(*index);
+
+		if (item.Document)
+		{
+			StateFor(path).Semantic.Set(answer.SemanticTokens, item.Document->GetBuffer(),
+										item.TabWidth);
+		}
 	}
 
 	void DocumentWindows::RequestDefinition(std::size_t index)
@@ -1683,27 +1581,15 @@ namespace Graphite {
 		where.Line = position.Line;
 		where.Column = ToUtf16Column(lineText, position.Column);
 
-		// A second F12 before the first has answered supersedes it: the user is asking a new
-		// question, and an answer to the old one arriving late would be about a place they have
-		// since moved past.
-		if (m_PendingDefinition)
-		{
-			m_LanguageServices.Cancel(m_PendingDefinition->Ticket);
-		}
-
-		m_LanguageServices.EnsureStarted(item.Path, language);
-
-		const LanguageServices::Ticket ticket =
-			m_LanguageServices.AskDefinition(item.Path, language, where);
-
 		// Whatever this document's own last draw left in its state — default-constructed, screen
 		// position (0, 0), on the vanishingly unlikely frame nothing has drawn it yet.
 		const auto state = m_States.find(item.Path);
 		const CaretScreenPosition screenPosition =
 			state != m_States.end() ? state->second.CaretScreen : CaretScreenPosition{};
 
-		m_PendingDefinition =
-			PendingDefinition{ticket, item.Path, item.Caret.Offset, where, screenPosition};
+		// A second F12 before the first has answered supersedes it; the router cancels the first.
+		m_Router.AskDefinition(
+			DefinitionQuestion{item.Path, item.Caret.Offset, where, screenPosition});
 	}
 
 	void DocumentWindows::RequestReferences(std::size_t index, ReferencesPanel& panel)
@@ -1775,33 +1661,22 @@ namespace Graphite {
 			return;
 		}
 
-		// A second question before the first has answered supersedes it, on the same reasoning as
-		// RequestDefinition: the user is asking about something else now, and a late answer to the
-		// old question would be about a symbol they have since moved past.
-		if (m_PendingReferences)
-		{
-			m_LanguageServices.Cancel(m_PendingReferences->Ticket);
-		}
-
-		m_LanguageServices.EnsureStarted(item.Path, language);
-
-		const LanguageServices::Ticket ticket =
-			m_LanguageServices.AskReferences(item.Path, language, where);
-
-		m_PendingReferences = PendingReferences{ticket, symbol};
+		// A second question before the first has answered supersedes it; the router cancels the
+		// first.
+		m_Router.AskReferences(item.Path, where, symbol);
 
 		panel.ShowWorking(symbol);
 		panel.Focus();
 	}
 
-	void DocumentWindows::ApplyDefinitionAnswer(const PendingDefinition& pending,
+	void DocumentWindows::ApplyDefinitionAnswer(const DefinitionQuestion& question,
 												const LanguageServices::Answer& answer)
 	{
 		// The stand-in generation check: a document closed, or a caret that has moved since the
 		// request, both mean this answer is about a question that no longer stands.
-		const auto index = m_Documents.Find(pending.Path);
+		const auto index = m_Documents.Find(question.Path);
 
-		if (!index || m_Documents.At(*index).Caret.Offset != pending.CaretOffset)
+		if (!index || m_Documents.At(*index).Caret.Offset != question.CaretOffset)
 		{
 			return;
 		}
@@ -1813,7 +1688,7 @@ namespace Graphite {
 		}
 
 		std::vector<Location> candidates;
-		const DefinitionOutcome outcome = ResolveDefinition(answer.Locations, pending.From, candidates);
+		const DefinitionOutcome outcome = ResolveDefinition(answer.Locations, question.From, candidates);
 
 		switch (outcome)
 		{
@@ -1849,7 +1724,7 @@ namespace Graphite {
 			// caret sits under the pointer anyway, so one rule serves both gestures. Kept for
 			// RenderDefinitionChoices to spend; see m_DefinitionChoicesAt for why it cannot be
 			// spent here.
-			m_DefinitionChoicesAt = pending.Screen;
+			m_DefinitionChoicesAt = question.Screen;
 
 			// Called here, before any window this frame has opened, rather than deferred to
 			// RenderDefinitionChoices: CollectServerAnswers runs at the very top of Render, ahead
@@ -1967,111 +1842,76 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
+	double DocumentWindows::FrameClock()
+	{
+		return ImGui::GetTime();
+	}
+
 	void DocumentWindows::CollectServerAnswers(ReferencesPanel& referencesPanel)
 	{
-		std::vector<LanguageServices::Answer> answers;
-
-		m_LanguageServices.TakeAnswers(answers);
-
-		for (const LanguageServices::Answer& answer : answers)
+		// What the router hands on, applied to the documents, the panel and the two other askers.
+		// Local, because it lives for one call and needs this class's private members.
+		class Target final : public LspAnswerTarget
 		{
-			if (m_PendingDefinition && m_PendingDefinition->Ticket == answer.For)
+		public:
+			Target(DocumentWindows& windows, ReferencesPanel& panel)
+				: m_Windows(windows), m_Panel(panel)
 			{
-				const PendingDefinition pending = *m_PendingDefinition;
-
-				m_PendingDefinition.reset();
-				ApplyDefinitionAnswer(pending, answer);
-				continue;
 			}
 
-			if (m_PendingReferences && m_PendingReferences->Ticket == answer.For)
+			void ApplyDefinition(const DefinitionQuestion& question,
+								 const LanguageServices::Answer& answer) override
 			{
-				const PendingReferences pending = *m_PendingReferences;
+				m_Windows.ApplyDefinitionAnswer(question, answer);
+			}
 
-				m_PendingReferences.reset();
-
+			void ApplyReferences(const std::string& symbol,
+								 const LanguageServices::Answer& answer) override
+			{
 				// A failed request - no server, or one that never got a process - reads the same
 				// as a reply naming nothing: ShowResults with an empty vector says "no references
 				// found" either way, rather than leaving the panel stuck showing "working".
-				referencesPanel.ShowResults(pending.Symbol,
-											answer.Failed ? std::vector<Location>{}
-														 : answer.Locations);
-				continue;
+				m_Panel.ShowResults(symbol, answer.Failed ? std::vector<Location>{}
+														  : answer.Locations);
 			}
 
-			if (const auto colours = m_PendingSemantic.find(answer.For);
-				colours != m_PendingSemantic.end())
+			void ApplySemanticTokens(const std::filesystem::path& path,
+									 const LanguageServices::Answer& answer) override
 			{
-				const std::filesystem::path path = colours->second;
+				m_Windows.ApplySemanticAnswer(path, answer);
+			}
 
-				m_PendingSemantic.erase(colours);
+			bool ApplySymbols(const std::filesystem::path& path,
+							  const LanguageServices::Answer& answer) override
+			{
+				return m_Windows.ApplySymbolAnswer(path, answer);
+			}
 
-				if (const auto index = m_Documents.Find(path); index && !answer.Failed)
+			void ApplyCount(const std::filesystem::path& path, std::size_t documentRow,
+							std::size_t count) override
+			{
+				if (LensState* const lens = m_Windows.FindLens(path))
 				{
-					const Core::OpenItem& item = m_Documents.At(*index);
-
-					if (item.Document)
-					{
-						StateFor(path).Semantic.Set(answer.SemanticTokens, item.Document->GetBuffer(),
-													item.TabWidth);
-					}
+					lens->Model.SetCount(documentRow, count);
 				}
-
-				continue;
 			}
 
-			if (const auto symbols = m_PendingSymbols.find(answer.For);
-				symbols != m_PendingSymbols.end())
+			bool Offer(const LanguageServices::Answer& answer) override
 			{
-				const std::filesystem::path path = symbols->second;
-
-				m_PendingSymbols.erase(symbols);
-				ApplySymbolAnswer(path, answer);
-				continue;
+				// The preview panes ask for their own colours and the background pass asks about
+				// files with no tab at all, each on its own tickets.
+				return m_Windows.m_PreviewSemantics.Apply(answer) ||
+					   m_Windows.m_WorkspaceAnalysis.Apply(answer);
 			}
 
-			// The preview panes ask for their own colours, on their own tickets. Offered here
-			// because TakeAnswers is the single drain point, and answered by return value so an
-			// answer nobody here recognises still falls through to the counts below.
-			if (m_PreviewSemantics.Apply(answer))
-			{
-				continue;
-			}
+		private:
+			DocumentWindows& m_Windows;
+			ReferencesPanel& m_Panel;
+		};
 
-			// The background pass asks about files with no tab at all, on its own tickets, and is
-			// offered them here for the reason the preview panes are: this is the only drain.
-			if (m_WorkspaceAnalysis.Apply(answer))
-			{
-				continue;
-			}
+		Target target{*this, referencesPanel};
 
-			const auto count = m_PendingCounts.find(answer.For);
-
-			if (count == m_PendingCounts.end())
-			{
-				// Nothing here asked this, or what asked it has since been dropped — an edit
-				// invalidated the row, or the document closed. Either way the answer is about a
-				// question that no longer stands.
-				continue;
-			}
-
-			const PendingCount pending = count->second;
-
-			m_PendingCounts.erase(count);
-
-			if (answer.Failed)
-			{
-				// Left in state.Asked deliberately: a failure that is re-asked the moment it comes
-				// back is a request per frame for as long as the server keeps failing. The next
-				// edit or reply clears the set and gives the row another chance.
-				continue;
-			}
-
-			if (LensState* const lens = FindLens(pending.Path))
-			{
-				lens->Model.SetCount(pending.DocumentRow, answer.Locations.size());
-			}
-		}
+		m_Router.Collect(target);
 	}
 
 	void DocumentWindows::ForgetLayoutOfWindowsClosedElsewhere(
