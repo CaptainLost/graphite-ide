@@ -26,6 +26,11 @@ namespace Graphite {
 		Enqueue({.Kind = WriteKind::Commit, .Commit = std::move(request)});
 	}
 
+	void GitModel::RequestInit()
+	{
+		Enqueue({.Kind = WriteKind::Init});
+	}
+
 	std::optional<Core::Oid> GitModel::TakeCommitted()
 	{
 		std::optional<Core::Oid> taken = m_Committed;
@@ -141,6 +146,16 @@ namespace Graphite {
 					outcome.Committed = result.GetValue();
 				}
 				else
+				{
+					outcome.Failure = result.GetError();
+				}
+
+				break;
+			}
+
+			case WriteKind::Init:
+			{
+				if (const auto result = m_Port.Init(); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}

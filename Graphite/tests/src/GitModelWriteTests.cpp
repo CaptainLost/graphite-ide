@@ -403,3 +403,80 @@ TEST_CASE("Requesting the working tree diff repeatedly submits only one query")
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	CHECK(port.DiffCalls == 2);
 }
+
+TEST_CASE("An init goes through the write queue like any other write")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.RequestInit();
+
+	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt"});
+
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt", "init:"});
+}
+
+TEST_CASE("A successful init counts as an applied write and refreshes the model")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.GetAppliedWriteCount() == 1);
+	CHECK_FALSE(model.GetWriteError().has_value());
+
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	CHECK(model.GetStatus() != nullptr);
+	CHECK(model.GetHead() != nullptr);
+}
+
+TEST_CASE("A failed init is reported as a write error")
+{
+	WritePort port;
+	port.Fail = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.GetWriteError().has_value());
+	CHECK(model.GetAppliedWriteCount() == 0);
+}
+
+TEST_CASE("A second init queued behind the first is passed on, not dropped")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestInit();
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	// git init on an existing repository re-initialises in place, so the second is harmless
+	// and the model need not know to suppress it.
+	CHECK(port.Calls == std::vector<std::string>{"init:", "init:"});
+	CHECK_FALSE(model.GetWriteError().has_value());
+}
+
+TEST_CASE("No init is sent with no folder open")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls.empty());
+}

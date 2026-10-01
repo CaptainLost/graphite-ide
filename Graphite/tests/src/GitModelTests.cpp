@@ -1892,3 +1892,70 @@ TEST_CASE("Clearing the model forgets every listing")
 
 	CHECK(model.GetUntrackedIn("notes") == nullptr);
 }
+
+TEST_CASE("A requested head becomes readable after the next update")
+{
+	FakePort port;
+	port.Head.Kind = Core::HeadKind::Branch;
+	port.Head.BranchName = "main";
+
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestHead();
+	CHECK(model.GetHead() == nullptr);
+
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetHead() != nullptr);
+	CHECK(model.GetHead()->BranchName == "main");
+}
+
+TEST_CASE("The head is refreshed whenever the status is")
+{
+	FakePort port;
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Core::EventBus events;
+	model.SubscribeTo(events);
+	events.Publish(Graphite::RepositoryChangedEvent{});
+
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	CHECK(port.StatusCalls == 1);
+	CHECK(port.HeadCalls == 1);
+	CHECK(model.GetHead() != nullptr);
+}
+
+TEST_CASE("Closing the folder forgets the head")
+{
+	FakePort port;
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestHead();
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetHead() != nullptr);
+
+	model.Clear();
+
+	CHECK(model.GetHead() == nullptr);
+	CHECK_FALSE(model.GetHeadError().has_value());
+}
+
+TEST_CASE("A failed head query keeps the last good head and reports itself")
+{
+	FakePort port;
+	port.Head.BranchName = "main";
+	Graphite::GitModel model{port, Inline()};
+
+	model.RequestHead();
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	port.FailHead = true;
+	model.RequestHead();
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	REQUIRE(model.GetHead() != nullptr);
+	CHECK(model.GetHead()->BranchName == "main");
+	CHECK(model.GetHeadError().has_value());
+}

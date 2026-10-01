@@ -73,6 +73,10 @@ namespace Graphite {
 			const std::filesystem::path& directory) const;
 
 		void RequestBranches();
+
+		// Refreshed alongside the status - see OnUpdate - so the bar's branch and its change
+		// count never describe two different moments for longer than one query.
+		void RequestHead();
 		void RequestLog(Core::LogRequest request);
 
 		// The working tree against HEAD: a diff that changes on every keystroke, so there is
@@ -164,6 +168,7 @@ namespace Graphite {
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
+		std::shared_ptr<const Core::HeadState> GetHead() const { return m_Head; }
 		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
 		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const { return m_WorkingTreeDiff; }
 
@@ -184,6 +189,11 @@ namespace Graphite {
 		// another rather than show whichever came first (see HistoryPlaceholder).
 		const std::optional<Core::Error>& GetStatusError() const { return m_StatusError; }
 		const std::optional<Core::Error>& GetLogError() const { return m_LogError; }
+
+		// Not folded into GetLastError: the head is read only by the status bar, which draws
+		// nothing rather than an error when it has no head, and the panels that show
+		// GetLastError have their own status error to explain the same failure.
+		const std::optional<Core::Error>& GetHeadError() const { return m_HeadError; }
 
 		const std::optional<Core::Error>& GetLastError() const
 		{
@@ -221,6 +231,10 @@ namespace Graphite {
 		void RequestUnstage(std::vector<std::filesystem::path> paths);
 		void RequestDiscard(DiscardRequest request);
 		void RequestCommit(Core::CommitRequest request);
+
+		// git init at the open folder. Queued like the other writes, so a panel greys its
+		// button through IsWriteInFlight and reads a failure through GetWriteError.
+		void RequestInit();
 
 		// For a panel that greys its buttons out. False does not mean nothing is pending —
 		// it means nothing is happening at this instant.
@@ -380,11 +394,12 @@ namespace Graphite {
 			Stage,
 			Unstage,
 			Discard,
-			Commit
+			Commit,
+			Init
 		};
 
 		// One queued write. Carries every kind's payload rather than a variant: there are
-		// four kinds and two payloads, and a variant here would cost more to read than the
+		// five kinds and two payloads, and a variant here would cost more to read than the
 		// two fields it would save.
 		struct WriteJob
 		{
@@ -454,6 +469,8 @@ namespace Graphite {
 		std::uint64_t m_StatusApplied = 0;
 		std::uint64_t m_BranchesRequested = 0;
 		std::uint64_t m_BranchesApplied = 0;
+		std::uint64_t m_HeadRequested = 0;
+		std::uint64_t m_HeadApplied = 0;
 		std::uint64_t m_LogRequested = 0;
 		std::uint64_t m_LogApplied = 0;
 		std::uint64_t m_WorkingTreeDiffRequested = 0;
@@ -464,6 +481,7 @@ namespace Graphite {
 
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
+		std::shared_ptr<const Core::HeadState> m_Head;
 		std::shared_ptr<const Core::LogPage> m_Log;
 
 		// The last question asked about the history, so a refresh can ask it again. Unset
@@ -492,6 +510,7 @@ namespace Graphite {
 
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;
+		std::optional<Core::Error> m_HeadError;
 		std::optional<Core::Error> m_LogError;
 		std::optional<Core::Error> m_WorkingTreeDiffError;
 

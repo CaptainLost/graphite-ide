@@ -36,12 +36,14 @@ namespace Graphite {
 		// for the folder that was just closed is dropped when it lands.
 		m_StatusApplied = m_StatusRequested;
 		m_BranchesApplied = m_BranchesRequested;
+		m_HeadApplied = m_HeadRequested;
 		m_LogApplied = m_LogRequested;
 		m_WorkingTreeDiffApplied = m_WorkingTreeDiffRequested;
 
 		m_Status.reset();
 		m_WorkingDirectory.clear();
 		m_Branches.reset();
+		m_Head.reset();
 		m_Log.reset();
 
 		// Forgotten with the snapshot it belongs to: the next folder's first refresh must
@@ -55,6 +57,7 @@ namespace Graphite {
 
 		m_StatusError.reset();
 		m_BranchesError.reset();
+		m_HeadError.reset();
 		m_LogError.reset();
 		m_WorkingTreeDiffError.reset();
 		m_CommitDiffError.reset();
@@ -154,6 +157,7 @@ namespace Graphite {
 
 				RequestStatus();
 				RequestBranches();
+				RequestHead();
 
 				// A commit, an amend, a rebase or a fetch all change the history, and
 				// nothing else re-asks for it: without this the list keeps showing what it
@@ -262,6 +266,33 @@ namespace Graphite {
 				m_BranchesError.reset();
 				m_Branches = std::make_shared<const std::vector<Core::Branch>>(
 					std::move(result).GetValue());
+			});
+		});
+	}
+
+	void GitModel::RequestHead()
+	{
+		const std::uint64_t generation = ++m_HeadRequested;
+
+		m_Submit([this, generation]() {
+			auto result = m_Port.QueryHead();
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				if (generation <= m_HeadApplied)
+				{
+					return;
+				}
+
+				m_HeadApplied = generation;
+
+				if (!result.HasValue())
+				{
+					m_HeadError = result.GetError();
+					return;
+				}
+
+				m_HeadError.reset();
+				m_Head = std::make_shared<const Core::HeadState>(std::move(result).GetValue());
 			});
 		});
 	}
