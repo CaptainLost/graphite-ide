@@ -3,6 +3,7 @@
 #include "Core/Platform/PseudoConsole.h"
 
 #include "Core/Platform/CommandLine.h"
+#include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Error.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -45,7 +46,7 @@ namespace Core {
 		// to wait on the shell's process handle at the same time as the pipe, and that requires
 		// FILE_FLAG_OVERLAPPED. A uniquely named pipe nobody else can reach gets the same
 		// anonymous-pipe behaviour with that one extra flag.
-		bool CreateOverlappedPipe(HANDLE& readEnd, HANDLE& writeEnd)
+		bool CreateOverlappedPipe(UniqueHandle& readEnd, UniqueHandle& writeEnd)
 		{
 			static std::atomic<std::uint64_t> nextPipe{0};
 
@@ -53,27 +54,24 @@ namespace Core {
 			::swprintf_s(name, L"\\\\.\\pipe\\Core.PseudoConsole.%lu.%llu", ::GetCurrentProcessId(),
 						 static_cast<unsigned long long>(nextPipe.fetch_add(1)));
 
-			readEnd = ::CreateNamedPipeW(
+			readEnd.Reset(::CreateNamedPipeW(
 				name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-				PIPE_TYPE_BYTE | PIPE_WAIT, 1, 65536, 65536, 0, nullptr);
+				PIPE_TYPE_BYTE | PIPE_WAIT, 1, 65536, 65536, 0, nullptr));
 
-			if (readEnd == INVALID_HANDLE_VALUE)
+			if (!readEnd)
 			{
-				readEnd = nullptr;
 				return false;
 			}
 
-			writeEnd = ::CreateFileW(name, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
-									 FILE_ATTRIBUTE_NORMAL, nullptr);
+			writeEnd.Reset(::CreateFileW(name, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+										 FILE_ATTRIBUTE_NORMAL, nullptr));
 
-			if (writeEnd == INVALID_HANDLE_VALUE)
+			if (!writeEnd)
 			{
-				// CloseHandle overwrites the thread's last error, so the caller would report
+				// Closing overwrites the thread's last error, so the caller would report
 				// whatever the close did rather than why the pipe could not be opened.
 				const DWORD failure = ::GetLastError();
-				::CloseHandle(readEnd);
-				readEnd = nullptr;
-				writeEnd = nullptr;
+				readEnd.Reset();
 				::SetLastError(failure);
 				return false;
 			}
@@ -134,12 +132,14 @@ namespace Core {
 		// producing cannot hold this open.
 		void DrainPipe(HANDLE pipe, DWORD milliseconds)
 		{
-			const HANDLE event = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+			const UniqueHandle eventHandle{::CreateEventW(nullptr, TRUE, FALSE, nullptr)};
 
-			if (event == nullptr)
+			if (!eventHandle)
 			{
 				return;
 			}
+
+			const HANDLE event = eventHandle.Get();
 
 			const ULONGLONG deadline = ::GetTickCount64() + milliseconds;
 			char scratch[4096]{};
@@ -202,8 +202,121 @@ namespace Core {
 					break;
 				}
 			}
+		}
 
-			::CloseHandle(event);
+		// The four ends of the two pipes the pseudo-console is built from.
+		struct ConsolePipes
+		{
+			UniqueHandle InputRead;
+			UniqueHandle InputWrite;
+			UniqueHandle OutputRead;
+			UniqueHandle OutputWrite;
+		};
+
+		Result<ConsolePipes> CreatePipes()
+		{
+			ConsolePipes pipes;
+			HANDLE inputRead = nullptr;
+			HANDLE inputWrite = nullptr;
+
+			if (!::CreatePipe(&inputRead, &inputWrite, nullptr, 0))
+			{
+				return Error{ErrorCodeFromWin32(::GetLastError()),
+							 "cannot create the shell's input pipe"};
+			}
+
+			pipes.InputRead.Reset(inputRead);
+			pipes.InputWrite.Reset(inputWrite);
+
+			if (!CreateOverlappedPipe(pipes.OutputRead, pipes.OutputWrite))
+			{
+				return Error{ErrorCodeFromWin32(::GetLastError()),
+							 "cannot create the shell's output pipe"};
+			}
+
+			return pipes;
+		}
+
+		Result<UniquePseudoConsole> CreateConsole(ConsolePipes& pipes, std::uint16_t columns,
+												  std::uint16_t rows)
+		{
+			const COORD size{static_cast<SHORT>(columns), static_cast<SHORT>(rows)};
+			UniquePseudoConsole console;
+			const HRESULT created = ::CreatePseudoConsole(
+				size, pipes.InputRead.Get(), pipes.OutputWrite.Get(), 0, console.Receive());
+
+			// ConPTY duplicates the two ends it was handed, so this side is done with them the
+			// moment the call returns. Holding them open would keep the output pipe's writing end
+			// alive after the shell exits, and a reader would then block for ever instead of
+			// learning that the shell is gone.
+			pipes.InputRead.Reset();
+			pipes.OutputWrite.Reset();
+
+			if (FAILED(created))
+			{
+				return Error{ErrorCode::Unsupported, "this system has no pseudo-console support"};
+			}
+
+			return console;
+		}
+
+		Result<ProcThreadAttributeList> BuildAttributes(HPCON console)
+		{
+			ProcThreadAttributeList attributes;
+
+			if (!attributes.Initialise(1))
+			{
+				return Error{ErrorCode::IoFailure, "cannot prepare the process attribute list"};
+			}
+
+			if (!attributes.Update(PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, console, sizeof(console)))
+			{
+				return Error{ErrorCode::IoFailure,
+							 "cannot attach the pseudo-console to the process attributes"};
+			}
+
+			return attributes;
+		}
+
+		// Starts the shell bound to the pseudo-console named by the attribute list and returns
+		// its process handle.
+		Result<UniqueHandle> SpawnShell(ProcThreadAttributeList& attributes,
+										const std::filesystem::path& program,
+										const std::vector<std::string>& arguments,
+										const std::filesystem::path& workingDirectory)
+		{
+			STARTUPINFOEXW startup{};
+			startup.StartupInfo.cb = sizeof(startup);
+			startup.lpAttributeList = attributes.Get();
+
+			// Naming the standard handles — as nothing — is what actually binds the child to the
+			// pseudo-console. Left unsaid, the child takes over the console this process is already
+			// attached to and writes its prompt there instead, which looks from here exactly like a
+			// pseudo-console that never received any output: every call above still reports success.
+			// The three null handles are replaced by the pseudo-console's own before the child runs.
+			startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+			startup.StartupInfo.hStdInput = nullptr;
+			startup.StartupInfo.hStdOutput = nullptr;
+			startup.StartupInfo.hStdError = nullptr;
+
+			std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
+			const std::wstring directory = workingDirectory.wstring();
+
+			PROCESS_INFORMATION information{};
+
+			// EXTENDED_STARTUPINFO_PRESENT is what makes CreateProcessW read lpAttributeList at
+			// all; without it the child starts with no pseudo-console and behaves as though it
+			// were on a pipe, which is the failure this whole class exists to avoid.
+			if (!::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE,
+								  EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+								  nullptr, directory.empty() ? nullptr : directory.c_str(),
+								  &startup.StartupInfo, &information))
+			{
+				return Error{ErrorCodeFromWin32(::GetLastError()), "cannot start the shell"};
+			}
+
+			::CloseHandle(information.hThread);
+			return UniqueHandle{information.hProcess};
 		}
 	}
 #endif
@@ -214,128 +327,42 @@ namespace Core {
 													  std::uint16_t columns, std::uint16_t rows)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		HANDLE inputRead = nullptr;
-		HANDLE inputWrite = nullptr;
-		HANDLE outputRead = nullptr;
-		HANDLE outputWrite = nullptr;
+		Result<ConsolePipes> pipes = CreatePipes();
 
-		if (!::CreatePipe(&inputRead, &inputWrite, nullptr, 0))
+		if (!pipes)
 		{
-			return Error{ErrorCodeFromWin32(::GetLastError()), "cannot create the shell's input pipe"};
+			return pipes.GetError();
 		}
 
-		if (!CreateOverlappedPipe(outputRead, outputWrite))
+		Result<UniquePseudoConsole> console = CreateConsole(pipes.GetValue(), columns, rows);
+
+		if (!console)
 		{
-			const Error error{ErrorCodeFromWin32(::GetLastError()),
-							  "cannot create the shell's output pipe"};
-			::CloseHandle(inputRead);
-			::CloseHandle(inputWrite);
-			return error;
+			return console.GetError();
 		}
 
-		const COORD size{static_cast<SHORT>(columns), static_cast<SHORT>(rows)};
-		HPCON console = nullptr;
-		const HRESULT created = ::CreatePseudoConsole(size, inputRead, outputWrite, 0, &console);
+		Result<ProcThreadAttributeList> attributes = BuildAttributes(console.GetValue().Get());
 
-		// ConPTY duplicates the two ends it was handed, so this side is done with them the
-		// moment the call returns. Holding them open would keep the output pipe's writing end
-		// alive after the shell exits, and a reader would then block for ever instead of
-		// learning that the shell is gone.
-		::CloseHandle(inputRead);
-		::CloseHandle(outputWrite);
-
-		if (FAILED(created))
+		if (!attributes)
 		{
-			::CloseHandle(inputWrite);
-			::CloseHandle(outputRead);
-			return Error{ErrorCode::Unsupported, "this system has no pseudo-console support"};
+			return attributes.GetError();
 		}
 
-		SIZE_T attributeBytes = 0;
-		::InitializeProcThreadAttributeList(nullptr, 1, 0, &attributeBytes);
+		Result<UniqueHandle> process =
+			SpawnShell(attributes.GetValue(), program, arguments, workingDirectory);
 
-		auto* attributes = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
-			::HeapAlloc(::GetProcessHeap(), 0, attributeBytes));
-
-		if (attributes == nullptr)
+		if (!process)
 		{
-			::ClosePseudoConsole(console);
-			::CloseHandle(inputWrite);
-			::CloseHandle(outputRead);
-			return Error{ErrorCode::IoFailure, "cannot allocate the process attribute list"};
+			return process.GetError();
 		}
 
-		const bool initialised =
-			::InitializeProcThreadAttributeList(attributes, 1, 0, &attributeBytes) != FALSE;
-
-		if (!initialised
-			|| !::UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-											console, sizeof(console), nullptr, nullptr))
-		{
-			const Error error{ErrorCode::IoFailure,
-							  "cannot attach the pseudo-console to the process attributes"};
-
-			if (initialised)
-			{
-				// An initialised list owns more than the block it was written into, so returning
-				// that block to the heap is not enough; the API contract is to delete the list
-				// first. Only the update failing gets here with a list that was initialised.
-				::DeleteProcThreadAttributeList(attributes);
-			}
-
-			::HeapFree(::GetProcessHeap(), 0, attributes);
-			::ClosePseudoConsole(console);
-			::CloseHandle(inputWrite);
-			::CloseHandle(outputRead);
-			return error;
-		}
-
-		STARTUPINFOEXW startup{};
-		startup.StartupInfo.cb = sizeof(startup);
-		startup.lpAttributeList = attributes;
-
-		// Naming the standard handles — as nothing — is what actually binds the child to the
-		// pseudo-console. Left unsaid, the child takes over the console this process is already
-		// attached to and writes its prompt there instead, which looks from here exactly like a
-		// pseudo-console that never received any output: every call above still reports success.
-		// The three null handles are replaced by the pseudo-console's own before the child runs.
-		startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-		startup.StartupInfo.hStdInput = nullptr;
-		startup.StartupInfo.hStdOutput = nullptr;
-		startup.StartupInfo.hStdError = nullptr;
-
-		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
-		const std::wstring directory = workingDirectory.wstring();
-
-		PROCESS_INFORMATION information{};
-
-		// EXTENDED_STARTUPINFO_PRESENT is what makes CreateProcessW read lpAttributeList at
-		// all; without it the child starts with no pseudo-console and behaves as though it
-		// were on a pipe, which is the failure this whole class exists to avoid.
-		const BOOL started = ::CreateProcessW(
-			nullptr, commandLine.data(), nullptr, nullptr, FALSE,
-			EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, nullptr,
-			directory.empty() ? nullptr : directory.c_str(), &startup.StartupInfo, &information);
-
-		if (started == FALSE)
-		{
-			const Error error{ErrorCodeFromWin32(::GetLastError()), "cannot start the shell"};
-			::DeleteProcThreadAttributeList(attributes);
-			::HeapFree(::GetProcessHeap(), 0, attributes);
-			::ClosePseudoConsole(console);
-			::CloseHandle(inputWrite);
-			::CloseHandle(outputRead);
-			return error;
-		}
-
-		::CloseHandle(information.hThread);
-
+		// Only now is nothing left that can fail, so ownership moves into the object in one go.
 		Scope<PseudoConsole> shell{new PseudoConsole};
-		shell->m_Console = console;
-		shell->m_Process = information.hProcess;
-		shell->m_ToChild = inputWrite;
-		shell->m_FromChild = outputRead;
-		shell->m_Attributes = attributes;
+		shell->m_Console = console.GetValue().Release();
+		shell->m_Process = process.GetValue().Release();
+		shell->m_ToChild = pipes.GetValue().InputWrite.Release();
+		shell->m_FromChild = pipes.GetValue().OutputRead.Release();
+		shell->m_Attributes = attributes.GetValue().Release();
 
 		return shell;
 #else
@@ -387,9 +414,8 @@ namespace Core {
 
 		if (m_Attributes != nullptr)
 		{
-			auto* attributes = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(m_Attributes);
-			::DeleteProcThreadAttributeList(attributes);
-			::HeapFree(::GetProcessHeap(), 0, attributes);
+			ProcThreadAttributeList::Destroy(
+				static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(m_Attributes));
 			m_Attributes = nullptr;
 		}
 
