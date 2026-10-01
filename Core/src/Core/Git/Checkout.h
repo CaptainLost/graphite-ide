@@ -1,8 +1,10 @@
 #pragma once
 
+#include "Core/Base/Result.h"
 #include "Core/Git/Oid.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,5 +41,15 @@ namespace Core {
 		// Files the checkout would write or remove. An unsaved editor buffer on one of
 		// these would end up over the other branch's text, which git cannot see.
 		std::vector<std::filesystem::path> Updated;
+	};
+
+	// What a checkout did. A refusal - the target would overwrite changes - and any failure
+	// before the first write change nothing: Failure is set and Changed is empty. A failure after files began to be written can
+	// leave the working tree partly switched; Failure says so and Changed then names every
+	// path that may have changed. On success Changed is what the checkout wrote or removed.
+	struct CheckoutOutcome
+	{
+		std::vector<std::filesystem::path> Changed;
+		std::optional<Error> Failure;
 	};
 }

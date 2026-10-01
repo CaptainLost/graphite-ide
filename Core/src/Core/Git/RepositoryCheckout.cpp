@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -316,15 +317,17 @@ namespace Core {
 		return CheckoutPlan{std::move(notified.Overwritten), std::move(notified.Updated)};
 	}
 
-	Result<std::vector<std::filesystem::path>> Repository::Checkout(const CheckoutTarget& target)
+	CheckoutOutcome Repository::Checkout(const CheckoutTarget& target)
 	{
+		const auto failed = [](Error error) { return CheckoutOutcome{{}, std::move(error)}; };
+
 		if (m_Handle == nullptr)
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return failed(Error{ErrorCode::NotFound, "the repository is not open"});
 
 		auto resolved = Resolve(m_Handle, target);
 
 		if (!resolved.HasValue())
-			return resolved.GetError();
+			return failed(resolved.GetError());
 
 		const Resolved& r = resolved.GetValue();
 		auto removed = Removals(m_Handle, r.Commit, m_WorkingDirectory);
@@ -332,11 +335,11 @@ namespace Core {
 		if (!removed.HasValue())
 		{
 			git_object_free(r.Commit);
-			return removed.GetError();
+			return failed(removed.GetError());
 		}
 
 		// The tracking branch is created before the files move, so that a failure to create it
-		// stops the checkout before anything changes; a refused checkout deletes it again.
+		// stops the checkout before anything changes; a failed checkout deletes it again.
 		git_reference* created = nullptr;
 
 		if (r.CreateTracking)
@@ -345,8 +348,8 @@ namespace Core {
 								  reinterpret_cast<git_commit*>(r.Commit), 0) != 0)
 			{
 				git_object_free(r.Commit);
-				return Error{ErrorCode::InvalidArgument,
-							 std::format("cannot create branch '{}': {}", r.LocalName, LastLibgit2Message())};
+				return failed(Error{ErrorCode::InvalidArgument,
+									std::format("cannot create branch '{}': {}", r.LocalName, LastLibgit2Message())});
 			}
 
 			if (git_branch_set_upstream(created, target.Name.c_str()) != 0)
@@ -359,22 +362,28 @@ namespace Core {
 
 				git_reference_free(created);
 				git_object_free(r.Commit);
-				return Error{ErrorCode::IoFailure, std::move(message)};
+				return failed(Error{ErrorCode::IoFailure, std::move(message)});
 			}
 		}
 
 		Notified notified;
 		git_checkout_options options = Options(notified, false);
 
-		// SAFE works out every action before it writes anything, so a conflict is refused
-		// with the working tree and the index exactly as they were.
+		// SAFE works out - and notifies - every action before it writes anything, so a conflict
+		// is refused with the working tree and the index exactly as they were, and by the time
+		// any other failure can happen, Updated already holds everything the checkout meant to
+		// write.
 		const int checkedOut = git_checkout_tree(m_Handle, r.Commit, &options);
+		AddRemovals(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
 
 		if (checkedOut != 0)
 		{
-			std::string message = checkedOut == GIT_ECONFLICT
+			const bool refused = checkedOut == GIT_ECONFLICT;
+			std::string message = refused
 									  ? std::format("checking out would overwrite changes: {}", LastLibgit2Message())
-									  : std::format("cannot check out: {}", LastLibgit2Message());
+									  : std::format("the checkout failed partway and the working tree may be partly "
+													"switched; HEAD has not moved: {}",
+													LastLibgit2Message());
 
 			if (created != nullptr)
 			{
@@ -385,26 +394,35 @@ namespace Core {
 			}
 
 			git_object_free(r.Commit);
-			return Error{checkedOut == GIT_ECONFLICT ? ErrorCode::InvalidArgument : ErrorCode::IoFailure,
-						 std::move(message)};
+
+			// A refusal changed nothing. Any other failure may have written or removed any of
+			// the planned paths, so all of them are named.
+			if (refused)
+				return failed(Error{ErrorCode::InvalidArgument, std::move(message)});
+
+			return CheckoutOutcome{std::move(notified.Updated), Error{ErrorCode::IoFailure, std::move(message)}};
 		}
 
 		const int moved = target.Kind == CheckoutKind::Commit
 							  ? git_repository_set_head_detached(m_Handle, git_object_id(r.Commit))
 							  : git_repository_set_head(m_Handle, r.HeadRef.c_str());
 
+		const bool branchCreated = created != nullptr;
 		git_reference_free(created);
 		git_object_free(r.Commit);
 
 		if (moved != 0)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("the files were checked out but HEAD could not be moved: {}",
-									 LastLibgit2Message())};
+			std::string message = std::format("the files were checked out but HEAD could not be moved: {}",
+											  LastLibgit2Message());
+
+			if (branchCreated)
+				message += std::format("; the new branch '{}' was left behind", r.LocalName);
+
+			return CheckoutOutcome{std::move(notified.Updated), Error{ErrorCode::IoFailure, std::move(message)}};
 		}
 
-		AddRemovals(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
-		return std::move(notified.Updated);
+		return CheckoutOutcome{std::move(notified.Updated), std::nullopt};
 	}
 
 	Result<void> Repository::DiscardAll(bool includeUntracked)
