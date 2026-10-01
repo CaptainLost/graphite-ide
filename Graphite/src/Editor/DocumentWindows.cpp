@@ -619,6 +619,32 @@ namespace Graphite {
 		return report.IsComplete();
 	}
 
+	bool DocumentWindows::SaveDocuments(const std::vector<std::filesystem::path>& paths)
+	{
+		for (const std::filesystem::path& path : paths)
+		{
+			if (const auto index = m_Documents.Find(path); index && !SaveOne(*index))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	void DocumentWindows::RevertDocuments(const std::vector<std::filesystem::path>& paths)
+	{
+		for (const std::filesystem::path& path : paths)
+		{
+			// ReloadFromDisk replaces the buffer and marks it saved whether or not it was modified,
+			// so this is the same reload a disk change gets, with no question in front of it.
+			if (const auto index = m_Documents.Find(path))
+			{
+				ReloadOne(*index);
+			}
+		}
+	}
+
 	bool DocumentWindows::HasModifiedDocuments() const
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)

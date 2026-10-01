@@ -125,6 +125,14 @@ namespace Graphite {
 
 		bool HasModifiedDocuments() const;
 
+		// Saves the open documents at these paths, stopping at the first that cannot be written.
+		// A path with no open document is skipped: there is nothing of it to save.
+		bool SaveDocuments(const std::vector<std::filesystem::path>& paths);
+
+		// Reloads the open documents at these paths from disk, discarding their unsaved edits
+		// without asking: whoever calls this has already asked.
+		void RevertDocuments(const std::vector<std::filesystem::path>& paths);
+
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
 		std::optional<std::string> GetStatusMessage() const;
