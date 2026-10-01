@@ -468,7 +468,10 @@ namespace Graphite {
 			startFolder = AppSettings::LoadLastFolder();
 
 		if (!startFolder.empty())
-			(void)m_Workspace.OpenFolder(startFolder);
+		{
+			// OpenFolder logs its own failure, and starting with no folder open is the fallback.
+			static_cast<void>(m_Workspace.OpenFolder(startFolder));
+		}
 	}
 
 	void GraphiteLayer::OnUpdate(Core::Timestep ts)
@@ -1074,7 +1077,7 @@ namespace Graphite {
 		case DropTarget::Folder:
 			// OpenFolder reports its own failures, the way the folder picker's caller leaves
 			// them to it.
-			(void)m_Workspace.OpenFolder(dropped.Root);
+			static_cast<void>(m_Workspace.OpenFolder(dropped.Root));
 			break;
 
 		case DropTarget::Solution:

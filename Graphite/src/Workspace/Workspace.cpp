@@ -705,7 +705,8 @@ namespace Graphite {
 									 if (cancelled)
 										 return;
 
-									 (void)workspace.OpenFolder(picked.GetValue());
+									 // OpenFolder logs its own failure and leaves the current folder open.
+									 static_cast<void>(workspace.OpenFolder(picked.GetValue()));
 								 });
 	}
 

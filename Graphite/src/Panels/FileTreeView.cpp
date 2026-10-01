@@ -376,9 +376,14 @@ namespace Graphite {
 	void FileTreeView::ReadFolderFromDisk(Core::FileNode& folder)
 	{
 		if (!folder.Loaded)
-			(void)m_Workspace.Tree().Expand(folder);
+		{
+			// Expand fails only on a file node; an unreadable folder it logs and marks itself.
+			static_cast<void>(m_Workspace.Tree().Expand(folder));
+		}
 		else
+		{
 			m_Workspace.Tree().Refresh(folder);
+		}
 	}
 
 	void FileTreeView::RenderDeleteConfirmation()
@@ -570,7 +575,10 @@ namespace Graphite {
 		if (open)
 		{
 			if (!node.Expanded)
-				(void)m_Workspace.Tree().Expand(node);
+			{
+				// A directory row, so Expand cannot fail; an unreadable folder it logs and marks.
+				static_cast<void>(m_Workspace.Tree().Expand(node));
+			}
 
 			for (Core::FileNode& child : node.Children)
 				RenderNode(child);
