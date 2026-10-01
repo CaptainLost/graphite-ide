@@ -1,3 +1,4 @@
+#include "App/CommandLine.h"
 #include "App/GraphiteLayer.h"
 
 #include "App/Version.h"
@@ -6,6 +7,7 @@
 #include "Settings/UserDirectories.h"
 
 #include "Core.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/App/EntryPoint.h"
 
 #include <cstddef>
@@ -18,6 +20,14 @@ namespace Graphite {
 		constexpr std::size_t kConsoleCapacity = 4096;
 		constexpr std::size_t kLogFileSize = 5u * 1024u * 1024u;
 		constexpr std::size_t kLogFileCount = 3;
+
+		// The command line, read once. The log spec is asked for before the application is made,
+		// and both need it, so they must see one reading rather than two that could disagree.
+		const CommandLine& ProcessCommandLine()
+		{
+			static const CommandLine parsed = ParseCommandLine(ReadProcessCommandLine());
+			return parsed;
+		}
 	}
 
 	// The one copy of graphite.json for the whole process. The application owns it rather than
@@ -69,6 +79,13 @@ namespace Graphite {
 }
 Core::LogSpec Core::CreateLogSpec()
 {
+	// Before anything asks where a user file lives, the log file included.
+	const Graphite::CommandLine& commandLine = Graphite::ProcessCommandLine();
+	if (commandLine.UserData)
+	{
+		Graphite::UserDirectories::Redirect(*commandLine.UserData);
+	}
+
 	Core::LogSpec spec;
 	spec.FilePath = Graphite::UserDirectories::LogFile();
 	spec.MaxFileSize = Graphite::kLogFileSize;
@@ -83,11 +100,32 @@ Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationCommandL
 
 	APP_INFO("Graphite IDE {}", Graphite::Version::String());
 
-	std::filesystem::path initialFolder;
-	if (args.Count > 1)
-		initialFolder = args[1];
+	if (const auto root = Graphite::UserDirectories::RedirectedRoot())
+	{
+		APP_INFO("User data redirected to '{}'", Core::ToUtf8(*root));
+	}
 
+	// The parse ignores an option left without a value; saying so is for here, once there is a log.
+	// This looks at the arguments only to name that mistake, not to decide anything.
+	if (!Graphite::ProcessCommandLine().UserData)
+	{
+		for (const std::wstring& argument : Graphite::ReadProcessCommandLine())
+		{
+			if (argument == L"--user-data")
+			{
+				APP_WARN("--user-data given without a directory; ignored");
+				break;
+			}
+		}
+	}
+
+	// The folder comes from the same reading that decided the redirect, not from args: that is
+	// narrow, and has no idea "--user-data" is not a folder.
+	static_cast<void>(args);
+
+	// The settings file is resolved here, after CreateLogSpec has applied any --user-data
+	// redirect: Core::Log::Init asks for the log spec before CreateApplication is called.
 	return Core::CreateScope<Graphite::GraphiteApplication>(
-		consoleSink, std::move(initialFolder),
+		consoleSink, Graphite::ProcessCommandLine().Folder,
 		Graphite::AppSettings{Graphite::UserDirectories::SettingsFile()});
 }
