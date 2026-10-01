@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Editor/AnalysisCache.h"
+#include "Editor/DocumentBuffers.h"
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/LanguageServicesPort.h"
@@ -225,6 +226,10 @@ namespace Graphite {
 		DocumentWindows m_DocumentWindows{m_Documents,     m_Modals,   m_LanguageServices,
 										  m_Diagnostics,   m_ChangeMarkers, m_PreviewSemantics,
 										  m_Analysis,      m_AnalysisStore, m_WorkspaceAnalysis};
+
+		// The Git panel's view of the editor, over the two members above. Declared after both
+		// and before m_Panels, where GitView holds it by reference.
+		DocumentBuffers m_DocumentBuffers{m_Documents, m_DocumentWindows};
 
 		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
 		// references to both, so both must outlive it through teardown.

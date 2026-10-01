@@ -1,5 +1,6 @@
 #include "Git/GitView.h"
 
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include "Editor/Palettes.h"
@@ -15,6 +16,8 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <exception>
@@ -48,6 +51,51 @@ namespace Graphite {
 				return std::chrono::minutes{0};
 			}
 		}
+
+		// `path` relative to `root`, comparing each component without regard to ASCII case:
+		// the editor and git can spell the same directory differently on Windows - a drive
+		// letter, for one - and lexically_relative would then climb out with "..".
+		std::filesystem::path RelativeTo(const std::filesystem::path& path, const std::filesystem::path& root)
+		{
+			const auto same = [](const std::filesystem::path& a, const std::filesystem::path& b) {
+				const std::string left = a.generic_string();
+				const std::string right = b.generic_string();
+
+				return std::equal(left.begin(), left.end(), right.begin(), right.end(), [](char x, char y) {
+					return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+				});
+			};
+
+			const std::filesystem::path normalPath = path.lexically_normal();
+			const std::filesystem::path normalRoot = root.lexically_normal();
+
+			auto inPath = normalPath.begin();
+
+			for (const std::filesystem::path& part : normalRoot)
+			{
+				// A trailing separator leaves an empty last component, which names nothing.
+				if (part.empty())
+				{
+					continue;
+				}
+
+				if (inPath == normalPath.end() || !same(*inPath, part))
+				{
+					return path.lexically_relative(root);
+				}
+
+				++inPath;
+			}
+
+			std::filesystem::path relative;
+
+			for (; inPath != normalPath.end(); ++inPath)
+			{
+				relative /= *inPath;
+			}
+
+			return relative;
+		}
 	}
 
 	std::string RefLabel(const Core::Branch& branch)
@@ -65,10 +113,195 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows)
+	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
+					 EditorBuffers& buffers)
 		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
-		  m_DiffWindows(diffWindows)
+		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_CheckoutQuestion(modals, "Checkout"),
+		  m_NewBranchQuestion(modals, "New Branch"), m_RenameBranchQuestion(modals, "Rename Branch"),
+		  m_DeleteBranchQuestion(modals, "Delete Branch"), m_DropStashQuestion(modals, "Drop Stash")
 	{
+	}
+
+	void GitView::OnUpdate(Core::Timestep)
+	{
+		// Begin is what hands the gate back, and it runs from OnImGuiRender, which the panel
+		// manager skips for a panel that is hidden or behind another tab - see
+		// ChangesPanel::OnUpdate for why dropping the question is the lesser harm.
+		if (!WasDrawn())
+		{
+			WithdrawQuestions();
+		}
+
+		if (std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan())
+		{
+			ApplyCheckoutPlan(std::move(*answer));
+		}
+
+		if (std::optional<DeleteCheck> check = m_Model.TakeDeleteCheck())
+		{
+			// Only the check this panel is waiting for: anything else was asked for a branch
+			// the reader has since moved on from.
+			if (m_PendingDelete == check->Branch)
+			{
+				m_PendingDelete.reset();
+
+				if (check->Failure.has_value())
+				{
+					m_ActionError = "Could not delete " + check->Branch + ": " + check->Failure->Message;
+				}
+				else
+				{
+					m_DeleteBranchQuestion.Ask(DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
+				}
+			}
+		}
+
+		// Drained every frame, drawn or not, for the reason ChangesPanel drains TakeDiscarded
+		// here: an expectation registered long after the write is one for the wrong change.
+		if (std::vector<std::filesystem::path> changed = m_Model.TakeCheckedOut(); !changed.empty())
+		{
+			const std::filesystem::path& root = m_Model.GetWorkingDirectory();
+
+			// Relative paths joined onto nothing would name the wrong files.
+			if (root.empty())
+			{
+				return;
+			}
+
+			std::vector<std::filesystem::path> absolute;
+			absolute.reserve(changed.size());
+
+			for (const std::filesystem::path& path : changed)
+			{
+				absolute.push_back(root / path);
+			}
+
+			m_Buffers.ExpectExternalWrite(absolute);
+		}
+	}
+
+	void GitView::WithdrawQuestions()
+	{
+		// Only a question actually asked, as ChangesPanel does: nothing pending, nothing to
+		// hand back.
+		if (m_CheckoutQuestion.IsAsked())
+		{
+			m_CheckoutQuestion.Withdraw();
+		}
+
+		if (m_NewBranchQuestion.IsAsked())
+		{
+			m_NewBranchQuestion.Withdraw();
+		}
+
+		if (m_RenameBranchQuestion.IsAsked())
+		{
+			m_RenameBranchQuestion.Withdraw();
+		}
+
+		if (m_DeleteBranchQuestion.IsAsked())
+		{
+			m_DeleteBranchQuestion.Withdraw();
+		}
+
+		if (m_DropStashQuestion.IsAsked())
+		{
+			m_DropStashQuestion.Withdraw();
+		}
+	}
+
+	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
+	{
+		m_ActionError.reset();
+
+		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
+
+		m_PendingCheckout = target;
+		m_PendingUnsaved = root.empty() ? std::vector<std::filesystem::path>{} : m_Buffers.ModifiedUnder(root);
+
+		m_Model.RequestCheckoutPlan(target);
+	}
+
+	void GitView::ApplyCheckoutPlan(CheckoutPlanAnswer answer)
+	{
+		if (m_PendingCheckout != answer.Target)
+		{
+			return;
+		}
+
+		m_PendingCheckout.reset();
+
+		const std::string label = CheckoutTargetLabel(answer.Target);
+
+		if (answer.Failure.has_value() || !answer.Plan.has_value())
+		{
+			m_ActionError = "Could not check out " + label + ": " +
+							(answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan"));
+			return;
+		}
+
+		std::vector<std::filesystem::path> unsavedRelative;
+		unsavedRelative.reserve(m_PendingUnsaved.size());
+
+		for (const std::filesystem::path& path : m_PendingUnsaved)
+		{
+			unsavedRelative.push_back(RelativeTo(path, m_Model.GetWorkingDirectory()));
+		}
+
+		if (!NeedsCheckoutDialog(*answer.Plan, unsavedRelative))
+		{
+			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
+			return;
+		}
+
+		// No status yet lists no changes of git's; the unsaved documents are still asked about.
+		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+
+		CheckoutQuestion question = BuildCheckoutQuestion(
+			label, *answer.Plan, status ? *status : Core::WorkingTreeStatus{}, unsavedRelative);
+
+		const bool forced = question.UntrackedForced;
+
+		m_CheckoutQuestion.Ask(CheckoutQuestionPayload{.Target = std::move(answer.Target),
+													   .Question = std::move(question),
+													   .UnsavedAbsolute = m_PendingUnsaved,
+													   .IncludeUntracked = forced});
+	}
+
+	void GitView::BeginNewBranch(std::string from, const Core::Oid& at)
+	{
+		m_NewBranchQuestion.Ask(BranchNamePayload{.Mode = BranchNameMode::New, .From = std::move(from), .At = at});
+	}
+
+	void GitView::BeginRename(const std::string& branch)
+	{
+		BranchNamePayload payload{.Mode = BranchNameMode::Rename, .From = branch};
+
+		// Starts from the old name: a rename is usually a small edit to it.
+		const std::size_t length = std::min(branch.size(), payload.Buffer.size() - 1);
+		std::copy_n(branch.begin(), length, payload.Buffer.begin());
+
+		m_RenameBranchQuestion.Ask(std::move(payload));
+	}
+
+	void GitView::ApplyCommitAction()
+	{
+		const std::optional<CommitAction> action = m_Commits.TakeCommitAction();
+
+		if (!action.has_value())
+		{
+			return;
+		}
+
+		switch (action->Action)
+		{
+		case CommitAction::Kind::Checkout:
+			BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::Commit, .Commit = action->Commit});
+			break;
+		case CommitAction::Kind::NewBranch:
+			BeginNewBranch(action->Commit.ShortHex(), action->Commit);
+			break;
+		}
 	}
 
 	void GitView::SubscribeTo(Core::EventBus& events)
@@ -95,6 +328,14 @@ namespace Graphite {
 			m_PageWhenAsked.reset();
 			m_LastSeenPage.reset();
 			m_Searching = false;
+
+			// Every question and every answer awaited was about the repository that is gone.
+			// Withdrawn here, outside any popup, which is the only place Withdraw is valid.
+			WithdrawQuestions();
+			m_PendingCheckout.reset();
+			m_PendingUnsaved.clear();
+			m_PendingDelete.reset();
+			m_ActionError.reset();
 		};
 
 		events.Subscribe<WorkspaceOpenedEvent>([forget](const WorkspaceOpenedEvent&) { forget(); });
@@ -109,6 +350,9 @@ namespace Graphite {
 		// refs to list either, and a prompt squeezed beside an empty column reads as broken.
 		if (IsMissingRepository(m_Model.GetStatus() != nullptr, m_Model.GetStatusError()))
 		{
+			// The dialogs below are not drawn on this path, and Begin is what hands the gate
+			// back - so a question left standing would hold it for good.
+			WithdrawQuestions();
 			DrawInitRepositoryPrompt(m_Model);
 			return;
 		}
@@ -166,6 +410,12 @@ namespace Graphite {
 			// interrupting for.
 			ImGui::TextUnformatted(error->Message.c_str());
 		}
+
+		RenderCheckoutDialog();
+		RenderBranchNameDialog(m_NewBranchQuestion);
+		RenderBranchNameDialog(m_RenameBranchQuestion);
+		RenderDeleteBranchDialog();
+		RenderDropStashDialog();
 	}
 
 	void GitView::RenderRefs(const std::vector<Core::Branch>& branches)
@@ -175,6 +425,8 @@ namespace Graphite {
 								 m_RefFilterBuffer.data(), m_RefFilterBuffer.size());
 
 		const std::string refFilter(m_RefFilterBuffer.data());
+
+		RenderErrors();
 
 		const auto group = [&](const char* heading, Core::RefKind kind) {
 			ImGui::SeparatorText(heading);
@@ -195,9 +447,25 @@ namespace Graphite {
 
 				const bool selected = m_SelectedRef.has_value() && *m_SelectedRef == branch.FullName;
 
+				// Each row's menu is its own popup.
+				ImGui::PushID(branch.FullName.c_str());
+
+				// Grouped so the menu below asks about the whole row: with the filter marked,
+				// HighlightedSelectable ends on a piece of its label, and asking that would
+				// open the menu only over the text after the match.
+				ImGui::BeginGroup();
+
 				// Marked the same way the commit rows are, so the two columns of this panel
 				// answer a filter in one language.
-				if (HighlightedSelectable("##ref", selected, RefLabel(branch), refFilter))
+				const bool clicked = HighlightedSelectable("##ref", selected, RefLabel(branch), refFilter);
+
+				ImGui::EndGroup();
+
+				RenderRefMenu(branch);
+
+				ImGui::PopID();
+
+				if (clicked)
 				{
 					m_SelectedRef = branch.FullName;
 
@@ -212,6 +480,162 @@ namespace Graphite {
 
 		group("Local", Core::RefKind::Local);
 		group("Remote", Core::RefKind::Remote);
+
+		RenderStashes();
+	}
+
+	void GitView::RenderRefMenu(const Core::Branch& branch)
+	{
+		if (!Core::BeginRightClickPopup("ref-menu"))
+		{
+			return;
+		}
+
+		// One write at a time, and the plan and the delete check are writes too.
+		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+
+		if (branch.Kind == Core::RefKind::Local)
+		{
+			if (ImGui::MenuItem("Checkout", nullptr, false, !branch.IsHead))
+			{
+				BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = branch.Name});
+			}
+
+			if (ImGui::MenuItem("New Branch from Here…"))
+			{
+				BeginNewBranch(branch.Name, branch.Tip);
+			}
+
+			if (ImGui::MenuItem("Rename…"))
+			{
+				BeginRename(branch.Name);
+			}
+
+			// Git refuses to delete the branch it is on, so the item says so before it is
+			// clicked rather than after.
+			if (ImGui::MenuItem("Delete", nullptr, false, !branch.IsHead))
+			{
+				m_ActionError.reset();
+				m_PendingDelete = branch.Name;
+				m_Model.RequestDeleteCheck(branch.Name);
+			}
+		}
+		else
+		{
+			if (ImGui::MenuItem("Checkout"))
+			{
+				BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::RemoteBranch, .Name = branch.Name});
+			}
+
+			if (ImGui::MenuItem("New Branch from Here…"))
+			{
+				BeginNewBranch(branch.Name, branch.Tip);
+			}
+		}
+
+		ImGui::EndDisabled();
+		ImGui::EndPopup();
+	}
+
+	void GitView::RenderStashes()
+	{
+		ImGui::SeparatorText("Stashes");
+
+		const std::shared_ptr<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
+
+		if (!stashes || stashes->empty())
+		{
+			// A list that could not be read says why rather than claiming there is nothing.
+			if (const std::optional<Core::Error>& error = m_Model.GetStashesError(); error.has_value())
+			{
+				ImGui::TextDisabled("%s", error->Message.c_str());
+			}
+			else
+			{
+				ImGui::TextDisabled("No stashes");
+			}
+
+			return;
+		}
+
+		const bool busy = m_Model.IsWriteInFlight();
+
+		for (std::size_t row = 0; row < stashes->size(); ++row)
+		{
+			const Core::StashEntry& stash = (*stashes)[row];
+
+			ImGui::PushID(static_cast<int>(row));
+
+			// The label is laid over an id-only Selectable rather than passed as one: a stash
+			// message is free text, and a "##" in it would cut the label short.
+			const ImVec2 rowStart = ImGui::GetCursorPos();
+			ImGui::Selectable("##stash", false, ImGuiSelectableFlags_AllowOverlap);
+
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				const std::chrono::sys_seconds made{std::chrono::seconds{stash.Time}};
+				ImGui::SetTooltip("%s", std::format("{:%Y-%m-%d %H:%M}", made + LocalOffset()).c_str());
+			}
+
+			if (Core::BeginRightClickPopup("stash-menu"))
+			{
+				ImGui::BeginDisabled(busy);
+
+				if (ImGui::MenuItem("Apply"))
+				{
+					m_Model.RequestStashApply(stash.Id);
+				}
+
+				if (ImGui::MenuItem("Pop"))
+				{
+					m_Model.RequestStashPop(stash.Id);
+				}
+
+				if (ImGui::MenuItem("Drop"))
+				{
+					m_DropStashQuestion.Ask(DropStashPayload{.Index = stash.Index, .Id = stash.Id});
+				}
+
+				ImGui::EndDisabled();
+				ImGui::EndPopup();
+			}
+
+			ImGui::SetCursorPos(rowStart);
+			ImGui::TextUnformatted(std::format("stash@{{{}}}: {}", stash.Index, stash.Message).c_str());
+
+			ImGui::PopID();
+		}
+	}
+
+	void GitView::RenderErrors()
+	{
+		// Wrapped: the ref column is narrow, and a message cut at its edge says less than one
+		// that runs to a second line.
+		if (const std::optional<Core::Error>& error = m_Model.GetWriteError(); error.has_value())
+		{
+			ImGui::PushID("write-error");
+			ImGui::TextWrapped("%s", error->Message.c_str());
+
+			if (ImGui::SmallButton("Dismiss"))
+			{
+				m_Model.DismissWriteError();
+			}
+
+			ImGui::PopID();
+		}
+
+		if (m_ActionError.has_value())
+		{
+			ImGui::PushID("action-error");
+			ImGui::TextWrapped("%s", m_ActionError->c_str());
+
+			if (ImGui::SmallButton("Dismiss"))
+			{
+				m_ActionError.reset();
+			}
+
+			ImGui::PopID();
+		}
 	}
 
 	void GitView::RequestLog(std::optional<std::size_t> maxCount)
@@ -357,8 +781,11 @@ namespace Graphite {
 				return m_Model.GetDiffFor(commit);
 			};
 
+			m_Commits.SetActionsEnabled(!m_Model.IsWriteInFlight());
 			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, m_Filter.Get().Text,
 							 m_Filter.Get().Path);
+
+			ApplyCommitAction();
 
 			// Driven from here, not from inside the list: the widget must not know the
 			// model. Asking for a diff already held, in flight, or previously failed costs

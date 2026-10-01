@@ -46,6 +46,20 @@ namespace Graphite {
 	std::optional<Core::Oid> CommitSelectionSurviving(const std::optional<Core::Oid>& commit,
 													  const Core::LogPage& page);
 
+	// What the reader asked of one commit row through its context menu. Handed out rather
+	// than acted on, because acting means asking the model, which the list does not know.
+	struct CommitAction
+	{
+		enum class Kind
+		{
+			Checkout,
+			NewBranch
+		};
+
+		Kind Action = Kind::Checkout;
+		Core::Oid Commit;
+	};
+
 	// A list of commits with the graph down its left edge. Used by the Git view, and by the
 	// file and line histories in the next plan — which is why it takes a LogPage and a graph
 	// rather than reaching for a model.
@@ -118,6 +132,13 @@ namespace Graphite {
 		// request would ignore sixty, so a second ask carries no information.
 		bool TakeLoadMoreRequest();
 
+		// One-shot: the last action picked from a commit row's context menu, once.
+		std::optional<CommitAction> TakeCommitAction();
+
+		// Greys the context menu's items, for while a write is running. The list does not
+		// know the model that knows, so the owner says so before each Render.
+		void SetActionsEnabled(bool enabled) { m_ActionsEnabled = enabled; }
+
 	private:
 		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 							 const GitPalette& palette, std::string_view highlight,
@@ -138,5 +159,8 @@ namespace Graphite {
 		// incomplete page (size 0 is impossible here, Render returns early on empty) can
 		// still arm.
 		std::ptrdiff_t m_LoadMoreRequestedAtCount = -1;
+
+		std::optional<CommitAction> m_CommitAction;
+		bool m_ActionsEnabled = true;
 	};
 }

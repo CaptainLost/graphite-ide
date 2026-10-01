@@ -1,5 +1,6 @@
 #include "Git/CommitListView.h"
 
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Fs/FileSystem.h"
 
@@ -270,6 +271,13 @@ namespace Graphite {
 		return requested;
 	}
 
+	std::optional<CommitAction> CommitListView::TakeCommitAction()
+	{
+		std::optional<CommitAction> action = std::move(m_CommitAction);
+		m_CommitAction.reset();
+		return action;
+	}
+
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 								const GitPalette& palette, std::chrono::minutes offset,
 								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
@@ -468,6 +476,26 @@ namespace Graphite {
 		// turn, and asking afterwards would ask the last piece of text instead.
 		const bool hovered = ImGui::IsItemHovered();
 		const bool hoveredForTooltip = ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip);
+
+		// Also asked of the Selectable, for the same reason. The caller pushes an id per row,
+		// so each row's menu is its own popup.
+		if (Core::BeginRightClickPopup("commit-menu"))
+		{
+			ImGui::BeginDisabled(!m_ActionsEnabled);
+
+			if (ImGui::MenuItem("Checkout (detached)"))
+			{
+				m_CommitAction = CommitAction{.Action = CommitAction::Kind::Checkout, .Commit = commit.Id};
+			}
+
+			if (ImGui::MenuItem("New Branch from Here…"))
+			{
+				m_CommitAction = CommitAction{.Action = CommitAction::Kind::NewBranch, .Commit = commit.Id};
+			}
+
+			ImGui::EndDisabled();
+			ImGui::EndPopup();
+		}
 
 		ImGui::SetCursorPos(rowStart);
 		ImGui::TextUnformatted(expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT);

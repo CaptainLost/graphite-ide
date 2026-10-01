@@ -1,24 +1,33 @@
 #pragma once
 
+#include "Editor/ModalGate.h"
+#include "Editor/ModalQuestion.h"
+#include "Git/CheckoutQuestion.h"
 #include "Git/CommitLabels.h"
 #include "Git/CommitListView.h"
 #include "Git/CommitDetailsView.h"
 #include "Git/DiffView.h"
 #include "Git/DiffWindows.h"
+#include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
 #include "Git/HistoryFilter.h"
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Checkout.h"
 #include "Core/Git/Ref.h"
+#include "Core/Git/Stash.h"
 #include "Core/UI/Panel.h"
 
 #include <array>
+#include <cstddef>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace Graphite {
 
@@ -38,7 +47,14 @@ namespace Graphite {
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows);
+		GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
+				EditorBuffers& buffers);
+
+		// Drains the model's one-shots that belong to this panel - a checkout plan, a delete
+		// check, the paths a checkout changed - and hands the gate back for a question this
+		// panel can no longer show. Here rather than in OnImGuiRender for the reasons
+		// ChangesPanel::OnUpdate gives: this runs every frame, drawn or not.
+		void OnUpdate(Core::Timestep ts) override;
 
 		void OnImGuiRender() override;
 
@@ -52,7 +68,97 @@ namespace Graphite {
 		void SubscribeTo(Core::EventBus& events);
 
 	private:
+		// What the checkout dialog asks about. Two asks about one target are one question.
+		struct CheckoutQuestionPayload
+		{
+			Core::CheckoutTarget Target;
+			CheckoutQuestion Question;
+
+			// The editor's unsaved documents as they were when the checkout was asked for:
+			// what Discard reverts and Stash saves first.
+			std::vector<std::filesystem::path> UnsavedAbsolute;
+
+			// The checkbox's starting state - ticked, and locked, when an untracked file blocks.
+			bool IncludeUntracked = false;
+
+			bool operator==(const CheckoutQuestionPayload& other) const { return Target == other.Target; }
+		};
+
+		enum class BranchNameMode
+		{
+			New,
+			Rename
+		};
+
+		// What the branch-name dialog starts from. The field and the checkbox the reader then
+		// edits live in m_BranchNameBuffer and m_CheckoutAfter: a payload is only ever handed
+		// back read-only.
+		struct BranchNamePayload
+		{
+			BranchNameMode Mode = BranchNameMode::New;
+
+			// The branch being renamed, or what a new branch starts from as the reader knows
+			// it: a branch name or a short commit id.
+			std::string From;
+
+			// The commit a new branch starts at.
+			Core::Oid At;
+
+			std::array<char, 256> Buffer{};
+			bool CheckoutAfter = true;
+
+			bool operator==(const BranchNamePayload& other) const
+			{
+				return Mode == other.Mode && From == other.From && At == other.At;
+			}
+		};
+
+		struct DeleteBranchPayload
+		{
+			std::string Branch;
+
+			// Commits only this branch reaches, which the delete would leave without a name.
+			std::size_t Unmerged = 0;
+
+			bool operator==(const DeleteBranchPayload& other) const { return Branch == other.Branch; }
+		};
+
+		struct DropStashPayload
+		{
+			std::size_t Index = 0;
+			Core::Oid Id;
+
+			bool operator==(const DropStashPayload& other) const { return Id == other.Id; }
+		};
+
 		void RenderRefs(const std::vector<Core::Branch>& branches);
+		void RenderRefMenu(const Core::Branch& branch);
+		void RenderStashes();
+
+		// The write error and this panel's own - a plan or a delete check that could not be
+		// made - each with a way to dismiss it. Lines, not modals, like ChangesPanel's.
+		void RenderErrors();
+
+		// The first step of every checkout: note what the editor holds unsaved and ask the
+		// model what the checkout would touch. OnUpdate takes it from there.
+		void BeginCheckout(const Core::CheckoutTarget& target);
+		void BeginNewBranch(std::string from, const Core::Oid& at);
+		void BeginRename(const std::string& branch);
+
+		// What a commit row's menu asked for, acted on.
+		void ApplyCommitAction();
+
+		// The plan answered: check out at once, or ask.
+		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
+
+		// Every question this panel owns, abandoned and its gate handed back.
+		void WithdrawQuestions();
+
+		// In GitViewDialogs.cpp.
+		void RenderCheckoutDialog();
+		void RenderBranchNameDialog(ModalQuestion<BranchNamePayload>& question);
+		void RenderDeleteBranchDialog();
+		void RenderDropStashDialog();
 		void RenderCommits(const GitPalette& palette);
 		// The pane below the list. Which of the two things it shows is decided here: a
 		// selected file wins over the commit it sits under, because picking the file is the
@@ -96,6 +202,11 @@ namespace Graphite {
 		// it itself, beside m_DocumentWindows, so a tab opened from here keeps drawing after
 		// this panel closes or loses focus.
 		DiffWindows& m_DiffWindows;
+
+		// The editor's side of a checkout: which documents hold unsaved edits, and saving,
+		// reverting or reloading them. A seam rather than DocumentWindows, so this panel stays
+		// buildable into the tests.
+		EditorBuffers& m_Buffers;
 
 		CommitListView m_Commits;
 		DiffView m_Diff;
@@ -151,5 +262,35 @@ namespace Graphite {
 		// asking, and hands the texts and tokens down to DiffView::Render as plain data. The
 		// detached tabs hold one of these per tab, for the same reason and by the same rules.
 		FileTextsBinding m_Texts;
+
+		// The checkout whose plan is in flight, and the unsaved documents noted when it was
+		// asked for. A plan answering any other target is one this panel no longer wants.
+		std::optional<Core::CheckoutTarget> m_PendingCheckout;
+		std::vector<std::filesystem::path> m_PendingUnsaved;
+
+		// The branch whose delete check is in flight, for the same reason.
+		std::optional<std::string> m_PendingDelete;
+
+		// A plan or a delete check that failed. Those answer through their own one-shots,
+		// never through GetWriteError, so saying so is this panel's job.
+		std::optional<std::string> m_ActionError;
+
+		ModalQuestion<CheckoutQuestionPayload> m_CheckoutQuestion;
+		ModalQuestion<BranchNamePayload> m_NewBranchQuestion;
+		ModalQuestion<BranchNamePayload> m_RenameBranchQuestion;
+		ModalQuestion<DeleteBranchPayload> m_DeleteBranchQuestion;
+		ModalQuestion<DropStashPayload> m_DropStashQuestion;
+
+		// What the reader changes in an open dialog. Taken from the payload the first frame a
+		// question is on screen, and let go the first frame none is, so a dialog asked again
+		// starts from its payload rather than from the last one's edits.
+		bool m_CheckoutDialogOpen = false;
+		bool m_IncludeUntracked = false;
+		bool m_StashSaveFailed = false;
+
+		// Which of the two branch-name questions the field was filled for.
+		const ModalQuestion<BranchNamePayload>* m_BranchNameFor = nullptr;
+		std::array<char, 256> m_BranchNameBuffer{};
+		bool m_CheckoutAfter = true;
 	};
 }

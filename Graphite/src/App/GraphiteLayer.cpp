@@ -134,7 +134,8 @@ namespace Graphite {
 		};
 
 		auto* gitView = static_cast<GitView*>(
-			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows)));
+			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
+													 m_DocumentBuffers)));
 		gitView->SubscribeTo(m_Events);
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
