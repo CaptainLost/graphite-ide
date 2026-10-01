@@ -282,6 +282,8 @@ namespace Graphite {
 
 		void AskForSymbols(const Core::OpenItem& item, LensState& state);
 
+		void AskForSemanticTokens(const Core::OpenItem& item);
+
 		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 								 const EditorFrameResult& frame);
 

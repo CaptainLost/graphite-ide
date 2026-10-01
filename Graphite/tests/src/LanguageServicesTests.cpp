@@ -242,6 +242,29 @@ TEST_CASE("A ticket for a language with no configured server is answered Failed 
 	CHECK(answers[0].Failed);
 }
 
+TEST_CASE("A semantic-tokens ticket the client refuses before the handshake is failed at once")
+{
+	// where.exe never completes a handshake, so the client has no semantic legend and declines to
+	// ask. Its "not asked" request id must not be parked as a pending request: nothing would ever
+	// answer it, and the editor would wait on the ticket for the lifetime of the tab. Taken without
+	// a Poll, so an answer that only arrives when the process dies does not count.
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, "C:\\Windows\\System32\\where.exe");
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	const Graphite::LanguageServices::Ticket ticket =
+		services.AskSemanticTokens(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].For == ticket);
+	CHECK(answers[0].Failed);
+}
+
 TEST_CASE("TakeAnswers empties its queue")
 {
 	TempDirectory temp;

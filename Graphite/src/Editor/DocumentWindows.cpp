@@ -1405,13 +1405,18 @@ namespace Graphite {
 		// On the same beat, because they answer the same question at different grain - what this
 		// document contains - and go stale together on the same edit. Asking on one schedule is
 		// one thing to reason about rather than two that drift.
+		AskForSemanticTokens(item);
+
+		state.SymbolsOutstanding = true;
+		state.NextSymbolsAt = now + kSymbolsRetrySeconds;
+	}
+
+	void DocumentWindows::AskForSemanticTokens(const Core::OpenItem& item)
+	{
 		const LanguageServices::Ticket colours =
 			m_LanguageServices.AskSemanticTokens(item.Path, LanguageOfPath(item.Path));
 
 		m_PendingSemantic.emplace(colours, item.Path);
-
-		state.SymbolsOutstanding = true;
-		state.NextSymbolsAt = now + kSymbolsRetrySeconds;
 	}
 
 	void DocumentWindows::AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
@@ -1474,7 +1479,20 @@ namespace Graphite {
 		if (const ServerState now = m_LanguageServices.StatusFor(item.Path, LanguageOfPath(item.Path)).State;
 			now != state.LastServerState)
 		{
+			const ServerState before = state.LastServerState;
+
 			state.LastServerState = now;
+
+			// The handshake is what gives the client its semantic legend, and a question asked
+			// before it is refused. The retry clock only re-asks while declarations are still
+			// wanted, so a server that answered symbols and then finished its handshake would
+			// otherwise leave the document uncoloured until the next edit.
+			if (before == ServerState::Starting &&
+				(now == ServerState::Ready || now == ServerState::Indexing ||
+				 now == ServerState::NoCompileDatabase))
+			{
+				AskForSemanticTokens(item);
+			}
 
 			if (now == ServerState::Starting)
 			{

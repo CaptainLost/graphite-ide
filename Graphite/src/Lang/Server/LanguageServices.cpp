@@ -353,6 +353,15 @@ namespace Graphite {
 		ManagedServer& server = found->second;
 		const RequestId requestId = ask(*server.Client);
 
+		if (requestId == 0)
+		{
+			// The client declined to ask - semantic tokens before the handshake gave it a legend,
+			// or from a server that declared none. Parked under id 0 the ticket would never be
+			// answered and the next refusal would overwrite it, so it is failed on the spot.
+			Fail(ticket);
+			return ticket;
+		}
+
 		server.Pending[requestId] = ticket;
 
 		return ticket;
