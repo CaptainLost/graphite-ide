@@ -7,6 +7,8 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 
 using namespace Core;
 
@@ -79,4 +81,30 @@ TEST_CASE("A program on PATH is found and a missing one is not")
 {
 	CHECK_FALSE(Core::FindOnPath("cmd.exe").empty());
 	CHECK(Core::FindOnPath("graphite-no-such-program.exe").empty());
+}
+
+TEST_CASE("A program in a non-ANSI directory on PATH is found")
+{
+	namespace fs = std::filesystem;
+	const fs::path directory = fs::temp_directory_path() / L"graphite-łż-path";
+	std::error_code status;
+	fs::create_directories(directory, status);
+	REQUIRE_FALSE(status);
+
+	{
+		std::ofstream program{directory / L"graphite-wide-path-probe.exe"};
+		REQUIRE(program.is_open());
+	}
+
+	const std::optional<fs::path> original = Core::EnvironmentPath(L"PATH");
+	REQUIRE(original.has_value());
+	REQUIRE(_wputenv_s(L"PATH", directory.wstring().c_str()) == 0);
+
+	const fs::path found = Core::FindOnPath("graphite-wide-path-probe.exe");
+
+	// Restore before asserting so a failure cannot leave later tests with a broken PATH.
+	_wputenv_s(L"PATH", original->wstring().c_str());
+	fs::remove_all(directory, status);
+
+	CHECK(found == directory / L"graphite-wide-path-probe.exe");
 }

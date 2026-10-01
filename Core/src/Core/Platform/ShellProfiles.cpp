@@ -3,6 +3,7 @@
 #include "Core/Platform/ShellProfiles.h"
 
 #include "Core/Base/PlatformDetection.h"
+#include "Core/Platform/Process.h"
 
 #include <array>
 #include <cstdlib>
@@ -15,36 +16,6 @@
 namespace Core {
 
 	namespace {
-		std::string EnvironmentString(const char* name)
-		{
-			// std::getenv is flagged by MSVC as unsafe in favour of _dupenv_s, which owns its
-			// buffer instead of pointing into process-wide state.
-#ifdef CORE_PLATFORM_WINDOWS
-			char* value = nullptr;
-			std::size_t length = 0;
-
-			if (_dupenv_s(&value, &length, name) != 0 || value == nullptr)
-			{
-				return {};
-			}
-
-			std::string result = value;
-			std::free(value);
-			return result;
-#else
-			const char* value = std::getenv(name);
-
-			return value == nullptr ? std::string{} : std::string{value};
-#endif
-		}
-
-		std::filesystem::path EnvironmentPath(const char* name)
-		{
-			const std::string value = EnvironmentString(name);
-
-			return value.empty() ? std::filesystem::path{} : std::filesystem::path{value};
-		}
-
 		// Appends onto an environment-derived base, but only when that base is actually
 		// present. An empty base concatenated with a relative tail ("PowerShell/7/pwsh.exe")
 		// is still a valid, non-empty path — one that resolves relative to the current
@@ -201,9 +172,9 @@ namespace Core {
 	// space. CreateProcess strips them before it resolves anything, so a segment used
 	// verbatim here would name a directory whose first and last characters are quote marks
 	// and match nothing at all.
-	std::string_view StripQuotes(std::string_view segment)
+	std::wstring_view StripQuotes(std::wstring_view segment)
 	{
-		if (segment.size() >= 2 && segment.front() == '"' && segment.back() == '"')
+		if (segment.size() >= 2 && segment.front() == L'"' && segment.back() == L'"')
 		{
 			return segment.substr(1, segment.size() - 2);
 		}
@@ -215,24 +186,33 @@ namespace Core {
 	// walking PATH in order.
 	std::filesystem::path FindOnPath(const std::string& executableName)
 	{
-		const std::string pathVariable = EnvironmentString("PATH");
+		// Read wide: a PATH entry under a non-ANSI profile directory would not survive the
+		// narrow code page.
+		const std::optional<std::filesystem::path> pathValue = EnvironmentPath(L"PATH");
+
+		if (!pathValue.has_value())
+		{
+			return {};
+		}
+
+		const std::wstring pathVariable = pathValue->wstring();
 
 		std::size_t start = 0;
 		while (start <= pathVariable.size())
 		{
-			std::size_t end = pathVariable.find(';', start);
-			if (end == std::string::npos)
+			std::size_t end = pathVariable.find(L';', start);
+			if (end == std::wstring::npos)
 			{
 				end = pathVariable.size();
 			}
 
-			const std::string_view segment = StripQuotes(
-				std::string_view{pathVariable}.substr(start, end - start));
+			const std::wstring_view segment = StripQuotes(
+				std::wstring_view{pathVariable}.substr(start, end - start));
 
 			if (!segment.empty())
 			{
 				const std::filesystem::path candidate =
-					std::filesystem::path{std::string{segment}} / executableName;
+					std::filesystem::path{std::wstring{segment}} / executableName;
 				std::error_code status;
 
 				if (std::filesystem::exists(candidate, status))
@@ -252,8 +232,10 @@ namespace Core {
 		std::vector<ShellProfile> shells;
 
 #ifdef CORE_PLATFORM_WINDOWS
-		const std::filesystem::path programFiles = EnvironmentPath("ProgramFiles");
-		const std::filesystem::path systemRoot = EnvironmentPath("SystemRoot");
+		const std::filesystem::path programFiles =
+			EnvironmentPath(L"ProgramFiles").value_or(std::filesystem::path{});
+		const std::filesystem::path systemRoot =
+			EnvironmentPath(L"SystemRoot").value_or(std::filesystem::path{});
 		const std::filesystem::path system = JoinIfPresent(systemRoot, "System32");
 
 		AddIfPresent(shells, "PowerShell",
@@ -291,7 +273,10 @@ namespace Core {
 		AddIfPresent(shells, "WSL", JoinIfPresent(system, "wsl.exe"), {});
 #else
 		// /etc/shells lists what the machine offers, and SHELL names the user's own.
-		AddIfPresent(shells, "Default shell", EnvironmentPath("SHELL"), {"-i"});
+		const char* const userShell = std::getenv("SHELL");
+		AddIfPresent(shells, "Default shell",
+					 userShell == nullptr ? std::filesystem::path{} : std::filesystem::path{userShell},
+					 {"-i"});
 		AddIfPresent(shells, "bash", "/bin/bash", {"-i"});
 		AddIfPresent(shells, "sh", "/bin/sh", {"-i"});
 #endif
