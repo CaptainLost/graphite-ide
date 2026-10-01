@@ -1,5 +1,7 @@
 #include "Sessions/SummaryCache.h"
 
+#include "Core/Fs/AtomicWrite.h"
+
 #include <nlohmann/json.hpp>
 
 #include <fstream>
@@ -128,12 +130,9 @@ namespace Graphite {
 
 		const nlohmann::json root = {{"version", kSummaryCacheVersion}, {"sessions", std::move(sessions)}};
 
-		std::ofstream stream{file, std::ios::binary | std::ios::trunc};
-
-		if (!stream)
-			return false;
-
-		stream << root.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
-		return static_cast<bool>(stream);
+		// Swapped into place, so a crash mid-write or a second instance saving at the same
+		// moment leaves the old cache or the new one, never a truncated file.
+		return static_cast<bool>(Core::WriteFileAtomically(
+			file, root.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)));
 	}
 }

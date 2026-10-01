@@ -4,6 +4,10 @@
 
 #include "TempDirectory.h"
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 using namespace Graphite;
 
 namespace {
@@ -48,3 +52,44 @@ TEST_CASE("A missing, corrupt or other-version cache reads as empty")
 	CHECK(LoadSummaryCache(temp.MakeFile("corrupt.json", "{\"version\":1,\"sessions\":[")).empty());
 	CHECK(LoadSummaryCache(temp.MakeFile("old.json", "{\"version\":999,\"sessions\":[]}")).empty());
 }
+
+#ifdef _WIN32
+TEST_CASE("A save that cannot replace the cache leaves the previous content intact")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "sessions-cache.json";
+
+	REQUIRE(SaveSummaryCache(file, {Sample()}));
+
+	SessionSummary other = Sample();
+	other.Id = "replacement";
+
+	{
+		// A reader that does not share delete: the swap into place cannot replace the file
+		// while it is open, which is how a second instance reading the cache looks.
+		const HANDLE reader = ::CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+											OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		REQUIRE(reader != INVALID_HANDLE_VALUE);
+
+		CHECK_FALSE(SaveSummaryCache(file, {other}));
+
+		::CloseHandle(reader);
+	}
+
+	const std::vector<SessionSummary> loaded = LoadSummaryCache(file);
+
+	REQUIRE(loaded.size() == 1);
+	CHECK(loaded[0] == Sample());
+
+	// The failed save left no temporary beside the cache.
+	std::size_t entries = 0;
+	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath()})
+	{
+		static_cast<void>(entry);
+		++entries;
+	}
+	CHECK(entries == 1);
+
+	CHECK(SaveSummaryCache(file, {other}));
+}
+#endif
