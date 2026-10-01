@@ -355,64 +355,32 @@ namespace Core {
 
 	void VtParser::PrintByte(char byte)
 	{
-		const auto value = static_cast<unsigned char>(byte);
+		Utf8Step step = m_Utf8.Feed(byte);
 
-		if (m_PendingBytes > 0)
+		if (step.Status == Utf8Status::Interrupted)
 		{
-			if ((value & 0xC0) != 0x80)
-			{
-				// A continuation byte was expected and something else arrived: the character
-				// is broken. Show a replacement and re-read this byte as a fresh start, so
-				// one bad byte costs one character rather than resynchronising the stream.
-				m_PendingBytes = 0;
-				m_Pending = 0;
-				m_Screen.Print(U'\uFFFD', 1);
-				PrintByte(byte);
-				return;
-			}
-
-			m_Pending = (m_Pending << 6) | (value & 0x3F);
-			--m_PendingBytes;
-
-			if (m_PendingBytes == 0)
-			{
-				m_Screen.Print(m_Pending, CharacterWidth(m_Pending));
-				m_Pending = 0;
-			}
-
-			return;
+			// The byte cannot continue the character in progress: that character is broken.
+			// Show a replacement and re-read this byte as a fresh start, so one bad byte costs
+			// one character rather than resynchronising the stream.
+			m_Screen.Print(kReplacementCharacter, 1);
+			step = m_Utf8.Feed(byte);
 		}
 
-		if (value < 0x80)
+		switch (step.Status)
 		{
-			m_Screen.Print(static_cast<char32_t>(value), 1);
-			return;
+		case Utf8Status::Decoded:
+			m_Screen.Print(step.CodePoint, CharacterWidth(step.CodePoint));
+			break;
+		case Utf8Status::Invalid:
+			// A byte that cannot start any UTF-8 sequence — a continuation byte with none
+			// expected, C0, C1 or F5-FF: one replacement, no state.
+			m_Screen.Print(kReplacementCharacter, 1);
+			break;
+		case Utf8Status::Pending:
+		case Utf8Status::Interrupted:
+			// Re-read with nothing pending, a byte is never Interrupted again.
+			break;
 		}
-
-		if ((value & 0xE0) == 0xC0)
-		{
-			m_Pending = value & 0x1F;
-			m_PendingBytes = 1;
-			return;
-		}
-
-		if ((value & 0xF0) == 0xE0)
-		{
-			m_Pending = value & 0x0F;
-			m_PendingBytes = 2;
-			return;
-		}
-
-		if ((value & 0xF8) == 0xF0)
-		{
-			m_Pending = value & 0x07;
-			m_PendingBytes = 3;
-			return;
-		}
-
-		// A continuation byte with none expected, or a byte that cannot start any UTF-8
-		// sequence (0x80-0xBF outside a sequence, or 0xF8-0xFF): one replacement, no state.
-		m_Screen.Print(U'\uFFFD', 1);
 	}
 
 	void VtParser::HandleControl(char byte)

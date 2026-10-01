@@ -2,6 +2,7 @@
 
 #include "Core/Term/TerminalScreen.h"
 #include "Core/Term/VtParser.h"
+#include "Core/Text/Utf8.h"
 
 #include <string>
 
@@ -517,6 +518,46 @@ TEST_CASE("VtParser re-reads a byte that breaks a multi-byte character across re
 	CHECK(screen.At(0, 0).Code == U'\xFFFD');
 	CHECK(screen.At(0, 1).Code == U'Z');
 	CHECK(screen.GetCursor().Column == 2);
+}
+
+TEST_CASE("VtParser does not decode an overlong form into the character it disguises")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// C0 AF is '/' in two bytes. C0 can never lead, and AF then has nothing to continue.
+	parser.Consume("\xC0\xAF" "b");
+
+	CHECK(screen.At(0, 0).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 1).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 2).Code == U'b');
+}
+
+TEST_CASE("VtParser does not decode an encoded surrogate")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	// ED A0 80 would be U+D800. ED's sequence breaks at A0, which is then read again and
+	// is a continuation byte with nothing to continue, like the 80 after it.
+	parser.Consume("\xED\xA0\x80" "b");
+
+	CHECK(screen.At(0, 0).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 1).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 2).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 3).Code == U'b');
+}
+
+TEST_CASE("VtParser does not decode a value above U+10FFFF")
+{
+	Core::TerminalScreen screen(8, 2);
+	Core::VtParser parser(screen);
+
+	parser.Consume("\xF4\x90\x80\x80" "b");
+
+	CHECK(screen.At(0, 0).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 3).Code == Core::kReplacementCharacter);
+	CHECK(screen.At(0, 4).Code == U'b');
 }
 
 TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pending")

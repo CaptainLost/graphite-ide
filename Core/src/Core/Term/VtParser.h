@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Term/TerminalScreen.h"
+#include "Core/Text/Utf8.h"
 
 #include <cstdint>
 #include <string>
@@ -79,7 +80,6 @@ namespace Core {
 		bool m_Private = false;
 		// A read from a pipe can end in the middle of a multi-byte character, so the partial
 		// bytes are held here until the character completes.
-		char32_t m_Pending = 0;
-		std::uint8_t m_PendingBytes = 0;
+		Utf8Decoder m_Utf8;
 	};
 }
