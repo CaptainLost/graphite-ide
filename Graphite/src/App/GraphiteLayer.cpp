@@ -158,7 +158,7 @@ namespace Graphite {
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		explorer->RegisterCommands(m_Commands);
 		m_Panels.RegisterCommands(m_Commands);
-		m_Terminals.RegisterCommands(m_Commands);
+		m_Terminals.RegisterCommands(m_Commands, m_Keys);
 		RegisterApplicationCommands();
 
 		// After every default registered above, so an override shadows the binding it
@@ -806,7 +806,9 @@ namespace Graphite {
 		const Core::Panel* console = m_Panels.Find("console");
 
 		m_Terminals.Render(TerminalDockTargets{.BesideWindow = console != nullptr ? console->GetWindowName() : std::string{},
-											   .CentreNode = m_DockSpace.GetCenterNodeId()},
+											   .CentreNode = m_DockSpace.GetCenterNodeId(),
+											   .DockSpace = m_DockSpace.GetDockSpaceId(),
+											   .BottomRatio = m_Layout.BottomRatio},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
 
 		// After every owner has drawn: what nobody took this frame belonged to a window that

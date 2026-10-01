@@ -202,22 +202,10 @@ TEST_CASE("The File menu offers to trust the open folder, after closing it")
 	CHECK(trust == close + 1);
 }
 
-TEST_CASE("The Terminal menu opens the default shell first, then each discovered shell")
+TEST_CASE("Terminals are started from their own tab bars, not from a menu of the menu bar")
 {
-	// The shells are only known at runtime, so they register into a group rather than being
-	// named in the tree.
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
-	const MenuItem* terminal = FindSubmenu(tree, "Terminal");
 
-	REQUIRE(terminal != nullptr);
-	REQUIRE(terminal->GetChildren().size() == 3);
-	CHECK(terminal->GetChildren()[0].GetKind() == MenuItem::Kind::Command);
-	CHECK(terminal->GetChildren()[0].GetText() == "terminal.new");
-	CHECK(terminal->GetChildren()[1].GetKind() == MenuItem::Kind::Separator);
-	CHECK(terminal->GetChildren()[2].GetKind() == MenuItem::Kind::Group);
-	CHECK(terminal->GetChildren()[2].GetText() == "terminal.shells");
-
-	// Between View and Help, where an IDE keeps it.
-	CHECK(tree[tree.size() - 2].GetText() == "Terminal");
+	CHECK(FindSubmenu(tree, "Terminal") == nullptr);
 	CHECK(tree.back().GetText() == "Help");
 }

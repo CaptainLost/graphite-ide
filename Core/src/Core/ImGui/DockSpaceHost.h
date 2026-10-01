@@ -38,6 +38,9 @@ namespace Core {
 
 		unsigned int GetCenterNodeId() const;
 
+		// The dockspace's root node, 0 before the first Begin.
+		unsigned int GetDockSpaceId() const { return m_DockSpaceId; }
+
 		// Between Begin and End. True while the central node holds no window, so the area a
 		// document would open into shows nothing but the dockspace's background.
 		bool IsCenterEmpty() const;

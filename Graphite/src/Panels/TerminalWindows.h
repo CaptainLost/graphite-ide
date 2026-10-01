@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Command/Keymap.h"
+#include "Core/ImGui/DockSpaceHost.h"
 #include "Core/Platform/ShellProfiles.h"
 #include "Core/Term/TerminalSession.h"
 
@@ -29,11 +30,20 @@ namespace Graphite {
 	class Workspace;
 
 	// Where a terminal with nowhere better to go is docked: beside this window (the console
-	// panel's, so the bottom row), else into the central node.
+	// panel's, so the bottom row), else into a bottom row split off the central node again,
+	// else into the central node itself.
 	struct TerminalDockTargets
 	{
 		std::string BesideWindow;
 		unsigned int CentreNode = 0;
+
+		// The dockspace's root, which a re-created bottom row is finished against; 0 when there
+		// is no dockspace to split.
+		unsigned int DockSpace = 0;
+
+		// The share of the central node a re-created bottom row takes: the layout's own, so the
+		// row comes back the height a layout reset would give it.
+		float BottomRatio = Core::DockLayout{}.BottomRatio;
 	};
 
 	// The shells running in this window, each a window of its own that can be dragged and docked
@@ -46,9 +56,11 @@ namespace Graphite {
 	public:
 		TerminalWindows(Workspace& workspace, const Core::Keymap& keys);
 
-		// "New Terminal" for the default shell, and one command per discovered shell in the
-		// terminal.shells group.
-		void RegisterCommands(Core::CommandRegistry& commands);
+		// "New Terminal" for the default shell, bound to Ctrl+Shift+` by default, and one command
+		// per discovered shell in the terminal.shells group. No menu of the menu bar lists them:
+		// the tab bars of the terminals' own nodes do, so the palette and the key are what is
+		// left when no such node is on screen.
+		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
 		// Drains every session. Once per frame, before Render.
 		void Update();
@@ -59,6 +71,12 @@ namespace Graphite {
 		// The first discovered shell is the most capable, so it is the default. False when no
 		// shell was found or it could not be started, which is logged.
 		bool OpenDefaultShell();
+
+		// Starts discovered shell `shell` in `directory`, or where a new terminal starts by
+		// default when `directory` is empty, placed by the usual rule. False when there is no
+		// such shell or it could not be started, which is logged. Not for use from inside
+		// Render, whose loop over the open terminals a new one would invalidate.
+		bool OpenShellIn(std::size_t shell, const std::filesystem::path& directory);
 
 		// Opens a window running `program` rather than a discovered shell. It behaves as any
 		// other: pumped, resized and closed the same way, closing when the program exits, but it
@@ -100,10 +118,26 @@ namespace Graphite {
 
 			// The window name of a floating terminal this one joins as a tab once it exists.
 			std::string DockOnto;
+
+			// The node whose tab bar or tab menu asked for this terminal, 0 for none: its first
+			// frame docks it there, ahead of the last-focused rule, while that node still exists.
+			unsigned int DockNode = 0;
+		};
+
+		// A terminal asked for from inside Render - a tab bar's buttons or a tab's menu - and
+		// started once nothing is iterating m_Open any more.
+		struct PendingOpen
+		{
+			std::size_t Shell;
+			unsigned int DockNode;
 		};
 
 		bool Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,
 				   OpenTerminal record, bool restored);
+		bool StartShell(std::size_t shell, const std::filesystem::path& directory, unsigned int dockNode);
+		void StartPendingOpens();
+		void RenderTabBarButtons(const TerminalDockTargets& targets);
+		void DrawShellMenuItems(unsigned int dockNode);
 		std::filesystem::path DefaultWorkingDirectory() const;
 		Entry* FindEntry(const std::string& id);
 		void PlaceNewWindow(const std::string& name, Entry& entry, const TerminalDockTargets& targets);
@@ -117,6 +151,8 @@ namespace Graphite {
 		// Scoped, so closing one never moves the others: a TerminalView holds its session by
 		// reference.
 		std::vector<Core::Scope<Entry>> m_Open;
+
+		std::vector<PendingOpen> m_PendingOpens;
 
 		// The terminal whose window had focus last: a new one docks beside it.
 		std::string m_LastFocused;
