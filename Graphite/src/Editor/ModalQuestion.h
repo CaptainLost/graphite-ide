@@ -84,6 +84,22 @@ namespace Graphite {
 			m_Gate.Close(m_Title);
 		}
 
+		// Abandons only the questions `matches` selects, for when something answered them
+		// without the user being asked. A selected current question hands the gate back like
+		// Withdraw does; the popup it opened is still on screen until the owner's render sees
+		// GetCurrent() come back null and closes it.
+		template<std::predicate<const Payload&> Predicate>
+		void WithdrawIf(Predicate matches)
+		{
+			std::erase_if(m_Queue, matches);
+
+			if (m_Current && matches(std::as_const(*m_Current)))
+			{
+				m_Current.reset();
+				m_Gate.Close(m_Title);
+			}
+		}
+
 	private:
 		// ImGui closes a popup on Escape, and destroys it when another opens over it,
 		// without either reaching the code that asked the question.

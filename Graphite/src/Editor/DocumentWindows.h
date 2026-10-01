@@ -352,7 +352,13 @@ namespace Graphite {
 
 		void RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
 
-		void ReloadOne(std::size_t index);
+		// `announce` false leaves the success message to the caller, for a reload whose cause is
+		// not "changed on disk". A failure is always said.
+		bool ReloadOne(std::size_t index, bool announce = true);
+
+		// The open document at `path`, matched the way Windows compares paths rather than
+		// byte for byte.
+		std::optional<std::size_t> FindOpen(const std::filesystem::path& path) const;
 
 		void AskAboutSize(const std::filesystem::path& path, bool permanent);
 

@@ -481,7 +481,22 @@ namespace Graphite {
 		}
 	}
 
-	void DocumentWindows::ReloadOne(std::size_t index)
+	std::optional<std::size_t> DocumentWindows::FindOpen(const std::filesystem::path& path) const
+	{
+		const std::filesystem::path wanted = Core::NormalizePath(path);
+
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			if (Core::SamePath(Core::NormalizePath(m_Documents.At(index).Path), wanted))
+			{
+				return index;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	bool DocumentWindows::ReloadOne(std::size_t index, bool announce)
 	{
 		const std::string fileName = Core::ToUtf8(m_Documents.At(index).Path.filename());
 
@@ -489,11 +504,17 @@ namespace Graphite {
 		{
 			AnnounceReload(m_Documents.At(index));
 
-			SetTransientMessage(fileName + " reloaded (changed on disk)");
+			if (announce)
+			{
+				SetTransientMessage(fileName + " reloaded (changed on disk)");
+			}
+
+			return true;
 		}
 		else
 		{
 			SetTransientMessage("Could not reload " + fileName + ": " + result.GetError().Message);
+			return false;
 		}
 	}
 
@@ -623,7 +644,7 @@ namespace Graphite {
 	{
 		for (const std::filesystem::path& path : paths)
 		{
-			if (const auto index = m_Documents.Find(path); index && !SaveOne(*index))
+			if (const auto index = FindOpen(path); index && !SaveOne(*index))
 			{
 				return false;
 			}
@@ -634,14 +655,41 @@ namespace Graphite {
 
 	void DocumentWindows::RevertDocuments(const std::vector<std::filesystem::path>& paths)
 	{
+		std::size_t reverted = 0;
+		bool failed = false;
+
 		for (const std::filesystem::path& path : paths)
 		{
 			// ReloadFromDisk replaces the buffer and marks it saved whether or not it was modified,
 			// so this is the same reload a disk change gets, with no question in front of it.
-			if (const auto index = m_Documents.Find(path))
+			if (const auto index = FindOpen(path))
 			{
-				ReloadOne(*index);
+				if (ReloadOne(*index, false))
+				{
+					++reverted;
+				}
+				else
+				{
+					failed = true;
+				}
 			}
+		}
+
+		// A question about a change on disk, queued before the revert, is about a document that
+		// is now clean and matches the disk: answering it would reload nothing or, for "keep
+		// mine", accept a state that is no longer there. m_ExpectedWrites is left alone: an
+		// entry in it is for a write still to come, which the revert has not made.
+		m_ReloadConflict.WithdrawIf([this, &paths](const std::filesystem::path& queued) {
+			return std::any_of(paths.begin(), paths.end(), [&queued](const std::filesystem::path& path) {
+				return Core::SamePath(Core::NormalizePath(path), Core::NormalizePath(queued));
+			});
+		});
+
+		// A failed reload has already said so, and that is the message worth keeping.
+		if (!failed && reverted > 0)
+		{
+			SetTransientMessage("Discarded unsaved changes in " + std::to_string(reverted) +
+								(reverted == 1 ? " file" : " files"));
 		}
 	}
 
@@ -762,6 +810,14 @@ namespace Graphite {
 		}
 
 		const std::filesystem::path* path = m_ReloadConflict.GetCurrent();
+
+		// Withdrawn while its popup was open (the document was reverted): nothing left to ask.
+		if (path == nullptr)
+		{
+			ImGui::CloseCurrentPopup();
+			m_ReloadConflict.End();
+			return;
+		}
 
 		ImGui::Text("%s changed on disk, and this tab has unsaved changes.",
 					FileNameOf(path).c_str());
