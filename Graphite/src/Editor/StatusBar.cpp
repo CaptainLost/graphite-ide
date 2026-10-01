@@ -60,24 +60,46 @@ namespace Graphite {
 
 		// One piece of the git segment. Clickable pieces show a hand and take a click; the
 		// greyed "No repository" is inert.
-		bool DrawGitPiece(const std::string& text, bool clickable, const std::string& tooltip)
+		//
+		// A clickable piece is an invisible button with the text drawn over it, not a text item
+		// asked IsItemClicked. A text item has no id, so a press on it is a press on the bar's
+		// empty space: at the end of that frame ImGui focuses the bar itself, as it does for any
+		// click on a window's background. That lands after the panel revealed by the click took
+		// focus in the same frame, and the dock node then selects the tab of whatever window has
+		// focus - the bar - so the panel stayed buried. A button owns the press, so the bar is
+		// never refocused, and it reports the click on release, after the press has settled.
+		// Not a Selectable: its hover highlight would fill the bar's height around one word.
+		bool DrawGitPiece(const char* id, const std::string& text, bool clickable,
+						  const std::string& tooltip)
 		{
-			if (clickable)
-				ImGui::TextUnformatted(text.c_str());
-			else
+			const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+
+			// InvisibleButton refuses a zero size, so an empty piece is drawn as inert text.
+			if (!clickable || size.x <= 0.0f)
+			{
 				ImGui::TextDisabled("%s", text.c_str());
 
-			if (!ImGui::IsItemHovered())
+				if (ImGui::IsItemHovered() && !tooltip.empty())
+					ImGui::SetTooltip("%s", tooltip.c_str());
+
 				return false;
+			}
+
+			// Sized exactly as TextUnformatted sizes the same string, so the pieces after it
+			// land where they did when this was a text item.
+			const bool clicked = ImGui::InvisibleButton(id, size);
+
+			ImGui::GetWindowDrawList()->AddText(ImGui::GetItemRectMin(),
+												ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
+
+			if (!ImGui::IsItemHovered())
+				return clicked;
 
 			if (!tooltip.empty())
 				ImGui::SetTooltip("%s", tooltip.c_str());
 
-			if (!clickable)
-				return false;
-
 			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-			return ImGui::IsItemClicked(ImGuiMouseButton_Left);
+			return clicked;
 		}
 
 		// Laid out left to right from the bar's own left edge, each piece a separate item so
@@ -88,7 +110,7 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
 
-			if (DrawGitPiece(segment.Branch, segment.HasRepository, segment.BranchTooltip))
+			if (DrawGitPiece("##GitBranch", segment.Branch, segment.HasRepository, segment.BranchTooltip))
 				clicked = StatusBarClick::GitBranch;
 
 			if (!segment.Distance.empty())
@@ -101,7 +123,7 @@ namespace Graphite {
 			{
 				ImGui::SameLine(0.0f, ImGui::GetFontSize());
 
-				if (DrawGitPiece(segment.Changes, true, {}))
+				if (DrawGitPiece("##GitChanges", segment.Changes, true, {}))
 					clicked = StatusBarClick::GitChanges;
 			}
 
