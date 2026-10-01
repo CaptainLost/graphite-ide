@@ -26,7 +26,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -142,7 +144,8 @@ namespace Graphite {
 		// The first step of every checkout: note what the editor holds unsaved and ask the
 		// model what the checkout would touch. OnUpdate takes it from there.
 		void BeginCheckout(const Core::CheckoutTarget& target);
-		void BeginNewBranch(std::string from, const Core::Oid& at);
+		// `suggested` pre-fills the field; empty leaves it empty.
+		void BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested = {});
 		void BeginRename(const std::string& branch);
 
 		// What a commit row's menu asked for, acted on.
@@ -151,7 +154,19 @@ namespace Graphite {
 		// The plan answered: check out at once, or ask.
 		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
 
-		// Every question this panel owns, abandoned and its gate handed back.
+		// Asks unless the same question is already asked: a second click on a menu item while
+		// the first is still queued or open must not ask it twice.
+		template<typename Payload>
+		static void AskOnce(ModalQuestion<Payload>& question, Payload payload)
+		{
+			if (!question.Asked(payload))
+			{
+				question.Ask(std::move(payload));
+			}
+		}
+
+		// Every question this panel owns, abandoned and its gate handed back, with whatever
+		// the reader had edited in it.
 		void WithdrawQuestions();
 
 		// In GitViewDialogs.cpp.

@@ -105,8 +105,8 @@ namespace Graphite {
 			CheckoutRows("Changed:", question.Changed);
 			CheckoutRows("Untracked:", question.Untracked);
 
-			// BuildCheckoutQuestion is only asked when there is something to list, but a child
-			// with no item in it asserts in EndChild.
+			// BuildCheckoutQuestion is only asked when there is something to list. Should both
+			// lists ever be empty, the child still ends on an item, as every window here does.
 			if (lines == 0)
 			{
 				ImGui::Dummy(ImVec2(0.0f, 0.0f));

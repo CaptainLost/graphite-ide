@@ -8,6 +8,7 @@
 #include "Git/HistoryFilter.h"
 #include "Git/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
+#include "Git/StashBranch.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
@@ -151,7 +152,8 @@ namespace Graphite {
 				}
 				else
 				{
-					m_DeleteBranchQuestion.Ask(DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
+					AskOnce(m_DeleteBranchQuestion,
+							DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
 				}
 			}
 		}
@@ -208,6 +210,13 @@ namespace Graphite {
 		{
 			m_DropStashQuestion.Withdraw();
 		}
+
+		// The dialogs' own edits go with them: a question asked again before the next Begin
+		// would otherwise open on the withdrawn one's checkbox, text and failure line.
+		m_CheckoutDialogOpen = false;
+		m_IncludeUntracked = false;
+		m_StashSaveFailed = false;
+		m_BranchNameFor = nullptr;
 	}
 
 	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
@@ -262,15 +271,20 @@ namespace Graphite {
 
 		const bool forced = question.UntrackedForced;
 
-		m_CheckoutQuestion.Ask(CheckoutQuestionPayload{.Target = std::move(answer.Target),
-													   .Question = std::move(question),
-													   .UnsavedAbsolute = m_PendingUnsaved,
-													   .IncludeUntracked = forced});
+		AskOnce(m_CheckoutQuestion, CheckoutQuestionPayload{.Target = std::move(answer.Target),
+															.Question = std::move(question),
+															.UnsavedAbsolute = m_PendingUnsaved,
+															.IncludeUntracked = forced});
 	}
 
-	void GitView::BeginNewBranch(std::string from, const Core::Oid& at)
+	void GitView::BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested)
 	{
-		m_NewBranchQuestion.Ask(BranchNamePayload{.Mode = BranchNameMode::New, .From = std::move(from), .At = at});
+		BranchNamePayload payload{.Mode = BranchNameMode::New, .From = std::move(from), .At = at};
+
+		const std::size_t length = std::min(suggested.size(), payload.Buffer.size() - 1);
+		std::copy_n(suggested.begin(), length, payload.Buffer.begin());
+
+		AskOnce(m_NewBranchQuestion, std::move(payload));
 	}
 
 	void GitView::BeginRename(const std::string& branch)
@@ -281,7 +295,7 @@ namespace Graphite {
 		const std::size_t length = std::min(branch.size(), payload.Buffer.size() - 1);
 		std::copy_n(branch.begin(), length, payload.Buffer.begin());
 
-		m_RenameBranchQuestion.Ask(std::move(payload));
+		AskOnce(m_RenameBranchQuestion, std::move(payload));
 	}
 
 	void GitView::ApplyCommitAction()
@@ -529,7 +543,13 @@ namespace Graphite {
 
 			if (ImGui::MenuItem("New Branch from Here…"))
 			{
-				BeginNewBranch(branch.Name, branch.Tip);
+				// Named as the remote's branch is, without the remote: what a local branch
+				// tracking origin/feature/y is usually called.
+				const std::size_t slash = branch.Name.find('/');
+				const std::string_view local =
+					slash == std::string::npos ? std::string_view{} : std::string_view(branch.Name).substr(slash + 1);
+
+				BeginNewBranch(branch.Name, branch.Tip, local);
 			}
 		}
 
@@ -574,7 +594,14 @@ namespace Graphite {
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
 				const std::chrono::sys_seconds made{std::chrono::seconds{stash.Time}};
-				ImGui::SetTooltip("%s", std::format("{:%Y-%m-%d %H:%M}", made + LocalOffset()).c_str());
+				std::string tooltip = std::format("{:%Y-%m-%d %H:%M}", made + LocalOffset());
+
+				if (const std::optional<std::string> branch = StashBranch(stash.Message))
+				{
+					tooltip += "\nOn " + *branch;
+				}
+
+				ImGui::SetTooltip("%s", tooltip.c_str());
 			}
 
 			if (Core::BeginRightClickPopup("stash-menu"))
@@ -593,7 +620,7 @@ namespace Graphite {
 
 				if (ImGui::MenuItem("Drop"))
 				{
-					m_DropStashQuestion.Ask(DropStashPayload{.Index = stash.Index, .Id = stash.Id});
+					AskOnce(m_DropStashQuestion, DropStashPayload{.Index = stash.Index, .Id = stash.Id});
 				}
 
 				ImGui::EndDisabled();
