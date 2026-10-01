@@ -78,4 +78,8 @@ namespace Graphite {
 	// over from the folder before - are enough.
 	bool OpensDefaultTerminal(const std::optional<std::vector<TerminalTabState>>& saved,
 							  std::size_t openCount);
+
+	// Where a terminal opened on an Explorer entry starts: a folder is itself, a file is the
+	// folder it sits in.
+	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory);
 }

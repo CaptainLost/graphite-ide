@@ -47,6 +47,12 @@ namespace Graphite {
 		bool Permanent = false;
 	};
 
+	// A shell asked for in `Directory`, from the Explorer's menu.
+	struct OpenTerminalRequested
+	{
+		std::filesystem::path Directory;
+	};
+
 	struct WorkspaceRootMovedEvent
 	{
 		std::filesystem::path From;
@@ -98,6 +104,12 @@ namespace Graphite {
 		void RequestOpenFile(const std::filesystem::path& path, bool permanent)
 		{
 			m_Events.Publish(OpenFileRequested{path, permanent});
+		}
+
+		// Inline for the same reason as RequestOpenFile.
+		void RequestOpenTerminal(const std::filesystem::path& directory)
+		{
+			m_Events.Publish(OpenTerminalRequested{directory});
 		}
 
 		bool IsOpen() const { return m_Tree.HasRoot(); }

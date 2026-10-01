@@ -423,6 +423,13 @@ namespace Graphite {
 			m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
 		});
 
+		// Delivered synchronously, from the Explorer's menu, which is drawn by m_Panels before
+		// m_Terminals.Render in OnImGuiRender - so the new entry is never pushed inside the loop
+		// over the open terminals that OpenShellIn must not be called from.
+		m_Events.Subscribe<OpenTerminalRequested>([this](const OpenTerminalRequested& event) {
+			static_cast<void>(m_Terminals.OpenShellIn(0, event.Directory)); // logs its own failure
+		});
+
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
 			// No folder is open, so a file with no marker is rooted at its own directory again.
 			m_LanguageServices.SetFallbackRoot({});

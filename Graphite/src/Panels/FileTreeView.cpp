@@ -10,6 +10,8 @@
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
+#include "Panels/TerminalRules.h"
+
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
@@ -145,6 +147,11 @@ namespace Graphite {
 		{
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(node.Path); !revealed)
 				APP_ERROR("{}", revealed.GetError().Message);
+		}
+
+		if (ImGui::MenuItem("Open in Terminal"))
+		{
+			m_Workspace.RequestOpenTerminal(TerminalDirectoryFor(node.Path, node.IsDirectory));
 		}
 
 		ImGui::Separator();

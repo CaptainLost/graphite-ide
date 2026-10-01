@@ -124,4 +124,9 @@ namespace Graphite {
 	{
 		return !saved.has_value() && openCount == 0;
 	}
+
+	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory)
+	{
+		return isDirectory ? path : path.parent_path();
+	}
 }

@@ -120,3 +120,10 @@ TEST_CASE("Only a folder that never kept terminals, with none open, opens a defa
 	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 2));
 	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0));
 }
+
+TEST_CASE("A terminal opened on a folder starts in it, and on a file in the file's folder")
+{
+	CHECK(TerminalDirectoryFor(kRoot / "src", true) == kRoot / "src");
+	CHECK(TerminalDirectoryFor(kRoot / "src" / "main.cpp", false) == kRoot / "src");
+	CHECK(TerminalDirectoryFor(kRoot, true) == kRoot);
+}
