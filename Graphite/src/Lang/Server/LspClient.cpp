@@ -717,69 +717,83 @@ namespace Graphite {
 
 		if (!incoming->Method.empty())
 		{
-			if (incoming->Method == "$/progress")
-			{
-				ApplyProgress(shared, incoming->Payload);
-			}
-
-			if (incoming->Method == "textDocument/publishDiagnostics")
-			{
-				PublishedDiagnostics published = ParseDiagnostics(incoming->Payload);
-
-				if (!published.Path.empty())
-				{
-					// Dropped unless this client holds the document open. A publication can
-					// outlive its didClose - the notification is already in flight when the
-					// close goes out - and the warm-up in LanguageServices::Poll opens and
-					// closes a file deliberately. Shared::Documents is the authority on what is
-					// open and is already erased on close, so this check costs a lookup.
-					const std::string uri = ToFileUri(published.Path);
-
-					bool open = false;
-
-					{
-						const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
-						open = shared.Documents.contains(uri);
-					}
-
-					// ProtocolMutex is released before StateMutex is taken, deliberately - holding
-					// both at once, nested with the lock CloseDocument takes, is the deadlock this
-					// file's whole locking order exists to avoid. The cost is a window: a
-					// CloseDocument for this same path can land between the check above and the
-					// push below, so a publication for a document that is closing gets through
-					// anyway. The next update then carries both a Closed note and this
-					// publication, and DiagnosticsModel::Apply's fixed close-then-publish order
-					// erases the entry the close names and recreates it from the publication - no
-					// later Closed can ever arrive to erase it again, because CloseDocument has
-					// already taken this path out of Documents. Both readers filter on
-					// Core::DocumentSet::Find, so the resurrected entry is invisible to either one:
-					// a bounded leak in the model, never a wrong answer shown to anyone.
-					if (open)
-					{
-						const std::lock_guard<std::mutex> state(shared.StateMutex);
-						shared.Diagnostics.push_back(std::move(published));
-					}
-				}
-
-				return;
-			}
-
-			// window/logMessage and telemetry still have nowhere to go, and dropping a
-			// notification is always allowed.
+			HandleNotification(shared, *incoming);
 			return;
 		}
 
-		if (!incoming->ReplyTo)
+		if (incoming->ReplyTo)
+		{
+			HandleReply(shared, *incoming);
+		}
+	}
+
+	void LspClient::HandleNotification(Shared& shared, const IncomingMessage& notification)
+	{
+		if (notification.Method == "$/progress")
+		{
+			ApplyProgress(shared, notification.Payload);
+			return;
+		}
+
+		if (notification.Method == "textDocument/publishDiagnostics")
+		{
+			PublishDiagnostics(shared, notification.Payload);
+			return;
+		}
+
+		// window/logMessage and telemetry still have nowhere to go, and dropping a notification
+		// is always allowed.
+	}
+
+	void LspClient::PublishDiagnostics(Shared& shared, const nlohmann::json& params)
+	{
+		PublishedDiagnostics published = ParseDiagnostics(params);
+
+		if (published.Path.empty())
 		{
 			return;
 		}
 
+		// Dropped unless this client holds the document open. A publication can outlive its
+		// didClose - the notification is already in flight when the close goes out - and the
+		// warm-up in LanguageServices::Poll opens and closes a file deliberately.
+		// Shared::Documents is the authority on what is open and is already erased on close, so
+		// this check costs a lookup.
+		const std::string uri = ToFileUri(published.Path);
+
+		bool open = false;
+
+		{
+			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
+			open = shared.Documents.contains(uri);
+		}
+
+		// ProtocolMutex is released before StateMutex is taken, deliberately - holding both at
+		// once, nested with the lock CloseDocument takes, is the deadlock this file's whole
+		// locking order exists to avoid. The cost is a window: a CloseDocument for this same path
+		// can land between the check above and the push below, so a publication for a document
+		// that is closing gets through anyway. The next update then carries both a Closed note
+		// and this publication, and DiagnosticsModel::Apply's fixed close-then-publish order
+		// erases the entry the close names and recreates it from the publication - no later
+		// Closed can ever arrive to erase it again, because CloseDocument has already taken this
+		// path out of Documents. Both readers filter on Core::DocumentSet::Find, so the
+		// resurrected entry is invisible to either one: a bounded leak in the model, never a
+		// wrong answer shown to anyone.
+		if (open)
+		{
+			const std::lock_guard<std::mutex> state(shared.StateMutex);
+			shared.Diagnostics.push_back(std::move(published));
+		}
+	}
+
+	void LspClient::HandleReply(Shared& shared, const IncomingMessage& reply)
+	{
 		Asked asked;
 
 		{
 			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 
-			const auto found = shared.Pending.find(*incoming->ReplyTo);
+			const auto found = shared.Pending.find(*reply.ReplyTo);
 
 			if (found == shared.Pending.end())
 			{
@@ -791,47 +805,58 @@ namespace Graphite {
 			shared.Pending.erase(found);
 		}
 
-		Answer answer;
-		answer.Id = *incoming->ReplyTo;
-		answer.Failed = incoming->IsError;
-
-		if (!answer.Failed)
-		{
-			if (asked.Kind == Question::Symbols)
-			{
-				answer.Declarations = ParseSymbols(incoming->Payload);
-			}
-			else if (asked.Kind == Question::SemanticTokens)
-			{
-				answer.SemanticTokens = ParseSemanticTokens(incoming->Payload, shared.SemanticLegend);
-			}
-			else
-			{
-				answer.Locations = ParseLocations(incoming->Payload);
-
-				// Nobody is shown the line they asked from. The protocol counts a declaration as
-				// a reference to itself, so a count drawn over a definition would otherwise
-				// include that definition and read one too high, and the list opened from it
-				// would lead its results with the row already on screen. Only for references:
-				// a definition reply naming the place asked about is the answer, not noise, and
-				// ResolveDefinition is what decides there is nowhere to go.
-				if (asked.Kind == Question::References && asked.From)
-				{
-					const FilePosition& from = *asked.From;
-
-					std::erase_if(answer.Locations, [&from](const Location& location) {
-						return location.Line == from.Line && location.Column == from.Column &&
-							   location.Path == from.Path;
-					});
-				}
-			}
-		}
-
 		// Parse, correlate, hand over. The columns stay in the protocol's UTF-16 units, and the
 		// caller converts them against the buffer it is about to move the caret in — which is the
 		// only copy of the file that is certainly the one the user is looking at.
+		Answer answer = ReadAnswer(asked, reply, shared.SemanticLegend);
+
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 		shared.Answers.push_back(std::move(answer));
+	}
+
+	LspClient::Answer LspClient::ReadAnswer(const Asked& asked, const IncomingMessage& reply,
+											const std::vector<SemanticKind>& legend)
+	{
+		Answer answer;
+		answer.Id = *reply.ReplyTo;
+		answer.Failed = reply.IsError;
+
+		if (answer.Failed)
+		{
+			return answer;
+		}
+
+		if (asked.Kind == Question::Symbols)
+		{
+			answer.Declarations = ParseSymbols(reply.Payload);
+			return answer;
+		}
+
+		if (asked.Kind == Question::SemanticTokens)
+		{
+			answer.SemanticTokens = ParseSemanticTokens(reply.Payload, legend);
+			return answer;
+		}
+
+		answer.Locations = ParseLocations(reply.Payload);
+
+		// Nobody is shown the line they asked from. The protocol counts a declaration as a
+		// reference to itself, so a count drawn over a definition would otherwise include that
+		// definition and read one too high, and the list opened from it would lead its results
+		// with the row already on screen. Only for references: a definition reply naming the
+		// place asked about is the answer, not noise, and ResolveDefinition is what decides there
+		// is nowhere to go.
+		if (asked.Kind == Question::References && asked.From)
+		{
+			const FilePosition& from = *asked.From;
+
+			std::erase_if(answer.Locations, [&from](const Location& location) {
+				return location.Line == from.Line && location.Column == from.Column &&
+					   location.Path == from.Path;
+			});
+		}
+
+		return answer;
 	}
 
 	void LspClient::AnswerServerRequest(Shared& shared, const IncomingMessage& request)

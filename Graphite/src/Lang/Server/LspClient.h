@@ -273,13 +273,28 @@ namespace Graphite {
 		// time some of it runs there may be no LspClient left to reach through.
 		static void RunReader(std::shared_ptr<Shared> shared);
 		static void RunWriter(std::shared_ptr<Shared> shared);
+
+		// Decides what one body is and hands it to the function for that kind of message: a
+		// server's request, the handshake's reply, a notification, or the reply to a question.
+		// The handshake's reply is told apart from the others because it answers no question - it
+		// carries the legend and releases the queue.
 		static void HandleBody(Shared& shared, const std::string& body);
 
 		// Both are called with ProtocolMutex held.
 		static void AnswerServerRequest(Shared& shared, const IncomingMessage& request);
 		static void CompleteHandshake(Shared& shared, const IncomingMessage& reply);
 
+		// Neither is called with a lock held; each takes what it needs.
+		static void HandleNotification(Shared& shared, const IncomingMessage& notification);
+		static void HandleReply(Shared& shared, const IncomingMessage& reply);
+
+		static void PublishDiagnostics(Shared& shared, const nlohmann::json& params);
 		static void ApplyProgress(Shared& shared, const nlohmann::json& params);
+
+		// Reads a successful or failed reply as the answer to what was asked under its id. Pure:
+		// it touches no shared state beyond the legend it is handed.
+		static Answer ReadAnswer(const Asked& asked, const IncomingMessage& reply,
+								 const std::vector<SemanticKind>& legend);
 
 		// Both hand a framed message to the writer thread and return without waiting for it to
 		// leave, and both need ProtocolMutex held by the caller — not to write, but because they
