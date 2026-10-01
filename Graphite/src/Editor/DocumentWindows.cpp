@@ -393,6 +393,8 @@ namespace Graphite {
 	void DocumentWindows::HandleFilesChanged(
 		const std::vector<std::filesystem::path>& directories, bool everything)
 	{
+		std::vector<std::size_t> expected;
+
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
 			// The watcher names directories, so an item is worth a stat only when its own
@@ -403,8 +405,13 @@ namespace Graphite {
 				continue;
 			}
 
-			RespondToSync(index, Core::SyncWithFile(m_Documents, index));
+			if (RespondToSync(index, Core::SyncWithFile(m_Documents, index)))
+			{
+				expected.push_back(index);
+			}
 		}
+
+		AnnounceExpectedReloads(expected);
 	}
 
 	void DocumentWindows::NotifyWindowFocus(bool focusedNow)
@@ -422,13 +429,36 @@ namespace Graphite {
 
 	void DocumentWindows::SyncEveryDocument()
 	{
+		std::vector<std::size_t> expected;
+
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
-			RespondToSync(index, Core::SyncWithFile(m_Documents, index));
+			if (RespondToSync(index, Core::SyncWithFile(m_Documents, index)))
+			{
+				expected.push_back(index);
+			}
+		}
+
+		AnnounceExpectedReloads(expected);
+	}
+
+	void DocumentWindows::AnnounceExpectedReloads(const std::vector<std::size_t>& reloaded)
+	{
+		// Said once for the batch: a checkout rewrites several open files in one go, and the
+		// application asked for every one of those writes, so "changed on disk" - the words
+		// for somebody else's change - would be wrong about each of them.
+		if (reloaded.size() == 1)
+		{
+			SetTransientMessage(Core::ToUtf8(m_Documents.At(reloaded.front()).Path.filename()) +
+								" reloaded (written by git)");
+		}
+		else if (reloaded.size() > 1)
+		{
+			SetTransientMessage("Reloaded " + std::to_string(reloaded.size()) + " files written by git");
 		}
 	}
 
-	void DocumentWindows::RespondToSync(std::size_t index, Core::FileSyncOutcome outcome)
+	bool DocumentWindows::RespondToSync(std::size_t index, Core::FileSyncOutcome outcome)
 	{
 		switch (outcome)
 		{
@@ -440,8 +470,7 @@ namespace Graphite {
 			// about once, by whatever asked for the write.
 			if (m_ExpectedWrites.TakeFor(path))
 			{
-				ReloadOne(index);
-				break;
+				return ReloadOne(index, false);
 			}
 
 			// Asked rather than reloaded, and queued, so several files changing in one batch
@@ -456,6 +485,13 @@ namespace Graphite {
 		}
 
 		case Core::FileSyncOutcome::SafeToReload:
+			// Taken here too, though a clean tab would be reloaded either way: what differs is
+			// the message, and a checkout's writes reach most tabs through this case.
+			if (m_ExpectedWrites.TakeFor(m_Documents.At(index).Path))
+			{
+				return ReloadOne(index, false);
+			}
+
 			ReloadOne(index);
 			break;
 
@@ -479,6 +515,8 @@ namespace Graphite {
 			// loses "(deleted)" with the mark.
 			break;
 		}
+
+		return false;
 	}
 
 	std::optional<std::size_t> DocumentWindows::FindOpen(const std::filesystem::path& path) const

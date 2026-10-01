@@ -350,7 +350,11 @@ namespace Graphite {
 
 		void SyncEveryDocument();
 
-		void RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
+		// True when it reloaded a write the application expected - see ExpectExternalWrite -
+		// which the caller announces once for its whole batch through AnnounceExpectedReloads.
+		bool RespondToSync(std::size_t index, Core::FileSyncOutcome outcome);
+
+		void AnnounceExpectedReloads(const std::vector<std::size_t>& reloaded);
 
 		// `announce` false leaves the success message to the caller, for a reload whose cause is
 		// not "changed on disk". A failure is always said.
