@@ -393,7 +393,7 @@ namespace Graphite {
 	void DocumentWindows::HandleFilesChanged(
 		const std::vector<std::filesystem::path>& directories, bool everything)
 	{
-		std::vector<std::size_t> expected;
+		ReloadBatch batch;
 
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
@@ -405,13 +405,10 @@ namespace Graphite {
 				continue;
 			}
 
-			if (RespondToSync(index, Core::SyncWithFile(m_Documents, index)))
-			{
-				expected.push_back(index);
-			}
+			RespondToSync(index, Core::SyncWithFile(m_Documents, index), batch);
 		}
 
-		AnnounceExpectedReloads(expected);
+		AnnounceExpectedReloads(batch);
 	}
 
 	void DocumentWindows::NotifyWindowFocus(bool focusedNow)
@@ -429,21 +426,27 @@ namespace Graphite {
 
 	void DocumentWindows::SyncEveryDocument()
 	{
-		std::vector<std::size_t> expected;
+		ReloadBatch batch;
 
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
-			if (RespondToSync(index, Core::SyncWithFile(m_Documents, index)))
-			{
-				expected.push_back(index);
-			}
+			RespondToSync(index, Core::SyncWithFile(m_Documents, index), batch);
 		}
 
-		AnnounceExpectedReloads(expected);
+		AnnounceExpectedReloads(batch);
 	}
 
-	void DocumentWindows::AnnounceExpectedReloads(const std::vector<std::size_t>& reloaded)
+	void DocumentWindows::AnnounceExpectedReloads(const ReloadBatch& batch)
 	{
+		// A failure has already said "Could not reload" and why, which matters more than how
+		// many others went well; the batch's line would write over it.
+		if (batch.AnyFailed)
+		{
+			return;
+		}
+
+		const std::vector<std::size_t>& reloaded = batch.Expected;
+
 		// Said once for the batch: a checkout rewrites several open files in one go, and the
 		// application asked for every one of those writes, so "changed on disk" - the words
 		// for somebody else's change - would be wrong about each of them.
@@ -458,7 +461,19 @@ namespace Graphite {
 		}
 	}
 
-	bool DocumentWindows::RespondToSync(std::size_t index, Core::FileSyncOutcome outcome)
+	void DocumentWindows::ReloadExpected(std::size_t index, ReloadBatch& batch)
+	{
+		if (ReloadOne(index, false))
+		{
+			batch.Expected.push_back(index);
+		}
+		else
+		{
+			batch.AnyFailed = true;
+		}
+	}
+
+	void DocumentWindows::RespondToSync(std::size_t index, Core::FileSyncOutcome outcome, ReloadBatch& batch)
 	{
 		switch (outcome)
 		{
@@ -470,7 +485,8 @@ namespace Graphite {
 			// about once, by whatever asked for the write.
 			if (m_ExpectedWrites.TakeFor(path))
 			{
-				return ReloadOne(index, false);
+				ReloadExpected(index, batch);
+				break;
 			}
 
 			// Asked rather than reloaded, and queued, so several files changing in one batch
@@ -489,10 +505,15 @@ namespace Graphite {
 			// the message, and a checkout's writes reach most tabs through this case.
 			if (m_ExpectedWrites.TakeFor(m_Documents.At(index).Path))
 			{
-				return ReloadOne(index, false);
+				ReloadExpected(index, batch);
+				break;
 			}
 
-			ReloadOne(index);
+			if (!ReloadOne(index))
+			{
+				batch.AnyFailed = true;
+			}
+
 			break;
 
 		case Core::FileSyncOutcome::NeedsLoad:
@@ -515,8 +536,6 @@ namespace Graphite {
 			// loses "(deleted)" with the mark.
 			break;
 		}
-
-		return false;
 	}
 
 	std::optional<std::size_t> DocumentWindows::FindOpen(const std::filesystem::path& path) const
