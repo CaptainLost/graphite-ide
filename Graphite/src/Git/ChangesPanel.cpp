@@ -1172,8 +1172,16 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(!canStash);
 
-		if (ImGui::Button(ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE "##stash", ImVec2(stashWidth, 0.0f)) &&
-			!m_StashQuestion.IsAsked())
+		// Square padding for a square button: the style's wider horizontal padding would push
+		// the glyph off centre and against the right edge.
+		const float framePaddingY = ImGui::GetStyle().FramePadding.y;
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePaddingY, framePaddingY));
+
+		const bool stashPressed = ImGui::Button(ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE "##stash", ImVec2(stashWidth, 0.0f));
+
+		ImGui::PopStyleVar();
+
+		if (stashPressed && !m_StashQuestion.IsAsked())
 		{
 			m_StashQuestion.Ask({});
 		}
