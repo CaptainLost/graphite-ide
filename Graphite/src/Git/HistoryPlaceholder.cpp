@@ -2,10 +2,15 @@
 
 namespace Graphite {
 
+	bool IsMissingRepository(bool hasStatus, const std::optional<Core::Error>& statusError)
+	{
+		return !hasStatus && statusError.has_value() && statusError->Code == Core::ErrorCode::NotFound;
+	}
+
 	std::string HistoryPlaceholder(bool hasStatus, const std::optional<Core::Error>& statusError,
 								   const std::optional<Core::Error>& logError)
 	{
-		if (!hasStatus && statusError.has_value() && statusError->Code == Core::ErrorCode::NotFound)
+		if (IsMissingRepository(hasStatus, statusError))
 		{
 			return "No repository.";
 		}

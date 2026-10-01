@@ -84,6 +84,9 @@ namespace Core {
 			ICON_MDI_PALETTE_OUTLINE,
 			ICON_MDI_FILE_EDIT_OUTLINE,
 			ICON_MDI_TAB_PLUS,
+			ICON_MDI_ARROW_UP,
+			ICON_MDI_ARROW_DOWN,
+			ICON_MDI_CIRCLE_MEDIUM,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);

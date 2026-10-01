@@ -93,6 +93,9 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 		ICON_MDI_BRAIN,
 		ICON_MDI_ARROW_RIGHT,
 		ICON_MDI_IMAGE_OUTLINE,
+		ICON_MDI_ARROW_UP,
+		ICON_MDI_ARROW_DOWN,
+		ICON_MDI_CIRCLE_MEDIUM,
 	};
 
 	for (const char* icon : icons)
