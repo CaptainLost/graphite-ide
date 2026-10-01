@@ -29,8 +29,8 @@ records, never hand-edited.
 |---|---|
 | `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `Fs`, `Git`, `ImGui`, `Platform`, `Text`, `UI` |
 | `Core/tests` | doctest suite for the engine, built as `CoreTests` |
-| `Graphite/src` | The application: `App`, `Editor`, `Panels`, `Settings`, `Sln`, `Workspace` |
-| `Graphite/tests` | doctest suite for the application, built as `GraphiteTests` |
+| `Graphite/src` | The application: `App`, `Editor`, `Panels`, `Settings`, `Sln`, `Workspace`. Everything but `Main.cpp` builds as the static library `GraphiteLib`; the `Graphite` executable is `Main.cpp` linked against it |
+| `Graphite/tests` | doctest suite for the application, built as `GraphiteTests`, which links `GraphiteLib` |
 | `vendor` | Dependencies as git submodules, built from source by premake |
 | `scripts` | ADR tooling |
 | `docs/adr` | Decision records |
@@ -45,7 +45,9 @@ because premake globs sources (`files { "src/**.h", "src/**.cpp" }`):
 ```
 
 The solution is `Graphite.slnx`. Generated project files are gitignored, so a
-premake run never shows up in `git status`. MSBuild lives at
+premake run never shows up in `git status`. A new file under `Graphite/src` is
+in `GraphiteTests`' reach as soon as premake has run; there is no list of
+application sources to add it to. MSBuild lives at
 `C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe`.
 
 Build the test projects directly rather than through the solution, then run

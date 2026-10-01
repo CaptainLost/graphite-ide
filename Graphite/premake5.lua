@@ -1,5 +1,15 @@
-project "Graphite"
-    kind "ConsoleApp"
+-- The application is two projects: GraphiteLib, a static library holding everything under
+-- src/ except the entry point, and Graphite, the executable that adds Main.cpp and links it.
+-- GraphiteTests links the same library, so a new source file is in the tests' reach the
+-- moment premake globs it, with no list to keep in step. The linker pulls from a static
+-- library only the objects something references, so a test binary carries the parts of the
+-- application its cases call and nothing else - the reason this needs no hand-kept list of
+-- which units are headless. That also means nothing in src/ may rely on a static
+-- initialiser registering itself: an object nothing names is dropped from the executable
+-- as well as from the tests.
+--
+-- Both projects compile with the same options, which this function applies.
+local function GraphiteCompileOptions()
     language "C++"
     cppdialect "C++20"
     staticruntime "on"
@@ -16,25 +26,6 @@ project "Graphite"
 
     targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
     objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
-    debugdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
-
-    -- Relative to this project rather than through %{wks.location}: that token is emitted as
-    -- MSBuild's $(SolutionDir), which only points at the repository root when the build goes
-    -- through the solution. Building a .vcxproj directly sets it to the project's own
-    -- directory, and the copy then looks for the fonts inside Graphite/.
-    -- The clangd copy is a plain cmd `if exist` guard rather than {COPYFILE}: the binary is
-    -- ~100MB, downloaded rather than built (see vendor/bin/clangd/README.md), and is not
-    -- committed to this repository, so it is absent on every machine until someone places it.
-    -- {COPYFILE} would fail the build in that — currently universal — case; the guard makes a
-    -- missing server binary the degraded-but-working state ADR 0488 intends, not a build error.
-    postbuildcommands
-    {
-        '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
-        '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
-        'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"'
-    }
-
-    files { "src/**.h", "src/**.cpp" }
 
     includedirs
     {
@@ -54,14 +45,6 @@ project "Graphite"
     }
     externalwarnings "Off"
 
-    -- GLFW, ImGui and opengl32 are listed explicitly: the Core static library
-    -- does not propagate its own linker inputs to a consumer.
-    -- dwmapi is Core's own need — WindowFrame asks DWM for the border the reclaimed
-    -- caption took with it — but it belongs here and not in Core: a static library has
-    -- no link step to use an import library in, and naming it there would only merge
-    -- dwmapi.lib into Core.lib, where it collides with opengl32.lib (LNK4006).
-    links { "Core", "GLFW", "ImGui", "libgit2", "pugixml", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
-
     filter "system:windows"
         systemversion "latest"
         defines { "CORE_PLATFORM_WINDOWS", "NOMINMAX", "WIN32_LEAN_AND_MEAN" }
@@ -78,9 +61,54 @@ project "Graphite"
         symbols "on"
 
     filter "configurations:Dist"
-        kind "WindowedApp"
-        entrypoint "mainCRTStartup"
         defines { "CORE_DIST" }
         runtime "Release"
         optimize "on"
         symbols "off"
+
+    filter {}
+end
+
+project "GraphiteLib"
+    kind "StaticLib"
+    GraphiteCompileOptions()
+
+    files { "src/**.h", "src/**.cpp" }
+    removefiles { "src/Main.cpp" }
+
+project "Graphite"
+    kind "ConsoleApp"
+    GraphiteCompileOptions()
+
+    debugdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
+
+    -- Relative to this project rather than through %{wks.location}: that token is emitted as
+    -- MSBuild's $(SolutionDir), which only points at the repository root when the build goes
+    -- through the solution. Building a .vcxproj directly sets it to the project's own
+    -- directory, and the copy then looks for the fonts inside Graphite/.
+    -- The clangd copy is a plain cmd `if exist` guard rather than {COPYFILE}: the binary is
+    -- ~100MB, downloaded rather than built (see vendor/bin/clangd/README.md), and is not
+    -- committed to this repository, so it is absent on every machine until someone places it.
+    -- {COPYFILE} would fail the build in that — currently universal — case; the guard makes a
+    -- missing server binary the degraded-but-working state ADR 0488 intends, not a build error.
+    postbuildcommands
+    {
+        '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
+        '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
+        'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"'
+    }
+
+    files { "src/Main.cpp" }
+
+    -- GraphiteLib, GLFW, ImGui and opengl32 are listed explicitly: a static library does
+    -- not propagate its own linker inputs to a consumer.
+    -- dwmapi is Core's own need — WindowFrame asks DWM for the border the reclaimed
+    -- caption took with it — but it belongs here and not in Core: a static library has
+    -- no link step to use an import library in, and naming it there would only merge
+    -- dwmapi.lib into Core.lib, where it collides with opengl32.lib (LNK4006).
+    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
+
+    filter "configurations:Dist"
+        kind "WindowedApp"
+        entrypoint "mainCRTStartup"
+    filter {}

@@ -571,4 +571,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0539](0539-plan-every-checkout-and-ask-before-it-would-overwrite-work.md) | Plan every checkout and ask before it would overwrite work | proposed | 2026-10-01 |
 | [0540](0540-discard-or-stash-every-change-on-the-way-to-a-checkout-untracked-files-only-on-request.md) | Discard or stash every change on the way to a checkout, untracked files only on request | proposed | 2026-10-01 |
 | [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md) | Put branch and stash actions in the Git panel's right-click menus | proposed | 2026-10-01 |
+| [0542](0542-build-the-application-as-a-static-library-its-tests-link.md) | Build the application as a static library its tests link | proposed | 2026-10-01 |
 <!-- /adr-index -->
