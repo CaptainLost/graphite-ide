@@ -2,7 +2,7 @@
 
 #include "Core/Text/Encoding.h"
 
-#include <cstdint>
+#include "Core/Text/Utf8.h"
 
 namespace Core {
 
@@ -80,66 +80,10 @@ namespace Core {
 
 		while (position < bytes.size())
 		{
-			const unsigned char lead = ByteAt(bytes, position);
-
-			if (lead < 0x80u)
+			if (!DecodeUtf8(bytes, position))
 			{
-				++position;
-				continue;
-			}
-
-			std::size_t length = 0;
-			std::uint32_t codepoint = 0;
-
-			if ((lead & 0xE0u) == 0xC0u)
-			{
-				length = 2;
-				codepoint = lead & 0x1Fu;
-			}
-			else if ((lead & 0xF0u) == 0xE0u)
-			{
-				length = 3;
-				codepoint = lead & 0x0Fu;
-			}
-			else if ((lead & 0xF8u) == 0xF0u)
-			{
-				length = 4;
-				codepoint = lead & 0x07u;
-			}
-			else
-			{
-				// A continuation byte with nothing leading it, or a five-byte lead.
 				return false;
 			}
-
-			if (position + length > bytes.size())
-				return false;
-
-			for (std::size_t index = 1; index < length; ++index)
-			{
-				const unsigned char next = ByteAt(bytes, position + index);
-
-				if (!IsContinuation(next))
-					return false;
-
-				codepoint = (codepoint << 6) | (next & 0x3Fu);
-			}
-
-			// The shape can be right while the value is wrong: an overlong form encodes a
-			// small value in more bytes than it needs, which is how '/' gets smuggled past a
-			// naive path check, and surrogates and values above U+10FFFF are not characters.
-			if (length == 2 && codepoint < 0x80u)
-				return false;
-			if (length == 3 && codepoint < 0x800u)
-				return false;
-			if (length == 4 && codepoint < 0x10000u)
-				return false;
-			if (codepoint > 0x10FFFFu)
-				return false;
-			if (codepoint >= 0xD800u && codepoint <= 0xDFFFu)
-				return false;
-
-			position += length;
 		}
 
 		return true;
