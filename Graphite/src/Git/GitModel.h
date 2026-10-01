@@ -53,11 +53,24 @@ namespace Graphite {
 	};
 
 	// The answer to "may this branch go": how many commits only it reaches, which a delete
-	// would leave without a name.
+	// would leave without a name. A check that could not be made says so here rather than
+	// through the write error, so the dialog waiting on it can tell its own failure from an
+	// earlier write's.
 	struct DeleteCheck
 	{
 		std::string Branch;
 		std::size_t Unmerged = 0;
+		std::optional<Core::Error> Failure;
+	};
+
+	// A plan, or why there is none, paired with the target it was asked about so a caller
+	// can tell an answer from one it no longer wants. The failure travels here for the same
+	// reason DeleteCheck's does.
+	struct CheckoutPlanAnswer
+	{
+		Core::CheckoutTarget Target;
+		std::optional<Core::CheckoutPlan> Plan;
+		std::optional<Core::Error> Failure;
 	};
 
 	// Holds what the git views draw and decides when it is stale.
@@ -309,8 +322,9 @@ namespace Graphite {
 		void RequestRenameBranch(std::string from, std::string to);
 		void RequestDeleteBranch(std::string branch);
 
-		// Answered once through TakeDeleteCheck. Not counted as an applied write and refreshes
-		// nothing, since it changes nothing.
+		// Answered once through TakeDeleteCheck, failure included. Not counted as an applied
+		// write, refreshes nothing, and never touches GetWriteError - neither to set it nor to
+		// clear an earlier write's - since it changes nothing.
 		void RequestDeleteCheck(std::string branch);
 		std::optional<DeleteCheck> TakeDeleteCheck();
 
@@ -319,11 +333,10 @@ namespace Graphite {
 		void RequestStashPop(Core::Oid id);
 		void RequestStashDrop(Core::Oid id);
 
-		// Answered once through TakeCheckoutPlan, paired with the target it was asked about so
-		// a caller can tell an answer from one it no longer wants. Like the delete check, not
-		// counted as a write.
+		// Answered once through TakeCheckoutPlan, and otherwise treated exactly as the delete
+		// check is.
 		void RequestCheckoutPlan(Core::CheckoutTarget target);
-		std::optional<std::pair<Core::CheckoutTarget, Core::CheckoutPlan>> TakeCheckoutPlan();
+		std::optional<CheckoutPlanAnswer> TakeCheckoutPlan();
 
 		void RequestCheckout(CheckoutRequest request);
 
@@ -612,7 +625,7 @@ namespace Graphite {
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;
 		std::vector<std::filesystem::path> m_CheckedOut;
-		std::optional<std::pair<Core::CheckoutTarget, Core::CheckoutPlan>> m_CheckoutPlan;
+		std::optional<CheckoutPlanAnswer> m_CheckoutPlan;
 		std::optional<DeleteCheck> m_DeleteCheck;
 		std::uint64_t m_AppliedWrites = 0;
 

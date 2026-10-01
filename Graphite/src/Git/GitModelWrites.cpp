@@ -91,9 +91,9 @@ namespace Graphite {
 		return taken;
 	}
 
-	std::optional<std::pair<Core::CheckoutTarget, Core::CheckoutPlan>> GitModel::TakeCheckoutPlan()
+	std::optional<CheckoutPlanAnswer> GitModel::TakeCheckoutPlan()
 	{
-		std::optional<std::pair<Core::CheckoutTarget, Core::CheckoutPlan>> taken = std::move(m_CheckoutPlan);
+		std::optional<CheckoutPlanAnswer> taken = std::move(m_CheckoutPlan);
 		m_CheckoutPlan.reset();
 		return taken;
 	}
@@ -453,9 +453,35 @@ namespace Graphite {
 			return;
 		}
 
+		// Answers rather than writes, handled before the write error is looked at. They
+		// changed nothing, so they neither refresh the model nor count as applied, and they
+		// leave GetWriteError alone either way: a plan landing a frame after a failed stash
+		// must not erase that failure before anyone saw it, and the dialog waiting on the
+		// answer must be able to tell its own failure from an earlier write's.
+		if (job.Kind == WriteKind::CheckoutPlan)
+		{
+			m_CheckoutPlan = CheckoutPlanAnswer{*job.Target, std::move(outcome.Plan), std::move(outcome.Failure)};
+			PumpWrites();
+			return;
+		}
+
+		if (job.Kind == WriteKind::DeleteCheck)
+		{
+			m_DeleteCheck = DeleteCheck{job.Name, outcome.Unmerged.value_or(0), std::move(outcome.Failure)};
+			PumpWrites();
+			return;
+		}
+
 		if (outcome.Failure.has_value())
 		{
 			m_WriteError = std::move(outcome.Failure);
+
+			// An apply or a pop that stopped on a conflict or an I/O error may have written
+			// some files already, so the status refreshes as it does for a discard.
+			if (job.Kind == WriteKind::StashApply || job.Kind == WriteKind::StashPop)
+			{
+				MarkDirty();
+			}
 
 			// A discard that stopped halfway has still changed files the user confirmed
 			// discarding: the editor must be told (ADR 0501) and the status must refresh,
@@ -472,8 +498,9 @@ namespace Graphite {
 			}
 
 			// The same for a checkout: one that failed partway, or after its preparation ran,
-			// has still rewritten files under the editor. A new branch whose checkout then
-			// failed exists all the same, so the refresh runs either way.
+			// has still rewritten files under the editor. A preparation that failed may have
+			// got partway too, and a new branch whose checkout then failed exists all the
+			// same, so the refresh runs in every case.
 			if (job.Kind == WriteKind::Checkout || job.Kind == WriteKind::CreateBranch)
 			{
 				if (!outcome.Changed.empty())
@@ -490,22 +517,6 @@ namespace Graphite {
 		}
 
 		m_WriteError.reset();
-
-		// Answers rather than writes: they changed nothing, so they neither refresh the model
-		// nor count as applied.
-		if (job.Kind == WriteKind::CheckoutPlan)
-		{
-			m_CheckoutPlan = std::make_pair(*job.Target, std::move(*outcome.Plan));
-			PumpWrites();
-			return;
-		}
-
-		if (job.Kind == WriteKind::DeleteCheck)
-		{
-			m_DeleteCheck = DeleteCheck{job.Name, *outcome.Unmerged};
-			PumpWrites();
-			return;
-		}
 
 		// Replaced rather than appended, for the reason given on m_Discarded below. A new
 		// branch made without a checkout changed no file, and must not wipe an earlier

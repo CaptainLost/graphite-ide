@@ -171,7 +171,15 @@ namespace {
 						: Core::Result<void>::Ok();
 		}
 
-		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override { return Unmerged; }
+		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override
+		{
+			if (FailQuery)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Unmerged;
+		}
 
 		Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) override
 		{
@@ -194,7 +202,7 @@ namespace {
 		{
 			Calls.push_back("plan:" + TargetLabel(target));
 
-			if (Fail)
+			if (Fail || FailQuery)
 			{
 				return Core::Error{Core::ErrorCode::IoFailure, "no"};
 			}
@@ -221,6 +229,9 @@ namespace {
 		Core::CheckoutOutcome CheckoutResult;
 		std::size_t Unmerged = 0;
 		bool StashSaves = true;
+
+		// Fails only the plan and the delete check, the two read-only answers.
+		bool FailQuery = false;
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
@@ -950,6 +961,14 @@ TEST_CASE("A failed preparation stops before the checkout")
 {
 	WritePort port;
 	port.Fail = true;
+
+	// A file the preparation noted, so the empty answer below proves the noted paths are
+	// dropped rather than that there were none.
+	Core::FileStatus edited;
+	edited.Path = "b.txt";
+	edited.WorkTree = Core::StatusFlags::Modified;
+	port.Status.Entries = {edited};
+
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);
 
@@ -960,6 +979,10 @@ TEST_CASE("A failed preparation stops before the checkout")
 	CHECK(port.Calls == std::vector<std::string>{"discard-all:0"});
 	CHECK(model.GetWriteError().has_value());
 	CHECK(model.TakeCheckedOut().empty());
+
+	// The discard may have got partway, so the model refreshes all the same.
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK(model.GetStatus() != nullptr);
 }
 
 TEST_CASE("A checkout that fails after a successful discard still reports the discarded files")
@@ -1018,12 +1041,48 @@ TEST_CASE("A plan waits its turn behind writes and answers once")
 
 	auto plan = model.TakeCheckoutPlan();
 	REQUIRE(plan.has_value());
-	CHECK(plan->first.Name == "feature");
-	CHECK(plan->second.Overwritten == std::vector<std::filesystem::path>{"a.txt"});
+	CHECK(plan->Target.Name == "feature");
+	REQUIRE(plan->Plan.has_value());
+	CHECK(plan->Plan->Overwritten == std::vector<std::filesystem::path>{"a.txt"});
+	CHECK_FALSE(plan->Failure.has_value());
 	CHECK_FALSE(model.TakeCheckoutPlan().has_value());
 
 	// A plan is not a write: it changes nothing, so it is not counted.
 	CHECK(model.GetAppliedWriteCount() == 1);
+}
+
+TEST_CASE("A plan landing after a failed write leaves that write's error in place")
+{
+	WritePort port;
+	port.FailDelete = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDiscard({.Delete = {"y.txt"}});
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.TakeCheckoutPlan().has_value());
+	CHECK(model.GetWriteError().has_value());
+}
+
+TEST_CASE("A failed plan answers through its own one-shot, not the write error")
+{
+	WritePort port;
+	port.FailQuery = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	auto plan = model.TakeCheckoutPlan();
+	REQUIRE(plan.has_value());
+	CHECK(plan->Target.Name == "feature");
+	CHECK(plan->Failure.has_value());
+	CHECK_FALSE(plan->Plan.has_value());
+	CHECK_FALSE(model.GetWriteError().has_value());
 }
 
 TEST_CASE("Creating a branch and checking it out is one job")
@@ -1109,10 +1168,72 @@ TEST_CASE("A delete check answers how many commits only that branch reaches")
 	REQUIRE(check.has_value());
 	CHECK(check->Branch == "old");
 	CHECK(check->Unmerged == 3);
+	CHECK_FALSE(check->Failure.has_value());
 	CHECK_FALSE(model.TakeDeleteCheck().has_value());
 
 	// Like a plan, a check changes nothing.
 	CHECK(model.GetAppliedWriteCount() == 0);
+}
+
+TEST_CASE("A delete check landing after a failed write leaves that write's error in place")
+{
+	WritePort port;
+	port.FailDelete = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDiscard({.Delete = {"y.txt"}});
+	model.RequestDeleteCheck("old");
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.TakeDeleteCheck().has_value());
+	CHECK(model.GetWriteError().has_value());
+}
+
+TEST_CASE("A failed delete check answers through its own one-shot, not the write error")
+{
+	WritePort port;
+	port.FailQuery = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDeleteCheck("old");
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	auto check = model.TakeDeleteCheck();
+	REQUIRE(check.has_value());
+	CHECK(check->Branch == "old");
+	CHECK(check->Failure.has_value());
+	CHECK_FALSE(model.GetWriteError().has_value());
+}
+
+TEST_CASE("A failed stash apply or pop still refreshes the model")
+{
+	Core::Oid id;
+	id.Bytes[0] = 0xab;
+
+	for (const bool pop : {false, true})
+	{
+		CAPTURE(pop);
+
+		WritePort port;
+		port.Fail = true;
+		Graphite::GitModel model{port, Inline()};
+		OpenA(model);
+
+		if (pop)
+			model.RequestStashPop(id);
+		else
+			model.RequestStashApply(id);
+
+		model.OnUpdate(Core::Timestep{0.0f});
+		CHECK(model.GetWriteError().has_value());
+
+		// The apply may have written some files before it stopped.
+		model.OnUpdate(Core::Timestep{1.0f});
+		CHECK(model.GetStatus() != nullptr);
+	}
 }
 
 TEST_CASE("Closing the folder forgets a plan, a delete check and checked-out paths not yet taken")
