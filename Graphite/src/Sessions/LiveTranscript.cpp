@@ -4,6 +4,7 @@
 #include "Core/Fs/FileSystem.h"
 
 #include "Sessions/SessionSummary.h"
+#include "Sessions/SubagentLinks.h"
 #include "Sessions/TranscriptReader.h"
 
 #include <filesystem>
@@ -74,8 +75,8 @@ namespace Graphite {
 		}
 	}
 
-	std::optional<SubagentUsage> LiveTranscript::FollowSubagents(const std::filesystem::path& sessionFile,
-																 SubagentFiles& subagents, Inbox& inbox)
+	std::optional<LiveTranscript::SubagentState> LiveTranscript::FollowSubagents(
+		const std::filesystem::path& sessionFile, SubagentFiles& subagents, Inbox& inbox)
 	{
 		std::map<std::filesystem::path, SubagentFile>& files = subagents.Files;
 		bool moved = false;
@@ -139,6 +140,12 @@ namespace Graphite {
 			SubagentFile& file = found->second;
 			moved = moved || added;
 
+			if (!file.Link)
+			{
+				file.Link = ReadSubagentMeta(path);
+				moved = moved || file.Link.has_value();
+			}
+
 			if (!added && size == file.Size)
 				continue;
 
@@ -190,11 +197,16 @@ namespace Graphite {
 		if (!moved)
 			return std::nullopt;
 
-		SubagentUsage usage;
+		SubagentState state;
 		for (const auto& [path, file] : files)
-			usage[Core::ToUtf8(path.stem()).substr(6)] = file.Tally.Get();
+		{
+			state.Usage[Core::ToUtf8(path.stem()).substr(6)] = file.Tally.Get();
 
-		return usage;
+			if (file.Link)
+				state.Links.insert(*file.Link);
+		}
+
+		return state;
 	}
 
 	LiveTranscript::LiveTranscript(std::filesystem::path file) : m_File(std::move(file)) {}
@@ -259,7 +271,7 @@ namespace Graphite {
 					}
 				}
 
-				std::optional<SubagentUsage> subagents = FollowSubagents(file, *subagentFiles, *inbox);
+				std::optional<SubagentState> subagents = FollowSubagents(file, *subagentFiles, *inbox);
 
 				const std::lock_guard<std::mutex> guard(inbox->Mutex);
 
@@ -315,14 +327,15 @@ namespace Graphite {
 		return restarted || !records.empty();
 	}
 
-	bool LiveTranscript::TakeSubagents(SubagentUsage& out)
+	bool LiveTranscript::TakeSubagents(SubagentUsage& usage, SubagentLinks& links)
 	{
 		const std::lock_guard<std::mutex> guard(m_Inbox->Mutex);
 
 		if (!m_Inbox->Subagents.has_value())
 			return false;
 
-		out = std::move(*m_Inbox->Subagents);
+		usage = std::move(m_Inbox->Subagents->Usage);
+		links = std::move(m_Inbox->Subagents->Links);
 		m_Inbox->Subagents.reset();
 		return true;
 	}

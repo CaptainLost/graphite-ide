@@ -90,6 +90,9 @@ namespace Graphite {
 			Session Data;
 			SubagentUsage Subagents;
 
+			// The subagents this session started, by the id of the call that started each.
+			SubagentLinks Links;
+
 			// Counts the subagent maps taken, which the conversation's facts are keyed by.
 			std::uint64_t SubagentsVersion = 0;
 			ConversationView Conversation;

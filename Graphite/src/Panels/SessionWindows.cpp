@@ -246,7 +246,7 @@ namespace Graphite {
 				continue;
 
 			entry->Live->Take(entry->Data, entry->Timeline);
-			if (entry->Live->TakeSubagents(entry->Subagents))
+			if (entry->Live->TakeSubagents(entry->Subagents, entry->Links))
 				++entry->SubagentsVersion;
 		}
 	}

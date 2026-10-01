@@ -3,6 +3,7 @@
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
+#include "Sessions/SubagentLinks.h"
 #include "Sessions/ToolFacts.h"
 #include "Sessions/TranscriptRecord.h"
 
@@ -15,6 +16,8 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -42,9 +45,9 @@ namespace Graphite {
 		// it alongside the session on a restart.
 		bool Take(Session& session, RequestTimeline& timeline);
 
-		// UI thread only. Moves out the subagents' usage when a newer map arrived since the
-		// last call; true when it did.
-		bool TakeSubagents(SubagentUsage& out);
+		// UI thread only. Moves out the subagents' usage and links when a newer pair arrived
+		// since the last call; true when it did. Both are replaced together.
+		bool TakeSubagents(SubagentUsage& usage, SubagentLinks& links);
 
 		// How far loading has got, for a view to show while there is little or nothing to draw.
 		struct LoadProgress
@@ -74,6 +77,14 @@ namespace Graphite {
 		const std::filesystem::path& GetFile() const { return m_File; }
 
 	private:
+		// What a walk of the subagent folder found: each subagent's usage by agent id, and
+		// each linked subagent by the id of the call that started it.
+		struct SubagentState
+		{
+			SubagentUsage Usage;
+			SubagentLinks Links;
+		};
+
 		struct Inbox
 		{
 			std::mutex Mutex;
@@ -89,9 +100,9 @@ namespace Graphite {
 
 			LoadProgress Progress;
 
-			// The subagents' usage, set when some subagent's transcript moved on since the
-			// last map and moved out by TakeSubagents.
-			std::optional<SubagentUsage> Subagents;
+			// What the subagent folder held, set when some subagent's transcript or meta file
+			// moved on since the last pair and moved out by TakeSubagents.
+			std::optional<SubagentState> Subagents;
 		};
 
 		// One subagent transcript as the worker follows it: how far it has been read, the
@@ -101,6 +112,11 @@ namespace Graphite {
 			std::uint64_t Offset = 0;
 			std::uintmax_t Size = 0;
 			UsageTally Tally;
+
+			// The call that started this subagent and what its meta file says, once that file
+			// has been read. Looked for on every walk until found: the meta file may land after
+			// the transcript, and a missing one costs only a failed open.
+			std::optional<std::pair<std::string, SubagentInfo>> Link;
 		};
 
 		// The worker's own record of every subagent transcript, by path. Only the worker
@@ -115,12 +131,12 @@ namespace Graphite {
 		static bool ReadMain(const std::filesystem::path& file, Inbox& inbox);
 
 		// Brings every subagent transcript up to date, reading each only from where its last
-		// read stopped. Returns the whole map when any of them moved on — appeared, grew,
-		// shrank or went — and nothing when none did, or when the transcript is being closed.
+		// read stopped. Returns the whole state when any of them moved on — appeared, grew,
+		// shrank, went, or had its meta file found — and nothing when none did, or when the transcript is being closed.
 		// A file that grew only by a line still being written is looked at again next time,
 		// but moves nothing. Worker only.
-		static std::optional<SubagentUsage> FollowSubagents(const std::filesystem::path& sessionFile,
-															SubagentFiles& subagents, Inbox& inbox);
+		static std::optional<SubagentState> FollowSubagents(const std::filesystem::path& sessionFile,
+														   SubagentFiles& subagents, Inbox& inbox);
 
 		// Shared by both overloads of Take; `timeline` is null for the session-only one.
 		bool TakeRecords(Session& session, RequestTimeline* timeline);

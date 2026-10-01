@@ -2,6 +2,7 @@
 
 #include "Sessions/LiveTranscript.h"
 #include "Sessions/RequestTimeline.h"
+#include "Sessions/SubagentLinks.h"
 
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"
@@ -180,6 +181,7 @@ TEST_CASE("Subagent usage arrives with the transcript and again when a subagent 
 	LiveTranscript live{file};
 	Session session;
 	SubagentUsage subagents;
+	SubagentLinks links;
 
 	live.Poll();
 	WaitForTurns(live, session, 1);
@@ -190,7 +192,7 @@ TEST_CASE("Subagent usage arrives with the transcript and again when a subagent 
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
 	while (!subagents.contains("a1"))
 	{
-		live.TakeSubagents(subagents);
+		live.TakeSubagents(subagents, links);
 		REQUIRE(std::chrono::steady_clock::now() < deadline);
 		std::this_thread::sleep_for(std::chrono::milliseconds{5});
 	}
@@ -204,10 +206,37 @@ namespace {
 						 const UsageByModel& expected)
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+		SubagentLinks links;
 
 		while (!subagents.contains(id) || subagents.at(id) != expected)
 		{
-			live.TakeSubagents(subagents);
+			live.TakeSubagents(subagents, links);
+			REQUIRE(std::chrono::steady_clock::now() < deadline);
+			std::this_thread::sleep_for(std::chrono::milliseconds{5});
+		}
+	}
+
+	// Takes the subagents' links until `toolUseId` is among them, or fails after five seconds.
+	void WaitForLink(LiveTranscript& live, SubagentLinks& links, const std::string& toolUseId)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+		SubagentUsage usage;
+
+		while (!links.contains(toolUseId))
+		{
+			live.TakeSubagents(usage, links);
+			REQUIRE(std::chrono::steady_clock::now() < deadline);
+			std::this_thread::sleep_for(std::chrono::milliseconds{5});
+		}
+	}
+
+	// Polls until both the first pass and the subagent walk are done, or fails after five seconds.
+	void WaitForWalk(LiveTranscript& live)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+
+		while (!live.GetProgress().FirstPassDone || !live.GetProgress().SubagentsWalked)
+		{
 			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
@@ -417,4 +446,89 @@ TEST_CASE("Closing a transcript while its subagents are read returns without fin
 
 	CHECK(before.SubagentsDone < before.SubagentsTotal);
 	CHECK(destroy < large.FullRead / 4);
+}
+
+TEST_CASE("A subagent's link arrives with its usage")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("one"));
+	temp.MakeFile("p/s/subagents/agent-a1.jsonl", Fixtures::Assistant("r", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6)));
+	temp.MakeFile("p/s/subagents/agent-a1.meta.json",
+				  R"({"agentType":"Explore","description":"Find callers","toolUseId":"toolu_1"})");
+
+	LiveTranscript live{file};
+	SubagentLinks links;
+
+	live.Poll();
+	WaitForLink(live, links, "toolu_1");
+
+	CHECK(links.at("toolu_1") == SubagentInfo{"a1", "Explore", "Find callers"});
+}
+
+TEST_CASE("A meta file written after its transcript is linked on a later walk")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("one"));
+	temp.MakeFile("p/s/subagents/agent-a1.jsonl", Fixtures::Assistant("r", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6)));
+
+	LiveTranscript live{file};
+	SubagentUsage usage;
+	SubagentLinks links;
+
+	live.Poll();
+	WaitForSubagent(live, usage, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
+	WaitForWalk(live);
+	live.TakeSubagents(usage, links);
+	CHECK(links.empty());
+
+	// The transcript has not moved; only the meta file is new.
+	temp.MakeFile("p/s/subagents/agent-a1.meta.json", R"({"toolUseId":"toolu_1"})");
+	live.Poll();
+	WaitForLink(live, links, "toolu_1");
+
+	CHECK(links.at("toolu_1").AgentId == "a1");
+}
+
+TEST_CASE("A subagent whose meta file names no call is counted but not linked")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("one"));
+	temp.MakeFile("p/s/subagents/agent-a1.jsonl", Fixtures::Assistant("r", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6)));
+	temp.MakeFile("p/s/subagents/agent-a1.meta.json", "{not json");
+
+	LiveTranscript live{file};
+	SubagentUsage usage;
+	SubagentLinks links;
+
+	live.Poll();
+	WaitForSubagent(live, usage, "a1", {{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
+	WaitForWalk(live);
+	live.TakeSubagents(usage, links);
+
+	CHECK(links.empty());
+}
+
+TEST_CASE("A subagent's own transcript, followed live, finds no subagents of its own")
+{
+	TempDirectory temp;
+	temp.MakeFile("p/s.jsonl", Fixtures::UserPrompt("one"));
+	const std::filesystem::path agent =
+		temp.MakeFile("p/s/subagents/agent-a1.jsonl", Fixtures::UserPrompt("task") +
+														  Fixtures::Assistant("r", Fixtures::TextBlock("y"), Fixtures::Usage(5, 6)));
+
+	LiveTranscript live{agent};
+	Session session;
+
+	live.Poll();
+	WaitForTurns(live, session, 1);
+	WaitForWalk(live);
+
+	SubagentUsage usage;
+	SubagentLinks links;
+	live.TakeSubagents(usage, links);
+
+	CHECK(session.GetTurns().front().Prompt == "task");
+	CHECK(usage.empty());
+	CHECK(links.empty());
+	CHECK(live.GetProgress().SubagentsTotal == 0);
 }
