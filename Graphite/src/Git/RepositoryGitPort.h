@@ -75,7 +75,10 @@ namespace Graphite {
 		std::size_t GetLiveHandleCountForThisThread() const;
 
 	private:
-		Core::Repository* RepositoryForThisThread();
+		// The handle for the current root on the calling thread, or Open's own error: a
+		// NotFound only when there is genuinely no repository, so callers can tell "none"
+		// from "one that would not open".
+		Core::Result<Core::Repository*> RepositoryForThisThread();
 
 		// Read on worker threads, written on the UI thread when the workspace changes.
 		// Stored as a string because that is what the per-thread cache is keyed by.

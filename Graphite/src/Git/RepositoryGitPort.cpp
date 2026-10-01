@@ -44,7 +44,7 @@ namespace Graphite {
 		++m_Generation;
 	}
 
-	Core::Repository* RepositoryGitPort::RepositoryForThisThread()
+	Core::Result<Core::Repository*> RepositoryGitPort::RepositoryForThisThread()
 	{
 		std::string root;
 		std::uint64_t generation = 0;
@@ -103,7 +103,7 @@ namespace Graphite {
 
 		if (root.empty())
 		{
-			return nullptr;
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
 		}
 
 		if (const auto existing = handles.find(root); existing != handles.end())
@@ -121,9 +121,15 @@ namespace Graphite {
 
 		auto opened = Core::Repository::Open(Core::FromUtf8(root));
 
+		// Open's own error is handed on, not flattened into "no repository": only a
+		// NotFound means there is none, and the UI offers to initialise one on exactly that
+		// answer. A repository libgit2 refuses - dubious ownership, a format it does not
+		// understand, a corrupt config - is still a repository, and reading it as missing
+		// would invite an init over the top of it. Still not cached, so a later git init
+		// in this folder is picked up by the next query.
 		if (!opened.HasValue())
 		{
-			return nullptr;
+			return opened.GetError();
 		}
 
 		++m_OpenCount;
@@ -141,12 +147,14 @@ namespace Graphite {
 
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryStatus()
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->QueryStatus();
 	}
@@ -154,60 +162,70 @@ namespace Graphite {
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryUntrackedIn(
 		const std::filesystem::path& directory)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->QueryUntrackedIn(directory);
 	}
 
 	Core::Result<std::filesystem::path> RepositoryGitPort::GetWorkingDirectory()
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->GetWorkingDirectory();
 	}
 
 	Core::Result<std::vector<Core::Branch>> RepositoryGitPort::QueryBranches()
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->QueryBranches();
 	}
 
 	Core::Result<Core::LogPage> RepositoryGitPort::QueryLog(const Core::LogRequest& request)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->QueryLog(request);
 	}
 
 	Core::Result<Core::Diff> RepositoryGitPort::QueryDiff(const Core::DiffRequest& request)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->QueryDiff(request);
 	}
@@ -217,12 +235,14 @@ namespace Graphite {
 		const std::filesystem::path& oldPath,
 		const std::filesystem::path& newPath)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		FileTexts texts;
 
@@ -265,72 +285,84 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::Stage(const std::vector<std::filesystem::path>& paths)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->Stage(paths);
 	}
 
 	Core::Result<void> RepositoryGitPort::Unstage(const std::vector<std::filesystem::path>& paths)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->Unstage(paths);
 	}
 
 	Core::Result<void> RepositoryGitPort::DiscardWorkTree(const std::vector<std::filesystem::path>& paths)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->DiscardWorkTree(paths);
 	}
 
 	Core::Result<void> RepositoryGitPort::DeleteUntracked(const std::vector<std::filesystem::path>& paths)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->DeleteUntracked(paths);
 	}
 
 	Core::Result<Core::Oid> RepositoryGitPort::Commit(const Core::CommitRequest& request)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->Commit(request);
 	}
 
 	Core::Result<Core::HeadState> RepositoryGitPort::QueryHead()
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		return repository->QueryHead();
 	}
@@ -347,6 +379,24 @@ namespace Graphite {
 		if (root.empty())
 		{
 			return Core::Error{Core::ErrorCode::NotFound, "no folder is open"};
+		}
+
+		// Asked again here rather than trusted from the last status the UI saw: an init is
+		// only safe where Open finds nothing at all. Over a repository it would rewrite
+		// .git/config, and in a subfolder of one it would nest a second repository - and the
+		// same holds for a repository Open finds but refuses, which still counts as there.
+		{
+			auto existing = Core::Repository::Open(Core::FromUtf8(root));
+
+			if (existing.HasValue())
+			{
+				return Core::Error{Core::ErrorCode::InvalidArgument, "the folder is already inside a repository"};
+			}
+
+			if (existing.GetError().Code != Core::ErrorCode::NotFound)
+			{
+				return existing.GetError();
+			}
 		}
 
 		// The handle is dropped here rather than cached: RepositoryForThisThread never
@@ -409,12 +459,14 @@ namespace Graphite {
 		const std::filesystem::path& oldPath,
 		const std::filesystem::path& newPath)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		if (repository == nullptr)
+		if (!opened.HasValue())
 		{
-			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+			return opened.GetError();
 		}
+
+		Core::Repository* repository = opened.GetValue();
 
 		const WorkingTreeSides sides = SidesFor(target);
 
@@ -446,11 +498,15 @@ namespace Graphite {
 
 	Core::Result<ChangeBases> RepositoryGitPort::ReadBases(const std::filesystem::path& absolutePath)
 	{
-		Core::Repository* repository = RepositoryForThisThread();
+		auto opened = RepositoryForThisThread();
 
-		// No repository is an answer, not a failure: the column is simply empty.
-		if (repository == nullptr)
+		// No repository is an answer, not a failure: the column is simply empty. One that
+		// cannot be opened draws the same empty column - the gutter has no place to say why,
+		// and the Changes panel already reports the open's own error.
+		if (!opened.HasValue())
 			return ChangeBases{};
+
+		Core::Repository* repository = opened.GetValue();
 
 		std::error_code code;
 		const std::filesystem::path relative =

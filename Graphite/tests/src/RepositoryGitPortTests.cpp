@@ -11,6 +11,7 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <process.h>
 #include <string>
 #include <system_error>
@@ -400,4 +401,79 @@ TEST_CASE("A folder inside a repository reads the repository's head")
 	auto head = port.QueryHead();
 	REQUIRE(head.HasValue());
 	CHECK(head.GetValue().Kind == Core::HeadKind::Unborn);
+}
+
+namespace {
+
+	// A repository whose .git is there but which libgit2 refuses to open: a format version
+	// it does not understand fails Open the same way dubious ownership does - with an error
+	// that is not NotFound - and needs no second account or special drive to reproduce.
+	void MakeUnopenable(const std::filesystem::path& root)
+	{
+		std::ofstream config{root / ".git" / "config", std::ios::binary | std::ios::trunc};
+		config << "[core]\n\trepositoryformatversion = 99\n";
+	}
+
+	std::string ReadAll(const std::filesystem::path& path)
+	{
+		std::ifstream in{path, std::ios::binary};
+		return std::string{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+	}
+}
+
+TEST_CASE("A repository that cannot be opened is reported as its own failure, not as missing")
+{
+	TempRepo repo;
+	MakeUnopenable(repo.GetPath());
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	auto status = port.QueryStatus();
+	REQUIRE_FALSE(status.HasValue());
+	CHECK(status.GetError().Code != Core::ErrorCode::NotFound);
+
+	auto head = port.QueryHead();
+	REQUIRE_FALSE(head.HasValue());
+	CHECK(head.GetError().Code != Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("The port refuses to initialise over a repository it cannot open")
+{
+	TempRepo repo;
+	MakeUnopenable(repo.GetPath());
+	const std::string before = ReadAll(repo.GetPath() / ".git" / "config");
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	auto result = port.Init();
+	REQUIRE_FALSE(result.HasValue());
+	CHECK(result.GetError().Code != Core::ErrorCode::NotFound);
+	CHECK(ReadAll(repo.GetPath() / ".git" / "config") == before);
+}
+
+TEST_CASE("The port refuses to initialise a folder that is already inside a repository")
+{
+	TempRepo repo;
+	std::filesystem::create_directories(repo.GetPath() / "sub");
+
+	Graphite::RepositoryGitPort port{repo.GetPath() / "sub"};
+
+	auto result = port.Init();
+	REQUIRE_FALSE(result.HasValue());
+	CHECK(result.GetError().Code == Core::ErrorCode::InvalidArgument);
+	CHECK_FALSE(std::filesystem::exists(repo.GetPath() / "sub" / ".git"));
+}
+
+TEST_CASE("The port refuses to initialise a folder inside a repository it cannot open")
+{
+	TempRepo repo;
+	MakeUnopenable(repo.GetPath());
+	std::filesystem::create_directories(repo.GetPath() / "sub");
+
+	Graphite::RepositoryGitPort port{repo.GetPath() / "sub"};
+
+	auto result = port.Init();
+	REQUIRE_FALSE(result.HasValue());
+	CHECK(result.GetError().Code != Core::ErrorCode::NotFound);
+	CHECK_FALSE(std::filesystem::exists(repo.GetPath() / "sub" / ".git"));
 }

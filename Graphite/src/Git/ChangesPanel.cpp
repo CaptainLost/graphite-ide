@@ -326,6 +326,13 @@ namespace Graphite {
 			{
 				DrawInitRepositoryPrompt(m_Model);
 			}
+			else if (const auto& error = m_Model.GetStatusError(); error.has_value())
+			{
+				// A repository that is there but would not open - dubious ownership, a format
+				// libgit2 does not read - never delivers a status, so "Loading" would be a wait
+				// that never ends; its own error is the only thing worth saying.
+				Core::EmptyState("Could not read the repository: " + error->Message);
+			}
 			else
 			{
 				// Loading, not absent: until the first status lands there is no telling, and
