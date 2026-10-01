@@ -1214,9 +1214,87 @@ TEST_CASE("A failed stash apply or pop still refreshes the model")
 		model.OnUpdate(Core::Timestep{0.0f});
 		CHECK(model.GetWriteError().has_value());
 
-		// The apply may have written some files before it stopped.
+		// The apply may have written some files before it stopped, so it counts as applied:
+		// that is what tells the change markers to look again.
+		CHECK(model.GetAppliedWriteCount() == 1);
+
 		model.OnUpdate(Core::Timestep{1.0f});
 		CHECK(model.GetStatus() != nullptr);
+	}
+}
+
+TEST_CASE("A checkout's failure names the target, and where the prepared changes went")
+{
+	struct Case
+	{
+		Graphite::CheckoutPreparation Preparation;
+		bool Stashed;
+		std::string Expected;
+	};
+
+	const Case cases[] = {
+		{Graphite::CheckoutPreparation::None, false, "Could not check out feature: no"},
+		{Graphite::CheckoutPreparation::Stash, true,
+		 "Could not check out feature: no. Your changes were stashed as stash@{0}."},
+		{Graphite::CheckoutPreparation::Stash, false, "Could not check out feature: no"},
+		{Graphite::CheckoutPreparation::Discard, false,
+		 "Could not check out feature: no. Your changes were discarded."},
+	};
+
+	for (const Case& c : cases)
+	{
+		CAPTURE(c.Expected);
+
+		WritePort port;
+		port.StashSaves = c.Stashed;
+		port.CheckoutResult.Failure = Core::Error{Core::ErrorCode::InvalidArgument, "no"};
+		Graphite::GitModel model{port, Inline()};
+		OpenA(model);
+
+		model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+							   .Preparation = c.Preparation});
+		model.OnUpdate(Core::Timestep{0.0f});
+
+		REQUIRE(model.GetWriteError().has_value());
+		CHECK(model.GetWriteError()->Message == c.Expected);
+	}
+}
+
+TEST_CASE("A failed preparation names the checkout it was for")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Stash});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.GetWriteError().has_value());
+	CHECK(model.GetWriteError()->Message == "Could not check out feature: no");
+}
+
+TEST_CASE("A stash with nothing to stash says so instead of passing for done")
+{
+	for (const bool includeUntracked : {false, true})
+	{
+		CAPTURE(includeUntracked);
+
+		WritePort port;
+		port.StashSaves = false;
+		Graphite::GitModel model{port, Inline()};
+		OpenA(model);
+
+		model.RequestStashSave("msg", includeUntracked);
+		model.OnUpdate(Core::Timestep{0.0f});
+
+		REQUIRE(model.GetWriteError().has_value());
+		CHECK(model.GetWriteError()->Message.starts_with("Nothing to stash"));
+
+		// Untracked files are the likely reason when they were left out.
+		CHECK((model.GetWriteError()->Message.find("untracked") != std::string::npos) == !includeUntracked);
+		CHECK(model.GetAppliedWriteCount() == 0);
 	}
 }
 

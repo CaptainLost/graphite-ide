@@ -1,5 +1,7 @@
 #include "Git/GitModel.h"
 
+#include "Git/CheckoutQuestion.h"
+
 #include <algorithm>
 #include <exception>
 #include <string>
@@ -289,9 +291,21 @@ namespace Graphite {
 
 			case WriteKind::StashSave:
 			{
-				if (const auto result = m_Port.StashSave(job.Name, job.Flag); !result.HasValue())
+				const auto result = m_Port.StashSave(job.Name, job.Flag);
+
+				if (!result.HasValue())
 				{
 					outcome.Failure = result.GetError();
+				}
+				else if (!result.GetValue())
+				{
+					// Said rather than passed off as done: the dialog closed on the click, and
+					// a tree left exactly as it was would otherwise be the only answer. Left
+					// out, untracked files are the likely reason.
+					outcome.Failure = Core::Error{
+						Core::ErrorCode::NotFound,
+						job.Flag ? "Nothing to stash"
+								 : "Nothing to stash: untracked files are stashed only with Include untracked ticked"};
 				}
 
 				break;
@@ -368,6 +382,11 @@ namespace Graphite {
 	{
 		WriteOutcome outcome;
 
+		// Every failure names the checkout it stopped, since the line reads long after the
+		// click; and one that stopped after the preparation says where the changes went.
+		const std::string prefix = "Could not check out " + CheckoutTargetLabel(request.Target) + ": ";
+		std::string preparedNote;
+
 		if (request.Preparation != CheckoutPreparation::None)
 		{
 			// Noted before anything moves: these are the files the preparation is about to
@@ -391,6 +410,10 @@ namespace Graphite {
 				{
 					outcome.Failure = result.GetError();
 				}
+				else
+				{
+					preparedNote = " Your changes were discarded.";
+				}
 			}
 			else
 			{
@@ -401,12 +424,17 @@ namespace Graphite {
 				{
 					outcome.Failure = result.GetError();
 				}
+				else if (result.GetValue())
+				{
+					preparedNote = " Your changes were stashed as stash@{0}.";
+				}
 			}
 
 			if (outcome.Failure.has_value())
 			{
 				// The preparation is what failed, so the checkout never ran and the noted
 				// files are not reported as changed.
+				outcome.Failure->Message = prefix + outcome.Failure->Message;
 				outcome.Changed.clear();
 				return outcome;
 			}
@@ -426,6 +454,19 @@ namespace Graphite {
 		}
 
 		outcome.Failure = std::move(checkout.Failure);
+
+		if (outcome.Failure.has_value())
+		{
+			std::string message = prefix + outcome.Failure->Message;
+
+			if (!preparedNote.empty() && !message.ends_with('.'))
+			{
+				message += '.';
+			}
+
+			outcome.Failure->Message = message + preparedNote;
+		}
+
 		return outcome;
 	}
 
@@ -465,9 +506,12 @@ namespace Graphite {
 			m_WriteError = std::move(outcome.Failure);
 
 			// An apply or a pop that stopped on a conflict or an I/O error may have written
-			// some files already, so the status refreshes as it does for a discard.
+			// some files already, so the status refreshes as it does for a discard, and the
+			// write counts as applied so that what reads the count - the change markers -
+			// looks again.
 			if (job.Kind == WriteKind::StashApply || job.Kind == WriteKind::StashPop)
 			{
+				++m_AppliedWrites;
 				MarkDirty();
 			}
 
