@@ -290,7 +290,7 @@ namespace Core {
 		// Deliberately empty rather than absent, so the reason is written down where the next
 		// port will read it: Start already refuses on every other platform, so nothing here can
 		// hold a live child, and a thread blocked in Read is a thread that never started. A port
-		// that implements Start must implement this in the same change â€” without it the join a
+		// that implements Start must implement this in the same change — without it the join a
 		// caller does after Terminate would wait on a read nothing releases.
 #endif
 	}
