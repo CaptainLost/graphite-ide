@@ -110,3 +110,69 @@ TEST_CASE("Checkout targets are labelled the way the ref list names them")
 	id.Bytes[1] = 0x49;
 	CHECK(Graphite::CheckoutTargetLabel({.Kind = Core::CheckoutKind::Commit, .Commit = id}) == "7d49000");
 }
+
+TEST_CASE("An unsaved path spelled with another case and separators still matches the plan")
+{
+	Core::CheckoutPlan plan;
+	plan.Updated = {"src/Renderer.cpp"};
+
+	CHECK(Graphite::NeedsCheckoutDialog(plan, {"Src\\Renderer.cpp"}));
+
+	Core::WorkingTreeStatus status;
+	const auto question = Graphite::BuildCheckoutQuestion("x", plan, status, {"Src\\Renderer.cpp"});
+	REQUIRE(question.Changed.size() == 1);
+	CHECK(question.Changed[0].Path == "src/Renderer.cpp");
+}
+
+TEST_CASE("A collapsed untracked directory blocks when the plan overwrites a file inside it")
+{
+	Core::FileStatus dir = Untracked("dir");
+	dir.IsDirectory = true;
+	Core::FileStatus other = Untracked("dir2");
+	other.IsDirectory = true;
+
+	Core::CheckoutPlan plan;
+	plan.Overwritten = {"dir/file.txt"};
+
+	Core::WorkingTreeStatus status;
+	status.Entries = {dir, other};
+
+	const auto question = Graphite::BuildCheckoutQuestion("x", plan, status, {});
+
+	REQUIRE(question.Untracked.size() == 2);
+	CHECK(question.Untracked[0].Blocks);
+	CHECK_FALSE(question.Untracked[1].Blocks);
+	CHECK(question.UntrackedForced);
+}
+
+TEST_CASE("An unsaved untracked file is marked on its untracked row, not listed twice")
+{
+	Core::WorkingTreeStatus status;
+	status.Entries = {Untracked("notes.txt")};
+
+	const auto question = Graphite::BuildCheckoutQuestion("x", {}, status, {"notes.txt"});
+
+	CHECK(question.Changed.empty());
+	REQUIRE(question.Untracked.size() == 1);
+	CHECK(question.Untracked[0].Unsaved);
+}
+
+TEST_CASE("Staged-only and conflicted entries are listed as changes")
+{
+	Core::FileStatus staged;
+	staged.Path = "staged.cpp";
+	staged.Index = Core::StatusFlags::Modified;
+
+	Core::FileStatus conflicted;
+	conflicted.Path = "conflict.cpp";
+	conflicted.IsConflicted = true;
+
+	Core::WorkingTreeStatus status;
+	status.Entries = {staged, conflicted};
+
+	const auto question = Graphite::BuildCheckoutQuestion("x", {}, status, {});
+
+	REQUIRE(question.Changed.size() == 2);
+	CHECK(question.Changed[0].Path == "conflict.cpp");
+	CHECK(question.Changed[1].Path == "staged.cpp");
+}

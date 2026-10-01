@@ -36,6 +36,10 @@ namespace Graphite {
 		bool UntrackedForced = false;
 	};
 
+	// All paths are relative to the working directory. Matching between them ignores
+	// separator style and ASCII case, because the editor and git spell the same file
+	// differently on Windows.
+	//
 	// unsaved: relative paths of documents modified in the editor. Git cannot see those, so
 	// a checkout that rewrites one has to ask even when it overwrites nothing of git's.
 	bool NeedsCheckoutDialog(const Core::CheckoutPlan& plan, const std::vector<std::filesystem::path>& unsaved);

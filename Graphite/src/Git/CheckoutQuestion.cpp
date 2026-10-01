@@ -4,14 +4,51 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 
 namespace Graphite {
 
 	namespace {
 
-		bool Contains(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& path)
+		// Editor paths and git paths name the same file in different spellings: separators,
+		// and on Windows the case. Every comparison goes through this key.
+		std::string Key(const std::filesystem::path& path)
 		{
-			return std::find(paths.begin(), paths.end(), path) != paths.end();
+			std::string key = path.lexically_normal().generic_string();
+			while (!key.empty() && key.back() == '/')
+			{
+				key.pop_back();
+			}
+
+			for (char& c : key)
+			{
+				if (c >= 'A' && c <= 'Z')
+				{
+					c = static_cast<char>(c - 'A' + 'a');
+				}
+			}
+
+			return key;
+		}
+
+		std::set<std::string> Keys(const std::vector<std::filesystem::path>& paths)
+		{
+			std::set<std::string> keys;
+			for (const std::filesystem::path& path : paths)
+			{
+				keys.insert(Key(path));
+			}
+
+			return keys;
+		}
+
+		// A collapsed untracked directory is one status entry; the plan names the files in it.
+		// The prefix ends in a separator so "dir2/x" is not taken for a file of "dir".
+		bool IsUnder(const std::set<std::string>& keys, const std::string& directory)
+		{
+			const std::string prefix = directory + "/";
+			return std::any_of(keys.begin(), keys.end(), [&prefix](const std::string& key)
+			                   { return key.compare(0, prefix.size(), prefix) == 0; });
 		}
 	}
 
@@ -22,8 +59,9 @@ namespace Graphite {
 			return true;
 		}
 
+		const std::set<std::string> updated = Keys(plan.Updated);
 		return std::any_of(unsaved.begin(), unsaved.end(),
-		                   [&plan](const std::filesystem::path& path) { return Contains(plan.Updated, path); });
+		                   [&updated](const std::filesystem::path& path) { return updated.count(Key(path)) != 0; });
 	}
 
 	CheckoutQuestion BuildCheckoutQuestion(const std::string& targetLabel, const Core::CheckoutPlan& plan,
@@ -33,33 +71,63 @@ namespace Graphite {
 		CheckoutQuestion question;
 		question.Title = "Checking out " + targetLabel + " would overwrite your changes";
 
-		// Keyed by path so a file that is both changed on disk and unsaved shows once.
-		std::map<std::filesystem::path, CheckoutQuestionRow> changed;
-		std::map<std::filesystem::path, CheckoutQuestionRow> untracked;
+		const std::set<std::string> overwritten = Keys(plan.Overwritten);
+
+		// Keyed so a file that is both changed on disk and unsaved shows once, and so the
+		// rows come out sorted.
+		std::map<std::string, CheckoutQuestionRow> changed;
+		std::map<std::string, CheckoutQuestionRow> untracked;
 
 		for (const Core::FileStatus& entry : status.Entries)
 		{
+			const std::string key = Key(entry.Path);
+
 			CheckoutQuestionRow row;
 			row.Path = entry.Path;
-			row.Blocks = Contains(plan.Overwritten, entry.Path);
+			row.Blocks = overwritten.count(key) != 0 || (entry.IsUntracked && entry.IsDirectory && IsUnder(overwritten, key));
 
-			(entry.IsUntracked ? untracked : changed).emplace(entry.Path, std::move(row));
+			(entry.IsUntracked ? untracked : changed).emplace(key, std::move(row));
 		}
 
 		for (const std::filesystem::path& path : unsaved)
 		{
-			CheckoutQuestionRow& row = changed.try_emplace(path).first->second;
-			row.Path = path;
+			const std::string key = Key(path);
+
+			// Untracked and unsaved is one file: mark its row rather than list it twice.
+			if (auto found = untracked.find(key); found != untracked.end())
+			{
+				found->second.Unsaved = true;
+				continue;
+			}
+
+			auto [slot, added] = changed.try_emplace(key);
+			CheckoutQuestionRow& row = slot->second;
+			if (added)
+			{
+				// Show git's spelling of the path when the plan has one.
+				row.Path = path;
+				for (const auto* names : {&plan.Overwritten, &plan.Updated})
+				{
+					const auto named = std::find_if(names->begin(), names->end(),
+					                                [&key](const std::filesystem::path& name) { return Key(name) == key; });
+					if (named != names->end())
+					{
+						row.Path = *named;
+						break;
+					}
+				}
+				row.Blocks = overwritten.count(key) != 0;
+			}
+
 			row.Unsaved = true;
-			row.Blocks = row.Blocks || Contains(plan.Overwritten, path);
 		}
 
-		for (auto& [path, row] : changed)
+		for (auto& [key, row] : changed)
 		{
 			question.Changed.push_back(std::move(row));
 		}
 
-		for (auto& [path, row] : untracked)
+		for (auto& [key, row] : untracked)
 		{
 			question.UntrackedForced = question.UntrackedForced || row.Blocks;
 			question.Untracked.push_back(std::move(row));
