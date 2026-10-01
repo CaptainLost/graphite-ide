@@ -3,6 +3,7 @@
 #include "Core/Platform/PseudoConsole.h"
 
 #include "Core/Platform/CommandLine.h"
+#include "Core/Platform/Win32Error.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -27,18 +28,6 @@ namespace Core {
 		// regardless — it only means the last of a dying shell's output is dropped.
 		constexpr DWORD ShutdownWaitMilliseconds = 2000;
 		constexpr DWORD ShutdownDrainMilliseconds = 250;
-
-		ErrorCode ErrorCodeFor(DWORD error)
-		{
-			switch (error)
-			{
-			case ERROR_FILE_NOT_FOUND:
-			case ERROR_PATH_NOT_FOUND:
-				return ErrorCode::NotFound;
-			default:
-				return ErrorCode::IoFailure;
-			}
-		}
 
 		void CloseIfOpen(void*& handle)
 		{
@@ -232,12 +221,12 @@ namespace Core {
 
 		if (!::CreatePipe(&inputRead, &inputWrite, nullptr, 0))
 		{
-			return Error{ErrorCodeFor(::GetLastError()), "cannot create the shell's input pipe"};
+			return Error{ErrorCodeFromWin32(::GetLastError()), "cannot create the shell's input pipe"};
 		}
 
 		if (!CreateOverlappedPipe(outputRead, outputWrite))
 		{
-			const Error error{ErrorCodeFor(::GetLastError()),
+			const Error error{ErrorCodeFromWin32(::GetLastError()),
 							  "cannot create the shell's output pipe"};
 			::CloseHandle(inputRead);
 			::CloseHandle(inputWrite);
@@ -330,7 +319,7 @@ namespace Core {
 
 		if (started == FALSE)
 		{
-			const Error error{ErrorCodeFor(::GetLastError()), "cannot start the shell"};
+			const Error error{ErrorCodeFromWin32(::GetLastError()), "cannot start the shell"};
 			::DeleteProcThreadAttributeList(attributes);
 			::HeapFree(::GetProcessHeap(), 0, attributes);
 			::ClosePseudoConsole(console);

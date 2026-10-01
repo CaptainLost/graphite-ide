@@ -3,6 +3,7 @@
 #include "Core/Fs/FileOperations.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/Win32Error.h"
 
 #include <array>
 #include <cctype>
@@ -54,13 +55,14 @@ namespace Core {
 							 std::format("'{}' already exists", ToUtf8(path))};
 			}
 
-			if (error == ERROR_ACCESS_DENIED)
+			const ErrorCode code = ErrorCodeFromWin32(error);
+
+			if (code == ErrorCode::AccessDenied)
 			{
-				return Error{ErrorCode::AccessDenied,
-							 std::format("cannot create '{}': access denied", ToUtf8(path))};
+				return Error{code, std::format("cannot create '{}': access denied", ToUtf8(path))};
 			}
 
-			return Error{ErrorCode::IoFailure,
+			return Error{code,
 						 std::format("cannot create '{}' (error {})", ToUtf8(path), error)};
 		}
 
@@ -103,19 +105,18 @@ namespace Core {
 
 		const DWORD error = ::GetLastError();
 
-		if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
-			return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(from))};
-
 		if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
 			return Error{ErrorCode::InvalidArgument, std::format("'{}' already exists", ToUtf8(to))};
 
-		if (error == ERROR_ACCESS_DENIED)
-		{
-			return Error{ErrorCode::AccessDenied,
-						 std::format("cannot rename '{}': access denied", ToUtf8(from))};
-		}
+		const ErrorCode code = ErrorCodeFromWin32(error);
 
-		return Error{ErrorCode::IoFailure,
+		if (code == ErrorCode::NotFound)
+			return Error{code, std::format("'{}' no longer exists", ToUtf8(from))};
+
+		if (code == ErrorCode::AccessDenied)
+			return Error{code, std::format("cannot rename '{}': access denied", ToUtf8(from))};
+
+		return Error{code,
 					 std::format("cannot rename '{}' (error {})", ToUtf8(from), error)};
 #else
 		// std::filesystem::rename replaces an existing destination, which this function

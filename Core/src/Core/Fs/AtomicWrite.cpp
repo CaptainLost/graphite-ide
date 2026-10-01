@@ -3,6 +3,7 @@
 #include "Core/Fs/AtomicWrite.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/Win32Error.h"
 
 #include <fstream>
 #include <system_error>
@@ -75,23 +76,6 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", ToUtf8(temporary))};
 		}
 
-#ifdef CORE_PLATFORM_WINDOWS
-		ErrorCode ErrorCodeFor(DWORD error)
-		{
-			switch (error)
-			{
-			case ERROR_ACCESS_DENIED:
-			case ERROR_SHARING_VIOLATION:
-				return ErrorCode::AccessDenied;
-			case ERROR_FILE_NOT_FOUND:
-			case ERROR_PATH_NOT_FOUND:
-				return ErrorCode::NotFound;
-			default:
-				return ErrorCode::IoFailure;
-			}
-		}
-#endif
-
 		Result<void> SwapIntoPlace(const std::filesystem::path& temporary,
 								   const std::filesystem::path& path)
 		{
@@ -122,7 +106,7 @@ namespace Core {
 					std::error_code ignored;
 					std::filesystem::remove(temporary, ignored);
 
-					return Error{ErrorCodeFor(error),
+					return Error{ErrorCodeFromWin32(error),
 								 std::format("cannot replace '{}' (error {})", ToUtf8(path), error)};
 				}
 			}
@@ -137,7 +121,7 @@ namespace Core {
 			std::error_code ignored;
 			std::filesystem::remove(temporary, ignored);
 
-			return Error{ErrorCodeFor(error),
+			return Error{ErrorCodeFromWin32(error),
 						 std::format("cannot write '{}' (error {})", ToUtf8(path), error)};
 #else
 			// The one platform split in Core that must not return Unsupported — that would

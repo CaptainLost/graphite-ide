@@ -4,28 +4,13 @@
 
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/CommandLine.h"
+#include "Core/Platform/Win32Error.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
 #endif
 
 namespace Core {
-
-#ifdef CORE_PLATFORM_WINDOWS
-	namespace {
-		ErrorCode ErrorCodeFor(DWORD error)
-		{
-			switch (error)
-			{
-			case ERROR_FILE_NOT_FOUND:
-			case ERROR_PATH_NOT_FOUND:
-				return ErrorCode::NotFound;
-			default:
-				return ErrorCode::IoFailure;
-			}
-		}
-	}
-#endif
 
 	Result<Scope<ChildProcess>> ChildProcess::Start(const std::filesystem::path& program,
 													 const std::vector<std::string>& arguments,
@@ -41,7 +26,8 @@ namespace Core {
 
 		if (!::CreatePipe(&childStdinRead, &childStdinWrite, &inheritable, 0))
 		{
-			return Error{ErrorCodeFor(::GetLastError()), "cannot create the child's input pipe"};
+			return Error{ErrorCodeFromWin32(::GetLastError()),
+					 "cannot create the child's input pipe"};
 		}
 
 		HANDLE childStdoutRead = nullptr;
@@ -49,7 +35,7 @@ namespace Core {
 
 		if (!::CreatePipe(&childStdoutRead, &childStdoutWrite, &inheritable, 0))
 		{
-			const Error error{ErrorCodeFor(::GetLastError()),
+			const Error error{ErrorCodeFromWin32(::GetLastError()),
 							  "cannot create the child's output pipe"};
 			::CloseHandle(childStdinRead);
 			::CloseHandle(childStdinWrite);
@@ -86,7 +72,7 @@ namespace Core {
 
 			if (childStdError == INVALID_HANDLE_VALUE)
 			{
-				const Error error{ErrorCodeFor(::GetLastError()),
+				const Error error{ErrorCodeFromWin32(::GetLastError()),
 								  "cannot open the null device for the child's stderr"};
 
 				::CloseHandle(childStdinRead);
@@ -105,7 +91,7 @@ namespace Core {
 			if (!::DuplicateHandle(self, childStdError, self, &duplicate, 0, TRUE,
 								   DUPLICATE_SAME_ACCESS))
 			{
-				const Error error{ErrorCodeFor(::GetLastError()),
+				const Error error{ErrorCodeFromWin32(::GetLastError()),
 								  "cannot duplicate the process's stderr for the child"};
 
 				::CloseHandle(childStdinRead);
@@ -146,7 +132,7 @@ namespace Core {
 
 		if (!::InitializeProcThreadAttributeList(attributeList, 1, 0, &attributeListSize))
 		{
-			const Error error{ErrorCodeFor(::GetLastError()),
+			const Error error{ErrorCodeFromWin32(::GetLastError()),
 							  "cannot prepare the child's handle list"};
 			closeAll();
 			return error;
@@ -156,7 +142,7 @@ namespace Core {
 										 inheritedHandles.data(),
 										 inheritedHandles.size() * sizeof(HANDLE), nullptr, nullptr))
 		{
-			const Error error{ErrorCodeFor(::GetLastError()),
+			const Error error{ErrorCodeFromWin32(::GetLastError()),
 							  "cannot restrict the child's inherited handles"};
 			::DeleteProcThreadAttributeList(attributeList);
 			closeAll();
@@ -187,7 +173,7 @@ namespace Core {
 
 		if (!created)
 		{
-			const Error error{ErrorCodeFor(createError),
+			const Error error{ErrorCodeFromWin32(createError),
 							  std::format("cannot start '{}'", ToUtf8(program))};
 			closeAll();
 			return error;
@@ -304,7 +290,7 @@ namespace Core {
 		// Deliberately empty rather than absent, so the reason is written down where the next
 		// port will read it: Start already refuses on every other platform, so nothing here can
 		// hold a live child, and a thread blocked in Read is a thread that never started. A port
-		// that implements Start must implement this in the same change — without it the join a
+		// that implements Start must implement this in the same change â€” without it the join a
 		// caller does after Terminate would wait on a read nothing releases.
 #endif
 	}
