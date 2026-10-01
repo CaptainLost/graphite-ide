@@ -18,12 +18,18 @@ be told which ones.
 
 ## Decision
 
-Plan every checkout before running it. `Repository::PlanCheckout` is a dry run
-that changes nothing on disk, in the index or in HEAD, and answers which paths
-the checkout would overwrite and which it would only update.
+Plan every checkout before running it, with no exception: a new branch created
+with "Checkout after creating" is created first and then checked out through the
+same plan, which queues behind the create. `Repository::PlanCheckout` is a dry
+run that changes nothing on disk, in the index or in HEAD, and answers which
+paths the checkout would overwrite and which it would only update. Unresolved
+conflicts in the index are listed as overwritten: libgit2 refuses any checkout
+over them, a dry run included, without naming a file.
 
-The model plans in the background, with the paths of unsaved documents under the
-repository supplied by the editor. `NeedsCheckoutDialog` decides from the plan
+`GitView`, not the model, drives the flow: it asks the model for the plan, and
+when the plan answers it reads the unsaved documents under the repository from
+the editor - then, not at the click, so a document edited while the plan was
+being made is part of the decision. `NeedsCheckoutDialog` decides from the plan
 and those paths:
 
 - If nothing would be overwritten and no unsaved document is among the files the
@@ -35,12 +41,26 @@ and those paths:
 
 `Repository::Checkout` is a safe checkout: when the target would overwrite
 changes it is refused and nothing changes. A refusal after a plan means the tree
-changed in between, and is reported as an error, never as an overwrite.
+changed in between, and is reported as an error, never as an overwrite. Over
+unresolved index conflicts it is refused in words that say so: resolve or
+discard the conflicts first.
+
+`Checkout` returns `CheckoutOutcome` rather than `Result`, a deliberate
+exception to [0004](0004-return-result-t-instead-of-throwing-across-module-boundaries.md):
+a checkout that fails partway has still changed files, and the outcome must name
+them alongside the error. A failure is reported as "Could not check out
+*target*: ...", and one that stops after Discard or Stash ran says where the
+changes went.
 
 An I/O failure partway, such as a file held open by another process, can leave
 the tree partly switched. The outcome then names every path that may have
 changed, and the editor is told all of them, so no open document keeps stale
 text.
+
+The editor reloads a changed file without asking only when its document has no
+unsaved edits at that moment, or the user chose in the dialog to revert or save
+that document. A document edited after the question - or on a checkout that
+asked nothing - gets the editor's own "file changed on disk" question instead.
 
 Paths from git and from the editor are matched ignoring ASCII case and
 separator style, because the two spell the same file differently on Windows. A
@@ -76,8 +96,9 @@ input rather than trusting git's view alone.
 
 ### Neutral
 
-- The model keeps the checkout as a small state machine: plan, decide, optional
-  save, discard or stash, checkout, report changed paths to the editor.
+- `GitView` drives the checkout: plan, decide, optional revert or save of the
+  unsaved documents, then the request. The model runs the request's discard or
+  stash and the checkout as one job, and reports the changed paths.
 
 ## Alternatives Considered
 

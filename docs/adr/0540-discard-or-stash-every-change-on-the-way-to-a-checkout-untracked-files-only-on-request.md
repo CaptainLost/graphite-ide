@@ -36,7 +36,15 @@ untracked file would itself be overwritten, it is marked "(blocks checkout)" and
 the box is ticked and locked, because the checkout cannot go ahead with that
 file in place.
 
-Ignored files are never touched.
+Discard and Stash never touch ignored files, not even inside an untracked
+directory: a stash only records the work, and the tree is then cleared by the
+same removal Discard uses, which deletes untracked files one by one. The
+checkout itself does touch them, as git does: an ignored file at a path the
+target tracks is overwritten.
+
+Unresolved conflicts in the index are listed among the changes. Discard clears
+them; Stash cannot record a conflicted index and fails with a message that says
+so, leaving everything as it was.
 
 ## Rationale
 
@@ -68,7 +76,7 @@ up build output.
 ### Neutral
 
 - If the checkout is refused after a successful stash, the work stays stashed
-  and the tree is clean.
+  and the tree is clean; the error says the changes were stashed as stash@{0}.
 
 ## Alternatives Considered
 
