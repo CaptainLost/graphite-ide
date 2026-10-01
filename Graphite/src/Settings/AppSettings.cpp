@@ -16,7 +16,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -71,10 +70,11 @@ namespace Graphite {
 
 		Core::JsonFile onDisk = Core::JsonFile::Load(m_File);
 
-		// An empty read of a file that has bytes in it is a file that does not parse. There is
-		// nothing on disk to keep, so the copy in memory is written, as it always was.
-		std::error_code error;
-		const bool unreadable = onDisk.GetCount() == 0 && std::filesystem::file_size(m_File, error) > 0 && !error;
+		// An empty read has nothing on it to keep, whatever the reason: a file that does not parse,
+		// one deleted or truncated while this ran, or one caught halfway through another
+		// instance's write. Merging onto it would write, and then adopt, only the keys changed
+		// here, so the copy in memory is written whole instead.
+		const bool unreadable = onDisk.GetCount() == 0;
 
 		if (!unreadable)
 		{

@@ -247,3 +247,52 @@ TEST_CASE("AppSettings writes what it holds over a file that stopped parsing whi
 	CHECK(written.Get("wordWrap") == "1");
 	CHECK(written.Get("indentWidth") == "2");
 }
+
+// A file gone or emptied while the application ran - deleted, truncated, or caught halfway
+// through another instance's write - has nothing on it to merge onto. Merging onto that
+// emptiness would write, and then adopt, only the keys this session changed.
+TEST_CASE("AppSettings keeps every setting when the file vanished while it ran")
+{
+	TempDirectory temp;
+	const std::filesystem::path file =
+		temp.MakeFile("graphite.json", R"({"wordWrap": "1", "colorScheme": "Light"})");
+
+	Graphite::AppSettings settings{file};
+
+	std::filesystem::remove(file);
+
+	settings.SetIndentWidth(2);
+	settings.Flush();
+
+	CHECK(settings.GetWordWrap());
+	CHECK(settings.GetColorScheme() == "Light");
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetWordWrap());
+	CHECK(reloaded.GetColorScheme() == "Light");
+	CHECK(reloaded.GetIndentWidth() == 2);
+}
+
+TEST_CASE("AppSettings keeps every setting when the file was emptied while it ran")
+{
+	TempDirectory temp;
+	const std::filesystem::path file =
+		temp.MakeFile("graphite.json", R"({"wordWrap": "1", "colorScheme": "Light"})");
+
+	Graphite::AppSettings settings{file};
+
+	temp.MakeFile("graphite.json", "");
+
+	settings.SetIndentWidth(2);
+	settings.Flush();
+
+	CHECK(settings.GetWordWrap());
+	CHECK(settings.GetColorScheme() == "Light");
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetWordWrap());
+	CHECK(reloaded.GetColorScheme() == "Light");
+	CHECK(reloaded.GetIndentWidth() == 2);
+}

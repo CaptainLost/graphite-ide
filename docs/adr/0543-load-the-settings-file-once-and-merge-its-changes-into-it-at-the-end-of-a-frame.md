@@ -32,8 +32,10 @@ it to open the window, before any layer exists.
   and the document no longer has, and writes the result. The result becomes
   the document in memory, so a hand edit on disk is visible after the write,
   and the snapshot is retaken.
-- When the file exists, has bytes in it and does not parse, `Flush` writes the
-  document in memory instead, since nothing on disk can be kept.
+- When the read yields no keys at all - the file does not parse, or was
+  deleted or emptied while the application ran - `Flush` writes the document
+  in memory instead, since nothing on disk can be kept. Merging onto an empty
+  read would write, and then adopt, only the keys this process changed.
 - A failed write leaves the changes unwritten, so the next `Flush` tries
   again. It is logged once per run of failures.
 - `GraphiteLayer` calls `Flush` at the end of every `OnImGuiRender`, so one
@@ -84,8 +86,11 @@ test build one on a temporary file.
   window loses it.
 - Nothing is flushed while the window is minimized, because no frame is drawn.
   A change made then waits for the window to be restored, or for the exit.
-- A file that stops parsing while the application runs is replaced by the
-  document in memory at the next write, hand edits in it included.
+- A file that stops parsing, or is deleted or emptied, while the application
+  runs is replaced by the document in memory at the next write, hand edits in
+  it included.
+- `SetKeyBindings` rewrites every `key.*` entry, so a binding added by another
+  instance or by hand is dropped the next time this process edits a binding.
 - A write that keeps failing is retried at the end of every frame that is
   drawn, one read and one write attempt each.
 - `AppSettings` is not thread-safe. Every caller must stay on the main
