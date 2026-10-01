@@ -10,6 +10,7 @@ using Graphite::HistoryStepIsDue;
 using Graphite::kHistoryFastestInterval;
 using Graphite::kHistoryFirstInterval;
 using Graphite::kHistoryHoldDelay;
+using Graphite::kHistoryHoldLapse;
 using Graphite::TakeHistoryStep;
 
 TEST_CASE("A fresh undo press always takes a step and starts the hold over")
@@ -54,13 +55,56 @@ TEST_CASE("A long-held undo tightens to the fastest interval and no further")
 	const double start = 10.0;
 	HistoryHold hold = TakeHistoryStep({}, false, start);
 
-	// Long past the point the ramp bottoms out.
-	const double late = start + 60.0;
-	REQUIRE(HistoryStepIsDue(hold, true, late));
-	hold = TakeHistoryStep(hold, true, late);
+	// Held for a minute, long past the point the ramp bottoms out, with the key repeating every
+	// frame and a step taken whenever one is due.
+	const double frame = 1.0 / 60.0;
+	double late = start;
+
+	for (double now = start + frame; now < start + 60.0; now += frame)
+	{
+		if (HistoryStepIsDue(hold, true, now))
+		{
+			hold = TakeHistoryStep(hold, true, now);
+			late = now;
+		}
+	}
+
+	REQUIRE(hold.BeganAt == start);
+	REQUIRE(late > start + 59.0);
 
 	CHECK_FALSE(HistoryStepIsDue(hold, true, late + kHistoryFastestInterval * 0.9));
 	CHECK(HistoryStepIsDue(hold, true, late + kHistoryFastestInterval + 1e-9));
+}
+
+// Holding undo while the keyboard moves to another editor delivers the next repeat to that
+// editor's hold, which last stepped whenever it was last used. Ramped from that old press it
+// would step at once at the fastest rate; it is a new hold, and gets the delay a new hold gets.
+TEST_CASE("A repeat against a stale hold steps once, like a fresh press, and then waits the delay")
+{
+	const HistoryHold stale = TakeHistoryStep({}, false, 10.0);
+	const double now = 10.0 + kHistoryHoldLapse + 5.0;
+
+	REQUIRE(HistoryStepIsDue(stale, true, now));
+
+	const HistoryHold hold = TakeHistoryStep(stale, true, now);
+
+	CHECK(hold.BeganAt == now);
+	CHECK(hold.LastStepAt == now);
+
+	CHECK_FALSE(HistoryStepIsDue(hold, true, now + kHistoryFastestInterval + 0.01));
+	CHECK_FALSE(HistoryStepIsDue(hold, true, now + kHistoryHoldDelay - 0.01));
+	CHECK(HistoryStepIsDue(hold, true, now + kHistoryHoldDelay + kHistoryFirstInterval));
+}
+
+// The operating system's first repeat can come a whole second after the press, so a hold that
+// has not stepped since the press is still live well past the hold delay.
+TEST_CASE("A first repeat that comes late is still part of the hold that began at the press")
+{
+	const HistoryHold hold = TakeHistoryStep({}, false, 10.0);
+	const double now = 11.0;
+
+	REQUIRE(HistoryStepIsDue(hold, true, now));
+	CHECK(TakeHistoryStep(hold, true, now).BeganAt == 10.0);
 }
 
 TEST_CASE("The caret blink restarts only when the document was not focused on the frame before")

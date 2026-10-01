@@ -4,9 +4,17 @@
 
 namespace Graphite {
 
+	namespace {
+		// A repeat this long after the hold last stepped is not part of it: see kHistoryHoldLapse.
+		bool IsFreshPress(const HistoryHold& hold, bool isRepeat, double now)
+		{
+			return !isRepeat || now - hold.LastStepAt > kHistoryHoldLapse;
+		}
+	}
+
 	bool HistoryStepIsDue(const HistoryHold& hold, bool isRepeat, double now)
 	{
-		if (!isRepeat)
+		if (IsFreshPress(hold, isRepeat, now))
 		{
 			return true;
 		}
@@ -27,7 +35,8 @@ namespace Graphite {
 
 	HistoryHold TakeHistoryStep(const HistoryHold& hold, bool isRepeat, double now)
 	{
-		return HistoryHold{.BeganAt = isRepeat ? hold.BeganAt : now, .LastStepAt = now};
+		return HistoryHold{.BeganAt = IsFreshPress(hold, isRepeat, now) ? now : hold.BeganAt,
+						   .LastStepAt = now};
 	}
 
 	bool CaretBlinkRestarts(int lastFocusedFrame, int frame)

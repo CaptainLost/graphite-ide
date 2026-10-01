@@ -23,6 +23,13 @@ namespace Graphite {
 	// first rate to the fastest over roughly three seconds.
 	inline constexpr double kHistoryRampPerSecond = 0.027;
 
+	// The longest a live hold goes without a step. Once the ramp is running that is one interval,
+	// but before it the gap runs from the press to the operating system's first repeat, which a
+	// user can set as late as a second. A repeat arriving later than this belongs to a hold the
+	// document never saw begin - the keyboard moved here from another editor with the key still
+	// down - and is taken as a fresh press.
+	inline constexpr double kHistoryHoldLapse = 1.5;
+
 	// When the undo or redo being held down was first pressed, and when it last took a step.
 	struct HistoryHold
 	{
@@ -31,12 +38,14 @@ namespace Graphite {
 	};
 
 	// Whether a held undo or redo is allowed to take another step at `now`. A fresh press always
-	// is; a repeat waits out kHistoryHoldDelay and then steps at an interval that tightens the
+	// is, and so is a repeat more than kHistoryHoldLapse after the last step, which is one; any
+	// other repeat waits out kHistoryHoldDelay and then steps at an interval that tightens the
 	// longer the key stays down. Pure: TakeHistoryStep is what records a step once taken.
 	bool HistoryStepIsDue(const HistoryHold& hold, bool isRepeat, double now);
 
-	// The hold after a step taken at `now`. A fresh press starts the hold over; a repeat moves
-	// only the last step, so the ramp keeps measuring from the press.
+	// The hold after a step taken at `now`. A fresh press, or a repeat HistoryStepIsDue takes for
+	// one, starts the hold over; any other repeat moves only the last step, so the ramp keeps
+	// measuring from the press.
 	HistoryHold TakeHistoryStep(const HistoryHold& hold, bool isRepeat, double now);
 
 	// What EditorWidgetState::LastFocusedFrame holds for a document whose caret has never been
