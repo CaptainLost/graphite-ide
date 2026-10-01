@@ -9,6 +9,7 @@
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
+#include "Sessions/SubagentLinks.h"
 #include "Sessions/ToolFacts.h"
 #include "Theme/SessionPalette.h"
 
@@ -81,16 +82,14 @@ namespace Graphite {
 					Core::TabCloseRequests& closeRequests);
 
 	private:
-		struct Entry
+		// One transcript and the views drawn from it.
+		struct TranscriptViews
 		{
-			std::string Id;
-			std::string Title;
-			std::optional<SessionSummary> Summary;
 			Core::Scope<LiveTranscript> Live;
 			Session Data;
 			SubagentUsage Subagents;
 
-			// The subagents this session started, by the id of the call that started each.
+			// The subagents this transcript started, by the id of the call that started each.
 			SubagentLinks Links;
 
 			// Counts the subagent maps taken, which the conversation's facts are keyed by.
@@ -98,7 +97,7 @@ namespace Graphite {
 			ConversationView Conversation;
 			CostView Cost;
 
-			// The session cut into the API requests it made, fed from the same reads as Data.
+			// The transcript cut into the API requests it made, fed from the same reads as Data.
 			RequestTimeline Timeline;
 			RequestsView Requests;
 
@@ -106,6 +105,14 @@ namespace Graphite {
 			// timeline: the Requests tab is selected and the request revealed on the next frame,
 			// then cleared.
 			std::optional<std::size_t> PendingRequest;
+		};
+
+		struct Entry
+		{
+			std::string Id;
+			std::string Title;
+			std::optional<SessionSummary> Summary;
+			TranscriptViews Main;
 			bool Fresh = true;
 			bool Focus = true;
 
@@ -130,6 +137,14 @@ namespace Graphite {
 
 		Entry* Find(const std::string& id);
 		void Attach(Entry& entry, const SessionSummary& summary);
+
+		// Applies what a transcript's reader delivered since the last call.
+		static void Take(TranscriptViews& views);
+
+		// The tab bar - Conversation, Cost, Requests - drawn from `views`. The selection is the
+		// entry's whichever transcript is drawn. `summary` is what the Cost tab splits the total by.
+		void DrawTabs(Entry& entry, TranscriptViews& views, const std::optional<SessionSummary>& summary,
+					  const SessionPalette& palette);
 
 		Core::EventBus& m_Events;
 		const ClaudeSettings& m_Settings;

@@ -75,10 +75,10 @@ namespace Graphite {
 		entry.Summary = summary;
 		entry.Looking = false;
 
-		if (!entry.Live)
+		if (!entry.Main.Live)
 		{
-			entry.Live = Core::CreateScope<LiveTranscript>(summary.File);
-			entry.Live->Poll();
+			entry.Main.Live = Core::CreateScope<LiveTranscript>(summary.File);
+			entry.Main.Live->Poll();
 		}
 	}
 
@@ -89,7 +89,7 @@ namespace Graphite {
 			// A pending "New Claude session" tab reaches here with no reader yet when the user
 			// clicks it in the list before the index has delivered a summary for it: start
 			// reading now rather than waiting for UpdateSummary, which may be a poll away.
-			if (!existing->Live)
+			if (!existing->Main.Live)
 				Attach(*existing, summary);
 
 			// Opened from the folder that is open now, so it belongs to this one, even if its
@@ -218,10 +218,10 @@ namespace Graphite {
 	{
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
-			if (!entry->Live)
+			if (!entry->Main.Live)
 				continue;
 
-			const std::filesystem::path& file = entry->Live->GetFile();
+			const std::filesystem::path& file = entry->Main.Live->GetFile();
 
 			// The session's own project directory, or anything inside its folder — which is
 			// every directory the watcher reports that could hold something of this session.
@@ -234,21 +234,123 @@ namespace Graphite {
 										  });
 
 			if (mine)
-				entry->Live->Poll();
+				entry->Main.Live->Poll();
 		}
+	}
+
+	void SessionWindows::Take(TranscriptViews& views)
+	{
+		if (!views.Live)
+			return;
+
+		views.Live->Take(views.Data, views.Timeline);
+		if (views.Live->TakeSubagents(views.Subagents, views.Links))
+			++views.SubagentsVersion;
 	}
 
 	void SessionWindows::Update()
 	{
 		for (const Core::Scope<Entry>& entry : m_Open)
-		{
-			if (!entry->Live)
-				continue;
+			Take(entry->Main);
+	}
 
-			entry->Live->Take(entry->Data, entry->Timeline);
-			if (entry->Live->TakeSubagents(entry->Subagents, entry->Links))
-				++entry->SubagentsVersion;
+	void SessionWindows::DrawTabs(Entry& entry, TranscriptViews& views, const std::optional<SessionSummary>& summary,
+								  const SessionPalette& palette)
+	{
+		if (!ImGui::BeginTabBar("##sessionTabs"))
+			return;
+
+		// A restored view is selected once, on the first frame the tab bar is drawn.
+		const auto restoredFlag = [&entry](SessionTab tab)
+		{
+			return entry.RestoredTab.ShouldSelect(tab) ? ImGuiTabItemFlags_SetSelected
+														: ImGuiTabItemFlags_None;
+		};
+
+		if (ImGui::BeginTabItem("Conversation", nullptr, restoredFlag(SessionTab::Conversation)))
+		{
+			entry.Selected = SessionTab::Conversation;
+
+			if (const std::size_t skipped = views.Live->GetSkipped(); skipped > 0)
+				ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
+
+			const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
+			DrawProgress(progress);
+
+			if (progress.FirstPassDone)
+			{
+				const ConversationContext context{
+					m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion, &views.Timeline,
+					[&views](std::size_t request) { views.PendingRequest = request; }};
+
+				views.Conversation.Draw(views.Data, context, m_Events);
+			}
+
+			ImGui::EndTabItem();
 		}
+
+		if (ImGui::BeginTabItem("Cost", nullptr, restoredFlag(SessionTab::Cost)))
+		{
+			entry.Selected = SessionTab::Cost;
+
+			// The same rule as the conversation: a cost summed over half a transcript
+			// is a wrong number, not a partial one.
+			const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
+
+			// A request clicked on its chart is shown in the Requests tab, as one picked
+			// in the conversation is.
+			if (progress.FirstPassDone)
+			{
+				if (const std::optional<std::size_t> clicked =
+						views.Cost.Draw(views.Data, summary, views.Timeline, m_Settings.GetPricing(),
+										views.Requests.GetSelected(), palette))
+					views.PendingRequest = clicked;
+			}
+			else
+			{
+				DrawProgress(progress);
+			}
+
+			ImGui::EndTabItem();
+		}
+
+		// A request asked for from the conversation or the Cost tab, drawn above, selects
+		// this tab once; the tab bar moves to it on the next frame. SetSelected on every
+		// frame would pin the reader to it.
+		const ImGuiTabItemFlags requestsFlags =
+			views.PendingRequest ? ImGuiTabItemFlags_SetSelected : restoredFlag(SessionTab::Requests);
+		const bool requestsOpen = ImGui::BeginTabItem("Requests", nullptr, requestsFlags);
+
+		// Revealed whether or not the tab is drawn this frame: the view keeps it for its
+		// next draw, which is the frame the selection takes effect.
+		if (const std::optional<std::size_t> pending = std::exchange(views.PendingRequest, std::nullopt))
+			views.Requests.Reveal(*pending, views.Data.GetGeneration());
+
+		if (requestsOpen)
+		{
+			entry.Selected = SessionTab::Requests;
+
+			// The same rule again: a request's context delta and the tools it had are
+			// only right once every record before it has been read.
+			const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
+
+			if (progress.FirstPassDone)
+			{
+				views.Requests.Draw(
+					views.Timeline, views.Data,
+					ConversationContext{m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion});
+			}
+			else
+			{
+				DrawProgress(progress);
+			}
+
+			ImGui::EndTabItem();
+		}
+
+		entry.RestoredTab.AfterTabBar(entry.Selected);
+
+		ImGui::EndTabBar();
 	}
 
 	void SessionWindows::Render(unsigned int centreNode, const SessionPalette& palette,
@@ -297,7 +399,7 @@ namespace Graphite {
 
 			if (visible)
 			{
-				if (!entry.Live)
+				if (!entry.Main.Live)
 				{
 					// A restored window is waiting for the index to find a transcript that already
 					// exists; a new one for Claude to start writing it.
@@ -305,99 +407,9 @@ namespace Graphite {
 												  ? "Looking for this session\xe2\x80\xa6"
 												  : "Waiting for Claude to write the session's first lines...");
 				}
-				else if (ImGui::BeginTabBar("##sessionTabs"))
+				else
 				{
-					// A restored view is selected once, on the first frame the tab bar is drawn.
-					const auto restoredFlag = [&entry](SessionTab tab)
-					{
-						return entry.RestoredTab.ShouldSelect(tab) ? ImGuiTabItemFlags_SetSelected
-																	: ImGuiTabItemFlags_None;
-					};
-
-					if (ImGui::BeginTabItem("Conversation", nullptr, restoredFlag(SessionTab::Conversation)))
-					{
-						entry.Selected = SessionTab::Conversation;
-
-						if (const std::size_t skipped = entry.Live->GetSkipped(); skipped > 0)
-							ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
-
-						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
-						DrawProgress(progress);
-
-						if (progress.FirstPassDone)
-						{
-							const ConversationContext context{
-								m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion, &entry.Timeline,
-								[&entry](std::size_t request) { entry.PendingRequest = request; }};
-
-							entry.Conversation.Draw(entry.Data, context, m_Events);
-						}
-
-						ImGui::EndTabItem();
-					}
-
-					if (ImGui::BeginTabItem("Cost", nullptr, restoredFlag(SessionTab::Cost)))
-					{
-						entry.Selected = SessionTab::Cost;
-
-						// The same rule as the conversation: a cost summed over half a transcript
-						// is a wrong number, not a partial one.
-						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
-
-						// A request clicked on its chart is shown in the Requests tab, as one picked
-						// in the conversation is.
-						if (progress.FirstPassDone)
-						{
-							if (const std::optional<std::size_t> clicked =
-									entry.Cost.Draw(entry.Data, entry.Summary, entry.Timeline, m_Settings.GetPricing(),
-													entry.Requests.GetSelected(), palette))
-								entry.PendingRequest = clicked;
-						}
-						else
-						{
-							DrawProgress(progress);
-						}
-
-						ImGui::EndTabItem();
-					}
-
-					// A request asked for from the conversation or the Cost tab, drawn above, selects
-					// this tab once; the tab bar moves to it on the next frame. SetSelected on every
-					// frame would pin the reader to it.
-					const ImGuiTabItemFlags requestsFlags =
-						entry.PendingRequest ? ImGuiTabItemFlags_SetSelected : restoredFlag(SessionTab::Requests);
-					const bool requestsOpen = ImGui::BeginTabItem("Requests", nullptr, requestsFlags);
-
-					// Revealed whether or not the tab is drawn this frame: the view keeps it for its
-					// next draw, which is the frame the selection takes effect.
-					if (const std::optional<std::size_t> pending = std::exchange(entry.PendingRequest, std::nullopt))
-						entry.Requests.Reveal(*pending, entry.Data.GetGeneration());
-
-					if (requestsOpen)
-					{
-						entry.Selected = SessionTab::Requests;
-
-						// The same rule again: a request's context delta and the tools it had are
-						// only right once every record before it has been read.
-						const LiveTranscript::LoadProgress progress = entry.Live->GetProgress();
-
-						if (progress.FirstPassDone)
-						{
-							entry.Requests.Draw(
-								entry.Timeline, entry.Data,
-								ConversationContext{m_Settings.GetPricing(), entry.Subagents, palette, entry.SubagentsVersion});
-						}
-						else
-						{
-							DrawProgress(progress);
-						}
-
-						ImGui::EndTabItem();
-					}
-
-					entry.RestoredTab.AfterTabBar(entry.Selected);
-
-					ImGui::EndTabBar();
+					DrawTabs(entry, entry.Main, entry.Summary, palette);
 				}
 			}
 
