@@ -36,6 +36,7 @@ namespace Graphite {
 		// for the folder that was just closed is dropped when it lands.
 		m_StatusApplied = m_StatusRequested;
 		m_BranchesApplied = m_BranchesRequested;
+		m_StashesApplied = m_StashesRequested;
 		m_HeadApplied = m_HeadRequested;
 		m_LogApplied = m_LogRequested;
 		m_WorkingTreeDiffApplied = m_WorkingTreeDiffRequested;
@@ -43,6 +44,7 @@ namespace Graphite {
 		m_Status.reset();
 		m_WorkingDirectory.clear();
 		m_Branches.reset();
+		m_Stashes.reset();
 		m_Head.reset();
 		m_Log.reset();
 
@@ -62,6 +64,7 @@ namespace Graphite {
 		m_StatusError.reset();
 		m_InitSettlesAfter.reset();
 		m_BranchesError.reset();
+		m_StashesError.reset();
 		m_HeadError.reset();
 		m_LogError.reset();
 		m_WorkingTreeDiffError.reset();
@@ -78,6 +81,9 @@ namespace Graphite {
 		m_WriteError.reset();
 		m_Committed.reset();
 		m_Discarded.clear();
+		m_CheckedOut.clear();
+		m_CheckoutPlan.reset();
+		m_DeleteCheck.reset();
 
 		m_Dirty = false;
 		m_DirtyFor = 0.0f;
@@ -163,6 +169,7 @@ namespace Graphite {
 				RequestStatus();
 				RequestBranches();
 				RequestHead();
+				RequestStashes();
 
 				// A commit, an amend, a rebase or a fetch all change the history, and
 				// nothing else re-asks for it: without this the list keeps showing what it
@@ -275,6 +282,34 @@ namespace Graphite {
 
 				m_BranchesError.reset();
 				m_Branches = std::make_shared<const std::vector<Core::Branch>>(
+					std::move(result).GetValue());
+			});
+		});
+	}
+
+	void GitModel::RequestStashes()
+	{
+		const std::uint64_t generation = ++m_StashesRequested;
+
+		m_Submit([this, generation]() {
+			auto result = m_Port.QueryStashes();
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				if (generation <= m_StashesApplied)
+				{
+					return;
+				}
+
+				m_StashesApplied = generation;
+
+				if (!result.HasValue())
+				{
+					m_StashesError = result.GetError();
+					return;
+				}
+
+				m_StashesError.reset();
+				m_Stashes = std::make_shared<const std::vector<Core::StashEntry>>(
 					std::move(result).GetValue());
 			});
 		});

@@ -14,7 +14,9 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -30,6 +32,32 @@ namespace Graphite {
 	{
 		std::vector<std::filesystem::path> Restore;
 		std::vector<std::filesystem::path> Delete;
+	};
+
+	// What happens to the working tree's own changes before a checkout runs over them.
+	enum class CheckoutPreparation
+	{
+		None,
+		Discard,
+		Stash
+	};
+
+	struct CheckoutRequest
+	{
+		Core::CheckoutTarget Target;
+		CheckoutPreparation Preparation = CheckoutPreparation::None;
+		bool IncludeUntracked = false;
+
+		// Used only when Preparation is Stash.
+		std::string StashMessage;
+	};
+
+	// The answer to "may this branch go": how many commits only it reaches, which a delete
+	// would leave without a name.
+	struct DeleteCheck
+	{
+		std::string Branch;
+		std::size_t Unmerged = 0;
 	};
 
 	// Holds what the git views draw and decides when it is stale.
@@ -73,6 +101,10 @@ namespace Graphite {
 			const std::filesystem::path& directory) const;
 
 		void RequestBranches();
+
+		// A query like RequestBranches, refreshed beside it on every debounced refresh. Not
+		// a write: listing the stashes changes nothing, so it need not wait its turn.
+		void RequestStashes();
 
 		// Refreshed alongside the status - see OnUpdate - so the bar's branch and its change
 		// count never describe two different moments for longer than one query.
@@ -175,6 +207,7 @@ namespace Graphite {
 		// Null until the first result for that query has been applied.
 		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status; }
 		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches; }
+		std::shared_ptr<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes; }
 		std::shared_ptr<const Core::HeadState> GetHead() const { return m_Head; }
 		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log; }
 		// Also null while the slot holds the answer to a different request than the one last
@@ -220,6 +253,10 @@ namespace Graphite {
 		// GetLastError have their own status error to explain the same failure.
 		const std::optional<Core::Error>& GetHeadError() const { return m_HeadError; }
 
+		// Not folded into GetLastError either: only the stash list reads it, and a failure
+		// there says nothing about the changes the panel's main list shows.
+		const std::optional<Core::Error>& GetStashesError() const { return m_StashesError; }
+
 		const std::optional<Core::Error>& GetLastError() const
 		{
 			if (m_StatusError.has_value())
@@ -260,6 +297,41 @@ namespace Graphite {
 		// git init at the open folder. Queued like the other writes, so a panel greys its
 		// button through IsWriteInFlight and reads a failure through GetWriteError.
 		void RequestInit();
+
+		// Branch and stash writes. Every one of them queues behind the writes before it, the
+		// plan and the delete check included: those answer about the tree as the writes
+		// before them left it, not as it was when the button was drawn.
+		//
+		// With `thenCheckout` the new branch is checked out in the same job, so nothing
+		// queued meanwhile can land between the two.
+		void RequestCreateBranch(
+			std::string name, Core::Oid from, std::optional<Core::CheckoutTarget> thenCheckout);
+		void RequestRenameBranch(std::string from, std::string to);
+		void RequestDeleteBranch(std::string branch);
+
+		// Answered once through TakeDeleteCheck. Not counted as an applied write and refreshes
+		// nothing, since it changes nothing.
+		void RequestDeleteCheck(std::string branch);
+		std::optional<DeleteCheck> TakeDeleteCheck();
+
+		void RequestStashSave(std::string message, bool includeUntracked);
+		void RequestStashApply(Core::Oid id);
+		void RequestStashPop(Core::Oid id);
+		void RequestStashDrop(Core::Oid id);
+
+		// Answered once through TakeCheckoutPlan, paired with the target it was asked about so
+		// a caller can tell an answer from one it no longer wants. Like the delete check, not
+		// counted as a write.
+		void RequestCheckoutPlan(Core::CheckoutTarget target);
+		std::optional<std::pair<Core::CheckoutTarget, Core::CheckoutPlan>> TakeCheckoutPlan();
+
+		void RequestCheckout(CheckoutRequest request);
+
+		// One-shot, like TakeDiscarded: every path the last checkout changed on disk - its own
+		// list plus every path the preparation discarded or stashed. Relative to
+		// GetWorkingDirectory(). Answered after a checkout that failed partway too, since the
+		// files it did change still have to be reloaded.
+		std::vector<std::filesystem::path> TakeCheckedOut();
 
 		// For a panel that greys its buttons out. False does not mean nothing is pending —
 		// it means nothing is happening at this instant.
@@ -438,18 +510,42 @@ namespace Graphite {
 			Unstage,
 			Discard,
 			Commit,
-			Init
+			Init,
+			CreateBranch,
+			RenameBranch,
+			DeleteCheck,
+			DeleteBranch,
+			StashSave,
+			StashApply,
+			StashPop,
+			StashDrop,
+			CheckoutPlan,
+			Checkout
 		};
 
 		// One queued write. Carries every kind's payload rather than a variant: there are
-		// five kinds and two payloads, and a variant here would cost more to read than the
-		// two fields it would save.
+		// fifteen kinds sharing a handful of small fields, and a variant here would cost more
+		// to read than the fields it would save.
 		struct WriteJob
 		{
 			WriteKind Kind = WriteKind::Stage;
 			std::vector<std::filesystem::path> Paths;
 			DiscardRequest Discard;
 			Core::CommitRequest Commit;
+
+			// A branch name or a stash message; OtherName is a rename's new name.
+			std::string Name;
+			std::string OtherName;
+
+			// A stash's id, or the commit a new branch starts at.
+			Core::Oid Id;
+
+			// A stash's include-untracked.
+			bool Flag = false;
+
+			// A plan's target, or the checkout that follows a new branch.
+			std::optional<Core::CheckoutTarget> Target;
+			CheckoutRequest Checkout;
 
 			// The generation this was queued under. Unlike a query's generation this never
 			// orders two results — there is no such thing as a stale commit — it only says
@@ -458,13 +554,15 @@ namespace Graphite {
 		};
 
 		// What a write came back with. For a commit, an id or an error, never both. A discard
-		// can be both halves of a result: Changed names the paths it did restore or delete,
+		// or a checkout can be both halves of a result: Changed names the paths it did touch,
 		// and Failure the step that then stopped it.
 		struct WriteOutcome
 		{
 			std::optional<Core::Error> Failure;
 			std::optional<Core::Oid> Committed;
 			std::vector<std::filesystem::path> Changed;
+			std::optional<Core::CheckoutPlan> Plan;
+			std::optional<std::size_t> Unmerged;
 		};
 
 		void Enqueue(WriteJob job);
@@ -475,6 +573,10 @@ namespace Graphite {
 
 		// Runs on a worker thread. Touches m_Port and nothing else on this object.
 		WriteOutcome RunWrite(const WriteJob& job);
+
+		// The checkout job's steps - note the changed paths, prepare, check out. Runs on the
+		// worker inside RunWrite's try.
+		WriteOutcome RunCheckout(const CheckoutRequest& request);
 
 		// Runs on the UI thread, out of the inbox, like every other delivery.
 		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
@@ -509,6 +611,9 @@ namespace Graphite {
 		std::optional<Core::Error> m_WriteError;
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;
+		std::vector<std::filesystem::path> m_CheckedOut;
+		std::optional<std::pair<Core::CheckoutTarget, Core::CheckoutPlan>> m_CheckoutPlan;
+		std::optional<DeleteCheck> m_DeleteCheck;
 		std::uint64_t m_AppliedWrites = 0;
 
 		// The last status generation requested when an init was applied. A status asked for
@@ -520,6 +625,8 @@ namespace Graphite {
 		std::uint64_t m_StatusApplied = 0;
 		std::uint64_t m_BranchesRequested = 0;
 		std::uint64_t m_BranchesApplied = 0;
+		std::uint64_t m_StashesRequested = 0;
+		std::uint64_t m_StashesApplied = 0;
 		std::uint64_t m_HeadRequested = 0;
 		std::uint64_t m_HeadApplied = 0;
 		std::uint64_t m_LogRequested = 0;
@@ -532,6 +639,7 @@ namespace Graphite {
 
 		std::shared_ptr<const Core::WorkingTreeStatus> m_Status;
 		std::shared_ptr<const std::vector<Core::Branch>> m_Branches;
+		std::shared_ptr<const std::vector<Core::StashEntry>> m_Stashes;
 		std::shared_ptr<const Core::HeadState> m_Head;
 		std::shared_ptr<const Core::LogPage> m_Log;
 
@@ -577,6 +685,7 @@ namespace Graphite {
 
 		std::optional<Core::Error> m_StatusError;
 		std::optional<Core::Error> m_BranchesError;
+		std::optional<Core::Error> m_StashesError;
 		std::optional<Core::Error> m_HeadError;
 		std::optional<Core::Error> m_LogError;
 		std::optional<Core::Error> m_WorkingTreeDiffError;

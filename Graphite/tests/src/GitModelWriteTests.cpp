@@ -6,6 +6,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Workspace/Workspace.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <functional>
 #include <stdexcept>
@@ -19,7 +20,7 @@ namespace {
 	class WritePort final : public Graphite::GitPort
 	{
 	public:
-		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Core::WorkingTreeStatus{}; }
+		Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Status; }
 
 		Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(
 			const std::filesystem::path&) override
@@ -170,7 +171,7 @@ namespace {
 						: Core::Result<void>::Ok();
 		}
 
-		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override { return std::size_t{0}; }
+		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override { return Unmerged; }
 
 		Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) override
 		{
@@ -181,7 +182,7 @@ namespace {
 				return Core::Error{Core::ErrorCode::IoFailure, "no"};
 			}
 
-			return true;
+			return StashSaves;
 		}
 
 		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override
@@ -198,7 +199,7 @@ namespace {
 				return Core::Error{Core::ErrorCode::IoFailure, "no"};
 			}
 
-			return Core::CheckoutPlan{};
+			return Plan;
 		}
 
 		Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) override
@@ -210,8 +211,16 @@ namespace {
 				return Core::CheckoutOutcome{{}, Core::Error{Core::ErrorCode::IoFailure, "no"}};
 			}
 
-			return {};
+			return CheckoutResult;
 		}
+
+		// What the checkout-side calls answer. A failure set on CheckoutResult itself, rather
+		// than through Fail, lets a test fail only the checkout after a preparation succeeded.
+		Core::WorkingTreeStatus Status;
+		Core::CheckoutPlan Plan;
+		Core::CheckoutOutcome CheckoutResult;
+		std::size_t Unmerged = 0;
+		bool StashSaves = true;
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
@@ -846,4 +855,283 @@ TEST_CASE("Closing the folder forgets an init that was settling")
 	model.Clear();
 
 	CHECK_FALSE(model.IsAwaitingStatusAfterInit());
+}
+
+TEST_CASE("A checkout with nothing to prepare is one checkout and reports what it changed")
+{
+	WritePort port;
+	port.CheckoutResult.Changed = {"a.txt"};
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"}});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"checkout:feature"});
+	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt"});
+	CHECK(model.TakeCheckedOut().empty());
+}
+
+TEST_CASE("A checkout that stashes first stashes, then checks out, and reports the stashed files too")
+{
+	WritePort port;
+	Core::FileStatus edited;
+	edited.Path = "b.txt";
+	edited.WorkTree = Core::StatusFlags::Modified;
+	port.Status.Entries = {edited};
+	port.CheckoutResult.Changed = {"a.txt"};
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Stash,
+						   .StashMessage = "before feature"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"stash:before feature|0", "checkout:feature"});
+
+	auto changed = model.TakeCheckedOut();
+	CHECK(std::find(changed.begin(), changed.end(), std::filesystem::path{"a.txt"}) != changed.end());
+	CHECK(std::find(changed.begin(), changed.end(), std::filesystem::path{"b.txt"}) != changed.end());
+}
+
+TEST_CASE("A checkout that discards first discards, then checks out")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Discard,
+						   .IncludeUntracked = true});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"discard-all:1", "checkout:feature"});
+}
+
+TEST_CASE("A preparation leaves out untracked files it was not asked to touch")
+{
+	WritePort port;
+	Core::FileStatus edited;
+	edited.Path = "b.txt";
+	edited.WorkTree = Core::StatusFlags::Modified;
+	Core::FileStatus untracked;
+	untracked.Path = "new.txt";
+	untracked.IsUntracked = true;
+	port.Status.Entries = {edited, untracked};
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Discard});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"b.txt"});
+}
+
+TEST_CASE("A stash with nothing to stash does not stop the checkout")
+{
+	WritePort port;
+	port.StashSaves = false;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Stash});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"stash:|0", "checkout:feature"});
+	CHECK_FALSE(model.GetWriteError().has_value());
+}
+
+TEST_CASE("A failed preparation stops before the checkout")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Discard});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"discard-all:0"});
+	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeCheckedOut().empty());
+}
+
+TEST_CASE("A checkout that fails after a successful discard still reports the discarded files")
+{
+	WritePort port;
+	Core::FileStatus edited;
+	edited.Path = "b.txt";
+	edited.WorkTree = Core::StatusFlags::Modified;
+	port.Status.Entries = {edited};
+	port.CheckoutResult.Failure = Core::Error{Core::ErrorCode::IoFailure, "no"};
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
+						   .Preparation = Graphite::CheckoutPreparation::Discard});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"discard-all:0", "checkout:feature"});
+	CHECK(model.GetWriteError().has_value());
+
+	// The discard did rewrite b.txt, whatever the checkout then did: the editor still has to
+	// reload it.
+	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"b.txt"});
+}
+
+TEST_CASE("A checkout that fails partway reports every path it may have changed")
+{
+	WritePort port;
+	port.CheckoutResult.Changed = {"a.txt", "c.txt"};
+	port.CheckoutResult.Failure = Core::Error{Core::ErrorCode::IoFailure, "no"};
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"}});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt", "c.txt"});
+}
+
+TEST_CASE("A plan waits its turn behind writes and answers once")
+{
+	WritePort port;
+	port.Plan.Overwritten = {"a.txt"};
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"x.txt"});
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"stage:x.txt", "plan:feature"});
+
+	auto plan = model.TakeCheckoutPlan();
+	REQUIRE(plan.has_value());
+	CHECK(plan->first.Name == "feature");
+	CHECK(plan->second.Overwritten == std::vector<std::filesystem::path>{"a.txt"});
+	CHECK_FALSE(model.TakeCheckoutPlan().has_value());
+
+	// A plan is not a write: it changes nothing, so it is not counted.
+	CHECK(model.GetAppliedWriteCount() == 1);
+}
+
+TEST_CASE("Creating a branch and checking it out is one job")
+{
+	WritePort port;
+	port.CheckoutResult.Changed = {"a.txt"};
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCreateBranch("topic", Core::Oid{},
+							  Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = "topic"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"branch:topic", "checkout:topic"});
+	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt"});
+}
+
+TEST_CASE("Creating a branch whose checkout fails partway still reports what the checkout changed")
+{
+	WritePort port;
+	port.CheckoutResult.Changed = {"a.txt"};
+	port.CheckoutResult.Failure = Core::Error{Core::ErrorCode::IoFailure, "no"};
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCreateBranch("topic", Core::Oid{},
+							  Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = "topic"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt"});
+}
+
+TEST_CASE("Creating a branch without a checkout reports nothing checked out")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCreateBranch("topic", Core::Oid{}, std::nullopt);
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"branch:topic"});
+	CHECK(model.TakeCheckedOut().empty());
+	CHECK(model.GetAppliedWriteCount() == 1);
+}
+
+TEST_CASE("Branch and stash writes reach the port in order")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	Core::Oid id;
+	id.Bytes[0] = 0xab;
+
+	model.RequestRenameBranch("a", "b");
+	model.RequestDeleteBranch("c");
+	model.RequestStashSave("msg", true);
+	model.RequestStashApply(id);
+	model.RequestStashPop(id);
+	model.RequestStashDrop(id);
+
+	for (int frame = 0; frame < 6; ++frame)
+		model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(port.Calls == std::vector<std::string>{"rename:a>b", "delete-branch:c", "stash:msg|1",
+												 "apply:ab00000", "pop:ab00000", "drop:ab00000"});
+	CHECK(model.GetAppliedWriteCount() == 6);
+}
+
+TEST_CASE("A delete check answers how many commits only that branch reaches")
+{
+	WritePort port;
+	port.Unmerged = 3;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDeleteCheck("old");
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	auto check = model.TakeDeleteCheck();
+	REQUIRE(check.has_value());
+	CHECK(check->Branch == "old");
+	CHECK(check->Unmerged == 3);
+	CHECK_FALSE(model.TakeDeleteCheck().has_value());
+
+	// Like a plan, a check changes nothing.
+	CHECK(model.GetAppliedWriteCount() == 0);
+}
+
+TEST_CASE("Closing the folder forgets a plan, a delete check and checked-out paths not yet taken")
+{
+	WritePort port;
+	port.CheckoutResult.Changed = {"a.txt"};
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.RequestDeleteCheck("old");
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"}});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	model.Clear();
+
+	CHECK_FALSE(model.TakeCheckoutPlan().has_value());
+	CHECK_FALSE(model.TakeDeleteCheck().has_value());
+	CHECK(model.TakeCheckedOut().empty());
 }

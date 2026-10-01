@@ -2080,3 +2080,26 @@ TEST_CASE("A failed head query keeps the last good head and reports itself")
 	CHECK(model.GetHead()->BranchName == "main");
 	CHECK(model.GetHeadError().has_value());
 }
+
+TEST_CASE("Stashes are refreshed with the branches and forgotten on close")
+{
+	FakePort port;
+	Core::StashEntry entry;
+	entry.Message = "On main: wip";
+	port.Stashes = {entry};
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Core::EventBus events;
+	model.SubscribeTo(events);
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	CHECK(port.StashCalls == 1);
+	REQUIRE(model.GetStashes() != nullptr);
+	CHECK(model.GetStashes()->size() == 1);
+
+	model.Clear();
+	CHECK(model.GetStashes() == nullptr);
+}
