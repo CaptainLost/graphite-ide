@@ -381,6 +381,29 @@ TEST_CASE("A progress-token request is answered with null so the notifications s
 	CHECK(sent[0].find(R"("result":null)") != std::string::npos);
 }
 
+TEST_CASE("A server request under a string id is answered under that same id")
+{
+	// JSON-RPC lets an id be a string, and a server that numbers its requests that way waits
+	// forever for an answer if the id is dropped or rewritten - the reply has to carry back
+	// exactly what arrived.
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"id":"cfg-1","method":"workspace/configuration","params":{"items":[{}]}})");
+	client.Deliver(R"({"id":"7","method":"workspace/applyEdit","params":{}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 2);
+	CHECK(sent[0].find(R"("id":"cfg-1")") != std::string::npos);
+	CHECK(sent[0].find(R"("result":[{}])") != std::string::npos);
+
+	// Still the string "7", not the number it looks like.
+	CHECK(sent[1].find(R"("id":"7")") != std::string::npos);
+	CHECK(sent[1].find(R"("code":-32601)") != std::string::npos);
+}
+
 TEST_CASE("A server request nothing here understands is refused rather than left waiting")
 {
 	TempDirectory temp;

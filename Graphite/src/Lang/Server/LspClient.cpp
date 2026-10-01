@@ -866,7 +866,7 @@ namespace Graphite {
 
 	void LspClient::AnswerServerRequest(Shared& shared, const IncomingMessage& request)
 	{
-		const RequestId id = *request.RespondTo;
+		const nlohmann::json& id = *request.RespondTo;
 
 		if (request.Method == "workspace/configuration")
 		{

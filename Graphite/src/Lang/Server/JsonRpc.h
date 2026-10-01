@@ -19,10 +19,15 @@ namespace Graphite {
 	//   - no method, id   -> a reply to something we asked: ReplyTo set, Method empty.
 	//   - method and id   -> a server-initiated request (e.g. clangd's workspace/configuration):
 	//                        Method set, RespondTo set to the id a later reply must carry.
+	//
+	// RespondTo is the server's own id, kept as the JSON it arrived as. JSON-RPC lets an id be a
+	// number or a string, and the reply has to carry back exactly what was sent - a request whose
+	// id is dropped or rewritten is one the server waits on forever. ReplyTo stays a RequestId:
+	// it can only ever be one of ours, and we issue integers.
 	struct IncomingMessage
 	{
-		std::optional<RequestId> ReplyTo;   // set when this is a reply we asked for
-		std::optional<RequestId> RespondTo; // set when this is a server-initiated request we must answer
+		std::optional<RequestId> ReplyTo;        // set when this is a reply we asked for
+		std::optional<nlohmann::json> RespondTo; // set when this is a server-initiated request we must answer
 		std::string Method;                 // set when this is a server-initiated request or notification
 		nlohmann::json Payload;             // "result" for a reply, "params" otherwise
 		bool IsError = false;
@@ -45,8 +50,8 @@ namespace Graphite {
 		// workspace/configuration and window/workDoneProgress/create before it starts indexing,
 		// and holds its progress notifications until both are answered. ErrorReply is how a
 		// request nothing here understands is still answered rather than left hanging.
-		std::string Reply(RequestId id, const nlohmann::json& result);
-		std::string ErrorReply(RequestId id, int code, std::string_view message);
+		std::string Reply(const nlohmann::json& id, const nlohmann::json& result);
+		std::string ErrorReply(const nlohmann::json& id, int code, std::string_view message);
 
 		std::optional<IncomingMessage> Receive(const std::string& body);
 

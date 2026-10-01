@@ -131,3 +131,28 @@ TEST_CASE("JsonRpc reads a server-initiated request as one, not as a reply")
 	CHECK(message->RespondTo == 7);
 	CHECK_FALSE(message->ReplyTo.has_value());
 }
+
+TEST_CASE("JsonRpc keeps a server-initiated request's id exactly as it arrived")
+{
+	Graphite::JsonRpc rpc;
+
+	const auto named = rpc.Receive(R"({"id":"abc","method":"workspace/configuration","params":{}})");
+
+	REQUIRE(named.has_value());
+	REQUIRE(named->RespondTo.has_value());
+	CHECK(*named->RespondTo == nlohmann::json("abc"));
+
+	const auto numbered = rpc.Receive(R"({"id":7,"method":"workspace/configuration","params":{}})");
+
+	REQUIRE(numbered.has_value());
+	REQUIRE(numbered->RespondTo.has_value());
+	CHECK(*numbered->RespondTo == nlohmann::json(7));
+}
+
+TEST_CASE("JsonRpc echoes a string id unchanged in a reply and an error reply")
+{
+	Graphite::JsonRpc rpc;
+
+	CHECK(rpc.Reply(nlohmann::json("abc"), nullptr).find(R"("id":"abc")") != std::string::npos);
+	CHECK(rpc.ErrorReply(nlohmann::json("abc"), -32601, "no").find(R"("id":"abc")") != std::string::npos);
+}

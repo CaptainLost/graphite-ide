@@ -38,7 +38,7 @@ namespace Graphite {
 		return Frame(message.dump());
 	}
 
-	std::string JsonRpc::Reply(RequestId id, const nlohmann::json& result)
+	std::string JsonRpc::Reply(const nlohmann::json& id, const nlohmann::json& result)
 	{
 		// The id belongs to the server's numbering, not ours, so nothing is recorded as
 		// outstanding here — this ends an exchange rather than starting one.
@@ -51,7 +51,7 @@ namespace Graphite {
 		return Frame(message.dump());
 	}
 
-	std::string JsonRpc::ErrorReply(RequestId id, int code, std::string_view message)
+	std::string JsonRpc::ErrorReply(const nlohmann::json& id, int code, std::string_view message)
 	{
 		const nlohmann::json body{
 			{"jsonrpc", "2.0"},
@@ -103,10 +103,12 @@ namespace Graphite {
 			incoming.Method = message.at("method").get<std::string>();
 			incoming.Payload = message.value("params", nlohmann::json::object());
 
-			if (message.contains("id") && message.at("id").is_number_integer())
+			if (message.contains("id"))
 			{
-				// A server-initiated request: remember the id so a later task can answer it.
-				incoming.RespondTo = message.at("id").get<RequestId>();
+				// A server-initiated request. The id is kept whatever its type, exactly as it
+				// arrived, because the answer must echo it unchanged: a string id read as
+				// "not a request" left the server waiting on an answer that never came.
+				incoming.RespondTo = message.at("id");
 			}
 
 			return incoming;
