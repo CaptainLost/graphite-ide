@@ -364,3 +364,40 @@ TEST_CASE("A file read with no repository open at all is not tracked")
 
 	CHECK_FALSE(bases.GetValue().Tracked);
 }
+
+TEST_CASE("The port initialises a repository at its root and then answers from it")
+{
+	TempDirectory folder;
+	Graphite::RepositoryGitPort port{folder.GetPath()};
+
+	CHECK(port.QueryStatus().GetError().Code == Core::ErrorCode::NotFound);
+
+	REQUIRE(port.Init().HasValue());
+
+	// The failed open above was not cached, so this one finds the new repository.
+	auto head = port.QueryHead();
+	REQUIRE(head.HasValue());
+	CHECK(head.GetValue().Kind == Core::HeadKind::Unborn);
+	CHECK(port.QueryStatus().HasValue());
+}
+
+TEST_CASE("The port has nothing to initialise with no folder open")
+{
+	Graphite::RepositoryGitPort port{std::filesystem::path{}};
+
+	auto result = port.Init();
+	REQUIRE_FALSE(result.HasValue());
+	CHECK(result.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("A folder inside a repository reads the repository's head")
+{
+	TempRepo repo;
+	std::filesystem::create_directories(repo.GetPath() / "sub");
+
+	Graphite::RepositoryGitPort port{repo.GetPath() / "sub"};
+
+	auto head = port.QueryHead();
+	REQUIRE(head.HasValue());
+	CHECK(head.GetValue().Kind == Core::HeadKind::Unborn);
+}

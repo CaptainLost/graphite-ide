@@ -30,6 +30,9 @@ namespace {
 			return WorkingDirectory;
 		}
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
+		Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
+
+		Core::Result<void> Init() override { return Record("init", {}); }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override
 		{

@@ -32,6 +32,7 @@ namespace Graphite {
 			const std::filesystem::path& directory) override;
 		Core::Result<std::filesystem::path> GetWorkingDirectory() override;
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override;
+		Core::Result<Core::HeadState> QueryHead() override;
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override;
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override;
 		Core::Result<FileTexts> ReadFileTexts(
@@ -44,6 +45,7 @@ namespace Graphite {
 		Core::Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths) override;
 		Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) override;
 		Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) override;
+		Core::Result<void> Init() override;
 
 		Core::Result<FileTexts> ReadWorkingTreeTexts(
 			Core::DiffTarget target,

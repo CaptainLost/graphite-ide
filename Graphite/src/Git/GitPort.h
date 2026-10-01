@@ -3,6 +3,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
+#include "Core/Git/Head.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
@@ -41,6 +42,7 @@ namespace Graphite {
 		virtual Core::Result<std::filesystem::path> GetWorkingDirectory() = 0;
 
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
+		virtual Core::Result<Core::HeadState> QueryHead() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;
 
@@ -74,5 +76,9 @@ namespace Graphite {
 		virtual Core::Result<void> DiscardWorkTree(const std::vector<std::filesystem::path>& paths) = 0;
 		virtual Core::Result<void> DeleteUntracked(const std::vector<std::filesystem::path>& paths) = 0;
 		virtual Core::Result<Core::Oid> Commit(const Core::CommitRequest& request) = 0;
+
+		// Creates a repository at the folder this port was given. NotFound when no folder is
+		// open.
+		virtual Core::Result<void> Init() = 0;
 	};
 }

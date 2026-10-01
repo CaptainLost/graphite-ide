@@ -323,6 +323,45 @@ namespace Graphite {
 		return repository->Commit(request);
 	}
 
+	Core::Result<Core::HeadState> RepositoryGitPort::QueryHead()
+	{
+		Core::Repository* repository = RepositoryForThisThread();
+
+		if (repository == nullptr)
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
+		}
+
+		return repository->QueryHead();
+	}
+
+	Core::Result<void> RepositoryGitPort::Init()
+	{
+		std::string root;
+
+		{
+			const std::lock_guard<std::mutex> lock{m_RootMutex};
+			root = m_Root;
+		}
+
+		if (root.empty())
+		{
+			return Core::Error{Core::ErrorCode::NotFound, "no folder is open"};
+		}
+
+		// The handle is dropped here rather than cached: RepositoryForThisThread never
+		// caches a failed open, so every worker's next query opens the new repository on
+		// its own thread, which is the only thread allowed to use it.
+		auto created = Core::Repository::Init(Core::FromUtf8(root));
+
+		if (!created.HasValue())
+		{
+			return created.GetError();
+		}
+
+		return Core::Result<void>::Ok();
+	}
+
 	namespace {
 
 		// One side, read from wherever the target says it lives. An Absent side is not read at

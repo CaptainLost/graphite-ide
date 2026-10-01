@@ -59,6 +59,23 @@ namespace {
 			return WorkingDirectory;
 		}
 
+		Core::Result<Core::HeadState> QueryHead() override
+		{
+			++HeadCalls;
+
+			if (FailHead)
+			{
+				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
+
+			return Head;
+		}
+
+		Core::Result<void> Init() override
+		{
+			return Record("init", {});
+		}
+
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override
 		{
 			++BranchCalls;
@@ -176,6 +193,8 @@ namespace {
 		Core::WorkingTreeStatus Status;
 		std::filesystem::path WorkingDirectory = "C:/repo";
 		std::vector<Core::Branch> Branches;
+		Core::HeadState Head;
+		bool FailHead = false;
 		Core::LogPage Log;
 		Core::Diff Diff;
 		Graphite::FileTexts Texts;
@@ -190,6 +209,7 @@ namespace {
 
 		int StatusCalls = 0;
 		int BranchCalls = 0;
+		int HeadCalls = 0;
 		int LogCalls = 0;
 		std::optional<Core::LogRequest> LastLogRequest;
 		int DiffCalls = 0;
