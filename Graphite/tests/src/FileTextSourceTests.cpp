@@ -4,6 +4,8 @@
 
 #include "TempDirectory.h"
 
+#include <chrono>
+#include <optional>
 #include <string>
 
 TEST_CASE("A text file is read, decoded and stamped")
@@ -57,4 +59,52 @@ TEST_CASE("A UTF-8 file with a BOM comes back without it")
 
 	REQUIRE(read.Readable);
 	CHECK(read.Text == "int x;");
+}
+
+TEST_CASE("A file whose stamp moved while it was being read is not vouched for")
+{
+	// A save landing between the bytes and the stamp would pair the old text with the new time,
+	// and the cache would then accept that text for the saved file. The stamp is therefore taken
+	// before the read and again after it, and a read the two disagree about is refused.
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "int main() {}\n");
+
+	const std::filesystem::file_time_type first = std::filesystem::last_write_time(file);
+	int calls = 0;
+
+	const Graphite::FileText moved = Graphite::ReadFileText(
+		file,
+		[&](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type>
+		{
+			return first + std::chrono::seconds(calls++);
+		});
+
+	CHECK_FALSE(moved.Readable);
+	CHECK(moved.Text.empty());
+	CHECK(calls == 2);
+
+	const Graphite::FileText steady = Graphite::ReadFileText(
+		file,
+		[&](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type>
+		{
+			return first;
+		});
+
+	CHECK(steady.Readable);
+	CHECK(steady.ModifiedAt == first);
+}
+
+TEST_CASE("A file with no stamp before the read is not readable")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("a.cpp", "int x;");
+
+	const Graphite::FileText read = Graphite::ReadFileText(
+		file,
+		[](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type>
+		{
+			return std::nullopt;
+		});
+
+	CHECK_FALSE(read.Readable);
 }

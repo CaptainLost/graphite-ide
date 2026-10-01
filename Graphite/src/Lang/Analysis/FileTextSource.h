@@ -3,8 +3,10 @@
 #include "Core/Jobs/JobQueue.h"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,6 +33,13 @@ namespace Graphite {
 	// Never called on the UI thread: a file of unknown size opened inside a frame is exactly what
 	// this codebase does not do.
 	FileText ReadFileText(const std::filesystem::path& path);
+
+	// How a file's version is read: nullopt when it cannot be. Injectable so a test can move the
+	// stamp between the two reads a save would otherwise have to race to land in.
+	using FileStampReader =
+		std::function<std::optional<std::filesystem::file_time_type>(const std::filesystem::path&)>;
+
+	FileText ReadFileText(const std::filesystem::path& path, const FileStampReader& readStamp);
 
 	// What WorkspaceAnalysis needs in order to have a file's text without reading one itself.
 	//

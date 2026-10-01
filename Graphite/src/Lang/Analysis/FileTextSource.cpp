@@ -6,6 +6,7 @@
 
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <system_error>
 #include <utility>
 
@@ -28,9 +29,27 @@ namespace Graphite {
 
 			return true;
 		}
+
+		std::optional<std::filesystem::file_time_type> ReadStamp(const std::filesystem::path& path)
+		{
+			std::error_code error;
+			const std::filesystem::file_time_type modified = std::filesystem::last_write_time(path, error);
+
+			if (error)
+			{
+				return std::nullopt;
+			}
+
+			return modified;
+		}
 	}
 
 	FileText ReadFileText(const std::filesystem::path& path)
+	{
+		return ReadFileText(path, ReadStamp);
+	}
+
+	FileText ReadFileText(const std::filesystem::path& path, const FileStampReader& readStamp)
 	{
 		FileText read;
 		read.Path = path;
@@ -53,6 +72,19 @@ namespace Graphite {
 			return read;
 		}
 
+		// Stamped before the bytes and again after them. A save landing in between would otherwise
+		// pair the old text with the new time, and a stamp that matches is all the cache asks
+		// for; two stamps that differ mean the text cannot be vouched for, so the file is
+		// reported unreadable and requested again.
+		const std::optional<std::filesystem::file_time_type> before = readStamp(path);
+
+		if (!before)
+		{
+			// Without a stamp there is nothing to vouch for the text, and an entry nothing can
+			// vouch for is one the cache would have to refuse anyway.
+			return read;
+		}
+
 		std::string bytes;
 
 		if (!ReadAll(path, bytes))
@@ -65,7 +97,7 @@ namespace Graphite {
 		// sitting on the bytes about to be decoded is what has to be stripped.
 		const std::size_t bomLength = Core::BomLength(bytes);
 
-		const Core::Result<std::string> text =
+		Core::Result<std::string> text =
 			Core::TransformsContent(probe.FileEncoding)
 				? Core::Decode(std::string_view{bytes}.substr(bomLength), probe.FileEncoding)
 				: Core::Decode(bytes, probe.FileEncoding);
@@ -75,7 +107,7 @@ namespace Graphite {
 			return read;
 		}
 
-		std::string decoded = text.GetValue();
+		std::string decoded = std::move(text.GetValue());
 
 		// Core::Decode passes UTF-8 through unchanged, so a mark on disk is still the first
 		// three bytes here. SemanticOverlay lines its spans up against the editor's own
@@ -87,18 +119,15 @@ namespace Graphite {
 			decoded.erase(0, bomLength);
 		}
 
-		std::error_code error;
-		const std::filesystem::file_time_type modified = std::filesystem::last_write_time(path, error);
+		const std::optional<std::filesystem::file_time_type> after = readStamp(path);
 
-		if (error)
+		if (!after || *after != *before)
 		{
-			// Without a stamp there is nothing to vouch for the text, and an entry nothing can
-			// vouch for is one the cache would have to refuse anyway.
 			return read;
 		}
 
 		read.Text = std::move(decoded);
-		read.ModifiedAt = modified;
+		read.ModifiedAt = *before;
 		read.Readable = true;
 
 		return read;
