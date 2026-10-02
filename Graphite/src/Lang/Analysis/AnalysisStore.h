@@ -183,7 +183,8 @@ namespace Graphite {
 		Core::CancellationToken m_Token;
 
 		// Incremented when a write is handed to the worker, decremented when it lands. Atomic
-		// because the two halves are on different threads.
+		// because the two halves are on different threads, and sequentially consistent rather
+		// than relaxed: a zero read by IsQuiet has to carry the write's effects on disk with it.
 		std::atomic<int> m_Outstanding{0};
 
 		// Last, deliberately: members are destroyed in reverse order of declaration, so this one

@@ -199,7 +199,7 @@ namespace Graphite {
 		// the disk.
 		m_Entries[key] = entry;
 
-		m_Outstanding.fetch_add(1, std::memory_order_relaxed);
+		m_Outstanding.fetch_add(1);
 
 		m_Jobs.Submit([this, listing = m_Listing, token = m_Token, directory = Directory(), key,
 					   entry, analysis]
@@ -229,13 +229,13 @@ namespace Graphite {
 				}
 			}
 
-			m_Outstanding.fetch_sub(1, std::memory_order_relaxed);
+			m_Outstanding.fetch_sub(1);
 		});
 	}
 
 	bool AnalysisStore::IsQuiet() const
 	{
-		return m_Outstanding.load(std::memory_order_relaxed) == 0;
+		return m_Outstanding.load() == 0;
 	}
 
 	std::filesystem::path AnalysisStore::Directory() const
@@ -384,7 +384,7 @@ namespace Graphite {
 			return;
 		}
 
-		m_Outstanding.fetch_add(1, std::memory_order_relaxed);
+		m_Outstanding.fetch_add(1);
 
 		// No token check inside: this runs precisely because the token has been, or is about to
 		// be, cancelled, and what it writes describes records already on the disk.
@@ -392,7 +392,7 @@ namespace Graphite {
 		{
 			FlushIndex(directory, *listing, true);
 
-			m_Outstanding.fetch_sub(1, std::memory_order_relaxed);
+			m_Outstanding.fetch_sub(1);
 		});
 	}
 
@@ -497,7 +497,7 @@ namespace Graphite {
 	{
 		m_Entries.erase(key);
 
-		m_Outstanding.fetch_add(1, std::memory_order_relaxed);
+		m_Outstanding.fetch_add(1);
 
 		m_Jobs.Submit([this, listing = m_Listing, token = m_Token, directory = Directory(), key,
 					   record]
@@ -521,7 +521,7 @@ namespace Graphite {
 				FlushIndex(directory, *listing, true);
 			}
 
-			m_Outstanding.fetch_sub(1, std::memory_order_relaxed);
+			m_Outstanding.fetch_sub(1);
 		});
 	}
 }
