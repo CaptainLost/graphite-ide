@@ -241,3 +241,194 @@ TEST_CASE("An answer already held for the token is not asked again")
 	CHECK_FALSE(after.AskInfo);
 	CHECK(after.ShowInfo);
 }
+
+namespace {
+	// Rests on kA until the information is shown at 0.7, as a starting point for closing it.
+	void ShowInfo(HoverTracker& tracker)
+	{
+		tracker.Update(At(0.0));
+		tracker.Update(At(0.6));
+		HoverInput arrived = At(0.7);
+		arrived.InfoArrived = true;
+		REQUIRE(tracker.Update(arrived).ShowInfo);
+	}
+
+	// Rests on kA with Ctrl held until the preview is shown at 0.7.
+	void ShowPreview(HoverTracker& tracker)
+	{
+		HoverInput input = At(0.0);
+		input.Ctrl = true;
+		tracker.Update(input);
+		input.Now = 0.6;
+		tracker.Update(input);
+		input.Now = 0.7;
+		input.PreviewArrived = true;
+		REQUIRE(tracker.Update(input).ShowPreview);
+	}
+}
+
+TEST_CASE("Typing hides a diagnostic under a still mouse until the mouse moves")
+{
+	HoverTracker tracker;
+	HoverInput input = At(0.0, std::nullopt);
+	input.DiagnosticUnderMouse = true;
+	REQUIRE(tracker.Update(input).ShowDiagnostic);
+
+	input.Now = 0.1;
+	input.InputHappened = true;
+	CHECK_FALSE(tracker.Update(input).Visible());
+
+	input.InputHappened = false;
+	input.Now = 0.2;
+	CHECK_FALSE(tracker.Update(input).Visible());
+	input.Now = 3.0;
+	CHECK_FALSE(tracker.Update(input).Visible());
+
+	input.Now = 3.1;
+	input.MouseMoved = true;
+	CHECK(tracker.Update(input).ShowDiagnostic);
+}
+
+TEST_CASE("Typing hides the information past the delay until the mouse moves, then the delay starts again")
+{
+	HoverTracker tracker;
+	ShowInfo(tracker);
+
+	HoverInput typed = At(0.8);
+	typed.InfoArrived = true;
+	typed.InputHappened = true;
+	CHECK_FALSE(tracker.Update(typed).Visible());
+
+	HoverInput still = At(2.0);
+	still.InfoArrived = true;
+	CHECK_FALSE(tracker.Update(still).Visible());
+
+	HoverInput moved = At(2.1);
+	moved.InfoArrived = true;
+	moved.MouseMoved = true;
+	CHECK_FALSE(tracker.Update(moved).ShowInfo);
+
+	HoverInput rested = At(2.6);
+	rested.InfoArrived = true;
+	const HoverActions shown = tracker.Update(rested);
+	CHECK(shown.ShowInfo);
+	CHECK_FALSE(shown.AskInfo);
+}
+
+TEST_CASE("A dismissed tracker asks nothing, wakes for nothing and cancels only once")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+	tracker.Update(At(0.6));
+
+	HoverInput typed = At(0.7);
+	typed.InputHappened = true;
+	CHECK(tracker.Update(typed).Cancel);
+
+	typed.Now = 0.8;
+	CHECK_FALSE(tracker.Update(typed).Cancel);
+
+	for (const double now : {1.0, 2.0, 5.0})
+	{
+		const HoverActions idle = tracker.Update(At(now, kB));
+		CHECK_FALSE(idle.AskInfo);
+		CHECK_FALSE(idle.AskPreview);
+		CHECK_FALSE(idle.Cancel);
+		CHECK_FALSE(idle.WakeAt.has_value());
+		CHECK_FALSE(idle.Visible());
+	}
+}
+
+TEST_CASE("Leaving the token and reaching the tooltip within the grace keeps the preview, latched")
+{
+	HoverTracker tracker;
+	ShowPreview(tracker);
+
+	HoverInput between = At(0.75, std::nullopt);
+	between.PreviewArrived = true;
+	const HoverActions transit = tracker.Update(between);
+	CHECK(transit.ShowPreview);
+	CHECK_FALSE(transit.Cancel);
+	REQUIRE(transit.WakeAt.has_value());
+	CHECK(*transit.WakeAt == doctest::Approx(1.0));
+
+	HoverInput inside = At(0.95, std::nullopt);
+	inside.MouseInTooltip = true;
+	inside.PreviewArrived = true;
+	const HoverActions reached = tracker.Update(inside);
+	CHECK(reached.ShowPreview);
+	CHECK_FALSE(reached.Cancel);
+	CHECK(tracker.Current() == kA);
+
+	inside.Now = 3.0;
+	const HoverActions later = tracker.Update(inside);
+	CHECK(later.ShowPreview);
+	CHECK_FALSE(later.ShowInfo);
+}
+
+TEST_CASE("Leaving both the token and the tooltip for longer than the grace closes")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+	tracker.Update(At(0.6));
+	HoverInput shownInput = At(0.7);
+	shownInput.InfoArrived = true;
+	shownInput.DiagnosticUnderMouse = true;
+	REQUIRE(tracker.Update(shownInput).ShowInfo);
+
+	CHECK(tracker.Update(At(0.75, std::nullopt)).ShowDiagnostic);
+
+	const HoverActions closed = tracker.Update(At(1.1, std::nullopt));
+	CHECK(closed.Cancel);
+	CHECK_FALSE(closed.Visible());
+	CHECK_FALSE(tracker.Current().has_value());
+}
+
+TEST_CASE("The diagnostic stays while the mouse is inside the tooltip")
+{
+	HoverTracker tracker;
+	HoverInput input = At(0.0);
+	input.DiagnosticUnderMouse = true;
+	tracker.Update(input);
+	input.Now = 0.6;
+	tracker.Update(input);
+	input.Now = 0.7;
+	input.InfoArrived = true;
+	REQUIRE(tracker.Update(input).ShowDiagnostic);
+
+	HoverInput inside = At(0.8, std::nullopt);
+	inside.MouseInTooltip = true;
+	inside.InfoArrived = true;
+	const HoverActions held = tracker.Update(inside);
+	CHECK(held.ShowDiagnostic);
+	CHECK(held.ShowInfo);
+}
+
+TEST_CASE("Ctrl pressed before the delay asks for the preview exactly once, at the delay")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+
+	HoverInput ctrl = At(0.2);
+	ctrl.Ctrl = true;
+	const HoverActions early = tracker.Update(ctrl);
+	CHECK_FALSE(early.AskPreview);
+	CHECK_FALSE(early.AskInfo);
+
+	ctrl.Now = 0.5;
+	const HoverActions due = tracker.Update(ctrl);
+	CHECK(due.AskPreview);
+	CHECK_FALSE(due.AskInfo);
+
+	ctrl.Now = 0.6;
+	CHECK_FALSE(tracker.Update(ctrl).AskPreview);
+}
+
+TEST_CASE("After the delay, an answer still pending needs no wake-up")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+	REQUIRE(tracker.Update(At(0.6)).AskInfo);
+
+	CHECK_FALSE(tracker.Update(At(0.7)).WakeAt.has_value());
+}
