@@ -30,9 +30,14 @@ namespace Graphite {
 		// The hovered document's lexer, for the declaration line; null draws it in one colour.
 		const Lexer* DocumentLexer = nullptr;
 
-		// The editor surface's viewport, which the tooltip is kept inside of and submitted to,
-		// so it never spills into a platform window of its own.
+		// The editor surface's viewport, which the tooltip is submitted to, so it never spills
+		// into a platform window of its own.
 		ImGuiViewport* Viewport = nullptr;
+
+		// The editor surface's visible rectangle, which the tooltip flips and is held within.
+		// Left empty, the viewport's work area stands in for it.
+		ImVec2 BoundsMin{};
+		ImVec2 BoundsMax{};
 	};
 
 	// The screen rectangle of what the tooltip is about: the hovered token, or the cell under the

@@ -1,5 +1,7 @@
 #include "Editor/HoverTooltip.h"
 
+#include "Editor/HoverLayout.h"
+
 #include "Lang/Registry/LanguageRegistry.h"
 
 #include "Core/App/Redraw.h"
@@ -10,7 +12,6 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
-#include <cfloat>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -310,35 +311,42 @@ namespace Graphite {
 			std::snprintf(line, sizeof(line), ":%zu", preview.FirstLine + 1);
 			DisabledText(file + line);
 
-			// Expanded once per frame for the width and the drawing alike. A preview is a
-			// definition's extent, a few dozen lines as a rule, so lexing it every frame it shows
-			// costs less than keeping a cache of it honest would.
-			std::vector<std::string> expanded;
-			expanded.reserve(preview.Lines.size());
+			// Expanded and dedented once per frame for the width and the drawing alike. A
+			// preview is a definition's extent, a few dozen lines as a rule, so lexing it every
+			// frame it shows costs less than keeping a cache of it honest would.
+			const std::vector<std::string> expanded =
+				DedentPreviewLines(preview.Lines, look.TabWidth);
 
 			std::size_t widest = 0;
 
-			for (const std::string& raw : preview.Lines)
-			{
-				expanded.push_back(Core::ExpandTabs(raw, look.TabWidth));
-				widest = std::max(widest, Core::ColumnCount(expanded.back(), look.TabWidth));
-			}
+			for (const std::string& text : expanded)
+				widest = std::max(widest, Core::ColumnCount(text, look.TabWidth));
 
-			const float scrollbar = ImGui::GetStyle().ScrollbarSize;
-			const bool tall = expanded.size() > kPreviewMaxRows;
-			const float contentWidth = static_cast<float>(widest) * look.CellWidth;
-			const float wanted = contentWidth + (tall ? scrollbar : 0.0f);
-			const bool wide = wanted > maxContentWidth;
-			const float width = std::min(wanted, maxContentWidth);
-			const float height =
-				static_cast<float>(std::min(expanded.size(), kPreviewMaxRows)) * look.LineHeight +
-				(wide ? scrollbar : 0.0f);
+			PreviewMetrics metrics;
+			metrics.CellWidth = look.CellWidth;
+			metrics.LineHeight = look.LineHeight;
+			metrics.ScrollbarSize = ImGui::GetStyle().ScrollbarSize;
+			metrics.MaxWidth = maxContentWidth;
+			metrics.MaxRows = kPreviewMaxRows;
+
+			const PreviewBox box = PreviewBoxSize(widest, expanded.size(), metrics);
+
+			// No background of its own: a child paints ChildBg, which this theme gives the
+			// editor's darker background. On the tooltip's surface that drew a dark band behind
+			// the code, which over a one-line preview's leading indentation read as a stray
+			// block.
+			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
 			// The wheel over this child scrolls it natively, Ctrl held or not. It never reaches
 			// the editor's zoom: TextEditorWidget's RouteMouseWheel acts only while the editor
 			// surface itself is the hovered window, and over the tooltip it is not.
-			if (ImGui::BeginChild("##preview", ImVec2(width, height), ImGuiChildFlags_None,
-								  ImGuiWindowFlags_HorizontalScrollbar))
+			const bool open = ImGui::BeginChild("##preview", ImVec2(box.Width, box.Height),
+												ImGuiChildFlags_None,
+												ImGuiWindowFlags_HorizontalScrollbar);
+
+			ImGui::PopStyleColor();
+
+			if (open)
 			{
 				const Lexer* const lexer = LexerFor(LanguageOfPath(preview.Path));
 
@@ -389,29 +397,6 @@ namespace Graphite {
 
 			ImGui::EndChild();
 		}
-
-		// Below the anchor if the tooltip fits there, above it if it fits there instead, else on
-		// whichever side has more room. Flush against the anchor's row either way: the shorter
-		// the path from the token to the tooltip, the less of it the mouse has to cross.
-		ImVec2 PlaceTooltip(const HoverAnchor& anchor, ImVec2 size, const ImGuiViewport& viewport,
-							ImVec2& pivot)
-		{
-			const ImVec2 min = viewport.WorkPos;
-			const ImVec2 max(viewport.WorkPos.x + viewport.WorkSize.x,
-							 viewport.WorkPos.y + viewport.WorkSize.y);
-
-			const float below = max.y - anchor.Max.y;
-			const float above = anchor.Min.y - min.y;
-			const bool fitsBelow = size.y <= below;
-			const bool fitsAbove = size.y <= above;
-			const bool flip = !fitsBelow && (fitsAbove || above > below);
-
-			const float x = std::max(min.x, std::min(anchor.Min.x, max.x - size.x));
-
-			pivot = flip ? ImVec2(0.0f, 1.0f) : ImVec2(0.0f, 0.0f);
-
-			return ImVec2(x, flip ? anchor.Min.y : anchor.Max.y);
-		}
 	}
 
 	void DrawDiagnosticMessages(const std::vector<DiagnosticSpan>& spans)
@@ -458,20 +443,46 @@ namespace Graphite {
 		const float maxContentWidth = maxWidth - style.WindowPadding.x * 2.0f;
 
 		// Placed from last frame's size. A tooltip that has just changed size is one frame out,
-		// and asks for that frame below rather than waiting for the mouse to move.
+		// and asks for that frame below rather than waiting for the mouse to move. The height
+		// is the one its content wanted, not the one it was held to: a tooltip held short below
+		// the token would otherwise always fit there, and never move above where it fits whole.
 		const ImVec2 lastSize(hover.TooltipMax.x - hover.TooltipMin.x,
 							  hover.TooltipMax.y - hover.TooltipMin.y);
+		const float lastNaturalHeight = hover.TooltipNaturalHeight;
 
 		ImGuiViewport* const viewport =
 			look.Viewport != nullptr ? look.Viewport : ImGui::GetMainViewport();
 
-		ImVec2 pivot;
-		const ImVec2 position = PlaceTooltip(anchor, lastSize, *viewport, pivot);
+		ImVec2 boundsMin = look.BoundsMin;
+		ImVec2 boundsMax = look.BoundsMax;
+
+		if (boundsMax.x <= boundsMin.x || boundsMax.y <= boundsMin.y)
+		{
+			boundsMin = viewport->WorkPos;
+			boundsMax = ImVec2(viewport->WorkPos.x + viewport->WorkSize.x,
+							   viewport->WorkPos.y + viewport->WorkSize.y);
+		}
+
+		const TooltipPlacement placed =
+			PlaceTooltip(anchor.Min, anchor.Max, ImVec2(lastSize.x, lastNaturalHeight), boundsMin,
+						 boundsMax);
+
+		// Held to the room on its side; what does not fit scrolls rather than running over the
+		// panel below the editor. Never held to less than a row, which would be no tooltip at
+		// all. A tooltip held short grows a scrollbar, and the width allows for it so the
+		// content keeps its own.
+		const float maxHeight =
+			std::max(placed.MaxHeight, look.LineHeight + style.WindowPadding.y * 2.0f);
 
 		ImGui::SetNextWindowViewport(viewport->ID);
-		ImGui::SetNextWindowPos(position, ImGuiCond_Always, pivot);
-		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(maxWidth, FLT_MAX));
+		ImGui::SetNextWindowPos(placed.Position, ImGuiCond_Always, placed.Pivot);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
+											ImVec2(maxWidth + style.ScrollbarSize, maxHeight));
 		ImGui::SetNextWindowBgAlpha(1.0f);
+
+		// A tooltip that comes up afresh starts at its top, not wherever the last one was left.
+		if (!hover.TooltipShown)
+			ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
 
 		// A window rather than BeginTooltip, because a tooltip can be neither hovered nor
 		// scrolled; dressed in the tooltip's colours and border so it still reads as one.
@@ -480,11 +491,12 @@ namespace Graphite {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, style.PopupBorderSize);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
 
+		// Every decoration but the scrollbar, which a tooltip held short of its content needs.
 		constexpr ImGuiWindowFlags kFlags =
-			ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoFocusOnAppearing |
-			ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings |
-			ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize |
-			ImGuiWindowFlags_NoMove;
+			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+			ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
+			ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
 
 		// One window per document: two editors side by side must never append to each other's.
 		char name[48];
@@ -496,6 +508,10 @@ namespace Graphite {
 		// into the editor would bury it for good. Raised every frame it shows instead, which
 		// moves no focus.
 		ImGuiWindow* const window = ImGui::GetCurrentWindow();
+
+		// Last frame's content, measured from the top whatever the scroll: the height the
+		// tooltip would take if nothing held it.
+		const float naturalHeight = window->ContentSizeIdeal.y + style.WindowPadding.y * 2.0f;
 
 		// A click inside the tooltip focuses it, as a click does any window, and the editor would
 		// lose the keyboard to a box that goes away when the mouse leaves. Handed back as soon as
@@ -556,8 +572,11 @@ namespace Graphite {
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(3);
 
-		if (!hover.TooltipShown || windowSize.x != lastSize.x || windowSize.y != lastSize.y)
+		if (!hover.TooltipShown || windowSize.x != lastSize.x || windowSize.y != lastSize.y ||
+			naturalHeight != lastNaturalHeight)
 			Core::Redraw::Request();
+
+		hover.TooltipNaturalHeight = naturalHeight;
 
 		hover.TooltipMin = windowPos;
 		hover.TooltipMax = ImVec2(windowPos.x + windowSize.x, windowPos.y + windowSize.y);

@@ -2202,6 +2202,12 @@ namespace Graphite {
 			look.DocumentLexer = LexerFor(LanguageOfPath(item.Path));
 			look.Viewport = ImGui::GetWindowViewport();
 
+			// The surface's own visible rectangle, scrollbars excluded: the tooltip flips and is
+			// held within it, so it never runs over the panels docked around the editor.
+			const ImGuiWindow* const surface = ImGui::GetCurrentWindow();
+			look.BoundsMin = surface->InnerRect.Min;
+			look.BoundsMax = surface->InnerRect.Max;
+
 			DrawHoverTooltip(actions, hover, hover.HeldDiagnostics, look,
 							 HoverAnchor{hover.AnchorMin, hover.AnchorMax},
 							 ImGui::GetCurrentWindow());

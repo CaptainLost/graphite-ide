@@ -35,6 +35,11 @@ namespace Graphite {
 		std::optional<HoverQuestion> InfoFailedFor;
 		std::optional<HoverQuestion> PreviewFailedFor;
 
+		// How tall the tooltip's content wanted to be last frame. The window itself may have
+		// been held shorter than that, to the room on its side of the token; placing it by that
+		// held height would never let it move to the side where it fits.
+		float TooltipNaturalHeight = 0.0f;
+
 		// The tooltip's rectangle last frame, for "is the mouse inside it".
 		ImVec2 TooltipMin{};
 		ImVec2 TooltipMax{};
