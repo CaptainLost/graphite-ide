@@ -489,7 +489,7 @@ TEST_CASE("A negative stored count or caret falls back to zero")
 
 TEST_CASE("A path that is the folder itself reads back as the folder, a drive root included")
 {
-	// (a) Regular root: a terminal whose WorkingDirectory == kRoot round-trips equal to kRoot
+	// A terminal started in the folder itself comes back started in the folder.
 	{
 		WorkspaceState state;
 		state.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{T}", "cmd", kRoot}};
@@ -504,8 +504,8 @@ TEST_CASE("A path that is the folder itself reads back as the folder, a drive ro
 		CHECK((*read.Terminals)[0].WorkingDirectory == kRoot);
 	}
 
-	// (b) Drive root: with root D:\ and WorkingDirectory D:\, it round-trips equal to D:\
-	// (both parts of comment need escaping to avoid line continuation)
+	// The same when the folder is a whole drive, whose path is the one that ends in a separator
+	// of its own and so the one a stripped trailing separator would break.
 	{
 		const std::filesystem::path driveRoot = std::filesystem::path{R"(D:\)"};
 

@@ -10,8 +10,12 @@ namespace Graphite {
 	// What the command line asks of this instance: `Graphite.exe [--user-data <dir>] [<folder>]`.
 	struct CommandLine
 	{
-		// Where every user file of this instance lives instead of the user's profile, so a second
-		// instance can run beside the user's own without sharing its settings, layout or logs.
+		// Where this instance keeps its user files instead of the user's profile - the settings,
+		// the window layout, the themes, the sessions cache, the logs and the list of trusted
+		// folders - so a second instance can run beside the user's own without sharing any of
+		// them. What a folder keeps of itself under <folder>/.graphite - its open tabs and
+		// terminals, its analysis cache - is not redirected: two instances with one folder open
+		// still share it.
 		std::optional<std::filesystem::path> UserData;
 
 		// The folder to open at start; empty when none was named.
