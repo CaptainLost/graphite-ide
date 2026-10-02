@@ -216,11 +216,34 @@ TEST_CASE("A moved-from file leaves the source usable enough to destroy")
 
 	const JsonFile moved = std::move(original);
 
-	// The document lives behind a pointer, so moving empties the source. Nothing may
-	// read through it afterwards, but its destructor still runs at the end of this scope
-	// and must not fall over.
+	// The document lives behind a pointer, so moving empties the source; its destructor still
+	// runs at the end of this scope and must not fall over.
 	CHECK(moved.Get("lastFolder") == "D:\\Repos\\IDE");
 	CHECK(moved.Save(path));
+}
+
+// A moved-from file is an empty one, as a default-constructed file is, rather than an object
+// every member of which reads through a null pointer.
+TEST_CASE("A moved-from file reads as empty and can be written to again")
+{
+	JsonFile original;
+	original.Set("a", "1");
+
+	JsonFile moved = std::move(original);
+
+	CHECK(original.GetCount() == 0);
+	CHECK(original.Get("a").empty());
+	CHECK(original.GetKeys().empty());
+	CHECK_FALSE(original.IsMalformed());
+
+	original.Set("b", "2");
+	original.Remove("b");
+	original.Set("c", "3");
+	CHECK(original.Get("c") == "3");
+
+	moved = std::move(original);
+	CHECK(moved.Get("c") == "3");
+	CHECK(original.GetCount() == 0);
 }
 
 TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")

@@ -39,6 +39,8 @@ namespace Core {
 
 		~Repository();
 
+		// A moved-from Repository holds no handle: every query on it fails, as one on a repository
+		// that could not be read does, and it is safe to destroy or assign to.
 		Repository(Repository&& other) noexcept;
 		Repository& operator=(Repository&& other) noexcept;
 

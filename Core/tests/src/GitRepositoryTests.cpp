@@ -385,3 +385,52 @@ TEST_CASE("Repointing core.excludesFile needs the repository reopened")
 		 "this case too and any workaround built around it can go.");
 	CHECK_FALSE(repository.IsIgnored(temp.GetPath() / "build.log"));
 }
+
+// A moved-from Repository holds no handle. Every question asked of it fails as one asked of a
+// repository that could not be read, rather than handing libgit2 a null repository.
+TEST_CASE("A moved-from repository answers every question with an error")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+
+	auto opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
+
+	Repository source = std::move(opened).GetValue();
+	const Repository moved = std::move(source);
+	const Repository& empty = source;
+	const std::filesystem::path file = temp.GetPath() / "a.txt";
+
+	CHECK_FALSE(empty.IsIgnored(file));
+	CHECK_FALSE(empty.IsInsideSubmodule("a.txt"));
+	CHECK_FALSE(empty.QueryLog({}).HasValue());
+	CHECK_FALSE(empty.QueryDiff({}).HasValue());
+	CHECK_FALSE(empty.QueryStatus().HasValue());
+	CHECK_FALSE(empty.QueryUntrackedIn(temp.GetPath()).HasValue());
+	CHECK_FALSE(empty.QueryBranches().HasValue());
+	CHECK_FALSE(empty.ReadBlob(file, Core::Oid{}).HasValue());
+	CHECK_FALSE(empty.HeadCommit().HasValue());
+	CHECK_FALSE(empty.QueryHead().HasValue());
+	CHECK_FALSE(empty.ReadIndexBlob(file).HasValue());
+	CHECK_FALSE(empty.ReadWorkingTreeFile(file).HasValue());
+	CHECK_FALSE(empty.FirstParentOf(Core::Oid{}).HasValue());
+	CHECK_FALSE(empty.UntrackedOfStash(Core::Oid{}).HasValue());
+	CHECK_FALSE(empty.CountUnmergedCommits("main").HasValue());
+	CHECK_FALSE(empty.QueryStashes().HasValue());
+	CHECK_FALSE(empty.PlanCheckout({}).HasValue());
+
+	CHECK_FALSE(source.Stage({file}).HasValue());
+	CHECK_FALSE(source.Unstage({file}).HasValue());
+	CHECK_FALSE(source.DiscardWorkTree({file}).HasValue());
+	CHECK_FALSE(source.DeleteUntracked({file}).HasValue());
+	CHECK_FALSE(source.Commit({}).HasValue());
+	CHECK_FALSE(source.CreateBranch("b", Core::Oid{}).HasValue());
+	CHECK_FALSE(source.RenameBranch("a", "b").HasValue());
+	CHECK_FALSE(source.DeleteBranch("b").HasValue());
+	CHECK_FALSE(source.StashSave("m", false).HasValue());
+	CHECK_FALSE(source.StashApply(Core::Oid{}).HasValue());
+	CHECK_FALSE(source.StashPop(Core::Oid{}).HasValue());
+	CHECK_FALSE(source.StashDrop(Core::Oid{}).HasValue());
+	CHECK(source.Checkout({}).Failure.has_value());
+	CHECK_FALSE(source.DiscardAll(false).HasValue());
+}

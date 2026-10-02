@@ -19,6 +19,24 @@ namespace Core {
 	struct JsonFile::Document
 	{
 		nlohmann::json root = nlohmann::json::object();
+
+		// A moved-from file holds no document; it reads as an empty object.
+		static const nlohmann::json& RootOf(const Scope<Document>& document)
+		{
+			static const nlohmann::json empty = nlohmann::json::object();
+			return document ? document->root : empty;
+		}
+
+		// ...and its first write gives it one again.
+		static nlohmann::json& WritableRootOf(Scope<Document>& document)
+		{
+			if (!document)
+			{
+				document = CreateScope<Document>();
+			}
+
+			return document->root;
+		}
 	};
 
 	JsonFile::JsonFile() : m_Document(CreateScope<Document>())
@@ -27,8 +45,18 @@ namespace Core {
 
 	JsonFile::~JsonFile() = default;
 
-	JsonFile::JsonFile(JsonFile&&) noexcept = default;
-	JsonFile& JsonFile::operator=(JsonFile&&) noexcept = default;
+	// A moved-from file is an empty one, as a default-constructed file is: see Document's RootOf.
+	JsonFile::JsonFile(JsonFile&& other) noexcept
+		: m_Document(std::move(other.m_Document)), m_Malformed(std::exchange(other.m_Malformed, false))
+	{
+	}
+
+	JsonFile& JsonFile::operator=(JsonFile&& other) noexcept
+	{
+		m_Document = std::move(other.m_Document);
+		m_Malformed = std::exchange(other.m_Malformed, false);
+		return *this;
+	}
 
 	JsonFile JsonFile::Load(const std::filesystem::path& path)
 	{
@@ -58,7 +86,7 @@ namespace Core {
 
 	std::string JsonFile::Get(std::string_view key) const
 	{
-		const nlohmann::json& root = m_Document->root;
+		const nlohmann::json& root = Document::RootOf(m_Document);
 
 		const auto entry = root.find(std::string{key});
 		if (entry == root.end() || !entry->is_string())
@@ -69,17 +97,17 @@ namespace Core {
 
 	void JsonFile::Set(std::string_view key, std::string value)
 	{
-		m_Document->root[std::string{key}] = std::move(value);
+		Document::WritableRootOf(m_Document)[std::string{key}] = std::move(value);
 	}
 
 	void JsonFile::Remove(std::string_view key)
 	{
-		m_Document->root.erase(std::string{key});
+		Document::WritableRootOf(m_Document).erase(std::string{key});
 	}
 
 	std::vector<std::string> JsonFile::GetKeys() const
 	{
-		const nlohmann::json& root = m_Document->root;
+		const nlohmann::json& root = Document::RootOf(m_Document);
 
 		std::vector<std::string> keys;
 		keys.reserve(root.size());
@@ -94,7 +122,7 @@ namespace Core {
 
 	std::size_t JsonFile::GetCount() const
 	{
-		return m_Document->root.size();
+		return Document::RootOf(m_Document).size();
 	}
 
 	bool JsonFile::Save(const std::filesystem::path& path) const
@@ -104,7 +132,7 @@ namespace Core {
 		// out of Core. Serialised before WriteFileAtomically opens anything, so a throw here
 		// could not leave a .tmp behind either.
 		const std::string text =
-			m_Document->root.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+			Document::RootOf(m_Document).dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
 
 		return static_cast<bool>(WriteFileAtomically(path, text));
 	}
