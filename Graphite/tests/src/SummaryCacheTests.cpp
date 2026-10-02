@@ -53,6 +53,18 @@ TEST_CASE("A missing, corrupt or other-version cache reads as empty")
 	CHECK(LoadSummaryCache(temp.MakeFile("old.json", "{\"version\":999,\"sessions\":[]}")).empty());
 }
 
+// value() throws when the field is there with another type; the cache is read on the UI thread,
+// where that throw ended the application.
+TEST_CASE("A cache whose version is not a number reads as empty rather than throwing")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("odd.json", "{\"version\":\"1\",\"sessions\":[]}");
+
+	std::vector<SessionSummary> loaded;
+	REQUIRE_NOTHROW(loaded = LoadSummaryCache(file));
+	CHECK(loaded.empty());
+}
+
 #ifdef _WIN32
 TEST_CASE("A save that cannot replace the cache leaves the previous content intact")
 {

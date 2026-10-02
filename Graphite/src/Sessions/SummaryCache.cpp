@@ -58,8 +58,18 @@ namespace Graphite {
 
 		const nlohmann::json root = nlohmann::json::parse(buffer.str(), nullptr, false);
 
-		if (root.is_discarded() || !root.is_object() || root.value("version", 0) != kSummaryCacheVersion)
+		// Not value("version", 0): it throws when the field is there with another type.
+		if (root.is_discarded() || !root.is_object())
+		{
 			return {};
+		}
+
+		const auto version = root.find("version");
+
+		if (version == root.end() || !version->is_number_integer() || *version != kSummaryCacheVersion)
+		{
+			return {};
+		}
 
 		std::vector<SessionSummary> summaries;
 
