@@ -33,6 +33,13 @@ namespace {
 				case Graphite::TokenKind::Punctuation: mark = '.'; break;
 				case Graphite::TokenKind::Invalid: mark = 'x'; break;
 				case Graphite::TokenKind::Text: mark = ' '; break;
+				// A language server's kinds; the lexer never produces one.
+				case Graphite::TokenKind::SemanticType:
+				case Graphite::TokenKind::SemanticFunction:
+				case Graphite::TokenKind::SemanticMacro:
+				case Graphite::TokenKind::SemanticMember:
+				case Graphite::TokenKind::SemanticParameter:
+				case Graphite::TokenKind::SemanticNamespace: mark = '?'; break;
 				// Not a colourable kind — see TokenKind::Count's own comment. No token this
 				// lexer produces is ever Count; a default: here would hide a genuinely missing
 				// kind instead of failing loudly like this one does.

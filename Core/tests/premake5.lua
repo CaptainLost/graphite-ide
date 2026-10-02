@@ -14,6 +14,12 @@ project "CoreTests"
     -- already claims to be.
     buildoptions { "/utf-8" }
 
+    -- Two warnings MSVC leaves off by default and this repository relies on. C4062: a switch
+    -- over an enum, with no default, that misses an enumerator - what makes adding one a
+    -- compile error at every switch that must handle it (ADRs 0216, 0225). C5038: a member
+    -- initialiser list written in an order other than the declaration order (ADR 0068).
+    buildoptions { "/w44062", "/w45038" }
+
     targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
     objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
 

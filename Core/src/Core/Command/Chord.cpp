@@ -155,6 +155,10 @@ namespace Core {
 		case Trigger::Key:
 			result += NameOfKey(static_cast<ImGuiKey>(m_Keys & ~ImGuiMod_Mask_));
 			break;
+
+		case Trigger::ModifierTap:
+			// Returned above: a tap has no trigger to append.
+			break;
 		}
 
 		return result;
