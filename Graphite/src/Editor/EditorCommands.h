@@ -34,7 +34,7 @@ namespace Graphite {
 		ToggleLineComment
 	};
 
-	// Whether a language server is configured for this file's language - the condition every
+	// Whether a language server is configured for this file's language — the condition every
 	// navigation command shares.
 	bool HasLanguageServer(const std::filesystem::path& path);
 

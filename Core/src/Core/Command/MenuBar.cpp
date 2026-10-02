@@ -93,9 +93,6 @@ namespace Core {
 			}
 		}
 
-		void RenderMenuItems(CommandRegistry& commands, const Keymap& keys,
-							 const std::vector<MenuItem>& items);
-
 		void RenderItem(CommandRegistry& commands, const Keymap& keys, const MenuItem& item)
 		{
 			switch (item.GetKind())
@@ -124,13 +121,12 @@ namespace Core {
 			case MenuItem::Kind::Submenu:
 				if (ImGui::BeginMenu(item.GetText().c_str()))
 				{
-					::Core::RenderMenuItems(commands, keys, item.GetChildren());
+					RenderMenuItems(commands, keys, item.GetChildren());
 					ImGui::EndMenu();
 				}
 				break;
 			}
 		}
-
 	}
 
 	void RenderMenuItems(CommandRegistry& commands, const Keymap& keys,
@@ -175,7 +171,7 @@ namespace Core {
 
 				if (BeginTopLevelMenu(item.GetText().c_str(), dropdownPadding))
 				{
-					::Core::RenderMenuItems(commands, keys, item.GetChildren());
+					RenderMenuItems(commands, keys, item.GetChildren());
 					EndTopLevelMenu();
 				}
 			}

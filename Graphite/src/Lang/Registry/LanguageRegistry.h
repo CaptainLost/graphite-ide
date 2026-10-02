@@ -21,6 +21,6 @@ namespace Graphite {
 	const Lexer* LexerFor(LanguageId language);
 
 	// What starts a comment that runs to the end of the line, or nothing for a language that
-	// has none - which plain text, having no syntax at all, does not.
+	// has none — which plain text, having no syntax at all, does not.
 	std::optional<std::string_view> LineCommentPrefix(LanguageId language);
 }

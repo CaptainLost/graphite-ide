@@ -33,8 +33,8 @@ namespace Core {
 
 	bool Outdent(OpenItem& item, IndentStyle style);
 
-	// Comments every non-blank line the selection touches - the caret's line when nothing is
-	// selected - or, when every one of them already starts with `prefix` after its indentation,
+	// Comments every non-blank line the selection touches — the caret's line when nothing is
+	// selected — or, when every one of them already starts with `prefix` after its indentation,
 	// uncomments them. The prefix is the caller's: Core knows no languages.
 	bool ToggleLineComment(OpenItem& item, std::string_view prefix);
 }
