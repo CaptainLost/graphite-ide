@@ -581,10 +581,23 @@ namespace Core {
 
 		bool changed = false;
 
+		// Where the edit sits on the caret's line. With no selection that line is the only one
+		// edited, so this is the column the caret is measured against afterwards.
+		std::size_t editColumn = 0;
+
 		if (uncomment)
 		{
 			const std::vector<IndentRemoval> removals =
 				PlanUncomment(buffer, firstLine, lastLine, prefix);
+
+			for (const IndentRemoval& removal : removals)
+			{
+				if (removal.Offset >= buffer.LineStart(caretLine) &&
+					removal.Offset <= buffer.LineStart(caretLine) + caretLineLengthBefore)
+				{
+					editColumn = removal.Offset - buffer.LineStart(caretLine);
+				}
+			}
 
 			EraseBackToFront(buffer, removals);
 			changed = !removals.empty();
@@ -592,6 +605,7 @@ namespace Core {
 		else
 		{
 			const std::size_t column = SharedIndentBytes(buffer, firstLine, lastLine);
+			editColumn = column;
 			const std::string inserted = std::string(prefix) + ' ';
 
 			for (std::size_t line = lastLine + 1; line > firstLine; --line)
@@ -616,16 +630,24 @@ namespace Core {
 		}
 		else
 		{
-			// The caret's line grew or shrank by a known amount ahead of the caret, provided the
-			// edit sat at or before it; past the end of the edit the line's text did not move.
+			// A caret before the edit, in the indentation ahead of it, has no text moving under
+			// it and stays put. One at or after the edit follows its character by however much
+			// the line grew or shrank; one inside a removed prefix lands where the prefix began.
 			const std::size_t lengthAfter = buffer.LineLength(caretLine);
-			const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(lengthAfter) -
-										 static_cast<std::ptrdiff_t>(caretLineLengthBefore);
-			const std::ptrdiff_t column =
-				std::max<std::ptrdiff_t>(0, static_cast<std::ptrdiff_t>(caretColumnBefore) + delta);
+			std::size_t column = caretColumnBefore;
 
-			CollapseCaretTo(item.Caret, buffer.LineStart(caretLine) +
-											std::min(static_cast<std::size_t>(column), lengthAfter));
+			if (caretColumnBefore >= editColumn)
+			{
+				const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(lengthAfter) -
+											 static_cast<std::ptrdiff_t>(caretLineLengthBefore);
+				const std::ptrdiff_t moved = static_cast<std::ptrdiff_t>(caretColumnBefore) + delta;
+
+				column = static_cast<std::size_t>(
+					std::max<std::ptrdiff_t>(static_cast<std::ptrdiff_t>(editColumn), moved));
+			}
+
+			CollapseCaretTo(item.Caret,
+							buffer.LineStart(caretLine) + std::min(column, lengthAfter));
 		}
 
 		UpdateDerived(item, firstLine, lastLine);

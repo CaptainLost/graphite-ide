@@ -6,6 +6,7 @@
 #include "Core/Events/KeyEvent.h"
 
 #include <string>
+#include <vector>
 
 using Core::Chord;
 using Scope = Core::Chord::Scope;
@@ -84,8 +85,8 @@ TEST_CASE("A repeated press runs a repeating command again and skips a non-repea
 	CHECK(once.Runs == 0);
 }
 
-// The scope belongs to the command, so a chord the user typed into settings - plain text with
-// no scope in it - cannot turn an editor command global.
+// The scope belongs to the command, so a chord the user typed into settings — plain text with
+// no scope in it — cannot turn an editor command global.
 TEST_CASE("An overridden binding keeps the command's scope")
 {
 	Harness h{Scope::FocusedEditor};
@@ -109,4 +110,47 @@ TEST_CASE("Ctrl+Alt+C does not fire a Ctrl+C command")
 	CHECK_FALSE(h.Press(Scope::FocusedEditor,
 						Core::KeyModifier::Control | Core::KeyModifier::Alt));
 	CHECK(h.Runs == 0);
+}
+
+// The editor replays strokes the layer already routed as Global. A replayed Ctrl press must not
+// re-arm a tap that the S in Ctrl+S already abandoned, or releasing Ctrl would run the tap.
+TEST_CASE("A stroke the editor replays does not bring back an abandoned modifier tap")
+{
+	Core::CommandRegistry commands;
+	Core::Keymap keys;
+	Core::ShortcutRouter router;
+	int taps = 0;
+
+	commands.Add({.Id = "app.tap", .Label = "Tap", .Run = [&taps] { ++taps; }});
+	keys.SetDefault("app.tap", {.Primary = Chord::ModifierTap(ImGuiMod_Ctrl)});
+
+	const Core::KeyPressedEvent ctrl{Core::KeyCode::LeftControl, Core::KeyModifier::Control, false};
+	const Core::KeyPressedEvent s{Core::KeyCode::S, Core::KeyModifier::Control, false};
+
+	router.OnKeyPressed(commands, keys, Scope::Global, ctrl);
+	router.OnKeyPressed(commands, keys, Scope::Global, s);
+	router.OnKeyPressed(commands, keys, Scope::FocusedEditor, ctrl);
+
+	const Core::KeyReleasedEvent release{Core::KeyCode::LeftControl, Core::KeyModifier::None};
+
+	CHECK_FALSE(router.OnKeyReleased(commands, keys, release));
+	CHECK(taps == 0);
+}
+
+// The scope lives on the command, not on the chord, so the keymap sees one chord bound twice
+// whichever scopes the two commands carry — and reports it, since the menu would show the
+// same shortcut against both.
+TEST_CASE("FindConflicts reports a Global and a FocusedEditor command sharing a chord")
+{
+	Harness h{Scope::FocusedEditor};
+
+	h.Commands.Add({.Id = "app.copyPath", .Label = "Copy Path", .Run = [] {}});
+	h.Keys.SetDefault("app.copyPath", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C)});
+
+	const std::vector<Core::Conflict> conflicts = h.Keys.FindConflicts();
+
+	REQUIRE(conflicts.size() == 1);
+	CHECK(conflicts[0].Chord == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C));
+	CHECK(((conflicts[0].First == "edit.copy" && conflicts[0].Second == "app.copyPath") ||
+		   (conflicts[0].First == "app.copyPath" && conflicts[0].Second == "edit.copy")));
 }

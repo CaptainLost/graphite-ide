@@ -58,6 +58,9 @@ layer, is the only way to leave text fields their own clipboard shortcuts.
 - Conflict detection still reports two commands on the same chord across scopes,
   since the chord itself carries no scope.
 - Wheel chords keep their own scope on the chord; only key chords moved.
+- Strokes the editor replays as `FocusedEditor` do not touch the router's
+  modifier-tap state: the layer already counted them as `Global`, and counting a
+  replayed Ctrl press again would revive a tap that Ctrl+S had abandoned.
 
 ## Alternatives Considered
 
@@ -70,5 +73,5 @@ layer, is the only way to leave text fields their own clipboard shortcuts.
 
 ## Related
 
-- [0545](0545-open-a-subagent-s-conversation-inside-its-session-s-window.md) for
-  the style of record this follows.
+- [0478](0478-route-menu-items-and-shortcuts-through-commands.md) — menu items
+  and shortcuts already run through commands; this record adds a scope to them.

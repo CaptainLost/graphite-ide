@@ -53,9 +53,15 @@ namespace Core {
 		// A modifier going down keeps a tap possible and adds itself to it; anything else
 		// going down ends the possibility, which is what stops an abandoned Ctrl+S from
 		// firing whatever Ctrl alone is bound to when the hand comes off.
+		//
+		// Only for a Global stroke. The focused editor replays strokes the layer already
+		// routed as Global, so the keyboard has been accounted for once; counting a replayed
+		// Ctrl press again would re-arm the tap the S of that Ctrl+S had just abandoned.
+		const bool tracksTaps = scope == Chord::Scope::Global;
+
 		if (const ImGuiKeyChord bit = ModifierBitOf(event.GetKeyCode()); bit != 0)
 		{
-			if (!event.IsRepeat())
+			if (tracksTaps && !event.IsRepeat())
 			{
 				m_TapMods |= bit;
 			}
@@ -63,7 +69,10 @@ namespace Core {
 			return false;
 		}
 
-		m_TapMods = 0;
+		if (tracksTaps)
+		{
+			m_TapMods = 0;
+		}
 
 		if (key == ImGuiKey_None)
 		{
@@ -84,7 +93,8 @@ namespace Core {
 		// chord had before commands carried one.
 		std::erase_if(fired, [&commands, scope, &event](const std::string& id) {
 			const Command* command = commands.Find(id);
-			const Chord::Scope wanted = command != nullptr ? command->KeyScope : Chord::Scope::Global;
+			const Chord::Scope wanted =
+				command != nullptr ? command->KeyScope : Chord::Scope::Global;
 			const bool repeats = command == nullptr || command->Repeats;
 
 			return wanted != scope || (event.IsRepeat() && !repeats);
