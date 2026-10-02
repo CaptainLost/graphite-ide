@@ -151,6 +151,28 @@ namespace Core {
 		void SetBracketedPaste(bool bracketed) { m_BracketedPaste = bracketed; }
 		bool IsBracketedPaste() const { return m_BracketedPaste; }
 
+		// xterm's three mouse modes: clicks (1000), drags (1002) and all motion (1003). A program
+		// that turns any of them on - Claude Code turns on all three - is asking for the wheel
+		// as well, and draws its own scrolling, usually on the alternate buffer where there is
+		// no scrollback for the view to move through.
+		enum class MouseMode : std::uint8_t
+		{
+			Clicks = 1 << 0,
+			Drags = 1 << 1,
+			Motion = 1 << 2
+		};
+
+		void SetMouseMode(MouseMode mode, bool on)
+		{
+			const auto bit = static_cast<std::uint8_t>(mode);
+			m_MouseModes = static_cast<std::uint8_t>(on ? m_MouseModes | bit : m_MouseModes & ~bit);
+		}
+		bool IsMouseReporting() const { return m_MouseModes != 0; }
+
+		// Mode 1006: reports written out in decimal rather than packed into single bytes.
+		void SetSgrMouse(bool sgr) { m_SgrMouse = sgr; }
+		bool IsSgrMouse() const { return m_SgrMouse; }
+
 		void SetTitle(std::string title) { m_Title = std::move(title); }
 		const std::string& GetTitle() const { return m_Title; }
 
@@ -226,6 +248,8 @@ namespace Core {
 		bool m_AutoWrap = true;
 		bool m_CursorVisible = true;
 		bool m_BracketedPaste = false;
+		std::uint8_t m_MouseModes = 0;
+		bool m_SgrMouse = false;
 		std::size_t m_ScrollbackLimit = 0;
 		std::string m_Title;
 

@@ -155,4 +155,40 @@ namespace Core {
 
 		return {};
 	}
+
+	std::string EncodeMouseWheel(bool up, std::uint16_t column, std::uint16_t row,
+								 KeyModifier modifiers, bool sgr)
+	{
+		// Wheel buttons are 4 and 5, which xterm numbers from 64; the modifiers ride on top.
+		int button = up ? 64 : 65;
+
+		if (HasModifier(modifiers, KeyModifier::Shift))
+		{
+			button += 4;
+		}
+
+		if (HasModifier(modifiers, KeyModifier::Alt))
+		{
+			button += 8;
+		}
+
+		if (HasModifier(modifiers, KeyModifier::Control))
+		{
+			button += 16;
+		}
+
+		const int x = column + 1;
+		const int y = row + 1;
+
+		if (sgr)
+		{
+			return "[<" + std::to_string(button) + ";" + std::to_string(x) + ";" +
+				   std::to_string(y) + "M";
+		}
+
+		// Each value is offset by 32 to keep it printable, so 223 is the last one a byte holds.
+		const auto packed = [](int value) { return static_cast<char>(32 + std::min(value, 223)); };
+
+		return std::string("[M") + packed(button) + packed(x) + packed(y);
+	}
 }

@@ -431,6 +431,27 @@ TEST_CASE("VtParser turns bracketed paste on and off")
 	CHECK_FALSE(screen.IsBracketedPaste());
 }
 
+TEST_CASE("VtParser tracks mouse reporting while any of its three modes is on")
+{
+	Core::TerminalScreen screen(4, 2);
+	Core::VtParser parser(screen);
+
+	REQUIRE_FALSE(screen.IsMouseReporting());
+
+	// What Claude Code sends on start: all three at once, then the SGR encoding.
+	parser.Consume("[?1000h[?1002h[?1003h[?1006h");
+	CHECK(screen.IsMouseReporting());
+	CHECK(screen.IsSgrMouse());
+
+	// Motion off leaves clicks and drags reported.
+	parser.Consume("[?1003l");
+	CHECK(screen.IsMouseReporting());
+
+	parser.Consume("[?1000l[?1002l[?1006l");
+	CHECK_FALSE(screen.IsMouseReporting());
+	CHECK_FALSE(screen.IsSgrMouse());
+}
+
 TEST_CASE("VtParser ignores a public mode it does not implement")
 {
 	Core::TerminalScreen screen(4, 2);
@@ -684,12 +705,14 @@ TEST_CASE("VtParser RIS restores every mode the screen tracks")
 	Core::VtParser parser(screen);
 
 	parser.Consume("main");
-	parser.Consume("\x1B[?1049h\x1B[2;4r\x1B[?7l\x1B[?2004h\x1B[?25l");
+	parser.Consume("\x1B[?1049h\x1B[2;4r\x1B[?7l\x1B[?2004h\x1B[?25l\x1B[?1000h\x1B[?1006h");
 
 	REQUIRE(screen.IsAlternateBuffer());
 	REQUIRE_FALSE(screen.IsAutoWrap());
 	REQUIRE(screen.IsBracketedPaste());
 	REQUIRE_FALSE(screen.IsCursorVisible());
+	REQUIRE(screen.IsMouseReporting());
+	REQUIRE(screen.IsSgrMouse());
 
 	parser.Consume("\x1B" "c");
 
@@ -697,6 +720,8 @@ TEST_CASE("VtParser RIS restores every mode the screen tracks")
 	CHECK(screen.IsAutoWrap());
 	CHECK_FALSE(screen.IsBracketedPaste());
 	CHECK(screen.IsCursorVisible());
+	CHECK_FALSE(screen.IsMouseReporting());
+	CHECK_FALSE(screen.IsSgrMouse());
 
 	// A full-height scroll region again: a line feed on the last row scrolls into history.
 	parser.Consume("\x1B[6;1H\n");

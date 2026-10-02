@@ -2,6 +2,8 @@
 
 #include "Core/Term/KeyEncoding.h"
 
+#include <string>
+
 TEST_CASE("EncodeKey sends the control characters for the editing keys")
 {
 	CHECK(Core::EncodeKey(Core::KeyCode::Enter, Core::KeyModifier::None) == "\r");
@@ -93,4 +95,27 @@ TEST_CASE("EncodeKey sends a back-tab for shifted tab")
 	// Shift+Tab is CBT, how a TUI walks its focus backwards; a plain tab would walk forwards.
 	CHECK(Core::EncodeKey(Core::KeyCode::Tab, Core::KeyModifier::Shift) == "\x1B[Z");
 	CHECK(Core::EncodeKey(Core::KeyCode::Tab, Core::KeyModifier::None) == "\t");
+}
+
+TEST_CASE("EncodeMouseWheel reports a notch at a one-based cell in SGR")
+{
+	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::None, true) == "\x1B[<64;1;1M");
+	CHECK(Core::EncodeMouseWheel(false, 9, 4, Core::KeyModifier::None, true) == "\x1B[<65;10;5M");
+}
+
+TEST_CASE("EncodeMouseWheel adds the modifier bits xterm defines")
+{
+	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::Shift, true) == "\x1B[<68;1;1M");
+	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::Alt, true) == "\x1B[<72;1;1M");
+	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::Control, true) == "\x1B[<80;1;1M");
+}
+
+TEST_CASE("EncodeMouseWheel falls back to the legacy byte encoding without SGR")
+{
+	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::None, false) == "\x1B[M`!!");
+	CHECK(Core::EncodeMouseWheel(false, 2, 1, Core::KeyModifier::None, false) == "\x1B[Ma#\"");
+
+	// One byte per coordinate cannot name a cell past 223; the last one it can is used.
+	CHECK(Core::EncodeMouseWheel(true, 500, 0, Core::KeyModifier::None, false) ==
+		  std::string("\x1B[M`") + static_cast<char>(255) + "!");
 }

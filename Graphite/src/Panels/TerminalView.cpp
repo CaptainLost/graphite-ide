@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -232,7 +233,31 @@ namespace Graphite {
 				const auto notches =
 					static_cast<int>(wheel > 0.0f ? std::ceil(wheel) : std::floor(wheel));
 
-				m_ScrollOffset += notches * kWheelLines;
+				// A program that asked for the mouse scrolls itself, and is told about each notch
+				// at the cell under the pointer. Moving the view instead would do nothing for it:
+				// such a program is usually on the alternate buffer, which has no scrollback.
+				if (screen.IsMouseReporting())
+				{
+					const ImVec2 mouse = ImGui::GetMousePos();
+					const auto column = static_cast<std::uint16_t>(std::clamp(
+						static_cast<int>(std::floor((mouse.x - origin.x) / cellSize.x)), 0, columns - 1));
+					const auto row = static_cast<std::uint16_t>(std::clamp(
+						static_cast<int>(std::floor((mouse.y - origin.y) / cellSize.y)), 0, rows - 1));
+					const Core::KeyModifier held = HeldModifiers(ImGui::GetIO());
+					std::string reports;
+
+					for (int notch = 0; notch < std::abs(notches); ++notch)
+					{
+						reports += Core::EncodeMouseWheel(notches > 0, column, row, held,
+														  screen.IsSgrMouse());
+					}
+
+					m_Session.Send(reports);
+				}
+				else
+				{
+					m_ScrollOffset += notches * kWheelLines;
+				}
 			}
 		}
 

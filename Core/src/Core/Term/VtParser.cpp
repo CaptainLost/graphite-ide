@@ -434,6 +434,10 @@ namespace Core {
 			m_Screen.ResetScrollRegion();
 			m_Screen.SetAutoWrap(true);
 			m_Screen.SetBracketedPaste(false);
+			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Clicks, false);
+			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Drags, false);
+			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Motion, false);
+			m_Screen.SetSgrMouse(false);
 			m_Screen.SetCursorVisible(true);
 			m_Screen.EraseInDisplay(EraseExtent::All);
 			m_Screen.SetCursor(0, 0);
@@ -729,6 +733,18 @@ namespace Core {
 			case 25:
 				m_Screen.SetCursorVisible(set);
 				break;
+			case 1000:
+				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Clicks, set);
+				break;
+			case 1002:
+				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Drags, set);
+				break;
+			case 1003:
+				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Motion, set);
+				break;
+			case 1006:
+				m_Screen.SetSgrMouse(set);
+				break;
 			case 1049:
 				m_Screen.UseAlternateBuffer(set);
 				break;
@@ -736,8 +752,8 @@ namespace Core {
 				m_Screen.SetBracketedPaste(set);
 				break;
 			default:
-				// Mouse reporting and the rest are out of scope for now, and being listed
-				// nowhere is exactly what keeps them harmless.
+				// The rest are out of scope for now, and being listed nowhere is exactly what
+				// keeps them harmless.
 				break;
 			}
 		}
