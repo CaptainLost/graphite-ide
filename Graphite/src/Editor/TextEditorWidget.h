@@ -2,10 +2,12 @@
 
 #include "Editor/ScrollAnchor.h"
 
+#include "Core/Command/MenuItem.h"
 #include "Core/Text/Editing.h"
 
 #include <cstddef>
 #include <optional>
+#include <vector>
 
 namespace Core {
 
@@ -40,6 +42,10 @@ namespace Graphite {
 		// The editor reads it while drawing, which is the only moment it knows whether it is
 		// the document the input was aimed at.
 		const Core::FrameInput* Input = nullptr;
+
+		// The right-click menu's items. Null for an editor that offers none - a preview or a
+		// diff pane, which are read-only views onto text another editor owns.
+		const std::vector<Core::MenuItem>* ContextMenu = nullptr;
 	};
 
 	// Which of the git change markers the reader has switched on. Both on by default, which is
@@ -77,6 +83,10 @@ namespace Graphite {
 		// click cannot become a caret position; it is reported instead, for whoever wants to act
 		// on the declaration the lens sits above.
 		std::optional<std::size_t> LensClicked;
+
+		// A right click on the text, after the caret has been placed for it. The menu is opened
+		// by the widget itself; this only says the click qualified.
+		bool ContextMenuWanted = false;
 
 		// The document rows the frame actually drew, so whatever feeds the lenses can ask the
 		// server about what is on screen rather than about every declaration in the file. Both

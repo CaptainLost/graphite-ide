@@ -5,6 +5,7 @@
 #include "Editor/AnalysisCache.h"
 #include "Editor/DocumentBuffers.h"
 #include "Editor/DocumentWindows.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/LanguageServicesPort.h"
 #include "Editor/ModalQuestion.h"
@@ -325,6 +326,10 @@ namespace Graphite {
 		Core::MenuBar m_MenuBar;
 
 		std::vector<Core::MenuItem> m_MenuTree;
+
+		// The text editors' right-click menu. Built once and handed to every editor through
+		// CommandContext, so the widget draws commands without naming any.
+		std::vector<Core::MenuItem> m_EditorContextMenu = BuildEditorContextMenu();
 
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;

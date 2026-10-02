@@ -2,6 +2,7 @@
 
 #include "Editor/BracketMatch.h"
 #include "Editor/DiagnosticOverlay.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/EditorPalette.h"
 #include "Editor/EditorWidgetState.h"
 #include "Editor/FindBar.h"
@@ -22,8 +23,10 @@
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/App/Redraw.h"
+#include "Core/Command/MenuBar.h"
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
+#include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Caret.h"
@@ -276,6 +279,7 @@ namespace Graphite {
 		{
 			bool PressedThisFrame = false;
 			bool Dragging = false;
+			bool RightPressedThisFrame = false;
 		};
 
 		PointerState AddInteractiveSurface(const ImVec2& origin, float contentWidth,
@@ -327,6 +331,11 @@ namespace Graphite {
 			pointer.Dragging =
 				ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left);
 
+			// A right press over the text. Not routed through ButtonBehavior, which answers to the
+			// left button only; read directly while this surface is the hovered item.
+			pointer.RightPressedThisFrame =
+				ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+
 			return pointer;
 		}
 
@@ -335,7 +344,7 @@ namespace Graphite {
 							   const ImVec2& origin, float textOriginX, const LensRows& lenses,
 							   EditorFrameResult& result)
 		{
-			if (!pointer.PressedThisFrame && !pointer.Dragging)
+			if (!pointer.PressedThisFrame && !pointer.Dragging && !pointer.RightPressedThisFrame)
 				return;
 
 			const ImVec2 mouse = ImGui::GetMousePos();
@@ -355,6 +364,15 @@ namespace Graphite {
 			// everything below it — VisualToCaret, SelectLineAt — speaks document rows only. The
 			// translation happens here, before the caret arithmetic ever sees the number.
 			const LensRows::Row hit = lenses.At(screenRow);
+
+			if (pointer.RightPressedThisFrame)
+			{
+				// The gutter and a lens row hold no text to act on, so neither opens the menu.
+				if (hit.IsLens || mouse.x < textOriginX)
+					return;
+
+				result.ContextMenuWanted = true;
+			}
 
 			// There is no text on a lens row to put a caret in, so a PRESS on one cannot become a
 			// caret position: it reports the declaration the lens sits above and leaves the caret
@@ -390,7 +408,21 @@ namespace Graphite {
 				Core::VisualToCaret(buffer, item.Rows, Core::VisualPosition{row, column},
 									item.TabWidth);
 
-			if (!pointer.PressedThisFrame)
+			if (pointer.RightPressedThisFrame)
+			{
+				// A right click inside the selection keeps it, so it can be cut or copied from the
+				// menu; anywhere else it moves the caret as a plain left click would, and the menu
+				// then acts on what is under the mouse.
+				const auto [from, to] = Core::SelectionRange(item.Caret);
+				const bool insideSelection = from != to && offset >= from && offset <= to;
+
+				if (!insideSelection)
+					item.Caret = Core::PlaceAt(buffer, item.Caret, offset, false, item.TabWidth);
+
+				return;
+			}
+
+			if (!pointer.PressedThisFrame && !pointer.RightPressedThisFrame)
 			{
 				// Dragging always extends, whichever way it goes.
 				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, true, item.TabWidth);
@@ -621,28 +653,7 @@ namespace Graphite {
 						MoveToRowEnd(buffer, item, shift);
 					}
 				}
-
-				if (control && !stroke.IsRepeat && stroke.Key == Core::KeyCode::A)
-					item.Caret = Core::SelectAll(buffer);
 			}
-		}
-
-		// Cutting and copying share this: cutting is copying followed by removing the selection,
-		// not a separate way of reading the clipboard.
-		void CopySelectionToClipboard(const Core::TextBuffer& buffer, const Core::Caret& caret)
-		{
-			const auto [from, to] = Core::SelectionRange(caret);
-
-			if (from == to)
-				return;
-
-			// Substring hands back the buffer's own LF-only text, and the Windows clipboard is
-			// CRLF — pasted into Excel or any Win32 EDIT control, LF-only text arrives as a
-			// single line.
-			const std::string clipboard =
-				Core::WithLineEnding(buffer.Substring(from, to), Core::LineEnding::Crlf);
-
-			ImGui::SetClipboardText(clipboard.c_str());
 		}
 
 		// Everything that has to be told an edit happened. Bundled rather than passed one pointer
@@ -833,36 +844,11 @@ namespace Graphite {
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
-				// What follows are commands rather than edits, and holding one of them would
-				// repeat an action nobody asked to repeat — a held Ctrl+V pasting the clipboard
-				// over and over — so they answer to a first press only.
+				// What follows is a command rather than an edit, and holding it would repeat an
+				// action nobody asked to repeat — a held Ctrl+S saving over and over — so it
+				// answers to a first press only.
 				if (stroke.IsRepeat)
 					continue;
-
-				if (control && stroke.Key == Core::KeyCode::V)
-				{
-					// An empty clipboard, or one holding something that is not text, hands back a
-					// null pointer rather than an empty string.
-					if (const char* clipboard = ImGui::GetClipboardText(); clipboard != nullptr)
-					{
-						const EditMark before = MarkBeforeEdit(buffer, item.Caret);
-						const bool changed = Core::InsertText(item, clipboard);
-						result.Edited |= changed;
-						NotifyAfterEdit(sinks, buffer, item, before, changed);
-					}
-				}
-
-				// Only with something selected. DeleteBackward on an empty selection removes the
-				// character before the caret, so a stray Ctrl+X used to eat a character and put
-				// nothing on the clipboard — a deletion with no way to get the text back.
-				if (control && stroke.Key == Core::KeyCode::X && Core::HasSelection(item.Caret))
-				{
-					CopySelectionToClipboard(buffer, item.Caret);
-					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
-					const bool changed = Core::DeleteBackward(item);
-					result.Edited |= changed;
-					NotifyAfterEdit(sinks, buffer, item, before, changed);
-				}
 
 				// Saving is not this widget's decision: a stale document on disk needs confirming
 				// first, and only DocumentWindows knows how to ask that. This only reports that
@@ -872,9 +858,6 @@ namespace Graphite {
 				// twice from a single keypress.
 				if (control && !shift && stroke.Key == Core::KeyCode::S)
 					result.SaveRequested = true;
-
-				if (control && stroke.Key == Core::KeyCode::C)
-					CopySelectionToClipboard(buffer, item.Caret);
 			}
 		}
 
@@ -890,8 +873,8 @@ namespace Graphite {
 			// fresh undo step.
 			ApplyMotionKeys(input, buffer, item, pageRows);
 
-			// Whatever moved the caret above — a motion key or Ctrl+A, and the mouse click or
-			// drag earlier in the frame, since caretAtFrameStart was read before either ran — is
+			// Whatever moved the caret above — a motion key, and the mouse click or drag or a
+			// queued action earlier in the frame, since caretAtFrameStart was read before any ran — is
 			// a different gesture from whatever typing follows. Breaking the group here, before
 			// any of the edits below, means moving the caret and then typing costs a fresh undo
 			// step instead of merging with whatever was typed before the caret moved.
@@ -901,6 +884,69 @@ namespace Graphite {
 			result.Edited |= InsertTypedCharacters(input, item, sinks);
 
 			ApplyEditKeys(input, buffer, item, indentStyle, sinks, history, result);
+		}
+
+		// The strokes no editor-scoped command claimed, and every typed character: a chord that
+		// ran a command produced no character, so the characters pass through whole.
+		Core::FrameInput RouteEditorStrokes(const CommandContext& context,
+											const Core::FrameInput& input)
+		{
+			Core::FrameInput remaining;
+
+			const bool routable = context.Router != nullptr && context.Commands != nullptr &&
+								  context.Keys != nullptr;
+
+			for (const Core::KeyStroke& stroke : input.GetStrokes())
+			{
+				const Core::KeyPressedEvent pressed{stroke.Key, stroke.Modifiers, stroke.IsRepeat};
+
+				const bool ran = routable &&
+								 context.Router->OnKeyPressed(*context.Commands, *context.Keys,
+															  Core::Chord::Scope::FocusedEditor,
+															  pressed);
+
+				if (!ran)
+					remaining.PushKey(stroke.Key, stroke.Modifiers, stroke.IsRepeat);
+			}
+
+			for (const unsigned int codepoint : input.GetCharacters())
+				remaining.PushCharacter(codepoint);
+
+			return remaining;
+		}
+
+		// Swapped out before running, so an action that somehow queued another would land in the
+		// next frame rather than grow the vector under the loop.
+		void ApplyPendingActions(std::vector<EditorAction>& pending, Core::OpenItem& item,
+								 const EditSinks& sinks, EditorFrameResult& result)
+		{
+			if (pending.empty() || !item.Document)
+				return;
+
+			std::vector<EditorAction> actions;
+			actions.swap(pending);
+
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+
+			for (const EditorAction action : actions)
+			{
+				std::optional<std::string> clipboard;
+
+				if (action == EditorAction::Paste)
+				{
+					if (const char* text = ImGui::GetClipboardText(); text != nullptr)
+						clipboard = text;
+				}
+
+				const EditMark before = MarkBeforeEdit(buffer, item.Caret);
+				const EditorActionOutcome outcome = ApplyEditorAction(action, item, clipboard);
+
+				if (outcome.ToClipboard)
+					ImGui::SetClipboardText(outcome.ToClipboard->c_str());
+
+				result.Edited |= outcome.Changed;
+				NotifyAfterEdit(sinks, buffer, item, before, outcome.Changed);
+			}
 		}
 
 		// `scrollY` is where the view will be, which is not always what ImGui::GetScrollY() answers:
@@ -2631,6 +2677,27 @@ namespace Graphite {
 							  origin.x + metrics.Gutter.TotalWidth, lenses, result);
 			RouteMouseWheel(context);
 
+			const bool hasMenu =
+				context.ContextMenu != nullptr && context.Commands != nullptr && context.Keys != nullptr;
+
+			// Opened on the press, drawn every frame it stays open. The popup's ID lives under
+			// this child's ID stack, so two editors side by side never share one menu.
+			if (result.ContextMenuWanted && hasMenu)
+			{
+				// A right press moves no keyboard focus by itself, so without this the menu of the
+				// editor on one side of a split would act on the other side's document - see ADR
+				// 0547. Before OpenPopup, so the popup records this surface as the window to hand
+				// the focus back to when it closes.
+				ImGui::SetWindowFocus();
+				ImGui::OpenPopup("##EditorContextMenu");
+			}
+
+			if (hasMenu && ImGui::BeginPopup("##EditorContextMenu", ImGuiWindowFlags_NoMove))
+			{
+				Core::RenderMenuItems(*context.Commands, *context.Keys, *context.ContextMenu);
+				ImGui::EndPopup();
+			}
+
 			// The keyboard is scoped to this document's own child window, not merely to the
 			// parent tab: IsWindowFocused() with no flags checks the *current* window (the
 			// child pushed by BeginChild above), and only the document the user actually
@@ -2658,11 +2725,24 @@ namespace Graphite {
 
 			// A context arriving without a queue is a caller that has no input to offer, not an
 			// error: this document then simply draws, exactly as an unfocused one does.
+			const EditSinks sinks{view.Syntax, view.Lens};
+
+			// The focused editor is the only place that knows the keyboard is its own, so it
+			// routes the strokes it reads to the editor-scoped commands first - Ctrl+C and the
+			// rest, which the layer passed through untouched. What a command consumed is not
+			// also typed; what it queued is applied below, this frame.
+			Core::FrameInput remaining;
+
 			if (focused && context.Input != nullptr)
 			{
-				const EditSinks sinks{view.Syntax, view.Lens};
+				remaining = RouteEditorStrokes(context, *context.Input);
+			}
 
-				ApplyKeyboard(*context.Input, buffer, item, view.Indent, sinks, widget.History,
+			ApplyPendingActions(widget.PendingActions, item, sinks, result);
+
+			if (focused && context.Input != nullptr)
+			{
+				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks, widget.History,
 							  RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 

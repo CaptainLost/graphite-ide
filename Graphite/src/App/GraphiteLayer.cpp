@@ -797,7 +797,11 @@ namespace Graphite {
 		// windows instead of landing in the dockspace nodes.
 		m_Panels.OnImGuiRender(m_TabCloseRequests);
 
-		const CommandContext commandContext{&m_Commands, &m_Keys, &m_Router, &m_FrameInput};
+		const CommandContext commandContext{.Commands = &m_Commands,
+											.Keys = &m_Keys,
+											.Router = &m_Router,
+											.Input = &m_FrameInput,
+											.ContextMenu = &m_EditorContextMenu};
 
 		m_DocumentWindows.Render(commandContext,
 								 EditorFrame{.FontSize = m_EditorSettings.GetFontSize(),
