@@ -116,9 +116,6 @@ namespace Graphite {
 			// after End, since destroying a session joins its reader thread.
 			bool Closing = false;
 
-			// The window name of a floating terminal this one joins as a tab once it exists.
-			std::string DockOnto;
-
 			// The node whose tab bar or tab menu asked for this terminal, 0 for none: its first
 			// frame docks it there, ahead of the last-focused rule, while that node still exists.
 			unsigned int DockNode = 0;
@@ -128,8 +125,8 @@ namespace Graphite {
 		// started once nothing is iterating m_Open any more.
 		struct PendingOpen
 		{
-			std::size_t Shell;
-			unsigned int DockNode;
+			std::size_t Shell = 0;
+			unsigned int DockNode = 0;
 		};
 
 		bool Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,

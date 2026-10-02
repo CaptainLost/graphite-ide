@@ -192,21 +192,6 @@ namespace Graphite {
 			// Begin() returning false still needs its End().
 			ImGui::End();
 
-			// The window exists now, so it can be queued onto the floating terminal it joins.
-			if (!entry.DockOnto.empty())
-			{
-				ImGuiWindow* target = FindLiveWindow(entry.DockOnto);
-				ImGuiWindow* payload = ImGui::FindWindowByName(name.c_str());
-
-				if (target != nullptr && payload != nullptr && target != payload)
-				{
-					ImGui::DockContextQueueDock(ImGui::GetCurrentContext(), target, nullptr, payload,
-												ImGuiDir_None, 0.0f, false);
-				}
-
-				entry.DockOnto.clear();
-			}
-
 			entry.Closing = entry.Closing || !open;
 		}
 
@@ -282,10 +267,18 @@ namespace Graphite {
 
 			if (ImGui::DockNodeBeginAmendTabBar(node))
 			{
-				// The node's id keeps every bar's buttons and popup apart from the next bar's.
-				ImGui::PushID(static_cast<int>(node->ID));
+				// Every node's buttons and popup must have ids of their own, and the node's id is in
+				// each label rather than pushed. The amend has already pushed node->ID as the seed,
+				// and PushID(node->ID) on top of that hashes a value under itself - a CRC32 that
+				// comes out the same constant for every node - so every bar's + got one id, and
+				// only the first bar drawn could be clicked. Under the amend's seed and with the
+				// node's id in the label, the ids differ even if that seed ever stops differing.
+				const std::string suffix = std::to_string(node->ID);
+				const std::string newLabel = ICON_MDI_PLUS "##terminalNew" + suffix;
+				const std::string shellsLabel = ICON_MDI_CHEVRON_DOWN "##terminalShellsButton" + suffix;
+				const std::string shellsPopup = "##terminalShells" + suffix;
 
-				if (ImGui::TabItemButton(ICON_MDI_PLUS, ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+				if (ImGui::TabItemButton(newLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
 				{
 					// The first shell is the default, as OpenDefaultShell has it.
 					m_PendingOpens.push_back(PendingOpen{0, node->ID});
@@ -293,20 +286,19 @@ namespace Graphite {
 
 				ImGui::SetItemTooltip("New terminal");
 
-				if (ImGui::TabItemButton(ICON_MDI_CHEVRON_DOWN, ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+				if (ImGui::TabItemButton(shellsLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
 				{
-					ImGui::OpenPopup("##terminalShells");
+					ImGui::OpenPopup(shellsPopup.c_str());
 				}
 
 				ImGui::SetItemTooltip("New terminal with...");
 
-				if (ImGui::BeginPopup("##terminalShells"))
+				if (ImGui::BeginPopup(shellsPopup.c_str()))
 				{
 					DrawShellMenuItems(node->ID);
 					ImGui::EndPopup();
 				}
 
-				ImGui::PopID();
 				ImGui::DockNodeEndAmendTabBar();
 			}
 		}
@@ -334,22 +326,15 @@ namespace Graphite {
 		}
 
 		// Beside the terminal used last, wherever the reader put it. A FindEntry guard, because
-		// the one used last may have closed since.
+		// the one used last may have closed since. Floating on its own counts too: with
+		// DockingAlwaysTabBar every terminal's first Begin gives it a node, so a window that was
+		// drawn last frame always has one to dock into.
 		if (!m_LastFocused.empty() && m_LastFocused != entry.Record.Id && FindEntry(m_LastFocused) != nullptr)
 		{
-			if (ImGuiWindow* last = FindLiveWindow(WindowIdentity(m_LastFocused)))
+			if (ImGuiWindow* last = FindLiveWindow(WindowIdentity(m_LastFocused));
+				last != nullptr && IsLiveNode(last->DockId))
 			{
-				if (IsLiveNode(last->DockId))
-				{
-					ImGui::DockBuilderDockWindow(name.c_str(), last->DockId);
-					return;
-				}
-
-				// Floating on its own: there is no node to dock into until the new window exists,
-				// so it is drawn over the last one for its first frame and then joined to it.
-				ImGui::SetNextWindowPos(last->Pos);
-				ImGui::SetNextWindowSize(last->Size);
-				entry.DockOnto = WindowIdentity(m_LastFocused);
+				ImGui::DockBuilderDockWindow(name.c_str(), last->DockId);
 				return;
 			}
 		}
