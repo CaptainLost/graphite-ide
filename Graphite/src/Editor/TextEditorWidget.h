@@ -33,6 +33,7 @@ namespace Graphite {
 	class DiagnosticOverlay;
 	struct ChangeMarkers;
 	struct HoverState;
+	class PreviewSemantics;
 	struct ResolvedScheme;
 
 	struct CommandContext
@@ -175,6 +176,11 @@ namespace Graphite {
 		// the mouse in a plain tooltip exactly as before hover existed.
 		HoverState* Hover = nullptr;
 		HoverSettings HoverConfig;
+
+		// What colours the hover's definition preview: the overlay of the tab showing its file,
+		// when one does, else what PreviewSemantics hears about it. See HoverTooltipLook.
+		const SemanticOverlay* HoverPreviewOverlay = nullptr;
+		PreviewSemantics* HoverSemantics = nullptr;
 	};
 
 	class FindBar;

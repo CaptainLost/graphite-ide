@@ -1,6 +1,7 @@
 #include "Editor/HoverTooltip.h"
 
 #include "Editor/HoverLayout.h"
+#include "Editor/PreviewSemantics.h"
 
 #include "Lang/Registry/LanguageRegistry.h"
 
@@ -20,11 +21,10 @@ namespace Graphite {
 
 	namespace {
 
-		// The tooltip's widest, in cells of the editor's font.
-		constexpr float kMaxWidthCells = 60.0f;
-
-		// The preview's tallest, in rows; a longer definition scrolls.
-		constexpr std::size_t kPreviewMaxRows = 20;
+		// Where the tooltip's prose wraps, in cells of the editor's font. The preview is as wide
+		// as its widest line instead, up to the editor's own width: code broken across rows is
+		// harder to read than code scrolled to, while a paragraph that wide is harder still.
+		constexpr float kTextWidthCells = 60.0f;
 
 		constexpr std::string_view kDot = " \xC2\xB7 "; // " · "
 
@@ -108,11 +108,13 @@ namespace Graphite {
 			return starts;
 		}
 
-		// Bytes [from, to) of `text`, coloured by `tokens` (offsets into `text`), at the cursor,
-		// as one row of cells. Ends in a Dummy as every row the editor draws does: drawing alone
-		// moves no cursor, and the window has to be told what it holds.
+		// Bytes [from, to) of `text`, coloured by `tokens` (offsets into `text`) and by the
+		// server's `spans` over them, at the cursor, as one row of cells. Ends in a Dummy as every
+		// row the editor draws does: drawing alone moves no cursor, and the window has to be told
+		// what it holds.
 		void DrawColouredRow(std::string_view text, const std::vector<Token>& tokens,
-							 std::size_t from, std::size_t to, const HoverTooltipLook& look)
+							 const std::vector<SemanticSpan>& spans, std::size_t from,
+							 std::size_t to, const HoverTooltipLook& look)
 		{
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			ImDrawList* const draw = ImGui::GetWindowDrawList();
@@ -145,7 +147,7 @@ namespace Graphite {
 					break;
 
 				run(std::max(token.From, from), look.Palette.Text);
-				run(std::min(token.To, to), look.Syntax.Of(token.Kind));
+				run(std::min(token.To, to), look.Syntax.Of(ColourOf(token, spans)));
 			}
 
 			run(to, look.Palette.Text);
@@ -168,6 +170,7 @@ namespace Graphite {
 		{
 			const std::string text = Core::ExpandTabs(declaration, look.TabWidth);
 			const std::vector<Token> tokens = LexOne(look.DocumentLexer, text);
+			const std::vector<SemanticSpan> none;
 
 			const auto columns =
 				static_cast<std::size_t>(std::max(1.0f, maxContentWidth / look.CellWidth));
@@ -183,13 +186,13 @@ namespace Graphite {
 
 			for (const std::size_t start : RowStarts(text, columns))
 			{
-				DrawColouredRow(text, tokens, from, start, look);
+				DrawColouredRow(text, tokens, none, from, start, look);
 				from = start;
 			}
 
 			ImGui::PopStyleVar();
 
-			DrawColouredRow(text, tokens, from, text.size(), look);
+			DrawColouredRow(text, tokens, none, from, text.size(), look);
 		}
 
 		void DrawInfo(const HoverInfo& info, const HoverTooltipLook& look, float maxContentWidth)
@@ -296,8 +299,7 @@ namespace Graphite {
 			}
 		}
 
-		void DrawPreview(const DefinitionPreview& preview, const HoverTooltipLook& look,
-						 float maxContentWidth)
+		void DrawPreview(const DefinitionPreview& preview, const HoverTooltipLook& look)
 		{
 			const std::string file = Core::ToUtf8(preview.Path.filename());
 
@@ -311,91 +313,90 @@ namespace Graphite {
 			std::snprintf(line, sizeof(line), ":%zu", preview.FirstLine + 1);
 			DisabledText(file + line);
 
+			// A file with no tab is declared every frame the preview shows, as a search result's
+			// preview pane does: the server holds it open for exactly as long as somebody is
+			// looking at it, and its colours arrive a moment after the preview does. A file with a
+			// tab is never declared: its overlay is already current, and a second holder of the
+			// same path would only make the server answer the same question twice.
+			const bool declared = look.PreviewOverlay == nullptr && look.Semantics != nullptr;
+
+			if (declared)
+				look.Semantics->Declare(preview.Path, preview.Text, look.TabWidth, false);
+
 			// Expanded and dedented once per frame for the width and the drawing alike. A
 			// preview is a definition's extent, a few dozen lines as a rule, so lexing it every
 			// frame it shows costs less than keeping a cache of it honest would.
-			const std::vector<std::string> expanded =
-				DedentPreviewLines(preview.Lines, look.TabWidth);
+			const DedentedPreview dedented = DedentPreview(preview.Lines, look.TabWidth);
+			const std::vector<std::string>& expanded = dedented.Lines;
 
 			std::size_t widest = 0;
 
 			for (const std::string& text : expanded)
 				widest = std::max(widest, Core::ColumnCount(text, look.TabWidth));
 
-			PreviewMetrics metrics;
-			metrics.CellWidth = look.CellWidth;
-			metrics.LineHeight = look.LineHeight;
-			metrics.ScrollbarSize = ImGui::GetStyle().ScrollbarSize;
-			metrics.MaxWidth = maxContentWidth;
-			metrics.MaxRows = kPreviewMaxRows;
 
-			const PreviewBox box = PreviewBoxSize(widest, expanded.size(), metrics);
+			const Lexer* const lexer = LexerFor(LanguageOfPath(preview.Path));
 
-			// No background of its own: a child paints ChildBg, which this theme gives the
-			// editor's darker background. On the tooltip's surface that drew a dark band behind
-			// the code, which over a one-line preview's leading indentation read as a stray
-			// block.
-			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+			// The state runs from the definition's first line, not the file's: a definition
+			// rarely starts inside a block comment, and reading the file from the top to be
+			// sure would cost what the size limit exists to avoid.
+			LineState state;
+			std::vector<Token> tokens;
+			std::size_t lexed = 0;
 
-			// The wheel over this child scrolls it natively, Ctrl held or not. It never reaches
-			// the editor's zoom: TextEditorWidget's RouteMouseWheel acts only while the editor
-			// surface itself is the hovered window, and over the tooltip it is not.
-			const bool open = ImGui::BeginChild("##preview", ImVec2(box.Width, box.Height),
-												ImGuiChildFlags_None,
-												ImGuiWindowFlags_HorizontalScrollbar);
+			const std::vector<SemanticSpan> none;
 
-			ImGui::PopStyleColor();
+			// Rows butt against each other, as the editor's do. Each Dummy is an ordinary item,
+			// so without this ImGui puts ItemSpacing.y below every row, and the clipper's pitch
+			// disagrees with the rows it steps over.
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+								ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
-			if (open)
+			// The widest line's width, claimed before any row: the clipper submits only the rows
+			// in view, or none while the preview is scrolled out of it, and a tooltip sized by
+			// those alone would change width as it scrolls.
+			ImGui::Dummy(ImVec2(PreviewWidth(widest, look.CellWidth,
+											 ImGui::GetCurrentWindow()->ScrollbarY),
+								0.0f));
+
+			// Drawn into the tooltip itself rather than a scrolling child of it: the tooltip
+			// already scrolls when the editor has no room for all of it, and a child would put a
+			// second scrollbar beside that one.
+			ImGuiListClipper clipper;
+			clipper.Begin(static_cast<int>(expanded.size()), look.LineHeight);
+
+			while (clipper.Step())
 			{
-				const Lexer* const lexer = LexerFor(LanguageOfPath(preview.Path));
-
-				// The state runs from the definition's first line, not the file's: a definition
-				// rarely starts inside a block comment, and reading the file from the top to be
-				// sure would cost what the size limit exists to avoid.
-				LineState state;
-				std::vector<Token> tokens;
-				std::size_t lexed = 0;
-
-				// Rows butt against each other, as the editor's do. Each Dummy is an ordinary item,
-				// so without this ImGui puts ItemSpacing.y below every row: the content grows past
-				// the LineHeight-per-row height the child was given, even a three-line preview
-				// scrolls, and the clipper's pitch disagrees with the rows it steps over. Held
-				// through the last row too, since nothing follows it inside the child, and popped
-				// before EndChild so the child's own item in the tooltip keeps the usual spacing.
-				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-									ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
-
-				ImGuiListClipper clipper;
-				clipper.Begin(static_cast<int>(expanded.size()), look.LineHeight);
-
-				while (clipper.Step())
+				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 				{
-					for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+					const auto index = static_cast<std::size_t>(row);
+
+					// Lines above the clipped range are lexed only for the state they leave.
+					while (lexed <= index)
 					{
-						const auto index = static_cast<std::size_t>(row);
+						tokens.clear();
 
-						// Lines above the clipped range are lexed only for the state they leave.
-						while (lexed <= index)
-						{
-							tokens.clear();
+						if (lexer != nullptr)
+							state = lexer->LexLine(expanded[lexed], state, tokens);
 
-							if (lexer != nullptr)
-								state = lexer->LexLine(expanded[lexed], state, tokens);
-
-							++lexed;
-						}
-
-						DrawColouredRow(expanded[index], tokens, 0, expanded[index].size(), look);
+						++lexed;
 					}
+
+					const std::size_t fileLine = preview.FirstLine + index;
+
+					const std::vector<SemanticSpan>& said =
+						look.PreviewOverlay != nullptr ? look.PreviewOverlay->SpansOn(fileLine)
+						: declared ? look.Semantics->SpansOn(preview.Path, fileLine)
+								   : none;
+
+					DrawColouredRow(expanded[index], tokens, DedentSpans(said, dedented.Removed),
+									0, expanded[index].size(), look);
 				}
-
-				clipper.End();
-
-				ImGui::PopStyleVar();
 			}
 
-			ImGui::EndChild();
+			clipper.End();
+
+			ImGui::PopStyleVar();
 		}
 	}
 
@@ -439,8 +440,6 @@ namespace Graphite {
 		}
 
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float maxWidth = kMaxWidthCells * look.CellWidth;
-		const float maxContentWidth = maxWidth - style.WindowPadding.x * 2.0f;
 
 		// Placed from last frame's size. A tooltip that has just changed size is one frame out,
 		// and asks for that frame below rather than waiting for the mouse to move. The height
@@ -463,21 +462,29 @@ namespace Graphite {
 							   viewport->WorkPos.y + viewport->WorkSize.y);
 		}
 
+		// As wide as the editor, at most. Prose wraps narrower than that, and never wider than
+		// the room the editor leaves it.
+		const float maxWidth = boundsMax.x - boundsMin.x;
+		const float maxContentWidth =
+			std::max(look.CellWidth,
+					 std::min(kTextWidthCells * look.CellWidth,
+							  maxWidth - style.WindowPadding.x * 2.0f - style.ScrollbarSize));
+
 		const TooltipPlacement placed =
 			PlaceTooltip(anchor.Min, anchor.Max, ImVec2(lastSize.x, lastNaturalHeight), boundsMin,
 						 boundsMax);
 
 		// Held to the room on its side; what does not fit scrolls rather than running over the
 		// panel below the editor. Never held to less than a row, which would be no tooltip at
-		// all. A tooltip held short grows a scrollbar, and the width allows for it so the
-		// content keeps its own.
+		// all. A tooltip held short grows a scrollbar, and one wider than the editor a
+		// horizontal one.
 		const float maxHeight =
 			std::max(placed.MaxHeight, look.LineHeight + style.WindowPadding.y * 2.0f);
 
 		ImGui::SetNextWindowViewport(viewport->ID);
 		ImGui::SetNextWindowPos(placed.Position, ImGuiCond_Always, placed.Pivot);
 		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
-											ImVec2(maxWidth + style.ScrollbarSize, maxHeight));
+											ImVec2(maxWidth, maxHeight));
 		ImGui::SetNextWindowBgAlpha(1.0f);
 
 		// A tooltip that comes up afresh starts at its top, not wherever the last one was left.
@@ -491,8 +498,9 @@ namespace Graphite {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, style.PopupBorderSize);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
 
-		// Every decoration but the scrollbar, which a tooltip held short of its content needs.
+		// Every decoration but the scrollbars, which a tooltip held short of its content needs.
 		constexpr ImGuiWindowFlags kFlags =
+			ImGuiWindowFlags_HorizontalScrollbar |
 			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
 			ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
 			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
@@ -560,7 +568,7 @@ namespace Graphite {
 		}
 
 		if (showPreview)
-			DrawPreview(*hover.Preview, look, maxContentWidth);
+			DrawPreview(*hover.Preview, look);
 
 		ImGui::PopTextWrapPos();
 

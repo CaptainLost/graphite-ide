@@ -8,7 +8,8 @@ Date: 2026-10-02
 The editor's hover shows a symbol's information, a preview of its definition
 and any diagnostic under the mouse, in one box under the token. The user has to
 be able to reach that box: move the mouse into it, scroll a preview longer than
-twenty rows, drag its scrollbar, and select nothing else on the way.
+the room the editor leaves it, drag its scrollbars, and select nothing else on
+the way.
 
 ImGui's own tooltip (`BeginTooltip`) cannot do any of that. A tooltip window is
 never hovered, so the mouse over it is still over whatever lies beneath, and it
@@ -29,8 +30,9 @@ Peek definition and any later hoverable tooltip face the same constraints.
 Draw an interactive tooltip as an ordinary ImGui window, not with
 `BeginTooltip`, and give it the following rules.
 
-- **Flags.** The window takes `NoFocusOnAppearing`, `NoNav`, `NoDecoration`,
-  `NoMove`, `NoDocking`, `NoSavedSettings` and `AlwaysAutoResize`. It is
+- **Flags.** The window takes `NoFocusOnAppearing`, `NoNav`, `NoTitleBar`,
+  `NoResize`, `NoCollapse`, `NoMove`, `NoDocking`, `NoSavedSettings`,
+  `AlwaysAutoResize` and `HorizontalScrollbar`. It is
   dressed in the popup's colours, rounding and border, so it still reads as a
   tooltip.
 - **One window per owner.** Name it after its owner's state (`##HoverTooltip%p`
@@ -41,8 +43,11 @@ Draw an interactive tooltip as an ordinary ImGui window, not with
   before. Place it below the anchor if it fits, above if that fits instead, and
   otherwise on whichever side has more room. When the size changes, request one
   more frame.
-- **Clamped to the viewport.** Clamp it to the work area of the editor's own
-  viewport, and pin it to that viewport with `SetNextWindowViewport`.
+- **Clamped to the editor.** Clamp it to the editor surface's visible
+  rectangle, falling back to the work area of the editor's own viewport, and pin
+  it to that viewport with `SetNextWindowViewport`. It may be as wide as that
+  rectangle and as tall as the room on its side; what does not fit scrolls in
+  the window itself, never in a child of it, so there is one pair of scrollbars.
 - **Focus handed back.** Once no mouse button is down after a click inside the
   tooltip, return focus to the window that held it before the click. Fall back
   to the surface the tooltip belongs to if no window held it or that window has

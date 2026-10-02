@@ -11,89 +11,90 @@ using Lines = std::vector<std::string>;
 
 TEST_CASE("A preview loses the indentation its lines share")
 {
-	CHECK(DedentPreviewLines({"        virtual void OnUpdate(Timestep ts) { (void)ts; }"}, 4) ==
+	CHECK(DedentPreview({"        virtual void OnUpdate(Timestep ts) { (void)ts; }"}, 4).Lines ==
 		  Lines{"virtual void OnUpdate(Timestep ts) { (void)ts; }"});
 
-	CHECK(DedentPreviewLines({"    void Run()", "    {", "        Step();", "    }"}, 4) ==
+	CHECK(DedentPreview({"    void Run()", "    {", "        Step();", "    }"}, 4).Lines ==
 		  Lines{"void Run()", "{", "    Step();", "}"});
 }
 
 TEST_CASE("A preview starting at the left edge keeps its indentation")
 {
-	CHECK(DedentPreviewLines({"int Long(int x)", "{", "    x += 1;", "}"}, 4) ==
+	CHECK(DedentPreview({"int Long(int x)", "{", "    x += 1;", "}"}, 4).Lines ==
 		  Lines{"int Long(int x)", "{", "    x += 1;", "}"});
 }
 
 TEST_CASE("Tabs are expanded before the shared indentation is measured")
 {
 	// One tab and four spaces are the same indentation at a tab width of four.
-	CHECK(DedentPreviewLines({"\tvoid Run()", "    {", "\t\tStep();", "\t}"}, 4) ==
+	CHECK(DedentPreview({"\tvoid Run()", "    {", "\t\tStep();", "\t}"}, 4).Lines ==
 		  Lines{"void Run()", "{", "    Step();", "}"});
 
 	// A tab after text still lands on its stop, measured from the line's own start.
-	CHECK(DedentPreviewLines({"\tint a;\t// x"}, 4) == Lines{"int a;  // x"});
+	CHECK(DedentPreview({"\tint a;\t// x"}, 4).Lines == Lines{"int a;  // x"});
 }
 
 TEST_CASE("Blank lines neither count toward the shared indentation nor keep their own")
 {
-	CHECK(DedentPreviewLines({"    int a;", "", "  ", "    int b;"}, 4) ==
+	CHECK(DedentPreview({"    int a;", "", "  ", "    int b;"}, 4).Lines ==
 		  Lines{"int a;", "", "", "int b;"});
-	CHECK(DedentPreviewLines({"  int a;", "        ", "  int b;"}, 4) ==
+	CHECK(DedentPreview({"  int a;", "        ", "  int b;"}, 4).Lines ==
 		  Lines{"int a;", "", "int b;"});
 }
 
 TEST_CASE("A preview of blank lines alone is left as it is, and an empty one stays empty")
 {
-	CHECK(DedentPreviewLines({"", "  "}, 4) == Lines{"", "  "});
-	CHECK(DedentPreviewLines({}, 4).empty());
+	CHECK(DedentPreview({"", "  "}, 4).Lines == Lines{"", "  "});
+	CHECK(DedentPreview({}, 4).Lines.empty());
 }
 
-namespace {
-	PreviewMetrics Metrics()
-	{
-		PreviewMetrics metrics;
-		metrics.CellWidth = 6.0f;
-		metrics.LineHeight = 13.0f;
-		metrics.ScrollbarSize = 14.0f;
-		metrics.MaxWidth = 300.0f;
-		metrics.MaxRows = 20;
-		return metrics;
-	}
-}
-
-TEST_CASE("A short preview is exactly as wide as its widest line and as tall as its rows")
+TEST_CASE("A preview says how many columns it took off, and none when it took nothing")
 {
-	const PreviewBox box = PreviewBoxSize(23, 5, Metrics());
-
-	CHECK(box.Width == doctest::Approx(23.0f * 6.0f));
-	CHECK(box.Height == doctest::Approx(5.0f * 13.0f));
+	CHECK(DedentPreview({"\t\tint a;", "", "\t\t\tint b;"}, 4).Removed == 8);
+	CHECK(DedentPreview({"int a;", "    int b;"}, 4).Removed == 0);
+	CHECK(DedentPreview({"", "  "}, 4).Removed == 0);
 }
 
-TEST_CASE("A tall preview keeps a cell clear between its widest line and the scrollbar")
+TEST_CASE("A server's spans move left with the indentation the preview took off")
 {
-	const PreviewBox box = PreviewBoxSize(23, 31, Metrics());
+	const std::vector<SemanticSpan> spans = {{8, 14, TokenKind::SemanticType},
+											 {20, 23, TokenKind::SemanticFunction}};
 
-	CHECK(box.Width == doctest::Approx(23.0f * 6.0f + 6.0f + 14.0f));
-	CHECK(box.Height == doctest::Approx(20.0f * 13.0f));
+	const std::vector<SemanticSpan> moved = DedentSpans(spans, 8);
+
+	REQUIRE(moved.size() == 2);
+	CHECK(moved[0].From == 0);
+	CHECK(moved[0].To == 6);
+	CHECK(moved[0].Kind == TokenKind::SemanticType);
+	CHECK(moved[1].From == 12);
+	CHECK(moved[1].To == 15);
 }
 
-TEST_CASE("A preview wider than the cap is cut to it, with room for the horizontal scrollbar")
+TEST_CASE("A span inside the indentation the preview took off is dropped")
 {
-	const PreviewBox box = PreviewBoxSize(80, 5, Metrics());
+	// Only a span on a line that is not the preview's own could start there; nothing is left
+	// for it to colour.
+	const std::vector<SemanticSpan> moved = DedentSpans({{2, 6, TokenKind::SemanticType}}, 8);
 
-	CHECK(box.Width == doctest::Approx(300.0f));
-	CHECK(box.Height == doctest::Approx(5.0f * 13.0f + 14.0f));
+	CHECK(moved.empty());
+}
+
+TEST_CASE("A preview is as wide as its widest line")
+{
+	CHECK(PreviewWidth(23, 6.0f, false) == doctest::Approx(23.0f * 6.0f));
+}
+
+TEST_CASE("A preview beside a scrollbar keeps a cell clear between its widest line and it")
+{
+	CHECK(PreviewWidth(23, 6.0f, true) == doctest::Approx(24.0f * 6.0f));
 }
 
 TEST_CASE("A fractional cell width rounds the preview up, never down past its last glyph")
 {
-	PreviewMetrics metrics = Metrics();
-	metrics.CellWidth = 5.87f;
+	const float width = PreviewWidth(23, 5.87f, false);
 
-	const PreviewBox box = PreviewBoxSize(23, 5, metrics);
-
-	CHECK(box.Width >= 23.0f * 5.87f);
-	CHECK(box.Width < 23.0f * 5.87f + 1.0f);
+	CHECK(width >= 23.0f * 5.87f);
+	CHECK(width < 23.0f * 5.87f + 1.0f);
 }
 
 namespace {

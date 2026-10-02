@@ -17,6 +17,9 @@ struct ImGuiWindow;
 
 namespace Graphite {
 
+	class PreviewSemantics;
+	class SemanticOverlay;
+
 	// What the tooltip draws with, taken from the editor it belongs to so the declaration and the
 	// preview read in the editor's own font, cells and colours.
 	struct HoverTooltipLook
@@ -38,6 +41,13 @@ namespace Graphite {
 		// Left empty, the viewport's work area stands in for it.
 		ImVec2 BoundsMin{};
 		ImVec2 BoundsMax{};
+
+		// What colours the definition preview the way the editor colours the file. A file with a
+		// tab is coloured from the tab's own overlay, which the server already keeps current; any
+		// other is declared to `Semantics` for as long as the preview shows. Both null draws the
+		// preview in the lexer's colours alone.
+		const SemanticOverlay* PreviewOverlay = nullptr;
+		PreviewSemantics* Semantics = nullptr;
 	};
 
 	// The screen rectangle of what the tooltip is about: the hovered token, or the cell under the

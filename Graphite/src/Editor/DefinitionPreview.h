@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/TextBuffer.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -17,6 +18,11 @@ namespace Graphite {
 		std::filesystem::path Path;
 		std::size_t FirstLine = 0;            // 0-based; the header shows FirstLine + 1
 		std::vector<std::string> Lines;       // raw lines, tabs not expanded
+
+		// The whole file the lines were cut from, for a file read from disk. A language server
+		// colours a file, not an extract of one, and its answer is measured against this text.
+		// Empty for an open document, which the tab's own overlay colours.
+		Core::TextBuffer Text;
 		bool TooLarge = false;                // the header says "file too large to preview"
 		bool Unreadable = false;              // the file could not be read; nothing to show
 	};

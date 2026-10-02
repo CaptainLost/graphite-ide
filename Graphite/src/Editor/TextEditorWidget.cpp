@@ -1930,6 +1930,8 @@ namespace Graphite {
 			HoverState* State = nullptr;
 			HoverSettings Settings;
 			const Core::FrameInput* Input = nullptr;
+			const SemanticOverlay* PreviewOverlay = nullptr;
+			PreviewSemantics* Semantics = nullptr;
 		};
 
 		// The identifier under the mouse, in raw-line terms. The syntax cache's tokens are ranges
@@ -2207,6 +2209,8 @@ namespace Graphite {
 			const ImGuiWindow* const surface = ImGui::GetCurrentWindow();
 			look.BoundsMin = surface->InnerRect.Min;
 			look.BoundsMax = surface->InnerRect.Max;
+			look.PreviewOverlay = frame.PreviewOverlay;
+			look.Semantics = frame.Semantics;
 
 			DrawHoverTooltip(actions, hover, hover.HeldDiagnostics, look,
 							 HoverAnchor{hover.AnchorMin, hover.AnchorMax},
@@ -3095,7 +3099,8 @@ namespace Graphite {
 			// A null Scheme is defence, not a supported mode — DocumentWindows always fills it
 			// from the ActiveScheme GraphiteLayer loads at startup, the same guard the syntax
 			// cache above gets.
-			const HoverFrame hoverFrame{view.Hover, view.HoverConfig, context.Input};
+			const HoverFrame hoverFrame{view.Hover, view.HoverConfig, context.Input,
+										view.HoverPreviewOverlay, view.HoverSemantics};
 
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax,

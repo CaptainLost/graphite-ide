@@ -2269,6 +2269,13 @@ namespace Graphite {
 				// null state leaves its diagnostics in the plain tooltip they have always had.
 				view.Hover = lens != nullptr ? &state.Hover : nullptr;
 				view.HoverConfig = hoverSettings;
+				view.HoverSemantics = &m_PreviewSemantics;
+
+				if (state.Hover.Preview)
+				{
+					if (const auto shown = m_Documents.Find(state.Hover.Preview->Path))
+						view.HoverPreviewOverlay = &SemanticFor(m_Documents.At(*shown));
+				}
 
 				std::optional<PendingTopLine>& pendingTop = state.PendingTop;
 

@@ -74,13 +74,18 @@ namespace Graphite {
 			return preview;
 		}
 
-		const auto loaded = Core::TextDocument::Load(path);
+		auto loaded = Core::TextDocument::Load(path);
 		if (!loaded.HasValue())
 		{
 			preview.Unreadable = true;
 			return preview;
 		}
-		return Cut(loaded.GetValue().GetBuffer(), path, line);
+
+		Core::TextBuffer& buffer = loaded.GetValue().GetBuffer();
+
+		preview = Cut(buffer, path, line);
+		preview.Text = std::move(buffer);
+		return preview;
 	}
 
 	bool IsDrawable(const DefinitionPreview& preview)

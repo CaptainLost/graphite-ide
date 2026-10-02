@@ -35,6 +35,18 @@ TEST_CASE("A preview from disk is cut to the definition")
 		  std::vector<std::string>{"int Sum(int a, int b)", "{", "    return a + b;", "}"});
 }
 
+TEST_CASE("A preview keeps the whole file it was cut from, for the server to colour")
+{
+	TempDirectory dir;
+	const auto file = dir.GetPath() / "Layer.h";
+	Write(file, "#pragma once\nint X;\n");
+
+	Core::DocumentSet documents;
+	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 1);
+
+	CHECK(preview.Text.Materialize() == "#pragma once\nint X;\n");
+}
+
 TEST_CASE("An open document wins over the file on disk")
 {
 	TempDirectory dir;
@@ -52,6 +64,9 @@ TEST_CASE("An open document wins over the file on disk")
 
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 0);
 	CHECK(preview.Lines.front() == "int New;");
+
+	// The tab colours an open document; the preview keeps no copy of it.
+	CHECK(preview.Text.Materialize().empty());
 }
 
 TEST_CASE("A UTF-16 file on disk is decoded")

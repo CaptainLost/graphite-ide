@@ -7,10 +7,10 @@
 
 namespace Graphite {
 
-	std::vector<std::string> DedentPreviewLines(const std::vector<std::string>& lines,
-												std::size_t tabWidth)
+	DedentedPreview DedentPreview(const std::vector<std::string>& lines, std::size_t tabWidth)
 	{
-		std::vector<std::string> expanded;
+		DedentedPreview dedented;
+		std::vector<std::string>& expanded = dedented.Lines;
 		expanded.reserve(lines.size());
 
 		// After expansion leading whitespace is spaces alone, so a count of them is a column.
@@ -27,7 +27,7 @@ namespace Graphite {
 		}
 
 		if (shared == std::string::npos)
-			return expanded;
+			return dedented;
 
 		for (std::string& line : expanded)
 		{
@@ -37,30 +37,35 @@ namespace Graphite {
 				line.erase(0, shared);
 		}
 
-		return expanded;
+		dedented.Removed = shared;
+
+		return dedented;
 	}
 
-	PreviewBox PreviewBoxSize(std::size_t widestColumns, std::size_t rows,
-							  const PreviewMetrics& metrics)
+	std::vector<SemanticSpan> DedentSpans(const std::vector<SemanticSpan>& spans,
+										  std::size_t removed)
 	{
-		const bool tall = rows > metrics.MaxRows;
+		std::vector<SemanticSpan> moved;
+		moved.reserve(spans.size());
 
-		// Rounded up: ImGui truncates a window's size, and a child a fraction narrower than its
-		// content grows a horizontal scrollbar over its only row.
-		const float content = std::ceil(static_cast<float>(widestColumns) * metrics.CellWidth);
+		for (const SemanticSpan& span : spans)
+		{
+			if (span.From < removed)
+				continue;
 
-		// Glyphs drawn flush against the vertical scrollbar read as cut off, even when every
-		// pixel of them is there.
-		const float wanted =
-			content + (tall ? metrics.CellWidth + metrics.ScrollbarSize : 0.0f);
-		const bool wide = wanted > metrics.MaxWidth;
+			moved.push_back({span.From - removed, span.To - removed, span.Kind});
+		}
 
-		PreviewBox box;
-		box.Width = std::min(wanted, metrics.MaxWidth);
-		box.Height = static_cast<float>(std::min(rows, metrics.MaxRows)) * metrics.LineHeight +
-					 (wide ? metrics.ScrollbarSize : 0.0f);
+		return moved;
+	}
 
-		return box;
+	float PreviewWidth(std::size_t widestColumns, float cellWidth, bool besideScrollbar)
+	{
+		const std::size_t columns = widestColumns + (besideScrollbar ? 1 : 0);
+
+		// Rounded up: ImGui truncates a window's size, and a window a fraction narrower than its
+		// content grows a horizontal scrollbar over it.
+		return std::ceil(static_cast<float>(columns) * cellWidth);
 	}
 
 	TooltipPlacement PlaceTooltip(ImVec2 anchorMin, ImVec2 anchorMax, ImVec2 size,

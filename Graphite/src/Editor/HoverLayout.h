@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Editor/SemanticOverlay.h"
+
 #include <imgui.h>
 
 #include <cstddef>
@@ -8,34 +10,29 @@
 
 namespace Graphite {
 
+	struct DedentedPreview
+	{
+		std::vector<std::string> Lines;
+		std::size_t Removed = 0; // the columns taken off every non-blank line
+	};
+
 	// The preview's lines as the tooltip draws them: tabs expanded, then the indentation every
 	// non-blank line shares taken off. A method previewed from the middle of a class would
 	// otherwise open on a run of empty cells, and pay for them in width. Blank lines do not count
 	// toward what is shared, and lose whatever whitespace they had; a preview with no non-blank
 	// line is returned expanded and otherwise as it was.
-	std::vector<std::string> DedentPreviewLines(const std::vector<std::string>& lines,
-												std::size_t tabWidth);
+	DedentedPreview DedentPreview(const std::vector<std::string>& lines, std::size_t tabWidth);
 
-	struct PreviewMetrics
-	{
-		float CellWidth = 0.0f;
-		float LineHeight = 0.0f;
-		float ScrollbarSize = 0.0f;
-		float MaxWidth = 0.0f;       // the widest the preview's child may be
-		std::size_t MaxRows = 0;     // the tallest, in rows; a longer preview scrolls
-	};
+	// A server's spans for one line of the file, moved onto that line as the preview draws it:
+	// `removed` columns further left. A span that started inside what was taken off is dropped,
+	// since ColourOf matches spans by where they start and nothing starts there any more.
+	std::vector<SemanticSpan> DedentSpans(const std::vector<SemanticSpan>& spans,
+										  std::size_t removed);
 
-	struct PreviewBox
-	{
-		float Width = 0.0f;
-		float Height = 0.0f;
-	};
-
-	// The size of the preview's scrolling child for a widest line of `widestColumns` cells and
-	// `rows` lines. As wide as that line, up to the cap; a tall preview adds its vertical
-	// scrollbar and a cell clear of it, and a wide one the room its horizontal scrollbar takes.
-	PreviewBox PreviewBoxSize(std::size_t widestColumns, std::size_t rows,
-							  const PreviewMetrics& metrics);
+	// How wide the preview's rows are for a widest line of `widestColumns` cells. Beside the
+	// tooltip's vertical scrollbar it keeps a cell clear of it: glyphs drawn flush against the
+	// scrollbar read as cut off, even when every pixel of them is there.
+	float PreviewWidth(std::size_t widestColumns, float cellWidth, bool besideScrollbar);
 
 	struct TooltipPlacement
 	{
