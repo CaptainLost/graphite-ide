@@ -9,6 +9,7 @@
 
 #include "Core/UI/Panel.h"
 
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <map>
@@ -136,8 +137,14 @@ namespace Graphite {
 		{
 			Conflicted,
 			Staged,
-			Unstaged
+			Unstaged,
+
+			// Not a section - the count of the ones above it. Sizes the per-section arrays below,
+			// so a new section grows them instead of indexing past their end.
+			Count
 		};
+
+		static constexpr std::size_t kSectionCount = static_cast<std::size_t>(Section::Count);
 
 		Section m_Section = Section::Unstaged;
 
@@ -164,11 +171,11 @@ namespace Graphite {
 
 		// What each section drew last frame, in drawn order, so a selection whose row has
 		// gone can be moved to the row that took its place.
-		std::vector<std::filesystem::path> m_LastDrawn[3];
+		std::array<std::vector<std::filesystem::path>, kSectionCount> m_LastDrawn;
 
 		// Which sections the reader has closed, by Section. Open is the default, so a
 		// section that appears for the first time - the first conflict of a merge - is seen.
-		bool m_Collapsed[3] = {};
+		std::array<bool, kSectionCount> m_Collapsed{};
 
 		std::string m_Message;
 		bool m_Amend = false;
