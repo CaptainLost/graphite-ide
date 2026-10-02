@@ -37,3 +37,11 @@ TEST_CASE("LanguageOfPath treats a dotfile as plain text")
 	CHECK(Graphite::LanguageOfPath(".gitignore") == Graphite::LanguageId::PlainText);
 	CHECK(Graphite::LanguageOfPath(".clang-format") == Graphite::LanguageId::PlainText);
 }
+
+TEST_CASE("LineCommentPrefix is // for every code language and nothing for plain text")
+{
+	CHECK(Graphite::LineCommentPrefix(Graphite::LanguageId::Cpp) == "//");
+	CHECK(Graphite::LineCommentPrefix(Graphite::LanguageId::CSharp) == "//");
+	CHECK(Graphite::LineCommentPrefix(Graphite::LanguageId::TypeScript) == "//");
+	CHECK_FALSE(Graphite::LineCommentPrefix(Graphite::LanguageId::PlainText).has_value());
+}

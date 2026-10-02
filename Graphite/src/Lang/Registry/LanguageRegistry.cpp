@@ -74,4 +74,20 @@ namespace Graphite {
 
 		return language == LanguageId::Cpp ? &cpp : nullptr;
 	}
+
+	std::optional<std::string_view> LineCommentPrefix(LanguageId language)
+	{
+		switch (language)
+		{
+			case LanguageId::Cpp:
+			case LanguageId::CSharp:
+			case LanguageId::TypeScript:
+				return "//";
+
+			case LanguageId::PlainText:
+				return std::nullopt;
+		}
+
+		return std::nullopt;
+	}
 }
