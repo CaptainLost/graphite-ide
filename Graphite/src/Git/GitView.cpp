@@ -507,9 +507,22 @@ namespace Graphite {
 
 				// Marked the same way the commit rows are, so the two columns of this panel
 				// answer a filter in one language.
-				const bool clicked = HighlightedSelectable("##ref", selected, RefLabel(branch), refFilter);
+				//
+				// Cut to the column like the stash rows, so a long name ends in an ellipsis
+				// rather than at the column's edge, and is said whole in a tooltip.
+				const std::string label = RefLabel(branch);
+
+				bool cut = false;
+				const std::string fitted = FitToLine(label, &cut);
+
+				const bool clicked = HighlightedSelectable("##ref", selected, fitted, refFilter);
 
 				ImGui::EndGroup();
+
+				if (cut)
+				{
+					ImGui::SetItemTooltip("%s", label.c_str());
+				}
 
 				RenderRefMenu(branch);
 
@@ -630,6 +643,26 @@ namespace Graphite {
 
 		ImGui::EndDisabled();
 		ImGui::EndPopup();
+	}
+
+	std::string FitToLine(std::string_view text, bool* cut)
+	{
+		// Guarded because an empty view may carry no pointer at all, and CalcTextSize reads a
+		// null end as "up to the terminator".
+		const auto widthOf = [](std::string_view piece) {
+			return piece.empty() ? 0.0f : ImGui::CalcTextSize(piece.data(), piece.data() + piece.size()).x;
+		};
+
+		// Given back the pixel CalcTextSize rounds up by, for the reason the commit list gives.
+		const std::optional<std::size_t> at =
+			CutToFit(text, ImGui::GetContentRegionAvail().x + 1.0f, widthOf(Ellipsis), widthOf);
+
+		if (cut != nullptr)
+		{
+			*cut = at.has_value();
+		}
+
+		return at.has_value() ? std::string(text.substr(0, *at)) + std::string(Ellipsis) : std::string(text);
 	}
 
 	std::chrono::minutes GitView::LocalOffset()

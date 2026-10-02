@@ -42,6 +42,10 @@ namespace Graphite {
 	// checked without a frame to draw into.
 	std::string RefLabel(const Core::Branch& branch);
 
+	// `text` as it fits in what is left of the current line: whole, or cut with an ellipsis
+	// the way the commit list cuts its cells. `cut`, when given, says which.
+	std::string FitToLine(std::string_view text, bool* cut = nullptr);
+
 	// The whole history in one panel: refs down the left, and on the right the commit list
 	// above the diff of whichever file is selected under an expanded commit.
 	//

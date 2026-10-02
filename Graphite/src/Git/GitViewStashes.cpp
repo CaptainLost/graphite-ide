@@ -28,22 +28,10 @@ namespace Graphite {
 
 	namespace {
 
-		float WidthOf(std::string_view text)
-		{
-			// Guarded because an empty view may carry no pointer at all, and CalcTextSize
-			// reads a null end as "up to the terminator".
-			return text.empty() ? 0.0f : ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-		}
-
-		// `text` cut with an ellipsis to what is left of the line, the way the commit list
-		// cuts its cells - given back the pixel CalcTextSize rounds up by, for the reason
-		// that list gives. Dimmed when `dimmed`.
+		// FitToLine's text, dimmed when `dimmed`.
 		void FittedLine(const std::string& text, bool dimmed)
 		{
-			const std::optional<std::size_t> cut =
-				CutToFit(text, ImGui::GetContentRegionAvail().x + 1.0f, WidthOf(Ellipsis), WidthOf);
-
-			const std::string shown = cut.has_value() ? text.substr(0, *cut) + std::string(Ellipsis) : text;
+			const std::string shown = FitToLine(text);
 
 			if (dimmed)
 			{
