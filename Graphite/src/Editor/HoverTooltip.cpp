@@ -168,11 +168,20 @@ namespace Graphite {
 
 			std::size_t from = 0;
 
+			// A wrapped declaration's rows butt against each other, as the editor's do: each
+			// Dummy is an ordinary item, and ImGui would otherwise put ItemSpacing.y below it. The
+			// last row is drawn after the pop, so the line that follows the declaration keeps the
+			// usual spacing.
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+								ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
+
 			for (const std::size_t start : RowStarts(text, columns))
 			{
 				DrawColouredRow(text, tokens, from, start, look);
 				from = start;
 			}
+
+			ImGui::PopStyleVar();
 
 			DrawColouredRow(text, tokens, from, text.size(), look);
 		}
@@ -343,6 +352,15 @@ namespace Graphite {
 				std::vector<Token> tokens;
 				std::size_t lexed = 0;
 
+				// Rows butt against each other, as the editor's do. Each Dummy is an ordinary item,
+				// so without this ImGui puts ItemSpacing.y below every row: the content grows past
+				// the LineHeight-per-row height the child was given, even a three-line preview
+				// scrolls, and the clipper's pitch disagrees with the rows it steps over. Held
+				// through the last row too, since nothing follows it inside the child, and popped
+				// before EndChild so the child's own item in the tooltip keeps the usual spacing.
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+									ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
+
 				ImGuiListClipper clipper;
 				clipper.Begin(static_cast<int>(expanded.size()), look.LineHeight);
 
@@ -368,6 +386,8 @@ namespace Graphite {
 				}
 
 				clipper.End();
+
+				ImGui::PopStyleVar();
 			}
 
 			ImGui::EndChild();
