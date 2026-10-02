@@ -100,6 +100,45 @@ namespace Graphite {
 			m_Settings.SetScrollbarChangeMarkers(scrollbarChanges);
 		}
 
+		ImGui::SeparatorText("Hover");
+
+		HoverSettings hover = m_Settings.GetHoverSettings();
+
+		if (ImGui::Checkbox("Symbol information", &hover.ShowInfo))
+		{
+			m_Settings.SetHoverInfo(hover.ShowInfo);
+		}
+
+		ImGui::TextUnformatted("Definition preview");
+		ImGui::SameLine();
+
+		const auto previewButton = [this, &hover](const char* label, DefinitionPreviewMode mode) {
+			if (ImGui::RadioButton(label, hover.Preview == mode) && hover.Preview != mode)
+			{
+				m_Settings.SetDefinitionPreview(mode);
+			}
+		};
+
+		previewButton("Off##preview", DefinitionPreviewMode::Off);
+		ImGui::SameLine();
+		previewButton("With Ctrl##preview", DefinitionPreviewMode::WithCtrl);
+		ImGui::SameLine();
+		previewButton("Always##preview", DefinitionPreviewMode::Always);
+
+		// Set on release for the reason the font size is: every changed frame rewrites the file.
+		int delay = hover.DelayMs;
+
+		if (ImGui::SliderInt("Hover delay", &delay, 200, 1500, "%d ms"))
+		{
+			m_PendingHoverDelay = delay;
+		}
+
+		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingHoverDelay.has_value())
+		{
+			m_Settings.SetHoverDelayMs(*m_PendingHoverDelay);
+			m_PendingHoverDelay.reset();
+		}
+
 		ImGui::SeparatorText("Indentation");
 
 		bool useSpaces = m_Settings.GetIndentStyle().UseSpaces;

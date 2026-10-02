@@ -151,3 +151,59 @@ TEST_CASE("EditorSettings loads back what it set, after a restart")
 	CHECK_FALSE(reloaded.ShowsGutterChangeMarkers());
 	CHECK(reloaded.ShowsScrollbarChangeMarkers());
 }
+
+TEST_CASE("EditorSettings hover defaults to information on, preview with Ctrl, 500 ms")
+{
+	TempAppSettings store;
+	const Graphite::EditorSettings settings{store.Get()};
+
+	const Graphite::HoverSettings hover = settings.GetHoverSettings();
+
+	CHECK(hover.ShowInfo);
+	CHECK(hover.Preview == Graphite::DefinitionPreviewMode::WithCtrl);
+	CHECK(hover.DelayMs == 500);
+}
+
+TEST_CASE("EditorSettings hover values survive a reload")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.SetHoverInfo(false);
+		settings.SetDefinitionPreview(Graphite::DefinitionPreviewMode::Always);
+		settings.SetHoverDelayMs(800);
+	}
+
+	Graphite::EditorSettings reloaded{store.Get()};
+	reloaded.Load();
+
+	const Graphite::HoverSettings hover = reloaded.GetHoverSettings();
+
+	CHECK_FALSE(hover.ShowInfo);
+	CHECK(hover.Preview == Graphite::DefinitionPreviewMode::Always);
+	CHECK(hover.DelayMs == 800);
+}
+
+TEST_CASE("EditorSettings clamps the hover delay to 200..1500")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+
+	settings.SetHoverDelayMs(10);
+	CHECK(settings.GetHoverSettings().DelayMs == 200);
+
+	settings.SetHoverDelayMs(99999);
+	CHECK(settings.GetHoverSettings().DelayMs == 1500);
+}
+
+TEST_CASE("EditorSettings reads an unknown stored preview mode as the default")
+{
+	TempAppSettings store;
+	store.Get().SetHoverPreview("sometimes");
+
+	Graphite::EditorSettings settings{store.Get()};
+	settings.Load();
+
+	CHECK(settings.GetHoverSettings().Preview == Graphite::DefinitionPreviewMode::WithCtrl);
+}

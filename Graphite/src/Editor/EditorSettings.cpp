@@ -7,10 +7,46 @@
 #include "Core/Command/Keymap.h"
 
 #include <algorithm>
+#include <string_view>
 
 namespace Graphite {
 
 	namespace {
+		// Stored as words, not numbers, so a hand-edited graphite.json reads as what it means.
+		constexpr std::string_view kPreviewOff = "off";
+		constexpr std::string_view kPreviewCtrl = "ctrl";
+		constexpr std::string_view kPreviewAlways = "always";
+
+		DefinitionPreviewMode PreviewModeFrom(std::string_view stored)
+		{
+			if (stored == kPreviewOff)
+			{
+				return DefinitionPreviewMode::Off;
+			}
+
+			if (stored == kPreviewAlways)
+			{
+				return DefinitionPreviewMode::Always;
+			}
+
+			// "ctrl", nothing stored, and anything a hand edit got wrong all mean the default.
+			return DefinitionPreviewMode::WithCtrl;
+		}
+
+		std::string_view PreviewModeName(DefinitionPreviewMode mode)
+		{
+			switch (mode)
+			{
+			case DefinitionPreviewMode::Off:
+				return kPreviewOff;
+			case DefinitionPreviewMode::WithCtrl:
+				return kPreviewCtrl;
+			case DefinitionPreviewMode::Always:
+				return kPreviewAlways;
+			}
+
+			return kPreviewCtrl;
+		}
 		void SetDefaultZoomBindings(Core::Keymap& keys)
 		{
 			using Core::Chord;
@@ -57,7 +93,15 @@ namespace Graphite {
 		m_WordWrap = m_Store.GetWordWrap();
 		m_GutterChangeMarkers = m_Store.GetGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.GetScrollbarChangeMarkers();
-	}
+
+		m_Hover.ShowInfo = m_Store.GetHoverInfo();
+		m_Hover.Preview = PreviewModeFrom(m_Store.GetHoverPreview());
+
+		// Zero is "absent" (see NumberOrZero), so it keeps the default rather than clamping to 200.
+		if (const int storedDelay = m_Store.GetHoverDelayMs(); storedDelay != 0)
+		{
+			m_Hover.DelayMs = std::clamp(storedDelay, kMinimumHoverDelayMs, kMaximumHoverDelayMs);
+		}	}
 
 	void EditorSettings::SetFontSize(float size)
 	{
@@ -112,6 +156,24 @@ namespace Graphite {
 	{
 		m_ScrollbarChangeMarkers = show;
 		m_Store.SetScrollbarChangeMarkers(m_ScrollbarChangeMarkers);
+	}
+
+	void EditorSettings::SetHoverInfo(bool show)
+	{
+		m_Hover.ShowInfo = show;
+		m_Store.SetHoverInfo(m_Hover.ShowInfo);
+	}
+
+	void EditorSettings::SetDefinitionPreview(DefinitionPreviewMode mode)
+	{
+		m_Hover.Preview = mode;
+		m_Store.SetHoverPreview(PreviewModeName(m_Hover.Preview));
+	}
+
+	void EditorSettings::SetHoverDelayMs(int ms)
+	{
+		m_Hover.DelayMs = std::clamp(ms, kMinimumHoverDelayMs, kMaximumHoverDelayMs);
+		m_Store.SetHoverDelayMs(m_Hover.DelayMs);
 	}
 
 	void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)

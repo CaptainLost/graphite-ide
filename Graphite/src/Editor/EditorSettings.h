@@ -3,6 +3,7 @@
 #include "Core/Text/Editing.h"
 
 #include <cstddef>
+#include <cstdint>
 
 namespace Core {
 
@@ -12,6 +13,15 @@ namespace Core {
 namespace Graphite {
 
 	class AppSettings;
+
+	enum class DefinitionPreviewMode : std::uint8_t { Off, WithCtrl, Always };
+
+	struct HoverSettings
+	{
+		bool ShowInfo = true;
+		DefinitionPreviewMode Preview = DefinitionPreviewMode::WithCtrl;
+		int DelayMs = 500;
+	};
 
 	class EditorSettings final
 	{
@@ -46,6 +56,13 @@ namespace Graphite {
 		void SetGutterChangeMarkers(bool show);
 		void SetScrollbarChangeMarkers(bool show);
 
+		HoverSettings GetHoverSettings() const { return m_Hover; }
+
+		void SetHoverInfo(bool show);
+		void SetDefinitionPreview(DefinitionPreviewMode mode);
+		// Clamped to the range the settings slider offers.
+		void SetHoverDelayMs(int ms);
+
 	private:
 		void SetWordWrap(bool wrap);
 
@@ -69,5 +86,10 @@ namespace Graphite {
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;
+
+		static constexpr int kMinimumHoverDelayMs = 200;
+		static constexpr int kMaximumHoverDelayMs = 1500;
+
+		HoverSettings m_Hover;
 	};
 }

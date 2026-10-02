@@ -34,6 +34,9 @@ namespace Graphite {
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
 		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
+		constexpr const char* kHoverInfoKey = "hoverInfo";
+		constexpr const char* kHoverPreviewKey = "hoverPreview";
+		constexpr const char* kHoverDelayKey = "hoverDelayMs";
 		constexpr const char* kColorSchemeKey = "colorScheme";
 		constexpr const char* kLanguageServerBinaryKey = "languageServerBinary";
 		constexpr const char* kClaudeBinaryKey = "claude.binary";
@@ -259,6 +262,36 @@ namespace Graphite {
 	void AppSettings::SetScrollbarChangeMarkers(bool show)
 	{
 		Set(kScrollbarChangeMarkersKey, Flag(show));
+	}
+
+	bool AppSettings::GetHoverInfo() const
+	{
+		return ReadFlag(Get(kHoverInfoKey), true);
+	}
+
+	void AppSettings::SetHoverInfo(bool show)
+	{
+		Set(kHoverInfoKey, Flag(show));
+	}
+
+	std::string AppSettings::GetHoverPreview() const
+	{
+		return std::string{Get(kHoverPreviewKey)};
+	}
+
+	void AppSettings::SetHoverPreview(std::string_view mode)
+	{
+		Set(kHoverPreviewKey, std::string{mode});
+	}
+
+	int AppSettings::GetHoverDelayMs() const
+	{
+		return NumberOrZero<int>(Get(kHoverDelayKey));
+	}
+
+	void AppSettings::SetHoverDelayMs(int ms)
+	{
+		Set(kHoverDelayKey, std::to_string(ms));
 	}
 
 	bool AppSettings::GetSearchRespectGitIgnore() const

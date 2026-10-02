@@ -35,5 +35,6 @@ namespace Graphite {
 		// per frame. Empty when no drag is in progress.
 		std::optional<float> m_PendingFontSize;
 		std::optional<int> m_PendingIndentWidth;
+		std::optional<int> m_PendingHoverDelay;
 	};
 }

@@ -82,6 +82,17 @@ namespace Graphite {
 		bool GetScrollbarChangeMarkers() const;
 		void SetScrollbarChangeMarkers(bool show);
 
+		bool GetHoverInfo() const;
+		void SetHoverInfo(bool show);
+
+		// The definition-preview mode as the word it is stored as; EditorSettings owns what the
+		// words mean.
+		std::string GetHoverPreview() const;
+		void SetHoverPreview(std::string_view mode);
+
+		int GetHoverDelayMs() const;
+		void SetHoverDelayMs(int ms);
+
 		bool GetSearchRespectGitIgnore() const;
 		void SetSearchRespectGitIgnore(bool respect);
 
