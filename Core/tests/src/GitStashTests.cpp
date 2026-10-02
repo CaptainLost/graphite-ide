@@ -286,7 +286,7 @@ TEST_CASE("Applying a stash that conflicts with the branch says so, and keeps th
 	CHECK(status.GetValue().Entries[0].IsConflicted);
 }
 
-TEST_CASE("A log walked from a stash lists the stash on top of the history it was made on")
+TEST_CASE("A log asked for a stash lists that stash alone, naming the commit it was made on")
 {
 	GitFixture fixture;
 	Prepare(fixture);
@@ -297,21 +297,21 @@ TEST_CASE("A log walked from a stash lists the stash on top of the history it wa
 	REQUIRE(repository.StashSave("with untracked", true).HasValue());
 
 	const Core::Oid stash = repository.QueryStashes().GetValue()[0].Id;
+	const Core::Oid head = repository.QueryLog({}).GetValue().Commits[0].Id;
 
 	auto page = repository.QueryLog(Core::LogRequest{.Stash = stash});
 	REQUIRE(page.HasValue());
 
-	// The stash and the one commit it was made on: neither the index commit nor the
-	// untracked one git keeps beside it.
+	// Not the history it was made on, which is its branch's, and not the index and
+	// untracked commits git keeps beside it.
 	const std::vector<Core::CommitSummary>& commits = page.GetValue().Commits;
-	REQUIRE(commits.size() == 2);
+	REQUIRE(commits.size() == 1);
 	CHECK(commits[0].Id == stash);
-	CHECK(commits[1].Summary == "one");
 
-	// Its first parent alone, so the row draws as a commit and not as a merge.
 	REQUIRE(commits[0].Parents.size() == 1);
-	CHECK(commits[0].Parents[0] == commits[1].Id);
+	CHECK(commits[0].Parents[0] == head);
 
+	CHECK(page.GetValue().Complete);
 	CHECK_FALSE(page.GetValue().UpstreamKnown);
 }
 

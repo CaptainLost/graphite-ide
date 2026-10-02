@@ -161,8 +161,8 @@ namespace Graphite {
 		void RenderStashes();
 		void RenderStashMenu(const Core::StashEntry& stash);
 
-		// A stash is picked the way a branch is: the history shows it, as a commit on top of
-		// the one it was made on, and nothing else changes until a row there is clicked.
+		// A stash is picked the way a branch is: the history shows it - alone, since it
+		// belongs to no branch - and nothing else changes until its row there is clicked.
 		// Picking a branch lets go of it.
 		void SelectStash(const Core::Oid& stash);
 		void DeselectStash();

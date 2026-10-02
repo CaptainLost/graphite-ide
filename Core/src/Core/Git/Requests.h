@@ -25,12 +25,12 @@ namespace Core {
 		// Empty means HEAD. Otherwise a full name such as "refs/heads/main".
 		std::optional<std::string> Ref;
 
-		// Walks from this stash instead of Ref: the stash's own commit, then the history it
-		// was made on. Git keeps a stash as a merge of the commit it was made on with one
-		// commit holding the index and, for a stash that took untracked files, another
-		// holding those. Neither is anything the reader made, so both are left out, and the
-		// stash's row names its first parent alone - a row with nothing drawn beside it.
-		// Nothing on such a page is measured against an upstream.
+		// This stash alone, in place of a walk: a stash belongs to no branch, and the history
+		// it was made on is that branch's to show. Git keeps a stash as a merge of the commit
+		// it was made on with one commit holding the index and, for a stash that took
+		// untracked files, another holding those. Neither is anything the reader made, so
+		// the row names its first parent alone. Filter applies; File, Lines and the walk
+		// bounds have nothing to narrow, and nothing is measured against an upstream.
 		std::optional<Oid> Stash;
 
 		// Relative to the working directory. Without it, the whole tree.
