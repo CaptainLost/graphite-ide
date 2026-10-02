@@ -13,6 +13,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
 
@@ -368,12 +369,8 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		char buffer[256] = {};
-		m_Filter.copy(buffer, sizeof(buffer) - 1);
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
-
-		if (ImGui::InputTextWithHint("##sessionFilter", "Filter by title", buffer, sizeof(buffer)))
-			m_Filter = buffer;
+		Core::InputTextWithHint("##sessionFilter", "Filter by title", m_Filter);
 
 		ImGui::SameLine();
 

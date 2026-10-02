@@ -4,6 +4,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Fs/FileSystem.h"
+#include "Core/ImGui/TextInput.h"
 
 #include <imgui.h>
 
@@ -30,13 +31,8 @@ namespace Graphite {
 			m_PendingBinary = Core::ToUtf8(m_Settings.GetBinary());
 		}
 
-		char buffer[1024] = {};
-		m_PendingBinary.copy(buffer, sizeof(buffer) - 1);
-
 		ImGui::SetNextItemWidth(-1.0f);
-
-		if (ImGui::InputTextWithHint("##claudeBinary", "claude.exe from PATH", buffer, sizeof(buffer)))
-			m_PendingBinary = buffer;
+		Core::InputTextWithHint("##claudeBinary", "claude.exe from PATH", m_PendingBinary);
 
 		m_EditingBinary = ImGui::IsItemActive();
 
@@ -119,12 +115,8 @@ namespace Graphite {
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
 
-		char buffer[128] = {};
-		m_NewModel.copy(buffer, sizeof(buffer) - 1);
 		ImGui::SetNextItemWidth(-1.0f);
-
-		if (ImGui::InputTextWithHint("##model", "model id, e.g. claude-opus-5", buffer, sizeof(buffer)))
-			m_NewModel = buffer;
+		Core::InputTextWithHint("##model", "model id, e.g. claude-opus-5", m_NewModel);
 
 		double* fields[] = {&m_NewPrice.Input, &m_NewPrice.Output, &m_NewPrice.CacheWrite5m,
 							&m_NewPrice.CacheWrite1h, &m_NewPrice.CacheRead};

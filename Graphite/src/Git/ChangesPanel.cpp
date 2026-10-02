@@ -13,6 +13,7 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/TextInput.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -29,27 +30,6 @@
 namespace Graphite {
 
 	namespace {
-
-		// imgui_stdlib is not part of this build, and every other InputText in this codebase
-		// binds a fixed char buffer rather than a std::string. The commit message has no
-		// natural cap the way a rename field does, so it is bound to m_Message directly
-		// through the same growable-buffer callback imgui_stdlib itself uses.
-		int ResizeMessageCallback(ImGuiInputTextCallbackData* data)
-		{
-			if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
-			{
-				auto* message = static_cast<std::string*>(data->UserData);
-
-				// Catches a future second call site binding this callback to the wrong
-				// string - the same assertion imgui_stdlib itself carries here.
-				IM_ASSERT(data->Buf == message->data());
-
-				message->resize(static_cast<std::size_t>(data->BufTextLen));
-				data->Buf = message->data();
-			}
-
-			return 0;
-		}
 
 		// The gap the panel's rows keep from either edge. Two frame paddings: one is what a
 		// button already holds inside itself, and text set that close to the edge still reads
@@ -1086,10 +1066,7 @@ namespace Graphite {
 
 		const ImVec2 messageStart = ImGui::GetCursorScreenPos();
 
-		ImGui::InputTextMultiline("##commitMessage", m_Message.data(), m_Message.size() + 1,
-								  ImVec2(width, MessageBoxHeight()),
-								  ImGuiInputTextFlags_CallbackResize, ResizeMessageCallback,
-								  &m_Message);
+		Core::InputTextMultiline("##commitMessage", m_Message, ImVec2(width, MessageBoxHeight()));
 
 		// InputTextMultiline has no hint of its own - InputTextWithHint is single-line only -
 		// so an empty box is told what it is for by hand, drawn where the first character
@@ -1463,9 +1440,7 @@ namespace Graphite {
 		}
 
 		ImGui::SetNextItemWidth(-FLT_MIN);
-		ImGui::InputTextWithHint("##stash-message", "Message (optional)", m_StashMessage.data(),
-								 m_StashMessage.size() + 1, ImGuiInputTextFlags_CallbackResize,
-								 ResizeMessageCallback, &m_StashMessage);
+		Core::InputTextWithHint("##stash-message", "Message (optional)", m_StashMessage);
 
 		DialogLayout::Gap();
 		ImGui::Checkbox("Include untracked files", &m_StashIncludeUntracked);
