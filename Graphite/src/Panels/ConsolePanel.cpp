@@ -28,6 +28,9 @@ namespace Graphite {
 				return ImVec4(0.95f, 0.75f, 0.30f, 1.0f);
 			case Core::LogLevel::Error:
 				return ImVec4(0.94f, 0.42f, 0.42f, 1.0f);
+			case Core::LogLevel::Critical:
+				// Louder than Error, never calmer: it fell through to white until this case existed.
+				return ImVec4(1.0f, 0.25f, 0.55f, 1.0f);
 			}
 
 			return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
