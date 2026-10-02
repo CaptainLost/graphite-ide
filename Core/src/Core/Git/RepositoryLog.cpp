@@ -244,9 +244,41 @@ namespace Core {
 		// branches interleave the way a reader expects.
 		git_revwalk_sorting(walk.get(), GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
 
-		const int pushed = request.Ref.has_value()
-							   ? git_revwalk_push_ref(walk.get(), request.Ref->c_str())
-							   : git_revwalk_push_head(walk.get());
+		// The commits git keeps a stash's index and untracked files in, which the walk passes
+		// over - see LogRequest::Stash.
+		std::unordered_set<Oid> stashHelpers;
+
+		if (request.Stash.has_value())
+		{
+			git_oid raw = ToGitOid(*request.Stash);
+
+			CommitHandle stash;
+
+			if (git_commit_lookup(Out(stash), m_Handle, &raw) != 0)
+			{
+				const std::string message = LastLibgit2Message();
+				return Error{ErrorCode::NotFound,
+							 std::format("no such stash {}: {}", request.Stash->ToHex(), message)};
+			}
+
+			for (unsigned int parent = 1; parent < git_commit_parentcount(stash.get()); ++parent)
+			{
+				stashHelpers.insert(ToOid(*git_commit_parent_id(stash.get(), parent)));
+			}
+		}
+
+		int pushed = 0;
+
+		if (request.Stash.has_value())
+		{
+			const git_oid raw = ToGitOid(*request.Stash);
+			pushed = git_revwalk_push(walk.get(), &raw);
+		}
+		else
+		{
+			pushed = request.Ref.has_value() ? git_revwalk_push_ref(walk.get(), request.Ref->c_str())
+											 : git_revwalk_push_head(walk.get());
+		}
 
 		if (pushed != 0)
 		{
@@ -254,6 +286,12 @@ namespace Core {
 			// panel listing it and this call. Neither is worth a failure the user has to
 			// read; both mean "there is nothing to show".
 			const std::string message = LastLibgit2Message();
+
+			if (request.Stash.has_value())
+			{
+				return Error{ErrorCode::NotFound,
+							 std::format("cannot walk from stash {}: {}", request.Stash->ToHex(), message)};
+			}
 
 			if (request.Ref.has_value())
 			{
@@ -268,7 +306,10 @@ namespace Core {
 		// Measured before the walk and against the ref itself, not against the page: the
 		// answer is a property of the branch, so a filtered page still marks the rows it
 		// does show correctly.
-		UnpushedSet unpushed = CollectUnpushed(m_Handle, request.Ref, request.MaxWalk);
+		//
+		// A stash is on no branch, so a page walked from one has nothing to measure.
+		UnpushedSet unpushed =
+			request.Stash.has_value() ? UnpushedSet{} : CollectUnpushed(m_Handle, request.Ref, request.MaxWalk);
 
 		std::vector<CommitSummary> commits;
 		git_oid id{};
@@ -317,6 +358,11 @@ namespace Core {
 
 			++walked;
 
+			if (stashHelpers.contains(ToOid(id)))
+			{
+				continue;
+			}
+
 			CommitHandle commit;
 
 			if (git_commit_lookup(Out(commit), m_Handle, &id) != 0)
@@ -327,6 +373,11 @@ namespace Core {
 			}
 
 			CommitSummary summary = ToSummary(commit.get());
+
+			if (request.Stash.has_value() && summary.Id == *request.Stash && summary.Parents.size() > 1)
+			{
+				summary.Parents.resize(1);
+			}
 
 			if (!tracked.has_value())
 			{

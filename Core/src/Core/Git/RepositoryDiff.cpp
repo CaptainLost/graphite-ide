@@ -227,6 +227,8 @@ namespace Core {
 		// Declared before the diff, so the diff is freed before the trees it was made from.
 		TreeHandle left;
 		TreeHandle right;
+		TreeHandle untrackedTree;
+		DiffHandle untracked;
 		DiffHandle diff;
 		int created = -1;
 
@@ -254,6 +256,7 @@ namespace Core {
 			}
 
 			case DiffTarget::CommitToParent:
+			case DiffTarget::StashToParent:
 			{
 				if (!request.From.has_value())
 				{
@@ -307,6 +310,40 @@ namespace Core {
 				}
 
 				created = git_diff_tree_to_tree(Out(diff), m_Handle, left.get(), right.get(), &options);
+
+				// A stash made to include untracked files keeps them in a third parent, a
+				// commit of those files alone - so its whole tree is what was added.
+				if (created == 0 && request.Target == DiffTarget::StashToParent &&
+					git_commit_parentcount(commit.get()) > 2)
+				{
+					CommitHandle third;
+
+					if (git_commit_parent(Out(third), commit.get(), 2) != 0)
+					{
+						const std::string message = LastLibgit2Message();
+						return Error{ErrorCode::IoFailure,
+									 std::format("cannot read the untracked files of stash {}: {}",
+												 request.From->ToHex(), message)};
+					}
+
+					Result<TreeHandle> thirdTree = treeOfCommit(third.get());
+
+					if (!thirdTree.HasValue())
+					{
+						return thirdTree.GetError();
+					}
+
+					untrackedTree = std::move(thirdTree).GetValue();
+
+					created = git_diff_tree_to_tree(Out(untracked), m_Handle, nullptr, untrackedTree.get(),
+													&options);
+
+					if (created == 0)
+					{
+						created = git_diff_merge(diff.get(), untracked.get());
+					}
+				}
+
 				break;
 			}
 

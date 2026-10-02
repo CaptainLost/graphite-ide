@@ -93,9 +93,10 @@ namespace {
 			return Log;
 		}
 
-		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override
+		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override
 		{
 			++DiffCalls;
+			DiffTargets.push_back(request.Target);
 
 			if (FailDiff)
 			{
@@ -287,6 +288,7 @@ namespace {
 		}
 
 		std::vector<Core::StashEntry> Stashes;
+		std::vector<Core::DiffTarget> DiffTargets;
 		int StashCalls = 0;
 		Core::CheckoutPlan Plan;
 		Core::CheckoutOutcome CheckoutResult;
@@ -2102,4 +2104,32 @@ TEST_CASE("Stashes are refreshed with the branches and forgotten on close")
 
 	model.Clear();
 	CHECK(model.GetStashes() == nullptr);
+}
+
+TEST_CASE("A stash's diff is asked for as a stash's, so its untracked files are in it")
+{
+	FakePort port;
+	port.Diff = DiffNaming("a.txt");
+
+	Core::StashEntry entry;
+	entry.Message = "On main: wip";
+	entry.Id = IdOf(7);
+	port.Stashes = {entry};
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Core::EventBus events;
+	model.SubscribeTo(events);
+	events.Publish(Graphite::RepositoryChangedEvent{});
+	model.OnUpdate(Core::Timestep{1.0f});
+
+	REQUIRE(model.GetStashes() != nullptr);
+
+	model.RequestDiffFor(IdOf(7));
+	model.RequestDiffFor(IdOf(1));
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	CHECK(port.DiffTargets ==
+		  std::vector<Core::DiffTarget>{Core::DiffTarget::StashToParent, Core::DiffTarget::CommitToParent});
 }

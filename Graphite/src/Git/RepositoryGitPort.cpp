@@ -254,6 +254,33 @@ namespace Graphite {
 		}
 
 		SideText newText = std::move(newSide).GetValue();
+
+		// A file a stash took untracked is in none of the stash's own trees but in the commit
+		// it keeps those files in. A path that names a file and is absent from the commit can
+		// only be that: in any other commit's diff, an absent new side is a delete, which has
+		// no new path.
+		if (!newText.Present && !newPath.empty())
+		{
+			auto untracked = repository->UntrackedOfStash(commit);
+
+			if (!untracked.HasValue())
+			{
+				return untracked.GetError();
+			}
+
+			if (untracked.GetValue().has_value())
+			{
+				auto stashed = ReadSideText(repository->ReadBlob(newPath, *untracked.GetValue()));
+
+				if (!stashed.HasValue())
+				{
+					return stashed.GetError();
+				}
+
+				newText = std::move(stashed).GetValue();
+			}
+		}
+
 		texts.HasNew = newText.Present;
 		texts.New = std::move(newText.Text);
 

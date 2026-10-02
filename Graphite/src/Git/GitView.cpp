@@ -361,7 +361,6 @@ namespace Graphite {
 			// asking for it shows an error instead of this folder's history.
 			m_SelectedRef.reset();
 			m_SelectedStash.reset();
-			m_SelectedStashFile.reset();
 			m_LastSeenBranches.reset();
 			m_PendingRename.reset();
 
@@ -427,11 +426,10 @@ namespace Graphite {
 			const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
 			const std::function<void()> drawDiff = [this, &palette] { RenderPreview(palette); };
 
-			// Any selection is worth opening the pane for: a commit with no file picked
-			// still has a message to read, which is the whole point of selecting it, and a
-			// stash has its files to list.
+			// Either selection is worth opening the pane for: a commit with no file picked
+			// still has a message to read, which is the whole point of selecting it.
 			const bool hasSelection = m_Commits.GetSelectedFile().has_value() ||
-									  m_Commits.GetSelectedCommit().has_value() || m_SelectedStash.has_value();
+									  m_Commits.GetSelectedCommit().has_value();
 
 			DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
 											   .ResultsHeight = m_ListHeight,
@@ -712,7 +710,7 @@ namespace Graphite {
 
 	void GitView::RequestLog(std::optional<std::size_t> maxCount)
 	{
-		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount));
+		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount, m_SelectedStash));
 
 		// Latched here rather than at each call site, so the first-page latch cannot fire a
 		// second query over the top of one this just sent. Accept does the same job for the
@@ -920,22 +918,6 @@ namespace Graphite {
 
 	void GitView::RenderPreview(const GitPalette& palette)
 	{
-		const bool commitSelected =
-			m_Commits.GetSelectedFile().has_value() || m_Commits.GetSelectedCommit().has_value();
-
-		// Selecting a stash clears the commit list's selections, so one standing beside it
-		// was made since - the newer question, and the one the pane answers.
-		if (commitSelected && m_SelectedStash.has_value())
-		{
-			DeselectStash();
-		}
-
-		if (m_SelectedStash.has_value())
-		{
-			RenderStashPreview(palette);
-			return;
-		}
-
 		if (m_Commits.GetSelectedFile().has_value())
 		{
 			RenderDiff(palette);
@@ -1005,29 +987,23 @@ namespace Graphite {
 			return;
 		}
 
-		RenderFileDiff(*selected, [this] { m_Commits.ClearSelection(); }, palette);
-	}
-
-	void GitView::RenderFileDiff(const FileSelection& selected, std::function<void()> onClose,
-								 const GitPalette& palette)
-	{
 		// Reassigned every frame rather than bound once in the constructor: the selection it
 		// captures changes with whichever file is selected now, and m_Diff is the one bottom
 		// pane shared across every selection. Set as soon as the selection is known, ahead of
 		// the two returns below, so OnOpenAsTab is never left holding a previous frame's
 		// selection while this one's diff is still loading or excludes the file.
 		const OpenDiff selection{
-			.Commit = selected.Commit, .Target = Core::DiffTarget::CommitToParent, .Path = selected.Path};
+			.Commit = selected->Commit, .Target = Core::DiffTarget::CommitToParent, .Path = selected->Path};
 
 		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
 
-		// Cleared alongside OnOpenAsTab when nothing is selected, and reassigned here every
-		// frame for the same reason: this pane is shared across every selection.
-		m_Diff.OnClose = std::move(onClose);
+		// Cleared alongside OnOpenAsTab above when nothing is selected, and reassigned here
+		// every frame for the same reason: this pane is shared across every selection.
+		m_Diff.OnClose = [this] { m_Commits.ClearSelection(); };
 
 		m_Diff.OnOpenFile = m_DiffWindows.OpenFileIn(m_Model);
 
-		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected.Commit);
+		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
 		if (!diff)
 		{
@@ -1035,7 +1011,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<std::size_t> index = IndexOfFile(*diff, selected.Path);
+		const std::optional<std::size_t> index = IndexOfFile(*diff, selected->Path);
 
 		if (!index.has_value())
 		{
@@ -1048,7 +1024,7 @@ namespace Graphite {
 		// Every rule about which path keys the texts, when the tokens are still valid and when
 		// a failed entry is forgiven lives in Update, shared with the detached tabs - the same
 		// steps written out twice were wrong the same way in both copies.
-		m_Texts.Update(m_Model, selected.Commit, file);
+		m_Texts.Update(m_Model, selected->Commit, file);
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
 		m_Diff.Render(file, palette, syntax, m_Texts.Texts, m_Texts.Tokens);

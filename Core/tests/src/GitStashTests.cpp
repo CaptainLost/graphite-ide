@@ -1,13 +1,17 @@
 #include <doctest/doctest.h>
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/Git/Repository.h"
 
 #include "GitFixture.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -280,4 +284,111 @@ TEST_CASE("Applying a stash that conflicts with the branch says so, and keeps th
 	REQUIRE(status.HasValue());
 	REQUIRE(status.GetValue().Entries.size() == 1);
 	CHECK(status.GetValue().Entries[0].IsConflicted);
+}
+
+TEST_CASE("A log walked from a stash lists the stash on top of the history it was made on")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Write("a.txt", "changed\n");
+	fixture.Write("new.txt", "untracked\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	REQUIRE(repository.StashSave("with untracked", true).HasValue());
+
+	const Core::Oid stash = repository.QueryStashes().GetValue()[0].Id;
+
+	auto page = repository.QueryLog(Core::LogRequest{.Stash = stash});
+	REQUIRE(page.HasValue());
+
+	// The stash and the one commit it was made on: neither the index commit nor the
+	// untracked one git keeps beside it.
+	const std::vector<Core::CommitSummary>& commits = page.GetValue().Commits;
+	REQUIRE(commits.size() == 2);
+	CHECK(commits[0].Id == stash);
+	CHECK(commits[1].Summary == "one");
+
+	// Its first parent alone, so the row draws as a commit and not as a merge.
+	REQUIRE(commits[0].Parents.size() == 1);
+	CHECK(commits[0].Parents[0] == commits[1].Id);
+
+	CHECK_FALSE(page.GetValue().UpstreamKnown);
+}
+
+TEST_CASE("A stash's diff holds its untracked files as added, which its commit's own does not")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Write("a.txt", "changed\n");
+	fixture.Write("new.txt", "untracked\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	REQUIRE(repository.StashSave("with untracked", true).HasValue());
+
+	const Core::Oid stash = repository.QueryStashes().GetValue()[0].Id;
+
+	const auto paths = [&](Core::DiffTarget target) {
+		auto diff = repository.QueryDiff(Core::DiffRequest{.Target = target, .From = stash});
+		REQUIRE(diff.HasValue());
+
+		std::vector<std::pair<std::string, Core::FileChange>> found;
+
+		for (const Core::FileDiff& file : diff.GetValue().Files)
+		{
+			found.emplace_back(Core::ToGenericUtf8(file.NewPath), file.Change);
+		}
+
+		std::ranges::sort(found);
+		return found;
+	};
+
+	using Changes = std::vector<std::pair<std::string, Core::FileChange>>;
+
+	CHECK(paths(Core::DiffTarget::StashToParent) ==
+		  Changes{{"a.txt", Core::FileChange::Modified}, {"new.txt", Core::FileChange::Added}});
+
+	CHECK(paths(Core::DiffTarget::CommitToParent) == Changes{{"a.txt", Core::FileChange::Modified}});
+}
+
+TEST_CASE("A stash made without untracked files diffs the same either way")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Write("a.txt", "changed\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	REQUIRE(repository.StashSave("tracked only", false).HasValue());
+
+	const Core::Oid stash = repository.QueryStashes().GetValue()[0].Id;
+
+	auto diff =
+		repository.QueryDiff(Core::DiffRequest{.Target = Core::DiffTarget::StashToParent, .From = stash});
+	REQUIRE(diff.HasValue());
+	REQUIRE(diff.GetValue().Files.size() == 1);
+	CHECK(diff.GetValue().Files[0].Change == Core::FileChange::Modified);
+}
+
+TEST_CASE("A stash that took untracked files names the commit it keeps them in")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Write("new.txt", "untracked\n");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	REQUIRE(repository.StashSave("untracked only", true).HasValue());
+
+	const Core::Oid stash = repository.QueryStashes().GetValue()[0].Id;
+
+	auto untracked = repository.UntrackedOfStash(stash);
+	REQUIRE(untracked.HasValue());
+	REQUIRE(untracked.GetValue().has_value());
+
+	auto text = repository.ReadBlob("new.txt", *untracked.GetValue());
+	REQUIRE(text.HasValue());
+	CHECK(text.GetValue().find("untracked") != std::string::npos);
+
+	// A plain commit has no such parent.
+	auto none = repository.UntrackedOfStash(repository.QueryLog({}).GetValue().Commits[0].Id);
+	REQUIRE(none.HasValue());
+	CHECK_FALSE(none.GetValue().has_value());
 }

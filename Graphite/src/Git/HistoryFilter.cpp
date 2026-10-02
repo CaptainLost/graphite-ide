@@ -10,10 +10,12 @@ namespace Graphite {
 
 	Core::LogRequest BuildLogRequest(const std::optional<std::string>& ref,
 									 const HistoryFilter& filter,
-									 std::optional<std::size_t> maxCount)
+									 std::optional<std::size_t> maxCount,
+									 const std::optional<Core::Oid>& stash)
 	{
 		Core::LogRequest request;
 		request.Ref = ref;
+		request.Stash = stash;
 		request.Filter.Text = filter.Text;
 
 		if (const std::string path = Core::Trimmed(filter.Path); !path.empty())

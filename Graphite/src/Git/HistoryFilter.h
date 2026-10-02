@@ -86,7 +86,8 @@ namespace Graphite {
 	// passes one.
 	Core::LogRequest BuildLogRequest(const std::optional<std::string>& ref,
 									 const HistoryFilter& filter,
-									 std::optional<std::size_t> maxCount);
+									 std::optional<std::size_t> maxCount,
+									 const std::optional<Core::Oid>& stash = std::nullopt);
 
 	// Substring, case ignored, surrounding whitespace not part of the text. Matched
 	// against the full name, so "origin" narrows to one remote's branches.

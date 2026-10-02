@@ -366,8 +366,16 @@ namespace Graphite {
 			return;
 		}
 
+		// A stash is a commit too, but one whose untracked files sit in a parent of their
+		// own, which only the stash's own target reads. The list the panel shows is the one
+		// asked about: a stash that is not in it was dropped, and is asked for as the commit
+		// it still is.
+		const std::shared_ptr<const std::vector<Core::StashEntry>> stashes = m_Stashes.Get();
+		const bool stash =
+			stashes && std::ranges::find(*stashes, commit, &Core::StashEntry::Id) != stashes->end();
+
 		Core::DiffRequest request;
-		request.Target = Core::DiffTarget::CommitToParent;
+		request.Target = stash ? Core::DiffTarget::StashToParent : Core::DiffTarget::CommitToParent;
 		request.From = commit;
 
 		m_Submit([this, commit, generation = *generation, request]() {

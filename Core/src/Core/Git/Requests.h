@@ -25,6 +25,14 @@ namespace Core {
 		// Empty means HEAD. Otherwise a full name such as "refs/heads/main".
 		std::optional<std::string> Ref;
 
+		// Walks from this stash instead of Ref: the stash's own commit, then the history it
+		// was made on. Git keeps a stash as a merge of the commit it was made on with one
+		// commit holding the index and, for a stash that took untracked files, another
+		// holding those. Neither is anything the reader made, so both are left out, and the
+		// stash's row names its first parent alone - a row with nothing drawn beside it.
+		// Nothing on such a page is measured against an upstream.
+		std::optional<Oid> Stash;
+
 		// Relative to the working directory. Without it, the whole tree.
 		std::optional<std::filesystem::path> File;
 
@@ -65,6 +73,12 @@ namespace Core {
 		// One commit against its first parent. A root commit diffs against nothing, and
 		// every file comes out as added.
 		CommitToParent,
+
+		// A stash against the commit it was made on: what CommitToParent gives for its own
+		// commit, which is the tracked files, together with the untracked files a stash
+		// made to include them keeps in its third parent, each of them added. Reads From
+		// as the stash.
+		StashToParent,
 
 		// Any two revisions, in either direction.
 		RevisionToRevision

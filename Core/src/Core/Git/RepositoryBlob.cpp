@@ -133,6 +133,30 @@ namespace Core {
 		return std::optional<Oid>{parentId};
 	}
 
+	Result<std::optional<Oid>> Repository::UntrackedOfStash(const Oid& stash) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		git_oid raw = ToGitOid(stash);
+
+		CommitHandle handle;
+		if (git_commit_lookup(Out(handle), m_Handle, &raw) != 0)
+		{
+			return Error{ErrorCode::NotFound,
+						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
+		}
+
+		if (git_commit_parentcount(handle.get()) < 3)
+		{
+			return std::optional<Oid>{};
+		}
+
+		return std::optional<Oid>{ToOid(*git_commit_parent_id(handle.get(), 2))};
+	}
+
 	Result<std::string> Repository::ReadIndexBlob(const std::filesystem::path& path) const
 	{
 		if (m_Handle == nullptr)

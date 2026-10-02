@@ -105,11 +105,12 @@ namespace Graphite {
 			return {.Old = TextSide::Head, .New = TextSide::WorkingTree};
 
 		case Core::DiffTarget::CommitToParent:
+		case Core::DiffTarget::StashToParent:
 		case Core::DiffTarget::RevisionToRevision:
 			break;
 		}
 
-		// Both targets above name commits on both sides, which ReadFileTexts already serves.
+		// The targets above name commits on both sides, which ReadFileTexts already serves.
 		return {};
 	}
 

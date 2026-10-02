@@ -32,6 +32,7 @@ namespace {
 		case Core::DiffTarget::IndexToHead: return "staged";
 		case Core::DiffTarget::WorkTreeToHead: return "working";
 		case Core::DiffTarget::CommitToParent: return "commit";
+		case Core::DiffTarget::StashToParent: return "stash";
 		case Core::DiffTarget::RevisionToRevision: return "range";
 		}
 

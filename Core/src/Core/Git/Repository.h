@@ -119,6 +119,12 @@ namespace Core {
 		// file that did not exist yet.
 		Result<std::optional<Oid>> FirstParentOf(const Oid& commit) const;
 
+		// The commit a stash keeps its untracked files in: its third parent, which only a
+		// stash made to include them has. Empty for any other stash, and for a commit with
+		// fewer than three parents. The files a stash's diff lists as added from there are
+		// in no tree of the stash's own, so their text is read from this one.
+		Result<std::optional<Oid>> UntrackedOfStash(const Oid& stash) const;
+
 		// Adds each path to the index as it stands on disk, which is what covers all three
 		// cases git otherwise names separately: a new file, an edited one, and a deleted
 		// one. Splitting them would push "this file is deleted, so a different call

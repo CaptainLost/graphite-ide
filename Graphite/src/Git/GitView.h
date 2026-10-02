@@ -26,7 +26,6 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -162,13 +161,9 @@ namespace Graphite {
 		void RenderStashes();
 		void RenderStashMenu(const Core::StashEntry& stash);
 
-		// The pane below the history while a stash is selected: what it is, the files it
-		// holds, and the diff of whichever of them is picked.
-		void RenderStashPreview(const GitPalette& palette);
-
-		// A stash and a commit are never selected together, since the pane below shows one of
-		// them. Selecting a stash clears the commit list's selections; a selection made there
-		// afterwards is what lets go of the stash, in RenderPreview.
+		// A stash is picked the way a branch is: the history shows it, as a commit on top of
+		// the one it was made on, and nothing else changes until a row there is clicked.
+		// Picking a branch lets go of it.
 		void SelectStash(const Core::Oid& stash);
 		void DeselectStash();
 
@@ -225,12 +220,6 @@ namespace Graphite {
 		void RenderPreview(const GitPalette& palette);
 
 		void RenderDiff(const GitPalette& palette);
-
-		// One file of one commit's diff in the shared bottom pane - a commit from the history
-		// or a stash, which is a commit too. `onClose` is what the pane's close does, since
-		// the two are dismissed back to different places.
-		void RenderFileDiff(const FileSelection& selected, std::function<void()> onClose,
-							const GitPalette& palette);
 
 		// The reader's own offset from UTC, for the absolute timestamps this panel shows.
 		// Resolved on every call rather than cached: it changes at a daylight-saving
@@ -292,10 +281,9 @@ namespace Graphite {
 		// gesture about what is on screen now, and every section opens again on a restart.
 		std::array<bool, static_cast<std::size_t>(RefSection::Count)> m_CollapsedRefSections{};
 
-		// The stash the pane below is describing, and the file of it whose diff is open. By
-		// id, as the writes are, because a stash's index shifts whenever another is pushed.
+		// The stash the history is walked from, in place of m_SelectedRef. By id, as the
+		// writes are, because a stash's index shifts whenever another is pushed.
 		std::optional<Core::Oid> m_SelectedStash;
-		std::optional<std::filesystem::path> m_SelectedStashFile;
 
 		// The branches snapshot FollowSelectedRef last looked at, and the full names of a
 		// rename of the selected branch sent since: old, then new.
