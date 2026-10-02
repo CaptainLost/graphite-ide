@@ -156,3 +156,23 @@ TEST_CASE("JsonRpc echoes a string id unchanged in a reply and an error reply")
 	CHECK(rpc.Reply(nlohmann::json("abc"), nullptr).find(R"("id":"abc")") != std::string::npos);
 	CHECK(rpc.ErrorReply(nlohmann::json("abc"), -32601, "no").find(R"("id":"abc")") != std::string::npos);
 }
+
+// A document that is not valid UTF-8 opens read-only with its bytes kept as they are, and its
+// text still goes to the server in didOpen. Serialising it must not throw: the throw ended the
+// application from the frame that opened the file.
+TEST_CASE("JsonRpc frames text that is not valid UTF-8 with replacement characters instead of throwing")
+{
+	Graphite::JsonRpc rpc;
+	const nlohmann::json params{{"text", "caf\xe9"}};
+
+	std::string notification;
+	REQUIRE_NOTHROW(notification = rpc.Notification("textDocument/didOpen", params));
+	CHECK(notification.find("caf\xef\xbf\xbd") != std::string::npos);
+
+	std::string request;
+	REQUIRE_NOTHROW(request = rpc.Request("textDocument/hover", params).second);
+	CHECK(request.find("caf\xef\xbf\xbd") != std::string::npos);
+
+	CHECK_NOTHROW(rpc.Reply(nlohmann::json(1), params));
+	CHECK_NOTHROW(rpc.ErrorReply(nlohmann::json(1), -32603, "caf\xe9"));
+}

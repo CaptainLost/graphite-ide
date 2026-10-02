@@ -4,8 +4,13 @@ namespace {
 
 	// Content-Length framing on the way out. MessageStream only reads frames; whatever builds a
 	// payload to send is responsible for wrapping it, and that is every method here.
-	std::string Frame(const std::string& body)
+	//
+	// dump() throws on a string that is not valid UTF-8, and such strings do reach here: a
+	// document whose bytes do not decode opens read-only with those bytes kept, and its text is
+	// still sent in didOpen. `replace` sends U+FFFD in their place instead (ADR 0004).
+	std::string Frame(const nlohmann::json& message)
 	{
+		const std::string body = message.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 		return "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
 	}
 }
@@ -24,7 +29,7 @@ namespace Graphite {
 			{"params", params},
 		};
 
-		return {id, Frame(message.dump())};
+		return {id, Frame(message)};
 	}
 
 	std::string JsonRpc::Notification(std::string_view method, const nlohmann::json& params)
@@ -35,7 +40,7 @@ namespace Graphite {
 			{"params", params},
 		};
 
-		return Frame(message.dump());
+		return Frame(message);
 	}
 
 	std::string JsonRpc::Reply(const nlohmann::json& id, const nlohmann::json& result)
@@ -48,7 +53,7 @@ namespace Graphite {
 			{"result", result},
 		};
 
-		return Frame(message.dump());
+		return Frame(message);
 	}
 
 	std::string JsonRpc::ErrorReply(const nlohmann::json& id, int code, std::string_view message)
@@ -59,7 +64,7 @@ namespace Graphite {
 			{"error", {{"code", code}, {"message", message}}},
 		};
 
-		return Frame(body.dump());
+		return Frame(body);
 	}
 
 	std::string JsonRpc::Cancel(RequestId id)
