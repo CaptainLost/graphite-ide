@@ -27,4 +27,7 @@ namespace Core {
 	// Where an application keeps what belongs to this machine alone - caches, logs
 	// (%LOCALAPPDATA% on Windows).
 	Result<std::filesystem::path> LocalDataDirectory();
+
+	// Where the system's installed fonts live (%WINDIR%\Fonts on Windows).
+	Result<std::filesystem::path> SystemFontsDirectory();
 }

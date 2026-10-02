@@ -129,6 +129,16 @@ namespace Core {
 #endif
 	}
 
+	Result<std::filesystem::path> SystemFontsDirectory()
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		return KnownFolder(FOLDERID_Fonts, "system fonts");
+#else
+		return Error{ErrorCode::Unsupported,
+					 "the system fonts directory is not implemented on this platform"};
+#endif
+	}
+
 	bool IsForeground()
 	{
 #ifdef CORE_PLATFORM_WINDOWS

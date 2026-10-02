@@ -101,6 +101,46 @@ namespace Core {
 			}
 		}
 
+		// Box drawing and Latin are JetBrains Mono's, but the symbols a terminal program draws
+		// its interface with are not: Claude Code alone uses ⏵ ⏺ ⎿ ✻ ✢ ※ ⧉ and more, which
+		// would otherwise show as empty boxes. Segoe UI Symbol has every one of them and ships
+		// with Windows. Merged last, so it is consulted only for what the faces before it lack.
+		//
+		// Its glyphs are proportional, and the terminal draws a run of cells with one AddText
+		// call that advances by each glyph's own width, so a wider symbol would push the rest of
+		// its row off the cells it belongs to. Pinning the advance to the text face's own makes
+		// every fallback glyph exactly one cell wide, centred in it.
+		void MergeSymbolFallback(ImGuiIO& io, ImFont* textFont)
+		{
+			const Result<std::filesystem::path> fonts = SystemFontsDirectory();
+
+			if (!fonts)
+			{
+				CORE_WARN("Cannot locate the system fonts, symbols will show as boxes: {}",
+						  fonts.GetError().Message);
+				return;
+			}
+
+			const float cellAdvance = textFont->GetFontBaked(kBaseFontSize)->GetCharAdvance('0');
+
+			ImFontConfig config;
+			config.MergeMode = true;
+			config.GlyphMinAdvanceX = cellAdvance;
+			config.GlyphMaxAdvanceX = cellAdvance;
+			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
+			// returns nullptr, which crashes a Debug build instead of letting the warning run.
+			config.Flags |= ImFontFlags_NoLoadError;
+
+			const auto path = fonts.GetValue() / "seguisym.ttf";
+
+			if (io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config) ==
+				nullptr)
+			{
+				CORE_WARN("Could not load the symbol font, symbols will show as boxes: {}",
+						  ToUtf8(path));
+			}
+		}
+
 		bool ViewportsEnabled()
 		{
 			return (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0;
@@ -201,6 +241,7 @@ namespace Core {
 
 		g_monoFont = LoadTextFont(io, executableDirectory);
 		MergeIconFont(io, executableDirectory);
+		MergeSymbolFallback(io, g_monoFont);
 
 		ApplyTheme(Theme::DefaultPalette());
 
