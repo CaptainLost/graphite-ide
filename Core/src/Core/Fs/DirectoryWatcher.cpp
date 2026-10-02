@@ -6,6 +6,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
+#include "Core/Base/ScopeExit.h"
 #include "Core/Fs/FileSystem.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -168,16 +169,20 @@ namespace Core {
 
 	void DirectoryWatcher::Run()
 	{
-		struct RunningFlag
-		{
-			std::atomic<bool>& flag;
-			~RunningFlag() { flag.store(false); }
-		} runningFlag{m_Running};
+		const ScopeExit clearRunning{[this] { m_Running.store(false); }};
 
 		// Answered from a destructor so that every way out of this function before the watch
 		// is armed releases Start, including ones added later; only the first answer counts.
+		// Neither copyable nor movable: a copy would answer the promise twice, which throws.
 		struct ArmSignal
 		{
+			explicit ArmSignal(std::promise<Result<void>>& armed) : promise(armed) {}
+
+			ArmSignal(const ArmSignal&) = delete;
+			ArmSignal& operator=(const ArmSignal&) = delete;
+			ArmSignal(ArmSignal&&) = delete;
+			ArmSignal& operator=(ArmSignal&&) = delete;
+
 			std::promise<Result<void>>& promise;
 
 			Result<void> unarmed{Error{ErrorCode::IoFailure,
@@ -195,7 +200,9 @@ namespace Core {
 			}
 
 			~ArmSignal() { Report(std::move(unarmed)); }
-		} armSignal{m_Armed};
+		};
+
+		ArmSignal armSignal{m_Armed};
 
 #ifdef CORE_PLATFORM_WINDOWS
 		// DWORD-aligned as ReadDirectoryChangesW requires; a vector<char> would not be.

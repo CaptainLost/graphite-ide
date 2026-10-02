@@ -1,6 +1,7 @@
 #include "Sessions/LiveTranscript.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/ScopeExit.h"
 #include "Core/Fs/FileSystem.h"
 
 #include "Sessions/SessionSummary.h"
@@ -234,10 +235,7 @@ namespace Graphite {
 		m_Jobs.Submit([inbox = m_Inbox, subagentFiles = m_Subagents, file = m_File]
 		{
 			// However the read ends, what it published last has to be drawn.
-			struct WakeOnExit
-			{
-				~WakeOnExit() { Core::Redraw::Request(); }
-			} wakeOnExit;
+			const Core::ScopeExit wakeOnExit{[] { Core::Redraw::Request(); }};
 
 			while (true)
 			{
