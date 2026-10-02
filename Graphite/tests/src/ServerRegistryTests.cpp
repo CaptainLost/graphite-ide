@@ -3,7 +3,11 @@
 #include "Lang/Server/ServerRegistry.h"
 #include "TempDirectory.h"
 
+#include "Core/Platform/Process.h"
+
+#include <cstdlib>
 #include <fstream>
+#include <optional>
 
 namespace {
 
@@ -93,6 +97,33 @@ TEST_CASE("FindServerBinary prefers a configured path that exists")
 
 	REQUIRE(found);
 	CHECK(found.GetValue() == configured);
+}
+
+// PATH read through the narrow API turns every character outside the ANSI code page into '?',
+// so a server installed under such a directory was never found.
+TEST_CASE("FindServerBinary finds a server in a directory on PATH whose name is outside the ANSI code page")
+{
+	namespace fs = std::filesystem;
+	const fs::path directory = fs::temp_directory_path() / L"graphite-中文-\U0001F600-server";
+	std::error_code status;
+	fs::create_directories(directory, status);
+	REQUIRE_FALSE(status);
+
+	Touch(directory / L"graphite-wide-server-probe.exe");
+
+	const std::optional<fs::path> original = Core::EnvironmentPath(L"PATH");
+	REQUIRE(original.has_value());
+	REQUIRE(_wputenv_s(L"PATH", directory.wstring().c_str()) == 0);
+
+	const auto found = Graphite::FindServerBinary("graphite-wide-server-probe", {});
+
+	// Restore before asserting so a failure cannot leave later tests with a broken PATH.
+	const errno_t restored = _wputenv_s(L"PATH", original->wstring().c_str());
+	fs::remove_all(directory, status);
+
+	CHECK(restored == 0);
+	REQUIRE(found);
+	CHECK(found.GetValue() == directory / L"graphite-wide-server-probe.exe");
 }
 
 TEST_CASE("FindServerBinary reports not found rather than an empty path")
