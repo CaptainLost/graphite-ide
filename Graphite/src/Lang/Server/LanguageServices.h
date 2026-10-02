@@ -199,6 +199,8 @@ namespace Graphite {
 							const FilePosition& where);
 		Ticket AskReferences(const std::filesystem::path& path, LanguageId language,
 							 const FilePosition& where);
+		Ticket AskHover(const std::filesystem::path& path, LanguageId language,
+						const FilePosition& where);
 		Ticket AskSwitchSourceHeader(const std::filesystem::path& path, LanguageId language);
 		Ticket AskSymbols(const std::filesystem::path& path, LanguageId language);
 		Ticket AskSemanticTokens(const std::filesystem::path& path, LanguageId language);
@@ -209,6 +211,8 @@ namespace Graphite {
 			std::vector<Location> Locations;
 			std::vector<Declaration> Declarations;
 			std::vector<SemanticToken> SemanticTokens;
+			// The hover reply's markdown; empty for every other question, and for a hover with nothing to say.
+			std::string Text;
 			bool Failed = false;
 		};
 

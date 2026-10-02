@@ -57,6 +57,11 @@ namespace {
 			return Record("references", path);
 		}
 
+		Ticket AskHover(const std::filesystem::path& path, LanguageId, const FilePosition&) override
+		{
+			return Record("hover", path);
+		}
+
 		Ticket AskSwitchSourceHeader(const std::filesystem::path& path, LanguageId) override
 		{
 			return Record("switch", path);
@@ -151,6 +156,15 @@ namespace {
 		{
 			Switched.push_back(from);
 		}
+
+		void ApplyHover(const HoverQuestion& question, const Answer&) override { Hovers.push_back(question); }
+		void ApplyPreviewDefinition(const HoverQuestion& question, const Answer&) override
+		{
+			Previews.push_back(question);
+		}
+
+		std::vector<HoverQuestion> Hovers;
+		std::vector<HoverQuestion> Previews;
 
 		void ApplySemanticTokens(const std::filesystem::path& path, const Answer&) override
 		{
@@ -547,4 +561,83 @@ TEST_CASE("A switch header/source question starts the server before asking")
 
 	REQUIRE(h.Server.Started.size() == 1);
 	CHECK(h.Server.Started[0] == kSource);
+}
+
+namespace {
+	HoverQuestion HoverAt(std::size_t from)
+	{
+		HoverQuestion question;
+		question.Path = kSource;
+		question.TokenFrom = from;
+		question.TokenTo = from + 3;
+		question.From.Path = kSource;
+		return question;
+	}
+}
+
+TEST_CASE("A hover never cancels a pending F12, and F12 never cancels a hover")
+{
+	Harness h;
+
+	h.Router.AskDefinition(QuestionAt(5));
+	const Ticket f12 = h.Server.LastOf("definition");
+
+	h.Router.AskHover(HoverAt(1));
+	const Ticket hover = h.Server.LastOf("hover");
+
+	h.Router.AskPreviewDefinition(HoverAt(1));
+	const Ticket preview = h.Server.LastOf("definition");
+
+	CHECK_FALSE(h.Server.WasCancelled(f12));
+	CHECK_FALSE(h.Server.WasCancelled(hover));
+
+	h.Server.Reply(f12);
+	h.Server.Reply(hover);
+	h.Server.Reply(preview);
+	h.Router.Collect(h.Target);
+
+	CHECK(h.Target.Definitions.size() == 1);
+	CHECK(h.Target.Hovers.size() == 1);
+	CHECK(h.Target.Previews.size() == 1);
+}
+
+TEST_CASE("A second hover supersedes the first")
+{
+	Harness h;
+
+	h.Router.AskHover(HoverAt(1));
+	const Ticket first = h.Server.LastOf("hover");
+	h.Router.AskHover(HoverAt(9));
+	const Ticket second = h.Server.LastOf("hover");
+
+	CHECK(h.Server.WasCancelled(first));
+
+	h.Server.Reply(first);
+	h.Server.Reply(second);
+	h.Router.Collect(h.Target);
+
+	REQUIRE(h.Target.Hovers.size() == 1);
+	CHECK(h.Target.Hovers[0].TokenFrom == 9);
+}
+
+TEST_CASE("CancelHover cancels both hover slots and drops their answers")
+{
+	Harness h;
+
+	h.Router.AskHover(HoverAt(1));
+	const Ticket hover = h.Server.LastOf("hover");
+	h.Router.AskPreviewDefinition(HoverAt(1));
+	const Ticket preview = h.Server.LastOf("definition");
+
+	h.Router.CancelHover();
+
+	CHECK(h.Server.WasCancelled(hover));
+	CHECK(h.Server.WasCancelled(preview));
+
+	h.Server.Reply(hover);
+	h.Server.Reply(preview);
+	h.Router.Collect(h.Target);
+
+	CHECK(h.Target.Hovers.empty());
+	CHECK(h.Target.Previews.empty());
 }

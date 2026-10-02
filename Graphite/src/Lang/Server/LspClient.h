@@ -64,6 +64,9 @@ namespace Graphite {
 		RequestId AskDefinition(const FilePosition& where);
 		RequestId AskReferences(const FilePosition& where);
 
+		// Answered in Answer::Text, as the markdown clangd sends; empty when it has nothing to say.
+		RequestId AskHover(const FilePosition& where);
+
 		// clangd's extension; answered with the counterpart file as a single location, or with
 		// no location when there is none.
 		RequestId AskSwitchSourceHeader(const std::filesystem::path& path);
@@ -80,6 +83,8 @@ namespace Graphite {
 			std::vector<Location> Locations;
 			std::vector<Declaration> Declarations;
 			std::vector<SemanticToken> SemanticTokens;
+			// The hover reply's markdown; empty for every other question, and for a hover with nothing to say.
+			std::string Text;
 			bool Failed = false;
 		};
 
@@ -150,7 +155,8 @@ namespace Graphite {
 			References,
 			Symbols,
 			SemanticTokens,
-			SwitchSourceHeader
+			SwitchSourceHeader,
+			Hover
 		};
 
 		// The server's copy of an open document, as far as this side knows it: only the version,

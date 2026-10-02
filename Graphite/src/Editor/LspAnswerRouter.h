@@ -38,6 +38,20 @@ namespace Graphite {
 		CaretScreenPosition Screen;
 	};
 
+	// What a hover or preview question was asked about, carried to its answer so an answer for a
+	// token the mouse has left, or for text that has since changed, can be told apart.
+	struct HoverQuestion
+	{
+		std::filesystem::path Path;
+		std::size_t DocumentRevision = 0;
+		std::size_t Line = 0;
+		std::size_t TokenFrom = 0; // raw byte offsets within the line
+		std::size_t TokenTo = 0;
+		FilePosition From;
+
+		friend bool operator==(const HoverQuestion&, const HoverQuestion&) = default;
+	};
+
 	// Where LspAnswerRouter delivers what it routed. Each method is reached only for an answer to
 	// a question still outstanding: a superseded, cancelled or forgotten ticket never gets here.
 	class LspAnswerTarget
@@ -59,6 +73,13 @@ namespace Graphite {
 		// go, and the target decides whether that is worth saying.
 		virtual void ApplySwitchSourceHeader(const std::filesystem::path& from,
 											 const LanguageServices::Answer& answer) = 0;
+
+		// Failed answers included, like ApplyDefinition: the target decides what a hover with no
+		// answer looks like.
+		virtual void ApplyHover(const HoverQuestion& question,
+								const LanguageServices::Answer& answer) = 0;
+		virtual void ApplyPreviewDefinition(const HoverQuestion& question,
+													const LanguageServices::Answer& answer) = 0;
 
 		// Successful answers only: a failure has nothing to apply, and the router has already
 		// done the bookkeeping it calls for.
@@ -145,6 +166,14 @@ namespace Graphite {
 		// At most one outstanding, like AskDefinition: a second Alt+O supersedes the first.
 		void AskSwitchSourceHeader(const std::filesystem::path& path);
 
+		// A hover and a preview's definition each have a slot of their own, so neither cancels
+		// F12 or the other. Asking again supersedes only the question in the same slot.
+		void AskHover(HoverQuestion question);
+		void AskPreviewDefinition(HoverQuestion question);
+
+		// Cancels both slots: the mouse has left, and their answers are about a place it is not.
+		void CancelHover();
+
 		// Whether this document's declarations or colours are still being settled: wanted, or
 		// asked for and not yet answered. Reference counts deliberately do not count; see
 		// DocumentWindows::IsAnalysing.
@@ -188,6 +217,12 @@ namespace Graphite {
 			std::filesystem::path From;
 		};
 
+		struct PendingHover
+		{
+			LanguageServices::Ticket Ticket{};
+			HoverQuestion Question;
+		};
+
 		struct PendingCount
 		{
 			std::filesystem::path Path;
@@ -202,6 +237,8 @@ namespace Graphite {
 		std::optional<PendingDefinition> m_PendingDefinition;
 		std::optional<PendingReferences> m_PendingReferences;
 		std::optional<PendingSwitch> m_PendingSwitch;
+		std::optional<PendingHover> m_PendingHover;
+		std::optional<PendingHover> m_PendingPreview;
 
 		// What an outstanding ticket was asked for. Tickets are unique across every server, which
 		// is what lets one map per question kind route an answer back to the document - and to

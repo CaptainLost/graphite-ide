@@ -379,6 +379,14 @@ namespace Graphite {
 					 [&where](LspClient& client) { return client.AskReferences(where); });
 	}
 
+	LanguageServices::Ticket LanguageServices::AskHover(const std::filesystem::path& path,
+																		 LanguageId language,
+																		 const FilePosition& where)
+	{
+		return AskVia(path, language,
+					 [&where](LspClient& client) { return client.AskHover(where); });
+	}
+
 	LanguageServices::Ticket LanguageServices::AskSwitchSourceHeader(
 		const std::filesystem::path& path, LanguageId language)
 	{
@@ -916,6 +924,7 @@ namespace Graphite {
 				delivered.Locations = std::move(answer.Locations);
 				delivered.Declarations = std::move(answer.Declarations);
 				delivered.SemanticTokens = std::move(answer.SemanticTokens);
+				delivered.Text = std::move(answer.Text);
 				delivered.Failed = answer.Failed;
 
 				m_Answers.push_back(std::move(delivered));

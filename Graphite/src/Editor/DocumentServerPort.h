@@ -45,6 +45,9 @@ namespace Graphite {
 		virtual LanguageServices::Ticket AskReferences(const std::filesystem::path& path,
 													   LanguageId language,
 													   const FilePosition& where) = 0;
+		virtual LanguageServices::Ticket AskHover(const std::filesystem::path& path,
+												  LanguageId language,
+												  const FilePosition& where) = 0;
 		virtual LanguageServices::Ticket AskSwitchSourceHeader(const std::filesystem::path& path,
 															   LanguageId language) = 0;
 		virtual LanguageServices::Ticket AskSymbols(const std::filesystem::path& path,

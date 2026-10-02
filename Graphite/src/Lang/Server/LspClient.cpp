@@ -50,6 +50,9 @@ namespace Graphite {
 				 "concept", "parameter", "variable", "property", "enumMember", "function",
 				 "method", "macro"});
 			capabilities["textDocument"]["semanticTokens"]["tokenModifiers"] = nlohmann::json::array();
+			// Markdown first: clangd's markdown reply is the one ParseClangdHover reads into fields.
+			capabilities["textDocument"]["hover"]["contentFormat"] =
+				nlohmann::json::array({"markdown", "plaintext"});
 			capabilities["textDocument"]["references"]["dynamicRegistration"] = false;
 			capabilities["textDocument"]["documentSymbol"]["hierarchicalDocumentSymbolSupport"] =
 				true;
@@ -410,6 +413,18 @@ namespace Graphite {
 		params["position"]["character"] = where.Column.Value;
 
 		return Ask("textDocument/definition", params, Question::Definition);
+	}
+
+	RequestId LspClient::AskHover(const FilePosition& where)
+	{
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+		nlohmann::json params;
+		params["textDocument"]["uri"] = ToFileUri(where.Path);
+		params["position"]["line"] = where.Line;
+		params["position"]["character"] = where.Column.Value;
+
+		return Ask("textDocument/hover", params, Question::Hover);
 	}
 
 	RequestId LspClient::AskSwitchSourceHeader(const std::filesystem::path& path)
@@ -858,6 +873,27 @@ namespace Graphite {
 			if (auto location = ParseSwitchSourceHeader(reply.Payload))
 			{
 				answer.Locations.push_back(std::move(*location));
+			}
+
+			return answer;
+		}
+
+		if (asked.Kind == Question::Hover)
+		{
+			// Null, a missing contents, or a non-markdown shape all read as "nothing to say", not
+			// as a failure: clangd answers null on whitespace and on most punctuation.
+			if (reply.Payload.is_object())
+			{
+				const auto contents = reply.Payload.find("contents");
+
+				if (contents != reply.Payload.end() && contents->is_object())
+				{
+					if (const auto value = contents->find("value");
+						value != contents->end() && value->is_string())
+					{
+						answer.Text = value->get<std::string>();
+					}
+				}
 			}
 
 			return answer;

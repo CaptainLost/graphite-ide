@@ -1775,6 +1775,16 @@ namespace Graphite {
 		panel.Focus();
 	}
 
+	void DocumentWindows::ApplyHoverAnswer(const HoverQuestion&, const LanguageServices::Answer&)
+	{
+		// Filled in by the hover state; see Task 7.
+	}
+
+	void DocumentWindows::ApplyPreviewAnswer(const HoverQuestion&, const LanguageServices::Answer&)
+	{
+		// Filled in by the hover state; see Task 7.
+	}
+
 	void DocumentWindows::ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
 														const LanguageServices::Answer& answer)
 	{
@@ -1986,6 +1996,18 @@ namespace Graphite {
 								 const LanguageServices::Answer& answer) override
 			{
 				m_Windows.ApplyDefinitionAnswer(question, answer);
+			}
+
+			void ApplyHover(const HoverQuestion& question,
+							const LanguageServices::Answer& answer) override
+			{
+				m_Windows.ApplyHoverAnswer(question, answer);
+			}
+
+			void ApplyPreviewDefinition(const HoverQuestion& question,
+										const LanguageServices::Answer& answer) override
+			{
+				m_Windows.ApplyPreviewAnswer(question, answer);
 			}
 
 			void ApplySwitchSourceHeader(const std::filesystem::path& from,

@@ -211,6 +211,55 @@ namespace Graphite {
 		m_PendingSwitch = PendingSwitch{m_Server.AskSwitchSourceHeader(path, language), path};
 	}
 
+	void LspAnswerRouter::AskHover(HoverQuestion question)
+	{
+		if (m_PendingHover)
+		{
+			m_Server.Cancel(m_PendingHover->Ticket);
+		}
+
+		const LanguageId language = LanguageOfPath(question.Path);
+
+		m_Server.EnsureStarted(question.Path, language);
+
+		const LanguageServices::Ticket ticket =
+			m_Server.AskHover(question.Path, language, question.From);
+
+		m_PendingHover = PendingHover{ticket, std::move(question)};
+	}
+
+	void LspAnswerRouter::AskPreviewDefinition(HoverQuestion question)
+	{
+		if (m_PendingPreview)
+		{
+			m_Server.Cancel(m_PendingPreview->Ticket);
+		}
+
+		const LanguageId language = LanguageOfPath(question.Path);
+
+		m_Server.EnsureStarted(question.Path, language);
+
+		const LanguageServices::Ticket ticket =
+			m_Server.AskDefinition(question.Path, language, question.From);
+
+		m_PendingPreview = PendingHover{ticket, std::move(question)};
+	}
+
+	void LspAnswerRouter::CancelHover()
+	{
+		if (m_PendingHover)
+		{
+			m_Server.Cancel(m_PendingHover->Ticket);
+			m_PendingHover.reset();
+		}
+
+		if (m_PendingPreview)
+		{
+			m_Server.Cancel(m_PendingPreview->Ticket);
+			m_PendingPreview.reset();
+		}
+	}
+
 	bool LspAnswerRouter::IsAnalysing(const std::filesystem::path& path) const
 	{
 		if (const auto found = m_Schedules.find(path); found != m_Schedules.end())
@@ -274,6 +323,24 @@ namespace Graphite {
 
 				m_PendingSwitch.reset();
 				target.ApplySwitchSourceHeader(pending.From, answer);
+				continue;
+			}
+
+			if (m_PendingHover && m_PendingHover->Ticket == answer.For)
+			{
+				const PendingHover pending = std::move(*m_PendingHover);
+
+				m_PendingHover.reset();
+				target.ApplyHover(pending.Question, answer);
+				continue;
+			}
+
+			if (m_PendingPreview && m_PendingPreview->Ticket == answer.For)
+			{
+				const PendingHover pending = std::move(*m_PendingPreview);
+
+				m_PendingPreview.reset();
+				target.ApplyPreviewDefinition(pending.Question, answer);
 				continue;
 			}
 

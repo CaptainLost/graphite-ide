@@ -786,3 +786,64 @@ TEST_CASE("A switch header/source answer carries the file the server named")
 	CHECK(drained.Answers[0].Locations[0].Path ==
 		  Graphite::FromFileUri("file:///C:/project/Layer.cpp"));
 }
+
+TEST_CASE("The handshake declares markdown hover")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("hover":{"contentFormat":["markdown","plaintext"]})") != std::string::npos);
+}
+
+TEST_CASE("A hover request carries the position and its markdown reply lands in Text")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+	client.TakeSent();
+
+	Graphite::FilePosition where;
+	where.Path = temp.GetPath() / "main.cpp";
+	where.Line = 12;
+	where.Column = Graphite::Utf16Column(21);
+
+	const Graphite::RequestId id = client.AskHover(where);
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("method":"textDocument/hover")") != std::string::npos);
+	CHECK(sent[0].find(R"("line":12)") != std::string::npos);
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
+				   R"(,"result":{"contents":{"kind":"markdown","value":"### field `x`"}}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Answers.size() == 1);
+	CHECK_FALSE(drained.Answers[0].Failed);
+	CHECK(drained.Answers[0].Text == "### field `x`");
+}
+
+TEST_CASE("A null hover reply is an answer with no text")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+	client.TakeSent();
+
+	const Graphite::RequestId id = client.AskHover(Graphite::FilePosition{});
+	client.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) + R"(,"result":null})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Answers.size() == 1);
+	CHECK_FALSE(drained.Answers[0].Failed);
+	CHECK(drained.Answers[0].Text.empty());
+}

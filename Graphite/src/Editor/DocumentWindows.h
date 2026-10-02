@@ -328,6 +328,10 @@ namespace Graphite {
 		void ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
 										   const LanguageServices::Answer& answer);
 
+		void ApplyHoverAnswer(const HoverQuestion& question, const LanguageServices::Answer& answer);
+		void ApplyPreviewAnswer(const HoverQuestion& question,
+								const LanguageServices::Answer& answer);
+
 		// The clock m_Router runs its retry delay on: ImGui's, in seconds.
 		static double FrameClock();
 
