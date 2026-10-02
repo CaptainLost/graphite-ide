@@ -577,4 +577,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0545](0545-open-a-subagent-s-conversation-inside-its-session-s-window.md) | Open a subagent's conversation inside its session's window | proposed | 2026-10-01 |
 | [0546](0546-route-editor-scoped-key-commands-from-the-focused-editor.md) | Route editor-scoped key commands from the focused editor | proposed | 2026-10-02 |
 | [0547](0547-make-the-active-document-follow-keyboard-focus-into-its-editor.md) | Make the active document follow keyboard focus into its editor | proposed | 2026-10-02 |
+| [0548](0548-draw-interactive-tooltips-as-non-focusing-windows-rather-than-imgui-tooltips.md) | Draw interactive tooltips as non-focusing windows rather than ImGui tooltips | proposed | 2026-10-02 |
 <!-- /adr-index -->
