@@ -283,6 +283,85 @@ namespace Core {
 			for (auto entry = removals.rbegin(); entry != removals.rend(); ++entry)
 				buffer.Erase(entry->Offset, entry->Offset + entry->Bytes);
 		}
+
+		// The run of leading whitespace every non-blank line in the block shares byte for byte.
+		// Byte for byte rather than by width: a tab and four spaces are the same width and still
+		// not the same text, and inserting the prefix "between" them would split one of them.
+		std::size_t SharedIndentBytes(const TextBuffer& buffer, std::size_t firstLine,
+									  std::size_t lastLine)
+		{
+			std::optional<std::string> shared;
+
+			for (std::size_t line = firstLine; line <= lastLine; ++line)
+			{
+				if (IsBlankLine(buffer, line))
+					continue;
+
+				const std::string indent = LeadingWhitespace(buffer.LineText(line));
+
+				if (!shared)
+				{
+					shared = indent;
+					continue;
+				}
+
+				std::size_t common = 0;
+
+				while (common < shared->size() && common < indent.size() &&
+					   (*shared)[common] == indent[common])
+					++common;
+
+				shared->resize(common);
+			}
+
+			return shared ? shared->size() : 0;
+		}
+
+		bool EveryNonBlankLineIsCommented(const TextBuffer& buffer, std::size_t firstLine,
+										  std::size_t lastLine, std::string_view prefix)
+		{
+			bool any = false;
+
+			for (std::size_t line = firstLine; line <= lastLine; ++line)
+			{
+				if (IsBlankLine(buffer, line))
+					continue;
+
+				const std::string text = buffer.LineText(line);
+				const std::size_t indent = LeadingWhitespace(text).size();
+
+				if (std::string_view(text).substr(indent).rfind(prefix, 0) != 0)
+					return false;
+
+				any = true;
+			}
+
+			return any;
+		}
+
+		// Each commented line loses its prefix, and the one space after it when there is one, so
+		// that commenting and uncommenting round-trip.
+		std::vector<IndentRemoval> PlanUncomment(const TextBuffer& buffer, std::size_t firstLine,
+												 std::size_t lastLine, std::string_view prefix)
+		{
+			std::vector<IndentRemoval> removals;
+
+			for (std::size_t line = firstLine; line <= lastLine; ++line)
+			{
+				if (IsBlankLine(buffer, line))
+					continue;
+
+				const std::string text = buffer.LineText(line);
+				const std::size_t indent = LeadingWhitespace(text).size();
+				const std::size_t after = indent + prefix.size();
+				const bool spaced = after < text.size() && text[after] == ' ';
+
+				removals.push_back(IndentRemoval{buffer.LineStart(line) + indent,
+												 prefix.size() + (spaced ? 1 : 0)});
+			}
+
+			return removals;
+		}
 	}
 
 	void RefreshDerived(OpenItem& item)
@@ -474,6 +553,80 @@ namespace Core {
 		buffer.BreakUndoGroup();
 
 		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
+
+		UpdateDerived(item, firstLine, lastLine);
+
+		return true;
+	}
+
+	bool ToggleLineComment(OpenItem& item, std::string_view prefix)
+	{
+		if (!Editable(item) || prefix.empty())
+			return false;
+
+		TextBuffer& buffer = item.Document->GetBuffer();
+		const bool hadSelection = HasSelection(item.Caret);
+		const auto [firstLine, lastLine] = BlockLines(buffer, item.Caret);
+
+		const bool uncomment = EveryNonBlankLineIsCommented(buffer, firstLine, lastLine, prefix);
+
+		// Measured before the edit: the caret's line is the only one whose offset the caret
+		// needs to follow, and what happened to it is how far its start moved.
+		const std::size_t caretLine = buffer.ToPosition(item.Caret.Offset).Line;
+		const std::size_t caretLineLengthBefore = buffer.LineLength(caretLine);
+		const std::size_t caretColumnBefore = item.Caret.Offset - buffer.LineStart(caretLine);
+
+		buffer.BreakUndoGroup();
+		buffer.BeginTransaction();
+
+		bool changed = false;
+
+		if (uncomment)
+		{
+			const std::vector<IndentRemoval> removals =
+				PlanUncomment(buffer, firstLine, lastLine, prefix);
+
+			EraseBackToFront(buffer, removals);
+			changed = !removals.empty();
+		}
+		else
+		{
+			const std::size_t column = SharedIndentBytes(buffer, firstLine, lastLine);
+			const std::string inserted = std::string(prefix) + ' ';
+
+			for (std::size_t line = lastLine + 1; line > firstLine; --line)
+			{
+				if (IsBlankLine(buffer, line - 1))
+					continue;
+
+				buffer.Insert(buffer.LineStart(line - 1) + column, inserted);
+				changed = true;
+			}
+		}
+
+		buffer.EndTransaction();
+		buffer.BreakUndoGroup();
+
+		if (!changed)
+			return false;
+
+		if (hadSelection)
+		{
+			SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
+		}
+		else
+		{
+			// The caret's line grew or shrank by a known amount ahead of the caret, provided the
+			// edit sat at or before it; past the end of the edit the line's text did not move.
+			const std::size_t lengthAfter = buffer.LineLength(caretLine);
+			const std::ptrdiff_t delta = static_cast<std::ptrdiff_t>(lengthAfter) -
+										 static_cast<std::ptrdiff_t>(caretLineLengthBefore);
+			const std::ptrdiff_t column =
+				std::max<std::ptrdiff_t>(0, static_cast<std::ptrdiff_t>(caretColumnBefore) + delta);
+
+			CollapseCaretTo(item.Caret, buffer.LineStart(caretLine) +
+											std::min(static_cast<std::size_t>(column), lengthAfter));
+		}
 
 		UpdateDerived(item, firstLine, lastLine);
 
