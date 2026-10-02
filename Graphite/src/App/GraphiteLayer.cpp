@@ -3,6 +3,7 @@
 #include "App/GraphiteLayer.h"
 
 #include "Editor/ActiveTextDocument.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/Palettes.h"
 #include "Editor/ServerStatusText.h"
 #include "Editor/StatusBar.h"
@@ -312,7 +313,7 @@ namespace Graphite {
 		// The active document, for the same reason find.open above reads it rather than whatever
 		// holds the keyboard: F12 runs before anything has drawn this frame, and activating a tab
 		// is what makes it the document a command means either way.
-		m_Commands.Add({.Id = "editor.goToDefinition",
+		m_Commands.Add({.Id = kGoToDefinitionCommand,
 						.Label = "Go to Definition",
 						.Run = [this] {
 							if (const auto path = ActiveTextDocument(m_Documents))
@@ -323,14 +324,17 @@ namespace Graphite {
 								}
 							}
 						},
-						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
+						.Enabled = [this] {
+							const auto path = ActiveTextDocument(m_Documents);
+							return path.has_value() && HasLanguageServer(*path);
+						}});
 
-		m_Keys.SetDefault("editor.goToDefinition", {.Primary = Core::Chord::Key(ImGuiKey_F12)});
+		m_Keys.SetDefault(kGoToDefinitionCommand, {.Primary = Core::Chord::Key(ImGuiKey_F12)});
 
 		// The active document, for the same reason editor.goToDefinition reads it rather than
 		// whatever holds the keyboard: Shift+F12 runs before anything has drawn this frame, and
 		// activating a tab is what makes it the document a command means either way.
-		m_Commands.Add({.Id = "editor.findReferences",
+		m_Commands.Add({.Id = kFindReferencesCommand,
 						.Label = "Find All References",
 						.Run = [this] {
 							if (const auto path = ActiveTextDocument(m_Documents))
@@ -341,9 +345,12 @@ namespace Graphite {
 								}
 							}
 						},
-						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
+						.Enabled = [this] {
+							const auto path = ActiveTextDocument(m_Documents);
+							return path.has_value() && HasLanguageServer(*path);
+						}});
 
-		m_Keys.SetDefault("editor.findReferences",
+		m_Keys.SetDefault(kFindReferencesCommand,
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
 
 		m_Commands.Add({.Id = "help.logTestEntries",

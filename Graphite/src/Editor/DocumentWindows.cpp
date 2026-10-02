@@ -1,6 +1,8 @@
 #include "Editor/DocumentWindows.h"
 
+#include "Editor/ActiveTextDocument.h"
 #include "Editor/DefinitionNavigation.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
@@ -12,6 +14,7 @@
 
 #include "UI/RememberedPlace.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
@@ -778,6 +781,105 @@ namespace Graphite {
 
 		keys.SetDefault("document.saveAll",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
+
+		// The active text document's item, or null - every editor command acts on the document
+		// whose tab is active, the same document F12 means.
+		const auto activeItem = [this]() -> Core::OpenItem* {
+			const auto path = ActiveTextDocument(m_Documents);
+
+			if (!path)
+				return nullptr;
+
+			const auto index = m_Documents.Find(*path);
+			return index ? &m_Documents.At(*index) : nullptr;
+		};
+
+		const auto activeIndex = [this]() -> std::optional<std::size_t> {
+			const auto path = ActiveTextDocument(m_Documents);
+			return path ? m_Documents.Find(*path) : std::nullopt;
+		};
+
+		struct EditorCommandSpec
+		{
+			const char* Id;
+			const char* Label;
+			EditorAction Action;
+			ImGuiKeyChord Chord;
+		};
+
+		const EditorCommandSpec specs[] = {
+			{kCutCommand, "Cut", EditorAction::Cut, ImGuiMod_Ctrl | ImGuiKey_X},
+			{kCopyCommand, "Copy", EditorAction::Copy, ImGuiMod_Ctrl | ImGuiKey_C},
+			{kPasteCommand, "Paste", EditorAction::Paste, ImGuiMod_Ctrl | ImGuiKey_V},
+			{kSelectAllCommand, "Select All", EditorAction::SelectAll, ImGuiMod_Ctrl | ImGuiKey_A},
+			{kToggleLineCommentCommand, "Toggle Line Comment", EditorAction::ToggleLineComment,
+			 ImGuiMod_Ctrl | ImGuiKey_Slash},
+		};
+
+		for (const EditorCommandSpec& spec : specs)
+		{
+			const EditorAction action = spec.Action;
+
+			commands.Add({.Id = spec.Id,
+						  .Label = spec.Label,
+						  .Run = [this, activeIndex, action] {
+							  if (const auto index = activeIndex())
+								  QueueEditorAction(*index, action);
+						  },
+						  .Enabled = [activeItem, action] {
+							  const Core::OpenItem* item = activeItem();
+
+							  // An empty clipboard, or one holding something other than text,
+							  // reads back as null rather than as an empty string.
+							  const char* clipboard = ImGui::GetClipboardText();
+							  const bool hasText = clipboard != nullptr && *clipboard != '\0';
+
+							  return item != nullptr && CanRun(action, *item, hasText);
+						  },
+						  .KeyScope = Core::Chord::Scope::FocusedEditor,
+						  .Repeats = false});
+
+			keys.SetDefault(spec.Id, {.Primary = Core::Chord::Key(spec.Chord)});
+		}
+
+		commands.Add({.Id = kSwitchHeaderSourceCommand,
+					  .Label = "Switch Header/Source",
+					  .Run = [this, activeIndex] {
+						  if (const auto index = activeIndex())
+							  RequestSwitchSourceHeader(*index);
+					  },
+					  .Enabled = [activeItem] {
+						  const Core::OpenItem* item = activeItem();
+						  return item != nullptr && HasLanguageServer(item->Path) &&
+								 LanguageOfPath(item->Path) == LanguageId::Cpp;
+					  },
+					  .Repeats = false});
+
+		keys.SetDefault(kSwitchHeaderSourceCommand,
+						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
+	}
+	void DocumentWindows::QueueEditorAction(std::size_t index, EditorAction action)
+	{
+		if (index >= m_Documents.GetCount())
+		{
+			return;
+		}
+
+		StateFor(m_Documents.At(index).Path).Widget.PendingActions.push_back(action);
+
+		// A context-menu item runs after its editor has drawn for the frame; without a frame
+		// asked for, the action would wait for the next mouse move.
+		Core::Redraw::Request();
+	}
+
+	void DocumentWindows::RequestSwitchSourceHeader(std::size_t index)
+	{
+		if (index >= m_Documents.GetCount())
+		{
+			return;
+		}
+
+		m_Router.AskSwitchSourceHeader(m_Documents.At(index).Path);
 	}
 
 	void DocumentWindows::SetTransientMessage(std::string text)

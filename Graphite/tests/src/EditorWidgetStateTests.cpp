@@ -135,3 +135,10 @@ TEST_CASE("A bracket memo answers only for the caret and revision it was filled 
 	CHECK(memo.Holds(20, 3));
 	CHECK_FALSE(memo.Pair.has_value());
 }
+
+TEST_CASE("A fresh widget state has no actions waiting")
+{
+	const Graphite::EditorWidgetState state;
+
+	CHECK(state.PendingActions.empty());
+}

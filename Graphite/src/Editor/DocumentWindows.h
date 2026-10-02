@@ -149,6 +149,13 @@ namespace Graphite {
 		// could disagree with the one the caller already did.
 		void RequestDefinition(std::size_t index);
 
+		// Hands an editor action to the document at `index`, to be applied when it next draws.
+		void QueueEditorAction(std::size_t index, EditorAction action);
+
+		// Asks the language server for the header or source belonging to the document at
+		// `index`, and opens it when the answer arrives.
+		void RequestSwitchSourceHeader(std::size_t index);
+
 		// Asks the language server serving the document at `index` for every reference to
 		// whatever word the caret sits on or touches, and shows the reply in `panel`. The
 		// active document's index, for the same reason RequestDefinition takes one: F12's sibling
