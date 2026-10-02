@@ -156,3 +156,9 @@ TEST_CASE("Toggle line comment uses the document's own language")
 	CHECK(ApplyEditorAction(EditorAction::ToggleLineComment, item, std::nullopt).Changed);
 	CHECK(TextOf(item) == "// int a;");
 }
+
+TEST_CASE("A C++ file has a language server and a text file has none")
+{
+	CHECK(HasLanguageServer("C:/p/main.cpp"));
+	CHECK_FALSE(HasLanguageServer("C:/p/notes.txt"));
+}

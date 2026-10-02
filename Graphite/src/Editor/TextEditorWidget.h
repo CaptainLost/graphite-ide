@@ -43,8 +43,8 @@ namespace Graphite {
 		// the document the input was aimed at.
 		const Core::FrameInput* Input = nullptr;
 
-		// The right-click menu's items. Null for an editor that offers none - a preview or a
-		// diff pane, which are read-only views onto text another editor owns.
+		// The right-click menu's items. Null from a caller that offers no menu; a right-click
+		// then only places the caret.
 		const std::vector<Core::MenuItem>* ContextMenu = nullptr;
 	};
 

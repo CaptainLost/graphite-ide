@@ -29,6 +29,7 @@
 #include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
+#include "Core/Platform/Clipboard.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -332,9 +333,12 @@ namespace Graphite {
 				ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left);
 
 			// A right press over the text. Not routed through ButtonBehavior, which answers to the
-			// left button only; read directly while this surface is the hovered item.
+			// left button only; read directly while this surface is the hovered item. Hovered even
+			// under the menu's own popup, so a right press elsewhere on the text while the menu is
+			// open reopens it there instead of only closing it.
 			pointer.RightPressedThisFrame =
-				ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) &&
+				ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
 			return pointer;
 		}
@@ -367,8 +371,14 @@ namespace Graphite {
 
 			if (pointer.RightPressedThisFrame)
 			{
-				// The gutter and a lens row hold no text to act on, so neither opens the menu.
-				if (hit.IsLens || mouse.x < textOriginX)
+				// The gutter and a lens row hold no text to act on, so neither opens the menu. The
+				// gutter is painted pinned to the view's left edge rather than at the text's
+				// origin, so its right edge moves with the horizontal scroll while textOriginX
+				// scrolls away under it.
+				const float gutterRight =
+					origin.x + ImGui::GetScrollX() + metrics.Gutter.TotalWidth;
+
+				if (hit.IsLens || mouse.x < gutterRight)
 					return;
 
 				result.ContextMenuWanted = true;
@@ -422,7 +432,7 @@ namespace Graphite {
 				return;
 			}
 
-			if (!pointer.PressedThisFrame && !pointer.RightPressedThisFrame)
+			if (!pointer.PressedThisFrame)
 			{
 				// Dragging always extends, whichever way it goes.
 				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, true, item.TabWidth);
@@ -874,10 +884,10 @@ namespace Graphite {
 			ApplyMotionKeys(input, buffer, item, pageRows);
 
 			// Whatever moved the caret above — a motion key, and the mouse click or drag or a
-			// queued action earlier in the frame, since caretAtFrameStart was read before any ran — is
-			// a different gesture from whatever typing follows. Breaking the group here, before
-			// any of the edits below, means moving the caret and then typing costs a fresh undo
-			// step instead of merging with whatever was typed before the caret moved.
+			// queued action earlier in the frame, since caretAtFrameStart was read before any
+			// ran — is a different gesture from whatever typing follows. Breaking the group here,
+			// before any of the edits below, means moving the caret and then typing costs a fresh
+			// undo step instead of merging with whatever was typed before the caret moved.
 			if (item.Caret.Offset != caretAtFrameStart)
 				item.Document->GetBuffer().BreakUndoGroup();
 
@@ -932,7 +942,9 @@ namespace Graphite {
 			{
 				std::optional<std::string> clipboard;
 
-				if (action == EditorAction::Paste)
+				// Asked first so a clipboard holding an image is never read: GLFW would log the
+				// failed read as an error, and Paste then simply has nothing to insert.
+				if (action == EditorAction::Paste && Core::ClipboardHasText())
 				{
 					if (const char* text = ImGui::GetClipboardText(); text != nullptr)
 						clipboard = text;
@@ -2677,15 +2689,15 @@ namespace Graphite {
 							  origin.x + metrics.Gutter.TotalWidth, lenses, result);
 			RouteMouseWheel(context);
 
-			const bool hasMenu =
-				context.ContextMenu != nullptr && context.Commands != nullptr && context.Keys != nullptr;
+			const bool hasMenu = context.ContextMenu != nullptr && context.Commands != nullptr &&
+								 context.Keys != nullptr;
 
 			// Opened on the press, drawn every frame it stays open. The popup's ID lives under
 			// this child's ID stack, so two editors side by side never share one menu.
 			if (result.ContextMenuWanted && hasMenu)
 			{
 				// A right press moves no keyboard focus by itself, so without this the menu of the
-				// editor on one side of a split would act on the other side's document - see ADR
+				// editor on one side of a split would act on the other side's document — see ADR
 				// 0547. Before OpenPopup, so the popup records this surface as the window to hand
 				// the focus back to when it closes.
 				ImGui::SetWindowFocus();
@@ -2723,16 +2735,16 @@ namespace Graphite {
 				widget.LastFocusedFrame = frame;
 			}
 
-			// A context arriving without a queue is a caller that has no input to offer, not an
-			// error: this document then simply draws, exactly as an unfocused one does.
 			const EditSinks sinks{view.Syntax, view.Lens};
-
-			// The focused editor is the only place that knows the keyboard is its own, so it
-			// routes the strokes it reads to the editor-scoped commands first - Ctrl+C and the
-			// rest, which the layer passed through untouched. What a command consumed is not
-			// also typed; what it queued is applied below, this frame.
 			Core::FrameInput remaining;
 
+			// The focused editor is the only place that knows the keyboard is its own, so it
+			// routes the strokes it reads to the editor-scoped commands first — Ctrl+C and the
+			// rest, which the layer passed through untouched. What a command consumed is not
+			// also typed; what it queued is applied below, this frame.
+			//
+			// A context arriving without a queue is a caller that has no input to offer, not an
+			// error: this document then simply draws, exactly as an unfocused one does.
 			if (focused && context.Input != nullptr)
 			{
 				remaining = RouteEditorStrokes(context, *context.Input);

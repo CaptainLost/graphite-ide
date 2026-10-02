@@ -2,12 +2,10 @@
 
 #include "Editor/BracketMatch.h"
 #include "Editor/EditorCommands.h"
-#include "Editor/EditorCommands.h"
 
 #include <cstddef>
 #include <limits>
 #include <optional>
-#include <vector>
 #include <vector>
 
 namespace Graphite {
@@ -110,9 +108,10 @@ namespace Graphite {
 
 		BracketMemo Brackets;
 
-		// Asked for by a command - a keystroke the focused editor routed, or a context-menu item
-		// - and applied the next time this document draws, which is the only place that knows
-		// what has to be told an edit happened. In order; drained every draw, focused or not.
+		// Asked for by a command — a keystroke the focused editor routed, or a context-menu
+		// item — and applied the next time this document draws, which is the only place that
+		// knows what has to be told an edit happened. In order; drained every draw, focused or
+		// not.
 		std::vector<EditorAction> PendingActions;
 	};
 }

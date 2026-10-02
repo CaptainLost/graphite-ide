@@ -22,6 +22,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
+#include "Core/Platform/Clipboard.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
@@ -782,7 +783,7 @@ namespace Graphite {
 		keys.SetDefault("document.saveAll",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 
-		// The active text document's item, or null - every editor command acts on the document
+		// The active text document's item, or null — every editor command acts on the document
 		// whose tab is active, the same document F12 means.
 		const auto activeItem = [this]() -> Core::OpenItem* {
 			const auto path = ActiveTextDocument(m_Documents);
@@ -829,10 +830,12 @@ namespace Graphite {
 						  .Enabled = [activeItem, action] {
 							  const Core::OpenItem* item = activeItem();
 
-							  // An empty clipboard, or one holding something other than text,
-							  // reads back as null rather than as an empty string.
-							  const char* clipboard = ImGui::GetClipboardText();
-							  const bool hasText = clipboard != nullptr && *clipboard != '\0';
+							  // Asked on every frame the menu is open and on every press of
+							  // the chord, so only Paste asks, and it asks without reading:
+							  // ImGui's read opens the clipboard and copies it, and logs an
+							  // error whenever it holds something other than text.
+							  const bool hasText =
+								  action == EditorAction::Paste && Core::ClipboardHasText();
 
 							  return item != nullptr && CanRun(action, *item, hasText);
 						  },
@@ -858,6 +861,7 @@ namespace Graphite {
 		keys.SetDefault(kSwitchHeaderSourceCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
 	}
+
 	void DocumentWindows::QueueEditorAction(std::size_t index, EditorAction action)
 	{
 		if (index >= m_Documents.GetCount())
@@ -1774,7 +1778,7 @@ namespace Graphite {
 	void DocumentWindows::ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
 														const LanguageServices::Answer& answer)
 	{
-		// A header with no source is ordinary - a header-only class, a C file with no header -
+		// A header with no source is ordinary — a header-only class, a C file with no header —
 		// so it is logged rather than announced.
 		if (answer.Failed || answer.Locations.empty())
 		{
@@ -1782,7 +1786,10 @@ namespace Graphite {
 			return;
 		}
 
-		Jump(m_Documents, answer.Locations.front());
+		// Opened and made active as a tab click would, not jumped to: the counterpart names a
+		// file, not a place in it, so one already open keeps its caret and scroll, and one that
+		// was not open starts at the top anyway.
+		RequestOpen(answer.Locations.front().Path, true);
 	}
 
 	void DocumentWindows::ApplyDefinitionAnswer(const DefinitionQuestion& question,
@@ -2135,7 +2142,7 @@ namespace Graphite {
 				// Children count. A click on the text focuses the editor surface, a child of this
 				// window, never the window itself; without the flag, clicking into the left half
 				// of a split left the right half active, and every command that acts on the
-				// active document - F12, Ctrl+C - acted on the half nobody was looking at. The
+				// active document — F12, Ctrl+C — acted on the half nobody was looking at. The
 				// find bar inside the surface and a popup opened from it count the same way.
 				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
 				{
