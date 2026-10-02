@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Base/KeyCodes.h"
 #include "Core/Platform/ShellProfiles.h"
 
 #include "Persistence/PersistedState.h"
@@ -95,4 +96,16 @@ namespace Graphite {
 	// Where a terminal opened on an Explorer entry starts: a folder is itself, a file is the
 	// folder it sits in.
 	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory);
+
+	// Whether a terminal takes this frame's typed characters with these modifiers held. Only
+	// Control without Alt is a chord rather than typing. Alt alone has to be typing too: GLFW
+	// drops the fake Left Ctrl that AltGr sends on Windows, so the host sees AltGr - and with it
+	// every Polish letter that needs it, ą ć ę ł ń ó ś ź ż - as Alt on its own, while a real
+	// Alt+letter arrives as WM_SYSCHAR and never reaches the character queue at all.
+	bool TerminalTakesTypedText(Core::KeyModifier held);
+
+	// The modifiers a key press is encoded with. A press that typed a character sends neither
+	// Control nor Alt: passing them through would make EncodeKey turn `ą` into ESC a on top of
+	// itself. A press that typed nothing - Alt+B, Ctrl+Alt+Left - keeps them, and stays a chord.
+	Core::KeyModifier TerminalKeyModifiers(Core::KeyModifier held, bool producedCharacter);
 }

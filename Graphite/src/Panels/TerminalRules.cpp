@@ -145,4 +145,20 @@ namespace Graphite {
 	{
 		return isDirectory ? path : path.parent_path();
 	}
+
+	bool TerminalTakesTypedText(Core::KeyModifier held)
+	{
+		return !Core::HasModifier(held, Core::KeyModifier::Control) ||
+			   Core::HasModifier(held, Core::KeyModifier::Alt);
+	}
+
+	Core::KeyModifier TerminalKeyModifiers(Core::KeyModifier held, bool producedCharacter)
+	{
+		if (!producedCharacter)
+		{
+			return held;
+		}
+
+		return held & (Core::KeyModifier::Shift | Core::KeyModifier::Super);
+	}
 }

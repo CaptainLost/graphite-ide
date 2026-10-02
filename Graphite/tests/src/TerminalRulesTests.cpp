@@ -167,3 +167,35 @@ TEST_CASE("A terminal opened on a folder starts in it, and on a file in the file
 	CHECK(TerminalDirectoryFor(kRoot / "src" / "main.cpp", false) == kRoot / "src");
 	CHECK(TerminalDirectoryFor(kRoot, true) == kRoot);
 }
+
+// GLFW drops the fake Left Ctrl that AltGr sends on Windows, so ImGui sees an AltGr letter as
+// Alt alone. A real Alt+letter arrives as WM_SYSCHAR, which never reaches the character queue,
+// so a character produced under Alt is AltGr typing and nothing else.
+TEST_CASE("A terminal takes typed text under Alt, AltGr and no modifier, but not under Ctrl alone")
+{
+	using Core::KeyModifier;
+
+	CHECK(TerminalTakesTypedText(KeyModifier::None));
+	CHECK(TerminalTakesTypedText(KeyModifier::Shift));
+	CHECK(TerminalTakesTypedText(KeyModifier::Alt));
+	CHECK(TerminalTakesTypedText(KeyModifier::Control | KeyModifier::Alt));
+	CHECK_FALSE(TerminalTakesTypedText(KeyModifier::Control));
+	CHECK_FALSE(TerminalTakesTypedText(KeyModifier::Control | KeyModifier::Shift));
+}
+
+TEST_CASE("A key that typed a character sends no Ctrl or Alt along with it")
+{
+	using Core::KeyModifier;
+
+	// AltGr+A for ą, as ImGui reports it on Windows: Alt alone.
+	CHECK(TerminalKeyModifiers(KeyModifier::Alt, true) == KeyModifier::None);
+	CHECK(TerminalKeyModifiers(KeyModifier::Control | KeyModifier::Alt, true) == KeyModifier::None);
+	CHECK(TerminalKeyModifiers(KeyModifier::Alt | KeyModifier::Shift, true) == KeyModifier::Shift);
+
+	// Alt+B and Ctrl+Alt+Left type nothing and stay chords.
+	CHECK(TerminalKeyModifiers(KeyModifier::Alt, false) == KeyModifier::Alt);
+	CHECK(TerminalKeyModifiers(KeyModifier::Control | KeyModifier::Alt, false) ==
+		  (KeyModifier::Control | KeyModifier::Alt));
+	CHECK(TerminalKeyModifiers(KeyModifier::Control | KeyModifier::Super, false) ==
+		  (KeyModifier::Control | KeyModifier::Super));
+}

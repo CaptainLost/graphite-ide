@@ -1,5 +1,7 @@
 #include "Panels/TerminalView.h"
 
+#include "Panels/TerminalRules.h"
+
 #include "Core/Command/Chord.h"
 #include "Core/ImGui/ImGuiKeys.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -113,57 +115,38 @@ namespace Graphite {
 			return IM_COL32(grey, grey, grey, 255);
 		}
 
-		// On Windows AltGr reports as Ctrl+Alt rather than as a key of its own, so every Polish
-		// letter that needs it — ą ć ę ł ń ó ś ź ż — and @ \ | ~ on German and Nordic layouts
-		// arrive with both modifiers held. This is the same decision the editor makes in
-		// TextEditorWidget.cpp's ControlOf ("Control *and not* Alt"), written the other way
-		// round; the two are one rule and must stay recognisably so.
-		bool IsAltGr(const ImGuiIO& io)
-		{
-			return io.KeyCtrl && io.KeyAlt;
-		}
-
-		// A real control chord, as opposed to AltGr. Ctrl+C is a copy; Ctrl+Alt+C is whatever
-		// the layout puts on that key.
+		// A real control chord. Ctrl+C is a copy; Ctrl+Alt+C is whatever the layout puts on that
+		// key. The same decision the editor makes in TextEditorWidget.cpp's ControlOf.
 		bool ControlOf(const ImGuiIO& io)
 		{
 			return io.KeyCtrl && !io.KeyAlt;
 		}
 
-		// `producedCharacter` says whether this frame's press put anything in the input queue, and
-		// it is what separates AltGr used as a third-level shift from a genuine Ctrl+Alt chord:
-		// both report as Ctrl+Alt on Windows and IsAltGr cannot tell them apart, but only the
-		// former makes a character. The Control and Alt bits are therefore dropped only when one
-		// was made — dropping them unconditionally would turn Ctrl+Alt+Left, which produces no
-		// character, into a bare \x1B[D instead of \x1B[1;7D.
-		Core::KeyModifier ModifiersOf(const ImGuiIO& io, bool producedCharacter)
+		Core::KeyModifier HeldModifiers(const ImGuiIO& io)
 		{
-			Core::KeyModifier modifiers = Core::KeyModifier::None;
+			Core::KeyModifier held = Core::KeyModifier::None;
 
 			if (io.KeyShift)
 			{
-				modifiers = modifiers | Core::KeyModifier::Shift;
+				held = held | Core::KeyModifier::Shift;
 			}
 
-			// Neither bit is set under AltGr that typed something: passing Control through would
-			// make EncodeKey turn a letter typed with AltGr into that letter's control byte, so
-			// `ą` would reach the shell as Ctrl+A on top of itself rather than as itself alone.
-			if (io.KeyCtrl && !(IsAltGr(io) && producedCharacter))
+			if (io.KeyCtrl)
 			{
-				modifiers = modifiers | Core::KeyModifier::Control;
+				held = held | Core::KeyModifier::Control;
 			}
 
-			if (io.KeyAlt && !(IsAltGr(io) && producedCharacter))
+			if (io.KeyAlt)
 			{
-				modifiers = modifiers | Core::KeyModifier::Alt;
+				held = held | Core::KeyModifier::Alt;
 			}
 
 			if (io.KeySuper)
 			{
-				modifiers = modifiers | Core::KeyModifier::Super;
+				held = held | Core::KeyModifier::Super;
 			}
 
-			return modifiers;
+			return held;
 		}
 
 		// Inverted from Core::ToImGuiKey rather than written out a second time: a second table
@@ -672,13 +655,13 @@ namespace Graphite {
 
 		// Taken as characters rather than encoded from the key, because the host has already
 		// applied the keyboard layout to them — which is also why EncodeKey deliberately returns
-		// nothing for a printable key, so that nothing is sent twice. Skipped while exactly one
-		// of Ctrl and Alt is held: those combinations are control codes, and EncodeKey below is
-		// what makes them. Both held is AltGr, which is how a layout reaches its third level —
-		// see IsAltGr — and the character it produced has to go out like any other.
+		// nothing for a printable key, so that nothing is sent twice. TerminalTakesTypedText says
+		// when they count as typing; it is what lets AltGr through, which the host reports as
+		// Alt alone.
+		const Core::KeyModifier held = HeldModifiers(io);
 		std::string typed;
 
-		if (IsAltGr(io) || (!io.KeyCtrl && !io.KeyAlt))
+		if (TerminalTakesTypedText(held))
 		{
 			for (int index = 0; index < io.InputQueueCharacters.Size; ++index)
 			{
@@ -691,9 +674,9 @@ namespace Graphite {
 			}
 		}
 
-		// Whether anything was typed is the only evidence that a Ctrl+Alt press was AltGr rather
-		// than a chord of its own, so the drain has to happen before the modifiers are read.
-		const Core::KeyModifier modifiers = ModifiersOf(io, !typed.empty());
+		// Whether anything was typed is the only evidence that an Alt press was AltGr rather
+		// than a chord of its own, so the drain has to happen before the modifiers are decided.
+		const Core::KeyModifier modifiers = TerminalKeyModifiers(held, !typed.empty());
 
 		for (ImGuiKey key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END;
 			 key = static_cast<ImGuiKey>(static_cast<int>(key) + 1))
