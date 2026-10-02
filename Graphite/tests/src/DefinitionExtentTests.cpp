@@ -86,3 +86,41 @@ TEST_CASE("A start on the last line is that line alone")
 {
 	CHECK(ExtentOf({"int a;", "int b"}, 1).Last == 1);
 }
+
+TEST_CASE("A constructor's member initialiser list does not end the extent")
+{
+	const std::vector<std::string> lines{"Foo() : a{1}, b{2}", "{", "    x();", "}", "int Next;"};
+
+	CHECK(ExtentOf(lines, 0).Last == 3);
+}
+
+TEST_CASE("An initialiser list with the body brace on the same line")
+{
+	const std::vector<std::string> lines{"Foo() : a{1}, b{2} {", "    x();", "}", "int Next;"};
+
+	CHECK(ExtentOf(lines, 0).Last == 2);
+}
+
+TEST_CASE("A multi-line block comment holding a brace is not counted")
+{
+	const std::vector<std::string> lines{"void F() {", "/* {", "} */", "}"};
+
+	CHECK(ExtentOf(lines, 0).Last == 3);
+}
+
+TEST_CASE("A raw string holding braces is not counted")
+{
+	const std::vector<std::string> lines{"void F() {", "auto s = R\"(}{)\";", "}"};
+
+	CHECK(ExtentOf(lines, 0).Last == 2);
+}
+
+TEST_CASE("An enum ends at its semicolon on the same line")
+{
+	CHECK(ExtentOf({"enum class Mode { Fast, Slow };"}, 0).Last == 0);
+}
+
+TEST_CASE("A deleted special member ends at its semicolon")
+{
+	CHECK(ExtentOf({"Foo(const Foo&) = delete;", "int x;"}, 0).Last == 0);
+}
