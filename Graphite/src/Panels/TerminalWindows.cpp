@@ -17,6 +17,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <system_error>
 #include <utility>
@@ -426,6 +427,14 @@ namespace Graphite {
 		}
 
 		m_Open.back()->DockNode = dockNode;
+
+		// A shell the reader started makes the open folder's list one worth keeping, even once it
+		// is closed again. A command's window does not come through here.
+		if (m_Workspace.IsOpen())
+		{
+			m_KeepsTerminals = true;
+		}
+
 		return true;
 	}
 
@@ -492,9 +501,9 @@ namespace Graphite {
 		return records;
 	}
 
-	std::vector<TerminalTabState> TerminalWindows::CaptureState() const
+	std::optional<std::vector<TerminalTabState>> TerminalWindows::CaptureState() const
 	{
-		return CaptureTerminals(Records());
+		return CaptureFolderTerminals(Records(), m_KeepsTerminals);
 	}
 
 	void TerminalWindows::CarryOverOpenTerminals()
@@ -509,9 +518,15 @@ namespace Graphite {
 	{
 		if (OpensDefaultTerminal(saved, m_Open.size()))
 		{
-			static_cast<void>(OpenDefaultShell()); // logs its own failure
+			// Kept only if the shell actually started: a folder that got none because no shell
+			// was found, or it failed, must still ask for its default at the next launch.
+			const bool opened = OpenDefaultShell(); // logs its own failure
+			m_KeepsTerminals = KeepsTerminals(saved, opened);
 			return;
 		}
+
+		// For each folder anew: what the folder before had says nothing about this one.
+		m_KeepsTerminals = KeepsTerminals(saved, false);
 
 		if (!saved)
 		{

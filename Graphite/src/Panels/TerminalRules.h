@@ -79,6 +79,19 @@ namespace Graphite {
 	bool OpensDefaultTerminal(const std::optional<std::vector<TerminalTabState>>& saved,
 							  std::size_t openCount);
 
+	// Whether a folder just opened has a terminal list of its own to keep: one it saved before,
+	// even an empty one, or the default shell it has just opened. A folder opened while another
+	// one's shells were still up has neither until the reader starts a shell in it, and until
+	// then its list stays absent rather than empty - an empty list is "every terminal closed on
+	// purpose", which would leave the folder opening with no terminal from then on although the
+	// reader never closed one of its own.
+	bool KeepsTerminals(const std::optional<std::vector<TerminalTabState>>& saved, bool openedDefault);
+
+	// What a folder's state records of its terminals: absent while it keeps none, otherwise
+	// CaptureTerminals - which may well be empty.
+	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(const std::vector<OpenTerminal>& open,
+																		bool keepsTerminals);
+
 	// Where a terminal opened on an Explorer entry starts: a folder is itself, a file is the
 	// folder it sits in.
 	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory);

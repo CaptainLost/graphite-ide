@@ -84,8 +84,10 @@ namespace Graphite {
 		bool OpenCommand(const std::string& label, const std::filesystem::path& program,
 						 std::vector<std::string> arguments, const std::filesystem::path& workingDirectory);
 
-		// The shells, as the next launch of this folder starts them again.
-		std::vector<TerminalTabState> CaptureState() const;
+		// The shells, as the next launch of this folder starts them again. Absent until the folder
+		// has had a terminal of its own (KeepsTerminals): one carried over from the folder before,
+		// or started by a command, does not make the folder's list empty.
+		std::optional<std::vector<TerminalTabState>> CaptureState() const;
 
 		// Marks every open terminal as carried over from the folder about to be replaced or
 		// closed: they stay open, but CaptureState leaves them out, as CarryOverOpenSessions does.
@@ -153,5 +155,9 @@ namespace Graphite {
 
 		// The terminal whose window had focus last: a new one docks beside it.
 		std::string m_LastFocused;
+
+		// Whether the open folder has had a terminal of its own, so CaptureState writes a list -
+		// see KeepsTerminals. Set by RestoreState for each folder, and by starting a shell in one.
+		bool m_KeepsTerminals = false;
 	};
 }

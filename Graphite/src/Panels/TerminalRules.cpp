@@ -125,6 +125,22 @@ namespace Graphite {
 		return !saved.has_value() && openCount == 0;
 	}
 
+	bool KeepsTerminals(const std::optional<std::vector<TerminalTabState>>& saved, bool openedDefault)
+	{
+		return saved.has_value() || openedDefault;
+	}
+
+	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(const std::vector<OpenTerminal>& open,
+																		bool keepsTerminals)
+	{
+		if (!keepsTerminals)
+		{
+			return std::nullopt;
+		}
+
+		return CaptureTerminals(open);
+	}
+
 	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory)
 	{
 		return isDirectory ? path : path.parent_path();

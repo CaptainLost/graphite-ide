@@ -3,6 +3,7 @@
 #include "Panels/TerminalRules.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -119,6 +120,45 @@ TEST_CASE("Only a folder that never kept terminals, with none open, opens a defa
 	CHECK(OpensDefaultTerminal(std::nullopt, 0));
 	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 2));
 	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0));
+}
+
+TEST_CASE("A folder whose only terminals were carried over stays absent")
+{
+	// Opened while another folder's shells were still up: no default shell opened, and the
+	// reader started none here. Writing [] would read back as "all closed on purpose", and the
+	// folder would open with no terminal from then on.
+	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 1));
+	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
+
+	CHECK_FALSE(keeps);
+	CHECK(CaptureFolderTerminals(open, keeps) == std::nullopt);
+}
+
+TEST_CASE("A folder whose only terminals were started by a command stays absent")
+{
+	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "claude", kRoot, true, false}};
+
+	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false)) == std::nullopt);
+}
+
+TEST_CASE("A folder whose own terminals were all closed is kept empty")
+{
+	// It opened its default shell, so it has had a terminal of its own; with that closed the
+	// list is empty rather than absent, and the next launch opens nothing.
+	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 0));
+
+	CHECK(keeps);
+	CHECK(CaptureFolderTerminals({}, keeps) == std::vector<TerminalTabState>{});
+}
+
+TEST_CASE("A folder with a restored list keeps it")
+{
+	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot}};
+	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot}};
+
+	CHECK(KeepsTerminals(saved, false));
+	CHECK(KeepsTerminals(std::vector<TerminalTabState>{}, false));
+	CHECK(CaptureFolderTerminals(open, KeepsTerminals(saved, false)) == saved);
 }
 
 TEST_CASE("A terminal opened on a folder starts in it, and on a file in the file's folder")
