@@ -5,6 +5,7 @@
 #include "Editor/DocumentServerPort.h"
 #include "Editor/EditorWidgetState.h"
 #include "Editor/FindBar.h"
+#include "Editor/HoverState.h"
 #include "Editor/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/LensModel.h"
@@ -69,6 +70,7 @@ namespace Graphite {
 		unsigned int FallbackDockNode;
 		bool WordWrap;
 		ChangeMarkerDisplay ChangeMarkers;
+		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
 		const std::filesystem::path& WorkspaceRoot;
@@ -396,6 +398,7 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
+								   HoverSettings hoverSettings,
 								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 								   Core::TabCloseRequests& closeRequests,
 								   const std::filesystem::path& workspaceRoot);
@@ -569,6 +572,11 @@ namespace Graphite {
 
 			// The caret's blink, a held undo's ramp and the last bracket search.
 			EditorWidgetState Widget;
+
+			// The hover's tracker, the answers held for it and last frame's tooltip. Handed to
+			// the widget only for a document a language server serves; ApplyHoverAnswer and
+			// ApplyPreviewAnswer fill in the answers.
+			HoverState Hover;
 		};
 
 		// One entry per open document, keyed by path rather than by index: the document list is

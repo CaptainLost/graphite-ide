@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Editor/EditorSettings.h"
+#include "Editor/LspAnswerRouter.h"
 #include "Editor/ScrollAnchor.h"
 
 #include "Core/Command/MenuItem.h"
@@ -30,6 +32,7 @@ namespace Graphite {
 	class SemanticOverlay;
 	class DiagnosticOverlay;
 	struct ChangeMarkers;
+	struct HoverState;
 	struct ResolvedScheme;
 
 	struct CommandContext
@@ -100,6 +103,12 @@ namespace Graphite {
 		// caller comparing them would take the first case for the second and believe the reader
 		// was at the top of the file.
 		bool DrewRows = false;
+
+		// The hover tracker's asks this frame, with the question each belongs to. Reported rather
+		// than sent for the same reason DefinitionRequested is: the widget holds no server.
+		std::optional<HoverQuestion> AskHover;
+		std::optional<HoverQuestion> AskPreview;
+		bool CancelHover = false;
 	};
 
 	// What the frame draws with, as opposed to what it draws. Syntax is always supplied today —
@@ -160,6 +169,12 @@ namespace Graphite {
 		// document like Anchor above, so two editors on screen never share any of it. Null draws
 		// as if every frame were the document's first.
 		EditorWidgetState* Widget = nullptr;
+
+		// The document's hover: its tracker, the answers held for it and last frame's tooltip.
+		// Null for an editor that asks no server about hovers, which draws a diagnostic under
+		// the mouse in a plain tooltip exactly as before hover existed.
+		HoverState* Hover = nullptr;
+		HoverSettings HoverConfig;
 	};
 
 	class FindBar;

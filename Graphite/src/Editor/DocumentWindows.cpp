@@ -1775,14 +1775,59 @@ namespace Graphite {
 		panel.Focus();
 	}
 
-	void DocumentWindows::ApplyHoverAnswer(const HoverQuestion&, const LanguageServices::Answer&)
+	void DocumentWindows::ApplyHoverAnswer(const HoverQuestion& question,
+										   const LanguageServices::Answer& answer)
 	{
-		// Filled in by the hover state; see Task 7.
+		// The router keeps hover tickets past a document's closing, so an answer can arrive for
+		// a tab that has gone; it has nowhere to show.
+		const auto state = m_States.find(question.Path);
+
+		if (state == m_States.end())
+		{
+			return;
+		}
+
+		HoverState& hover = state->second.Hover;
+
+		// A failed answer is held like an empty one: the question has been answered, with
+		// nothing, and asking again for the same token would only fail again.
+		hover.InfoFor = question;
+		hover.Info = ParseClangdHover(answer.Failed ? std::string_view{} : std::string_view{answer.Text});
+
+		// The tracker does not wake the frame loop for an answer; a resting mouse sends no event.
+		Core::Redraw::Request();
 	}
 
-	void DocumentWindows::ApplyPreviewAnswer(const HoverQuestion&, const LanguageServices::Answer&)
+	void DocumentWindows::ApplyPreviewAnswer(const HoverQuestion& question,
+											 const LanguageServices::Answer& answer)
 	{
-		// Filled in by the hover state; see Task 7.
+		const auto state = m_States.find(question.Path);
+
+		if (state == m_States.end())
+		{
+			return;
+		}
+
+		HoverState& hover = state->second.Hover;
+
+		hover.PreviewFor = question;
+
+		if (answer.Failed || answer.Locations.empty())
+		{
+			DefinitionPreview none;
+			none.Unreadable = true;
+			hover.Preview = std::move(none);
+		}
+		else
+		{
+			// The path as the server spelt it. DocumentSet::Find compares paths exactly, so a
+			// definition in an open document is read from its buffer only when the spellings
+			// agree — the same terms F12's own preview of a definition is shown on.
+			const Location& where = answer.Locations.front();
+			hover.Preview = LoadDefinitionPreview(m_Documents, where.Path, where.Line);
+		}
+
+		Core::Redraw::Request();
 	}
 
 	void DocumentWindows::ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
@@ -2078,7 +2123,7 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
-		const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
+		HoverSettings hoverSettings, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot)
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
@@ -2227,6 +2272,11 @@ namespace Graphite {
 				view.Anchor = &state.Anchor;
 				view.Widget = &state.Widget;
 
+				// Only a served document is hovered: with no server there is nobody to ask, and a
+				// null state leaves its diagnostics in the plain tooltip they have always had.
+				view.Hover = lens != nullptr ? &state.Hover : nullptr;
+				view.HoverConfig = hoverSettings;
+
 				std::optional<PendingTopLine>& pendingTop = state.PendingTop;
 
 				// A restored line gives way the moment the reader goes somewhere else: navigation
@@ -2293,6 +2343,23 @@ namespace Graphite {
 				// the declaration through this document's own lens state.
 				if (lens != nullptr && editorResult.LensClicked)
 					RequestReferencesForLens(item, *lens, *editorResult.LensClicked, referencesPanel);
+
+				// Cancelled first: a frame that leaves one token for another cancels the old
+				// questions and may ask the new ones, and the router supersedes per slot anyway.
+				if (editorResult.CancelHover)
+				{
+					m_Router.CancelHover();
+				}
+
+				if (editorResult.AskHover)
+				{
+					m_Router.AskHover(*editorResult.AskHover);
+				}
+
+				if (editorResult.AskPreview)
+				{
+					m_Router.AskPreviewDefinition(*editorResult.AskPreview);
+				}
 			}
 
 			ImGui::End();
@@ -2342,7 +2409,8 @@ namespace Graphite {
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.ChangeMarkers, frame.Scheme, referencesPanel,
+							  frame.WordWrap, frame.ChangeMarkers, frame.Hover, frame.Scheme,
+							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot);
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop

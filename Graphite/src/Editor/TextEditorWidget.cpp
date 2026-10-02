@@ -7,6 +7,9 @@
 #include "Editor/EditorWidgetState.h"
 #include "Editor/FindBar.h"
 #include "Editor/FindNavigation.h"
+#include "Editor/HoverState.h"
+#include "Editor/HoverToken.h"
+#include "Editor/HoverTooltip.h"
 #include "Editor/LensModel.h"
 #include "Editor/MatchColumns.h"
 #include "Editor/Palettes.h"
@@ -15,6 +18,7 @@
 #include "Git/ChangeOverview.h"
 #include "Git/LineSpans.h"
 
+#include "Lang/Registry/LanguageRegistry.h"
 #include "Lang/Syntax/SyntaxCache.h"
 
 #include "Theme/BuiltInSchemes.h"
@@ -1854,7 +1858,10 @@ namespace Graphite {
 		struct DiagnosticHover
 		{
 			bool Valid = false;
-			std::vector<const DiagnosticSpan*> Spans;
+
+			// Copies, so a hover tooltip can keep showing them after the mouse has left the
+			// squiggle on its way into the tooltip.
+			std::vector<DiagnosticSpan> Spans;
 		};
 
 		// The diagnostic tooltip's own hit test, built on ComputeMouseHit like
@@ -1890,7 +1897,7 @@ namespace Graphite {
 				}
 
 				hover.Valid = true;
-				hover.Spans.push_back(&span);
+				hover.Spans.push_back(span);
 			}
 
 			return hover;
@@ -1901,6 +1908,9 @@ namespace Graphite {
 		// a squiggle. Every covering span's message is shown, each with its Source beneath it
 		// when the server gave one, separated so several overlapping diagnostics read as several
 		// messages rather than one run-on paragraph.
+		//
+		// Only for an editor that keeps no hover state; one that does shows the diagnostic at the
+		// top of its hover tooltip instead.
 		void DrawDiagnosticTooltip(const DiagnosticHover& hover)
 		{
 			if (!hover.Valid)
@@ -1909,24 +1919,266 @@ namespace Graphite {
 			}
 
 			ImGui::BeginTooltip();
+			DrawDiagnosticMessages(hover.Spans);
+			ImGui::EndTooltip();
+		}
 
-			for (std::size_t index = 0; index < hover.Spans.size(); ++index)
+		// What DrawVisibleRows needs to run the hover, beyond what it already draws with.
+		struct HoverFrame
+		{
+			HoverState* State = nullptr;
+			HoverSettings Settings;
+			const Core::FrameInput* Input = nullptr;
+		};
+
+		// The identifier under the mouse, in raw-line terms. The syntax cache's tokens are ranges
+		// of the tab-expanded line, and so is the mouse's byte; both are moved onto the raw line,
+		// which is what a hover keeps and what the server is asked about. The cached tokens are
+		// moved rather than the raw line lexed afresh: they were lexed in the state the lines
+		// above leave, so a word inside a block comment opened higher up is still a comment.
+		// One line a frame, so the conversion costs nothing worth keeping.
+		std::optional<HoverToken> ComputeHoverToken(const Core::TextBuffer& buffer,
+													const Core::OpenItem& item,
+													const EditorMetrics& metrics, const ImVec2& origin,
+													float textOriginX, const LensRows& lenses,
+													SyntaxCache* syntax)
+		{
+			if (syntax == nullptr)
 			{
-				if (index != 0)
-				{
-					ImGui::Separator();
-				}
+				return std::nullopt;
+			}
 
-				const DiagnosticSpan& span = *hover.Spans[index];
-				ImGui::TextUnformatted(span.Message.c_str());
+			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, lenses);
 
-				if (!span.Source.empty())
+			if (!hit.Valid)
+			{
+				return std::nullopt;
+			}
+
+			const Core::RowRef ref = item.Rows.RowAt(hit.Row);
+			const std::string raw = buffer.LineText(ref.Line);
+			const std::vector<Token> rawTokens =
+				RawTokensOf(raw, hit.Expanded, syntax->TokensOf(buffer, ref.Line), item.TabWidth);
+
+			return TokenUnderByte(raw, ref.Line,
+								  RawByteOfExpanded(raw, hit.Expanded, hit.ByteInLine, item.TabWidth),
+								  rawTokens);
+		}
+
+		// The question a hover token is asked as, or nothing for no token or one whose line an
+		// edit has since removed.
+		std::optional<HoverQuestion> HoverQuestionFor(const Core::TextBuffer& buffer,
+													  const std::filesystem::path& path,
+													  const std::optional<HoverToken>& token)
+		{
+			if (!token || token->Line >= buffer.GetLineCount())
+			{
+				return std::nullopt;
+			}
+
+			const std::string raw = buffer.LineText(token->Line);
+
+			HoverQuestion question;
+			question.Path = path;
+			question.DocumentRevision = buffer.GetRevision();
+			question.Line = token->Line;
+			question.TokenFrom = token->From;
+			question.TokenTo = token->To;
+			question.From = PositionOfToken(path, raw, *token);
+
+			return question;
+		}
+
+		// The token's own cells on screen — the same conversion CaretScreenX makes for the caret,
+		// so the tooltip lines up with the text it is about, wrapped or not.
+		HoverAnchor AnchorOfToken(const Core::TextBuffer& buffer, const Core::OpenItem& item,
+								  const EditorMetrics& metrics, const ImVec2& origin,
+								  float textOriginX, const LensRows& lenses, const HoverToken& token)
+		{
+			const std::string raw = buffer.LineText(token.Line);
+			const Core::VisualPosition visual = Core::CaretToVisual(
+				buffer, item.Rows, buffer.LineStart(token.Line) + std::min(token.From, raw.size()),
+				item.TabWidth);
+			const std::size_t width = Core::ColumnOfByte(raw, token.To, item.TabWidth) -
+									  Core::ColumnOfByte(raw, token.From, item.TabWidth);
+
+			HoverAnchor anchor;
+			anchor.Min = ImVec2(textOriginX + static_cast<float>(visual.Column) * metrics.CellWidth,
+								origin.y + static_cast<float>(lenses.ScreenRowOf(visual.Row)) *
+											   metrics.LineHeight);
+			anchor.Max = ImVec2(anchor.Min.x + static_cast<float>(width) * metrics.CellWidth,
+								anchor.Min.y + metrics.LineHeight);
+
+			return anchor;
+		}
+
+		bool IsLoneModifier(Core::KeyCode key)
+		{
+			switch (key)
+			{
+			case Core::KeyCode::LeftShift:
+			case Core::KeyCode::LeftControl:
+			case Core::KeyCode::LeftAlt:
+			case Core::KeyCode::LeftSuper:
+			case Core::KeyCode::RightShift:
+			case Core::KeyCode::RightControl:
+			case Core::KeyCode::RightAlt:
+			case Core::KeyCode::RightSuper:
+				return true;
+			default:
+				return false;
+			}
+		}
+
+		// What closes a hover this frame: a key other than a lone modifier — Ctrl swaps the
+		// content instead — a click anywhere but inside the tooltip, which would otherwise close
+		// the very thing being clicked, the wheel over this surface (the wheel over the tooltip
+		// scrolls its preview and does not count), or an edit.
+		bool HoverInputHappened(const Core::FrameInput* input, bool mouseInTooltip, bool edited)
+		{
+			if (edited)
+			{
+				return true;
+			}
+
+			if (input != nullptr)
+			{
+				for (const Core::KeyStroke& stroke : input->GetStrokes())
 				{
-					ImGui::TextDisabled("%s", span.Source.c_str());
+					if (!IsLoneModifier(stroke.Key))
+					{
+						return true;
+					}
 				}
 			}
 
-			ImGui::EndTooltip();
+			if (!mouseInTooltip)
+			{
+				for (int button = 0; button < ImGuiMouseButton_COUNT; ++button)
+				{
+					if (ImGui::IsMouseClicked(button))
+					{
+						return true;
+					}
+				}
+			}
+
+			const ImGuiIO& io = ImGui::GetIO();
+
+			return (io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f) && ImGui::IsWindowHovered();
+		}
+
+		// Feeds the document's hover tracker this frame's mouse, reports what it asks for, and
+		// draws the tooltip it wants shown. Called once a frame from inside the editor surface.
+		void RunHover(const Core::TextBuffer& buffer, const Core::OpenItem& item,
+					  const RowCanvas& canvas, const LensRows& lenses, SyntaxCache* syntax,
+					  const DiagnosticHover& diagnostic, const HoverFrame& frame,
+					  EditorFrameResult& result)
+		{
+			HoverState& hover = *frame.State;
+			const EditorMetrics& metrics = canvas.Metrics;
+			const ImVec2 mouse = ImGui::GetIO().MousePos;
+
+			// Last frame's rectangle: the tooltip is submitted after the surface, so this frame's
+			// is not known yet. One frame of lag on a rectangle the mouse has to travel into is
+			// not one anybody can see.
+			const bool mouseInTooltip =
+				hover.TooltipShown && ImRect(hover.TooltipMin, hover.TooltipMax).Contains(mouse);
+			const bool mouseMoved = mouse.x != hover.LastMouse.x || mouse.y != hover.LastMouse.y;
+
+			hover.LastMouse = mouse;
+
+			HoverInput input;
+			input.Token = ComputeHoverToken(buffer, item, metrics, canvas.Origin, canvas.TextOriginX,
+											lenses, syntax);
+			input.MouseInTooltip = mouseInTooltip;
+			input.MouseMoved = mouseMoved;
+			input.Ctrl = ImGui::GetIO().KeyCtrl;
+			input.DiagnosticUnderMouse = diagnostic.Valid;
+			input.InputHappened = HoverInputHappened(frame.Input, mouseInTooltip, result.Edited);
+			input.Revision = buffer.GetRevision();
+			input.Settings = frame.Settings;
+			input.Now = ImGui::GetTime();
+
+			// Keyed on the tracker's own token as of its last Update, not on the token under the
+			// mouse: during the leave grace and while the mouse is in the tooltip the two differ,
+			// and the answers shown belong to the tracker's.
+			const std::optional<HoverQuestion> held =
+				HoverQuestionFor(buffer, item.Path, hover.Tracker.Current());
+
+			input.InfoArrived = held.has_value() && hover.InfoFor == held;
+			input.PreviewArrived = held.has_value() && hover.PreviewFor == held;
+
+			HoverActions actions = hover.Tracker.Update(input);
+
+			const std::optional<HoverToken> current = hover.Tracker.Current();
+			const std::optional<HoverQuestion> question =
+				HoverQuestionFor(buffer, item.Path, current);
+
+			if (actions.Cancel)
+			{
+				result.CancelHover = true;
+			}
+
+			if (actions.AskInfo && question)
+			{
+				result.AskHover = question;
+			}
+
+			if (actions.AskPreview && question)
+			{
+				result.AskPreview = question;
+			}
+
+			if (actions.WakeAt)
+			{
+				Core::Redraw::RequestIn(
+					std::chrono::duration<double>(std::max(0.0, *actions.WakeAt - input.Now)));
+			}
+
+			// Defence: the tracker shows a part only once its answer is in for its own token, but
+			// an answer for any other question must never be drawn as this one's.
+			actions.ShowInfo = actions.ShowInfo && question.has_value() && hover.InfoFor == question;
+			actions.ShowPreview =
+				actions.ShowPreview && question.has_value() && hover.PreviewFor == question;
+
+			// Refreshed only while the mouse is still where the tracker's token is — not during
+			// the grace, when it may be crossing some other squiggle on its way to the tooltip.
+			if (diagnostic.Valid && input.Token == current)
+			{
+				hover.HeldDiagnostics = diagnostic.Spans;
+			}
+
+			if (current && current->Line < buffer.GetLineCount())
+			{
+				const HoverAnchor anchor = AnchorOfToken(buffer, item, metrics, canvas.Origin,
+														 canvas.TextOriginX, lenses, *current);
+				hover.AnchorMin = anchor.Min;
+				hover.AnchorMax = anchor.Max;
+			}
+			else if (diagnostic.Valid)
+			{
+				// A diagnostic alone has no token to sit under, so it sits under the mouse's own
+				// row, at the mouse, until the mouse leaves the squiggle.
+				const float rowTop =
+					canvas.Origin.y +
+					std::floor((mouse.y - canvas.Origin.y) / metrics.LineHeight) * metrics.LineHeight;
+
+				hover.AnchorMin = ImVec2(mouse.x, rowTop);
+				hover.AnchorMax = ImVec2(mouse.x, rowTop + metrics.LineHeight);
+			}
+
+			HoverTooltipLook look;
+			look.Palette = canvas.Palette;
+			look.Syntax = canvas.SyntaxColours;
+			look.LineHeight = metrics.LineHeight;
+			look.CellWidth = metrics.CellWidth;
+			look.TabWidth = item.TabWidth;
+			look.DocumentLexer = LexerFor(LanguageOfPath(item.Path));
+			look.Viewport = ImGui::GetWindowViewport();
+
+			DrawHoverTooltip(actions, hover, hover.HeldDiagnostics, look,
+							 HoverAnchor{hover.AnchorMin, hover.AnchorMax}, ImGui::GetCurrentWindow());
 		}
 
 		// How far past the change column the pointer still counts as over it. The bar is three
@@ -2426,7 +2678,8 @@ namespace Graphite {
 							 const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
 							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
-							 EditorWidgetState& widget, EditorFrameResult& result)
+							 EditorWidgetState& widget, const HoverFrame& hoverFrame,
+							 EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2485,10 +2738,16 @@ namespace Graphite {
 
 			// Computed and drawn here rather than inside the row loop: the tooltip is one popup
 			// for the whole frame, not one per row, and BeginTooltip/EndTooltip need calling
-			// exactly once regardless of how many rows the clipper visits.
-			DrawDiagnosticTooltip(ComputeDiagnosticHover(buffer, item, metrics, origin,
-														 canvas.TextOriginX, lenses,
-														 diagnosticOverlay));
+			// exactly once regardless of how many rows the clipper visits. The hover tooltip
+			// carries the diagnostic itself where the document keeps hover state; without it the
+			// diagnostic shows in a plain tooltip of its own, as it always has.
+			const DiagnosticHover diagnosticHover = ComputeDiagnosticHover(
+				buffer, item, metrics, origin, canvas.TextOriginX, lenses, diagnosticOverlay);
+
+			if (hoverFrame.State != nullptr)
+				RunHover(buffer, item, canvas, lenses, syntax, diagnosticHover, hoverFrame, result);
+			else
+				DrawDiagnosticTooltip(diagnosticHover);
 
 			// The same once-a-frame rule. The two never show together: one needs the pointer over
 			// the text, the other over the gutter.
@@ -2804,12 +3063,15 @@ namespace Graphite {
 			// A null Scheme is defence, not a supported mode — DocumentWindows always fills it
 			// from the ActiveScheme GraphiteLayer loads at startup, the same guard the syntax
 			// cache above gets.
+			const HoverFrame hoverFrame{view.Hover, view.HoverConfig, context.Input};
+
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax,
 							view.Scheme != nullptr ? *view.Scheme : DarkScheme(), view.Lens,
 							view.Semantic, view.Diagnostics, view.DiagnosticsStale,
 							view.ChangeDisplay.Gutter ? view.Changes : nullptr,
-							view.ChangeDisplay.Scrollbar ? view.Changes : nullptr, widget, result);
+							view.ChangeDisplay.Scrollbar ? view.Changes : nullptr, widget,
+							hoverFrame, result);
 
 			// Taken after the rows, because FirstVisibleRow is what the rows just worked out, and
 			// taken every frame so the anchor describes where the reader is now rather than where

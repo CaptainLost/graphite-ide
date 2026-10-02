@@ -53,6 +53,9 @@ namespace Graphite {
 		std::filesystem::path Path;
 		std::size_t Line = 0;
 		Utf16Column Column;
+
+		// What lets HoverQuestion, which carries one, be compared with its defaulted operator.
+		friend bool operator==(const FilePosition&, const FilePosition&) = default;
 	};
 
 	// A position received from the language server.
