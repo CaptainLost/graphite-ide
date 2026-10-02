@@ -2132,7 +2132,12 @@ namespace Graphite {
 
 			if (visible)
 			{
-				if (ImGui::IsWindowFocused())
+				// Children count. A click on the text focuses the editor surface, a child of this
+				// window, never the window itself; without the flag, clicking into the left half
+				// of a split left the right half active, and every command that acts on the
+				// active document - F12, Ctrl+C - acted on the half nobody was looking at. The
+				// find bar inside the surface and a popup opened from it count the same way.
+				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
 				{
 					ActivateAndRememberNode(index);
 				}
