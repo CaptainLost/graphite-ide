@@ -132,6 +132,74 @@ Type: `Timestep`
 Timestep ts
 ```)";
 
+	constexpr const char* kStep = R"(### function `Step`
+
+---
+→ `int`
+
+Parameters:
+
+- `int amount`
+
+Advances the simulation by one step and
+reports whether anything changed.
+
+Type: this line looks like a field but is prose.  
+\- a bullet in the docs  
+\- another bullet
+
+Example:  
+@code
+int x = Step(1);  
+@endcode
+
+---
+```cpp
+int Step(int amount)
+```)";
+
+	constexpr const char* kMakeMany = R"(### function `MakeMany`
+
+---
+→ `std::vector<int, std::allocator<int>>`
+
+Parameters:
+
+- `const int & value`
+- `std::size_t count (aka unsigned long long)`
+- `bool reserveFirst = true`
+
+---
+```cpp
+template <>
+std::vector<int, std::allocator<int>>
+MakeMany<int, std::allocator<int>>(const int &value, std::size_t count,
+                                   bool reserveFirst = true)
+```)";
+
+	constexpr const char* kTick = R"(### function `Tick`
+
+---
+→ `void`
+
+Plain function, no parameters.
+
+---
+```cpp
+void Tick()
+```)";
+
+	constexpr const char* kTimestep = R"(### struct `Timestep`
+
+---
+Size: 4 bytes, alignment 4 bytes
+
+---
+```cpp
+// In namespace Core
+struct Timestep {}
+```)";
+
 	constexpr const char* kInclude = R"(### `vector`
 
 ---
@@ -262,4 +330,70 @@ TEST_CASE("Empty and unrecognised replies are not parsed but keep the raw text")
 	const HoverInfo unknown = ParseClangdHover("some plaintext from another server");
 	CHECK_FALSE(unknown.Parsed);
 	CHECK(unknown.Raw == "some plaintext from another server");
+}
+
+TEST_CASE("A wrapped doc comment stays one paragraph and prose cannot overwrite the fields")
+{
+	const HoverInfo info = ParseClangdHover(kStep);
+
+	CHECK(info.Documentation ==
+		  "Advances the simulation by one step and\nreports whether anything changed.\n\n"
+		  "Type: this line looks like a field but is prose.\n- a bullet in the docs\n- another bullet\n\n"
+		  "Example:\n@code\nint x = Step(1);\n@endcode");
+	CHECK(info.Type.empty());
+	CHECK(info.ReturnType == "int");
+	CHECK(info.Parameters == std::vector<std::string>{"int amount"});
+}
+
+TEST_CASE("A declaration wrapped over several lines is read as one")
+{
+	const HoverInfo info = ParseClangdHover(kMakeMany);
+
+	CHECK(info.Declaration ==
+		  "template <> std::vector<int, std::allocator<int>> MakeMany<int, std::allocator<int>>(const int &value, "
+		  "std::size_t count, bool reserveFirst = true)");
+	CHECK(info.Parameters == std::vector<std::string>{"const int & value", "std::size_t count (aka unsigned long long)",
+													  "bool reserveFirst = true"});
+	CHECK(info.ReturnType == "std::vector<int, std::allocator<int>>");
+}
+
+TEST_CASE("A function without parameters has none and keeps its doc")
+{
+	const HoverInfo info = ParseClangdHover(kTick);
+
+	CHECK(info.Parameters.empty());
+	CHECK(info.Documentation == "Plain function, no parameters.");
+}
+
+TEST_CASE("A struct gives its size and alignment")
+{
+	const HoverInfo info = ParseClangdHover(kTimestep);
+
+	CHECK(info.Kind == "struct");
+	CHECK(info.Size == "4 bytes");
+	CHECK(info.Alignment == "4 bytes");
+}
+
+TEST_CASE("CRLF line endings give the same fields as LF")
+{
+	std::string crlf;
+
+	for (const char c : std::string(kField))
+	{
+		if (c == '\n')
+			crlf += '\r';
+
+		crlf += c;
+	}
+
+	const HoverInfo info = ParseClangdHover(crlf);
+
+	CHECK(info.Kind == "field");
+	CHECK(info.Name == "m_Scale");
+	CHECK(info.Type == "double");
+	CHECK(info.Offset == "16 bytes");
+	CHECK(info.Size == "8 bytes");
+	CHECK(info.Alignment == "8 bytes");
+	CHECK(info.Access == "private");
+	CHECK(info.Declaration == "double m_Scale = 1.0");
 }

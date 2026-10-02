@@ -1,7 +1,8 @@
 #include "Lang/Server/ClangdHover.h"
 
 #include <array>
-#include <sstream>
+#include <cctype>
+#include <string>
 
 namespace Graphite {
 
@@ -57,15 +58,49 @@ namespace Graphite {
 			return result;
 		}
 
-		void AppendParagraph(std::string& into, std::string_view text)
+		// Markdown escapes any ASCII punctuation with a backslash; clangd does so for a doc line that
+		// starts with "-" and for the like, and the tooltip shows plain text.
+		std::string Unescape(std::string_view text)
 		{
-			if (text.empty())
-				return;
+			std::string result;
 
-			if (!into.empty())
-				into += "\n\n";
+			for (std::size_t i = 0; i < text.size(); ++i)
+			{
+				if (text[i] == '\\' && i + 1 < text.size() && std::ispunct(static_cast<unsigned char>(text[i + 1])))
+					++i;
 
-			into += text;
+				result += text[i];
+			}
+
+			return result;
+		}
+
+		// Consecutive lines are one paragraph, as in markdown; a blank line starts the next. The two
+		// trailing spaces clangd writes for a hard break are dropped, the newline they stand for stays.
+		std::string JoinDocumentation(const std::vector<std::string_view>& lines)
+		{
+			std::string result;
+			bool paragraphBreak = false;
+
+			for (std::string_view line : lines)
+			{
+				while (!line.empty() && line.back() == ' ')
+					line.remove_suffix(1);
+
+				if (line.empty())
+				{
+					paragraphBreak = !result.empty();
+					continue;
+				}
+
+				if (!result.empty())
+					result += paragraphBreak ? "\n\n" : "\n";
+
+				paragraphBreak = false;
+				result += Unescape(line);
+			}
+
+			return result;
 		}
 
 		// "1 byte (+7 bytes padding), alignment 1 byte"
@@ -150,9 +185,16 @@ namespace Graphite {
 			info.Name = std::string(Unquote(heading.substr(tick)));
 		}
 
-		bool inParameters = false;
+		// The reply is split by "---" rules: the heading, then the header section with the structured
+		// fields, then the code block and whatever follows it. Only the start of the header section is
+		// structured; from its first free-text line on, a line that looks like "Type: ..." is prose.
+		int rules = 0;
 		bool inCode = false;
+		bool inFields = true;
+		bool inParameters = false;
 		std::string codeLanguage;
+		std::string declaration;
+		std::vector<std::string_view> documentation;
 
 		for (std::size_t index = 1; index < lines.size(); ++index)
 		{
@@ -162,81 +204,128 @@ namespace Graphite {
 			{
 				inCode = !inCode;
 				codeLanguage = inCode ? std::string(line.substr(3)) : std::string();
+
+				if (!inCode && codeLanguage.empty())
+					documentation.emplace_back();
+
 				continue;
 			}
 
 			if (inCode)
 			{
-				if (codeLanguage == "cpp" && StartsWith(line, "// In "))
+				if (codeLanguage != "cpp")
+					documentation.push_back(line);
+				else if (StartsWith(line, "// In "))
 					info.Scope = std::string(line.substr(6));
-				else if (codeLanguage == "cpp")
-					ReadDeclaration(line, info);
 				else
-					AppendParagraph(info.Documentation, line);
-
-				continue;
-			}
-
-			if (line == "---" || line.empty())
-			{
-				inParameters = inParameters && line.empty();
-				continue;
-			}
-
-			if (StartsWith(line, "→ "))
-			{
-				info.ReturnType = std::string(Unquote(line.substr(std::string_view("→ ").size())));
-				continue;
-			}
-
-			if (line == "Parameters:")
-			{
-				inParameters = true;
-				continue;
-			}
-
-			if (inParameters && StartsWith(line, "- "))
-			{
-				info.Parameters.emplace_back(Unquote(line.substr(2)));
-				continue;
-			}
-
-			inParameters = false;
-
-			if (StartsWith(line, "Type: "))
-			{
-				std::string_view type = Unquote(line.substr(6));
-
-				if (const std::size_t aka = type.find(" (aka "); aka != std::string_view::npos && type.back() == ')')
 				{
-					info.TypeAka = std::string(type.substr(aka + 6, type.size() - aka - 7));
-					type = type.substr(0, aka);
+					// A declaration clangd wrapped over several lines is one declaration.
+					std::string_view trimmed = line;
+
+					while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t'))
+						trimmed.remove_prefix(1);
+
+					while (!trimmed.empty() && (trimmed.back() == ' ' || trimmed.back() == '\t'))
+						trimmed.remove_suffix(1);
+
+					if (!declaration.empty() && !trimmed.empty())
+						declaration += ' ';
+
+					declaration += trimmed;
 				}
 
-				info.Type = std::string(type);
 				continue;
 			}
 
-			if (StartsWith(line, "Value = "))
+			if (line == "---")
 			{
-				info.Value = std::string(Unquote(line.substr(8)));
+				++rules;
+				inFields = false;
+				inParameters = false;
+
+				// Fields can only start right after the first rule.
+				if (rules == 1)
+					inFields = true;
+
 				continue;
 			}
 
-			if (StartsWith(line, "Offset: "))
+			if (rules != 1)
 			{
-				info.Offset = std::string(line.substr(8));
+				documentation.push_back(line);
 				continue;
 			}
 
-			if (StartsWith(line, "Size: "))
+			if (inFields)
 			{
-				ReadSize(line.substr(6), info);
-				continue;
+				if (line.empty())
+					continue;
+
+				if (inParameters)
+				{
+					if (StartsWith(line, "- "))
+					{
+						info.Parameters.emplace_back(Unquote(line.substr(2)));
+						continue;
+					}
+
+					inParameters = false;
+				}
+
+				if (StartsWith(line, "→ "))
+				{
+					info.ReturnType = std::string(Unquote(line.substr(std::string_view("→ ").size())));
+					continue;
+				}
+
+				if (line == "Parameters:")
+				{
+					inParameters = true;
+					continue;
+				}
+
+				if (StartsWith(line, "Type: "))
+				{
+					std::string_view type = Unquote(line.substr(6));
+
+					if (const std::size_t aka = type.find(" (aka "); aka != std::string_view::npos && type.back() == ')')
+					{
+						info.TypeAka = std::string(type.substr(aka + 6, type.size() - aka - 7));
+						type = type.substr(0, aka);
+					}
+
+					info.Type = std::string(type);
+					continue;
+				}
+
+				if (StartsWith(line, "Value = "))
+				{
+					info.Value = std::string(Unquote(line.substr(8)));
+					continue;
+				}
+
+				if (StartsWith(line, "Offset: "))
+				{
+					info.Offset = std::string(line.substr(8));
+					continue;
+				}
+
+				if (StartsWith(line, "Size: "))
+				{
+					ReadSize(line.substr(6), info);
+					continue;
+				}
+
+				inFields = false;
 			}
 
-			AppendParagraph(info.Documentation, line);
+			documentation.push_back(line);
 		}
+
+		if (!declaration.empty())
+			ReadDeclaration(declaration, info);
+
+		info.Documentation = JoinDocumentation(documentation);
 
 		return info;
 	}
