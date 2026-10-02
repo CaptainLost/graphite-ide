@@ -795,7 +795,8 @@ TEST_CASE("The handshake declares markdown hover")
 	const std::vector<std::string> sent = client.TakeSent();
 
 	REQUIRE(sent.size() == 1);
-	CHECK(sent[0].find(R"("hover":{"contentFormat":["markdown","plaintext"]})") != std::string::npos);
+	constexpr std::string_view kFormats = R"("hover":{"contentFormat":["markdown","plaintext"]})";
+	CHECK(sent[0].find(kFormats) != std::string::npos);
 }
 
 TEST_CASE("A hover request carries the position and its markdown reply lands in Text")

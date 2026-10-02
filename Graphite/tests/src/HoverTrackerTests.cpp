@@ -83,7 +83,8 @@ TEST_CASE("An answer for an older version is not shown")
 
 	HoverInput edited = At(0.7);
 	edited.Revision = 2;
-	edited.InfoArrived = true; // the widget looked it up for revision 2; it was asked for revision 0
+	// The widget looked it up for revision 2; it was asked for revision 0.
+	edited.InfoArrived = true;
 	const HoverActions after = tracker.Update(edited);
 
 	CHECK(after.Cancel);
@@ -289,7 +290,7 @@ TEST_CASE("Typing hides a diagnostic under a still mouse until the mouse moves")
 	CHECK(tracker.Update(input).ShowDiagnostic);
 }
 
-TEST_CASE("Typing hides the information past the delay until the mouse moves, then the delay starts again")
+TEST_CASE("Typing hides the information until the mouse moves, then the delay starts again")
 {
 	HoverTracker tracker;
 	ShowInfo(tracker);

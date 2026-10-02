@@ -21,7 +21,8 @@ namespace Graphite {
 	// The identifier token whose raw byte range holds `rawByte`, or nothing. Only Identifier
 	// tokens count: a word in a comment or a string is not a symbol.
 	std::optional<HoverToken> TokenUnderByte(std::string_view rawLine, std::size_t line,
-											 std::size_t rawByte, const std::vector<Token>& rawTokens);
+											 std::size_t rawByte,
+											 const std::vector<Token>& rawTokens);
 
 	// The LSP position of a token's start: line, and the UTF-16 column of its raw byte offset.
 	FilePosition PositionOfToken(const std::filesystem::path& path, std::string_view rawLine,

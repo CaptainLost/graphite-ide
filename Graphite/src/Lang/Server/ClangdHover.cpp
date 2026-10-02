@@ -15,7 +15,9 @@ namespace Graphite {
 			while (start <= text.size())
 			{
 				const std::size_t end = text.find('\n', start);
-				std::string_view line = text.substr(start, end == std::string_view::npos ? text.size() - start : end - start);
+				const std::size_t length =
+					end == std::string_view::npos ? text.size() - start : end - start;
+				std::string_view line = text.substr(start, length);
 
 				if (!line.empty() && line.back() == '\r')
 					line.remove_suffix(1);
@@ -58,15 +60,16 @@ namespace Graphite {
 			return result;
 		}
 
-		// Markdown escapes any ASCII punctuation with a backslash; clangd does so for a doc line that
-		// starts with "-" and for the like, and the tooltip shows plain text.
+		// Markdown escapes any ASCII punctuation with a backslash; clangd does so for a doc line
+		// that starts with "-" and for the like, and the tooltip shows plain text.
 		std::string Unescape(std::string_view text)
 		{
 			std::string result;
 
 			for (std::size_t i = 0; i < text.size(); ++i)
 			{
-				if (text[i] == '\\' && i + 1 < text.size() && std::ispunct(static_cast<unsigned char>(text[i + 1])))
+				if (text[i] == '\\' && i + 1 < text.size() &&
+					std::ispunct(static_cast<unsigned char>(text[i + 1])))
 					++i;
 
 				result += text[i];
@@ -75,8 +78,9 @@ namespace Graphite {
 			return result;
 		}
 
-		// Consecutive lines are one paragraph, as in markdown; a blank line starts the next. The two
-		// trailing spaces clangd writes for a hard break are dropped, the newline they stand for stays.
+		// Consecutive lines are one paragraph, as in markdown; a blank line starts the next. The
+		// two trailing spaces clangd writes for a hard break are dropped, the newline they stand
+		// for stays.
 		std::string JoinDocumentation(const std::vector<std::string_view>& lines)
 		{
 			std::string result;
@@ -106,17 +110,20 @@ namespace Graphite {
 		// "1 byte (+7 bytes padding), alignment 1 byte"
 		void ReadSize(std::string_view text, HoverInfo& info)
 		{
-			const std::size_t comma = text.find(", alignment ");
+			constexpr std::string_view kAlignment = ", alignment ";
+			const std::size_t comma = text.find(kAlignment);
 			std::string_view size = text.substr(0, comma);
 
 			if (comma != std::string_view::npos)
-				info.Alignment = std::string(text.substr(comma + std::string_view(", alignment ").size()));
+				info.Alignment = std::string(text.substr(comma + kAlignment.size()));
 
 			if (const std::size_t paren = size.find(" (+"); paren != std::string_view::npos)
 			{
 				std::string_view padding = size.substr(paren + 3);
 
-				if (const std::size_t word = padding.find(" padding)"); word != std::string_view::npos)
+				const std::size_t word = padding.find(" padding)");
+
+				if (word != std::string_view::npos)
 					padding = padding.substr(0, word);
 
 				info.Padding = std::string(padding);
@@ -129,7 +136,8 @@ namespace Graphite {
 		// The code block's declaration: "public: virtual void OnUpdate(Timestep ts)".
 		void ReadDeclaration(std::string_view line, HoverInfo& info)
 		{
-			constexpr std::array<std::string_view, 3> kAccess{"public: ", "private: ", "protected: "};
+			constexpr std::array<std::string_view, 3> kAccess{"public: ", "private: ",
+															  "protected: "};
 
 			for (std::string_view access : kAccess)
 			{
@@ -185,9 +193,10 @@ namespace Graphite {
 			info.Name = std::string(Unquote(heading.substr(tick)));
 		}
 
-		// The reply is split by "---" rules: the heading, then the header section with the structured
-		// fields, then the code block and whatever follows it. Only the start of the header section is
-		// structured; from its first free-text line on, a line that looks like "Type: ..." is prose.
+		// The reply is split by "---" rules: the heading, then the header section with the
+		// structured fields, then the code block and whatever follows it. Only the start of the
+		// header section is structured; from its first free-text line on, a line that looks like
+		// "Type: ..." is prose.
 		int rules = 0;
 		bool inCode = false;
 		bool inFields = true;
@@ -272,9 +281,11 @@ namespace Graphite {
 					inParameters = false;
 				}
 
-				if (StartsWith(line, "→ "))
+				constexpr std::string_view kArrow = "→ ";
+
+				if (StartsWith(line, kArrow))
 				{
-					info.ReturnType = std::string(Unquote(line.substr(std::string_view("→ ").size())));
+					info.ReturnType = std::string(Unquote(line.substr(kArrow.size())));
 					continue;
 				}
 
@@ -288,7 +299,9 @@ namespace Graphite {
 				{
 					std::string_view type = Unquote(line.substr(6));
 
-					if (const std::size_t aka = type.find(" (aka "); aka != std::string_view::npos && type.back() == ')')
+					const std::size_t aka = type.find(" (aka ");
+
+					if (aka != std::string_view::npos && type.back() == ')')
 					{
 						info.TypeAka = std::string(type.substr(aka + 6, type.size() - aka - 7));
 						type = type.substr(0, aka);

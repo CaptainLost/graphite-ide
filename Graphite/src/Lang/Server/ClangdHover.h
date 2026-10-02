@@ -9,7 +9,8 @@ namespace Graphite {
 	// What clangd's hover markdown says about a symbol, split into the fields a tooltip draws.
 	struct HoverInfo
 	{
-		std::string Kind;            // "instance method", "field", "class"... — hyphens shown as spaces
+		// "instance method", "field", "class"... — hyphens shown as spaces.
+		std::string Kind;
 		std::string Name;
 		std::string Scope;           // "Layer", "namespace Core", "Layer::OnUpdate"
 		std::string Access;          // "public", "private", "protected", or empty

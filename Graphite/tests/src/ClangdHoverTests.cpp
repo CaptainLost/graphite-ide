@@ -338,7 +338,8 @@ TEST_CASE("A wrapped doc comment stays one paragraph and prose cannot overwrite 
 
 	CHECK(info.Documentation ==
 		  "Advances the simulation by one step and\nreports whether anything changed.\n\n"
-		  "Type: this line looks like a field but is prose.\n- a bullet in the docs\n- another bullet\n\n"
+		  "Type: this line looks like a field but is prose.\n"
+		  "- a bullet in the docs\n- another bullet\n\n"
 		  "Example:\n@code\nint x = Step(1);\n@endcode");
 	CHECK(info.Type.empty());
 	CHECK(info.ReturnType == "int");
@@ -350,9 +351,11 @@ TEST_CASE("A declaration wrapped over several lines is read as one")
 	const HoverInfo info = ParseClangdHover(kMakeMany);
 
 	CHECK(info.Declaration ==
-		  "template <> std::vector<int, std::allocator<int>> MakeMany<int, std::allocator<int>>(const int &value, "
+		  "template <> std::vector<int, std::allocator<int>> "
+		  "MakeMany<int, std::allocator<int>>(const int &value, "
 		  "std::size_t count, bool reserveFirst = true)");
-	CHECK(info.Parameters == std::vector<std::string>{"const int & value", "std::size_t count (aka unsigned long long)",
+	CHECK(info.Parameters == std::vector<std::string>{"const int & value",
+													  "std::size_t count (aka unsigned long long)",
 													  "bool reserveFirst = true"});
 	CHECK(info.ReturnType == "std::vector<int, std::allocator<int>>");
 }

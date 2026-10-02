@@ -20,6 +20,7 @@ namespace Graphite {
 
 	// `lineAt(i)` returns line i's text, or nullopt past the end. Taken as a function so the
 	// same walk serves an open TextBuffer and a file read from disk.
-	LineRange DefinitionExtent(const std::function<std::optional<std::string_view>(std::size_t)>& lineAt,
-							   std::size_t startLine, const Lexer& lexer);
+	LineRange DefinitionExtent(
+		const std::function<std::optional<std::string_view>(std::size_t)>& lineAt,
+		std::size_t startLine, const Lexer& lexer);
 }

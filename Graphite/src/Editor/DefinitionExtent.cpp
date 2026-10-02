@@ -38,11 +38,13 @@ namespace Graphite {
 					if (token.Kind == TokenKind::Comment)
 						continue;
 
-					const bool single = token.Kind == TokenKind::Punctuation && token.To - token.From == 1;
+					const bool single =
+						token.Kind == TokenKind::Punctuation && token.To - token.From == 1;
 					const char next = single ? (*text)[token.From] : '\0';
 
-					// A brace group closing at depth 0 is the end of the definition unless a member
-					// initialiser follows: "a{1}, b{2} {" continues with another member or the body.
+					// A brace group closing at depth 0 is the end of the definition unless a
+					// member initialiser follows: "a{1}, b{2} {" continues with another member or
+					// the body.
 					if (next != ',' && next != '{')
 					{
 						range.Last = *closedAt;
@@ -68,8 +70,9 @@ namespace Graphite {
 
 					if (opened && depth == 0)
 					{
-						// The next significant token decides, possibly on a later line; "};" ends on
-						// this line because the ";" is neither a comma nor an opening brace.
+						// The next significant token decides, possibly on a later line; "};"
+						// ends on this line because the ";" is neither a comma nor an opening
+						// brace.
 						closedAt = line;
 					}
 				}

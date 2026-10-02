@@ -68,7 +68,8 @@ namespace Graphite {
 		// Rule 1: what the settings ask for. While held Ctrl no longer swaps the content, so the
 		// Ctrl state from before the hold stands.
 		const bool ctrl = held ? m_HeldCtrl : input.Ctrl;
-		const bool wantInfo = settings.ShowInfo && (settings.Preview != DefinitionPreviewMode::WithCtrl || !ctrl);
+		const bool wantInfo =
+			settings.ShowInfo && (settings.Preview != DefinitionPreviewMode::WithCtrl || !ctrl);
 		const bool wantPreview = settings.Preview == DefinitionPreviewMode::Always
 			|| (settings.Preview == DefinitionPreviewMode::WithCtrl && ctrl);
 

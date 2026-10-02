@@ -69,7 +69,8 @@ namespace Graphite {
 
 		HoverActions Update(const HoverInput& input);
 
-		// The token and revision the current answers belong to; the widget keys what it shows on it.
+		// The token and revision the current answers belong to; the widget keys what it shows on
+		// it.
 		std::optional<HoverToken> Current() const { return m_Token; }
 
 	private:

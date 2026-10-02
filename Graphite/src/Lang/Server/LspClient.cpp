@@ -50,7 +50,8 @@ namespace Graphite {
 				 "concept", "parameter", "variable", "property", "enumMember", "function",
 				 "method", "macro"});
 			capabilities["textDocument"]["semanticTokens"]["tokenModifiers"] = nlohmann::json::array();
-			// Markdown first: clangd's markdown reply is the one ParseClangdHover reads into fields.
+			// Markdown first: clangd's markdown reply is the one ParseClangdHover reads into
+			// fields.
 			capabilities["textDocument"]["hover"]["contentFormat"] =
 				nlohmann::json::array({"markdown", "plaintext"});
 			capabilities["textDocument"]["references"]["dynamicRegistration"] = false;

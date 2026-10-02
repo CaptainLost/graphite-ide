@@ -83,7 +83,8 @@ namespace Graphite {
 			std::vector<Location> Locations;
 			std::vector<Declaration> Declarations;
 			std::vector<SemanticToken> SemanticTokens;
-			// The hover reply's markdown; empty for every other question, and for a hover with nothing to say.
+			// The hover reply's markdown; empty for every other question, and for a hover with
+			// nothing to say.
 			std::string Text;
 			bool Failed = false;
 		};

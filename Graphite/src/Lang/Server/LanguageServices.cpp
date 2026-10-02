@@ -380,8 +380,8 @@ namespace Graphite {
 	}
 
 	LanguageServices::Ticket LanguageServices::AskHover(const std::filesystem::path& path,
-																		 LanguageId language,
-																		 const FilePosition& where)
+														  LanguageId language,
+														  const FilePosition& where)
 	{
 		return AskVia(path, language,
 					 [&where](LspClient& client) { return client.AskHover(where); });

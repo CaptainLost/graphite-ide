@@ -9,7 +9,8 @@
 namespace Graphite {
 
 	std::optional<HoverToken> TokenUnderByte(std::string_view rawLine, std::size_t line,
-											 std::size_t rawByte, const std::vector<Token>& rawTokens)
+											 std::size_t rawByte,
+											 const std::vector<Token>& rawTokens)
 	{
 		for (const Token& token : rawTokens)
 		{

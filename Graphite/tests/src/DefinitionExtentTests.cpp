@@ -27,7 +27,8 @@ namespace {
 
 TEST_CASE("A function body ends at its matching brace")
 {
-	const std::vector<std::string> lines{"int Sum(int a, int b)", "{", "    return a + b;", "}", "int Next;"};
+	const std::vector<std::string> lines{"int Sum(int a, int b)", "{", "    return a + b;", "}",
+										 "int Next;"};
 	const LineRange range = ExtentOf(lines, 0);
 
 	CHECK(range.First == 0);
@@ -50,7 +51,8 @@ TEST_CASE("A class ends at its closing brace and semicolon line")
 
 TEST_CASE("Braces inside strings and comments are not counted")
 {
-	const std::vector<std::string> lines{"void F() {", "  const char* s = \"}\"; // }", "  /* } */", "}"};
+	const std::vector<std::string> lines{"void F() {", "  const char* s = \"}\"; // }",
+										 "  /* } */", "}"};
 
 	CHECK(ExtentOf(lines, 0).Last == 3);
 }

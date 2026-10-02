@@ -47,6 +47,7 @@ namespace Graphite {
 
 			return kPreviewCtrl;
 		}
+
 		void SetDefaultZoomBindings(Core::Keymap& keys)
 		{
 			using Core::Chord;
@@ -101,7 +102,8 @@ namespace Graphite {
 		if (const int storedDelay = m_Store.GetHoverDelayMs(); storedDelay != 0)
 		{
 			m_Hover.DelayMs = std::clamp(storedDelay, kMinimumHoverDelayMs, kMaximumHoverDelayMs);
-		}	}
+		}
+	}
 
 	void EditorSettings::SetFontSize(float size)
 	{
