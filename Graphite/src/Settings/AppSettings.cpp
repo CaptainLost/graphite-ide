@@ -1,6 +1,7 @@
 #include "Settings/AppSettings.h"
 
 #include "Settings/InterfaceScale.h"
+#include "Settings/SettingsBackup.h"
 #include "Settings/SettingsVersion.h"
 #include "Settings/UserDirectories.h"
 
@@ -62,6 +63,11 @@ namespace Graphite {
 	AppSettings::AppSettings(std::filesystem::path file)
 		: m_File(std::move(file)), m_Document(Core::JsonFile::Load(m_File))
 	{
+		if (m_Document.IsMalformed())
+		{
+			APP_WARN("'{}' does not parse; using the default settings", Core::ToUtf8(m_File));
+		}
+
 		m_Written = TakeSnapshot(m_Document);
 	}
 
@@ -73,6 +79,19 @@ namespace Graphite {
 		}
 
 		Core::JsonFile onDisk = Core::JsonFile::Load(m_File);
+
+		// What a file that does not parse held is in nothing written below, so it is set aside
+		// first. Without that copy the file is left alone, unwritten, and tried again next time.
+		if (onDisk.IsMalformed() && !BackUpMalformedSettings(m_File))
+		{
+			if (!m_WriteFailed)
+			{
+				APP_WARN("Not writing '{}': it does not parse and could not be copied aside", Core::ToUtf8(m_File));
+			}
+
+			m_WriteFailed = true;
+			return;
+		}
 
 		// An empty read has nothing on it to keep, whatever the reason: a file that does not parse,
 		// one deleted or truncated while this ran, or one caught halfway through another

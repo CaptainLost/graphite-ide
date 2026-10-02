@@ -43,10 +43,14 @@ namespace Core {
 
 		// nlohmann/json throws by default; `allow_exceptions = false` returns a discarded
 		// value instead, so a hand-edited settings file loads as empty like a missing one.
-		nlohmann::json parsed = nlohmann::json::parse(buffer.str(), nullptr, false);
+		const std::string text = buffer.str();
+		nlohmann::json parsed = nlohmann::json::parse(text, nullptr, false);
 
 		if (parsed.is_discarded() || !parsed.is_object())
+		{
+			file.m_Malformed = text.find_first_not_of(" \t\r\n") != std::string::npos;
 			return file;
+		}
 
 		file.m_Document->root = std::move(parsed);
 		return file;

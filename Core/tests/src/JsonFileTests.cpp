@@ -121,6 +121,20 @@ TEST_CASE("A malformed file loads as empty rather than throwing")
 	CHECK(read.Get("anything").empty());
 }
 
+// Both read as empty, but only one has anything in it a person could lose by writing over it.
+TEST_CASE("A file that does not parse is reported as malformed, and a missing or blank one is not")
+{
+	TempDirectory temp;
+
+	CHECK(JsonFile::Load(temp.MakeFile("broken.json", "{ this is not valid json ")).IsMalformed());
+	CHECK(JsonFile::Load(temp.MakeFile("array.json", "[1, 2]")).IsMalformed());
+
+	CHECK_FALSE(JsonFile::Load(temp.GetPath() / "missing.json").IsMalformed());
+	CHECK_FALSE(JsonFile::Load(temp.MakeFile("blank.json", " \r\n")).IsMalformed());
+	CHECK_FALSE(JsonFile::Load(temp.MakeFile("good.json", R"({"a": "1"})")).IsMalformed());
+	CHECK_FALSE(JsonFile{}.IsMalformed());
+}
+
 TEST_CASE("A non-string value reads back as empty rather than throwing")
 {
 	TempDirectory temp;

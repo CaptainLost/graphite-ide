@@ -37,8 +37,14 @@ namespace Core {
 
 		std::vector<std::string> GetKeys() const;
 
+		// True when Load found a file holding something other than a JSON object - a typo in a
+		// hand edit, say. It reads as empty like a missing file, but unlike a missing or blank one
+		// it has content a save over it would lose.
+		bool IsMalformed() const { return m_Malformed; }
+
 	private:
 		struct Document;
 		Scope<Document> m_Document;
+		bool m_Malformed = false;
 	};
 }

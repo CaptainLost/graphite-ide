@@ -180,6 +180,38 @@ TEST_CASE("AppSettings reads a corrupt file as defaults and leaves it as it was"
 	CHECK(ReadBytes(file) == corrupt);
 }
 
+// A typo in a hand edit made before launch: the file reads as defaults, and the first change
+// would write those defaults over every setting the file held. The bytes are set aside first.
+TEST_CASE("AppSettings keeps a copy of a corrupt file before its first write goes over it")
+{
+	TempDirectory temp;
+	const std::string corrupt = R"({"wordWrap": "1", "colorScheme": "Light", oops)";
+	const std::filesystem::path file = temp.MakeFile("graphite.json", corrupt);
+	const std::filesystem::path backup = temp.GetPath() / "graphite.json.bak";
+
+	Graphite::AppSettings settings{file};
+
+	settings.SetIndentWidth(2);
+	settings.Flush();
+
+	REQUIRE(std::filesystem::exists(backup));
+	CHECK(ReadBytes(backup) == corrupt);
+	CHECK(Core::JsonFile::Load(file).Get("indentWidth") == "2");
+}
+
+TEST_CASE("AppSettings sets nothing aside when the file it writes over parses")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("graphite.json", R"({"wordWrap": "1"})");
+
+	Graphite::AppSettings settings{file};
+
+	settings.SetIndentWidth(2);
+	settings.Flush();
+
+	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "graphite.json.bak"));
+}
+
 TEST_CASE("AppSettings never writes over a file a newer version wrote")
 {
 	TempDirectory temp;
