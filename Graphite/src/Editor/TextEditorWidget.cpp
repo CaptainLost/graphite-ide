@@ -27,6 +27,7 @@
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/App/Redraw.h"
+#include "Core/Command/KeyName.h"
 #include "Core/Command/MenuBar.h"
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
@@ -1939,9 +1940,9 @@ namespace Graphite {
 		// One line a frame, so the conversion costs nothing worth keeping.
 		std::optional<HoverToken> ComputeHoverToken(const Core::TextBuffer& buffer,
 													const Core::OpenItem& item,
-													const EditorMetrics& metrics, const ImVec2& origin,
-													float textOriginX, const LensRows& lenses,
-													SyntaxCache* syntax)
+													const EditorMetrics& metrics,
+													const ImVec2& origin, float textOriginX,
+													const LensRows& lenses, SyntaxCache* syntax)
 		{
 			if (syntax == nullptr)
 			{
@@ -1960,9 +1961,10 @@ namespace Graphite {
 			const std::vector<Token> rawTokens =
 				RawTokensOf(raw, hit.Expanded, syntax->TokensOf(buffer, ref.Line), item.TabWidth);
 
-			return TokenUnderByte(raw, ref.Line,
-								  RawByteOfExpanded(raw, hit.Expanded, hit.ByteInLine, item.TabWidth),
-								  rawTokens);
+			const std::size_t rawByte =
+				RawByteOfExpanded(raw, hit.Expanded, hit.ByteInLine, item.TabWidth);
+
+			return TokenUnderByte(raw, ref.Line, rawByte, rawTokens);
 		}
 
 		// The question a hover token is asked as, or nothing for no token or one whose line an
@@ -1993,7 +1995,8 @@ namespace Graphite {
 		// so the tooltip lines up with the text it is about, wrapped or not.
 		HoverAnchor AnchorOfToken(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 								  const EditorMetrics& metrics, const ImVec2& origin,
-								  float textOriginX, const LensRows& lenses, const HoverToken& token)
+								  float textOriginX, const LensRows& lenses,
+								  const HoverToken& token)
 		{
 			const std::string raw = buffer.LineText(token.Line);
 			const Core::VisualPosition visual = Core::CaretToVisual(
@@ -2034,11 +2037,27 @@ namespace Graphite {
 		// content instead — a click anywhere but inside the tooltip, which would otherwise close
 		// the very thing being clicked, the wheel over this surface (the wheel over the tooltip
 		// scrolls its preview and does not count), or an edit.
+		//
+		// Shortcuts count too. FrameInput carries only the keys nobody upstream consumed, so F12,
+		// Alt+O or Ctrl+S never reach it; ImGui's own key state sees every press, whoever routed
+		// it, which is what keeps the tooltip from outliving the jump or the popup a shortcut
+		// opens.
 		bool HoverInputHappened(const Core::FrameInput* input, bool mouseInTooltip, bool edited)
 		{
 			if (edited)
 			{
 				return true;
+			}
+
+			for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index)
+			{
+				const auto key = static_cast<ImGuiKey>(index);
+
+				if (Core::IsKeyboardKey(key) && !Core::IsModifierKey(key) &&
+					ImGui::IsKeyPressed(key, false))
+				{
+					return true;
+				}
 			}
 
 			if (input != nullptr)
@@ -2089,8 +2108,8 @@ namespace Graphite {
 			hover.LastMouse = mouse;
 
 			HoverInput input;
-			input.Token = ComputeHoverToken(buffer, item, metrics, canvas.Origin, canvas.TextOriginX,
-											lenses, syntax);
+			input.Token = ComputeHoverToken(buffer, item, metrics, canvas.Origin,
+											canvas.TextOriginX, lenses, syntax);
 			input.MouseInTooltip = mouseInTooltip;
 			input.MouseMoved = mouseMoved;
 			input.Ctrl = ImGui::GetIO().KeyCtrl;
@@ -2138,7 +2157,8 @@ namespace Graphite {
 
 			// Defence: the tracker shows a part only once its answer is in for its own token, but
 			// an answer for any other question must never be drawn as this one's.
-			actions.ShowInfo = actions.ShowInfo && question.has_value() && hover.InfoFor == question;
+			actions.ShowInfo =
+				actions.ShowInfo && question.has_value() && hover.InfoFor == question;
 			actions.ShowPreview =
 				actions.ShowPreview && question.has_value() && hover.PreviewFor == question;
 
@@ -2160,9 +2180,8 @@ namespace Graphite {
 			{
 				// A diagnostic alone has no token to sit under, so it sits under the mouse's own
 				// row, at the mouse, until the mouse leaves the squiggle.
-				const float rowTop =
-					canvas.Origin.y +
-					std::floor((mouse.y - canvas.Origin.y) / metrics.LineHeight) * metrics.LineHeight;
+				const float row = std::floor((mouse.y - canvas.Origin.y) / metrics.LineHeight);
+				const float rowTop = canvas.Origin.y + row * metrics.LineHeight;
 
 				hover.AnchorMin = ImVec2(mouse.x, rowTop);
 				hover.AnchorMax = ImVec2(mouse.x, rowTop + metrics.LineHeight);
@@ -2178,7 +2197,8 @@ namespace Graphite {
 			look.Viewport = ImGui::GetWindowViewport();
 
 			DrawHoverTooltip(actions, hover, hover.HeldDiagnostics, look,
-							 HoverAnchor{hover.AnchorMin, hover.AnchorMax}, ImGui::GetCurrentWindow());
+							 HoverAnchor{hover.AnchorMin, hover.AnchorMax},
+							 ImGui::GetCurrentWindow());
 		}
 
 		// How far past the change column the pointer still counts as over it. The bar is three

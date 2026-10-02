@@ -52,9 +52,11 @@ namespace Graphite {
 	// information and its definition preview, as `actions` says. Records its rectangle in
 	// `hover` for the next frame's "is the mouse inside it", and clears it when nothing shows.
 	//
-	// Called from inside the editor surface; `returnFocusTo` is that surface, which keeps the
-	// keyboard even when a click lands inside the tooltip.
+	// Called from inside the editor surface. A click inside the tooltip hands the keyboard back
+	// to the window that held it before; `returnFocusTo`, that surface, is the fallback when no
+	// window did or that window has since gone. Not drawn at all while a modal is open.
 	void DrawHoverTooltip(const HoverActions& actions, HoverState& hover,
-						  const std::vector<DiagnosticSpan>& diagnostics, const HoverTooltipLook& look,
-						  const HoverAnchor& anchor, ImGuiWindow* returnFocusTo);
+						  const std::vector<DiagnosticSpan>& diagnostics,
+						  const HoverTooltipLook& look, const HoverAnchor& anchor,
+						  ImGuiWindow* returnFocusTo);
 }

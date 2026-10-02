@@ -82,4 +82,9 @@ namespace Graphite {
 		}
 		return Cut(loaded.GetValue().GetBuffer(), path, line);
 	}
+
+	bool IsDrawable(const DefinitionPreview& preview)
+	{
+		return preview.TooLarge || (!preview.Unreadable && !preview.Lines.empty());
+	}
 }

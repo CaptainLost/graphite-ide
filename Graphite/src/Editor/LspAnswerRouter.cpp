@@ -245,15 +245,15 @@ namespace Graphite {
 		m_PendingPreview = PendingHover{ticket, std::move(question)};
 	}
 
-	void LspAnswerRouter::CancelHover()
+	void LspAnswerRouter::CancelHover(const std::filesystem::path& path)
 	{
-		if (m_PendingHover)
+		if (m_PendingHover && m_PendingHover->Question.Path == path)
 		{
 			m_Server.Cancel(m_PendingHover->Ticket);
 			m_PendingHover.reset();
 		}
 
-		if (m_PendingPreview)
+		if (m_PendingPreview && m_PendingPreview->Question.Path == path)
 		{
 			m_Server.Cancel(m_PendingPreview->Ticket);
 			m_PendingPreview.reset();

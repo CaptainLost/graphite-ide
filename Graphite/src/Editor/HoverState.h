@@ -34,6 +34,11 @@ namespace Graphite {
 		ImVec2 TooltipMax{};
 		bool TooltipShown = false;
 
+		// The window that held the keyboard while the tooltip did not, so a click into the
+		// tooltip hands focus back to it rather than to whichever surface the mouse was over.
+		// An ID, not a pointer: it is looked up, and so checked, when it is used.
+		ImGuiID FocusBeforeTooltip = 0;
+
 		// Where the pointer was last frame, so a frame can tell the mouse moved: a dismissed
 		// tooltip comes back only after it does.
 		ImVec2 LastMouse{};
@@ -49,4 +54,17 @@ namespace Graphite {
 		ImVec2 AnchorMin{};
 		ImVec2 AnchorMax{};
 	};
+
+	// Holds a hover answer as the answer to `question`. An empty answer is held — the question
+	// has been answered, with nothing, and asking again would only say nothing again — but a
+	// failed one is not: a server still starting or restarting fails what it is asked, and
+	// holding that would leave the token blank until the text changed. What was held stays.
+	void HoldHoverAnswer(HoverState& hover, const HoverQuestion& question,
+						 const LanguageServices::Answer& answer);
+
+	// The same for a preview's definition question. An answer naming no definition is held as
+	// an unreadable preview; a failed one leaves what was held.
+	void HoldPreviewAnswer(HoverState& hover, const HoverQuestion& question,
+						   const LanguageServices::Answer& answer,
+						   const Core::DocumentSet& documents);
 }

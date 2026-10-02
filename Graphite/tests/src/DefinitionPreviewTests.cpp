@@ -31,7 +31,8 @@ TEST_CASE("A preview from disk is cut to the definition")
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 1);
 
 	CHECK(preview.FirstLine == 1);
-	CHECK(preview.Lines == std::vector<std::string>{"int Sum(int a, int b)", "{", "    return a + b;", "}"});
+	CHECK(preview.Lines ==
+		  std::vector<std::string>{"int Sum(int a, int b)", "{", "    return a + b;", "}"});
 }
 
 TEST_CASE("An open document wins over the file on disk")
@@ -85,4 +86,22 @@ TEST_CASE("A missing file is unreadable, not an exception")
 {
 	Core::DocumentSet documents;
 	CHECK(LoadDefinitionPreview(documents, "C:/does/not/exist.h", 0).Unreadable);
+}
+
+TEST_CASE("Only a preview with lines, or one too large to read, has anything to draw")
+{
+	DefinitionPreview lines;
+	lines.Lines = {"int X;"};
+	CHECK(Graphite::IsDrawable(lines));
+
+	DefinitionPreview tooLarge;
+	tooLarge.TooLarge = true;
+	CHECK(Graphite::IsDrawable(tooLarge));
+
+	DefinitionPreview unreadable;
+	unreadable.Unreadable = true;
+	CHECK_FALSE(Graphite::IsDrawable(unreadable));
+
+	// An out-of-range line: no lines and no flag.
+	CHECK_FALSE(Graphite::IsDrawable(DefinitionPreview{}));
 }

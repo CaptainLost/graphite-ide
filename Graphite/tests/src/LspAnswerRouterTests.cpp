@@ -157,7 +157,11 @@ namespace {
 			Switched.push_back(from);
 		}
 
-		void ApplyHover(const HoverQuestion& question, const Answer&) override { Hovers.push_back(question); }
+		void ApplyHover(const HoverQuestion& question, const Answer&) override
+		{
+			Hovers.push_back(question);
+		}
+
 		void ApplyPreviewDefinition(const HoverQuestion& question, const Answer&) override
 		{
 			Previews.push_back(question);
@@ -629,7 +633,7 @@ TEST_CASE("CancelHover cancels both hover slots and drops their answers")
 	h.Router.AskPreviewDefinition(HoverAt(1));
 	const Ticket preview = h.Server.LastOf("definition");
 
-	h.Router.CancelHover();
+	h.Router.CancelHover(kSource);
 
 	CHECK(h.Server.WasCancelled(hover));
 	CHECK(h.Server.WasCancelled(preview));
@@ -640,4 +644,28 @@ TEST_CASE("CancelHover cancels both hover slots and drops their answers")
 
 	CHECK(h.Target.Hovers.empty());
 	CHECK(h.Target.Previews.empty());
+}
+
+TEST_CASE("A hover cancelled for one document leaves another document's questions alone")
+{
+	Harness h;
+
+	h.Router.AskHover(HoverAt(1));
+	const Ticket hover = h.Server.LastOf("hover");
+	h.Router.AskPreviewDefinition(HoverAt(1));
+	const Ticket preview = h.Server.LastOf("definition");
+
+	// Two editors side by side: the other one's leave grace runs out while this one's question
+	// is still in flight.
+	h.Router.CancelHover("C:/project/other.cpp");
+
+	CHECK_FALSE(h.Server.WasCancelled(hover));
+	CHECK_FALSE(h.Server.WasCancelled(preview));
+
+	h.Server.Reply(hover);
+	h.Server.Reply(preview);
+	h.Router.Collect(h.Target);
+
+	CHECK(h.Target.Hovers.size() == 1);
+	CHECK(h.Target.Previews.size() == 1);
 }

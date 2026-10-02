@@ -29,12 +29,15 @@ namespace Graphite {
 
 		bool HasInfo(const HoverActions& actions, const HoverState& hover)
 		{
-			return actions.ShowInfo && hover.Info && (hover.Info->Parsed || !hover.Info->Raw.empty());
+			return actions.ShowInfo && hover.Info &&
+				   (hover.Info->Parsed || !hover.Info->Raw.empty());
 		}
 
+		// A preview with nothing to draw is no part at all, as an empty hover is: an identifier
+		// with no definition to show gets no box saying so.
 		bool HasPreview(const HoverActions& actions, const HoverState& hover)
 		{
-			return actions.ShowPreview && hover.Preview.has_value();
+			return actions.ShowPreview && hover.Preview.has_value() && IsDrawable(*hover.Preview);
 		}
 
 		void Join(std::string& into, std::string_view part)
@@ -123,8 +126,10 @@ namespace Graphite {
 
 				const std::string_view piece = text.substr(at, until - at);
 
-				draw->AddText(ImVec2(origin.x + static_cast<float>(column) * look.CellWidth, origin.y),
-							  colour, piece.data(), piece.data() + piece.size());
+				const float x = origin.x + static_cast<float>(column) * look.CellWidth;
+
+				draw->AddText(ImVec2(x, origin.y), colour, piece.data(),
+							  piece.data() + piece.size());
 
 				column += Core::ColumnCount(piece, look.TabWidth);
 				at = until;
@@ -301,14 +306,6 @@ namespace Graphite {
 				return;
 			}
 
-			// An out-of-range line comes back as no lines with no flag set; there is no more to
-			// say about it than about a file that could not be read.
-			if (preview.Unreadable || preview.Lines.empty())
-			{
-				DisabledText("definition not found");
-				return;
-			}
-
 			char line[32];
 			std::snprintf(line, sizeof(line), ":%zu", preview.FirstLine + 1);
 			DisabledText(file + line);
@@ -437,16 +434,20 @@ namespace Graphite {
 	}
 
 	void DrawHoverTooltip(const HoverActions& actions, HoverState& hover,
-						  const std::vector<DiagnosticSpan>& diagnostics, const HoverTooltipLook& look,
-						  const HoverAnchor& anchor, ImGuiWindow* returnFocusTo)
+						  const std::vector<DiagnosticSpan>& diagnostics,
+						  const HoverTooltipLook& look, const HoverAnchor& anchor,
+						  ImGuiWindow* returnFocusTo)
 	{
 		const bool showDiagnostic = actions.ShowDiagnostic && !diagnostics.empty();
 		const bool showInfo = HasInfo(actions, hover);
 		const bool showPreview = HasPreview(actions, hover);
 
 		// An empty or failed answer leaves the tracker showing a part with nothing in it; with
-		// nothing else left, there is no tooltip at all rather than an empty box.
-		if (!showDiagnostic && !showInfo && !showPreview)
+		// nothing else left, there is no tooltip at all rather than an empty box. Nor is there one
+		// while a modal is up: the tooltip is raised to the front every frame, which would put it
+		// over the very dialog that is meant to be the only thing taking input.
+		if ((!showDiagnostic && !showInfo && !showPreview) ||
+			ImGui::GetTopMostPopupModal() != nullptr)
 		{
 			hover.TooltipShown = false;
 			return;
@@ -499,10 +500,27 @@ namespace Graphite {
 		// A click inside the tooltip focuses it, as a click does any window, and the editor would
 		// lose the keyboard to a box that goes away when the mouse leaves. Handed back as soon as
 		// no button is down: during a press it would end the drag of the preview's scrollbar.
-		if (returnFocusTo != nullptr && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-			!ImGui::IsAnyMouseDown())
+		//
+		// Handed back to whichever window held focus before the click, not to the surface the
+		// mouse is over: with two editors side by side, hovering the unfocused one must not move
+		// the keyboard to it. ImGui moves focus on a click only at the end of the frame, so every
+		// frame the tooltip is not focused, the focused window is still the one to return to.
+		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+		if (!focused)
 		{
-			ImGui::FocusWindow(returnFocusTo);
+			ImGuiWindow* const holder = ImGui::GetCurrentContext()->NavWindow;
+			hover.FocusBeforeTooltip = holder != nullptr ? holder->ID : 0;
+		}
+		else if (!ImGui::IsAnyMouseDown())
+		{
+			// A window that has since gone — a popup the click closed — falls back to the surface.
+			ImGuiWindow* const holder = ImGui::FindWindowByID(hover.FocusBeforeTooltip);
+			ImGuiWindow* const target =
+				holder != nullptr && holder->WasActive ? holder : returnFocusTo;
+
+			if (target != nullptr)
+				ImGui::FocusWindow(target);
 		}
 
 		ImGui::BringWindowToDisplayFront(window);

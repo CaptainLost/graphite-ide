@@ -79,7 +79,7 @@ namespace Graphite {
 		virtual void ApplyHover(const HoverQuestion& question,
 								const LanguageServices::Answer& answer) = 0;
 		virtual void ApplyPreviewDefinition(const HoverQuestion& question,
-													const LanguageServices::Answer& answer) = 0;
+											const LanguageServices::Answer& answer) = 0;
 
 		// Successful answers only: a failure has nothing to apply, and the router has already
 		// done the bookkeeping it calls for.
@@ -171,8 +171,11 @@ namespace Graphite {
 		void AskHover(HoverQuestion question);
 		void AskPreviewDefinition(HoverQuestion question);
 
-		// Cancels both slots: the mouse has left, and their answers are about a place it is not.
-		void CancelHover();
+		// Cancels both slots when they hold this document's questions: the mouse has left, and
+		// their answers are about a place it is not. Another document's question is left alone —
+		// the slots are shared, and one editor's leave grace running out says nothing about the
+		// question a second editor beside it has just asked.
+		void CancelHover(const std::filesystem::path& path);
 
 		// Whether this document's declarations or colours are still being settled: wanted, or
 		// asked for and not yet answered. Reference counts deliberately do not count; see

@@ -23,6 +23,11 @@ namespace Graphite {
 
 	// The open document at `path` if there is one, else the file on disk (under the size limit,
 	// decoded as the editor decodes), cut to the definition's extent from `line`.
+	// Whether the tooltip has a preview part to draw. A file too large keeps its header; a
+	// definition that could not be read, or a line past the file's end, leaves nothing to say —
+	// the identifier simply has no definition to show, and a box saying so is noise.
+	bool IsDrawable(const DefinitionPreview& preview);
+
 	DefinitionPreview LoadDefinitionPreview(const Core::DocumentSet& documents,
 											const std::filesystem::path& path, std::size_t line);
 }

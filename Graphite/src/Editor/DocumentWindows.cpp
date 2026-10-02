@@ -1787,12 +1787,7 @@ namespace Graphite {
 			return;
 		}
 
-		HoverState& hover = state->second.Hover;
-
-		// A failed answer is held like an empty one: the question has been answered, with
-		// nothing, and asking again for the same token would only fail again.
-		hover.InfoFor = question;
-		hover.Info = ParseClangdHover(answer.Failed ? std::string_view{} : std::string_view{answer.Text});
+		HoldHoverAnswer(state->second.Hover, question, answer);
 
 		// The tracker does not wake the frame loop for an answer; a resting mouse sends no event.
 		Core::Redraw::Request();
@@ -1808,24 +1803,7 @@ namespace Graphite {
 			return;
 		}
 
-		HoverState& hover = state->second.Hover;
-
-		hover.PreviewFor = question;
-
-		if (answer.Failed || answer.Locations.empty())
-		{
-			DefinitionPreview none;
-			none.Unreadable = true;
-			hover.Preview = std::move(none);
-		}
-		else
-		{
-			// The path as the server spelt it. DocumentSet::Find compares paths exactly, so a
-			// definition in an open document is read from its buffer only when the spellings
-			// agree — the same terms F12's own preview of a definition is shown on.
-			const Location& where = answer.Locations.front();
-			hover.Preview = LoadDefinitionPreview(m_Documents, where.Path, where.Line);
-		}
+		HoldPreviewAnswer(state->second.Hover, question, answer, m_Documents);
 
 		Core::Redraw::Request();
 	}
@@ -2348,7 +2326,7 @@ namespace Graphite {
 				// questions and may ask the new ones, and the router supersedes per slot anyway.
 				if (editorResult.CancelHover)
 				{
-					m_Router.CancelHover();
+					m_Router.CancelHover(item.Path);
 				}
 
 				if (editorResult.AskHover)
