@@ -10,6 +10,7 @@
 #include <array>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace Core {
 
@@ -25,6 +26,10 @@ namespace Graphite {
 		FileTreeView(Workspace& workspace, const Core::DocumentSet& documents);
 
 		void Render();
+
+		// Off, the tree is left as the user arranged it; turned back on, it reveals the
+		// active document straight away.
+		void SetFollowsActiveFile(bool follow) { m_FollowsActiveFile = follow; }
 
 		void SetGitIgnoredDisplay(GitIgnoredDisplay display) { m_GitIgnoredDisplay = display; }
 
@@ -47,6 +52,7 @@ namespace Graphite {
 			std::string name;
 		};
 
+		void FollowActiveDocument();
 		void RenderToolbar();
 		void RenderEmptyState();
 		void RenderNode(Core::FileNode& node);
@@ -76,7 +82,15 @@ namespace Graphite {
 		std::filesystem::path m_DeleteCandidate;
 		bool m_OpenDeleteConfirmation = false;
 
-		std::filesystem::path m_ForceOpenPath;
+		// Folders whose rows are opened the next time the walk reaches them: a folder a file
+		// was just created in, and every folder on the way to a newly active document.
+		std::vector<std::filesystem::path> m_ForceOpen;
+
+		// The active document the tree last revealed, and the row to scroll into view in the
+		// walk that follows the reveal.
+		std::filesystem::path m_FollowedPath;
+		bool m_FollowsActiveFile = true;
+		std::filesystem::path m_ScrollToPath;
 
 		std::filesystem::path m_RenamingPath;
 

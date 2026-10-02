@@ -152,6 +152,24 @@ TEST_CASE("The explorer's ignored-file modes are reached through the panel that 
 											"git.ignored.hide"});
 }
 
+TEST_CASE("Following the active file is switched among the explorer's options")
+{
+	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
+	const MenuItem* view = FindSubmenu(tree, "View");
+
+	REQUIRE(view != nullptr);
+
+	const MenuItem* options = FindSubmenu(view->GetChildren(), "Explorer Options");
+
+	REQUIRE(options != nullptr);
+
+	const bool listed = std::any_of(options->GetChildren().begin(), options->GetChildren().end(),
+									[](const MenuItem& item)
+									{ return item.GetText() == "explorer.followActiveFile"; });
+
+	CHECK(listed);
+}
+
 TEST_CASE("The settings panel is reached from the top level, not from among the panels")
 {
 	// It is how the application is configured rather than a view of the work, so it keeps

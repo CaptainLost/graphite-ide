@@ -78,6 +78,10 @@ namespace Graphite {
 
 		RenderCommandCheckbox("Word wrap", "editor.toggleWordWrap");
 
+		ImGui::SeparatorText("Explorer");
+
+		RenderCommandCheckbox("Open folders to the active file", "explorer.followActiveFile");
+
 		ImGui::SeparatorText("Git");
 
 		// Plain checkboxes rather than commands like word wrap above: nobody toggles these while

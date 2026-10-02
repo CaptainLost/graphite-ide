@@ -7,6 +7,7 @@
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Platform/FileDialog.h"
+#include "Core/Text/DocumentSet.h"
 #include "Sln/SolutionEditor.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -45,7 +46,8 @@ namespace Graphite {
 		}
 	}
 
-	SolutionTreeView::SolutionTreeView(Workspace& workspace) : m_Workspace(workspace)
+	SolutionTreeView::SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents)
+		: m_Workspace(workspace), m_Documents(documents)
 	{
 	}
 
@@ -57,6 +59,7 @@ namespace Graphite {
 			return;
 		}
 
+		FollowActiveDocument();
 		RenderFilter();
 		ImGui::Separator();
 
@@ -67,6 +70,9 @@ namespace Graphite {
 		{
 			const std::string label =
 				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
+
+			if (OpensToward(solution.Root))
+				ImGui::SetNextItemOpen(true);
 
 			const bool rootOpen = ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
 
@@ -80,11 +86,34 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
+		m_RevealPath.clear();
 
 		// Outside the walk: the executor edits the solution the walk holds references into,
 		// and the modal must not be nested inside the child window.
 		ExecutePendingAction();
 		RenderRemoveConfirmation();
+	}
+
+	void SolutionTreeView::FollowActiveDocument()
+	{
+		// Every change of the active document, however it came about: a go-to-definition
+		// into another project, a tab switch, a file opened from search.
+		if (!m_FollowsActiveFile)
+		{
+			// Forgotten, so turning the setting on reveals the document active at that moment.
+			m_FollowedPath.clear();
+			return;
+		}
+
+		const auto active = m_Documents.GetActive();
+		const std::filesystem::path path =
+			active.has_value() ? m_Documents.At(*active).Path : std::filesystem::path{};
+
+		if (path == m_FollowedPath)
+			return;
+
+		m_FollowedPath = path;
+		m_RevealPath = path;
 	}
 
 	void SolutionTreeView::RenderFilter()
@@ -108,6 +137,9 @@ namespace Graphite {
 				continue;
 
 			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
+
+			if (OpensToward(child))
+				ImGui::SetNextItemOpen(true);
 
 			const bool open =
 				ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
@@ -138,6 +170,9 @@ namespace Graphite {
 
 		if (!project.Exists)
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+
+		if (OpensToward(project))
+			ImGui::SetNextItemOpen(true);
 
 		const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
 
@@ -175,6 +210,9 @@ namespace Graphite {
 		{
 			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
+			if (OpensToward(child))
+				ImGui::SetNextItemOpen(true);
+
 			if (ImGui::TreeNodeEx(label.c_str()))
 			{
 				RenderContentFolder(child);
@@ -191,7 +229,11 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderContentFile(const ContentFile& file)
 	{
-		const bool selected = m_Workspace.GetSelectedFile() == file.Path;
+		// The active document as well as the clicked row: a document opened some other way,
+		// by go-to-definition or from a tab, is what the reveal just opened the tree to show.
+		const auto active = m_Documents.GetActive();
+		const bool selected = m_Workspace.GetSelectedFile() == file.Path ||
+							  (active.has_value() && m_Documents.At(*active).Path == file.Path);
 
 		const std::string label =
 			std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} + "  " +
@@ -203,6 +245,9 @@ namespace Graphite {
 
 		if (ImGui::Selectable(label.c_str(), selected))
 			m_Workspace.SelectFile(file.Path);
+
+		if (!m_RevealPath.empty() && m_RevealPath == file.Path && !ImGui::IsItemVisible())
+			ImGui::SetScrollHereY(0.5f);
 
 		ImGui::PopID();
 	}

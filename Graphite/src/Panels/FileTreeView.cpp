@@ -11,6 +11,7 @@
 #include "Core/Text/DocumentSet.h"
 
 #include "Panels/TerminalRules.h"
+#include "Panels/TreeReveal.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -56,6 +57,7 @@ namespace Graphite {
 			return;
 		}
 
+		FollowActiveDocument();
 		RenderToolbar();
 		ImGui::Separator();
 
@@ -67,11 +69,49 @@ namespace Graphite {
 
 		ImGui::EndChild();
 
+		// Whatever the walk did not reach is hidden by the filter or by the ignored-file
+		// setting; left in place it would open or scroll to a row long after it was asked for.
+		m_ForceOpen.clear();
+		m_ScrollToPath.clear();
+
 		// Outside the walk: RenderNode recurses over the tree by reference, so the executor
 		// must not mutate it before the walk ends, and the modal must not be nested inside
 		// the child window.
 		ExecutePendingAction();
 		RenderDeleteConfirmation();
+	}
+
+	void FileTreeView::FollowActiveDocument()
+	{
+		// Every change of the active document, however it came about: a go-to-definition
+		// into another folder, a tab switch, a file opened from search. A file the user
+		// collapsed the folder of stays collapsed until another document becomes active.
+		if (!m_FollowsActiveFile)
+		{
+			// Forgotten, so turning the setting on reveals the document active at that moment.
+			m_FollowedPath.clear();
+			return;
+		}
+
+		const auto active = m_Documents.GetActive();
+		const std::filesystem::path path =
+			active.has_value() ? m_Documents.At(*active).Path : std::filesystem::path{};
+
+		if (path == m_FollowedPath)
+			return;
+
+		m_FollowedPath = path;
+
+		if (path.empty())
+			return;
+
+		std::vector<std::filesystem::path> opened = ExpandToward(m_Workspace.Tree(), path);
+
+		if (opened.empty())
+			return;
+
+		m_ForceOpen.insert(m_ForceOpen.end(), opened.begin(), opened.end());
+		m_ScrollToPath = path;
 	}
 
 	void FileTreeView::RenderToolbar()
@@ -374,7 +414,7 @@ namespace Graphite {
 		{
 			ReadFolderFromDisk(*parent);
 			parent->Expanded = true;
-			m_ForceOpenPath = action.target;
+			m_ForceOpen.push_back(action.target);
 		}
 
 		APP_INFO("Created '{}'", Core::ToUtf8(target));
@@ -534,6 +574,15 @@ namespace Graphite {
 		if (faded)
 			ImGui::PopStyleColor();
 
+		if (!m_ScrollToPath.empty() && m_ScrollToPath == node.Path)
+		{
+			// Only when off screen: a row already in view stays where the user put it.
+			if (!ImGui::IsItemVisible())
+				ImGui::SetScrollHereY(0.5f);
+
+			m_ScrollToPath.clear();
+		}
+
 		if (clicked)
 		{
 			m_Workspace.SelectFile(node.Path);
@@ -548,10 +597,11 @@ namespace Graphite {
 
 	void FileTreeView::RenderDirectoryRow(Core::FileNode& node)
 	{
-		if (!m_ForceOpenPath.empty() && m_ForceOpenPath == node.Path)
+		if (const auto forced = std::find(m_ForceOpen.begin(), m_ForceOpen.end(), node.Path);
+			forced != m_ForceOpen.end())
 		{
 			ImGui::SetNextItemOpen(true);
-			m_ForceOpenPath.clear();
+			m_ForceOpen.erase(forced);
 		}
 
 		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;

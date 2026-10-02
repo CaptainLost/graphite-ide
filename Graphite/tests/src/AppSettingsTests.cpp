@@ -30,6 +30,7 @@ TEST_CASE("AppSettings reads its defaults when there is no file")
 	CHECK_FALSE(settings.GetWordWrap());
 	CHECK(settings.GetInterfaceScalePercent() == 100);
 	CHECK(settings.GetLastFolder().empty());
+	CHECK(settings.GetExplorerFollowsActiveFile());
 }
 
 TEST_CASE("AppSettings keeps what was set across a flush and a reload")
@@ -41,6 +42,7 @@ TEST_CASE("AppSettings keeps what was set across a flush and a reload")
 		Graphite::AppSettings settings{file};
 		settings.SetEditorFontSize(17.0f);
 		settings.SetWordWrap(true);
+		settings.SetExplorerFollowsActiveFile(false);
 		settings.SetColorScheme("Light");
 		settings.SetClaudePrice("opus", "1,2,3,4,5");
 		settings.Flush();
@@ -50,6 +52,7 @@ TEST_CASE("AppSettings keeps what was set across a flush and a reload")
 
 	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(17.0f));
 	CHECK(reloaded.GetWordWrap());
+	CHECK_FALSE(reloaded.GetExplorerFollowsActiveFile());
 	CHECK(reloaded.GetColorScheme() == "Light");
 	REQUIRE(reloaded.GetClaudePrices().size() == 1);
 	CHECK(reloaded.GetClaudePrices()[0].first == "opus");

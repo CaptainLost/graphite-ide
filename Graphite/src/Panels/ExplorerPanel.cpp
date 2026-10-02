@@ -39,7 +39,7 @@ namespace Graphite {
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
 								 AppSettings& settings)
 		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
-		  m_AppSettings(settings), m_Files(workspace, documents), m_Solution(workspace)
+		  m_AppSettings(settings), m_Files(workspace, documents), m_Solution(workspace, documents)
 	{
 	}
 
@@ -132,6 +132,7 @@ namespace Graphite {
 	void ExplorerPanel::LoadSettings()
 	{
 		Apply(GitIgnoredDisplayFromString(m_AppSettings.GetGitIgnoredDisplay()), false);
+		ApplyFollowsActiveFile(m_AppSettings.GetExplorerFollowsActiveFile(), false);
 	}
 
 	void ExplorerPanel::RegisterCommands(Core::CommandRegistry& commands)
@@ -143,6 +144,11 @@ namespace Graphite {
 						  .Run = [this, mode] { Apply(mode.Display, true); },
 						  .Checked = [this, mode] { return m_Display == mode.Display; }});
 		}
+
+		commands.Add({.Id = "explorer.followActiveFile",
+					  .Label = "Follow Active File",
+					  .Run = [this] { ApplyFollowsActiveFile(!m_FollowsActiveFile, true); },
+					  .Checked = [this] { return m_FollowsActiveFile; }});
 	}
 
 	void ExplorerPanel::Apply(GitIgnoredDisplay display, bool persist)
@@ -154,5 +160,15 @@ namespace Graphite {
 		{
 			m_AppSettings.SetGitIgnoredDisplay(GitIgnoredDisplayToString(display));
 		}
+	}
+
+	void ExplorerPanel::ApplyFollowsActiveFile(bool follow, bool persist)
+	{
+		m_FollowsActiveFile = follow;
+		m_Files.SetFollowsActiveFile(follow);
+		m_Solution.SetFollowsActiveFile(follow);
+
+		if (persist)
+			m_AppSettings.SetExplorerFollowsActiveFile(follow);
 	}
 }

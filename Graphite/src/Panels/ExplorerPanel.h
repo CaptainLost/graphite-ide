@@ -55,6 +55,7 @@ namespace Graphite {
 		void SyncModeWithWorkspace();
 
 		void Apply(GitIgnoredDisplay display, bool persist);
+		void ApplyFollowsActiveFile(bool follow, bool persist);
 
 		Workspace& m_Workspace;
 		AppSettings& m_AppSettings;
@@ -65,5 +66,6 @@ namespace Graphite {
 		std::filesystem::path m_ModeLoadedFor;
 
 		GitIgnoredDisplay m_Display = GitIgnoredDisplay::Dim;
+		bool m_FollowsActiveFile = true;
 	};
 }

@@ -53,6 +53,7 @@ namespace Graphite {
 												  MenuItem::Command("git.ignored.dim"),
 												  MenuItem::Command("git.ignored.hide"),
 											  }),
+							MenuItem::Command("explorer.followActiveFile"),
 						}),
 					MenuItem::Separator(),
 					// Settings is a panel like the rest, but it is how the application is

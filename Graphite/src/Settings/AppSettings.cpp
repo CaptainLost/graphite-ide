@@ -25,6 +25,7 @@ namespace Graphite {
 		constexpr const char* kLastFolderKey = "lastFolder";
 
 		constexpr const char* kIgnoredDisplayKey = "ignoredDisplay";
+		constexpr const char* kExplorerFollowsActiveFileKey = "explorerFollowsActiveFile";
 
 		constexpr const char* kInterfaceScaleKey = "interfaceScale";
 		constexpr const char* kEditorFontSizeKey = "editorFontSize";
@@ -176,6 +177,16 @@ namespace Graphite {
 	void AppSettings::SetGitIgnoredDisplay(std::string_view mode)
 	{
 		Set(kIgnoredDisplayKey, std::string{mode});
+	}
+
+	bool AppSettings::GetExplorerFollowsActiveFile() const
+	{
+		return ReadFlag(Get(kExplorerFollowsActiveFileKey), true);
+	}
+
+	void AppSettings::SetExplorerFollowsActiveFile(bool follow)
+	{
+		Set(kExplorerFollowsActiveFileKey, Flag(follow));
 	}
 
 	int AppSettings::GetInterfaceScalePercent() const

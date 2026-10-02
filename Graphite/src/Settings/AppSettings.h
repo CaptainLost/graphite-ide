@@ -56,6 +56,10 @@ namespace Graphite {
 		std::string GetGitIgnoredDisplay() const;
 		void SetGitIgnoredDisplay(std::string_view mode);
 
+		// Whether the explorer opens its folders to whichever document becomes active.
+		bool GetExplorerFollowsActiveFile() const;
+		void SetExplorerFollowsActiveFile(bool follow);
+
 		// In percent of the size the system asks for; 100 when nothing usable is stored.
 		int GetInterfaceScalePercent() const;
 		void SetInterfaceScalePercent(int percent);
