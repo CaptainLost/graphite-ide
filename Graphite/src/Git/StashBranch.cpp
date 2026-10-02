@@ -1,6 +1,7 @@
 #include "Git/StashBranch.h"
 
 #include <array>
+#include <format>
 
 namespace Graphite {
 
@@ -16,6 +17,16 @@ namespace Graphite {
 			}
 
 			const std::string_view rest = message.substr(prefix.size());
+
+			// What git writes in place of a branch for a stash made on a detached head - the
+			// one name here with a space in it.
+			constexpr std::string_view detached = "(no branch)";
+
+			if (rest.starts_with(detached) && rest.substr(detached.size()).starts_with(':'))
+			{
+				return std::string(detached);
+			}
+
 			const std::size_t colon = rest.find(':');
 
 			// A branch name has no spaces either, so one before the colon means the colon
@@ -30,5 +41,37 @@ namespace Graphite {
 		}
 
 		return std::nullopt;
+	}
+
+	StashLabel StashRowLabel(std::string_view message, std::string_view when)
+	{
+		message = message.substr(0, message.find('\n'));
+
+		const std::optional<std::string> branch = StashBranch(message);
+
+		if (branch.has_value() && message.starts_with("On "))
+		{
+			// After the branch's colon, which is the first: neither a branch name nor git's
+			// "(no branch)" can hold one.
+			std::string_view own = message.substr(message.find(':') + 1);
+
+			// A message written on Windows can end its line in a carriage return.
+			constexpr std::string_view blank = " \t\r";
+			const std::size_t first = own.find_first_not_of(blank);
+			own = first == std::string_view::npos ? std::string_view{}
+												  : own.substr(first, own.find_last_not_of(blank) - first + 1);
+
+			if (!own.empty())
+			{
+				return StashLabel{.Text = std::string(own), .Named = true};
+			}
+		}
+		else if (!branch.has_value() && !message.empty())
+		{
+			return StashLabel{.Text = std::string(message), .Named = true};
+		}
+
+		return StashLabel{.Text = branch.has_value() ? std::format("{} - {}", when, *branch) : std::string(when),
+						  .Named = false};
 	}
 }

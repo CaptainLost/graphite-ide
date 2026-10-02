@@ -9,7 +9,6 @@
 #include "Git/HistoryFilter.h"
 #include "Git/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
-#include "Git/StashBranch.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
@@ -30,29 +29,6 @@
 namespace Graphite {
 
 	namespace {
-
-		// The reader's own offset from UTC, for the absolute timestamps in the details pane.
-		// Resolved on every call rather than cached: it changes at a daylight-saving
-		// boundary, and a panel that keeps drawing after one would otherwise be an hour out
-		// until the application restarts.
-		//
-		// Zero when the time zone database is not available — which happens on a Windows
-		// install without the ICU data chrono reads — so a timestamp falls back to UTC
-		// rather than the pane failing to draw.
-		std::chrono::minutes LocalOffset()
-		{
-			try
-			{
-				const auto now = std::chrono::system_clock::now();
-
-				return std::chrono::floor<std::chrono::minutes>(
-					std::chrono::current_zone()->get_info(now).offset);
-			}
-			catch (const std::exception&)
-			{
-				return std::chrono::minutes{0};
-			}
-		}
 
 		// `path` relative to `root`, comparing each component without regard to ASCII case:
 		// the editor and git can spell the same directory differently on Windows - a drive
@@ -384,6 +360,8 @@ namespace Graphite {
 			// A ref chosen in the previous repository names a branch this one may not have, and
 			// asking for it shows an error instead of this folder's history.
 			m_SelectedRef.reset();
+			m_SelectedStash.reset();
+			m_SelectedStashFile.reset();
 			m_LastSeenBranches.reset();
 			m_PendingRename.reset();
 
@@ -449,10 +427,11 @@ namespace Graphite {
 			const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
 			const std::function<void()> drawDiff = [this, &palette] { RenderPreview(palette); };
 
-			// Either selection is worth opening the pane for: a commit with no file picked
-			// still has a message to read, which is the whole point of selecting it.
+			// Any selection is worth opening the pane for: a commit with no file picked
+			// still has a message to read, which is the whole point of selecting it, and a
+			// stash has its files to list.
 			const bool hasSelection = m_Commits.GetSelectedFile().has_value() ||
-									  m_Commits.GetSelectedCommit().has_value();
+									  m_Commits.GetSelectedCommit().has_value() || m_SelectedStash.has_value();
 
 			DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
 											   .ResultsHeight = m_ListHeight,
@@ -489,24 +468,34 @@ namespace Graphite {
 
 		RenderErrors();
 
-		const auto group = [&](const char* heading, Core::RefKind kind) {
-			ImGui::SeparatorText(heading);
+		const auto group = [&](const char* heading, Core::RefKind kind, RefSection section) {
+			// Matched against the full name, so "origin" narrows to one remote's branches
+			// even though the label shows only the short name.
+			const auto shown = [&](const Core::Branch& branch) {
+				return branch.Kind == kind && MatchesRefFilter(branch.FullName, refFilter);
+			};
+
+			// The rows the section would list, filter applied: the count says what folding
+			// it hides, not how many branches there are behind the filter.
+			const std::size_t count =
+				static_cast<std::size_t>(std::ranges::count_if(branches, shown));
+
+			if (!RenderRefSection(heading, count, section))
+			{
+				return;
+			}
 
 			for (const Core::Branch& branch : branches)
 			{
-				if (branch.Kind != kind)
+				if (!shown(branch))
 				{
 					continue;
 				}
 
-				// Matched against the full name, so "origin" narrows to one remote's
-				// branches even though the label shows only the short name.
-				if (!MatchesRefFilter(branch.FullName, refFilter))
-				{
-					continue;
-				}
-
-				const bool selected = m_SelectedRef.has_value() && *m_SelectedRef == branch.FullName;
+				// One row of this column is selected at a time: a selected stash is what the pane
+				// below describes, and a branch lit beside it reads as a second answer to that.
+				const bool selected = !m_SelectedStash.has_value() && m_SelectedRef.has_value() &&
+									  *m_SelectedRef == branch.FullName;
 
 				// Each row's menu is its own popup.
 				ImGui::PushID(branch.FullName.c_str());
@@ -530,6 +519,10 @@ namespace Graphite {
 				{
 					m_SelectedRef = branch.FullName;
 
+					// Picking a branch is going back to the history, and a stash is on no
+					// branch's page - the rule a new page applies to a selected commit.
+					DeselectStash();
+
 					// Through RequestLog, not a request built here: picking a branch while a
 					// filter is on means "this branch, still filtered", and a request built
 					// from the ref alone would clear the boxes' effect while leaving their
@@ -539,10 +532,45 @@ namespace Graphite {
 			}
 		};
 
-		group("Local", Core::RefKind::Local);
-		group("Remote", Core::RefKind::Remote);
+		group("Local", Core::RefKind::Local, RefSection::Local);
+		group("Remote", Core::RefKind::Remote, RefSection::Remote);
 
 		RenderStashes();
+	}
+
+	bool GitView::RenderRefSection(const char* heading, std::size_t count, RefSection section)
+	{
+		bool& collapsed = m_CollapsedRefSections[static_cast<std::size_t>(section)];
+
+		ImGui::PushID(heading);
+
+		// The heading stays the separator line it was, with a chevron ahead of it, laid over
+		// one Selectable as tall as that line so the whole of it folds the section. The
+		// separator draws its text inset by its own padding, which the chevron is moved down
+		// by to sit on the same baseline.
+		const float padding = ImGui::GetStyle().SeparatorTextPadding.y;
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+
+		if (ImGui::Selectable("##section", false, ImGuiSelectableFlags_AllowOverlap,
+							  ImVec2(0.0f, ImGui::GetTextLineHeight() + padding * 2.0f)))
+		{
+			collapsed = !collapsed;
+		}
+
+		ImGui::SetCursorPos(ImVec2(rowStart.x, rowStart.y + padding));
+		ImGui::TextDisabled("%s", collapsed ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+
+		// No inset before the heading: the separator's own puts a stub of line between the
+		// chevron and the name.
+		ImGui::SameLine();
+		ImGui::SetCursorPosY(rowStart.y);
+		ImGui::PushStyleVar(ImGuiStyleVar_SeparatorTextPadding, ImVec2(0.0f, padding));
+		ImGui::SeparatorText(std::format("{} ({})", heading, count).c_str());
+		ImGui::PopStyleVar();
+
+		ImGui::PopID();
+
+		return !collapsed;
 	}
 
 	void GitView::RenderRefMenu(const Core::Branch& branch)
@@ -604,83 +632,17 @@ namespace Graphite {
 		ImGui::EndPopup();
 	}
 
-	void GitView::RenderStashes()
+	std::chrono::minutes GitView::LocalOffset()
 	{
-		ImGui::SeparatorText("Stashes");
-
-		const std::shared_ptr<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
-		const std::optional<Core::Error>& error = m_Model.GetStashesError();
-
-		// A list that could not be read says why rather than claiming there is nothing - and
-		// above an older list too, which may no longer be what is stashed.
-		if (error.has_value())
+		try
 		{
-			ImGui::TextDisabled("%s", error->Message.c_str());
+			const auto now = std::chrono::system_clock::now();
+
+			return std::chrono::floor<std::chrono::minutes>(std::chrono::current_zone()->get_info(now).offset);
 		}
-
-		if (!stashes || stashes->empty())
+		catch (const std::exception&)
 		{
-			if (!error.has_value())
-			{
-				ImGui::TextDisabled("No stashes");
-			}
-
-			return;
-		}
-
-		const bool busy = m_Model.IsWriteInFlight();
-
-		for (std::size_t row = 0; row < stashes->size(); ++row)
-		{
-			const Core::StashEntry& stash = (*stashes)[row];
-
-			ImGui::PushID(static_cast<int>(row));
-
-			// The label is laid over an id-only Selectable rather than passed as one: a stash
-			// message is free text, and a "##" in it would cut the label short.
-			const ImVec2 rowStart = ImGui::GetCursorPos();
-			ImGui::Selectable("##stash", false, ImGuiSelectableFlags_AllowOverlap);
-
-			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
-			{
-				const std::chrono::sys_seconds made{std::chrono::seconds{stash.Time}};
-				std::string tooltip = std::format("{:%Y-%m-%d %H:%M}", made + LocalOffset());
-
-				if (const std::optional<std::string> branch = StashBranch(stash.Message))
-				{
-					tooltip += "\nOn " + *branch;
-				}
-
-				ImGui::SetTooltip("%s", tooltip.c_str());
-			}
-
-			if (Core::BeginRightClickPopup("stash-menu"))
-			{
-				ImGui::BeginDisabled(busy);
-
-				if (ImGui::MenuItem("Apply"))
-				{
-					m_Model.RequestStashApply(stash.Id);
-				}
-
-				if (ImGui::MenuItem("Pop"))
-				{
-					m_Model.RequestStashPop(stash.Id);
-				}
-
-				if (ImGui::MenuItem("Drop"))
-				{
-					AskOnce(m_DropStashQuestion, DropStashPayload{.Index = stash.Index, .Id = stash.Id});
-				}
-
-				ImGui::EndDisabled();
-				ImGui::EndPopup();
-			}
-
-			ImGui::SetCursorPos(rowStart);
-			ImGui::TextUnformatted(std::format("stash@{{{}}}: {}", stash.Index, stash.Message).c_str());
-
-			ImGui::PopID();
+			return std::chrono::minutes{0};
 		}
 	}
 
@@ -925,6 +887,22 @@ namespace Graphite {
 
 	void GitView::RenderPreview(const GitPalette& palette)
 	{
+		const bool commitSelected =
+			m_Commits.GetSelectedFile().has_value() || m_Commits.GetSelectedCommit().has_value();
+
+		// Selecting a stash clears the commit list's selections, so one standing beside it
+		// was made since - the newer question, and the one the pane answers.
+		if (commitSelected && m_SelectedStash.has_value())
+		{
+			DeselectStash();
+		}
+
+		if (m_SelectedStash.has_value())
+		{
+			RenderStashPreview(palette);
+			return;
+		}
+
 		if (m_Commits.GetSelectedFile().has_value())
 		{
 			RenderDiff(palette);
@@ -994,23 +972,29 @@ namespace Graphite {
 			return;
 		}
 
+		RenderFileDiff(*selected, [this] { m_Commits.ClearSelection(); }, palette);
+	}
+
+	void GitView::RenderFileDiff(const FileSelection& selected, std::function<void()> onClose,
+								 const GitPalette& palette)
+	{
 		// Reassigned every frame rather than bound once in the constructor: the selection it
 		// captures changes with whichever file is selected now, and m_Diff is the one bottom
 		// pane shared across every selection. Set as soon as the selection is known, ahead of
 		// the two returns below, so OnOpenAsTab is never left holding a previous frame's
 		// selection while this one's diff is still loading or excludes the file.
 		const OpenDiff selection{
-			.Commit = selected->Commit, .Target = Core::DiffTarget::CommitToParent, .Path = selected->Path};
+			.Commit = selected.Commit, .Target = Core::DiffTarget::CommitToParent, .Path = selected.Path};
 
 		m_Diff.OnOpenAsTab = [this, selection] { m_DiffWindows.Open(selection); };
 
-		// Cleared alongside OnOpenAsTab above when nothing is selected, and reassigned here
-		// every frame for the same reason: this pane is shared across every selection.
-		m_Diff.OnClose = [this] { m_Commits.ClearSelection(); };
+		// Cleared alongside OnOpenAsTab when nothing is selected, and reassigned here every
+		// frame for the same reason: this pane is shared across every selection.
+		m_Diff.OnClose = std::move(onClose);
 
 		m_Diff.OnOpenFile = m_DiffWindows.OpenFileIn(m_Model);
 
-		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
+		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected.Commit);
 
 		if (!diff)
 		{
@@ -1018,7 +1002,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<std::size_t> index = IndexOfFile(*diff, selected->Path);
+		const std::optional<std::size_t> index = IndexOfFile(*diff, selected.Path);
 
 		if (!index.has_value())
 		{
@@ -1031,7 +1015,7 @@ namespace Graphite {
 		// Every rule about which path keys the texts, when the tokens are still valid and when
 		// a failed entry is forgiven lives in Update, shared with the detached tabs - the same
 		// steps written out twice were wrong the same way in both copies.
-		m_Texts.Update(m_Model, selected->Commit, file);
+		m_Texts.Update(m_Model, selected.Commit, file);
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
 		m_Diff.Render(file, palette, syntax, m_Texts.Texts, m_Texts.Tokens);

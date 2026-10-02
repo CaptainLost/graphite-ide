@@ -23,8 +23,10 @@
 #include <imgui.h>
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -135,9 +137,36 @@ namespace Graphite {
 			bool operator==(const DropStashPayload& other) const { return Id == other.Id; }
 		};
 
+		// The three lists down the refs column, each under a heading that folds it away:
+		// a repository with hundreds of remote branches otherwise buries the stashes below.
+		enum class RefSection : std::size_t
+		{
+			Local,
+			Remote,
+			Stashes,
+			Count
+		};
+
 		void RenderRefs(const std::vector<Core::Branch>& branches);
 		void RenderRefMenu(const Core::Branch& branch);
+
+		// One section's heading, with how many rows it holds, as a row that folds the section
+		// on a click. Returns whether the section is open.
+		bool RenderRefSection(const char* heading, std::size_t count, RefSection section);
+
+		// In GitViewStashes.cpp.
 		void RenderStashes();
+		void RenderStashMenu(const Core::StashEntry& stash);
+
+		// The pane below the history while a stash is selected: what it is, the files it
+		// holds, and the diff of whichever of them is picked.
+		void RenderStashPreview(const GitPalette& palette);
+
+		// A stash and a commit are never selected together, since the pane below shows one of
+		// them. Selecting a stash clears the commit list's selections; a selection made there
+		// afterwards is what lets go of the stash, in RenderPreview.
+		void SelectStash(const Core::Oid& stash);
+		void DeselectStash();
 
 		// The write error and this panel's own - a plan or a delete check that could not be
 		// made - each with a way to dismiss it. Lines, not modals, like ChangesPanel's.
@@ -193,6 +222,22 @@ namespace Graphite {
 
 		void RenderDiff(const GitPalette& palette);
 
+		// One file of one commit's diff in the shared bottom pane - a commit from the history
+		// or a stash, which is a commit too. `onClose` is what the pane's close does, since
+		// the two are dismissed back to different places.
+		void RenderFileDiff(const FileSelection& selected, std::function<void()> onClose,
+							const GitPalette& palette);
+
+		// The reader's own offset from UTC, for the absolute timestamps this panel shows.
+		// Resolved on every call rather than cached: it changes at a daylight-saving
+		// boundary, and a panel that keeps drawing after one would otherwise be an hour out
+		// until the application restarts.
+		//
+		// Zero when the time zone database is not available — which happens on a Windows
+		// install without the ICU data chrono reads — so a timestamp falls back to UTC
+		// rather than the pane failing to draw.
+		static std::chrono::minutes LocalOffset();
+
 		// The details of whichever commit is selected, with its change counts taken from
 		// the diff the model already holds for it — expanding the row is what asked for
 		// that diff, and it is the same click that made this selection.
@@ -238,6 +283,15 @@ namespace Graphite {
 		DiffView m_Diff;
 
 		std::optional<std::string> m_SelectedRef;
+
+		// Which sections of the refs column are folded. For this run only: folding is a
+		// gesture about what is on screen now, and every section opens again on a restart.
+		std::array<bool, static_cast<std::size_t>(RefSection::Count)> m_CollapsedRefSections{};
+
+		// The stash the pane below is describing, and the file of it whose diff is open. By
+		// id, as the writes are, because a stash's index shifts whenever another is pushed.
+		std::optional<Core::Oid> m_SelectedStash;
+		std::optional<std::filesystem::path> m_SelectedStashFile;
 
 		// The branches snapshot FollowSelectedRef last looked at, and the full names of a
 		// rename of the selected branch sent since: old, then new.
