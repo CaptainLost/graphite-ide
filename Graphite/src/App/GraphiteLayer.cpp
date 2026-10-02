@@ -1011,7 +1011,7 @@ namespace Graphite {
 		Core::EventDispatcher dispatcher{event};
 
 		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
-			return m_Router.OnKeyPressed(m_Commands, m_Keys, pressed);
+			return m_Router.OnKeyPressed(m_Commands, m_Keys, Core::Chord::Scope::Global, pressed);
 		});
 
 		dispatcher.Dispatch<Core::KeyReleasedEvent>([this](Core::KeyReleasedEvent& released) {

@@ -17,7 +17,11 @@ namespace Core {
 		enum class Scope : std::uint8_t
 		{
 			Global,
-			HoveredEditor
+			HoveredEditor,
+
+			// Fired only by the editor holding the keyboard, which routes the strokes it reads
+			// while drawing. Never a chord's own scope: a key chord's scope is its command's.
+			FocusedEditor
 		};
 
 		Chord() = default;

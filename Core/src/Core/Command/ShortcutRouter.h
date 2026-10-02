@@ -14,7 +14,11 @@ namespace Core {
 	class ShortcutRouter final
 	{
 	public:
-		bool OnKeyPressed(CommandRegistry& commands, const Keymap& keys, const KeyPressedEvent& event);
+		// Fires the commands bound to the pressed chord whose KeyScope is `scope`. The layer
+		// routes every key event as Global; the focused editor routes the strokes it reads as
+		// FocusedEditor, which is the only moment anything knows an editor holds the keyboard.
+		bool OnKeyPressed(CommandRegistry& commands, const Keymap& keys, Chord::Scope scope,
+						  const KeyPressedEvent& event);
 
 		// A tap fires on the release, because every ordinary shortcut begins with the same
 		// modifiers held down.

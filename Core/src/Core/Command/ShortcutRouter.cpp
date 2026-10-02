@@ -2,6 +2,7 @@
 
 #include "Core/Command/ShortcutRouter.h"
 
+#include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/ImGui/ImGuiKeys.h"
@@ -45,7 +46,7 @@ namespace Core {
 	}
 
 	bool ShortcutRouter::OnKeyPressed(CommandRegistry& commands, const Keymap& keys,
-									  const KeyPressedEvent& event)
+									  Chord::Scope scope, const KeyPressedEvent& event)
 	{
 		const ImGuiKey key = ToImGuiKey(event.GetKeyCode());
 
@@ -71,13 +72,23 @@ namespace Core {
 
 		const ImGuiKeyChord pressed = ToImGuiModifiers(event.GetModifiers()) | key;
 
-		const std::vector<std::string> fired =
+		std::vector<std::string> fired =
 			CommandsBoundTo(keys, [pressed](const Chord& chord) {
 				// A command every chord was taken away from holds an empty primary, and an
 				// empty chord names no key: matching it would fire on the modifiers alone.
 				return !chord.IsEmpty() && chord.GetTrigger() == Trigger::Key &&
-					   chord.GetScope() == Chord::Scope::Global && chord.GetKeys() == pressed;
+					   chord.GetKeys() == pressed;
 			});
+
+		// A binding whose command was never registered is treated as Global, the scope every
+		// chord had before commands carried one.
+		std::erase_if(fired, [&commands, scope, &event](const std::string& id) {
+			const Command* command = commands.Find(id);
+			const Chord::Scope wanted = command != nullptr ? command->KeyScope : Chord::Scope::Global;
+			const bool repeats = command == nullptr || command->Repeats;
+
+			return wanted != scope || (event.IsRepeat() && !repeats);
+		});
 
 		RunAll(commands, fired);
 		return !fired.empty();
