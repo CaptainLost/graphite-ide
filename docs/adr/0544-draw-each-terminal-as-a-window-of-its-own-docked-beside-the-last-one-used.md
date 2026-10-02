@@ -42,17 +42,27 @@ terminal that comes back after a restart has to come back under the same name.
     profile's name rather than its position, for the command palette.
 - A new window is docked on its first frame only, afterwards `imgui.ini` owns
   its place. The target is the first that exists: the node whose button or menu
-  asked for it, else beside the terminal focused last (into its dock node, or
-  onto it as a tab when it floats), else the node of the Console panel, else
-  the node of any other terminal, else a new bottom row made by splitting the
-  central node downward, else the central node. The new row is what a start
-  makes when no terminal and no Console is on screen; no tab bar is left to
-  carry a `+` then, and the shortcut is the way back to a terminal.
+  asked for it, else the dock node of the terminal focused last, else the node
+  of the Console panel, else the node of any other terminal, else a new bottom
+  row made by splitting the central node downward, else the central node. A
+  floating terminal has a dock node of its own (`DockingAlwaysTabBar`), so a new
+  terminal docks into it the same way as into a docked one. The new row is what
+  a start makes when no terminal and no Console is on screen; no tab bar is left
+  to carry a `+` then, and the shortcut is the way back to a terminal.
+- View → Reset Layout docks every open terminal again by that same rule, with
+  no node asked for and no terminal focused last, so they land beside the
+  Console in the rebuilt bottom row instead of floating where the removed nodes
+  left them. It happens on the frame the layout is rebuilt, which can be the
+  frame after the reset is chosen.
 - Shell terminals are kept per folder (0522) as `restore.terminal.*`: `Id`,
   profile name and starting directory. A folder with no saved list is told apart
   from a folder with an empty one: absent opens one default shell, empty opens
-  none. The bookkeeping (what to capture, what to skip, what to start) is in
-  `TerminalRules`, which has no ImGui and starts no process.
+  none. A folder's list stays absent until the folder has had a terminal of its
+  own - a saved list, its default shell, or a shell started while it is open -
+  so a folder opened while another one's shells are still up, which opens no
+  default shell, is not saved as having closed them all. The bookkeeping (what
+  to capture, what to skip, what to start) is in `TerminalRules`, which has no
+  ImGui and starts no process.
 - Terminals started by a command (0519) are never kept, and neither are
   terminals carried over from a folder that another one replaced.
 - The id is a `Core::Uuid`, not a counter, so two folders' terminals never share
@@ -64,9 +74,8 @@ Docking is a property of windows, so the only way for a terminal to dock like a
 document tab is to be a window. Placing a new one beside the terminal last used
 puts it where the reader's attention already is, and a node's own `+` says more
 than which terminal had focus last; the fallbacks cover the first terminal of a
-session. Remembering the profile and directory rather than the
-process keeps the feature small and honest: the layout returns, the shell is
-new.
+session. Remembering the profile and directory rather than the process keeps
+the feature small and honest: the layout returns, the shell is new.
 
 ## Consequences
 
@@ -85,9 +94,6 @@ new.
 - A `panel.terminal.visible` key lingers in global state from earlier runs. It
   is ignored, since `PanelManager::SetVisible` returns false for an id it does
   not know, but nothing removes it.
-- Docking a new window onto a floating terminal takes one frame, because the
-  window to be docked must exist before the dock can be queued. The new window
-  is drawn over its target for that frame so the move is not seen.
 - The tab-bar buttons are added to a bar that was drawn this frame, so they
   appear one frame after a node first shows.
 - A bottom row made again by splitting the central node moves the open documents
