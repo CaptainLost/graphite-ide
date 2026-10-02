@@ -3,6 +3,7 @@
 #include "Sessions/ClaudeSettings.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Fs/FileSystem.h"
 
 #include <imgui.h>
 
@@ -26,8 +27,7 @@ namespace Graphite {
 
 		if (!m_EditingBinary)
 		{
-			const std::u8string text = m_Settings.GetBinary().u8string();
-			m_PendingBinary.assign(reinterpret_cast<const char*>(text.data()), text.size());
+			m_PendingBinary = Core::ToUtf8(m_Settings.GetBinary());
 		}
 
 		char buffer[1024] = {};
@@ -42,8 +42,7 @@ namespace Graphite {
 
 		if (ImGui::IsItemDeactivatedAfterEdit())
 		{
-			m_Settings.SetBinary(std::filesystem::path{std::u8string{
-				reinterpret_cast<const char8_t*>(m_PendingBinary.data()), m_PendingBinary.size()}});
+			m_Settings.SetBinary(Core::FromUtf8(m_PendingBinary));
 		}
 
 		if (!m_ResolvedFor.has_value() || *m_ResolvedFor != m_Settings.GetBinary())
@@ -55,7 +54,7 @@ namespace Graphite {
 		if (m_Resolved.empty())
 			ImGui::TextDisabled("Claude was not found. Name claude.exe above, or put it on PATH.");
 		else
-			ImGui::TextDisabled("Runs %s", reinterpret_cast<const char*>(m_Resolved.u8string().c_str()));
+			ImGui::TextDisabled("Runs %s", Core::ToUtf8(m_Resolved).c_str());
 	}
 
 	void ClaudeSection::RenderPrices()

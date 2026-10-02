@@ -45,10 +45,29 @@ namespace Core {
 		}
 	}
 
+	// Both directions convert with the Win32 calls rather than through std::filesystem, whose
+	// u8string() and u8string constructor throw std::system_error on a lone surrogate or on bytes
+	// that are not UTF-8 (ADR 0004). Without the strict flags, the Win32 calls write U+FFFD there
+	// instead, so a name that cannot be spelled exactly still comes out as a recognisable one.
 	std::string ToUtf8(const std::filesystem::path& path)
 	{
+#ifdef CORE_PLATFORM_WINDOWS
+		const std::wstring& wide = path.native();
+		if (wide.empty())
+		{
+			return {};
+		}
+
+		const int wideLength = static_cast<int>(wide.size());
+		const int length = ::WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, nullptr, 0, nullptr, nullptr);
+
+		std::string text(static_cast<std::size_t>(length), '\0');
+		::WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, text.data(), length, nullptr, nullptr);
+		return text;
+#else
 		const std::u8string utf8 = path.u8string();
 		return std::string{reinterpret_cast<const char*>(utf8.data()), utf8.size()};
+#endif
 	}
 
 	std::string ToGenericUtf8(const std::filesystem::path& path)
@@ -60,8 +79,22 @@ namespace Core {
 
 	std::filesystem::path FromUtf8(std::string_view text)
 	{
+#ifdef CORE_PLATFORM_WINDOWS
+		if (text.empty())
+		{
+			return {};
+		}
+
+		const int textLength = static_cast<int>(text.size());
+		const int length = ::MultiByteToWideChar(CP_UTF8, 0, text.data(), textLength, nullptr, 0);
+
+		std::wstring wide(static_cast<std::size_t>(length), L'\0');
+		::MultiByteToWideChar(CP_UTF8, 0, text.data(), textLength, wide.data(), length);
+		return std::filesystem::path{std::move(wide)};
+#else
 		const std::u8string utf8{reinterpret_cast<const char8_t*>(text.data()), text.size()};
 		return std::filesystem::path{utf8};
+#endif
 	}
 
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)

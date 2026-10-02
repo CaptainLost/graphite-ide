@@ -12,6 +12,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
+#include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
 
@@ -50,12 +51,6 @@ namespace Graphite {
 			const auto start = ParseTimestamp(summary.StartedAt);
 			const auto end = ParseTimestamp(summary.EndedAt);
 			return start && end ? FormatDuration(*end - *start) : std::string{};
-		}
-
-		std::string PathText(const std::filesystem::path& path)
-		{
-			const std::u8string text = path.u8string();
-			return {reinterpret_cast<const char*>(text.data()), text.size()};
 		}
 	}
 
@@ -110,7 +105,7 @@ namespace Graphite {
 
 		if (!std::filesystem::is_directory(m_Projects, status))
 		{
-			m_Problem = "No Claude transcripts at " + PathText(m_Projects);
+			m_Problem = "No Claude transcripts at " + Core::ToUtf8(m_Projects);
 			return;
 		}
 
@@ -139,7 +134,7 @@ namespace Graphite {
 		if (Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(m_Projects))
 			m_Watcher = std::move(watcher).GetValue();
 		else
-			APP_ERROR("Cannot watch {}: {}", PathText(m_Projects), watcher.GetError().Message);
+			APP_ERROR("Cannot watch {}: {}", Core::ToUtf8(m_Projects), watcher.GetError().Message);
 	}
 
 	void SessionsPanel::TakeFromIndex()
@@ -210,7 +205,7 @@ namespace Graphite {
 			summaries.push_back(summary);
 
 		if (!SaveSummaryCache(m_CacheFile, summaries))
-			APP_ERROR("Cannot write {}", PathText(m_CacheFile));
+			APP_ERROR("Cannot write {}", Core::ToUtf8(m_CacheFile));
 
 		m_CacheDirty = false;
 	}
@@ -394,7 +389,7 @@ namespace Graphite {
 
 	void SessionsPanel::RenderRow(const SessionSummary& summary)
 	{
-		ImGui::PushID(PathText(summary.File).c_str());
+		ImGui::PushID(Core::ToUtf8(summary.File).c_str());
 
 		const Pricing& pricing = m_Settings.GetPricing();
 		const CostResult main = pricing.CostOf(summary.Main);
@@ -477,10 +472,10 @@ namespace Graphite {
 				// itself and asserts ("Cannot have an empty ID at the root of a window"). The id
 				// is the group's key, not the spelling shown: that is whichever of its sessions
 				// sorts first, and changes as they do.
-				const std::string cwdText = PathText(summary.Cwd);
+				const std::string cwdText = Core::ToUtf8(summary.Cwd);
 				const std::string label = cwdText.empty() ? "(unknown folder)" : cwdText;
 				const std::string header =
-					label + "  " + FormatCost(total) + "###group-" + PathText(std::filesystem::path{folder});
+					label + "  " + FormatCost(total) + "###group-" + Core::ToUtf8(std::filesystem::path{folder});
 				groupOpen = ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
 			}
 

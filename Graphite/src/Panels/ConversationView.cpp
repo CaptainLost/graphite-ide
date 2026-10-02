@@ -11,6 +11,7 @@
 #include "Sessions/ToolFacts.h"
 #include "Workspace/Workspace.h"
 
+#include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -627,9 +628,9 @@ namespace Graphite {
 
 		if (const std::optional<std::filesystem::path> path = ToolFilePath(tool))
 		{
-			const std::u8string text = path->u8string();
+			const std::string text = Core::ToUtf8(*path);
 
-			if (ImGui::SmallButton(reinterpret_cast<const char*>(text.c_str())))
+			if (ImGui::SmallButton(text.c_str()))
 				events.Publish(OpenFileRequested{*path, false});
 		}
 

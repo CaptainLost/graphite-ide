@@ -4,6 +4,8 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/ToolFacts.h"
 
+#include "Core/Fs/FileSystem.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -119,7 +121,7 @@ namespace Graphite {
 		if (path.empty())
 			return std::nullopt;
 
-		return std::filesystem::path{std::u8string{reinterpret_cast<const char8_t*>(path.data()), path.size()}};
+		return Core::FromUtf8(path);
 	}
 
 	std::vector<TurnCost> TurnCosts(const Session& session, const Pricing& pricing)

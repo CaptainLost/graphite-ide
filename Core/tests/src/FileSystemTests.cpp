@@ -107,6 +107,35 @@ TEST_CASE("ReadDirectory returns UTF-8 names for non-ASCII filenames")
 		  "\xc4\x86wiczenia-\xe6\x97\xa5.txt");
 }
 
+// Text from outside — a percent-decoded URI from a language server, a hand-edited settings
+// value — is not always valid UTF-8. The conversion is used everywhere as one that cannot fail,
+// so the bytes that do not decode become U+FFFD rather than a std::system_error.
+TEST_CASE("FromUtf8 turns bytes that are not valid UTF-8 into replacement characters instead of throwing")
+{
+	std::filesystem::path path;
+	REQUIRE_NOTHROW(path = Core::FromUtf8("caf\xe9.txt"));
+	CHECK(path.wstring() == L"caf\uFFFD.txt");
+}
+
+#ifdef CORE_PLATFORM_WINDOWS
+// NTFS allows a name holding a lone surrogate, so ReadDirectory can hand one back.
+TEST_CASE("ToUtf8 turns a lone surrogate into a replacement character instead of throwing")
+{
+	const std::filesystem::path path{std::wstring{L"a"} + wchar_t{0xD800} + L"b.txt"};
+
+	std::string text;
+	REQUIRE_NOTHROW(text = Core::ToUtf8(path));
+	CHECK(text == "a\xef\xbf\xbd" "b.txt");
+}
+#endif
+
+TEST_CASE("ToUtf8 and FromUtf8 round-trip a non-ASCII path exactly")
+{
+	const std::string text = "C:\\\xc4\x86wiczenia\\\xe6\x97\xa5.txt";
+	CHECK(Core::ToUtf8(Core::FromUtf8(text)) == text);
+	CHECK(Core::ToUtf8(Core::FromUtf8("")).empty());
+}
+
 TEST_CASE("NormalizeDirectory strips a trailing separator")
 {
 	// What tab completion in cmd and PowerShell produces. Without this the workspace

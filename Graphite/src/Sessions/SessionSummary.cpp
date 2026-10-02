@@ -171,8 +171,7 @@ namespace Graphite {
 				summary.Title = record.Title;
 
 			if (summary.Cwd.empty() && !record.Cwd.empty())
-				summary.Cwd = std::filesystem::path{std::u8string{
-					reinterpret_cast<const char8_t*>(record.Cwd.data()), record.Cwd.size()}};
+				summary.Cwd = Core::FromUtf8(record.Cwd);
 
 			if (summary.FirstPrompt.empty())
 			{

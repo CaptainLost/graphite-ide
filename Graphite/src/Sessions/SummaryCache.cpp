@@ -1,6 +1,7 @@
 #include "Sessions/SummaryCache.h"
 
 #include "Core/Fs/AtomicWrite.h"
+#include "Core/Fs/FileSystem.h"
 
 #include <nlohmann/json.hpp>
 
@@ -10,18 +11,6 @@
 namespace Graphite {
 
 	namespace {
-		std::string PathText(const std::filesystem::path& path)
-		{
-			const std::u8string text = path.u8string();
-			return {reinterpret_cast<const char*>(text.data()), text.size()};
-		}
-
-		std::filesystem::path TextPath(const std::string& text)
-		{
-			return std::filesystem::path{
-				std::u8string{reinterpret_cast<const char8_t*>(text.data()), text.size()}};
-		}
-
 		nlohmann::json UsageJson(const UsageByModel& usage)
 		{
 			nlohmann::json rows = nlohmann::json::array();
@@ -82,8 +71,8 @@ namespace Graphite {
 			{
 				SessionSummary summary;
 				summary.Id = entry.at("id").get<std::string>();
-				summary.File = TextPath(entry.at("file").get<std::string>());
-				summary.Cwd = TextPath(entry.at("cwd").get<std::string>());
+				summary.File = Core::FromUtf8(entry.at("file").get<std::string>());
+				summary.Cwd = Core::FromUtf8(entry.at("cwd").get<std::string>());
 				summary.Title = entry.at("title").get<std::string>();
 				summary.FirstPrompt = entry.at("firstPrompt").get<std::string>();
 				summary.StartedAt = entry.at("startedAt").get<std::string>();
@@ -113,8 +102,8 @@ namespace Graphite {
 		for (const SessionSummary& summary : summaries)
 		{
 			sessions.push_back({{"id", summary.Id},
-								{"file", PathText(summary.File)},
-								{"cwd", PathText(summary.Cwd)},
+								{"file", Core::ToUtf8(summary.File)},
+								{"cwd", Core::ToUtf8(summary.Cwd)},
 								{"title", summary.Title},
 								{"firstPrompt", summary.FirstPrompt},
 								{"startedAt", summary.StartedAt},
