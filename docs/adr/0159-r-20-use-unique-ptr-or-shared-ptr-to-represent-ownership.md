@@ -1,6 +1,6 @@
 # 0159. R.20: Use unique_ptr or shared_ptr to represent ownership
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0297. E.12: Use noexcept when exiting a function because of a throw is impossible or unacceptable
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

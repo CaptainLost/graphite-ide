@@ -1,6 +1,6 @@
 # 0282. CP.100: Don't use lock-free programming unless you absolutely have to
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

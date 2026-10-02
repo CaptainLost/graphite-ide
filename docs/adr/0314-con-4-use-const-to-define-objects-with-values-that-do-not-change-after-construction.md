@@ -1,6 +1,6 @@
 # 0314. Con.4: Use const to define objects with values that do not change after construction
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Con (Constants and immutability), transcribed 2026-08-10
 

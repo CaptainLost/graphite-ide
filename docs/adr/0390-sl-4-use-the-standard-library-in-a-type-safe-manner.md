@@ -1,6 +1,6 @@
 # 0390. SL.4: Use the standard library in a type-safe manner
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

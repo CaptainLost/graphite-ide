@@ -1,6 +1,6 @@
 # 0189. ES.26: Don't use a variable for two unrelated purposes
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

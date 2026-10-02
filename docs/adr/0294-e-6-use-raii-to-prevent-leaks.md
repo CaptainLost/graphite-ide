@@ -1,6 +1,6 @@
 # 0294. E.6: Use RAII to prevent leaks
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

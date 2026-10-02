@@ -1,6 +1,6 @@
 # 0411. A.4: There should be no cycles among libraries
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section A (Architectural ideas), transcribed 2026-08-10
 

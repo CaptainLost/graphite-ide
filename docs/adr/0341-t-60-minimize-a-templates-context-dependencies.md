@@ -1,6 +1,6 @@
 # 0341. T.60: Minimize a template's context dependencies
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

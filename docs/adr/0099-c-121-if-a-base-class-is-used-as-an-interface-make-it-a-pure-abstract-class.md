@@ -1,6 +1,6 @@
 # 0099. C.121: If a base class is used as an interface, make it a pure abstract class
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

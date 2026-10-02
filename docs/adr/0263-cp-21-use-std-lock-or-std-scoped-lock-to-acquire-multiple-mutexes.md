@@ -1,6 +1,6 @@
 # 0263. CP.21: Use std::lock() or std::scoped_lock to acquire multiple mutexes
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

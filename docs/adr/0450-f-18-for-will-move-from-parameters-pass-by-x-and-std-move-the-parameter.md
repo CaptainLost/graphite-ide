@@ -1,6 +1,6 @@
 # 0450. F.18: For "will-move-from" parameters, pass by X&& and std::move the parameter
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

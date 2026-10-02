@@ -1,6 +1,6 @@
 # 0466. F.47: Return T& from assignment operators
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

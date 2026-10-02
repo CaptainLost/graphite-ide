@@ -1,6 +1,6 @@
 # 0238. Per.1: Don't optimize without reason
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

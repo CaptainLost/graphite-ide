@@ -1,6 +1,6 @@
 # 0446. F.9: Unused parameters should be unnamed
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

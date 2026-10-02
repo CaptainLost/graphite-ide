@@ -1,6 +1,6 @@
 # 0319. T.4: Use templates to express syntax tree manipulation
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

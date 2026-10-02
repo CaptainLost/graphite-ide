@@ -1,6 +1,6 @@
 # 0368. T.150: Check that a class matches a concept using static_assert
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

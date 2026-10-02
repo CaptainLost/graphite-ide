@@ -1,6 +1,6 @@
 # 0026. I.7: State postconditions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

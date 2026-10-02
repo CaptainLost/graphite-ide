@@ -1,6 +1,6 @@
 # 0291. E.3: Use exceptions for error handling only
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

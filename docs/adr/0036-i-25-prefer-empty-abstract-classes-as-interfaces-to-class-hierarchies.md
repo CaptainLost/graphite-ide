@@ -1,6 +1,6 @@
 # 0036. I.25: Prefer empty abstract classes as interfaces to class hierarchies
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

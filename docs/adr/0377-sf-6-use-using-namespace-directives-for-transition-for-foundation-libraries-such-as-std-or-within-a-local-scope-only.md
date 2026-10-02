@@ -1,6 +1,6 @@
 # 0377. SF.6: Use using namespace directives for transition, for foundation libraries (such as std), or within a local scope (only)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

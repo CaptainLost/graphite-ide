@@ -1,6 +1,6 @@
 # 0402. SL.str.12: Use the s suffix for string literals meant to be standard-library strings
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0469. F.51: Where there is a choice, prefer default arguments over overloading
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

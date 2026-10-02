@@ -1,6 +1,6 @@
 # 0396. SL.str.2: Use std::string_view or gsl::span<char> to refer to character sequences
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0147. R.1: Manage resources automatically using resource handles and RAII (Resource Acquisition Is Initialization)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

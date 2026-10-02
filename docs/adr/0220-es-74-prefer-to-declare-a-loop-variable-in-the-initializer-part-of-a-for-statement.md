@@ -1,6 +1,6 @@
 # 0220. ES.74: Prefer to declare a loop variable in the initializer part of a for-statement
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

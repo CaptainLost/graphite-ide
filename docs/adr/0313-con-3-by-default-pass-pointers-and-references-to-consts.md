@@ -1,6 +1,6 @@
 # 0313. Con.3: By default, pass pointers and references to consts
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Con (Constants and immutability), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0218. ES.72: Prefer a for-statement to a while-statement when there is an obvious loop variable
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

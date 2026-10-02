@@ -1,6 +1,6 @@
 # 0337. T.46: Require template arguments to be at least semiregular
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

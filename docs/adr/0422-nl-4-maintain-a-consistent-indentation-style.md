@@ -1,6 +1,6 @@
 # 0422. NL.4: Maintain a consistent indentation style
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

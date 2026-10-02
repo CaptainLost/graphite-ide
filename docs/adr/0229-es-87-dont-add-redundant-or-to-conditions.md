@@ -1,6 +1,6 @@
 # 0229. ES.87: Don't add redundant == or != to conditions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

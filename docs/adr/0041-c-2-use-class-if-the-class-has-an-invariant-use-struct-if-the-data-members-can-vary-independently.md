@@ -1,6 +1,6 @@
 # 0041. C.2: Use class if the class has an invariant; use struct if the data members can vary independently
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

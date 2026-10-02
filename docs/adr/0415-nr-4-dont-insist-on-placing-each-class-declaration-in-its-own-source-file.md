@@ -1,6 +1,6 @@
 # 0415. NR.4: Don't insist on placing each class declaration in its own source file
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NR (Non-Rules and myths), transcribed 2026-08-10
 

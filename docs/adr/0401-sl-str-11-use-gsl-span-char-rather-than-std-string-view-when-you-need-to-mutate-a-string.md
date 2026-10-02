@@ -1,6 +1,6 @@
 # 0401. SL.str.11: Use gsl::span<char> rather than std::string_view when you need to mutate a string
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

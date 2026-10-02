@@ -1,6 +1,6 @@
 # 0269. CP.31: Pass small amounts of data between threads by value, rather than by reference or pointer
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

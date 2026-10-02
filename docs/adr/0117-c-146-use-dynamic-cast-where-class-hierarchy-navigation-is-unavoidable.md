@@ -1,6 +1,6 @@
 # 0117. C.146: Use dynamic_cast where class hierarchy navigation is unavoidable
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

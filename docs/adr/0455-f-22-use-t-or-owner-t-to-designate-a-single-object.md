@@ -1,6 +1,6 @@
 # 0455. F.22: Use T* or owner<T*> to designate a single object
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

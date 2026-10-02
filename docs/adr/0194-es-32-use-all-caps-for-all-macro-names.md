@@ -1,6 +1,6 @@
 # 0194. ES.32: Use ALL_CAPS for all macro names
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

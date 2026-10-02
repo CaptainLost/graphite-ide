@@ -1,6 +1,6 @@
 # 0364. T.140: Name all operations with potential for reuse
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

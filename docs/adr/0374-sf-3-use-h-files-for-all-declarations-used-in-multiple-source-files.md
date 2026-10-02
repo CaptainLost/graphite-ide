@@ -1,6 +1,6 @@
 # 0374. SF.3: Use .h files for all declarations used in multiple source files
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

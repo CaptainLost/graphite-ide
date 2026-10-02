@@ -1,6 +1,6 @@
 # 0458. F.25: Use a zstring or a not_null<zstring> to designate a C-style string
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0013. P.7: Catch run-time errors early
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

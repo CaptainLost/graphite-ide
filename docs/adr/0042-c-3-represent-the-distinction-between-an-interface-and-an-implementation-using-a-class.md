@@ -1,6 +1,6 @@
 # 0042. C.3: Represent the distinction between an interface and an implementation using a class
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

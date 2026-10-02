@@ -1,6 +1,6 @@
 # 0373. SF.2: A .h file must not contain object definitions or non-inline function definitions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

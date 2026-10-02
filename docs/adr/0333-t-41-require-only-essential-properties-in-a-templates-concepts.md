@@ -1,6 +1,6 @@
 # 0333. T.41: Require only essential properties in a template's concepts
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

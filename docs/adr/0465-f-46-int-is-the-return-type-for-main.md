@@ -1,6 +1,6 @@
 # 0465. F.46: int is the return type for main()
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

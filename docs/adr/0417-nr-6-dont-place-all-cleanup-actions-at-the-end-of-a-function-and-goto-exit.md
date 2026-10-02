@@ -1,6 +1,6 @@
 # 0417. NR.6: Don't place all cleanup actions at the end of a function and goto exit
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NR (Non-Rules and myths), transcribed 2026-08-10
 

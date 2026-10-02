@@ -1,6 +1,6 @@
 # 0454. F.60: Prefer T* over T& when "no argument" is a valid option
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

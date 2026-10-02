@@ -1,6 +1,6 @@
 # 0461. F.42: Return a T* to indicate a position (only)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

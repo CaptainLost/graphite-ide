@@ -1,6 +1,6 @@
 # 0111. C.136: Use multiple inheritance to represent the union of implementation attributes
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

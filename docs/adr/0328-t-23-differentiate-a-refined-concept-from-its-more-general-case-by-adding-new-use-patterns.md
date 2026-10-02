@@ -1,6 +1,6 @@
 # 0328. T.23: Differentiate a refined concept from its more general case by adding new use patterns.
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

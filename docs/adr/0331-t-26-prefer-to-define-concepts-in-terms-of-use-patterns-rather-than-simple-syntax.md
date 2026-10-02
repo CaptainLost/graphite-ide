@@ -1,6 +1,6 @@
 # 0331. T.26: Prefer to define concepts in terms of use-patterns rather than simple syntax
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

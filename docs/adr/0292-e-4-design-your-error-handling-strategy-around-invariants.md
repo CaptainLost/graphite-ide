@@ -1,6 +1,6 @@
 # 0292. E.4: Design your error-handling strategy around invariants
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

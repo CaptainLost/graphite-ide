@@ -1,6 +1,6 @@
 # 0378. SF.7: Don't write using namespace at global scope in a header file
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

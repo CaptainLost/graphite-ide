@@ -1,6 +1,6 @@
 # 0358. T.120: Use template metaprogramming only when you really need to
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

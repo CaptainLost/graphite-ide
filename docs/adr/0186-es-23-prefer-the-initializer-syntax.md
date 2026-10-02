@@ -1,6 +1,6 @@
 # 0186. ES.23: Prefer the {}-initializer syntax
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

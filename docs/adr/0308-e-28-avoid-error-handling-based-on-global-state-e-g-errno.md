@@ -1,6 +1,6 @@
 # 0308. E.28: Avoid error handling based on global state (e.g. errno)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

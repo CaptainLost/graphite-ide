@@ -1,6 +1,6 @@
 # 0468. F.50: Use a lambda when a function won't do (to capture local variables, or to write a local function)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

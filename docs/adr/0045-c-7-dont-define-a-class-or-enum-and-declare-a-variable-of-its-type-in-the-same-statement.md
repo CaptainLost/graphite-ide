@@ -1,6 +1,6 @@
 # 0045. C.7: Don't define a class or enum and declare a variable of its type in the same statement
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

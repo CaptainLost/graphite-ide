@@ -1,6 +1,6 @@
 # 0369. CPL.1: Prefer C++ to C
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CPL (C-style programming), transcribed 2026-08-10
 

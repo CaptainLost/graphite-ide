@@ -1,6 +1,6 @@
 # 0062. C.41: A constructor should create a fully initialized object
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

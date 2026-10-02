@@ -1,6 +1,6 @@
 # 0459. F.26: Use a unique_ptr<T> to transfer ownership where a pointer is needed
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

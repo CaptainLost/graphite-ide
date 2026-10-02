@@ -1,6 +1,6 @@
 # 0343. T.62: Place non-dependent class template members in a non-templated base class
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

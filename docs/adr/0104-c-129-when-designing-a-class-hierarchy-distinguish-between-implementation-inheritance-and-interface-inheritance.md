@@ -1,6 +1,6 @@
 # 0104. C.129: When designing a class hierarchy, distinguish between implementation inheritance and interface inheritance
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

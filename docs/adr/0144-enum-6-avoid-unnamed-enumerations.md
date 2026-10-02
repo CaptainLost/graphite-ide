@@ -1,6 +1,6 @@
 # 0144. Enum.6: Avoid unnamed enumerations
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

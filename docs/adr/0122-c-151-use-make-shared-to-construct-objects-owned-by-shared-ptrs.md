@@ -1,6 +1,6 @@
 # 0122. C.151: Use make_shared() to construct objects owned by shared_ptrs
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

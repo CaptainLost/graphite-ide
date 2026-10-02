@@ -1,6 +1,6 @@
 # 0338. T.47: Avoid highly visible unconstrained templates with common names
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

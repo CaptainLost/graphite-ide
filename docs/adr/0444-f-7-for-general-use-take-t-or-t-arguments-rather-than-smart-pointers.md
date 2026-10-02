@@ -1,6 +1,6 @@
 # 0444. F.7: For general use, take T* or T& arguments rather than smart pointers
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

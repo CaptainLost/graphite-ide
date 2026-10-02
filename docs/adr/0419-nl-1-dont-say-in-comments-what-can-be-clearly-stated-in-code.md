@@ -1,6 +1,6 @@
 # 0419. NL.1: Don't say in comments what can be clearly stated in code
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

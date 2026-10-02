@@ -1,6 +1,6 @@
 # 0410. A.2: Express potentially reusable parts as a library
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section A (Architectural ideas), transcribed 2026-08-10
 

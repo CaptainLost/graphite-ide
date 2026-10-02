@@ -1,6 +1,6 @@
 # 0049. C.11: Make concrete types regular
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

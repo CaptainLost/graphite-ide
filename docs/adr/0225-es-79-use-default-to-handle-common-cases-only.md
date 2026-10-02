@@ -1,6 +1,6 @@
 # 0225. ES.79: Use default to handle common cases (only)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

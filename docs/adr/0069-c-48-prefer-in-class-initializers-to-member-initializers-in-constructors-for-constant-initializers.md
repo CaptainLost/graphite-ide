@@ -1,6 +1,6 @@
 # 0069. C.48: Prefer in-class initializers to member initializers in constructors for constant initializers
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

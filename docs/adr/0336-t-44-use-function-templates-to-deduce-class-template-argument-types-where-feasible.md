@@ -1,6 +1,6 @@
 # 0336. T.44: Use function templates to deduce class template argument types (where feasible)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

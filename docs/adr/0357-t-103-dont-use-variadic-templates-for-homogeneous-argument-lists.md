@@ -1,6 +1,6 @@
 # 0357. T.103: Don't use variadic templates for homogeneous argument lists
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

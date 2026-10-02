@@ -1,6 +1,6 @@
 # 0439. F.2: A function should perform a single logical operation
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

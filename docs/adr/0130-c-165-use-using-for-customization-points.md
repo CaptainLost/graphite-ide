@@ -1,6 +1,6 @@
 # 0130. C.165: Use using for customization points
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

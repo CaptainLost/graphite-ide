@@ -1,6 +1,6 @@
 # 0081. C.67: A polymorphic class should suppress public copy/move
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

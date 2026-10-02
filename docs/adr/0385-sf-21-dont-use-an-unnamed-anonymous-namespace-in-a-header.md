@@ -1,6 +1,6 @@
 # 0385. SF.21: Don't use an unnamed (anonymous) namespace in a header
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

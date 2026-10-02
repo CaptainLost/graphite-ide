@@ -1,6 +1,6 @@
 # 0209. ES.56: Write std::move() only when you need to explicitly move an object to another scope
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

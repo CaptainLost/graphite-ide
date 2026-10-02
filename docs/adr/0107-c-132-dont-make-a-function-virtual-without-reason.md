@@ -1,6 +1,6 @@
 # 0107. C.132: Don't make a function virtual without reason
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

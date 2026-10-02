@@ -1,6 +1,6 @@
 # 0351. T.82: Linearize a hierarchy when virtual functions are undesirable
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

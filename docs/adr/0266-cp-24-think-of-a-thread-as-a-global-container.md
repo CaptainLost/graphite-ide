@@ -1,6 +1,6 @@
 # 0266. CP.24: Think of a thread as a global container
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

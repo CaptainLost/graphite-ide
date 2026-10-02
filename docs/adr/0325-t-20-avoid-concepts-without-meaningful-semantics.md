@@ -1,6 +1,6 @@
 # 0325. T.20: Avoid "concepts" without meaningful semantics
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

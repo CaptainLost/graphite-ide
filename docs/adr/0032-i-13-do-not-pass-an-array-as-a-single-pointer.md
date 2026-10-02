@@ -1,6 +1,6 @@
 # 0032. I.13: Do not pass an array as a single pointer
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

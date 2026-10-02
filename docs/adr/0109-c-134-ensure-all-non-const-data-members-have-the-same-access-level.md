@@ -1,6 +1,6 @@
 # 0109. C.134: Ensure all non-const data members have the same access level
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

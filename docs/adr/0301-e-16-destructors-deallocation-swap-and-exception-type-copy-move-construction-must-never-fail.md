@@ -1,6 +1,6 @@
 # 0301. E.16: Destructors, deallocation, swap, and exception type copy/move construction must never fail
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

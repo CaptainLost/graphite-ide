@@ -1,6 +1,6 @@
 # 0473. F.55: Don't use va_arg arguments
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

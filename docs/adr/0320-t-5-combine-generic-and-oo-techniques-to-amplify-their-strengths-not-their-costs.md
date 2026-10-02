@@ -1,6 +1,6 @@
 # 0320. T.5: Combine generic and OO techniques to amplify their strengths, not their costs
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

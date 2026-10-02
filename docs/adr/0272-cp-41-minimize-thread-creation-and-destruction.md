@@ -1,6 +1,6 @@
 # 0272. CP.41: Minimize thread creation and destruction
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

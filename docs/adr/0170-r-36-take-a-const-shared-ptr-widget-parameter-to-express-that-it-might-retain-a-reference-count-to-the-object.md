@@ -1,6 +1,6 @@
 # 0170. R.36: Take a const shared_ptr<widget>& parameter to express that it might retain a reference count to the object
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0009. P.3: Express intent
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

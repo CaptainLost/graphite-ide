@@ -1,6 +1,6 @@
 # 0134. C.170: If you feel like overloading a lambda, use a generic lambda
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

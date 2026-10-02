@@ -1,6 +1,6 @@
 # 0440. F.3: Keep functions short and simple
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

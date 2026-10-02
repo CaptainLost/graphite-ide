@@ -1,6 +1,6 @@
 # 0030. I.11: Never transfer ownership by a raw pointer (T*) or reference (T&)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

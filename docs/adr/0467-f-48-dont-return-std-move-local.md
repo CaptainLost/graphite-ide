@@ -1,6 +1,6 @@
 # 0467. F.48: Don't return std::move(local)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

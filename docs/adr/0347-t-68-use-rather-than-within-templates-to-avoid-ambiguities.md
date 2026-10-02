@@ -1,6 +1,6 @@
 # 0347. T.68: Use {} rather than () within templates to avoid ambiguities
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

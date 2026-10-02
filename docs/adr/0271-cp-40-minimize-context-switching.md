@@ -1,6 +1,6 @@
 # 0271. CP.40: Minimize context switching
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

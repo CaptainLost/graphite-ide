@@ -1,6 +1,6 @@
 # 0442. F.5: If a function is very small and time-critical, declare it inline
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

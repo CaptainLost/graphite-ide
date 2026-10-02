@@ -1,6 +1,6 @@
 # 0192. ES.30: Don't use macros for program text manipulation
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0139. Enum.1: Prefer enumerations over macros
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

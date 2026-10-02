@@ -1,6 +1,6 @@
 # 0447. F.15: Prefer simple and conventional ways of passing information
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

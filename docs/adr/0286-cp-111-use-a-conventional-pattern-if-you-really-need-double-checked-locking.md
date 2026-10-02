@@ -1,6 +1,6 @@
 # 0286. CP.111: Use a conventional pattern if you really need double-checked locking
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

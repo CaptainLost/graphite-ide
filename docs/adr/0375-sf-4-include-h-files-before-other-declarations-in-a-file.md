@@ -1,6 +1,6 @@
 # 0375. SF.4: Include .h files before other declarations in a file
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

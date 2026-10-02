@@ -1,6 +1,6 @@
 # 0029. I.10: Use exceptions to signal a failure to perform a required task
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0452. F.20: For "out" output values, prefer return values to output parameters
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

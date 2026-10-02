@@ -1,6 +1,6 @@
 # 0048. C.10: Prefer concrete types over class hierarchies
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

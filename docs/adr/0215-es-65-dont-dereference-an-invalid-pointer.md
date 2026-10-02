@@ -1,6 +1,6 @@
 # 0215. ES.65: Don't dereference an invalid pointer
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

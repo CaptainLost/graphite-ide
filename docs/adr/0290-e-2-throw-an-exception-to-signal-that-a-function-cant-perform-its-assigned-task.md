@@ -1,6 +1,6 @@
 # 0290. E.2: Throw an exception to signal that a function can't perform its assigned task
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

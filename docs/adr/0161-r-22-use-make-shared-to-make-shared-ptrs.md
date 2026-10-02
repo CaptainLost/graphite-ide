@@ -1,6 +1,6 @@
 # 0161. R.22: Use make_shared() to make shared_ptrs
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

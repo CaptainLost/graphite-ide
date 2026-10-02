@@ -1,6 +1,6 @@
 # 0082. C.80: Use =default if you have to be explicit about using the default semantics
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

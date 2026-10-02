@@ -1,6 +1,6 @@
 # 0118. C.147: Use dynamic_cast to a reference type when failure to find the required class is considered an error
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

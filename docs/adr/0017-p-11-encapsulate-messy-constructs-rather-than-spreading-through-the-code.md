@@ -1,6 +1,6 @@
 # 0017. P.11: Encapsulate messy constructs, rather than spreading through the code
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0409. A.1: Separate stable code from less stable code
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section A (Architectural ideas), transcribed 2026-08-10
 

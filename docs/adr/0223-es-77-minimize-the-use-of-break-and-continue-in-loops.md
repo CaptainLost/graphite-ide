@@ -1,6 +1,6 @@
 # 0223. ES.77: Minimize the use of break and continue in loops
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0389. SL.3: Do not add non-standard entities to namespace std
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

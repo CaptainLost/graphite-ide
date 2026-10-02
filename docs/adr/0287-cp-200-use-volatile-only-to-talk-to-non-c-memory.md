@@ -1,6 +1,6 @@
 # 0287. CP.200: Use volatile only to talk to non-C++ memory
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

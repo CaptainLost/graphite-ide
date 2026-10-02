@@ -1,6 +1,6 @@
 # 0222. ES.76: Avoid goto
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

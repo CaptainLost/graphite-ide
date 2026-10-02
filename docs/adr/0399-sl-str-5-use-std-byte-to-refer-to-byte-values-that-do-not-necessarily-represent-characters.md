@@ -1,6 +1,6 @@
 # 0399. SL.str.5: Use std::byte to refer to byte values that do not necessarily represent characters
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0035. I.24: Avoid adjacent parameters that can be invoked by the same arguments in either order with different meaning
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

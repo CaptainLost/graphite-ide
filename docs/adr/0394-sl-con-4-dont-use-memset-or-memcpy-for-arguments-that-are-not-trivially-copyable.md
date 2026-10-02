@@ -1,6 +1,6 @@
 # 0394. SL.con.4: Don't use memset or memcpy for arguments that are not trivially-copyable
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

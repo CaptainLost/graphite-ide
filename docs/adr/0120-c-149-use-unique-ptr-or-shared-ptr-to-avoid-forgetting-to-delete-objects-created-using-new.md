@@ -1,6 +1,6 @@
 # 0120. C.149: Use unique_ptr or shared_ptr to avoid forgetting to delete objects created using new
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

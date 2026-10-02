@@ -1,6 +1,6 @@
 # 0456. F.23: Use a not_null<T> to indicate that "null" is not a valid value
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

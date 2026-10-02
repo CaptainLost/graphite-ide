@@ -1,6 +1,6 @@
 # 0010. P.4: Ideally, a program should be statically type safe
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0254. Per.19: Access memory predictably
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0236. ES.106: Don't try to avoid negative values by using unsigned
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

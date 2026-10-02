@@ -1,6 +1,6 @@
 # 0149. R.3: A raw pointer (a T*) is non-owning
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

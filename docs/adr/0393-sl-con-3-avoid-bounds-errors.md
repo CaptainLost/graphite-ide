@@ -1,6 +1,6 @@
 # 0393. SL.con.3: Avoid bounds errors
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

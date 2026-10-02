@@ -1,6 +1,6 @@
 # 0400. SL.str.10: Use std::string when you need to perform locale-sensitive string operations
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

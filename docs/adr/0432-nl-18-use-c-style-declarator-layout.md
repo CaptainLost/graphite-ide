@@ -1,6 +1,6 @@
 # 0432. NL.18: Use C++-style declarator layout
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0464. F.45: Don't return a T&&
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

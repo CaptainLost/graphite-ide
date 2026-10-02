@@ -1,6 +1,6 @@
 # 0141. Enum.3: Prefer class enums over "plain" enums
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

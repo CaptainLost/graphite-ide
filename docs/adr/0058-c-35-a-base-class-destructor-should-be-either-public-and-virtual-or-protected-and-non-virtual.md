@@ -1,6 +1,6 @@
 # 0058. C.35: A base class destructor should be either public and virtual, or protected and non-virtual
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

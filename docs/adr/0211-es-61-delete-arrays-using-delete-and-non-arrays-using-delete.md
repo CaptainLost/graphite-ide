@@ -1,6 +1,6 @@
 # 0211. ES.61: Delete arrays using delete[] and non-arrays using delete
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

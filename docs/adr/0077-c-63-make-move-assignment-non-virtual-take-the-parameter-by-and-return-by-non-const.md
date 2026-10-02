@@ -1,6 +1,6 @@
 # 0077. C.63: Make move assignment non-virtual, take the parameter by &&, and return by non-const&
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

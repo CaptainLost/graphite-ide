@@ -1,6 +1,6 @@
 # 0384. SF.20: Use namespaces to express logical structure
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

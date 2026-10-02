@@ -1,6 +1,6 @@
 # 0412. NR.1: Don't insist that all declarations should be at the top of a function
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NR (Non-Rules and myths), transcribed 2026-08-10
 

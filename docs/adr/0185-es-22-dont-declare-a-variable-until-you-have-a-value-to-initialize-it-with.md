@@ -1,6 +1,6 @@
 # 0185. ES.22: Don't declare a variable until you have a value to initialize it with
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

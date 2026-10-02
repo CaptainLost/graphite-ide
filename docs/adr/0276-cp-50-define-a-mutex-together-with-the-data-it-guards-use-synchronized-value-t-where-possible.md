@@ -1,6 +1,6 @@
 # 0276. CP.50: Define a mutex together with the data it guards. Use synchronized_value<T> where possible
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

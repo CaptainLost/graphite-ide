@@ -1,6 +1,6 @@
 # 0398. SL.str.4: Use char* to refer to a single character
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0321. T.10: Specify concepts for all template arguments
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

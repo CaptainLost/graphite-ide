@@ -1,6 +1,6 @@
 # 0418. NR.7: Don't make all data members protected
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NR (Non-Rules and myths), transcribed 2026-08-10
 

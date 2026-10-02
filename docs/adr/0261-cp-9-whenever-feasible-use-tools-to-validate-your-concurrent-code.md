@@ -1,6 +1,6 @@
 # 0261. CP.9: Whenever feasible use tools to validate your concurrent code
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

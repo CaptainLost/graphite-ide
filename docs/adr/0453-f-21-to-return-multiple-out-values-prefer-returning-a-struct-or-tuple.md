@@ -1,6 +1,6 @@
 # 0453. F.21: To return multiple "out" values, prefer returning a struct or tuple
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

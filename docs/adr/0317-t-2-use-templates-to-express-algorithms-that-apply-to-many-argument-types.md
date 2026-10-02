@@ -1,6 +1,6 @@
 # 0317. T.2: Use templates to express algorithms that apply to many argument types
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

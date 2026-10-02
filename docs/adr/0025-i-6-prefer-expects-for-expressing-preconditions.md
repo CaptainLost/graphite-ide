@@ -1,6 +1,6 @@
 # 0025. I.6: Prefer Expects() for expressing preconditions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

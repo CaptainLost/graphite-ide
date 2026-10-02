@@ -1,6 +1,6 @@
 # 0437. NL.26: Use conventional const notation
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

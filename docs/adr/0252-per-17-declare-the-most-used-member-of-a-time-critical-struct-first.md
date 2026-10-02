@@ -1,6 +1,6 @@
 # 0252. Per.17: Declare the most used member of a time-critical struct first
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

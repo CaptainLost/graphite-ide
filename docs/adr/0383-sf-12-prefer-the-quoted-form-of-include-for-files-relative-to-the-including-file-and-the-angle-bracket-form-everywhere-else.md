@@ -1,6 +1,6 @@
 # 0383. SF.12: Prefer the quoted form of #include for files relative to the including file and the angle bracket form everywhere else
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

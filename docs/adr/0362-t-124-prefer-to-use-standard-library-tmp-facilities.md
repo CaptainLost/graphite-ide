@@ -1,6 +1,6 @@
 # 0362. T.124: Prefer to use standard-library TMP facilities
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

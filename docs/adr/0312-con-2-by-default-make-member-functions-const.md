@@ -1,6 +1,6 @@
 # 0312. Con.2: By default, make member functions const
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Con (Constants and immutability), transcribed 2026-08-10
 

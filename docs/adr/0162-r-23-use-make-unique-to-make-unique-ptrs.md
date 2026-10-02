@@ -1,6 +1,6 @@
 # 0162. R.23: Use make_unique() to make unique_ptrs
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

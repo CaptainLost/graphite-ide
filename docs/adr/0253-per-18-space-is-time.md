@@ -1,6 +1,6 @@
 # 0253. Per.18: Space is time
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

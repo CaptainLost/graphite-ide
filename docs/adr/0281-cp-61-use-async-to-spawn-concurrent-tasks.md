@@ -1,6 +1,6 @@
 # 0281. CP.61: Use async() to spawn concurrent tasks
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

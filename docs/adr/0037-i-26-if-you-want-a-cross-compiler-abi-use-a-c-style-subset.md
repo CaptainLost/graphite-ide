@@ -1,6 +1,6 @@
 # 0037. I.26: If you want a cross-compiler ABI, use a C-style subset
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0370. CPL.2: If you must use C, use the common subset of C and C++, and compile the C code as C++
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CPL (C-style programming), transcribed 2026-08-10
 

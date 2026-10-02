@@ -1,6 +1,6 @@
 # 0100. C.122: Use abstract classes as interfaces when complete separation of interface and implementation is needed
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

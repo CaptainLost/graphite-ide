@@ -1,6 +1,6 @@
 # 0021. I.2: Avoid non-const global variables
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

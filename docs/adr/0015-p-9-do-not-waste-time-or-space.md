@@ -1,6 +1,6 @@
 # 0015. P.9: Do not waste time or space
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

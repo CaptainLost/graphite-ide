@@ -1,6 +1,6 @@
 # 0318. T.3: Use templates to express containers and ranges
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

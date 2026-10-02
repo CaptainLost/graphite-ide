@@ -1,6 +1,6 @@
 # 0414. NR.3: Don't avoid exceptions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NR (Non-Rules and myths), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0166. R.32: Take a unique_ptr<widget> parameter to express that a function assumes ownership of a widget
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

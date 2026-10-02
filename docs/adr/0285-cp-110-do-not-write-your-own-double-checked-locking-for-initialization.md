@@ -1,6 +1,6 @@
 # 0285. CP.110: Do not write your own double-checked locking for initialization
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

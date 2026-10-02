@@ -1,6 +1,6 @@
 # 0193. ES.31: Don't use macros for constants or "functions"
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

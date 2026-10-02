@@ -1,6 +1,6 @@
 # 0309. E.30: Don't use exception specifications
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

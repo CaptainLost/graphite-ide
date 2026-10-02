@@ -1,6 +1,6 @@
 # 0014. P.8: Do not leak any resources
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

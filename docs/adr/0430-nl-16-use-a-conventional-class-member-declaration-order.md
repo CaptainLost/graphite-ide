@@ -1,6 +1,6 @@
 # 0430. NL.16: Use a conventional class member declaration order
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

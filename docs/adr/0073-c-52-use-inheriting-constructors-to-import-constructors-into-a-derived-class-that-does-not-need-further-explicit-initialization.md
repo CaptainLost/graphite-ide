@@ -1,6 +1,6 @@
 # 0073. C.52: Use inheriting constructors to import constructors into a derived class that does not need further explicit initialization
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0148. R.2: In interfaces, use raw pointers to denote individual objects (only)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

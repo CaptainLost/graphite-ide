@@ -1,6 +1,6 @@
 # 0145. Enum.7: Specify the underlying type of an enumeration only when necessary
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0279. CP.53: Parameters to coroutines should not be passed by reference
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

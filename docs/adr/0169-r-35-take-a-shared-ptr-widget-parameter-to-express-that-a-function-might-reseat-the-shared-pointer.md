@@ -1,6 +1,6 @@
 # 0169. R.35: Take a shared_ptr<widget>& parameter to express that a function might reseat the shared pointer
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

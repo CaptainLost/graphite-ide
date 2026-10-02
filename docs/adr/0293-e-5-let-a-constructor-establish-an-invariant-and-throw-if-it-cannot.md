@@ -1,6 +1,6 @@
 # 0293. E.5: Let a constructor establish an invariant, and throw if it cannot
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

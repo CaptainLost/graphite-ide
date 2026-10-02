@@ -1,6 +1,6 @@
 # 0198. ES.41: If in doubt about operator precedence, parenthesize
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

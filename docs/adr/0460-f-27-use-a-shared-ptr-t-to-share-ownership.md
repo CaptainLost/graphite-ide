@@ -1,6 +1,6 @@
 # 0460. F.27: Use a shared_ptr<T> to share ownership
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

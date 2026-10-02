@@ -1,6 +1,6 @@
 # 0339. T.48: If your compiler does not support concepts, fake them with enable_if
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

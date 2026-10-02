@@ -1,6 +1,6 @@
 # 0462. F.43: Never (directly or indirectly) return a pointer or a reference to a local object
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

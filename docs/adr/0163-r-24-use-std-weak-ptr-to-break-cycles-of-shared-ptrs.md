@@ -1,6 +1,6 @@
 # 0163. R.24: Use std::weak_ptr to break cycles of shared_ptrs
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

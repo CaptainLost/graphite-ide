@@ -1,6 +1,6 @@
 # 0068. C.47: Define and initialize member variables in the order of member declaration
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

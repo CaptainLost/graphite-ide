@@ -1,6 +1,6 @@
 # 0441. F.4: If a function might have to be evaluated at compile time, declare it constexpr
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

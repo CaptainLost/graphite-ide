@@ -1,6 +1,6 @@
 # 0457. F.24: Use a span<T> or a span_p<T> to designate a half-open sequence
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

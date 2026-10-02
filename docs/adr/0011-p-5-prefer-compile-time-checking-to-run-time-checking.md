@@ -1,6 +1,6 @@
 # 0011. P.5: Prefer compile-time checking to run-time checking
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

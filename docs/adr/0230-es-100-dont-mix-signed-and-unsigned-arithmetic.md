@@ -1,6 +1,6 @@
 # 0230. ES.100: Don't mix signed and unsigned arithmetic
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

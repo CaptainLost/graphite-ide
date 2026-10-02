@@ -1,6 +1,6 @@
 # 0151. R.5: Prefer scoped objects, don't heap-allocate unnecessarily
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0348. T.69: Inside a template, don't make an unqualified non-member function call unless you intend it to be a customization point
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

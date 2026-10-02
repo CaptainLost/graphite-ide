@@ -1,6 +1,6 @@
 # 0078. C.64: A move operation should move and leave its source in a valid state
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

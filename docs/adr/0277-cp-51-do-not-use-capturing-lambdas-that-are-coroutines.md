@@ -1,6 +1,6 @@
 # 0277. CP.51: Do not use capturing lambdas that are coroutines
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

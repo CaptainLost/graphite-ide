@@ -1,6 +1,6 @@
 # 0407. SL.io.50: Avoid endl
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

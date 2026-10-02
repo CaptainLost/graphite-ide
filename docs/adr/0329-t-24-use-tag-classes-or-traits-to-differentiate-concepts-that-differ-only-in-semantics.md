@@ -1,6 +1,6 @@
 # 0329. T.24: Use tag classes or traits to differentiate concepts that differ only in semantics.
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

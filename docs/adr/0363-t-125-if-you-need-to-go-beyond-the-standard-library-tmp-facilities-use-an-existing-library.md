@@ -1,6 +1,6 @@
 # 0363. T.125: If you need to go beyond the standard-library TMP facilities, use an existing library
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

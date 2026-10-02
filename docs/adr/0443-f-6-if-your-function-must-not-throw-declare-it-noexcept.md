@@ -1,6 +1,6 @@
 # 0443. F.6: If your function must not throw, declare it noexcept
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

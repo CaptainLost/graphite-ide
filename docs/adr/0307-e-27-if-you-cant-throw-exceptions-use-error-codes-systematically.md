@@ -1,6 +1,6 @@
 # 0307. E.27: If you can't throw exceptions, use error codes systematically
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

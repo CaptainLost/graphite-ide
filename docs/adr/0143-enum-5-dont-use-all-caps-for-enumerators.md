@@ -1,6 +1,6 @@
 # 0143. Enum.5: Don't use ALL_CAPS for enumerators
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

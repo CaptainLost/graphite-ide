@@ -1,6 +1,6 @@
 # 0259. CP.4: Think in terms of tasks, rather than threads
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

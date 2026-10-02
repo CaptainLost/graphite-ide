@@ -1,6 +1,6 @@
 # 0176. ES.6: Declare names in for-statement initializers and conditions to limit scope
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0164. R.30: Take smart pointers as parameters only to explicitly express lifetime semantics
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

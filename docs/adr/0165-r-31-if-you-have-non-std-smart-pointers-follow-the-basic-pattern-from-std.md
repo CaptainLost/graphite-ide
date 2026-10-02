@@ -1,6 +1,6 @@
 # 0165. R.31: If you have non-std smart pointers, follow the basic pattern from std
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

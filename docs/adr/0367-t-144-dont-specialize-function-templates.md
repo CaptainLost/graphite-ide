@@ -1,6 +1,6 @@
 # 0367. T.144: Don't specialize function templates
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

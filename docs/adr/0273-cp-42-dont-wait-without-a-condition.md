@@ -1,6 +1,6 @@
 # 0273. CP.42: Don't wait without a condition
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

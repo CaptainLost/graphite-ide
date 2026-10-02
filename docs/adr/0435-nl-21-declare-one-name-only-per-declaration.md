@@ -1,6 +1,6 @@
 # 0435. NL.21: Declare one name (only) per declaration
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

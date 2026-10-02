@@ -1,6 +1,6 @@
 # 0157. R.14: Avoid [] parameters, prefer span
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

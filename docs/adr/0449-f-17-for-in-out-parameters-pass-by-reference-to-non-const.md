@@ -1,6 +1,6 @@
 # 0449. F.17: For "in-out" parameters, pass by reference to non-const
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

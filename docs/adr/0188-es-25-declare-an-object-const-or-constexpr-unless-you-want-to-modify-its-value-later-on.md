@@ -1,6 +1,6 @@
 # 0188. ES.25: Declare an object const or constexpr unless you want to modify its value later on
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0260. CP.8: Don't try to use volatile for synchronization
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0391. SL.con.1: Prefer using STL array or vector instead of a C array
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

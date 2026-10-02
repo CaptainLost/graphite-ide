@@ -1,6 +1,6 @@
 # 0354. T.100: Use variadic templates when you need a function that takes a variable number of arguments of a variety of types
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

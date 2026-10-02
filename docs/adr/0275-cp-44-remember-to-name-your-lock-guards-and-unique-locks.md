@@ -1,6 +1,6 @@
 # 0275. CP.44: Remember to name your lock_guards and unique_locks
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

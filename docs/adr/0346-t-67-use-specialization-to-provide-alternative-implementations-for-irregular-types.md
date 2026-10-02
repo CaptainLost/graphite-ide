@@ -1,6 +1,6 @@
 # 0346. T.67: Use specialization to provide alternative implementations for irregular types
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

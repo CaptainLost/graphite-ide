@@ -1,6 +1,6 @@
 # 0168. R.34: Take a shared_ptr<widget> parameter to express shared ownership
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

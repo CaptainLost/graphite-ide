@@ -1,6 +1,6 @@
 # 0199. ES.42: Keep use of pointers simple and straightforward
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

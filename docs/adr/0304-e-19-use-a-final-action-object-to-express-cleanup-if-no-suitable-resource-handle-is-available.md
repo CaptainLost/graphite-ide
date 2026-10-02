@@ -1,6 +1,6 @@
 # 0304. E.19: Use a final_action object to express cleanup if no suitable resource handle is available
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

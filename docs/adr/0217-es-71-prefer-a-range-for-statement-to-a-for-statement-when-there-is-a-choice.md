@@ -1,6 +1,6 @@
 # 0217. ES.71: Prefer a range-for-statement to a for-statement when there is a choice
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0406. SL.io.10: Unless you use printf-family functions call ios_base::sync_with_stdio(false)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

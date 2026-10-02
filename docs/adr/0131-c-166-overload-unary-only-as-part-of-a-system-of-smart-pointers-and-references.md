@@ -1,6 +1,6 @@
 # 0131. C.166: Overload unary & only as part of a system of smart pointers and references
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

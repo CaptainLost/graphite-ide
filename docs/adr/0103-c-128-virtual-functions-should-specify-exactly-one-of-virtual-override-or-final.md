@@ -1,6 +1,6 @@
 # 0103. C.128: Virtual functions should specify exactly one of virtual, override, or final
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

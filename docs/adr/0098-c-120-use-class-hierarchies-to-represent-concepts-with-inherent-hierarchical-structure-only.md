@@ -1,6 +1,6 @@
 # 0098. C.120: Use class hierarchies to represent concepts with inherent hierarchical structure (only)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

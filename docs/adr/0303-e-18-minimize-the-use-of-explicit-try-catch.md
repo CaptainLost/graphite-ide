@@ -1,6 +1,6 @@
 # 0303. E.18: Minimize the use of explicit try/catch
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

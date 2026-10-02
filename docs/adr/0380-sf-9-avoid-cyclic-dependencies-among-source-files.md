@@ -1,6 +1,6 @@
 # 0380. SF.9: Avoid cyclic dependencies among source files
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

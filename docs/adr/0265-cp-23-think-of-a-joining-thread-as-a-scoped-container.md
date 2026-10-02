@@ -1,6 +1,6 @@
 # 0265. CP.23: Think of a joining thread as a scoped container
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0451. F.19: For "forward" parameters, pass by TP&& and only std::forward the parameter
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

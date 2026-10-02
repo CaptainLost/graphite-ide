@@ -1,6 +1,6 @@
 # 0102. C.127: A class with a virtual function should have a virtual or protected destructor
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

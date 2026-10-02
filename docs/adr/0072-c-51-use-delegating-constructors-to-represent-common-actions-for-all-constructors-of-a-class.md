@@ -1,6 +1,6 @@
 # 0072. C.51: Use delegating constructors to represent common actions for all constructors of a class
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

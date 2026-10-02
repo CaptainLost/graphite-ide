@@ -1,6 +1,6 @@
 # 0203. ES.46: Avoid lossy (narrowing, truncating) arithmetic conversions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

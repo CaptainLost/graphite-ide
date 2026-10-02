@@ -1,6 +1,6 @@
 # 0012. P.6: What cannot be checked at compile time should be checkable at run time
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0298. E.13: Never throw while being the direct owner of an object
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

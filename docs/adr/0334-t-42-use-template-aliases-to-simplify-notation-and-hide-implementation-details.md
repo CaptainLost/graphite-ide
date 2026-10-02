@@ -1,6 +1,6 @@
 # 0334. T.42: Use template aliases to simplify notation and hide implementation details
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

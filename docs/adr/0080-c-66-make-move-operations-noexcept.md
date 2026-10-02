@@ -1,6 +1,6 @@
 # 0080. C.66: Make move operations noexcept
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

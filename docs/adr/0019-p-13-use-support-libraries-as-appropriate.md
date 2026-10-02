@@ -1,6 +1,6 @@
 # 0019. P.13: Use support libraries as appropriate
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section P (Philosophy), transcribed 2026-08-10
 

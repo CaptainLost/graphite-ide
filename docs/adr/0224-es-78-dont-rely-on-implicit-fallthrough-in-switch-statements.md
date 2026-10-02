@@ -1,6 +1,6 @@
 # 0224. ES.78: Don't rely on implicit fallthrough in switch statements
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

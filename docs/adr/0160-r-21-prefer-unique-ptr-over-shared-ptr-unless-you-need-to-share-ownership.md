@@ -1,6 +1,6 @@
 # 0160. R.21: Prefer unique_ptr over shared_ptr unless you need to share ownership
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0267. CP.25: Prefer gsl::joining_thread over std::thread
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

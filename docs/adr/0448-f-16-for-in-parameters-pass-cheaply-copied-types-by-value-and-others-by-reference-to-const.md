@@ -1,6 +1,6 @@
 # 0448. F.16: For "in" parameters, pass cheaply-copied types by value and others by reference to const
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

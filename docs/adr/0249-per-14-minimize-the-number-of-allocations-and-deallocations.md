@@ -1,6 +1,6 @@
 # 0249. Per.14: Minimize the number of allocations and deallocations
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0360. T.122: Use templates (usually template aliases) to compute types at compile time
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

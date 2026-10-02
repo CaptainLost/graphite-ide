@@ -1,6 +1,6 @@
 # 0372. SF.1: Use a .cpp suffix for code files and .h for interface files if your project doesn't already follow another convention
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

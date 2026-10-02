@@ -1,6 +1,6 @@
 # 0302. E.17: Don't try to catch every exception in every function
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

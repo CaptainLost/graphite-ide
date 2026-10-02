@@ -1,6 +1,6 @@
 # 0126. C.161: Use non-member functions for symmetric operators
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

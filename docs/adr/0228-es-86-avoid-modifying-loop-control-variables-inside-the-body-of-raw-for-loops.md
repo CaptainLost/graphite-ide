@@ -1,6 +1,6 @@
 # 0228. ES.86: Avoid modifying loop control variables inside the body of raw for-loops
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

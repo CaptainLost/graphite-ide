@@ -1,6 +1,6 @@
 # 0226. ES.84: Don't try to declare a local variable with no name
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

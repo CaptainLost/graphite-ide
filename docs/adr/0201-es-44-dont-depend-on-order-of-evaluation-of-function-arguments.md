@@ -1,6 +1,6 @@
 # 0201. ES.44: Don't depend on order of evaluation of function arguments
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

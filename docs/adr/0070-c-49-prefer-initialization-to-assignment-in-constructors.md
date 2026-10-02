@@ -1,6 +1,6 @@
 # 0070. C.49: Prefer initialization to assignment in constructors
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

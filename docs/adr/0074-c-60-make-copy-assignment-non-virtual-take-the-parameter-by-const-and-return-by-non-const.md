@@ -1,6 +1,6 @@
 # 0074. C.60: Make copy assignment non-virtual, take the parameter by const&, and return by non-const&
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

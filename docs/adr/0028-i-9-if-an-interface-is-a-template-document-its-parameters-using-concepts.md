@@ -1,6 +1,6 @@
 # 0028. I.9: If an interface is a template, document its parameters using concepts
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

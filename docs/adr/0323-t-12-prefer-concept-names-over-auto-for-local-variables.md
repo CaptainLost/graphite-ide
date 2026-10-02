@@ -1,6 +1,6 @@
 # 0323. T.12: Prefer concept names over auto for local variables
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

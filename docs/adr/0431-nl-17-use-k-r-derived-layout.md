@@ -1,6 +1,6 @@
 # 0431. NL.17: Use K&R-derived layout
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

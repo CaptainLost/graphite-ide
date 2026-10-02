@@ -1,6 +1,6 @@
 # 0395. SL.str.1: Use std::string to own character sequences
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

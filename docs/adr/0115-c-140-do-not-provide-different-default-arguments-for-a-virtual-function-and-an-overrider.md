@@ -1,6 +1,6 @@
 # 0115. C.140: Do not provide different default arguments for a virtual function and an overrider
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

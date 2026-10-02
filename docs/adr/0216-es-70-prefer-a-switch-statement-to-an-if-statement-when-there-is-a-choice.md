@@ -1,6 +1,6 @@
 # 0216. ES.70: Prefer a switch-statement to an if-statement when there is a choice
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

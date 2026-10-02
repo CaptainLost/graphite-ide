@@ -1,6 +1,6 @@
 # 0112. C.137: Use virtual bases to avoid overly general base classes
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

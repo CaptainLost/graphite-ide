@@ -1,6 +1,6 @@
 # 0472. F.54: If you capture this, capture all variables explicitly (no default capture)
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

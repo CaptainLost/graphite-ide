@@ -1,6 +1,6 @@
 # 0388. SL.2: Prefer the standard library to other libraries
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

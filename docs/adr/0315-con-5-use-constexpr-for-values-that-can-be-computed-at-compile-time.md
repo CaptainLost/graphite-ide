@@ -1,6 +1,6 @@
 # 0315. Con.5: Use constexpr for values that can be computed at compile time
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Con (Constants and immutability), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0316. T.1: Use templates to raise the level of abstraction of code
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0171. R.37: Do not pass a pointer or reference obtained from an aliased smart pointer
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

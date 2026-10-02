@@ -1,6 +1,6 @@
 # 0256. CP.1: Assume that your code will run as part of a multi-threaded program
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0327. T.22: Specify axioms for concepts
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section T (Templates and generic programming), transcribed 2026-08-10
 

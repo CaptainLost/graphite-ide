@@ -1,6 +1,6 @@
 # 0470. F.52: Prefer capturing by reference in lambdas that will be used locally, including passed to algorithms
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section F (Functions), transcribed 2026-08-10
 

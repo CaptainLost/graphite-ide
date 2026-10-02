@@ -1,6 +1,6 @@
 # 0376. SF.5: A .cpp file must include the .h file(s) that defines its interface
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

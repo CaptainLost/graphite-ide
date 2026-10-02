@@ -1,6 +1,6 @@
 # 0085. C.83: For value-like types, consider providing a noexcept swap function
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section C (Classes and class hierarchies), transcribed 2026-08-10
 

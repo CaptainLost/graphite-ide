@@ -1,6 +1,6 @@
 # 0140. Enum.2: Use enumerations to represent sets of related named constants
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0158. R.15: Always overload matched allocation/deallocation pairs
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section R (Resource management), transcribed 2026-08-10
 

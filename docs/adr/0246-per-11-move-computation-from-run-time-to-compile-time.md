@@ -1,6 +1,6 @@
 # 0246. Per.11: Move computation from run time to compile time
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

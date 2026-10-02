@@ -1,6 +1,6 @@
 # 0231. ES.101: Use unsigned types for bit manipulation
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

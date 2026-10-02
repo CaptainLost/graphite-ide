@@ -1,6 +1,6 @@
 # 0184. ES.21: Don't introduce a variable (or constant) before you need to use it
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

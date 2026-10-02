@@ -1,6 +1,6 @@
 # 0295. E.7: State your preconditions
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section E (Error handling), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0244. Per.7: Design to enable optimization
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

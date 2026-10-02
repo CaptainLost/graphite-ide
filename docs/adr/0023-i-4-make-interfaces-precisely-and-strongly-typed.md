@@ -1,6 +1,6 @@
 # 0023. I.4: Make interfaces precisely and strongly typed
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section I (Interfaces), transcribed 2026-08-10
 

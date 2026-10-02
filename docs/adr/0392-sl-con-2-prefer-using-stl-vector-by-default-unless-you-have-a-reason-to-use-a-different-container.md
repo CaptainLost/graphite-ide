@@ -1,6 +1,6 @@
 # 0392. SL.con.2: Prefer using STL vector by default unless you have a reason to use a different container
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 

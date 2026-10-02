@@ -1,6 +1,6 @@
 # 0436. NL.25: Don't use void as an argument type
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section NL (Naming and layout suggestions), transcribed 2026-08-10
 

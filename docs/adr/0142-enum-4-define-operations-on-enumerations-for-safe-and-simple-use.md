@@ -1,6 +1,6 @@
 # 0142. Enum.4: Define operations on enumerations for safe and simple use
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Enum (Enumerations), transcribed 2026-08-10
 

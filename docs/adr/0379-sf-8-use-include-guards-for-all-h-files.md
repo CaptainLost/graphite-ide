@@ -1,6 +1,6 @@
 # 0379. SF.8: Use #include guards for all .h files
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SF (Source files), transcribed 2026-08-10
 

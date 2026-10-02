@@ -1,6 +1,6 @@
 # 0274. CP.43: Minimize time spent in a critical section
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CP (Concurrency and parallelism), transcribed 2026-08-10
 

@@ -1,6 +1,6 @@
 # 0371. CPL.3: If you must use C for interfaces, use C++ in the calling code using such interfaces
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section CPL (C-style programming), transcribed 2026-08-10
 

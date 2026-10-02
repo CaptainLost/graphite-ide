@@ -1,6 +1,6 @@
 # 0255. Per.30: Avoid context switches on the critical path
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section Per (Performance), transcribed 2026-08-10
 

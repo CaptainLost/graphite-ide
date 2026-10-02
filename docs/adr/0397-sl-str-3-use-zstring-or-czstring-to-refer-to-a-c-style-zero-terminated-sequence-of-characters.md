@@ -1,6 +1,6 @@
 # 0397. SL.str.3: Use zstring or czstring to refer to a C-style, zero-terminated, sequence of characters
 
-Status: proposed
+Status: accepted
 Date: 2026-08-10
 Source: C++ Core Guidelines, section SL (The Standard Library), transcribed 2026-08-10
 
