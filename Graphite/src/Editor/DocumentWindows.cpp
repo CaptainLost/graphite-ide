@@ -1787,6 +1787,15 @@ namespace Graphite {
 			return;
 		}
 
+		// Traced, not shown: the tracker asks a failed question once more on its own, and a
+		// missing tooltip on screen is otherwise impossible to tell apart as a failure, an empty
+		// answer or a slow server.
+		if (answer.Failed || answer.Text.empty())
+		{
+			APP_TRACE("Hover at '{}' {}:{} {}", Core::ToUtf8(question.Path), question.Line + 1,
+					  question.TokenFrom + 1, answer.Failed ? "failed" : "answered nothing");
+		}
+
 		HoldHoverAnswer(state->second.Hover, question, answer);
 
 		// The tracker does not wake the frame loop for an answer; a resting mouse sends no event.
@@ -1801,6 +1810,12 @@ namespace Graphite {
 		if (state == m_States.end())
 		{
 			return;
+		}
+
+		if (answer.Failed)
+		{
+			APP_TRACE("Definition preview at '{}' {}:{} failed", Core::ToUtf8(question.Path),
+					  question.Line + 1, question.TokenFrom + 1);
 		}
 
 		HoldPreviewAnswer(state->second.Hover, question, answer, m_Documents);

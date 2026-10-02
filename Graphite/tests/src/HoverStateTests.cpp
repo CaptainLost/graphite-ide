@@ -69,3 +69,26 @@ TEST_CASE("A failed preview answer leaves what was held, and an empty one is hel
 	REQUIRE(hover.Preview.has_value());
 	CHECK(hover.Preview->Unreadable);
 }
+
+TEST_CASE("A failed answer is remembered as failed for its question until one succeeds")
+{
+	HoverState hover;
+	Core::DocumentSet documents;
+
+	LanguageServices::Answer failed;
+	failed.Failed = true;
+
+	Graphite::HoldHoverAnswer(hover, QuestionAt(1), failed);
+	REQUIRE(hover.InfoFailedFor.has_value());
+	CHECK(*hover.InfoFailedFor == QuestionAt(1));
+
+	Graphite::HoldPreviewAnswer(hover, QuestionAt(1), failed, documents);
+	REQUIRE(hover.PreviewFailedFor.has_value());
+	CHECK(*hover.PreviewFailedFor == QuestionAt(1));
+
+	Graphite::HoldHoverAnswer(hover, QuestionAt(1), LanguageServices::Answer{});
+	CHECK_FALSE(hover.InfoFailedFor.has_value());
+
+	Graphite::HoldPreviewAnswer(hover, QuestionAt(1), LanguageServices::Answer{}, documents);
+	CHECK_FALSE(hover.PreviewFailedFor.has_value());
+}

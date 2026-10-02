@@ -8,8 +8,12 @@ namespace Graphite {
 						 const LanguageServices::Answer& answer)
 	{
 		if (answer.Failed)
+		{
+			hover.InfoFailedFor = question;
 			return;
+		}
 
+		hover.InfoFailedFor.reset();
 		hover.InfoFor = question;
 		hover.Info = ParseClangdHover(answer.Text);
 	}
@@ -19,8 +23,12 @@ namespace Graphite {
 						   const Core::DocumentSet& documents)
 	{
 		if (answer.Failed)
+		{
+			hover.PreviewFailedFor = question;
 			return;
+		}
 
+		hover.PreviewFailedFor.reset();
 		hover.PreviewFor = question;
 
 		if (answer.Locations.empty())

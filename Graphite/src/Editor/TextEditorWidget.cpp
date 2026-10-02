@@ -2127,6 +2127,8 @@ namespace Graphite {
 
 			input.InfoArrived = held.has_value() && hover.InfoFor == held;
 			input.PreviewArrived = held.has_value() && hover.PreviewFor == held;
+			input.InfoFailed = held.has_value() && hover.InfoFailedFor == held;
+			input.PreviewFailed = held.has_value() && hover.PreviewFailedFor == held;
 
 			HoverActions actions = hover.Tracker.Update(input);
 
@@ -2139,14 +2141,18 @@ namespace Graphite {
 				result.CancelHover = true;
 			}
 
+			// A question asked again is no longer failed: until it answers, the tracker must not
+			// read the old failure as the new question's.
 			if (actions.AskInfo && question)
 			{
 				result.AskHover = question;
+				hover.InfoFailedFor.reset();
 			}
 
 			if (actions.AskPreview && question)
 			{
 				result.AskPreview = question;
+				hover.PreviewFailedFor.reset();
 			}
 
 			if (actions.WakeAt)

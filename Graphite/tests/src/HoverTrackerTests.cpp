@@ -433,3 +433,109 @@ TEST_CASE("After the delay, an answer still pending needs no wake-up")
 
 	CHECK_FALSE(tracker.Update(At(0.7)).WakeAt.has_value());
 }
+
+TEST_CASE("A failed answer is asked once more after a pause, and only once per rest")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+	REQUIRE(tracker.Update(At(0.6)).AskInfo);
+
+	// The failure is seen at 0.7; the second question waits out the retry pause from there.
+	HoverInput failed = At(0.7);
+	failed.InfoFailed = true;
+	const HoverActions seen = tracker.Update(failed);
+	CHECK_FALSE(seen.AskInfo);
+	REQUIRE(seen.WakeAt.has_value());
+	CHECK(*seen.WakeAt == doctest::Approx(0.7 + HoverTracker::kRetrySeconds));
+
+	failed.Now = 0.7 + HoverTracker::kRetrySeconds;
+	CHECK(tracker.Update(failed).AskInfo);
+
+	// The second question failing too is where it stops: the same rest asks no third time.
+	failed.Now = 3.0;
+	const HoverActions again = tracker.Update(failed);
+	CHECK_FALSE(again.AskInfo);
+	CHECK_FALSE(again.WakeAt.has_value());
+	failed.Now = 10.0;
+	CHECK_FALSE(tracker.Update(failed).AskInfo);
+}
+
+TEST_CASE("A failed preview is asked once more after a pause")
+{
+	HoverTracker tracker;
+
+	HoverInput ctrl = At(0.0);
+	ctrl.Ctrl = true;
+	tracker.Update(ctrl);
+	ctrl.Now = 0.6;
+	REQUIRE(tracker.Update(ctrl).AskPreview);
+
+	ctrl.PreviewFailed = true;
+	ctrl.Now = 0.7;
+	CHECK_FALSE(tracker.Update(ctrl).AskPreview);
+	ctrl.Now = 0.7 + HoverTracker::kRetrySeconds;
+	CHECK(tracker.Update(ctrl).AskPreview);
+	ctrl.Now = 5.0;
+	CHECK_FALSE(tracker.Update(ctrl).AskPreview);
+}
+
+TEST_CASE("A new rest earns a new retry")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+	REQUIRE(tracker.Update(At(0.6)).AskInfo);
+
+	HoverInput failed = At(0.7);
+	failed.InfoFailed = true;
+	tracker.Update(failed);
+	failed.Now = 1.2;
+	REQUIRE(tracker.Update(failed).AskInfo);
+
+	// Off to another token and back: the rest starts over, asks, and may retry once again.
+	tracker.Update(At(2.0, kB));
+	tracker.Update(At(2.1));
+	REQUIRE(tracker.Update(At(2.6)).AskInfo);
+
+	failed.Now = 2.7;
+	tracker.Update(failed);
+	failed.Now = 3.2;
+	CHECK(tracker.Update(failed).AskInfo);
+}
+
+TEST_CASE("An answer that has arrived is not asked again, whatever failed before it")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+	REQUIRE(tracker.Update(At(0.6)).AskInfo);
+
+	HoverInput both = At(0.7);
+	both.InfoFailed = true;
+	both.InfoArrived = true;
+	tracker.Update(both);
+	both.Now = 1.5;
+	CHECK_FALSE(tracker.Update(both).AskInfo);
+}
+
+TEST_CASE("A failure left over from an earlier rest neither delays nor hurries the retry")
+{
+	HoverTracker tracker;
+	tracker.Update(At(0.0));
+
+	// The widget still holds the last rest's failure on the frame it asks again.
+	HoverInput stale = At(0.6);
+	stale.InfoFailed = true;
+	const HoverActions asked = tracker.Update(stale);
+	REQUIRE(asked.AskInfo);
+	CHECK_FALSE(asked.WakeAt.has_value());
+
+	CHECK_FALSE(tracker.Update(At(1.0)).AskInfo);
+
+	// The new question's own failure, seen at 2.0, is retried a pause after 2.0.
+	HoverInput failed = At(2.0);
+	failed.InfoFailed = true;
+	CHECK_FALSE(tracker.Update(failed).AskInfo);
+	failed.Now = 2.0 + HoverTracker::kRetrySeconds - 0.01;
+	CHECK_FALSE(tracker.Update(failed).AskInfo);
+	failed.Now = 2.0 + HoverTracker::kRetrySeconds;
+	CHECK(tracker.Update(failed).AskInfo);
+}

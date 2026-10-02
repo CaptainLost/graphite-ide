@@ -38,6 +38,12 @@ namespace Graphite {
 		// `Current()`. The widget reads these off the document's hover state.
 		bool InfoArrived = false;
 		bool PreviewArrived = false;
+
+		// Whether the last answer of each kind to that same question failed. A failed answer is
+		// not held, so it never arrives; without this the tracker would wait on it for the rest
+		// of the rest.
+		bool InfoFailed = false;
+		bool PreviewFailed = false;
 	};
 
 	struct HoverActions
@@ -67,6 +73,11 @@ namespace Graphite {
 		// frame would make the tooltip impossible to reach.
 		static constexpr double kLeaveGraceSeconds = 0.25;
 
+		// How long after a failed answer is seen the question is asked once more. A server
+		// still settling fails what it is asked — a document it has only just been told about,
+		// a restart under way — and a moment later answers it; a second failure is the answer.
+		static constexpr double kRetrySeconds = 0.5;
+
 		HoverActions Update(const HoverInput& input);
 
 		// The token and revision the current answers belong to; the widget keys what it shows on
@@ -82,6 +93,11 @@ namespace Graphite {
 		double m_RestingSince = 0.0;
 		bool m_AskedInfo = false;
 		bool m_AskedPreview = false;
+		// One retry per rest for each kind, counted from when its failure was first seen.
+		bool m_RetriedInfo = false;
+		bool m_RetriedPreview = false;
+		std::optional<double> m_InfoFailedAt;
+		std::optional<double> m_PreviewFailedAt;
 		bool m_WasVisible = false;         // the last frame showed something
 		bool m_Dismissed = false;          // input closed the tooltip; only a mouse move reopens it
 		// Kept across frames, not read off the input: it survives the leave grace, so a mouse

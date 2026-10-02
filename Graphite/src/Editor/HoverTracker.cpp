@@ -12,6 +12,10 @@ namespace Graphite {
 		m_RestingSince = input.Now;
 		m_AskedInfo = false;
 		m_AskedPreview = false;
+		m_RetriedInfo = false;
+		m_RetriedPreview = false;
+		m_InfoFailedAt.reset();
+		m_PreviewFailedAt.reset();
 		m_Latched = false;
 		m_LeftAt.reset();
 	}
@@ -90,8 +94,35 @@ namespace Graphite {
 		// swap after the delay asks for its part at once. A mouse in transit asks nothing.
 		if (elapsed && !m_LeftAt)
 		{
-			actions.AskInfo = wantInfo && !m_AskedInfo && !input.InfoArrived;
-			actions.AskPreview = wantPreview && !m_AskedPreview && !input.PreviewArrived;
+			// A question asked and failed is asked once more after a pause, never twice. Read
+			// before this frame's own asks: a question asked only now has not failed yet, and the
+			// widget clears the old failure as it asks.
+			const auto retry = [&](bool want, bool asked, bool failed, bool arrived,
+								   bool& retried, std::optional<double>& failedAt)
+			{
+				if (!want || !asked || !failed || arrived || retried)
+					return false;
+				if (!failedAt)
+					failedAt = input.Now;
+				const double retryAt = *failedAt + kRetrySeconds;
+				if (input.Now >= retryAt)
+				{
+					retried = true;
+					return true;
+				}
+				actions.WakeAt = actions.WakeAt ? std::min(*actions.WakeAt, retryAt) : retryAt;
+				return false;
+			};
+
+			const bool retryInfo = retry(wantInfo, m_AskedInfo, input.InfoFailed,
+										 input.InfoArrived, m_RetriedInfo, m_InfoFailedAt);
+			const bool retryPreview =
+				retry(wantPreview, m_AskedPreview, input.PreviewFailed, input.PreviewArrived,
+					  m_RetriedPreview, m_PreviewFailedAt);
+
+			actions.AskInfo = (wantInfo && !m_AskedInfo && !input.InfoArrived) || retryInfo;
+			actions.AskPreview =
+				(wantPreview && !m_AskedPreview && !input.PreviewArrived) || retryPreview;
 			m_AskedInfo = m_AskedInfo || actions.AskInfo;
 			m_AskedPreview = m_AskedPreview || actions.AskPreview;
 		}

@@ -29,6 +29,12 @@ namespace Graphite {
 		std::optional<HoverQuestion> PreviewFor;
 		std::optional<DefinitionPreview> Preview;
 
+		// The question whose last answer failed, of each kind. A failure is not held, so it
+		// never "arrives"; this is how the tracker learns of it and asks once more. Cleared by
+		// the next answer that does not fail, and by the widget when it asks again.
+		std::optional<HoverQuestion> InfoFailedFor;
+		std::optional<HoverQuestion> PreviewFailedFor;
+
 		// The tooltip's rectangle last frame, for "is the mouse inside it".
 		ImVec2 TooltipMin{};
 		ImVec2 TooltipMax{};
@@ -58,12 +64,13 @@ namespace Graphite {
 	// Holds a hover answer as the answer to `question`. An empty answer is held — the question
 	// has been answered, with nothing, and asking again would only say nothing again — but a
 	// failed one is not: a server still starting or restarting fails what it is asked, and
-	// holding that would leave the token blank until the text changed. What was held stays.
+	// holding that would leave the token blank until the text changed. What was held stays, and
+	// the failure is noted against the question so the tracker can ask it once more.
 	void HoldHoverAnswer(HoverState& hover, const HoverQuestion& question,
 						 const LanguageServices::Answer& answer);
 
 	// The same for a preview's definition question. An answer naming no definition is held as
-	// an unreadable preview; a failed one leaves what was held.
+	// an unreadable preview; a failed one leaves what was held and is noted as the info's is.
 	void HoldPreviewAnswer(HoverState& hover, const HoverQuestion& question,
 						   const LanguageServices::Answer& answer,
 						   const Core::DocumentSet& documents);
