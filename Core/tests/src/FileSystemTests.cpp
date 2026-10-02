@@ -208,6 +208,40 @@ TEST_CASE("RelativeTo gives \".\" for a path equal to the base")
 	CHECK(*relative == ".");
 }
 
+// The editor and git can spell one directory two ways - a drive letter, for one - and
+// lexically_relative then climbs out with "..".
+TEST_CASE("RelativeTo ignores the case of the base the way Windows does")
+{
+	const auto relative = RelativeTo("d:/Work/Project/src/main.cpp", "D:/work/project/");
+
+	REQUIRE(relative.has_value());
+	CHECK(*relative == std::filesystem::path{"src"} / "main.cpp");
+}
+
+#ifdef CORE_PLATFORM_WINDOWS
+// Windows folds more than ASCII in a file name. Every check of "is this inside the workspace"
+// has to fold the same way, or two of them disagree about one folder.
+TEST_CASE("Paths compare without regard to case beyond ASCII")
+{
+	const std::filesystem::path upper{L"D:\\\u0179R\u00d3D\u0141A\\a.txt"};
+	const std::filesystem::path lower{L"d:\\\u017ar\u00f3d\u0142a"};
+
+	CHECK(Core::IsSameOrWithin(upper, lower));
+	CHECK(RelativeTo(upper, lower) == std::filesystem::path{"a.txt"});
+	CHECK(Core::SamePath(upper.parent_path(), lower));
+	CHECK(Core::PathKey(upper.parent_path()) == Core::PathKey(lower));
+}
+#endif
+
+TEST_CASE("PathKey is one value for every spelling of a directory")
+{
+	CHECK(Core::PathKey("D:\\Repos\\IDE") == Core::PathKey("d:/repos/ide/"));
+	CHECK(Core::PathKey("D:\\Repos\\IDE") == Core::PathKey("D:\\Repos\\x\\..\\IDE"));
+	CHECK(Core::PathKey("D:\\Repos\\IDE") != Core::PathKey("D:\\Repos\\IDE2"));
+	CHECK(Core::PathKey("D:\\") == Core::PathKey("d:/"));
+	CHECK(Core::PathKey("").empty());
+}
+
 TEST_CASE("IsSameOrWithin accepts the root itself and anything below it")
 {
 	CHECK(Core::IsSameOrWithin("D:\\Repos\\IDE", "D:\\Repos\\IDE"));

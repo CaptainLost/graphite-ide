@@ -101,13 +101,11 @@ namespace Graphite {
 	bool Workspace::IsInsideRoot(const std::filesystem::path& path) const
 	{
 		if (!IsOpen())
+		{
 			return false;
+		}
 
-		// Compared by path component, not by string prefix: C:\work beside C:\workshop
-		// would fool a prefix test.
-		const std::filesystem::path relative = path.lexically_relative(m_Root);
-
-		return !relative.empty() && *relative.begin() != "..";
+		return Core::IsSameOrWithin(path, m_Root);
 	}
 
 	void Workspace::RememberSolutionCandidate(const std::filesystem::path& path)

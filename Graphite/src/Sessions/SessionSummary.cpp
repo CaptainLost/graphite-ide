@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cctype>
 #include <charconv>
-#include <cwctype>
 
 namespace Graphite {
 
@@ -29,18 +28,6 @@ namespace Graphite {
 			}
 
 			return std::nullopt;
-		}
-
-		std::wstring Comparable(const std::filesystem::path& path)
-		{
-			std::wstring text = path.lexically_normal().make_preferred().wstring();
-
-			while (text.size() > 1 && (text.back() == L'\\' || text.back() == L'/'))
-				text.pop_back();
-
-			std::transform(text.begin(), text.end(), text.begin(),
-						   [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-			return text;
 		}
 
 		void AddFile(Fingerprint& print, const std::filesystem::path& file)
@@ -249,21 +236,12 @@ namespace Graphite {
 
 	bool IsWithinDirectory(const std::filesystem::path& inner, const std::filesystem::path& outer)
 	{
-		if (inner.empty() || outer.empty())
-			return false;
-
-		const std::wstring a = Comparable(inner);
-		const std::wstring b = Comparable(outer);
-
-		if (!a.starts_with(b))
-			return false;
-
-		return a.size() == b.size() || a[b.size()] == L'\\';
+		return !inner.empty() && Core::RelativeTo(inner, outer).has_value();
 	}
 
-	std::wstring DirectoryKey(const std::filesystem::path& directory)
+	std::filesystem::path::string_type DirectoryKey(const std::filesystem::path& directory)
 	{
-		return directory.empty() ? std::wstring{} : Comparable(directory);
+		return Core::PathKey(directory);
 	}
 
 	std::string TruncateUtf8(std::string_view text, std::size_t maxBytes)

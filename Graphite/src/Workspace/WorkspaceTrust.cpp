@@ -6,8 +6,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <Windows.h>
-
 #include <algorithm>
 #include <string>
 #include <system_error>
@@ -40,33 +38,6 @@ namespace Graphite {
 			}
 
 			return tidy;
-		}
-
-		// What two tidied paths are compared by. CharUpperBuffW rather than towupper: it folds
-		// the letters Windows itself treats as the same in a file name, not only ASCII.
-		std::wstring Key(const std::filesystem::path& tidy)
-		{
-			std::wstring key = tidy.native();
-
-			if (!key.empty())
-			{
-				CharUpperBuffW(key.data(), static_cast<DWORD>(key.size()));
-			}
-
-			return key;
-		}
-
-		bool Covers(const std::wstring& entry, const std::wstring& folder)
-		{
-			if (entry.empty() || !folder.starts_with(entry))
-			{
-				return false;
-			}
-
-			// "D:\" already ends in a separator. "D:\Repos" has to be followed by one, or
-			// "D:\Repos2" would count as inside it.
-			return folder.size() == entry.size() || entry.back() == L'\\' ||
-				   folder[entry.size()] == L'\\';
 		}
 	}
 
@@ -143,11 +114,16 @@ namespace Graphite {
 
 	std::optional<std::filesystem::path> WorkspaceTrust::TrustedThrough(const std::filesystem::path& folder) const
 	{
-		const std::wstring key = Key(Tidy(folder));
+		const std::filesystem::path tidy = Tidy(folder);
+
+		if (tidy.empty())
+		{
+			return std::nullopt;
+		}
 
 		for (const std::filesystem::path& entry : m_Entries)
 		{
-			if (Covers(Key(entry), key))
+			if (Core::IsSameOrWithin(tidy, entry))
 			{
 				return entry;
 			}
@@ -158,10 +134,10 @@ namespace Graphite {
 
 	bool WorkspaceTrust::IsEntry(const std::filesystem::path& folder) const
 	{
-		const std::wstring key = Key(Tidy(folder));
+		const auto key = Core::PathKey(Tidy(folder));
 
 		return !key.empty() && std::any_of(m_Entries.begin(), m_Entries.end(),
-										   [&key](const std::filesystem::path& entry) { return Key(entry) == key; });
+										   [&key](const std::filesystem::path& entry) { return Core::PathKey(entry) == key; });
 	}
 
 	void WorkspaceTrust::Trust(const std::filesystem::path& folder)
@@ -180,9 +156,9 @@ namespace Graphite {
 
 	void WorkspaceTrust::Revoke(const std::filesystem::path& entry)
 	{
-		const std::wstring key = Key(Tidy(entry));
+		const auto key = Core::PathKey(Tidy(entry));
 
-		const auto removed = std::erase_if(m_Entries, [&key](const std::filesystem::path& listed) { return Key(listed) == key; });
+		const auto removed = std::erase_if(m_Entries, [&key](const std::filesystem::path& listed) { return Core::PathKey(listed) == key; });
 
 		if (removed == 0)
 		{

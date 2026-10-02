@@ -18,7 +18,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <cstddef>
 #include <exception>
@@ -30,51 +29,12 @@ namespace Graphite {
 
 	namespace {
 
-		// `path` relative to `root`, comparing each component without regard to ASCII case:
-		// the editor and git can spell the same directory differently on Windows - a drive
-		// letter, for one - and lexically_relative would then climb out with "..".
+		// `path` relative to `root`, compared as Core compares every path: the editor and git can
+		// spell the same directory differently on Windows - a drive letter, for one. A path outside
+		// the root climbs out with "..", as lexically_relative spells it.
 		std::filesystem::path RelativeTo(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
-			const auto same = [](const std::filesystem::path& a, const std::filesystem::path& b) {
-				// UTF-8: generic_string() narrows through the ANSI code page, and throws on a
-				// name outside it.
-				const std::string left = Core::ToGenericUtf8(a);
-				const std::string right = Core::ToGenericUtf8(b);
-
-				return std::equal(left.begin(), left.end(), right.begin(), right.end(), [](char x, char y) {
-					return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
-				});
-			};
-
-			const std::filesystem::path normalPath = path.lexically_normal();
-			const std::filesystem::path normalRoot = root.lexically_normal();
-
-			auto inPath = normalPath.begin();
-
-			for (const std::filesystem::path& part : normalRoot)
-			{
-				// A trailing separator leaves an empty last component, which names nothing.
-				if (part.empty())
-				{
-					continue;
-				}
-
-				if (inPath == normalPath.end() || !same(*inPath, part))
-				{
-					return path.lexically_relative(root);
-				}
-
-				++inPath;
-			}
-
-			std::filesystem::path relative;
-
-			for (; inPath != normalPath.end(); ++inPath)
-			{
-				relative /= *inPath;
-			}
-
-			return relative;
+			return Core::RelativeTo(path, root).value_or(path.lexically_relative(root));
 		}
 	}
 

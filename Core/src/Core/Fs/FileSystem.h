@@ -47,22 +47,28 @@ namespace Core {
 	// file path never carries one to begin with.
 	std::filesystem::path NormalizePath(const std::filesystem::path& path);
 
-	// Whole-path equality on two already-normalized paths, case-folded through CompareNames:
-	// Windows paths are case-insensitive, and this is the same comparison the rest of the
-	// codebase already uses for names (FileTree, CsprojReader, VcxprojReader, SolutionReader
-	// all sort and match through it). A filename or suffix match is not safe here: a
+	// The one form every path in this codebase is compared in: normalized as NormalizeDirectory
+	// does, then upper-cased the way Windows folds a file name - every letter it treats as the
+	// same, not only ASCII. Two spellings of one place have the same key, so it serves as a map
+	// key as well as for equality. Lexical: the path need not exist. Empty for an empty path.
+	std::filesystem::path::string_type PathKey(const std::filesystem::path& path);
+
+	// Whole-path equality through PathKey. A filename or suffix match is not safe here: a
 	// repository-root file has an empty parent_path, so matching on "ends with" degenerates
 	// into "same name anywhere in the tree".
 	bool SamePath(const std::filesystem::path& left, const std::filesystem::path& right);
 
 	std::filesystem::path NormalizeDirectory(const std::filesystem::path& path);
 
+	// `path` spelled relative to `base`, or nothing when it does not lie at or below it; "." for
+	// the base itself. Compared through PathKey, so the editor and git spelling one directory two
+	// ways - a drive letter, for one - still agree. Nothing for an empty base.
 	std::optional<std::filesystem::path> RelativeTo(
 		const std::filesystem::path& path, const std::filesystem::path& base);
 
-	// Whether `path` is `root` or lies below it, compared the way Windows compares paths:
-	// component by component through CompareNames, so case and slash direction do not matter and
-	// "D:\Repos2" is not inside "D:\Repos". Lexical - neither path has to exist. False for an
-	// empty root and for a relative path on either side, neither of which names a place.
+	// Whether `path` is `root` or lies below it, compared through PathKey, so case and slash
+	// direction do not matter and "D:\Repos2" is not inside "D:\Repos". Lexical - neither path
+	// has to exist. False for an empty root and for a relative path on either side, neither of
+	// which names a place.
 	bool IsSameOrWithin(const std::filesystem::path& path, const std::filesystem::path& root);
 }

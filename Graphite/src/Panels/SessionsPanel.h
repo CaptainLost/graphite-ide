@@ -51,7 +51,7 @@ namespace Graphite {
 		struct VisibleRow
 		{
 			const SessionSummary* Summary = nullptr;
-			std::wstring Folder;
+			std::filesystem::path::string_type Folder;
 		};
 
 		void FindProjectsDirectory();

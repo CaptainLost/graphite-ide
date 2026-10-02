@@ -13,52 +13,14 @@ namespace Graphite {
 			return (flags & wanted) == wanted;
 		}
 
-		// A path's components with the empty ones dropped. A trailing separator leaves an
-		// empty final element behind - NormalizePath keeps it, deliberately - and comparing
-		// component by component would otherwise let "dir/" and "dir" disagree.
-		std::vector<std::string> Components(const std::filesystem::path& path)
-		{
-			std::vector<std::string> parts;
-
-			for (const std::filesystem::path& part : path)
-			{
-				std::string text = Core::ToUtf8(part);
-
-				if (!text.empty())
-				{
-					parts.push_back(std::move(text));
-				}
-			}
-
-			return parts;
-		}
-
-		// Whether `path` sits inside `directory`, both already normalised. Compared component
-		// by component through CompareNames rather than as text, for the reason SamePath
-		// gives: Windows paths are case-insensitive, and a textual prefix test would also
-		// call "src2/a.txt" a file under "src".
+		// Whether `path` sits strictly inside `directory`, compared as Core compares every path.
+		// A directory does not contain itself, and an empty directory is not a directory every
+		// path happens to be under.
 		bool UnderDirectory(const std::filesystem::path& path,
 							const std::filesystem::path& directory)
 		{
-			const std::vector<std::string> parts = Components(path);
-			const std::vector<std::string> base = Components(directory);
-
-			// A directory does not contain itself, and an empty directory is not a directory
-			// every path happens to be under.
-			if (base.empty() || parts.size() <= base.size())
-			{
-				return false;
-			}
-
-			for (std::size_t index = 0; index < base.size(); ++index)
-			{
-				if (Core::CompareNames(parts[index], base[index]) != 0)
-				{
-					return false;
-				}
-			}
-
-			return true;
+			const auto relative = Core::RelativeTo(path, directory);
+			return relative.has_value() && *relative != ".";
 		}
 	}
 

@@ -30,6 +30,22 @@ namespace Core {
 			return ErrorCode::IoFailure;
 		}
 
+		// Whether the place `key` names is `rootKey`'s or lies below it, both made by PathKey. A
+		// root ending in a separator ("D:\") already marks a boundary; any other has to be followed
+		// by one, or "D:\Repos2" would count as inside "D:\Repos".
+		bool IsKeyWithin(const std::filesystem::path::string_type& key,
+						 const std::filesystem::path::string_type& rootKey)
+		{
+			constexpr auto separator = std::filesystem::path::preferred_separator;
+
+			if (rootKey.empty() || !key.starts_with(rootKey))
+			{
+				return false;
+			}
+
+			return key.size() == rootKey.size() || rootKey.back() == separator || key[rootKey.size()] == separator;
+		}
+
 		bool IsHidden(const std::filesystem::path& path)
 		{
 #ifdef CORE_PLATFORM_WINDOWS
@@ -178,9 +194,37 @@ namespace Core {
 		return normalized;
 	}
 
+	std::filesystem::path::string_type PathKey(const std::filesystem::path& path)
+	{
+		std::filesystem::path::string_type key = NormalizeDirectory(path).native();
+
+#ifdef CORE_PLATFORM_WINDOWS
+		// The invariant upper-casing table, as the file system folds names, rather than the user's
+		// locale: a Turkish locale would otherwise give "i" a different capital from everyone
+		// else's. Upper-casing never changes the length of UTF-16 text, so the key stays aligned
+		// with the path it came from, which RelativeTo relies on.
+		if (!key.empty())
+		{
+			const int length = static_cast<int>(key.size());
+			std::wstring folded(key.size(), L'\0');
+
+			if (::LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, key.data(), length, folded.data(), length,
+								nullptr, nullptr, 0) == length)
+			{
+				key = std::move(folded);
+			}
+		}
+#else
+		std::ranges::transform(key, key.begin(),
+							   [](char c) { return static_cast<char>(std::toupper(static_cast<unsigned char>(c))); });
+#endif
+
+		return key;
+	}
+
 	bool SamePath(const std::filesystem::path& left, const std::filesystem::path& right)
 	{
-		return CompareNames(ToUtf8(left), ToUtf8(right)) == 0;
+		return PathKey(left) == PathKey(right);
 	}
 
 	std::filesystem::path NormalizeDirectory(const std::filesystem::path& path)
@@ -202,14 +246,29 @@ namespace Core {
 													const std::filesystem::path& base)
 	{
 		if (base.empty())
+		{
 			return std::nullopt;
+		}
 
-		const std::filesystem::path relative = path.lexically_relative(base);
+		const auto pathKey = PathKey(path);
+		const auto baseKey = PathKey(base);
 
-		if (relative.empty() || *relative.begin() == "..")
+		if (!IsKeyWithin(pathKey, baseKey))
+		{
 			return std::nullopt;
+		}
 
-		return relative;
+		// The key is the normalized path upper-cased, character for character, so its length
+		// marks where the base ends in the normalized spelling too - and the remainder keeps the
+		// case it was written in.
+		auto rest = NormalizeDirectory(path).native().substr(baseKey.size());
+
+		while (!rest.empty() && rest.front() == std::filesystem::path::preferred_separator)
+		{
+			rest.erase(0, 1);
+		}
+
+		return rest.empty() ? std::filesystem::path{"."} : std::filesystem::path{std::move(rest)};
 	}
 
 	bool IsSameOrWithin(const std::filesystem::path& path, const std::filesystem::path& root)
@@ -219,24 +278,7 @@ namespace Core {
 			return false;
 		}
 
-		const std::filesystem::path normalizedPath = NormalizeDirectory(path);
-		const std::filesystem::path normalizedRoot = NormalizeDirectory(root);
-
-		auto inPath = normalizedPath.begin();
-
-		for (const std::filesystem::path& component : normalizedRoot)
-		{
-			// A drive root's trailing separator is a component of its own ("D:", "\"); an empty
-			// final element never appears here because NormalizeDirectory removed it.
-			if (inPath == normalizedPath.end() || CompareNames(ToUtf8(*inPath), ToUtf8(component)) != 0)
-			{
-				return false;
-			}
-
-			++inPath;
-		}
-
-		return true;
+		return IsKeyWithin(PathKey(path), PathKey(root));
 	}
 
 	Result<std::string> ReadFileBytes(const std::filesystem::path& path,

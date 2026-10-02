@@ -288,7 +288,7 @@ namespace Graphite {
 
 			// Keyed as IsWithinDirectory compares, so two spellings of one folder - as Windows
 			// sees it, case and a trailing separator aside - make one group rather than two.
-			visible.push_back({&summary, limitToWorkspace ? std::wstring{} : DirectoryKey(summary.Cwd)});
+			visible.push_back({&summary, limitToWorkspace ? std::filesystem::path::string_type{} : DirectoryKey(summary.Cwd)});
 		}
 
 		// Grouped by where each was started when every project is shown, newest first within.
@@ -446,13 +446,13 @@ namespace Graphite {
 		}
 
 		const Pricing& pricing = m_Settings.GetPricing();
-		const std::wstring* group = nullptr;
+		const std::filesystem::path::string_type* group = nullptr;
 		bool groupOpen = true;
 
 		for (std::size_t index = 0; index < visible.size(); ++index)
 		{
 			const SessionSummary& summary = *visible[index].Summary;
-			const std::wstring& folder = visible[index].Folder;
+			const std::filesystem::path::string_type& folder = visible[index].Folder;
 
 			if (grouped && (group == nullptr || *group != folder))
 			{

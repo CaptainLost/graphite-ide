@@ -90,13 +90,13 @@ namespace Graphite {
 	// A transcript written to within this long ago is taken to be live.
 	inline constexpr std::chrono::minutes kLiveWindow{2};
 
-	// Whether `inner` is `outer` or a directory below it, compared as Windows compares paths:
+	// Whether `inner` is `outer` or a directory below it, compared as Core compares every path:
 	// without regard to case or to a trailing separator.
 	bool IsWithinDirectory(const std::filesystem::path& inner, const std::filesystem::path& outer);
 
-	// The form IsWithinDirectory compares in: two folders are the same folder exactly when
-	// their keys are equal. Empty for an empty path.
-	std::wstring DirectoryKey(const std::filesystem::path& directory);
+	// The form IsWithinDirectory compares in, Core::PathKey: two folders are the same folder
+	// exactly when their keys are equal. Empty for an empty path.
+	std::filesystem::path::string_type DirectoryKey(const std::filesystem::path& directory);
 
 	// At most `maxBytes` bytes, cut back to the start of a character so the result is still
 	// UTF-8. ImGui draws a split character as a replacement glyph.
