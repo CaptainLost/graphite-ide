@@ -280,6 +280,7 @@ namespace Graphite {
 						.Run = [this] {
 							m_Panels.ResetVisibility();
 							m_DockSpace.RequestLayoutReset();
+							m_Terminals.RequestRedock();
 							APP_INFO("Layout restored to the default");
 						}});
 
@@ -815,7 +816,8 @@ namespace Graphite {
 		m_Terminals.Render(TerminalDockTargets{.BesideWindow = console != nullptr ? console->GetWindowName() : std::string{},
 											   .CentreNode = m_DockSpace.GetCenterNodeId(),
 											   .DockSpace = m_DockSpace.GetDockSpaceId(),
-											   .BottomRatio = m_Layout.BottomRatio},
+											   .BottomRatio = m_Layout.BottomRatio,
+											   .LayoutRebuilt = m_DockSpace.BuiltLayoutThisFrame()},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
 
 		// After every owner has drawn: what nobody took this frame belonged to a window that

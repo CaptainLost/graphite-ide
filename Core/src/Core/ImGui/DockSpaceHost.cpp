@@ -56,6 +56,8 @@ namespace Core {
 
 	void DockSpaceHost::Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace)
 	{
+		m_BuiltLayoutThisFrame = false;
+
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 
 		ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -116,6 +118,7 @@ namespace Core {
 			return;
 
 		BuildDefaultLayout(dockSpaceId, layout, viewport->WorkSize);
+		m_BuiltLayoutThisFrame = true;
 	}
 
 	void DockSpaceHost::End()

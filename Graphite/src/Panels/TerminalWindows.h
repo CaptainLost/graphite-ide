@@ -44,6 +44,9 @@ namespace Graphite {
 		// The share of the central node a re-created bottom row takes: the layout's own, so the
 		// row comes back the height a layout reset would give it.
 		float BottomRatio = Core::DockLayout{}.BottomRatio;
+
+		// The dockspace built its default layout this frame, before this Render.
+		bool LayoutRebuilt = false;
 	};
 
 	// The shells running in this window, each a window of its own that can be dragged and docked
@@ -97,6 +100,12 @@ namespace Graphite {
 		// going back to the place imgui.ini remembers. Absent state opens one default shell when
 		// nothing is open (OpensDefaultTerminal).
 		void RestoreState(const std::optional<std::vector<TerminalTabState>>& saved);
+
+		// View > Reset Layout: every terminal docks again by the rule a new one follows, as the
+		// panels do into the rebuilt layout, instead of being left floating where the removed
+		// nodes dropped it. Takes effect on the first Render whose targets say the layout was
+		// rebuilt - see LayoutRebuilt.
+		void RequestRedock();
 
 	private:
 		struct Entry
@@ -159,5 +168,8 @@ namespace Graphite {
 		// Whether the open folder has had a terminal of its own, so CaptureState writes a list -
 		// see KeepsTerminals. Set by RestoreState for each folder, and by starting a shell in one.
 		bool m_KeepsTerminals = false;
+
+		// A layout reset was asked for and its rebuild has not been drawn yet.
+		bool m_RedockPending = false;
 	};
 }

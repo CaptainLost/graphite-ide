@@ -98,6 +98,29 @@ namespace Graphite {
 	void TerminalWindows::Render(const TerminalDockTargets& targets, const EditorPalette& palette,
 								 Core::TabCloseRequests& closeRequests)
 	{
+		// On the frame the layout was rebuilt, not necessarily the one the reset was asked on. The
+		// menu bar is drawn inside DockSpaceHost::Begin, so a reset chosen there comes after this
+		// frame's Begin and is built by the next one, whose DockBuilderRemoveNode would undock
+		// every terminal placed here again. Waiting for LayoutRebuilt holds wherever the request
+		// came from: by the time this runs on that frame, the new nodes exist and the panels are
+		// already docked into them, so the terminals join them in the same frame.
+		if (m_RedockPending && targets.LayoutRebuilt)
+		{
+			m_RedockPending = false;
+
+			for (const Core::Scope<Entry>& entry : m_Open)
+			{
+				entry->Fresh = true;
+				entry->DockNode = 0;
+				entry->Restored = false;
+			}
+
+			// The node the last-focused terminal was in is gone, and "beside it" would only put
+			// each terminal next to one placed a moment earlier; the console's row is the place a
+			// reset gives them.
+			m_LastFocused.clear();
+		}
+
 		// Counted by position, so the tabs always read 1..N; the identity after ### is what ImGui
 		// keys each window on, so renumbering moves nothing.
 		std::size_t number = 0;
@@ -504,6 +527,11 @@ namespace Graphite {
 	std::optional<std::vector<TerminalTabState>> TerminalWindows::CaptureState() const
 	{
 		return CaptureFolderTerminals(Records(), m_KeepsTerminals);
+	}
+
+	void TerminalWindows::RequestRedock()
+	{
+		m_RedockPending = true;
 	}
 
 	void TerminalWindows::CarryOverOpenTerminals()
