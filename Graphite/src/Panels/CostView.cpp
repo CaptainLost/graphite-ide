@@ -58,8 +58,13 @@ namespace Graphite {
 			CostResult total = own;
 			total += subagents;
 
-			ImGui::Text("Total %s   session %s   subagents %s", FormatCost(total).c_str(), FormatCost(own).c_str(),
-						FormatCost(subagents).c_str());
+			// Only a session has a summary. A subagent's transcript, drawn without one, has no
+			// split between itself and subagents of its own to show.
+			if (summary.has_value())
+				ImGui::Text("Total %s   session %s   subagents %s", FormatCost(total).c_str(), FormatCost(own).c_str(),
+							FormatCost(subagents).c_str());
+			else
+				ImGui::Text("Total %s", FormatCost(total).c_str());
 
 			if (!total.IsKnown())
 			{
