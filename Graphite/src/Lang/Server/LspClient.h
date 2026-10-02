@@ -337,6 +337,10 @@ namespace Graphite {
 		// piling up messages nothing will ever carry. Takes OutboundMutex.
 		static void StopOutbound(Shared& shared);
 
+		// Ends the server process and joins whichever of the two threads were started. What the
+		// destructor does, shared with a constructor that fails between starting them.
+		void StopThreads();
+
 		std::shared_ptr<Shared> m_Shared = std::make_shared<Shared>();
 
 		// Declared last so they are destroyed last; the destructor joins both explicitly first.

@@ -33,6 +33,10 @@ namespace Core {
 	private:
 		void Run();
 
+		// What the destructor does, shared with a constructor that fails part-way: the workers
+		// already started are joinable, and destroying one unjoined calls std::terminate.
+		void StopAndJoin();
+
 		std::mutex m_Mutex;
 		std::condition_variable m_Wake;
 		std::deque<std::function<void()>> m_Jobs;

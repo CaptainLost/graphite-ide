@@ -32,13 +32,29 @@ namespace Core {
 
 		m_Workers.reserve(count);
 
-		for (std::size_t worker = 0; worker < count; ++worker)
+		// Starting a thread can throw std::system_error when the system is out of resources. The
+		// destructor never runs for a constructor that throws, so the workers started so far are
+		// stopped and joined here before the exception goes on.
+		try
 		{
-			m_Workers.emplace_back([this] { Run(); });
+			for (std::size_t worker = 0; worker < count; ++worker)
+			{
+				m_Workers.emplace_back([this] { Run(); });
+			}
+		}
+		catch (...)
+		{
+			StopAndJoin();
+			throw;
 		}
 	}
 
 	JobQueue::~JobQueue()
+	{
+		StopAndJoin();
+	}
+
+	void JobQueue::StopAndJoin()
 	{
 		{
 			const std::lock_guard<std::mutex> lock(m_Mutex);

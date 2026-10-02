@@ -84,11 +84,14 @@ namespace Core {
 		TerminalScreen m_Screen;
 		VtParser m_Parser;
 
-		std::thread m_Reader;
 		std::mutex m_Mutex;
 		std::condition_variable m_Drained;
 		std::string m_Incoming;
 		std::atomic<bool> m_Alive{true};
 		std::atomic<bool> m_Stopping{false};
+
+		// Last, after everything ReadLoop touches, so none of it is destroyed while the reader
+		// could still be running in it - should the destructor's join ever be bypassed.
+		std::thread m_Reader;
 	};
 }

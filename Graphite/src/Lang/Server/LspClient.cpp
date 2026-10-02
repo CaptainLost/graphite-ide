@@ -216,10 +216,23 @@ namespace Graphite {
 
 		m_Shared->Process = std::shared_ptr<Core::ChildProcess>(std::move(started.GetValue()));
 
-		m_Reader = std::thread(&LspClient::RunReader, m_Shared);
-		m_Writer = std::thread(&LspClient::RunWriter, m_Shared);
-
+		// Queued before either thread exists, so nothing that can throw comes after them: the
+		// writer sends it once it starts, and no reply can reach a reader that is not yet running.
 		BeginHandshake(root);
+
+		// Starting a thread can throw std::system_error. The destructor never runs for a
+		// constructor that throws, and a joinable std::thread destroyed unjoined ends the process,
+		// so what was started is stopped here before the exception goes on.
+		try
+		{
+			m_Reader = std::thread(&LspClient::RunReader, m_Shared);
+			m_Writer = std::thread(&LspClient::RunWriter, m_Shared);
+		}
+		catch (...)
+		{
+			StopThreads();
+			throw;
+		}
 	}
 
 	LspClient::LspClient(const ServerConfig& config, std::filesystem::path root, WithoutServer)
@@ -237,6 +250,11 @@ namespace Graphite {
 	}
 
 	LspClient::~LspClient()
+	{
+		StopThreads();
+	}
+
+	void LspClient::StopThreads()
 	{
 		m_Shared->Stopping.store(true);
 
