@@ -199,6 +199,7 @@ namespace Graphite {
 							const FilePosition& where);
 		Ticket AskReferences(const std::filesystem::path& path, LanguageId language,
 							 const FilePosition& where);
+		Ticket AskSwitchSourceHeader(const std::filesystem::path& path, LanguageId language);
 		Ticket AskSymbols(const std::filesystem::path& path, LanguageId language);
 		Ticket AskSemanticTokens(const std::filesystem::path& path, LanguageId language);
 

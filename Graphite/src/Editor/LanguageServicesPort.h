@@ -148,6 +148,12 @@ namespace Graphite {
 			return m_Services.AskReferences(path, language, where);
 		}
 
+		LanguageServices::Ticket AskSwitchSourceHeader(const std::filesystem::path& path,
+													   LanguageId language) override
+		{
+			return m_Services.AskSwitchSourceHeader(path, language);
+		}
+
 		LanguageServices::Ticket AskSymbols(const std::filesystem::path& path,
 											LanguageId language) override
 		{

@@ -41,6 +41,10 @@ namespace Graphite {
 	// server is allowed to answer nothing, and ADR 0004 forbids throwing across this boundary.
 	std::vector<Location> ParseLocations(const nlohmann::json& result);
 
+	// clangd's own extension, not part of the protocol: the reply is a bare URI string, or null
+	// when the file has no counterpart. Anything else is read as null.
+	std::optional<Location> ParseSwitchSourceHeader(const nlohmann::json& result);
+
 	// Keeps only the symbol kinds this editor has somewhere to show — functions and types — and
 	// flattens the tree, parents before children, so a caller never walks it again. Anything else
 	// is skipped rather than stored as DeclarationKind::Other, so no lens appears over a variable.

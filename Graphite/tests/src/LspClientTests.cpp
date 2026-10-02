@@ -748,3 +748,41 @@ TEST_CASE("The version a document is sent under is the one that goes out on the 
 	// A change to a document that was never opened is a change to nothing, and says so.
 	CHECK(client.ChangeDocument("C:/src/Other.cpp", "x\n") == Graphite::DocumentVersion{});
 }
+
+TEST_CASE("A switch header/source request asks clangd's extension for the document")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+	client.TakeSent();
+
+	client.AskSwitchSourceHeader(temp.GetPath() / "Layer.h");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("method":"textDocument/switchSourceHeader")") != std::string::npos);
+	CHECK(sent[0].find("Layer.h") != std::string::npos);
+}
+
+TEST_CASE("A switch header/source answer carries the file the server named")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+	client.TakeSent();
+
+	const Graphite::RequestId id = client.AskSwitchSourceHeader(temp.GetPath() / "Layer.h");
+	client.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
+				   R"(,"result":"file:///C:/project/Layer.cpp"})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Answers.size() == 1);
+	REQUIRE(drained.Answers[0].Locations.size() == 1);
+	CHECK(drained.Answers[0].Locations[0].Path ==
+		  Graphite::FromFileUri("file:///C:/project/Layer.cpp"));
+}

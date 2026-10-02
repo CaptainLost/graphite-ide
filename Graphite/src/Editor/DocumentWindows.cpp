@@ -1669,6 +1669,20 @@ namespace Graphite {
 		panel.Focus();
 	}
 
+	void DocumentWindows::ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
+														const LanguageServices::Answer& answer)
+	{
+		// A header with no source is ordinary - a header-only class, a C file with no header -
+		// so it is logged rather than announced.
+		if (answer.Failed || answer.Locations.empty())
+		{
+			APP_INFO("No header/source counterpart for {}", Core::ToUtf8(from));
+			return;
+		}
+
+		Jump(m_Documents, answer.Locations.front());
+	}
+
 	void DocumentWindows::ApplyDefinitionAnswer(const DefinitionQuestion& question,
 												const LanguageServices::Answer& answer)
 	{
@@ -1863,6 +1877,12 @@ namespace Graphite {
 								 const LanguageServices::Answer& answer) override
 			{
 				m_Windows.ApplyDefinitionAnswer(question, answer);
+			}
+
+			void ApplySwitchSourceHeader(const std::filesystem::path& from,
+										 const LanguageServices::Answer& answer) override
+			{
+				m_Windows.ApplySwitchSourceHeaderAnswer(from, answer);
 			}
 
 			void ApplyReferences(const std::string& symbol,

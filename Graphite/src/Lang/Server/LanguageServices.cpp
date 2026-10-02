@@ -379,6 +379,13 @@ namespace Graphite {
 					 [&where](LspClient& client) { return client.AskReferences(where); });
 	}
 
+	LanguageServices::Ticket LanguageServices::AskSwitchSourceHeader(
+		const std::filesystem::path& path, LanguageId language)
+	{
+		return AskVia(path, language,
+					 [&path](LspClient& client) { return client.AskSwitchSourceHeader(path); });
+	}
+
 	LanguageServices::Ticket LanguageServices::AskSemanticTokens(const std::filesystem::path& path,
 																  LanguageId language)
 	{

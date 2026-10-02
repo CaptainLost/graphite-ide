@@ -197,6 +197,20 @@ namespace Graphite {
 		m_PendingReferences = PendingReferences{ticket, std::move(symbol)};
 	}
 
+	void LspAnswerRouter::AskSwitchSourceHeader(const std::filesystem::path& path)
+	{
+		if (m_PendingSwitch)
+		{
+			m_Server.Cancel(m_PendingSwitch->Ticket);
+		}
+
+		const LanguageId language = LanguageOfPath(path);
+
+		m_Server.EnsureStarted(path, language);
+
+		m_PendingSwitch = PendingSwitch{m_Server.AskSwitchSourceHeader(path, language), path};
+	}
+
 	bool LspAnswerRouter::IsAnalysing(const std::filesystem::path& path) const
 	{
 		if (const auto found = m_Schedules.find(path); found != m_Schedules.end())
@@ -251,6 +265,15 @@ namespace Graphite {
 
 				m_PendingReferences.reset();
 				target.ApplyReferences(pending.Symbol, answer);
+				continue;
+			}
+
+			if (m_PendingSwitch && m_PendingSwitch->Ticket == answer.For)
+			{
+				const PendingSwitch pending = std::move(*m_PendingSwitch);
+
+				m_PendingSwitch.reset();
+				target.ApplySwitchSourceHeader(pending.From, answer);
 				continue;
 			}
 

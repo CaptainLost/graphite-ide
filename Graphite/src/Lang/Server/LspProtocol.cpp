@@ -403,6 +403,19 @@ namespace Graphite {
 		return index < line.size() ? index : line.size();
 	}
 
+	std::optional<Location> ParseSwitchSourceHeader(const nlohmann::json& result)
+	{
+		if (!result.is_string())
+		{
+			return std::nullopt;
+		}
+
+		Location location;
+		location.Path = FromFileUri(result.get<std::string>());
+
+		return location;
+	}
+
 	std::vector<Location> ParseLocations(const nlohmann::json& result)
 	{
 		std::vector<Location> locations;

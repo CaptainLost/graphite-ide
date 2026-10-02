@@ -57,6 +57,11 @@ namespace {
 			return Record("references", path);
 		}
 
+		Ticket AskSwitchSourceHeader(const std::filesystem::path& path, LanguageId) override
+		{
+			return Record("switch", path);
+		}
+
 		Ticket AskSymbols(const std::filesystem::path& path, LanguageId) override
 		{
 			return Record("symbols", path);
@@ -142,6 +147,11 @@ namespace {
 			References.push_back(symbol);
 		}
 
+		void ApplySwitchSourceHeader(const std::filesystem::path& from, const Answer&) override
+		{
+			Switched.push_back(from);
+		}
+
 		void ApplySemanticTokens(const std::filesystem::path& path, const Answer&) override
 		{
 			Semantic.push_back(path);
@@ -168,6 +178,7 @@ namespace {
 		std::vector<DefinitionQuestion> Definitions;
 		std::vector<bool> DefinitionFailed;
 		std::vector<std::string> References;
+		std::vector<std::filesystem::path> Switched;
 		std::vector<std::filesystem::path> Semantic;
 		std::vector<std::filesystem::path> Symbols;
 		std::vector<std::size_t> Counts;
@@ -506,4 +517,34 @@ TEST_CASE("An answer the router did not ask for is offered to whoever did")
 	h.Router.Collect(h.Target);
 
 	CHECK(h.Target.Offered == 1);
+}
+
+TEST_CASE("A second switch header/source question supersedes the first")
+{
+	Harness h;
+
+	h.Router.AskSwitchSourceHeader(kSource);
+	const Ticket first = h.Server.LastOf("switch");
+
+	h.Router.AskSwitchSourceHeader(kSource);
+	const Ticket second = h.Server.LastOf("switch");
+
+	CHECK(h.Server.WasCancelled(first));
+
+	h.Server.Reply(first);
+	h.Server.Reply(second);
+	h.Router.Collect(h.Target);
+
+	REQUIRE(h.Target.Switched.size() == 1);
+	CHECK(h.Target.Switched[0] == kSource);
+}
+
+TEST_CASE("A switch header/source question starts the server before asking")
+{
+	Harness h;
+
+	h.Router.AskSwitchSourceHeader(kSource);
+
+	REQUIRE(h.Server.Started.size() == 1);
+	CHECK(h.Server.Started[0] == kSource);
 }

@@ -412,6 +412,16 @@ namespace Graphite {
 		return Ask("textDocument/definition", params, Question::Definition);
 	}
 
+	RequestId LspClient::AskSwitchSourceHeader(const std::filesystem::path& path)
+	{
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+		nlohmann::json params;
+		params["uri"] = ToFileUri(path);
+
+		return Ask("textDocument/switchSourceHeader", params, Question::SwitchSourceHeader);
+	}
+
 	RequestId LspClient::AskReferences(const FilePosition& where)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
@@ -840,6 +850,16 @@ namespace Graphite {
 		if (asked.Kind == Question::SemanticTokens)
 		{
 			answer.SemanticTokens = ParseSemanticTokens(reply.Payload, legend);
+			return answer;
+		}
+
+		if (asked.Kind == Question::SwitchSourceHeader)
+		{
+			if (auto location = ParseSwitchSourceHeader(reply.Payload))
+			{
+				answer.Locations.push_back(std::move(*location));
+			}
+
 			return answer;
 		}
 

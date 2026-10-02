@@ -63,6 +63,10 @@ namespace Graphite {
 		// Each returns a ticket; the answer arrives through Drain.
 		RequestId AskDefinition(const FilePosition& where);
 		RequestId AskReferences(const FilePosition& where);
+
+		// clangd's extension; answered with the counterpart file as a single location, or with
+		// no location when there is none.
+		RequestId AskSwitchSourceHeader(const std::filesystem::path& path);
 		RequestId AskSymbols(const std::filesystem::path& path);
 
 		// Answers nothing at all when the server declared no semantic token support in its
@@ -145,7 +149,8 @@ namespace Graphite {
 			Definition,
 			References,
 			Symbols,
-			SemanticTokens
+			SemanticTokens,
+			SwitchSourceHeader
 		};
 
 		// The server's copy of an open document, as far as this side knows it: only the version,

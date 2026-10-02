@@ -55,6 +55,11 @@ namespace Graphite {
 		virtual void ApplyReferences(const std::string& symbol,
 									 const LanguageServices::Answer& answer) = 0;
 
+		// Failed answers included, and an answer naming no file: either way there is nowhere to
+		// go, and the target decides whether that is worth saying.
+		virtual void ApplySwitchSourceHeader(const std::filesystem::path& from,
+											 const LanguageServices::Answer& answer) = 0;
+
 		// Successful answers only: a failure has nothing to apply, and the router has already
 		// done the bookkeeping it calls for.
 		virtual void ApplySemanticTokens(const std::filesystem::path& path,
@@ -137,6 +142,9 @@ namespace Graphite {
 		void AskReferences(const std::filesystem::path& path, const FilePosition& where,
 						   std::string symbol);
 
+		// At most one outstanding, like AskDefinition: a second Alt+O supersedes the first.
+		void AskSwitchSourceHeader(const std::filesystem::path& path);
+
 		// Whether this document's declarations or colours are still being settled: wanted, or
 		// asked for and not yet answered. Reference counts deliberately do not count; see
 		// DocumentWindows::IsAnalysing.
@@ -174,6 +182,12 @@ namespace Graphite {
 			std::string Symbol;
 		};
 
+		struct PendingSwitch
+		{
+			LanguageServices::Ticket Ticket{};
+			std::filesystem::path From;
+		};
+
 		struct PendingCount
 		{
 			std::filesystem::path Path;
@@ -187,6 +201,7 @@ namespace Graphite {
 
 		std::optional<PendingDefinition> m_PendingDefinition;
 		std::optional<PendingReferences> m_PendingReferences;
+		std::optional<PendingSwitch> m_PendingSwitch;
 
 		// What an outstanding ticket was asked for. Tickets are unique across every server, which
 		// is what lets one map per question kind route an answer back to the document - and to

@@ -373,3 +373,19 @@ TEST_CASE("A range with no end collapses onto its start")
 	CHECK(published.Items[0].EndLine == 5);
 	CHECK(published.Items[0].EndColumn == Graphite::Utf16Column{2});
 }
+
+TEST_CASE("A switchSourceHeader reply naming a file becomes a location at its start")
+{
+	const auto location = Graphite::ParseSwitchSourceHeader(
+		nlohmann::json("file:///C:/project/src/Layer.cpp"));
+
+	REQUIRE(location);
+	CHECK(location->Path == Graphite::FromFileUri("file:///C:/project/src/Layer.cpp"));
+	CHECK(location->Line == 0);
+}
+
+TEST_CASE("A null or malformed switchSourceHeader reply names nothing")
+{
+	CHECK_FALSE(Graphite::ParseSwitchSourceHeader(nlohmann::json(nullptr)).has_value());
+	CHECK_FALSE(Graphite::ParseSwitchSourceHeader(nlohmann::json(42)).has_value());
+}
