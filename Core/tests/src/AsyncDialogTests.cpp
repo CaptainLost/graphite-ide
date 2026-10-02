@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/App/Redraw.h"
 #include "Core/Platform/AsyncDialog.h"
 
 #include <atomic>
@@ -189,4 +190,29 @@ TEST_CASE("AsyncDialog destroyed while a dialog is open neither waits for it nor
 
 	CHECK(picker.Returned->load());
 	CHECK_FALSE(delivered);
+}
+
+// A dialog the owner gave up on may return after main has, while static objects are being
+// destroyed - Redraw's among them. So once its owner is gone, its thread asks for no frame.
+TEST_CASE("AsyncDialog destroyed while a dialog is open asks for no redraw when it returns")
+{
+	HeldPicker picker;
+
+	{
+		AsyncDialog dialog;
+		REQUIRE(dialog.Start(picker.Make(), [](Picked) {}));
+	}
+
+	Core::Redraw::TakeRequest();
+	picker.Release->set_value();
+
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+	// Returned is set before the thread would ask; give it time to, so a regression shows.
+	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+	CHECK(picker.Returned->load());
+	CHECK_FALSE(Core::Redraw::IsRequested());
 }

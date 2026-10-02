@@ -15,12 +15,25 @@ namespace Core {
 	{
 		std::mutex Mutex;
 		std::optional<Result<std::filesystem::path>> Answer;
+
+		// Set by the owner's destructor. Nobody will poll for the answer any more, and the
+		// application may be past main, destroying Redraw's statics.
+		bool Abandoned = false;
 	};
 
 	// Detached from the start rather than joined here: joining would block the thread that
 	// draws on a dialog the user has not answered, which is the stall this class exists to
-	// avoid. The thread owns what it touches through the shared Pending.
-	AsyncDialog::~AsyncDialog() = default;
+	// avoid. The thread owns what it touches through the shared Pending, and touches nothing
+	// else once this has run: it asks for a redraw only under Pending's mutex and only while
+	// the dialog is not abandoned, so after this returns it never reaches Redraw.
+	AsyncDialog::~AsyncDialog()
+	{
+		if (m_Pending)
+		{
+			const std::lock_guard lock(m_Pending->Mutex);
+			m_Pending->Abandoned = true;
+		}
+	}
 
 	bool AsyncDialog::Start(Picker picker, Done done)
 	{
@@ -32,11 +45,14 @@ namespace Core {
 		std::thread([pending, picker = std::move(picker)] {
 			Result<std::filesystem::path> answer = picker();
 
+			const std::lock_guard lock(pending->Mutex);
+
+			if (pending->Abandoned)
 			{
-				const std::lock_guard lock(pending->Mutex);
-				pending->Answer.emplace(std::move(answer));
+				return;
 			}
 
+			pending->Answer.emplace(std::move(answer));
 			Redraw::Request();
 		}).detach();
 
