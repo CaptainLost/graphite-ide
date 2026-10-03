@@ -205,8 +205,10 @@ namespace Graphite {
 		for (const auto& [file, summary] : m_Sessions)
 			summaries.push_back(summary);
 
-		if (!SaveSummaryCache(m_CacheFile, summaries))
-			APP_ERROR("Cannot write {}", Core::ToUtf8(m_CacheFile));
+		if (const Core::Result<void> saved = SaveSummaryCache(m_CacheFile, summaries); !saved)
+		{
+			APP_ERROR("Cannot write {}: {}", Core::ToUtf8(m_CacheFile), saved.GetError().Message);
+		}
 
 		m_CacheDirty = false;
 	}

@@ -105,7 +105,7 @@ namespace Graphite {
 		return summaries;
 	}
 
-	bool SaveSummaryCache(const std::filesystem::path& file, const std::vector<SessionSummary>& summaries)
+	Core::Result<void> SaveSummaryCache(const std::filesystem::path& file, const std::vector<SessionSummary>& summaries)
 	{
 		nlohmann::json sessions = nlohmann::json::array();
 
@@ -131,7 +131,6 @@ namespace Graphite {
 
 		// Swapped into place, so a crash mid-write or a second instance saving at the same
 		// moment leaves the old cache or the new one, never a truncated file.
-		return static_cast<bool>(Core::WriteFileAtomically(
-			file, root.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace)));
+		return Core::WriteFileAtomically(file, root.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
 	}
 }

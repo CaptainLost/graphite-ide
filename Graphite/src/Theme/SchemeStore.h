@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Result.h"
+
 #include "Theme/ColorScheme.h"
 
 #include <filesystem>
@@ -19,10 +21,10 @@ namespace Graphite {
 	// should come back when the drive does, not take the editor down while it is out.
 	ColorScheme LoadScheme(const std::filesystem::path& file);
 
-	// False when the name is a built-in or the write fails. Writes only the colours the scheme
-	// actually overrides, so it stays sparse and keeps surviving a new token kind.
-	bool SaveScheme(const std::filesystem::path& directory, std::string_view name,
-					const ColorScheme& scheme);
+	// An error when the name is a built-in or the write fails. Writes only the colours the
+	// scheme actually overrides, so it stays sparse and keeps surviving a new token kind.
+	Core::Result<void> SaveScheme(const std::filesystem::path& directory, std::string_view name,
+								  const ColorScheme& scheme);
 
-	bool DeleteScheme(const std::filesystem::path& directory, std::string_view name);
+	Core::Result<void> DeleteScheme(const std::filesystem::path& directory, std::string_view name);
 }

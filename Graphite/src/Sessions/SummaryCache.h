@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Result.h"
+
 #include "Sessions/SessionSummary.h"
 
 #include <filesystem>
@@ -15,5 +17,5 @@ namespace Graphite {
 	// Empty on any problem: the cache only saves time, and a scan rebuilds whatever it lacks.
 	std::vector<SessionSummary> LoadSummaryCache(const std::filesystem::path& file);
 
-	bool SaveSummaryCache(const std::filesystem::path& file, const std::vector<SessionSummary>& summaries);
+	Core::Result<void> SaveSummaryCache(const std::filesystem::path& file, const std::vector<SessionSummary>& summaries);
 }

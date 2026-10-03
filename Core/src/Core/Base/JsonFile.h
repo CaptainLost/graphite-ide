@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/Base.h"
+#include "Core/Base/Result.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -31,7 +32,7 @@ namespace Core {
 
 		void Remove(std::string_view key);
 
-		bool Save(const std::filesystem::path& path) const;
+		Result<void> Save(const std::filesystem::path& path) const;
 
 		std::size_t GetCount() const;
 

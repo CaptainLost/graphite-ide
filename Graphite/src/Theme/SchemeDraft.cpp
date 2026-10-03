@@ -234,9 +234,9 @@ namespace Graphite {
 			return false;
 		}
 
-		if (!SaveScheme(m_Directory, m_Selected, m_Scheme))
+		if (const Core::Result<void> saved = SaveScheme(m_Directory, m_Selected, m_Scheme); !saved)
 		{
-			APP_WARN("Could not save colour scheme '{}'", m_Selected);
+			APP_WARN("Could not save colour scheme '{}': {}", m_Selected, saved.GetError().Message);
 			return false;
 		}
 
@@ -249,9 +249,10 @@ namespace Graphite {
 
 		// Saved from the scheme currently held, so a built-in duplicates as an empty override
 		// set over that base, and a user scheme duplicates with its overrides intact.
-		if (!SaveScheme(m_Directory, name, m_Scheme))
+		if (const Core::Result<void> saved = SaveScheme(m_Directory, name, m_Scheme); !saved)
 		{
-			APP_WARN("Could not duplicate colour scheme '{}' as '{}'", m_Selected, name);
+			APP_WARN("Could not duplicate colour scheme '{}' as '{}': {}", m_Selected, name,
+					 saved.GetError().Message);
 			return false;
 		}
 
@@ -270,9 +271,9 @@ namespace Graphite {
 
 		const BuiltInScheme fallback = m_Scheme.Base;
 
-		if (!DeleteScheme(m_Directory, m_Selected))
+		if (const Core::Result<void> deleted = DeleteScheme(m_Directory, m_Selected); !deleted)
 		{
-			APP_WARN("Could not delete colour scheme '{}'", m_Selected);
+			APP_WARN("Could not delete colour scheme '{}': {}", m_Selected, deleted.GetError().Message);
 			return false;
 		}
 

@@ -125,7 +125,7 @@ namespace Core {
 		return Document::RootOf(m_Document).size();
 	}
 
-	bool JsonFile::Save(const std::filesystem::path& path) const
+	Result<void> JsonFile::Save(const std::filesystem::path& path) const
 	{
 		// dump() rejects invalid UTF-8 unless told otherwise, and `replace` substitutes U+FFFD
 		// instead: a visibly mangled setting is a better outcome than an exception crossing
@@ -134,6 +134,6 @@ namespace Core {
 		const std::string text =
 			Document::RootOf(m_Document).dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
 
-		return static_cast<bool>(WriteFileAtomically(path, text));
+		return WriteFileAtomically(path, text);
 	}
 }

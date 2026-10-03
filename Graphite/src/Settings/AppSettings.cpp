@@ -134,13 +134,13 @@ namespace Graphite {
 			return;
 		}
 
-		if (!toWrite.Save(m_File))
+		if (const Core::Result<void> saved = toWrite.Save(m_File); !saved)
 		{
 			// Left unwritten so the next Flush tries again; logged once per run of failures rather
 			// than on every frame that retries.
 			if (!m_WriteFailed)
 			{
-				APP_WARN("Cannot write '{}'", Core::ToUtf8(m_File));
+				APP_WARN("Cannot write '{}': {}", Core::ToUtf8(m_File), saved.GetError().Message);
 			}
 
 			m_WriteFailed = true;

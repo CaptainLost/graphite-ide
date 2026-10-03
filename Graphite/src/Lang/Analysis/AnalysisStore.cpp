@@ -3,6 +3,7 @@
 #include "Lang/Analysis/AnalysisRecord.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Log.h"
 #include "Core/Fs/AtomicWrite.h"
 #include "Core/Fs/FileSystem.h"
 
@@ -335,9 +336,14 @@ namespace Graphite {
 		const Core::Result<void> written =
 			Core::WriteFileAtomically(directory / kIndexName, EncodeIndex(entries));
 
-		// Nothing to report and nobody to report it to. A store that could not be written is a
-		// store the next session finds empty, which is what it would have found anyway.
-		(void)written;
+		// Nothing the user has to act on: a store that could not be written is a store the next
+		// session finds empty, which is what it would have found anyway. Logged, so a store that
+		// never fills has a reason on record.
+		if (!written)
+		{
+			APP_WARN("Cannot write the analysis index in '{}': {}", Core::ToUtf8(directory),
+					 written.GetError().Message);
+		}
 	}
 
 	void AnalysisStore::FlushIndex(const std::filesystem::path& directory, Listing& listing,

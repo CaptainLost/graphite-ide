@@ -75,9 +75,9 @@ namespace Graphite {
 
 		edit(file);
 
-		if (!file.Save(GetFilePath()))
+		if (const Core::Result<void> saved = file.Save(GetFilePath()); !saved)
 		{
-			APP_WARN("Cannot write '{}'", Core::ToUtf8(GetFilePath()));
+			APP_WARN("Cannot write '{}': {}", Core::ToUtf8(GetFilePath()), saved.GetError().Message);
 		}
 	}
 

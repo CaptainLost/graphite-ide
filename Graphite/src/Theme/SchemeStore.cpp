@@ -6,6 +6,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Theme/BuiltInSchemes.h"
 
+#include <format>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -185,14 +186,14 @@ namespace Graphite {
 		return scheme;
 	}
 
-	bool SaveScheme(const std::filesystem::path& directory, std::string_view name,
-					 const ColorScheme& scheme)
+	Core::Result<void> SaveScheme(const std::filesystem::path& directory, std::string_view name,
+								  const ColorScheme& scheme)
 	{
 		// The built-ins are not files, so writing over one would only ever succeed at making
 		// dark.json shadow the real thing.
 		if (ParseBuiltInName(name).has_value())
 		{
-			return false;
+			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}' is a built-in scheme", name)};
 		}
 
 		// The name is joined straight onto the themes directory below. Harmless while it only
@@ -202,7 +203,7 @@ namespace Graphite {
 		if (name.find('/') != std::string_view::npos || name.find('\\') != std::string_view::npos ||
 			name.find("..") != std::string_view::npos)
 		{
-			return false;
+			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}' is not a scheme name", name)};
 		}
 
 		std::error_code ec;
@@ -294,9 +295,19 @@ namespace Graphite {
 		return names;
 	}
 
-	bool DeleteScheme(const std::filesystem::path& directory, std::string_view name)
+	Core::Result<void> DeleteScheme(const std::filesystem::path& directory, std::string_view name)
 	{
+		const std::filesystem::path file = directory / (std::string(name) + ".json");
+
 		std::error_code ec;
-		return std::filesystem::remove(directory / (std::string(name) + ".json"), ec);
+
+		if (!std::filesystem::remove(file, ec))
+		{
+			return Core::Error{Core::ErrorCode::IoFailure,
+							   std::format("cannot delete '{}': {}", Core::ToUtf8(file),
+										   ec ? ec.message() : std::string{"it is not there"})};
+		}
+
+		return Core::Result<void>::Ok();
 	}
 }
