@@ -443,7 +443,7 @@ namespace Graphite {
 				TerminalTabState terminal;
 				terminal.Id = file.Get(TerminalKey(index, "id"));
 				terminal.ProfileName = file.Get(TerminalKey(index, "profile"));
-					terminal.Title = file.Get(TerminalKey(index, "title"));
+				terminal.Title = file.Get(TerminalKey(index, "title"));
 
 				// Without an id there is no place to go back to, and without a profile no shell
 				// to start.

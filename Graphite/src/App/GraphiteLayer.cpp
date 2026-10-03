@@ -492,7 +492,7 @@ namespace Graphite {
 		// No folder to restore terminals for: one default shell, as the terminal always opened.
 		if (!m_Workspace.IsOpen())
 		{
-			static_cast<void>(m_Terminals.OpenDefaultShell()); // logs its own failure
+			static_cast<void>(m_Terminals.OpenStartupShell()); // logs its own failure
 		}
 	}
 

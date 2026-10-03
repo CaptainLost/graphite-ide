@@ -409,6 +409,23 @@ TEST_CASE("A terminal's last title survives a write and a read")
 	CHECK((*read.Terminals)[1].Title.empty());
 }
 
+TEST_CASE("A terminal written before titles were kept reads with an empty title")
+{
+	WorkspaceState state;
+	state.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{A1}", "PowerShell 7", kRoot, "build"}};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(state, kRoot, file);
+	file.Set("restore.terminal.0.title", "");
+
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	REQUIRE(read.Terminals.has_value());
+	REQUIRE(read.Terminals->size() == 1);
+	CHECK((*read.Terminals)[0].Id == "{A1}");
+	CHECK((*read.Terminals)[0].Title.empty());
+}
+
 TEST_CASE("No terminals written at all reads as absent, and an empty list as empty")
 {
 	// Absent is a folder never opened with this version, and opens one default terminal;

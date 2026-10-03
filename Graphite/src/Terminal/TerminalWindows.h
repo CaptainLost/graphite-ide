@@ -85,6 +85,10 @@ namespace Graphite {
 		// Render, whose loop over the open terminals a new one would invalidate.
 		bool OpenShellIn(std::size_t shell, const std::filesystem::path& directory);
 
+		// The default shell opened because no folder was at startup. Marked, so a folder with
+		// terminals of its own saved does not take it in (AdoptTerminals).
+		bool OpenStartupShell();
+
 		// Opens a window running `program` rather than a discovered shell. It behaves as any
 		// other: pumped, resized and closed the same way, closing when the program exits, but it
 		// is never kept for the next launch. False when the program could not be started.
@@ -154,6 +158,7 @@ namespace Graphite {
 		Entry* FindEntry(const std::string& id);
 		void PlaceNewWindow(const std::string& name, Entry& entry, const TerminalDockTargets& targets);
 		void RemoveClosed();
+		void StoreRecords(const std::vector<OpenTerminal>& records);
 		std::vector<OpenTerminal> Records() const;
 
 		Workspace& m_Workspace;

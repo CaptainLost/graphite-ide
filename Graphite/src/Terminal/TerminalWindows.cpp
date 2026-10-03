@@ -215,10 +215,10 @@ namespace Graphite {
 				// What fitted is what the shell is told about, which is what makes dragging the
 				// window's edge behave like resizing a console window.
 				// Not a sliver: the shell would reflow its banner away (TerminalSizeIsPlausible).
-					if (!appearing && TerminalSizeIsPlausible(fitted.Column, fitted.Row))
-					{
-						entry.Session->Resize(fitted.Column, fitted.Row);
-					}
+				if (!appearing && TerminalSizeIsPlausible(fitted.Column, fitted.Row))
+				{
+					entry.Session->Resize(fitted.Column, fitted.Row);
+				}
 
 				// After the draw, so the menu sits over the grid it acts on. Closing is this
 				// class's because the session is; the view only reports the choice.
@@ -457,8 +457,8 @@ namespace Graphite {
 
 		if (!Start(m_Shells[shell], workingDirectory,
 				   OpenTerminal{Core::Uuid::Generate().ToString(), m_Shells[shell].Name, workingDirectory, false, false, {},
-									!m_Workspace.IsOpen()},
-					   false))
+								!m_Workspace.IsOpen()},
+				   false))
 		{
 			return false;
 		}
@@ -521,10 +521,14 @@ namespace Graphite {
 		}
 
 		// No folder: the user's home, not wherever the process happened to be launched from.
-		if (const Core::Result<std::filesystem::path> home = Core::HomeDirectory(); home)
+		const Core::Result<std::filesystem::path> home = Core::HomeDirectory();
+
+		if (home)
 		{
 			return home.GetValue();
 		}
+
+		APP_TRACE("No home directory for a terminal to start in: {}", home.GetError().Message);
 
 		// The overload that cannot throw: a working directory deleted from under the process
 		// makes the other one raise out of a frame (ADR 0004). Empty then, which callers take
@@ -565,32 +569,37 @@ namespace Graphite {
 
 	void TerminalWindows::CarryOverOpenTerminals()
 	{
-		for (const Core::Scope<Entry>& entry : m_Open)
+		std::vector<OpenTerminal> records = Records();
+		CarryOverTerminals(records);
+		StoreRecords(records);
+	}
+
+	void TerminalWindows::StoreRecords(const std::vector<OpenTerminal>& records)
+	{
+		for (std::size_t index = 0; index < records.size(); ++index)
 		{
-			// A shell opened with no folder open was never a folder's, so there is nothing to
-			// carry it over from: the folder opened next adopts it.
-			if (!entry->Record.Unowned)
-			{
-				entry->Record.CarriedOver = true;
-			}
+			m_Open[index]->Record = records[index];
 		}
+	}
+
+	bool TerminalWindows::OpenStartupShell()
+	{
+		if (!OpenDefaultShell())
+		{
+			return false;
+		}
+
+		m_Open.back()->Record.AutoOpened = true;
+		return true;
 	}
 
 	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved)
 	{
 		// The folder just opened takes over the shells nobody had, and from here they are its own:
 		// saved with it, and carried over when it closes.
-		bool adopted = false;
-
-		for (const Core::Scope<Entry>& entry : m_Open)
-		{
-			if (AdoptsTerminal(entry->Record))
-			{
-				adopted = true;
-			}
-
-			entry->Record.Unowned = false;
-		}
+		std::vector<OpenTerminal> records = Records();
+		const bool adopted = AdoptTerminals(records, saved.has_value());
+		StoreRecords(records);
 
 		if (OpensDefaultTerminal(saved, m_Open.size()))
 		{
@@ -638,7 +647,7 @@ namespace Graphite {
 			// Start logs its own failure, and the rest still restore.
 			static_cast<void>(Start(shell, start.WorkingDirectory,
 									OpenTerminal{start.Id, shell.Name, start.WorkingDirectory, false, false, start.Title},
-										true));
+									true));
 		}
 	}
 

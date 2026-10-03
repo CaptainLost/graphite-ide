@@ -50,13 +50,24 @@ namespace Graphite {
 		// Opened while no folder was open, so it was never any folder's: the next folder opened
 		// adopts it. A terminal that belonged to a folder is carried over instead.
 		bool Unowned = false;
+
+		// The shell opened at startup because no folder was: unlike one the reader started, it is
+		// adopted only by a folder with no terminals of its own saved.
+		bool AutoOpened = false;
 	};
 
-	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& open);
+	// A folder is about to replace or close the one the open terminals belong to: each stays open
+	// but is carried over, so it is not written to the next folder - unless it was never a
+	// folder's (Unowned), which the next folder may adopt.
+	void CarryOverTerminals(std::vector<OpenTerminal>& open);
 
-	// Whether a folder just opened takes over a terminal that is open: a shell, not a command's
-	// window, that no folder has had.
-	bool AdoptsTerminal(const OpenTerminal& terminal);
+	// A folder has opened. Terminals nobody owned become its own, except a command's window and
+	// the startup shell when the folder has a saved list; those are carried over instead. All of
+	// them are owned from here on. Returns whether any was adopted: the folder then has a
+	// terminal of its own, so its list is kept even if empty of anything else.
+	bool AdoptTerminals(std::vector<OpenTerminal>& open, bool folderHasSavedList);
+
+	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& open);
 
 	// The title a tab shows: what the shell announces now, else what it announced last time.
 	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered);

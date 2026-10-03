@@ -73,9 +73,36 @@ namespace Graphite {
 		return kept;
 	}
 
-	bool AdoptsTerminal(const OpenTerminal& terminal)
+	void CarryOverTerminals(std::vector<OpenTerminal>& open)
 	{
-		return terminal.Unowned && !terminal.FromCommand;
+		for (OpenTerminal& terminal : open)
+		{
+			if (!terminal.Unowned)
+			{
+				terminal.CarriedOver = true;
+			}
+		}
+	}
+
+	bool AdoptTerminals(std::vector<OpenTerminal>& open, bool folderHasSavedList)
+	{
+		bool adopted = false;
+
+		for (OpenTerminal& terminal : open)
+		{
+			if (!terminal.Unowned)
+			{
+				continue;
+			}
+
+			const bool adopts = !terminal.FromCommand && !(terminal.AutoOpened && folderHasSavedList);
+
+			terminal.CarriedOver = !adopts;
+			terminal.Unowned = false;
+			adopted = adopted || adopts;
+		}
+
+		return adopted;
 	}
 
 	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered)

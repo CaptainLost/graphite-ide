@@ -54,25 +54,76 @@ TEST_CASE("Capture leaves out terminals started by a command and those carried o
 										TerminalTabState{"{D}", "Command Prompt", kRoot / "docs"}});
 }
 
-TEST_CASE("A shell opened with no folder is captured once a folder has adopted it")
+TEST_CASE("A shell opened with no folder is adopted by the folder opened next, and not by the one after")
 {
-	// Opened before any folder: adoptable, and not carried over when the folder opens.
+	// No folder, a shell the reader started.
 	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};
 	shell.Unowned = true;
+	std::vector<OpenTerminal> open = {shell};
+
+	// Open folder A: carry over, then adopt. A has no saved list.
+	CarryOverTerminals(open);
+	CHECK(AdoptTerminals(open, false));
+	CHECK(CaptureTerminals(open) == std::vector<TerminalTabState>{TerminalTabState{"{A}", "PowerShell 7", kRoot}});
+	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, true)).has_value());
+
+	// Close A: the shell stays open but is A's, so it is carried over...
+	CarryOverTerminals(open);
+
+	// ...and open B, which adopts nothing: it is not captured, and B keeps no list of its own.
+	CHECK_FALSE(AdoptTerminals(open, false));
+	CHECK(CaptureTerminals(open).empty());
+	CHECK_FALSE(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false)).has_value());
+}
+
+TEST_CASE("A terminal carried over from one folder to another is never adopted")
+{
+	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};
+	std::vector<OpenTerminal> open = {shell};
+
+	CarryOverTerminals(open);
+
+	CHECK_FALSE(AdoptTerminals(open, false));
+	CHECK(open[0].CarriedOver);
+	CHECK(CaptureTerminals(open).empty());
+}
+
+TEST_CASE("A command's window is never adopted")
+{
 	OpenTerminal command{"{B}", "claude", kRoot, true, false};
 	command.Unowned = true;
+	std::vector<OpenTerminal> open = {command};
 
-	CHECK(AdoptsTerminal(shell));
-	CHECK_FALSE(AdoptsTerminal(command));
+	CarryOverTerminals(open);
 
-	// The folder adopts it: ownership is cleared and it is no longer carried over.
-	shell.Unowned = false;
+	CHECK_FALSE(AdoptTerminals(open, false));
+	CHECK(CaptureTerminals(open).empty());
+}
 
-	CHECK(CaptureTerminals({shell, command}) == std::vector<TerminalTabState>{
-													TerminalTabState{"{A}", "PowerShell 7", kRoot}});
+TEST_CASE("The startup shell is adopted only by a folder with no terminals saved, a shell the reader opened always")
+{
+	OpenTerminal startup{"{S}", "PowerShell 7", kRoot};
+	startup.Unowned = true;
+	startup.AutoOpened = true;
+	OpenTerminal chosen{"{U}", "Command Prompt", kRoot};
+	chosen.Unowned = true;
 
-	// A folder with an adopted terminal has a list of its own to keep.
-	CHECK(CaptureFolderTerminals({shell}, KeepsTerminals(std::nullopt, true)).has_value());
+	std::vector<OpenTerminal> fresh = {startup, chosen};
+	CarryOverTerminals(fresh);
+	CHECK(AdoptTerminals(fresh, false));
+	CHECK(CaptureTerminals(fresh).size() == 2);
+
+	std::vector<OpenTerminal> withSaved = {startup, chosen};
+	CarryOverTerminals(withSaved);
+	CHECK(AdoptTerminals(withSaved, true));
+	REQUIRE(CaptureTerminals(withSaved).size() == 1);
+	CHECK(CaptureTerminals(withSaved)[0].Id == "{U}");
+
+	// Alone, with a saved list to open: nothing adopted, so nothing makes the list kept by itself.
+	std::vector<OpenTerminal> only = {startup};
+	CarryOverTerminals(only);
+	CHECK_FALSE(AdoptTerminals(only, true));
+	CHECK(CaptureTerminals(only).empty());
 }
 
 TEST_CASE("Capture keeps the saved order and the last title, and restore hands the title back")
