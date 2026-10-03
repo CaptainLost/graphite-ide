@@ -46,10 +46,10 @@ namespace Graphite {
 				MoveProject
 			};
 
-			Kind kind = Kind::None;
-			std::filesystem::path project;
-			std::string folder;
-			std::string name;
+			Kind Action = Kind::None;
+			std::filesystem::path Project;
+			std::string Folder;
+			std::string Name;
 		};
 
 		void FollowActiveDocument();

@@ -18,13 +18,13 @@ namespace Core {
 
 	struct JsonFile::Document
 	{
-		nlohmann::json root = nlohmann::json::object();
+		nlohmann::json Root = nlohmann::json::object();
 
 		// A moved-from file holds no document; it reads as an empty object.
 		static const nlohmann::json& RootOf(const Scope<Document>& document)
 		{
 			static const nlohmann::json empty = nlohmann::json::object();
-			return document ? document->root : empty;
+			return document ? document->Root : empty;
 		}
 
 		// ...and its first write gives it one again.
@@ -35,7 +35,7 @@ namespace Core {
 				document = CreateScope<Document>();
 			}
 
-			return document->root;
+			return document->Root;
 		}
 	};
 
@@ -82,7 +82,7 @@ namespace Core {
 			return file;
 		}
 
-		file.m_Document->root = std::move(parsed);
+		file.m_Document->Root = std::move(parsed);
 		return file;
 	}
 

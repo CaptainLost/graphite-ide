@@ -427,9 +427,9 @@ namespace Graphite {
 
 		struct LargeFileQuestion
 		{
-			std::filesystem::path path;
-			bool permanent = false;
-			std::uint64_t size = 0;
+			std::filesystem::path Path;
+			bool Permanent = false;
+			std::uint64_t Size = 0;
 
 			bool operator==(const LargeFileQuestion&) const = default;
 		};
@@ -492,8 +492,8 @@ namespace Graphite {
 
 		struct TransientMessage
 		{
-			std::string text;
-			double expiresAt = 0.0;
+			std::string Text;
+			double ExpiresAt = 0.0;
 		};
 
 		std::optional<TransientMessage> m_TransientMessage;

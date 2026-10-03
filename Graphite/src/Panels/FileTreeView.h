@@ -47,9 +47,9 @@ namespace Graphite {
 				Refresh
 			};
 
-			Kind kind = Kind::None;
-			std::filesystem::path target;
-			std::string name;
+			Kind Action = Kind::None;
+			std::filesystem::path Target;
+			std::string Name;
 		};
 
 		void FollowActiveDocument();

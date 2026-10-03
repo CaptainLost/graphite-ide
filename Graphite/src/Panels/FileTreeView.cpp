@@ -348,7 +348,7 @@ namespace Graphite {
 
 	void FileTreeView::RecordAction(PendingAction action)
 	{
-		if (m_Pending.kind != PendingAction::Kind::None)
+		if (m_Pending.Action != PendingAction::Kind::None)
 		{
 			APP_WARN("Discarding a pending file action that was replaced before it ran");
 		}
@@ -361,7 +361,7 @@ namespace Graphite {
 		const PendingAction action = m_Pending;
 		m_Pending = PendingAction{};
 
-		switch (action.kind)
+		switch (action.Action)
 		{
 		case PendingAction::Kind::None:
 			return;
@@ -389,13 +389,13 @@ namespace Graphite {
 	void FileTreeView::HandleDelete(const PendingAction& action)
 	{
 		m_RenamingPath.clear();
-		m_DeleteCandidate = action.target;
+		m_DeleteCandidate = action.Target;
 		m_OpenDeleteConfirmation = true;
 	}
 
 	void FileTreeView::HandleRefresh(const PendingAction& action)
 	{
-		if (Core::FileNode* node = FindNode(action.target); node != nullptr)
+		if (Core::FileNode* node = FindNode(action.Target); node != nullptr)
 		{
 			m_Workspace.Tree().Refresh(*node);
 		}
@@ -403,32 +403,32 @@ namespace Graphite {
 
 	void FileTreeView::HandleRename(const PendingAction& action)
 	{
-		if (!Core::IsValidFileName(action.name))
+		if (!Core::IsValidFileName(action.Name))
 		{
-			APP_ERROR("'{}' is not a valid file name", action.name);
+			APP_ERROR("'{}' is not a valid file name", action.Name);
 			return;
 		}
 
 		const std::filesystem::path target =
-			action.target.parent_path() / Core::FromUtf8(action.name);
+			action.Target.parent_path() / Core::FromUtf8(action.Name);
 
-		if (target == action.target)
+		if (target == action.Target)
 		{
 			return;
 		}
 
-		if (const auto renamed = Core::Rename(action.target, target); !renamed)
+		if (const auto renamed = Core::Rename(action.Target, target); !renamed)
 		{
 			APP_ERROR("{}", renamed.GetError().Message);
 			return;
 		}
 
-		RefreshParentOf(action.target);
+		RefreshParentOf(action.Target);
 	}
 
 	void FileTreeView::HandleDuplicate(const PendingAction& action)
 	{
-		const auto copied = Core::Duplicate(action.target);
+		const auto copied = Core::Duplicate(action.Target);
 
 		if (!copied)
 		{
@@ -436,21 +436,21 @@ namespace Graphite {
 			return;
 		}
 
-		RefreshParentOf(action.target);
+		RefreshParentOf(action.Target);
 	}
 
 	void FileTreeView::HandleCreate(const PendingAction& action)
 	{
-		if (!Core::IsValidFileName(action.name))
+		if (!Core::IsValidFileName(action.Name))
 		{
-			APP_ERROR("'{}' is not a valid file name", action.name);
+			APP_ERROR("'{}' is not a valid file name", action.Name);
 			return;
 		}
 
 		const std::filesystem::path target =
-			Core::MakeUniquePath(action.target / Core::FromUtf8(action.name));
+			Core::MakeUniquePath(action.Target / Core::FromUtf8(action.Name));
 
-		const auto created = action.kind == PendingAction::Kind::CreateFile
+		const auto created = action.Action == PendingAction::Kind::CreateFile
 								 ? Core::CreateEmptyFile(target)
 								 : Core::MakeDirectory(target);
 
@@ -460,11 +460,11 @@ namespace Graphite {
 			return;
 		}
 
-		if (Core::FileNode* parent = FindNode(action.target); parent != nullptr)
+		if (Core::FileNode* parent = FindNode(action.Target); parent != nullptr)
 		{
 			ReadFolderFromDisk(*parent);
 			parent->Expanded = true;
-			m_ForceOpen.push_back(action.target);
+			m_ForceOpen.push_back(action.Target);
 		}
 
 		APP_INFO("Created '{}'", Core::ToUtf8(target));

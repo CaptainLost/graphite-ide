@@ -73,8 +73,8 @@ namespace Core {
 
 		struct DiskStamp
 		{
-			std::filesystem::file_time_type time{};
-			std::uintmax_t size = 0;
+			std::filesystem::file_time_type Time{};
+			std::uintmax_t Size = 0;
 		};
 
 		// Read BEFORE the content, never after: a stamp taken afterwards records a state

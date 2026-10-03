@@ -20,17 +20,17 @@ namespace Graphite {
 		{
 			explicit Parsed(const std::string& text)
 			{
-				buffer.assign(text.begin(), text.end());
-				buffer.push_back('\0');
+				Buffer.assign(text.begin(), text.end());
+				Buffer.push_back('\0');
 
-				ok = static_cast<bool>(document.load_buffer_inplace(
-					buffer.data(), buffer.size() - 1,
+				Ok = static_cast<bool>(Document.load_buffer_inplace(
+					Buffer.data(), Buffer.size() - 1,
 					pugi::parse_default | pugi::parse_ws_pcdata | pugi::parse_comments));
 			}
 
-			std::vector<char> buffer;
-			pugi::xml_document document;
-			bool ok = false;
+			std::vector<char> Buffer;
+			pugi::xml_document Document;
+			bool Ok = false;
 		};
 
 		std::string RelativeProjectPath(const std::filesystem::path& solution,
@@ -129,7 +129,7 @@ namespace Graphite {
 		{
 			Parsed parsed{text};
 
-			if (!parsed.ok)
+			if (!parsed.Ok)
 			{
 				return Core::Error{Core::ErrorCode::InvalidArgument,
 								   "the solution is not well-formed XML"};
@@ -137,7 +137,7 @@ namespace Graphite {
 
 			const std::string wanted = "/" + folder + "/";
 
-			for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
+			for (const pugi::xml_node& node : parsed.Document.child("Solution").children("Folder"))
 			{
 				const std::string current = node.attribute("Name").value();
 
@@ -183,14 +183,14 @@ namespace Graphite {
 			Parsed parsed{text};
 
 			ProjectAttributes attributes;
-			attributes.WellFormed = parsed.ok;
+			attributes.WellFormed = parsed.Ok;
 
-			if (!parsed.ok)
+			if (!parsed.Ok)
 			{
 				return attributes;
 			}
 
-			for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
+			for (const pugi::xpath_node& node : parsed.Document.select_nodes("//Project"))
 			{
 				if (static_cast<std::size_t>(node.node().offset_debug()) != offset)
 				{
@@ -258,7 +258,7 @@ namespace Graphite {
 	{
 		Parsed parsed{m_Text};
 
-		if (!parsed.ok)
+		if (!parsed.Ok)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 		}
@@ -269,7 +269,7 @@ namespace Graphite {
 		const std::filesystem::path directory = m_Path.parent_path();
 
 		// The format allows a Project element at the root and inside any Folder.
-		for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
+		for (const pugi::xpath_node& node : parsed.Document.select_nodes("//Project"))
 		{
 			const char* declared = node.node().attribute("Path").value();
 
@@ -296,12 +296,12 @@ namespace Graphite {
 	{
 		Parsed parsed{m_Text};
 
-		if (!parsed.ok)
+		if (!parsed.Ok)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 		}
 
-		const pugi::xml_node root = parsed.document.child("Solution");
+		const pugi::xml_node root = parsed.Document.child("Solution");
 
 		if (!root)
 		{
@@ -515,14 +515,14 @@ namespace Graphite {
 
 		Parsed parsed{m_Text};
 
-		if (!parsed.ok)
+		if (!parsed.Ok)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
 		}
 
 		std::vector<NameEdit> edits;
 
-		for (const pugi::xml_node& node : parsed.document.child("Solution").children("Folder"))
+		for (const pugi::xml_node& node : parsed.Document.child("Solution").children("Folder"))
 		{
 			const std::string current = node.attribute("Name").value();
 

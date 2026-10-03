@@ -9,8 +9,8 @@ namespace Core {
 	namespace {
 		struct KeyName
 		{
-			ImGuiKey key;
-			const char* name;
+			ImGuiKey Key;
+			const char* Text;
 		};
 
 		constexpr KeyName kKeyNameOverrides[] = {
@@ -38,9 +38,9 @@ namespace Core {
 	{
 		for (const KeyName& entry : kKeyNameOverrides)
 		{
-			if (entry.key == key)
+			if (entry.Key == key)
 			{
-				return entry.name;
+				return entry.Text;
 			}
 		}
 

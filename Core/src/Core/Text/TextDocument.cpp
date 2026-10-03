@@ -20,15 +20,15 @@ namespace Core {
 	namespace {
 		struct Normalised
 		{
-			std::string content;
-			LineEnding lineEnding = LineEnding::Lf;
-			bool mixed = false;
+			std::string Content;
+			LineEnding Ending = LineEnding::Lf;
+			bool Mixed = false;
 		};
 
 		Normalised NormaliseLineEndings(std::string_view bytes)
 		{
 			Normalised result;
-			result.content.reserve(bytes.size());
+			result.Content.reserve(bytes.size());
 
 			std::size_t crlf = 0;
 			std::size_t lf = 0;
@@ -38,7 +38,7 @@ namespace Core {
 				if (bytes[at] == '\r' && at + 1 < bytes.size() && bytes[at + 1] == '\n')
 				{
 					++crlf;
-					result.content.push_back('\n');
+					result.Content.push_back('\n');
 					++at;
 					continue;
 				}
@@ -48,13 +48,13 @@ namespace Core {
 					++lf;
 				}
 
-				result.content.push_back(bytes[at]);
+				result.Content.push_back(bytes[at]);
 			}
 
 			// A lone '\r' is left alone rather than taken for a Mac Classic line ending,
 			// which would split a line over a stray byte.
-			result.mixed = crlf > 0 && lf > 0;
-			result.lineEnding = crlf > lf ? LineEnding::Crlf : LineEnding::Lf;
+			result.Mixed = crlf > 0 && lf > 0;
+			result.Ending = crlf > lf ? LineEnding::Crlf : LineEnding::Lf;
 
 			return result;
 		}
@@ -182,9 +182,9 @@ namespace Core {
 		}
 
 		Normalised normalised = NormaliseLineEndings(content);
-		document.m_LineEnding = normalised.lineEnding;
-		document.m_WasMixed = normalised.mixed;
-		document.m_Buffer = TextBuffer{std::move(normalised.content)};
+		document.m_LineEnding = normalised.Ending;
+		document.m_WasMixed = normalised.Mixed;
+		document.m_Buffer = TextBuffer{std::move(normalised.Content)};
 
 		return document;
 	}
@@ -315,7 +315,7 @@ namespace Core {
 			return false;
 		}
 
-		return time != m_DiskStamp->time || size != m_DiskStamp->size;
+		return time != m_DiskStamp->Time || size != m_DiskStamp->Size;
 	}
 
 	Result<void> TextDocument::Save()

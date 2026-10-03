@@ -188,32 +188,32 @@ namespace Core {
 		// Neither copyable nor movable: a copy would answer the promise twice, which throws.
 		struct ArmSignal
 		{
-			explicit ArmSignal(std::promise<Result<void>>& armed) : promise(armed) {}
+			explicit ArmSignal(std::promise<Result<void>>& armed) : Promise(armed) {}
 
 			ArmSignal(const ArmSignal&) = delete;
 			ArmSignal& operator=(const ArmSignal&) = delete;
 			ArmSignal(ArmSignal&&) = delete;
 			ArmSignal& operator=(ArmSignal&&) = delete;
 
-			std::promise<Result<void>>& promise;
+			std::promise<Result<void>>& Promise;
 
-			Result<void> unarmed{Error{ErrorCode::IoFailure,
+			Result<void> Unarmed{Error{ErrorCode::IoFailure,
 									   "the watcher thread stopped before the watch was armed"}};
 
-			bool answered = false;
+			bool Answered = false;
 
 			void Report(Result<void> outcome)
 			{
-				if (answered)
+				if (Answered)
 				{
 					return;
 				}
 
-				answered = true;
-				promise.set_value(std::move(outcome));
+				Answered = true;
+				Promise.set_value(std::move(outcome));
 			}
 
-			~ArmSignal() { Report(std::move(unarmed)); }
+			~ArmSignal() { Report(std::move(Unarmed)); }
 		};
 
 		ArmSignal armSignal{m_Armed};
@@ -247,7 +247,7 @@ namespace Core {
 			{
 				// Before the watch is armed, Start is still waiting and turns this into an
 				// error the caller can act on; afterwards the log is all there is.
-				if (armSignal.answered)
+				if (armSignal.Answered)
 				{
 					CORE_WARN("Stopped watching '{}': the directory is no longer readable",
 							  ToUtf8(m_Root));

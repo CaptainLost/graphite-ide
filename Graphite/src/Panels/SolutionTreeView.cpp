@@ -497,7 +497,7 @@ namespace Graphite {
 
 	void SolutionTreeView::ExecutePendingAction()
 	{
-		if (m_Pending.kind == PendingAction::Kind::None)
+		if (m_Pending.Action == PendingAction::Kind::None)
 		{
 			return;
 		}
@@ -508,7 +508,7 @@ namespace Graphite {
 		// The dialog is started here rather than from the menu that recorded the action, and
 		// answers on a later frame: it runs on a thread of its own. By then the solution may
 		// have closed, which Apply already reports.
-		if (action.kind == PendingAction::Kind::AddProject)
+		if (action.Action == PendingAction::Kind::AddProject)
 		{
 			m_Workspace.Dialog().Start(PickProjectFile,
 									   [this, action = std::move(action)](Core::Result<std::filesystem::path> picked) mutable {
@@ -523,7 +523,7 @@ namespace Graphite {
 											   return;
 										   }
 
-										   action.project = std::move(picked).GetValue();
+										   action.Project = std::move(picked).GetValue();
 										   ApplyAndReport(action);
 									   });
 			return;
@@ -558,30 +558,30 @@ namespace Graphite {
 
 		Core::Result<void> applied = Core::Result<void>::Ok();
 
-		switch (action.kind)
+		switch (action.Action)
 		{
 		case PendingAction::Kind::AddProject:
-			applied = editor.GetValue()->AddProject(action.project, action.folder);
+			applied = editor.GetValue()->AddProject(action.Project, action.Folder);
 			break;
 
 		case PendingAction::Kind::RemoveProject:
-			applied = editor.GetValue()->RemoveProject(action.project);
+			applied = editor.GetValue()->RemoveProject(action.Project);
 			break;
 
 		case PendingAction::Kind::AddFolder:
-			applied = editor.GetValue()->AddFolder(action.folder);
+			applied = editor.GetValue()->AddFolder(action.Folder);
 			break;
 
 		case PendingAction::Kind::RemoveFolder:
-			applied = editor.GetValue()->RemoveFolder(action.folder);
+			applied = editor.GetValue()->RemoveFolder(action.Folder);
 			break;
 
 		case PendingAction::Kind::RenameFolder:
-			applied = editor.GetValue()->RenameFolder(action.folder, action.name);
+			applied = editor.GetValue()->RenameFolder(action.Folder, action.Name);
 			break;
 
 		case PendingAction::Kind::MoveProject:
-			applied = editor.GetValue()->MoveProject(action.project, action.folder);
+			applied = editor.GetValue()->MoveProject(action.Project, action.Folder);
 			break;
 
 		case PendingAction::Kind::None:

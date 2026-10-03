@@ -15,6 +15,7 @@
 #include "UI/RememberedPlace.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/ByteSize.h"
 #include "Core/Base/Log.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
@@ -323,7 +324,7 @@ namespace Graphite {
 		// same file successfully, so a failure here means the file went away in between.
 		if (const auto probe = Core::ProbeFile(path))
 		{
-			question.size = probe.GetValue().Size;
+			question.Size = probe.GetValue().Size;
 		}
 
 		// Two events naming the same file — a double dispatch from the tree, a watcher batch
@@ -921,12 +922,12 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		if (ImGui::GetTime() >= m_TransientMessage->expiresAt)
+		if (ImGui::GetTime() >= m_TransientMessage->ExpiresAt)
 		{
 			return std::nullopt;
 		}
 
-		return m_TransientMessage->text;
+		return m_TransientMessage->Text;
 	}
 
 	void DocumentWindows::CloseAndForgetLayout(std::size_t index)
@@ -958,7 +959,7 @@ namespace Graphite {
 		}
 
 		const LargeFileQuestion* question = m_SizeQuestion.GetCurrent();
-		const std::uint64_t size = question != nullptr ? question->size : 0;
+		const std::uint64_t size = question != nullptr ? question->Size : 0;
 
 		// A size of zero means the probe in AskAboutSize failed, which after a successful one
 		// moments earlier means the file has gone.
@@ -968,8 +969,7 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::Text("This file is %llu MB. Load it anyway?",
-						static_cast<unsigned long long>(size / (1024 * 1024)));
+			ImGui::Text("This file is %s. Load it anyway?", Core::FormatWholeMegabytes(size).c_str());
 		}
 		ImGui::Separator();
 
@@ -978,7 +978,7 @@ namespace Graphite {
 			// Before Answer(), which drops the payload this still points into.
 			if (question != nullptr)
 			{
-				LoadConfirmed(question->path, question->permanent);
+				LoadConfirmed(question->Path, question->Permanent);
 			}
 
 			m_SizeQuestion.Answer();
