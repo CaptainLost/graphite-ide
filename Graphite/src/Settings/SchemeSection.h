@@ -4,6 +4,9 @@
 #include "Settings/SettingsSection.h"
 #include "Theme/SchemeDraft.h"
 
+#include <imgui.h>
+
+#include <array>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -32,7 +35,19 @@ namespace Graphite {
 	private:
 		void Apply();
 
+		ImVec4 DangerColour() const;
+
 		void RenderSchemeList();
+
+		void RenderRenameDialog();
+
+		void RenderDeleteDialog();
+
+		// Writes a colour edited in a picker that has not been saved yet. The picker lives in a
+		// popup, so the swatch itself never reports the edit as finished the way an inline field
+		// did; the edit is saved when the mouse is released, and before anything that would switch
+		// to another scheme or leave the section.
+		void FlushColourEdit();
 
 		// Templated over the enum so the two groups share one row, rather than a syntax copy and
 		// an editor copy drifting apart the way a key table and a label table would.
@@ -50,5 +65,13 @@ namespace Graphite {
 		SchemeDraft m_Draft;
 
 		ModalQuestion<std::string> m_DeleteQuestion;
+
+		ModalQuestion<std::string> m_RenameQuestion;
+
+		// The rename field's text, loaded from the payload on the first frame the dialog shows.
+		std::array<char, 128> m_RenameBuffer{};
+		bool m_RenameShown = false;
+
+		bool m_ColourEdited = false;
 	};
 }

@@ -268,6 +268,34 @@ namespace Graphite {
 		return true;
 	}
 
+	std::optional<std::string> SchemeDraft::NameProblem(std::string_view name) const
+	{
+		return SchemeNameProblem(name, m_Names);
+	}
+
+	bool SchemeDraft::RenameSelected(std::string_view name)
+	{
+		if (IsReadOnly() || NameProblem(name).has_value())
+		{
+			return false;
+		}
+
+		if (const Core::Result<void> renamed = RenameScheme(m_Directory, m_Selected, name); !renamed)
+		{
+			APP_WARN("Could not rename colour scheme '{}' to '{}': {}", m_Selected, name, renamed.GetError().Message);
+			return false;
+		}
+
+		// Reselected from the renamed file rather than renamed in place, so the draft and the disk
+		// are known to agree.
+		const std::string renamedTo(name);
+
+		Rebuild();
+		Select(renamedTo);
+
+		return true;
+	}
+
 	bool SchemeDraft::DeleteSelected()
 	{
 		if (IsReadOnly())

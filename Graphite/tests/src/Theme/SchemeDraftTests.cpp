@@ -208,6 +208,51 @@ TEST_CASE("Deleting a built-in is refused")
 	CHECK(std::filesystem::exists(shadow));
 }
 
+TEST_CASE("Renaming the selected scheme keeps it selected under the new name")
+{
+	const TempDirectory temp;
+
+	Graphite::ColorScheme source;
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "before", source));
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+
+	draft.Select("before");
+	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+	REQUIRE(draft.Save());
+
+	REQUIRE(draft.RenameSelected("after"));
+
+	CHECK(draft.GetSelected() == "after");
+	CHECK(draft.IsOverridden(Graphite::TokenKind::Comment));
+	CHECK(std::find(draft.GetNames().begin(), draft.GetNames().end(), "before") == draft.GetNames().end());
+	CHECK(std::find(draft.GetNames().begin(), draft.GetNames().end(), "after") != draft.GetNames().end());
+	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "before.json"));
+}
+
+TEST_CASE("Renaming is refused for a built-in, a taken name and an unusable name")
+{
+	const TempDirectory temp;
+
+	const Graphite::ColorScheme source;
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "first", source));
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "second", source));
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+
+	draft.Select("dark");
+	CHECK_FALSE(draft.RenameSelected("renamed"));
+	CHECK(draft.GetSelected() == "dark");
+
+	draft.Select("first");
+	CHECK_FALSE(draft.RenameSelected("second"));
+	CHECK_FALSE(draft.RenameSelected("first"));
+	CHECK_FALSE(draft.RenameSelected("a/b"));
+	CHECK_FALSE(draft.RenameSelected(""));
+	CHECK(draft.GetSelected() == "first");
+	CHECK(std::filesystem::exists(temp.GetPath() / "first.json"));
+}
+
 TEST_CASE("A chrome colour can be overridden and reverted in a draft")
 {
 	const TempDirectory temp;

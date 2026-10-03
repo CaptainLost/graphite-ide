@@ -310,4 +310,122 @@ namespace Graphite {
 
 		return Core::Result<void>::Ok();
 	}
+
+	namespace {
+
+		std::string Lowered(std::string_view text)
+		{
+			std::string lowered(text);
+
+			for (char& character : lowered)
+			{
+				if (character >= 'A' && character <= 'Z')
+				{
+					character = static_cast<char>(character - 'A' + 'a');
+				}
+			}
+
+			return lowered;
+		}
+
+		bool IsDeviceName(std::string_view lowered)
+		{
+			if (lowered == "con" || lowered == "prn" || lowered == "aux" || lowered == "nul")
+			{
+				return true;
+			}
+
+			return lowered.size() == 4 && (lowered.starts_with("com") || lowered.starts_with("lpt")) &&
+				   lowered[3] >= '1' && lowered[3] <= '9';
+		}
+	}
+
+	std::optional<std::string> SchemeNameProblem(std::string_view name, const std::vector<std::string>& existing)
+	{
+		constexpr std::size_t kLongestName = 64;
+
+		if (name.empty())
+		{
+			return "Enter a name.";
+		}
+
+		if (name.size() > kLongestName)
+		{
+			return std::format("A name can have at most {} characters.", kLongestName);
+		}
+
+		for (const char character : name)
+		{
+			if (static_cast<unsigned char>(character) < 0x20 ||
+				std::string_view{"<>:\"/\\|?*"}.find(character) != std::string_view::npos)
+			{
+				return "A name cannot contain control characters or any of < > : \" / \\ | ? *";
+			}
+		}
+
+		if (name.front() == ' ' || name.back() == ' ' || name.back() == '.' ||
+			name.find("..") != std::string_view::npos)
+		{
+			return "A name cannot start or end with a space, end with a dot, or contain \"..\".";
+		}
+
+		if (IsDeviceName(Lowered(name)))
+		{
+			return "That name is reserved by Windows.";
+		}
+
+		const std::string lowered = Lowered(name);
+
+		for (const std::string& other : existing)
+		{
+			if (Lowered(other) == lowered)
+			{
+				return "A scheme with that name already exists.";
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	Core::Result<void> RenameScheme(const std::filesystem::path& directory, std::string_view from,
+									std::string_view to)
+	{
+		if (ParseBuiltInName(from).has_value() || ParseBuiltInName(to).has_value())
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument, "a built-in scheme cannot be renamed or replaced"};
+		}
+
+		// Nothing is listed as existing: the file system is asked below, which is the authority on
+		// what is taken. What is left is the part of the check that is about the name itself.
+		if (const std::optional<std::string> problem = SchemeNameProblem(to, {}))
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}': {}", to, *problem)};
+		}
+
+		const std::filesystem::path source = directory / (std::string(from) + ".json");
+		const std::filesystem::path target = directory / (std::string(to) + ".json");
+
+		std::error_code ec;
+
+		if (!std::filesystem::exists(source, ec))
+		{
+			return Core::Error{Core::ErrorCode::NotFound, std::format("'{}' is not there", Core::ToUtf8(source))};
+		}
+
+		if (std::filesystem::exists(target, ec))
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument,
+							   std::format("'{}' already exists", Core::ToUtf8(target))};
+		}
+
+		std::filesystem::rename(source, target, ec);
+
+		if (ec)
+		{
+			return Core::Error{Core::ErrorCode::IoFailure,
+							   std::format("cannot rename '{}': {}", Core::ToUtf8(source), ec.message())};
+		}
+
+		return Core::Result<void>::Ok();
+	}
 }

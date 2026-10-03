@@ -308,3 +308,72 @@ TEST_CASE("A chrome colour is read from the ui prefix a hand-written file uses")
 	CHECK(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)]->R ==
 		  doctest::Approx(80.0f / 255.0f).epsilon(0.01));
 }
+
+TEST_CASE("A scheme name is checked for being usable as a file name")
+{
+	const std::vector<std::string> existing{"dark", "light", "Mine"};
+
+	CHECK_FALSE(Graphite::SchemeNameProblem("ocean", existing).has_value());
+	CHECK_FALSE(Graphite::SchemeNameProblem("my scheme-2", existing).has_value());
+
+	CHECK(Graphite::SchemeNameProblem("", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("a/b", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("a\\b", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("a:b", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("what?", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("a..b", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("trailing.", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("trailing ", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem(" leading", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("tab\tinside", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("CON", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("lpt3", existing).has_value());
+	CHECK_FALSE(Graphite::SchemeNameProblem("lpt10", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem(std::string(65, 'x'), existing).has_value());
+	CHECK_FALSE(Graphite::SchemeNameProblem(std::string(64, 'x'), existing).has_value());
+}
+
+TEST_CASE("A scheme name that is taken is refused whatever its case")
+{
+	const std::vector<std::string> existing{"dark", "light", "Mine"};
+
+	CHECK(Graphite::SchemeNameProblem("mine", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("MINE", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("Dark", existing).has_value());
+}
+
+TEST_CASE("Renaming a scheme moves its file and keeps its colours")
+{
+	const TempDirectory temp;
+
+	Graphite::ColorScheme scheme;
+	scheme.Syntax[0] = DistinctColor(0);
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "old", scheme));
+
+	REQUIRE(Graphite::RenameScheme(temp.GetPath(), "old", "new"));
+
+	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "old.json"));
+	REQUIRE(std::filesystem::exists(temp.GetPath() / "new.json"));
+
+	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "new.json");
+	REQUIRE(loaded.Syntax[0].has_value());
+	CHECK(loaded.Syntax[0]->R == doctest::Approx(DistinctColor(0).R));
+}
+
+TEST_CASE("Renaming a scheme refuses a taken name, a missing source, a built-in and a bad name")
+{
+	const TempDirectory temp;
+
+	const Graphite::ColorScheme scheme;
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "one", scheme));
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "two", scheme));
+
+	CHECK_FALSE(Graphite::RenameScheme(temp.GetPath(), "one", "two"));
+	CHECK_FALSE(Graphite::RenameScheme(temp.GetPath(), "ghost", "three"));
+	CHECK_FALSE(Graphite::RenameScheme(temp.GetPath(), "one", "dark"));
+	CHECK_FALSE(Graphite::RenameScheme(temp.GetPath(), "dark", "three"));
+	CHECK_FALSE(Graphite::RenameScheme(temp.GetPath(), "one", "../escape"));
+
+	CHECK(std::filesystem::exists(temp.GetPath() / "one.json"));
+	CHECK(std::filesystem::exists(temp.GetPath() / "two.json"));
+}

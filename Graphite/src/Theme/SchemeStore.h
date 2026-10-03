@@ -5,6 +5,7 @@
 #include "Theme/ColorScheme.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,4 +28,15 @@ namespace Graphite {
 								  const ColorScheme& scheme);
 
 	Core::Result<void> DeleteScheme(const std::filesystem::path& directory, std::string_view name);
+
+	// Why `name` cannot be a scheme's name, or nothing when it can: empty, longer than a file name
+	// should be, a character or ending Windows refuses in a file name, a device name, or a name
+	// already in `existing` (compared without regard to case, as the file system does). A
+	// built-in's name is among what the caller lists as existing.
+	std::optional<std::string> SchemeNameProblem(std::string_view name, const std::vector<std::string>& existing);
+
+	// Renames the stored scheme file. An error when either name is a built-in or not a valid name,
+	// when `from` is not there, when `to` is taken, or when the rename itself fails.
+	Core::Result<void> RenameScheme(const std::filesystem::path& directory, std::string_view from,
+									std::string_view to);
 }

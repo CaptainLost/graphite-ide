@@ -3,6 +3,7 @@
 #include "Theme/ColorScheme.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -62,6 +63,14 @@ namespace Graphite {
 		// Copies the selection under a fresh name and selects it. This is the only route from a
 		// read-only built-in to something editable.
 		bool Duplicate();
+
+		// Why `name` cannot be the selected scheme's new name, or nothing when it can. The current
+		// name is among the taken ones, so naming the scheme what it already is reads as a clash.
+		std::optional<std::string> NameProblem(std::string_view name) const;
+
+		// Renames the selected scheme's file and keeps it selected under the new name. False, with
+		// nothing changed, for a built-in, a name NameProblem rejects, or a rename that fails.
+		bool RenameSelected(std::string_view name);
 
 		// Deletes the selected scheme and falls back to its base, so the editor is never left
 		// pointed at a file that is gone.

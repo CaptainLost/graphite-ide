@@ -5,6 +5,8 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+
 namespace Graphite {
 
 	EditorSection::EditorSection(EditorSettings& settings, Core::CommandRegistry& commands)
@@ -100,6 +102,14 @@ namespace Graphite {
 			m_Settings.SetScrollbarChangeMarkers(scrollbarChanges);
 		}
 
+		ImGui::TextUnformatted("Ignored files");
+
+		RenderCommandRadio("Show", "git.ignored.show");
+		ImGui::SameLine();
+		RenderCommandRadio("Dim", "git.ignored.dim");
+		ImGui::SameLine();
+		RenderCommandRadio("Hide", "git.ignored.hide");
+
 		ImGui::SeparatorText("Hover");
 
 		HoverSettings hover = m_Settings.GetHoverSettings();
@@ -161,33 +171,13 @@ namespace Graphite {
 		// control does something visible in both Spaces and Tabs mode.
 		int width = static_cast<int>(m_Settings.GetIndentStyle().Width);
 
-		// AlwaysClamp: Ctrl+Click turns this into a text input, and without the flag ImGui
-		// does not clamp a typed value to the given range — a width the setter and Load both
-		// have to defend against independently, since it reaches them the same way a
-		// hand-edited graphite.json would.
-		if (ImGui::SliderInt("Tab width", &width, 1, 8, "%d", ImGuiSliderFlags_AlwaysClamp))
+		// An input rather than a slider: the grab of a slider this short covers the number. A typed
+		// value is applied when the field is left and a step button on the click, so a change
+		// arrives once and not per keystroke. Clamped here, since a typed value is not bounded by
+		// the widget, and the setter and Load defend against it independently as well.
+		if (ImGui::InputInt("Tab width", &width))
 		{
-			m_PendingIndentWidth = width;
+			m_Settings.SetIndentWidth(static_cast<std::size_t>(std::clamp(width, 1, 8)));
 		}
-
-		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingIndentWidth.has_value())
-		{
-			if (*m_PendingIndentWidth > 0)
-			{
-				m_Settings.SetIndentWidth(static_cast<std::size_t>(*m_PendingIndentWidth));
-			}
-
-			m_PendingIndentWidth.reset();
-		}
-
-		ImGui::SeparatorText("Git");
-
-		ImGui::TextUnformatted("Ignored files");
-
-		RenderCommandRadio("Show", "git.ignored.show");
-		ImGui::SameLine();
-		RenderCommandRadio("Dim", "git.ignored.dim");
-		ImGui::SameLine();
-		RenderCommandRadio("Hide", "git.ignored.hide");
 	}
 }
