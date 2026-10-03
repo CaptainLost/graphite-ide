@@ -27,10 +27,15 @@ records, never hand-edited.
 
 | Path | What it holds |
 |---|---|
-| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `Fs`, `Git`, `ImGui`, `Platform`, `Text`, `UI` |
+| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `FileSystem`, `Git`, `ImGui`, `Jobs`, `Platform`, `Terminal`, `Text`, `UI` |
 | `Core/tests` | doctest suite for the engine, built as `CoreTests` |
-| `Graphite/src` | The application: `App`, `Editor`, `Panels`, `Settings`, `Sln`, `Workspace`. Everything but `Main.cpp` builds as the static library `GraphiteLib`; the `Graphite` executable is `Main.cpp` linked against it |
+| `Graphite/src` | The application, one folder per feature: `App`, `Console`, `Editor`, `Explorer`, `Git`, `Language`, `Persistence`, `Search`, `Sessions`, `Settings`, `Solution`, `Terminal`, `Theme`, `UI`, `Workspace`. Everything but `Main.cpp` builds as the static library `GraphiteLib`; the `Graphite` executable is `Main.cpp` linked against it |
 | `Graphite/tests` | doctest suite for the application, built as `GraphiteTests`, which links `GraphiteLib` |
+
+Where a file goes is set by [0550](docs/adr/0550-lay-out-sources-by-feature-in-whole-word-folders-mirrored-by-the-tests.md):
+a folder is a feature, never a kind of file; names are whole words; a folder past
+about thirty files splits by sub-feature; tests mirror `src`, with shared
+fixtures at the root of `tests/src`.
 | `vendor` | Dependencies as git submodules, built from source by premake |
 | `scripts` | ADR tooling |
 | `docs/adr` | Decision records |
