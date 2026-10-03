@@ -343,6 +343,7 @@ namespace Graphite {
 		m_Keys.SetDefault(kFindReferencesCommand,
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
 
+#ifdef CORE_DEBUG
 		m_Commands.Add({.Id = "help.logTestEntries",
 						.Label = "Log test entries",
 						.Run = [] {
@@ -351,6 +352,7 @@ namespace Graphite {
 							APP_WARN("Warning entry");
 							APP_ERROR("Sample error");
 						}});
+#endif
 	}
 
 	void GraphiteLayer::ReportConflictingKeyBindings()

@@ -327,6 +327,21 @@ TEST_CASE("A panel's command carries the panel's icon for the menu to draw")
 	CHECK(members[1]->Icon.empty());
 }
 
+TEST_CASE("A panel's command keeps its short menu label and says what it does in a list")
+{
+	Core::PanelManager panels;
+	Core::CommandRegistry commands;
+	panels.Add(std::make_unique<CountingPanel>("search", "Find in Files"));
+
+	panels.RegisterCommands(commands);
+
+	const Core::Command* command = commands.Find("panel.search");
+
+	REQUIRE(command != nullptr);
+	CHECK(command->Label == "Find in Files");
+	CHECK(command->ListLabel == "Show Find in Files Panel");
+}
+
 TEST_CASE("ForEach visits every panel in the order they were added")
 {
 	Core::PanelManager panels;

@@ -12,6 +12,10 @@ namespace Core {
 		std::string Id;
 		std::string Label;
 
+		// What a list of commands with no menu around them says instead of Label, for a command
+		// whose short menu label means nothing out of its submenu. Empty means Label.
+		std::string ListLabel;
+
 		// Drawn before the label in a menu; empty leaves the label alone.
 		std::string Icon;
 

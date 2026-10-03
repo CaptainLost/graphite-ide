@@ -25,16 +25,21 @@ namespace Graphite {
 	namespace {
 		constexpr const char* kConflictPopup = "Shortcut already taken##keybindings";
 
+		constexpr const char* kRestorePopup = "Restore all defaults##keybindings";
+
+		// The list has no menu around a command, so a command whose menu label only makes sense
+		// under its submenu names itself in full here.
 		std::string LabelOf(const Core::Command& command)
 		{
-			const std::size_t tab = command.Label.find('\t');
+			const std::string& label = command.ListLabel.empty() ? command.Label : command.ListLabel;
+			const std::size_t tab = label.find('\t');
 
 			if (tab == std::string::npos)
 			{
-				return command.Label;
+				return label;
 			}
 
-			return command.Label.substr(0, tab);
+			return label.substr(0, tab);
 		}
 
 		std::string TextOf(const Core::Binding* binding, std::size_t slot)
@@ -192,13 +197,14 @@ namespace Graphite {
 	KeyBindingsSection::KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys,
 										   ModalGate& modals, std::function<void()> onChanged)
 		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged)),
-		  m_ConflictQuestion(modals, kConflictPopup)
+		  m_ConflictQuestion(modals, kConflictPopup), m_RestoreQuestion(modals, kRestorePopup)
 	{
 	}
 
 	void KeyBindingsSection::OnDeactivated()
 	{
 		m_ConflictQuestion.Withdraw();
+		m_RestoreQuestion.Withdraw();
 		m_ConflictPending = false;
 		CancelCapture();
 	}
@@ -206,6 +212,21 @@ namespace Graphite {
 	void KeyBindingsSection::OnImGuiRender()
 	{
 		m_WasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+		bool anyOverridden = false;
+		m_Keys.ForEachOverride(
+			[&anyOverridden](const std::string&, const Core::Binding&) { anyOverridden = true; });
+
+		ImGui::BeginDisabled(!anyOverridden);
+
+		if (ImGui::Button("Restore All Defaults") && !m_RestoreQuestion.IsAsked())
+		{
+			CancelCapture();
+			m_RestoreQuestion.Ask(true);
+		}
+
+		ImGui::EndDisabled();
+		ImGui::SameLine();
 
 		ImGui::SetNextItemWidth(-1.0f);
 		ImGui::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut",
@@ -235,6 +256,7 @@ namespace Graphite {
 		}
 
 		RenderConflictQuestion();
+		RenderRestoreQuestion();
 	}
 
 	void KeyBindingsSection::OnEvent(Core::Event& event)
@@ -324,7 +346,7 @@ namespace Graphite {
 			return true;
 		}
 
-		if (Core::Lowered(command.Label).find(needle) != std::string::npos)
+		if (Core::Lowered(LabelOf(command)).find(needle) != std::string::npos)
 		{
 			return true;
 		}
@@ -572,6 +594,34 @@ namespace Graphite {
 			m_Capturing.clear();
 			m_ConflictPending = false;
 		}
+	}
+
+	void KeyBindingsSection::RenderRestoreQuestion()
+	{
+		if (!m_RestoreQuestion.Begin())
+		{
+			return;
+		}
+
+		ImGui::TextUnformatted("Every shortcut you changed goes back to its default.");
+
+		if (ImGui::Button("Restore"))
+		{
+			m_Keys.ClearOverrides();
+			m_OnChanged();
+			m_RestoreQuestion.Answer();
+
+			APP_INFO("All key bindings restored to their defaults");
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Cancel"))
+		{
+			m_RestoreQuestion.Answer();
+		}
+
+		m_RestoreQuestion.End();
 	}
 
 	void KeyBindingsSection::TakeFromOwner(const Conflict& conflict)

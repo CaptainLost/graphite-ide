@@ -24,16 +24,18 @@ namespace Graphite {
 		{
 			const char* Id;
 			const char* Label;
+			const char* ListLabel;
 			GitIgnoredDisplay Display;
 		};
 
 		// Which files these three are about is said by the submenu they hang under, so the
 		// labels only have to say what happens to them. The settings screen, which has a
-		// heading of its own, passes its own labels.
+		// heading of its own, passes its own labels. The list of key bindings has neither, so
+		// it reads the longer ones.
 		constexpr DisplayMode kDisplayModes[] = {
-			{"git.ignored.show", "Show", GitIgnoredDisplay::Show},
-			{"git.ignored.dim", "Dim", GitIgnoredDisplay::Dim},
-			{"git.ignored.hide", "Hide", GitIgnoredDisplay::Hide},
+			{"git.ignored.show", "Show", "Ignored Files: Show", GitIgnoredDisplay::Show},
+			{"git.ignored.dim", "Dim", "Ignored Files: Dim", GitIgnoredDisplay::Dim},
+			{"git.ignored.hide", "Hide", "Ignored Files: Hide", GitIgnoredDisplay::Hide},
 		};
 	}
 
@@ -165,6 +167,7 @@ namespace Graphite {
 		{
 			commands.Add({.Id = mode.Id,
 						  .Label = mode.Label,
+						  .ListLabel = mode.ListLabel,
 						  .Run = [this, mode] { Apply(mode.Display, true); },
 						  .Checked = [this, mode] { return m_Display == mode.Display; }});
 		}

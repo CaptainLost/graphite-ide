@@ -59,6 +59,25 @@ TEST_CASE("An override shadows the default and clearing it restores the default"
 	CHECK_FALSE(keys.IsOverridden("editor.zoomIn"));
 }
 
+TEST_CASE("Clearing every override restores every default and keeps the defaults")
+{
+	Keymap keys;
+	keys.SetDefault("editor.zoomIn", ZoomIn());
+	keys.SetDefault("editor.zoomOut", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Minus)});
+
+	keys.Override("editor.zoomIn", Binding{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_U)});
+	keys.Override("editor.zoomOut", Binding{});
+	keys.Override("editor.toggleWordWrap", Binding{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_K)});
+
+	keys.ClearOverrides();
+
+	CHECK_FALSE(keys.IsOverridden("editor.zoomIn"));
+	CHECK_FALSE(keys.IsOverridden("editor.zoomOut"));
+	CHECK(keys.For("editor.zoomIn")->Primary == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal));
+	CHECK(keys.For("editor.zoomOut")->Primary == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Minus));
+	CHECK(keys.For("editor.toggleWordWrap") == nullptr);
+}
+
 TEST_CASE("An override can bind an id that has no default")
 {
 	// Which is how a command shipped without a shortcut gets one.

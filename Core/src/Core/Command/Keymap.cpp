@@ -48,6 +48,11 @@ namespace Core {
 		m_Overrides[std::string(id)] = std::move(*binding);
 	}
 
+	void Keymap::ClearOverrides()
+	{
+		m_Overrides.clear();
+	}
+
 	const Binding* Keymap::For(std::string_view id) const
 	{
 		if (const auto override = m_Overrides.find(id); override != m_Overrides.end())

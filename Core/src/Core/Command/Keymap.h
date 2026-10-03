@@ -22,6 +22,9 @@ namespace Core {
 
 		void Override(std::string_view id, std::optional<Binding> binding);
 
+		// Every command goes back to its default binding.
+		void ClearOverrides();
+
 		const Binding* For(std::string_view id) const;
 
 		const Binding* DefaultFor(std::string_view id) const;

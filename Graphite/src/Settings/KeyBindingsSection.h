@@ -71,6 +71,8 @@ namespace Graphite {
 
 		void RenderConflictQuestion();
 
+		void RenderRestoreQuestion();
+
 		void TakeFromOwner(const Conflict& conflict);
 
 		bool Matches(const Core::Command& command) const;
@@ -91,6 +93,10 @@ namespace Graphite {
 		std::size_t m_CapturingSlot = 0;
 
 		ModalQuestion<Conflict> m_ConflictQuestion;
+
+		// Whether to put every binding back at once. The payload says nothing: there is only one
+		// such question.
+		ModalQuestion<bool> m_RestoreQuestion;
 
 		// True from the moment a conflict is asked until the capture it belonged to is dealt
 		// with. A question that vanishes without an answer — Escape, or the panel hidden — is a

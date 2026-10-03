@@ -67,11 +67,9 @@ namespace Graphite {
 	{
 		bool Edited = false;
 
-		bool SaveRequested = false;
-
-		// Ctrl+click on the document surface, reported the same way SaveRequested is: this
-		// widget does not own a LanguageServices, so it can only say what the user asked for, not
-		// go ask it. Not restricted to a click that landed on an identifier — F12 does not care
+		// Ctrl+click on the document surface, reported through the result rather than acted on:
+		// this widget does not own a LanguageServices, so it can only say what the user asked
+		// for, not go ask it. Not restricted to a click that landed on an identifier — F12 does not care
 		// what is under the caret either, and this is defined to mean exactly what F12 means from
 		// wherever the click just placed it.
 		bool DefinitionRequested = false;

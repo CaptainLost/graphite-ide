@@ -232,12 +232,27 @@ TEST_CASE("The File menu offers to trust the open folder, after closing it")
 	CHECK(trust == close + 1);
 }
 
+TEST_CASE("The Help menu holds only the diagnostic, so a release build has none")
+{
+	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
+
+#ifdef CORE_DEBUG
+	const MenuItem* help = FindSubmenu(tree, "Help");
+
+	REQUIRE(help != nullptr);
+	CHECK(tree.back().GetText() == "Help");
+	REQUIRE(help->GetChildren().size() == 1);
+	CHECK(help->GetChildren()[0].GetText() == "help.logTestEntries");
+#else
+	CHECK(FindSubmenu(tree, "Help") == nullptr);
+#endif
+}
+
 TEST_CASE("A terminal is opened from the View menu, right after the panels, without a menu of its own")
 {
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 
 	CHECK(FindSubmenu(tree, "Terminal") == nullptr);
-	CHECK(tree.back().GetText() == "Help");
 
 	const MenuItem* view = FindSubmenu(tree, "View");
 

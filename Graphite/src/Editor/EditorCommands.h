@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Command/Binding.h"
 #include "Core/Command/MenuItem.h"
 
 #include <cstdint>
@@ -22,6 +23,10 @@ namespace Graphite {
 	inline constexpr const char* kPasteCommand = "edit.paste";
 	inline constexpr const char* kSelectAllCommand = "edit.selectAll";
 	inline constexpr const char* kToggleLineCommentCommand = "editor.toggleLineComment";
+	inline constexpr const char* kUndoCommand = "editor.undo";
+	inline constexpr const char* kRedoCommand = "editor.redo";
+	inline constexpr const char* kSaveCommand = "document.save";
+	inline constexpr const char* kCloseCommand = "document.close";
 
 	// What an editor command asks of the document it runs on. Queued rather than applied where
 	// the command runs: only the widget knows what has to be told an edit happened.
@@ -31,8 +36,35 @@ namespace Graphite {
 		Copy,
 		Paste,
 		SelectAll,
-		ToggleLineComment
+		ToggleLineComment,
+		Undo,
+		Redo
 	};
+
+	// An editor command that queues an EditorAction on the active document, with the chords it
+	// is bound to by default. Held in one table so the defaults can be checked against each other
+	// without a window to register them in.
+	struct EditorCommandSpec
+	{
+		const char* Id;
+		const char* Label;
+		EditorAction Action;
+		ImGuiKeyChord Chord;
+
+		// Zero for none.
+		ImGuiKeyChord Alternate = 0;
+
+		// Only undo and redo: holding the key walks the history, paced by the widget.
+		bool Repeats = false;
+	};
+
+	const std::vector<EditorCommandSpec>& EditorCommandSpecs();
+
+	Core::Binding BindingOf(const EditorCommandSpec& spec);
+
+	// The defaults of the two commands that act on the active tab rather than on its text.
+	Core::Binding SaveBinding();
+	Core::Binding CloseBinding();
 
 	// Whether a language server is configured for this file's language — the condition every
 	// navigation command shares.

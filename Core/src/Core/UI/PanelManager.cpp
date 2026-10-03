@@ -25,6 +25,7 @@ namespace Core {
 			// is the tab's own button.
 			commands.Add({.Id = "panel." + panel.GetId(),
 						  .Label = panel.GetTitle(),
+						  .ListLabel = "Show " + panel.GetTitle() + " Panel",
 						  .Icon = panel.GetIcon(),
 						  .Group = "panels." + panel.GetMenuGroup(),
 						  .Run =

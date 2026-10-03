@@ -947,7 +947,7 @@ namespace Graphite {
 
 		void ApplyEditKeys(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   const EditSinks& sinks, HistoryHold& history, EditorFrameResult& result)
+						   const EditSinks& sinks, EditorFrameResult& result)
 		{
 			for (const Core::KeyStroke& stroke : input.GetStrokes())
 			{
@@ -997,58 +997,12 @@ namespace Graphite {
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
 
-				const bool undoPressed = control && !shift && stroke.Key == Core::KeyCode::Z;
-				const bool redoPressed = control && (stroke.Key == Core::KeyCode::Y ||
-													 (shift && stroke.Key == Core::KeyCode::Z));
-
-				// Asked once for the pair, so holding one and rolling onto the other does not
-				// restart the ramp mid-gesture.
-				if ((undoPressed || redoPressed) &&
-					HistoryStepIsDue(history, stroke.IsRepeat, ImGui::GetTime()))
-				{
-					history = TakeHistoryStep(history, stroke.IsRepeat, ImGui::GetTime());
-
-					// The caret cannot say what an undo or redo group touched: an undone group
-					// leaves no selection to read the start from, and a redo of a multi-edit
-					// group can leave the caret at the group's LAST edit while its first sat
-					// higher up the file. Rather than track the group's own span, this
-					// invalidates from line 0 unconditionally — a full re-lex is cheap next to
-					// colouring the file wrongly until the next edit, and undo/redo already
-					// breaks the undo group, so it is rare enough that the blunt instrument
-					// costs nothing worth optimising away. Line 0 is the same blunt instrument for
-					// the lenses: shifting every anchor from the top of the file by the change in
-					// line count is as close as this can get without the group's own span, and the
-					// server's next reply replaces the guess outright.
-					const EditMark before{0, buffer.GetLineCount()};
-					const bool changed = undoPressed ? Core::Undo(item) : Core::Redo(item);
-					result.Edited |= changed;
-					NotifyAfterEdit(sinks, buffer, item, before, changed);
-				}
-
-				// What follows is a command rather than an edit, and holding it would repeat an
-				// action nobody asked to repeat — a held Ctrl+S saving over and over — so it
-				// answers to a first press only.
-				if (stroke.IsRepeat)
-				{
-					continue;
-				}
-
-				// Saving is not this widget's decision: a stale document on disk needs confirming
-				// first, and only DocumentWindows knows how to ask that. This only reports that
-				// the user asked. !shift, the same as Ctrl+Z above: without it Ctrl+Shift+S also
-				// reads as a request to save this one document, colliding with DocumentWindows's
-				// own Ctrl+Shift+S handling for "save every dirty document" and writing this one
-				// twice from a single keypress.
-				if (control && !shift && stroke.Key == Core::KeyCode::S)
-				{
-					result.SaveRequested = true;
-				}
 			}
 		}
 
 		void ApplyKeyboard(const Core::FrameInput& input, const Core::TextBuffer& buffer,
 						   Core::OpenItem& item, Core::IndentStyle indentStyle,
-						   const EditSinks& sinks, HistoryHold& history, std::size_t pageRows,
+						   const EditSinks& sinks, std::size_t pageRows,
 						   std::size_t caretAtFrameStart, EditorFrameResult& result)
 		{
 			// Movement first, in its own pass over the queue, and the edits in a second one after
@@ -1070,13 +1024,16 @@ namespace Graphite {
 
 			result.Edited |= InsertTypedCharacters(input, item, sinks);
 
-			ApplyEditKeys(input, buffer, item, indentStyle, sinks, history, result);
+			ApplyEditKeys(input, buffer, item, indentStyle, sinks, result);
 		}
 
 		// The strokes no editor-scoped command claimed, and every typed character: a chord that
 		// ran a command produced no character, so the characters pass through whole.
+		//
+		// `ranRepeat` is set when a held key's repeat ran a command: the undo and redo it queues
+		// are paced by the history hold rather than by the keyboard's own repeat rate.
 		Core::FrameInput RouteEditorStrokes(const CommandContext& context,
-											const Core::FrameInput& input)
+											const Core::FrameInput& input, bool& ranRepeat)
 		{
 			Core::FrameInput remaining;
 
@@ -1096,6 +1053,10 @@ namespace Graphite {
 				{
 					remaining.PushKey(stroke.Key, stroke.Modifiers, stroke.IsRepeat);
 				}
+				else if (stroke.IsRepeat)
+				{
+					ranRepeat = true;
+				}
 			}
 
 			for (const unsigned int codepoint : input.GetCharacters())
@@ -1108,8 +1069,12 @@ namespace Graphite {
 
 		// Swapped out before running, so an action that somehow queued another would land in the
 		// next frame rather than grow the vector under the loop.
+		//
+		// An undo or redo is taken only when the history hold says a step is due, so holding the
+		// key steps at the ramp's pace and a menu item or a fresh press always steps.
 		void ApplyPendingActions(std::vector<EditorAction>& pending, Core::OpenItem& item,
-								 const EditSinks& sinks, EditorFrameResult& result)
+								 const EditSinks& sinks, HistoryHold& history, bool repeatHeld,
+								 EditorFrameResult& result)
 		{
 			if (pending.empty() || !item.Document)
 			{
@@ -1123,6 +1088,33 @@ namespace Graphite {
 
 			for (const EditorAction action : actions)
 			{
+				EditMark before = MarkBeforeEdit(buffer, item.Caret);
+
+				if (action == EditorAction::Undo || action == EditorAction::Redo)
+				{
+					const double now = ImGui::GetTime();
+
+					if (!HistoryStepIsDue(history, repeatHeld, now))
+					{
+						continue;
+					}
+
+					history = TakeHistoryStep(history, repeatHeld, now);
+
+					// The caret cannot say what an undo or redo group touched: an undone group
+					// leaves no selection to read the start from, and a redo of a multi-edit
+					// group can leave the caret at the group's LAST edit while its first sat
+					// higher up the file. Rather than track the group's own span, this
+					// invalidates from line 0 unconditionally — a full re-lex is cheap next to
+					// colouring the file wrongly until the next edit, and undo/redo already
+					// breaks the undo group, so it is rare enough that the blunt instrument
+					// costs nothing worth optimising away. Line 0 is the same blunt instrument for
+					// the lenses: shifting every anchor from the top of the file by the change in
+					// line count is as close as this can get without the group's own span, and the
+					// server's next reply replaces the guess outright.
+					before = EditMark{0, buffer.GetLineCount()};
+				}
+
 				std::optional<std::string> clipboard;
 
 				// Asked first so a clipboard holding an image is never read: GLFW would log the
@@ -1135,7 +1127,6 @@ namespace Graphite {
 					}
 				}
 
-				const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 				const EditorActionOutcome outcome = ApplyEditorAction(action, item, clipboard);
 
 				if (outcome.ToClipboard)
@@ -3300,6 +3291,7 @@ namespace Graphite {
 
 			const EditSinks sinks{view.Syntax, view.Lens};
 			Core::FrameInput remaining;
+			bool ranRepeat = false;
 
 			// The focused editor is the only place that knows the keyboard is its own, so it
 			// routes the strokes it reads to the editor-scoped commands first — Ctrl+C and the
@@ -3310,15 +3302,14 @@ namespace Graphite {
 			// error: this document then simply draws, exactly as an unfocused one does.
 			if (focused && context.Input != nullptr)
 			{
-				remaining = RouteEditorStrokes(context, *context.Input);
+				remaining = RouteEditorStrokes(context, *context.Input, ranRepeat);
 			}
 
-			ApplyPendingActions(widget.PendingActions, item, sinks, result);
+			ApplyPendingActions(widget.PendingActions, item, sinks, widget.History, ranRepeat, result);
 
 			if (focused && context.Input != nullptr)
 			{
-				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks, widget.History,
-							  RowsPerPage(metrics), caretAtFrameStart, result);
+				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks, RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 
 			// Not merely when the window has keyboard focus, which is true on every frame it is

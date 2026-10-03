@@ -2,6 +2,7 @@
 
 #include "Editor/EditorCommands.h"
 
+#include "Core/Command/Keymap.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
@@ -163,4 +164,61 @@ TEST_CASE("A C++ file has a language server and a text file has none")
 {
 	CHECK(HasLanguageServer("C:/p/main.cpp"));
 	CHECK_FALSE(HasLanguageServer("C:/p/notes.txt"));
+}
+
+TEST_CASE("Undo and redo are available only when the history has a step to take")
+{
+	Core::OpenItem item = ItemWith("abc");
+
+	CHECK_FALSE(CanRun(EditorAction::Undo, item, false));
+	CHECK_FALSE(CanRun(EditorAction::Redo, item, false));
+
+	item.Caret.Anchor = item.Caret.Offset = 3;
+	REQUIRE(Core::InsertText(item, "d"));
+
+	CHECK(CanRun(EditorAction::Undo, item, false));
+	CHECK_FALSE(CanRun(EditorAction::Redo, item, false));
+
+	CHECK(ApplyEditorAction(EditorAction::Undo, item, std::nullopt).Changed);
+	CHECK(TextOf(item) == "abc");
+	CHECK(CanRun(EditorAction::Redo, item, false));
+
+	CHECK(ApplyEditorAction(EditorAction::Redo, item, std::nullopt).Changed);
+	CHECK(TextOf(item) == "abcd");
+}
+
+TEST_CASE("Save, undo, redo and close have default bindings that take nothing from each other")
+{
+	Core::Keymap keys;
+
+	for (const EditorCommandSpec& spec : EditorCommandSpecs())
+	{
+		keys.SetDefault(spec.Id, BindingOf(spec));
+	}
+
+	keys.SetDefault(kSaveCommand, SaveBinding());
+	keys.SetDefault(kCloseCommand, CloseBinding());
+
+	// The one Global chord nearby: Save All differs from Save by the Shift alone.
+	keys.SetDefault("document.saveAll",
+					{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
+
+	CHECK(keys.FindConflicts().empty());
+
+	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)) == kSaveCommand);
+	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Z)) == kUndoCommand);
+	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Y)) == kRedoCommand);
+	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) == kRedoCommand);
+	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_W)) == kCloseCommand);
+	CHECK(keys.BoundTo(Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F4)) == kCloseCommand);
+}
+
+TEST_CASE("Only undo and redo repeat while their key is held")
+{
+	for (const EditorCommandSpec& spec : EditorCommandSpecs())
+	{
+		const bool history = spec.Action == EditorAction::Undo || spec.Action == EditorAction::Redo;
+
+		CHECK_MESSAGE(spec.Repeats == history, spec.Id);
+	}
 }

@@ -15,7 +15,9 @@ namespace Graphite {
 								  MenuItem::Command("workspace.close"),
 								  MenuItem::Command("workspace.toggleTrust"),
 								  MenuItem::Separator(),
+								  MenuItem::Command("document.save"),
 								  MenuItem::Command("document.saveAll"),
+								  MenuItem::Command("document.close"),
 								  MenuItem::Separator(),
 								  MenuItem::Command("app.exit"),
 							  }),
@@ -67,10 +69,14 @@ namespace Graphite {
 					MenuItem::Group("panels.window"),
 					MenuItem::Command("view.resetLayout"),
 				}),
+#ifdef CORE_DEBUG
+			// The only thing in Help for now, and a diagnostic: a release build has no Help
+			// menu rather than one that holds a developer's tool.
 			MenuItem::Submenu("Help",
 							  {
 								  MenuItem::Command("help.logTestEntries"),
 							  }),
+#endif
 		};
 	}
 }

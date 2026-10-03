@@ -830,24 +830,7 @@ namespace Graphite {
 			return path ? m_Documents.Find(*path) : std::nullopt;
 		};
 
-		struct EditorCommandSpec
-		{
-			const char* Id;
-			const char* Label;
-			EditorAction Action;
-			ImGuiKeyChord Chord;
-		};
-
-		const EditorCommandSpec specs[] = {
-			{kCutCommand, "Cut", EditorAction::Cut, ImGuiMod_Ctrl | ImGuiKey_X},
-			{kCopyCommand, "Copy", EditorAction::Copy, ImGuiMod_Ctrl | ImGuiKey_C},
-			{kPasteCommand, "Paste", EditorAction::Paste, ImGuiMod_Ctrl | ImGuiKey_V},
-			{kSelectAllCommand, "Select All", EditorAction::SelectAll, ImGuiMod_Ctrl | ImGuiKey_A},
-			{kToggleLineCommentCommand, "Toggle Line Comment", EditorAction::ToggleLineComment,
-			 ImGuiMod_Ctrl | ImGuiKey_Slash},
-		};
-
-		for (const EditorCommandSpec& spec : specs)
+		for (const EditorCommandSpec& spec : EditorCommandSpecs())
 		{
 			const EditorAction action = spec.Action;
 
@@ -870,10 +853,45 @@ namespace Graphite {
 
 							  return item != nullptr && CanRun(action, *item, hasText); },
 						  .KeyScope = Core::Chord::Scope::FocusedEditor,
-						  .Repeats = false});
+						  .Repeats = spec.Repeats});
 
-			keys.SetDefault(spec.Id, {.Primary = Core::Chord::Key(spec.Chord)});
+			keys.SetDefault(spec.Id, BindingOf(spec));
 		}
+
+		// Through RequestSave, which is the Save of the tab's own menu: a document changed on disk
+		// is asked about before it is overwritten. FocusedEditor like the edit commands, so
+		// Ctrl+S still reaches a shell when a terminal holds the keyboard.
+		commands.Add({.Id = kSaveCommand,
+					  .Label = "Save",
+					  .Run = [this, activeIndex] {
+						  if (const auto index = activeIndex())
+						  {
+							  RequestSave(*index);
+						  } },
+					  .Enabled = [activeItem] {
+						  const Core::OpenItem* item = activeItem();
+						  return item != nullptr && item->Document.has_value(); },
+					  .KeyScope = Core::Chord::Scope::FocusedEditor,
+					  .Repeats = false});
+
+		keys.SetDefault(kSaveCommand, SaveBinding());
+
+		// The tab's own close button: an unsaved document is asked about first. What closes is
+		// the active editor tab, so FocusedEditor is the whole of what this can reach, and Ctrl+W
+		// - a shell's delete-word - still goes to a terminal that holds the keyboard.
+		commands.Add({.Id = kCloseCommand,
+					  .Label = "Close Tab",
+					  .Run = [this, activeItem] {
+						  if (const Core::OpenItem* item = activeItem())
+						  {
+							  m_CloseRequested = item->Path;
+							  Core::Redraw::Request();
+						  } },
+					  .Enabled = [activeItem] { return activeItem() != nullptr; },
+					  .KeyScope = Core::Chord::Scope::FocusedEditor,
+					  .Repeats = false});
+
+		keys.SetDefault(kCloseCommand, CloseBinding());
 
 		commands.Add({.Id = kSwitchHeaderSourceCommand,
 					  .Label = "Switch Header/Source",
@@ -2245,6 +2263,13 @@ namespace Graphite {
 				open = false;
 			}
 
+			// The close command asks the same, by path: it runs outside any window.
+			if (m_CloseRequested && *m_CloseRequested == item.Path)
+			{
+				m_CloseRequested.reset();
+				open = false;
+			}
+
 			Core::DrawTabContextMenu(closeRequests,
 									 [this, index, &workspaceRoot] { DrawFileTabItems(index, workspaceRoot); });
 
@@ -2387,11 +2412,6 @@ namespace Graphite {
 					m_Documents.Promote(index);
 				}
 
-				if (editorResult.SaveRequested)
-				{
-					RequestSave(index);
-				}
-
 				// Ctrl+click asks the same question F12 does, from wherever the click just put
 				// the caret — reported through the frame result rather than resolved from the
 				// active document, so the request is unambiguously about the document that was
@@ -2477,6 +2497,10 @@ namespace Graphite {
 							  frame.WordWrap, frame.ChangeMarkers, frame.Hover, frame.Scheme,
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot);
+
+		// Taken by its tab this frame or the tab is gone: either way it must not wait for a
+		// document of the same path opened later.
+		m_CloseRequested.reset();
 
 		// Once per frame, not once per document: a prune that ran inside the per-document loop
 		// above would cost a walk of m_States for every open document instead of one for the
