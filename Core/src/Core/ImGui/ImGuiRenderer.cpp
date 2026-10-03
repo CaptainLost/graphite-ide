@@ -206,7 +206,27 @@ namespace Core {
 
 	ImGuiRenderer::~ImGuiRenderer()
 	{
-		Shutdown();
+		if (!m_Initialized)
+		{
+			return;
+		}
+
+		ImGui_ImplOpenGL3_Shutdown();
+		ImGui_ImplGlfw_Shutdown();
+		DestroyContexts();
+	}
+
+	Result<Scope<ImGuiRenderer>> ImGuiRenderer::Create(Window& window, const std::filesystem::path& layoutFile)
+	{
+		// Not make_unique: the constructor is private, and this is the only creator.
+		Scope<ImGuiRenderer> renderer{new ImGuiRenderer};
+
+		if (Result<void> initialised = renderer->Init(window, layoutFile); !initialised)
+		{
+			return initialised.GetError();
+		}
+
+		return renderer;
 	}
 
 	Result<void> ImGuiRenderer::Init(Window& window, const std::filesystem::path& layoutFile)
@@ -278,17 +298,6 @@ namespace Core {
 		return Result<void>::Ok();
 	}
 
-	void ImGuiRenderer::Shutdown()
-	{
-		if (!m_Initialized)
-			return;
-
-		ImGui_ImplOpenGL3_Shutdown();
-		ImGui_ImplGlfw_Shutdown();
-		DestroyContexts();
-		m_Initialized = false;
-	}
-
 	bool GuiConsumesKeyboard(bool wantsTextInput, bool popupOpen)
 	{
 		return wantsTextInput || popupOpen;
@@ -296,9 +305,6 @@ namespace Core {
 
 	void ImGuiRenderer::OnEvent(Event& event)
 	{
-		if (!m_Initialized)
-			return;
-
 		const ImGuiIO& io = ImGui::GetIO();
 
 		const bool popupOpen =
@@ -319,12 +325,12 @@ namespace Core {
 
 	bool ImGuiRenderer::HasPendingInput() const
 	{
-		return m_Initialized && !ImGui::GetCurrentContext()->InputEventsQueue.empty();
+		return !ImGui::GetCurrentContext()->InputEventsQueue.empty();
 	}
 
 	bool ImGuiRenderer::IsPointerHeld() const
 	{
-		return m_Initialized && ImGui::IsAnyMouseDown();
+		return ImGui::IsAnyMouseDown();
 	}
 
 	void ImGuiRenderer::BeginFrame()

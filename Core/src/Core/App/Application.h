@@ -76,7 +76,8 @@ namespace Core {
 
 		ApplicationSpec m_Spec;
 		Scope<Window> m_Window;
-		ImGuiRenderer m_Gui;
+		// Created with the window in Run and gone before it; null outside that span.
+		Scope<ImGuiRenderer> m_Gui;
 		LayerStack m_Layers;
 		std::vector<Layer*> m_FrameLayers;
 		bool m_Running = false;

@@ -21,7 +21,11 @@ namespace Core {
 		m_EventArrived = true;
 
 		// Nothing here handles WindowClose; that runs through EveryLayerAllowsClose instead.
-		m_Gui.OnEvent(event);
+		// Events come from the window, which reports none before the GUI exists.
+		if (m_Gui)
+		{
+			m_Gui->OnEvent(event);
+		}
 
 		for (auto layer = m_Layers.rbegin(); layer != m_Layers.rend(); ++layer)
 		{
@@ -114,11 +118,14 @@ namespace Core {
 
 		m_Window = std::move(windowResult).GetValue();
 
-		if (auto init = m_Gui.Init(*m_Window, m_Spec.LayoutFile); !init)
+		auto gui = ImGuiRenderer::Create(*m_Window, m_Spec.LayoutFile);
+		if (!gui)
 		{
 			m_Window.reset();
-			return init.GetError();
+			return gui.GetError();
 		}
+
+		m_Gui = std::move(gui).GetValue();
 
 		m_Window->SetEventCallback(CORE_BIND_EVENT_FN(Application::OnEvent));
 
@@ -132,7 +139,7 @@ namespace Core {
 	{
 		FramePacer::Clock::duration sleep =
 			m_Minimized ? FramePacer::IdleTick
-						: m_Pacer.SleepFor(FramePacer::Clock::now(), m_Gui.IsPointerHeld(),
+						: m_Pacer.SleepFor(FramePacer::Clock::now(), m_Gui->IsPointerHeld(),
 										   Redraw::TakeDeadline());
 
 		// A request already standing means its wake may be gone: anything on this thread that
@@ -149,7 +156,7 @@ namespace Core {
 		// Each source is taken every time, not short-circuited: a request left untaken would
 		// count as activity a second time on the next pass.
 		const bool requested = Redraw::TakeRequest();
-		const bool pendingInput = m_Gui.HasPendingInput();
+		const bool pendingInput = m_Gui->HasPendingInput();
 		const bool evented = std::exchange(m_EventArrived, false);
 
 		if (pendingInput || evented)
@@ -213,12 +220,12 @@ namespace Core {
 			for (Layer* layer : m_FrameLayers)
 				layer->OnUpdate(ts);
 
-			m_Gui.BeginFrame();
+			m_Gui->BeginFrame();
 
 			for (Layer* layer : m_FrameLayers)
 				layer->OnImGuiRender();
 
-			m_Gui.EndFrame(*m_Window);
+			m_Gui->EndFrame(*m_Window);
 
 			m_Window->SwapBuffers();
 			m_Pacer.FrameDrawn();
@@ -229,7 +236,7 @@ namespace Core {
 		OnShutdown();
 
 		m_Layers.Clear();
-		m_Gui.Shutdown();
+		m_Gui.reset();
 		m_Window.reset();
 
 		return Result<void>::Ok();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/Events/Event.h"
@@ -24,11 +25,12 @@ namespace Core {
 	class ImGuiRenderer final : NonCopyable
 	{
 	public:
-		ImGuiRenderer();
-		~ImGuiRenderer();
+		// Creates the ImGui and ImPlot contexts and binds them to `window`, which must outlive
+		// the renderer. The renderer owns both contexts from here and tears them down when it
+		// goes, so one that exists is always ready to draw. An error leaves nothing created.
+		static Result<Scope<ImGuiRenderer>> Create(Window& window, const std::filesystem::path& layoutFile);
 
-		Result<void> Init(Window& window, const std::filesystem::path& layoutFile);
-		void Shutdown();
+		~ImGuiRenderer();
 
 		void BeginFrame();
 		void EndFrame(Window& window);
@@ -59,13 +61,17 @@ namespace Core {
 		static void SetInterfaceScale(float scale);
 
 	private:
-		// ImGui stores the pointer rather than copying the string, so the storage has to
-		// outlive the context.
+		ImGuiRenderer();
+
+		Result<void> Init(Window& window, const std::filesystem::path& layoutFile);
+
 		// Rebuilds the style's sizes when the main window's monitor scale or the user's scale
 		// has changed since they were last built. Called before NewFrame, where changing the
 		// style is allowed.
 		void UpdateStyleScale();
 
+		// ImGui stores the pointer rather than copying the string, so the storage has to
+		// outlive the context.
 		std::string m_LayoutFile;
 		ImGuiErrorLog m_ErrorLog;
 		// The window's content scale when it was created, standing in for the main viewport's
@@ -73,6 +79,9 @@ namespace Core {
 		float m_InitialDpiScale = 1.0f;
 		// The scale the style's sizes were last built at; zero until the first frame.
 		float m_StyleScale = 0.0f;
+
+		// False only for a renderer whose Init failed, which cleaned up after itself and leaves
+		// the destructor nothing to do.
 		bool m_Initialized = false;
 	};
 }
