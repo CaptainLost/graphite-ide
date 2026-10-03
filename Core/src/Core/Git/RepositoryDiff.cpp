@@ -180,7 +180,7 @@ namespace Core {
 			git_oid raw = ToGitOid(*id);
 
 			CommitHandle commit;
-			if (git_commit_lookup(Out(commit), m_Handle, &raw) != 0)
+			if (git_commit_lookup(Out(commit), m_Handle.get(), &raw) != 0)
 			{
 				return Error{ErrorCode::NotFound,
 							 std::format("cannot find commit {}: {}", id->ToHex(),
@@ -193,7 +193,7 @@ namespace Core {
 		// An unborn HEAD has no tree, and that is an answer: the index is then all new.
 		// Any other failure to read HEAD is not.
 		const auto headTree = [this, &treeOfCommit]() -> Result<TreeHandle> {
-			const int unborn = git_repository_head_unborn(m_Handle);
+			const int unborn = git_repository_head_unborn(m_Handle.get());
 
 			if (unborn < 0)
 			{
@@ -208,14 +208,14 @@ namespace Core {
 
 			git_oid headId{};
 
-			if (git_reference_name_to_id(&headId, m_Handle, "HEAD") != 0)
+			if (git_reference_name_to_id(&headId, m_Handle.get(), "HEAD") != 0)
 			{
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot read HEAD: {}", LastLibgit2Message())};
 			}
 
 			CommitHandle commit;
-			if (git_commit_lookup(Out(commit), m_Handle, &headId) != 0)
+			if (git_commit_lookup(Out(commit), m_Handle.get(), &headId) != 0)
 			{
 				return Error{ErrorCode::IoFailure,
 							 std::format("cannot read the HEAD commit: {}", LastLibgit2Message())};
@@ -235,7 +235,7 @@ namespace Core {
 		switch (request.Target)
 		{
 			case DiffTarget::WorkTreeToIndex:
-				created = git_diff_index_to_workdir(Out(diff), m_Handle, nullptr, &options);
+				created = git_diff_index_to_workdir(Out(diff), m_Handle.get(), nullptr, &options);
 				break;
 
 			case DiffTarget::IndexToHead:
@@ -250,8 +250,8 @@ namespace Core {
 
 				left = std::move(head).GetValue();
 				created = request.Target == DiffTarget::IndexToHead
-							  ? git_diff_tree_to_index(Out(diff), m_Handle, left.get(), nullptr, &options)
-							  : git_diff_tree_to_workdir_with_index(Out(diff), m_Handle, left.get(), &options);
+							  ? git_diff_tree_to_index(Out(diff), m_Handle.get(), left.get(), nullptr, &options)
+							  : git_diff_tree_to_workdir_with_index(Out(diff), m_Handle.get(), left.get(), &options);
 				break;
 			}
 
@@ -267,7 +267,7 @@ namespace Core {
 				git_oid raw = ToGitOid(*request.From);
 
 				CommitHandle commit;
-				if (git_commit_lookup(Out(commit), m_Handle, &raw) != 0)
+				if (git_commit_lookup(Out(commit), m_Handle.get(), &raw) != 0)
 				{
 					return Error{ErrorCode::NotFound,
 								 std::format("cannot find commit {}: {}", request.From->ToHex(),
@@ -309,7 +309,7 @@ namespace Core {
 					left = std::move(parentTree).GetValue();
 				}
 
-				created = git_diff_tree_to_tree(Out(diff), m_Handle, left.get(), right.get(), &options);
+				created = git_diff_tree_to_tree(Out(diff), m_Handle.get(), left.get(), right.get(), &options);
 
 				// A stash made to include untracked files keeps them in a third parent, a
 				// commit of those files alone - so its whole tree is what was added.
@@ -335,7 +335,7 @@ namespace Core {
 
 					untrackedTree = std::move(thirdTree).GetValue();
 
-					created = git_diff_tree_to_tree(Out(untracked), m_Handle, nullptr, untrackedTree.get(),
+					created = git_diff_tree_to_tree(Out(untracked), m_Handle.get(), nullptr, untrackedTree.get(),
 													&options);
 
 					if (created == 0)
@@ -366,7 +366,7 @@ namespace Core {
 				}
 
 				right = std::move(to).GetValue();
-				created = git_diff_tree_to_tree(Out(diff), m_Handle, left.get(), right.get(), &options);
+				created = git_diff_tree_to_tree(Out(diff), m_Handle.get(), left.get(), right.get(), &options);
 				break;
 			}
 		}

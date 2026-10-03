@@ -70,7 +70,7 @@ namespace Core {
 
 		BranchIteratorHandle iterator;
 
-		if (git_branch_iterator_new(Out(iterator), m_Handle, GIT_BRANCH_ALL) != 0)
+		if (git_branch_iterator_new(Out(iterator), m_Handle.get(), GIT_BRANCH_ALL) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot list the branches: {}", LastLibgit2Message())};
@@ -136,7 +136,7 @@ namespace Core {
 					std::size_t ahead = 0;
 					std::size_t behind = 0;
 
-					if (git_graph_ahead_behind(&ahead, &behind, m_Handle, target, upstreamTarget)
+					if (git_graph_ahead_behind(&ahead, &behind, m_Handle.get(), target, upstreamTarget)
 						== 0)
 					{
 						branch.Ahead = ahead;
@@ -177,9 +177,9 @@ namespace Core {
 		}
 
 		HeadState head;
-		head.Operation = OperationOf(git_repository_state(m_Handle));
+		head.Operation = OperationOf(git_repository_state(m_Handle.get()));
 
-		const int unborn = git_repository_head_unborn(m_Handle);
+		const int unborn = git_repository_head_unborn(m_Handle.get());
 
 		if (unborn < 0)
 		{
@@ -193,7 +193,7 @@ namespace Core {
 
 			ReferenceHandle symbolic;
 
-			if (git_reference_lookup(Out(symbolic), m_Handle, "HEAD") == 0)
+			if (git_reference_lookup(Out(symbolic), m_Handle.get(), "HEAD") == 0)
 			{
 				if (const char* target = git_reference_symbolic_target(symbolic.get()); target != nullptr)
 				{
@@ -206,7 +206,7 @@ namespace Core {
 
 		ReferenceHandle reference;
 
-		if (git_repository_head(Out(reference), m_Handle) != 0)
+		if (git_repository_head(Out(reference), m_Handle.get()) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
@@ -217,7 +217,7 @@ namespace Core {
 			head.Commit = ToOid(*target);
 		}
 
-		if (git_repository_head_detached(m_Handle) == 1)
+		if (git_repository_head_detached(m_Handle.get()) == 1)
 		{
 			head.Kind = HeadKind::Detached;
 		}

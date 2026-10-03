@@ -12,6 +12,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -37,12 +38,10 @@ namespace Core {
 		// repository is re-initialised in place, which git treats as harmless.
 		static Result<Repository> Init(const std::filesystem::path& directory);
 
-		~Repository();
-
 		// A moved-from Repository holds no handle: every query on it fails, as one on a repository
 		// that could not be read does, and it is safe to destroy or assign to.
-		Repository(Repository&& other) noexcept;
-		Repository& operator=(Repository&& other) noexcept;
+		Repository(Repository&& other) noexcept = default;
+		Repository& operator=(Repository&& other) noexcept = default;
 
 		Repository(const Repository&) = delete;
 		Repository& operator=(const Repository&) = delete;
@@ -216,7 +215,14 @@ namespace Core {
 	private:
 		Repository() = default;
 
-		git_repository* m_Handle = nullptr;
+		// Frees the repository through git_repository_free, which only Repository.cpp can see:
+		// no header under Core/Git includes <git2.h>.
+		struct Free
+		{
+			void operator()(git_repository* repository) const noexcept;
+		};
+
+		std::unique_ptr<git_repository, Free> m_Handle;
 		std::filesystem::path m_WorkingDirectory;
 	};
 }

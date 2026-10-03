@@ -44,14 +44,14 @@ namespace Core {
 		const git_oid id = ToGitOid(from);
 		CommitHandle commit;
 
-		if (git_commit_lookup(Out(commit), m_Handle, &id) != 0)
+		if (git_commit_lookup(Out(commit), m_Handle.get(), &id) != 0)
 		{
 			return Error{ErrorCode::NotFound,
 						 std::format("no commit {}: {}", from.ShortHex(), LastLibgit2Message())};
 		}
 
 		ReferenceHandle created;
-		const int result = git_branch_create(Out(created), m_Handle, name.c_str(), commit.get(), 0);
+		const int result = git_branch_create(Out(created), m_Handle.get(), name.c_str(), commit.get(), 0);
 
 		if (result != 0)
 		{
@@ -67,7 +67,7 @@ namespace Core {
 		if (m_Handle == nullptr)
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 
-		auto reference = LookupLocal(m_Handle, from);
+		auto reference = LookupLocal(m_Handle.get(), from);
 
 		if (!reference.HasValue())
 			return reference.GetError();
@@ -91,7 +91,7 @@ namespace Core {
 
 		RevwalkHandle walk;
 
-		if (git_revwalk_new(Out(walk), m_Handle) != 0)
+		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot walk: {}", LastLibgit2Message())};
 
 		const std::string full = "refs/heads/" + name;
@@ -105,7 +105,7 @@ namespace Core {
 		// from this one.
 		BranchIteratorHandle iterator;
 
-		if (git_branch_iterator_new(Out(iterator), m_Handle, GIT_BRANCH_ALL) == 0)
+		if (git_branch_iterator_new(Out(iterator), m_Handle.get(), GIT_BRANCH_ALL) == 0)
 		{
 			git_branch_t type = GIT_BRANCH_LOCAL;
 
@@ -137,7 +137,7 @@ namespace Core {
 		if (m_Handle == nullptr)
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 
-		auto reference = LookupLocal(m_Handle, name);
+		auto reference = LookupLocal(m_Handle.get(), name);
 
 		if (!reference.HasValue())
 			return reference.GetError();

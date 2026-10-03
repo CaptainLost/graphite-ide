@@ -59,7 +59,7 @@ namespace Core {
 
 		StatusListHandle list;
 
-		if (git_status_list_new(Out(list), m_Handle, &options) != 0)
+		if (git_status_list_new(Out(list), m_Handle.get(), &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read the working tree status: {}", LastLibgit2Message())};
@@ -161,7 +161,7 @@ namespace Core {
 
 		StatusListHandle list;
 
-		if (git_status_list_new(Out(list), m_Handle, &options) != 0)
+		if (git_status_list_new(Out(list), m_Handle.get(), &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot list the untracked files in '{}': {}", spec,

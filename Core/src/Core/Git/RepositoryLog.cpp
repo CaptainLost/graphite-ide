@@ -239,7 +239,7 @@ namespace Core {
 
 			CommitHandle stash;
 
-			if (git_commit_lookup(Out(stash), m_Handle, &raw) != 0)
+			if (git_commit_lookup(Out(stash), m_Handle.get(), &raw) != 0)
 			{
 				const std::string message = LastLibgit2Message();
 				return Error{ErrorCode::NotFound,
@@ -267,7 +267,7 @@ namespace Core {
 
 		RevwalkHandle walk;
 
-		if (git_revwalk_new(Out(walk), m_Handle) != 0)
+		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot walk the history: {}", LastLibgit2Message())};
@@ -301,7 +301,7 @@ namespace Core {
 		// Measured before the walk and against the ref itself, not against the page: the
 		// answer is a property of the branch, so a filtered page still marks the rows it
 		// does show correctly.
-		UnpushedSet unpushed = CollectUnpushed(m_Handle, request.Ref, request.MaxWalk);
+		UnpushedSet unpushed = CollectUnpushed(m_Handle.get(), request.Ref, request.MaxWalk);
 
 		std::vector<CommitSummary> commits;
 		git_oid id{};
@@ -352,7 +352,7 @@ namespace Core {
 
 			CommitHandle commit;
 
-			if (git_commit_lookup(Out(commit), m_Handle, &id) != 0)
+			if (git_commit_lookup(Out(commit), m_Handle.get(), &id) != 0)
 			{
 				CORE_TRACE("Skipping an unreadable commit while walking the history");
 				complete = false;

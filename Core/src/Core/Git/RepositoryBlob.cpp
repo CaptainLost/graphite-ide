@@ -45,7 +45,7 @@ namespace Core {
 		git_oid raw = ToGitOid(revision);
 
 		CommitHandle commit;
-		if (git_commit_lookup(Out(commit), m_Handle, &raw) != 0)
+		if (git_commit_lookup(Out(commit), m_Handle.get(), &raw) != 0)
 		{
 			return Error{ErrorCode::NotFound,
 						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
@@ -86,7 +86,7 @@ namespace Core {
 		git_oid blobId = *git_tree_entry_id(entry.get());
 
 		BlobHandle blob;
-		if (git_blob_lookup(Out(blob), m_Handle, &blobId) != 0)
+		if (git_blob_lookup(Out(blob), m_Handle.get(), &blobId) != 0)
 		{
 			const std::string message = LastLibgit2Message();
 
@@ -106,7 +106,7 @@ namespace Core {
 		git_oid raw = ToGitOid(commit);
 
 		CommitHandle handle;
-		if (git_commit_lookup(Out(handle), m_Handle, &raw) != 0)
+		if (git_commit_lookup(Out(handle), m_Handle.get(), &raw) != 0)
 		{
 			return Error{ErrorCode::NotFound,
 						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
@@ -143,7 +143,7 @@ namespace Core {
 		git_oid raw = ToGitOid(stash);
 
 		CommitHandle handle;
-		if (git_commit_lookup(Out(handle), m_Handle, &raw) != 0)
+		if (git_commit_lookup(Out(handle), m_Handle.get(), &raw) != 0)
 		{
 			return Error{ErrorCode::NotFound,
 						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
@@ -166,7 +166,7 @@ namespace Core {
 
 		IndexHandle index;
 
-		if (git_repository_index(Out(index), m_Handle) != 0)
+		if (git_repository_index(Out(index), m_Handle.get()) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read the index: {}", LastLibgit2Message())};
@@ -189,7 +189,7 @@ namespace Core {
 
 		BlobHandle blob;
 
-		if (git_blob_lookup(Out(blob), m_Handle, &id) != 0)
+		if (git_blob_lookup(Out(blob), m_Handle.get(), &id) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read the staged blob for '{}': {}", gitPath,
@@ -267,7 +267,7 @@ namespace Core {
 
 		git_oid id{};
 
-		const int found = git_reference_name_to_id(&id, m_Handle, "HEAD");
+		const int found = git_reference_name_to_id(&id, m_Handle.get(), "HEAD");
 
 		if (found == GIT_ENOTFOUND)
 		{

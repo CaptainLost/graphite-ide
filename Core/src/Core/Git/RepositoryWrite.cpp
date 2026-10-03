@@ -68,7 +68,7 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		auto opened = OpenIndex(m_Handle);
+		auto opened = OpenIndex(m_Handle.get());
 
 		if (!opened.HasValue())
 		{
@@ -164,9 +164,9 @@ namespace Core {
 		// A null target means "reset to nothing", which removes the entries — the right
 		// answer under an unborn HEAD, where there is no commit to restore from.
 		ObjectHandle head;
-		const bool born = git_revparse_single(Out(head), m_Handle, "HEAD") == 0;
+		const bool born = git_revparse_single(Out(head), m_Handle.get(), "HEAD") == 0;
 
-		const int result = git_reset_default(m_Handle, born ? head.get() : nullptr, &spec.Array);
+		const int result = git_reset_default(m_Handle.get(), born ? head.get() : nullptr, &spec.Array);
 
 		if (result != 0)
 		{
@@ -200,7 +200,7 @@ namespace Core {
 		options.checkout_strategy = GIT_CHECKOUT_FORCE | GIT_CHECKOUT_DISABLE_PATHSPEC_MATCH;
 		options.paths = spec.Array;
 
-		if (git_checkout_index(m_Handle, nullptr, &options) != 0)
+		if (git_checkout_index(m_Handle.get(), nullptr, &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot discard changes: {}", LastLibgit2Message())};
@@ -269,13 +269,13 @@ namespace Core {
 		// git's own resolution: repository config, then global, then the environment. A
 		// repository with no identity fails here, which is the honest answer — the
 		// alternative is inventing an author that outlives the mistake in the history.
-		if (git_signature_default(Out(who), m_Handle) != 0)
+		if (git_signature_default(Out(who), m_Handle.get()) != 0)
 		{
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("cannot determine who is committing: {}", LastLibgit2Message())};
 		}
 
-		auto opened = OpenIndex(m_Handle);
+		auto opened = OpenIndex(m_Handle.get());
 
 		if (!opened.HasValue())
 		{
@@ -293,18 +293,18 @@ namespace Core {
 
 		TreeHandle tree;
 
-		if (git_tree_lookup(Out(tree), m_Handle, &treeId) != 0)
+		if (git_tree_lookup(Out(tree), m_Handle.get(), &treeId) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read the tree just written: {}", LastLibgit2Message())};
 		}
 
 		git_oid headId{};
-		const bool born = git_reference_name_to_id(&headId, m_Handle, "HEAD") == 0;
+		const bool born = git_reference_name_to_id(&headId, m_Handle.get(), "HEAD") == 0;
 
 		CommitHandle head;
 
-		if (born && git_commit_lookup(Out(head), m_Handle, &headId) != 0)
+		if (born && git_commit_lookup(Out(head), m_Handle.get(), &headId) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
@@ -346,7 +346,7 @@ namespace Core {
 		{
 			const git_commit* parents[1] = {head.get()};
 
-			if (git_commit_create(&commitId, m_Handle, "HEAD", who.get(), who.get(), "UTF-8",
+			if (git_commit_create(&commitId, m_Handle.get(), "HEAD", who.get(), who.get(), "UTF-8",
 								  request.Message.c_str(), tree.get(), born ? 1u : 0u,
 								  born ? parents : nullptr) == 0)
 			{

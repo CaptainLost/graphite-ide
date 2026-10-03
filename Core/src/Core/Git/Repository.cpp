@@ -50,7 +50,7 @@ namespace Core {
 		}
 
 		Repository repository;
-		repository.m_Handle = handle;
+		repository.m_Handle.reset(handle);
 
 		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
 			repository.m_WorkingDirectory = FromUtf8(workdir);
@@ -79,7 +79,7 @@ namespace Core {
 		}
 
 		Repository repository;
-		repository.m_Handle = handle;
+		repository.m_Handle.reset(handle);
 
 		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
 			repository.m_WorkingDirectory = FromUtf8(workdir);
@@ -87,29 +87,9 @@ namespace Core {
 		return repository;
 	}
 
-	Repository::~Repository()
+	void Repository::Free::operator()(git_repository* repository) const noexcept
 	{
-		if (m_Handle != nullptr)
-			git_repository_free(m_Handle);
-	}
-
-	Repository::Repository(Repository&& other) noexcept
-		: m_Handle(std::exchange(other.m_Handle, nullptr)),
-		  m_WorkingDirectory(std::move(other.m_WorkingDirectory))
-	{
-	}
-
-	Repository& Repository::operator=(Repository&& other) noexcept
-	{
-		if (this == &other)
-			return *this;
-
-		if (m_Handle != nullptr)
-			git_repository_free(m_Handle);
-
-		m_Handle = std::exchange(other.m_Handle, nullptr);
-		m_WorkingDirectory = std::move(other.m_WorkingDirectory);
-		return *this;
+		git_repository_free(repository);
 	}
 
 	bool Repository::IsIgnored(const std::filesystem::path& path) const
@@ -127,7 +107,7 @@ namespace Core {
 		const std::string text = ToGitPath(relative);
 
 		int ignored = 0;
-		if (git_ignore_path_is_ignored(&ignored, m_Handle, text.c_str()) != 0)
+		if (git_ignore_path_is_ignored(&ignored, m_Handle.get(), text.c_str()) != 0)
 		{
 			CORE_TRACE("Cannot determine ignore status for '{}'", text);
 			return false;
@@ -143,7 +123,7 @@ namespace Core {
 
 		IndexHandle index;
 
-		if (git_repository_index(Out(index), m_Handle) != 0)
+		if (git_repository_index(Out(index), m_Handle.get()) != 0)
 		{
 			CORE_TRACE("Cannot read the index to look for a submodule above '{}'", ToGitPath(relative));
 			return false;

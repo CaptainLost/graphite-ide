@@ -384,13 +384,13 @@ namespace Core {
 		if (m_Handle == nullptr)
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 
-		auto resolved = Resolve(m_Handle, target);
+		auto resolved = Resolve(m_Handle.get(), target);
 
 		if (!resolved.HasValue())
 			return resolved.GetError();
 
 		git_object* commit = resolved.GetValue().Commit.get();
-		auto conflicted = Conflicted(m_Handle);
+		auto conflicted = Conflicted(m_Handle.get());
 
 		if (!conflicted.HasValue())
 			return conflicted.GetError();
@@ -401,7 +401,7 @@ namespace Core {
 		// Stash is what clears them.
 		if (!conflicted.GetValue().empty())
 		{
-			auto differing = Differing(m_Handle, commit);
+			auto differing = Differing(m_Handle.get(), commit);
 
 			if (!differing.HasValue())
 				return differing.GetError();
@@ -411,7 +411,7 @@ namespace Core {
 			return plan;
 		}
 
-		auto removed = Removals(m_Handle, commit, m_WorkingDirectory);
+		auto removed = Removals(m_Handle.get(), commit, m_WorkingDirectory);
 
 		if (!removed.HasValue())
 		{
@@ -423,7 +423,7 @@ namespace Core {
 
 		// A dry run that finds conflicts answers GIT_ECONFLICT, having notified every one of
 		// them first; that is the answer, not a failure.
-		const int result = git_checkout_tree(m_Handle, commit, &options);
+		const int result = git_checkout_tree(m_Handle.get(), commit, &options);
 
 		if (result != 0 && result != GIT_ECONFLICT)
 		{
@@ -442,13 +442,13 @@ namespace Core {
 		if (m_Handle == nullptr)
 			return failed(Error{ErrorCode::NotFound, "the repository is not open"});
 
-		auto resolved = Resolve(m_Handle, target);
+		auto resolved = Resolve(m_Handle.get(), target);
 
 		if (!resolved.HasValue())
 			return failed(resolved.GetError());
 
 		const Resolved& r = resolved.GetValue();
-		auto conflicted = Conflicted(m_Handle);
+		auto conflicted = Conflicted(m_Handle.get());
 
 		if (!conflicted.HasValue())
 			return failed(conflicted.GetError());
@@ -458,7 +458,7 @@ namespace Core {
 		if (!conflicted.GetValue().empty())
 			return failed(Error{ErrorCode::InvalidArgument, ResolveConflictsFirst});
 
-		auto removed = Removals(m_Handle, r.Commit.get(), m_WorkingDirectory);
+		auto removed = Removals(m_Handle.get(), r.Commit.get(), m_WorkingDirectory);
 
 		if (!removed.HasValue())
 		{
@@ -471,7 +471,7 @@ namespace Core {
 
 		if (r.CreateTracking)
 		{
-			if (git_branch_create(Out(created), m_Handle, r.LocalName.c_str(),
+			if (git_branch_create(Out(created), m_Handle.get(), r.LocalName.c_str(),
 								  reinterpret_cast<git_commit*>(r.Commit.get()), 0) != 0)
 			{
 				return failed(Error{ErrorCode::InvalidArgument,
@@ -497,7 +497,7 @@ namespace Core {
 		// is refused with the working tree and the index exactly as they were, and by the time
 		// any other failure can happen, Updated already holds everything the checkout meant to
 		// write.
-		const int checkedOut = git_checkout_tree(m_Handle, r.Commit.get(), &options);
+		const int checkedOut = git_checkout_tree(m_Handle.get(), r.Commit.get(), &options);
 		AddUnlessOverwritten(notified.Updated, std::move(removed).GetValue(), notified.Overwritten);
 
 		if (checkedOut != 0)
@@ -524,8 +524,8 @@ namespace Core {
 		}
 
 		const int moved = target.Kind == CheckoutKind::Commit
-							  ? git_repository_set_head_detached(m_Handle, git_object_id(r.Commit.get()))
-							  : git_repository_set_head(m_Handle, r.HeadRef.c_str());
+							  ? git_repository_set_head_detached(m_Handle.get(), git_object_id(r.Commit.get()))
+							  : git_repository_set_head(m_Handle.get(), r.HeadRef.c_str());
 
 		const bool branchCreated = created != nullptr;
 
@@ -550,7 +550,7 @@ namespace Core {
 
 		ObjectHandle head;
 
-		if (git_revparse_single(Out(head), m_Handle, "HEAD^{commit}") != 0)
+		if (git_revparse_single(Out(head), m_Handle.get(), "HEAD^{commit}") != 0)
 			return Error{ErrorCode::NotFound, std::format("cannot read HEAD: {}", LastLibgit2Message())};
 
 		TreeHandle tree;
@@ -560,7 +560,7 @@ namespace Core {
 
 		IndexHandle index;
 
-		if (git_repository_index(Out(index), m_Handle) != 0)
+		if (git_repository_index(Out(index), m_Handle.get()) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
 
 		// What a hard reset does, but with git's own ending: git_reset also deletes
@@ -572,7 +572,7 @@ namespace Core {
 		git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
 		options.checkout_strategy = GIT_CHECKOUT_FORCE;
 
-		if (git_checkout_tree(m_Handle, reinterpret_cast<git_object*>(tree.get()), &options) != 0)
+		if (git_checkout_tree(m_Handle.get(), reinterpret_cast<git_object*>(tree.get()), &options) != 0)
 			return Error{ErrorCode::IoFailure, std::format("cannot discard changes: {}", LastLibgit2Message())};
 
 		if (git_index_read_tree(index.get(), tree.get()) != 0 || git_index_write(index.get()) != 0)
@@ -583,12 +583,12 @@ namespace Core {
 		// untracked files does not leave them on disk as well.
 		if (includeUntracked)
 		{
-			auto removed = RemoveUntracked(m_Handle, m_WorkingDirectory);
+			auto removed = RemoveUntracked(m_Handle.get(), m_WorkingDirectory);
 
 			if (!removed.HasValue())
 				return removed.GetError();
 		}
 
-		return EndPendingCommit(m_Handle);
+		return EndPendingCommit(m_Handle.get());
 	}
 }
