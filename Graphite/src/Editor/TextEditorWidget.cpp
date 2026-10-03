@@ -358,10 +358,42 @@ namespace Graphite {
 			return pointer;
 		}
 
+		std::string LensLabelOf(const Lens& lens)
+		{
+			return std::to_string(lens.Count) + (lens.Count == 1 ? " reference" : " references");
+		}
+
+		// No ScrollX term, and that is not an omission: textOriginX is derived from the origin,
+		// which already carries the horizontal scroll. Subtracting ScrollX here would apply it
+		// twice and slide every lens away from its declaration the moment the view scrolls
+		// sideways. Only DrawGutterFill adds it back, to pin the gutter against the scroll — the
+		// opposite intent.
+		float LensLabelLeft(const Lens& lens, float textOriginX, const EditorMetrics& metrics)
+		{
+			return textOriginX + static_cast<float>(lens.Column) * metrics.CellWidth;
+		}
+
+		// Whether x falls on the label DrawLensRow paints. Only the label is a link: the rest of
+		// the row is blank, and a press there opening the references panel read as the whole
+		// width of the editor being a button. A lens whose count is not known yet paints
+		// nothing, so nothing on its row is a link either.
+		bool IsOverLensLabel(const Lens* lens, float x, float textOriginX,
+							 const EditorMetrics& metrics)
+		{
+			if (lens == nullptr || !lens->CountKnown)
+			{
+				return false;
+			}
+
+			const float left = LensLabelLeft(*lens, textOriginX, metrics);
+			const std::string text = LensLabelOf(*lens);
+			return x >= left && x < left + ImGui::CalcTextSize(text.c_str()).x;
+		}
+
 		void ApplyMouseToCaret(const PointerState& pointer, const Core::TextBuffer& buffer,
 							   Core::OpenItem& item, const EditorMetrics& metrics,
 							   const ImVec2& origin, float textOriginX, const LensRows& lenses,
-							   EditorFrameResult& result)
+							   const LensModel* lensModel, EditorFrameResult& result)
 		{
 			if (!pointer.PressedThisFrame && !pointer.Dragging && !pointer.RightPressedThisFrame)
 			{
@@ -404,8 +436,8 @@ namespace Graphite {
 			}
 
 			// There is no text on a lens row to put a caret in, so a PRESS on one cannot become a
-			// caret position: it reports the declaration the lens sits above and leaves the caret
-			// where it was.
+			// caret position: on the label it reports the declaration the lens sits above, off it
+			// it does nothing, and either way the caret stays where it was.
 			//
 			// A drag is a different gesture and must not return here. It reports nothing — a drag
 			// across a lens is not a click on it, and opening a references panel mid-selection
@@ -416,7 +448,16 @@ namespace Graphite {
 			// the editor stuttering rather than as anything to do with lenses.
 			if (hit.IsLens && pointer.PressedThisFrame)
 			{
-				result.LensClicked = hit.DocumentRow;
+				// A lens row exists only where a model supplied its anchor, so lensModel is
+				// non-null here by construction — NoLenses has no anchors.
+				const Lens* const lens =
+					lensModel != nullptr ? lensModel->LensAt(hit.DocumentRow) : nullptr;
+
+				if (IsOverLensLabel(lens, mouse.x, textOriginX, metrics))
+				{
+					result.LensClicked = hit.DocumentRow;
+				}
+
 				return;
 			}
 
@@ -1734,17 +1775,10 @@ namespace Graphite {
 
 			if (lens != nullptr && lens->CountKnown)
 			{
-				const std::string text = std::to_string(lens->Count) +
-										 (lens->Count == 1 ? " reference" : " references");
-				// No ScrollX term, and that is not an omission: TextOriginX is derived from the
-				// origin, which already carries the horizontal scroll. Subtracting ScrollX here
-				// would apply it twice and slide every lens away from its declaration the moment
-				// the view scrolls sideways. Only DrawGutterFill adds it back, to pin the gutter
-				// against the scroll — the opposite intent.
-				const float x = canvas.TextOriginX +
-								static_cast<float>(lens->Column) * canvas.Metrics.CellWidth;
-
-				canvas.Draw->AddText(ImVec2(x, y), canvas.Palette.Lens, text.c_str());
+				const std::string text = LensLabelOf(*lens);
+				canvas.Draw->AddText(
+					ImVec2(LensLabelLeft(*lens, canvas.TextOriginX, canvas.Metrics), y),
+					canvas.Palette.Lens, text.c_str());
 			}
 
 			DrawGutterFill(canvas, y);
@@ -3106,7 +3140,7 @@ namespace Graphite {
 				DocumentHeightOf(item, metrics, lenses));
 
 			ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
-							  origin.x + metrics.Gutter.TotalWidth, lenses, result);
+							  origin.x + metrics.Gutter.TotalWidth, lenses, view.Lens, result);
 			RouteMouseWheel(context);
 
 			const bool hasMenu = context.ContextMenu != nullptr && context.Commands != nullptr &&
