@@ -10,7 +10,7 @@
 #include <im_anim.h>
 #include <imgui_internal.h>
 
-namespace Core::Animation {
+namespace Core {
 
 	namespace {
 		// Closer than this to its target a fade is finished: a thousandth of a colour channel
@@ -30,7 +30,7 @@ namespace Core::Animation {
 		}
 	}
 
-	void BeginFrame()
+	void Animation::BeginFrame()
 	{
 		// No iam_gc: it ages a tween from the frame it was created, not the frame it was last
 		// asked for, so it drops a hover still in use - an item held under the pointer longer
@@ -39,7 +39,7 @@ namespace Core::Animation {
 		iam_update_begin_frame();
 	}
 
-	float HoverAmount(ImGuiID id, bool hovered)
+	float Animation::HoverAmount(ImGuiID id, bool hovered)
 	{
 		const float target = hovered ? 1.0f : 0.0f;
 		const float seconds = hovered ? kHoverInSeconds : kHoverOutSeconds;
@@ -68,7 +68,7 @@ namespace Core::Animation {
 		return amount;
 	}
 
-	ImVec4 Blend(const ImVec4& from, const ImVec4& to, float amount)
+	ImVec4 Animation::Blend(const ImVec4& from, const ImVec4& to, float amount)
 	{
 		return ImVec4(from.x + (to.x - from.x) * amount, from.y + (to.y - from.y) * amount,
 					  from.z + (to.z - from.z) * amount, from.w + (to.w - from.w) * amount);

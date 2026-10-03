@@ -5,9 +5,11 @@
 #include <atomic>
 #include <mutex>
 
-namespace Core::Redraw {
+namespace Core {
 
 	namespace {
+
+		using Clock = Redraw::Clock;
 
 		// Guarded rather than atomic because of the one caller that can outlive the window: a
 		// system dialog's detached thread. With a bare atomic it could load the waker, be
@@ -23,7 +25,7 @@ namespace Core::Redraw {
 		std::atomic<Clock::rep> s_Deadline{kNoDeadline};
 	}
 
-	void Request()
+	void Redraw::Request()
 	{
 		// The flag before the wake: the loop takes the flag after its wait returns, and a wake
 		// that landed first would find nothing to take. Only the request that raises the flag
@@ -42,7 +44,7 @@ namespace Core::Redraw {
 		}
 	}
 
-	void RequestIn(std::chrono::duration<double> delay)
+	void Redraw::RequestIn(std::chrono::duration<double> delay)
 	{
 		const Clock::rep wanted =
 			(Clock::now() + std::chrono::duration_cast<Clock::duration>(delay))
@@ -55,23 +57,23 @@ namespace Core::Redraw {
 		}
 	}
 
-	void SetWaker(void (*waker)())
+	void Redraw::SetWaker(void (*waker)())
 	{
 		const std::lock_guard lock{s_WakerMutex};
 		s_Waker = waker;
 	}
 
-	bool IsRequested()
+	bool Redraw::IsRequested()
 	{
 		return s_Requested.load();
 	}
 
-	bool TakeRequest()
+	bool Redraw::TakeRequest()
 	{
 		return s_Requested.exchange(false);
 	}
 
-	std::optional<Clock::time_point> TakeDeadline()
+	std::optional<Redraw::Clock::time_point> Redraw::TakeDeadline()
 	{
 		const Clock::rep deadline = s_Deadline.exchange(kNoDeadline);
 

@@ -13,36 +13,44 @@
 // Process-wide rather than handed down: the producers are worker threads several layers
 // below anything that knows about the window, and a waker threaded through every one of
 // them would be plumbing for a single call.
-namespace Core::Redraw {
+namespace Core {
 
-	using Clock = std::chrono::steady_clock;
+	// A type of static members rather than a namespace of its own: the house style keeps one
+	// namespace per project.
+	class Redraw final
+	{
+	public:
+		Redraw() = delete;
 
-	// Any thread. Wakes the loop for a few frames — enough to drain the result and for ImGui
-	// to settle whatever it changed, not a second of them: a process writing into a watched
-	// folder would otherwise keep the loop drawing at the refresh rate. Whatever the result
-	// sets off later (a debounce, a settle period) asks for its own frame with RequestIn.
-	// Cheap enough to call per result: requests made before the loop takes the first share
-	// its one wake.
-	void Request();
+		using Clock = std::chrono::steady_clock;
 
-	// The UI thread. Asks for a frame no later than `delay` from now, without the frames that
-	// follow a Request: a blinking caret wants one frame per phase, not the loop kept awake.
-	// Read when the loop begins to wait, so a call from another thread during a wait takes
-	// effect only at the next one. A request lasts for one wait; a frame that still wants
-	// one asks again.
-	void RequestIn(std::chrono::duration<double> delay);
+		// Any thread. Wakes the loop for a few frames — enough to drain the result and for ImGui
+		// to settle whatever it changed, not a second of them: a process writing into a watched
+		// folder would otherwise keep the loop drawing at the refresh rate. Whatever the result
+		// sets off later (a debounce, a settle period) asks for its own frame with RequestIn.
+		// Cheap enough to call per result: requests made before the loop takes the first share
+		// its one wake.
+		static void Request();
 
-	// The loop's side. The waker is whatever interrupts the loop's wait from another thread;
-	// until one is set — in tests, or before the window exists — Request only records. Once
-	// SetWaker returns, no call to the previous waker is still running.
-	void SetWaker(void (*waker)());
+		// The UI thread. Asks for a frame no later than `delay` from now, without the frames that
+		// follow a Request: a blinking caret wants one frame per phase, not the loop kept awake.
+		// Read when the loop begins to wait, so a call from another thread during a wait takes
+		// effect only at the next one. A request lasts for one wait; a frame that still wants
+		// one asks again.
+		static void RequestIn(std::chrono::duration<double> delay);
 
-	// Whether a Request is waiting to be taken, without taking it.
-	bool IsRequested();
+		// The loop's side. The waker is whatever interrupts the loop's wait from another thread;
+		// until one is set — in tests, or before the window exists — Request only records. Once
+		// SetWaker returns, no call to the previous waker is still running.
+		static void SetWaker(void (*waker)());
 
-	// Whether Request was called since the last take, clearing it.
-	bool TakeRequest();
+		// Whether a Request is waiting to be taken, without taking it.
+		static bool IsRequested();
 
-	// The earliest RequestIn deadline since the last take, clearing it.
-	std::optional<Clock::time_point> TakeDeadline();
+		// Whether Request was called since the last take, clearing it.
+		static bool TakeRequest();
+
+		// The earliest RequestIn deadline since the last take, clearing it.
+		static std::optional<Clock::time_point> TakeDeadline();
+	};
 }
