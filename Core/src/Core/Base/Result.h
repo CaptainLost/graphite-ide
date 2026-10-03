@@ -48,7 +48,9 @@ namespace Core {
 			return std::get<0>(m_Data);
 		}
 
-		T&& GetValue() &&
+		// By value, not T&&: a reference into a temporary result dangles at the end of the full
+		// expression, and `const auto& x = Open().GetValue();` would compile and read freed memory.
+		T GetValue() &&
 		{
 			CORE_ASSERT(HasValue(), "Result::GetValue() called on an error result");
 			return std::get<0>(std::move(m_Data));

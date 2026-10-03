@@ -80,3 +80,17 @@ TEST_CASE("A type inheriting from NonCopyable remains movable")
 
 	CHECK(moved.value == 7);
 }
+
+// GetValue on a temporary hands the value out rather than a reference into the temporary, so
+// `const auto& path = Open().GetValue();` holds the value instead of dangling at the semicolon.
+TEST_CASE("GetValue on a temporary result returns the value, not a reference into it")
+{
+	static_assert(std::is_same_v<decltype(std::declval<Result<std::string>>().GetValue()), std::string>);
+	static_assert(std::is_same_v<decltype(std::declval<Result<std::unique_ptr<int>>>().GetValue()),
+								 std::unique_ptr<int>>);
+
+	const auto make = [] { return Result<std::string>{std::string(64, 'x')}; };
+	const std::string& held = make().GetValue();
+
+	CHECK(held == std::string(64, 'x'));
+}
