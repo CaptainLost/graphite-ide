@@ -7,6 +7,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 
+#include <array>
 #include <cctype>
 #include <optional>
 
@@ -137,21 +138,22 @@ namespace Core {
 
 	const ImWchar* UsedGlyphRanges()
 	{
-		static ImWchar ranges[2 * kUsedIconCount + 2] = {};
-		static bool built = false;
-
-		if (!built)
+		// Built once by the static's own initialiser, which the language makes thread-safe, and
+		// zero-terminated by the two entries the loop leaves alone.
+		static const std::array<ImWchar, 2 * kUsedIconCount + 2> ranges = []
 		{
+			std::array<ImWchar, 2 * kUsedIconCount + 2> built{};
+
 			for (std::size_t i = 0; i < kUsedIconCount; ++i)
 			{
 				const ImWchar codepoint = DecodeIcon(kUsedIcons[i]);
-				ranges[2 * i] = codepoint;
-				ranges[2 * i + 1] = codepoint;
+				built[2 * i] = codepoint;
+				built[2 * i + 1] = codepoint;
 			}
 
-			built = true;
-		}
+			return built;
+		}();
 
-		return ranges;
+		return ranges.data();
 	}
 }
