@@ -55,11 +55,15 @@ namespace Graphite {
 		if (m_Debounce.Advance(seconds))
 		{
 			for (auto& [path, entry] : m_Entries)
+			{
 				RequestBases(path, entry);
+			}
 		}
 
 		for (auto& [path, entry] : m_Entries)
+		{
 			entry.QuietFor += seconds;
+		}
 
 		m_Inbox.Drain();
 	}
@@ -70,7 +74,9 @@ namespace Graphite {
 		Entry& entry = it->second;
 
 		if (inserted)
+		{
 			RequestBases(path, entry);
+		}
 
 		const std::size_t revision = buffer.GetRevision();
 
@@ -126,13 +132,19 @@ namespace Graphite {
 					auto hunks = Core::DiffTexts(head, *fresh->Texts.Index);
 
 					if (hunks.HasValue())
+					{
 						fresh->HeadToIndex = std::move(hunks).GetValue();
+					}
 					else
+					{
 						error = hunks.GetError();
+					}
 				}
 
 				if (!error)
+				{
 					bases = std::move(fresh);
+				}
 			}
 			else
 			{
@@ -143,7 +155,9 @@ namespace Graphite {
 				const auto found = m_Entries.find(path);
 
 				if (found == m_Entries.end() || found->second.BasesRequested != generation)
+				{
 					return;
+				}
 
 				Entry& target = found->second;
 
@@ -212,7 +226,9 @@ namespace Graphite {
 				const auto found = m_Entries.find(path);
 
 				if (found == m_Entries.end() || found->second.MarkersRequested != generation)
+				{
 					return;
+				}
 
 				found->second.Markers = markers;
 			});

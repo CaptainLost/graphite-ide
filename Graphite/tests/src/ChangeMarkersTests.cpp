@@ -202,7 +202,9 @@ TEST_CASE("Old lines are capped but their count is kept")
 {
 	std::string index;
 	for (int line = 0; line < 20; ++line)
+	{
 		index += std::to_string(line) + "\n";
+	}
 
 	const std::vector<LineHunk> unstaged{{0, 20, 0, 0}};
 	const Graphite::OldTexts old{.Head = index, .Index = index};

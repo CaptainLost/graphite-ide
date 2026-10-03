@@ -71,7 +71,9 @@ namespace Graphite {
 			for (const Token& token : syntax.TokensOf(buffer, line))
 			{
 				if (expanded >= token.From && expanded < token.To)
+				{
 					return token.Kind;
+				}
 			}
 
 			return TokenKind::Text;
@@ -83,12 +85,16 @@ namespace Graphite {
 									  std::size_t offset, std::size_t tabWidth)
 		{
 			if (offset >= buffer.GetLength())
+			{
 				return std::nullopt;
+			}
 
 			const char bracket = buffer.CharAt(offset);
 
 			if (!IsOpen(bracket) && !IsClose(bracket))
+			{
 				return std::nullopt;
+			}
 
 			const Core::Position position = buffer.ToPosition(offset);
 			const std::string lineText = buffer.LineText(position.Line);
@@ -126,10 +132,14 @@ namespace Graphite {
 					const char bracket = lineText[at];
 
 					if (bracket != open && bracket != close)
+					{
 						continue;
+					}
 
 					if (!IsCode(KindAt(syntax, buffer, line, lineText, at, tabWidth)))
+					{
 						continue;
+					}
 
 					if (bracket == open)
 					{
@@ -138,7 +148,9 @@ namespace Graphite {
 					}
 
 					if (--depth == 0)
+					{
 						return lineStart + at;
+					}
 				}
 			}
 
@@ -169,10 +181,14 @@ namespace Graphite {
 					const char bracket = lineText[at];
 
 					if (bracket != open && bracket != close)
+					{
 						continue;
+					}
 
 					if (!IsCode(KindAt(syntax, buffer, line, lineText, at, tabWidth)))
+					{
 						continue;
+					}
 
 					if (bracket == close)
 					{
@@ -181,7 +197,9 @@ namespace Graphite {
 					}
 
 					if (--depth == 0)
+					{
 						return lineStart + at;
+					}
 				}
 			}
 
@@ -206,7 +224,9 @@ namespace Graphite {
 		}
 
 		if (!bracket)
+		{
 			return std::nullopt;
+		}
 
 		if (IsOpen(*bracket))
 		{
@@ -214,7 +234,9 @@ namespace Graphite {
 				ScanForward(buffer, syntax, at + 1, *bracket, tabWidth);
 
 			if (close)
+			{
 				return BracketPair{at, *close, true};
+			}
 		}
 		else
 		{
@@ -222,7 +244,9 @@ namespace Graphite {
 				ScanBackward(buffer, syntax, at, *bracket, tabWidth);
 
 			if (open)
+			{
 				return BracketPair{*open, at, true};
+			}
 		}
 
 		// On a bracket, but its partner is missing or further away than the scan reads. Both

@@ -58,12 +58,16 @@ namespace {
 		const std::size_t element = written.find(path);
 
 		if (element == std::string::npos)
+		{
 			return {};
+		}
 
 		const std::size_t begin = written.find("Id=\"", element);
 
 		if (begin == std::string::npos)
+		{
 			return {};
+		}
 
 		const std::size_t value = begin + 4;
 		const std::size_t end = written.find('"', value);
@@ -284,7 +288,9 @@ TEST_CASE("No temporary file is left beside the solution")
 	std::vector<std::string> before;
 
 	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath()})
+	{
 		before.push_back(Core::ToUtf8(entry.path().filename()));
+	}
 
 	std::sort(before.begin(), before.end());
 
@@ -296,7 +302,9 @@ TEST_CASE("No temporary file is left beside the solution")
 	std::vector<std::string> after;
 
 	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath()})
+	{
 		after.push_back(Core::ToUtf8(entry.path().filename()));
+	}
 
 	std::sort(after.begin(), after.end());
 
@@ -572,9 +580,13 @@ TEST_CASE("A project moves between folders")
 	for (const Graphite::Folder& folder : solution.GetValue().Root.Folders)
 	{
 		if (folder.Name == "Engine")
+		{
 			CHECK(folder.Projects.size() == 1);
+		}
 		else
+		{
 			CHECK(folder.Projects.empty());
+		}
 	}
 }
 

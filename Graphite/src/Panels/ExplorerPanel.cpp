@@ -50,15 +50,21 @@ namespace Graphite {
 		ImGui::Separator();
 
 		if (m_Mode == Mode::Files)
+		{
 			m_Files.Render();
+		}
 		else
+		{
 			m_Solution.Render();
+		}
 	}
 
 	void ExplorerPanel::SyncModeWithWorkspace()
 	{
 		if (m_Workspace.GetRoot() == m_ModeLoadedFor)
+		{
 			return;
+		}
 
 		m_ModeLoadedFor = m_Workspace.GetRoot();
 		m_Mode = ModeFromSetting(m_Workspace.FolderSettings().Read(kModeKey));
@@ -85,7 +91,9 @@ namespace Graphite {
 		RenderModeCombo();
 
 		if (m_Mode == Mode::Solution && m_Workspace.GetSolutionCandidates().size() > 1)
+		{
 			RenderSolutionChooser();
+		}
 	}
 
 	void ExplorerPanel::RenderModeCombo()
@@ -97,10 +105,14 @@ namespace Graphite {
 		if (ImGui::BeginCombo("##explorerMode", current))
 		{
 			if (ImGui::Selectable(kFileSystemLabel, m_Mode == Mode::Files))
+			{
 				SetMode(Mode::Files);
+			}
 
 			if (ImGui::Selectable(kSolutionLabel, m_Mode == Mode::Solution))
+			{
 				SetMode(Mode::Solution);
+			}
 
 			ImGui::EndCombo();
 		}
@@ -116,14 +128,18 @@ namespace Graphite {
 		ImGui::SetNextItemWidth(-1.0f);
 
 		if (!ImGui::BeginCombo("##solutionChoice", Core::ToUtf8(loaded.filename()).c_str()))
+		{
 			return;
+		}
 
 		for (const std::filesystem::path& candidate : m_Workspace.GetSolutionCandidates())
 		{
 			const std::string name = Core::ToUtf8(candidate.filename());
 
 			if (ImGui::Selectable(name.c_str(), candidate == loaded))
+			{
 				m_Workspace.SelectSolution(candidate);
+			}
 		}
 
 		ImGui::EndCombo();
@@ -169,6 +185,8 @@ namespace Graphite {
 		m_Solution.SetFollowsActiveFile(follow);
 
 		if (persist)
+		{
 			m_AppSettings.SetExplorerFollowsActiveFile(follow);
+		}
 	}
 }

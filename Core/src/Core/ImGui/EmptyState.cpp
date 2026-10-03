@@ -19,7 +19,9 @@ namespace Core {
 		std::string_view TrimTrailingBlanks(std::string_view line)
 		{
 			while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r'))
+			{
 				line.remove_suffix(1);
+			}
 
 			return line;
 		}
@@ -28,7 +30,9 @@ namespace Core {
 		{
 			// Guarded because an empty view may carry no pointer at all.
 			if (text.empty())
+			{
 				return 0.0f;
+			}
 
 			return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
 		}
@@ -39,7 +43,9 @@ namespace Core {
 		std::vector<CentredLine> lines;
 
 		if (text.empty())
+		{
 			return lines;
+		}
 
 		ImFont* font = ImGui::GetFont();
 		const float size = ImGui::GetFontSize();
@@ -58,7 +64,9 @@ namespace Core {
 			// ImGui already cuts a word too long for a line, but a line that took nothing would
 			// never end this loop.
 			if (lineEnd == begin && *begin != '\n')
+			{
 				lineEnd = begin + ImTextCountUtf8BytesFromChar(begin, end);
+			}
 
 			const std::string_view line =
 				TrimTrailingBlanks(std::string_view(begin, static_cast<std::size_t>(lineEnd - begin)));
@@ -73,7 +81,9 @@ namespace Core {
 			CentredStart(region.y, lineHeight * static_cast<float>(lines.size()) + below);
 
 		for (std::size_t index = 0; index < lines.size(); ++index)
+		{
 			lines[index].Offset.y = top + lineHeight * static_cast<float>(index);
+		}
 
 		return lines;
 	}

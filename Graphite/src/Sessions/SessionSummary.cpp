@@ -19,12 +19,16 @@ namespace Graphite {
 		std::optional<std::string> TypedPrompt(const TranscriptRecord& record)
 		{
 			if (record.Kind != RecordKind::User || record.IsMeta)
+			{
 				return std::nullopt;
+			}
 
 			for (const ContentBlock& block : record.Blocks)
 			{
 				if (block.Kind == BlockKind::Text && !block.Text.empty() && !IsInjectedText(block.Text))
+				{
 					return block.Text;
+				}
 			}
 
 			return std::nullopt;
@@ -35,11 +39,15 @@ namespace Graphite {
 			std::error_code status;
 			const auto size = std::filesystem::file_size(file, status);
 			if (status)
+			{
 				return;
+			}
 
 			const auto written = std::filesystem::last_write_time(file, status);
 			if (status)
+			{
 				return;
+			}
 
 			print.Bytes += size;
 			print.WriteTicks = std::max<std::int64_t>(print.WriteTicks, written.time_since_epoch().count());
@@ -56,7 +64,9 @@ namespace Graphite {
 				 it.increment(status))
 			{
 				if (it->path().extension() == ".jsonl")
+				{
 					visit(it->path());
+				}
 			}
 		}
 
@@ -65,7 +75,9 @@ namespace Graphite {
 		bool ParseField(std::string_view text, std::size_t start, std::size_t width, int& value)
 		{
 			if (start + width > text.size())
+			{
 				return false;
+			}
 
 			const std::string_view field = text.substr(start, width);
 			const auto [next, error] = std::from_chars(field.data(), field.data() + field.size(), value);
@@ -76,7 +88,9 @@ namespace Graphite {
 	void UsageTally::Add(const TranscriptRecord& record)
 	{
 		if (!record.Usage.has_value())
+		{
 			return;
+		}
 
 		// A record with no request id is its own request; its uuid keeps it from being
 		// merged with another such record.
@@ -111,7 +125,9 @@ namespace Graphite {
 	std::string SessionSummary::DisplayTitle() const
 	{
 		if (!Title.empty())
+		{
 			return Title;
+		}
 
 		return FirstPrompt.empty() ? Id : FirstPrompt;
 	}
@@ -121,7 +137,9 @@ namespace Graphite {
 		std::optional<SessionSummary> summary = TrySummariseSession(sessionFile);
 
 		if (summary.has_value())
+		{
 			return std::move(*summary);
+		}
 
 		// What the callers of this form have always had for a file that could not be read:
 		// the session's identity and fingerprint, and nothing else.
@@ -140,7 +158,9 @@ namespace Graphite {
 		Core::Result<TranscriptRead> read = ReadTranscript(sessionFile, 0);
 
 		if (!read)
+		{
 			return std::nullopt;
+		}
 
 		SessionSummary summary;
 		summary.Id = Core::ToUtf8(sessionFile.stem());
@@ -155,24 +175,34 @@ namespace Graphite {
 			main.Add(record);
 
 			if (record.Kind == RecordKind::AiTitle && !record.Title.empty())
+			{
 				summary.Title = record.Title;
+			}
 
 			if (summary.Cwd.empty() && !record.Cwd.empty())
+			{
 				summary.Cwd = Core::FromUtf8(record.Cwd);
+			}
 
 			if (summary.FirstPrompt.empty())
 			{
 				if (std::optional<std::string> prompt = TypedPrompt(record))
+				{
 					summary.FirstPrompt = TruncateUtf8(*prompt, kPromptBytes);
+				}
 			}
 
 			// ISO 8601 in UTC compares as text in time order.
 			if (!record.Timestamp.empty())
 			{
 				if (summary.StartedAt.empty() || record.Timestamp < summary.StartedAt)
+				{
 					summary.StartedAt = record.Timestamp;
+				}
 				if (record.Timestamp > summary.EndedAt)
+				{
 					summary.EndedAt = record.Timestamp;
+				}
 			}
 		}
 
@@ -185,11 +215,15 @@ namespace Graphite {
 			if (Core::Result<TranscriptRead> agent = ReadTranscript(file, 0))
 			{
 				for (const TranscriptRecord& record : agent.GetValue().Chunk.Records)
+				{
 					tally.Add(record);
+				}
 			}
 
 			for (const auto& [key, counts] : tally.Get())
+			{
 				summary.Subagents[key] += counts;
+			}
 		});
 
 		return summary;
@@ -207,23 +241,31 @@ namespace Graphite {
 		// rejected rather than mis-parsed.
 		if (text.size() < 19 || text[4] != '-' || text[7] != '-' || text[10] != 'T' || text[13] != ':' ||
 			text[16] != ':')
+		{
 			return std::nullopt;
+		}
 
 		int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millisecond = 0;
 
 		if (!ParseField(text, 0, 4, year) || !ParseField(text, 5, 2, month) || !ParseField(text, 8, 2, day) ||
 			!ParseField(text, 11, 2, hour) || !ParseField(text, 14, 2, minute) ||
 			!ParseField(text, 17, 2, second))
+		{
 			return std::nullopt;
+		}
 
 		if (text.size() >= 24 && text[19] == '.')
+		{
 			ParseField(text, 20, 3, millisecond);
+		}
 
 		const std::chrono::year_month_day date{std::chrono::year{year},
 											   std::chrono::month{static_cast<unsigned>(month)},
 											   std::chrono::day{static_cast<unsigned>(day)}};
 		if (!date.ok())
+		{
 			return std::nullopt;
+		}
 
 		return std::chrono::sys_days{date} + std::chrono::hours{hour} + std::chrono::minutes{minute} +
 			   std::chrono::seconds{second} + std::chrono::milliseconds{millisecond};
@@ -242,13 +284,17 @@ namespace Graphite {
 	std::string TruncateUtf8(std::string_view text, std::size_t maxBytes)
 	{
 		if (text.size() <= maxBytes)
+		{
 			return std::string{text};
+		}
 
 		std::size_t cut = maxBytes;
 
 		// Continuation bytes are 10xxxxxx; back off until the cut lands before a lead byte.
 		while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0u) == 0x80u)
+		{
 			--cut;
+		}
 
 		return std::string{text.substr(0, cut)};
 	}

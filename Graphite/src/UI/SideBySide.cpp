@@ -9,7 +9,9 @@ namespace Graphite {
 	{
 		// Also refuses a NaN room, which fails every comparison.
 		if (!(room > 0.0f))
+		{
 			return {};
+		}
 
 		const float least = std::clamp(minimum, 0.0f, room * 0.5f);
 

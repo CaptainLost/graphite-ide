@@ -33,7 +33,9 @@ namespace Core {
 		m_Entries.push_back(std::move(entry));
 		++m_Revision;
 		while (m_Entries.size() > m_Capacity)
+		{
 			m_Entries.pop_front();
+		}
 	}
 
 	void RingBufferSink::flush_()

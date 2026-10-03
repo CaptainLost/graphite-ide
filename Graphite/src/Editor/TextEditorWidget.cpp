@@ -130,7 +130,9 @@ namespace Graphite {
 			std::size_t at = std::min(byte, expanded.size());
 
 			for (std::size_t taken = 0; taken < columns && at < expanded.size(); ++taken)
+			{
 				at = Core::NextCharacter(expanded, at);
+			}
 
 			return at;
 		}
@@ -215,7 +217,9 @@ namespace Graphite {
 			// where it is felt. Never zero — a window narrower than the gutter is a layout state,
 			// not an error, and WrapColumns would stand still on a width of zero.
 			if (!wordWrap)
+			{
 				return Core::RowMap::kNoWrap;
+			}
 
 			return static_cast<std::size_t>(
 				std::max(1.0f, (available - metrics.Gutter.TotalWidth) / metrics.CellWidth));
@@ -229,7 +233,9 @@ namespace Graphite {
 			// passed through RefreshDerived, and a map with more lines than the buffer would send
 			// RowAt off the end of it.
 			if (columnsPerRow == item.WrappedTo && item.Rows.GetLineCount() == buffer.GetLineCount())
+			{
 				return;
+			}
 
 			item.Rows.Rebuild(buffer, columnsPerRow, item.TabWidth);
 			item.WrappedTo = columnsPerRow;
@@ -249,7 +255,9 @@ namespace Graphite {
 							 float available, bool wordWrap)
 		{
 			if (wordWrap)
+			{
 				return available;
+			}
 
 			return metrics.Gutter.TotalWidth +
 				   static_cast<float>(item.WidestColumn + 1) * metrics.CellWidth;
@@ -354,7 +362,9 @@ namespace Graphite {
 							   EditorFrameResult& result)
 		{
 			if (!pointer.PressedThisFrame && !pointer.Dragging && !pointer.RightPressedThisFrame)
+			{
 				return;
+			}
 
 			const ImVec2 mouse = ImGui::GetMousePos();
 
@@ -384,7 +394,9 @@ namespace Graphite {
 					origin.x + ImGui::GetScrollX() + metrics.Gutter.TotalWidth;
 
 				if (hit.IsLens || mouse.x < gutterRight)
+				{
 					return;
+				}
 
 				result.ContextMenuWanted = true;
 			}
@@ -432,7 +444,9 @@ namespace Graphite {
 				const bool insideSelection = from != to && offset >= from && offset <= to;
 
 				if (!insideSelection)
+				{
 					item.Caret = Core::PlaceAt(buffer, item.Caret, offset, false, item.TabWidth);
+				}
 
 				return;
 			}
@@ -449,9 +463,13 @@ namespace Graphite {
 			// A triple click selects the whole line, not the row it landed on: a row is a
 			// consequence of the window's width, and the user asked for the line.
 			if (clicks >= 3)
+			{
 				item.Caret = Core::SelectLineAt(buffer, item.Rows.RowAt(row).Line);
+			}
 			else if (clicks == 2)
+			{
 				item.Caret = Core::SelectWordAt(buffer, offset);
+			}
 			else
 			{
 				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, ImGui::GetIO().KeyShift,
@@ -482,7 +500,9 @@ namespace Graphite {
 			// turn into several steps are the router's and the keymap's business, so neither
 			// KeyCtrl nor the wheel value is inspected here.
 			if (!ImGui::IsWindowHovered() || !routable)
+			{
 				return;
+			}
 
 			const Core::MouseScrolledEvent scrolled{ImGui::GetIO().MouseWheelH,
 													ImGui::GetIO().MouseWheel};
@@ -540,7 +560,9 @@ namespace Graphite {
 			// lands on a character boundary, and the column it writes is a column within the
 			// line, not within the row.
 			if (!shift)
+			{
 				item.Caret.Anchor = offset;
+			}
 
 			if (aiming)
 			{
@@ -624,7 +646,9 @@ namespace Graphite {
 				for (const Binding& binding : bindings)
 				{
 					if (stroke.Key != binding.Key)
+					{
 						continue;
+					}
 
 					item.Caret = Core::Move(buffer, item.Caret,
 											control ? binding.WithControl : binding.Plain, shift,
@@ -632,16 +656,24 @@ namespace Graphite {
 				}
 
 				if (stroke.Key == Core::KeyCode::Up)
+				{
 					MoveByRows(buffer, item, false, 1, shift);
+				}
 
 				if (stroke.Key == Core::KeyCode::Down)
+				{
 					MoveByRows(buffer, item, true, 1, shift);
+				}
 
 				if (stroke.Key == Core::KeyCode::PageUp)
+				{
 					MoveByRows(buffer, item, false, pageRows, shift);
+				}
 
 				if (stroke.Key == Core::KeyCode::PageDown)
+				{
 					MoveByRows(buffer, item, true, pageRows, shift);
+				}
 
 				if (stroke.Key == Core::KeyCode::Home)
 				{
@@ -760,7 +792,9 @@ namespace Graphite {
 			for (const unsigned int codepoint : input.GetCharacters())
 			{
 				if ((codepoint < 0x20 && codepoint != '\t') || codepoint == 0x7f)
+				{
 					continue;
+				}
 
 				char utf8[5];
 				const int length = ImTextCharToUtf8(utf8, codepoint);
@@ -863,7 +897,9 @@ namespace Graphite {
 				// action nobody asked to repeat — a held Ctrl+S saving over and over — so it
 				// answers to a first press only.
 				if (stroke.IsRepeat)
+				{
 					continue;
+				}
 
 				// Saving is not this widget's decision: a stale document on disk needs confirming
 				// first, and only DocumentWindows knows how to ask that. This only reports that
@@ -872,7 +908,9 @@ namespace Graphite {
 				// own Ctrl+Shift+S handling for "save every dirty document" and writing this one
 				// twice from a single keypress.
 				if (control && !shift && stroke.Key == Core::KeyCode::S)
+				{
 					result.SaveRequested = true;
+				}
 			}
 		}
 
@@ -894,7 +932,9 @@ namespace Graphite {
 			// before any of the edits below, means moving the caret and then typing costs a fresh
 			// undo step instead of merging with whatever was typed before the caret moved.
 			if (item.Caret.Offset != caretAtFrameStart)
+			{
 				item.Document->GetBuffer().BreakUndoGroup();
+			}
 
 			result.Edited |= InsertTypedCharacters(input, item, sinks);
 
@@ -921,11 +961,15 @@ namespace Graphite {
 															  pressed);
 
 				if (!ran)
+				{
 					remaining.PushKey(stroke.Key, stroke.Modifiers, stroke.IsRepeat);
+				}
 			}
 
 			for (const unsigned int codepoint : input.GetCharacters())
+			{
 				remaining.PushCharacter(codepoint);
+			}
 
 			return remaining;
 		}
@@ -936,7 +980,9 @@ namespace Graphite {
 								 const EditSinks& sinks, EditorFrameResult& result)
 		{
 			if (pending.empty() || !item.Document)
+			{
 				return;
+			}
 
 			std::vector<EditorAction> actions;
 			actions.swap(pending);
@@ -952,14 +998,18 @@ namespace Graphite {
 				if (action == EditorAction::Paste && Core::ClipboardHasText())
 				{
 					if (const char* text = ImGui::GetClipboardText(); text != nullptr)
+					{
 						clipboard = text;
+					}
 				}
 
 				const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 				const EditorActionOutcome outcome = ApplyEditorAction(action, item, clipboard);
 
 				if (outcome.ToClipboard)
+				{
 					ImGui::SetClipboardText(outcome.ToClipboard->c_str());
+				}
 
 				result.Edited |= outcome.Changed;
 				NotifyAfterEdit(sinks, buffer, item, before, outcome.Changed);
@@ -997,15 +1047,21 @@ namespace Graphite {
 			// for it would push the caret down a bar's height on every move, for the sake of a
 			// column the text rarely reaches.
 			if (caretY < scrollY)
+			{
 				ImGui::SetScrollY(caretY);
+			}
 			else if (caretY + metrics.LineHeight > scrollY + ImGui::GetWindowHeight())
+			{
 				ImGui::SetScrollY(caretY + metrics.LineHeight - ImGui::GetWindowHeight());
+			}
 
 			// Skipped entirely while wrapping: there is no horizontal range to scroll through,
 			// and chasing the caret across one that is zero wide would fight the vertical scroll
 			// above on every frame the caret moves.
 			if (wordWrap)
+			{
 				return;
+			}
 
 			// The same rule sideways, which End on a long line and Ctrl+Right through one both
 			// need. `caretX` is measured in content coordinates, where the gutter occupies the
@@ -1020,9 +1076,13 @@ namespace Graphite {
 					metrics.CellWidth;
 
 			if (caretX - metrics.Gutter.TotalWidth < ImGui::GetScrollX())
+			{
 				ImGui::SetScrollX(caretX - metrics.Gutter.TotalWidth);
+			}
 			else if (caretX + metrics.CellWidth > ImGui::GetScrollX() + ImGui::GetWindowWidth())
+			{
 				ImGui::SetScrollX(caretX + metrics.CellWidth - ImGui::GetWindowWidth());
+			}
 		}
 
 		// Everything a row needs that is the same for every row of the frame. ContentWidth is the
@@ -1117,7 +1177,9 @@ namespace Graphite {
 		void CacheLine(VisibleLineCache& cache, const LineCacheInput& input, std::size_t line)
 		{
 			if (cache.Valid && cache.Line == line)
+			{
 				return;
+			}
 
 			const auto [selectionFrom, selectionTo] = input.Selection;
 			const std::size_t tabWidth = input.TabWidth;
@@ -1152,7 +1214,9 @@ namespace Graphite {
 				for (const std::size_t offset : {input.Brackets->Open, input.Brackets->Close})
 				{
 					if (offset < start || offset >= end)
+					{
 						continue;
+					}
 
 					const std::size_t column =
 						Core::ColumnOfByte(cache.Text, offset - start, tabWidth);
@@ -1175,7 +1239,9 @@ namespace Graphite {
 									selectionFrom <= start + cache.Text.size();
 
 			if (!cache.SelectionOnLine)
+			{
 				return;
+			}
 
 			const std::size_t fromByte = selectionFrom > start ? selectionFrom - start : 0;
 			const std::size_t toByte = std::min(selectionTo - start, cache.Text.size() + 1);
@@ -1261,7 +1327,9 @@ namespace Graphite {
 			for (std::size_t column = 0; column < depth; column += tabWidth)
 			{
 				if (column < slice.FromColumn)
+				{
 					continue;
+				}
 
 				const float guideX =
 					canvas.TextOriginX +
@@ -1391,7 +1459,9 @@ namespace Graphite {
 				std::clamp(cache.SelectionToColumn, slice.FromColumn, slice.ToColumn);
 
 			if (clippedTo <= clippedFrom)
+			{
 				return;
+			}
 
 			const float fromX =
 				canvas.TextOriginX +
@@ -1522,7 +1592,9 @@ namespace Graphite {
 							  const ChangeMarkers* changes, std::size_t lineCount)
 		{
 			if (changes == nullptr)
+			{
 				return;
+			}
 
 			const float columnX = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.BreakpointWidth;
 			const float top = slice.Y;
@@ -1544,7 +1616,9 @@ namespace Graphite {
 			}
 
 			if (changes->Deletions.empty())
+			{
 				return;
+			}
 
 			const std::size_t lastLine = lineCount == 0 ? 0 : lineCount - 1;
 
@@ -1560,10 +1634,14 @@ namespace Graphite {
 			const auto at = std::ranges::lower_bound(changes->Deletions, slice.Line, {}, &DeletionAnchor::Line);
 
 			if (slice.SubRow == 0 && at != changes->Deletions.end() && at->Line == slice.Line)
+			{
 				drawAnchor(*at, top);
+			}
 
 			if (slice.LastRowOfLine && slice.Line == lastLine && changes->Deletions.back().Line > lastLine)
+			{
 				drawAnchor(changes->Deletions.back(), bottom);
+			}
 		}
 
 		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine,
@@ -1575,7 +1653,9 @@ namespace Graphite {
 			DrawChangeMarker(canvas, slice, changes, lineCount);
 
 			if (slice.SubRow != 0)
+			{
 				return;
+			}
 
 			const std::string number = std::to_string(slice.Line + 1);
 			const float numberColumnRight = gutterX + canvas.Metrics.Gutter.BreakpointWidth +
@@ -2232,14 +2312,18 @@ namespace Graphite {
 											 const LensRows& lenses, const ChangeMarkers* changes)
 		{
 			if (changes == nullptr || changes->Hunks.empty() || !ImGui::IsWindowHovered())
+			{
 				return nullptr;
+			}
 
 			const ImVec2 mouse = ImGui::GetMousePos();
 			const float columnX = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.BreakpointWidth;
 
 			if (mouse.x < columnX - Core::Scaled(kChangeHoverSlack) ||
 				mouse.x > columnX + Core::Scaled(kChangeColumnWidth) + Core::Scaled(kChangeHoverSlack) || mouse.y < canvas.Origin.y)
+			{
 				return nullptr;
+			}
 
 			const float relativeY = mouse.y - canvas.Origin.y;
 			const auto screenRow = static_cast<std::size_t>(relativeY / canvas.Metrics.LineHeight);
@@ -2250,7 +2334,9 @@ namespace Graphite {
 			const LensRows::Row hit = lenses.At(screenRow);
 
 			if (hit.IsLens || hit.DocumentRow >= item.Rows.TotalRows())
+			{
 				return nullptr;
+			}
 
 			const Core::RowRef ref = item.Rows.RowAt(hit.DocumentRow);
 			const bool lastRowOfLine = ref.SubRow + 1 >= item.Rows.RowsOf(ref.Line);
@@ -2258,7 +2344,9 @@ namespace Graphite {
 			if (ref.SubRow == 0 && inRow <= Core::Scaled(kChangeColumnWidth))
 			{
 				if (const ChangeHunk* above = FindDeletionHunk(*changes, ref.Line))
+				{
 					return above;
+				}
 			}
 
 			// A lens row between this line and the next holds the upper half of the next line's
@@ -2267,7 +2355,9 @@ namespace Graphite {
 				!lenses.At(screenRow + 1).IsLens)
 			{
 				if (const ChangeHunk* below = FindDeletionHunk(*changes, ref.Line + 1))
+				{
 					return below;
+				}
 
 				// Past the last line, the triangle drawn is whichever anchor lies beyond it, even
 				// one a shrinking buffer has left further out than the line after.
@@ -2276,7 +2366,9 @@ namespace Graphite {
 				if (lastLine && !changes->Deletions.empty() && changes->Deletions.back().Line > ref.Line)
 				{
 					if (const ChangeHunk* beyond = FindDeletionHunk(*changes, changes->Deletions.back().Line))
+					{
 						return beyond;
+					}
 				}
 			}
 
@@ -2297,7 +2389,9 @@ namespace Graphite {
 				std::size_t end = kChangeTooltipLineBytes;
 
 				while (end > 0 && (static_cast<unsigned char>(line[end]) & 0xC0u) == 0x80u)
+				{
 					--end;
+				}
 
 				line = line.substr(0, end);
 				cut = true;
@@ -2311,7 +2405,9 @@ namespace Graphite {
 
 			const auto piece = [&](std::string_view text, bool gone) {
 				if (text.empty())
+				{
 					return;
+				}
 
 				const std::string expanded = Core::ExpandTabs(text, tabWidth);
 
@@ -2334,7 +2430,9 @@ namespace Graphite {
 			piece(line.substr(removed.To), false);
 
 			if (cut)
+			{
 				piece("…", false);
+			}
 
 			ImGui::PopStyleColor();
 		}
@@ -2348,7 +2446,9 @@ namespace Graphite {
 							   const EditorPalette& palette, std::size_t tabWidth)
 		{
 			if (hunk == nullptr || !ImGui::BeginTooltip())
+			{
 				return;
+			}
 
 			ImGui::TextUnformatted(DescribeHunk(*hunk).c_str());
 
@@ -2364,13 +2464,17 @@ namespace Graphite {
 				// line, and comparing against it would highlight almost everything.
 				if (hunk->Kind == HunkKind::Modified && hunk->Intact && index < hunk->LineCount &&
 					partner < buffer.GetLineCount())
+				{
 					removed = RemovedSpan(old, buffer.LineText(partner));
+				}
 
 				DrawOldLine(old, removed, palette, tabWidth);
 			}
 
 			if (hunk->OldCount > hunk->OldLines.size())
+			{
 				ImGui::TextDisabled("… and %zu more", hunk->OldCount - hunk->OldLines.size());
+			}
 
 			ImGui::EndTooltip();
 		}
@@ -2410,7 +2514,9 @@ namespace Graphite {
 		std::optional<OverviewTrack> OverviewTrackOf(ImGuiWindow* window)
 		{
 			if (!window->ScrollbarY)
+			{
 				return std::nullopt;
+			}
 
 			OverviewTrack track;
 
@@ -2419,7 +2525,9 @@ namespace Graphite {
 			// A bar shorter than it is wide is one ImGui fades its own grab out of; there is no
 			// track worth marking.
 			if (track.Bar.GetHeight() < track.Bar.GetWidth())
+			{
 				return std::nullopt;
+			}
 
 			// ImGui's own grab inset, from the style rather than a copy of its value.
 			track.Inset = IM_TRUNC(ImMin(ImGui::GetStyle().ScrollbarPadding,
@@ -2430,7 +2538,9 @@ namespace Graphite {
 									 window->InnerRect.GetHeight());
 
 			if (track.Height < 1.0f || track.Content <= 0.0f)
+			{
 				return std::nullopt;
+			}
 
 			return track;
 		}
@@ -2456,7 +2566,9 @@ namespace Graphite {
 								const OverviewTrack& track)
 		{
 			if (changes == nullptr || changes->Hunks.empty())
+			{
 				return;
+			}
 
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
 
@@ -2632,7 +2744,9 @@ namespace Graphite {
 					 const HoverIdentifier& hover)
 		{
 			if (slice.Line == caret.Line)
+			{
 				DrawCurrentLineHighlight(canvas, slice);
+			}
 
 			const std::size_t depth =
 				slice.Line < item.IndentDepths.size() ? item.IndentDepths[slice.Line] : 0;
@@ -2643,7 +2757,9 @@ namespace Graphite {
 			DrawRowBrackets(canvas, slice, cache);
 
 			if (cache.SelectionOnLine)
+			{
 				DrawRowSelection(canvas, slice, cache);
+			}
 
 			DrawRowCurrentMatchOutline(canvas, slice, cache);
 
@@ -2658,7 +2774,9 @@ namespace Graphite {
 			// row. The column is already measured from this row's left edge, which is what makes
 			// this the same arithmetic whether the line wrapped or not.
 			if (caret.Focused && slice.Index == caret.Visual.Row)
+			{
 				DrawCaret(canvas, slice, caret.Visual.Column, caret.MovedAt);
+			}
 		}
 
 		void ReserveDocumentExtent(const ImVec2& origin, float contentWidth, float documentHeight)
@@ -2693,7 +2811,9 @@ namespace Graphite {
 			// No cache means no way to tell a bracket from one inside a string, so nothing is
 			// highlighted rather than the wrong thing.
 			if (syntax == nullptr)
+			{
 				return std::nullopt;
+			}
 
 			const std::size_t revision = buffer.GetRevision();
 
@@ -2780,9 +2900,13 @@ namespace Graphite {
 				buffer, item, metrics, origin, canvas.TextOriginX, lenses, diagnosticOverlay);
 
 			if (hoverFrame.State != nullptr)
+			{
 				RunHover(buffer, item, canvas, lenses, syntax, diagnosticHover, hoverFrame, result);
+			}
 			else
+			{
 				DrawDiagnosticTooltip(diagnosticHover);
+			}
 
 			// The same once-a-frame rule. The two never show together: one needs the pointer over
 			// the text, the other over the gutter.

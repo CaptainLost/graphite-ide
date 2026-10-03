@@ -92,7 +92,9 @@ namespace Fixtures {
 								  {"usage", usage}};
 
 		if (stopReason != nullptr)
+		{
 			message["stop_reason"] = stopReason;
+		}
 
 		return Line({{"type", "assistant"},
 					 {"uuid", "assistant-" + requestId + "-" + timestamp},
@@ -165,7 +167,9 @@ namespace Fixtures {
 		nlohmann::json parts = nlohmann::json::array();
 
 		for (const std::string& text : rendered)
+		{
 			parts.push_back(nlohmann::json{{"content", text}});
+		}
 
 		return Line({{"type", "attachment"},
 					 {"version", version},

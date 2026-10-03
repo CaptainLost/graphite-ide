@@ -63,7 +63,9 @@ TEST_CASE("RingBufferSink drops the oldest entries on overflow")
 	PrivateLog log{3};
 
 	for (int i = 1; i <= 5; ++i)
+	{
 		log.Logger.info("{}", i);
+	}
 
 	const auto entries = log.Sink->TakeSnapshot();
 	REQUIRE(entries.size() == 3);

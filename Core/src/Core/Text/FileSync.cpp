@@ -30,7 +30,9 @@ namespace Core {
 		if (item.Failure == OpenFailure::Missing)
 		{
 			if (!knownPresent)
+			{
 				return FileSyncOutcome::Unchanged;
+			}
 
 			documents.MarkPresent(item.Path);
 			cameBack = true;

@@ -42,7 +42,9 @@ namespace Graphite {
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
 
 			if (!read.HasValue())
+			{
 				return !inbox.Stopping;
+			}
 
 			TranscriptRead& value = read.GetValue();
 
@@ -54,7 +56,9 @@ namespace Graphite {
 			}
 
 			for (TranscriptRecord& record : value.Chunk.Records)
+			{
 				inbox.Records.push_back(std::move(record));
+			}
 
 			inbox.Skipped += value.Chunk.Skipped;
 			inbox.Offset = value.NextOffset;
@@ -65,12 +69,16 @@ namespace Graphite {
 			Core::Redraw::Request();
 
 			if (inbox.Stopping)
+			{
 				return false;
+			}
 
 			// Done at the end of the file, or at a last line still being written, which a
 			// chunk leaves unread and the next poll picks up.
 			if (value.NextOffset >= value.FileSize || (value.NextOffset == offset && !value.Restarted))
+			{
 				return true;
+			}
 
 			offset = value.NextOffset;
 		}
@@ -91,7 +99,9 @@ namespace Graphite {
 			const std::filesystem::path& path = it->path();
 
 			if (path.extension() == ".jsonl" && Core::ToUtf8(path.stem()).starts_with("agent-"))
+			{
 				present.push_back(path);
+			}
 		}
 
 		// Counted through only on the first walk. A later one reads just what moved, in a
@@ -120,10 +130,14 @@ namespace Graphite {
 				const std::lock_guard<std::mutex> guard(inbox.Mutex);
 
 				if (inbox.Stopping)
+				{
 					return std::nullopt;
+				}
 
 				if (counting)
+				{
 					inbox.Progress.SubagentsDone = index;
+				}
 			}
 
 			Core::Redraw::Request();
@@ -133,7 +147,9 @@ namespace Graphite {
 			std::error_code sizeStatus;
 			const std::uintmax_t size = std::filesystem::file_size(path, sizeStatus);
 			if (sizeStatus)
+			{
 				continue;
+			}
 
 			seen.insert(path);
 
@@ -148,12 +164,16 @@ namespace Graphite {
 			}
 
 			if (!added && size == file.Size)
+			{
 				continue;
+			}
 
 			// A missing or locked file keeps what was read of it; the next poll retries.
 			Core::Result<TranscriptRead> read = ReadTranscript(path, file.Offset);
 			if (!read)
+			{
 				continue;
+			}
 
 			TranscriptRead& value = read.GetValue();
 
@@ -165,7 +185,9 @@ namespace Graphite {
 			}
 
 			for (const TranscriptRecord& record : value.Chunk.Records)
+			{
 				file.Tally.Add(record);
+			}
 
 			moved = moved || !value.Chunk.Records.empty();
 			file.Offset = value.NextOffset;
@@ -196,7 +218,9 @@ namespace Graphite {
 		}
 
 		if (!moved)
+		{
 			return std::nullopt;
+		}
 
 		SubagentState state;
 		for (const auto& [path, file] : files)
@@ -204,7 +228,9 @@ namespace Graphite {
 			state.Usage[Core::ToUtf8(path.stem()).substr(6)] = file.Tally.Get();
 
 			if (file.Link)
+			{
 				state.Links.insert(*file.Link);
+			}
 		}
 
 		return state;
@@ -273,12 +299,16 @@ namespace Graphite {
 				const std::lock_guard<std::mutex> guard(inbox->Mutex);
 
 				if (subagents.has_value())
+				{
 					inbox->Subagents = std::move(*subagents);
+				}
 
 				// Marked with the usage it produced, so whoever sees the walk done can take it.
 				// A walk cut short by closing is not done.
 				if (!inbox->Stopping)
+				{
 					inbox->Progress.SubagentsWalked = true;
+				}
 
 				if (!inbox->Again)
 				{
@@ -314,12 +344,16 @@ namespace Graphite {
 		{
 			session.Reset();
 			if (timeline != nullptr)
+			{
 				timeline->Reset();
+			}
 		}
 
 		session.Append(records);
 		if (timeline != nullptr)
+		{
 			timeline->Append(records);
+		}
 
 		return restarted || !records.empty();
 	}
@@ -329,7 +363,9 @@ namespace Graphite {
 		const std::lock_guard<std::mutex> guard(m_Inbox->Mutex);
 
 		if (!m_Inbox->Subagents.has_value())
+		{
 			return false;
+		}
 
 		usage = std::move(m_Inbox->Subagents->Usage);
 		links = std::move(m_Inbox->Subagents->Links);

@@ -28,7 +28,9 @@ TEST_CASE("Every character is an uppercase hexadecimal digit or a separator")
 	for (const char character : text)
 	{
 		if (character == '-')
+		{
 			continue;
+		}
 
 		// Visual Studio writes them uppercase, and a solution carrying both spellings is a
 		// diff nobody asked for.
@@ -68,7 +70,9 @@ TEST_CASE("A thousand identifiers in a row are all different")
 	std::set<std::string> seen;
 
 	for (int i = 0; i < 1000; ++i)
+	{
 		seen.insert(Core::Uuid::Generate().ToString());
+	}
 
 	// Far below where a collision would be expected, and far above where a fixed seed or
 	// one taken per call from a low-resolution clock would repeat itself.

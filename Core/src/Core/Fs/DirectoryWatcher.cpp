@@ -33,12 +33,16 @@ namespace Core {
 			auto component = relative.begin();
 
 			if (component == relative.end())
+			{
 				return false;
+			}
 
 			for (auto next = std::next(component); next != relative.end(); ++component, ++next)
 			{
 				if (*component == ".git")
+				{
 					return true;
+				}
 			}
 
 			return false;
@@ -57,9 +61,13 @@ namespace Core {
 			constexpr std::wstring_view kExtendedPrefix = LR"(\\?\)";
 
 			if (buffer.starts_with(kUncPrefix))
+			{
 				buffer.replace(0, kUncPrefix.size(), LR"(\\)");
+			}
 			else if (buffer.starts_with(kExtendedPrefix))
+			{
 				buffer.erase(0, kExtendedPrefix.size());
+			}
 
 			return std::filesystem::path{buffer};
 		}
@@ -82,10 +90,14 @@ namespace Core {
 				// unnoticed. Skipped while stopping, so shutdown never waits on an API call a
 				// disconnected share could sit on.
 				if (signalled != WAIT_OBJECT_0 + 1)
+				{
 					onIdle();
+				}
 
 				if (signalled != WAIT_TIMEOUT)
+				{
 					return signalled;
+				}
 			}
 		}
 	}
@@ -155,7 +167,9 @@ namespace Core {
 		}
 
 		if (const Result<void> outcome = armed.get(); !outcome)
+		{
 			return outcome.GetError();
+		}
 
 		return watcher;
 #else
@@ -191,7 +205,9 @@ namespace Core {
 			void Report(Result<void> outcome)
 			{
 				if (answered)
+				{
 					return;
+				}
 
 				answered = true;
 				promise.set_value(std::move(outcome));
@@ -342,7 +358,9 @@ namespace Core {
 			// Zero terminates the chain, and anything that does not move forward would spin
 			// here forever.
 			if (record->NextEntryOffset == 0)
+			{
 				return;
+			}
 
 			offset += record->NextEntryOffset;
 		}
@@ -369,7 +387,9 @@ namespace Core {
 										FILE_NAME_NORMALIZED);
 
 		if (length == 0)
+		{
 			return {};
+		}
 
 		std::wstring buffer(length, L'\0');
 
@@ -377,7 +397,9 @@ namespace Core {
 			m_Directory.Get(), buffer.data(), length, FILE_NAME_NORMALIZED);
 
 		if (written == 0 || written >= length)
+		{
 			return {};
+		}
 
 		buffer.resize(written);
 
@@ -395,7 +417,9 @@ namespace Core {
 		// An unanswerable handle is not a move; it happens while the directory is being
 		// deleted, which the failing read ends the loop over anyway.
 		if (current.empty())
+		{
 			return;
+		}
 
 		// An empty baseline means the query failed back in Start, not that the directory was
 		// somewhere else, so adopt the first answer instead of announcing a move to where we
@@ -408,7 +432,9 @@ namespace Core {
 		}
 
 		if (current == m_WatchedPath)
+		{
 			return;
+		}
 
 		CORE_INFO("The watched directory moved from '{}' to '{}'", ToUtf8(m_WatchedPath),
 				  ToUtf8(current));
@@ -435,7 +461,9 @@ namespace Core {
 		const auto now = ChangeCollector::Clock::now();
 
 		if (now - m_LastMoveCheck < kMoveCheckInterval)
+		{
 			return;
+		}
 
 		m_LastMoveCheck = now;
 		CheckForMove();
@@ -501,7 +529,9 @@ namespace Core {
 		}
 
 		if (IsInsideGitDirectory(relative))
+		{
 			return;
+		}
 
 		// What changed is the entry; what the tree refreshes is the directory holding it.
 		std::filesystem::path directory = path.parent_path();
@@ -529,7 +559,9 @@ namespace Core {
 		// The change woke the loop for a few frames, not for the quiet period, so the frame
 		// that finds the batch settled has to be asked for.
 		if (const auto settlesAt = m_Collector.SettlesAt(kQuietPeriod))
+		{
 			Redraw::RequestIn(*settlesAt - ChangeCollector::Clock::now());
+		}
 
 		return changes;
 	}

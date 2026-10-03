@@ -104,7 +104,9 @@ TEST_CASE("A failed write leaves an existing target and its content untouched")
 	std::vector<std::string> names;
 
 	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath(), code})
+	{
 		names.push_back(Core::ToUtf8(entry.path().filename()));
+	}
 
 	CHECK_FALSE(code);
 	CHECK(names == std::vector<std::string>{"target.txt"});

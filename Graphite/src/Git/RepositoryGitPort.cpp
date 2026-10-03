@@ -696,7 +696,9 @@ namespace Graphite {
 		// cannot be opened draws the same empty column - the gutter has no place to say why,
 		// and the Changes panel already reports the open's own error.
 		if (!opened.HasValue())
+		{
 			return ChangeBases{};
+		}
 
 		Core::Repository* repository = opened.GetValue();
 
@@ -705,15 +707,21 @@ namespace Graphite {
 			std::filesystem::relative(absolutePath, repository->GetWorkingDirectory(), code);
 
 		if (code || relative.empty() || *relative.begin() == "..")
+		{
 			return ChangeBases{};
+		}
 
 		if (repository->IsIgnored(absolutePath))
+		{
 			return ChangeBases{};
+		}
 
 		// A file inside a submodule belongs to the submodule's repository, not this one. Read
 		// here it would have neither side and so be drawn as added from top to bottom.
 		if (repository->IsInsideSubmodule(relative))
+		{
 			return ChangeBases{};
+		}
 
 		auto head = ReadOneSide(*repository, TextSide::Head, relative);
 
@@ -721,16 +729,20 @@ namespace Graphite {
 		// nothing: the file stays Tracked, but nothing is drawn for it, rather than the
 		// whole call failing over a side ReadBases was never going to diff anyway.
 		if (!head.HasValue())
+		{
 			return head.GetError().Code == Core::ErrorCode::InvalidArgument
 					   ? ChangeBases{.Tracked = true, .Unusable = true}
 					   : Core::Result<ChangeBases>{head.GetError()};
+		}
 
 		auto index = ReadOneSide(*repository, TextSide::Index, relative);
 
 		if (!index.HasValue())
+		{
 			return index.GetError().Code == Core::ErrorCode::InvalidArgument
 					   ? ChangeBases{.Tracked = true, .Unusable = true}
 					   : Core::Result<ChangeBases>{index.GetError()};
+		}
 
 		SideText headSide = std::move(head).GetValue();
 		SideText indexSide = std::move(index).GetValue();

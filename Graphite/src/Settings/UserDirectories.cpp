@@ -35,7 +35,9 @@ namespace Graphite {
 									 const char* what)
 		{
 			if (profileFolder)
+			{
 				return profileFolder.GetValue() / kApplicationFolder;
+			}
 
 			// Falling back rather than failing keeps the application usable, the way it was
 			// before these folders were used; the warning is what explains settings that
@@ -60,7 +62,9 @@ namespace Graphite {
 			std::filesystem::create_directories(directory, code);
 
 			if (code)
+			{
 				APP_WARN("Cannot create '{}': {}", Core::ToUtf8(directory), code.message());
+			}
 		}
 
 		const Roots& GetRoots()

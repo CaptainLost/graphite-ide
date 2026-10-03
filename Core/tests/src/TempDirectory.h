@@ -27,7 +27,9 @@ public:
 		// a different case than the filesystem stores, and either would make an
 		// otherwise correct comparison fail on someone else's machine.
 		if (auto resolved = std::filesystem::canonical(m_Path, ec); !ec)
+		{
 			m_Path = std::move(resolved);
+		}
 	}
 
 	~TempDirectory()

@@ -156,18 +156,24 @@ namespace Core {
 			const auto byte = static_cast<unsigned char>(utf8[at]);
 
 			if (byte == 0x7Fu)
+			{
 				return false;
+			}
 
 			if (byte == 0xC2u && at + 1 < utf8.size())
 			{
 				const auto next = static_cast<unsigned char>(utf8[at + 1]);
 
 				if (next >= 0x80u && next <= 0x9Fu)
+				{
 					return false;
+				}
 			}
 
 			if (byte >= 0x20u || byte == '\t' || byte == '\n' || byte == '\r')
+			{
 				continue;
+			}
 
 			return false;
 		}
@@ -216,7 +222,9 @@ namespace Core {
 
 		// A mark is a statement by whoever wrote the file; nothing here overrules it.
 		if (declared != Encoding::Utf8)
+		{
 			return declared;
+		}
 
 		std::size_t evenNuls = 0;
 		std::size_t oddNuls = 0;
@@ -224,25 +232,35 @@ namespace Core {
 		for (std::size_t at = 0; at < bytes.size(); ++at)
 		{
 			if (bytes[at] != '\0')
+			{
 				continue;
+			}
 
 			if (at % 2 == 0)
+			{
 				++evenNuls;
+			}
 			else
+			{
 				++oddNuls;
+			}
 		}
 
 		const std::size_t nuls = evenNuls + oddNuls;
 
 		if (nuls < 2)
+		{
 			return Encoding::Utf8;
+		}
 
 		const std::size_t dominant = evenNuls > oddNuls ? evenNuls : oddNuls;
 
 		// Nine tenths rather than all of them: U+0100 and its neighbours put a NUL at the
 		// other parity, and a file may legitimately contain a few.
 		if (dominant * 10 < nuls * 9)
+		{
 			return Encoding::Utf8;
+		}
 
 		// A NUL at an odd position means the low byte came first.
 		const Encoding candidate = oddNuls > evenNuls ? Encoding::Utf16Le
@@ -253,7 +271,9 @@ namespace Core {
 		const auto decoded = Decode(whole, candidate);
 
 		if (!decoded)
+		{
 			return Encoding::Utf8;
+		}
 
 		return LooksLikeText(decoded.GetValue()) ? candidate : Encoding::Utf8;
 	}

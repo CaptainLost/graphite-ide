@@ -46,10 +46,14 @@ namespace Core {
 		for (const std::size_t size : kGroupSizes)
 		{
 			if (!text.empty())
+			{
 				text += '-';
+			}
 
 			for (std::size_t i = 0; i < size; ++i, ++byte)
+			{
 				text += std::format("{:02X}", m_Bytes[byte]);
+			}
 		}
 
 		return text;

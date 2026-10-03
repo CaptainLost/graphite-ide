@@ -10,7 +10,9 @@ namespace Graphite {
 		if (total != nullptr)
 		{
 			if (m_HasUsage)
+			{
 				*total -= m_Counts;
+			}
 
 			*total += merged;
 		}

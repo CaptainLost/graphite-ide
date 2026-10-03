@@ -98,17 +98,23 @@ namespace Graphite {
 			active.has_value() ? m_Documents.At(*active).Path : std::filesystem::path{};
 
 		if (path == m_FollowedPath)
+		{
 			return;
+		}
 
 		m_FollowedPath = path;
 
 		if (path.empty())
+		{
 			return;
+		}
 
 		std::vector<std::filesystem::path> opened = ExpandToward(m_Workspace.Tree(), path);
 
 		if (opened.empty())
+		{
 			return;
+		}
 
 		m_ForceOpen.insert(m_ForceOpen.end(), opened.begin(), opened.end());
 		m_ScrollToPath = path;
@@ -122,13 +128,19 @@ namespace Graphite {
 			Core::FileNode& root = m_Workspace.Tree().GetRoot();
 
 			if (root.Accessible)
+			{
 				APP_INFO("File tree refreshed");
+			}
 			else
+			{
 				APP_WARN("File tree refresh failed: the workspace folder is unreadable");
+			}
 		}
 
 		if (ImGui::IsItemHovered())
+		{
 			ImGui::SetTooltip("Refresh");
+		}
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(-1.0f);
@@ -149,16 +161,22 @@ namespace Graphite {
 		ImGui::EndDisabled();
 
 		if (clicked)
+		{
 			OpenFolderInteractively(m_Workspace);
+		}
 	}
 
 	bool FileTreeView::PassesFilter(const Core::FileNode& node) const
 	{
 		if (!m_Filter.IsActive())
+		{
 			return true;
+		}
 
 		if (m_Filter.PassFilter(node.Name.c_str()))
+		{
 			return true;
+		}
 
 		return AnyChildPassesFilter(node);
 	}
@@ -168,7 +186,9 @@ namespace Graphite {
 		for (const Core::FileNode& child : node.Children)
 		{
 			if (PassesFilter(child))
+			{
 				return true;
+			}
 		}
 
 		return false;
@@ -179,14 +199,18 @@ namespace Graphite {
 		const std::string popupId = "##ctx" + Core::ToUtf8(node.Path);
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
+		{
 			return;
+		}
 
 		const bool isRoot = m_Workspace.IsOpen() && node.Path == m_Workspace.GetRoot();
 
 		if (ImGui::MenuItem("Show in Explorer"))
 		{
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(node.Path); !revealed)
+			{
 				APP_ERROR("{}", revealed.GetError().Message);
+			}
 		}
 
 		if (ImGui::MenuItem("Open in Terminal"))
@@ -197,7 +221,9 @@ namespace Graphite {
 		ImGui::Separator();
 
 		if (ImGui::MenuItem("Copy Path"))
+		{
 			ImGui::SetClipboardText(Core::ToUtf8(node.Path).c_str());
+		}
 
 		if (ImGui::MenuItem("Copy Relative Path"))
 		{
@@ -215,7 +241,9 @@ namespace Graphite {
 			ImGui::Separator();
 
 			if (ImGui::MenuItem("Duplicate"))
+			{
 				RecordAction(PendingAction{PendingAction::Kind::Duplicate, node.Path, {}});
+			}
 		}
 
 		const std::filesystem::path creationTarget =
@@ -224,22 +252,30 @@ namespace Graphite {
 		ImGui::Separator();
 
 		if (ImGui::MenuItem("New File"))
+		{
 			RecordAction(
 				PendingAction{PendingAction::Kind::CreateFile, creationTarget, "new file.txt"});
+		}
 
 		if (ImGui::MenuItem("New Folder"))
+		{
 			RecordAction(
 				PendingAction{PendingAction::Kind::MakeDirectory, creationTarget, "new folder"});
+		}
 
 		if (!isRoot)
 		{
 			ImGui::Separator();
 
 			if (ImGui::MenuItem("Rename"))
+			{
 				StartRenaming(node);
+			}
 
 			if (ImGui::MenuItem("Delete"))
+			{
 				RecordAction(PendingAction{PendingAction::Kind::Delete, node.Path, {}});
+			}
 		}
 
 		if (node.IsDirectory)
@@ -247,7 +283,9 @@ namespace Graphite {
 			ImGui::Separator();
 
 			if (ImGui::MenuItem("Refresh"))
+			{
 				RecordAction(PendingAction{PendingAction::Kind::Refresh, node.Path, {}});
+			}
 		}
 
 		ImGui::EndPopup();
@@ -273,7 +311,9 @@ namespace Graphite {
 	Core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
 	{
 		if (!m_Workspace.IsOpen())
+		{
 			return nullptr;
+		}
 
 		std::vector<Core::FileNode*> stack{&m_Workspace.Tree().GetRoot()};
 
@@ -283,10 +323,14 @@ namespace Graphite {
 			stack.pop_back();
 
 			if (node->Path == path)
+			{
 				return node;
+			}
 
 			for (Core::FileNode& child : node->Children)
+			{
 				stack.push_back(&child);
+			}
 		}
 
 		return nullptr;
@@ -297,7 +341,9 @@ namespace Graphite {
 		Core::FileNode* parent = FindNode(path.parent_path());
 
 		if (parent != nullptr)
+		{
 			m_Workspace.Tree().Refresh(*parent);
+		}
 	}
 
 	void FileTreeView::RecordAction(PendingAction action)
@@ -350,7 +396,9 @@ namespace Graphite {
 	void FileTreeView::HandleRefresh(const PendingAction& action)
 	{
 		if (Core::FileNode* node = FindNode(action.target); node != nullptr)
+		{
 			m_Workspace.Tree().Refresh(*node);
+		}
 	}
 
 	void FileTreeView::HandleRename(const PendingAction& action)
@@ -365,7 +413,9 @@ namespace Graphite {
 			action.target.parent_path() / Core::FromUtf8(action.name);
 
 		if (target == action.target)
+		{
 			return;
+		}
 
 		if (const auto renamed = Core::Rename(action.target, target); !renamed)
 		{
@@ -454,9 +504,13 @@ namespace Graphite {
 		if (ImGui::Button("Move"))
 		{
 			if (const auto removed = Core::MoveToRecycleBin(m_DeleteCandidate); !removed)
+			{
 				APP_ERROR("{}", removed.GetError().Message);
+			}
 			else
+			{
 				RefreshParentOf(m_DeleteCandidate);
+			}
 
 			m_DeleteCandidate.clear();
 			ImGui::CloseCurrentPopup();
@@ -476,7 +530,9 @@ namespace Graphite {
 	bool FileTreeView::RenderRenameEditor(const Core::FileNode& node)
 	{
 		if (m_RenamingPath != node.Path)
+		{
 			return false;
+		}
 
 		if (m_FocusRenameField)
 		{
@@ -492,7 +548,9 @@ namespace Graphite {
 			node.IsDirectory ? ImGui::GetTreeNodeToLabelSpacing() - Core::Scaled(kFieldPaddingX) : 0.0f;
 
 		if (indent > 0.0f)
+		{
 			ImGui::Indent(indent);
+		}
 
 		// The theme's frame padding is sized for buttons and would make the edited row
 		// taller than its neighbours.
@@ -515,7 +573,9 @@ namespace Graphite {
 		ImGui::PopStyleVar();
 
 		if (indent > 0.0f)
+		{
 			ImGui::Unindent(indent);
+		}
 
 		if (cancelled)
 		{
@@ -533,18 +593,28 @@ namespace Graphite {
 	void FileTreeView::RenderNode(Core::FileNode& node)
 	{
 		if (!PassesFilter(node))
+		{
 			return;
+		}
 
 		if (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Hide)
+		{
 			return;
+		}
 
 		if (RenderRenameEditor(node))
+		{
 			return;
+		}
 
 		if (node.IsDirectory)
+		{
 			RenderDirectoryRow(node);
+		}
 		else
+		{
 			RenderFileRow(node);
+		}
 	}
 
 	void FileTreeView::RenderFileRow(const Core::FileNode& node)
@@ -552,7 +622,9 @@ namespace Graphite {
 		const bool dimmed = node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim;
 
 		if (dimmed)
+		{
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		}
 
 		// Read from the DocumentSet rather than from the workspace selection, which only
 		// moves when a row here is clicked and so misses tab switches in the editor.
@@ -562,7 +634,9 @@ namespace Graphite {
 		const bool faded = isOpen && !isActive;
 
 		if (faded)
+		{
 			PushFadedHighlight();
+		}
 
 		const std::string label =
 			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
@@ -572,13 +646,17 @@ namespace Graphite {
 											   ImGuiSelectableFlags_AllowDoubleClick);
 
 		if (faded)
+		{
 			ImGui::PopStyleColor();
+		}
 
 		if (!m_ScrollToPath.empty() && m_ScrollToPath == node.Path)
 		{
 			// Only when off screen: a row already in view stays where the user put it.
 			if (!ImGui::IsItemVisible())
+			{
 				ImGui::SetScrollHereY(0.5f);
+			}
 
 			m_ScrollToPath.clear();
 		}
@@ -590,7 +668,9 @@ namespace Graphite {
 		}
 
 		if (dimmed)
+		{
 			ImGui::PopStyleColor();
+		}
 
 		RenderContextMenu(node);
 	}
@@ -606,13 +686,17 @@ namespace Graphite {
 
 		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
 		if (node.Expanded)
+		{
 			flags |= ImGuiTreeNodeFlags_DefaultOpen;
+		}
 
 		const bool dimmed =
 			!node.Accessible || (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim);
 
 		if (dimmed)
+		{
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		}
 
 		const bool open =
 			ImGui::TreeNodeEx(Core::ToUtf8(node.Path).c_str(), flags, "%s  %s",
@@ -624,7 +708,9 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 
 			if (!node.Accessible && ImGui::IsItemHovered())
+			{
 				ImGui::SetTooltip("This folder could not be read.");
+			}
 		}
 
 		RenderContextMenu(node);
@@ -638,7 +724,9 @@ namespace Graphite {
 			}
 
 			for (Core::FileNode& child : node.Children)
+			{
 				RenderNode(child);
+			}
 
 			ImGui::TreePop();
 		}

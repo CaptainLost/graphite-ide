@@ -156,7 +156,9 @@ TEST_CASE("Every kind of attachment and user text is classified")
 
 	std::vector<SentKind> kinds;
 	for (const SentItem& item : requests[0].Sent)
+	{
 		kinds.push_back(item.Kind);
+	}
 
 	CHECK(kinds == std::vector<SentKind>{SentKind::ToolsLoaded, SentKind::Skills, SentKind::McpInstructions, SentKind::EditedFile,
 										 SentKind::QueuedPrompt, SentKind::Injected, SentKind::Injected, SentKind::Prompt});
@@ -220,7 +222,9 @@ TEST_CASE("Appending in batches gives the same requests as appending at once, ev
 
 	RequestTimeline split;
 	for (const TranscriptRecord& record : records)
+	{
 		split.Append({record});
+	}
 
 	REQUIRE(split.GetRequests().size() == 2);
 	CHECK(split.GetRequests()[0].Response.size() == 2);

@@ -470,7 +470,9 @@ namespace Graphite {
 		std::filesystem::path startFolder = m_InitialFolder;
 
 		if (startFolder.empty())
+		{
 			startFolder = m_AppSettings.GetLastFolder();
+		}
 
 		if (!startFolder.empty())
 		{
@@ -590,7 +592,9 @@ namespace Graphite {
 		Core::Panel* panel = m_Panels.Find(id);
 
 		if (panel == nullptr)
+		{
 			return;
+		}
 
 		m_Panels.SetVisible(id, true);
 		panel->RequestFocus();
@@ -916,7 +920,9 @@ namespace Graphite {
 
 		case DropTarget::Solution:
 			if (const auto opened = m_Workspace.OpenSolution(dropped.Root); !opened)
+			{
 				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+			}
 			break;
 		}
 	}
@@ -935,7 +941,9 @@ namespace Graphite {
 			ImGui::EndDisabled();
 
 			if (clicked)
+			{
 				OpenFolderInteractively(m_Workspace);
+			}
 
 			return;
 		}
@@ -1050,7 +1058,9 @@ namespace Graphite {
 		// — see FinishClose. Re-checking for dirty documents here would reopen the modal on
 		// Discard All, which never touches document content.
 		if (m_CloseApproved)
+		{
 			return true;
+		}
 
 		// Any unresolved close question, not only this purpose's: "Close Workspace" asks the
 		// same question, and Alt+F4 reaches here regardless of what ImGui thinks holds input
@@ -1126,7 +1136,9 @@ namespace Graphite {
 			const Core::OpenItem& item = m_Documents.At(index);
 
 			if (item.Document && item.Document->IsModified())
+			{
 				ImGui::BulletText("%s", Core::ToUtf8(item.Path.filename()).c_str());
+			}
 		}
 	}
 

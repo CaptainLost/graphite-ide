@@ -28,12 +28,16 @@ namespace Graphite {
 			for (std::size_t i = 0; i < shown; ++i)
 			{
 				if (i > 0)
+				{
 					joined += ", ";
+				}
 				joined += names[i];
 			}
 
 			if (names.size() > maxNames)
+			{
 				joined += ", \xe2\x80\xa6";
+			}
 
 			return joined;
 		}
@@ -57,15 +61,21 @@ namespace Graphite {
 			const std::string minus = "\xe2\x88\x92";
 
 			if (added.empty() && removed.empty())
+			{
 				return "tools unchanged";
+			}
 
 			if (added.empty())
+			{
 				return minus + ToolCount(removed.size()) + " removed";
+			}
 
 			std::string label = DeferredNames(added.size()) + ": " + JoinNames(added, 5);
 
 			if (!removed.empty())
+			{
 				label += ", " + minus + std::to_string(removed.size()) + " removed";
+			}
 
 			return label;
 		}
@@ -82,14 +92,20 @@ namespace Graphite {
 			std::vector<std::string> parts;
 
 			if (!mediaType.empty())
+			{
 				parts.emplace_back(mediaType.starts_with("image/") ? mediaType.substr(6) : mediaType);
+			}
 			if (bytes > 0)
+			{
 				parts.push_back(Core::FormatByteSize(bytes));
+			}
 
 			std::string label = "Image";
 
 			for (std::size_t i = 0; i < parts.size(); ++i)
+			{
 				label += (i == 0 ? " (" : ", ") + parts[i];
+			}
 
 			return parts.empty() ? label : label + ")";
 		}
@@ -111,7 +127,9 @@ namespace Graphite {
 			const auto finished = ParseTimestamp(finishedAt);
 
 			if (!sent.has_value() || !finished.has_value() || *finished < *sent)
+			{
 				return std::nullopt;
+			}
 
 			return *finished - *sent;
 		}
@@ -123,7 +141,9 @@ namespace Graphite {
 			for (std::size_t i = 0; i < names.size(); ++i)
 			{
 				if (i > 0)
+				{
 					joined += ", ";
+				}
 				joined += names[i];
 			}
 
@@ -153,13 +173,17 @@ namespace Graphite {
 		// a baseline: its zero would read as a drop, and the next request as adding its whole
 		// context, when no one actually caused either.
 		if (m_Requests[index].Context == 0)
+		{
 			return std::nullopt;
+		}
 
 		for (std::size_t j = index; j-- > 0;)
 		{
 			if (m_HasUsage[j] && m_Requests[j].Context > 0)
+			{
 				return static_cast<std::int64_t>(m_Requests[index].Context) -
 					   static_cast<std::int64_t>(m_Requests[j].Context);
+			}
 		}
 
 		return std::nullopt;
@@ -197,7 +221,9 @@ namespace Graphite {
 			fresh.ToolSchemas = m_SnapshotToolSchemas;
 
 			if (m_Requests.empty())
+			{
 				PlaceSnapshot(fresh);
+			}
 
 			const bool hasUsage = record.Usage.has_value();
 
@@ -209,10 +235,14 @@ namespace Graphite {
 			// A request with no usage yet has nothing to derive a Context or a delta from:
 			// ApplyUsage waits for one, whether this record has it or a later one adopts it.
 			if (hasUsage)
+			{
 				ApplyUsage(*request, index, *record.Usage);
+			}
 
 			if (keyed)
+			{
 				m_ByKey[key] = index;
+			}
 
 			changed = true;
 		}
@@ -385,7 +415,9 @@ namespace Graphite {
 		// Claude Code's own bookkeeping — a hook's outcome, a record of the deferred tools —
 		// that the model never saw.
 		if (!record.AttachmentSent)
+		{
 			return;
+		}
 
 		SentItem item;
 		item.Text = record.AttachmentText;
@@ -405,9 +437,13 @@ namespace Graphite {
 			m_PendingLoaded += record.AttachmentNames.size();
 
 			for (const std::string& name : record.AttachmentNames)
+			{
 				m_Tools.insert(name);
+			}
 			for (const std::string& name : record.AttachmentRemoved)
+			{
 				m_Tools.erase(name);
+			}
 		}
 		else if (record.AttachmentType == "skill_listing")
 		{
@@ -438,7 +474,9 @@ namespace Graphite {
 	{
 		// A snapshot with no system prompt says nothing about what was sent.
 		if (record.SystemPromptText.empty())
+		{
 			return;
+		}
 
 		m_Snapshot.clear();
 		m_Snapshot.push_back({.Kind = SentKind::SystemPrompt,
@@ -456,7 +494,9 @@ namespace Graphite {
 		}
 
 		if (!m_Requests.empty())
+		{
 			PlaceSnapshot(m_Requests.front());
+		}
 
 		// The tool set a snapshot describes is the session's, not the first request's alone:
 		// every request already on the timeline picks up the new count, and one created from
@@ -464,7 +504,9 @@ namespace Graphite {
 		m_SnapshotToolSchemas = record.ToolSchemaCount;
 
 		for (ApiRequest& request : m_Requests)
+		{
 			request.ToolSchemas = m_SnapshotToolSchemas;
+		}
 
 		changed = true;
 	}
@@ -482,11 +524,17 @@ namespace Graphite {
 		for (const TranscriptRecord& record : records)
 		{
 			if (record.Kind == RecordKind::Assistant)
+			{
 				AddAssistant(record, changed);
+			}
 			else if (record.Kind == RecordKind::User)
+			{
 				AddUser(record, changed);
+			}
 			else if (record.Kind == RecordKind::Attachment)
+			{
 				AddAttachment(record, changed);
+			}
 
 			// System, AiTitle and unrecognised record kinds carry nothing this timeline shows.
 
@@ -494,11 +542,15 @@ namespace Graphite {
 			// parsed means the next request's Waited is still measured against real time,
 			// rather than becoming uncomputable because of one bad record in between.
 			if (ParseTimestamp(record.Timestamp).has_value())
+			{
 				m_LastTimestamp = record.Timestamp;
+			}
 		}
 
 		if (changed)
+		{
 			++m_Version;
+		}
 	}
 
 	void RequestTimeline::Reset()
@@ -538,13 +590,17 @@ namespace Graphite {
 		for (const SentItem& item : request.Sent)
 		{
 			if (item.Kind == SentKind::ToolResult && !item.ToolName.empty() && seen.insert(item.ToolName).second)
+			{
 				names.push_back(item.ToolName);
+			}
 		}
 
 		for (const ResponseItem& item : request.Response)
 		{
 			if (item.Kind == ResponseKind::ToolCall && !item.ToolName.empty() && seen.insert(item.ToolName).second)
+			{
 				names.push_back(item.ToolName);
+			}
 		}
 
 		return names;
@@ -555,10 +611,14 @@ namespace Graphite {
 		std::vector<std::string> parts;
 
 		if (request.ToolSchemas > 0)
+		{
 			parts.push_back(std::to_string(request.ToolSchemas) + (request.ToolSchemas == 1 ? " with schema" : " with schemas"));
+		}
 
 		if (request.ToolsAvailable > 0)
+		{
 			parts.push_back(std::to_string(request.ToolsAvailable) + " by name only");
+		}
 
 		std::string label = "Tools: none recorded";
 
@@ -567,11 +627,15 @@ namespace Graphite {
 			label = "Tools: ";
 
 			for (std::size_t i = 0; i < parts.size(); ++i)
+			{
 				label += (i == 0 ? "" : ", ") + parts[i];
+			}
 		}
 
 		if (request.ToolsLoaded > 0)
+		{
 			label += " (+" + std::to_string(request.ToolsLoaded) + " new)";
+		}
 
 		return label;
 	}
@@ -587,11 +651,15 @@ namespace Graphite {
 			request.Index == 1 ? "first request" : "since #" + std::to_string(request.Index - 1);
 
 		if (request.Sent.empty())
+		{
 			return reference;
+		}
 
 		std::size_t bytes = 0;
 		for (const SentItem& item : request.Sent)
+		{
 			bytes += item.Bytes;
+		}
 
 		return reference + " \xc2\xb7 " + std::to_string(request.Sent.size()) +
 			   (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " + Core::FormatByteSize(bytes);
@@ -605,7 +673,9 @@ namespace Graphite {
 	std::string ReplySummary(const ApiRequest& request)
 	{
 		if (request.Response.empty())
+		{
 			return {};
+		}
 
 		std::size_t thinking = 0, text = 0, toolCalls = 0, other = 0;
 
@@ -631,17 +701,27 @@ namespace Graphite {
 		std::vector<std::string> parts;
 
 		if (thinking > 0)
+		{
 			parts.push_back(thinking == 1 ? "thinking" : std::to_string(thinking) + " thinking blocks");
+		}
 		if (text > 0)
+		{
 			parts.push_back(text == 1 ? "text" : std::to_string(text) + " texts");
+		}
 		if (toolCalls > 0)
+		{
 			parts.push_back(std::to_string(toolCalls) + (toolCalls == 1 ? " tool call" : " tool calls"));
+		}
 		if (other > 0)
+		{
 			parts.push_back(std::to_string(other) + " other");
+		}
 
 		std::string summary;
 		for (std::size_t i = 0; i < parts.size(); ++i)
+		{
 			summary += (i == 0 ? "" : " \xc2\xb7 ") + parts[i];
+		}
 
 		return summary;
 	}

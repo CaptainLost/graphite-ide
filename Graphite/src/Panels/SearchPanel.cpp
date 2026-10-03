@@ -118,7 +118,9 @@ namespace Graphite {
 	std::optional<std::string> SearchPanel::GetStatusMessage() const
 	{
 		if (!m_Progress.Running)
+		{
 			return std::nullopt;
+		}
 
 		return "Searching... " + std::to_string(m_Progress.FilesScanned) + " files";
 	}
@@ -169,7 +171,9 @@ namespace Graphite {
 		// Enter in the field or the button, never every keystroke: a search per character on a
 		// large tree is a search per character on a large tree.
 		if (ImGui::Button("Search") || entered)
+		{
 			RunSearch();
+		}
 	}
 
 	void SearchPanel::RunSearch()
@@ -196,13 +200,19 @@ namespace Graphite {
 		// Reported only when non-zero: the spec calls for saying what could not be read, not for
 		// padding every search with two zeroes.
 		if (m_Progress.FilesSkipped != 0)
+		{
 			summary += ", " + std::to_string(m_Progress.FilesSkipped) + " skipped";
+		}
 
 		if (m_Progress.Unreadable != 0)
+		{
 			summary += ", " + std::to_string(m_Progress.Unreadable) + " unreadable";
+		}
 
 		if (m_Progress.Running)
+		{
 			summary += "  (searching...)";
+		}
 
 		ImGui::TextUnformatted(summary.c_str());
 	}

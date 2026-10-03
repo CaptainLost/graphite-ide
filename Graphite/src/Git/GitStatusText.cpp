@@ -36,7 +36,9 @@ namespace Graphite {
 		const Core::Branch* CheckedOut(const std::vector<Core::Branch>* branches)
 		{
 			if (branches == nullptr)
+			{
 				return nullptr;
+			}
 
 			const auto found = std::find_if(branches->begin(), branches->end(),
 											[](const Core::Branch& branch) {
@@ -49,20 +51,28 @@ namespace Graphite {
 		std::string Distance(const Core::Branch& branch)
 		{
 			if (!branch.Upstream.has_value() || !branch.DistanceKnown)
+			{
 				return {};
+			}
 
 			if (branch.Ahead == 0 && branch.Behind == 0)
+			{
 				return ICON_MDI_CHECK;
+			}
 
 			std::string text;
 
 			if (branch.Ahead > 0)
+			{
 				text = ICON_MDI_ARROW_UP + std::to_string(branch.Ahead);
+			}
 
 			if (branch.Behind > 0)
 			{
 				if (!text.empty())
+				{
 					text += " ";
+				}
 
 				text += ICON_MDI_ARROW_DOWN + std::to_string(branch.Behind);
 			}
@@ -74,7 +84,9 @@ namespace Graphite {
 	std::optional<GitStatusSegment> GitStatusText(const GitStatusInputs& inputs)
 	{
 		if (!inputs.FolderOpen)
+		{
 			return std::nullopt;
+		}
 
 		if (inputs.MissingRepository)
 		{
@@ -84,7 +96,9 @@ namespace Graphite {
 		}
 
 		if (inputs.Head == nullptr)
+		{
 			return std::nullopt;
+		}
 
 		const Core::HeadState& head = *inputs.Head;
 

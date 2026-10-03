@@ -14,7 +14,9 @@ namespace {
 		for (const MenuItem& item : items)
 		{
 			if (item.GetKind() == MenuItem::Kind::Submenu && item.GetText() == label)
+			{
 				return &item;
+			}
 		}
 
 		return nullptr;
@@ -33,14 +35,18 @@ namespace {
 			if (item.GetKind() == MenuItem::Kind::Section)
 			{
 				if (inside)
+				{
 					break;
+				}
 
 				inside = item.GetText() == heading;
 				continue;
 			}
 
 			if (inside)
+			{
 				body.push_back(&item);
+			}
 		}
 
 		return body;
@@ -53,7 +59,9 @@ namespace {
 		for (const MenuItem& item : items)
 		{
 			if (item.GetKind() == MenuItem::Kind::Section)
+			{
 				headings.push_back(item.GetText());
+			}
 		}
 
 		return headings;
@@ -115,7 +123,9 @@ TEST_CASE("The editor's own view settings stay on the top level, where their sho
 	for (const MenuItem& item : view->GetChildren())
 	{
 		if (item.GetKind() == MenuItem::Kind::Command)
+		{
 			commands.push_back(item.GetText());
+		}
 	}
 
 	CHECK(commands == std::vector<std::string>{"editor.toggleWordWrap", "editor.zoomIn",
@@ -145,7 +155,9 @@ TEST_CASE("The explorer's ignored-file modes are reached through the panel that 
 	std::vector<std::string> modes;
 
 	for (const MenuItem& item : ignored->GetChildren())
+	{
 		modes.push_back(item.GetText());
+	}
 
 	CHECK(modes == std::vector<std::string>{"git.ignored.show", "git.ignored.dim",
 											"git.ignored.hide"});
@@ -182,7 +194,9 @@ TEST_CASE("The settings panel is reached from the top level, not from among the 
 	REQUIRE(panels != nullptr);
 
 	for (const MenuItem& item : panels->GetChildren())
+	{
 		CHECK(item.GetText() != "panels.window");
+	}
 
 	const std::vector<MenuItem>& top = view->GetChildren();
 	const auto window = std::find_if(top.begin(), top.end(), [](const MenuItem& item) {

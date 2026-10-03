@@ -24,10 +24,14 @@ namespace Core {
 			// Anything outside ASCII counts as a letter, which makes `variableName_ąę` one
 			// word rather than three.
 			if (byte >= 0x80)
+			{
 				return CharacterClass::Letter;
+			}
 
 			if (byte == ' ' || byte == '\t' || byte == '\n')
+			{
 				return CharacterClass::Whitespace;
+			}
 
 			const bool alphanumeric = (byte >= '0' && byte <= '9') || (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || byte == '_';
 
@@ -72,13 +76,17 @@ namespace Core {
 		std::size_t WordBoundaryForward(const TextBuffer& buffer, std::size_t offset)
 		{
 			if (offset >= buffer.GetLength())
+			{
 				return buffer.GetLength();
+			}
 
 			const CharacterClass start = ClassOf(buffer.CharAt(offset));
 			std::size_t at = offset;
 
 			while (at < buffer.GetLength() && ClassOf(buffer.CharAt(at)) == start)
+			{
 				++at;
+			}
 
 			return at;
 		}
@@ -86,13 +94,17 @@ namespace Core {
 		std::size_t WordBoundaryBackward(const TextBuffer& buffer, std::size_t offset)
 		{
 			if (offset == 0)
+			{
 				return 0;
+			}
 
 			const CharacterClass start = ClassOf(buffer.CharAt(offset - 1));
 			std::size_t at = offset;
 
 			while (at > 0 && ClassOf(buffer.CharAt(at - 1)) == start)
+			{
 				--at;
+			}
 
 			return at;
 		}
@@ -105,12 +117,16 @@ namespace Core {
 		std::size_t NextCharacterIn(const TextBuffer& buffer, std::size_t offset)
 		{
 			if (offset >= buffer.GetLength())
+			{
 				return buffer.GetLength();
+			}
 
 			std::size_t next = offset + 1;
 
 			while (next < buffer.GetLength() && IsContinuation(buffer, next))
+			{
 				++next;
+			}
 
 			return next;
 		}
@@ -118,12 +134,16 @@ namespace Core {
 		std::size_t PreviousCharacterIn(const TextBuffer& buffer, std::size_t offset)
 		{
 			if (offset == 0 || buffer.IsEmpty())
+			{
 				return 0;
+			}
 
 			std::size_t previous = std::min(offset, buffer.GetLength()) - 1;
 
 			while (previous > 0 && IsContinuation(buffer, previous))
+			{
 				--previous;
+			}
 
 			return previous;
 		}
@@ -133,7 +153,9 @@ namespace Core {
 			std::size_t at = std::min(offset, buffer.GetLength());
 
 			while (at > 0 && at < buffer.GetLength() && IsContinuation(buffer, at))
+			{
 				--at;
+			}
 
 			return at;
 		}
@@ -143,7 +165,9 @@ namespace Core {
 			caret.Offset = offset;
 
 			if (!extend)
+			{
 				caret.Anchor = offset;
+			}
 
 			return caret;
 		}

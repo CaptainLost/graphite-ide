@@ -61,7 +61,9 @@ namespace Core::Animation {
 		// under a still pointer, on a frame no event asked for, would otherwise freeze
 		// mid-way until the loop's idle tick.
 		if (std::fabs(amount - target) > kSettledEpsilon)
+		{
 			Redraw::RequestIn(Redraw::Clock::duration::zero());
+		}
 
 		return amount;
 	}

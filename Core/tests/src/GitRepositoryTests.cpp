@@ -315,7 +315,9 @@ namespace {
 		for (char& character : text)
 		{
 			if (character == '\\')
+			{
 				character = '/';
+			}
 		}
 
 		std::ofstream config{repository / ".git" / "config", std::ios::app};

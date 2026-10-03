@@ -29,7 +29,9 @@ namespace {
 		while (std::chrono::steady_clock::now() < deadline)
 		{
 			if (auto changes = watcher.TakeSettled(); !changes.Directories.empty())
+			{
 				return changes.Directories;
+			}
 
 			std::this_thread::sleep_for(std::chrono::milliseconds{20});
 		}
@@ -105,7 +107,9 @@ namespace {
 #ifdef CORE_PLATFORM_WINDOWS
 			// Restored, or every later test in this process would run on one core.
 			if (m_PreviousMask != 0)
+			{
 				::SetProcessAffinityMask(::GetCurrentProcess(), m_PreviousMask);
+			}
 #endif
 		}
 
@@ -277,7 +281,9 @@ TEST_CASE("A watcher stops running once its directory is deleted")
 		stopped = !watcher.GetValue()->IsRunning();
 
 		if (!stopped)
+		{
 			std::this_thread::sleep_for(std::chrono::milliseconds{20});
+		}
 	}
 
 	CHECK(stopped);
@@ -292,7 +298,9 @@ namespace {
 		while (std::chrono::steady_clock::now() < deadline)
 		{
 			if (auto changes = watcher.TakeSettled(); changes.MovedTo)
+			{
 				return changes.MovedTo;
+			}
 
 			std::this_thread::sleep_for(std::chrono::milliseconds{20});
 		}

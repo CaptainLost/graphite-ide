@@ -21,7 +21,9 @@ namespace Core {
 			for (const char c : line)
 			{
 				if (!IsIndentWhitespace(c))
+				{
 					return false;
+				}
 			}
 
 			return true;
@@ -35,7 +37,9 @@ namespace Core {
 				const std::string text = buffer.LineText(line);
 
 				if (!IsBlank(text))
+				{
 					return IndentDepth(text, tabWidth);
+				}
 			}
 
 			return std::nullopt;
@@ -49,7 +53,9 @@ namespace Core {
 				const std::string text = buffer.LineText(line);
 
 				if (!IsBlank(text))
+				{
 					return IndentDepth(text, tabWidth);
+				}
 			}
 
 			return std::nullopt;
@@ -64,7 +70,9 @@ namespace Core {
 			for (std::size_t index = 0; index < depths.size(); ++index)
 			{
 				if (!blank[index])
+				{
 					seed = depths[index];
+				}
 
 				carried[index] = seed;
 			}
@@ -81,7 +89,9 @@ namespace Core {
 			for (std::size_t index = depths.size(); index-- > 0;)
 			{
 				if (!blank[index])
+				{
 					seed = depths[index];
+				}
 
 				carried[index] = seed;
 			}
@@ -95,10 +105,14 @@ namespace Core {
 		std::size_t byte = 0;
 
 		while (byte < line.size() && IsIndentWhitespace(line[byte]))
+		{
 			++byte;
+		}
 
 		if (byte == line.size())
+		{
 			return 0;
+		}
 
 		return ColumnOfByte(line, byte, tabWidth);
 	}
@@ -127,7 +141,9 @@ namespace Core {
 			blank[index] = IsBlank(text);
 
 			if (!blank[index])
+			{
 				depths[index] = IndentDepth(text, tabWidth);
+			}
 		}
 
 		const std::vector<std::optional<std::size_t>> above =
@@ -139,7 +155,9 @@ namespace Core {
 		for (std::size_t index = 0; index < rangeSize; ++index)
 		{
 			if (!blank[index])
+			{
 				continue;
+			}
 
 			// A blank line belongs to neither the block above nor the one below, so a guide
 			// is only honest at the shallower of the two; a missing side counts as depth 0,

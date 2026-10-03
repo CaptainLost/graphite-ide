@@ -29,10 +29,14 @@ namespace Graphite {
 			for (const Core::LineHunk& hunk : unstaged)
 			{
 				if (line < hunk.OldStart)
+				{
 					break;
+				}
 
 				if (line < hunk.OldStart + hunk.OldCount)
+				{
 					return std::nullopt;
+				}
 
 				shift += Shift(hunk);
 			}
@@ -55,10 +59,14 @@ namespace Graphite {
 				const bool onIt = hunk.OldCount == 0 ? boundary == hunk.OldStart
 													 : boundary > hunk.OldStart && boundary < end;
 				if (onIt)
+				{
 					return std::nullopt;
+				}
 
 				if (end > boundary)
+				{
 					break;
+				}
 
 				shift += Shift(hunk);
 			}
@@ -69,7 +77,9 @@ namespace Graphite {
 		HunkKind HunkKindOf(const Core::LineHunk& hunk)
 		{
 			if (hunk.NewCount == 0)
+			{
 				return HunkKind::Deleted;
+			}
 
 			return hunk.OldCount == 0 ? HunkKind::Added : HunkKind::Modified;
 		}
@@ -108,7 +118,9 @@ namespace Graphite {
 											  hunk.OldStart + kShownOldLines, lines.size()});
 
 			for (std::size_t line = hunk.OldStart; line < end; ++line)
+			{
 				shown.emplace_back(lines[line]);
+			}
 
 			return shown;
 		}
@@ -147,7 +159,9 @@ namespace Graphite {
 			const std::size_t end = std::min(hunk.NewStart + hunk.NewCount, bufferLineCount);
 
 			for (std::size_t line = hunk.NewStart; line < end; ++line)
+			{
 				markers.Lines[line] = {kind, false};
+			}
 
 			described.LineCount = end > hunk.NewStart ? end - hunk.NewStart : 0;
 			described.MarkedCount = described.LineCount;
@@ -187,7 +201,9 @@ namespace Graphite {
 					markers.Lines[*at] = {kind, true};
 
 					if (!first)
+					{
 						first = *at;
+					}
 
 					last = *at;
 					++marked;
@@ -196,7 +212,9 @@ namespace Graphite {
 
 			// Every line rewritten since by an unstaged hunk: nothing of this one is drawn.
 			if (!first)
+			{
 				continue;
+			}
 
 			described.FirstLine = *first;
 			described.LineCount = last - *first + 1;
@@ -220,7 +238,9 @@ namespace Graphite {
 	const ChangeHunk* FindLineHunk(const ChangeMarkers& markers, std::size_t line)
 	{
 		if (line >= markers.Lines.size() || markers.Lines[line].Kind == ChangeKind::None)
+		{
 			return nullptr;
+		}
 
 		const bool staged = markers.Lines[line].Staged;
 
@@ -228,7 +248,9 @@ namespace Graphite {
 		{
 			if (hunk.Kind != HunkKind::Deleted && hunk.Staged == staged && line >= hunk.FirstLine &&
 				line < hunk.FirstLine + hunk.LineCount)
+			{
 				return &hunk;
+			}
 		}
 
 		return nullptr;
@@ -241,12 +263,16 @@ namespace Graphite {
 		const auto drawn = std::ranges::lower_bound(markers.Deletions, line, {}, &DeletionAnchor::Line);
 
 		if (drawn == markers.Deletions.end() || drawn->Line != line)
+		{
 			return nullptr;
+		}
 
 		for (const ChangeHunk& hunk : markers.Hunks)
 		{
 			if (hunk.Kind == HunkKind::Deleted && hunk.Staged == drawn->Staged && hunk.FirstLine == line)
+			{
 				return &hunk;
+			}
 		}
 
 		return nullptr;
@@ -270,9 +296,13 @@ namespace Graphite {
 			// Only an intact hunk still shows all the lines it introduced; one that unstaged edits
 			// have split or partly rewritten would report a replacement count it never made.
 			if (hunk.Intact && hunk.OldCount != hunk.MarkedCount)
+			{
 				heading = "Modified · " + lines(hunk.OldCount) + " replaced by " + std::to_string(hunk.MarkedCount);
+			}
 			else
+			{
 				heading = "Modified · " + lines(hunk.MarkedCount);
+			}
 
 			break;
 
@@ -285,7 +315,9 @@ namespace Graphite {
 
 		// Only where old lines follow, so the reader knows which version they are reading.
 		if (!hunk.OldLines.empty())
+		{
 			heading += hunk.Staged ? " (against HEAD)" : " (against the index)";
+		}
 
 		return heading;
 	}

@@ -33,7 +33,9 @@ namespace Core {
 		{
 			const auto entry = m_Handlers.find(std::type_index(typeid(E)));
 			if (entry == m_Handlers.end())
+			{
 				return;
+			}
 
 			// Copied because a handler may subscribe while this iterates, and a reallocated
 			// vector would invalidate the iterator. Only subscription is guarded: a handler
@@ -41,7 +43,9 @@ namespace Core {
 			const std::vector<Handler> handlers = entry->second;
 
 			for (const Handler& handler : handlers)
+			{
 				handler(&event);
+			}
 		}
 
 		template<EventPayload E>

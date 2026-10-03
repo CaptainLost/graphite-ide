@@ -10,22 +10,30 @@ namespace Graphite {
 	std::optional<std::string> DecodeBaseText(std::string_view bytes)
 	{
 		if (bytes.size() > Core::MaximumDiffTextSize)
+		{
 			return std::nullopt;
+		}
 
 		auto decoded = Core::Decode(bytes, Core::SniffEncoding(bytes));
 
 		if (!decoded.HasValue())
+		{
 			return std::nullopt;
+		}
 
 		std::string text = std::move(decoded).GetValue();
 
 		constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
 
 		if (text.starts_with(kByteOrderMark))
+		{
 			text.erase(0, kByteOrderMark.size());
+		}
 
 		if (!Core::LooksLikeText(text))
+		{
 			return std::nullopt;
+		}
 
 		// The buffer holds LF whatever the file uses on disk; Core::WithLineEnding puts the
 		// file's own endings back only when it is saved. A CRLF blob compared as it is would
@@ -36,7 +44,9 @@ namespace Graphite {
 		for (std::size_t i = 0; i < text.size(); ++i)
 		{
 			if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n')
+			{
 				continue;
+			}
 
 			lf.push_back(text[i]);
 		}

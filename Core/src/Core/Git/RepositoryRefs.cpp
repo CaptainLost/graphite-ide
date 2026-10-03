@@ -55,7 +55,9 @@ namespace Core {
 			constexpr std::string_view prefix = "refs/heads/";
 
 			if (full.starts_with(prefix))
+			{
 				full.remove_prefix(prefix.size());
+			}
 
 			return std::string{full};
 		}

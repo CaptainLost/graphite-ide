@@ -61,7 +61,9 @@ namespace Graphite {
 			const bool clicked = DrawIconButton(id, icon, value, tooltip);
 
 			if (clicked)
+			{
 				value = !value;
+			}
 
 			return clicked;
 		}
@@ -72,7 +74,9 @@ namespace Graphite {
 		std::string MatchCounterText(const Core::FindState& find)
 		{
 			if (find.Matches.empty())
+			{
 				return "0/0";
+			}
 
 			return std::to_string(find.Current + 1) + "/" + std::to_string(find.Matches.size());
 		}
@@ -206,19 +210,25 @@ namespace Graphite {
 													const Core::Caret& caret)
 		{
 			if (!Core::HasSelection(caret))
+			{
 				return std::nullopt;
+			}
 
 			const std::pair<std::size_t, std::size_t> selection = Core::SelectionRange(caret);
 
 			// Measured before the text is taken: a selection of half a file has no business
 			// being copied out only to be thrown away.
 			if (selection.second - selection.first >= kFindQueryLimit)
+			{
 				return std::nullopt;
+			}
 
 			std::string text = buffer.Substring(selection.first, selection.second);
 
 			if (text.find('\n') != std::string::npos)
+			{
 				return std::nullopt;
+			}
 
 			return text;
 		}
@@ -247,7 +257,9 @@ namespace Graphite {
 	void FindBar::Open(Core::OpenItem& item)
 	{
 		if (!item.Document)
+		{
 			return;
+		}
 
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 

@@ -268,9 +268,13 @@ TEST_CASE("Expand marks the children the query rejects")
 	for (const FileNode& child : tree.GetRoot().Children)
 	{
 		if (child.Name == "drop.txt")
+		{
 			CHECK(child.Ignored);
+		}
 		else
+		{
 			CHECK_FALSE(child.Ignored);
+		}
 	}
 }
 
@@ -297,9 +301,13 @@ TEST_CASE("The query is told whether the entry is a directory")
 	for (const auto& [name, isDirectory] : seen)
 	{
 		if (name == "folder")
+		{
 			CHECK(isDirectory);
+		}
 		else
+		{
 			CHECK_FALSE(isDirectory);
+		}
 	}
 }
 
@@ -369,7 +377,9 @@ TEST_CASE("Rebase rewrites the root and every loaded descendant")
 	for (FileNode& child : tree.GetRoot().Children)
 	{
 		if (child.Name == "sub")
+		{
 			sub = &child;
+		}
 	}
 
 	REQUIRE(sub != nullptr);
@@ -387,7 +397,9 @@ TEST_CASE("Rebase rewrites the root and every loaded descendant")
 		// The rewrite has to reach the whole subtree, not just the immediate children —
 		// a half-rewritten tree would refresh some nodes and silently skip others.
 		for (const FileNode& grandChild : child.Children)
+		{
 			CHECK(grandChild.Path.parent_path() == moved / child.Name);
+		}
 	}
 }
 
@@ -406,7 +418,9 @@ TEST_CASE("Rebase leaves everything except the paths alone")
 	for (FileNode& child : tree.GetRoot().Children)
 	{
 		if (child.Name == "sub")
+		{
 			sub = &child;
+		}
 	}
 
 	REQUIRE(sub != nullptr);
@@ -423,7 +437,9 @@ TEST_CASE("Rebase leaves everything except the paths alone")
 	for (const FileNode& child : tree.GetRoot().Children)
 	{
 		if (child.Name != "sub")
+		{
 			continue;
+		}
 
 		CHECK(child.Name == "sub");
 		CHECK(child.IsDirectory);

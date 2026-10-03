@@ -224,7 +224,9 @@ TEST_CASE("An ASCII byte's column is its index into the expansion")
 		REQUIRE(column <= expanded.size());
 
 		if (byte < line.size() && line[byte] != '\t')
+		{
 			CHECK(expanded[column] == line[byte]);
+		}
 	}
 }
 

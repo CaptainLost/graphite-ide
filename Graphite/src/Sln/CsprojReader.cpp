@@ -28,14 +28,18 @@ namespace Graphite {
 			const auto entries = Core::ReadDirectory(directory);
 
 			if (!entries)
+			{
 				return;
+			}
 
 			for (const Core::DirectoryEntry& entry : entries.GetValue())
 			{
 				if (entry.IsDirectory)
 				{
 					if (IsExcluded(entry.Name))
+					{
 						continue;
+					}
 
 					ContentFolder child;
 					child.Name = entry.Name;
@@ -47,7 +51,9 @@ namespace Graphite {
 
 				// Visual Studio shows the project as the node, not as a file inside itself.
 				if (entry.Path == projectFile)
+				{
 					continue;
+				}
 
 				ContentFile file;
 				file.Name = entry.Name;
@@ -66,7 +72,9 @@ namespace Graphite {
 					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
 			for (ContentFolder& child : folder.Folders)
+			{
 				SortContent(child);
+			}
 		}
 	}
 
@@ -101,7 +109,9 @@ namespace Graphite {
 						Core::FromUtf8(item.attribute("Include").value());
 
 					if (!referenced.empty())
+					{
 						content.References.push_back(Core::ToUtf8(referenced.stem()));
+					}
 				}
 			}
 		}

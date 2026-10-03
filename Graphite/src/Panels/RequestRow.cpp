@@ -41,7 +41,9 @@ namespace Graphite {
 			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 
 			if (reveal && !ImGui::IsRectVisible(ImVec2(std::max(right - start.x, 1.0f), height)))
+			{
 				ImGui::SetScrollHereY(0.3f);
+			}
 
 			ImGui::PushID(static_cast<int>(id));
 
@@ -163,10 +165,14 @@ namespace Graphite {
 	std::string WaitText(std::chrono::milliseconds waited)
 	{
 		if (waited < std::chrono::seconds{1})
+		{
 			return std::to_string(waited.count()) + " ms";
+		}
 
 		if (waited < std::chrono::minutes{1})
+		{
 			return std::format("{:.1f} s", static_cast<double>(waited.count()) / 1000.0);
+		}
 
 		return FormatDuration(waited);
 	}
@@ -174,9 +180,13 @@ namespace Graphite {
 	const char* StopGlyph(std::string_view reason)
 	{
 		if (reason == "end_turn")
+		{
 			return ICON_MDI_STOP_CIRCLE_OUTLINE;
+		}
 		if (reason == "tool_use")
+		{
 			return ICON_MDI_WRENCH_OUTLINE;
+		}
 		return ICON_MDI_HELP_CIRCLE_OUTLINE;
 	}
 
@@ -185,27 +195,37 @@ namespace Graphite {
 		std::string line = "#" + std::to_string(request.Index);
 
 		if (const std::string written = clock.Format(request.RespondedAt, time); !written.empty())
+		{
 			line += " " + written;
+		}
 
 		if (!request.Model.empty())
+		{
 			line += kDot + ModelLabel(request.Model, request.Fast);
+		}
 
 		if (request.Usage.Total() > 0)
 		{
 			line += kDot + std::string{"ctx "} + FormatTokens(request.Context);
 
 			if (request.ContextDelta)
+			{
 				line += " " + SignedTokens(*request.ContextDelta);
+			}
 
 			if (request.Context > 0)
+			{
 				line += kDot + std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "% cache";
+			}
 
 			line += kDot + FormatTokens(request.Usage.Output) + " out";
 			line += kDot + FormatCost(pricing.CostOf(request));
 		}
 
 		if (request.Waited)
+		{
 			line += kDot + WaitText(*request.Waited);
+		}
 
 		return line;
 	}
@@ -220,7 +240,9 @@ namespace Graphite {
 		DrawPiece(at, ink, Fitted(RequestLine(request, pricing, clock), right - at.x));
 
 		if (request.CacheRebuilt)
+		{
 			DrawPiece(at, palette.Edit, Fitted(std::string{" "} + ICON_MDI_CACHED, right - at.x));
+		}
 
 		const std::string stop = kDot + std::string{StopGlyph(request.StopReason)} +
 								 (request.StopReason.empty() ? "" : " " + SingleLineLabel(request.StopReason, 60));
@@ -228,7 +250,9 @@ namespace Graphite {
 
 		std::string tools;
 		for (const std::string& name : ToolNamesUsed(request))
+		{
 			tools += (tools.empty() ? kDot : ", ") + SingleLineLabel(name, 80);
+		}
 
 		DrawPiece(at, palette.TextDisabled, Fitted(tools, right - at.x));
 	}
@@ -242,23 +266,31 @@ namespace Graphite {
 			const LineOutcome outcome = ItemLine(look, label, column, palette, id, selected == id, reveal == id);
 
 			if (outcome.Clicked)
+			{
 				pick.Clicked = id;
+			}
 			if (outcome.Hovered)
+			{
 				pick.Hovered = id;
+			}
 		};
 
 		SectionHeading(SentHeading(request), SentSummary(request), palette);
 
 		ImGui::Indent();
 		for (std::size_t i = 0; i < request.Sent.size(); ++i)
+		{
 			line(LookOf(request.Sent[i], palette), request.Sent[i].Label, SentColumn(request.Sent[i]), i);
+		}
 		ImGui::Unindent();
 
 		SectionHeading(ReplyHeading(request), ReplySummary(request), palette);
 
 		ImGui::Indent();
 		for (std::size_t i = 0; i < request.Response.size(); ++i)
+		{
 			line(LookOf(request.Response[i], palette), request.Response[i].Label, {}, request.Sent.size() + i);
+		}
 		ImGui::Unindent();
 
 		ColouredText(palette.TextDisabled, ToolsAvailableLabel(request));

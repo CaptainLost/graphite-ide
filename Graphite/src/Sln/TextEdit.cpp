@@ -7,7 +7,9 @@ namespace Graphite {
 		const std::size_t newline = text.find('\n');
 
 		if (newline == std::string_view::npos)
+		{
 			return "\n";
+		}
 
 		return newline > 0 && text[newline - 1] == '\r' ? "\r\n" : "\n";
 	}
@@ -21,16 +23,22 @@ namespace Graphite {
 			const std::size_t newline = text.find('\n', position);
 
 			if (newline == std::string_view::npos)
+			{
 				break;
+			}
 
 			std::size_t run = newline + 1;
 
 			while (run < text.size() && (text[run] == ' ' || text[run] == '\t'))
+			{
 				++run;
+			}
 
 			// A line that is only whitespace teaches nothing about indentation.
 			if (run > newline + 1 && run < text.size() && text[run] != '\r' && text[run] != '\n')
+			{
 				return std::string{text.substr(newline + 1, run - newline - 1)};
+			}
 
 			position = newline + 1;
 		}
@@ -50,7 +58,9 @@ namespace Graphite {
 			if (inQuotes)
 			{
 				if (character == quote)
+				{
 					inQuotes = false;
+				}
 
 				continue;
 			}
@@ -63,7 +73,9 @@ namespace Graphite {
 			}
 
 			if (character == '>')
+			{
 				return i + 1;
+			}
 		}
 
 		return text.size();
@@ -94,7 +106,9 @@ namespace Graphite {
 		const std::size_t tagEnd = OpeningTagEnd(text, offset);
 
 		if (EndsSelfClosingTag(text, tagEnd))
+		{
 			return tagEnd;
+		}
 
 		// Nesting is counted so a child of the same name does not end the parent early.
 		const std::string open = std::string{"<"} + std::string{name};
@@ -109,7 +123,9 @@ namespace Graphite {
 			const std::size_t nextClose = text.find(close, position);
 
 			if (nextClose == std::string_view::npos)
+			{
 				return text.size();
+			}
 
 			if (nextOpen != std::string_view::npos && nextOpen < nextClose)
 			{
@@ -119,7 +135,9 @@ namespace Graphite {
 					EndsSelfClosingTag(text, OpeningTagEnd(text, nextOpen + 1));
 
 				if (NameEndsHere(text, nextOpen + open.size(), true) && !selfClosing)
+				{
 					++depth;
+				}
 
 				position = nextOpen + open.size();
 				continue;
@@ -135,7 +153,9 @@ namespace Graphite {
 			position = OpeningTagEnd(text, nextClose + 1);
 
 			if (depth == 0)
+			{
 				return position;
+			}
 		}
 
 		return text.size();
@@ -146,7 +166,9 @@ namespace Graphite {
 		std::size_t begin = position;
 
 		while (begin > 0 && text[begin - 1] != '\n')
+		{
 			--begin;
+		}
 
 		const std::size_t newline = text.find('\n', position);
 		const std::size_t end = newline == std::string_view::npos ? text.size() : newline + 1;

@@ -100,7 +100,9 @@ namespace Graphite {
 			{
 			case ChartMode::Context:
 				for (std::size_t layer = 0; layer < kContextLayers; ++layer)
+				{
 					layout.Layers[layer] = {kContextNames[layer], ContextColour(palette, layer)};
+				}
 
 				layout.Title = "Context per request";
 				layout.LayerCount = kContextLayers;
@@ -129,7 +131,9 @@ namespace Graphite {
 	std::optional<std::size_t> RequestChartView::Draw(const RequestChartInput& input, const ConversationContext& context)
 	{
 		if (input.Generation != m_BuiltGeneration || input.Timeline.GetVersion() != m_BuiltVersion)
+		{
 			Rebuild(input);
+		}
 
 		DrawModeBar();
 		CollectPoints();
@@ -196,7 +200,9 @@ namespace Graphite {
 
 		Shown shown{};
 		for (std::size_t layer = 0; layer < layout.LayerCount; ++layer)
+		{
 			shown[layer] = SeriesShown(layout.Layers[layer].Name);
+		}
 
 		Stack(input, shown);
 
@@ -308,7 +314,9 @@ namespace Graphite {
 		// Another reading of the transcript: where the reader had panned to named other requests,
 		// so the view is fitted again even if the count of requests did not change below.
 		if (input.Generation != m_BuiltGeneration)
+		{
 			m_XAxis.Reset();
+		}
 
 		// Every request, not only the last: a pass over a few thousand requests on the frames
 		// the timeline changes costs less than keeping track of which ones could have.
@@ -354,7 +362,9 @@ namespace Graphite {
 		int mode = static_cast<int>(m_Mode);
 
 		if (SegmentedChoice(kModes, mode))
+		{
 			m_Mode = static_cast<ChartMode>(mode);
+		}
 
 		// At the row's right end: what the requests are placed along. Switching fits the axis
 		// again, since a range in request numbers means nothing in seconds.
@@ -383,7 +393,9 @@ namespace Graphite {
 		for (std::size_t position = 0; position < xs.size(); ++position)
 		{
 			if (std::isnan(xs[position]))
+			{
 				continue;
+			}
 
 			m_Points.push_back(position);
 			m_Xs.push_back(xs[position]);
@@ -400,7 +412,9 @@ namespace Graphite {
 		{
 		case ChartMode::Context:
 			for (std::size_t layer = 0; layer < kContextLayers; ++layer)
+			{
 				values[layer] = m_Context[position][layer];
+			}
 			break;
 		case ChartMode::Time:
 		{
@@ -432,10 +446,14 @@ namespace Graphite {
 		const std::size_t count = m_Points.size();
 
 		for (std::vector<double>& tops : m_PassTops)
+		{
 			tops.assign(count, 0.0);
+		}
 
 		for (std::vector<double>& tops : m_FailTops)
+		{
 			tops.assign(count, 0.0);
+		}
 
 		m_StackTop.assign(count, 0.0);
 		m_Line.assign(count, kNaN);
@@ -447,7 +465,9 @@ namespace Graphite {
 			const bool passes = position >= input.Passes.size() || input.Passes[position];
 
 			for (std::size_t layer = 0; layer < kMaxLayers; ++layer)
+			{
 				(passes ? m_PassTops : m_FailTops)[layer][point] = tops[layer];
+			}
 
 			m_StackTop[point] = tops[kMaxLayers - 1];
 			m_Line[point] = LineValue(position);
@@ -457,12 +477,16 @@ namespace Graphite {
 	void RequestChartView::DrawSelectionBand(std::optional<std::size_t> selected, double slot, ImU32 accent) const
 	{
 		if (!selected)
+		{
 			return;
+		}
 
 		const auto found = std::find(m_Points.begin(), m_Points.end(), *selected);
 
 		if (found == m_Points.end())
+		{
 			return;
+		}
 
 		DrawColumnBand(m_Xs[static_cast<std::size_t>(found - m_Points.begin())], slot, accent);
 	}
@@ -483,7 +507,9 @@ namespace Graphite {
 			const std::size_t position = m_Points[point];
 
 			if (position >= requests.size() || !requests[position].CacheRebuilt)
+			{
 				continue;
+			}
 
 			const ImVec2 top = ImPlot::PlotToPixels(m_Xs[point], m_StackTop[point], ImAxis_X1, ImAxis_Y1);
 			float tip = top.y - gap;
@@ -533,7 +559,9 @@ namespace Graphite {
 		const std::vector<ApiRequest>& requests = input.Timeline.GetRequests();
 
 		if (position >= requests.size() || !ImGui::BeginTooltip())
+		{
 			return;
+		}
 
 		const ApiRequest& request = requests[position];
 		const SessionPalette& palette = context.Palette;
@@ -544,10 +572,14 @@ namespace Graphite {
 		std::string header = "#" + std::to_string(request.Index);
 
 		if (const std::string time = m_LocalClock.Format(request.RespondedAt, ClockStyle::DateTime); !time.empty())
+		{
 			header += kDot + time;
+		}
 
 		if (!request.Model.empty())
+		{
 			header += kDot + SingleLineLabel(ModelLabel(request.Model, request.Fast), kToolNameBytes);
+		}
 
 		ColouredText(ink, Fitted(header, maxWidth));
 
@@ -559,7 +591,9 @@ namespace Graphite {
 			std::string total = "Context " + FormatTokens(request.Context);
 
 			if (request.ContextDelta)
+			{
 				total += " (" + SignedTokens(*request.ContextDelta) + ")";
+			}
 
 			ColouredText(ink, total);
 
@@ -591,17 +625,25 @@ namespace Graphite {
 			add("Out " + FormatTokens(request.Usage.Output));
 
 			if (position < input.Costs.size())
+			{
 				add(FormatCost(input.Costs[position]));
+			}
 		}
 
 		if (request.Waited)
+		{
 			add("wait " + WaitText(*request.Waited));
+		}
 
 		if (!request.StopReason.empty())
+		{
 			add(SingleLineLabel(request.StopReason, 60));
+		}
 
 		if (!outcome.empty())
+		{
 			ColouredText(ink, Fitted(outcome, maxWidth));
+		}
 
 		// What came before the request: the tools' or the reader's time, and whether the cache
 		// was still there when it was sent.
@@ -615,7 +657,9 @@ namespace Graphite {
 		}
 
 		if (position < input.ToolLabels.size() && !input.ToolLabels[position].empty())
+		{
 			ColouredText(palette.TextDisabled, Fitted("Tools: " + input.ToolLabels[position], maxWidth));
+		}
 
 		if (request.Sent.empty())
 		{

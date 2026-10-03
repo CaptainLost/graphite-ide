@@ -13,7 +13,9 @@ namespace Core {
 	bool FileNodeLess(const FileNode& left, const FileNode& right)
 	{
 		if (left.IsDirectory != right.IsDirectory)
+		{
 			return left.IsDirectory;
+		}
 
 		return CompareNames(left.Name, right.Name) < 0;
 	}
@@ -32,7 +34,9 @@ namespace Core {
 		m_Root.Name = ToUtf8(root.filename());
 
 		if (m_Root.Name.empty())
+		{
 			m_Root.Name = ToUtf8(root);
+		}
 
 		m_Root.IsDirectory = true;
 		m_HasRoot = true;
@@ -50,12 +54,16 @@ namespace Core {
 	Result<void> FileTree::Expand(FileNode& node)
 	{
 		if (!node.IsDirectory)
+		{
 			return Error{ErrorCode::InvalidArgument, "cannot expand a file node"};
+		}
 
 		node.Expanded = true;
 
 		if (node.Loaded)
+		{
 			return Result<void>::Ok();
+		}
 
 		auto entries = ReadDirectory(node.Path);
 		node.Loaded = true;
@@ -100,7 +108,9 @@ namespace Core {
 	void FileTree::Refresh(FileNode& node)
 	{
 		if (!node.IsDirectory || !node.Loaded)
+		{
 			return;
+		}
 
 		auto entries = ReadDirectory(node.Path);
 
@@ -141,14 +151,18 @@ namespace Core {
 		for (FileNode& child : node.Children)
 		{
 			if (child.IsDirectory && child.Loaded)
+			{
 				Refresh(child);
+			}
 		}
 	}
 
 	void FileTree::Rebase(const std::filesystem::path& newRoot)
 	{
 		if (!m_HasRoot)
+		{
 			return;
+		}
 
 		const std::filesystem::path normalized = NormalizeDirectory(newRoot);
 
@@ -160,7 +174,9 @@ namespace Core {
 		m_Root.Name = ToUtf8(normalized.filename());
 
 		if (m_Root.Name.empty())
+		{
 			m_Root.Name = ToUtf8(normalized);
+		}
 	}
 
 	void FileTree::RebaseNode(FileNode& node, const std::filesystem::path& newPath)
@@ -171,6 +187,8 @@ namespace Core {
 		// surgery on the old one, which would quietly do nothing if the two spellings
 		// differed in case or separators.
 		for (FileNode& child : node.Children)
+		{
 			RebaseNode(child, newPath / child.Name);
+		}
 	}
 }

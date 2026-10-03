@@ -19,10 +19,14 @@ namespace Graphite {
 		void ForEachProject(const Folder& folder, Visitor&& visit)
 		{
 			for (const Project& project : folder.Projects)
+			{
 				visit(project);
+			}
 
 			for (const Folder& child : folder.Folders)
+			{
 				ForEachProject(child, visit);
+			}
 		}
 	}
 
@@ -143,7 +147,9 @@ namespace Graphite {
 		std::filesystem::path chosen = std::filesystem::absolute(solutionPath, code);
 
 		if (code)
+		{
 			chosen = solutionPath;
+		}
 
 		chosen = chosen.lexically_normal();
 		chosen.make_preferred();
@@ -151,7 +157,9 @@ namespace Graphite {
 		if (!IsInsideRoot(chosen))
 		{
 			if (const auto opened = OpenFolder(chosen.parent_path()); !opened)
+			{
 				return opened;
+			}
 		}
 
 		RememberSolutionCandidate(chosen);
@@ -169,7 +177,9 @@ namespace Graphite {
 	void Workspace::Close()
 	{
 		if (!IsOpen())
+		{
 			return;
+		}
 
 		const std::filesystem::path closed = m_Root;
 
@@ -210,7 +220,9 @@ namespace Graphite {
 		m_Dialog.Poll();
 
 		if (!m_Watcher)
+		{
 			return;
+		}
 
 		if (!m_Watcher->IsRunning())
 		{
@@ -232,10 +244,14 @@ namespace Graphite {
 		// nothing for the file tree to refresh, and the subscribers that care re-ask git
 		// rather than reading anything this function touches.
 		if (changed.RepositoryState)
+		{
 			m_Events.Publish(RepositoryChangedEvent{});
+		}
 
 		if (changed.Directories.empty() && !changed.Overflowed)
+		{
 			return;
+		}
 
 		// Settled before the directories are refreshed: installing or dropping the ignore
 		// query changes what every node should say, so a refresh that ran first would bake
@@ -245,7 +261,9 @@ namespace Graphite {
 		if (repositoryChanged || changed.Overflowed)
 		{
 			if (changed.Overflowed)
+			{
 				APP_TRACE("Filesystem changes were dropped, refreshing the whole tree");
+			}
 
 			RereadEverything();
 			m_Events.Publish(WorkspaceFilesChangedEvent{{}, true});
@@ -256,12 +274,16 @@ namespace Graphite {
 		// Refresh rebuilds the children vector, so any FileNode* collected up front would
 		// dangle by the second entry.
 		for (const std::filesystem::path& directory : changed.Directories)
+		{
 			RefreshChanged(directory);
+		}
 
 		// Guarded because reloading on every batch means a build writing into bin/
 		// re-parses the whole solution.
 		if (TouchesSolution(changed.Directories))
+		{
 			LoadSolution();
+		}
 
 		// The IDE writing its own state — workspace.json every couple of seconds while the caret
 		// moves — is not news about the folder's files. The tree above still catches up, since
@@ -279,17 +301,23 @@ namespace Graphite {
 	bool Workspace::TouchesSolution(const std::vector<std::filesystem::path>& directories) const
 	{
 		if (m_SelectedSolution.empty())
+		{
 			return false;
+		}
 
 		const std::filesystem::path solutionDirectory = m_SelectedSolution.parent_path();
 
 		for (const std::filesystem::path& directory : directories)
 		{
 			if (directory == solutionDirectory)
+			{
 				return true;
+			}
 
 			if (!m_Solution)
+			{
 				continue;
+			}
 
 			// A project's .filters sibling lives in the same directory, so one comparison
 			// covers both.
@@ -298,11 +326,15 @@ namespace Graphite {
 			ForEachProject(m_Solution->Root,
 						   [&directory, &matched](const Project& project) {
 							   if (project.Path.parent_path() == directory)
+							   {
 								   matched = true;
+							   }
 						   });
 
 			if (matched)
+			{
 				return true;
+			}
 		}
 
 		return false;
@@ -311,7 +343,9 @@ namespace Graphite {
 	void Workspace::Reload()
 	{
 		if (!m_Tree.HasRoot())
+		{
 			return;
+		}
 
 		// Settled before the tree is re-read: installing or dropping the ignore query
 		// changes what every node should say, and a refresh that ran first would bake in
@@ -326,7 +360,9 @@ namespace Graphite {
 		// A bare repository has no working directory, so there is no .git beside it to
 		// look for and the probe below would resolve against the process's own directory.
 		if (m_Repository->GetWorkingDirectory().empty())
+		{
 			return false;
+		}
 
 		// Against the repository's own working directory rather than m_Root: the workspace
 		// can be a subdirectory of the repository, where m_Root/.git never existed.
@@ -349,7 +385,9 @@ namespace Graphite {
 		}
 
 		if (!HasRepositoryVanished())
+		{
 			return false;
+		}
 
 		// libgit2 does not notice this on its own: with .git gone it keeps answering from
 		// the handle it already holds, reading .gitignore straight out of the working tree.
@@ -445,13 +483,17 @@ namespace Graphite {
 		// A directory that was never expanded has nothing loaded to correct: it reads the
 		// current state whenever the user opens it.
 		if (node != nullptr && node->IsDirectory && node->Loaded)
+		{
 			m_Tree.Refresh(*node);
+		}
 	}
 
 	Core::FileNode* Workspace::FindNode(const std::filesystem::path& path)
 	{
 		if (!m_Tree.HasRoot())
+		{
 			return nullptr;
+		}
 
 		// An explicit stack rather than recursion: the depth is user-supplied input.
 		std::vector<Core::FileNode*> pending{&m_Tree.GetRoot()};
@@ -462,12 +504,16 @@ namespace Graphite {
 			pending.pop_back();
 
 			if (node->Path == path)
+			{
 				return node;
+			}
 
 			for (Core::FileNode& child : node->Children)
 			{
 				if (child.IsDirectory)
+				{
 					pending.push_back(&child);
+				}
 			}
 		}
 
@@ -503,19 +549,27 @@ namespace Graphite {
 		const auto entries = Core::ReadDirectory(m_Root);
 
 		if (!entries)
+		{
 			return;
+		}
 
 		std::vector<std::filesystem::path> legacy;
 
 		for (const Core::DirectoryEntry& entry : entries.GetValue())
 		{
 			if (entry.IsDirectory)
+			{
 				continue;
+			}
 
 			if (entry.Path.extension() == ".slnx")
+			{
 				m_SolutionCandidates.push_back(entry.Path);
+			}
 			else if (entry.Path.extension() == ".sln")
+			{
 				legacy.push_back(entry.Path);
+			}
 		}
 
 		// A .sln beside a .slnx of the same name is the same solution in the older format,
@@ -529,7 +583,9 @@ namespace Graphite {
 							});
 
 			if (!supersededByXml)
+			{
 				m_SolutionCandidates.push_back(candidate);
+			}
 		}
 
 		KeepSelectedSolutionListed();
@@ -543,7 +599,9 @@ namespace Graphite {
 		// above would never find it, and dropping it would empty the chooser for no
 		// reason the user could see.
 		if (m_SelectedSolution.empty())
+		{
 			return;
+		}
 
 		if (std::find(m_SolutionCandidates.begin(), m_SolutionCandidates.end(),
 					  m_SelectedSolution) != m_SolutionCandidates.end())
@@ -554,7 +612,9 @@ namespace Graphite {
 		std::error_code exists;
 
 		if (std::filesystem::is_regular_file(m_SelectedSolution, exists))
+		{
 			m_SolutionCandidates.push_back(m_SelectedSolution);
+		}
 	}
 
 	void Workspace::LoadSolution()
@@ -574,7 +634,9 @@ namespace Graphite {
 		// A remembered choice that is no longer on disk falls back to the first rather
 		// than leaving the view empty for a reason the user cannot see.
 		if (!remembered)
+		{
 			m_SelectedSolution = m_SolutionCandidates.front();
+		}
 
 		const std::filesystem::file_time_type stamp = ComputeSolutionStamp();
 
@@ -617,10 +679,14 @@ namespace Graphite {
 		auto newest = std::filesystem::last_write_time(m_SelectedSolution, code);
 
 		if (code)
+		{
 			newest = {};
+		}
 
 		if (!m_Solution)
+		{
 			return newest;
+		}
 
 		// The project files count too: editing a .vcxproj changes what the tree should
 		// show and leaves the .slnx untouched.
@@ -630,7 +696,9 @@ namespace Graphite {
 				const auto stamp = std::filesystem::last_write_time(path, code);
 
 				if (!code && stamp > newest)
+				{
 					newest = stamp;
+				}
 			};
 
 			carryNewest(project.Path);
@@ -696,7 +764,9 @@ namespace Graphite {
 									 const bool cancelled = picked.GetValue().empty();
 
 									 if (cancelled)
+									 {
 										 return;
+									 }
 
 									 // OpenFolder logs its own failure and leaves the current folder open.
 									 static_cast<void>(workspace.OpenFolder(picked.GetValue()));
@@ -721,10 +791,14 @@ namespace Graphite {
 				const bool cancelled = picked.GetValue().empty();
 
 				if (cancelled)
+				{
 					return;
+				}
 
 				if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
+				{
 					APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
+				}
 			});
 	}
 }

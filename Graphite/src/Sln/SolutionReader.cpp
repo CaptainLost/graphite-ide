@@ -33,10 +33,14 @@ namespace Graphite {
 				const std::size_t end = slash == std::string_view::npos ? name.size() : slash;
 
 				if (end > start)
+				{
 					parts.emplace_back(name.substr(start, end - start));
+				}
 
 				if (slash == std::string_view::npos)
+				{
 					break;
+				}
 
 				start = slash + 1;
 			}
@@ -76,7 +80,9 @@ namespace Graphite {
 				const char* declared = node.attribute("Path").value();
 
 				if (declared[0] == '\0')
+				{
 					continue;
+				}
 
 				Project project;
 
@@ -107,7 +113,9 @@ namespace Graphite {
 				for (const ProjectContentReader* reader : kReaders)
 				{
 					if (!reader->Handles(project.Path))
+					{
 						continue;
+					}
 
 					auto content = reader->Read(project.Path);
 
@@ -127,7 +135,9 @@ namespace Graphite {
 			}
 
 			for (Folder& child : folder.Folders)
+			{
 				FillContent(child);
+			}
 		}
 
 		void SortSolution(Folder& folder)
@@ -139,7 +149,9 @@ namespace Graphite {
 					  [](const Project& left, const Project& right) { return Core::CompareNames(left.DisplayName, right.DisplayName) < 0; });
 
 			for (Folder& child : folder.Folders)
+			{
 				SortSolution(child);
+			}
 		}
 
 		Core::Result<Solution> ReadSlnx(const std::filesystem::path& path)
@@ -176,7 +188,9 @@ namespace Graphite {
 				const std::vector<std::string> parts = SplitFolderPath(node.attribute("Name").value());
 
 				if (parts.empty())
+				{
 					continue;
+				}
 
 				Folder& folder = EnsureFolder(solution.Root, parts);
 				ReadProjects(node, folder, directory, solution.ProjectCount);
@@ -224,7 +238,9 @@ namespace Graphite {
 		std::filesystem::path path = std::filesystem::absolute(requested, code);
 
 		if (code)
+		{
 			path = requested;
+		}
 
 		if (!IsSolutionFile(path))
 		{
@@ -237,7 +253,9 @@ namespace Graphite {
 			Core::LoweredExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
 
 		if (!parsed)
+		{
 			return parsed;
+		}
 
 		Solution solution = std::move(parsed).GetValue();
 

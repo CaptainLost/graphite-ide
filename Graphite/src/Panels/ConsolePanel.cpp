@@ -102,7 +102,9 @@ namespace Graphite {
 		for (const Core::LogEntry& entry : m_Entries)
 		{
 			if (m_Filter.PassFilter(entry.Message.c_str()))
+			{
 				m_Shown.push_back(entry);
+			}
 		}
 	}
 
@@ -120,7 +122,9 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		if (ImGui::Button("Copy all"))
+		{
 			ImGui::SetClipboardText(JoinEntries(m_Entries).c_str());
+		}
 
 		ImGui::SameLine();
 		ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
@@ -202,16 +206,22 @@ namespace Graphite {
 				// Shift keeps the pressed end where it was, which is how a reader stretches a
 				// selection they already made rather than starting another one.
 				if (ImGui::GetIO().KeyShift && !m_Selection.IsEmpty())
+				{
 					m_Selection.ExtendTo(*anchor);
+				}
 				else
+				{
 					m_Selection.Begin(*anchor);
+				}
 
 				m_Sweeping = true;
 			}
 		}
 
 		if (!m_Sweeping)
+		{
 			return;
+		}
 
 		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
 		{
@@ -231,37 +241,55 @@ namespace Graphite {
 		const float bottom = top + ImGui::GetWindowSize().y;
 
 		if (mouse.y < top)
+		{
 			ImGui::SetScrollY(ImGui::GetScrollY() - layout.RowHeight);
+		}
 		else if (mouse.y > bottom)
+		{
 			ImGui::SetScrollY(ImGui::GetScrollY() + layout.RowHeight);
+		}
 	}
 
 	void ConsolePanel::HandleShortcuts()
 	{
 		if (!ImGui::IsWindowFocused())
+		{
 			return;
+		}
 
 		const ImGuiIO& io = ImGui::GetIO();
 
 		if (!io.KeyCtrl)
+		{
 			return;
+		}
 
 		if (ImGui::IsKeyPressed(ImGuiKey_C))
+		{
 			CopySelection();
+		}
 		else if (ImGui::IsKeyPressed(ImGuiKey_A))
+		{
 			m_Selection.SelectAll(m_Shown);
+		}
 	}
 
 	void ConsolePanel::RenderContextMenu()
 	{
 		if (!ImGui::BeginPopupContextWindow("##consoleMenu"))
+		{
 			return;
+		}
 
 		if (ImGui::MenuItem("Copy", "Ctrl+C", false, !m_Selection.IsEmpty()))
+		{
 			CopySelection();
+		}
 
 		if (ImGui::MenuItem("Select all", "Ctrl+A", false, !m_Shown.empty()))
+		{
 			m_Selection.SelectAll(m_Shown);
+		}
 
 		ImGui::EndPopup();
 	}
@@ -271,13 +299,17 @@ namespace Graphite {
 		const std::string selected = m_Selection.ExtractText(m_Shown);
 
 		if (!selected.empty())
+		{
 			ImGui::SetClipboardText(selected.c_str());
+		}
 	}
 
 	void ConsolePanel::FollowTailOnlyWhenEntriesArrived()
 	{
 		if (m_AutoScroll && m_Entries.size() != m_LastCount)
+		{
 			ImGui::SetScrollHereY(1.0f);
+		}
 
 		m_LastCount = m_Entries.size();
 	}

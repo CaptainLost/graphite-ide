@@ -20,7 +20,9 @@ namespace Graphite {
 
 			const std::size_t count = buffer.GetLineCount();
 			if (line >= count)
+			{
 				return preview;
+			}
 
 			// LineText returns by value, but the extent walk wants views. The walk finishes with
 			// one line before asking for the next, so a single string held here keeps the
@@ -28,19 +30,25 @@ namespace Graphite {
 			std::string current;
 			const auto lineAt = [&](std::size_t i) -> std::optional<std::string_view> {
 				if (i >= count)
+				{
 					return std::nullopt;
+				}
 				current = buffer.LineText(i);
 				return std::string_view(current);
 			};
 
 			LineRange range{line, std::min(line + (kDefinitionFallbackLines - 1), count - 1)};
 			if (const Lexer* lexer = LexerFor(LanguageOfPath(path)))
+			{
 				range = DefinitionExtent(lineAt, line, *lexer);
+			}
 
 			range.Last = std::min(range.Last, count - 1);
 			preview.FirstLine = range.First;
 			for (std::size_t i = range.First; i <= range.Last; ++i)
+			{
 				preview.Lines.push_back(buffer.LineText(i));
+			}
 			return preview;
 		}
 	}
@@ -54,7 +62,9 @@ namespace Graphite {
 		{
 			const Core::OpenItem& item = documents.At(*index);
 			if (item.Document)
+			{
 				return Cut(item.Document->GetBuffer(), path, line);
+			}
 		}
 
 		DefinitionPreview preview;

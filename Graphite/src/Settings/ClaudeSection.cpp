@@ -48,9 +48,13 @@ namespace Graphite {
 		}
 
 		if (m_Resolved.empty())
+		{
 			ImGui::TextDisabled("Claude was not found. Name claude.exe above, or put it on PATH.");
+		}
 		else
+		{
 			ImGui::TextDisabled("Runs %s", Core::ToUtf8(m_Resolved).c_str());
+		}
 	}
 
 	void ClaudeSection::RenderPrices()
@@ -60,11 +64,15 @@ namespace Graphite {
 		constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
 
 		if (!ImGui::BeginTable("##claudePrices", 7, kFlags))
+		{
 			return;
+		}
 
 		ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch, 3.0f);
 		for (const char* column : {"Input", "Output", "Write 5m", "Write 1h", "Read"})
+		{
 			ImGui::TableSetupColumn(column, ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		}
 		ImGui::TableSetupColumn("##reset", ImGuiTableColumnFlags_WidthFixed);
 		ImGui::TableHeadersRow();
 
@@ -95,12 +103,16 @@ namespace Graphite {
 			}
 
 			if (committed && !(edited == price))
+			{
 				m_Settings.SetPrice(model, edited);
+			}
 
 			ImGui::TableNextColumn();
 
 			if (ImGui::SmallButton("Reset"))
+			{
 				m_Settings.ResetPrice(model);
+			}
 
 			ImGui::PopID();
 		}

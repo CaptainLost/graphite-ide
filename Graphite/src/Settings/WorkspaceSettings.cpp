@@ -24,7 +24,9 @@ namespace Graphite {
 			// every write after the first.
 			std::error_code code;
 			if (std::filesystem::exists(directory, code))
+			{
 				return true;
+			}
 
 			if (const auto made = Core::MakeDirectory(directory); !made)
 			{
@@ -48,7 +50,9 @@ namespace Graphite {
 	std::string WorkspaceSettings::Read(std::string_view key) const
 	{
 		if (m_Root.empty())
+		{
 			return {};
+		}
 
 		return Core::JsonFile::Load(GetFilePath()).Get(key);
 	}

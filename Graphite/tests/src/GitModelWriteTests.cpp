@@ -1131,7 +1131,9 @@ TEST_CASE("Branch and stash writes reach the port in order")
 	model.RequestStashDrop(id);
 
 	for (int frame = 0; frame < 6; ++frame)
+	{
 		model.OnUpdate(Core::Timestep{0.0f});
+	}
 
 	CHECK(port.Calls == std::vector<std::string>{"rename:a>b", "delete-branch:c", "stash:msg|1",
 												 "apply:ab00000", "pop:ab00000", "drop:ab00000"});
@@ -1207,9 +1209,13 @@ TEST_CASE("A failed stash apply or pop still refreshes the model")
 		OpenA(model);
 
 		if (pop)
+		{
 			model.RequestStashPop(id);
+		}
 		else
+		{
 			model.RequestStashApply(id);
+		}
 
 		model.OnUpdate(Core::Timestep{0.0f});
 		CHECK(model.GetWriteError().has_value());

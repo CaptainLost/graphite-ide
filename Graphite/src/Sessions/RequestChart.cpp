@@ -30,7 +30,9 @@ namespace Graphite {
 		const std::optional<BucketCosts> buckets = pricing.BucketsOf(UsageKey{request.Model, request.Fast}, request.Usage);
 
 		if (!buckets)
+		{
 			return std::nullopt;
+		}
 
 		CostLayers layers{};
 		layers[static_cast<std::size_t>(CostLayer::CacheRead)] = buckets->CacheRead;
@@ -50,7 +52,9 @@ namespace Graphite {
 		for (const CostResult& cost : costs)
 		{
 			if (cost.IsKnown())
+			{
 				sum += cost.Dollars;
+			}
 
 			total.push_back(sum);
 		}
@@ -63,7 +67,9 @@ namespace Graphite {
 		const auto at = ParseTimestamp(request.RespondedAt);
 
 		if (!at)
+		{
 			return std::nullopt;
+		}
 
 		return static_cast<double>(at->time_since_epoch().count()) / 1000.0;
 	}
@@ -74,7 +80,9 @@ namespace Graphite {
 		const auto sent = ParseTimestamp(request.SentAt);
 
 		if (!finished || !sent)
+		{
 			return std::nullopt;
+		}
 
 		return std::max(std::chrono::milliseconds{*sent - *finished}, std::chrono::milliseconds{0});
 	}
@@ -90,7 +98,9 @@ namespace Graphite {
 	std::optional<double> OutputRate(const ApiRequest& request)
 	{
 		if (!request.Waited || request.Waited->count() <= 0)
+		{
 			return std::nullopt;
+		}
 
 		return static_cast<double>(request.Usage.Output) / (static_cast<double>(request.Waited->count()) / 1000.0);
 	}
@@ -106,7 +116,9 @@ namespace Graphite {
 			const double distance = times[index] - times[index - 1];
 
 			if (distance > 0.0)
+			{
 				closest = std::min(closest, distance);
+			}
 		}
 
 		return closest == std::numeric_limits<double>::infinity() ? kClockFallbackSeconds : closest * kBarFraction;

@@ -23,7 +23,9 @@ namespace Graphite {
 			const std::optional<std::string_view> text = lineAt(line);
 
 			if (!text)
+			{
 				break;
+			}
 
 			lastSeen = line;
 			tokens.clear();
@@ -36,7 +38,9 @@ namespace Graphite {
 				if (closedAt)
 				{
 					if (token.Kind == TokenKind::Comment)
+					{
 						continue;
+					}
 
 					const bool single =
 						token.Kind == TokenKind::Punctuation && token.To - token.From == 1;
@@ -55,7 +59,9 @@ namespace Graphite {
 				}
 
 				if (token.Kind != TokenKind::Punctuation || token.To - token.From != 1)
+				{
 					continue;
+				}
 
 				const char c = (*text)[token.From];
 

@@ -41,7 +41,9 @@ namespace Graphite {
 		bool IsLive(const SessionSummary& summary)
 		{
 			if (summary.Print.WriteTicks == 0)
+			{
 				return false;
+			}
 
 			const std::filesystem::file_time_type written{
 				std::filesystem::file_time_type::duration{summary.Print.WriteTicks}};
@@ -82,7 +84,9 @@ namespace Graphite {
 		// Whatever arrived since the last throttled save. The fingerprints make a cache that is
 		// a little behind harmless, but a live session's last turns are worth keeping.
 		if (m_CacheDirty)
+		{
 			SaveCache();
+		}
 	}
 
 	void SessionsPanel::FindProjectsDirectory()
@@ -101,12 +105,16 @@ namespace Graphite {
 	void SessionsPanel::StartIndexingWhenPresent()
 	{
 		if (m_Indexing || m_Projects.empty())
+		{
 			return;
+		}
 
 		const auto now = std::chrono::steady_clock::now();
 
 		if (now < m_NextDirectoryCheck)
+		{
 			return;
+		}
 
 		m_NextDirectoryCheck = now + kDirectoryCheckInterval;
 
@@ -136,16 +144,22 @@ namespace Graphite {
 		// Shown before the scan confirms them: a cached summary is what the session was when
 		// last seen, and the scan replaces whichever changed.
 		for (const SessionSummary& summary : cached)
+		{
 			m_Sessions[summary.File] = summary;
+		}
 
 		m_Index.Start(m_Projects, std::move(cached));
 		m_InitialScan = true;
 		m_CacheDirty = true;
 
 		if (Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(m_Projects))
+		{
 			m_Watcher = std::move(watcher).GetValue();
+		}
 		else
+		{
 			APP_ERROR("Cannot watch {}: {}", Core::ToUtf8(m_Projects), watcher.GetError().Message);
+		}
 	}
 
 	void SessionsPanel::TakeFromIndex()
@@ -170,7 +184,9 @@ namespace Graphite {
 	void SessionsPanel::TakeFromWatcher()
 	{
 		if (!m_Watcher)
+		{
 			return;
+		}
 
 		Core::DirectoryWatcher::Changes changes = m_Watcher->TakeSettled();
 
@@ -183,7 +199,9 @@ namespace Graphite {
 		}
 
 		if (changes.Directories.empty())
+		{
 			return;
+		}
 
 		m_Windows.NotifyChanged(changes.Directories);
 		m_Index.Refresh(std::move(changes.Directories));
@@ -192,13 +210,17 @@ namespace Graphite {
 	void SessionsPanel::SaveCacheWhenSettled()
 	{
 		if (!m_CacheDirty || m_Index.IsScanning())
+		{
 			return;
+		}
 
 		// The first save is not held back: it is the one that records the initial scan.
 		const auto now = std::chrono::steady_clock::now();
 
 		if (m_LastCacheSave != std::chrono::steady_clock::time_point{} && now - m_LastCacheSave < kCacheSaveInterval)
+		{
 			return;
+		}
 
 		m_LastCacheSave = now;
 		SaveCache();
@@ -207,13 +229,17 @@ namespace Graphite {
 	void SessionsPanel::SaveCache()
 	{
 		if (m_CacheFile.empty())
+		{
 			return;
+		}
 
 		std::vector<SessionSummary> summaries;
 		summaries.reserve(m_Sessions.size());
 
 		for (const auto& [file, summary] : m_Sessions)
+		{
 			summaries.push_back(summary);
+		}
 
 		if (const Core::Result<void> saved = SaveSummaryCache(m_CacheFile, summaries); !saved)
 		{
@@ -293,10 +319,14 @@ namespace Graphite {
 		for (const auto& [file, summary] : m_Sessions)
 		{
 			if (limitToWorkspace && !IsWithinDirectory(summary.Cwd, m_Workspace.GetRoot()))
+			{
 				continue;
+			}
 
 			if (!filter.empty() && Core::Lowered(summary.DisplayTitle()).find(filter) == std::string::npos)
+			{
 				continue;
+			}
 
 			// Keyed as IsWithinDirectory compares, so two spellings of one folder - as Windows
 			// sees it, case and a trailing separator aside - make one group rather than two.
@@ -306,7 +336,9 @@ namespace Graphite {
 		// Grouped by where each was started when every project is shown, newest first within.
 		std::sort(visible.begin(), visible.end(), [](const VisibleRow& a, const VisibleRow& b) {
 			if (a.Folder != b.Folder)
+			{
 				return a.Folder < b.Folder;
+			}
 
 			return a.Summary->EndedAt > b.Summary->EndedAt;
 		});
@@ -385,13 +417,19 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		if (ImGui::Button(ICON_MDI_PLUS "  New Claude session"))
+		{
 			StartNewSession();
+		}
 
 		if (m_LaunchProblem.has_value())
+		{
 			ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.4f, 1.0f), "%s", m_LaunchProblem->c_str());
+		}
 
 		if (m_InitialScan)
+		{
 			ImGui::TextDisabled("Reading transcripts...");
+		}
 	}
 
 	void SessionsPanel::RenderRow(const SessionSummary& summary)
@@ -408,12 +446,16 @@ namespace Graphite {
 			(IsLive(summary) ? "\xe2\x97\x8f " : "") + SingleLineLabel(summary.DisplayTitle(), kTitleBytes);
 
 		if (ImGui::Selectable(title.c_str()))
+		{
 			m_Windows.Open(summary);
+		}
 
 		if (ImGui::BeginPopupContextItem())
 		{
 			if (ImGui::MenuItem("Continue in terminal"))
+			{
 				ContinueSession(summary);
+			}
 
 			ImGui::EndPopup();
 		}
@@ -421,11 +463,17 @@ namespace Graphite {
 		std::string detail = FormatCost(all);
 
 		if (summary.SubagentCount > 0)
+		{
 			detail += " (subagents " + FormatCost(subagents) + ")";
+		}
 		if (const std::string duration = DurationOf(summary); !duration.empty())
+		{
 			detail += "  " + duration;
+		}
 		if (const std::string ended = m_Clock.Format(summary.EndedAt, ClockStyle::Date); !ended.empty())
+		{
 			detail += "  " + ended;
+		}
 
 		ImGui::Indent();
 		ImGui::TextDisabled("%s", detail.c_str());
@@ -487,7 +535,9 @@ namespace Graphite {
 			}
 
 			if (!grouped || groupOpen)
+			{
 				RenderRow(summary);
+			}
 		}
 
 		ImGui::EndChild();

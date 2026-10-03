@@ -46,7 +46,9 @@ namespace {
 		{
 			float amount = 0.0f;
 			for (float elapsed = 0.0f; elapsed < seconds; elapsed += kFrameSeconds)
+			{
 				amount = Next(id, hovered);
+			}
 			return amount;
 		}
 

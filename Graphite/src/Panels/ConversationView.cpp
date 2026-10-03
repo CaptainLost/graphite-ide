@@ -49,11 +49,15 @@ namespace Graphite {
 			const auto end = ParseTimestamp(tool.FinishedAt);
 
 			if (!start || !end)
+			{
 				return {};
+			}
 
 			const auto span = *end - *start;
 			if (span < std::chrono::seconds{1})
+			{
 				return std::to_string(span.count()) + "ms";
+			}
 
 			return FormatDuration(span);
 		}
@@ -102,9 +106,13 @@ namespace Graphite {
 								  std::pair<std::size_t, std::size_t> key, std::size_t row)
 	{
 		if (open.contains(key))
+		{
 			open.erase(key);
+		}
 		else
+		{
 			open.insert(key);
+		}
 
 		m_Measured[row] = false;
 		m_OffsetsDirty = true;
@@ -137,7 +145,9 @@ namespace Graphite {
 		if (sameSession && width == m_BuiltWidth)
 		{
 			for (std::size_t index = 0; index < m_Rows.size(); ++index)
+			{
 				kept.emplace(identity(m_Rows[index]), std::make_pair(m_Heights[index], m_Measured[index]));
+			}
 		}
 
 		const std::vector<Turn>& turns = session.GetTurns();
@@ -153,12 +163,16 @@ namespace Graphite {
 
 		const auto pushGap = [&rows](std::optional<std::chrono::milliseconds> gap, std::size_t turn, std::size_t part) {
 			if (gap)
+			{
 				rows.push_back({RowKind::Gap, turn, part, 0, *gap});
+			}
 		};
 
 		const auto gapTo = [&rows, &last, &pushGap](std::string_view next, std::size_t turn, std::size_t part) {
 			if (last.empty() || next.empty())
+			{
 				return;
+			}
 
 			pushGap(GapBetween(last, next), turn, part);
 		};
@@ -167,7 +181,9 @@ namespace Graphite {
 		// first, so the divider's duration is not shown again as a pause above it.
 		const auto gapBeforeItem = [&rows, &last, &pushGap](const TurnItem& item, std::size_t turn, std::size_t part) {
 			if (last.empty() || item.At.empty())
+			{
 				return;
+			}
 
 			pushGap(GapBefore(last, item), turn, part);
 		};
@@ -183,7 +199,9 @@ namespace Graphite {
 			}
 
 			if (!current.StartedAt.empty())
+			{
 				last = current.StartedAt;
+			}
 
 			m_Parts[turn] = SplitTurn(current, session.GetTools());
 
@@ -192,7 +210,9 @@ namespace Graphite {
 				const TurnPart& split = m_Parts[turn][part];
 
 				if (split.Items.empty())
+				{
 					continue;
+				}
 
 				gapBeforeItem(current.Items[split.Items.front()], turn, part);
 
@@ -202,17 +222,23 @@ namespace Graphite {
 				if (open)
 				{
 					for (const std::size_t item : split.Items)
+					{
 						rows.push_back({RowKind::Step, turn, part, item, {}});
+					}
 
 					// The usage line closes the run, below whatever its steps opened to.
 					if (split.Requests > 0)
+					{
 						rows.push_back({RowKind::RunUsage, turn, part, 0, {}});
+					}
 				}
 
 				// When the part last did anything, not when its last item was written: a tool
 				// that ran for a quarter of an hour was not a pause.
 				if (std::string at = LastActivity(current, split, session.GetTools()); !at.empty())
+				{
 					last = std::move(at);
+				}
 			}
 		}
 
@@ -268,7 +294,9 @@ namespace Graphite {
 			m_OpenUsage.contains({row.Turn, row.Part}) ? line * static_cast<float>(part.RequestKeys.size()) : 0.0f;
 
 		if (row.Kind == RowKind::RunUsage)
+		{
 			return line + requests;
+		}
 
 		switch (part.Kind)
 		{
@@ -280,7 +308,9 @@ namespace Graphite {
 		case PartKind::Steps:
 			// An open run's usage line is a row of its own, after its steps.
 			if (row.Open)
+			{
 				return line;
+			}
 
 			return (part.Requests > 0 ? 2.0f * line : line) + requests;
 		case PartKind::Injected:
@@ -302,7 +332,9 @@ namespace Graphite {
 		const std::string time = m_Clock.Format(at, ClockStyle::MonthDayHoursMinutes);
 
 		if (time.empty())
+		{
 			return;
+		}
 
 		ImGui::SameLine();
 		ColouredText(context.Palette.TextDisabled, time);
@@ -336,7 +368,9 @@ namespace Graphite {
 		const float right = start.x + width;
 
 		if (ImGui::Selectable("##usage", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(width, lineHeight)))
+		{
 			Toggle(m_OpenUsage, key, row);
+		}
 
 		// The chevron says the line opens, as a run of steps' does.
 		const bool open = m_OpenUsage.contains(key);
@@ -347,7 +381,9 @@ namespace Graphite {
 				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), right - at.x));
 
 		if (!open || context.Timeline == nullptr)
+		{
 			return;
+		}
 
 		const std::vector<ApiRequest>& requests = context.Timeline->GetRequests();
 		const float space = ImGui::GetStyle().ItemSpacing.x;
@@ -360,7 +396,9 @@ namespace Graphite {
 			// A key the timeline has not cut a request for has nothing to show.
 			const std::optional<std::size_t> position = context.Timeline->IndexOf(requestKey);
 			if (!position)
+			{
 				continue;
+			}
 
 			// By the request's place in the session, which no other line under this usage shares.
 			ImGui::PushID(static_cast<int>(*position));
@@ -378,7 +416,9 @@ namespace Graphite {
 				ImGui::SetCursorScreenPos(ImVec2(buttonX, line.y));
 
 				if (ImGui::SmallButton(ICON_MDI_ARROW_RIGHT))
+				{
 					context.OpenRequest(*position);
+				}
 
 				ImGui::SetItemTooltip("Show in the Requests tab");
 			}
@@ -433,19 +473,25 @@ namespace Graphite {
 			const TurnItem& item = turn.Items[index];
 
 			if (item.Kind != ItemKind::Tool)
+			{
 				continue;
+			}
 
 			const ToolCall& tool = session.GetTools()[item.Tool];
 
 			if (!anyTool)
+			{
 				bar = context.Palette.CategoryColor(CategoryOf(tool.Name));
+			}
 
 			anyTool = true;
 			finished = finished && tool.HasResult;
 		}
 
 		if (part.Failures > 0)
+		{
 			bar = context.Palette.Failed;
+		}
 
 		const ImVec2 start = ImGui::GetCursorScreenPos();
 		const float right = start.x + ImGui::GetContentRegionAvail().x;
@@ -473,7 +519,9 @@ namespace Graphite {
 		}
 
 		if (part.ToolCounts.size() > kNamed)
+		{
 			head += ", + " + std::to_string(part.ToolCounts.size() - kNamed) + " more";
+		}
 
 		// The duration and the status are drawn after the names, and the names are cut so
 		// that they always fit.
@@ -527,7 +575,9 @@ namespace Graphite {
 		{
 			// Empty thinking is never among a run's items; this only guards the row.
 			if (item.Text.empty())
+			{
 				return;
+			}
 
 			const std::string label =
 				std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " thinking##thinking";
@@ -535,10 +585,14 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, palette.TextDisabled);
 
 			if (ImGui::Selectable(label.c_str()))
+			{
 				Toggle(m_OpenItems, key, row);
+			}
 
 			if (open)
+			{
 				ImGui::TextWrapped("%s", item.Text.c_str());
+			}
 
 			ImGui::PopStyleColor();
 			return;
@@ -558,11 +612,15 @@ namespace Graphite {
 
 		// Facts parse the tool's result, which is too much to do for every row every frame.
 		if (item.Tool >= m_Facts.size())
+		{
 			m_Facts.resize(session.GetTools().size());
+		}
 
 		std::optional<ToolFacts>& cached = m_Facts[item.Tool];
 		if (!cached)
+		{
 			cached = FactsOf(tool, context.Subagents, context.Prices);
+		}
 
 		const ToolFacts& facts = *cached;
 		const ImU32 colour = tool.IsError ? palette.Failed : palette.CategoryColor(facts.Category);
@@ -575,7 +633,9 @@ namespace Graphite {
 		CategoryBar(colour, lineHeight);
 
 		if (ImGui::Selectable("##step", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		{
 			Toggle(m_OpenItems, key, row);
+		}
 
 		// The right column: what came back, the tool's own fact, how long it took, and how it
 		// ended. Pinned to the right edge; the summary gives way to it.
@@ -584,10 +644,14 @@ namespace Graphite {
 		for (const std::string& piece : {facts.Size, facts.Detail, DurationText(tool)})
 		{
 			if (piece.empty())
+			{
 				continue;
+			}
 
 			if (!column.empty())
+			{
 				column += "  ";
+			}
 
 			column += piece;
 		}
@@ -619,7 +683,9 @@ namespace Graphite {
 		}
 
 		if (!open)
+		{
 			return;
+		}
 
 		ImGui::Indent();
 
@@ -628,14 +694,18 @@ namespace Graphite {
 			const std::string text = Core::ToUtf8(*path);
 
 			if (ImGui::SmallButton(text.c_str()))
+			{
 				events.Publish(OpenFileRequested{*path, false});
+			}
 		}
 
 		if (context.OpenAgent && context.Links != nullptr && IsAgentCall(tool) &&
 			context.Links->contains(tool.Id))
 		{
 			if (ImGui::SmallButton("Open conversation " ICON_MDI_ARROW_RIGHT))
+			{
 				context.OpenAgent(tool.Id);
+			}
 		}
 
 		if (const std::vector<std::string> lines = EditLines(tool); !lines.empty())
@@ -659,12 +729,16 @@ namespace Graphite {
 			// Coloured by the style rather than TextColored, which does not wrap: an error is
 			// as long as any other result.
 			if (tool.IsError)
+			{
 				ImGui::PushStyleColor(ImGuiCol_Text, palette.Failed);
+			}
 
 			ImGui::TextWrapped("%s", tool.Result.c_str());
 
 			if (tool.IsError)
+			{
 				ImGui::PopStyleColor();
+			}
 		}
 
 		ImGui::Unindent();
@@ -682,7 +756,9 @@ namespace Graphite {
 		const float right = start.x + ImGui::GetContentRegionAvail().x;
 
 		if (ImGui::Selectable("##injected", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		{
 			Toggle(m_OpenItems, key, row);
+		}
 
 		const std::string time = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
 		const float timeWidth = ImGui::CalcTextSize(time.c_str()).x;
@@ -701,7 +777,9 @@ namespace Graphite {
 		DrawPiece(at, colour, time);
 
 		if (!open)
+		{
 			return;
+		}
 
 		ImGui::Indent();
 		ImGui::PushStyleColor(ImGuiCol_Text, colour);
@@ -729,7 +807,9 @@ namespace Graphite {
 		if (hasSummary)
 		{
 			if (ImGui::Selectable("##compaction", false, ImGuiSelectableFlags_None, ImVec2(width, lineHeight)))
+			{
 				Toggle(m_OpenItems, key, row);
+			}
 		}
 		else
 		{
@@ -737,8 +817,10 @@ namespace Graphite {
 		}
 
 		if (item.Compaction.PreTokens && item.Compaction.PostTokens)
+		{
 			ImGui::SetItemTooltip("%s \xe2\x86\x92 %s tokens", FormatTokensExact(*item.Compaction.PreTokens).c_str(),
 								  FormatTokensExact(*item.Compaction.PostTokens).c_str());
+		}
 
 		// The label is cut to the width first; the rule shows only in whatever room is left
 		// either side of it, so at a narrow width the rule goes before any of the words do.
@@ -752,9 +834,13 @@ namespace Graphite {
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
 		if (labelX - space > start.x)
+		{
 			draw->AddLine(ImVec2(start.x, middle), ImVec2(labelX - space, middle), colour);
+		}
 		if (labelX + labelWidth + space < start.x + width)
+		{
 			draw->AddLine(ImVec2(labelX + labelWidth + space, middle), ImVec2(start.x + width, middle), colour);
+		}
 
 		ImVec2 at(labelX, start.y);
 		DrawPiece(at, colour, label);
@@ -838,7 +924,9 @@ namespace Graphite {
 				ImGui::PopFont();
 
 				if (codeWidth > width - style.WindowPadding.x * 2.0f)
+				{
 					height += style.ScrollbarSize;
+				}
 
 				// Identified by the block's place within the row, which the row's own id
 				// qualifies: stable from frame to frame, so the box keeps its scroll.
@@ -877,10 +965,12 @@ namespace Graphite {
 			const float codePad = ImGui::GetFontSize() * 0.3f;
 
 			if (block.Kind == MarkdownKind::ListItem)
+			{
 				draw->AddText(ImVec2(origin.x + indent - ImGui::CalcTextSize(block.Marker.c_str()).x -
 										 ImGui::GetFontSize() * 0.4f,
 									 origin.y),
 							  ink, block.Marker.c_str());
+			}
 
 			const auto measure = [codePad](std::string_view word, SpanStyle style) {
 				const float pad = style == SpanStyle::Code ? codePad : 0.0f;
@@ -888,7 +978,9 @@ namespace Graphite {
 			};
 
 			if (relayout)
+			{
 				cache.Layouts[index] = LayoutSpans(block.Spans, width - indent, measure);
+			}
 
 			const std::vector<PlacedWord>& words = cache.Layouts[index];
 			int lastLine = 0;
@@ -905,7 +997,9 @@ namespace Graphite {
 					// The background covers the word, not the space placed after it.
 					const char* trimmed = end;
 					while (trimmed > begin && trimmed[-1] == ' ')
+					{
 						--trimmed;
+					}
 
 					const ImVec2 size = ImGui::CalcTextSize(begin, trimmed);
 					draw->AddRectFilled(at, ImVec2(at.x + size.x + codePad, at.y + ImGui::GetTextLineHeight()),
@@ -918,7 +1012,9 @@ namespace Graphite {
 
 					// There is one text face; bold is the same glyphs drawn twice, a pixel apart.
 					if (bold || style == SpanStyle::Bold)
+					{
 						draw->AddText(ImVec2(at.x + 1.0f, at.y), ink, begin, end);
+					}
 				}
 
 				lastLine = word.Line;
@@ -1010,7 +1106,9 @@ namespace Graphite {
 			for (std::optional<ToolFacts>& facts : m_Facts)
 			{
 				if (facts && facts->Category == ToolCategory::Agent)
+				{
 					facts.reset();
+				}
 			}
 
 			m_FactsSubagentsVersion = context.SubagentsVersion;
@@ -1020,14 +1118,18 @@ namespace Graphite {
 
 		if (session.GetVersion() != m_BuiltVersion || session.GetGeneration() != m_BuiltGeneration ||
 			width != m_BuiltWidth)
+		{
 			Rebuild(session, width);
+		}
 
 		if (m_OffsetsDirty)
 		{
 			m_Offsets.assign(m_Rows.size() + 1, 0.0f);
 
 			for (std::size_t index = 0; index < m_Rows.size(); ++index)
+			{
 				m_Offsets[index + 1] = m_Offsets[index] + m_Heights[index];
+			}
 
 			m_OffsetsDirty = false;
 		}
@@ -1069,7 +1171,9 @@ namespace Graphite {
 		// A live session keeps its newest line in view while the reader is at the end, and
 		// stops following the moment they scroll up.
 		if (m_FollowTail && wasAtEnd)
+		{
 			ImGui::SetScrollHereY(1.0f);
+		}
 
 		m_FollowTail = wasAtEnd;
 

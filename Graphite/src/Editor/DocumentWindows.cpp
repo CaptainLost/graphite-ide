@@ -54,7 +54,9 @@ namespace Graphite {
 			for (std::size_t index = 0; index < values.size(); ++index)
 			{
 				if (index > 0)
+				{
 					joined += ", ";
+				}
 
 				joined += values[index];
 			}
@@ -87,7 +89,9 @@ namespace Graphite {
 			identities.reserve(documents.GetCount());
 
 			for (std::size_t index = 0; index < documents.GetCount(); ++index)
+			{
 				identities.push_back(Identity(documents, index));
+			}
 
 			return identities;
 		}
@@ -106,7 +110,9 @@ namespace Graphite {
 		std::string SavedCount(std::size_t saved)
 		{
 			if (saved == 0)
+			{
 				return {};
+			}
 
 			return "Saved " + std::to_string(saved) + (saved == 1 ? " file." : " files.");
 		}
@@ -150,7 +156,9 @@ namespace Graphite {
 		}
 
 		if (outcome != Core::OpenOutcome::NeedsConfirmation)
+		{
 			return;
+		}
 
 		AskAboutSize(path, permanent);
 	}
@@ -363,7 +371,9 @@ namespace Graphite {
 		for (std::size_t index = 0; index < newIdentities.size(); ++index)
 		{
 			if (newIdentities[index] != oldIdentities[index])
+			{
 				MovePendingDockTarget(oldIdentities[index], newIdentities[index]);
+			}
 		}
 	}
 
@@ -395,7 +405,9 @@ namespace Graphite {
 		m_PendingDockTargets.erase(oldIdentity);
 
 		if (target != 0)
+		{
 			m_PendingDockTargets[newIdentity] = target;
+		}
 	}
 
 	void DocumentWindows::HandleFilesChanged(
@@ -619,7 +631,9 @@ namespace Graphite {
 		Core::OpenItem& item = m_Documents.At(index);
 
 		if (!item.Document)
+		{
 			return;
+		}
 
 		if (item.Document->CheckChangedOnDisk())
 		{
@@ -645,12 +659,16 @@ namespace Graphite {
 		const bool unsaved = item.Document && item.Document->IsModified();
 
 		if (ImGui::MenuItem("Save", nullptr, false, unsaved))
+		{
 			RequestSave(index);
+		}
 
 		ImGui::Separator();
 
 		if (ImGui::MenuItem("Copy Path"))
+		{
 			ImGui::SetClipboardText(Core::ToUtf8(item.Path).c_str());
+		}
 
 		if (ImGui::MenuItem("Copy Relative Path"))
 		{
@@ -668,7 +686,9 @@ namespace Graphite {
 		if (ImGui::MenuItem("Show in Explorer"))
 		{
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)
+			{
 				APP_ERROR("{}", revealed.GetError().Message);
+			}
 		}
 	}
 
@@ -789,7 +809,9 @@ namespace Graphite {
 			const auto path = ActiveTextDocument(m_Documents);
 
 			if (!path)
+			{
 				return nullptr;
+			}
 
 			const auto index = m_Documents.Find(*path);
 			return index ? &m_Documents.At(*index) : nullptr;
@@ -825,7 +847,9 @@ namespace Graphite {
 						  .Label = spec.Label,
 						  .Run = [this, activeIndex, action] {
 							  if (const auto index = activeIndex())
-								  QueueEditorAction(*index, action); },
+							  {
+								  QueueEditorAction(*index, action);
+							  } },
 						  .Enabled = [activeItem, action] {
 							  const Core::OpenItem* item = activeItem();
 
@@ -847,7 +871,9 @@ namespace Graphite {
 					  .Label = "Switch Header/Source",
 					  .Run = [this, activeIndex] {
 						  if (const auto index = activeIndex())
-							  RequestSwitchSourceHeader(*index); },
+						  {
+							  RequestSwitchSourceHeader(*index);
+						  } },
 					  .Enabled = [activeItem] {
 						  const Core::OpenItem* item = activeItem();
 						  return item != nullptr && HasLanguageServer(item->Path) &&
@@ -891,10 +917,14 @@ namespace Graphite {
 	std::optional<std::string> DocumentWindows::GetStatusMessage() const
 	{
 		if (!m_TransientMessage)
+		{
 			return std::nullopt;
+		}
 
 		if (ImGui::GetTime() >= m_TransientMessage->expiresAt)
+		{
 			return std::nullopt;
+		}
 
 		return m_TransientMessage->text;
 	}
@@ -1161,7 +1191,9 @@ namespace Graphite {
 			m_LastFocusedNode != 0 && ImGui::DockBuilderGetNode(m_LastFocusedNode) != nullptr;
 
 		if (!lastFocusedAlive)
+		{
 			m_LastFocusedNode = 0;
+		}
 
 		// A window carrying over a dock position from before its path was rewritten takes
 		// priority over both: it is more specific than "wherever was last focused", and right
@@ -1184,7 +1216,9 @@ namespace Graphite {
 
 		if (ImGuiWindow* window = ImGui::GetCurrentWindow();
 			window != nullptr && window->DockNode != nullptr)
+		{
 			m_LastFocusedNode = window->DockNode->ID;
+		}
 	}
 
 	DocumentWindows::DocumentState& DocumentWindows::StateFor(const std::filesystem::path& path)
@@ -2104,7 +2138,9 @@ namespace Graphite {
 		for (const std::string& previousIdentity : m_PreviousIdentities)
 		{
 			if (std::find(startingIdentities.begin(), startingIdentities.end(), previousIdentity) == startingIdentities.end())
+			{
 				ImGui::ClearWindowSettings(previousIdentity.c_str());
+			}
 		}
 	}
 
@@ -2174,7 +2210,9 @@ namespace Graphite {
 			// submitted. Taken and cleared in one step, so a focus asked for once is given once
 			// and the user's own clicking of another tab is not undone on the next frame.
 			if (std::exchange(item.PendingFocus, false))
+			{
 				ImGui::SetNextWindowFocus();
+			}
 
 			bool open = true;
 			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
@@ -2182,12 +2220,16 @@ namespace Graphite {
 			// Popped the moment Begin returns, so the dimming reaches this document's tab and
 			// title bar without following it into the editor's own contents.
 			if (preview)
+			{
 				ImGui::PopStyleColor();
+			}
 
 			// A tab's menu asked for this one last frame: the same as its close button, so an
 			// unsaved document is asked about below rather than closed.
 			if (closeRequests.Take(name))
+			{
 				open = false;
+			}
 
 			Core::DrawTabContextMenu(closeRequests,
 									 [this, index, &workspaceRoot] { DrawFileTabItems(index, workspaceRoot); });
@@ -2205,7 +2247,9 @@ namespace Graphite {
 				}
 
 				if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+				{
 					m_Documents.Promote(index);
+				}
 
 				// Null for a document no server serves, which is what spares the widget a branch
 				// on whether one exists — the same role an empty token list plays for SyntaxCache.
@@ -2269,7 +2313,9 @@ namespace Graphite {
 				if (state.Hover.Preview)
 				{
 					if (const auto shown = m_Documents.Find(state.Hover.Preview->Path))
+					{
 						view.HoverPreviewOverlay = &SemanticFor(m_Documents.At(*shown));
+					}
 				}
 
 				std::optional<PendingTopLine>& pendingTop = state.PendingTop;
@@ -2321,23 +2367,31 @@ namespace Graphite {
 				// Once the user has typed into a preview it is no longer something they were
 				// just glancing at.
 				if (editorResult.Edited && preview)
+				{
 					m_Documents.Promote(index);
+				}
 
 				if (editorResult.SaveRequested)
+				{
 					RequestSave(index);
+				}
 
 				// Ctrl+click asks the same question F12 does, from wherever the click just put
 				// the caret — reported through the frame result rather than resolved from the
 				// active document, so the request is unambiguously about the document that was
 				// actually clicked even on the one frame a click both switches and asks.
 				if (editorResult.DefinitionRequested)
+				{
 					RequestDefinition(index);
+				}
 
 				// A lens row holds no text, so the click cannot become a caret position — it is
 				// reported as the document row the lens anchors to instead, and resolved back to
 				// the declaration through this document's own lens state.
 				if (lens != nullptr && editorResult.LensClicked)
+				{
 					RequestReferencesForLens(item, *lens, *editorResult.LensClicked, referencesPanel);
+				}
 
 				// Cancelled first: a frame that leaves one token for another cancels the old
 				// questions and may ask the new ones, and the router supersedes per slot anyway.

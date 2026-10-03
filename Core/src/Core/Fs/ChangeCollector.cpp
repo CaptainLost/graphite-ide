@@ -26,7 +26,9 @@ namespace Core {
 		m_Overflowed = false;
 
 		if (!m_HasPending || now - m_LastChange < quietPeriod)
+		{
 			return {};
+		}
 
 		std::vector<std::filesystem::path> settled(m_Pending.begin(), m_Pending.end());
 
@@ -42,7 +44,9 @@ namespace Core {
 		std::chrono::milliseconds quietPeriod) const
 	{
 		if (!m_HasPending)
+		{
 			return std::nullopt;
+		}
 
 		return m_LastChange + quietPeriod;
 	}

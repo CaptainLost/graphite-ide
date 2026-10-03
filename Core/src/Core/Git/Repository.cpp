@@ -42,9 +42,13 @@ namespace Core {
 			ErrorCode code = ErrorCode::IoFailure;
 
 			if (result == GIT_ENOTFOUND)
+			{
 				code = ErrorCode::NotFound;
+			}
 			else if (result == GIT_EAUTH)
+			{
 				code = ErrorCode::AccessDenied;
+			}
 
 			return Error{code, std::format("cannot open a git repository at '{}': {}", path, message)};
 		}
@@ -53,7 +57,9 @@ namespace Core {
 		repository.m_Handle.reset(handle);
 
 		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
+		{
 			repository.m_WorkingDirectory = FromUtf8(workdir);
+		}
 
 		return repository;
 	}
@@ -82,7 +88,9 @@ namespace Core {
 		repository.m_Handle.reset(handle);
 
 		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
+		{
 			repository.m_WorkingDirectory = FromUtf8(workdir);
+		}
 
 		return repository;
 	}
@@ -95,14 +103,18 @@ namespace Core {
 	bool Repository::IsIgnored(const std::filesystem::path& path) const
 	{
 		if (m_Handle == nullptr)
+		{
 			return false;
+		}
 
 		std::error_code code;
 		const std::filesystem::path relative =
 			std::filesystem::relative(path, m_WorkingDirectory, code);
 
 		if (code || relative.empty() || LeadsOutOfTree(relative))
+		{
 			return false;
+		}
 
 		const std::string text = ToGitPath(relative);
 
@@ -119,7 +131,9 @@ namespace Core {
 	bool Repository::IsInsideSubmodule(const std::filesystem::path& relative) const
 	{
 		if (m_Handle == nullptr || relative.empty() || LeadsOutOfTree(relative))
+		{
 			return false;
+		}
 
 		IndexHandle index;
 

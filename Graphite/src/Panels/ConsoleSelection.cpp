@@ -26,12 +26,16 @@ namespace Graphite {
 											   const ConsoleLayout& layout, float x, float y)
 	{
 		if (entries.empty() || layout.RowHeight <= 0.0f || layout.CellWidth <= 0.0f)
+		{
 			return std::nullopt;
+		}
 
 		const float rows = (y - layout.OriginY) / layout.RowHeight;
 
 		if (rows < 0.0f)
+		{
 			return ConsoleAnchor{entries.front().Sequence, 0};
+		}
 
 		const std::size_t row = static_cast<std::size_t>(rows);
 
@@ -99,20 +103,26 @@ namespace Graphite {
 																 std::size_t columnCount) const
 	{
 		if (IsEmpty())
+		{
 			return std::nullopt;
+		}
 
 		const ConsoleAnchor first = First();
 		const ConsoleAnchor last = Last();
 
 		if (sequence < first.Sequence || sequence > last.Sequence)
+		{
 			return std::nullopt;
+		}
 
 		const std::size_t from = sequence == first.Sequence ? std::min(first.Column, columnCount) : 0;
 		const std::size_t to =
 			sequence == last.Sequence ? std::min(last.Column, columnCount) : columnCount;
 
 		if (from >= to)
+		{
 			return std::nullopt;
+		}
 
 		return ConsoleColumnSpan{from, to};
 	}
@@ -120,7 +130,9 @@ namespace Graphite {
 	std::string ConsoleSelection::ExtractText(const std::vector<Core::LogEntry>& entries) const
 	{
 		if (IsEmpty())
+		{
 			return {};
+		}
 
 		const ConsoleAnchor first = First();
 		const ConsoleAnchor last = Last();
@@ -134,7 +146,9 @@ namespace Graphite {
 		for (const Core::LogEntry& entry : entries)
 		{
 			if (entry.Sequence < first.Sequence || entry.Sequence > last.Sequence)
+			{
 				continue;
+			}
 
 			const std::size_t columns = ColumnsIn(entry.Message);
 			const std::size_t from =
@@ -143,7 +157,9 @@ namespace Graphite {
 				entry.Sequence == last.Sequence ? std::min(last.Column, columns) : columns;
 
 			if (taken++ > 0)
+			{
 				text.append("\n");
+			}
 
 			if (from < to)
 			{

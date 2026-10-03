@@ -100,7 +100,9 @@ namespace Core {
 			for (std::size_t index = 0; index < breaks.size(); ++index)
 			{
 				if (breaks[index] > column)
+				{
 					break;
+				}
 
 				subRow = index + 1;
 				rowStart = breaks[index];
@@ -135,7 +137,9 @@ namespace Core {
 			// always covers its last cell; stopping rather than guessing if it somehow did
 			// not is what keeps this loop from standing still.
 			if (!scan.HaveEdge)
+			{
 				break;
+			}
 
 			std::size_t breakAt = 0;
 
@@ -167,7 +171,9 @@ namespace Core {
 			}
 
 			if (breakAt >= total)
+			{
 				break;
+			}
 
 			breaks.push_back(breakAt);
 			rowStart = breakAt;

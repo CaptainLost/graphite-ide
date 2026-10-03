@@ -224,7 +224,9 @@ TEST_CASE("A file read in small chunks yields the same records as one read")
 {
 	std::string bytes;
 	for (int index = 0; index < 40; ++index)
+	{
 		bytes += Fixtures::UserPrompt("prompt " + std::to_string(index));
+	}
 
 	TempDirectory temp;
 	const std::filesystem::path file = temp.MakeFile("s.jsonl", bytes);
@@ -244,7 +246,9 @@ TEST_CASE("A file read in small chunks yields the same records as one read")
 		REQUIRE(read.HasValue());
 
 		for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
+		{
 			chunked.push_back(record.Blocks[0].Text);
+		}
 
 		// A line longer than the limit would never be consumed; the chunk reader must not
 		// stall on one.
@@ -254,7 +258,9 @@ TEST_CASE("A file read in small chunks yields the same records as one read")
 
 	REQUIRE(chunked.size() == whole.GetValue().Chunk.Records.size());
 	for (std::size_t index = 0; index < chunked.size(); ++index)
+	{
 		CHECK(chunked[index] == whole.GetValue().Chunk.Records[index].Blocks[0].Text);
+	}
 }
 
 TEST_CASE("A chunk that ends in the middle of a line leaves that line for the next chunk")

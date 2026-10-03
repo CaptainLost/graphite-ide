@@ -44,7 +44,9 @@ namespace {
 
 			host.Begin(layout);
 			if (insideHost)
+			{
 				insideHost();
+			}
 			host.End();
 
 			for (const std::vector<std::string>* names : {&layout.Left, &layout.Bottom, &layout.Center})
@@ -83,7 +85,9 @@ TEST_CASE("The central node counts as empty while no window is docked in it")
 
 	bool empty = false;
 	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
 		context.Frame(host, layout, [&] { empty = host.IsCenterEmpty(); });
+	}
 
 	CHECK(empty);
 }
@@ -97,7 +101,9 @@ TEST_CASE("The central node stops counting as empty once a window is docked in i
 
 	bool empty = true;
 	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
 		context.Frame(host, layout, [&] { empty = host.IsCenterEmpty(); });
+	}
 
 	CHECK_FALSE(empty);
 }
@@ -111,7 +117,9 @@ TEST_CASE("CenterEmptyState claims exactly the central node, in the window that 
 	const DockLayout layout = WithExplorer();
 
 	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
 		context.Frame(host, layout);
+	}
 
 	ImVec2 claimed;
 	ImVec2 nodeMax;
@@ -146,7 +154,9 @@ TEST_CASE("CenterEmptyState submits nothing while a window is docked in the cent
 	layout.Center = {"Document"};
 
 	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
 		context.Frame(host, layout);
+	}
 
 	context.Frame(host, layout, [&] {
 		const ImGuiID before = ImGui::GetItemID();

@@ -72,7 +72,9 @@ namespace Graphite {
 				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
 
 			if (OpensToward(solution.Root))
+			{
 				ImGui::SetNextItemOpen(true);
+			}
 
 			const bool rootOpen = ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
 
@@ -110,7 +112,9 @@ namespace Graphite {
 			active.has_value() ? m_Documents.At(*active).Path : std::filesystem::path{};
 
 		if (path == m_FollowedPath)
+		{
 			return;
+		}
 
 		m_FollowedPath = path;
 		m_RevealPath = path;
@@ -134,12 +138,16 @@ namespace Graphite {
 			const std::string childPath = ChildPath(path, child.Name);
 
 			if (RenderFolderRenameEditor(child, childPath))
+			{
 				continue;
+			}
 
 			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
 			if (OpensToward(child))
+			{
 				ImGui::SetNextItemOpen(true);
+			}
 
 			const bool open =
 				ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
@@ -154,7 +162,9 @@ namespace Graphite {
 		}
 
 		for (const Project& project : folder.Projects)
+		{
 			RenderProject(project, path);
+		}
 	}
 
 	void SolutionTreeView::RenderProject(const Project& project,
@@ -169,20 +179,28 @@ namespace Graphite {
 			icon + "  " + (project.Exists ? project.DisplayName : project.DisplayName + "  (missing)");
 
 		if (!project.Exists)
+		{
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		}
 
 		if (OpensToward(project))
+		{
 			ImGui::SetNextItemOpen(true);
+		}
 
 		const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
 
 		if (!project.Exists)
+		{
 			ImGui::PopStyleColor();
+		}
 
 		RenderContextMenu(project, folder);
 
 		if (!open)
+		{
 			return;
+		}
 
 		if (project.ContentRead)
 		{
@@ -196,10 +214,14 @@ namespace Graphite {
 	void SolutionTreeView::RenderReferences(const std::vector<std::string>& references)
 	{
 		if (references.empty() || !ImGui::TreeNodeEx("References"))
+		{
 			return;
+		}
 
 		for (const std::string& reference : references)
+		{
 			ImGui::BulletText("%s", reference.c_str());
+		}
 
 		ImGui::TreePop();
 	}
@@ -211,7 +233,9 @@ namespace Graphite {
 			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
 			if (OpensToward(child))
+			{
 				ImGui::SetNextItemOpen(true);
+			}
 
 			if (ImGui::TreeNodeEx(label.c_str()))
 			{
@@ -223,7 +247,9 @@ namespace Graphite {
 		for (const ContentFile& file : folder.Files)
 		{
 			if (m_Filter.PassFilter(file.Name.c_str()))
+			{
 				RenderContentFile(file);
+			}
 		}
 	}
 
@@ -244,10 +270,14 @@ namespace Graphite {
 		ImGui::PushID(Core::ToUtf8(file.Path).c_str());
 
 		if (ImGui::Selectable(label.c_str(), selected))
+		{
 			m_Workspace.SelectFile(file.Path);
+		}
 
 		if (!m_RevealPath.empty() && m_RevealPath == file.Path && !ImGui::IsItemVisible())
+		{
 			ImGui::SetScrollHereY(0.5f);
+		}
 
 		ImGui::PopID();
 	}
@@ -275,12 +305,16 @@ namespace Graphite {
 		const std::string popupId = "##ctxSlnFolder" + path;
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
+		{
 			return;
+		}
 
 		const bool isRoot = path.empty();
 
 		if (ImGui::MenuItem("Add Existing Project...", nullptr, false, !m_Workspace.IsDialogOpen()))
+		{
 			m_Pending = PendingAction{PendingAction::Kind::AddProject, {}, path, {}};
+		}
 
 		if (ImGui::MenuItem("New Folder"))
 		{
@@ -293,10 +327,14 @@ namespace Graphite {
 			ImGui::Separator();
 
 			if (ImGui::MenuItem("Rename"))
+			{
 				StartRenamingFolder(folder, path);
+			}
 
 			if (ImGui::MenuItem("Remove"))
+			{
 				m_Pending = PendingAction{PendingAction::Kind::RemoveFolder, {}, path, {}};
+			}
 		}
 
 		ImGui::EndPopup();
@@ -310,7 +348,9 @@ namespace Graphite {
 		std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
 
 		if (folder.Name.size() < m_RenameBuffer.size())
+		{
 			std::copy_n(folder.Name.begin(), folder.Name.size(), m_RenameBuffer.begin());
+		}
 	}
 
 	void SolutionTreeView::RenderContextMenu(const Project& project,
@@ -319,7 +359,9 @@ namespace Graphite {
 		const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.Path);
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
+		{
 			return;
+		}
 
 		if (ImGui::MenuItem("Remove from Solution"))
 		{
@@ -341,7 +383,9 @@ namespace Graphite {
 												  const std::string& currentFolder)
 	{
 		if (!m_Workspace.LoadedSolution())
+		{
 			return;
+		}
 
 		std::vector<std::string> folders{""};
 		CollectFolderPaths(m_Workspace.LoadedSolution()->Root, "", folders);
@@ -349,12 +393,16 @@ namespace Graphite {
 		for (const std::string& path : folders)
 		{
 			if (path == currentFolder)
+			{
 				continue;
+			}
 
 			const std::string label = path.empty() ? "(Solution Root)" : path;
 
 			if (ImGui::MenuItem(label.c_str()))
+			{
 				m_Pending = PendingAction{PendingAction::Kind::MoveProject, project.Path, path, {}};
+			}
 		}
 	}
 
@@ -362,7 +410,9 @@ namespace Graphite {
 													const std::string& path)
 	{
 		if (m_RenamingFolder != path)
+		{
 			return false;
+		}
 
 		if (m_FocusRenameField)
 		{
@@ -391,7 +441,9 @@ namespace Graphite {
 			const std::string typed = m_RenameBuffer.data();
 
 			if (!typed.empty() && typed != folder.Name)
+			{
 				m_Pending = PendingAction{PendingAction::Kind::RenameFolder, {}, path, typed};
+			}
 
 			m_RenamingFolder.clear();
 		}
@@ -422,7 +474,9 @@ namespace Graphite {
 			const PendingAction action{PendingAction::Kind::RemoveProject, m_RemoveCandidate, {}, {}};
 
 			if (const auto applied = Apply(action); !applied)
+			{
 				APP_ERROR("{}", applied.GetError().Message);
+			}
 
 			m_RemoveCandidate.clear();
 			m_RemoveCandidateName.clear();
@@ -444,7 +498,9 @@ namespace Graphite {
 	void SolutionTreeView::ExecutePendingAction()
 	{
 		if (m_Pending.kind == PendingAction::Kind::None)
+		{
 			return;
+		}
 
 		PendingAction action = std::move(m_Pending);
 		m_Pending = PendingAction{};
@@ -463,7 +519,9 @@ namespace Graphite {
 										   }
 
 										   if (picked.GetValue().empty())
+										   {
 											   return;
+										   }
 
 										   action.project = std::move(picked).GetValue();
 										   ApplyAndReport(action);
@@ -479,18 +537,24 @@ namespace Graphite {
 		// No reload here: writing the file wakes the directory watcher, and the reload
 		// arrives through that path.
 		if (const auto applied = Apply(action); !applied)
+		{
 			APP_ERROR("{}", applied.GetError().Message);
+		}
 	}
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
 	{
 		if (!m_Workspace.LoadedSolution())
+		{
 			return Core::Error{Core::ErrorCode::NotFound, "no solution is open"};
+		}
 
 		auto editor = SolutionEditor::Open(m_Workspace.LoadedSolution()->Path);
 
 		if (!editor)
+		{
 			return editor.GetError();
+		}
 
 		Core::Result<void> applied = Core::Result<void>::Ok();
 
@@ -525,7 +589,9 @@ namespace Graphite {
 		}
 
 		if (!applied)
+		{
 			return applied;
+		}
 
 		return editor.GetValue()->Save();
 	}

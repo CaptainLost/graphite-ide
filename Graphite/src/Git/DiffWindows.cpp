@@ -413,7 +413,9 @@ namespace Graphite {
 
 			// A tab's menu asked for this one last frame: the same as its close button.
 			if (closeRequests.Take(name))
+			{
 				open = false;
+			}
 
 			Core::DrawTabContextMenu(closeRequests);
 

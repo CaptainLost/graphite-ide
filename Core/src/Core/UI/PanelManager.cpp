@@ -41,7 +41,9 @@ namespace Core {
 		CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
 
 		if (Find(panel->GetId()) != nullptr)
+		{
 			return nullptr;
+		}
 
 		Panel* reference = panel.get();
 		m_Panels.push_back(std::move(panel));
@@ -61,7 +63,9 @@ namespace Core {
 		for (auto& panel : m_Panels)
 		{
 			if (panel->GetId() == id)
+			{
 				return panel.get();
+			}
 		}
 
 		return nullptr;
@@ -72,10 +76,14 @@ namespace Core {
 		for (auto& panel : m_Panels)
 		{
 			if (event.Handled)
+			{
 				return;
+			}
 
 			if (panel->WasDrawn())
+			{
 				panel->OnEvent(event);
+			}
 		}
 	}
 
@@ -83,7 +91,9 @@ namespace Core {
 	{
 		Panel* panel = Find(id);
 		if (panel == nullptr)
+		{
 			return false;
+		}
 
 		panel->SetVisible(visible);
 		return true;
@@ -100,7 +110,9 @@ namespace Core {
 	void PanelManager::OnUpdate(Timestep ts)
 	{
 		for (auto& panel : m_Panels)
+		{
 			panel->OnUpdate(ts);
+		}
 	}
 
 	void PanelManager::OnImGuiRender(TabCloseRequests& closeRequests)
@@ -122,7 +134,9 @@ namespace Core {
 			// Set before Begin so it reaches a window that is appearing this frame too, and
 			// selects the tab when the window shares a dock node with others.
 			if (panel->ConsumeFocusRequest())
+			{
 				ImGui::SetNextWindowFocus();
+			}
 
 			// Begin returns false when the window is collapsed or another tab of the same dock
 			// node is selected: the panel got its turn, but its body did not run.
@@ -131,7 +145,9 @@ namespace Core {
 
 			// A tab's menu asked for this one last frame: the same as its close button.
 			if (closeRequests.Take(label))
+			{
 				open = false;
+			}
 
 			DrawTabContextMenu(closeRequests);
 
@@ -143,7 +159,9 @@ namespace Core {
 			ImGui::End();
 
 			if (!open)
+			{
 				panel->SetVisible(false);
+			}
 		}
 	}
 

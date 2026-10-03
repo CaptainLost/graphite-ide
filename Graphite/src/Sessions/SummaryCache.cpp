@@ -36,7 +36,9 @@ namespace Graphite {
 				const auto counts = row.at("counts").get<std::vector<std::uint64_t>>();
 
 				if (counts.size() != 5)
+				{
 					throw nlohmann::json::other_error::create(501, "counts must have five entries", &row);
+				}
 
 				usage[{row.at("model").get<std::string>(), row.at("fast").get<bool>()}] =
 					TokenCounts{counts[0], counts[1], counts[2], counts[3], counts[4]};
@@ -51,7 +53,9 @@ namespace Graphite {
 		std::ifstream stream{file, std::ios::binary};
 
 		if (!stream)
+		{
 			return {};
+		}
 
 		std::stringstream buffer;
 		buffer << stream.rdbuf();

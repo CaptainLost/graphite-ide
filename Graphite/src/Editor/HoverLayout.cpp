@@ -23,18 +23,26 @@ namespace Graphite {
 			const std::size_t indent = expanded.back().find_first_not_of(' ');
 
 			if (indent != std::string::npos)
+			{
 				shared = std::min(shared, indent);
+			}
 		}
 
 		if (shared == std::string::npos)
+		{
 			return dedented;
+		}
 
 		for (std::string& line : expanded)
 		{
 			if (line.find_first_not_of(' ') == std::string::npos)
+			{
 				line.clear();
+			}
 			else
+			{
 				line.erase(0, shared);
+			}
 		}
 
 		dedented.Removed = shared;
@@ -51,7 +59,9 @@ namespace Graphite {
 		for (const SemanticSpan& span : spans)
 		{
 			if (span.From < removed)
+			{
 				continue;
+			}
 
 			moved.push_back({span.From - removed, span.To - removed, span.Kind});
 		}

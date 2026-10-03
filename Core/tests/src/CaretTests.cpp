@@ -157,7 +157,9 @@ TEST_CASE("Page movement covers a screen and clamps at the ends")
 	std::string content;
 
 	for (std::size_t line = 0; line < 50; ++line)
+	{
 		content += "line\n";
+	}
 
 	const TextBuffer buffer{content};
 
@@ -301,7 +303,9 @@ TEST_CASE("Every motion leaves the caret on a character boundary")
 
 			// A boundary is any offset that is not a UTF-8 continuation byte.
 			if (result.Offset < buffer.GetLength())
+			{
 				REQUIRE((static_cast<unsigned char>(buffer.CharAt(result.Offset)) & 0xC0) != 0x80);
+			}
 		}
 	}
 }

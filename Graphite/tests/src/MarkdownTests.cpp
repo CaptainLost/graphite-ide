@@ -118,7 +118,9 @@ TEST_CASE("Each line of a table is a paragraph of its own")
 	CHECK(blocks[0].Spans == std::vector<Span>{{SpanStyle::Plain, "Before"}});
 
 	for (std::size_t index = 1; index < 4; ++index)
+	{
 		CHECK(blocks[index].Kind == MarkdownKind::Paragraph);
+	}
 
 	CHECK(blocks[1].Spans == std::vector<Span>{{SpanStyle::Plain, "| a | "}, {SpanStyle::Bold, "b"}, {SpanStyle::Plain, " |"}});
 	CHECK(blocks[2].Spans == std::vector<Span>{{SpanStyle::Plain, "|---|---|"}});

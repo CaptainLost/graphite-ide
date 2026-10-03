@@ -49,7 +49,9 @@ namespace Core {
 				GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
 
 			if (written == 0)
+			{
 				return Error{ErrorCode::IoFailure, "cannot determine the executable path"};
+			}
 
 			if (written < buffer.size())
 			{
@@ -58,7 +60,9 @@ namespace Core {
 			}
 
 			if (buffer.size() >= 32768)
+			{
 				return Error{ErrorCode::IoFailure, "the executable path is implausibly long"};
+			}
 
 			buffer.resize(buffer.size() * 2);
 		}
@@ -78,13 +82,17 @@ namespace Core {
 		const DWORD length = GetEnvironmentVariableW(name, nullptr, 0);
 
 		if (length <= 1)
+		{
 			return std::nullopt;
+		}
 
 		std::wstring value(length, L'\0');
 		const DWORD written = GetEnvironmentVariableW(name, value.data(), length);
 
 		if (written == 0 || written >= length)
+		{
 			return std::nullopt;
+		}
 
 		value.resize(written);
 		return std::filesystem::path{value};
@@ -99,12 +107,16 @@ namespace Core {
 		std::optional<std::filesystem::path> home = EnvironmentPath(L"USERPROFILE");
 
 		if (!home.has_value())
+		{
 			return Error{ErrorCode::NotFound, "USERPROFILE is not set"};
+		}
 
 		std::error_code status;
 
 		if (!std::filesystem::is_directory(*home, status))
+		{
 			return Error{ErrorCode::NotFound, "USERPROFILE does not name a directory"};
+		}
 
 		return std::move(*home);
 	}
@@ -147,7 +159,9 @@ namespace Core {
 		// Null when the foreground window belongs to another desktop, or during the
 		// moment a window is being switched. Not ours either way.
 		if (foreground == nullptr)
+		{
 			return false;
+		}
 
 		DWORD owner = 0;
 		::GetWindowThreadProcessId(foreground, &owner);

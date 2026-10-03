@@ -38,7 +38,9 @@ namespace Graphite {
 			for (const Marker& marker : kMarkers)
 			{
 				if (trimmed.starts_with(marker.Tag))
+				{
 					return &marker;
+				}
 			}
 
 			return nullptr;
@@ -52,7 +54,9 @@ namespace Graphite {
 
 			const std::size_t start = text.find(open);
 			if (start == std::string_view::npos)
+			{
 				return {};
+			}
 
 			const std::size_t from = start + open.size();
 			const std::size_t end = text.find(close, from);
@@ -70,7 +74,9 @@ namespace Graphite {
 		const Marker* marker = MarkerOf(text);
 
 		if (marker == nullptr)
+		{
 			return "Injected text";
+		}
 
 		if (marker->Tag == "<task-notification>")
 		{
@@ -104,14 +110,20 @@ namespace Graphite {
 			const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
 
 			if (!name.empty())
+			{
 				label = "Image source: " + std::string{name};
+			}
 		}
 
 		if (label.empty())
+		{
 			label = line;
+		}
 
 		if (label.size() <= maxBytes)
+		{
 			return label;
+		}
 
 		// The ellipsis counts within the budget, so a cut label is never longer than one that
 		// just fits.

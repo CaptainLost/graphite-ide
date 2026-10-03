@@ -84,6 +84,8 @@ namespace Core {
 		static const int result = git_libgit2_init();
 
 		if (result < 0)
+		{
 			CORE_ERROR("libgit2 failed to initialise (code {})", result);
+		}
 	}
 }

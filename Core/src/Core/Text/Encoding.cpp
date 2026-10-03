@@ -63,13 +63,19 @@ namespace Core {
 	Encoding DetectEncoding(std::string_view bytes)
 	{
 		if (bytes.size() >= 3 && ByteAt(bytes, 0) == 0xEFu && ByteAt(bytes, 1) == 0xBBu && ByteAt(bytes, 2) == 0xBFu)
+		{
 			return Encoding::Utf8Bom;
+		}
 
 		if (bytes.size() >= 2 && ByteAt(bytes, 0) == 0xFFu && ByteAt(bytes, 1) == 0xFEu)
+		{
 			return Encoding::Utf16Le;
+		}
 
 		if (bytes.size() >= 2 && ByteAt(bytes, 0) == 0xFEu && ByteAt(bytes, 1) == 0xFFu)
+		{
 			return Encoding::Utf16Be;
+		}
 
 		return Encoding::Utf8;
 	}
@@ -92,12 +98,16 @@ namespace Core {
 	std::size_t NextCharacter(std::string_view bytes, std::size_t offset)
 	{
 		if (offset >= bytes.size())
+		{
 			return bytes.size();
+		}
 
 		std::size_t next = offset + 1;
 
 		while (next < bytes.size() && IsContinuation(ByteAt(bytes, next)))
+		{
 			++next;
+		}
 
 		return next;
 	}
@@ -105,12 +115,16 @@ namespace Core {
 	std::size_t PreviousCharacter(std::string_view bytes, std::size_t offset)
 	{
 		if (offset == 0 || bytes.empty())
+		{
 			return 0;
+		}
 
 		std::size_t previous = (offset > bytes.size() ? bytes.size() : offset) - 1;
 
 		while (previous > 0 && IsContinuation(ByteAt(bytes, previous)))
+		{
 			--previous;
+		}
 
 		return previous;
 	}

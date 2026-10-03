@@ -114,6 +114,12 @@ the substance.
 
 ## Deviations to fix
 
+**Update (2026-10-03).** None remain. `.clang-format` now sets `InsertBraces: true`, and
+one run of it over both projects and their tests braced every body - 1547 of them, far
+more than the 120 inventoried below, since Graphite was never counted and Core had grown.
+The rule is therefore no longer held by review alone: formatting a file braces it. The
+table below is kept as the record of where the backlog stood when it was written.
+
 The 120 Core sites, by file. They are worked off opportunistically, not in a
 sweep; this table is the checklist and should shrink over time. Graphite's own
 sites are deliberately not enumerated here — see the correction under Context.

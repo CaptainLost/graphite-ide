@@ -62,8 +62,12 @@ TEST_CASE("Per-turn costs add up to the session's cost")
 
 	UsageByModel all;
 	for (const Turn& turn : session.GetTurns())
+	{
 		for (const auto& [key, counts] : turn.Usage)
+		{
 			all[key] += counts;
+		}
+	}
 
 	CHECK(turns[0].Known);
 	CHECK(turns[1].Known);

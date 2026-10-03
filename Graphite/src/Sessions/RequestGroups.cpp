@@ -28,10 +28,14 @@ namespace Graphite {
 				const ApiRequest& request = requests[position];
 
 				if (first == nullptr || request.Index < first->Index)
+				{
 					first = &request;
+				}
 
 				if (last == nullptr || request.Index > last->Index)
+				{
 					last = &request;
+				}
 
 				if (!request.Model.empty())
 				{
@@ -41,20 +45,30 @@ namespace Graphite {
 						summary.Fast = request.Fast;
 					}
 					else if (request.Model != summary.Model || request.Fast != summary.Fast)
+					{
 						summary.MixedModels = true;
+					}
 				}
 
 				if (request.ContextDelta)
+				{
 					summary.Delta = summary.Delta.value_or(0) + *request.ContextDelta;
+				}
 
 				if (request.Waited)
+				{
 					summary.Waited = summary.Waited.value_or(std::chrono::milliseconds{0}) + *request.Waited;
+				}
 
 				if (request.CacheRebuilt)
+				{
 					++summary.Rebuilt;
+				}
 
 				if (request.Usage.Total() == 0)
+				{
 					continue;
+				}
 
 				summary.HasUsage = true;
 				summary.CacheRead += request.Usage.CacheRead;
@@ -63,7 +77,9 @@ namespace Graphite {
 				usage[UsageKey{request.Model, request.Fast}] += request.Usage;
 
 				if (lastWithUsage == nullptr || request.Index > lastWithUsage->Index)
+				{
 					lastWithUsage = &request;
+				}
 			}
 
 			if (first != nullptr)
@@ -73,10 +89,14 @@ namespace Graphite {
 			}
 
 			if (last != nullptr)
+			{
 				summary.StopReason = last->StopReason;
+			}
 
 			if (lastWithUsage != nullptr)
+			{
 				summary.Context = lastWithUsage->Context;
+			}
 
 			summary.Cost = pricing.CostOf(usage);
 			return summary;
@@ -144,7 +164,9 @@ namespace Graphite {
 			for (const auto& [key, usage] : turns[turn].Requests)
 			{
 				if (!key.empty())
+				{
 					byKey.emplace(key, turn);
+				}
 			}
 		}
 
@@ -155,9 +177,13 @@ namespace Graphite {
 			const auto found = requests[position].Key.empty() ? byKey.end() : byKey.find(requests[position].Key);
 
 			if (found != byKey.end())
+			{
 				turnOf[position] = found->second;
+			}
 			else if (position > 0)
+			{
 				turnOf[position] = turnOf[position - 1];
+			}
 		}
 
 		return turnOf;
@@ -194,7 +220,9 @@ namespace Graphite {
 			std::sort(group.Positions.begin(), group.Positions.end());
 
 			if (backwards)
+			{
 				std::reverse(group.Positions.begin(), group.Positions.end());
+			}
 
 			group.Summary = Summarise(group.Summary.Turn, group.Positions, requests, pricing);
 		}
@@ -204,11 +232,15 @@ namespace Graphite {
 		values.reserve(groups.size());
 
 		for (const TurnGroup& group : groups)
+		{
 			values.push_back(ValueOf(group.Summary, column, prompts));
+		}
 
 		std::vector<std::size_t> sorted(groups.size());
 		for (std::size_t index = 0; index < sorted.size(); ++index)
+		{
 			sorted[index] = index;
+		}
 
 		// Ties go by turn, so equal turns keep the session's order in either direction.
 		std::sort(sorted.begin(), sorted.end(),
@@ -221,7 +253,9 @@ namespace Graphite {
 		result.reserve(groups.size());
 
 		for (const std::size_t index : sorted)
+		{
 			result.push_back(std::move(groups[index]));
+		}
 
 		return result;
 	}

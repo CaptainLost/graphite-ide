@@ -34,7 +34,9 @@ namespace {
 		turn.Prompt = std::move(prompt);
 
 		for (const std::size_t index : indices)
+		{
 			turn.Requests["r" + std::to_string(index)] = {};
+		}
 
 		return turn;
 	}
@@ -43,7 +45,9 @@ namespace {
 	{
 		std::vector<std::size_t> order;
 		for (std::size_t position = 0; position < requests.size(); ++position)
+		{
 			order.push_back(position);
+		}
 		return order;
 	}
 
@@ -51,7 +55,9 @@ namespace {
 	{
 		std::vector<std::size_t> turns;
 		for (const TurnGroup& group : groups)
+		{
 			turns.push_back(group.Summary.Turn);
+		}
 		return turns;
 	}
 
@@ -60,7 +66,9 @@ namespace {
 	{
 		std::vector<std::string> prompts;
 		for (const Turn& turn : turns)
+		{
 			prompts.push_back(turn.Prompt);
+		}
 
 		return GroupByTurn(order, TurnOfRequests(requests, turns), requests, prompts, column, ascending,
 						   Pricing::Defaults());

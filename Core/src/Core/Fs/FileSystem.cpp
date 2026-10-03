@@ -21,13 +21,19 @@ namespace Core {
 		ErrorCode TranslateError(const std::error_code& code)
 		{
 			if (code == std::errc::no_such_file_or_directory)
+			{
 				return ErrorCode::NotFound;
+			}
 
 			if (code == std::errc::permission_denied)
+			{
 				return ErrorCode::AccessDenied;
+			}
 
 			if (code == std::errc::not_a_directory)
+			{
 				return ErrorCode::InvalidArgument;
+			}
 
 			return ErrorCode::IoFailure;
 		}
@@ -53,7 +59,9 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 			const DWORD attributes = ::GetFileAttributesW(path.c_str());
 			if (attributes == INVALID_FILE_ATTRIBUTES)
+			{
 				return false;
+			}
 
 			return (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0;
 #else
@@ -185,11 +193,15 @@ namespace Core {
 			const int b = std::tolower(static_cast<unsigned char>(right[i]));
 
 			if (a != b)
+			{
 				return a < b ? -1 : 1;
+			}
 		}
 
 		if (left.size() == right.size())
+		{
 			return 0;
+		}
 
 		return left.size() < right.size() ? -1 : 1;
 	}
@@ -244,7 +256,9 @@ namespace Core {
 		// to the same directory spelled without it. has_relative_path() guards the roots:
 		// parent_path() of `D:/` is `D:`, a drive-relative path naming a different place.
 		if (!normalized.has_filename() && normalized.has_relative_path())
+		{
 			normalized = normalized.parent_path();
+		}
 
 		return normalized;
 	}

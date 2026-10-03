@@ -13,7 +13,9 @@ namespace Graphite {
 		bool TryOpen(std::string_view title)
 		{
 			if (!m_Owner.empty())
+			{
 				return false;
+			}
 
 			m_Owner = title;
 			return true;
@@ -22,7 +24,9 @@ namespace Graphite {
 		void Close(std::string_view title)
 		{
 			if (m_Owner == title)
+			{
 				m_Owner = {};
+			}
 		}
 
 		bool IsBusy() const { return !m_Owner.empty(); }

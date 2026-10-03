@@ -146,7 +146,9 @@ namespace Core {
 		// The buffer survives Init whenever the requested capacity is the one it already
 		// has, so the messages written before this call are still in the panel afterwards.
 		if (state.Console->GetCapacity() != spec.ConsoleCapacity)
+		{
 			state.Console = std::make_shared<RingBufferSink>(spec.ConsoleCapacity);
+		}
 
 		std::vector<spdlog::sink_ptr> sinks{MakeProcessConsoleSink(), state.Console};
 

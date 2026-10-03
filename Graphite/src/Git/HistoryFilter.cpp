@@ -54,7 +54,9 @@ namespace Graphite {
 		// so the step the keystroke's frame carries is the whole sleep before it, and
 		// counting it would settle the first letter typed at once.
 		if (!std::exchange(m_JustSet, false))
+		{
 			m_Since += seconds;
+		}
 
 		if (m_Since < kSettleSeconds)
 		{

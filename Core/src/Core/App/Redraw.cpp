@@ -30,12 +30,16 @@ namespace Core::Redraw {
 		// wakes; the rest ride on its wake. A search reports after every file, and a wake per
 		// report would be a message per report in the window's queue, which Windows caps.
 		if (s_Requested.exchange(true))
+		{
 			return;
+		}
 
 		const std::lock_guard lock{s_WakerMutex};
 
 		if (s_Waker != nullptr)
+		{
 			s_Waker();
+		}
 	}
 
 	void RequestIn(std::chrono::duration<double> delay)
@@ -72,7 +76,9 @@ namespace Core::Redraw {
 		const Clock::rep deadline = s_Deadline.exchange(kNoDeadline);
 
 		if (deadline == kNoDeadline)
+		{
 			return std::nullopt;
+		}
 
 		return Clock::time_point{Clock::duration{deadline}};
 	}

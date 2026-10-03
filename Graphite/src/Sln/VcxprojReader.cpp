@@ -29,10 +29,14 @@ namespace Graphite {
 				const std::size_t end = slash == std::string_view::npos ? filter.size() : slash;
 
 				if (end > start)
+				{
 					parts.emplace_back(filter.substr(start, end - start));
+				}
 
 				if (slash == std::string_view::npos)
+				{
 					break;
+				}
 
 				start = slash + 1;
 			}
@@ -74,12 +78,16 @@ namespace Graphite {
 			std::error_code code;
 
 			if (!std::filesystem::is_regular_file(filters, code))
+			{
 				return assignments;
+			}
 
 			pugi::xml_document document;
 
 			if (!document.load_file(filters.c_str()))
+			{
 				return assignments;
+			}
 
 			for (const pugi::xml_node& group : document.child("Project").children("ItemGroup"))
 			{
@@ -88,7 +96,9 @@ namespace Graphite {
 					const pugi::xml_node filter = item.child("Filter");
 
 					if (!filter)
+					{
 						continue;
+					}
 
 					assignments.emplace(item.attribute("Include").value(),
 										filter.child_value());
@@ -107,7 +117,9 @@ namespace Graphite {
 					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
 
 			for (ContentFolder& child : folder.Folders)
+			{
 				SortContent(child);
+			}
 		}
 	}
 
@@ -169,7 +181,9 @@ namespace Graphite {
 				const char* include = item.attribute("Include").value();
 
 				if (include[0] == '\0')
+				{
 					continue;
+				}
 
 				ContentFile file;
 				file.Path = (directory / Core::FromUtf8(include)).lexically_normal();
@@ -188,9 +202,13 @@ namespace Graphite {
 				const std::vector<std::string> parts = SplitFilter(assignment->second);
 
 				if (parts.empty())
+				{
 					content.Root.Files.push_back(std::move(file));
+				}
 				else
+				{
 					EnsureContentFolder(content.Root, parts).Files.push_back(std::move(file));
+				}
 			}
 		}
 

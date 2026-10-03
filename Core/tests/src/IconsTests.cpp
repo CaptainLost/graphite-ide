@@ -123,7 +123,9 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 
 	int count = 0;
 	while (ranges[count] != 0 || ranges[count + 1] != 0)
+	{
 		count += 2;
+	}
 	CHECK(ranges[count] == 0);
 	CHECK(ranges[count + 1] == 0);
 }

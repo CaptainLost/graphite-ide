@@ -39,7 +39,9 @@ namespace Core {
 	Result<void> Repository::CreateBranch(const std::string& name, const Oid& from)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		const git_oid id = ToGitOid(from);
 		CommitHandle commit;
@@ -65,12 +67,16 @@ namespace Core {
 	Result<void> Repository::RenameBranch(const std::string& from, const std::string& to)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		auto reference = LookupLocal(m_Handle.get(), from);
 
 		if (!reference.HasValue())
+		{
 			return reference.GetError();
+		}
 
 		ReferenceHandle moved;
 		const int result = git_branch_move(Out(moved), reference.GetValue().get(), to.c_str(), 0);
@@ -87,12 +93,16 @@ namespace Core {
 	Result<std::size_t> Repository::CountUnmergedCommits(const std::string& name) const
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		RevwalkHandle walk;
 
 		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot walk: {}", LastLibgit2Message())};
+		}
 
 		const std::string full = "refs/heads/" + name;
 
@@ -114,12 +124,16 @@ namespace Core {
 				ReferenceHandle reference;
 
 				if (git_branch_next(Out(reference), &type, iterator.get()) != 0)
+				{
 					break;
+				}
 
 				const char* other = git_reference_name(reference.get());
 
 				if (other != nullptr && full != other && git_reference_target(reference.get()) != nullptr)
+				{
 					git_revwalk_hide(walk.get(), git_reference_target(reference.get()));
+				}
 			}
 		}
 
@@ -127,7 +141,9 @@ namespace Core {
 		git_oid id{};
 
 		while (git_revwalk_next(&id, walk.get()) == 0)
+		{
 			++count;
+		}
 
 		return count;
 	}
@@ -135,12 +151,16 @@ namespace Core {
 	Result<void> Repository::DeleteBranch(const std::string& name)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		auto reference = LookupLocal(m_Handle.get(), name);
 
 		if (!reference.HasValue())
+		{
 			return reference.GetError();
+		}
 
 		const int checkedOut = git_branch_is_checked_out(reference.GetValue().get());
 

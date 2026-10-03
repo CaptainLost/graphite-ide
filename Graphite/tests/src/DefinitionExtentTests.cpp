@@ -18,7 +18,9 @@ namespace {
 		return DefinitionExtent(
 			[&lines](std::size_t i) -> std::optional<std::string_view> {
 				if (i >= lines.size())
+				{
 					return std::nullopt;
+				}
 				return std::string_view(lines[i]);
 			},
 			start, *lexer);
@@ -69,7 +71,9 @@ TEST_CASE("An unbalanced brace falls back to twenty lines")
 	std::vector<std::string> lines{"void F() {"};
 
 	for (int i = 0; i < 30; ++i)
+	{
 		lines.push_back("  x();");
+	}
 
 	const LineRange range = ExtentOf(lines, 0);
 

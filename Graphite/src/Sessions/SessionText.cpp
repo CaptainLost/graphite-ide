@@ -34,10 +34,14 @@ namespace Graphite {
 	std::string FormatCost(const CostResult& cost)
 	{
 		if (!cost.IsKnown())
+		{
 			return "?";
+		}
 
 		if (cost.Dollars > 0.0 && cost.Dollars < 0.005)
+		{
 			return "< $0.01";
+		}
 
 		char buffer[32];
 		std::snprintf(buffer, sizeof(buffer), "$%.2f", cost.Dollars);
@@ -50,12 +54,18 @@ namespace Graphite {
 		char buffer[32];
 
 		if (seconds < 60)
+		{
 			std::snprintf(buffer, sizeof(buffer), "%llds", static_cast<long long>(seconds));
+		}
 		else if (seconds < 3600)
+		{
 			std::snprintf(buffer, sizeof(buffer), "%lldm", static_cast<long long>(seconds / 60));
+		}
 		else
+		{
 			std::snprintf(buffer, sizeof(buffer), "%lldh %lldm", static_cast<long long>(seconds / 3600),
 						  static_cast<long long>(seconds % 3600 / 60));
+		}
 
 		return buffer;
 	}
@@ -67,13 +77,21 @@ namespace Graphite {
 		const auto add = [&label](const std::string& piece) { label += " \xc2\xb7 " + piece; };
 
 		if (facts.PreTokens && facts.PostTokens)
+		{
 			add(FormatTokens(*facts.PreTokens) + " \xe2\x86\x92 " + FormatTokens(*facts.PostTokens));
+		}
 		if (!facts.Trigger.empty())
+		{
 			add(facts.Trigger);
+		}
 		if (facts.Duration)
+		{
 			add(FormatDuration(*facts.Duration));
+		}
 		if (!time.empty())
+		{
 			add(time);
+		}
 
 		return label;
 	}
@@ -89,13 +107,17 @@ namespace Graphite {
 			const std::string type = StringAt(input, "subagent_type");
 
 			if (!task.empty())
+			{
 				return type.empty() ? task : task + " (" + type + ")";
+			}
 		}
 
 		for (const char* key : {"command", "file_path", "pattern", "description", "url", "query", "skill"})
 		{
 			if (std::string value = StringAt(input, key); !value.empty())
+			{
 				return value;
+			}
 		}
 
 		return TruncateUtf8(tool.InputJson, kRawSummaryBytes);
@@ -106,7 +128,9 @@ namespace Graphite {
 		std::vector<std::string> lines;
 
 		if (tool.Name != "Edit")
+		{
 			return lines;
+		}
 
 		const nlohmann::json input = ObjectOf(tool.InputJson);
 		AddLines(lines, StringAt(input, "old_string"), "- ");
@@ -119,7 +143,9 @@ namespace Graphite {
 		const std::string path = StringAt(ObjectOf(tool.InputJson), "file_path");
 
 		if (path.empty())
+		{
 			return std::nullopt;
+		}
 
 		return Core::FromUtf8(path);
 	}
@@ -160,29 +186,41 @@ namespace Graphite {
 		TurnBreakdown breakdown;
 
 		if (turn >= session.GetTurns().size())
+		{
 			return breakdown;
+		}
 
 		const Turn& at = session.GetTurns()[turn];
 
 		for (const auto& [key, request] : at.Requests)
+		{
 			breakdown.Requests.push_back({.Key = key,
 										  .Position = timeline.IndexOf(key),
 										  .Cost = pricing.CostOf(UsageKey{request.Model, request.Fast}, request.Usage)});
+		}
 
 		// Stable, so requests that cost the same keep the order of their keys.
 		std::ranges::stable_sort(breakdown.Requests, [](const TurnRequest& a, const TurnRequest& b) {
 			if (a.Cost.IsKnown() != b.Cost.IsKnown())
+			{
 				return a.Cost.IsKnown();
+			}
 			return a.Cost.Dollars > b.Cost.Dollars;
 		});
 
 		std::map<std::string, std::size_t> counts;
 		for (const TurnItem& item : at.Items)
+		{
 			if (item.Kind == ItemKind::Tool && item.Tool < session.GetTools().size())
+			{
 				++counts[session.GetTools()[item.Tool].Name];
+			}
+		}
 
 		for (const auto& [name, count] : counts)
+		{
 			breakdown.Tools.push_back({name, count});
+		}
 
 		// Stable over the map's order, so tools used as often read by name.
 		std::ranges::stable_sort(breakdown.Tools,
@@ -199,11 +237,17 @@ namespace Graphite {
 		std::vector<std::string> activity;
 
 		for (const ResponseItem& item : request.Response)
+		{
 			if (item.Kind == ResponseKind::ToolCall)
+			{
 				activity.push_back(SingleLineLabel(item.Label, kActivityBytes));
+			}
+		}
 
 		if (!activity.empty())
+		{
 			return activity;
+		}
 
 		for (const ResponseItem& item : request.Response)
 		{
@@ -232,12 +276,16 @@ namespace Graphite {
 			}
 
 			if (std::exchange(space, false))
+			{
 				label += ' ';
+			}
 
 			// "###" becomes "# # #": a space after every '#' that follows another leaves no
 			// two side by side.
 			if (c == '#' && !label.empty() && label.back() == '#')
+			{
 				label += ' ';
+			}
 
 			label += c;
 		}

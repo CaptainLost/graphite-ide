@@ -54,10 +54,14 @@ namespace Core {
 			const int result = git_stash_foreach(handle, Collect, &collected);
 
 			if (collected.CommitUnreadable)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read a stash commit: {}", LastLibgit2Message())};
+			}
 
 			if (result != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot list stashes: {}", LastLibgit2Message())};
+			}
 
 			return std::move(collected.Entries);
 		}
@@ -69,12 +73,16 @@ namespace Core {
 			auto stashes = ListStashes(handle);
 
 			if (!stashes.HasValue())
+			{
 				return stashes.GetError();
+			}
 
 			for (const StashEntry& entry : stashes.GetValue())
 			{
 				if (entry.Id == id)
+				{
 					return entry.Index;
+				}
 			}
 
 			return Error{ErrorCode::NotFound, "that stash no longer exists"};
@@ -88,10 +96,14 @@ namespace Core {
 
 			// Two statements: Out hands the index over only at the end of the full expression.
 			if (git_repository_index(Out(index), handle) != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			}
 
 			if (git_index_read(index.get(), false) != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			}
 
 			return git_index_has_conflicts(index.get()) != 0;
 		}
@@ -100,7 +112,9 @@ namespace Core {
 	Result<bool> Repository::StashSave(const std::string& message, bool includeUntracked)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		SignatureHandle stasher;
 
@@ -122,7 +136,9 @@ namespace Core {
 										  message.empty() ? nullptr : message.c_str(), flags);
 
 		if (result == GIT_ENOTFOUND)
+		{
 			return false;
+		}
 
 		// libgit2 cannot write a tree from a conflicted index, and says so in its own terms;
 		// it refuses before recording anything.
@@ -133,7 +149,9 @@ namespace Core {
 		}
 
 		if (result != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot stash: {}", LastLibgit2Message())};
+		}
 
 		// The work is safe in the stash by now; a failure here leaves it on the tree as well.
 		auto cleared = DiscardAll(includeUntracked);
@@ -152,7 +170,9 @@ namespace Core {
 	Result<std::vector<StashEntry>> Repository::QueryStashes() const
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		return ListStashes(m_Handle.get());
 	}
@@ -160,25 +180,33 @@ namespace Core {
 	Result<void> Repository::StashApply(const Oid& id)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		const auto index = IndexOf(m_Handle.get(), id);
 
 		if (!index.HasValue())
+		{
 			return index.GetError();
+		}
 
 		git_stash_apply_options options = GIT_STASH_APPLY_OPTIONS_INIT;
 		options.flags = GIT_STASH_APPLY_REINSTATE_INDEX;
 
 		if (git_stash_apply(m_Handle.get(), index.GetValue(), &options) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot apply the stash: {}", LastLibgit2Message())};
+		}
 
 		// Reported as a success by libgit2 - see StashPop - but the reader has conflicts to
 		// resolve now, and the Changes list alone does not say where they came from.
 		const auto conflicted = HasConflicts(m_Handle.get());
 
 		if (!conflicted.HasValue())
+		{
 			return Error{ErrorCode::IoFailure, std::format("the stash was applied: {}", conflicted.GetError().Message)};
+		}
 
 		if (conflicted.GetValue())
 		{
@@ -192,12 +220,16 @@ namespace Core {
 	Result<void> Repository::StashPop(const Oid& id)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		const auto index = IndexOf(m_Handle.get(), id);
 
 		if (!index.HasValue())
+		{
 			return index.GetError();
+		}
 
 		git_stash_apply_options options = GIT_STASH_APPLY_OPTIONS_INIT;
 		options.flags = GIT_STASH_APPLY_REINSTATE_INDEX;
@@ -208,7 +240,9 @@ namespace Core {
 		// and git_stash_pop then drops it. git keeps the stash in that case, and so does this:
 		// it is the only copy of the work until the conflict is resolved.
 		if (git_stash_apply(m_Handle.get(), index.GetValue(), &options) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot pop the stash: {}", LastLibgit2Message())};
+		}
 
 		const auto conflicted = HasConflicts(m_Handle.get());
 
@@ -238,15 +272,21 @@ namespace Core {
 	Result<void> Repository::StashDrop(const Oid& id)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		const auto index = IndexOf(m_Handle.get(), id);
 
 		if (!index.HasValue())
+		{
 			return index.GetError();
+		}
 
 		if (git_stash_drop(m_Handle.get(), index.GetValue()) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot drop the stash: {}", LastLibgit2Message())};
+		}
 
 		return Result<void>::Ok();
 	}

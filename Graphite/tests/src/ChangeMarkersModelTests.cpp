@@ -26,7 +26,9 @@ namespace {
 			++Calls;
 
 			if (Fail)
+			{
 				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+			}
 
 			return Bases;
 		}
@@ -61,7 +63,9 @@ namespace {
 			Jobs.clear();
 
 			for (auto& job : jobs)
+			{
 				job();
+			}
 		}
 	};
 

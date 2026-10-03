@@ -15,12 +15,18 @@ namespace Graphite {
 		void AddPlain(std::vector<Span>& spans, std::string_view text)
 		{
 			if (text.empty())
+			{
 				return;
+			}
 
 			if (!spans.empty() && spans.back().Style == SpanStyle::Plain)
+			{
 				spans.back().Text += text;
+			}
 			else
+			{
 				spans.push_back({SpanStyle::Plain, std::string{text}});
+			}
 		}
 
 		// A line that opens an ordered item: digits, a dot, a space. Returns the marker length.
@@ -28,10 +34,14 @@ namespace Graphite {
 		{
 			std::size_t digits = 0;
 			while (digits < line.size() && std::isdigit(static_cast<unsigned char>(line[digits])) != 0)
+			{
 				++digits;
+			}
 
 			if (digits == 0 || digits + 1 >= line.size() || line[digits] != '.' || line[digits + 1] != ' ')
+			{
 				return 0;
+			}
 
 			return digits + 1;
 		}
@@ -68,7 +78,9 @@ namespace Graphite {
 			// Plain text up to the next character that could open a span.
 			std::size_t next = text.find_first_of("`*", at + 1);
 			if (next == std::string_view::npos)
+			{
 				next = text.size();
+			}
 
 			AddPlain(spans, text.substr(at, next - at));
 			at = next;
@@ -84,7 +96,9 @@ namespace Graphite {
 
 		const auto flush = [&] {
 			if (!paragraph.empty())
+			{
 				blocks.push_back({.Kind = MarkdownKind::Paragraph, .Spans = ParseSpans(paragraph)});
+			}
 			paragraph.clear();
 		};
 
@@ -94,11 +108,15 @@ namespace Graphite {
 		{
 			std::size_t end = text.find('\n', start);
 			if (end == std::string_view::npos)
+			{
 				end = text.size();
+			}
 
 			std::string_view line = text.substr(start, end - start);
 			if (!line.empty() && line.back() == '\r')
+			{
 				line.remove_suffix(1);
+			}
 
 			const std::string_view trimmed = TrimLeft(line);
 
@@ -114,11 +132,15 @@ namespace Graphite {
 				{
 					std::size_t codeEnd = text.find('\n', start);
 					if (codeEnd == std::string_view::npos)
+					{
 						codeEnd = text.size();
+					}
 
 					std::string_view codeLine = text.substr(start, codeEnd - start);
 					if (!codeLine.empty() && codeLine.back() == '\r')
+					{
 						codeLine.remove_suffix(1);
+					}
 
 					if (TrimLeft(codeLine).starts_with("```"))
 					{
@@ -127,7 +149,9 @@ namespace Graphite {
 					}
 
 					if (!code.Code.empty())
+					{
 						code.Code += '\n';
+					}
 					code.Code += codeLine;
 					start = codeEnd + 1;
 				}
@@ -144,7 +168,9 @@ namespace Graphite {
 			{
 				const std::size_t hashes = trimmed.find_first_not_of('#');
 				if (hashes != std::string_view::npos && hashes <= 6 && trimmed[hashes] == ' ')
+				{
 					headingHashes = hashes;
+				}
 			}
 
 			if (trimmed.empty())
@@ -208,7 +234,9 @@ namespace Graphite {
 				std::size_t end = text.find(' ', at);
 				end = end == std::string::npos ? text.size() : text.find_first_not_of(' ', end);
 				if (end == std::string::npos)
+				{
 					end = text.size();
+				}
 
 				const std::string word = text.substr(at, end - at);
 				const float wordWidth = measure(word, spans[index].Style);

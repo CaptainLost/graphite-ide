@@ -16,7 +16,9 @@ namespace Core {
 	std::string FailureMessage(const OpenItem& item)
 	{
 		if (!item.Detail.empty())
+		{
 			return item.Detail;
+		}
 
 		switch (item.Failure)
 		{
@@ -40,7 +42,9 @@ namespace Core {
 		for (std::size_t index = 0; index < m_Items.size(); ++index)
 		{
 			if (m_Items[index].Path == path)
+			{
 				return index;
+			}
 		}
 
 		return std::nullopt;
@@ -49,7 +53,9 @@ namespace Core {
 	void DocumentSet::Activate(std::size_t index)
 	{
 		if (index < m_Items.size())
+		{
 			m_Active = index;
+		}
 	}
 
 	OpenOutcome DocumentSet::Open(const std::filesystem::path& path, bool permanent)
@@ -130,7 +136,9 @@ namespace Core {
 			m_Items[*existing].PendingFocus = true;
 
 			if (permanent)
+			{
 				m_Items[*existing].Preview = false;
+			}
 
 			return OpenOutcome::Activated;
 		}
@@ -141,7 +149,9 @@ namespace Core {
 			if (!permanent)
 			{
 				if (const auto preview = GetPreviewIndex())
+				{
 					Close(*preview);
+				}
 			}
 		};
 
@@ -169,7 +179,9 @@ namespace Core {
 	void DocumentSet::Close(std::size_t index)
 	{
 		if (index >= m_Items.size())
+		{
 			return;
+		}
 
 		m_Items.erase(m_Items.begin() + static_cast<std::ptrdiff_t>(index));
 
@@ -180,12 +192,18 @@ namespace Core {
 		}
 
 		if (!m_Active.has_value())
+		{
 			return;
+		}
 
 		if (*m_Active > index)
+		{
 			m_Active = *m_Active - 1;
+		}
 		else if (*m_Active == index)
+		{
 			m_Active = std::min(index, m_Items.size() - 1);
+		}
 	}
 
 	void DocumentSet::CloseAll()
@@ -199,7 +217,9 @@ namespace Core {
 		for (std::size_t index = 0; index < m_Items.size(); ++index)
 		{
 			if (m_Items[index].Preview)
+			{
 				return index;
+			}
 		}
 
 		return std::nullopt;
@@ -208,7 +228,9 @@ namespace Core {
 	void DocumentSet::Promote(std::size_t index)
 	{
 		if (index < m_Items.size())
+		{
 			m_Items[index].Preview = false;
+		}
 	}
 
 	bool DocumentSet::HasOtherItemNamed(std::size_t index, const std::string& name) const
@@ -216,7 +238,9 @@ namespace Core {
 		for (std::size_t other = 0; other < m_Items.size(); ++other)
 		{
 			if (other != index && ToUtf8(m_Items[other].Path.filename()) == name)
+			{
 				return true;
+			}
 		}
 
 		return false;
@@ -225,7 +249,9 @@ namespace Core {
 	std::string DocumentSet::DisplayTitle(std::size_t index) const
 	{
 		if (index >= m_Items.size())
+		{
 			return {};
+		}
 
 		const std::filesystem::path& path = m_Items[index].Path;
 		const std::string name = ToUtf8(path.filename());
@@ -236,7 +262,9 @@ namespace Core {
 			m_Items[index].Failure == OpenFailure::Missing ? " (deleted)" : "";
 
 		if (!HasOtherItemNamed(index, name))
+		{
 			return name + suffix;
+		}
 
 		// Forward slash regardless of platform: this is a label, not a path anyone will open.
 		return ToUtf8(path.parent_path().filename()) + "/" + name + suffix;
@@ -250,7 +278,9 @@ namespace Core {
 			const auto relative = RelativeTo(item.Path, from);
 
 			if (!relative)
+			{
 				continue;
+			}
 
 			// `relative` is "." when the item is the moved directory itself, and `to / "."`
 			// keeps a trailing separator-dot that compares unequal to `to`, breaking Find.
@@ -259,7 +289,9 @@ namespace Core {
 			// The document's own copy of the path is the one a save writes to; left behind it
 			// would put the file back where it used to be.
 			if (item.Document)
+			{
 				item.Document->SetPath(item.Path);
+			}
 		}
 	}
 
@@ -268,7 +300,9 @@ namespace Core {
 		const auto index = Find(path);
 
 		if (!index)
+		{
 			return;
+		}
 
 		m_Items[*index].Failure = OpenFailure::Missing;
 
@@ -282,7 +316,9 @@ namespace Core {
 		const auto index = Find(path);
 
 		if (!index)
+		{
 			return;
+		}
 
 		// Only Missing is cleared: Binary, TooLarge and ReadFailed carry no document, and
 		// clearing one would claim a tab holds content that was never loaded.

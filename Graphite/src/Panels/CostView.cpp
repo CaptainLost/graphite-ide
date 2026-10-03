@@ -48,8 +48,12 @@ namespace Graphite {
 			else
 			{
 				for (const Turn& turn : session.GetTurns())
+				{
 					for (const auto& [key, counts] : turn.Usage)
+					{
 						main[key] += counts;
+					}
+				}
 			}
 
 			const CostResult own = Sum(pricing, main);
@@ -61,22 +65,30 @@ namespace Graphite {
 			// Only a session has a summary. A subagent's transcript, drawn without one, has no
 			// split between itself and subagents of its own to show.
 			if (summary.has_value())
+			{
 				ImGui::Text("Total %s   session %s   subagents %s", FormatCost(total).c_str(), FormatCost(own).c_str(),
 							FormatCost(subagents).c_str());
+			}
 			else
+			{
 				ImGui::Text("Total %s", FormatCost(total).c_str());
+			}
 
 			if (!total.IsKnown())
 			{
 				std::string names;
 				for (const std::string& model : total.UnknownModels)
+				{
 					names += (names.empty() ? "" : ", ") + model;
+				}
 
 				ImGui::TextDisabled("No price for %s. Add one under Settings > Claude.", names.c_str());
 			}
 
 			if (!ImGui::BeginTable("##models", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp))
+			{
 				return;
+			}
 
 			ImGui::TableSetupColumn("Model");
 			ImGui::TableSetupColumn("Tokens");
@@ -86,8 +98,12 @@ namespace Graphite {
 
 			UsageByModel all = main;
 			if (summary.has_value())
+			{
 				for (const auto& [key, counts] : summary->Subagents)
+				{
 					all[key] += counts;
+				}
+			}
 
 			for (const auto& [key, counts] : all)
 			{
@@ -109,7 +125,9 @@ namespace Graphite {
 				ImGui::TableNextColumn();
 
 				if (cost.IsKnown() && total.IsKnown() && total.Dollars > 0.0)
+				{
 					ImGui::Text("%.0f%%", 100.0 * cost.Dollars / total.Dollars);
+				}
 			}
 
 			ImGui::EndTable();
@@ -132,7 +150,9 @@ namespace Graphite {
 		{
 			std::string shown = TruncateUtf8(prompt, kTooltipPromptBytes);
 			if (shown.size() < prompt.size())
+			{
 				shown += kEllipsis;
+			}
 
 			ImGui::PushTextWrapPos(ImGui::GetFontSize() * kTooltipEms);
 			ImGui::TextUnformatted(shown.c_str(), shown.c_str() + shown.size());
@@ -188,7 +208,9 @@ namespace Graphite {
 		void DrawBarTooltip(const CostBar& bar, const CostLayers& layers, double total, const SessionPalette& palette)
 		{
 			if (!ImGui::BeginTooltip())
+			{
 				return;
+			}
 
 			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 
@@ -204,7 +226,9 @@ namespace Graphite {
 
 			double cost = 0.0;
 			for (const double dollars : layers)
+			{
 				cost += dollars;
+			}
 
 			ColouredText(ink, "Cost " + money(cost));
 
@@ -255,17 +279,23 @@ namespace Graphite {
 
 			// Under the bars, as the Requests chart bands its selection: a bar is one slot wide.
 			if (selected && *selected < layers.size())
+			{
 				DrawColumnBand(static_cast<double>(*selected + 1), 1.0, palette.Accent);
+			}
 
 			std::array<bool, kCostLayers> shown{};
 			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
+			{
 				shown[layer] = SeriesShown(kLayerNames[layer]);
+			}
 
 			std::vector<double> xs(layers.size());
 			std::array<std::vector<double>, kCostLayers> tops;
 
 			for (std::vector<double>& layerTops : tops)
+			{
 				layerTops.resize(layers.size());
+			}
 
 			for (std::size_t index = 0; index < layers.size(); ++index)
 			{
@@ -273,7 +303,9 @@ namespace Graphite {
 				const CostLayers stacked = StackedTops(layers[index], shown);
 
 				for (std::size_t layer = 0; layer < kCostLayers; ++layer)
+				{
 					tops[layer][index] = stacked[layer];
+				}
 			}
 
 			std::array<BarLayer, kCostLayers> barLayers{};
@@ -391,7 +423,9 @@ namespace Graphite {
 			const bool open = ImGui::BeginTable(id, columns, ImGuiTableFlags_RowBg | flags, size);
 
 			if (!open)
+			{
 				ImGui::PopStyleVar();
+			}
 
 			return open;
 		}
@@ -423,7 +457,9 @@ namespace Graphite {
 		void StackedBar(const CostLayers& layers, double scale, const SessionPalette& palette)
 		{
 			if (scale <= 0.0)
+			{
 				return;
+			}
 
 			const float left = ImGui::GetCursorScreenPos().x;
 			const double room = ImGui::GetContentRegionAvail().x;
@@ -436,7 +472,9 @@ namespace Graphite {
 				const float end = left + static_cast<float>(std::round(room * sum / scale));
 
 				if (end > start)
+				{
 					LineBar(start, end, LayerColour(palette, layer));
+				}
 			}
 		}
 
@@ -519,7 +557,9 @@ namespace Graphite {
 			if (!BeginRoomyTable("##turns", 5,
 								 ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_ScrollY | ImGuiTableFlags_PadOuterX,
 								 ImVec2(0.0f, height)))
+			{
 				return std::nullopt;
+			}
 
 			ImGui::TableSetupScrollFreeze(0, 1);
 
@@ -551,7 +591,9 @@ namespace Graphite {
 			// The bars are measured against the dearest turn, so it fills its cell.
 			double dearest = 0.0;
 			for (const TurnCost& cost : turns)
+			{
 				dearest = std::max(dearest, cost.Buckets.Total());
+			}
 
 			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 			std::optional<std::size_t> clicked;
@@ -579,7 +621,9 @@ namespace Graphite {
 					ImGui::PushStyleColor(ImGuiCol_Header, wash);
 					if (ImGui::Selectable("##row", selected == index,
 										  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+					{
 						clicked = index;
+					}
 					ImGui::PopStyleColor();
 					ImGui::PopID();
 
@@ -595,10 +639,14 @@ namespace Graphite {
 					ImGui::TableNextColumn();
 
 					if (turn.Prompt.empty())
+					{
 						ColouredText(palette.TextDisabled, "(no prompt)");
+					}
 					else
+					{
 						ColouredText(ink, Fitted(SingleLineLabel(turn.Prompt, kRowPromptBytes),
 												 ImGui::GetContentRegionAvail().x));
+					}
 
 					// A turn that sent nothing, as the one before the first prompt, is quiet all
 					// the way across, as its prompt and cost already are.
@@ -645,15 +693,21 @@ namespace Graphite {
 
 			std::array<std::size_t, kCostLayers> order{};
 			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
+			{
 				order[layer] = layer;
+			}
 			std::ranges::stable_sort(order, [&layers](std::size_t a, std::size_t b) { return layers[a] > layers[b]; });
 
 			if (!ImGui::BeginTable("##buckets", 4, ImGuiTableFlags_None))
+			{
 				return;
+			}
 
 			float nameWidth = 0.0f;
 			for (const char* name : kLayerNames)
+			{
 				nameWidth = std::max(nameWidth, ImGui::CalcTextSize(name).x);
+			}
 
 			ImGui::TableSetupColumn("Bucket", ImGuiTableColumnFlags_WidthFixed,
 									SwatchSize() + ImGui::GetStyle().ItemInnerSpacing.x + nameWidth);
@@ -691,7 +745,9 @@ namespace Graphite {
 					const float width = std::round(ImGui::GetContentRegionAvail().x * static_cast<float>(share));
 
 					if (width >= 1.0f)
+					{
 						LineBar(left, left + width, LayerColour(palette, layer));
+					}
 				}
 			}
 
@@ -710,7 +766,9 @@ namespace Graphite {
 			}
 
 			if (!ImGui::BeginTable("##tools", 3, ImGuiTableFlags_None))
+			{
 				return;
+			}
 
 			std::size_t most = 0;
 			float nameWidth = 0.0f;
@@ -759,7 +817,9 @@ namespace Graphite {
 				// Quiet rather than in the category's colour, which the buckets above use for
 				// their layers: a green tool's bar would read as money spent on uncached input.
 				if (width >= 1.0f)
+				{
 					LineBar(left, left + width, palette.TextDisabled);
+				}
 			}
 
 			ImGui::EndTable();
@@ -772,13 +832,17 @@ namespace Graphite {
 		{
 			const std::size_t space = line.find(' ');
 			if (space == std::string::npos)
+			{
 				return line;
+			}
 
 			const std::string_view rest = std::string_view{line}.substr(space + 1);
 			const std::size_t slash = rest.find_last_of("/\\");
 
 			if (rest.find(' ') != std::string_view::npos || slash == std::string_view::npos || slash + 1 == rest.size())
+			{
 				return line;
+			}
 
 			return line.substr(0, space + 1) + std::string{rest.substr(slash + 1)};
 		}
@@ -797,18 +861,26 @@ namespace Graphite {
 
 				// Neither a file nor a reply: the tool's name, before its input.
 				if (brief == line && !line.starts_with("\xe2\x80\x9c"))
+				{
 					brief = line.substr(0, line.find(' '));
+				}
 
 				const auto seen = std::ranges::find(counted, brief, &std::pair<std::string, std::size_t>::first);
 				if (seen == counted.end())
+				{
 					counted.emplace_back(std::move(brief), 1);
+				}
 				else
+				{
 					++seen->second;
+				}
 			}
 
 			std::string text;
 			for (const auto& [brief, count] : counted)
+			{
 				text += (text.empty() ? "" : ", ") + brief + (count > 1 ? " \xc3\x97" + std::to_string(count) : "");
+			}
 
 			return text;
 		}
@@ -837,7 +909,9 @@ namespace Graphite {
 		{
 			std::string prompt = TruncateUtf8(text, kPanePromptBytes);
 			if (prompt.size() < text.size())
+			{
 				prompt += kEllipsis;
+			}
 
 			const ImGuiStyle& style = ImGui::GetStyle();
 			const float wrap = ImGui::GetContentRegionAvail().x - style.FramePadding.x * 2.0f;
@@ -870,7 +944,9 @@ namespace Graphite {
 														 const SessionPalette& palette)
 	{
 		if (!m_SelectedTurn || *m_SelectedTurn >= turns.size())
+		{
 			return std::nullopt;
+		}
 
 		const std::size_t index = *m_SelectedTurn;
 		const TurnCost& cost = turns[index];
@@ -905,7 +981,9 @@ namespace Graphite {
 		// Two columns under the prompt, the requests given the more room: their rows carry what
 		// each request did, where the money's are a few short lines.
 		if (!ImGui::BeginTable("##turnDetailColumns", 2, ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_PadOuterX))
+		{
 			return std::nullopt;
+		}
 
 		ImGui::TableSetupColumn("Money", ImGuiTableColumnFlags_WidthStretch, 2.0f);
 		ImGui::TableSetupColumn("Requests", ImGuiTableColumnFlags_WidthStretch, 3.0f);
@@ -936,14 +1014,18 @@ namespace Graphite {
 			rows.reserve(breakdown.Requests.size());
 
 			for (const TurnRequest& request : breakdown.Requests)
+			{
 				rows.emplace_back(&request, request.Position && *request.Position < requests.size()
 												? &requests[*request.Position]
 												: nullptr);
+			}
 
 			// In the order they were sent until the reader sorts by a header; the header stays
 			// over the rows as they scroll under it.
 			if (rows.empty())
+			{
 				ColouredText(palette.TextDisabled, "No requests.");
+			}
 			else if (BeginRoomyTable("##turnRequests", 4,
 									 ImGuiTableFlags_Sortable | ImGuiTableFlags_ScrollY | ImGuiTableFlags_BordersOuterH))
 			{
@@ -972,9 +1054,13 @@ namespace Graphite {
 
 				std::ranges::stable_sort(rows, [byContext, descending](const auto& a, const auto& b) {
 					if ((a.second != nullptr) != (b.second != nullptr))
+					{
 						return a.second != nullptr;
+					}
 					if (a.second == nullptr)
+					{
 						return false;
+					}
 
 					const std::uint64_t left = byContext ? a.second->Context : a.second->Index;
 					const std::uint64_t right = byContext ? b.second->Context : b.second->Index;
@@ -1003,7 +1089,9 @@ namespace Graphite {
 						ImGui::BeginDisabled(found == nullptr);
 						if (ImGui::Selectable("##request", false,
 											  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+						{
 							clicked = request->Position;
+						}
 						ImGui::EndDisabled();
 						ImGui::PopID();
 
@@ -1016,7 +1104,9 @@ namespace Graphite {
 
 							ImGui::PushTextWrapPos(ImGui::GetFontSize() * kTooltipEms);
 							for (const std::string& line : activity)
+							{
 								ColouredText(palette.TextDisabled, line);
+							}
 							ImGui::PopTextWrapPos();
 
 							ImGui::Spacing();
@@ -1031,11 +1121,15 @@ namespace Graphite {
 
 						ImGui::TableNextColumn();
 						if (found != nullptr)
+						{
 							ColouredText(palette.TextDisabled, m_Clock.Format(found->RespondedAt, ClockStyle::Time));
+						}
 
 						ImGui::TableNextColumn();
 						if (found != nullptr)
+						{
 							RightAligned(ink, FormatTokens(found->Context));
+						}
 
 						ImGui::TableNextColumn();
 						ColouredText(ink, Fitted(ShortActivity(activity), ImGui::GetContentRegionAvail().x));
@@ -1110,7 +1204,9 @@ namespace Graphite {
 				cost.Dollars = turn.Buckets.Total();
 
 				if (!turn.Known)
+				{
 					cost.UnknownModels.emplace_back();
+				}
 
 				costs.push_back(std::move(cost));
 			}
@@ -1120,12 +1216,16 @@ namespace Graphite {
 			// The turn open below is banded, and a click on a bar opens that turn, as its row does.
 			if (const std::optional<std::size_t> bar = DrawChart("Cost per turn", "Turn", layers, CumulativeCost(costs),
 																 bars, m_SelectedTurn, palette, m_XAxis))
+			{
 				m_SelectedTurn = bar;
+			}
 		}
 		else
 		{
 			if (timeline.GetVersion() != m_BuiltVersion || pricing.GetEntries() != m_PricedWith)
+			{
 				PriceRequests(timeline, pricing);
+			}
 
 			// A click picks the request for the Requests tab to show.
 			FitTo(m_RequestLayers.size());
@@ -1144,7 +1244,9 @@ namespace Graphite {
 								  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 			{
 				if (const std::optional<std::size_t> row = DrawTurnTable(session, turns, m_SelectedTurn, palette))
+				{
 					m_SelectedTurn = row;
+				}
 			}
 
 			ImGui::EndChild();
@@ -1152,7 +1254,9 @@ namespace Graphite {
 
 		const std::function<void()> drawDetails = [&] {
 			if (const std::optional<std::size_t> request = DrawTurnDetails(session, turns, timeline, pricing, palette))
+			{
 				clicked = request;
+			}
 		};
 
 		DrawSplitResults(SplitResultsInput{.HasSelection = m_SelectedTurn && *m_SelectedTurn < turns.size(),
@@ -1197,10 +1301,14 @@ namespace Graphite {
 			std::string heading = "#" + std::to_string(request.Index);
 
 			if (const std::string time = m_Clock.Format(request.RespondedAt, ClockStyle::DateTime); !time.empty())
+			{
 				heading += kDot + time;
+			}
 
 			if (!request.Model.empty())
+			{
 				heading += kDot + ModelLabel(request.Model, request.Fast);
+			}
 
 			m_RequestBars.push_back({std::move(heading), costs.back().IsKnown()});
 		}

@@ -17,7 +17,9 @@ namespace Core {
 		void DockPanels(ImGuiID nodeId, const std::vector<std::string>& panelIds)
 		{
 			for (const std::string& id : panelIds)
+			{
 				ImGui::DockBuilderDockWindow(id.c_str(), nodeId);
+			}
 		}
 
 		bool WasRestoredFromIni(ImGuiID dockSpaceId)
@@ -47,7 +49,9 @@ namespace Core {
 			// a caller with nothing else to go on somewhere to land. imgui.ini saves the flag,
 			// so it survives into sessions that only restore the layout.
 			if (ImGuiDockNode* centerNode = ImGui::DockBuilderGetNode(centerId); centerNode != nullptr)
+			{
 				centerNode->SetLocalFlags(centerNode->LocalFlags | ImGuiDockNodeFlags_CentralNode);
+			}
 
 			ImGui::DockBuilderFinish(dockSpaceId);
 			CORE_INFO("Built default dock layout");
@@ -105,7 +109,9 @@ namespace Core {
 		ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
 
 		if (m_LayoutBuilt)
+		{
 			return;
+		}
 
 		m_LayoutBuilt = true;
 
@@ -115,7 +121,9 @@ namespace Core {
 		m_ForceRebuild = false;
 
 		if (!forced && WasRestoredFromIni(dockSpaceId))
+		{
 			return;
+		}
 
 		BuildDefaultLayout(dockSpaceId, layout, viewport->WorkSize);
 		m_BuiltLayoutThisFrame = true;
@@ -129,7 +137,9 @@ namespace Core {
 	unsigned int DockSpaceHost::GetCenterNodeId() const
 	{
 		if (m_DockSpaceId == 0)
+		{
 			return 0;
+		}
 
 		const ImGuiDockNode* centerNode = ImGui::DockBuilderGetCentralNode(m_DockSpaceId);
 		return centerNode != nullptr ? centerNode->ID : 0;
@@ -145,7 +155,9 @@ namespace Core {
 	bool DockSpaceHost::CenterEmptyState(std::string_view message, const char* action) const
 	{
 		if (!IsCenterEmpty())
+		{
 			return false;
+		}
 
 		// Into the window DockSpace() opened inside the host, not the host itself: that window
 		// paints the empty node's background over anything the host drew there. Beginning it
@@ -156,7 +168,9 @@ namespace Core {
 		ImGuiWindow* dockSpaceWindow = node->HostWindow;
 
 		if (dockSpaceWindow == nullptr)
+		{
 			return false;
+		}
 
 		ImGui::Begin(dockSpaceWindow->Name, nullptr, dockSpaceWindow->Flags);
 

@@ -37,7 +37,9 @@ namespace Graphite {
 			for (const ChangeHunk& hunk : markers.Hunks)
 			{
 				if (hunk.Staged == staged)
+				{
 					marks.push_back(MarkOf(hunk, lineTop, minFraction));
+				}
 			}
 		}
 

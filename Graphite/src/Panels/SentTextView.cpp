@@ -33,7 +33,9 @@ namespace Graphite {
 		bool IsHiddenThinkingNote(const ApiRequest& request, std::size_t segment)
 		{
 			if (segment < request.Sent.size())
+			{
 				return false;
+			}
 
 			const std::size_t response = segment - request.Sent.size();
 
@@ -44,7 +46,9 @@ namespace Graphite {
 		ItemLook LookOfSegment(const ApiRequest& request, std::size_t segment, const SessionPalette& palette)
 		{
 			if (segment < request.Sent.size())
+			{
 				return LookOf(request.Sent[segment], palette);
+			}
 
 			return LookOf(request.Response[segment - request.Sent.size()], palette);
 		}
@@ -54,7 +58,9 @@ namespace Graphite {
 		bool IsQuiet(const ApiRequest& request, std::size_t segment)
 		{
 			if (segment >= request.Sent.size())
+			{
 				return false;
+			}
 
 			switch (request.Sent[segment].Kind)
 			{
@@ -86,9 +92,13 @@ namespace Graphite {
 			for (const char c : text)
 			{
 				if (c == '\t')
+				{
 					expanded.append(kTabColumns, ' ');
+				}
 				else
+				{
 					expanded.push_back(c);
+				}
 			}
 
 			return expanded;
@@ -115,7 +125,9 @@ namespace Graphite {
 			std::vector<std::string_view> texts;
 
 			for (std::size_t i = 0; i < SegmentCount(request); ++i)
+			{
 				texts.push_back(DisplayText(request, i));
+			}
 
 			m_Layout.Build(texts, columns);
 
@@ -164,10 +176,14 @@ namespace Graphite {
 				const bool isHovered = hovered == row.Segment;
 
 				if (isSelected || isHovered)
+				{
 					draw->AddRectFilled(at, ImVec2(right, at.y + lineHeight), Tinted(look.Colour, isSelected ? 0.16f : 0.07f));
+				}
 
 				if (isSelected)
+				{
 					draw->AddRectFilled(at, ImVec2(at.x + bar, at.y + lineHeight), look.Colour);
+				}
 
 				ImVec2 textAt(at.x + margin, at.y);
 
@@ -208,10 +224,14 @@ namespace Graphite {
 				ImGui::PushID(r);
 
 				if (ImGui::InvisibleButton("##row", ImVec2(std::max(right - at.x, 1.0f), lineHeight)))
+				{
 					clicked = row.Segment;
+				}
 
 				if (ImGui::IsItemHovered())
+				{
 					underMouse = row.Segment;
+				}
 
 				ImGui::PopID();
 			}
@@ -232,10 +252,14 @@ namespace Graphite {
 			const bool haveItem = m_MenuSegment.has_value() && *m_MenuSegment < SegmentCount(request);
 
 			if (ImGui::MenuItem("Copy this item", nullptr, false, haveItem))
+			{
 				ImGui::SetClipboardText(std::string{SegmentText(request, *m_MenuSegment)}.c_str());
+			}
 
 			if (ImGui::MenuItem("Copy all"))
+			{
 				ImGui::SetClipboardText(AllSegmentText(request).c_str());
+			}
 
 			ImGui::EndPopup();
 		}

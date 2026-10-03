@@ -8,7 +8,9 @@ namespace Graphite {
 	Turn& Session::CurrentTurn()
 	{
 		if (m_Turns.empty())
+		{
 			m_Turns.emplace_back();
+		}
 
 		return m_Turns.back();
 	}
@@ -25,7 +27,9 @@ namespace Graphite {
 				const auto found = m_ToolById.find(block.ToolUseId);
 
 				if (found == m_ToolById.end())
+				{
 					continue;
+				}
 
 				ToolCall& tool = m_Tools[found->second];
 				tool.HasResult = true;
@@ -60,7 +64,9 @@ namespace Graphite {
 				startsTurn = true;
 
 				if (!prompt.empty())
+				{
 					prompt += '\n';
+				}
 				prompt += block.Text;
 			}
 		}
@@ -92,7 +98,9 @@ namespace Graphite {
 		for (auto item = turn.Items.rbegin(); item != turn.Items.rend(); ++item)
 		{
 			if (item->Kind != ItemKind::Compaction)
+			{
 				continue;
+			}
 
 			if (item->Text.empty())
 			{
@@ -126,7 +134,9 @@ namespace Graphite {
 				request.Usage = counted.Counts();
 
 				if (!key.empty())
+				{
 					m_RequestTurn.emplace(key, m_Turns.size() - 1);
+				}
 			}
 			else
 			{
@@ -179,21 +189,33 @@ namespace Graphite {
 	void Session::Append(const std::vector<TranscriptRecord>& records)
 	{
 		if (records.empty())
+		{
 			return;
+		}
 
 		for (const TranscriptRecord& record : records)
 		{
 			if (record.Timestamp > m_LastWrittenAt)
+			{
 				m_LastWrittenAt = record.Timestamp;
+			}
 
 			if (record.Kind == RecordKind::User)
+			{
 				AddUser(record);
+			}
 			else if (record.Kind == RecordKind::Assistant)
+			{
 				AddAssistant(record);
+			}
 			else if (record.Kind == RecordKind::Attachment && !record.QueuedPrompt.empty())
+			{
 				AddQueued(record);
+			}
 			else if (record.Kind == RecordKind::System && record.IsCompactBoundary)
+			{
 				AddCompaction(record);
+			}
 
 			// Other attachments, other system records and unknown record types are bookkeeping —
 			// modes, reminders, snapshots — not conversation. The summary reads what it needs

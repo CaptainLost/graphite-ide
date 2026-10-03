@@ -20,11 +20,15 @@ namespace Graphite {
 	{
 		const nlohmann::json parsed = nlohmann::json::parse(json.begin(), json.end(), nullptr, false);
 		if (!parsed.is_object())
+		{
 			return std::nullopt;
+		}
 
 		std::string toolUseId = StringAt(parsed, "toolUseId");
 		if (toolUseId.empty())
+		{
 			return std::nullopt;
+		}
 
 		SubagentInfo info;
 		info.AgentId = std::move(agentId);
@@ -38,14 +42,18 @@ namespace Graphite {
 	{
 		const std::string stem = Core::ToUtf8(transcript.stem());
 		if (!stem.starts_with(kAgentPrefix))
+		{
 			return std::nullopt;
+		}
 
 		std::filesystem::path meta = transcript;
 		meta.replace_extension(".meta.json");
 
 		std::ifstream stream{meta, std::ios::binary};
 		if (!stream)
+		{
 			return std::nullopt;
+		}
 
 		const std::string text{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
 		return ParseSubagentMeta(text, stem.substr(kAgentPrefix.size()));

@@ -27,7 +27,9 @@ namespace Core {
 	{
 		// Reverse order: a layer added later may depend on an earlier one.
 		for (auto it = m_Layers.rbegin(); it != m_Layers.rend(); ++it)
+		{
 			(*it)->OnDetach();
+		}
 
 		m_Layers.clear();
 	}

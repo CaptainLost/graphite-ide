@@ -239,7 +239,9 @@ TEST_CASE("Both directions compose to the identity across characters outside ASC
 		CHECK(VisualToCaret(buffer, rows, position, 4) == offset);
 
 		if (offset >= text.size())
+		{
 			break;
+		}
 
 		offset = NextCharacter(text, offset);
 	}

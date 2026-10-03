@@ -83,20 +83,28 @@ namespace Core {
 		// No MOVEFILE_REPLACE_EXISTING: the OS refuses an occupied destination, so a file
 		// appearing after a check cannot be clobbered.
 		if (::MoveFileExW(from.c_str(), to.c_str(), 0) != 0)
+		{
 			return Result<void>::Ok();
+		}
 
 		const DWORD error = ::GetLastError();
 
 		if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
+		{
 			return Error{ErrorCode::InvalidArgument, std::format("'{}' already exists", ToUtf8(to))};
+		}
 
 		const ErrorCode code = ErrorCodeFromWin32(error);
 
 		if (code == ErrorCode::NotFound)
+		{
 			return Error{code, std::format("'{}' no longer exists", ToUtf8(from))};
+		}
 
 		if (code == ErrorCode::AccessDenied)
+		{
 			return Error{code, std::format("cannot rename '{}': access denied", ToUtf8(from))};
+		}
 
 		return Error{code,
 					 std::format("cannot rename '{}' (error {})", ToUtf8(from), error)};
@@ -174,7 +182,9 @@ namespace Core {
 	{
 		std::error_code code;
 		if (!std::filesystem::exists(path, code))
+		{
 			return path;
+		}
 
 		const std::filesystem::path parent = path.parent_path();
 		const std::string stem = ToUtf8(path.stem());
@@ -195,16 +205,24 @@ namespace Core {
 	bool IsValidFileName(std::string_view name)
 	{
 		if (name.empty())
+		{
 			return false;
+		}
 
 		if (name.find_first_not_of(" \t") == std::string_view::npos)
+		{
 			return false;
+		}
 
 		if (name.find_first_of("\\/:*?\"<>|") != std::string_view::npos)
+		{
 			return false;
+		}
 
 		if (name.back() == '.' || name.back() == ' ')
+		{
 			return false;
+		}
 
 		// A reserved device name is reserved with any extension too: NUL.txt cannot be
 		// created either. Compare against the part before the first dot.
@@ -218,7 +236,9 @@ namespace Core {
 		for (const std::string_view reserved : kReserved)
 		{
 			if (Core::EqualsIgnoringCase(base, reserved))
+			{
 				return false;
+			}
 		}
 
 		return true;

@@ -30,7 +30,9 @@ namespace Core {
 		for (auto layer = m_Layers.rbegin(); layer != m_Layers.rend(); ++layer)
 		{
 			if (event.Handled)
+			{
 				break;
+			}
 
 			(*layer)->OnEvent(event);
 		}
@@ -72,7 +74,9 @@ namespace Core {
 		for (Layer* layer : m_FrameLayers)
 		{
 			if (!layer->OnCloseRequested())
+			{
 				mayClose = false;
+			}
 		}
 
 		return mayClose;
@@ -86,7 +90,9 @@ namespace Core {
 		m_FrameLayers.clear();
 
 		for (auto& layer : m_Layers)
+		{
 			m_FrameLayers.push_back(layer.get());
+		}
 	}
 
 	bool Application::HasNoPixels() const
@@ -146,12 +152,18 @@ namespace Core {
 		// pumps messages mid-frame — the shell's file operations do — can swallow the posted
 		// one, and the wait would then sleep through a result it was told about.
 		if (!m_Minimized && Redraw::IsRequested())
+		{
 			sleep = FramePacer::Clock::duration::zero();
+		}
 
 		if (sleep > FramePacer::Clock::duration::zero())
+		{
 			m_Window->WaitEvents(std::chrono::duration<double>(sleep).count());
+		}
 		else
+		{
 			m_Window->PollEvents();
+		}
 
 		// Each source is taken every time, not short-circuited: a request left untaken would
 		// count as activity a second time on the next pass.
@@ -160,10 +172,14 @@ namespace Core {
 		const bool evented = std::exchange(m_EventArrived, false);
 
 		if (pendingInput || evented)
+		{
 			m_Pacer.NoteInput(FramePacer::Clock::now());
+		}
 
 		if (requested)
+		{
 			m_Pacer.NoteRequest();
+		}
 	}
 
 	Result<void> Application::Run()
@@ -204,7 +220,9 @@ namespace Core {
 			if (m_Window->ShouldClose())
 			{
 				if (EveryLayerAllowsClose())
+				{
 					break;
+				}
 
 				m_Window->CancelClose();
 			}
@@ -215,15 +233,21 @@ namespace Core {
 			m_Minimized = HasNoPixels();
 
 			if (m_Minimized)
+			{
 				continue;
+			}
 
 			for (Layer* layer : m_FrameLayers)
+			{
 				layer->OnUpdate(ts);
+			}
 
 			m_Gui->BeginFrame();
 
 			for (Layer* layer : m_FrameLayers)
+			{
 				layer->OnImGuiRender();
+			}
 
 			m_Gui->EndFrame(*m_Window);
 

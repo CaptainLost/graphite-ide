@@ -64,7 +64,9 @@ namespace Core {
 
 		std::ifstream stream{path};
 		if (!stream.is_open())
+		{
 			return file;
+		}
 
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();
@@ -90,7 +92,9 @@ namespace Core {
 
 		const auto entry = root.find(std::string{key});
 		if (entry == root.end() || !entry->is_string())
+		{
 			return {};
+		}
 
 		return entry->get<std::string>();
 	}

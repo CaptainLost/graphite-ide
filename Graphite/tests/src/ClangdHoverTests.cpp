@@ -384,7 +384,9 @@ TEST_CASE("CRLF line endings give the same fields as LF")
 	for (const char c : std::string(kField))
 	{
 		if (c == '\n')
+		{
 			crlf += '\r';
+		}
 
 		crlf += c;
 	}

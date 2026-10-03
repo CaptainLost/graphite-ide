@@ -16,7 +16,9 @@ namespace {
 		std::string sample(length, 'a');
 
 		if (nulAt < length)
+		{
 			sample[nulAt] = '\0';
+		}
 
 		return sample;
 	}

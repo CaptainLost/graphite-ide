@@ -54,7 +54,9 @@ namespace Graphite {
 			case RequestColumn::Cost:
 			{
 				if (!hasUsage)
+				{
 					return {};
+				}
 
 				const CostResult cost = pricing.CostOf(request);
 				return cost.IsKnown() ? Numeric(cost.Dollars) : SortKey{};
@@ -67,7 +69,9 @@ namespace Graphite {
 			{
 				std::string joined;
 				for (const std::string& name : ToolNamesUsed(request))
+				{
 					joined += (joined.empty() ? "" : ", ") + name;
+				}
 				return Textual(std::move(joined));
 			}
 			case RequestColumn::Rebuilt:
@@ -86,10 +90,14 @@ namespace Graphite {
 	int CompareSortValues(const SortValue& left, const SortValue& right, bool textual, bool ascending)
 	{
 		if (left.Has != right.Has)
+		{
 			return left.Has ? -1 : 1;
+		}
 
 		if (!left.Has)
+		{
 			return 0;
+		}
 
 		const int compared = textual ? left.Text.compare(right.Text)
 									 : (left.Number < right.Number ? -1 : (right.Number < left.Number ? 1 : 0));
@@ -102,7 +110,9 @@ namespace Graphite {
 	{
 		std::vector<SortKey> keys(requests.size());
 		for (const std::size_t position : order)
+		{
 			keys[position] = KeyOf(requests[position], column, pricing);
+		}
 
 		const bool textual = IsTextColumn(column);
 

@@ -35,7 +35,9 @@ namespace Graphite {
 	bool CanRun(EditorAction action, const Core::OpenItem& item, bool clipboardHasText)
 	{
 		if (!item.Document)
+		{
 			return false;
+		}
 
 		switch (action)
 		{
@@ -64,13 +66,17 @@ namespace Graphite {
 		EditorActionOutcome outcome;
 
 		if (!item.Document)
+		{
 			return outcome;
+		}
 
 		switch (action)
 		{
 		case EditorAction::Copy:
 			if (Core::HasSelection(item.Caret))
+			{
 				outcome.ToClipboard = SelectionForClipboard(item);
+			}
 			break;
 
 		case EditorAction::Cut:
@@ -85,7 +91,9 @@ namespace Graphite {
 
 		case EditorAction::Paste:
 			if (clipboard)
+			{
 				outcome.Changed = Core::InsertText(item, *clipboard);
+			}
 			break;
 
 		case EditorAction::SelectAll:
@@ -94,7 +102,9 @@ namespace Graphite {
 
 		case EditorAction::ToggleLineComment:
 			if (const auto prefix = LineCommentPrefix(LanguageOfPath(item.Path)))
+			{
 				outcome.Changed = Core::ToggleLineComment(item, *prefix);
+			}
 			break;
 		}
 

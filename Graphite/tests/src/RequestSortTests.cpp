@@ -29,7 +29,9 @@ namespace {
 	{
 		std::vector<std::size_t> order;
 		for (std::size_t position = 0; position < requests.size(); ++position)
+		{
 			order.push_back(position);
+		}
 
 		SortRequests(order, requests, column, ascending, Pricing::Defaults());
 		return order;

@@ -52,7 +52,9 @@ namespace Core {
 				line[at] == '\t' ? ColumnAfterTab(current, tabWidth) : current + 1;
 
 			if (column < next)
+			{
 				return at;
+			}
 
 			current = next;
 			at = line[at] == '\t' ? at + 1 : NextCharacter(line, at);
@@ -133,7 +135,9 @@ namespace Core {
 		std::size_t widest = 0;
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
+		{
 			widest = std::max(widest, ColumnCount(buffer.LineText(line), tabWidth));
+		}
 
 		return widest;
 	}

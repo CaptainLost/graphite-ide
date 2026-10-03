@@ -19,14 +19,18 @@ namespace Core {
 			const ImGuiDockNode* node = window.DockNode;
 
 			if (node == nullptr || node->TabBar == nullptr)
+			{
 				return {window.Name};
+			}
 
 			std::vector<std::string> names;
 
 			for (const ImGuiTabItem& tab : node->TabBar->Tabs)
 			{
 				if (tab.Window != nullptr)
+				{
 					names.emplace_back(tab.Window->Name);
+				}
 			}
 
 			return names;
@@ -41,7 +45,9 @@ namespace Core {
 		if (at == tabs.end())
 		{
 			if (action == TabCloseAction::This)
+			{
 				return {std::string(clicked)};
+			}
 
 			return {};
 		}
@@ -78,7 +84,9 @@ namespace Core {
 
 		// The popup id lives in the window's own id stack, so every tab has its own menu.
 		if (!BeginRightClickPopup("##tabContextMenu"))
+		{
 			return;
+		}
 
 		const std::vector<std::string> tabs = NodeTabs(window);
 		const std::string_view clicked = window.Name;
@@ -95,23 +103,33 @@ namespace Core {
 		std::optional<TabCloseAction> picked;
 
 		if (ImGui::MenuItem("Close"))
+		{
 			picked = TabCloseAction::This;
+		}
 
 		if (ImGui::MenuItem("Close Others", nullptr, false, hasOthers))
+		{
 			picked = TabCloseAction::Others;
+		}
 
 		if (ImGui::MenuItem("Close to the Right", nullptr, false, hasRight))
+		{
 			picked = TabCloseAction::ToTheRight;
+		}
 
 		if (ImGui::MenuItem("Close All"))
+		{
 			picked = TabCloseAction::All;
+		}
 
 		ImGui::EndPopup();
 
 		if (picked)
 		{
 			for (const std::string& name : TabsToClose(tabs, clicked, *picked))
+			{
 				requests.Request(name);
+			}
 		}
 	}
 }

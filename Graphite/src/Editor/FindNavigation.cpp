@@ -39,7 +39,9 @@ namespace Graphite {
 		void GoToMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, std::size_t index)
 		{
 			if (index >= item.Find.Matches.size())
+			{
 				return;
+			}
 
 			const std::pair<std::size_t, std::size_t> range = item.Find.Matches[index];
 
@@ -87,7 +89,9 @@ namespace Graphite {
 	bool RefreshFindMatchesIfStale(Core::OpenItem& item, const Core::TextBuffer& buffer)
 	{
 		if (item.Find.Revision == buffer.GetRevision())
+		{
 			return false;
+		}
 
 		RefreshFindMatches(item, buffer);
 		return true;
@@ -107,7 +111,9 @@ namespace Graphite {
 													  : NextMatch(matches, item.Find.Current);
 
 		if (target)
+		{
 			GoToMatch(item, buffer, *target);
+		}
 	}
 
 	void RevealFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer)

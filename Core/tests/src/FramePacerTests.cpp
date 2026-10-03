@@ -101,7 +101,9 @@ TEST_CASE("FramePacer requests in a row do not add up")
 	pacer.NoteRequest();
 
 	for (int frame = 0; frame < Core::FramePacer::RequestFrames; ++frame)
+	{
 		pacer.FrameDrawn();
+	}
 
 	CHECK(pacer.SleepFor(kStart, false, std::nullopt) == Core::FramePacer::IdleTick);
 }
@@ -112,7 +114,9 @@ TEST_CASE("FramePacer request frames still honour a deadline once spent")
 	pacer.NoteRequest();
 
 	for (int frame = 0; frame < Core::FramePacer::RequestFrames; ++frame)
+	{
 		pacer.FrameDrawn();
+	}
 
 	CHECK(pacer.SleepFor(kStart, false, kStart + 250ms) == 250ms);
 }

@@ -40,7 +40,9 @@ namespace {
 		for (const Core::MenuItem& item : items)
 		{
 			if (item.GetKind() == Core::MenuItem::Kind::Command)
+			{
 				ids.push_back(item.GetText());
+			}
 		}
 
 		return ids;

@@ -13,7 +13,9 @@ namespace Core {
 		m_Length = m_Original.size();
 
 		if (m_Length > 0)
+		{
 			m_Pieces.push_back(Piece{Source::Original, 0, m_Length, 0});
+		}
 
 		m_LineStarts = BuildLineIndex();
 	}
@@ -26,7 +28,9 @@ namespace Core {
 	std::size_t TextBuffer::PieceAt(std::size_t offset) const
 	{
 		if (offset >= m_Length)
+		{
 			return m_Pieces.size();
+		}
 
 		const auto after = std::upper_bound(
 			m_Pieces.begin(), m_Pieces.end(), offset,
@@ -51,13 +55,17 @@ namespace Core {
 	std::size_t TextBuffer::SplitAt(std::size_t offset)
 	{
 		if (offset >= m_Length)
+		{
 			return m_Pieces.size();
+		}
 
 		const std::size_t index = PieceAt(offset);
 		const Piece& piece = m_Pieces[index];
 
 		if (piece.start == offset)
+		{
 			return index;
+		}
 
 		const std::size_t taken = offset - piece.start;
 
@@ -71,7 +79,9 @@ namespace Core {
 	std::size_t TextBuffer::InsertRaw(std::size_t offset, std::string_view text)
 	{
 		if (text.empty())
+		{
 			return m_Append.size();
+		}
 
 		const std::size_t appended = m_Append.size();
 		m_Append.append(text);
@@ -110,7 +120,9 @@ namespace Core {
 		const std::size_t end = std::min(to, m_Length);
 
 		if (from >= end)
+		{
 			return;
+		}
 
 		// Both indices are looked up after both splits rather than taken from their return
 		// values: splitting at `from` inserts a piece ahead of the boundary at `end`, which
@@ -138,7 +150,9 @@ namespace Core {
 		const std::size_t end = std::min(to, m_Length);
 
 		if (from >= end)
+		{
 			return {};
+		}
 
 		std::string result;
 		result.reserve(end - from);
@@ -148,7 +162,9 @@ namespace Core {
 			const Piece& piece = m_Pieces[index];
 
 			if (piece.start >= end)
+			{
 				break;
+			}
 
 			const std::size_t sliceFrom = from > piece.start ? from - piece.start : 0;
 			const std::size_t sliceTo = std::min(piece.length, end - piece.start);
@@ -163,7 +179,9 @@ namespace Core {
 	char TextBuffer::CharAt(std::size_t offset) const
 	{
 		if (offset >= m_Length)
+		{
 			return '\0';
+		}
 
 		const Piece& piece = m_Pieces[PieceAt(offset)];
 
@@ -178,7 +196,9 @@ namespace Core {
 		for (std::size_t offset = 0; offset < content.size(); ++offset)
 		{
 			if (content[offset] == '\n')
+			{
 				starts.push_back(offset + 1);
+			}
 		}
 
 		return starts;
@@ -192,7 +212,9 @@ namespace Core {
 	std::size_t TextBuffer::LineStart(std::size_t line) const
 	{
 		if (line >= m_LineStarts.size())
+		{
 			return m_Length;
+		}
 
 		return m_LineStarts[line];
 	}
@@ -200,7 +222,9 @@ namespace Core {
 	std::size_t TextBuffer::LineLength(std::size_t line) const
 	{
 		if (line >= m_LineStarts.size())
+		{
 			return 0;
+		}
 
 		// Every line but the last ends with a '\n' that is not part of its text.
 		const std::size_t end =
@@ -219,7 +243,9 @@ namespace Core {
 	std::size_t TextBuffer::ToOffset(Position position) const
 	{
 		if (position.Line >= m_LineStarts.size())
+		{
 			return m_Length;
+		}
 
 		return m_LineStarts[position.Line] + std::min(position.Column, LineLength(position.Line));
 	}
@@ -242,14 +268,18 @@ namespace Core {
 		const std::size_t firstShifted = static_cast<std::size_t>(after - m_LineStarts.begin());
 
 		for (std::size_t at = firstShifted; at < m_LineStarts.size(); ++at)
+		{
 			m_LineStarts[at] += text.size();
+		}
 
 		std::vector<std::size_t> added;
 
 		for (std::size_t at = 0; at < text.size(); ++at)
 		{
 			if (text[at] == '\n')
+			{
 				added.push_back(offset + at + 1);
+			}
 		}
 
 		m_LineStarts.insert(m_LineStarts.begin() + static_cast<std::ptrdiff_t>(firstShifted),
@@ -269,7 +299,9 @@ namespace Core {
 		m_LineStarts.erase(first, last);
 
 		for (std::size_t at = index; at < m_LineStarts.size(); ++at)
+		{
 			m_LineStarts[at] -= removed;
+		}
 	}
 
 	void TextBuffer::ApplyEdit(Edit& edit, bool reversed)
@@ -298,22 +330,30 @@ namespace Core {
 	void TextBuffer::BeginTransaction()
 	{
 		if (m_TransactionDepth++ == 0)
+		{
 			m_TransactionGroup = 0;
+		}
 	}
 
 	void TextBuffer::EndTransaction()
 	{
 		if (m_TransactionDepth > 0)
+		{
 			--m_TransactionDepth;
+		}
 	}
 
 	bool TextBuffer::ContinuesLastGroup(std::size_t from, std::size_t to, bool inserted) const
 	{
 		if (m_Undo.empty())
+		{
 			return false;
+		}
 
 		if (inserted)
+		{
 			return m_LastGroupKind == GroupKind::Insertion && from == m_InsertEnd;
+		}
 
 		return m_LastGroupKind == GroupKind::Deletion && (to == m_DeleteAt || from == m_DeleteAt);
 	}
@@ -339,7 +379,9 @@ namespace Core {
 			group = continues ? m_Undo.back().group : m_NextGroupId++;
 
 			if (m_TransactionDepth > 0)
+			{
 				m_TransactionGroup = group;
+			}
 		}
 
 		// Runs for every edit, including one that took the transaction shortcut above, so
@@ -358,7 +400,9 @@ namespace Core {
 	void TextBuffer::Insert(std::size_t offset, std::string_view text)
 	{
 		if (text.empty())
+		{
 			return;
+		}
 
 		const std::size_t at = std::min(offset, m_Length);
 		const std::size_t appendOffset = InsertRaw(at, text);
@@ -373,7 +417,9 @@ namespace Core {
 		const std::size_t end = std::min(to, m_Length);
 
 		if (from >= end)
+		{
 			return;
+		}
 
 		std::string removed = Substring(from, end);
 
@@ -388,7 +434,9 @@ namespace Core {
 	std::optional<std::size_t> TextBuffer::Undo()
 	{
 		if (m_Undo.empty())
+		{
 			return std::nullopt;
+		}
 
 		const std::size_t group = m_Undo.back().group;
 		std::size_t caret = 0;
@@ -418,7 +466,9 @@ namespace Core {
 	std::optional<std::size_t> TextBuffer::Redo()
 	{
 		if (m_Redo.empty())
+		{
 			return std::nullopt;
+		}
 
 		const std::size_t group = m_Redo.back().group;
 		std::size_t caret = 0;

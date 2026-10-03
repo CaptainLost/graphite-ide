@@ -131,7 +131,9 @@ namespace Graphite {
 			// clicks it in the list before the index has delivered a summary for it: start
 			// reading now rather than waiting for UpdateSummary, which may be a poll away.
 			if (!existing->Main.Live)
+			{
 				Attach(*existing, summary);
+			}
 
 			// Opened from the folder that is open now, so it belongs to this one, even if its
 			// tab was carried over from the one before.
@@ -164,7 +166,9 @@ namespace Graphite {
 	void SessionWindows::UpdateSummary(const SessionSummary& summary)
 	{
 		if (Entry* entry = Find(summary.Id))
+		{
 			Attach(*entry, summary);
+		}
 	}
 
 	std::vector<SessionTabState> SessionWindows::CaptureState() const
@@ -260,7 +264,9 @@ namespace Graphite {
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
 			if (!entry->Main.Live)
+			{
 				continue;
+			}
 
 			const std::filesystem::path& file = entry->Main.Live->GetFile();
 
@@ -280,7 +286,9 @@ namespace Graphite {
 				entry->Main.Live->Poll();
 
 				if (entry->Agent)
+				{
 					entry->Agent->Views.Live->Poll();
+				}
 			}
 		}
 	}
@@ -288,11 +296,15 @@ namespace Graphite {
 	void SessionWindows::Take(TranscriptViews& views)
 	{
 		if (!views.Live)
+		{
 			return;
+		}
 
 		views.Live->Take(views.Data, views.Timeline);
 		if (views.Live->TakeSubagents(views.Subagents, views.Links))
+		{
 			++views.SubagentsVersion;
+		}
 	}
 
 	void SessionWindows::Update()
@@ -303,7 +315,9 @@ namespace Graphite {
 
 			// The session keeps being read while a subagent is shown, so going back finds it current.
 			if (entry->Agent)
+			{
 				Take(entry->Agent->Views);
+			}
 		}
 	}
 
@@ -322,7 +336,9 @@ namespace Graphite {
 
 		std::string name = info.Description.empty() ? "agent " + info.AgentId : info.Description;
 		if (!info.AgentType.empty())
+		{
 			name += " \xc2\xb7 " + info.AgentType;
+		}
 
 		ImGui::TextUnformatted(name.c_str());
 
@@ -353,7 +369,9 @@ namespace Graphite {
 	{
 		const auto found = entry.Main.Links.find(toolUseId);
 		if (!entry.Main.Live || found == entry.Main.Links.end())
+		{
 			return;
+		}
 
 		auto agent = Core::CreateScope<OpenedAgent>();
 		agent->Views.Serial = m_NextAgentSerial++;
@@ -377,7 +395,9 @@ namespace Graphite {
 		const std::optional<SessionSummary>& summary = agent != nullptr ? noSummary : entry.Summary;
 
 		if (!ImGui::BeginTabBar("##sessionTabs"))
+		{
 			return;
+		}
 
 		// A restored view is selected once, on the first frame the tab bar is drawn.
 		const auto restoredFlag = [&entry](SessionTab tab) {
@@ -393,7 +413,9 @@ namespace Graphite {
 				const AgentIdScope idScope{agent != nullptr, views.Serial};
 
 				if (const std::size_t skipped = views.Live->GetSkipped(); skipped > 0)
+				{
 					ImGui::TextDisabled("%zu lines could not be read and were skipped.", skipped);
+				}
 
 				const LiveTranscript::LoadProgress progress = views.Live->GetProgress();
 				DrawProgress(progress);
@@ -436,7 +458,9 @@ namespace Graphite {
 					if (const std::optional<std::size_t> clicked =
 							views.Cost.Draw(views.Data, summary, views.Timeline, m_Settings.GetPricing(),
 											views.Requests.GetSelected(), palette))
+					{
 						views.PendingRequest = clicked;
+					}
 				}
 				else
 				{
@@ -457,7 +481,9 @@ namespace Graphite {
 		// Revealed whether or not the tab is drawn this frame: the view keeps it for its
 		// next draw, which is the frame the selection takes effect.
 		if (const std::optional<std::size_t> pending = std::exchange(views.PendingRequest, std::nullopt))
+		{
 			views.Requests.Reveal(*pending, views.Data.GetGeneration());
+		}
 
 		if (requestsOpen)
 		{
@@ -516,7 +542,9 @@ namespace Graphite {
 			}
 
 			if (std::exchange(entry.Focus, false))
+			{
 				ImGui::SetNextWindowFocus();
+			}
 
 			bool open = true;
 
@@ -530,7 +558,9 @@ namespace Graphite {
 
 			// A tab's menu asked for this one last frame: the same as its close button.
 			if (closeRequests.Take(name))
+			{
 				open = false;
+			}
 
 			Core::DrawTabContextMenu(closeRequests);
 
@@ -547,7 +577,9 @@ namespace Graphite {
 				else
 				{
 					if (entry.Agent && DrawBreadcrumb(entry))
+					{
 						entry.Agent.reset();
+					}
 
 					if (!entry.Agent)
 					{
@@ -572,7 +604,9 @@ namespace Graphite {
 					}
 
 					if (const std::optional<std::string> toolUseId = std::exchange(entry.PendingAgent, std::nullopt))
+					{
 						OpenAgent(entry, *toolUseId);
+					}
 				}
 			}
 
@@ -580,9 +614,13 @@ namespace Graphite {
 			ImGui::End();
 
 			if (open)
+			{
 				++index;
+			}
 			else
+			{
 				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
+			}
 		}
 	}
 }

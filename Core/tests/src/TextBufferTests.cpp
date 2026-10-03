@@ -77,7 +77,9 @@ TEST_CASE("Repeated insertion at the same point reads back in order")
 	TextBuffer buffer;
 
 	for (std::size_t index = 0; index < 6; ++index)
+	{
 		buffer.Insert(index, std::string(1, static_cast<char>('a' + index)));
+	}
 
 	CHECK(buffer.Materialize() == "abcdef");
 }
@@ -248,7 +250,9 @@ TEST_CASE("Consecutive newlines make empty lines")
 	CHECK(buffer.GetLineCount() == 4);
 
 	for (std::size_t line = 0; line < 4; ++line)
+	{
 		CHECK(buffer.LineText(line) == "");
+	}
 }
 
 TEST_CASE("Asking about a line that is not there gives the end rather than reading off it")
@@ -289,7 +293,9 @@ TEST_CASE("Every offset round-trips through a position")
 	const TextBuffer buffer{"first\n\nthird line\nfourth"};
 
 	for (std::size_t offset = 0; offset <= buffer.GetLength(); ++offset)
+	{
 		CHECK(buffer.ToOffset(buffer.ToPosition(offset)) == offset);
+	}
 }
 
 TEST_CASE("The line index survives insertion")
@@ -406,7 +412,9 @@ TEST_CASE("An edit far down the document leaves the lines above it alone")
 	std::string content;
 
 	for (std::size_t line = 0; line < 500; ++line)
+	{
 		content += "line " + std::to_string(line) + "\n";
+	}
 
 	TextBuffer buffer{content};
 	const std::size_t before = buffer.LineStart(100);
@@ -599,7 +607,9 @@ TEST_CASE("Random edits keep the line index correct and undo all the way back")
 	}
 
 	while (buffer.CanUndo())
+	{
 		buffer.Undo();
+	}
 
 	CHECK(buffer.Materialize() == initial);
 	CHECK(buffer.LineIndexMatchesRebuild());
@@ -709,7 +719,9 @@ TEST_CASE("Every offset still round-trips through a position after random edits"
 	}
 
 	for (std::size_t offset = 0; offset <= buffer.GetLength(); ++offset)
+	{
 		REQUIRE(buffer.ToOffset(buffer.ToPosition(offset)) == offset);
+	}
 }
 
 TEST_CASE("Toggling undo/redo on an insertion does not grow the append buffer")

@@ -58,7 +58,9 @@ namespace Graphite {
 			ImGuiTable* table = ImGui::GetCurrentTable();
 
 			if (table == nullptr || !table->InnerWindow->ScrollbarY)
+			{
 				return;
+			}
 
 			const float right = std::max(table->WorkRect.Min.x, table->WorkRect.Max.x - gap);
 

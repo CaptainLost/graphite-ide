@@ -511,7 +511,9 @@ TEST_CASE("The probe and the document agree about a file that changes shape past
 	bytes.reserve(ProbeSampleSize + 8);
 
 	while (bytes.size() < ProbeSampleSize)
+	{
 		bytes += std::string("a\0", 2);
+	}
 
 	REQUIRE(bytes.size() == ProbeSampleSize);
 

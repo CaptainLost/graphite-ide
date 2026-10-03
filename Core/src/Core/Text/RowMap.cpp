@@ -29,7 +29,9 @@ namespace Core {
 		for (std::size_t line = 0; line < lines; ++line)
 		{
 			if (columnsPerRow != kNoWrap)
+			{
 				m_Breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
+			}
 
 			m_RowsPerLine[line] = m_Breaks[line].size() + 1;
 		}
@@ -40,12 +42,16 @@ namespace Core {
 	void RowMap::UpdateLine(const TextBuffer& buffer, std::size_t line)
 	{
 		if (line >= m_RowsPerLine.size())
+		{
 			return;
+		}
 
 		m_Breaks[line].clear();
 
 		if (m_ColumnsPerRow != kNoWrap)
+		{
 			m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
+		}
 
 		SetCount(line, m_Breaks[line].size() + 1);
 	}
@@ -53,7 +59,9 @@ namespace Core {
 	void RowMap::InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count)
 	{
 		if (count == 0)
+		{
 			return;
+		}
 
 		const std::size_t where = std::min(at, m_RowsPerLine.size());
 		const auto offset = static_cast<std::ptrdiff_t>(where);
@@ -64,7 +72,9 @@ namespace Core {
 		for (std::size_t line = where; line < where + count; ++line)
 		{
 			if (m_ColumnsPerRow != kNoWrap && line < buffer.GetLineCount())
+			{
 				m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
+			}
 
 			m_RowsPerLine[line] = m_Breaks[line].size() + 1;
 		}
@@ -75,7 +85,9 @@ namespace Core {
 	void RowMap::RemoveLines(std::size_t at, std::size_t count)
 	{
 		if (count == 0 || at >= m_RowsPerLine.size())
+		{
 			return;
+		}
 
 		const std::size_t end = std::min(at + count, m_RowsPerLine.size());
 		const auto first = static_cast<std::ptrdiff_t>(at);
@@ -104,14 +116,18 @@ namespace Core {
 			const std::size_t parent = index + (index & (~index + 1));
 
 			if (parent <= lines)
+			{
 				m_Tree[parent] += m_Tree[index];
+			}
 		}
 	}
 
 	void RowMap::SetRowsOf(std::size_t line, std::size_t rows)
 	{
 		if (line < m_RowsPerLine.size())
+		{
 			SetCount(line, rows);
+		}
 	}
 
 	void RowMap::SetCount(std::size_t line, std::size_t rows)
@@ -119,7 +135,9 @@ namespace Core {
 		const std::size_t previous = m_RowsPerLine[line];
 
 		if (rows == previous)
+		{
 			return;
+		}
 
 		m_RowsPerLine[line] = rows;
 		m_TotalRows = m_TotalRows - previous + rows;
@@ -133,9 +151,13 @@ namespace Core {
 		for (std::size_t index = line + 1; index < m_Tree.size(); index += index & (~index + 1))
 		{
 			if (grew)
+			{
 				m_Tree[index] += delta;
+			}
 			else
+			{
 				m_Tree[index] -= delta;
+			}
 		}
 	}
 
@@ -144,7 +166,9 @@ namespace Core {
 		std::size_t sum = 0;
 
 		for (std::size_t index = line; index > 0; index -= index & (~index + 1))
+		{
 			sum += m_Tree[index];
+		}
 
 		return sum;
 	}
@@ -167,7 +191,9 @@ namespace Core {
 	RowRef RowMap::RowAt(std::size_t row) const
 	{
 		if (m_RowsPerLine.empty())
+		{
 			return RowRef{};
+		}
 
 		// A row past the end resolves to the last line's last row, the way a click below the
 		// document is already clamped rather than treated as an error.
@@ -187,7 +213,9 @@ namespace Core {
 		std::size_t step = 1;
 
 		while (step * 2 <= m_Tree.size() - 1)
+		{
 			step *= 2;
+		}
 
 		for (; step > 0; step /= 2)
 		{

@@ -19,12 +19,16 @@ namespace Graphite {
 		bool IsDateSuffix(std::string_view rest)
 		{
 			if (rest.size() != 9 || rest[0] != '-')
+			{
 				return false;
+			}
 
 			for (const char c : rest.substr(1))
 			{
 				if (std::isdigit(static_cast<unsigned char>(c)) == 0)
+				{
 					return false;
+				}
 			}
 
 			return true;
@@ -33,7 +37,9 @@ namespace Graphite {
 		bool NamesModel(std::string_view id, std::string_view model)
 		{
 			if (!id.starts_with(model))
+			{
 				return false;
+			}
 
 			const std::string_view rest = id.substr(model.size());
 
@@ -83,9 +89,13 @@ namespace Graphite {
 	void Pricing::Reset(const std::string& model)
 	{
 		if (const auto found = m_Defaults.find(model); found != m_Defaults.end())
+		{
 			m_Prices[model] = found->second;
+		}
 		else
+		{
 			m_Prices.erase(model);
+		}
 	}
 
 	const Price* Pricing::Find(std::string_view model) const
@@ -110,7 +120,9 @@ namespace Graphite {
 		const Price* price = Find(key.Model);
 
 		if (price == nullptr)
+		{
 			return std::nullopt;
+		}
 
 		const double scale = key.Fast ? kFastMultiplier : 1.0;
 		const auto dollars = [scale](std::uint64_t tokens, double perMillion) { return static_cast<double>(tokens) / kPerMillion * perMillion * scale; };
@@ -131,7 +143,9 @@ namespace Graphite {
 		for (const std::string& model : other.UnknownModels)
 		{
 			if (std::find(UnknownModels.begin(), UnknownModels.end(), model) == UnknownModels.end())
+			{
 				UnknownModels.push_back(model);
+			}
 		}
 
 		return *this;
@@ -142,7 +156,9 @@ namespace Graphite {
 		std::string label{model.starts_with("claude-") ? model.substr(7) : model};
 
 		if (fast)
+		{
 			label += " fast";
+		}
 
 		return label;
 	}
@@ -164,13 +180,19 @@ namespace Graphite {
 		for (const auto& [key, counts] : usage)
 		{
 			if (counts.Total() == 0)
+			{
 				continue;
+			}
 
 			if (const std::optional<BucketCosts> costs = BucketsOf(key, counts))
+			{
 				result.Dollars += costs->Total();
+			}
 			else if (std::find(result.UnknownModels.begin(), result.UnknownModels.end(), key.Model) ==
 					 result.UnknownModels.end())
+			{
 				result.UnknownModels.push_back(key.Model);
+			}
 		}
 
 		return result;
@@ -190,18 +212,24 @@ namespace Graphite {
 			const auto [next, error] = std::from_chars(part.data(), part.data() + part.size(), values[index]);
 
 			if (error != std::errc{} || next != part.data() + part.size() || values[index] < 0.0)
+			{
 				return std::nullopt;
+			}
 
 			++index;
 
 			if (end == text.size())
+			{
 				break;
+			}
 
 			start = end + 1;
 		}
 
 		if (index != values.size())
+		{
 			return std::nullopt;
+		}
 
 		return Price{values[0], values[1], values[2], values[3], values[4]};
 	}

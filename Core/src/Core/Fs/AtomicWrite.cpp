@@ -34,7 +34,9 @@ namespace Core {
 			}
 
 			if (!exists)
+			{
 				return candidate;
+			}
 		}
 
 		return Error{ErrorCode::IoFailure, "cannot find an unused name after 100 attempts"};
@@ -66,7 +68,9 @@ namespace Core {
 				stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 
 				if (stream.good())
+				{
 					return Result<void>::Ok();
+				}
 			}
 
 			// Half a file is worse than none, and this one is not the target yet.
@@ -114,7 +118,9 @@ namespace Core {
 			// MOVEFILE_REPLACE_EXISTING covers the race in which the file appears between
 			// whichever check above ran and this call.
 			if (::MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING) != 0)
+			{
 				return Result<void>::Ok();
+			}
 
 			const DWORD error = ::GetLastError();
 
@@ -149,12 +155,16 @@ namespace Core {
 		const Result<std::filesystem::path> temporary = PickTemporaryPath(path);
 
 		if (!temporary)
+		{
 			return temporary.GetError();
+		}
 
 		const Result<void> written = WriteTemporary(temporary.GetValue(), bytes);
 
 		if (!written)
+		{
 			return written;
+		}
 
 		return SwapIntoPlace(temporary.GetValue(), path);
 	}

@@ -41,7 +41,9 @@ namespace Graphite {
 			for (char& character : text)
 			{
 				if (character == '/')
+				{
 					character = '\\';
+				}
 			}
 
 			return text;
@@ -58,10 +60,14 @@ namespace Graphite {
 				const std::size_t end = slash == std::string::npos ? folder.size() : slash;
 
 				if (end > start)
+				{
 					parts.push_back(folder.substr(start, end - start));
+				}
 
 				if (slash == std::string::npos)
+				{
 					break;
+				}
 
 				start = slash + 1;
 			}
@@ -83,9 +89,13 @@ namespace Graphite {
 			const bool aloneOnItsLines = text.find_first_not_of(" \t", lineBegin) == begin && text.find_first_not_of(" \t\r\n", end) >= lineEnd;
 
 			if (aloneOnItsLines)
+			{
 				text.erase(lineBegin, lineEnd - lineBegin);
+			}
 			else
+			{
 				text.erase(begin, end - begin);
+			}
 		}
 
 		std::string IndentOfLineAt(const std::string& text, std::size_t offset)
@@ -120,8 +130,10 @@ namespace Graphite {
 			Parsed parsed{text};
 
 			if (!parsed.ok)
+			{
 				return Core::Error{Core::ErrorCode::InvalidArgument,
 								   "the solution is not well-formed XML"};
+			}
 
 			const std::string wanted = "/" + folder + "/";
 
@@ -174,12 +186,16 @@ namespace Graphite {
 			attributes.WellFormed = parsed.ok;
 
 			if (!parsed.ok)
+			{
 				return attributes;
+			}
 
 			for (const pugi::xpath_node& node : parsed.document.select_nodes("//Project"))
 			{
 				if (static_cast<std::size_t>(node.node().offset_debug()) != offset)
+				{
 					continue;
+				}
 
 				attributes.Path = node.node().attribute("Path").value();
 				attributes.Id = node.node().attribute("Id").value();
@@ -213,7 +229,9 @@ namespace Graphite {
 			std::ofstream stream{path, std::ios::binary | std::ios::trunc};
 
 			if (!stream.is_open())
+			{
 				return failure;
+			}
 
 			stream << text;
 
@@ -241,7 +259,9 @@ namespace Graphite {
 		Parsed parsed{m_Text};
 
 		if (!parsed.ok)
+		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+		}
 
 		std::filesystem::path wanted = project.lexically_normal();
 		wanted.make_preferred();
@@ -254,14 +274,18 @@ namespace Graphite {
 			const char* declared = node.node().attribute("Path").value();
 
 			if (declared[0] == '\0')
+			{
 				continue;
+			}
 
 			std::filesystem::path candidate =
 				(directory / Core::FromUtf8(declared)).lexically_normal();
 			candidate.make_preferred();
 
 			if (candidate == wanted)
+			{
 				return static_cast<std::size_t>(node.node().offset_debug());
+			}
 		}
 
 		return Core::Error{Core::ErrorCode::NotFound,
@@ -273,15 +297,21 @@ namespace Graphite {
 		Parsed parsed{m_Text};
 
 		if (!parsed.ok)
+		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+		}
 
 		const pugi::xml_node root = parsed.document.child("Solution");
 
 		if (!root)
+		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the file has no Solution element"};
+		}
 
 		if (folder.empty())
+		{
 			return static_cast<std::size_t>(root.offset_debug());
+		}
 
 		// Folders are flat elements under the root; the nesting lives in the Name attribute,
 		// which carries a slash at each end.
@@ -290,7 +320,9 @@ namespace Graphite {
 		for (const pugi::xml_node& node : root.children("Folder"))
 		{
 			if (wanted == node.attribute("Name").value())
+			{
 				return static_cast<std::size_t>(node.offset_debug());
+			}
 		}
 
 		return Core::Error{Core::ErrorCode::NotFound,
@@ -359,13 +391,17 @@ namespace Graphite {
 			const auto created = AddFolder(folder);
 
 			if (!created)
+			{
 				return created.GetError();
+			}
 
 			container = FindContainer(folder);
 		}
 
 		if (!container)
+		{
 			return container.GetError();
+		}
 
 		const std::string element =
 			std::format(R"(<Project Path="{}" Id="{}" />)", relative, id);
@@ -380,7 +416,9 @@ namespace Graphite {
 		const auto found = FindProject(project);
 
 		if (!found)
+		{
 			return found.GetError();
+		}
 
 		EraseElement(m_Text, found.GetValue(), "Project");
 
@@ -392,7 +430,9 @@ namespace Graphite {
 		const std::vector<std::string> parts = SplitLogicalPath(folder);
 
 		if (parts.empty())
+		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "a solution folder needs a name"};
+		}
 
 		if (FindContainer(folder).HasValue())
 		{
@@ -410,7 +450,9 @@ namespace Graphite {
 			prefix += prefix.empty() ? part : "/" + part;
 
 			if (!FindContainer(prefix).HasValue())
+			{
 				missing.push_back(prefix);
+			}
 		}
 
 		// Deepest first, because each insertion goes in as the container's first child, so
@@ -420,7 +462,9 @@ namespace Graphite {
 			const auto root = FindContainer("");
 
 			if (!root)
+			{
 				return root.GetError();
+			}
 
 			InsertChild(root.GetValue(), std::format(R"(<Folder Name="/{}/" />)", missing[i - 1]));
 		}
@@ -431,15 +475,21 @@ namespace Graphite {
 	Core::Result<void> SlnxEditor::RemoveFolder(const std::string& folder)
 	{
 		if (folder.empty())
+		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution root is not a folder"};
+		}
 
 		const auto found = FindContainer(folder);
 
 		if (!found)
+		{
 			return found.GetError();
+		}
 
 		if (const auto empty = RequireFolderEmpty(m_Text, folder); !empty)
+		{
 			return empty.GetError();
+		}
 
 		EraseElement(m_Text, found.GetValue(), "Folder");
 
@@ -466,7 +516,9 @@ namespace Graphite {
 		Parsed parsed{m_Text};
 
 		if (!parsed.ok)
+		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, "the solution is not well-formed XML"};
+		}
 
 		std::vector<NameEdit> edits;
 
@@ -475,7 +527,9 @@ namespace Graphite {
 			const std::string current = node.attribute("Name").value();
 
 			if (current.rfind(oldPath, 0) != 0)
+			{
 				continue;
+			}
 
 			// pugixml gives an attribute value no offset of its own, so it is found as the
 			// first occurrence after the element start.
@@ -483,15 +537,19 @@ namespace Graphite {
 			const std::size_t valueBegin = m_Text.find(current, elementBegin);
 
 			if (valueBegin == std::string::npos)
+			{
 				continue;
+			}
 
 			edits.push_back(NameEdit{valueBegin, current.size(),
 									 newPath + current.substr(oldPath.size())});
 		}
 
 		if (edits.empty())
+		{
 			return Core::Error{Core::ErrorCode::NotFound,
 							   std::format("the solution has no folder '{}'", folder)};
+		}
 
 		// Applied last to first: a longer replacement shifts every offset after it, and
 		// applying them forwards would corrupt the file in a way that still parses.
@@ -510,7 +568,9 @@ namespace Graphite {
 		const auto found = FindProject(project);
 
 		if (!found)
+		{
 			return found.GetError();
+		}
 
 		ProjectAttributes attributes = ReadProjectAt(m_Text, found.GetValue());
 
@@ -521,12 +581,16 @@ namespace Graphite {
 		}
 
 		if (attributes.Path.empty())
+		{
 			attributes.Path = RelativeProjectPath(m_Path, project);
+		}
 
 		// Carried over rather than regenerated: a new identifier would make the moved
 		// project look like a different project to anything keying off it.
 		if (attributes.Id.empty())
+		{
 			attributes.Id = NewGuid();
+		}
 
 		// The folder is created first, so the removal below is the last thing that can go
 		// wrong — and it cannot, the element having just been found.
@@ -535,19 +599,25 @@ namespace Graphite {
 			const auto created = AddFolder(folder);
 
 			if (!created)
+			{
 				return created.GetError();
+			}
 		}
 
 		const auto removed = RemoveProject(project);
 
 		if (!removed)
+		{
 			return removed.GetError();
+		}
 
 		// Looked up again after the removal, which moved every offset after it.
 		const auto container = FindContainer(folder);
 
 		if (!container)
+		{
 			return container.GetError();
+		}
 
 		InsertChild(container.GetValue(),
 					std::format(R"(<Project Path="{}" Id="{}" />)", attributes.Path, attributes.Id));
@@ -560,10 +630,14 @@ namespace Graphite {
 		const Core::Result<std::filesystem::path> scratch = PickScratchPath(m_Path);
 
 		if (!scratch)
+		{
 			return scratch.GetError();
+		}
 
 		if (const auto written = WriteWholeFile(scratch.GetValue(), m_Text); !written)
+		{
 			return written.GetError();
+		}
 
 		// The edited text never reaches the file Visual Studio has open until this build's
 		// own reader has proved it can read it back.

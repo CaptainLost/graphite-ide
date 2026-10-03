@@ -49,8 +49,10 @@ namespace Graphite {
 		std::ifstream stream{solution, std::ios::binary};
 
 		if (!stream.is_open())
+		{
 			return Core::Error{Core::ErrorCode::IoFailure,
 							   std::format("cannot open '{}'", Core::ToUtf8(solution))};
+		}
 
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();

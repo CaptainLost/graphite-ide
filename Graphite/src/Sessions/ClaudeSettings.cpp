@@ -17,7 +17,9 @@ namespace Graphite {
 			// A price that does not parse is ignored rather than zeroed: zero would show a
 			// confident, wrong cost.
 			if (std::optional<Price> price = ParsePrice(text))
+			{
 				m_Pricing.Set(model, *price);
+			}
 		}
 	}
 

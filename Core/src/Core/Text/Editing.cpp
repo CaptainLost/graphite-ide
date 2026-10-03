@@ -29,7 +29,9 @@ namespace Core {
 					const bool isCrLfPair = index + 1 < text.size() && text[index + 1] == '\n';
 
 					if (isCrLfPair)
+					{
 						++index;
+					}
 
 					result.push_back('\n');
 					continue;
@@ -68,12 +70,16 @@ namespace Core {
 			std::size_t from = std::min(firstLine, buffer.GetLineCount() - 1);
 
 			while (from > 0 && IsBlankLine(buffer, from))
+			{
 				--from;
+			}
 
 			std::size_t to = std::min(lastLine, buffer.GetLineCount() - 1);
 
 			while (to + 1 < buffer.GetLineCount() && IsBlankLine(buffer, to))
+			{
 				++to;
+			}
 
 			return {from, to};
 		}
@@ -107,7 +113,9 @@ namespace Core {
 			const std::vector<std::size_t> depths = IndentDepths(buffer, item.TabWidth, from, to);
 
 			for (std::size_t line = from; line <= to; ++line)
+			{
 				item.IndentDepths[line] = depths[line - from];
+			}
 		}
 
 		void UpdateIndentDepths(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
@@ -128,9 +136,13 @@ namespace Core {
 			const std::size_t at = std::min(firstLine, previousLines);
 
 			if (currentLines > previousLines)
+			{
 				item.Rows.InsertLines(buffer, at, currentLines - previousLines);
+			}
 			else if (currentLines < previousLines)
+			{
 				item.Rows.RemoveLines(at, previousLines - currentLines);
+			}
 		}
 
 		void ExtendWidestLine(OpenItem& item, const TextBuffer& buffer, std::size_t firstLine,
@@ -168,7 +180,9 @@ namespace Core {
 
 			for (std::size_t line = firstLine; line <= lastLine && line < buffer.GetLineCount();
 				 ++line)
+			{
 				item.Rows.UpdateLine(buffer, line);
+			}
 		}
 
 		std::pair<std::size_t, std::size_t> BlockLines(const TextBuffer& buffer,
@@ -180,7 +194,9 @@ namespace Core {
 			std::size_t lastLine = buffer.ToPosition(to).Line;
 
 			if (lastLine > firstLine && to == buffer.LineStart(lastLine))
+			{
 				--lastLine;
+			}
 
 			return {firstLine, lastLine};
 		}
@@ -188,7 +204,9 @@ namespace Core {
 		bool DeleteRange(OpenItem& item, Motion motion)
 		{
 			if (!Editable(item))
+			{
 				return false;
+			}
 
 			TextBuffer& buffer = item.Document->GetBuffer();
 
@@ -199,7 +217,9 @@ namespace Core {
 			const auto [from, to] = SelectionRange(target);
 
 			if (from == to)
+			{
 				return false;
+			}
 
 			const std::size_t firstLine = buffer.ToPosition(from).Line;
 
@@ -252,12 +272,16 @@ namespace Core {
 		std::size_t OutdentBytesOf(std::string_view text, std::size_t spaceWidth)
 		{
 			if (!text.empty() && text[0] == '\t')
+			{
 				return 1;
+			}
 
 			std::size_t spaces = 0;
 
 			while (spaces < spaceWidth && spaces < text.size() && text[spaces] == ' ')
+			{
 				++spaces;
+			}
 
 			return spaces;
 		}
@@ -272,7 +296,9 @@ namespace Core {
 				const std::size_t bytes = OutdentBytesOf(buffer.LineText(line), spaceWidth);
 
 				if (bytes > 0)
+				{
 					removals.push_back(IndentRemoval{buffer.LineStart(line), bytes});
+				}
 			}
 
 			return removals;
@@ -281,7 +307,9 @@ namespace Core {
 		void EraseBackToFront(TextBuffer& buffer, const std::vector<IndentRemoval>& removals)
 		{
 			for (auto entry = removals.rbegin(); entry != removals.rend(); ++entry)
+			{
 				buffer.Erase(entry->Offset, entry->Offset + entry->Bytes);
+			}
 		}
 
 		// The run of leading whitespace every non-blank line in the block shares byte for byte.
@@ -295,7 +323,9 @@ namespace Core {
 			for (std::size_t line = firstLine; line <= lastLine; ++line)
 			{
 				if (IsBlankLine(buffer, line))
+				{
 					continue;
+				}
 
 				const std::string indent = LeadingWhitespace(buffer.LineText(line));
 
@@ -309,7 +339,9 @@ namespace Core {
 
 				while (common < shared->size() && common < indent.size() &&
 					   (*shared)[common] == indent[common])
+				{
 					++common;
+				}
 
 				shared->resize(common);
 			}
@@ -325,13 +357,17 @@ namespace Core {
 			for (std::size_t line = firstLine; line <= lastLine; ++line)
 			{
 				if (IsBlankLine(buffer, line))
+				{
 					continue;
+				}
 
 				const std::string text = buffer.LineText(line);
 				const std::size_t indent = LeadingWhitespace(text).size();
 
 				if (std::string_view(text).substr(indent).rfind(prefix, 0) != 0)
+				{
 					return false;
+				}
 
 				any = true;
 			}
@@ -349,7 +385,9 @@ namespace Core {
 			for (std::size_t line = firstLine; line <= lastLine; ++line)
 			{
 				if (IsBlankLine(buffer, line))
+				{
 					continue;
+				}
 
 				const std::string text = buffer.LineText(line);
 				const std::size_t indent = LeadingWhitespace(text).size();
@@ -391,7 +429,9 @@ namespace Core {
 	bool InsertText(OpenItem& item, std::string_view utf8)
 	{
 		if (!Editable(item) || utf8.empty())
+		{
 			return false;
+		}
 
 		const std::string text = NormaliseNewlines(utf8);
 		TextBuffer& buffer = item.Document->GetBuffer();
@@ -402,7 +442,9 @@ namespace Core {
 		buffer.BeginTransaction();
 
 		if (from != to)
+		{
 			buffer.Erase(from, to);
+		}
 
 		buffer.Insert(from, text);
 		buffer.EndTransaction();
@@ -439,12 +481,16 @@ namespace Core {
 		// Not gated by Editable: every state in the history is one the buffer already held,
 		// so a reload that turned the document read-only stays reversible.
 		if (!item.Document)
+		{
 			return false;
+		}
 
 		const std::optional<std::size_t> caret = item.Document->GetBuffer().Undo();
 
 		if (!caret)
+		{
 			return false;
+		}
 
 		return SettleAfterHistoryStep(item, *caret);
 	}
@@ -453,12 +499,16 @@ namespace Core {
 	{
 		// Ungated for the same reason as Undo.
 		if (!item.Document)
+		{
 			return false;
+		}
 
 		const std::optional<std::size_t> caret = item.Document->GetBuffer().Redo();
 
 		if (!caret)
+		{
 			return false;
+		}
 
 		return SettleAfterHistoryStep(item, *caret);
 	}
@@ -466,7 +516,9 @@ namespace Core {
 	bool InsertNewline(OpenItem& item, IndentStyle /*style*/)
 	{
 		if (!Editable(item))
+		{
 			return false;
+		}
 
 		TextBuffer& buffer = item.Document->GetBuffer();
 		const auto [from, to] = SelectionRange(item.Caret);
@@ -479,7 +531,9 @@ namespace Core {
 		buffer.BeginTransaction();
 
 		if (from != to)
+		{
 			buffer.Erase(from, to);
+		}
 
 		buffer.Insert(from, insertion);
 		buffer.EndTransaction();
@@ -494,7 +548,9 @@ namespace Core {
 	bool Indent(OpenItem& item, IndentStyle style)
 	{
 		if (!Editable(item))
+		{
 			return false;
+		}
 
 		const std::string indent =
 			style.UseSpaces ? std::string(style.Width, ' ') : std::string{"\t"};
@@ -507,7 +563,9 @@ namespace Core {
 			// zero as "nothing changed", but only after an edit that never happened had
 			// already split the surrounding typing in two.
 			if (indent.empty())
+			{
 				return false;
+			}
 
 			return InsertAsOwnUndoGroup(item, buffer, indent);
 		}
@@ -518,7 +576,9 @@ namespace Core {
 		buffer.BeginTransaction();
 
 		for (std::size_t line = lastLine + 1; line > firstLine; --line)
+		{
 			buffer.Insert(buffer.LineStart(line - 1), indent);
+		}
 
 		buffer.EndTransaction();
 		buffer.BreakUndoGroup();
@@ -533,7 +593,9 @@ namespace Core {
 	bool Outdent(OpenItem& item, IndentStyle style)
 	{
 		if (!Editable(item))
+		{
 			return false;
+		}
 
 		TextBuffer& buffer = item.Document->GetBuffer();
 		const auto [firstLine, lastLine] = BlockLines(buffer, item.Caret);
@@ -542,7 +604,9 @@ namespace Core {
 			PlanOutdent(buffer, firstLine, lastLine, style.Width);
 
 		if (removals.empty())
+		{
 			return false;
+		}
 
 		buffer.BreakUndoGroup();
 		buffer.BeginTransaction();
@@ -562,7 +626,9 @@ namespace Core {
 	bool ToggleLineComment(OpenItem& item, std::string_view prefix)
 	{
 		if (!Editable(item) || prefix.empty())
+		{
 			return false;
+		}
 
 		TextBuffer& buffer = item.Document->GetBuffer();
 		const bool hadSelection = HasSelection(item.Caret);
@@ -611,7 +677,9 @@ namespace Core {
 			for (std::size_t line = lastLine + 1; line > firstLine; --line)
 			{
 				if (IsBlankLine(buffer, line - 1))
+				{
 					continue;
+				}
 
 				buffer.Insert(buffer.LineStart(line - 1) + column, inserted);
 				changed = true;
@@ -622,7 +690,9 @@ namespace Core {
 		buffer.BreakUndoGroup();
 
 		if (!changed)
+		{
 			return false;
+		}
 
 		if (hadSelection)
 		{

@@ -68,13 +68,17 @@ TEST_CASE("A label is cut before a character, never inside one")
 {
 	std::string text;
 	for (int i = 0; i < 100; ++i)
+	{
 		text += "\xc5\xbc";
+	}
 
 	// 117 bytes leave room for the ellipsis; the 117th is the first half of a character,
 	// so the cut backs off to 116.
 	std::string expected;
 	for (int i = 0; i < 58; ++i)
+	{
 		expected += "\xc5\xbc";
+	}
 
 	CHECK(FirstLineLabel(text, 120) == expected + "\xe2\x80\xa6");
 }

@@ -10,13 +10,21 @@ namespace Graphite {
 		std::size_t SequenceLength(unsigned char lead)
 		{
 			if ((lead & 0x80u) == 0)
+			{
 				return 1;
+			}
 			if ((lead & 0xE0u) == 0xC0u)
+			{
 				return 2;
+			}
 			if ((lead & 0xF0u) == 0xE0u)
+			{
 				return 3;
+			}
 			if ((lead & 0xF8u) == 0xF0u)
+			{
 				return 4;
+			}
 			return 1;
 		}
 
@@ -42,7 +50,9 @@ namespace Graphite {
 					++start;
 
 					if (start == end)
+					{
 						break;
+					}
 				}
 
 				std::size_t at = start;
@@ -56,12 +66,16 @@ namespace Graphite {
 					// The first character goes on the line whatever its width, so a line always
 					// moves on.
 					if (used + width > columns && at > start)
+					{
 						break;
+					}
 
 					const std::size_t next = std::min(at + SequenceLength(static_cast<unsigned char>(text[at])), end);
 
 					if (text[at] == ' ')
+					{
 						afterSpace = next;
+					}
 
 					used += width;
 					at = next;
@@ -87,12 +101,16 @@ namespace Graphite {
 			std::size_t visibleEnd = lineEnd;
 
 			if (visibleEnd > start && text[visibleEnd - 1] == '\r')
+			{
 				--visibleEnd;
+			}
 
 			WrapLine(text, start, visibleEnd, width, lines);
 
 			if (newline == std::string_view::npos)
+			{
 				break;
+			}
 
 			start = newline + 1;
 		}
@@ -108,7 +126,9 @@ namespace Graphite {
 	std::string_view SegmentText(const ApiRequest& request, std::size_t segment)
 	{
 		if (segment < request.Sent.size())
+		{
 			return request.Sent[segment].Text;
+		}
 
 		segment -= request.Sent.size();
 
@@ -139,7 +159,9 @@ namespace Graphite {
 		for (std::size_t i = 0; i < SegmentCount(request); ++i)
 		{
 			if (i > 0)
+			{
 				all += "\n\n";
+			}
 			all += SegmentText(request, i);
 		}
 
@@ -157,7 +179,9 @@ namespace Graphite {
 			m_Rows.push_back({.Segment = segment, .Header = true});
 
 			for (const auto& [begin, end] : WrapLines(segments[segment], columns))
+			{
 				m_Rows.push_back({.Segment = segment, .Begin = begin, .End = end});
+			}
 		}
 	}
 

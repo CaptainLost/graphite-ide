@@ -40,7 +40,9 @@ namespace Graphite {
 		for (std::size_t layer = 0; layer < N; ++layer)
 		{
 			if (shown[layer])
+			{
 				below += layers[layer];
+			}
 
 			tops[layer] = below;
 		}

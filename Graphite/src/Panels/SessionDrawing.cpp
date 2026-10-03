@@ -29,18 +29,24 @@ namespace Graphite {
 		const char* end = begin + text.size();
 
 		if (font->CalcTextSizeA(size, FLT_MAX, 0.0f, begin, end).x <= width)
+		{
 			return text;
+		}
 
 		const float ellipsis = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kEllipsis).x;
 		if (width < ellipsis)
+		{
 			return {};
+		}
 
 		const char* remaining = begin;
 		font->CalcTextSizeA(size, width - ellipsis, 0.0f, begin, end, &remaining);
 
 		// Backed off to a lead byte all the same, should the font ever stop mid-character.
 		while (remaining > begin && (static_cast<unsigned char>(*remaining) & 0xC0u) == 0x80u)
+		{
 			--remaining;
+		}
 
 		return std::string{begin, remaining} + kEllipsis;
 	}
@@ -93,7 +99,9 @@ namespace Graphite {
 		for (std::size_t index = 0; index < labels.size(); ++index)
 		{
 			if (index > 0)
+			{
 				ImGui::SameLine(0.0f, 0.0f);
+			}
 
 			ImGui::PushID(static_cast<int>(index));
 

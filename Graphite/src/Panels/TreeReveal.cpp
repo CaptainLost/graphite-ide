@@ -12,7 +12,9 @@ namespace Graphite {
 		const std::filesystem::path relative = file.lexically_relative(node->Path);
 
 		if (relative.empty() || *relative.begin() == "..")
+		{
 			return {};
+		}
 
 		std::vector<std::filesystem::path> opened;
 
@@ -24,7 +26,9 @@ namespace Graphite {
 			opened.push_back(node->Path);
 
 			if (std::next(component) == relative.end())
+			{
 				break;
+			}
 
 			const auto child = std::find_if(node->Children.begin(), node->Children.end(),
 											[&component](const Core::FileNode& candidate) {
@@ -33,7 +37,9 @@ namespace Graphite {
 											});
 
 			if (child == node->Children.end())
+			{
 				break;
+			}
 
 			node = &*child;
 		}

@@ -35,7 +35,9 @@ namespace Graphite {
 			m_Dismissed = true;
 		}
 		else if (m_Dismissed && input.MouseMoved)
+		{
 			m_Dismissed = false; // the token change below starts the delay afresh
+		}
 		if (m_Dismissed)
 		{
 			m_WasVisible = false;
@@ -47,7 +49,9 @@ namespace Graphite {
 		// Leaving both closes only after a grace, so a diagonal path can still reach the tooltip;
 		// with nothing on screen there is nothing to reach and it closes at once.
 		if (input.Revision != m_Revision)
+		{
 			Restart(input, actions);
+		}
 		else if (input.MouseInTooltip)
 		{
 			m_Latched = true;
@@ -59,13 +63,19 @@ namespace Graphite {
 			m_LeftAt.reset();
 		}
 		else if (input.Token || !m_WasVisible)
+		{
 			Restart(input, actions);
+		}
 		else
 		{
 			if (!m_LeftAt)
+			{
 				m_LeftAt = input.Now;
+			}
 			if (input.Now >= *m_LeftAt + kLeaveGraceSeconds)
+			{
 				Restart(input, actions);
+			}
 		}
 		const bool held = m_Latched || m_LeftAt.has_value();
 
@@ -82,7 +92,9 @@ namespace Graphite {
 		const double due = m_RestingSince + settings.DelayMs / 1000.0;
 		const bool elapsed = m_Token.has_value() && input.Now >= due;
 		if (m_Token && !elapsed && (wantInfo || wantPreview))
+		{
 			actions.WakeAt = due;
+		}
 		if (m_LeftAt)
 		{
 			const double graceEnd = *m_LeftAt + kLeaveGraceSeconds;
@@ -99,9 +111,13 @@ namespace Graphite {
 			const auto retry = [&](bool want, bool asked, bool failed, bool arrived,
 								   bool& retried, std::optional<double>& failedAt) {
 				if (!want || !asked || !failed || arrived || retried)
+				{
 					return false;
+				}
 				if (!failedAt)
+				{
 					failedAt = input.Now;
+				}
 				const double retryAt = *failedAt + kRetrySeconds;
 				if (input.Now >= retryAt)
 				{

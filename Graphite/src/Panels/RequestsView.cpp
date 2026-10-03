@@ -100,7 +100,9 @@ namespace Graphite {
 			m_ToolFilter.clear();
 
 			if (m_PendingReveal && m_RevealGeneration != session.GetGeneration())
+			{
 				m_PendingReveal.reset();
+			}
 
 			m_Selected = m_PendingReveal;
 
@@ -143,7 +145,9 @@ namespace Graphite {
 
 			std::string label;
 			for (const std::string& name : m_ToolNames[position])
+			{
 				label += (label.empty() ? "" : ", ") + SingleLineLabel(name, kToolNameBytes);
+			}
 			m_ToolLabels[position] = std::move(label);
 		}
 
@@ -159,14 +163,18 @@ namespace Graphite {
 
 		m_TurnPrompts.clear();
 		for (const Turn& turn : session.GetTurns())
+		{
 			m_TurnPrompts.push_back(turn.Prompt);
+		}
 
 		m_TurnsVersion = session.GetVersion();
 		m_TurnsTimelineVersion = timeline.GetVersion();
 
 		// Only the grouped table reads the turns; the flat one has nothing to redo.
 		if (m_GroupByTurn)
+		{
 			m_FilterDirty = true;
+		}
 	}
 
 	void RequestsView::PriceRequests(const RequestTimeline& timeline, const Pricing& pricing)
@@ -183,7 +191,9 @@ namespace Graphite {
 		}
 
 		if (m_PriceFrom >= requests.size() && m_Costs.size() == requests.size())
+		{
 			return;
+		}
 
 		m_Costs.resize(requests.size());
 
@@ -204,7 +214,9 @@ namespace Graphite {
 
 		const auto passes = [this, &requests](std::size_t position) {
 			if (m_RebuiltOnly && !requests[position].CacheRebuilt)
+			{
 				return false;
+			}
 
 			const std::vector<std::string>& names = m_ToolNames[position];
 			return m_ToolFilter.empty() || std::find(names.begin(), names.end(), m_ToolFilter) != names.end();
@@ -221,7 +233,9 @@ namespace Graphite {
 		for (std::size_t position = 0; position < requests.size(); ++position)
 		{
 			if (!passes(position))
+			{
 				continue;
+			}
 
 			m_Shown.push_back(position);
 			m_Passes[position] = true;
@@ -238,7 +252,9 @@ namespace Graphite {
 		m_RowGroup.clear();
 
 		if (!m_GroupByTurn)
+		{
 			return;
+		}
 
 		m_Groups = GroupByTurn(m_Shown, m_TurnOf, timeline.GetRequests(), m_TurnPrompts, m_SortColumn, m_SortAscending,
 							   pricing);
@@ -260,12 +276,16 @@ namespace Graphite {
 	void RequestsView::DrawFilters(const RequestTimeline& timeline, const Pricing& pricing)
 	{
 		if (ImGui::Checkbox("Group by turn", &m_GroupByTurn))
+		{
 			m_FilterDirty = true;
+		}
 
 		ImGui::SameLine();
 
 		if (ImGui::Checkbox("Cache rebuilt only", &m_RebuiltOnly))
+		{
 			m_FilterDirty = true;
+		}
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
@@ -300,7 +320,9 @@ namespace Graphite {
 		}
 
 		if (m_FilterDirty)
+		{
 			Filter(timeline, pricing);
+		}
 
 		const std::size_t total = timeline.GetRequests().size();
 		const char* noun = total == 1 ? "request" : "requests";
@@ -312,7 +334,9 @@ namespace Graphite {
 								: std::to_string(m_Shown.size()) + " of " + std::to_string(total) + " " + noun;
 
 		if (m_GroupByTurn)
+		{
 			count += " in " + std::to_string(m_Groups.size()) + (m_Groups.size() == 1 ? " turn" : " turns");
+		}
 
 		ImGui::TextDisabled("%s", count.c_str());
 	}
@@ -332,7 +356,9 @@ namespace Graphite {
 		for (int column = 0; column < kColumnCount; ++column)
 		{
 			if (!ImGui::TableSetColumnIndex(column))
+			{
 				continue;
+			}
 
 			const ColumnSpec& spec = kColumns[column];
 
@@ -344,7 +370,9 @@ namespace Graphite {
 				// hidden, so the row always has it.
 				if (ImGui::Selectable("##row", m_Selected == position,
 									  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+				{
 					m_Selected = position;
+				}
 
 				DrawTurnMark(row, palette);
 
@@ -414,7 +442,9 @@ namespace Graphite {
 	void RequestsView::DrawTurnMark(std::size_t row, const SessionPalette& palette)
 	{
 		if (!m_GroupByTurn || row >= m_RowGroup.size())
+		{
 			return;
+		}
 
 		const std::size_t group = m_RowGroup[row];
 		const TurnSummary& summary = m_Groups[group].Summary;
@@ -440,7 +470,9 @@ namespace Graphite {
 
 		// What the turn was, over its mark: the prompt, and what its requests came to.
 		if (!ImGui::IsMouseHoveringRect(ImVec2(min.x, min.y), ImVec2(max.x + width, max.y), false) || !ImGui::IsWindowHovered())
+		{
 			return;
+		}
 
 		static const std::string kNoPrompt;
 		const std::string& prompt = summary.Turn < m_TurnPrompts.size() ? m_TurnPrompts[summary.Turn] : kNoPrompt;
@@ -453,10 +485,14 @@ namespace Graphite {
 		std::string totals = std::to_string(summary.Count) + (summary.Count == 1 ? " request" : " requests");
 
 		if (summary.HasUsage)
+		{
 			totals += " \xc2\xb7 " + FormatCost(summary.Cost) + " \xc2\xb7 " + FormatTokens(summary.Output) + " out";
+		}
 
 		if (summary.Waited)
+		{
 			totals += " \xc2\xb7 " + WaitText(*summary.Waited);
+		}
 
 		if (ImGui::BeginTooltip())
 		{
@@ -491,7 +527,9 @@ namespace Graphite {
 		static const ImGuiID kTableId = ImHashStr("RequestsView.RequestTable");
 
 		if (!ImGui::BeginTableEx("##requestTable", kTableId, kColumnCount, kFlags))
+		{
 			return;
+		}
 
 		// The mark's column is as wide as the mark and the sort arrow its header may show.
 		const float markWidth = ImGui::CalcTextSize(ICON_MDI_CACHED).x + ImGui::GetFontSize();
@@ -537,13 +575,17 @@ namespace Graphite {
 		for (int column = 0; column < kColumnCount; ++column)
 		{
 			if (!ImGui::TableSetColumnIndex(column))
+			{
 				continue;
+			}
 
 			ImGui::PushID(column);
 			ImGui::TableHeader(ImGui::TableGetColumnName(column));
 
 			if (kColumns[column].Id == RequestColumn::Rebuilt)
+			{
 				ImGui::SetItemTooltip("Cache rebuilt: at least half the context was written to the cache");
+			}
 
 			ImGui::PopID();
 		}
@@ -557,7 +599,9 @@ namespace Graphite {
 			const auto found = std::find(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
 
 			if (found != m_Shown.end())
+			{
 				revealRow = static_cast<int>(found - m_Shown.begin());
+			}
 
 			m_PendingReveal.reset();
 		}
@@ -568,7 +612,9 @@ namespace Graphite {
 
 		// Drawn whether or not it is in view, so it has a place to scroll to.
 		if (revealRow)
+		{
 			clipper.IncludeItemByIndex(*revealRow);
+		}
 
 		while (clipper.Step())
 		{
@@ -578,7 +624,9 @@ namespace Graphite {
 				DrawTableRow(requests[position], position, static_cast<std::size_t>(row), context);
 
 				if (revealRow && row == *revealRow)
+				{
 					ImGui::SetScrollHereY(0.5f);
+				}
 			}
 		}
 
@@ -597,7 +645,9 @@ namespace Graphite {
 		const float width = ImGui::GetContentRegionAvail().x;
 
 		if (!m_Selected || *m_Selected >= requests.size())
+		{
 			return;
+		}
 
 		const ApiRequest& request = requests[*m_Selected];
 
@@ -615,7 +665,9 @@ namespace Graphite {
 
 		// A request whose items shrank under a live transcript's rewrite has no such item.
 		if (m_SelectedItem && *m_SelectedItem >= SegmentCount(request))
+		{
 			m_SelectedItem.reset();
+		}
 
 		// The line stops short of the close DrawPaneClose puts in the pane's corner, with an
 		// item's spacing between them, so a long line is cut rather than drawn under it.
@@ -670,12 +722,16 @@ namespace Graphite {
 		// meant to open at. Below that threshold SplitSideBySide is still called, with
 		// m_ItemsWidth left negative, and falls back to its own default for the frame.
 		if (m_ItemsWidth < 0.0f && room >= minimum * 2.0f)
+		{
 			m_ItemsWidth = room * 0.4f;
+		}
 
 		const SideBySideWidths widths = SplitSideBySide(room, m_ItemsWidth, minimum);
 
 		if (std::floor(widths.Left) < IMGUI_WINDOW_HARD_MIN_SIZE || widths.Right < IMGUI_WINDOW_HARD_MIN_SIZE)
+		{
 			return;
+		}
 
 		const float itemsWidth = widths.Left;
 		std::optional<std::size_t> hovered;
@@ -709,10 +765,14 @@ namespace Graphite {
 		ImGui::InvisibleButton("##detailsSplit", ImVec2(handle, handleHeight));
 
 		if (ImGui::IsItemActive())
+		{
 			m_ItemsWidth = SplitSideBySide(room, itemsWidth + ImGui::GetIO().MouseDelta.x, minimum).Left;
+		}
 
 		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+		{
 			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+		}
 
 		const ImGuiCol lineColour = ImGui::IsItemActive()	 ? ImGuiCol_SeparatorActive
 									: ImGui::IsItemHovered() ? ImGuiCol_SeparatorHovered
@@ -743,10 +803,14 @@ namespace Graphite {
 	void RequestsView::Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context)
 	{
 		if (session.GetGeneration() != m_BuiltGeneration || timeline.GetVersion() != m_BuiltVersion)
+		{
 			Rebuild(timeline, session);
+		}
 
 		if (session.GetVersion() != m_TurnsVersion || timeline.GetVersion() != m_TurnsTimelineVersion)
+		{
 			RebuildTurns(session, timeline);
+		}
 
 		PriceRequests(timeline, context.Prices);
 
@@ -759,7 +823,9 @@ namespace Graphite {
 		// Filtered before the chart is drawn, so it dims what the table leaves out from the
 		// frame a request arrives. A filter the reader changes below is taken on the next frame.
 		if (m_FilterDirty)
+		{
 			Filter(timeline, context.Prices);
+		}
 
 		const RequestChartInput chartInput{.Timeline = timeline,
 										   .Costs = m_Costs,
@@ -769,7 +835,9 @@ namespace Graphite {
 										   .Generation = m_BuiltGeneration};
 
 		if (const std::optional<std::size_t> clicked = m_Chart.Draw(chartInput, context))
+		{
 			Reveal(*clicked, m_BuiltGeneration);
+		}
 
 		DrawFilters(timeline, context.Prices);
 
@@ -790,9 +858,13 @@ namespace Graphite {
 								  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 			{
 				if (m_Shown.empty())
+				{
 					Core::EmptyState("No request matches the filters.");
+				}
 				else
+				{
 					DrawTable(timeline, context);
+				}
 			}
 
 			ImGui::EndChild();

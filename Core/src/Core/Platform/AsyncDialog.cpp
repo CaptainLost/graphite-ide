@@ -38,7 +38,9 @@ namespace Core {
 	bool AsyncDialog::Start(Picker picker, Done done)
 	{
 		if (IsOpen())
+		{
 			return false;
+		}
 
 		auto pending = std::make_shared<Pending>();
 
@@ -70,7 +72,9 @@ namespace Core {
 	void AsyncDialog::Poll()
 	{
 		if (!m_Pending)
+		{
 			return;
+		}
 
 		std::optional<Result<std::filesystem::path>> answer;
 		{
@@ -79,7 +83,9 @@ namespace Core {
 		}
 
 		if (!answer)
+		{
 			return;
+		}
 
 		// Cleared before the callback, so that it sees no dialog open and can start the next.
 		m_Pending.reset();

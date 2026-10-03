@@ -16,7 +16,9 @@ namespace Graphite {
 		const char* LineEndingName(Core::LineEnding ending, bool mixed)
 		{
 			if (ending == Core::LineEnding::Crlf)
+			{
 				return mixed ? "CRLF (mixed)" : "CRLF";
+			}
 
 			return mixed ? "LF (mixed)" : "LF";
 		}
@@ -80,7 +82,9 @@ namespace Graphite {
 				ImGui::TextDisabled("%s", text.c_str());
 
 				if (ImGui::IsItemHovered() && !tooltip.empty())
+				{
 					ImGui::SetTooltip("%s", tooltip.c_str());
+				}
 
 				return false;
 			}
@@ -93,10 +97,14 @@ namespace Graphite {
 												ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
 
 			if (!ImGui::IsItemHovered())
+			{
 				return clicked;
+			}
 
 			if (!tooltip.empty())
+			{
 				ImGui::SetTooltip("%s", tooltip.c_str());
+			}
 
 			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 			return clicked;
@@ -111,7 +119,9 @@ namespace Graphite {
 			ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
 
 			if (DrawGitPiece("##GitBranch", segment.Branch, segment.HasRepository, segment.BranchTooltip))
+			{
 				clicked = StatusBarClick::GitBranch;
+			}
 
 			if (!segment.Distance.empty())
 			{
@@ -124,7 +134,9 @@ namespace Graphite {
 				ImGui::SameLine(0.0f, ImGui::GetFontSize());
 
 				if (DrawGitPiece("##GitChanges", segment.Changes, true, {}))
+				{
 					clicked = StatusBarClick::GitChanges;
+				}
 			}
 
 			return clicked;
@@ -135,10 +147,14 @@ namespace Graphite {
 			std::string description = RelativePath(item.Path, root);
 
 			if (item.Document->IsModified())
+			{
 				description = "* " + description;
+			}
 
 			if (item.Document->IsReadOnly())
+			{
 				description += "  (read-only: not valid text for its encoding)";
+			}
 
 			return description;
 		}
@@ -156,7 +172,9 @@ namespace Graphite {
 			const auto [from, to] = Core::SelectionRange(item.Caret);
 
 			if (from != to)
+			{
 				description += " (" + std::to_string(to - from) + " selected)";
+			}
 
 			return description;
 		}
@@ -201,7 +219,9 @@ namespace Graphite {
 			// Beside the git segment when there is one, a font-size gap apart; at the bar's
 			// left edge otherwise, where it has always been.
 			if (messages.Git)
+			{
 				ImGui::SameLine(0.0f, ImGui::GetFontSize() * 2.0f);
+			}
 
 			ImGui::SetCursorPosY(CentredTextY(height));
 			ImGui::TextUnformatted(DescribeDocument(documents.At(*active), root).c_str());

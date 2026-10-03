@@ -20,12 +20,16 @@ namespace Graphite {
 				std::string_view line = text.substr(start, length);
 
 				if (!line.empty() && line.back() == '\r')
+				{
 					line.remove_suffix(1);
+				}
 
 				lines.push_back(line);
 
 				if (end == std::string_view::npos)
+				{
 					break;
+				}
 
 				start = end + 1;
 			}
@@ -42,7 +46,9 @@ namespace Graphite {
 		std::string_view Unquote(std::string_view text)
 		{
 			if (text.size() >= 2 && text.front() == '`' && text.back() == '`')
+			{
 				return text.substr(1, text.size() - 2);
+			}
 
 			return text;
 		}
@@ -54,7 +60,9 @@ namespace Graphite {
 			for (char& c : result)
 			{
 				if (c == '-')
+				{
 					c = ' ';
+				}
 			}
 
 			return result;
@@ -70,7 +78,9 @@ namespace Graphite {
 			{
 				if (text[i] == '\\' && i + 1 < text.size() &&
 					std::ispunct(static_cast<unsigned char>(text[i + 1])))
+				{
 					++i;
+				}
 
 				result += text[i];
 			}
@@ -89,7 +99,9 @@ namespace Graphite {
 			for (std::string_view line : lines)
 			{
 				while (!line.empty() && line.back() == ' ')
+				{
 					line.remove_suffix(1);
+				}
 
 				if (line.empty())
 				{
@@ -98,7 +110,9 @@ namespace Graphite {
 				}
 
 				if (!result.empty())
+				{
 					result += paragraphBreak ? "\n\n" : "\n";
+				}
 
 				paragraphBreak = false;
 				result += Unescape(line);
@@ -115,7 +129,9 @@ namespace Graphite {
 			std::string_view size = text.substr(0, comma);
 
 			if (comma != std::string_view::npos)
+			{
 				info.Alignment = std::string(text.substr(comma + kAlignment.size()));
+			}
 
 			if (const std::size_t paren = size.find(" (+"); paren != std::string_view::npos)
 			{
@@ -124,7 +140,9 @@ namespace Graphite {
 				const std::size_t word = padding.find(" padding)");
 
 				if (word != std::string_view::npos)
+				{
 					padding = padding.substr(0, word);
+				}
 
 				info.Padding = std::string(padding);
 				size = size.substr(0, paren);
@@ -180,7 +198,9 @@ namespace Graphite {
 		const std::vector<std::string_view> lines = SplitLines(markdown);
 
 		if (lines.empty() || !StartsWith(lines[0], "### "))
+		{
 			return info;
+		}
 
 		info.Parsed = true;
 
@@ -215,7 +235,9 @@ namespace Graphite {
 				codeLanguage = inCode ? std::string(line.substr(3)) : std::string();
 
 				if (!inCode && codeLanguage.empty())
+				{
 					documentation.emplace_back();
+				}
 
 				continue;
 			}
@@ -223,22 +245,32 @@ namespace Graphite {
 			if (inCode)
 			{
 				if (codeLanguage != "cpp")
+				{
 					documentation.push_back(line);
+				}
 				else if (StartsWith(line, "// In "))
+				{
 					info.Scope = std::string(line.substr(6));
+				}
 				else
 				{
 					// A declaration clangd wrapped over several lines is one declaration.
 					std::string_view trimmed = line;
 
 					while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t'))
+					{
 						trimmed.remove_prefix(1);
+					}
 
 					while (!trimmed.empty() && (trimmed.back() == ' ' || trimmed.back() == '\t'))
+					{
 						trimmed.remove_suffix(1);
+					}
 
 					if (!declaration.empty() && !trimmed.empty())
+					{
 						declaration += ' ';
+					}
 
 					declaration += trimmed;
 				}
@@ -254,7 +286,9 @@ namespace Graphite {
 
 				// Fields can only start right after the first rule.
 				if (rules == 1)
+				{
 					inFields = true;
+				}
 
 				continue;
 			}
@@ -268,7 +302,9 @@ namespace Graphite {
 			if (inFields)
 			{
 				if (line.empty())
+				{
 					continue;
+				}
 
 				if (inParameters)
 				{
@@ -336,7 +372,9 @@ namespace Graphite {
 		}
 
 		if (!declaration.empty())
+		{
 			ReadDeclaration(declaration, info);
+		}
 
 		info.Documentation = JoinDocumentation(documentation);
 

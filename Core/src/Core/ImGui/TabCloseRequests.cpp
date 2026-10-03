@@ -26,7 +26,9 @@ namespace Core {
 		const auto found = m_Due.find(Identity(name));
 
 		if (found == m_Due.end())
+		{
 			return false;
+		}
 
 		m_Due.erase(found);
 		return true;

@@ -88,13 +88,21 @@ namespace Core {
 			KeyModifier result = KeyModifier::None;
 
 			if ((mods & GLFW_MOD_SHIFT) != 0)
+			{
 				result = result | KeyModifier::Shift;
+			}
 			if ((mods & GLFW_MOD_CONTROL) != 0)
+			{
 				result = result | KeyModifier::Control;
+			}
 			if ((mods & GLFW_MOD_ALT) != 0)
+			{
 				result = result | KeyModifier::Alt;
+			}
 			if ((mods & GLFW_MOD_SUPER) != 0)
+			{
 				result = result | KeyModifier::Super;
+			}
 
 			return result;
 		}
@@ -108,7 +116,9 @@ namespace Core {
 								  [](GLFWwindow* handle, int width, int height) {
 									  GlfwWindow* self = WindowFrom(handle);
 									  if (self == nullptr || !self->m_EventCallback)
+									  {
 										  return;
+									  }
 
 									  WindowResizeEvent event{width, height};
 									  self->m_EventCallback(event);
@@ -118,7 +128,9 @@ namespace Core {
 								   [](GLFWwindow* handle) {
 									   GlfwWindow* self = WindowFrom(handle);
 									   if (self == nullptr || !self->m_EventCallback)
+									   {
 										   return;
+									   }
 
 									   WindowCloseEvent event;
 									   self->m_EventCallback(event);
@@ -128,7 +140,9 @@ namespace Core {
 								   [](GLFWwindow* handle, int focused) {
 									   GlfwWindow* self = WindowFrom(handle);
 									   if (self == nullptr || !self->m_EventCallback)
+									   {
 										   return;
+									   }
 
 									   if (focused == GLFW_TRUE)
 									   {
@@ -146,7 +160,9 @@ namespace Core {
 								 [](GLFWwindow* handle, int x, int y) {
 									 GlfwWindow* self = WindowFrom(handle);
 									 if (self == nullptr || !self->m_EventCallback)
+									 {
 										 return;
+									 }
 
 									 WindowMovedEvent event{x, y};
 									 self->m_EventCallback(event);
@@ -156,7 +172,9 @@ namespace Core {
 						   [](GLFWwindow* handle, int key, int, int action, int mods) {
 							   GlfwWindow* self = WindowFrom(handle);
 							   if (self == nullptr || !self->m_EventCallback)
+							   {
 								   return;
+							   }
 
 							   const KeyCode code = static_cast<KeyCode>(key);
 							   const KeyModifier modifiers = ToModifiers(mods);
@@ -190,7 +208,9 @@ namespace Core {
 							[](GLFWwindow* handle, unsigned int codepoint) {
 								GlfwWindow* self = WindowFrom(handle);
 								if (self == nullptr || !self->m_EventCallback)
+								{
 									return;
+								}
 
 								KeyTypedEvent event{codepoint};
 								self->m_EventCallback(event);
@@ -200,7 +220,9 @@ namespace Core {
 								   [](GLFWwindow* handle, int button, int action, int) {
 									   GlfwWindow* self = WindowFrom(handle);
 									   if (self == nullptr || !self->m_EventCallback)
+									   {
 										   return;
+									   }
 
 									   const MouseCode code = static_cast<MouseCode>(button);
 
@@ -220,7 +242,9 @@ namespace Core {
 							  [](GLFWwindow* handle, double xOffset, double yOffset) {
 								  GlfwWindow* self = WindowFrom(handle);
 								  if (self == nullptr || !self->m_EventCallback)
+								  {
 									  return;
+								  }
 
 								  MouseScrolledEvent event{static_cast<float>(xOffset),
 														   static_cast<float>(yOffset)};
@@ -231,7 +255,9 @@ namespace Core {
 								 [](GLFWwindow* handle, double x, double y) {
 									 GlfwWindow* self = WindowFrom(handle);
 									 if (self == nullptr || !self->m_EventCallback)
+									 {
 										 return;
+									 }
 
 									 MouseMovedEvent event{static_cast<float>(x), static_cast<float>(y)};
 									 self->m_EventCallback(event);
@@ -247,13 +273,17 @@ namespace Core {
 							[](GLFWwindow* handle, int count, const char** paths) {
 								GlfwWindow* self = WindowFrom(handle);
 								if (self == nullptr || !self->m_EventCallback)
+								{
 									return;
+								}
 
 								std::vector<std::filesystem::path> dropped;
 								dropped.reserve(static_cast<std::size_t>(count));
 
 								for (int index = 0; index < count; ++index)
+								{
 									dropped.push_back(FromUtf8(paths[index]));
+								}
 
 								FileDropEvent event{std::move(dropped)};
 								self->m_EventCallback(event);
@@ -267,13 +297,17 @@ namespace Core {
 		m_Frame.reset();
 
 		if (m_Handle == nullptr)
+		{
 			return;
+		}
 
 		glfwDestroyWindow(m_Handle);
 		m_Handle = nullptr;
 
 		if (--s_GlfwWindowCount == 0)
+		{
 			glfwTerminate();
+		}
 	}
 
 	void GlfwWindow::PollEvents()
@@ -463,7 +497,9 @@ namespace Core {
 			glfwSetErrorCallback(&OnGlfwError);
 
 			if (glfwInit() == GLFW_FALSE)
+			{
 				return Error{ErrorCode::Unsupported, "glfwInit failed"};
+			}
 		}
 
 		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -484,7 +520,9 @@ namespace Core {
 		if (handle == nullptr)
 		{
 			if (s_GlfwWindowCount == 0)
+			{
 				glfwTerminate();
+			}
 
 			return Error{ErrorCode::Unsupported, "failed to create an OpenGL 3.3 window"};
 		}

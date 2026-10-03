@@ -16,7 +16,9 @@ namespace Graphite {
 		std::error_code status;
 
 		if (!configured.empty() && std::filesystem::is_regular_file(configured, status))
+		{
 			return configured;
+		}
 
 		return findOnPath("claude.exe");
 	}

@@ -117,7 +117,9 @@ TEST_CASE("CentreLines starts a block bigger than the region at its top-left edg
 	CHECK(lines[0].Offset.y == 0.0f);
 
 	for (const CentredLine& line : lines)
+	{
 		CHECK(line.Offset.x >= 0.0f);
+	}
 }
 
 TEST_CASE("CentreLines breaks at a newline and returns nothing for no text")

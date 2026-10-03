@@ -257,13 +257,21 @@ namespace Core {
 		ImGuiKeyChord chord = 0;
 
 		if (HasModifier(modifiers, KeyModifier::Control))
+		{
 			chord |= ImGuiMod_Ctrl;
+		}
 		if (HasModifier(modifiers, KeyModifier::Shift))
+		{
 			chord |= ImGuiMod_Shift;
+		}
 		if (HasModifier(modifiers, KeyModifier::Alt))
+		{
 			chord |= ImGuiMod_Alt;
+		}
 		if (HasModifier(modifiers, KeyModifier::Super))
+		{
 			chord |= ImGuiMod_Super;
+		}
 
 		return chord;
 	}

@@ -163,7 +163,9 @@ TEST_CASE("Twenty thousand lines arrive complete and once, however the polls int
 
 		// Polls while a read is running must not start a second read or drop the request.
 		if (index % 1000 == 0)
+		{
 			live.Poll();
+		}
 	}
 
 	live.Poll();
@@ -286,7 +288,9 @@ namespace {
 		{
 			const LiveTranscript::LoadProgress progress = live.GetProgress();
 			if (done(progress))
+			{
 				return progress;
+			}
 
 			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{1});
@@ -305,7 +309,9 @@ namespace {
 		const std::string filler(300, 'x');
 
 		for (std::size_t index = 0; index < lines; ++index)
+		{
 			bytes += Fixtures::UserPrompt(filler + std::to_string(index));
+		}
 
 		return bytes;
 	}
@@ -317,7 +323,9 @@ namespace {
 		const std::string filler(300, 'y');
 
 		for (std::size_t index = 0; index < lines; ++index)
+		{
 			bytes += Fixtures::Assistant("r" + std::to_string(index), Fixtures::TextBlock(filler), Fixtures::Usage(1, 1));
+		}
 
 		return bytes;
 	}
@@ -390,7 +398,9 @@ namespace {
 
 			const std::string subagent = SubagentTranscript(150);
 			for (int index = 0; index < 80; ++index)
+			{
 				Temp.MakeFile("p/s/subagents/agent-a" + std::to_string(index) + ".jsonl", subagent);
+			}
 
 			LiveTranscript live{File};
 			const Clock::time_point start = Clock::now();

@@ -29,7 +29,9 @@ namespace {
 		while (!done())
 		{
 			if (std::chrono::steady_clock::now() > deadline)
+			{
 				return false;
+			}
 
 			dialog.Poll();
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -91,7 +93,9 @@ TEST_CASE("AsyncDialog hands the result over on the thread that polls, and only 
 	// Returned is not delivered: the picker's thread never calls back on its own.
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
+	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 	REQUIRE(picker.Returned->load());
 	CHECK_FALSE(result.has_value());
 
@@ -186,7 +190,9 @@ TEST_CASE("AsyncDialog destroyed while a dialog is open neither waits for it nor
 
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
+	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 
 	CHECK(picker.Returned->load());
 	CHECK_FALSE(delivered);
@@ -208,7 +214,9 @@ TEST_CASE("AsyncDialog destroyed while a dialog is open asks for no redraw when 
 
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
+	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
 
 	// Returned is set before the thread would ask; give it time to, so a regression shows.
 	std::this_thread::sleep_for(std::chrono::milliseconds(200));

@@ -26,11 +26,17 @@ namespace Graphite {
 		const auto found = object.find(key);
 
 		if (found == object.end())
+		{
 			return std::nullopt;
+		}
 		if (found->is_number_unsigned())
+		{
 			return found->get<std::uint64_t>();
+		}
 		if (found->is_number_integer() && found->get<std::int64_t>() >= 0)
+		{
 			return static_cast<std::uint64_t>(found->get<std::int64_t>());
+		}
 
 		return std::nullopt;
 	}

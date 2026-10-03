@@ -27,7 +27,9 @@ namespace Graphite {
 				 it.increment(status))
 			{
 				if (it->is_directory(status))
+				{
 					directories.push_back(it->path());
+				}
 			}
 
 			return directories;
@@ -44,7 +46,9 @@ namespace Graphite {
 			if (!std::filesystem::exists(file, status))
 			{
 				if (prints.erase(file) > 0)
+				{
 					out.Removed.push_back(file);
+				}
 				return;
 			}
 
@@ -52,12 +56,16 @@ namespace Graphite {
 			const auto known = prints.find(file);
 
 			if (known != prints.end() && known->second == print)
+			{
 				return;
+			}
 
 			std::optional<SessionSummary> summary = TrySummariseSession(file);
 
 			if (!summary.has_value())
+			{
 				return;
+			}
 
 			prints[file] = summary->Print;
 			out.Updated.push_back(std::move(*summary));
@@ -73,7 +81,9 @@ namespace Graphite {
 			 it.increment(status))
 		{
 			if (it->is_regular_file(status) && it->path().extension() == ".jsonl")
+			{
 				files.push_back(it->path());
+			}
 		}
 
 		return files;
@@ -87,37 +97,51 @@ namespace Graphite {
 		std::map<std::filesystem::path, const SessionSummary*> byFile;
 
 		for (const SessionSummary& summary : cached)
+		{
 			byFile[summary.File] = &summary;
+		}
 
 		for (const std::filesystem::path& project : ProjectDirectories(projects))
 		{
 			for (const std::filesystem::path& file : SessionFilesUnder(project))
 			{
 				if (token.IsCancelled())
+				{
 					return {};
+				}
 
 				const auto found = byFile.find(file);
 
 				if (found != byFile.end() && found->second->Print == FingerprintOf(file))
+				{
 					onSummary(*found->second);
+				}
 				else if (std::optional<SessionSummary> summary = TrySummariseSession(file))
+				{
 					onSummary(std::move(*summary));
+				}
 
 				// Found, whether or not it could be read: an unreadable file is still there, and
 				// its cached summary is the best there is until it reads again.
 				if (found != byFile.end())
+				{
 					byFile.erase(found);
+				}
 			}
 		}
 
 		if (token.IsCancelled())
+		{
 			return {};
+		}
 
 		std::vector<std::filesystem::path> gone;
 		gone.reserve(byFile.size());
 
 		for (const auto& [file, summary] : byFile)
+		{
 			gone.push_back(file);
+		}
 
 		return gone;
 	}
@@ -131,12 +155,16 @@ namespace Graphite {
 		auto part = relative.begin();
 
 		if (relative.empty() || *part == "..")
+		{
 			return std::nullopt;
+		}
 
 		const std::filesystem::path project = *part++;
 
 		if (part == relative.end())
+		{
 			return std::nullopt;
+		}
 
 		const std::filesystem::path session = *part;
 		return projects / project / (session.native() + L".jsonl");
@@ -156,7 +184,9 @@ namespace Graphite {
 
 		m_Jobs.Submit([inbox = m_Inbox, known = m_Known, token = m_Token, work = std::move(work)] {
 			if (!token.IsCancelled())
+			{
 				work(*inbox, *known);
+			}
 
 			{
 				const std::lock_guard<std::mutex> guard(inbox->Mutex);
@@ -195,7 +225,9 @@ namespace Graphite {
 			// watcher report will ever name it.
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
 			for (std::filesystem::path& file : gone)
+			{
 				inbox.Ready.Removed.push_back(std::move(file));
+			}
 		});
 	}
 
@@ -224,26 +256,36 @@ namespace Graphite {
 				for (const std::filesystem::path& project : projectDirectories)
 				{
 					for (const std::filesystem::path& file : SessionFilesUnder(project))
+					{
 						files.insert(file);
+					}
 				}
 
 				for (const auto& [file, print] : known.Prints)
 				{
 					if (everything || file.parent_path() == directory)
+					{
 						files.insert(file);
+					}
 				}
 			}
 
 			IndexDelivery delivery;
 
 			for (const std::filesystem::path& file : files)
+			{
 				Examine(file, known.Prints, delivery);
+			}
 
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
 			for (SessionSummary& summary : delivery.Updated)
+			{
 				inbox.Ready.Updated.push_back(std::move(summary));
+			}
 			for (std::filesystem::path& file : delivery.Removed)
+			{
 				inbox.Ready.Removed.push_back(std::move(file));
+			}
 		});
 	}
 
@@ -258,9 +300,13 @@ namespace Graphite {
 		const std::lock_guard<std::mutex> guard(m_Inbox->Mutex);
 
 		for (SessionSummary& summary : m_Inbox->Ready.Updated)
+		{
 			out.Updated.push_back(std::move(summary));
+		}
 		for (std::filesystem::path& file : m_Inbox->Ready.Removed)
+		{
 			out.Removed.push_back(std::move(file));
+		}
 
 		m_Inbox->Ready = {};
 	}

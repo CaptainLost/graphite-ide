@@ -44,10 +44,14 @@ namespace Graphite {
 		void Join(std::string& into, std::string_view part)
 		{
 			if (part.empty())
+			{
 				return;
+			}
 
 			if (!into.empty())
+			{
 				into += kDot;
+			}
 
 			into += part;
 		}
@@ -77,7 +81,9 @@ namespace Graphite {
 			std::vector<std::size_t> starts;
 
 			if (columns == 0)
+			{
 				return starts;
+			}
 
 			std::size_t rowStart = 0;
 			std::size_t column = 0;
@@ -99,7 +105,9 @@ namespace Graphite {
 				}
 
 				if (text[at] == ' ' || text[at] == ',')
+				{
 					lastGood = next;
+				}
 
 				++column;
 				at = next;
@@ -124,7 +132,9 @@ namespace Graphite {
 
 			const auto run = [&](std::size_t until, ImU32 colour) {
 				if (until <= at)
+				{
 					return;
+				}
 
 				const std::string_view piece = text.substr(at, until - at);
 
@@ -140,10 +150,14 @@ namespace Graphite {
 			for (const Token& token : tokens)
 			{
 				if (token.To <= from)
+				{
 					continue;
+				}
 
 				if (token.From >= to)
+				{
 					break;
+				}
 
 				run(std::max(token.From, from), look.Palette.Text);
 				run(std::min(token.To, to), look.Syntax.Of(ColourOf(token, spans)));
@@ -159,7 +173,9 @@ namespace Graphite {
 			std::vector<Token> tokens;
 
 			if (lexer != nullptr)
+			{
 				lexer->LexLine(text, LineState{}, tokens);
+			}
 
 			return tokens;
 		}
@@ -209,24 +225,34 @@ namespace Graphite {
 				DisabledText(info.Kind);
 
 				if (!info.Name.empty())
+				{
 					ImGui::SameLine();
+				}
 			}
 
 			if (!info.Name.empty())
+			{
 				PlainText(info.Name);
+			}
 
 			std::string where;
 
 			if (!info.Scope.empty())
+			{
 				where = "in " + info.Scope;
+			}
 
 			Join(where, info.Access);
 
 			for (const std::string& qualifier : info.Qualifiers)
+			{
 				Join(where, qualifier);
+			}
 
 			if (!where.empty())
+			{
 				DisabledText(where);
+			}
 
 			const bool body = !info.Declaration.empty() || !info.ReturnType.empty() ||
 							  !info.Parameters.empty() || !info.Type.empty() ||
@@ -234,13 +260,19 @@ namespace Graphite {
 							  !info.Alignment.empty();
 
 			if (body)
+			{
 				ImGui::Separator();
+			}
 
 			if (!info.Declaration.empty())
+			{
 				DrawDeclaration(info.Declaration, look, maxContentWidth);
+			}
 
 			if (!info.ReturnType.empty())
+			{
 				PlainText("\xE2\x86\x92 " + info.ReturnType); // "→ "
+			}
 
 			if (!info.Parameters.empty())
 			{
@@ -248,7 +280,9 @@ namespace Graphite {
 				ImGui::Indent();
 
 				for (const std::string& parameter : info.Parameters)
+				{
 					PlainText(parameter);
+				}
 
 				ImGui::Unindent();
 			}
@@ -266,30 +300,40 @@ namespace Graphite {
 			}
 
 			if (!info.Value.empty())
+			{
 				PlainText("Value = " + info.Value);
+			}
 
 			// A field has an offset, and a padding only then; a type has a size and an alignment
 			// alone. Either way, whatever clangd left out is left out here.
 			std::string layout;
 
 			if (!info.Offset.empty())
+			{
 				Join(layout, "Offset " + info.Offset);
+			}
 
 			if (!info.Size.empty())
 			{
 				std::string size = "Size " + info.Size;
 
 				if (!info.Padding.empty())
+				{
 					size += " (+" + info.Padding + " padding)";
+				}
 
 				Join(layout, size);
 			}
 
 			if (!info.Alignment.empty())
+			{
 				Join(layout, "Align " + info.Alignment);
+			}
 
 			if (!layout.empty())
+			{
 				PlainText(layout);
+			}
 
 			if (!info.Documentation.empty())
 			{
@@ -320,7 +364,9 @@ namespace Graphite {
 			const bool declared = look.PreviewOverlay == nullptr && look.Semantics != nullptr;
 
 			if (declared)
+			{
 				look.Semantics->Declare(preview.Path, preview.Text, look.TabWidth, false);
+			}
 
 			// Expanded and dedented once per frame for the width and the drawing alike. A
 			// preview is a definition's extent, a few dozen lines as a rule, so lexing it every
@@ -331,7 +377,9 @@ namespace Graphite {
 			std::size_t widest = 0;
 
 			for (const std::string& text : expanded)
+			{
 				widest = std::max(widest, Core::ColumnCount(text, look.TabWidth));
+			}
 
 			const Lexer* const lexer = LexerFor(LanguageOfPath(preview.Path));
 
@@ -375,7 +423,9 @@ namespace Graphite {
 						tokens.clear();
 
 						if (lexer != nullptr)
+						{
 							state = lexer->LexLine(expanded[lexed], state, tokens);
+						}
 
 						++lexed;
 					}
@@ -487,7 +537,9 @@ namespace Graphite {
 
 		// A tooltip that comes up afresh starts at its top, not wherever the last one was left.
 		if (!hover.TooltipShown)
+		{
 			ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
+		}
 
 		// A window rather than BeginTooltip, because a tooltip can be neither hovered nor
 		// scrolled; dressed in the tooltip's colours and border so it still reads as one.
@@ -542,7 +594,9 @@ namespace Graphite {
 				holder != nullptr && holder->WasActive ? holder : returnFocusTo;
 
 			if (target != nullptr)
+			{
 				ImGui::FocusWindow(target);
+			}
 		}
 
 		ImGui::BringWindowToDisplayFront(window);
@@ -554,7 +608,9 @@ namespace Graphite {
 			DrawDiagnosticMessages(diagnostics);
 
 			if (showInfo || showPreview)
+			{
 				ImGui::Separator();
+			}
 		}
 
 		if (showInfo)
@@ -562,11 +618,15 @@ namespace Graphite {
 			DrawInfo(*hover.Info, look, maxContentWidth);
 
 			if (showPreview)
+			{
 				ImGui::Separator();
+			}
 		}
 
 		if (showPreview)
+		{
 			DrawPreview(*hover.Preview, look);
+		}
 
 		ImGui::PopTextWrapPos();
 
@@ -580,7 +640,9 @@ namespace Graphite {
 
 		if (!hover.TooltipShown || windowSize.x != lastSize.x || windowSize.y != lastSize.y ||
 			naturalHeight != lastNaturalHeight)
+		{
 			Core::Redraw::Request();
+		}
 
 		hover.TooltipNaturalHeight = naturalHeight;
 

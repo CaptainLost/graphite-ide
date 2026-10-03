@@ -35,7 +35,9 @@ namespace Core {
 			const int result = git_branch_lookup(Out(reference), handle, name.c_str(), GIT_BRANCH_LOCAL);
 
 			if (result == GIT_ENOTFOUND)
+			{
 				return false;
+			}
 
 			if (result != 0)
 			{
@@ -74,7 +76,9 @@ namespace Core {
 				const auto exists = LocalExists(handle, resolved.LocalName);
 
 				if (!exists.HasValue())
+				{
 					return exists.GetError();
+				}
 
 				if (exists.GetValue())
 				{
@@ -114,15 +118,21 @@ namespace Core {
 			const int unborn = git_repository_head_unborn(handle);
 
 			if (unborn < 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read HEAD: {}", LastLibgit2Message())};
+			}
 
 			if (unborn == 1)
+			{
 				return diff;
+			}
 
 			ObjectHandle headTree;
 
 			if (git_revparse_single(Out(headTree), handle, "HEAD^{tree}") != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read HEAD's tree: {}", LastLibgit2Message())};
+			}
 
 			TreeHandle targetTree;
 
@@ -136,7 +146,9 @@ namespace Core {
 													 targetTree.get(), nullptr);
 
 			if (diffed != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot compare the trees: {}", LastLibgit2Message())};
+			}
 
 			return diff;
 		}
@@ -151,7 +163,9 @@ namespace Core {
 			auto diff = HeadToTarget(handle, target);
 
 			if (!diff.HasValue())
+			{
 				return diff.GetError();
+			}
 
 			std::vector<std::filesystem::path> removed;
 			const git_diff* deltas = diff.GetValue().get();
@@ -162,13 +176,17 @@ namespace Core {
 				const git_diff_delta* delta = git_diff_get_delta(deltas, i);
 
 				if (delta->status != GIT_DELTA_DELETED)
+				{
 					continue;
+				}
 
 				std::filesystem::path relative = FromUtf8(delta->old_file.path);
 				std::error_code code;
 
 				if (std::filesystem::exists(workingDirectory / relative, code))
+				{
 					removed.push_back(std::move(relative));
+				}
 			}
 
 			return removed;
@@ -183,7 +201,9 @@ namespace Core {
 			auto diff = HeadToTarget(handle, target);
 
 			if (!diff.HasValue())
+			{
 				return diff.GetError();
+			}
 
 			std::vector<std::filesystem::path> differing;
 			const git_diff* deltas = diff.GetValue().get();
@@ -208,15 +228,21 @@ namespace Core {
 
 			// Two statements: Out hands the index over only at the end of the full expression.
 			if (git_repository_index(Out(index), handle) != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			}
 
 			if (git_index_read(index.get(), false) != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			}
 
 			std::vector<std::filesystem::path> conflicted;
 
 			if (!git_index_has_conflicts(index.get()))
+			{
 				return conflicted;
+			}
 
 			// The entries are sorted by path and then stage, so a conflict's two or three
 			// stages sit next to each other.
@@ -228,10 +254,14 @@ namespace Core {
 				const git_index_entry* entry = git_index_get_byindex(index.get(), i);
 
 				if (entry == nullptr || GIT_INDEX_ENTRY_STAGE(entry) == 0)
+				{
 					continue;
+				}
 
 				if (previous == nullptr || std::strcmp(previous, entry->path) != 0)
+				{
 					conflicted.push_back(FromUtf8(entry->path));
+				}
 
 				previous = entry->path;
 			}
@@ -257,12 +287,18 @@ namespace Core {
 			auto& notified = *static_cast<Notified*>(payload);
 
 			if (path == nullptr)
+			{
 				return 0;
+			}
 
 			if (why == GIT_CHECKOUT_NOTIFY_CONFLICT)
+			{
 				notified.Overwritten.push_back(FromUtf8(path));
+			}
 			else if (why == GIT_CHECKOUT_NOTIFY_UPDATED)
+			{
 				notified.Updated.push_back(FromUtf8(path));
+			}
 
 			return 0;
 		}
@@ -291,7 +327,9 @@ namespace Core {
 			StatusListHandle list;
 
 			if (git_status_list_new(Out(list), handle, &options) != 0)
+			{
 				return Error{ErrorCode::IoFailure, std::format("cannot list untracked files: {}", LastLibgit2Message())};
+			}
 
 			std::vector<std::filesystem::path> files;
 			const std::size_t count = git_status_list_entrycount(list.get());
@@ -301,7 +339,9 @@ namespace Core {
 				const git_status_entry* entry = git_status_byindex(list.get(), i);
 
 				if ((entry->status & GIT_STATUS_WT_NEW) != 0 && entry->index_to_workdir != nullptr)
+				{
 					files.push_back(FromUtf8(entry->index_to_workdir->old_file.path));
+				}
 			}
 
 			for (const std::filesystem::path& relative : files)
@@ -310,7 +350,9 @@ namespace Core {
 				std::error_code code;
 
 				if (std::filesystem::is_directory(absolute, code))
+				{
 					continue;
+				}
 
 				std::filesystem::remove(absolute, code);
 
@@ -327,7 +369,9 @@ namespace Core {
 					const std::filesystem::path directory = workingDirectory / parent;
 
 					if (!std::filesystem::is_empty(directory, code) || code)
+					{
 						break;
+					}
 
 					std::filesystem::remove(directory, code);
 
@@ -374,7 +418,9 @@ namespace Core {
 			for (std::filesystem::path& path : paths)
 			{
 				if (std::find(overwritten.begin(), overwritten.end(), path) == overwritten.end())
+				{
 					updated.push_back(std::move(path));
+				}
 			}
 		}
 	}
@@ -382,18 +428,24 @@ namespace Core {
 	Result<CheckoutPlan> Repository::PlanCheckout(const CheckoutTarget& target) const
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		auto resolved = Resolve(m_Handle.get(), target);
 
 		if (!resolved.HasValue())
+		{
 			return resolved.GetError();
+		}
 
 		git_object* commit = resolved.GetValue().Commit.get();
 		auto conflicted = Conflicted(m_Handle.get());
 
 		if (!conflicted.HasValue())
+		{
 			return conflicted.GetError();
+		}
 
 		// libgit2 refuses a checkout - a dry run too - over unresolved conflicts without
 		// naming a file, which would read as a plan with nothing in the way. They are what
@@ -404,7 +456,9 @@ namespace Core {
 			auto differing = Differing(m_Handle.get(), commit);
 
 			if (!differing.HasValue())
+			{
 				return differing.GetError();
+			}
 
 			CheckoutPlan plan{std::move(conflicted).GetValue(), {}};
 			AddUnlessOverwritten(plan.Updated, std::move(differing).GetValue(), plan.Overwritten);
@@ -440,23 +494,31 @@ namespace Core {
 		const auto failed = [](Error error) { return CheckoutOutcome{{}, std::move(error)}; };
 
 		if (m_Handle == nullptr)
+		{
 			return failed(Error{ErrorCode::NotFound, "the repository is not open"});
+		}
 
 		auto resolved = Resolve(m_Handle.get(), target);
 
 		if (!resolved.HasValue())
+		{
 			return failed(resolved.GetError());
+		}
 
 		const Resolved& r = resolved.GetValue();
 		auto conflicted = Conflicted(m_Handle.get());
 
 		if (!conflicted.HasValue())
+		{
 			return failed(conflicted.GetError());
+		}
 
 		// Refused here, in words that say why: libgit2's own refusal looks like any other
 		// "would overwrite changes" one.
 		if (!conflicted.GetValue().empty())
+		{
 			return failed(Error{ErrorCode::InvalidArgument, ResolveConflictsFirst});
+		}
 
 		auto removed = Removals(m_Handle.get(), r.Commit.get(), m_WorkingDirectory);
 
@@ -484,7 +546,9 @@ namespace Core {
 												  target.Name, LastLibgit2Message());
 
 				if (git_branch_delete(created.get()) != 0)
+				{
 					message += std::format("; the new branch could not be removed: {}", LastLibgit2Message());
+				}
 
 				return failed(Error{ErrorCode::IoFailure, std::move(message)});
 			}
@@ -512,13 +576,17 @@ namespace Core {
 			if (created != nullptr)
 			{
 				if (git_branch_delete(created.get()) != 0)
+				{
 					message += std::format("; the new branch could not be removed: {}", LastLibgit2Message());
+				}
 			}
 
 			// A refusal changed nothing. Any other failure may have written or removed any of
 			// the planned paths, so all of them are named.
 			if (refused)
+			{
 				return failed(Error{ErrorCode::InvalidArgument, std::move(message)});
+			}
 
 			return CheckoutOutcome{std::move(notified.Updated), Error{ErrorCode::IoFailure, std::move(message)}};
 		}
@@ -535,7 +603,9 @@ namespace Core {
 											  LastLibgit2Message());
 
 			if (branchCreated)
+			{
 				message += std::format("; the new branch '{}' was left behind", r.LocalName);
+			}
 
 			return CheckoutOutcome{std::move(notified.Updated), Error{ErrorCode::IoFailure, std::move(message)}};
 		}
@@ -546,22 +616,30 @@ namespace Core {
 	Result<void> Repository::DiscardAll(bool includeUntracked)
 	{
 		if (m_Handle == nullptr)
+		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
 
 		ObjectHandle head;
 
 		if (git_revparse_single(Out(head), m_Handle.get(), "HEAD^{commit}") != 0)
+		{
 			return Error{ErrorCode::NotFound, std::format("cannot read HEAD: {}", LastLibgit2Message())};
+		}
 
 		TreeHandle tree;
 
 		if (git_commit_tree(Out(tree), reinterpret_cast<git_commit*>(head.get())) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot read HEAD's tree: {}", LastLibgit2Message())};
+		}
 
 		IndexHandle index;
 
 		if (git_repository_index(Out(index), m_Handle.get()) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+		}
 
 		// What a hard reset does, but with git's own ending: git_reset also deletes
 		// rebase-merge/, rebase-apply/, sequencer/ and BISECT_LOG, and discarding the changes -
@@ -573,10 +651,14 @@ namespace Core {
 		options.checkout_strategy = GIT_CHECKOUT_FORCE;
 
 		if (git_checkout_tree(m_Handle.get(), reinterpret_cast<git_object*>(tree.get()), &options) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot discard changes: {}", LastLibgit2Message())};
+		}
 
 		if (git_index_read_tree(index.get(), tree.get()) != 0 || git_index_write(index.get()) != 0)
+		{
 			return Error{ErrorCode::IoFailure, std::format("cannot reset the index: {}", LastLibgit2Message())};
+		}
 
 		// The untracked files before git's state: a marker that cannot be removed is reported,
 		// but by then the tree is as clean as it was asked to be - a stash that took the
@@ -586,7 +668,9 @@ namespace Core {
 			auto removed = RemoveUntracked(m_Handle.get(), m_WorkingDirectory);
 
 			if (!removed.HasValue())
+			{
 				return removed.GetError();
+			}
 		}
 
 		return EndPendingCommit(m_Handle.get());

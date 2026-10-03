@@ -84,13 +84,17 @@ namespace Graphite {
 						// Single click previews, double click opens. That is the whole point:
 						// arrow through fifty hits without leaving fifty tabs behind.
 						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+						{
 							input.OnOpen(hit);
+						}
 					}
 
 					// The preview follows the selection when it moves by keyboard too, which
 					// arrives as nav focus rather than as a click.
 					if (!selected && ImGui::IsItemFocused())
+					{
 						input.Selected = HitSelection{group.Id, static_cast<std::size_t>(row)};
+					}
 
 					ImGui::SetCursorPos(rowStart);
 

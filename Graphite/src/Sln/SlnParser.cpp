@@ -35,7 +35,9 @@ namespace Graphite {
 		std::string_view Trim(std::string_view text)
 		{
 			while (!text.empty() && (text.front() == ' ' || text.front() == '\t'))
+			{
 				text.remove_prefix(1);
+			}
 
 			while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r'))
 			{
@@ -55,12 +57,16 @@ namespace Graphite {
 				const std::size_t open = line.find('"', position);
 
 				if (open == std::string_view::npos)
+				{
 					break;
+				}
 
 				const std::size_t close = line.find('"', open + 1);
 
 				if (close == std::string_view::npos)
+				{
 					break;
+				}
 
 				fields.emplace_back(line.substr(open + 1, close - open - 1));
 				position = close + 1;
@@ -74,7 +80,9 @@ namespace Graphite {
 			const std::vector<std::string> fields = QuotedFields(line);
 
 			if (fields.size() < 4)
+			{
 				return false;
+			}
 
 			entry.TypeId = fields[0];
 			entry.Name = fields[1];
@@ -96,10 +104,14 @@ namespace Graphite {
 				std::string_view candidate = Trim(rawLine);
 
 				if (candidate.starts_with(kByteOrderMark))
+				{
 					candidate.remove_prefix(kByteOrderMark.size());
+				}
 
 				if (candidate.empty())
+				{
 					continue;
+				}
 
 				return candidate.find(kHeader) == 0;
 			}
@@ -128,7 +140,9 @@ namespace Graphite {
 					// A line that does not parse costs that line rather than the whole view:
 					// hand-edited and merge-conflicted solutions exist.
 					if (Entry entry; ParseEntry(line, entry))
+					{
 						body.Entries.push_back(std::move(entry));
+					}
 
 					continue;
 				}
@@ -146,19 +160,25 @@ namespace Graphite {
 				}
 
 				if (!inNesting)
+				{
 					continue;
+				}
 
 				// Every line of this section reads `{child} = {parent}`, and nothing else.
 				const std::size_t equals = line.find('=');
 
 				if (equals == std::string_view::npos)
+				{
 					continue;
+				}
 
 				const std::string_view child = Trim(line.substr(0, equals));
 				const std::string_view parent = Trim(line.substr(equals + 1));
 
 				if (!child.empty() && !parent.empty())
+				{
 					body.ParentIdByChildId.emplace(child, parent);
+				}
 			}
 
 			return body;
@@ -172,7 +192,9 @@ namespace Graphite {
 			std::unordered_map<std::string, std::size_t> indexById;
 
 			for (std::size_t i = 0; i < count; ++i)
+			{
 				indexById.emplace(body.Entries[i].Id, i);
+			}
 
 			std::vector<std::size_t> parentOfIndex(count, noParent);
 
@@ -181,7 +203,9 @@ namespace Graphite {
 				const auto link = body.ParentIdByChildId.find(body.Entries[i].Id);
 
 				if (link == body.ParentIdByChildId.end())
+				{
 					continue;
+				}
 
 				const auto parent = indexById.find(link->second);
 
@@ -212,7 +236,9 @@ namespace Graphite {
 				std::size_t walker = parentOfIndex[i];
 
 				for (std::size_t steps = 0; walker != noParent && steps <= count; ++steps)
+				{
 					walker = parentOfIndex[walker];
+				}
 
 				inCycle[i] = walker != noParent;
 			}
@@ -220,7 +246,9 @@ namespace Graphite {
 			for (std::size_t i = 0; i < count; ++i)
 			{
 				if (inCycle[i])
+				{
 					parentOfIndex[i] = noParent;
+				}
 			}
 		}
 
@@ -229,7 +257,9 @@ namespace Graphite {
 			std::size_t total = folder.Projects.size();
 
 			for (const Folder& child : folder.Folders)
+			{
 				total += CountProjects(child);
+			}
 
 			return total;
 		}
@@ -268,9 +298,13 @@ namespace Graphite {
 		for (std::size_t i = 0; i < count; ++i)
 		{
 			if (parentOfIndex[i] == noParent)
+			{
 				roots.push_back(i);
+			}
 			else
+			{
 				childrenOf[parentOfIndex[i]].push_back(i);
+			}
 		}
 
 		const auto makeProject = [&](const Entry& entry) {
@@ -295,9 +329,13 @@ namespace Graphite {
 			for (const std::size_t child : childrenOf[index])
 			{
 				if (entries[child].IsFolder)
+				{
 					folder.Folders.push_back(self(child, self));
+				}
 				else
+				{
 					folder.Projects.push_back(makeProject(entries[child]));
+				}
 			}
 
 			return folder;
@@ -306,9 +344,13 @@ namespace Graphite {
 		for (const std::size_t index : roots)
 		{
 			if (entries[index].IsFolder)
+			{
 				solution.Root.Folders.push_back(buildFolder(index, buildFolder));
+			}
 			else
+			{
 				solution.Root.Projects.push_back(makeProject(entries[index]));
+			}
 		}
 
 		solution.ProjectCount = CountProjects(solution.Root);

@@ -101,7 +101,9 @@ namespace Core {
 			std::string lower = Lowered(extension);
 
 			if (!lower.empty() && lower.front() != '.')
+			{
 				lower.insert(lower.begin(), '.');
+			}
 
 			return lower;
 		}
@@ -113,23 +115,39 @@ namespace Core {
 
 		// A project extension names the build tool, not what is compiled inside it.
 		if (lower == ".vcxproj" || lower == ".csproj")
+		{
 			return ICON_MDI_APPLICATION_BRACES;
+		}
 
 		if (lower == ".c")
+		{
 			return ICON_MDI_LANGUAGE_C;
+		}
 		if (lower == ".cpp" || lower == ".cc" || lower == ".cxx" || lower == ".h" ||
 			lower == ".hpp" || lower == ".hxx")
+		{
 			return ICON_MDI_LANGUAGE_CPP;
+		}
 		if (lower == ".cs")
+		{
 			return ICON_MDI_LANGUAGE_CSHARP;
+		}
 		if (lower == ".lua")
+		{
 			return ICON_MDI_LANGUAGE_LUA;
+		}
 		if (lower == ".json")
+		{
 			return ICON_MDI_CODE_JSON;
+		}
 		if (lower == ".md")
+		{
 			return ICON_MDI_LANGUAGE_MARKDOWN;
+		}
 		if (lower == ".py")
+		{
 			return ICON_MDI_LANGUAGE_PYTHON;
+		}
 
 		return ICON_MDI_FILE;
 	}

@@ -44,7 +44,9 @@ namespace Core {
 				}
 
 				if (bytes[at] == '\n')
+				{
 					++lf;
+				}
 
 				result.content.push_back(bytes[at]);
 			}
@@ -127,7 +129,9 @@ namespace Core {
 			}
 
 			if (stream.bad())
+			{
 				return Error{ErrorCode::IoFailure, "Cannot read file: " + ToUtf8(path)};
+			}
 
 			return content;
 		}
@@ -148,7 +152,9 @@ namespace Core {
 		auto decoded = StripBomAndDecode(std::move(bytes), declared, bomLength);
 
 		if (!decoded)
+		{
 			return decoded.GetError();
+		}
 
 		const std::string content = std::move(decoded).GetValue();
 
@@ -189,16 +195,22 @@ namespace Core {
 		const auto status = std::filesystem::status(path, statusError);
 
 		if (statusError || !std::filesystem::exists(status))
+		{
 			return Error{ErrorCode::NotFound, "No such file: " + ToUtf8(path)};
+		}
 
 		if (!std::filesystem::is_regular_file(status))
+		{
 			return Error{ErrorCode::InvalidArgument, "Not a file (it is a directory): " + ToUtf8(path)};
+		}
 
 		std::error_code sizeError;
 		const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
 
 		if (sizeError)
+		{
 			return Error{ErrorCode::IoFailure, "Cannot read file: " + ToUtf8(path)};
+		}
 
 		// Refused before anything is allocated, so a lying or enormous size cannot force a
 		// multi-gigabyte allocation and send std::bad_alloc across this Result boundary.
@@ -215,12 +227,16 @@ namespace Core {
 		std::ifstream stream{path, std::ios::binary};
 
 		if (!stream.is_open())
+		{
 			return Error{ErrorCode::AccessDenied, "Cannot open file: " + ToUtf8(path)};
+		}
 
 		auto content = ReadWholeStream(stream, size, path);
 
 		if (!content)
+		{
 			return content.GetError();
+		}
 
 		auto document = FromContent(std::move(content).GetValue(), path);
 
@@ -228,7 +244,9 @@ namespace Core {
 		// from the epoch of a zero-byte file, which CheckChangedOnDisk() answers true to
 		// forever after.
 		if (document && !timeError)
+		{
 			document.GetValue().m_DiskStamp = DiskStamp{diskTime, size};
+		}
 
 		return document;
 	}
@@ -236,7 +254,9 @@ namespace Core {
 	std::string WithLineEnding(std::string_view text, LineEnding ending)
 	{
 		if (ending == LineEnding::Lf)
+		{
 			return std::string{text};
+		}
 
 		std::string result;
 		result.reserve(text.size());
@@ -244,7 +264,9 @@ namespace Core {
 		for (const char byte : text)
 		{
 			if (byte == '\n')
+			{
 				result.push_back('\r');
+			}
 
 			result.push_back(byte);
 		}
@@ -259,7 +281,9 @@ namespace Core {
 		// Keyed off m_HadBom rather than m_Encoding: invalid UTF-8 following a mark demotes
 		// m_Encoding to Unknown, and the bytes still have to round-trip.
 		if (m_HadBom)
+		{
 			result += BomBytes(m_BomEncoding);
+		}
 
 		result += Encode(WithLineEnding(m_Buffer.Materialize(), m_LineEnding), m_Encoding);
 
@@ -271,19 +295,25 @@ namespace Core {
 		// Nothing was ever recorded to compare against, and every caller treats this answer
 		// as a fact about the file rather than as a guess.
 		if (!m_DiskStamp)
+		{
 			return false;
+		}
 
 		std::error_code timeError;
 		const auto time = std::filesystem::last_write_time(m_Path, timeError);
 
 		if (timeError)
+		{
 			return false;
+		}
 
 		std::error_code sizeError;
 		const std::uintmax_t size = std::filesystem::file_size(m_Path, sizeError);
 
 		if (sizeError)
+		{
 			return false;
+		}
 
 		return time != m_DiskStamp->time || size != m_DiskStamp->size;
 	}
@@ -293,7 +323,9 @@ namespace Core {
 		auto written = WriteFileAtomically(m_Path, EncodeToBytes());
 
 		if (!written)
+		{
 			return written.GetError();
+		}
 
 		MarkSaved();
 		m_Buffer.BreakUndoGroup();
@@ -307,7 +339,9 @@ namespace Core {
 		auto fresh = Load(m_Path);
 
 		if (!fresh)
+		{
 			return fresh.GetError();
+		}
 
 		TextDocument freshDocument = std::move(fresh).GetValue();
 		const std::string freshText = freshDocument.m_Buffer.Materialize();
@@ -349,7 +383,9 @@ namespace Core {
 		// existed, so a failed read leaves the previous stamp and the question is asked
 		// again.
 		if (timeError || sizeError)
+		{
 			return;
+		}
 
 		m_DiskStamp = DiskStamp{time, size};
 	}

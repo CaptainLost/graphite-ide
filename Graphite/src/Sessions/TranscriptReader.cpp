@@ -36,12 +36,16 @@ namespace Graphite {
 			const auto found = object.find(key);
 
 			if (found == object.end() || !found->is_array())
+			{
 				return values;
+			}
 
 			for (const nlohmann::json& element : *found)
 			{
 				if (element.is_string())
+				{
 					values.push_back(element.get<std::string>());
+				}
 			}
 
 			return values;
@@ -53,14 +57,18 @@ namespace Graphite {
 			const auto metadata = json.find("compactMetadata");
 
 			if (metadata == json.end() || !metadata->is_object())
+			{
 				return facts;
+			}
 
 			facts.Trigger = StringAt(*metadata, "trigger");
 			facts.PreTokens = OptionalCountAt(*metadata, "preTokens");
 			facts.PostTokens = OptionalCountAt(*metadata, "postTokens");
 
 			if (const std::optional<std::uint64_t> ms = OptionalCountAt(*metadata, "durationMs"))
+			{
 				facts.Duration = std::chrono::milliseconds{static_cast<std::int64_t>(*ms)};
+			}
 
 			return facts;
 		}
@@ -68,15 +76,25 @@ namespace Graphite {
 		RecordKind KindOf(const std::string& type)
 		{
 			if (type == "user")
+			{
 				return RecordKind::User;
+			}
 			if (type == "assistant")
+			{
 				return RecordKind::Assistant;
+			}
 			if (type == "attachment")
+			{
 				return RecordKind::Attachment;
+			}
 			if (type == "system")
+			{
 				return RecordKind::System;
+			}
 			if (type == "ai-title")
+			{
 				return RecordKind::AiTitle;
+			}
 
 			return RecordKind::Other;
 		}
@@ -93,7 +111,9 @@ namespace Graphite {
 		std::string ResultText(const nlohmann::json& content)
 		{
 			if (content.is_string())
+			{
 				return content.get<std::string>();
+			}
 
 			std::string joined;
 
@@ -104,7 +124,9 @@ namespace Graphite {
 					if (part.is_object() && StringAt(part, "type") == "text")
 					{
 						if (!joined.empty())
+						{
 							joined += '\n';
+						}
 						joined += StringAt(part, "text");
 					}
 				}
@@ -118,7 +140,9 @@ namespace Graphite {
 			ContentBlock parsed;
 
 			if (!block.is_object())
+			{
 				return parsed;
+			}
 
 			const std::string type = StringAt(block, "type");
 
@@ -139,7 +163,9 @@ namespace Graphite {
 				parsed.ToolName = StringAt(block, "name");
 
 				if (const auto input = block.find("input"); input != block.end())
+				{
 					parsed.InputJson = Serialised(*input);
+				}
 			}
 			else if (type == "tool_result")
 			{
@@ -148,7 +174,9 @@ namespace Graphite {
 				parsed.IsError = BoolAt(block, "is_error");
 
 				if (const auto content = block.find("content"); content != block.end())
+				{
 					parsed.Text = ResultText(*content);
+				}
 			}
 			else if (type == "image")
 			{
@@ -161,7 +189,9 @@ namespace Graphite {
 					parsed.Text = StringAt(*source, "media_type");
 
 					if (const auto data = source->find("data"); data != source->end() && data->is_string())
+					{
 						parsed.DataBytes = data->get_ref<const std::string&>().size();
+					}
 				}
 			}
 			else
@@ -180,11 +210,17 @@ namespace Graphite {
 			const auto found = object.find(key);
 
 			if (found == object.end())
+			{
 				return std::nullopt;
+			}
 			if (found->is_string())
+			{
 				return found->get<std::string>();
+			}
 			if (!found->is_array())
+			{
 				return std::nullopt;
+			}
 
 			std::string text;
 			bool first = true;
@@ -192,7 +228,9 @@ namespace Graphite {
 			for (const nlohmann::json& element : *found)
 			{
 				if (!first)
+				{
 					text += '\n';
+				}
 				first = false;
 
 				text += element.is_string() ? element.get<std::string>() : Serialised(element);
@@ -210,7 +248,9 @@ namespace Graphite {
 			for (const char* key : {"text", "content", "snippet", "prompt", "addedBlocks", "addedLines"})
 			{
 				if (std::optional<std::string> text = TextAt(attachment, key))
+				{
 					return std::move(*text);
+				}
 			}
 
 			return Serialised(attachment);
@@ -224,7 +264,9 @@ namespace Graphite {
 			const auto found = record.find("rendered");
 
 			if (found == record.end() || !found->is_array())
+			{
 				return std::nullopt;
+			}
 
 			std::string text;
 			bool first = true;
@@ -232,15 +274,21 @@ namespace Graphite {
 			for (const nlohmann::json& element : *found)
 			{
 				if (!element.is_object())
+				{
 					continue;
+				}
 
 				const auto content = element.find("content");
 
 				if (content == element.end() || !content->is_string())
+				{
 					continue;
+				}
 
 				if (!first)
+				{
 					text += '\n';
+				}
 				first = false;
 
 				text += content->get_ref<const std::string&>();
@@ -256,7 +304,9 @@ namespace Graphite {
 			for (std::size_t i = 0; i < parts.size(); ++i)
 			{
 				if (i > 0)
+				{
 					joined += separator;
+				}
 				joined += parts[i];
 			}
 
@@ -272,11 +322,17 @@ namespace Graphite {
 			const auto found = attachment.find("prompt");
 
 			if (found == attachment.end())
+			{
 				return std::nullopt;
+			}
 			if (found->is_string())
+			{
 				return found->get<std::string>();
+			}
 			if (!found->is_array())
+			{
 				return std::nullopt;
+			}
 
 			std::vector<std::string> lines;
 
@@ -287,9 +343,13 @@ namespace Graphite {
 				const ContentBlock block = ParseBlock(element);
 
 				if (block.Kind == BlockKind::Text)
+				{
 					lines.push_back(block.Text);
+				}
 				else if (block.Kind == BlockKind::Image)
+				{
 					lines.push_back(ImageText(block.Text, block.DataBytes * 3 / 4));
+				}
 			}
 
 			return JoinedWith(lines, "\n");
@@ -305,7 +365,9 @@ namespace Graphite {
 			const std::size_t first = block.find_first_not_of(whitespace);
 
 			if (first == std::string_view::npos)
+			{
 				return false;
+			}
 
 			return block.substr(first, block.find_last_not_of(whitespace) + 1 - first) == kDynamicBoundary;
 		}
@@ -319,10 +381,14 @@ namespace Graphite {
 			std::erase_if(blocks, [](const std::string& block) { return IsDynamicBoundary(block); });
 
 			if (blocks.empty())
+			{
 				return {};
+			}
 
 			if (std::string prefix = StringAt(snapshot, "cliPrefix"); !prefix.empty())
+			{
 				blocks.insert(blocks.begin(), std::move(prefix));
+			}
 
 			return JoinedWith(blocks, "\n\n");
 		}
@@ -335,7 +401,9 @@ namespace Graphite {
 			if (const auto nested = tool.find("schema"); nested != tool.end() && nested->is_object())
 			{
 				if (const auto schema = nested->find("input_schema"); schema != nested->end())
+				{
 					return &*schema;
+				}
 			}
 
 			const auto schema = tool.find("input_schema");
@@ -355,15 +423,21 @@ namespace Graphite {
 				for (const nlohmann::json& tool : *found)
 				{
 					if (!tool.is_object())
+					{
 						continue;
+					}
 
 					std::vector<std::string> parts{StringAt(tool, "name")};
 
 					if (std::string description = StringAt(tool, "description"); !description.empty())
+					{
 						parts.push_back(std::move(description));
+					}
 
 					if (const nlohmann::json* schema = InputSchemaOf(tool))
+					{
 						parts.push_back(schema->dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
+					}
 
 					tools.push_back(JoinedWith(parts, "\n\n"));
 				}
@@ -392,14 +466,18 @@ namespace Graphite {
 				if (i > 0)
 				{
 					if (at == end || *at != '.')
+					{
 						return std::nullopt;
+					}
 					++at;
 				}
 
 				const auto [next, error] = std::from_chars(at, end, parts[i]);
 
 				if (error != std::errc{})
+				{
 					return std::nullopt;
+				}
 
 				at = next;
 			}
@@ -428,7 +506,9 @@ namespace Graphite {
 			const std::uint64_t accounted = counts.CacheWrite5m + counts.CacheWrite1h;
 
 			if (accounted < written)
+			{
 				counts.CacheWrite5m += written - accounted;
+			}
 
 			return counts;
 		}
@@ -439,7 +519,9 @@ namespace Graphite {
 		const nlohmann::json json = nlohmann::json::parse(line, nullptr, false);
 
 		if (json.is_discarded() || !json.is_object())
+		{
 			return std::nullopt;
+		}
 
 		TranscriptRecord record;
 		record.TypeName = StringAt(json, "type");
@@ -458,7 +540,9 @@ namespace Graphite {
 		}
 
 		if (record.Kind == RecordKind::AiTitle)
+		{
 			record.Title = StringAt(json, "aiTitle");
+		}
 
 		if (const auto attachment = json.find("attachment");
 			attachment != json.end() && attachment->is_object())
@@ -493,11 +577,17 @@ namespace Graphite {
 				record.AttachmentRemoved = StringsAt(*attachment, "removedNames");
 			}
 			else if (record.AttachmentType == "mcp_instructions_delta")
+			{
 				record.AttachmentNames = StringsAt(*attachment, "addedNames");
+			}
 			else if (record.AttachmentType == "skill_listing")
+			{
 				record.AttachmentNames = StringsAt(*attachment, "names");
+			}
 			else if (record.AttachmentType == "edited_text_file")
+			{
 				record.AttachmentFile = StringAt(*attachment, "filename");
+			}
 			else if (record.AttachmentType == "prompt_snapshot")
 			{
 				record.SystemPromptText = SystemPromptText(*attachment);
@@ -514,7 +604,9 @@ namespace Graphite {
 				const std::string mode = StringAt(*attachment, "commandMode");
 
 				if (human && (mode.empty() || mode == "prompt"))
+				{
 					record.QueuedPrompt = PromptText(*attachment).value_or(std::string{});
+				}
 			}
 		}
 
@@ -532,7 +624,9 @@ namespace Graphite {
 				else if (content->is_array())
 				{
 					for (const nlohmann::json& block : *content)
+					{
 						record.Blocks.push_back(ParseBlock(block));
+					}
 				}
 			}
 
@@ -552,7 +646,9 @@ namespace Graphite {
 			for (ContentBlock& block : record.Blocks)
 			{
 				if (block.Kind == BlockKind::ToolResult)
+				{
 					block.ResultJson = serialised;
+				}
 			}
 		}
 
@@ -571,19 +667,27 @@ namespace Graphite {
 			const std::size_t end = bytes.find('\n', start);
 
 			if (end == std::string_view::npos)
+			{
 				break;
+			}
 
 			std::string_view line = bytes.substr(start, end - start);
 
 			if (!line.empty() && line.back() == '\r')
+			{
 				line.remove_suffix(1);
+			}
 
 			if (!line.empty())
 			{
 				if (std::optional<TranscriptRecord> record = ParseRecord(line))
+				{
 					chunk.Records.push_back(std::move(*record));
+				}
 				else
+				{
 					++chunk.Skipped;
+				}
 			}
 
 			start = end + 1;
@@ -600,7 +704,9 @@ namespace Graphite {
 		const std::uintmax_t size = std::filesystem::file_size(file, status);
 
 		if (status)
+		{
 			return Core::Error{Core::ErrorCode::NotFound, "cannot read the transcript's size"};
+		}
 
 		TranscriptRead read;
 		read.FileSize = size;
@@ -614,7 +720,9 @@ namespace Graphite {
 		std::ifstream stream{file, std::ios::binary};
 
 		if (!stream)
+		{
 			return Core::Error{Core::ErrorCode::IoFailure, "cannot open the transcript"};
+		}
 
 		stream.seekg(static_cast<std::streamoff>(offset));
 
@@ -633,7 +741,9 @@ namespace Graphite {
 			bytes.resize(had + static_cast<std::size_t>(stream.gcount()));
 
 			if (bytes.size() == had || bytes.find('\n', had) != std::string::npos)
+			{
 				break;
+			}
 		}
 
 		read.Chunk = ParseTranscript(bytes);

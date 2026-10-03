@@ -8,6 +8,9 @@ UseTab: Always
 AccessModifierOffset: -4
 AllowShortFunctionsOnASingleLine: Inline
 AllowShortIfStatementsOnASingleLine: Never
+# ADR 0006: every if, else, for, while and do body is braced. Inserted here rather than
+# left to review, which let well over a thousand unbraced bodies accumulate.
+InsertBraces: true
 NamespaceIndentation: All
 PointerAlignment: Left
 SortIncludes: false

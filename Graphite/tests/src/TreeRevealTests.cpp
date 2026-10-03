@@ -19,7 +19,9 @@ namespace {
 		for (const Core::FileNode& child : node.Children)
 		{
 			if (child.Name == name)
+			{
 				return &child;
+			}
 		}
 
 		return nullptr;

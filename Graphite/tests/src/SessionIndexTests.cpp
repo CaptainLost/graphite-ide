@@ -100,7 +100,9 @@ TEST_CASE("A cancelled scan stops rather than finishing quietly")
 {
 	TempDirectory temp;
 	for (int index = 0; index < 20; ++index)
+	{
 		temp.MakeFile("p/s" + std::to_string(index) + ".jsonl", Fixtures::UserPrompt("x"));
+	}
 
 	Core::CancellationToken token;
 	std::size_t seen = 0;

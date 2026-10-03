@@ -29,7 +29,9 @@ namespace Graphite {
 		}
 
 		if (m_Zone == nullptr)
+		{
 			return std::chrono::minutes{0};
+		}
 
 		// The offset at the instant itself, so a time on the far side of a daylight saving
 		// change is on the clock it was then. The zone's answer holds for a whole span, which
@@ -55,7 +57,9 @@ namespace Graphite {
 		const auto parsed = ParseTimestamp(timestamp);
 
 		if (!parsed)
+		{
 			return {};
+		}
 
 		const auto local = std::chrono::floor<std::chrono::minutes>(*parsed) + OffsetAt(*parsed);
 		const std::chrono::hh_mm_ss clock{local - std::chrono::floor<std::chrono::days>(local)};
@@ -68,7 +72,9 @@ namespace Graphite {
 		const auto parsed = ParseTimestamp(timestamp);
 
 		if (!parsed)
+		{
 			return std::nullopt;
+		}
 
 		// The offset at the instant itself, as for the other times, then read as the wall clock.
 		const auto shifted = std::chrono::floor<std::chrono::seconds>(*parsed) + OffsetAt(*parsed);
