@@ -91,7 +91,8 @@ namespace Graphite {
 		: Core::Layer("Ide"), m_Sink(std::move(sink)), m_InitialFolder(std::move(initialFolder)),
 		  m_AppSettings(settings),
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
-		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle)
+		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle),
+		  m_TrustParentQuestion(m_Modals, kTrustParentTitle)
 	{
 		m_Layout.Left = {"files", "changes"};
 
@@ -800,6 +801,7 @@ namespace Graphite {
 		// the popup needs to draw.
 		RenderCloseConfirm();
 		RenderDropConfirm();
+		RenderTrustParentConfirm();
 
 		// Panels render outside the host window — inside it they would dock as ordinary child
 		// windows instead of landing in the dockspace nodes.
@@ -1003,9 +1005,40 @@ namespace Graphite {
 			break;
 
 		case RestrictedBarChoice::TrustParent:
-			m_Trust.Trust(*parent);
+			// Asked first: this trusts every folder under the parent, not just this one.
+			m_TrustParentQuestion.Ask(*parent);
 			break;
 		}
+	}
+
+	void GraphiteLayer::RenderTrustParentConfirm()
+	{
+		if (!m_TrustParentQuestion.Begin())
+		{
+			return;
+		}
+
+		// Copied out: Answer clears what GetCurrent points at, and trusting writes the list.
+		const std::filesystem::path* asked = m_TrustParentQuestion.GetCurrent();
+		const std::filesystem::path parent = asked != nullptr ? *asked : std::filesystem::path{};
+
+		ImGui::TextUnformatted(TrustAllMessage(parent).c_str());
+		ImGui::Separator();
+
+		if (ImGui::Button("Trust All"))
+		{
+			m_Trust.Trust(parent);
+			m_TrustParentQuestion.Answer();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Cancel"))
+		{
+			m_TrustParentQuestion.Answer();
+		}
+
+		m_TrustParentQuestion.End();
 	}
 
 	void GraphiteLayer::RenderDropConfirm()

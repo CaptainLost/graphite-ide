@@ -113,6 +113,8 @@ namespace Graphite {
 
 		void RenderRestrictedModeBar(bool trusted);
 
+		void RenderTrustParentConfirm();
+
 		void RenderEmptyEditorArea();
 
 		void QueueForFocusedEditor(Core::Event& event);
@@ -270,6 +272,11 @@ namespace Graphite {
 			"Open dropped folder##DropReplacesWorkspace";
 
 		ModalQuestion<DroppedWorkspace> m_DropQuestion;
+
+		static constexpr const char* kTrustParentTitle = "Trust all folders##TrustParentFolders";
+
+		// The parent folder the user asked to trust whole, kept while they are asked to confirm.
+		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// Declared before m_Panels for the same reason as m_Search: the git views will hold
 		// references to these.
