@@ -56,6 +56,7 @@ namespace Core {
 	protected:
 		explicit MouseButtonEvent(MouseCode button) : m_Button(button) {}
 
+	private:
 		MouseCode m_Button = MouseCode::Left;
 	};
 
@@ -66,7 +67,7 @@ namespace Core {
 
 		std::string ToString() const override
 		{
-			return std::format("MouseButtonPressedEvent: {}", static_cast<int>(m_Button));
+			return std::format("MouseButtonPressedEvent: {}", static_cast<int>(GetMouseButton()));
 		}
 
 		EVENT_CLASS_TYPE(MouseButtonPressed)
@@ -79,7 +80,7 @@ namespace Core {
 
 		std::string ToString() const override
 		{
-			return std::format("MouseButtonReleasedEvent: {}", static_cast<int>(m_Button));
+			return std::format("MouseButtonReleasedEvent: {}", static_cast<int>(GetMouseButton()));
 		}
 
 		EVENT_CLASS_TYPE(MouseButtonReleased)

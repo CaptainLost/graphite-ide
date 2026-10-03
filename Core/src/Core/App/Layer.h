@@ -32,7 +32,7 @@ namespace Core {
 
 		const std::string& GetName() const { return m_DebugName; }
 
-	protected:
+	private:
 		std::string m_DebugName;
 	};
 }

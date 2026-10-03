@@ -18,6 +18,7 @@ namespace Core {
 	protected:
 		KeyEvent(KeyCode keyCode, KeyModifier modifiers) : m_KeyCode(keyCode), m_Modifiers(modifiers) {}
 
+	private:
 		KeyCode m_KeyCode = KeyCode::Space;
 		KeyModifier m_Modifiers = KeyModifier::None;
 	};
@@ -36,7 +37,7 @@ namespace Core {
 
 		std::string ToString() const override
 		{
-			return std::format("KeyPressedEvent: {} (repeat={})", static_cast<int>(m_KeyCode), m_IsRepeat);
+			return std::format("KeyPressedEvent: {} (repeat={})", static_cast<int>(GetKeyCode()), m_IsRepeat);
 		}
 
 		EVENT_CLASS_TYPE(KeyPressed)
@@ -52,7 +53,7 @@ namespace Core {
 
 		std::string ToString() const override
 		{
-			return std::format("KeyReleasedEvent: {}", static_cast<int>(m_KeyCode));
+			return std::format("KeyReleasedEvent: {}", static_cast<int>(GetKeyCode()));
 		}
 
 		EVENT_CLASS_TYPE(KeyReleased)
