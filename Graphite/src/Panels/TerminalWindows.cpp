@@ -501,7 +501,16 @@ namespace Graphite {
 
 	std::filesystem::path TerminalWindows::DefaultWorkingDirectory() const
 	{
-		return m_Workspace.IsOpen() ? m_Workspace.GetRoot() : std::filesystem::current_path();
+		if (m_Workspace.IsOpen())
+		{
+			return m_Workspace.GetRoot();
+		}
+
+		// The overload that cannot throw: a working directory deleted from under the process
+		// makes the other one raise out of a frame (ADR 0004). Empty then, which callers take
+		// as "no directory" and let the child process start in its own default.
+		std::error_code ignored;
+		return std::filesystem::current_path(ignored);
 	}
 
 	TerminalWindows::Entry* TerminalWindows::FindEntry(const std::string& id)
