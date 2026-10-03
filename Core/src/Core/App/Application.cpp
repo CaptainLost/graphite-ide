@@ -196,7 +196,7 @@ namespace Core {
 			// there and only the much smaller frame step narrows to float. After a sleep the
 			// step covers all of it, so a timer advanced by it catches up in one frame.
 			const double now = glfwGetTime();
-			const Timestep ts = static_cast<float>(now - m_LastFrameTime);
+			const Timestep ts{static_cast<float>(now - m_LastFrameTime)};
 			m_LastFrameTime = now;
 
 			RefreshFrameLayers();

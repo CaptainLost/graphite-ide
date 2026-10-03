@@ -119,7 +119,7 @@ TEST_CASE("OnUpdate reaches all panels, including hidden ones")
 		panels.Add(std::make_unique<CountingPanel>("b", "B")));
 	hidden->SetVisible(false);
 
-	panels.OnUpdate(0.016f);
+	panels.OnUpdate(Core::Timestep{0.016f});
 
 	CHECK(visible->updates == 1);
 	CHECK(hidden->updates == 1);

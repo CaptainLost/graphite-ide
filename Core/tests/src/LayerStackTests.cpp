@@ -48,7 +48,7 @@ TEST_CASE("Iteration preserves insertion order")
 	journal.clear();
 
 	for (auto& layer : stack)
-		layer->OnUpdate(0.016f);
+		layer->OnUpdate(Core::Timestep{0.016f});
 
 	REQUIRE(journal.size() == 2);
 	CHECK(journal[0] == "a:update");
@@ -87,7 +87,7 @@ TEST_CASE("Adding a layer during iteration over the copy does not invalidate the
 
 	for (Core::Layer* layer : snapshot)
 	{
-		layer->OnUpdate(0.016f);
+		layer->OnUpdate(Core::Timestep{0.016f});
 		stack.Push(std::make_unique<RecordingLayer>("added", journal));
 	}
 
