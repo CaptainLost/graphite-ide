@@ -64,7 +64,7 @@ namespace Graphite {
 	public:
 		TerminalWindows(Workspace& workspace, const Core::Keymap& keys);
 
-		// "New Terminal" for the default shell, bound to Ctrl+Shift+` by default, and one command
+		// "New Terminal" for the default shell, bound to Ctrl+` by default, and one command
 		// per discovered shell in the terminal.shells group, which the View menu lists.
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 

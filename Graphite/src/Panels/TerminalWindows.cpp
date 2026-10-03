@@ -65,7 +65,7 @@ namespace Graphite {
 		// The way back to a terminal once the whole bottom row is closed: with no terminal and
 		// no bottom-row panel on screen there is no tab bar left to carry the + button.
 		keys.SetDefault("terminal.new",
-						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_GraveAccent)});
+						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_GraveAccent)});
 
 		for (std::size_t index = 0; index < m_Shells.size(); ++index)
 		{

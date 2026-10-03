@@ -24,8 +24,12 @@ left, and nothing in the window said it existed.
 - View has `New Terminal` (`terminal.new`, with its shortcut printed) right
   after the Panels submenu, followed by a `New Terminal With` submenu listing
   the `terminal.shells` group. There is still no top-level Terminal menu.
+- `terminal.new` is bound to Ctrl+` by default instead of Ctrl+Shift+`: one
+  modifier for the key that is now also printed in the menu. A terminal with
+  focus still hands it to the application, since it passes on every chord the
+  keymap binds.
 
-This amends 0544 on those two points; the rest of it stands.
+This amends 0544 on those points; the rest of it stands.
 
 ## Rationale
 
