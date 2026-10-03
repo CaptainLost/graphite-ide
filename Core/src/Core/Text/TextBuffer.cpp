@@ -34,19 +34,19 @@ namespace Core {
 
 		const auto after = std::upper_bound(
 			m_Pieces.begin(), m_Pieces.end(), offset,
-			[](std::size_t value, const Piece& piece) { return value < piece.start; });
+			[](std::size_t value, const Piece& piece) { return value < piece.Start; });
 
 		return static_cast<std::size_t>(after - m_Pieces.begin()) - 1;
 	}
 
 	void TextBuffer::RefreshPieceStarts(std::size_t index)
 	{
-		std::size_t start = index == 0 ? 0 : m_Pieces[index - 1].start + m_Pieces[index - 1].length;
+		std::size_t start = index == 0 ? 0 : m_Pieces[index - 1].Start + m_Pieces[index - 1].Length;
 
 		for (std::size_t at = index; at < m_Pieces.size(); ++at)
 		{
-			m_Pieces[at].start = start;
-			start += m_Pieces[at].length;
+			m_Pieces[at].Start = start;
+			start += m_Pieces[at].Length;
 		}
 
 		m_Length = start;
@@ -62,15 +62,15 @@ namespace Core {
 		const std::size_t index = PieceAt(offset);
 		const Piece& piece = m_Pieces[index];
 
-		if (piece.start == offset)
+		if (piece.Start == offset)
 		{
 			return index;
 		}
 
-		const std::size_t taken = offset - piece.start;
+		const std::size_t taken = offset - piece.Start;
 
-		Piece tail{piece.source, piece.offset + taken, piece.length - taken, offset};
-		m_Pieces[index].length = taken;
+		Piece tail{piece.Origin, piece.Offset + taken, piece.Length - taken, offset};
+		m_Pieces[index].Length = taken;
 		m_Pieces.insert(m_Pieces.begin() + static_cast<std::ptrdiff_t>(index) + 1, tail);
 
 		return index + 1;
@@ -110,7 +110,7 @@ namespace Core {
 	{
 		const auto found = std::lower_bound(
 			m_Pieces.begin(), m_Pieces.end(), offset,
-			[](const Piece& piece, std::size_t value) { return piece.start < value; });
+			[](const Piece& piece, std::size_t value) { return piece.Start < value; });
 
 		return static_cast<std::size_t>(found - m_Pieces.begin());
 	}
@@ -161,15 +161,15 @@ namespace Core {
 		{
 			const Piece& piece = m_Pieces[index];
 
-			if (piece.start >= end)
+			if (piece.Start >= end)
 			{
 				break;
 			}
 
-			const std::size_t sliceFrom = from > piece.start ? from - piece.start : 0;
-			const std::size_t sliceTo = std::min(piece.length, end - piece.start);
+			const std::size_t sliceFrom = from > piece.Start ? from - piece.Start : 0;
+			const std::size_t sliceTo = std::min(piece.Length, end - piece.Start);
 
-			result.append(SourceBuffer(piece.source), piece.offset + sliceFrom,
+			result.append(SourceBuffer(piece.Origin), piece.Offset + sliceFrom,
 						  sliceTo - sliceFrom);
 		}
 
@@ -185,7 +185,7 @@ namespace Core {
 
 		const Piece& piece = m_Pieces[PieceAt(offset)];
 
-		return SourceBuffer(piece.source)[piece.offset + (offset - piece.start)];
+		return SourceBuffer(piece.Origin)[piece.Offset + (offset - piece.Start)];
 	}
 
 	std::vector<std::size_t> TextBuffer::BuildLineIndex() const
@@ -306,24 +306,24 @@ namespace Core {
 
 	void TextBuffer::ApplyEdit(Edit& edit, bool reversed)
 	{
-		const bool inserting = reversed ? !edit.inserted : edit.inserted;
+		const bool inserting = reversed ? !edit.Inserted : edit.Inserted;
 
 		if (inserting)
 		{
 			// Appended bytes are never removed or rewritten, so a range recorded once stays
 			// valid for every later replay of this edit.
-			if (!edit.hasAppendOffset)
+			if (!edit.HasAppendOffset)
 			{
-				edit.appendOffset = m_Append.size();
-				m_Append.append(edit.text);
-				edit.hasAppendOffset = true;
+				edit.AppendOffset = m_Append.size();
+				m_Append.append(edit.Text);
+				edit.HasAppendOffset = true;
 			}
 
-			InsertPieceRaw(edit.offset, edit.appendOffset, edit.text);
+			InsertPieceRaw(edit.Offset, edit.AppendOffset, edit.Text);
 		}
 		else
 		{
-			EraseRaw(edit.offset, edit.offset + edit.text.size());
+			EraseRaw(edit.Offset, edit.Offset + edit.Text.size());
 		}
 	}
 
@@ -376,7 +376,7 @@ namespace Core {
 			const bool continues =
 				!m_BreakGroup && !hasNewline && ContinuesLastGroup(from, to, inserted);
 
-			group = continues ? m_Undo.back().group : m_NextGroupId++;
+			group = continues ? m_Undo.back().Group : m_NextGroupId++;
 
 			if (m_TransactionDepth > 0)
 			{
@@ -438,10 +438,10 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		const std::size_t group = m_Undo.back().group;
+		const std::size_t Group = m_Undo.back().Group;
 		std::size_t caret = 0;
 
-		while (!m_Undo.empty() && m_Undo.back().group == group)
+		while (!m_Undo.empty() && m_Undo.back().Group == Group)
 		{
 			Edit edit = std::move(m_Undo.back());
 			m_Undo.pop_back();
@@ -452,7 +452,7 @@ namespace Core {
 			// deletion is put back, so the caret goes to the end of what returned. The group
 			// is walked newest first, so the last turn of this loop is the oldest edit in it
 			// and its position is the one the user is looking at.
-			caret = edit.inserted ? edit.offset : edit.offset + edit.text.size();
+			caret = edit.Inserted ? edit.Offset : edit.Offset + edit.Text.size();
 
 			m_Redo.push_back(std::move(edit));
 		}
@@ -470,10 +470,10 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		const std::size_t group = m_Redo.back().group;
+		const std::size_t Group = m_Redo.back().Group;
 		std::size_t caret = 0;
 
-		while (!m_Redo.empty() && m_Redo.back().group == group)
+		while (!m_Redo.empty() && m_Redo.back().Group == Group)
 		{
 			Edit edit = std::move(m_Redo.back());
 			m_Redo.pop_back();
@@ -482,7 +482,7 @@ namespace Core {
 
 			// Applied forwards, so the mirror of Undo: an insertion ends with the caret past
 			// the text it added, a deletion with the caret where the text used to start.
-			caret = edit.inserted ? edit.offset + edit.text.size() : edit.offset;
+			caret = edit.Inserted ? edit.Offset + edit.Text.size() : edit.Offset;
 
 			m_Undo.push_back(std::move(edit));
 		}
@@ -495,6 +495,6 @@ namespace Core {
 
 	std::size_t TextBuffer::GetRevision() const
 	{
-		return m_Undo.empty() ? 0 : m_Undo.back().id;
+		return m_Undo.empty() ? 0 : m_Undo.back().Id;
 	}
 }

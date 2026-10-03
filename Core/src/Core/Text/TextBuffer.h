@@ -74,10 +74,10 @@ namespace Core {
 
 		struct Piece
 		{
-			Source source = Source::Original;
-			std::size_t offset = 0;
-			std::size_t length = 0;
-			std::size_t start = 0;
+			Source Origin = Source::Original;
+			std::size_t Offset = 0;
+			std::size_t Length = 0;
+			std::size_t Start = 0;
 		};
 
 		const std::string& SourceBuffer(Source source) const;
@@ -102,15 +102,15 @@ namespace Core {
 
 		struct Edit
 		{
-			std::size_t id = 0;
-			std::size_t offset = 0;
-			std::string text;
-			bool inserted = false;
+			std::size_t Id = 0;
+			std::size_t Offset = 0;
+			std::string Text;
+			bool Inserted = false;
 
-			std::size_t appendOffset = 0;
-			bool hasAppendOffset = false;
+			std::size_t AppendOffset = 0;
+			bool HasAppendOffset = false;
 
-			std::size_t group = 0;
+			std::size_t Group = 0;
 		};
 
 		void ApplyEdit(Edit& edit, bool reversed);
