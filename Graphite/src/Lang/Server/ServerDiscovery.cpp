@@ -31,7 +31,7 @@ namespace Graphite {
 		{
 			std::filesystem::path name{command};
 
-			if (Core::Lowered(Core::ToUtf8(name.extension())) != ".exe")
+			if (Core::LoweredExtension(name) != ".exe")
 			{
 				name += ".exe";
 			}

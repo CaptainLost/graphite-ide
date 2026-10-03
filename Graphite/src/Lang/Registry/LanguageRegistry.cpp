@@ -36,7 +36,7 @@ namespace Graphite {
 			return LanguageId::PlainText;
 		}
 
-		const std::string extension = Core::Lowered(Core::ToUtf8(path.extension()));
+		const std::string extension = Core::LoweredExtension(path);
 
 		for (const auto& [suffix, language] : kByExtension)
 		{

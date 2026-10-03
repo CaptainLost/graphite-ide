@@ -2,12 +2,13 @@
 
 #include "Core/Fs/FileOperations.h"
 
+#include "Core/Base/Ascii.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Error.h"
 
 #include <array>
-#include <cctype>
 #include <fstream>
 #include <string>
 
@@ -18,25 +19,6 @@
 #endif
 
 namespace Core {
-
-	namespace {
-		bool EqualsIgnoringCase(std::string_view left, std::string_view right)
-		{
-			if (left.size() != right.size())
-				return false;
-
-			for (std::size_t i = 0; i < left.size(); ++i)
-			{
-				if (std::tolower(static_cast<unsigned char>(left[i])) !=
-					std::tolower(static_cast<unsigned char>(right[i])))
-				{
-					return false;
-				}
-			}
-
-			return true;
-		}
-	}
 
 	Result<void> CreateEmptyFile(const std::filesystem::path& path)
 	{
@@ -235,7 +217,7 @@ namespace Core {
 
 		for (const std::string_view reserved : kReserved)
 		{
-			if (EqualsIgnoringCase(base, reserved))
+			if (Core::EqualsIgnoringCase(base, reserved))
 				return false;
 		}
 

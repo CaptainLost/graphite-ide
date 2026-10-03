@@ -2,13 +2,13 @@
 
 #include "Core/ImGui/Icons.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Assert.h"
 #include "Core/Text/Utf8.h"
 
 #include <IconsMaterialDesignIcons.h>
 
 #include <array>
-#include <cctype>
 #include <optional>
 
 namespace Core {
@@ -98,9 +98,7 @@ namespace Core {
 
 		std::string ToLowerWithDot(std::string_view extension)
 		{
-			std::string lower{extension};
-			std::transform(lower.begin(), lower.end(), lower.begin(),
-						   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			std::string lower = Lowered(extension);
 
 			if (!lower.empty() && lower.front() != '.')
 				lower.insert(lower.begin(), '.');

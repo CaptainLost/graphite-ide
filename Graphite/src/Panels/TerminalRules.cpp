@@ -43,7 +43,7 @@ namespace Graphite {
 				}
 
 				pendingDash = false;
-				slug.push_back(static_cast<char>(std::tolower(byte)));
+				slug.push_back(Core::LowerAscii(static_cast<char>(byte)));
 			}
 			else
 			{

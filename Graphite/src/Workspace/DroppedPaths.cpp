@@ -15,7 +15,7 @@ namespace Graphite {
 			// the ASCII helper the rest of the application folds with: the extensions being
 			// matched are ASCII, and a locale-aware fold would answer differently on a
 			// machine whose locale disagrees.
-			const std::string extension = Core::Lowered(Core::ToUtf8(path.extension()));
+			const std::string extension = Core::LoweredExtension(path);
 
 			return extension == ".sln" || extension == ".slnx";
 		}

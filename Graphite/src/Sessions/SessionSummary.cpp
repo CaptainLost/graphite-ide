@@ -1,12 +1,12 @@
 #include "Sessions/SessionSummary.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Fs/FileSystem.h"
 
 #include "Sessions/InjectedText.h"
 #include "Sessions/TranscriptReader.h"
 
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 
 namespace Graphite {
@@ -198,11 +198,7 @@ namespace Graphite {
 
 	bool SameSessionId(std::string_view a, std::string_view b)
 	{
-		return a.size() == b.size() &&
-			   std::equal(a.begin(), a.end(), b.begin(), [](char x, char y)
-			   {
-				   return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
-			   });
+		return Core::EqualsIgnoringCase(a, b);
 	}
 
 	std::optional<std::chrono::sys_time<std::chrono::milliseconds>> ParseTimestamp(std::string_view text)

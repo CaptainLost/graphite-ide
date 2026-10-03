@@ -10,7 +10,6 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <format>
 #include <fstream>
 #include <sstream>
@@ -23,16 +22,6 @@
 namespace Graphite {
 
 	namespace {
-		std::string LowercaseExtension(const std::filesystem::path& path)
-		{
-			std::string extension = Core::ToUtf8(path.extension());
-
-			std::transform(extension.begin(), extension.end(), extension.begin(),
-						   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-
-			return extension;
-		}
-
 		std::vector<std::string> SplitFolderPath(std::string_view name)
 		{
 			std::vector<std::string> parts;
@@ -215,7 +204,7 @@ namespace Graphite {
 
 	bool IsSolutionFile(const std::filesystem::path& path)
 	{
-		const std::string extension = LowercaseExtension(path);
+		const std::string extension = Core::LoweredExtension(path);
 
 		return extension == ".slnx" || extension == ".sln";
 	}
@@ -245,7 +234,7 @@ namespace Graphite {
 		}
 
 		Core::Result<Solution> parsed =
-			LowercaseExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
+			Core::LoweredExtension(path) == ".slnx" ? ReadSlnx(path) : ReadSlnText(path);
 
 		if (!parsed)
 			return parsed;

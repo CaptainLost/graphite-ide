@@ -10,8 +10,6 @@
 
 #include <algorithm>
 
-#include <cctype>
-
 #include <format>
 
 #include <fstream>
@@ -21,18 +19,6 @@
 #include <system_error>
 
 namespace Graphite {
-
-	namespace {
-		std::string LowercaseExtension(const std::filesystem::path& path)
-		{
-			std::string extension = Core::ToUtf8(path.extension());
-
-			std::transform(extension.begin(), extension.end(), extension.begin(),
-						   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-
-			return extension;
-		}
-	}
 
 	std::string NewGuid()
 	{
@@ -53,7 +39,7 @@ namespace Graphite {
 
 		// .sln is readable but not yet writable, and refusing here keeps a caller from
 		// discovering that halfway through an edit.
-		if (LowercaseExtension(solution) != ".slnx")
+		if (Core::LoweredExtension(solution) != ".slnx")
 		{
 			return Core::Error{Core::ErrorCode::Unsupported,
 							   std::format("'{}' is not a format this build can edit",

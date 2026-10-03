@@ -4,6 +4,8 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -166,6 +168,11 @@ namespace Core {
 		}
 
 		return entries;
+	}
+
+	std::string LoweredExtension(const std::filesystem::path& path)
+	{
+		return Lowered(ToUtf8(path.extension()));
 	}
 
 	int CompareNames(std::string_view left, std::string_view right)

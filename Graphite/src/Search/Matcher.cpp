@@ -1,5 +1,6 @@
 #include "Search/Matcher.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Glob.h"
 
 #include <cctype>
@@ -8,17 +9,9 @@ namespace Graphite {
 
 	namespace {
 
-		// ASCII only, deliberately. A code search compares bytes, and a locale-aware fold would
-		// promise a correctness across scripts that a byte comparison cannot deliver.
-		char Lower(char c)
-		{
-			return static_cast<char>(
-				std::tolower(static_cast<unsigned char>(c)));
-		}
-
 		bool SameChar(char left, char right, bool matchCase)
 		{
-			return matchCase ? left == right : Lower(left) == Lower(right);
+			return matchCase ? left == right : Core::LowerAscii(left) == Core::LowerAscii(right);
 		}
 
 		bool IsIdentifierChar(char c)

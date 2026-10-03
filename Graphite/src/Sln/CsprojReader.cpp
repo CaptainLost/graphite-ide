@@ -5,7 +5,6 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <format>
 #include <string>
 #include <string_view>
@@ -58,18 +57,6 @@ namespace Graphite {
 			}
 		}
 
-		std::string LowercaseExtension(const std::filesystem::path& path)
-		{
-			std::string extension = Core::ToUtf8(path.extension());
-
-			std::transform(extension.begin(), extension.end(), extension.begin(),
-						   [](unsigned char character) {
-							   return static_cast<char>(std::tolower(character));
-						   });
-
-			return extension;
-		}
-
 		void SortContent(ContentFolder& folder)
 		{
 			std::sort(folder.Folders.begin(), folder.Folders.end(),
@@ -85,7 +72,7 @@ namespace Graphite {
 
 	bool CsprojReader::Handles(const std::filesystem::path& project) const
 	{
-		return LowercaseExtension(project) == ".csproj";
+		return Core::LoweredExtension(project) == ".csproj";
 	}
 
 	Core::Result<ProjectContent> CsprojReader::Read(const std::filesystem::path& project) const

@@ -2,20 +2,15 @@
 
 #include "Core/Base/Glob.h"
 
-#include <cctype>
+#include "Core/Base/Ascii.h"
 
 namespace Core {
 
 	namespace {
 
-		char Lower(char c)
-		{
-			return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		}
-
 		bool SameChar(char left, char right)
 		{
-			return Lower(left) == Lower(right);
+			return LowerAscii(left) == LowerAscii(right);
 		}
 	}
 

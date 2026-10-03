@@ -13,10 +13,7 @@ namespace Core {
 
 		for (const char character : text)
 		{
-			// Cast through unsigned char: tolower on a negative char is undefined,
-			// and a settings file can hold any byte.
-			result.push_back(static_cast<char>(
-				std::tolower(static_cast<unsigned char>(character))));
+			result.push_back(LowerAscii(character));
 		}
 
 		return result;

@@ -37,6 +37,9 @@ namespace Core {
 
 	std::filesystem::path FromUtf8(std::string_view text);
 
+	// The extension with its dot, ASCII-lowered: ".vcxproj" for "App.VCXPROJ", empty for none.
+	std::string LoweredExtension(const std::filesystem::path& path);
+
 	int CompareNames(std::string_view left, std::string_view right);
 
 	// lexically_normal collapses "a/../b" into "b" without touching the filesystem - safe for

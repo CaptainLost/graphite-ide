@@ -1,6 +1,7 @@
 #include "Lang/Server/MessageStream.h"
 
-#include <cctype>
+#include "Core/Base/Ascii.h"
+
 #include <charconv>
 
 namespace {
@@ -14,29 +15,11 @@ namespace {
 	// message after it while the buffer grew without end.
 	constexpr std::size_t kMaximumBody = 256u * 1024u * 1024u;
 
-	bool IEquals(char a, char b)
-	{
-		return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-	}
-
 	// Case-insensitive prefix match: the header name's casing is not guaranteed by the protocol,
 	// even though every real client sends it the same way.
 	bool IStartsWith(std::string_view text, std::string_view prefix)
 	{
-		if (text.size() < prefix.size())
-		{
-			return false;
-		}
-
-		for (std::size_t i = 0; i < prefix.size(); ++i)
-		{
-			if (!IEquals(text[i], prefix[i]))
-			{
-				return false;
-			}
-		}
-
-		return true;
+		return text.size() >= prefix.size() && Core::EqualsIgnoringCase(text.substr(0, prefix.size()), prefix);
 	}
 
 	// Looks for a Content-Length line within the header block and parses its value. Returns
