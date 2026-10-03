@@ -76,6 +76,21 @@ TEST_CASE("A shell opened with no folder is adopted by the folder opened next, a
 	CHECK_FALSE(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false)).has_value());
 }
 
+TEST_CASE("Carrying over on its own leaves a shell nobody owned alone")
+{
+	// A folder closing publishes no adoption: a shell opened with no folder must stay adoptable
+	// and must not be written to the folder that closed.
+	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};
+	shell.Unowned = true;
+	std::vector<OpenTerminal> open = {shell};
+
+	CarryOverTerminals(open);
+
+	CHECK(open[0].Unowned);
+	CHECK_FALSE(open[0].CarriedOver);
+	CHECK(AdoptTerminals(open, false));
+}
+
 TEST_CASE("A terminal carried over from one folder to another is never adopted")
 {
 	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};

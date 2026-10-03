@@ -416,7 +416,7 @@ TEST_CASE("A terminal written before titles were kept reads with an empty title"
 
 	Core::JsonFile file;
 	WriteWorkspaceState(state, kRoot, file);
-	file.Set("restore.terminal.0.title", "");
+	file.Remove("restore.terminal.0.title");
 
 	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
 
