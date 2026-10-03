@@ -75,16 +75,21 @@ namespace Core {
 
 		for (const DirectoryEntry& entry : entries.GetValue())
 		{
-			FileNode child;
-			child.Path = entry.Path;
-			child.Name = entry.Name;
-			child.IsDirectory = entry.IsDirectory;
-			child.Ignored = AskIgnored(entry.Path, entry.IsDirectory);
-			node.Children.push_back(std::move(child));
+			node.Children.push_back(NodeFor(entry));
 		}
 
 		std::sort(node.Children.begin(), node.Children.end(), FileNodeLess);
 		return Result<void>::Ok();
+	}
+
+	FileNode FileTree::NodeFor(const DirectoryEntry& entry) const
+	{
+		FileNode node;
+		node.Path = entry.Path;
+		node.Name = entry.Name;
+		node.IsDirectory = entry.IsDirectory;
+		node.Ignored = AskIgnored(entry.Path, entry.IsDirectory);
+		return node;
 	}
 
 	void FileTree::Collapse(FileNode& node)
@@ -128,12 +133,7 @@ namespace Core {
 				continue;
 			}
 
-			FileNode child;
-			child.Path = entry.Path;
-			child.Name = entry.Name;
-			child.IsDirectory = entry.IsDirectory;
-			child.Ignored = AskIgnored(entry.Path, entry.IsDirectory);
-			node.Children.push_back(std::move(child));
+			node.Children.push_back(NodeFor(entry));
 		}
 
 		std::sort(node.Children.begin(), node.Children.end(), FileNodeLess);

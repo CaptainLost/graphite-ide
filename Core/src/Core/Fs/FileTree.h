@@ -11,6 +11,8 @@
 
 namespace Core {
 
+	struct DirectoryEntry;
+
 	struct FileNode
 	{
 		std::filesystem::path Path;
@@ -46,6 +48,9 @@ namespace Core {
 
 	private:
 		bool AskIgnored(const std::filesystem::path& path, bool isDirectory) const;
+
+		// A fresh, unloaded node for what ReadDirectory listed.
+		FileNode NodeFor(const DirectoryEntry& entry) const;
 
 		static void RebaseNode(FileNode& node, const std::filesystem::path& newPath);
 
