@@ -8,6 +8,12 @@ namespace {
 	constexpr std::string_view kTerminator = "\r\n\r\n";
 	constexpr std::string_view kContentLengthPrefix = "content-length:";
 
+	// Far past any message a language server sends - a semantic-token answer for a very large
+	// file is tens of megabytes - and far short of what a corrupted header can claim. A length
+	// over it is treated as no length: waiting for that many bytes would hold back every
+	// message after it while the buffer grew without end.
+	constexpr std::size_t kMaximumBody = 256u * 1024u * 1024u;
+
 	bool IEquals(char a, char b)
 	{
 		return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
@@ -58,8 +64,14 @@ namespace {
 				}
 
 				std::size_t length = 0;
-				const auto [ptr, ec] = std::from_chars(value.data(), value.data() + value.size(), length);
-				if (ec == std::errc{})
+				const char* const end = value.data() + value.size();
+				const auto [stopped, ec] = std::from_chars(value.data(), end, length);
+
+				// The whole value has to be the number, spaces aside: "2x" is not a length of two.
+				const std::string_view rest{stopped, static_cast<std::size_t>(end - stopped)};
+				const bool onlySpaces = rest.find_first_not_of(" \t") == std::string_view::npos;
+
+				if (ec == std::errc{} && onlySpaces && length <= kMaximumBody)
 				{
 					return length;
 				}

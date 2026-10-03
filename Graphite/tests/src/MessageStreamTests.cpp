@@ -79,3 +79,34 @@ TEST_CASE("MessageStream drops a length that is not a number rather than stallin
 
 	CHECK(stream.Take() == "{}");
 }
+
+// "2x" is not a length. Reading the digits and ignoring the rest would frame a body from a
+// header nothing sent as a number.
+TEST_CASE("MessageStream drops a length followed by something other than a number rather than reading its digits")
+{
+	Graphite::MessageStream stream;
+
+	stream.Append("Content-Length: 2x\r\n\r\nContent-Length: 2\r\n\r\n{}");
+
+	CHECK(stream.Take() == "{}");
+}
+
+TEST_CASE("MessageStream accepts trailing spaces after a length")
+{
+	Graphite::MessageStream stream;
+
+	stream.Append("Content-Length: 2  \r\n\r\n{}");
+
+	CHECK(stream.Take() == "{}");
+}
+
+// A length that fits in size_t but no message could have: waiting for that many bytes would
+// hold every message the server sends after it, and grow the buffer without end.
+TEST_CASE("MessageStream drops a length larger than any message rather than waiting for it")
+{
+	Graphite::MessageStream stream;
+
+	stream.Append("Content-Length: 99999999999\r\n\r\nContent-Length: 2\r\n\r\n{}");
+
+	CHECK(stream.Take() == "{}");
+}
