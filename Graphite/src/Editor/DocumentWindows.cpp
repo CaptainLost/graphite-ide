@@ -1453,7 +1453,7 @@ namespace Graphite {
 			return overlay;
 		}
 
-		const auto& documents = m_Diagnostics.Documents();
+		const auto& documents = m_Diagnostics.GetDocuments();
 		const auto entry = documents.find(item.Path);
 
 		// 0 for a path with no entry at all, which matches a fresh DiagnosticGuard's own default

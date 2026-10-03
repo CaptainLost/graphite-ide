@@ -80,7 +80,7 @@ namespace Graphite {
 			m_FontSize = storedFontSize;
 		}
 
-		m_IndentWithSpaces = m_Store.GetIndentWithSpaces();
+		m_IndentWithSpaces = m_Store.IsIndentingWithSpaces();
 
 		// Clamped, not merely accepted: a hand-edited graphite.json is as untrusted as the
 		// slider. A malformed width, "-1" included, reads as absent; a well-formed but absurd one
@@ -91,11 +91,11 @@ namespace Graphite {
 			m_IndentWidth = std::clamp(storedIndentWidth, kMinimumIndentWidth, kMaximumIndentWidth);
 		}
 
-		m_WordWrap = m_Store.GetWordWrap();
-		m_GutterChangeMarkers = m_Store.GetGutterChangeMarkers();
-		m_ScrollbarChangeMarkers = m_Store.GetScrollbarChangeMarkers();
+		m_WordWrap = m_Store.IsWordWrapEnabled();
+		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
+		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 
-		m_Hover.ShowInfo = m_Store.GetHoverInfo();
+		m_Hover.ShowInfo = m_Store.IsHoverInfoEnabled();
 		m_Hover.Preview = PreviewModeFrom(m_Store.GetHoverPreview());
 
 		// Zero is "absent" (see NumberOrZero), so it keeps the default rather than clamping to 200.

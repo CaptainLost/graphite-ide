@@ -26,7 +26,7 @@ TEST_CASE("A new trust list trusts nothing")
 	const Graphite::WorkspaceTrust trust;
 
 	CHECK_FALSE(trust.IsTrusted("D:\\Repos"));
-	CHECK(trust.Entries().empty());
+	CHECK(trust.GetEntries().empty());
 }
 
 TEST_CASE("A trusted folder trusts itself and everything inside it")
@@ -47,7 +47,7 @@ TEST_CASE("Trust ignores case, slash direction and a trailing separator")
 
 	CHECK(trust.IsTrusted("d:\\repos"));
 	CHECK(trust.IsTrusted("D:\\REPOS\\ide\\"));
-	CHECK(trust.Entries().front() == std::filesystem::path{"D:\\Repos"});
+	CHECK(trust.GetEntries().front() == std::filesystem::path{"D:\\Repos"});
 }
 
 // The prefix trap: as strings, "D:\Repos2" starts with "D:\Repos".
@@ -75,7 +75,7 @@ TEST_CASE("A relative or empty path is never trusted and never becomes an entry"
 	trust.Trust("Repos");
 	trust.Trust("");
 
-	CHECK(trust.Entries().empty());
+	CHECK(trust.GetEntries().empty());
 	CHECK_FALSE(trust.IsTrusted(""));
 	CHECK_FALSE(trust.IsTrusted("Repos"));
 }
@@ -102,25 +102,25 @@ TEST_CASE("Trusting a listed folder again changes nothing")
 {
 	Graphite::WorkspaceTrust trust;
 	trust.Trust("D:\\Repos");
-	const std::uint64_t revision = trust.Revision();
+	const std::uint64_t revision = trust.GetRevision();
 
 	trust.Trust("d:\\repos\\");
 
-	CHECK(trust.Entries().size() == 1);
-	CHECK(trust.Revision() == revision);
+	CHECK(trust.GetEntries().size() == 1);
+	CHECK(trust.GetRevision() == revision);
 }
 
 TEST_CASE("Revoking an entry, however it is spelled, removes it and moves the revision")
 {
 	Graphite::WorkspaceTrust trust;
 	trust.Trust("D:\\Repos");
-	const std::uint64_t revision = trust.Revision();
+	const std::uint64_t revision = trust.GetRevision();
 
 	trust.Revoke("d:/repos");
 
-	CHECK(trust.Entries().empty());
+	CHECK(trust.GetEntries().empty());
 	CHECK_FALSE(trust.IsTrusted("D:\\Repos\\IDE"));
-	CHECK(trust.Revision() > revision);
+	CHECK(trust.GetRevision() > revision);
 }
 
 TEST_CASE("The trust list survives being written and read back")
@@ -138,7 +138,7 @@ TEST_CASE("The trust list survives being written and read back")
 
 	CHECK(reread.IsTrusted("D:\\Repos\\IDE"));
 	CHECK(reread.IsTrusted("C:\\Work\\Zażółć\\src"));
-	CHECK(reread.Entries().size() == 2);
+	CHECK(reread.GetEntries().size() == 2);
 }
 
 // Failing closed: a list nobody can read trusts nothing, rather than guessing.
@@ -149,7 +149,7 @@ TEST_CASE("An unreadable trust file trusts nothing")
 
 	const Graphite::WorkspaceTrust trust{temp.GetPath() / "trusted-folders.json"};
 
-	CHECK(trust.Entries().empty());
+	CHECK(trust.GetEntries().empty());
 }
 
 TEST_CASE("A trust file from a newer version is read but never written")

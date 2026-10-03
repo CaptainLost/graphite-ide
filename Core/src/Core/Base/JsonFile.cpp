@@ -109,7 +109,7 @@ namespace Core {
 		Document::WritableRootOf(m_Document).erase(std::string{key});
 	}
 
-	std::vector<std::string> JsonFile::GetKeys() const
+	std::vector<std::string> JsonFile::CollectKeys() const
 	{
 		const nlohmann::json& root = Document::RootOf(m_Document);
 

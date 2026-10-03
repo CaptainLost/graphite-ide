@@ -24,7 +24,7 @@ namespace Graphite {
 
 		bool HasUsage() const { return m_HasUsage; }
 
-		const TokenCounts& Counts() const { return m_Counts; }
+		const TokenCounts& GetCounts() const { return m_Counts; }
 
 	private:
 		TokenCounts m_Counts;

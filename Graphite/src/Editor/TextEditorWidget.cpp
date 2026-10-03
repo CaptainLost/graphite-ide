@@ -270,7 +270,7 @@ namespace Graphite {
 		float DocumentHeightOf(const Core::OpenItem& item, const EditorMetrics& metrics,
 							   const LensRows& lenses)
 		{
-			return static_cast<float>(lenses.TotalScreenRows(item.Rows.TotalRows())) *
+			return static_cast<float>(lenses.TotalScreenRows(item.Rows.GetTotalRows())) *
 				   metrics.LineHeight;
 		}
 
@@ -2333,7 +2333,7 @@ namespace Graphite {
 			// no line and so no marker.
 			const LensRows::Row hit = lenses.At(screenRow);
 
-			if (hit.IsLens || hit.DocumentRow >= item.Rows.TotalRows())
+			if (hit.IsLens || hit.DocumentRow >= item.Rows.GetTotalRows())
 			{
 				return nullptr;
 			}
@@ -2573,7 +2573,7 @@ namespace Graphite {
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
 
 			const std::size_t lineCount = item.Rows.GetLineCount();
-			const std::size_t totalRows = item.Rows.TotalRows();
+			const std::size_t totalRows = item.Rows.GetTotalRows();
 
 			const auto lineTop = [&](std::size_t line) {
 				const std::size_t screenRow = line >= lineCount ? lenses.TotalScreenRows(totalRows)
@@ -2939,7 +2939,7 @@ namespace Graphite {
 			// lens to draw a count on or a document row to take through RowMap exactly as before.
 			// Everything past that translation is unchanged document-row code.
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(lenses.TotalScreenRows(item.Rows.TotalRows())),
+			clipper.Begin(static_cast<int>(lenses.TotalScreenRows(item.Rows.GetTotalRows())),
 						  metrics.LineHeight);
 
 			bool anyDrawn = false;

@@ -53,7 +53,7 @@ namespace Graphite {
 
 	void SolutionTreeView::Render()
 	{
-		if (!m_Workspace.IsOpen() || !m_Workspace.LoadedSolution())
+		if (!m_Workspace.IsOpen() || !m_Workspace.GetLoadedSolution())
 		{
 			RenderEmptyState();
 			return;
@@ -63,7 +63,7 @@ namespace Graphite {
 		RenderFilter();
 		ImGui::Separator();
 
-		const Solution& solution = *m_Workspace.LoadedSolution();
+		const Solution& solution = *m_Workspace.GetLoadedSolution();
 
 		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  ImGuiWindowFlags_HorizontalScrollbar))
@@ -382,13 +382,13 @@ namespace Graphite {
 	void SolutionTreeView::RenderMoveToFolderMenu(const Project& project,
 												  const std::string& currentFolder)
 	{
-		if (!m_Workspace.LoadedSolution())
+		if (!m_Workspace.GetLoadedSolution())
 		{
 			return;
 		}
 
 		std::vector<std::string> folders{""};
-		CollectFolderPaths(m_Workspace.LoadedSolution()->Root, "", folders);
+		CollectFolderPaths(m_Workspace.GetLoadedSolution()->Root, "", folders);
 
 		for (const std::string& path : folders)
 		{
@@ -544,12 +544,12 @@ namespace Graphite {
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
 	{
-		if (!m_Workspace.LoadedSolution())
+		if (!m_Workspace.GetLoadedSolution())
 		{
 			return Core::Error{Core::ErrorCode::NotFound, "no solution is open"};
 		}
 
-		auto editor = SolutionEditor::Open(m_Workspace.LoadedSolution()->Path);
+		auto editor = SolutionEditor::Open(m_Workspace.GetLoadedSolution()->Path);
 
 		if (!editor)
 		{

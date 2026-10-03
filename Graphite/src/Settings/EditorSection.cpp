@@ -86,14 +86,14 @@ namespace Graphite {
 
 		// Plain checkboxes rather than commands like word wrap above: nobody toggles these while
 		// typing, so they need neither a shortcut nor a menu entry.
-		bool gutterChanges = m_Settings.ShowsGutterChangeMarkers();
+		bool gutterChanges = m_Settings.HasGutterChangeMarkers();
 
 		if (ImGui::Checkbox("Change markers in the gutter", &gutterChanges))
 		{
 			m_Settings.SetGutterChangeMarkers(gutterChanges);
 		}
 
-		bool scrollbarChanges = m_Settings.ShowsScrollbarChangeMarkers();
+		bool scrollbarChanges = m_Settings.HasScrollbarChangeMarkers();
 
 		if (ImGui::Checkbox("Change markers on the scrollbar", &scrollbarChanges))
 		{

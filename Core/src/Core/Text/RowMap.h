@@ -28,7 +28,7 @@ namespace Core {
 
 		void SetRowsOf(std::size_t line, std::size_t rows);
 
-		std::size_t TotalRows() const { return m_TotalRows; }
+		std::size_t GetTotalRows() const { return m_TotalRows; }
 		std::size_t GetLineCount() const { return m_RowsPerLine.size(); }
 
 		std::size_t GetColumnsPerRow() const { return m_ColumnsPerRow; }

@@ -46,7 +46,7 @@ namespace Graphite {
 	public:
 		explicit Reader(std::string_view bytes) : m_Bytes(bytes) {}
 
-		bool Failed() const { return m_Failed; }
+		bool HasFailed() const { return m_Failed; }
 
 		std::uint32_t TakeU32()
 		{

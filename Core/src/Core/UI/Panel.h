@@ -60,7 +60,7 @@ namespace Core {
 
 		// Whether this panel's body ran on the last frame, and so whether it is entitled to an
 		// event. Hidden, collapsed and tab-hidden all come out the same way.
-		bool WasDrawn() const { return m_WasDrawn; }
+		bool HasBeenDrawn() const { return m_WasDrawn; }
 		void SetWasDrawn(bool drawn) { m_WasDrawn = drawn; }
 
 	private:

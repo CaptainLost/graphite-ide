@@ -153,7 +153,7 @@ TEST_CASE("A declaration naming a line the buffer no longer has gets no lens")
 	model.SetDeclarations({Function("Draw", 1), Function("Gone", 9)}, rows, buffer, 4);
 
 	CHECK(model.LensAt(1) != nullptr);
-	CHECK(model.RowsNeedingCounts(0, rows.TotalRows()) == std::vector<std::size_t>{1});
+	CHECK(model.RowsNeedingCounts(0, rows.GetTotalRows()) == std::vector<std::size_t>{1});
 }
 
 TEST_CASE("Only answered lenses are worth remembering")

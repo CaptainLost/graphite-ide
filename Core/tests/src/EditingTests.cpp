@@ -41,7 +41,7 @@ namespace {
 
 		REQUIRE(item.Rows.GetLineCount() == buffer.GetLineCount());
 		CHECK(item.Rows.GetLineCount() == fresh.GetLineCount());
-		CHECK(item.Rows.TotalRows() == fresh.TotalRows());
+		CHECK(item.Rows.GetTotalRows() == fresh.GetTotalRows());
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
@@ -582,7 +582,7 @@ TEST_CASE("InsertNewline below the widest line splices the row map into line")
 	REQUIRE(item.Rows.RowsOf(1) == 2);
 	REQUIRE(item.Rows.RowsOf(2) == 1);
 
-	const std::size_t rowsBefore = item.Rows.TotalRows();
+	const std::size_t rowsBefore = item.Rows.GetTotalRows();
 
 	item.Caret.Offset = 47; // between the two f's on the last line
 	item.Caret.Anchor = 47;
@@ -595,7 +595,7 @@ TEST_CASE("InsertNewline below the widest line splices the row map into line")
 	// under the user, and nothing else would notice.
 	CHECK(item.Rows.GetColumnsPerRow() == 10);
 	CHECK(item.Rows.GetLineCount() == item.Document->GetBuffer().GetLineCount());
-	CHECK(item.Rows.TotalRows() == rowsBefore + 1);
+	CHECK(item.Rows.GetTotalRows() == rowsBefore + 1);
 	CheckDerivedCachesAreCorrect(item);
 }
 
@@ -629,17 +629,17 @@ TEST_CASE("Undo keeps the map wrapping to the width it was built for")
 	// the widget only rebuilds when the *width* changes, it stayed unwrapped until the
 	// window was resized.
 	Core::OpenItem item = WrappedItemWith(kWrapFixture, 10);
-	const std::size_t rowsBefore = item.Rows.TotalRows();
+	const std::size_t rowsBefore = item.Rows.GetTotalRows();
 
 	item.Caret.Offset = 48; // the end of the document
 	item.Caret.Anchor = 48;
 	CHECK(Core::InsertText(item, " gggg hhhh"));
-	CHECK(item.Rows.TotalRows() == rowsBefore + 1);
+	CHECK(item.Rows.GetTotalRows() == rowsBefore + 1);
 
 	CHECK(Core::Undo(item));
 	CHECK(item.Document->GetBuffer().Materialize() == kWrapFixture);
 	CHECK(item.Rows.GetColumnsPerRow() == 10);
-	CHECK(item.Rows.TotalRows() == rowsBefore);
+	CHECK(item.Rows.GetTotalRows() == rowsBefore);
 	CheckDerivedCachesAreCorrect(item);
 }
 

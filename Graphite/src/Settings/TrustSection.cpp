@@ -20,7 +20,7 @@ namespace Graphite {
 						   "the folders inside them. Any other folder opens in restricted mode.");
 		ImGui::Spacing();
 
-		if (m_Trust.Entries().empty())
+		if (m_Trust.GetEntries().empty())
 		{
 			ImGui::TextDisabled("No folder is trusted yet.");
 			return;
@@ -28,7 +28,7 @@ namespace Graphite {
 
 		std::optional<std::filesystem::path> revoked;
 
-		for (const std::filesystem::path& entry : m_Trust.Entries())
+		for (const std::filesystem::path& entry : m_Trust.GetEntries())
 		{
 			const std::string text = Core::ToUtf8(entry);
 

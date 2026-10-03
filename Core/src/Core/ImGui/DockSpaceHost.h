@@ -41,7 +41,7 @@ namespace Core {
 		// True from the Begin that built the default layout - at first launch with no imgui.ini,
 		// or after RequestLayoutReset - until the next Begin. Something that docks windows of its
 		// own after Begin can tell from it that their nodes were just removed.
-		bool BuiltLayoutThisFrame() const { return m_BuiltLayoutThisFrame; }
+		bool HasBuiltLayoutThisFrame() const { return m_BuiltLayoutThisFrame; }
 
 		// The dockspace's root node, 0 before the first Begin.
 		unsigned int GetDockSpaceId() const { return m_DockSpaceId; }

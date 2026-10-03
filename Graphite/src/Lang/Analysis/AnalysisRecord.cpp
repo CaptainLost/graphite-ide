@@ -103,7 +103,7 @@ namespace Graphite {
 
 		const std::string path = reader.TakeString();
 
-		if (reader.Failed() || path != Core::ToUtf8(expectedPath))
+		if (reader.HasFailed() || path != Core::ToUtf8(expectedPath))
 		{
 			return std::nullopt;
 		}
@@ -113,14 +113,14 @@ namespace Graphite {
 
 		const std::uint32_t lines = reader.TakeU32();
 
-		for (std::uint32_t index = 0; index < lines && !reader.Failed(); ++index)
+		for (std::uint32_t index = 0; index < lines && !reader.HasFailed(); ++index)
 		{
 			const std::uint64_t line = reader.TakeU64();
 			const std::uint32_t spanCount = reader.TakeU32();
 
 			std::vector<SemanticSpan> spans;
 
-			for (std::uint32_t span = 0; span < spanCount && !reader.Failed(); ++span)
+			for (std::uint32_t span = 0; span < spanCount && !reader.HasFailed(); ++span)
 			{
 				SemanticSpan one;
 				one.From = static_cast<std::size_t>(reader.TakeU64());
@@ -128,7 +128,7 @@ namespace Graphite {
 
 				const std::uint32_t kind = reader.TakeU32();
 
-				if (reader.Failed())
+				if (reader.HasFailed())
 				{
 					break;
 				}
@@ -148,7 +148,7 @@ namespace Graphite {
 				spans.push_back(one);
 			}
 
-			if (!reader.Failed())
+			if (!reader.HasFailed())
 			{
 				analysis.Semantic.SetSpansOn(static_cast<std::size_t>(line), std::move(spans));
 			}
@@ -156,14 +156,14 @@ namespace Graphite {
 
 		const std::uint32_t declarations = reader.TakeU32();
 
-		for (std::uint32_t index = 0; index < declarations && !reader.Failed(); ++index)
+		for (std::uint32_t index = 0; index < declarations && !reader.HasFailed(); ++index)
 		{
 			Declaration declaration;
 			declaration.Name = reader.TakeString();
 
 			const std::uint32_t kind = reader.TakeU32();
 
-			if (reader.Failed())
+			if (reader.HasFailed())
 			{
 				break;
 			}
@@ -182,7 +182,7 @@ namespace Graphite {
 			declaration.NameLine = static_cast<std::size_t>(reader.TakeU64());
 			declaration.NameColumn = Utf16Column(static_cast<std::size_t>(reader.TakeU64()));
 
-			if (!reader.Failed())
+			if (!reader.HasFailed())
 			{
 				analysis.Declarations.push_back(std::move(declaration));
 			}
@@ -190,14 +190,14 @@ namespace Graphite {
 
 		const std::uint32_t counts = reader.TakeU32();
 
-		for (std::uint32_t index = 0; index < counts && !reader.Failed(); ++index)
+		for (std::uint32_t index = 0; index < counts && !reader.HasFailed(); ++index)
 		{
 			KnownCount count;
 			count.Name = reader.TakeString();
 
 			const std::uint32_t kind = reader.TakeU32();
 
-			if (reader.Failed())
+			if (reader.HasFailed())
 			{
 				break;
 			}
@@ -210,7 +210,7 @@ namespace Graphite {
 			count.Kind = static_cast<DeclarationKind>(kind);
 			count.Count = static_cast<std::size_t>(reader.TakeU64());
 
-			if (!reader.Failed())
+			if (!reader.HasFailed())
 			{
 				analysis.Counts.push_back(std::move(count));
 			}

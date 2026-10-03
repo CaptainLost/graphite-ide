@@ -9,7 +9,7 @@ namespace Graphite {
 
 	void AnalysisSettings::Load()
 	{
-		m_Enabled = m_Store.GetBackgroundAnalysis();
+		m_Enabled = m_Store.IsBackgroundAnalysisEnabled();
 
 		const std::size_t saved = m_Store.GetAnalysisBudgetMegabytes();
 

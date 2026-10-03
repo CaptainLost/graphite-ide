@@ -510,7 +510,7 @@ namespace Graphite {
 		m_Panels.OnUpdate(ts);
 		m_Terminals.Update();
 
-		m_SolutionLoaded = m_Workspace.LoadedSolution().has_value();
+		m_SolutionLoaded = m_Workspace.GetLoadedSolution().has_value();
 
 		UpdateFocusReload(ts);
 
@@ -638,7 +638,7 @@ namespace Graphite {
 		m_AnalysisCoordinator.Update(AnalysisSwitches{.Root = m_Workspace.GetRoot(),
 													  .Trusted = workspaceTrusted,
 													  .SettingEnabled = m_AnalysisSettings.IsEnabled(),
-													  .TrustRevision = m_Trust.Revision()});
+													  .TrustRevision = m_Trust.GetRevision()});
 
 		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
 		// started servers and what moves a running one from Starting to Indexing to Ready — so a
@@ -797,8 +797,8 @@ namespace Graphite {
 											 .Indent = m_EditorSettings.GetIndentStyle(),
 											 .FallbackDockNode = m_DockSpace.GetCenterNodeId(),
 											 .WordWrap = m_EditorSettings.IsWordWrap(),
-											 .ChangeMarkers = {.Gutter = m_EditorSettings.ShowsGutterChangeMarkers(),
-															   .Scrollbar = m_EditorSettings.ShowsScrollbarChangeMarkers()},
+											 .ChangeMarkers = {.Gutter = m_EditorSettings.HasGutterChangeMarkers(),
+															   .Scrollbar = m_EditorSettings.HasScrollbarChangeMarkers()},
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,
@@ -818,7 +818,7 @@ namespace Graphite {
 											   .CentreNode = m_DockSpace.GetCenterNodeId(),
 											   .DockSpace = m_DockSpace.GetDockSpaceId(),
 											   .BottomRatio = m_Layout.BottomRatio,
-											   .LayoutRebuilt = m_DockSpace.BuiltLayoutThisFrame()},
+											   .LayoutRebuilt = m_DockSpace.HasBuiltLayoutThisFrame()},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
 
 		// After every owner has drawn: what nobody took this frame belonged to a window that

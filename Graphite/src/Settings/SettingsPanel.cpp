@@ -37,7 +37,7 @@ namespace Graphite {
 	{
 		(void)ts;
 
-		const bool drawn = WasDrawn();
+		const bool drawn = HasBeenDrawn();
 
 		// Latched on the edge, not on the state: hiding the panel deactivates the section once,
 		// rather than every frame it stays hidden. A section left holding transient state — an

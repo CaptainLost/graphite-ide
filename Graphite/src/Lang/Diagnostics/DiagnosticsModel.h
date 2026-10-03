@@ -86,7 +86,7 @@ namespace Graphite {
 		Counts Total(const std::function<bool(const std::filesystem::path&)>& include) const;
 
 		// Path-ordered, which is what makes the panel's grouping stable from frame to frame.
-		const std::map<std::filesystem::path, Entry>& Documents() const { return m_Documents; }
+		const std::map<std::filesystem::path, Entry>& GetDocuments() const { return m_Documents; }
 
 	private:
 		std::map<std::filesystem::path, Entry> m_Documents;

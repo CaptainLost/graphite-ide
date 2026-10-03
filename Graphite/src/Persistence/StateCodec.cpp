@@ -238,7 +238,7 @@ namespace Graphite {
 
 	void RemoveKeysStartingWith(Core::JsonFile& file, std::string_view prefix)
 	{
-		for (const std::string& key : file.GetKeys())
+		for (const std::string& key : file.CollectKeys())
 		{
 			if (key.starts_with(prefix))
 			{
@@ -288,7 +288,7 @@ namespace Graphite {
 												 ReadFlag(file.Get(kWindowMaximized), false)};
 		}
 
-		for (const std::string& key : file.GetKeys())
+		for (const std::string& key : file.CollectKeys())
 		{
 			if (key.size() <= kPanelPrefix.size() + kPanelSuffix.size() ||
 				!key.starts_with(kPanelPrefix) || !key.ends_with(kPanelSuffix))

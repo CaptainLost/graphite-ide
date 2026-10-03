@@ -120,7 +120,7 @@ namespace Graphite {
 			return m_SelectedFile;
 		}
 
-		const std::optional<Solution>& LoadedSolution() const
+		const std::optional<Solution>& GetLoadedSolution() const
 		{
 			return m_Solution;
 		}

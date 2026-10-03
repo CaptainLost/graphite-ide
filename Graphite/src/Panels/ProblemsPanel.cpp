@@ -92,7 +92,7 @@ namespace Graphite {
 		// per row: every row this frame draws from the same colours.
 		const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
-		for (const auto& [path, entry] : m_Diagnostics.Documents())
+		for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
 		{
 			if (entry.Items.empty() || !isOpenDocument(path))
 			{

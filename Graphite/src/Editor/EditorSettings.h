@@ -55,8 +55,8 @@ namespace Graphite {
 		// The git change markers, in the gutter (with the tooltip over them) and on the
 		// scrollbar. Two switches because they are two places on screen; the tooltip has no
 		// switch of its own, since without the gutter's marks there is nothing to hover.
-		bool ShowsGutterChangeMarkers() const { return m_GutterChangeMarkers; }
-		bool ShowsScrollbarChangeMarkers() const { return m_ScrollbarChangeMarkers; }
+		bool HasGutterChangeMarkers() const { return m_GutterChangeMarkers; }
+		bool HasScrollbarChangeMarkers() const { return m_ScrollbarChangeMarkers; }
 
 		void SetGutterChangeMarkers(bool show);
 		void SetScrollbarChangeMarkers(bool show);

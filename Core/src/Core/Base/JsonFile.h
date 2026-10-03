@@ -36,7 +36,7 @@ namespace Core {
 
 		std::size_t GetCount() const;
 
-		std::vector<std::string> GetKeys() const;
+		std::vector<std::string> CollectKeys() const;
 
 		// True when Load found a file holding something other than a JSON object - a typo in a
 		// hand edit, say. It reads as empty like a missing file, but unlike a missing or blank one

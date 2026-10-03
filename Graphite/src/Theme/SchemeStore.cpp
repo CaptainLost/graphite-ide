@@ -118,7 +118,7 @@ namespace Graphite {
 					 json.Get("base"));
 		}
 
-		for (const std::string& key : json.GetKeys())
+		for (const std::string& key : json.CollectKeys())
 		{
 			if (key == "base")
 			{

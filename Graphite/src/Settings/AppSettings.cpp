@@ -164,7 +164,7 @@ namespace Graphite {
 	{
 		Snapshot snapshot;
 
-		for (const std::string& key : document.GetKeys())
+		for (const std::string& key : document.CollectKeys())
 		{
 			snapshot.emplace(key, document.Get(key));
 		}
@@ -203,7 +203,7 @@ namespace Graphite {
 		Set(kIgnoredDisplayKey, std::string{mode});
 	}
 
-	bool AppSettings::GetExplorerFollowsActiveFile() const
+	bool AppSettings::IsExplorerFollowingActiveFile() const
 	{
 		return ReadFlag(Get(kExplorerFollowsActiveFileKey), true);
 	}
@@ -233,7 +233,7 @@ namespace Graphite {
 		Set(kEditorFontSizeKey, std::to_string(size));
 	}
 
-	bool AppSettings::GetIndentWithSpaces() const
+	bool AppSettings::IsIndentingWithSpaces() const
 	{
 		return ReadFlag(Get(kIndentWithSpacesKey), true);
 	}
@@ -253,7 +253,7 @@ namespace Graphite {
 		Set(kIndentWidthKey, std::to_string(width));
 	}
 
-	bool AppSettings::GetWordWrap() const
+	bool AppSettings::IsWordWrapEnabled() const
 	{
 		return ReadFlag(Get(kWordWrapKey), false);
 	}
@@ -265,7 +265,7 @@ namespace Graphite {
 
 	// Both default on: a file that predates the switches, and so has neither key, keeps showing
 	// the markers it always showed.
-	bool AppSettings::GetGutterChangeMarkers() const
+	bool AppSettings::HasGutterChangeMarkers() const
 	{
 		return ReadFlag(Get(kGutterChangeMarkersKey), true);
 	}
@@ -275,7 +275,7 @@ namespace Graphite {
 		Set(kGutterChangeMarkersKey, Flag(show));
 	}
 
-	bool AppSettings::GetScrollbarChangeMarkers() const
+	bool AppSettings::HasScrollbarChangeMarkers() const
 	{
 		return ReadFlag(Get(kScrollbarChangeMarkersKey), true);
 	}
@@ -285,7 +285,7 @@ namespace Graphite {
 		Set(kScrollbarChangeMarkersKey, Flag(show));
 	}
 
-	bool AppSettings::GetHoverInfo() const
+	bool AppSettings::IsHoverInfoEnabled() const
 	{
 		return ReadFlag(Get(kHoverInfoKey), true);
 	}
@@ -315,7 +315,7 @@ namespace Graphite {
 		Set(kHoverDelayKey, std::to_string(ms));
 	}
 
-	bool AppSettings::GetSearchRespectGitIgnore() const
+	bool AppSettings::IsSearchRespectingGitIgnore() const
 	{
 		return ReadFlag(Get(kSearchRespectGitIgnoreKey), true);
 	}
@@ -325,7 +325,7 @@ namespace Graphite {
 		Set(kSearchRespectGitIgnoreKey, Flag(respect));
 	}
 
-	bool AppSettings::GetSearchProjectsOnly() const
+	bool AppSettings::IsSearchProjectsOnly() const
 	{
 		return ReadFlag(Get(kSearchProjectsOnlyKey), false);
 	}
@@ -335,7 +335,7 @@ namespace Graphite {
 		Set(kSearchProjectsOnlyKey, Flag(projectsOnly));
 	}
 
-	bool AppSettings::GetBackgroundAnalysis() const
+	bool AppSettings::IsBackgroundAnalysisEnabled() const
 	{
 		// Absent means on: the feature is the default, and a settings file written before it
 		// existed must not read as a decision to switch it off.
@@ -403,7 +403,7 @@ namespace Graphite {
 	{
 		std::vector<std::pair<std::string, std::string>> prices;
 
-		for (const std::string& key : m_Document.GetKeys())
+		for (const std::string& key : m_Document.CollectKeys())
 		{
 			if (!std::string_view{key}.starts_with(kClaudePricePrefix))
 			{
@@ -434,7 +434,7 @@ namespace Graphite {
 
 	void AppSettings::ApplyKeyBindings(Core::Keymap& keys) const
 	{
-		for (const std::string& key : m_Document.GetKeys())
+		for (const std::string& key : m_Document.CollectKeys())
 		{
 			if (!std::string_view{key}.starts_with(kKeyBindingPrefix))
 			{

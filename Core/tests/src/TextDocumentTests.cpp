@@ -85,7 +85,7 @@ TEST_CASE("A plain LF file loads as it is")
 
 	CHECK(document.GetBuffer().Materialize() == "one\ntwo\n");
 	CHECK(document.GetDocumentLineEnding() == LineEnding::Lf);
-	CHECK_FALSE(document.WasMixed());
+	CHECK_FALSE(document.HasMixedLineEndings());
 	CHECK(document.GetFileEncoding() == Encoding::Utf8);
 	CHECK_FALSE(document.IsReadOnly());
 }
@@ -119,7 +119,7 @@ TEST_CASE("A file with both styles takes the majority and says it was mixed")
 	const TextDocument document = Make("a\r\nb\r\nc\r\nd\ne\r\n");
 
 	CHECK(document.GetDocumentLineEnding() == LineEnding::Crlf);
-	CHECK(document.WasMixed());
+	CHECK(document.HasMixedLineEndings());
 
 	// Saving unifies, which is why the status bar has to show it beforehand.
 	CHECK(document.EncodeToBytes() == "a\r\nb\r\nc\r\nd\r\ne\r\n");
@@ -130,7 +130,7 @@ TEST_CASE("A mostly-LF file with one CRLF takes LF")
 	const TextDocument document = Make("a\nb\nc\r\nd\n");
 
 	CHECK(document.GetDocumentLineEnding() == LineEnding::Lf);
-	CHECK(document.WasMixed());
+	CHECK(document.HasMixedLineEndings());
 }
 
 TEST_CASE("A file with no line break at all is LF")
@@ -138,7 +138,7 @@ TEST_CASE("A file with no line break at all is LF")
 	const TextDocument document = Make("no newline here");
 
 	CHECK(document.GetDocumentLineEnding() == LineEnding::Lf);
-	CHECK_FALSE(document.WasMixed());
+	CHECK_FALSE(document.HasMixedLineEndings());
 	CHECK(document.EncodeToBytes() == "no newline here");
 }
 

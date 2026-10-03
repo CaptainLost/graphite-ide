@@ -57,7 +57,7 @@ namespace Graphite {
 		void SetGitIgnoredDisplay(std::string_view mode);
 
 		// Whether the explorer opens its folders to whichever document becomes active.
-		bool GetExplorerFollowsActiveFile() const;
+		bool IsExplorerFollowingActiveFile() const;
 		void SetExplorerFollowsActiveFile(bool follow);
 
 		// In percent of the size the system asks for; 100 when nothing usable is stored.
@@ -67,22 +67,22 @@ namespace Graphite {
 		float GetEditorFontSize() const;
 		void SetEditorFontSize(float size);
 
-		bool GetIndentWithSpaces() const;
+		bool IsIndentingWithSpaces() const;
 		void SetIndentWithSpaces(bool useSpaces);
 
 		std::size_t GetIndentWidth() const;
 		void SetIndentWidth(std::size_t width);
 
-		bool GetWordWrap() const;
+		bool IsWordWrapEnabled() const;
 		void SetWordWrap(bool wrap);
 
-		bool GetGutterChangeMarkers() const;
+		bool HasGutterChangeMarkers() const;
 		void SetGutterChangeMarkers(bool show);
 
-		bool GetScrollbarChangeMarkers() const;
+		bool HasScrollbarChangeMarkers() const;
 		void SetScrollbarChangeMarkers(bool show);
 
-		bool GetHoverInfo() const;
+		bool IsHoverInfoEnabled() const;
 		void SetHoverInfo(bool show);
 
 		// The definition-preview mode as the word it is stored as; EditorSettings owns what the
@@ -93,17 +93,17 @@ namespace Graphite {
 		int GetHoverDelayMs() const;
 		void SetHoverDelayMs(int ms);
 
-		bool GetSearchRespectGitIgnore() const;
+		bool IsSearchRespectingGitIgnore() const;
 		void SetSearchRespectGitIgnore(bool respect);
 
-		bool GetSearchProjectsOnly() const;
+		bool IsSearchProjectsOnly() const;
 		void SetSearchProjectsOnly(bool projectsOnly);
 
 		// Whether the workspace is analysed ahead of being read. See WorkspaceAnalysis for
 		// what that costs; the switch exists because the cost is a processor working through
 		// a tree nobody asked it to, which on a small machine or an enormous repository is a
 		// fair thing to decline.
-		bool GetBackgroundAnalysis() const;
+		bool IsBackgroundAnalysisEnabled() const;
 		void SetBackgroundAnalysis(bool enabled);
 
 		// How much analysis may be kept, in megabytes. Megabytes because that is the unit the

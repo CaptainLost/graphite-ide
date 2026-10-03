@@ -39,7 +39,7 @@ namespace Core {
 
 		LineEnding GetDocumentLineEnding() const { return m_LineEnding; }
 
-		bool WasMixed() const { return m_WasMixed; }
+		bool HasMixedLineEndings() const { return m_WasMixed; }
 
 		bool IsReadOnly() const { return m_ReadOnly; }
 

@@ -14,7 +14,7 @@ TEST_CASE("The first usage a request sees is adopted and added to the total")
 	CHECK(request.Add({10, 5, 0, 0, 100}, &total));
 
 	CHECK(request.HasUsage());
-	CHECK(request.Counts() == TokenCounts{10, 5, 0, 0, 100});
+	CHECK(request.GetCounts() == TokenCounts{10, 5, 0, 0, 100});
 	CHECK(total == TokenCounts{11, 6, 0, 0, 100});
 }
 
@@ -26,7 +26,7 @@ TEST_CASE("A later record keeps the larger count per bucket and corrects the tot
 	request.Add({10, 2, 0, 0, 100}, &total);
 	CHECK(request.Add({10, 30, 0, 0, 90}, &total));
 
-	CHECK(request.Counts() == TokenCounts{10, 30, 0, 0, 100});
+	CHECK(request.GetCounts() == TokenCounts{10, 30, 0, 0, 100});
 	CHECK(total == TokenCounts{10, 30, 0, 0, 100});
 }
 
@@ -48,7 +48,7 @@ TEST_CASE("An accumulator resumed from counts merges into them without touching 
 
 	CHECK(request.HasUsage());
 	CHECK(request.Add({1, 9, 0, 0, 0}));
-	CHECK(request.Counts() == TokenCounts{4, 9, 0, 0, 0});
+	CHECK(request.GetCounts() == TokenCounts{4, 9, 0, 0, 0});
 }
 
 TEST_CASE("A request whose first usage is all zero still counts as having usage")
@@ -58,7 +58,7 @@ TEST_CASE("A request whose first usage is all zero still counts as having usage"
 	CHECK(request.Add({}));
 	CHECK(request.HasUsage());
 	CHECK(request.Add({0, 3, 0, 0, 0}));
-	CHECK(request.Counts().Output == 3);
+	CHECK(request.GetCounts().Output == 3);
 }
 
 TEST_CASE("Count accessors read integers and give a missing, negative or mistyped field nothing")

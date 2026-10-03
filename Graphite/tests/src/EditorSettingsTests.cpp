@@ -108,8 +108,8 @@ TEST_CASE("EditorSettings shows both kinds of change marker by default")
 	TempAppSettings store;
 	const Graphite::EditorSettings settings{store.Get()};
 
-	CHECK(settings.ShowsGutterChangeMarkers());
-	CHECK(settings.ShowsScrollbarChangeMarkers());
+	CHECK(settings.HasGutterChangeMarkers());
+	CHECK(settings.HasScrollbarChangeMarkers());
 }
 
 TEST_CASE("EditorSettings turns each kind of change marker off on its own")
@@ -118,16 +118,16 @@ TEST_CASE("EditorSettings turns each kind of change marker off on its own")
 	Graphite::EditorSettings settings{store.Get()};
 
 	settings.SetGutterChangeMarkers(false);
-	CHECK_FALSE(settings.ShowsGutterChangeMarkers());
-	CHECK(settings.ShowsScrollbarChangeMarkers());
+	CHECK_FALSE(settings.HasGutterChangeMarkers());
+	CHECK(settings.HasScrollbarChangeMarkers());
 
 	settings.SetScrollbarChangeMarkers(false);
-	CHECK_FALSE(settings.ShowsScrollbarChangeMarkers());
+	CHECK_FALSE(settings.HasScrollbarChangeMarkers());
 
 	settings.SetGutterChangeMarkers(true);
 	settings.SetScrollbarChangeMarkers(true);
-	CHECK(settings.ShowsGutterChangeMarkers());
-	CHECK(settings.ShowsScrollbarChangeMarkers());
+	CHECK(settings.HasGutterChangeMarkers());
+	CHECK(settings.HasScrollbarChangeMarkers());
 }
 
 TEST_CASE("EditorSettings loads back what it set, after a restart")
@@ -148,8 +148,8 @@ TEST_CASE("EditorSettings loads back what it set, after a restart")
 	CHECK(reloaded.GetFontSize() == doctest::Approx(17.0f));
 	CHECK_FALSE(reloaded.GetIndentStyle().UseSpaces);
 	CHECK(reloaded.GetIndentStyle().Width == 2);
-	CHECK_FALSE(reloaded.ShowsGutterChangeMarkers());
-	CHECK(reloaded.ShowsScrollbarChangeMarkers());
+	CHECK_FALSE(reloaded.HasGutterChangeMarkers());
+	CHECK(reloaded.HasScrollbarChangeMarkers());
 }
 
 TEST_CASE("EditorSettings hover defaults to information on, preview with Ctrl, 500 ms")

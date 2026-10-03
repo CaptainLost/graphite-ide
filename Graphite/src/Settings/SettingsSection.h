@@ -15,7 +15,7 @@ namespace Graphite {
 	// already established: it never calls ImGui::Begin, never knows whether it is docked, and
 	// never knows whether it is visible.
 	//
-	// Deliberately not a Core::Panel. Panel carries window management — visibility, WasDrawn,
+	// Deliberately not a Core::Panel. Panel carries window management — visibility, HasBeenDrawn,
 	// its own Begin and End — and a section must have none of it; nesting one inside another
 	// panel's body would nest ImGui windows.
 	class SettingsSection : Core::NonCopyable

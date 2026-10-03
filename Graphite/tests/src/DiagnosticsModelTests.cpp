@@ -131,7 +131,7 @@ TEST_CASE("A close forgets a document entirely")
 	model.Apply(closed);
 
 	CHECK(model.For(kMain).empty());
-	CHECK(model.Documents().empty());
+	CHECK(model.GetDocuments().empty());
 }
 
 TEST_CASE("A document closed and reopened within one update describes its new life")
@@ -173,13 +173,13 @@ TEST_CASE("Two publications at the same version still move the generation")
 	first.Published.push_back(Published(1, {Error(3, "one")}));
 	model.Apply(first);
 
-	const std::uint64_t firstGeneration = model.Documents().at(kMain).Generation;
+	const std::uint64_t firstGeneration = model.GetDocuments().at(kMain).Generation;
 
 	Graphite::DiagnosticsUpdate second;
 	second.Published.push_back(Published(1, {Error(3, "one"), Error(9, "two")}));
 	model.Apply(second);
 
-	CHECK(model.Documents().at(kMain).Generation != firstGeneration);
+	CHECK(model.GetDocuments().at(kMain).Generation != firstGeneration);
 	CHECK(model.For(kMain).size() == 2);
 }
 
@@ -191,7 +191,7 @@ TEST_CASE("Applying nothing about a document leaves its generation alone")
 	first.Published.push_back(Published(1, {Error(3, "one")}));
 	model.Apply(first);
 
-	const std::uint64_t generation = model.Documents().at(kMain).Generation;
+	const std::uint64_t generation = model.GetDocuments().at(kMain).Generation;
 
 	Graphite::DiagnosticsUpdate other;
 	other.Published.push_back(
@@ -200,7 +200,7 @@ TEST_CASE("Applying nothing about a document leaves its generation alone")
 									   {Error(0, "x")}});
 	model.Apply(other);
 
-	CHECK(model.Documents().at(kMain).Generation == generation);
+	CHECK(model.GetDocuments().at(kMain).Generation == generation);
 }
 
 TEST_CASE("Errors and warnings are counted separately across every document a predicate admits")

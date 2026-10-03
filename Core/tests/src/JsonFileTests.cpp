@@ -233,7 +233,7 @@ TEST_CASE("A moved-from file reads as empty and can be written to again")
 
 	CHECK(original.GetCount() == 0);
 	CHECK(original.Get("a").empty());
-	CHECK(original.GetKeys().empty());
+	CHECK(original.CollectKeys().empty());
 	CHECK_FALSE(original.IsMalformed());
 
 	original.Set("b", "2");
@@ -257,7 +257,7 @@ TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
 	REQUIRE(file.Save(path));
 
 	const JsonFile loaded = JsonFile::Load(path);
-	std::vector<std::string> keys = loaded.GetKeys();
+	std::vector<std::string> keys = loaded.CollectKeys();
 	std::sort(keys.begin(), keys.end());
 
 	REQUIRE(keys.size() == 2);
@@ -267,7 +267,7 @@ TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
 
 TEST_CASE("Keys on an empty file is empty")
 {
-	CHECK(JsonFile{}.GetKeys().empty());
+	CHECK(JsonFile{}.CollectKeys().empty());
 }
 
 TEST_CASE("Remove takes the key out rather than leaving it holding an empty value")
@@ -287,7 +287,7 @@ TEST_CASE("Remove takes the key out rather than leaving it holding an empty valu
 	// Proven through the file too: a key merely blanked would survive the round trip and
 	// every reader would have to keep apologising for it.
 	const JsonFile read = JsonFile::Load(path);
-	CHECK(read.GetKeys() == std::vector<std::string>{"wordWrap"});
+	CHECK(read.CollectKeys() == std::vector<std::string>{"wordWrap"});
 }
 
 TEST_CASE("Removing a key that is not there changes nothing")

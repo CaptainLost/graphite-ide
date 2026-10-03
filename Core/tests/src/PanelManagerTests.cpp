@@ -269,7 +269,7 @@ TEST_CASE("A panel starts out not drawn")
 	Core::PanelManager panels;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
 
-	CHECK_FALSE(files->WasDrawn());
+	CHECK_FALSE(files->HasBeenDrawn());
 }
 
 TEST_CASE("ResetVisibility restores each panel's own default, not everything visible")

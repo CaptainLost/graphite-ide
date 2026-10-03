@@ -80,7 +80,7 @@ namespace Core {
 				return;
 			}
 
-			if (panel->WasDrawn())
+			if (panel->HasBeenDrawn())
 			{
 				panel->OnEvent(event);
 			}

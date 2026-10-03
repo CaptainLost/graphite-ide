@@ -26,11 +26,11 @@ TEST_CASE("AppSettings reads its defaults when there is no file")
 	const Graphite::AppSettings settings{temp.GetPath() / "graphite.json"};
 
 	CHECK(settings.GetEditorFontSize() == doctest::Approx(0.0f));
-	CHECK(settings.GetIndentWithSpaces());
-	CHECK_FALSE(settings.GetWordWrap());
+	CHECK(settings.IsIndentingWithSpaces());
+	CHECK_FALSE(settings.IsWordWrapEnabled());
 	CHECK(settings.GetInterfaceScalePercent() == 100);
 	CHECK(settings.GetLastFolder().empty());
-	CHECK(settings.GetExplorerFollowsActiveFile());
+	CHECK(settings.IsExplorerFollowingActiveFile());
 }
 
 TEST_CASE("AppSettings keeps what was set across a flush and a reload")
@@ -51,8 +51,8 @@ TEST_CASE("AppSettings keeps what was set across a flush and a reload")
 	const Graphite::AppSettings reloaded{file};
 
 	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(17.0f));
-	CHECK(reloaded.GetWordWrap());
-	CHECK_FALSE(reloaded.GetExplorerFollowsActiveFile());
+	CHECK(reloaded.IsWordWrapEnabled());
+	CHECK_FALSE(reloaded.IsExplorerFollowingActiveFile());
 	CHECK(reloaded.GetColorScheme() == "Light");
 	REQUIRE(reloaded.GetClaudePrices().size() == 1);
 	CHECK(reloaded.GetClaudePrices()[0].first == "opus");
@@ -89,7 +89,7 @@ TEST_CASE("AppSettings keeps a hand edit made while it runs, and reads it back o
 
 	temp.MakeFile("graphite.json", R"({"wordWrap": "0", "colorScheme": "Light"})");
 
-	CHECK(settings.GetWordWrap());
+	CHECK(settings.IsWordWrapEnabled());
 	CHECK(settings.GetColorScheme().empty());
 
 	settings.SetIndentWidth(2);
@@ -101,7 +101,7 @@ TEST_CASE("AppSettings keeps a hand edit made while it runs, and reads it back o
 	CHECK(written.Get("indentWidth") == "2");
 	CHECK(written.Get("colorScheme") == "Light");
 
-	CHECK_FALSE(settings.GetWordWrap());
+	CHECK_FALSE(settings.IsWordWrapEnabled());
 	CHECK(settings.GetColorScheme() == "Light");
 }
 
@@ -141,7 +141,7 @@ TEST_CASE("Two instances on one file keep each other's changes")
 	const Graphite::AppSettings reloaded{file};
 
 	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(17.0f));
-	CHECK(reloaded.GetWordWrap());
+	CHECK(reloaded.IsWordWrapEnabled());
 }
 
 // A directory where the file should be makes the write fail. The change stays unwritten, so
@@ -158,7 +158,7 @@ TEST_CASE("AppSettings keeps a change whose write failed and writes it on the ne
 	std::filesystem::remove(file);
 	settings.Flush();
 
-	CHECK(Graphite::AppSettings{file}.GetWordWrap());
+	CHECK(Graphite::AppSettings{file}.IsWordWrapEnabled());
 }
 
 // The rule JsonFile::Load has always had: a file that does not parse reads as an empty one.
@@ -172,8 +172,8 @@ TEST_CASE("AppSettings reads a corrupt file as defaults and leaves it as it was"
 
 	Graphite::AppSettings settings{file};
 
-	CHECK_FALSE(settings.GetWordWrap());
-	CHECK(settings.GetIndentWithSpaces());
+	CHECK_FALSE(settings.IsWordWrapEnabled());
+	CHECK(settings.IsIndentingWithSpaces());
 
 	settings.Flush();
 
@@ -222,7 +222,7 @@ TEST_CASE("AppSettings never writes over a file a newer version wrote")
 
 	Graphite::AppSettings settings{file};
 
-	CHECK(settings.GetWordWrap());
+	CHECK(settings.IsWordWrapEnabled());
 
 	settings.SetWordWrap(false);
 	settings.Flush();
@@ -299,12 +299,12 @@ TEST_CASE("AppSettings keeps every setting when the file vanished while it ran")
 	settings.SetIndentWidth(2);
 	settings.Flush();
 
-	CHECK(settings.GetWordWrap());
+	CHECK(settings.IsWordWrapEnabled());
 	CHECK(settings.GetColorScheme() == "Light");
 
 	const Graphite::AppSettings reloaded{file};
 
-	CHECK(reloaded.GetWordWrap());
+	CHECK(reloaded.IsWordWrapEnabled());
 	CHECK(reloaded.GetColorScheme() == "Light");
 	CHECK(reloaded.GetIndentWidth() == 2);
 }
@@ -322,12 +322,12 @@ TEST_CASE("AppSettings keeps every setting when the file was emptied while it ra
 	settings.SetIndentWidth(2);
 	settings.Flush();
 
-	CHECK(settings.GetWordWrap());
+	CHECK(settings.IsWordWrapEnabled());
 	CHECK(settings.GetColorScheme() == "Light");
 
 	const Graphite::AppSettings reloaded{file};
 
-	CHECK(reloaded.GetWordWrap());
+	CHECK(reloaded.IsWordWrapEnabled());
 	CHECK(reloaded.GetColorScheme() == "Light");
 	CHECK(reloaded.GetIndentWidth() == 2);
 }

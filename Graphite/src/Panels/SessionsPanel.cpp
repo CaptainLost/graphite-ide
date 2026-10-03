@@ -259,7 +259,7 @@ namespace Graphite {
 		{
 			// A session window restored from the last launch needs the index to find its
 			// transcript, whether or not this list has been shown yet.
-			if (!WasDrawn() && !m_Windows.IsLookingForSessions())
+			if (!HasBeenDrawn() && !m_Windows.IsLookingForSessions())
 			{
 				return;
 			}

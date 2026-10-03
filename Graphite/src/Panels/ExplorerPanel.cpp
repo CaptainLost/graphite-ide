@@ -123,7 +123,7 @@ namespace Graphite {
 		// A value, not a reference: the false branch below is a temporary that a const
 		// reference would be left dangling on.
 		const std::filesystem::path loaded =
-			m_Workspace.LoadedSolution() ? m_Workspace.LoadedSolution()->Path : std::filesystem::path{};
+			m_Workspace.GetLoadedSolution() ? m_Workspace.GetLoadedSolution()->Path : std::filesystem::path{};
 
 		ImGui::SetNextItemWidth(-1.0f);
 
@@ -148,7 +148,7 @@ namespace Graphite {
 	void ExplorerPanel::LoadSettings()
 	{
 		Apply(GitIgnoredDisplayFromString(m_AppSettings.GetGitIgnoredDisplay()), false);
-		ApplyFollowsActiveFile(m_AppSettings.GetExplorerFollowsActiveFile(), false);
+		ApplyFollowsActiveFile(m_AppSettings.IsExplorerFollowingActiveFile(), false);
 	}
 
 	void ExplorerPanel::RegisterCommands(Core::CommandRegistry& commands)

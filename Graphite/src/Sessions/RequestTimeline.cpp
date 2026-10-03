@@ -273,7 +273,7 @@ namespace Graphite {
 				if (counted.Add(*record.Usage))
 				{
 					const std::uint64_t context = request->Context;
-					ApplyUsage(*request, index, counted.Counts());
+					ApplyUsage(*request, index, counted.GetCounts());
 					m_HasUsage[index] = true;
 					changed = true;
 

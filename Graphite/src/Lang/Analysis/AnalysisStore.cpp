@@ -302,7 +302,7 @@ namespace Graphite {
 
 		const std::uint32_t count = reader.TakeU32();
 
-		for (std::uint32_t index = 0; index < count && !reader.Failed(); ++index)
+		for (std::uint32_t index = 0; index < count && !reader.HasFailed(); ++index)
 		{
 			const std::string path = reader.TakeString();
 
@@ -312,7 +312,7 @@ namespace Graphite {
 
 			// Inserted only once the reader is known to have had the bytes for all three, so a
 			// count claiming more than is there cannot fill this map with empty paths.
-			if (!reader.Failed())
+			if (!reader.HasFailed())
 			{
 				entries.emplace(Core::FromUtf8(path), std::move(entry));
 			}

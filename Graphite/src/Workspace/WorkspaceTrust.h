@@ -41,10 +41,10 @@ namespace Graphite {
 		// Removes the entry naming `entry`, however it is spelled, and writes the file.
 		void Revoke(const std::filesystem::path& entry);
 
-		const std::vector<std::filesystem::path>& Entries() const { return m_Entries; }
+		const std::vector<std::filesystem::path>& GetEntries() const { return m_Entries; }
 
 		// Moves on every change, so a reader can notice one with a single compare per frame.
-		std::uint64_t Revision() const { return m_Revision; }
+		std::uint64_t GetRevision() const { return m_Revision; }
 
 	private:
 		void Save() const;

@@ -22,7 +22,7 @@ TEST_CASE("Without wrapping every line is one row")
 	RowMap rows;
 	rows.Rebuild(buffer, 80, 4);
 
-	CHECK(rows.TotalRows() == 3);
+	CHECK(rows.GetTotalRows() == 3);
 	CHECK(rows.FirstRowOf(0) == 0);
 	CHECK(rows.FirstRowOf(2) == 2);
 	CHECK(rows.RowAt(1).Line == 1);
@@ -39,7 +39,7 @@ TEST_CASE("A wrapped line occupies as many rows as it has breaks plus one")
 	// Ten columns at four per row: rows at columns 0, 4 and 8.
 	CHECK(rows.RowsOf(0) == 3);
 	CHECK(rows.RowsOf(1) == 1);
-	CHECK(rows.TotalRows() == 4);
+	CHECK(rows.GetTotalRows() == 4);
 }
 
 TEST_CASE("A row resolves to its line and its position within it")
@@ -79,7 +79,7 @@ TEST_CASE("Updating one line moves every row after it")
 
 	RowMap rows;
 	rows.Rebuild(buffer, 4, 4);
-	CHECK(rows.TotalRows() == 3);
+	CHECK(rows.GetTotalRows() == 3);
 	CHECK(rows.FirstRowOf(2) == 2);
 
 	// The middle line grows to three rows; the line after it must shift by two.
@@ -89,7 +89,7 @@ TEST_CASE("Updating one line moves every row after it")
 	rows.UpdateLine(buffer, 1);
 
 	CHECK(rows.RowsOf(1) == 3);
-	CHECK(rows.TotalRows() == 5);
+	CHECK(rows.GetTotalRows() == 5);
 	CHECK(rows.FirstRowOf(2) == 4);
 }
 
@@ -104,7 +104,7 @@ TEST_CASE("kNoWrap gives every line exactly one row")
 	RowMap rows;
 	rows.Rebuild(buffer, RowMap::kNoWrap, 4);
 
-	CHECK(rows.TotalRows() == 2);
+	CHECK(rows.GetTotalRows() == 2);
 	CHECK(rows.BreaksOf(0).empty());
 }
 
@@ -116,7 +116,7 @@ TEST_CASE("A line of zero rows is skipped, which is what folding will need")
 	rows.Rebuild(buffer, 80, 4);
 	rows.SetRowsOf(1, 0);
 
-	CHECK(rows.TotalRows() == 2);
+	CHECK(rows.GetTotalRows() == 2);
 	CHECK(rows.RowAt(0).Line == 0);
 	CHECK(rows.RowAt(1).Line == 2);
 }
@@ -132,7 +132,7 @@ TEST_CASE("Two adjacent zero-row lines are both skipped")
 	rows.SetRowsOf(1, 0);
 	rows.SetRowsOf(2, 0);
 
-	CHECK(rows.TotalRows() == 2);
+	CHECK(rows.GetTotalRows() == 2);
 	CHECK(rows.RowAt(0).Line == 0);
 	CHECK(rows.RowAt(1).Line == 3);
 	CHECK(rows.FirstRowOf(3) == 1);
@@ -148,7 +148,7 @@ TEST_CASE("A zero-row first line does not claim row zero")
 	rows.Rebuild(buffer, 80, 4);
 	rows.SetRowsOf(0, 0);
 
-	CHECK(rows.TotalRows() == 1);
+	CHECK(rows.GetTotalRows() == 1);
 	CHECK(rows.RowAt(0).Line == 1);
 	CHECK(rows.RowAt(0).SubRow == 0);
 	CHECK(rows.FirstRowOf(1) == 0);

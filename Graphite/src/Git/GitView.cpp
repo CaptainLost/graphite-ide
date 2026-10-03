@@ -67,7 +67,7 @@ namespace Graphite {
 		// Begin is what hands the gate back, and it runs from OnImGuiRender, which the panel
 		// manager skips for a panel that is hidden or behind another tab - see
 		// ChangesPanel::OnUpdate for why dropping the question is the lesser harm.
-		if (!WasDrawn())
+		if (!HasBeenDrawn())
 		{
 			WithdrawQuestions();
 		}

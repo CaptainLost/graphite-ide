@@ -51,7 +51,7 @@ namespace Graphite {
 		DiffScope GetScope() const { return m_Scope; }
 
 		void SetColourSyntax(bool colour) { m_ColourSyntax = colour; }
-		bool GetColourSyntax() const { return m_ColourSyntax; }
+		bool IsSyntaxColoured() const { return m_ColourSyntax; }
 
 		// Set by the pane that draws this view, when opening the diff as a tab is possible.
 		// Empty inside a tab: a tab that could open itself again would make a second copy

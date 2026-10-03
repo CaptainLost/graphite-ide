@@ -6,8 +6,8 @@ namespace Graphite {
 
 	void SearchSettings::Load()
 	{
-		m_Options.RespectGitIgnore = m_Store.GetSearchRespectGitIgnore();
-		m_Options.ProjectsOnly = m_Store.GetSearchProjectsOnly();
+		m_Options.RespectGitIgnore = m_Store.IsSearchRespectingGitIgnore();
+		m_Options.ProjectsOnly = m_Store.IsSearchProjectsOnly();
 	}
 
 	void SearchSettings::SetRespectGitIgnore(bool respect)

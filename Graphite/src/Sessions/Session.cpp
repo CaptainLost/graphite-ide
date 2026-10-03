@@ -131,7 +131,7 @@ namespace Graphite {
 				request = {record.Model, record.Fast, {}};
 				RequestUsageAccumulator counted;
 				counted.Add(*record.Usage, &turn.Usage[{record.Model, record.Fast}]);
-				request.Usage = counted.Counts();
+				request.Usage = counted.GetCounts();
 
 				if (!key.empty())
 				{
@@ -144,7 +144,7 @@ namespace Graphite {
 				RequestUsage& request = owner.Requests[key];
 				RequestUsageAccumulator counted{request.Usage};
 				counted.Add(*record.Usage, &owner.Usage[{request.Model, request.Fast}]);
-				request.Usage = counted.Counts();
+				request.Usage = counted.GetCounts();
 			}
 		}
 

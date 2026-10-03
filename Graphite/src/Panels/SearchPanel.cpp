@@ -104,11 +104,11 @@ namespace Graphite {
 		// with the checkbox greyed out because no solution is open — a dead search with no way
 		// out of it short of editing the settings file. Without a solution, walk the folder.
 		request.Options.ProjectsOnly =
-			request.Options.ProjectsOnly && m_Workspace.LoadedSolution().has_value();
+			request.Options.ProjectsOnly && m_Workspace.GetLoadedSolution().has_value();
 
 		if (request.Options.ProjectsOnly)
 		{
-			EnumerateProjectFiles(*m_Workspace.LoadedSolution(),
+			EnumerateProjectFiles(*m_Workspace.GetLoadedSolution(),
 								  [&request](const std::filesystem::path& file) { request.ProjectFiles.push_back(file); });
 		}
 

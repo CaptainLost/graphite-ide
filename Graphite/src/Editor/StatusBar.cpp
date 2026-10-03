@@ -184,7 +184,7 @@ namespace Graphite {
 			const std::string encoding{Core::EncodingName(item.Document->GetFileEncoding())};
 
 			return encoding + "    " +
-				   LineEndingName(item.Document->GetDocumentLineEnding(), item.Document->WasMixed());
+				   LineEndingName(item.Document->GetDocumentLineEnding(), item.Document->HasMixedLineEndings());
 		}
 	}
 
