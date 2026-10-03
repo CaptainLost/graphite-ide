@@ -199,7 +199,7 @@ namespace Graphite {
 
 			// Two asks about one row are one question: a second click on a discard button the
 			// reader has not answered yet must not queue a duplicate behind the first.
-			bool operator==(const DiscardQuestion& other) const
+			bool IsSameQuestion(const DiscardQuestion& other) const
 			{
 				return Subject == other.Subject;
 			}

@@ -90,7 +90,7 @@ namespace Graphite {
 			// The checkbox's starting state - ticked, and locked, when an untracked file blocks.
 			bool IncludeUntracked = false;
 
-			bool operator==(const CheckoutQuestionPayload& other) const { return Target == other.Target; }
+			bool IsSameQuestion(const CheckoutQuestionPayload& other) const { return Target == other.Target; }
 		};
 
 		enum class BranchNameMode
@@ -116,7 +116,7 @@ namespace Graphite {
 			std::array<char, 256> Buffer{};
 			bool CheckoutAfter = true;
 
-			bool operator==(const BranchNamePayload& other) const
+			bool IsSameQuestion(const BranchNamePayload& other) const
 			{
 				return Mode == other.Mode && From == other.From && At == other.At;
 			}
@@ -129,7 +129,7 @@ namespace Graphite {
 			// Commits only this branch reaches, which the delete would leave without a name.
 			std::size_t Unmerged = 0;
 
-			bool operator==(const DeleteBranchPayload& other) const { return Branch == other.Branch; }
+			bool IsSameQuestion(const DeleteBranchPayload& other) const { return Branch == other.Branch; }
 		};
 
 		struct DropStashPayload
@@ -137,7 +137,7 @@ namespace Graphite {
 			std::size_t Index = 0;
 			Core::Oid Id;
 
-			bool operator==(const DropStashPayload& other) const { return Id == other.Id; }
+			bool IsSameQuestion(const DropStashPayload& other) const { return Id == other.Id; }
 		};
 
 		// The three lists down the refs column, each under a heading that folds it away:

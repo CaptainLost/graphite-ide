@@ -56,12 +56,13 @@ namespace Graphite {
 
 		bool Asked(const Payload& payload) const
 		{
-			if (m_Current && *m_Current == payload)
+			if (m_Current && IsSameQuestion(*m_Current, payload))
 			{
 				return true;
 			}
 
-			return std::find(m_Queue.begin(), m_Queue.end(), payload) != m_Queue.end();
+			return std::any_of(m_Queue.begin(), m_Queue.end(),
+							   [&payload](const Payload& queued) { return IsSameQuestion(queued, payload); });
 		}
 
 		const Payload* GetCurrent() const
@@ -141,6 +142,21 @@ namespace Graphite {
 		}
 
 	private:
+		// Two payloads ask one question when the payload says so through IsSameQuestion, and
+		// otherwise when they are equal. A payload carrying more than its identity - a plan, the
+		// text it shows - names that rule rather than bending operator== to compare part of it.
+		static bool IsSameQuestion(const Payload& left, const Payload& right)
+		{
+			if constexpr (requires { { left.IsSameQuestion(right) } -> std::convertible_to<bool>; })
+			{
+				return left.IsSameQuestion(right);
+			}
+			else
+			{
+				return left == right;
+			}
+		}
+
 		bool BeginNamed(const char* name)
 		{
 			if (ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
