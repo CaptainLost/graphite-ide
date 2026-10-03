@@ -87,8 +87,10 @@ answer.
   lie above the folder, so the folder cannot be what it is judged against.
   No terminal starts on its own, neither the saved ones nor the default one
   (`PlanTerminalRestore` returns an empty plan and `OpensDefaultTerminal` is
-  false). A terminal the user starts by hand, from View > New Terminal or the
-  like, works. Trust is read once at that moment: trusting the folder later in
+  false). The saved list is written back as stored (`HeldBackTerminals`), so
+  the folder keeps its terminals for when it is trusted. A terminal the user
+  starts by hand, from View > New Terminal or the like, works, and from then
+  on what is open is saved. Trust is read once at that moment: trusting the folder later in
   the session restores and starts nothing that was held back. A trusted
   folder restores as before, tabs outside it included.
 - Build, run and debug must ask `WorkspaceTrust` before they start anything,
@@ -113,7 +115,13 @@ frictionless and keeps the choice visible and reversible.
   have one place to ask.
 - The folder's own `.graphite/workspace.json` can no longer open files outside
   the folder or start a shell, such as WSL or Git Bash, that nobody asked for.
-- Trusting and revoking act at once, with no restart and no reopening of tabs.
+  Containment is lexical, so a junction or symlink inside the folder can still
+  lead out of it, and a repository's own configuration can point its working
+  directory elsewhere (`core.worktree`), against which diffs are read. Both only
+  display content locally, and Git is not gated in restricted mode.
+- Trusting and revoking start and stop the language server and the analysis at
+  once, with no restart. Trust granted mid-session does not bring back what
+  restricted mode held back at restore.
 - Trust is granted by the user's action in the interface, never by the contents
   of the folder being opened.
 
@@ -135,9 +143,11 @@ frictionless and keeps the choice visible and reversible.
   every folder until the user trusts them again.
 - A build older than the file's version leaves it alone, so trust granted in
   that build is lost when the list is next written by a newer one.
-- A restricted session drops the tabs and terminals it skipped from
-  `workspace.json` at its next save, so a folder trusted later opens without
-  its former terminals and outside tabs.
+- A restricted session drops the tabs outside the folder, and the diffs, it
+  skipped from `workspace.json` at its next save, about two seconds after the
+  folder opens, so a folder trusted later opens without them. Its saved
+  terminals are kept as stored, unless the user starts a terminal by hand in
+  that session; then what is open is saved, as in a trusted folder.
 - Trusting a folder during a session does not bring back what restricted mode
   held back; the user reopens it, or reopens the folder.
 
