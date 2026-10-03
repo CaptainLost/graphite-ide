@@ -14,7 +14,7 @@ namespace Core {
 	{
 	public:
 		UniqueHandle() = default;
-		explicit UniqueHandle(void* handle) noexcept : m_Handle(Normalise(handle)) {}
+		explicit UniqueHandle(void* handle) : m_Handle(Normalise(handle)) {}
 
 		UniqueHandle(const UniqueHandle&) = delete;
 		UniqueHandle& operator=(const UniqueHandle&) = delete;
@@ -33,18 +33,18 @@ namespace Core {
 
 		~UniqueHandle() { Reset(); }
 
-		void* Get() const noexcept { return m_Handle; }
-		explicit operator bool() const noexcept { return m_Handle != nullptr; }
+		void* Get() const { return m_Handle; }
+		explicit operator bool() const { return m_Handle != nullptr; }
 
 		// Gives the handle up without closing it; the caller owns it from here.
-		[[nodiscard]] void* Release() noexcept { return std::exchange(m_Handle, nullptr); }
+		void* Release() { return std::exchange(m_Handle, nullptr); }
 
 		// Closes what is held, then takes ownership of the new handle. Closing overwrites the
 		// thread's last error, so a caller about to report one must read it first.
-		void Reset(void* handle = nullptr) noexcept;
+		void Reset(void* handle = nullptr);
 
 	private:
-		static void* Normalise(void* handle) noexcept
+		static void* Normalise(void* handle)
 		{
 			// INVALID_HANDLE_VALUE, written out so this header needs no <windows.h>.
 			return handle == reinterpret_cast<void*>(static_cast<std::intptr_t>(-1)) ? nullptr : handle;

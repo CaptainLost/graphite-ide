@@ -37,7 +37,7 @@ namespace Graphite {
 		//
 		// Evicts only when the key is absent: that is the only case that grows the map, and
 		// evicting for a key already present would drop an unrelated entry for no reason.
-		[[nodiscard]] std::optional<std::uint64_t> Request(const Key& key)
+		std::optional<std::uint64_t> Request(const Key& key)
 		{
 			const auto existing = m_Entries.find(key);
 

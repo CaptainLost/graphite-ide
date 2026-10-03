@@ -29,12 +29,12 @@ namespace Graphite {
 		// Adds the elapsed time, and returns true exactly once per burst - when it has run out
 		// of quiet or hit the cap - after which the debouncer is clean again. Then asks the
 		// frame loop for the frame the remaining debounce runs out on.
-		[[nodiscard]] bool Advance(float seconds);
+		bool Advance(float seconds);
 
 		// Forgets any pending burst, without firing it.
 		void Reset();
 
-		[[nodiscard]] bool IsDirty() const { return m_Dirty; }
+		bool IsDirty() const { return m_Dirty; }
 
 	private:
 		// A mark can come from a result that woke the loop for a few frames only, and the

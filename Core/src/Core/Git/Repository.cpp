@@ -95,7 +95,7 @@ namespace Core {
 		return repository;
 	}
 
-	void Repository::Free::operator()(git_repository* repository) const noexcept
+	void Repository::Free::operator()(git_repository* repository) const
 	{
 		git_repository_free(repository);
 	}

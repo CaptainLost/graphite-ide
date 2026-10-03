@@ -41,7 +41,7 @@ namespace Core {
 
 		// Allocates and initialises room for the given number of attributes. On failure the
 		// thread's last error describes why and nothing is held.
-		[[nodiscard]] bool Initialise(DWORD attributeCount)
+		bool Initialise(DWORD attributeCount)
 		{
 			Destroy(std::exchange(m_List, nullptr));
 
@@ -70,22 +70,22 @@ namespace Core {
 		}
 
 		// The value must outlive every use of the list, as the underlying API requires.
-		[[nodiscard]] bool Update(DWORD_PTR attribute, void* value, SIZE_T size)
+		bool Update(DWORD_PTR attribute, void* value, SIZE_T size)
 		{
 			return ::UpdateProcThreadAttribute(m_List, 0, attribute, value, size, nullptr,
 											   nullptr) != FALSE;
 		}
 
-		LPPROC_THREAD_ATTRIBUTE_LIST Get() const noexcept { return m_List; }
+		LPPROC_THREAD_ATTRIBUTE_LIST Get() const { return m_List; }
 
 		// Gives the list up; the caller must pass it to Destroy exactly once.
-		[[nodiscard]] LPPROC_THREAD_ATTRIBUTE_LIST Release() noexcept
+		LPPROC_THREAD_ATTRIBUTE_LIST Release()
 		{
 			return std::exchange(m_List, nullptr);
 		}
 
 		// Deletes and frees a list that Initialise produced. Null is accepted.
-		static void Destroy(LPPROC_THREAD_ATTRIBUTE_LIST list) noexcept
+		static void Destroy(LPPROC_THREAD_ATTRIBUTE_LIST list)
 		{
 			if (list != nullptr)
 			{
@@ -123,17 +123,17 @@ namespace Core {
 		~UniquePseudoConsole() { Close(m_Console); }
 
 		// Receives the console CreatePseudoConsole produces; anything held before is closed.
-		HPCON* Receive() noexcept
+		HPCON* Receive()
 		{
 			Close(std::exchange(m_Console, nullptr));
 			return &m_Console;
 		}
 
-		HPCON Get() const noexcept { return m_Console; }
-		[[nodiscard]] HPCON Release() noexcept { return std::exchange(m_Console, nullptr); }
+		HPCON Get() const { return m_Console; }
+		HPCON Release() { return std::exchange(m_Console, nullptr); }
 
 	private:
-		static void Close(HPCON console) noexcept
+		static void Close(HPCON console)
 		{
 			if (console != nullptr)
 			{

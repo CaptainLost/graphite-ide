@@ -31,18 +31,18 @@ namespace Core {
 	// One overload per type, each calling that type's git_xxx_free.
 	struct Libgit2Free
 	{
-		void operator()(git_blob* blob) const noexcept;
-		void operator()(git_branch_iterator* iterator) const noexcept;
-		void operator()(git_commit* commit) const noexcept;
-		void operator()(git_diff* diff) const noexcept;
-		void operator()(git_index* index) const noexcept;
-		void operator()(git_object* object) const noexcept;
-		void operator()(git_reference* reference) const noexcept;
-		void operator()(git_revwalk* walk) const noexcept;
-		void operator()(git_signature* signature) const noexcept;
-		void operator()(git_status_list* list) const noexcept;
-		void operator()(git_tree* tree) const noexcept;
-		void operator()(git_tree_entry* entry) const noexcept;
+		void operator()(git_blob* blob) const;
+		void operator()(git_branch_iterator* iterator) const;
+		void operator()(git_commit* commit) const;
+		void operator()(git_diff* diff) const;
+		void operator()(git_index* index) const;
+		void operator()(git_object* object) const;
+		void operator()(git_reference* reference) const;
+		void operator()(git_revwalk* walk) const;
+		void operator()(git_signature* signature) const;
+		void operator()(git_status_list* list) const;
+		void operator()(git_tree* tree) const;
+		void operator()(git_tree_entry* entry) const;
 	};
 
 	using BlobHandle = std::unique_ptr<git_blob, Libgit2Free>;
@@ -68,14 +68,14 @@ namespace Core {
 	class OutHandle
 	{
 	public:
-		explicit OutHandle(Handle& handle) noexcept : m_Handle(handle) {}
+		explicit OutHandle(Handle& handle) : m_Handle(handle) {}
 
 		OutHandle(const OutHandle&) = delete;
 		OutHandle& operator=(const OutHandle&) = delete;
 
 		~OutHandle() { m_Handle.reset(m_Raw); }
 
-		operator typename Handle::pointer*() noexcept { return &m_Raw; }
+		operator typename Handle::pointer*() { return &m_Raw; }
 
 	private:
 		Handle& m_Handle;
@@ -83,7 +83,7 @@ namespace Core {
 	};
 
 	template<typename Handle>
-	OutHandle<Handle> Out(Handle& handle) noexcept
+	OutHandle<Handle> Out(Handle& handle)
 	{
 		return OutHandle<Handle>(handle);
 	}

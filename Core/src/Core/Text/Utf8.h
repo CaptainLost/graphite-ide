@@ -20,7 +20,7 @@ namespace Core {
 	// invalid input it returns nothing and moves offset past the longest prefix that could
 	// still have begun a valid character (at least one byte), so the byte that broke a
 	// sequence is read again as the start of the next one. Precondition: offset < bytes.size().
-	[[nodiscard]] std::optional<char32_t> DecodeUtf8(std::string_view bytes, std::size_t& offset);
+	std::optional<char32_t> DecodeUtf8(std::string_view bytes, std::size_t& offset);
 
 	// Appends the UTF-8 form of codePoint. A surrogate or a value above U+10FFFF is not a
 	// character and is written as U+FFFD, so the output is always valid UTF-8.
@@ -50,9 +50,9 @@ namespace Core {
 	class Utf8Decoder
 	{
 	public:
-		[[nodiscard]] Utf8Step Feed(char byte);
+		Utf8Step Feed(char byte);
 
-		[[nodiscard]] bool IsPending() const { return m_Remaining > 0; }
+		bool IsPending() const { return m_Remaining > 0; }
 
 	private:
 		char32_t m_Value = 0;

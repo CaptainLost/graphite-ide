@@ -219,7 +219,7 @@ namespace Core {
 		// no header under Core/Git includes <git2.h>.
 		struct Free
 		{
-			void operator()(git_repository* repository) const noexcept;
+			void operator()(git_repository* repository) const;
 		};
 
 		std::unique_ptr<git_repository, Free> m_Handle;

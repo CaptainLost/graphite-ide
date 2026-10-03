@@ -38,7 +38,7 @@ namespace Graphite {
 	{
 	public:
 		// The generation to send the next query under.
-		[[nodiscard]] std::uint64_t Begin() { return ++m_Requested; }
+		std::uint64_t Begin() { return ++m_Requested; }
 
 		// A failure keeps the last good snapshot: a panel that blanks itself because one
 		// refresh failed is worse than one showing data a second out of date.

@@ -8,7 +8,7 @@
 
 namespace Core {
 
-	void UniqueHandle::Reset(void* handle) noexcept
+	void UniqueHandle::Reset(void* handle)
 	{
 		void* const old = std::exchange(m_Handle, Normalise(handle));
 
