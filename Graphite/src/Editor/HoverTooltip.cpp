@@ -2,6 +2,7 @@
 
 #include "Core/Base/Narrow.h"
 
+#include "Editor/HoverColouring.h"
 #include "Editor/HoverLayout.h"
 #include "Editor/PreviewSemantics.h"
 
@@ -182,34 +183,58 @@ namespace Graphite {
 			return tokens;
 		}
 
-		void DrawDeclaration(std::string_view declaration, const HoverTooltipLook& look,
-							 float maxContentWidth)
+		// `code`, lexed in the hovered document's language, its identifiers coloured as `spansOf`
+		// says — no server colours the tooltip's text — behind a `label` in the text colour, and
+		// wrapped to `maxContentWidth` as the editor's rows would be.
+		template<typename Spans>
+		void DrawCode(std::string_view label, std::string_view code, const Spans& spansOf,
+					  const HoverTooltipLook& look, float maxContentWidth)
 		{
-			const std::string text = Core::ExpandTabs(declaration, look.TabWidth);
-			const std::vector<Token> tokens = LexOne(look.DocumentLexer, text);
-			const std::vector<SemanticSpan> none;
+			const std::string expanded = Core::ExpandTabs(code, look.TabWidth);
+			std::vector<Token> tokens = LexOne(look.DocumentLexer, expanded);
+			std::vector<SemanticSpan> spans = spansOf(std::string_view(expanded), tokens);
+
+			// The label is no code, so it is lexed with none: an arrow or a colon in it would come
+			// out as punctuation or worse. Its tokens and spans are moved past it instead.
+			const std::string text = std::string(label) + expanded;
+
+			for (Token& token : tokens)
+			{
+				token.From += label.size();
+				token.To += label.size();
+			}
+
+			for (SemanticSpan& span : spans)
+			{
+				span.From += label.size();
+				span.To += label.size();
+			}
 
 			const auto columns =
 				static_cast<std::size_t>(std::max(1.0f, maxContentWidth / look.CellWidth));
 
 			std::size_t from = 0;
 
-			// A wrapped declaration's rows butt against each other, as the editor's do: each
-			// Dummy is an ordinary item, and ImGui would otherwise put ItemSpacing.y below it. The
-			// last row is drawn after the pop, so the line that follows the declaration keeps the
-			// usual spacing.
+			// A wrapped line's rows butt against each other, as the editor's do: each Dummy is an
+			// ordinary item, and ImGui would otherwise put ItemSpacing.y below it. The last row is
+			// drawn after the pop, so the line that follows keeps the usual spacing.
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
 								ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
 			for (const std::size_t start : RowStarts(text, columns))
 			{
-				DrawColouredRow(text, tokens, none, from, start, look);
+				DrawColouredRow(text, tokens, spans, from, start, look);
 				from = start;
 			}
 
 			ImGui::PopStyleVar();
 
-			DrawColouredRow(text, tokens, none, from, text.size(), look);
+			DrawColouredRow(text, tokens, spans, from, text.size(), look);
+		}
+
+		std::vector<SemanticSpan> NoSpans(std::string_view, const std::vector<Token>&)
+		{
+			return {};
 		}
 
 		void DrawInfo(const HoverInfo& info, const HoverTooltipLook& look, float maxContentWidth)
@@ -220,8 +245,9 @@ namespace Graphite {
 				return;
 			}
 
-			// The name in the editor's own text colour, the kind beside it dimmed: the bold face
-			// this would ideally use is not one the editor's font stack holds.
+			// The name in the colour the editor gives a name of its kind, the kind beside it
+			// dimmed: the bold face this would ideally use is not one the editor's font stack
+			// holds.
 			if (!info.Kind.empty())
 			{
 				DisabledText(info.Kind);
@@ -234,7 +260,10 @@ namespace Graphite {
 
 			if (!info.Name.empty())
 			{
-				PlainText(info.Name);
+				const TokenKind nameKind = KindOfHoverSymbol(info.Kind);
+
+				TextIn(nameKind != TokenKind::Text ? look.Syntax.Of(nameKind) : look.Palette.Text,
+					   info.Name);
 			}
 
 			std::string where;
@@ -268,12 +297,20 @@ namespace Graphite {
 
 			if (!info.Declaration.empty())
 			{
-				DrawDeclaration(info.Declaration, look, maxContentWidth);
+				const TokenKind nameKind = KindOfHoverSymbol(info.Kind);
+
+				DrawCode(
+					"", info.Declaration,
+					[&](std::string_view text, const std::vector<Token>& tokens) {
+						return DeclarationSpans(text, tokens, info.Name, nameKind);
+					},
+					look, maxContentWidth);
 			}
 
 			if (!info.ReturnType.empty())
 			{
-				PlainText("\xE2\x86\x92 " + info.ReturnType); // "→ "
+				DrawCode("\xE2\x86\x92 ", info.ReturnType, TypeSpans, look, // "→ "
+						 maxContentWidth);
 			}
 
 			if (!info.Parameters.empty())
@@ -283,7 +320,7 @@ namespace Graphite {
 
 				for (const std::string& parameter : info.Parameters)
 				{
-					PlainText(parameter);
+					DrawCode("", parameter, ParameterSpans, look, maxContentWidth);
 				}
 
 				ImGui::Unindent();
@@ -291,7 +328,7 @@ namespace Graphite {
 
 			if (!info.Type.empty())
 			{
-				PlainText("Type: " + info.Type);
+				DrawCode("Type: ", info.Type, TypeSpans, look, maxContentWidth);
 
 				if (!info.TypeAka.empty())
 				{
@@ -303,7 +340,7 @@ namespace Graphite {
 
 			if (!info.Value.empty())
 			{
-				PlainText("Value = " + info.Value);
+				DrawCode("Value = ", info.Value, NoSpans, look, maxContentWidth);
 			}
 
 			// A field has an offset, and a padding only then; a type has a size and an alignment
