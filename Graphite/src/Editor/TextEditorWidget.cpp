@@ -296,6 +296,11 @@ namespace Graphite {
 			bool PressedThisFrame = false;
 			bool Dragging = false;
 			bool RightPressedThisFrame = false;
+
+			// Read off the surface item rather than the window, so a pointer over one of the
+			// window's own scrollbars counts as neither: the scrollbar claims the hover first.
+			bool Hovered = false;
+			bool Held = false;
 		};
 
 		PointerState AddInteractiveSurface(const ImVec2& origin, float contentWidth,
@@ -355,6 +360,9 @@ namespace Graphite {
 				ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) &&
 				ImGui::IsMouseClicked(ImGuiMouseButton_Right);
 
+			pointer.Hovered = ImGui::IsItemHovered();
+			pointer.Held = ImGui::IsItemActive();
+
 			return pointer;
 		}
 
@@ -388,6 +396,87 @@ namespace Graphite {
 			const float left = LensLabelLeft(*lens, textOriginX, metrics);
 			const std::string text = LensLabelOf(*lens);
 			return x >= left && x < left + ImGui::CalcTextSize(text.c_str()).x;
+		}
+
+		// The screen row under the pointer, translated through LensRows, or nothing when the
+		// pointer is above the document. The pointer's own share of ADR 0486's translation —
+		// for the hover look and the cursor, not for anything that moves the caret.
+		std::optional<LensRows::Row> RowUnderMouse(const LensRows& lenses,
+												   const EditorMetrics& metrics,
+												   const ImVec2& origin)
+		{
+			const ImVec2 mouse = ImGui::GetMousePos();
+
+			if (mouse.y < origin.y)
+			{
+				return std::nullopt;
+			}
+
+			return lenses.At(static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight));
+		}
+
+		// The document row of the lens whose label the pointer is over, if any — the label a
+		// press would open the references panel from, and so the one drawn as a link. Not while
+		// a selection is being dragged: the drag only passes over the label, and lighting it up
+		// on the way would suggest the release was about to open something.
+		std::optional<std::size_t> HoveredLensRow(const PointerState& pointer,
+												  const LensRows& lenses, const LensModel* lensModel,
+												  const EditorMetrics& metrics, const ImVec2& origin,
+												  float textOriginX)
+		{
+			if (!pointer.Hovered || pointer.Dragging || lensModel == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			const std::optional<LensRows::Row> hit = RowUnderMouse(lenses, metrics, origin);
+
+			if (!hit || !hit->IsLens ||
+				!IsOverLensLabel(lensModel->LensAt(hit->DocumentRow), ImGui::GetMousePos().x,
+								 textOriginX, metrics))
+			{
+				return std::nullopt;
+			}
+
+			return hit->DocumentRow;
+		}
+
+		// One decision per frame for the pointer's shape, made after everything that knows what
+		// is under it has had its say. ImGui resets the cursor to the arrow every frame, so the
+		// arrow needs no branch of its own: it is what the gutter, a lens row off its label and
+		// anywhere outside the surface are left with.
+		void SetEditorCursor(const PointerState& pointer, bool overLink, const LensRows& lenses,
+							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX)
+		{
+			if (overLink)
+			{
+				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+				return;
+			}
+
+			// A selection being dragged keeps the text cursor wherever the pointer wanders,
+			// across the gutter and out of the window included, since it is still selecting text.
+			if (pointer.Held && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+			{
+				ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
+				return;
+			}
+
+			if (!pointer.Hovered)
+			{
+				return;
+			}
+
+			// The gutter is pinned to the view's left edge rather than scrolled with the text, so
+			// its right edge carries the scroll back in — the same edge ApplyMouseToCaret uses to
+			// keep the context menu off it.
+			const float gutterRight = origin.x + scrollX + metrics.Gutter.TotalWidth;
+			const std::optional<LensRows::Row> hit = RowUnderMouse(lenses, metrics, origin);
+
+			if (ImGui::GetMousePos().x >= gutterRight && hit && !hit->IsLens)
+			{
+				ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
+			}
 		}
 
 		void ApplyMouseToCaret(const PointerState& pointer, const Core::TextBuffer& buffer,
@@ -1759,7 +1848,11 @@ namespace Graphite {
 		//
 		// Not the current-line highlight: a lens is not the caret's line, and drawing it there
 		// would say the caret was on a row it can never reach.
-		void DrawLensRow(const RowCanvas& canvas, const Lens* lens, float y, bool selected)
+		//
+		// Hovered, the label reads as the link it is: the text colour instead of the lens' muted
+		// one, and underlined the way a Ctrl-hovered identifier is.
+		void DrawLensRow(const RowCanvas& canvas, const Lens* lens, float y, bool selected,
+						 bool hovered)
 		{
 			if (selected)
 			{
@@ -1776,9 +1869,19 @@ namespace Graphite {
 			if (lens != nullptr && lens->CountKnown)
 			{
 				const std::string text = LensLabelOf(*lens);
-				canvas.Draw->AddText(
-					ImVec2(LensLabelLeft(*lens, canvas.TextOriginX, canvas.Metrics), y),
-					canvas.Palette.Lens, text.c_str());
+				const float x = LensLabelLeft(*lens, canvas.TextOriginX, canvas.Metrics);
+				const ImU32 colour = hovered ? canvas.Palette.Text : canvas.Palette.Lens;
+
+				canvas.Draw->AddText(ImVec2(x, y), colour, text.c_str());
+
+				if (hovered)
+				{
+					const float underlineY = y + canvas.Metrics.LineHeight - Core::Scaled(1.0f);
+					canvas.Draw->AddLine(
+						ImVec2(x, underlineY),
+						ImVec2(x + ImGui::CalcTextSize(text.c_str()).x, underlineY), colour,
+						Core::Scaled(1.0f));
+				}
 			}
 
 			DrawGutterFill(canvas, y);
@@ -2870,7 +2973,7 @@ namespace Graphite {
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
 							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
 							 EditorWidgetState& widget, const HoverFrame& hoverFrame,
-							 EditorFrameResult& result)
+							 const PointerState& pointer, EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2926,6 +3029,11 @@ namespace Graphite {
 			const HoverIdentifier hover =
 				ComputeHoverIdentifier(buffer, item, metrics, origin, canvas.TextOriginX, lenses,
 									   syntax);
+			const std::optional<std::size_t> hoveredLens = HoveredLensRow(
+				pointer, lenses, lensModel, metrics, origin, canvas.TextOriginX);
+
+			SetEditorCursor(pointer, hover.Valid || hoveredLens.has_value(), lenses, metrics,
+							origin, scrollX);
 
 			// Computed and drawn here rather than inside the row loop: the tooltip is one popup
 			// for the whole frame, not one per row, and BeginTooltip/EndTooltip need calling
@@ -2996,7 +3104,8 @@ namespace Graphite {
 							lensModel != nullptr ? lensModel->LensAt(screen.DocumentRow) : nullptr;
 
 						DrawLensRow(canvas, lens, y,
-									SelectionPassesThroughLens(buffer, item, screen.DocumentRow));
+									SelectionPassesThroughLens(buffer, item, screen.DocumentRow),
+									hoveredLens == screen.DocumentRow);
 
 						continue;
 					}
@@ -3267,7 +3376,7 @@ namespace Graphite {
 							view.Semantic, view.Diagnostics, view.DiagnosticsStale,
 							view.ChangeDisplay.Gutter ? view.Changes : nullptr,
 							view.ChangeDisplay.Scrollbar ? view.Changes : nullptr, widget,
-							hoverFrame, result);
+							hoverFrame, pointer, result);
 
 			// Taken after the rows, because FirstVisibleRow is what the rows just worked out, and
 			// taken every frame so the anchor describes where the reader is now rather than where
