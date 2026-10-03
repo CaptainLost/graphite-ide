@@ -232,19 +232,30 @@ TEST_CASE("The File menu offers to trust the open folder, after closing it")
 	CHECK(trust == close + 1);
 }
 
-TEST_CASE("The Help menu holds only the diagnostic, so a release build has none")
+TEST_CASE("The Help menu opens with About in every build, and adds the diagnostic only in Debug")
 {
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
-
-#ifdef CORE_DEBUG
 	const MenuItem* help = FindSubmenu(tree, "Help");
 
 	REQUIRE(help != nullptr);
 	CHECK(tree.back().GetText() == "Help");
-	REQUIRE(help->GetChildren().size() == 1);
-	CHECK(help->GetChildren()[0].GetText() == "help.logTestEntries");
+	REQUIRE_FALSE(help->GetChildren().empty());
+	CHECK(help->GetChildren()[0].GetText() == "help.about");
+
+	std::vector<std::string> commands;
+
+	for (const MenuItem& item : help->GetChildren())
+	{
+		if (item.GetKind() == MenuItem::Kind::Command)
+		{
+			commands.push_back(item.GetText());
+		}
+	}
+
+#ifdef CORE_DEBUG
+	CHECK(commands == std::vector<std::string>{"help.about", "help.logTestEntries"});
 #else
-	CHECK(FindSubmenu(tree, "Help") == nullptr);
+	CHECK(commands == std::vector<std::string>{"help.about"});
 #endif
 }
 

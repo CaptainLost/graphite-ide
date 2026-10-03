@@ -1,9 +1,11 @@
 #include "App/Version.h"
 
+#include "App/VersionNumbers.h"
+
 namespace Graphite {
 
 	const char* Version::String()
 	{
-		return "0.1.0";
+		return GRAPHITE_VERSION_TEXT;
 	}
 }

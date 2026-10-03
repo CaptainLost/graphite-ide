@@ -2,3 +2,36 @@
 // the executable its icon in Explorer and the window its icon in the title bar and taskbar.
 // Graphite.ico is exported from Graphite.svg, the icon's source.
 GLFW_ICON ICON "Graphite.ico"
+
+#include <winver.h>
+
+#include "App/VersionNumbers.h"
+
+// What Explorer shows under Properties > Details. The numbers come from VersionNumbers.h,
+// which the About dialog reads as well.
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION GRAPHITE_VERSION_MAJOR, GRAPHITE_VERSION_MINOR, GRAPHITE_VERSION_PATCH, 0
+PRODUCTVERSION GRAPHITE_VERSION_MAJOR, GRAPHITE_VERSION_MINOR, GRAPHITE_VERSION_PATCH, 0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "ProductName", "Graphite"
+            VALUE "FileDescription", "Graphite"
+            VALUE "InternalName", "Graphite"
+            VALUE "OriginalFilename", "Graphite.exe"
+            VALUE "ProductVersion", GRAPHITE_VERSION_TEXT
+            VALUE "FileVersion", GRAPHITE_VERSION_TEXT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04B0
+    END
+END

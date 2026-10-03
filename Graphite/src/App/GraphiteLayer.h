@@ -8,6 +8,7 @@
 #include "Editor/EditorCommands.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LanguageServicesPort.h"
+#include "App/AboutDialog.h"
 #include "UI/ModalQuestion.h"
 #include "Editor/Server/PreviewSemantics.h"
 #include "App/TitleBar.h"
@@ -270,6 +271,8 @@ namespace Graphite {
 			"Open dropped folder##DropReplacesWorkspace";
 
 		ModalQuestion<DroppedWorkspace> m_DropQuestion;
+
+		AboutDialog m_About;
 
 		// Declared before m_Panels for the same reason as m_Search: the git views will hold
 		// references to these.

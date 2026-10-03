@@ -69,14 +69,15 @@ namespace Graphite {
 					MenuItem::Group("panels.window"),
 					MenuItem::Command("view.resetLayout"),
 				}),
-#ifdef CORE_DEBUG
-			// The only thing in Help for now, and a diagnostic: a release build has no Help
-			// menu rather than one that holds a developer's tool.
+			// About is in every build; the diagnostic under it is a developer's tool and is not.
 			MenuItem::Submenu("Help",
 							  {
+								  MenuItem::Command("help.about"),
+#ifdef CORE_DEBUG
+								  MenuItem::Separator(),
 								  MenuItem::Command("help.logTestEntries"),
-							  }),
 #endif
+							  }),
 		};
 	}
 }

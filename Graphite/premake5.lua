@@ -100,13 +100,14 @@ project "Graphite"
     {
         '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
+        '{COPYFILE} "../THIRD_PARTY_NOTICES.txt" "%{cfg.targetdir}"',
         'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"'
     }
 
     files { "src/Main.cpp", "resources/Graphite.rc" }
 
     -- rc.exe resolves the icon the script names against these directories, not the script's own.
-    resincludedirs { "resources" }
+    resincludedirs { "resources", "src" }
 
     -- GraphiteLib, GLFW, ImGui and opengl32 are listed explicitly: a static library does
     -- not propagate its own linker inputs to a consumer.

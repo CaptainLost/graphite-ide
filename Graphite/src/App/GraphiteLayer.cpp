@@ -91,7 +91,8 @@ namespace Graphite {
 		: Core::Layer("Ide"), m_Sink(std::move(sink)), m_InitialFolder(std::move(initialFolder)),
 		  m_AppSettings(settings),
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
-		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle)
+		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle),
+		  m_About(m_Modals)
 	{
 		m_Layout.Left = {"files", "changes"};
 
@@ -270,6 +271,10 @@ namespace Graphite {
 		m_Commands.Add({.Id = "app.exit",
 						.Label = "Exit\tAlt+F4",
 						.Run = [] { Core::Application::Get().GetWindow().RequestClose(); }});
+
+		m_Commands.Add({.Id = "help.about",
+						.Label = "About Graphite",
+						.Run = [this] { m_About.Open(); }});
 
 		m_Commands.Add({.Id = "view.resetLayout",
 						.Label = "Reset Layout",
@@ -801,6 +806,7 @@ namespace Graphite {
 		// the popup needs to draw.
 		RenderCloseConfirm();
 		RenderDropConfirm();
+		m_About.Render();
 
 		// Panels render outside the host window — inside it they would dock as ordinary child
 		// windows instead of landing in the dockspace nodes.
