@@ -5,7 +5,6 @@
 #include <format>
 #include <imgui.h>
 
-
 namespace Graphite {
 
 	LanguageSection::LanguageSection(AnalysisSettings& settings) : m_Settings(settings) {}
