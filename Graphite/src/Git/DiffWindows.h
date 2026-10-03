@@ -114,7 +114,9 @@ namespace Graphite {
 
 		// OpenFile bound to `model`'s working directory, which is what a diff's paths are
 		// relative to; empty while OpenFile is. Reassigned each frame by whoever draws a
-		// DiffView, since the working directory moves with the folder that is open.
+		// DiffView, since the working directory moves with the folder that is open. Holds this
+		// and `model` by reference, so it is kept no longer than either: both outlive every
+		// DiffView it is handed to.
 		std::function<void(const std::filesystem::path&)> OpenFileIn(const GitModel& model) const;
 
 	private:

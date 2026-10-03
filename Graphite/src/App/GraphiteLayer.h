@@ -316,12 +316,17 @@ namespace Graphite {
 		Core::DockLayout m_Layout;
 		TitleBar m_TitleBar;
 
-		Core::CommandRegistry m_Commands;
 		Core::Keymap m_Keys;
 
 		// After m_Keys and m_Workspace, which it refers to. Owns a reader thread per terminal;
 		// they join in its destructor.
 		TerminalWindows m_Terminals{m_Workspace, m_Keys};
+
+		// After every member whose commands it holds - each captures its owner, `this` or a
+		// panel - so it is destroyed before any of them and no stored command outlives what it
+		// points into. Nothing reads it from a member initialiser; commands are registered in
+		// the constructor's body, once every member exists.
+		Core::CommandRegistry m_Commands;
 		Core::ShortcutRouter m_Router;
 		Core::MenuBar m_MenuBar;
 
