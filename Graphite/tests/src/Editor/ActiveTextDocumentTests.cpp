@@ -42,3 +42,33 @@ TEST_CASE("An active tab whose file could not be read is not a text document")
 
 	CHECK_FALSE(Graphite::ActiveTextDocument(documents).has_value());
 }
+
+TEST_CASE("The active text document is the shown one only while its tab is on screen")
+{
+	TempDirectory temp;
+	const std::filesystem::path first = temp.MakeFile("first.cpp", "int x;");
+	const std::filesystem::path second = temp.MakeFile("second.cpp", "int y;");
+
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(first, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(second, true) == Core::OpenOutcome::Opened);
+
+	// The second tab is active, but another tab of its node - a panel, the Git view - is in
+	// front of it. It stays active, so commands still act on it, yet nothing on screen shows it.
+	const auto onlyFirstShown = [&first](const std::filesystem::path& path) { return path == first; };
+	CHECK_FALSE(Graphite::ShownActiveDocument(documents, onlyFirstShown).has_value());
+
+	const auto bothShown = [](const std::filesystem::path&) { return true; };
+	CHECK(Graphite::ShownActiveDocument(documents, bothShown) == std::optional<std::size_t>{1});
+}
+
+TEST_CASE("A shown tab whose file could not be read is not a shown text document")
+{
+	TempDirectory temp;
+
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", true) == Core::OpenOutcome::Failed);
+
+	const auto allShown = [](const std::filesystem::path&) { return true; };
+	CHECK_FALSE(Graphite::ShownActiveDocument(documents, allShown).has_value());
+}

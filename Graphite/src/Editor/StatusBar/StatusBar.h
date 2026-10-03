@@ -2,6 +2,7 @@
 
 #include "Git/GitStatusText.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -68,7 +69,10 @@ namespace Graphite {
 		GitChanges
 	};
 
+	// `shown` is the document the bar describes - ShownActiveDocument's answer, not the active
+	// one, so a file hidden behind another tab leaves no path, caret or encoding behind.
 	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
+								 std::optional<std::size_t> shown,
 								 const std::filesystem::path& root,
 								 const StatusMessages& messages);
 

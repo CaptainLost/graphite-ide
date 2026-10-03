@@ -2,7 +2,9 @@
 
 #include "Core/Text/DocumentSet.h"
 
+#include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 
 namespace Graphite {
@@ -13,4 +15,12 @@ namespace Graphite {
 	// background pass yielding to it - asks this one question, so none of them can forget that
 	// an active tab need not be a text document.
 	std::optional<std::filesystem::path> ActiveTextDocument(const Core::DocumentSet& documents);
+
+	// The active text document's index, but only while its tab is the one on screen. A document
+	// stays active when focus moves to a panel or another tab covers it (ADR 0547), which is right
+	// for commands and wrong for anything describing what the reader is looking at: with the Git
+	// view in front of it, the status bar went on reporting the file's caret and encoding.
+	std::optional<std::size_t> ShownActiveDocument(
+		const Core::DocumentSet& documents,
+		const std::function<bool(const std::filesystem::path&)>& isShown);
 }

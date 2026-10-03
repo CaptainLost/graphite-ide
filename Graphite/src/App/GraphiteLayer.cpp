@@ -700,16 +700,25 @@ namespace Graphite {
 
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup.
+		if (activeDocument)
+		{
+			m_LanguageServices.EnsureStarted(*activeDocument, LanguageOfPath(*activeDocument));
+		}
+
+		// What the bar describes is the document on screen, not the active one: the active
+		// document outlives its tab being covered by another, and the bar went on naming it.
+		const std::optional<std::size_t> shownIndex = ShownActiveDocument(
+			m_Documents, [this](const std::filesystem::path& path) { return m_DocumentWindows.IsShown(path); });
+		const std::optional<std::filesystem::path> shownDocument =
+			shownIndex ? std::optional{m_Documents.At(*shownIndex).Path} : std::nullopt;
+
 		ServerStatus status;
 		LanguageId activeLanguage = LanguageId::PlainText;
 
-		if (activeDocument)
+		if (shownDocument)
 		{
-			activeLanguage = LanguageOfPath(*activeDocument);
-
-			m_LanguageServices.EnsureStarted(*activeDocument, activeLanguage);
-
-			status = m_LanguageServices.StatusFor(*activeDocument, activeLanguage);
+			activeLanguage = LanguageOfPath(*shownDocument);
+			status = m_LanguageServices.StatusFor(*shownDocument, activeLanguage);
 		}
 
 		ServerLineInputs serverInputs{.Active = status,
@@ -718,9 +727,9 @@ namespace Graphite {
 									  .FolderTrusted = workspaceTrusted,
 									  .Overall = m_LanguageServices.OverallStatus()};
 
-		if (activeDocument && m_DocumentWindows.IsAnalysing(*activeDocument))
+		if (shownDocument && m_DocumentWindows.IsAnalysing(*shownDocument))
 		{
-			serverInputs.AnalysingFile = Core::ToUtf8(activeDocument->filename());
+			serverInputs.AnalysingFile = Core::ToUtf8(shownDocument->filename());
 		}
 
 		if (std::optional<ServerLine> line = ChooseServerLine(serverInputs))
@@ -755,7 +764,7 @@ namespace Graphite {
 			});
 		}
 
-		switch (DrawStatusBar(m_Documents, m_Workspace.GetRoot(), messages))
+		switch (DrawStatusBar(m_Documents, shownIndex, m_Workspace.GetRoot(), messages))
 		{
 		case StatusBarClick::GitBranch:
 			RevealPanel("git");

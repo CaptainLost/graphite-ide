@@ -1212,6 +1212,11 @@ namespace Graphite {
 		return lastFocusedAlive ? m_LastFocusedNode : fallbackDockNode;
 	}
 
+	bool DocumentWindows::IsShown(const std::filesystem::path& path) const
+	{
+		return m_Shown.contains(path);
+	}
+
 	void DocumentWindows::ActivateAndRememberNode(std::size_t index)
 	{
 		m_Documents.Activate(index);
@@ -2152,6 +2157,8 @@ namespace Graphite {
 		HoverSettings hoverSettings, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot)
 	{
+		m_Shown.clear();
+
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
 			Core::OpenItem& item = m_Documents.At(index);
@@ -2238,6 +2245,8 @@ namespace Graphite {
 
 			if (visible)
 			{
+				m_Shown.insert(item.Path);
+
 				// Children count. A click on the text focuses the editor surface, a child of this
 				// window, never the window itself; without the flag, clicking into the left half
 				// of a split left the right half active, and every command that acts on the

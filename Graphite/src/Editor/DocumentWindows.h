@@ -247,6 +247,11 @@ namespace Graphite {
 		// anybody kept scrolling.
 		bool IsAnalysing(const std::filesystem::path& path) const;
 
+		// Whether this document's window drew its contents on the last frame: false while another
+		// tab of its node is in front of it, or its floating window is collapsed. Last frame's,
+		// because the status bar asks before this frame's documents have drawn.
+		bool IsShown(const std::filesystem::path& path) const;
+
 	private:
 		// Null when no language server is configured for this document's language, which is what
 		// puts a null LensModel on EditorView and spares the widget a branch on whether a server
@@ -600,6 +605,10 @@ namespace Graphite {
 		// yet. Their first frame docks them where imgui.ini remembers rather than where the
 		// user last focused.
 		std::set<std::string> m_RestoredIdentities;
+
+		// The documents whose window was visible on the last frame, rebuilt by every
+		// RenderDocumentWindows; see IsShown.
+		std::set<std::filesystem::path> m_Shown;
 
 		// Every question outstanding with the language servers - definition, references,
 		// declarations, colours, counts - and where its answer goes. Constructed after m_Server,

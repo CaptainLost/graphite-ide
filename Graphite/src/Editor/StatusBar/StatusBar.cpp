@@ -189,6 +189,7 @@ namespace Graphite {
 	}
 
 	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
+								 std::optional<std::size_t> shown,
 								 const std::filesystem::path& root,
 								 const StatusMessages& messages)
 	{
@@ -204,8 +205,7 @@ namespace Graphite {
 			return StatusBarClick::None;
 		}
 
-		const auto active = documents.GetActive();
-		const bool hasDocument = active && documents.At(*active).Document.has_value();
+		const bool hasDocument = shown && documents.At(*shown).Document.has_value();
 
 		StatusBarClick clicked = StatusBarClick::None;
 
@@ -224,7 +224,7 @@ namespace Graphite {
 			}
 
 			ImGui::SetCursorPosY(CentredTextY(height));
-			ImGui::TextUnformatted(DescribeDocument(documents.At(*active), root).c_str());
+			ImGui::TextUnformatted(DescribeDocument(documents.At(*shown), root).c_str());
 		}
 
 		std::string rightAligned;
@@ -267,7 +267,7 @@ namespace Graphite {
 
 		if (hasDocument)
 		{
-			const Core::OpenItem& item = documents.At(*active);
+			const Core::OpenItem& item = documents.At(*shown);
 
 			if (!rightAligned.empty())
 			{
