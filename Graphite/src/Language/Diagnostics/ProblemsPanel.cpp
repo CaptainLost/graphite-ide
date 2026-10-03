@@ -3,6 +3,7 @@
 #include "Theme/Palettes.h"
 #include "Editor/Navigation/SelectInDocument.h"
 
+#include "Language/Diagnostics/ProblemIdentity.h"
 #include "Language/Server/LspProtocol.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -85,8 +86,11 @@ namespace Graphite {
 			// Not a bare window: an empty problems list is a state worth naming, the same way an
 			// empty search result is.
 			Core::EmptyState("No problems in open documents.");
+			m_Selected.reset();
 			return;
 		}
+
+		m_SelectionSeen = false;
 
 		// Read once a frame, like every other panel that draws from a scheme, rather than once
 		// per row: every row this frame draws from the same colours.
@@ -100,6 +104,13 @@ namespace Graphite {
 			}
 
 			RenderFile(path, entry, palette);
+		}
+
+		// The picked problem is gone - fixed, refreshed away, or its file closed - so nothing
+		// should stay marked, and a later problem that happens to match must not light up.
+		if (!m_SelectionSeen)
+		{
+			m_Selected.reset();
 		}
 	}
 
@@ -191,14 +202,29 @@ namespace Graphite {
 								  std::to_string(diagnostic.Column.Value + 1) + "  " +
 								  diagnostic.Message;
 
-		const bool selected = m_SelectedRow == rowId && m_SelectedPath == path;
+		const bool selected = m_Selected.has_value() && IsSameProblem(*m_Selected, path, diagnostic);
+
+		if (selected)
+		{
+			m_SelectionSeen = true;
+		}
 
 		// AllowDoubleClick lets one row answer both gestures: the first click of a double click
 		// previews and the second promotes.
-		if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
+		const bool clicked = ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick);
+
+		// Selection follows keyboard focus as well as clicks, so arrowing through the list moves
+		// the highlight; the open waits for the click or Enter.
+		if (!selected && ImGui::IsItemFocused())
 		{
-			m_SelectedPath = path;
-			m_SelectedRow = rowId;
+			m_Selected = IdentityOf(path, diagnostic);
+			m_SelectionSeen = true;
+		}
+
+		if (clicked)
+		{
+			m_Selected = IdentityOf(path, diagnostic);
+			m_SelectionSeen = true;
 
 			const bool permanent = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
 								   ImGui::IsKeyPressed(ImGuiKey_Enter) ||
@@ -219,6 +245,8 @@ namespace Graphite {
 		// preview tab a preview, and a double click or Enter keeps it.
 		SelectInDocument(m_Documents, path, diagnostic.Line, diagnostic.Column, diagnostic.EndLine,
 						 diagnostic.EndColumn,
-						 [this, permanent](const std::filesystem::path& file) { m_Documents.Open(file, permanent); });
+						 [this, permanent](const std::filesystem::path& file) {
+							 m_Documents.Open(file, permanent);
+						 });
 	}
 }

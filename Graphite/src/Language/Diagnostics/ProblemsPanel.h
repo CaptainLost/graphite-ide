@@ -5,7 +5,10 @@
 #include "Language/Diagnostics/DiagnosticsModel.h"
 #include "Theme/ActiveScheme.h"
 
+#include "Language/Diagnostics/ProblemIdentity.h"
+
 #include <filesystem>
+#include <optional>
 
 namespace Core {
 
@@ -52,9 +55,10 @@ namespace Graphite {
 		Core::DocumentSet& m_Documents;
 		const ActiveScheme& m_Scheme;
 
-		// The row last clicked or moved to, identified by file and by its position in that file's
-		// sorted list. Empty until something is picked.
-		std::filesystem::path m_SelectedPath;
-		int m_SelectedRow = -1;
+		// The problem last clicked or moved to, by identity rather than list position so a
+		// refresh cannot move the highlight onto another problem. Dropped on a frame where no row
+		// matches it; m_SelectionSeen is that frame's tally.
+		std::optional<ProblemIdentity> m_Selected;
+		bool m_SelectionSeen = false;
 	};
 }

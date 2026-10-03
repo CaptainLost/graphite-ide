@@ -41,7 +41,7 @@ namespace Graphite {
 		const char* SplitterId = nullptr;
 	};
 
-	// What the results get the first time a preview appears: about two thirds of what the two
+	// What the results get the first time a preview appears: 65% of what the two
 	// panes share once the divider's band is taken out. These panels dock at the bottom where
 	// they are short, and half of one left the list about two rows; the preview is the pane
 	// the reader looks at second, so it gives way. The caller's minimums still apply on top.
