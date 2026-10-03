@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
+#include "Core/Platform/UniqueHandle.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -69,10 +70,13 @@ namespace Core {
 		// joined, and the user sees it as the window locking up.
 		std::atomic<bool> m_Terminating{false};
 
+		// Released by the destructor, in the order closing them has to happen in: an HPCON and a
+		// PROC_THREAD_ATTRIBUTE_LIST, both spelled void* to keep <windows.h> out of this header.
 		void* m_Console = nullptr;
-		void* m_Process = nullptr;
-		void* m_ToChild = nullptr;
-		void* m_FromChild = nullptr;
 		void* m_Attributes = nullptr;
+
+		UniqueHandle m_Process;
+		UniqueHandle m_ToChild;
+		UniqueHandle m_FromChild;
 	};
 }

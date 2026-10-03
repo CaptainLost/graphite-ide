@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
+#include "Core/Platform/UniqueHandle.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -45,8 +46,8 @@ namespace Core {
 	private:
 		ChildProcess() = default;
 
-		void* m_Process = nullptr;
-		void* m_ToChild = nullptr;
-		void* m_FromChild = nullptr;
+		UniqueHandle m_Process;
+		UniqueHandle m_ToChild;
+		UniqueHandle m_FromChild;
 	};
 }

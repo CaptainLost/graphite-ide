@@ -94,17 +94,16 @@ namespace Core {
 	DirectoryWatcher::~DirectoryWatcher()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_StopEvent != nullptr)
-			::SetEvent(static_cast<HANDLE>(m_StopEvent));
+		if (m_StopEvent)
+		{
+			::SetEvent(m_StopEvent.Get());
+		}
 
+		// Before the handles close as the members are destroyed: the worker waits on both.
 		if (m_Thread.joinable())
+		{
 			m_Thread.join();
-
-		if (m_StopEvent != nullptr)
-			::CloseHandle(static_cast<HANDLE>(m_StopEvent));
-
-		if (m_Directory != nullptr)
-			::CloseHandle(static_cast<HANDLE>(m_Directory));
+		}
 #endif
 	}
 
@@ -114,22 +113,21 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		// FILE_SHARE_DELETE included on purpose: without it, watching a folder stops anyone
 		// from renaming or deleting it while the IDE is open.
-		const HANDLE directory = ::CreateFileW(
+		UniqueHandle directory{::CreateFileW(
 			root.c_str(), FILE_LIST_DIRECTORY,
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-			FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr);
+			FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED, nullptr)};
 
-		if (directory == INVALID_HANDLE_VALUE)
+		if (!directory)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot watch '{}'", ToUtf8(root))};
 		}
 
-		const HANDLE stopEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+		UniqueHandle stopEvent{::CreateEventW(nullptr, TRUE, FALSE, nullptr)};
 
-		if (stopEvent == nullptr)
+		if (!stopEvent)
 		{
-			::CloseHandle(directory);
 			return Error{ErrorCode::IoFailure, "cannot create the watcher stop event"};
 		}
 
@@ -137,8 +135,8 @@ namespace Core {
 		Scope<DirectoryWatcher> watcher{new DirectoryWatcher};
 
 		watcher->m_Root = root;
-		watcher->m_Directory = directory;
-		watcher->m_StopEvent = stopEvent;
+		watcher->m_Directory = std::move(directory);
+		watcher->m_StopEvent = std::move(stopEvent);
 
 		// Everything the worker reads is set here, before the thread that reads it exists.
 		watcher->m_WatchedPath = watcher->QueryHandlePath();
@@ -208,7 +206,8 @@ namespace Core {
 		// DWORD-aligned as ReadDirectoryChangesW requires; a vector<char> would not be.
 		std::vector<DWORD> buffer(kBufferBytes / sizeof(DWORD));
 
-		const HANDLE ioEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+		const UniqueHandle ownedIoEvent{::CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+		const HANDLE ioEvent = ownedIoEvent.Get();
 
 		if (ioEvent == nullptr)
 		{
@@ -226,7 +225,7 @@ namespace Core {
 
 			DWORD ignored = 0;
 
-			if (!::ReadDirectoryChangesW(static_cast<HANDLE>(m_Directory), buffer.data(),
+			if (!::ReadDirectoryChangesW(m_Directory.Get(), buffer.data(),
 										 kBufferBytes, TRUE, kFilter, &ignored, &overlapped,
 										 nullptr))
 			{
@@ -251,7 +250,7 @@ namespace Core {
 			armSignal.Report(Result<void>::Ok());
 
 			const DWORD signalled = WaitForChangeOrStop(
-				ioEvent, static_cast<HANDLE>(m_StopEvent),
+				ioEvent, m_StopEvent.Get(),
 				static_cast<DWORD>(kMoveCheckInterval.count()), [this] { CheckForMoveIfDue(); });
 
 			if (signalled != WAIT_OBJECT_0)
@@ -264,17 +263,17 @@ namespace Core {
 
 				// The kernel keeps writing into `buffer` until the outstanding read is
 				// cancelled and collected; leaving it out is a use-after-free under load.
-				::CancelIoEx(static_cast<HANDLE>(m_Directory), &overlapped);
+				::CancelIoEx(m_Directory.Get(), &overlapped);
 
 				DWORD discarded = 0;
-				::GetOverlappedResult(static_cast<HANDLE>(m_Directory), &overlapped, &discarded,
+				::GetOverlappedResult(m_Directory.Get(), &overlapped, &discarded,
 									  TRUE);
 				break;
 			}
 
 			DWORD bytes = 0;
 
-			if (!::GetOverlappedResult(static_cast<HANDLE>(m_Directory), &overlapped, &bytes,
+			if (!::GetOverlappedResult(m_Directory.Get(), &overlapped, &bytes,
 									   FALSE))
 			{
 				// The kernel discarded the individual records because it could not keep up.
@@ -306,8 +305,6 @@ namespace Core {
 			// this buys learns when it will be, and asks for a frame then.
 			Redraw::Request();
 		}
-
-		::CloseHandle(ioEvent);
 #endif
 	}
 
@@ -368,7 +365,7 @@ namespace Core {
 		// succeeded returns the length *excluding* it. So `length` already has room for the
 		// terminator, and `written >= length` means the path grew between the two calls.
 		const DWORD length =
-			::GetFinalPathNameByHandleW(static_cast<HANDLE>(m_Directory), nullptr, 0,
+			::GetFinalPathNameByHandleW(m_Directory.Get(), nullptr, 0,
 										FILE_NAME_NORMALIZED);
 
 		if (length == 0)
@@ -377,7 +374,7 @@ namespace Core {
 		std::wstring buffer(length, L'\0');
 
 		const DWORD written = ::GetFinalPathNameByHandleW(
-			static_cast<HANDLE>(m_Directory), buffer.data(), length, FILE_NAME_NORMALIZED);
+			m_Directory.Get(), buffer.data(), length, FILE_NAME_NORMALIZED);
 
 		if (written == 0 || written >= length)
 			return {};

@@ -5,6 +5,7 @@
 #include "Core/Fs/FileSystem.h"
 #include "Core/Platform/CommandLine.h"
 #include "Core/Platform/UniqueHandle.h"
+#include "Core/Platform/Win32Owners.h"
 #include "Core/Platform/Win32Error.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -159,9 +160,9 @@ namespace Core {
 		thread.Reset();
 
 		Scope<ChildProcess> process{new ChildProcess()};
-		process->m_Process = processHandle.Release();
-		process->m_ToChild = childStdinWrite.Release();
-		process->m_FromChild = childStdoutRead.Release();
+		process->m_Process = std::move(processHandle);
+		process->m_ToChild = std::move(childStdinWrite);
+		process->m_FromChild = std::move(childStdoutRead);
 
 		return process;
 #else
@@ -176,20 +177,10 @@ namespace Core {
 	ChildProcess::~ChildProcess()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_Process != nullptr)
+		// The handles close as the members are destroyed; only the process needs ending first.
+		if (m_Process)
 		{
-			::TerminateProcess(static_cast<HANDLE>(m_Process), 0);
-			::CloseHandle(static_cast<HANDLE>(m_Process));
-		}
-
-		if (m_ToChild != nullptr)
-		{
-			::CloseHandle(static_cast<HANDLE>(m_ToChild));
-		}
-
-		if (m_FromChild != nullptr)
-		{
-			::CloseHandle(static_cast<HANDLE>(m_FromChild));
+			::TerminateProcess(m_Process.Get(), 0);
 		}
 #endif
 	}
@@ -201,7 +192,7 @@ namespace Core {
 
 		// ReadFile blocks until the pipe has at least one byte or the writing end closes, which
 		// is exactly the contract callers depend on: zero means gone, never "nothing yet".
-		if (!::ReadFile(static_cast<HANDLE>(m_FromChild), buffer.data(),
+		if (!::ReadFile(m_FromChild.Get(), buffer.data(),
 						static_cast<DWORD>(buffer.size()), &read, nullptr))
 		{
 			return 0;
@@ -223,7 +214,7 @@ namespace Core {
 		{
 			DWORD wroteThisCall = 0;
 			const BOOL ok =
-				::WriteFile(static_cast<HANDLE>(m_ToChild), bytes.data() + written,
+				::WriteFile(m_ToChild.Get(), bytes.data() + written,
 						   static_cast<DWORD>(bytes.size() - written), &wroteThisCall, nullptr);
 
 			if (!ok)
@@ -244,12 +235,12 @@ namespace Core {
 	void ChildProcess::Terminate()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_Process != nullptr)
+		if (m_Process)
 		{
 			// Only the process is touched: the handle another thread may be reading through is
 			// left open, and the destructor still closes everything exactly once. Terminating an
 			// already-dead child simply fails, which is why the return value is ignored.
-			::TerminateProcess(static_cast<HANDLE>(m_Process), 0);
+			::TerminateProcess(m_Process.Get(), 0);
 		}
 #else
 		// Deliberately empty rather than absent, so the reason is written down where the next
@@ -263,7 +254,7 @@ namespace Core {
 	bool ChildProcess::IsRunning() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_Process == nullptr)
+		if (!m_Process)
 		{
 			return false;
 		}
@@ -271,7 +262,7 @@ namespace Core {
 		// The exit code cannot answer this: a process may legitimately exit with 259, the value
 		// GetExitCodeProcess reports (as STILL_ACTIVE) for one that has not ended. The process
 		// object is signalled once it has ended, so a zero-timeout wait is the unambiguous test.
-		return ::WaitForSingleObject(static_cast<HANDLE>(m_Process), 0) == WAIT_TIMEOUT;
+		return ::WaitForSingleObject(m_Process.Get(), 0) == WAIT_TIMEOUT;
 #else
 		return false;
 #endif

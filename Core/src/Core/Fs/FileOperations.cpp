@@ -3,6 +3,7 @@
 #include "Core/Fs/FileOperations.h"
 
 #include "Core/Fs/FileSystem.h"
+#include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Error.h"
 
 #include <array>
@@ -42,10 +43,10 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		// CREATE_NEW makes the OS itself refuse an existing target, so no file appearing
 		// between a check and the act could be truncated.
-		const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-											FILE_ATTRIBUTE_NORMAL, nullptr);
+		const UniqueHandle handle{::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+												FILE_ATTRIBUTE_NORMAL, nullptr)};
 
-		if (handle == INVALID_HANDLE_VALUE)
+		if (!handle)
 		{
 			const DWORD error = ::GetLastError();
 
@@ -66,7 +67,6 @@ namespace Core {
 						 std::format("cannot create '{}' (error {})", ToUtf8(path), error)};
 		}
 
-		::CloseHandle(handle);
 		return Result<void>::Ok();
 #else
 		// std::filesystem has no atomic exclusive-create before C++23, so a check-then-act

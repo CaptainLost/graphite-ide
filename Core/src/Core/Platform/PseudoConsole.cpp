@@ -4,6 +4,7 @@
 
 #include "Core/Platform/CommandLine.h"
 #include "Core/Platform/UniqueHandle.h"
+#include "Core/Platform/Win32Owners.h"
 #include "Core/Platform/Win32Error.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -29,15 +30,6 @@ namespace Core {
 		// regardless — it only means the last of a dying shell's output is dropped.
 		constexpr DWORD ShutdownWaitMilliseconds = 2000;
 		constexpr DWORD ShutdownDrainMilliseconds = 250;
-
-		void CloseIfOpen(void*& handle)
-		{
-			if (handle != nullptr)
-			{
-				::CloseHandle(static_cast<HANDLE>(handle));
-				handle = nullptr;
-			}
-		}
 
 		// CreatePipe cannot make either end of an anonymous pipe overlapped, and the reading end
 		// has to be: a synchronous ReadFile can only be woken by data arriving on that one
@@ -315,7 +307,7 @@ namespace Core {
 				return Error{ErrorCodeFromWin32(::GetLastError()), "cannot start the shell"};
 			}
 
-			::CloseHandle(information.hThread);
+			const UniqueHandle thread{information.hThread};
 			return UniqueHandle{information.hProcess};
 		}
 	}
@@ -359,9 +351,9 @@ namespace Core {
 		// Only now is nothing left that can fail, so ownership moves into the object in one go.
 		Scope<PseudoConsole> shell{new PseudoConsole};
 		shell->m_Console = console.GetValue().Release();
-		shell->m_Process = process.GetValue().Release();
-		shell->m_ToChild = pipes.GetValue().InputWrite.Release();
-		shell->m_FromChild = pipes.GetValue().OutputRead.Release();
+		shell->m_Process = std::move(process.GetValue());
+		shell->m_ToChild = std::move(pipes.GetValue().InputWrite);
+		shell->m_FromChild = std::move(pipes.GetValue().OutputRead);
 		shell->m_Attributes = attributes.GetValue().Release();
 
 		return shell;
@@ -386,18 +378,18 @@ namespace Core {
 		// so the shell's death is waited for rather than assumed. The wait is bounded because a
 		// destructor that can block for ever is worse than one that gives up on a shell which
 		// refuses to die: on expiry the handles are closed anyway.
-		if (m_Process != nullptr)
+		if (m_Process)
 		{
-			::WaitForSingleObject(static_cast<HANDLE>(m_Process), ShutdownWaitMilliseconds);
+			::WaitForSingleObject(m_Process.Get(), ShutdownWaitMilliseconds);
 		}
 
 		// ClosePseudoConsole below waits for the host's final flush to land in the pipe, and by
 		// then nobody is draining it — a full buffer would leave the host unable to finish and
 		// the close unable to return. Emptying the pipe first hands that flush the whole buffer.
 		// Bounded, for the same reason as the wait above.
-		if (m_FromChild != nullptr)
+		if (m_FromChild)
 		{
-			DrainPipe(static_cast<HANDLE>(m_FromChild), ShutdownDrainMilliseconds);
+			DrainPipe(m_FromChild.Get(), ShutdownDrainMilliseconds);
 		}
 
 		// The pseudo-console goes first, while the reading end is still open: closing it is the
@@ -409,8 +401,8 @@ namespace Core {
 			m_Console = nullptr;
 		}
 
-		CloseIfOpen(m_FromChild);
-		CloseIfOpen(m_ToChild);
+		m_FromChild.Reset();
+		m_ToChild.Reset();
 
 		if (m_Attributes != nullptr)
 		{
@@ -419,27 +411,29 @@ namespace Core {
 			m_Attributes = nullptr;
 		}
 
-		CloseIfOpen(m_Process);
+		m_Process.Reset();
 #endif
 	}
 
 	std::size_t PseudoConsole::Read(std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_FromChild == nullptr || buffer.empty())
+		if (!m_FromChild || buffer.empty())
 		{
 			return 0;
 		}
 
-		const HANDLE pipe = static_cast<HANDLE>(m_FromChild);
+		const HANDLE pipe = m_FromChild.Get();
+
+		const UniqueHandle event{::CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+
+		if (!event)
+		{
+			return 0;
+		}
 
 		OVERLAPPED overlapped{};
-		overlapped.hEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
-
-		if (overlapped.hEvent == nullptr)
-		{
-			return 0;
-		}
+		overlapped.hEvent = event.Get();
 
 		DWORD transferred = 0;
 		std::size_t read = 0;
@@ -451,10 +445,9 @@ namespace Core {
 		}
 		else if (::GetLastError() == ERROR_IO_PENDING)
 		{
-			read = AwaitRead(pipe, overlapped, m_Process, m_Terminating);
+			read = AwaitRead(pipe, overlapped, m_Process.Get(), m_Terminating);
 		}
 
-		::CloseHandle(overlapped.hEvent);
 		return read;
 #else
 		(void)buffer;
@@ -465,7 +458,7 @@ namespace Core {
 	bool PseudoConsole::Write(std::string_view bytes)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_ToChild == nullptr)
+		if (!m_ToChild)
 		{
 			return false;
 		}
@@ -476,7 +469,7 @@ namespace Core {
 		{
 			DWORD chunk = 0;
 
-			if (!::WriteFile(static_cast<HANDLE>(m_ToChild), bytes.data() + written,
+			if (!::WriteFile(m_ToChild.Get(), bytes.data() + written,
 							 static_cast<DWORD>(bytes.size() - written), &chunk, nullptr)
 				|| chunk == 0)
 			{
@@ -520,7 +513,7 @@ namespace Core {
 	void PseudoConsole::Terminate()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_Process == nullptr)
+		if (!m_Process)
 		{
 			return;
 		}
@@ -529,19 +522,19 @@ namespace Core {
 		// on a shell that is about to be gone.
 		m_Terminating = true;
 
-		::TerminateProcess(static_cast<HANDLE>(m_Process), 1);
+		::TerminateProcess(m_Process.Get(), 1);
 #endif
 	}
 
 	bool PseudoConsole::IsRunning() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_Process == nullptr)
+		if (!m_Process)
 		{
 			return false;
 		}
 
-		return ::WaitForSingleObject(static_cast<HANDLE>(m_Process), 0) == WAIT_TIMEOUT;
+		return ::WaitForSingleObject(m_Process.Get(), 0) == WAIT_TIMEOUT;
 #else
 		return false;
 #endif

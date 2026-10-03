@@ -5,6 +5,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 #include "Core/Fs/ChangeCollector.h"
+#include "Core/Platform/UniqueHandle.h"
 
 #include <atomic>
 #include <chrono>
@@ -101,7 +102,7 @@ namespace Core {
 
 		std::optional<std::filesystem::path> m_MovedTo;
 
-		void* m_Directory = nullptr;
-		void* m_StopEvent = nullptr;
+		UniqueHandle m_Directory;
+		UniqueHandle m_StopEvent;
 	};
 }
