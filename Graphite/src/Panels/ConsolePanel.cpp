@@ -77,8 +77,18 @@ namespace Graphite {
 
 	void ConsolePanel::OnImGuiRender()
 	{
-		m_Entries = m_Sink->TakeSnapshot();
-		CollectShownEntries();
+		// Not every frame: taking the snapshot copies every message the buffer holds, and
+		// filtering copies the shown ones again, on frames where nothing has changed.
+		const std::uint64_t revision = m_Sink->GetRevision();
+
+		if (revision != m_SeenRevision || m_SeenFilter != m_Filter.InputBuf)
+		{
+			m_Entries = m_Sink->TakeSnapshot();
+			CollectShownEntries();
+
+			m_SeenRevision = revision;
+			m_SeenFilter = m_Filter.InputBuf;
+		}
 
 		RenderToolbar();
 		ImGui::Separator();

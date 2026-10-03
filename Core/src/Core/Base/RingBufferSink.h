@@ -25,6 +25,10 @@ namespace Core {
 		std::size_t GetCount() const;
 		std::size_t GetCapacity() const { return m_Capacity; }
 
+		// Moves with every entry taken in and every Clear, and with nothing else, so a reader can
+		// tell a snapshot it already holds is still the buffer's contents without copying again.
+		std::uint64_t GetRevision() const;
+
 		void Clear();
 
 	protected:
@@ -41,5 +45,6 @@ namespace Core {
 		// reader that kept one can tell the message it named is gone rather than find another
 		// message wearing it.
 		std::uint64_t m_NextSequence = 1;
+		std::uint64_t m_Revision = 0;
 	};
 }

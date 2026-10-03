@@ -10,7 +10,10 @@
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace Graphite {
@@ -44,5 +47,10 @@ namespace Graphite {
 		ImGuiTextFilter m_Filter;
 		bool m_AutoScroll = true;
 		std::size_t m_LastCount = 0;
+
+		// The sink's revision and the filter text m_Entries and m_Shown were last built from.
+		// The snapshot is the whole buffer, so it is taken again only when one of them moved.
+		std::optional<std::uint64_t> m_SeenRevision;
+		std::string m_SeenFilter;
 	};
 }

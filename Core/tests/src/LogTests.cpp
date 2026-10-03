@@ -85,6 +85,23 @@ TEST_CASE("Clear empties the buffer")
 	CHECK(log.Sink->TakeSnapshot().empty());
 }
 
+// What lets a reader skip copying the buffer on a frame where nothing in it changed.
+TEST_CASE("The buffer's revision moves with every entry and every clear, and with nothing else")
+{
+	PrivateLog log{2};
+	const std::uint64_t start = log.Sink->GetRevision();
+
+	(void)log.Sink->TakeSnapshot();
+	CHECK(log.Sink->GetRevision() == start);
+
+	log.Logger.info("a");
+	const std::uint64_t afterEntry = log.Sink->GetRevision();
+	CHECK(afterEntry != start);
+
+	log.Sink->Clear();
+	CHECK(log.Sink->GetRevision() != afterEntry);
+}
+
 TEST_CASE("The buffer keeps every level apart")
 {
 	PrivateLog log{8};

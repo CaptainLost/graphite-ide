@@ -31,6 +31,7 @@ namespace Core {
 
 		entry.Sequence = m_NextSequence++;
 		m_Entries.push_back(std::move(entry));
+		++m_Revision;
 		while (m_Entries.size() > m_Capacity)
 			m_Entries.pop_front();
 	}
@@ -52,9 +53,16 @@ namespace Core {
 		return m_Entries.size();
 	}
 
+	std::uint64_t RingBufferSink::GetRevision() const
+	{
+		const std::scoped_lock lock{m_Mutex};
+		return m_Revision;
+	}
+
 	void RingBufferSink::Clear()
 	{
 		const std::scoped_lock lock{m_Mutex};
 		m_Entries.clear();
+		++m_Revision;
 	}
 }
