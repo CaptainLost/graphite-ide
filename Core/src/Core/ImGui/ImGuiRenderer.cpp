@@ -37,6 +37,15 @@ namespace Core {
 
 		ImFont* g_monoFont = nullptr;
 
+		// Every way out of ImGui ends here, so the font pointer - which points into the context's
+		// atlas - never outlives the context it came from.
+		void DestroyContexts()
+		{
+			ImPlot::DestroyContext();
+			ImGui::DestroyContext();
+			g_monoFont = nullptr;
+		}
+
 		ImFont* LoadTextFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
 		{
 			ImFontConfig config;
@@ -253,16 +262,14 @@ namespace Core {
 		m_StyleScale = 0.0f;
 		if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
 		{
-			ImPlot::DestroyContext();
-			ImGui::DestroyContext();
+			DestroyContexts();
 			return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL failed"};
 		}
 
 		if (!ImGui_ImplOpenGL3_Init("#version 330 core"))
 		{
 			ImGui_ImplGlfw_Shutdown();
-			ImPlot::DestroyContext();
-			ImGui::DestroyContext();
+			DestroyContexts();
 			return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
 		}
 
@@ -278,8 +285,7 @@ namespace Core {
 
 		ImGui_ImplOpenGL3_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
-		ImPlot::DestroyContext();
-		ImGui::DestroyContext();
+		DestroyContexts();
 		m_Initialized = false;
 	}
 
