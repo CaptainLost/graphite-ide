@@ -2,6 +2,7 @@
 
 #include "Core/App/FramePacer.h"
 #include "Core/App/LayerStack.h"
+#include "Core/Base/Assert.h"
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
@@ -54,7 +55,12 @@ namespace Core {
 
 		Layer& PushLayer(Scope<Layer> layer);
 
-		Window& GetWindow() { return *m_Window; }
+		// The window exists from the start of Run to its end; asking outside that is a mistake.
+		Window& GetWindow()
+		{
+			CORE_ASSERT(m_Window != nullptr, "Application::GetWindow() called outside Run");
+			return *m_Window;
+		}
 		const ApplicationSpec& GetSpec() const { return m_Spec; }
 
 		static Application& Get();
