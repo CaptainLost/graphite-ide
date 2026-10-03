@@ -42,7 +42,9 @@ namespace Graphite {
 	public:
 		// Returns the framed bytes to write, and records the id as outstanding.
 		std::pair<RequestId, std::string> Request(std::string_view method, const nlohmann::json& params);
-		std::string Notification(std::string_view method, const nlohmann::json& params);
+		// Touches no state - a notification has no id to record - so a caller need not hold
+		// whatever guards the rest of this object while it builds one.
+		static std::string Notification(std::string_view method, const nlohmann::json& params);
 		std::string Cancel(RequestId id);
 
 		// The answer to a server-initiated request, carrying the id that request arrived under.

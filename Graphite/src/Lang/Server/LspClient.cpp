@@ -288,27 +288,36 @@ namespace Graphite {
 	{
 		const std::string uri = ToFileUri(path);
 
-		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+		int version = 0;
 
-		Document& document = m_Shared->Documents[uri];
+		{
+			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		// Continues from the last version this client ever sent for this URI rather than
-		// restarting at 1: a reopen after a close is still this same client's numbering, and a
-		// publication that was already in flight for the pre-close version must not be read as
-		// answering a version this reopen has not reached yet (see LastVersions' own comment).
-		int& lastVersion = m_Shared->LastVersions[uri];
-		++lastVersion;
-		document.Version = lastVersion;
+			// Continues from the last version this client ever sent for this URI rather than
+			// restarting at 1: a reopen after a close is still this same client's numbering, and a
+			// publication that was already in flight for the pre-close version must not be read as
+			// answering a version this reopen has not reached yet (see LastVersions' own comment).
+			int& lastVersion = m_Shared->LastVersions[uri];
+			++lastVersion;
+			m_Shared->Documents[uri].Version = lastVersion;
+			version = lastVersion;
+		}
 
+		// Built outside ProtocolMutex: it copies and escapes the whole file, and the reader takes
+		// that mutex for every message the server sends. Queued in version order all the same,
+		// because a document's one owner (ADR 0512) calls this and ChangeDocument on one thread.
 		nlohmann::json params;
 		params["textDocument"]["uri"] = uri;
 		params["textDocument"]["languageId"] = m_Shared->ProtocolLanguageId;
-		params["textDocument"]["version"] = document.Version;
+		params["textDocument"]["version"] = version;
 		params["textDocument"]["text"] = text;
 
-		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didOpen", params));
+		std::string bytes = JsonRpc::Notification("textDocument/didOpen", params);
 
-		return DocumentVersion{document.Version};
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+		SendLocked(*m_Shared, std::move(bytes));
+
+		return DocumentVersion{version};
 	}
 
 	DocumentVersion LspClient::ChangeDocument(const std::filesystem::path& path,
@@ -316,18 +325,21 @@ namespace Graphite {
 	{
 		const std::string uri = ToFileUri(path);
 
-		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+		int version = 0;
 
-		const auto found = m_Shared->Documents.find(uri);
-
-		if (found == m_Shared->Documents.end())
 		{
-			// A change to a document the server was never told about would be a change to nothing.
-			return DocumentVersion{};
-		}
+			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		Document& document = found->second;
-		++document.Version;
+			const auto found = m_Shared->Documents.find(uri);
+
+			if (found == m_Shared->Documents.end())
+			{
+				// A change to a document the server was never told about would be a change to nothing.
+				return DocumentVersion{};
+			}
+
+			version = ++found->second.Version;
+		}
 
 		// Full text, not a range. An incremental change describes an edit the server applies to
 		// its own copy, and a range computed even slightly wrong corrupts that copy silently —
@@ -338,12 +350,16 @@ namespace Graphite {
 
 		nlohmann::json params;
 		params["textDocument"]["uri"] = uri;
-		params["textDocument"]["version"] = document.Version;
+		params["textDocument"]["version"] = version;
 		params["contentChanges"] = nlohmann::json::array({std::move(change)});
 
-		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didChange", params));
+		// Built outside ProtocolMutex for the reason OpenDocument gives.
+		std::string bytes = JsonRpc::Notification("textDocument/didChange", params);
 
-		return DocumentVersion{document.Version};
+		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+		SendLocked(*m_Shared, std::move(bytes));
+
+		return DocumentVersion{version};
 	}
 
 	void LspClient::SaveDocument(const std::filesystem::path& path)
