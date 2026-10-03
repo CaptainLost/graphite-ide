@@ -17,34 +17,6 @@ namespace Core {
 
 	namespace {
 
-		// libgit2 wants an array of C strings that outlives the call, so the converted
-		// paths are held here and pointed at rather than converted inline.
-		struct PathSpec
-		{
-			explicit PathSpec(const std::vector<std::filesystem::path>& paths)
-			{
-				Text.reserve(paths.size());
-				Pointers.reserve(paths.size());
-
-				for (const std::filesystem::path& path : paths)
-				{
-					Text.push_back(ToGitPath(path));
-				}
-
-				for (const std::string& text : Text)
-				{
-					Pointers.push_back(text.c_str());
-				}
-
-				Array.strings = const_cast<char**>(Pointers.data());
-				Array.count = Pointers.size();
-			}
-
-			std::vector<std::string> Text;
-			std::vector<const char*> Pointers;
-			git_strarray Array{};
-		};
-
 		// Every write below opens the index the same way and reports the same failure when
 		// it cannot, so the three lines live here once.
 		Result<IndexHandle> OpenIndex(git_repository* handle)
@@ -159,14 +131,15 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		PathSpec spec{paths};
+		const PathSpec spec{paths};
+		const git_strarray pathspec = spec.Get();
 
 		// A null target means "reset to nothing", which removes the entries — the right
 		// answer under an unborn HEAD, where there is no commit to restore from.
 		ObjectHandle head;
 		const bool born = git_revparse_single(Out(head), m_Handle.get(), "HEAD") == 0;
 
-		const int result = git_reset_default(m_Handle.get(), born ? head.get() : nullptr, &spec.Array);
+		const int result = git_reset_default(m_Handle.get(), born ? head.get() : nullptr, &pathspec);
 
 		if (result != 0)
 		{
@@ -189,7 +162,7 @@ namespace Core {
 			return Result<void>::Ok();
 		}
 
-		PathSpec spec{paths};
+		const PathSpec spec{paths};
 
 		git_checkout_options options = GIT_CHECKOUT_OPTIONS_INIT;
 
@@ -198,7 +171,7 @@ namespace Core {
 		// DISABLE_PATHSPEC_MATCH makes the paths literal rather than glob patterns, so a
 		// file whose name contains a bracket is not read as a character class.
 		options.checkout_strategy = GIT_CHECKOUT_FORCE | GIT_CHECKOUT_DISABLE_PATHSPEC_MATCH;
-		options.paths = spec.Array;
+		options.paths = spec.Get();
 
 		if (git_checkout_index(m_Handle.get(), nullptr, &options) != 0)
 		{

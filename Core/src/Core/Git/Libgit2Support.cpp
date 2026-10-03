@@ -56,6 +56,29 @@ namespace Core {
 		return text;
 	}
 
+	PathSpec::PathSpec(const std::vector<std::filesystem::path>& paths)
+	{
+		m_Text.reserve(paths.size());
+		m_Pointers.reserve(paths.size());
+
+		for (const std::filesystem::path& path : paths)
+		{
+			m_Text.push_back(ToGitPath(path));
+		}
+
+		for (const std::string& text : m_Text)
+		{
+			m_Pointers.push_back(text.c_str());
+		}
+	}
+
+	git_strarray PathSpec::Get() const
+	{
+		// The one cast libgit2's signature forces: git_strarray holds char**, though every call
+		// that takes a pathspec only reads it.
+		return git_strarray{const_cast<char**>(m_Pointers.data()), m_Pointers.size()};
+	}
+
 	void EnsureLibgit2Initialised()
 	{
 		static const int result = git_libgit2_init();

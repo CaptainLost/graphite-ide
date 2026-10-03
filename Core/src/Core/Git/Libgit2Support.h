@@ -14,8 +14,10 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 struct git_oid;
+struct git_strarray;
 
 namespace Core {
 
@@ -33,6 +35,27 @@ namespace Core {
 	// git speaks forward slashes on every platform; a relative path may carry native
 	// separators.
 	std::string ToGitPath(const std::filesystem::path& relative);
+
+	// The pathspec libgit2 takes, built from paths: an array of C strings that has to outlive
+	// the call it is handed to, so the converted text is held here and pointed at. Neither
+	// copyable nor movable, since the array points into this object's own storage.
+	class PathSpec
+	{
+	public:
+		explicit PathSpec(const std::vector<std::filesystem::path>& paths);
+
+		PathSpec(const PathSpec&) = delete;
+		PathSpec& operator=(const PathSpec&) = delete;
+		PathSpec(PathSpec&&) = delete;
+		PathSpec& operator=(PathSpec&&) = delete;
+
+		// Valid for as long as this object lives.
+		git_strarray Get() const;
+
+	private:
+		std::vector<std::string> m_Text;
+		std::vector<const char*> m_Pointers;
+	};
 
 	// Idempotent and thread-safe. Every entry point that calls libgit2 without first opening
 	// a Repository needs this, since Repository::Open is otherwise what initialises it.

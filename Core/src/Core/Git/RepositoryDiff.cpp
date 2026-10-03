@@ -145,15 +145,12 @@ namespace Core {
 							 | GIT_DIFF_RECURSE_UNTRACKED_DIRS;
 		}
 
-		std::string pathspec;
-		const char* pathspecEntry = nullptr;
+		const PathSpec pathspec{request.File.has_value() ? std::vector{*request.File}
+														 : std::vector<std::filesystem::path>{}};
 
 		if (request.File.has_value())
 		{
-			pathspec = ToGitPath(*request.File);
-			pathspecEntry = pathspec.c_str();
-			options.pathspec.strings = const_cast<char**>(&pathspecEntry);
-			options.pathspec.count = 1;
+			options.pathspec = pathspec.Get();
 		}
 
 		// The tree of a commit, or null for a side that is genuinely absent. A null tree is

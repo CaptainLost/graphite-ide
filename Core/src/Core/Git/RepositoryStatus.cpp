@@ -138,8 +138,7 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		const std::string spec = ToGitPath(directory);
-		char* entries[] = {const_cast<char*>(spec.c_str())};
+		const PathSpec spec{{directory}};
 
 		git_status_options options = GIT_STATUS_OPTIONS_INIT;
 		options.show = GIT_STATUS_SHOW_WORKDIR_ONLY;
@@ -156,15 +155,14 @@ namespace Core {
 						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY
 						| GIT_STATUS_OPT_DISABLE_PATHSPEC_MATCH;
 
-		options.pathspec.strings = entries;
-		options.pathspec.count = 1;
+		options.pathspec = spec.Get();
 
 		StatusListHandle list;
 
 		if (git_status_list_new(Out(list), m_Handle.get(), &options) != 0)
 		{
 			return Error{ErrorCode::IoFailure,
-						 std::format("cannot list the untracked files in '{}': {}", spec,
+						 std::format("cannot list the untracked files in '{}': {}", ToGitPath(directory),
 									 LastLibgit2Message())};
 		}
 
