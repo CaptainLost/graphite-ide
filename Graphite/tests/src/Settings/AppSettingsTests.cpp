@@ -58,6 +58,30 @@ TEST_CASE("AppSettings keeps what was set across a flush and a reload")
 	CHECK(reloaded.GetClaudePrices()[0].first == "opus");
 }
 
+TEST_CASE("AppSettings keeps the default shell and the language server path across a reload")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	{
+		const Graphite::AppSettings fresh{file};
+		CHECK(fresh.GetDefaultShell().empty());
+		CHECK(fresh.GetLanguageServerBinary().empty());
+	}
+
+	{
+		Graphite::AppSettings settings{file};
+		settings.SetDefaultShell("Command Prompt");
+		settings.SetLanguageServerBinary(std::filesystem::path{"D:\\tools\\clangd\\clangd.exe"});
+		settings.Flush();
+	}
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetDefaultShell() == "Command Prompt");
+	CHECK(reloaded.GetLanguageServerBinary() == std::filesystem::path{"D:\\tools\\clangd\\clangd.exe"});
+}
+
 TEST_CASE("AppSettings writes nothing until it is flushed, and nothing when nothing changed")
 {
 	const TempDirectory temp;

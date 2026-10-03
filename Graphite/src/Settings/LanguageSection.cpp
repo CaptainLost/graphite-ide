@@ -1,17 +1,51 @@
 #include "Settings/LanguageSection.h"
 
 #include "Settings/AnalysisSettings.h"
+#include "Settings/AppSettings.h"
+
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/TextInput.h"
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <format>
 
 namespace Graphite {
 
-	LanguageSection::LanguageSection(AnalysisSettings& settings) : m_Settings(settings) {}
+	LanguageSection::LanguageSection(AnalysisSettings& settings, AppSettings& store)
+		: m_Settings(settings), m_Store(store)
+	{
+	}
+
+	void LanguageSection::RenderServerPath()
+	{
+		ImGui::SeparatorText("Language server");
+
+		if (!m_EditingServerPath)
+		{
+			m_PendingServerPath = Core::ToUtf8(m_Store.GetLanguageServerBinary());
+		}
+
+		ImGui::TextUnformatted("C++ language server");
+		ImGui::SetNextItemWidth(-1.0f);
+		Core::InputTextWithHint("##languageServerBinary", "clangd from PATH", m_PendingServerPath);
+
+		m_EditingServerPath = ImGui::IsItemActive();
+
+		if (ImGui::IsItemDeactivatedAfterEdit())
+		{
+			m_Store.SetLanguageServerBinary(Core::FromUtf8(m_PendingServerPath));
+		}
+
+		ImGui::TextDisabled("Takes effect after restart. Left empty, clangd is looked for next to Graphite, then on PATH.");
+	}
 
 	void LanguageSection::OnImGuiRender()
 	{
+		RenderServerPath();
+
+
 		ImGui::SeparatorText("Background analysis");
 
 		bool enabled = m_Settings.IsEnabled();
@@ -70,20 +104,14 @@ namespace Graphite {
 			concurrencyAutomatic ? std::format("Files analysed at once (automatic: {})###FilesAtOnce", concurrency)
 								 : std::string{"Files analysed at once###FilesAtOnce"};
 
-		// Written on release, not on every frame of the drag, for the same reason as the budget
-		// slider above.
-		if (ImGui::SliderInt(label.c_str(), &concurrency,
-							 static_cast<int>(AnalysisSettings::kMinimumConcurrency),
-							 static_cast<int>(AnalysisSettings::kMaximumConcurrency),
-							 "%d", ImGuiSliderFlags_AlwaysClamp))
+		// An input rather than a slider, whose grab covers a range this short. It reports a change
+		// when the field is left or a step button is clicked, not per keystroke, so the settings
+		// file is written once. Clamped here because a typed value is not bounded by the widget.
+		if (ImGui::InputInt(label.c_str(), &concurrency))
 		{
-			m_PendingConcurrency = concurrency;
-		}
-
-		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingConcurrency.has_value())
-		{
-			m_Settings.SetConcurrency(static_cast<std::size_t>(*m_PendingConcurrency));
-			m_PendingConcurrency.reset();
+			const int clamped = std::clamp(concurrency, static_cast<int>(AnalysisSettings::kMinimumConcurrency),
+										   static_cast<int>(AnalysisSettings::kMaximumConcurrency));
+			m_Settings.SetConcurrency(static_cast<std::size_t>(clamped));
 		}
 
 		ImGui::EndDisabled();

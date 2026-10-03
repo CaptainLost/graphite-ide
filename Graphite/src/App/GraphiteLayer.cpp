@@ -57,6 +57,7 @@
 #include "Settings/SchemeSection.h"
 #include "Settings/SearchSection.h"
 #include "Settings/SettingsPanel.h"
+#include "Settings/TerminalSection.h"
 #include "Settings/TrustSection.h"
 #include "UI/RestrictedModeBar.h"
 #include "Workspace/WorkspaceTrust.h"
@@ -187,8 +188,9 @@ namespace Graphite {
 			m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
-		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings));
+		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings, m_AppSettings));
 		sections.push_back(Core::CreateScope<TrustSection>(m_Trust));
+		sections.push_back(Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals));
 		sections.push_back(Core::CreateScope<ClaudeSection>(m_ClaudeSettings));
 
 		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
@@ -432,7 +434,7 @@ namespace Graphite {
 		// m_Terminals.Render in OnImGuiRender - so the new entry is never pushed inside the loop
 		// over the open terminals that OpenShellIn must not be called from.
 		m_Events.Subscribe<OpenTerminalRequested>([this](const OpenTerminalRequested& event) {
-			static_cast<void>(m_Terminals.OpenShellIn(0, event.Directory)); // logs its own failure
+			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // logs its own failure
 		});
 
 		// Any panel can speak through the status bar by publishing this; the editor's own

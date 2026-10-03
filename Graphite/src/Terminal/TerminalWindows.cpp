@@ -9,6 +9,7 @@
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Process.h"
 
+#include "Settings/AppSettings.h"
 #include "UI/RememberedPlace.h"
 #include "Workspace/Workspace.h"
 
@@ -51,8 +52,9 @@ namespace Graphite {
 	}
 
 	TerminalWindows::TerminalWindows(Workspace& workspace, const Core::Keymap& keys,
-								   const Core::CommandRegistry& commands)
-		: m_Workspace(workspace), m_Keys(keys), m_Commands(commands), m_Shells(Core::DiscoverShells())
+								   const Core::CommandRegistry& commands, AppSettings& settings)
+		: m_Workspace(workspace), m_Settings(settings), m_Keys(keys), m_Commands(commands),
+		  m_Shells(Core::DiscoverShells())
 	{
 	}
 
@@ -316,8 +318,7 @@ namespace Graphite {
 
 				if (ImGui::TabItemButton(newLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
 				{
-					// The first shell is the default, as OpenDefaultShell has it.
-					m_PendingOpens.push_back(PendingOpen{0, node->ID});
+						m_PendingOpens.push_back(PendingOpen{GetDefaultShellIndex(), node->ID});
 				}
 
 				ImGui::SetItemTooltip("New terminal");
@@ -437,7 +438,23 @@ namespace Graphite {
 			return false;
 		}
 
-		return OpenShellIn(0, {});
+		return OpenDefaultShellIn({});
+	}
+
+	bool TerminalWindows::OpenDefaultShellIn(const std::filesystem::path& directory)
+	{
+		if (m_Shells.empty())
+		{
+			APP_WARN("No shell found to open a terminal with");
+			return false;
+		}
+
+		return OpenShellIn(GetDefaultShellIndex(), directory);
+	}
+
+	std::size_t TerminalWindows::GetDefaultShellIndex() const
+	{
+		return DefaultShellIndex(m_Shells, m_Settings.GetDefaultShell());
 	}
 
 	bool TerminalWindows::OpenShellIn(std::size_t shell, const std::filesystem::path& directory)

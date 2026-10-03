@@ -41,6 +41,7 @@ namespace Graphite {
 		constexpr const char* kHoverDelayKey = "hoverDelayMs";
 		constexpr const char* kColorSchemeKey = "colorScheme";
 		constexpr const char* kLanguageServerBinaryKey = "languageServerBinary";
+		constexpr const char* kDefaultShellKey = "defaultShell";
 		constexpr const char* kClaudeBinaryKey = "claude.binary";
 		constexpr std::string_view kClaudePricePrefix = "claude.price.";
 
@@ -397,6 +398,16 @@ namespace Graphite {
 	void AppSettings::SetClaudeBinary(const std::filesystem::path& binary)
 	{
 		Set(kClaudeBinaryKey, Core::ToUtf8(binary));
+	}
+
+	std::string AppSettings::GetDefaultShell() const
+	{
+		return Get(kDefaultShellKey);
+	}
+
+	void AppSettings::SetDefaultShell(std::string_view profileName)
+	{
+		Set(kDefaultShellKey, std::string{profileName});
 	}
 
 	std::vector<std::pair<std::string, std::string>> AppSettings::GetClaudePrices() const

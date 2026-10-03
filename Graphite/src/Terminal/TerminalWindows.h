@@ -28,6 +28,7 @@ namespace Core {
 
 namespace Graphite {
 
+	class AppSettings;
 	class Workspace;
 
 	// Where a terminal with nowhere better to go is docked: beside this window (the console
@@ -63,7 +64,11 @@ namespace Graphite {
 	class TerminalWindows final : Core::NonCopyable
 	{
 	public:
-		TerminalWindows(Workspace& workspace, const Core::Keymap& keys, const Core::CommandRegistry& commands);
+		TerminalWindows(Workspace& workspace, const Core::Keymap& keys, const Core::CommandRegistry& commands,
+						AppSettings& settings);
+
+		// The shells found on this machine, in the order a terminal offers them.
+		const std::vector<Core::ShellProfile>& GetShells() const { return m_Shells; }
 
 		// "New Terminal" for the default shell, bound to Ctrl+` by default, and one command
 		// per discovered shell in the terminal.shells group, which the View menu lists.
@@ -75,9 +80,16 @@ namespace Graphite {
 		void Render(const TerminalDockTargets& targets, const EditorPalette& palette,
 					Core::TabCloseRequests& closeRequests);
 
-		// The first discovered shell is the most capable, so it is the default. False when no
-		// shell was found or it could not be started, which is logged.
+		// The shell chosen in the settings, by profile name; the first discovered shell, the most
+		// capable, when none was chosen or the chosen one is no longer found. False when no shell
+		// was found or it could not be started, which is logged.
 		bool OpenDefaultShell();
+
+		// The default shell, started in `directory` (see OpenShellIn).
+		bool OpenDefaultShellIn(const std::filesystem::path& directory);
+
+		// Where the default shell is among GetShells(). Not for an empty list.
+		std::size_t GetDefaultShellIndex() const;
 
 		// Starts discovered shell `shell` in `directory`, or where a new terminal starts by
 		// default when `directory` is empty, placed by the usual rule. False when there is no
@@ -162,6 +174,7 @@ namespace Graphite {
 		std::vector<OpenTerminal> Records() const;
 
 		Workspace& m_Workspace;
+		AppSettings& m_Settings;
 		const Core::Keymap& m_Keys;
 		const Core::CommandRegistry& m_Commands;
 		std::vector<Core::ShellProfile> m_Shells;

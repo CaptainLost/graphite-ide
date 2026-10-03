@@ -140,6 +140,11 @@ namespace Graphite {
 		std::filesystem::path GetClaudeBinary() const;
 		void SetClaudeBinary(const std::filesystem::path& binary);
 
+		// The profile name of the shell a new terminal starts with - the name terminals are saved
+		// under. Empty means "the first shell discovered".
+		std::string GetDefaultShell() const;
+		void SetDefaultShell(std::string_view profileName);
+
 		// Price overrides as model → "input,output,write5m,write1h,read", one key per model
 		// under "claude.price.". Read as text; Pricing decides what is a valid price.
 		std::vector<std::pair<std::string, std::string>> GetClaudePrices() const;

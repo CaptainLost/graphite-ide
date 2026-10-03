@@ -424,3 +424,11 @@ TEST_CASE("Dragging a thumb round-trips through the offset")
 		CHECK(TerminalScrollOffsetForThumbTop(thumb.Top, 90, 100.0f, thumb.Height) == offset);
 	}
 }
+
+TEST_CASE("The default shell is the one chosen by name, else the first")
+{
+	CHECK(DefaultShellIndex(Shells(), "Command Prompt") == 1);
+	CHECK(DefaultShellIndex(Shells(), "PowerShell 7") == 0);
+	CHECK(DefaultShellIndex(Shells(), "") == 0);
+	CHECK(DefaultShellIndex(Shells(), "Git Bash") == 0);
+}

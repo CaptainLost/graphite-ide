@@ -27,6 +27,19 @@ namespace Graphite {
 		return Core::Lowered(leaf).ends_with(".exe") ? profileName : leaf;
 	}
 
+	std::size_t DefaultShellIndex(const std::vector<Core::ShellProfile>& shells, std::string_view chosen)
+	{
+		for (std::size_t index = 0; index < shells.size(); ++index)
+		{
+			if (shells[index].Name == chosen)
+			{
+				return index;
+			}
+		}
+
+		return 0;
+	}
+
 	std::string NewTerminalCommandId(std::string_view profileName)
 	{
 		std::string slug;

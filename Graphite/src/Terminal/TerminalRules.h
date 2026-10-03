@@ -28,6 +28,12 @@ namespace Graphite {
 	// more or one fewer.
 	std::string NewTerminalCommandId(std::string_view profileName);
 
+	// The index in `shells` of the shell the reader chose as the default, by profile name - the
+	// name terminals are saved under - or the first when nothing was chosen or the chosen shell is
+	// no longer discovered. The first is the most capable, which is what a default should be when
+	// nobody asked. `shells` must not be empty.
+	std::size_t DefaultShellIndex(const std::vector<Core::ShellProfile>& shells, std::string_view chosen);
+
 	// One open terminal as the rules below see it: no session, no view, only what decides
 	// whether and how it is kept.
 	struct OpenTerminal
