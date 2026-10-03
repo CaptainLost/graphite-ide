@@ -3,6 +3,7 @@
 #include "Settings/AppSettings.h"
 
 #include "Core/Command/CommandRegistry.h"
+#include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -41,6 +42,13 @@ namespace Graphite {
 		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
 		  m_AppSettings(settings), m_Files(workspace, documents, events), m_Solution(workspace, documents)
 	{
+		// The folder's stored mode is read when the panel first sees a folder, and would put a
+		// just-opened solution back behind the file tree. Handled here, after the workspace has
+		// finished switching, and the folder is marked as seen so that read does not follow.
+		events.Subscribe<SolutionOpenedEvent>([this](const SolutionOpenedEvent&) {
+			m_ModeLoadedFor = m_Workspace.GetRoot();
+			SetMode(Mode::Solution);
+		});
 	}
 
 	void ExplorerPanel::OnImGuiRender()

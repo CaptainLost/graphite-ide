@@ -95,6 +95,14 @@ TEST_CASE("Opening a format this build cannot write fails")
 	CHECK(editor.GetError().Code == Core::ErrorCode::Unsupported);
 }
 
+TEST_CASE("Only a .slnx solution can be edited")
+{
+	CHECK(Graphite::SolutionEditor::CanEdit("C:/work/App.slnx"));
+	CHECK(Graphite::SolutionEditor::CanEdit("C:/work/App.SLNX"));
+	CHECK_FALSE(Graphite::SolutionEditor::CanEdit("C:/work/App.sln"));
+	CHECK_FALSE(Graphite::SolutionEditor::CanEdit("C:/work/notes.txt"));
+}
+
 TEST_CASE("Nothing is written until Save is called")
 {
 	TempDirectory temp;

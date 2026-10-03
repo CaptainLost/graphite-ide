@@ -12,6 +12,7 @@
 
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Terminal/TerminalRules.h"
+#include "Explorer/FileRow.h"
 #include "Explorer/TreeReveal.h"
 #include "UI/IconButton.h"
 
@@ -875,50 +876,34 @@ namespace Graphite {
 			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
 			node.Name;
 
-		// A folder's label starts GetTreeNodeToLabelSpacing right of its arrow; a file has no
-		// arrow but keeps the gap, so its icon lines up with its siblings' folders' icons and
-		// not with their parent's. The label is drawn by hand because Selectable has no way to
-		// offset its text from the highlight; the item is as wide as the label needs so a long
-		// name still extends the scrollable width.
-		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
-		const float rowWidth =
-			std::max(ImGui::GetContentRegionAvail().x, labelOffset + ImGui::CalcTextSize(label.c_str()).x);
+		const FileRowLayout layout = LayoutFileRow(label);
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 
 		// Only the active file is selected. An open file that is not active is told apart by
 		// the accent colour of its name rather than by a background, which would read as a
 		// second selected row.
-		//
-		// Taken from the cursor before the item: Selectable pads its rect out by half the item
-		// spacing, so the rect's corner is not where a folder's label would start. A tree node
-		// draws its text at the cursor plus the label spacing, and so does this.
-		const ImVec2 labelAt(ImGui::GetCursorScreenPos().x + labelOffset, ImGui::GetCursorScreenPos().y);
-
 		const bool clicked = ImGui::Selectable(id.c_str(), isActive, ImGuiSelectableFlags_AllowDoubleClick,
-											   ImVec2(rowWidth, 0.0f));
+											   ImVec2(layout.Width, 0.0f));
 
-		if (ImGui::IsItemVisible())
+		ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+
+		if (isOpen && !isActive)
 		{
-			ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+			// An ignored file is greyed; the accent is mixed into the grey so it stays
+			// both dimmed and marked.
+			constexpr float kAccentShare = 0.6f;
+			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+			const ImVec4 base = ImGui::GetStyleColorVec4(dimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+			const float share = dimmed ? kAccentShare : 1.0f;
 
-			if (isOpen && !isActive)
-			{
-				// An ignored file is greyed; the accent is mixed into the grey so it stays
-				// both dimmed and marked.
-				constexpr float kAccentShare = 0.6f;
-				const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-				const ImVec4 base = ImGui::GetStyleColorVec4(dimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
-				const float share = dimmed ? kAccentShare : 1.0f;
-
-				ink = ImGui::GetColorU32(ImVec4(base.x + (accent.x - base.x) * share,
-												base.y + (accent.y - base.y) * share,
-												base.z + (accent.z - base.z) * share,
-												base.w + (accent.w - base.w) * share));
-			}
-
-			ImGui::GetWindowDrawList()->AddText(labelAt, ink, label.c_str());
+			ink = ImGui::GetColorU32(ImVec4(base.x + (accent.x - base.x) * share,
+											base.y + (accent.y - base.y) * share,
+											base.z + (accent.z - base.z) * share,
+											base.w + (accent.w - base.w) * share));
 		}
+
+		DrawFileRowLabel(layout, ink, label);
 
 		if (!m_ScrollToPath.empty() && m_ScrollToPath == node.Path)
 		{

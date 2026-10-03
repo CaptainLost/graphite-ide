@@ -190,6 +190,10 @@ namespace Graphite {
 				file.Path.make_preferred();
 				file.Name = Core::ToUtf8(file.Path.filename());
 
+				// A project lists files it may no longer have on disk.
+				std::error_code existsCode;
+				file.Exists = std::filesystem::is_regular_file(file.Path, existsCode);
+
 				const auto assignment = assignments.find(include);
 
 				// Visual Studio shows a file with no .filters entry at the project root.

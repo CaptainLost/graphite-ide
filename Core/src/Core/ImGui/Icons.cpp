@@ -113,10 +113,15 @@ namespace Core {
 	{
 		const std::string lower = ToLowerWithDot(extension);
 
-		// A project extension names the build tool, not what is compiled inside it.
-		if (lower == ".vcxproj" || lower == ".csproj")
+		// A project is told apart by its language, as the source files it holds are. The
+		// project extension fixes the language of its tree.
+		if (lower == ".vcxproj")
 		{
-			return ICON_MDI_APPLICATION_BRACES;
+			return ICON_MDI_LANGUAGE_CPP;
+		}
+		if (lower == ".csproj")
+		{
+			return ICON_MDI_LANGUAGE_CSHARP;
 		}
 
 		if (lower == ".c")

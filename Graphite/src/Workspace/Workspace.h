@@ -32,6 +32,13 @@ namespace Graphite {
 		std::filesystem::path Root;
 	};
 
+	// The user opened a solution by name (menu or drop), as opposed to picking one among the
+	// folder's candidates. The folder is already open by now.
+	struct SolutionOpenedEvent
+	{
+		std::filesystem::path Solution;
+	};
+
 	struct WorkspaceClosedEvent
 	{
 	};

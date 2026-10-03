@@ -86,6 +86,29 @@ TEST_CASE("Every item kind is read, and paths are made absolute")
 	CHECK(match->Path == temp.GetPath() / "App" / "src" / "App.cpp");
 }
 
+TEST_CASE("An item listed in the project but absent on disk reads as missing")
+{
+	TempDirectory temp;
+	const auto project = temp.MakeFile("App/App.vcxproj", kProject);
+	temp.MakeFile("App/src/App.cpp", "int x;");
+
+	const auto content = VcxprojReader{}.Read(project);
+	REQUIRE(content.HasValue());
+
+	const auto exists = [&content](std::string_view name) {
+		const auto& files = content.GetValue().Root.Files;
+		const auto match = std::find_if(files.begin(), files.end(),
+										[name](const Graphite::ContentFile& f) { return f.Name == name; });
+
+		REQUIRE(match != files.end());
+		return match->Exists;
+	};
+
+	CHECK(exists("App.cpp"));
+	CHECK_FALSE(exists("App.h"));
+	CHECK_FALSE(exists("notes.txt"));
+}
+
 TEST_CASE("Without a filters file every file sits at the project root")
 {
 	TempDirectory temp;

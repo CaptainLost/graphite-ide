@@ -26,6 +26,29 @@ namespace Graphite {
 		return std::format("{{{}}}", Core::Uuid::Generate().ToString());
 	}
 
+	std::string UniqueFolderName(const Folder& parent, std::string_view base)
+	{
+		const auto taken = [&parent](const std::string& name) {
+			return std::any_of(parent.Folders.begin(), parent.Folders.end(),
+							   [&name](const Folder& folder) { return Core::CompareNames(folder.Name, name) == 0; });
+		};
+
+		std::string name{base};
+
+		for (int number = 2; taken(name); ++number)
+		{
+			name = std::format("{} {}", base, number);
+		}
+
+		return name;
+	}
+
+	bool SolutionEditor::CanEdit(const std::filesystem::path& solution)
+	{
+		// .sln is readable but not yet writable.
+		return Core::LoweredExtension(solution) == ".slnx";
+	}
+
 	Core::Result<Core::Scope<SolutionEditor>> SolutionEditor::Open(
 		const std::filesystem::path& solution)
 	{
@@ -37,9 +60,8 @@ namespace Graphite {
 							   std::format("no solution file at '{}'", Core::ToUtf8(solution))};
 		}
 
-		// .sln is readable but not yet writable, and refusing here keeps a caller from
-		// discovering that halfway through an edit.
-		if (Core::LoweredExtension(solution) != ".slnx")
+		// Refusing here keeps a caller from discovering that halfway through an edit.
+		if (!CanEdit(solution))
 		{
 			return Core::Error{Core::ErrorCode::Unsupported,
 							   std::format("'{}' is not a format this build can edit",

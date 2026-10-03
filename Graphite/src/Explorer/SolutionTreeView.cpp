@@ -8,6 +8,7 @@
 #include "Core/ImGui/UiScale.h"
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
+#include "Explorer/FileRow.h"
 #include "Solution/SolutionEditor.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -37,6 +38,20 @@ namespace Graphite {
 			}
 		}
 
+		// The folders a project can be moved to: the solution root and every folder but the one it
+		// is in.
+		std::vector<std::string> MoveTargets(const Solution& solution, const std::string& currentFolder)
+		{
+			std::vector<std::string> folders{""};
+			CollectFolderPaths(solution.Root, "", folders);
+
+			std::erase(folders, currentFolder);
+			return folders;
+		}
+
+		constexpr const char* kNotEditableTip =
+			"Editing .sln files is not supported yet; convert the solution to .slnx";
+
 		Core::Result<std::filesystem::path> PickProjectFile()
 		{
 			const std::vector<Core::FileDialog::Filter> filters = {
@@ -60,6 +75,7 @@ namespace Graphite {
 		}
 
 		FollowActiveDocument();
+		DropStaleRenameRequest();
 		RenderFilter();
 		ImGui::Separator();
 
@@ -71,12 +87,13 @@ namespace Graphite {
 			const std::string label =
 				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
 
-			if (OpensToward(solution.Root))
+			if (OpensToward(solution.Root) || !m_RenameWhenListed.empty())
 			{
 				ImGui::SetNextItemOpen(true);
 			}
 
-			const bool rootOpen = ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+			const bool rootOpen = ImGui::TreeNodeEx(
+				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 
 			RenderContextMenu(solution.Root, "");
 
@@ -137,6 +154,13 @@ namespace Graphite {
 		{
 			const std::string childPath = ChildPath(path, child.Name);
 
+			// A folder just added, now that the reloaded solution lists it.
+			if (m_RenameWhenListed == childPath)
+			{
+				m_RenameWhenListed.clear();
+				StartRenamingFolder(child, childPath);
+			}
+
 			if (RenderFolderRenameEditor(child, childPath))
 			{
 				continue;
@@ -144,13 +168,13 @@ namespace Graphite {
 
 			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
-			if (OpensToward(child))
+			if (OpensToward(child) || LeadsToPendingRename(childPath))
 			{
 				ImGui::SetNextItemOpen(true);
 			}
 
-			const bool open =
-				ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+			const bool open = ImGui::TreeNodeEx(
+				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 
 			RenderContextMenu(child, childPath);
 
@@ -170,8 +194,12 @@ namespace Graphite {
 	void SolutionTreeView::RenderProject(const Project& project,
 										 const std::string& folder)
 	{
-		const ImGuiTreeNodeFlags flags =
-			project.ContentRead ? ImGuiTreeNodeFlags_None : ImGuiTreeNodeFlags_Leaf;
+		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_SpanAvailWidth;
+
+		if (!project.ContentRead)
+		{
+			flags |= ImGuiTreeNodeFlags_Leaf;
+		}
 
 		const std::string icon =
 			Core::IconForExtension(Core::ToUtf8(project.Path.extension()));
@@ -213,7 +241,7 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderReferences(const std::vector<std::string>& references)
 	{
-		if (references.empty() || !ImGui::TreeNodeEx("References"))
+		if (references.empty() || !ImGui::TreeNodeEx("References", ImGuiTreeNodeFlags_SpanAvailWidth))
 		{
 			return;
 		}
@@ -237,7 +265,7 @@ namespace Graphite {
 				ImGui::SetNextItemOpen(true);
 			}
 
-			if (ImGui::TreeNodeEx(label.c_str()))
+			if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth))
 			{
 				RenderContentFolder(child);
 				ImGui::TreePop();
@@ -261,17 +289,33 @@ namespace Graphite {
 		const bool selected = m_Workspace.GetSelectedFile() == file.Path ||
 							  (active.has_value() && m_Documents.At(*active).Path == file.Path);
 
-		const std::string label =
+		std::string label =
 			std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} + "  " +
 			file.Name;
 
+		if (!file.Exists)
+		{
+			label += " (missing)";
+		}
+
+		const FileRowLayout layout = LayoutFileRow(label);
+
 		// Keyed by the full path: ImGui gives same-labelled siblings the same id, and two
 		// projects can hold files of the same name.
-		ImGui::PushID(Core::ToUtf8(file.Path).c_str());
+		const std::string id = "##" + Core::ToUtf8(file.Path);
 
-		if (ImGui::Selectable(label.c_str(), selected))
+		// A file the project lists but the disk lacks has nothing to open.
+		const ImGuiSelectableFlags flags =
+			ImGuiSelectableFlags_AllowDoubleClick | (file.Exists ? 0 : ImGuiSelectableFlags_Disabled);
+
+		const bool clicked = ImGui::Selectable(id.c_str(), selected, flags, ImVec2(layout.Width, 0.0f));
+
+		DrawFileRowLabel(layout,
+						 ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled), label);
+
+		if (!file.Exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			m_Workspace.SelectFile(file.Path);
+			ImGui::SetTooltip("File not found on disk");
 		}
 
 		if (!m_RevealPath.empty() && m_RevealPath == file.Path && !ImGui::IsItemVisible())
@@ -279,7 +323,12 @@ namespace Graphite {
 			ImGui::SetScrollHereY(0.5f);
 		}
 
-		ImGui::PopID();
+		// As in the file tree: a click selects and opens a preview, a double click keeps it.
+		if (clicked)
+		{
+			m_Workspace.SelectFile(file.Path);
+			m_Workspace.RequestOpenFile(file.Path, ImGui::IsMouseDoubleClicked(0));
+		}
 	}
 
 	void SolutionTreeView::RenderEmptyState()
@@ -311,33 +360,73 @@ namespace Graphite {
 
 		const bool isRoot = path.empty();
 
-		if (ImGui::MenuItem("Add Existing Project...", nullptr, false, !m_Workspace.IsDialogOpen()))
+		const bool editable = CanEditSolution();
+
+		if (ImGui::MenuItem("Add Existing Project...", nullptr, false, editable && !m_Workspace.IsDialogOpen()))
 		{
 			m_Pending = PendingAction{PendingAction::Kind::AddProject, {}, path, {}};
 		}
 
-		if (ImGui::MenuItem("New Folder"))
+		ExplainNotEditable(editable);
+
+		if (ImGui::MenuItem("New Folder", nullptr, false, editable))
 		{
-			m_Pending =
-				PendingAction{PendingAction::Kind::AddFolder, {}, ChildPath(path, "New Folder"), {}};
+			// Named here, where the siblings are at hand: a second one under the same name
+			// would be refused.
+			m_Pending = PendingAction{PendingAction::Kind::AddFolder, {},
+									  ChildPath(path, UniqueFolderName(folder, "New Folder")), {}};
 		}
+
+		ExplainNotEditable(editable);
 
 		if (!isRoot)
 		{
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Rename"))
+			if (ImGui::MenuItem("Rename", nullptr, false, editable))
 			{
 				StartRenamingFolder(folder, path);
 			}
 
-			if (ImGui::MenuItem("Remove"))
+			ExplainNotEditable(editable);
+
+			if (ImGui::MenuItem("Remove", nullptr, false, editable))
 			{
 				m_Pending = PendingAction{PendingAction::Kind::RemoveFolder, {}, path, {}};
 			}
+
+			ExplainNotEditable(editable);
 		}
 
 		ImGui::EndPopup();
+	}
+
+	bool SolutionTreeView::CanEditSolution() const
+	{
+		return m_Workspace.GetLoadedSolution() && SolutionEditor::CanEdit(m_Workspace.GetLoadedSolution()->Path);
+	}
+
+	void SolutionTreeView::ExplainNotEditable(bool editable)
+	{
+		// The item above is the one disabled, so its hover is the one to answer.
+		if (!editable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+		{
+			ImGui::SetTooltip("%s", kNotEditableTip);
+		}
+	}
+
+	bool SolutionTreeView::LeadsToPendingRename(const std::string& folderPath) const
+	{
+		return !m_RenameWhenListed.empty() && m_RenameWhenListed.starts_with(folderPath + "/");
+	}
+
+	void SolutionTreeView::DropStaleRenameRequest()
+	{
+		// Nothing to wait for once the solution is gone or cannot be edited again.
+		if (!CanEditSolution())
+		{
+			m_RenameWhenListed.clear();
+		}
 	}
 
 	void SolutionTreeView::StartRenamingFolder(const Folder& folder, const std::string& path)
@@ -363,18 +452,28 @@ namespace Graphite {
 			return;
 		}
 
-		if (ImGui::MenuItem("Remove from Solution"))
+		const bool editable = CanEditSolution();
+
+		if (ImGui::MenuItem("Remove from Solution", nullptr, false, editable))
 		{
 			m_RemoveCandidate = project.Path;
 			m_RemoveCandidateName = project.DisplayName;
 			m_OpenRemoveConfirmation = true;
 		}
 
-		if (ImGui::BeginMenu("Move to Folder"))
+		ExplainNotEditable(editable);
+
+		// With nowhere else to go the submenu would open empty.
+		const bool hasTarget =
+			m_Workspace.GetLoadedSolution() && !MoveTargets(*m_Workspace.GetLoadedSolution(), folder).empty();
+
+		if (ImGui::BeginMenu("Move to Folder", editable && hasTarget))
 		{
 			RenderMoveToFolderMenu(project, folder);
 			ImGui::EndMenu();
 		}
+
+		ExplainNotEditable(editable);
 
 		ImGui::EndPopup();
 	}
@@ -387,16 +486,8 @@ namespace Graphite {
 			return;
 		}
 
-		std::vector<std::string> folders{""};
-		CollectFolderPaths(m_Workspace.GetLoadedSolution()->Root, "", folders);
-
-		for (const std::string& path : folders)
+		for (const std::string& path : MoveTargets(*m_Workspace.GetLoadedSolution(), currentFolder))
 		{
-			if (path == currentFolder)
-			{
-				continue;
-			}
-
 			const std::string label = path.empty() ? "(Solution Root)" : path;
 
 			if (ImGui::MenuItem(label.c_str()))
@@ -539,6 +630,13 @@ namespace Graphite {
 		if (const auto applied = Apply(action); !applied)
 		{
 			APP_ERROR("{}", applied.GetError().Message);
+			return;
+		}
+
+		// Named by the user next, in place, as soon as the reloaded solution lists it.
+		if (action.Action == PendingAction::Kind::AddFolder)
+		{
+			m_RenameWhenListed = action.Folder;
 		}
 	}
 

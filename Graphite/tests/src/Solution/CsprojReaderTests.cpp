@@ -61,6 +61,12 @@ TEST_CASE("Files are found on disk, not in the project file")
 	// The project file names no source at all — an SDK-style project globs them.
 	CHECK(HasFile(content.GetValue().Root, "Program.cs"));
 	CHECK(HasFile(content.GetValue().Root, "Startup.cs"));
+
+	// Listed from the disk, so none of them can be missing.
+	for (const Graphite::ContentFile& file : content.GetValue().Root.Files)
+	{
+		CHECK(file.Exists);
+	}
 }
 
 TEST_CASE("Directories become folders")

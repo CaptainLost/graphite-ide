@@ -54,6 +54,16 @@ namespace Graphite {
 
 		void FollowActiveDocument();
 
+		// The editor cannot write every solution format; its menu items are disabled, with
+		// the reason on hover, rather than failing when used.
+		bool CanEditSolution() const;
+		static void ExplainNotEditable(bool editable);
+
+		// Whether the folder just added lies below `folderPath`, so the walk opens the way to
+		// the row that is about to be renamed.
+		bool LeadsToPendingRename(const std::string& folderPath) const;
+		void DropStaleRenameRequest();
+
 		// Whether the walk opens `node` because the file being revealed lies under it. The
 		// search runs only on the frame of a reveal.
 		template<typename Node>
@@ -100,5 +110,9 @@ namespace Graphite {
 		std::array<char, 256> m_RenameBuffer{};
 		std::string m_RenamingFolder;
 		bool m_FocusRenameField = false;
+
+		// The path of a folder just written to the solution file, which the reload has yet to
+		// list; its rename starts on the frame the walk reaches it.
+		std::string m_RenameWhenListed;
 	};
 }

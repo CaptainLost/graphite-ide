@@ -165,6 +165,9 @@ namespace Graphite {
 		RememberSolutionCandidate(chosen);
 		SelectSolution(chosen);
 
+		// Published whether or not it could be read: the solution view says why not.
+		m_Events.Publish(SolutionOpenedEvent{chosen});
+
 		if (!m_Solution)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,

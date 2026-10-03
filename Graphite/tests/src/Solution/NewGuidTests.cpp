@@ -28,3 +28,35 @@ TEST_CASE("An identifier is never empty")
 	// adding projects.
 	CHECK_FALSE(Graphite::NewGuid().empty());
 }
+
+TEST_CASE("A new folder keeps the base name while it is free")
+{
+	Graphite::Folder parent;
+	parent.Folders.push_back(Graphite::Folder{"Libraries", {}, {}});
+
+	CHECK(Graphite::UniqueFolderName(parent, "New Folder") == "New Folder");
+	CHECK(Graphite::UniqueFolderName(Graphite::Folder{}, "New Folder") == "New Folder");
+}
+
+TEST_CASE("A new folder takes the first free number when the base name is taken")
+{
+	Graphite::Folder parent;
+	parent.Folders.push_back(Graphite::Folder{"New Folder", {}, {}});
+
+	CHECK(Graphite::UniqueFolderName(parent, "New Folder") == "New Folder 2");
+
+	parent.Folders.push_back(Graphite::Folder{"New Folder 2", {}, {}});
+	CHECK(Graphite::UniqueFolderName(parent, "New Folder") == "New Folder 3");
+
+	// A gap is filled, not skipped over.
+	parent.Folders.erase(parent.Folders.begin());
+	CHECK(Graphite::UniqueFolderName(parent, "New Folder") == "New Folder");
+}
+
+TEST_CASE("Folder names are compared without regard to case")
+{
+	Graphite::Folder parent;
+	parent.Folders.push_back(Graphite::Folder{"new folder", {}, {}});
+
+	CHECK(Graphite::UniqueFolderName(parent, "New Folder") == "New Folder 2");
+}
