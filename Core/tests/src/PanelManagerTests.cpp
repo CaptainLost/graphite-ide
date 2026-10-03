@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -67,6 +68,18 @@ TEST_CASE("Add registers a panel and allows finding it by identifier")
 	CHECK(panels.Find("console") == added);
 	CHECK(added->GetTitle() == "Console");
 	CHECK(added->IsVisible());
+}
+
+// The owner keeps a typed handle to a panel it added without casting the base pointer back down.
+TEST_CASE("Add hands back the panel as the type it was given")
+{
+	Core::PanelManager panels;
+
+	CountingPanel* added = panels.Add(std::make_unique<CountingPanel>("console", "Console"));
+
+	static_assert(std::is_same_v<decltype(panels.Add(std::make_unique<CountingPanel>("x", "X"))), CountingPanel*>);
+	REQUIRE(added != nullptr);
+	CHECK(panels.Find("console") == added);
 }
 
 TEST_CASE("Add rejects a duplicate identifier")

@@ -6,10 +6,12 @@
 #include "Core/Base/Timestep.h"
 #include "Core/UI/Panel.h"
 
+#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Core {
@@ -20,7 +22,15 @@ namespace Core {
 	class PanelManager final : NonCopyable
 	{
 	public:
-		Panel* Add(Scope<Panel> panel);
+		// Takes the panel and hands it back as the type it was given, so an owner that needs to
+		// reach it later keeps a typed pointer instead of casting the base one down. Null when a
+		// panel with the same id is already here, and the new one is dropped.
+		template<std::derived_from<Panel> T>
+		T* Add(Scope<T> panel)
+		{
+			T* const typed = panel.get();
+			return AddPanel(std::move(panel)) != nullptr ? typed : nullptr;
+		}
 
 		Panel* Find(std::string_view id);
 		std::size_t GetCount() const { return m_Panels.size(); }
@@ -38,6 +48,8 @@ namespace Core {
 		void ResetVisibility();
 
 	private:
+		Panel* AddPanel(Scope<Panel> panel);
+
 		std::vector<Scope<Panel>> m_Panels;
 
 		// ImGui focuses a window on the frame it appears, and focusing a docked window selects

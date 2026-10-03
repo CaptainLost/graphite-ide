@@ -37,7 +37,7 @@ namespace Core {
 		}
 	}
 
-	Panel* PanelManager::Add(Scope<Panel> panel)
+	Panel* PanelManager::AddPanel(Scope<Panel> panel)
 	{
 		CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
 

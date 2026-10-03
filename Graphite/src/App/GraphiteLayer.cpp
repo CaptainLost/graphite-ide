@@ -109,18 +109,17 @@ namespace Graphite {
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
-		auto* explorer = static_cast<ExplorerPanel*>(
-			m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings)));
+		auto* explorer = m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings));
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
 
-		m_SearchPanel = static_cast<SearchPanel*>(m_Panels.Add(Core::CreateScope<SearchPanel>(
+		m_SearchPanel = m_Panels.Add(Core::CreateScope<SearchPanel>(
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
-			m_EditorSettings, m_PreviewSemantics)));
+			m_EditorSettings, m_PreviewSemantics));
 
-		m_ReferencesPanel = static_cast<ReferencesPanel*>(m_Panels.Add(
+		m_ReferencesPanel = m_Panels.Add(
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
-											   m_EditorSettings, m_PreviewSemantics)));
+											   m_EditorSettings, m_PreviewSemantics));
 
 		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_ActiveScheme));
 
@@ -130,9 +129,8 @@ namespace Graphite {
 			m_DocumentWindows.RequestOpen(path, true);
 		};
 
-		auto* gitView = static_cast<GitView*>(
-			m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
-													 m_DocumentBuffers)));
+		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
+																m_DocumentBuffers));
 		gitView->SubscribeTo(m_Events);
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
