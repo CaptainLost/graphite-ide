@@ -1,8 +1,8 @@
-#include "Core/Base/Base.h"
-
 #include "corepch.h"
 
 #include "Core/Command/CommandRegistry.h"
+
+#include "Core/Base/Base.h"
 
 #include <utility>
 

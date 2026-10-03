@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Panels/ConsoleSelection.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Text/Columns.h"
 

@@ -1,9 +1,9 @@
+#include "Panels/ConsolePanel.h"
+
 #include "Core/ImGui/UiScale.h"
 
 #include "Core/Base/Narrow.h"
 #include "Core/Base/Base.h"
-
-#include "Panels/ConsolePanel.h"
 
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"

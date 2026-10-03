@@ -1,8 +1,8 @@
-#include "Core/Base/Base.h"
-
 #include "corepch.h"
 
 #include "Core/Platform/WindowFrame.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/Log.h"
 

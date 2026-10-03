@@ -1,8 +1,8 @@
+#include "Panels/CostView.h"
+
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
-
-#include "Panels/CostView.h"
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"

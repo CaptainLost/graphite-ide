@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Panels/TerminalWindows.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"

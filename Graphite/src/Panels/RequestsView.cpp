@@ -1,9 +1,9 @@
+#include "Panels/RequestsView.h"
+
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
 #include "Core/ImGui/EmptyState.h"
-
-#include "Panels/RequestsView.h"
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"

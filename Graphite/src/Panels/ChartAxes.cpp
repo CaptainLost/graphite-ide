@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Panels/ChartAxes.h"
+
+#include "Core/Base/Base.h"
 
 #include <format>
 #include <imgui.h>

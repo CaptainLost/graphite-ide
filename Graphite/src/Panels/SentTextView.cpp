@@ -1,8 +1,8 @@
+#include "Panels/SentTextView.h"
+
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
-
-#include "Panels/SentTextView.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Panels/RequestRow.h"

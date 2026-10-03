@@ -1,8 +1,8 @@
+#include "Panels/StackedBarChart.h"
+
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
-
-#include "Panels/StackedBarChart.h"
 
 #include "Panels/ChartAxes.h"
 #include "Panels/SessionDrawing.h"

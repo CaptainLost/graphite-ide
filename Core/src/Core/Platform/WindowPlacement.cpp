@@ -1,8 +1,8 @@
-#include "Core/Base/Base.h"
-
 #include "corepch.h"
 
 #include "Core/Platform/WindowPlacement.h"
+
+#include "Core/Base/Base.h"
 
 #include <algorithm>
 

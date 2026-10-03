@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Sln/SolutionEditor.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/Uuid.h"
 

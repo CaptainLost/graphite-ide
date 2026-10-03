@@ -1,8 +1,8 @@
+#include "Panels/RequestChartView.h"
+
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
-
-#include "Panels/RequestChartView.h"
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"

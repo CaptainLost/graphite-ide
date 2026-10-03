@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Sessions/RequestChart.h"
+
+#include "Core/Base/Base.h"
 
 #include "Sessions/SessionSummary.h"
 

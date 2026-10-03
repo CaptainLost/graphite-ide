@@ -1,7 +1,7 @@
+#include "Panels/ConversationView.h"
+
 #include "Core/ImGui/UiScale.h"
 #include "Core/Base/Base.h"
-
-#include "Panels/ConversationView.h"
 
 #include "Panels/RequestRow.h"
 #include "Panels/SessionDrawing.h"

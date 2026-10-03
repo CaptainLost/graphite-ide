@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Panels/SessionWindows.h"
+
+#include "Core/Base/Base.h"
 
 #include "Sessions/ClaudeSettings.h"
 #include "Sessions/SessionSummary.h"

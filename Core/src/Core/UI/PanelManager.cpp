@@ -1,8 +1,8 @@
-#include "Core/Base/Base.h"
-
 #include "corepch.h"
 
 #include "Core/UI/PanelManager.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/Base/Assert.h"
 

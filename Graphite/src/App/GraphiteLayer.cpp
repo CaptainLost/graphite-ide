@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "App/GraphiteLayer.h"
+
+#include "Core/Base/Base.h"
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"

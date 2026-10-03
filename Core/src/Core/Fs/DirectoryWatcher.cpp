@@ -1,8 +1,8 @@
-#include "Core/Base/Base.h"
-
 #include "corepch.h"
 
 #include "Core/Fs/DirectoryWatcher.h"
+
+#include "Core/Base/Base.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"

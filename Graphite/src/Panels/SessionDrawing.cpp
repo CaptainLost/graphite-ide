@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Panels/SessionDrawing.h"
+
+#include "Core/Base/Base.h"
 
 #include <IconsMaterialDesignIcons.h>
 

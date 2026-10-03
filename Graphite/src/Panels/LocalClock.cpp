@@ -1,6 +1,6 @@
-#include "Core/Base/Base.h"
-
 #include "Panels/LocalClock.h"
+
+#include "Core/Base/Base.h"
 
 #include "Sessions/SessionSummary.h"
 
