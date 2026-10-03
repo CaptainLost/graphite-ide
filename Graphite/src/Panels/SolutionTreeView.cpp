@@ -1,14 +1,14 @@
 #include "Panels/SolutionTreeView.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
-#include "Sln/SolutionEditor.h"
+#include "Solution/SolutionEditor.h"
 
 #include <IconsMaterialDesignIcons.h>
 

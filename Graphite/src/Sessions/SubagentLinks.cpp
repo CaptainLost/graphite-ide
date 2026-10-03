@@ -1,6 +1,6 @@
 #include "Sessions/SubagentLinks.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include "Sessions/JsonAccess.h"
 #include "Sessions/SessionSummary.h"

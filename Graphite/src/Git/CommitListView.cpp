@@ -6,7 +6,7 @@
 
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include "Git/CommitDetails.h"
 #include "Git/CommitLabels.h"

@@ -11,7 +11,7 @@
 #include "Sessions/ToolFacts.h"
 #include "Workspace/Workspace.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 
 #include <IconsMaterialDesignIcons.h>

@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Core/Term/TerminalScreen.h"
-#include "Core/Term/VtParser.h"
+#include "Core/Terminal/TerminalScreen.h"
+#include "Core/Terminal/VtParser.h"
 #include "Core/Text/Utf8.h"
 
 #include <string>

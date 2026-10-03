@@ -1,6 +1,6 @@
 #include "Editor/ExpectedWrites.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
 

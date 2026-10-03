@@ -2,7 +2,7 @@
 
 #include "Core/Base/Base.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Workspace/Workspace.h"
 
 #include <algorithm>

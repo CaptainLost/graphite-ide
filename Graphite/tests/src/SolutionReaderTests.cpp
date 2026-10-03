@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sln/SolutionReader.h"
+#include "Solution/SolutionReader.h"
 
 #include "TempDirectory.h"
 

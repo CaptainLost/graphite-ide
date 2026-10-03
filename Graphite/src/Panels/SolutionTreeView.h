@@ -4,7 +4,7 @@
 #include "Workspace/Workspace.h"
 
 #include "Core/Base/Result.h"
-#include "Sln/SolutionModel.h"
+#include "Solution/SolutionModel.h"
 
 #include <imgui.h>
 

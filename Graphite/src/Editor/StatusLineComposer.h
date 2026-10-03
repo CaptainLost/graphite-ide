@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Editor/ServerStatusText.h"
-#include "Lang/Api/LanguageId.h"
-#include "Lang/Api/LanguageService.h"
+#include "Language/Api/LanguageId.h"
+#include "Language/Api/LanguageService.h"
 
 #include <cstddef>
 #include <optional>

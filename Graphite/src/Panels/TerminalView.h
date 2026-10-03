@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Command/Keymap.h"
-#include "Core/Term/TerminalSession.h"
+#include "Core/Terminal/TerminalSession.h"
 
 #include "Editor/EditorPalette.h"
 

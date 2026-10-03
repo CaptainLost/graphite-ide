@@ -4,7 +4,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Glob.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <string_view>
 

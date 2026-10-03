@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Core/Fs/FileSystem.h"
-#include "Sln/SolutionEditor.h"
-#include "Sln/SolutionReader.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Solution/SolutionEditor.h"
+#include "Solution/SolutionReader.h"
 
 #include "TempDirectory.h"
 

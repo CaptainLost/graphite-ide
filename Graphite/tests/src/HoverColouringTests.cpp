@@ -2,7 +2,7 @@
 
 #include "Editor/HoverColouring.h"
 
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include <algorithm>
 #include <string>

@@ -1,7 +1,7 @@
 #include "Editor/EditorCommands.h"
 
-#include "Lang/Registry/LanguageRegistry.h"
-#include "Lang/Server/ServerRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/ServerRegistry.h"
 
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"

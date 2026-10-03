@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Core/Fs/AtomicWrite.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/AtomicWrite.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include "TempDirectory.h"
 

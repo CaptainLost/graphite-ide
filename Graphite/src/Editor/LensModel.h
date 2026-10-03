@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Editor/LensRows.h"
-#include "Lang/Api/LanguageService.h"
+#include "Language/Api/LanguageService.h"
 
 #include <cstddef>
 #include <string>

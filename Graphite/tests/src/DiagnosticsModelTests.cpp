@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Diagnostics/DiagnosticsModel.h"
+#include "Language/Diagnostics/DiagnosticsModel.h"
 
 #include <cstdint>
 #include <filesystem>

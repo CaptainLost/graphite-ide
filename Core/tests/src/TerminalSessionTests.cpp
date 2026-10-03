@@ -1,9 +1,9 @@
 #include <doctest/doctest.h>
 
 #include "Core/Platform/ShellProfiles.h"
-#include "Core/Term/TerminalScreen.h"
-#include "Core/Term/TerminalSession.h"
-#include "Core/Term/VtParser.h"
+#include "Core/Terminal/TerminalScreen.h"
+#include "Core/Terminal/TerminalSession.h"
+#include "Core/Terminal/VtParser.h"
 
 #include <atomic>
 #include <chrono>

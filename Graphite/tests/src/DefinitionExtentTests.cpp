@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Editor/DefinitionExtent.h"
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include <string>
 #include <vector>

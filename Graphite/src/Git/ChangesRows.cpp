@@ -1,6 +1,6 @@
 #include "Git/ChangesRows.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
 #include <format>

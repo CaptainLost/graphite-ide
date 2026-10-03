@@ -2,7 +2,7 @@
 
 #include "Core/Text/FileProbe.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Codec.h"
 
 #include <fstream>

@@ -2,7 +2,7 @@
 
 #include "Core/UI/Panel.h"
 #include "Editor/EditorPalette.h"
-#include "Lang/Diagnostics/DiagnosticsModel.h"
+#include "Language/Diagnostics/DiagnosticsModel.h"
 #include "Theme/ActiveScheme.h"
 
 #include <filesystem>

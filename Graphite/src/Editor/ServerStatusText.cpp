@@ -1,6 +1,6 @@
 #include "Editor/ServerStatusText.h"
 
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include "Core/Base/ByteSize.h"
 

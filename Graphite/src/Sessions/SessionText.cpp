@@ -4,7 +4,7 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/ToolFacts.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <nlohmann/json.hpp>
 

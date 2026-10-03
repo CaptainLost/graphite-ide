@@ -1,6 +1,6 @@
 #include "UI/RestrictedModeBar.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <IconsMaterialDesignIcons.h>
 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Lang/Api/LanguageId.h"
-#include "Lang/Api/LanguageService.h"
-#include "Lang/Server/LanguageServices.h"
+#include "Language/Api/LanguageId.h"
+#include "Language/Api/LanguageService.h"
+#include "Language/Server/LanguageServices.h"
 
 #include <filesystem>
 #include <string>

@@ -3,7 +3,7 @@
 #include "Git/GitModel.h"
 
 #include "Core/Events/EventBus.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Workspace/Workspace.h"
 
 #include <filesystem>

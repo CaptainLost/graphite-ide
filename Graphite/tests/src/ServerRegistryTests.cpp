@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Server/ServerRegistry.h"
+#include "Language/Server/ServerRegistry.h"
 #include "TempDirectory.h"
 
 #include "Core/Platform/Process.h"

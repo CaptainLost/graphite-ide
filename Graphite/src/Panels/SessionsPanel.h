@@ -5,7 +5,7 @@
 #include "Sessions/SessionIndex.h"
 
 #include "Core/Base/Base.h"
-#include "Core/Fs/DirectoryWatcher.h"
+#include "Core/FileSystem/DirectoryWatcher.h"
 #include "Core/UI/Panel.h"
 
 #include <chrono>

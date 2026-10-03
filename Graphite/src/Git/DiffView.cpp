@@ -12,7 +12,7 @@
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <IconsMaterialDesignIcons.h>
 

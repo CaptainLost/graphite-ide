@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Base/Color.h"
-#include "Lang/Api/TokenKind.h"
+#include "Language/Api/TokenKind.h"
 #include "Theme/BuiltInScheme.h"
 #include "Theme/ChromeColor.h"
 #include "Theme/EditorColor.h"

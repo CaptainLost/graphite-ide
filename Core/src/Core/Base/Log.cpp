@@ -4,7 +4,7 @@
 
 #include "Core/Base/Base.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include "Core/Base/RingBufferSink.h"
 

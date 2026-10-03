@@ -2,9 +2,9 @@
 
 #include "Editor/DocumentServerPort.h"
 #include "Editor/PreviewSemantics.h"
-#include "Lang/Analysis/WorkspaceAnalysis.h"
-#include "Lang/Analysis/WorkspaceAnalysisCoordinator.h"
-#include "Lang/Server/LanguageServices.h"
+#include "Language/Analysis/WorkspaceAnalysis.h"
+#include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
+#include "Language/Server/LanguageServices.h"
 
 #include <filesystem>
 #include <string>

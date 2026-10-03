@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Server/LspClient.h"
-#include "Lang/Server/ServerDiscovery.h"
-#include "Lang/Server/ServerRegistry.h"
+#include "Language/Server/LspClient.h"
+#include "Language/Server/ServerDiscovery.h"
+#include "Language/Server/ServerRegistry.h"
 #include "TempDirectory.h"
 
 #include <chrono>

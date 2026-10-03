@@ -4,7 +4,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Git/TextDiff.h"
 #include "Core/Text/TextBuffer.h"

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Lang/Syntax/Token.h"
+#include "Language/Syntax/Token.h"
 
 #include <cstddef>
 #include <filesystem>

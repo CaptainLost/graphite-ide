@@ -6,8 +6,8 @@
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
-#include "Core/Fs/FileOperations.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/FileOperations.h"
 
 #include <filesystem>
 #include <utility>

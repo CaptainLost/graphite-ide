@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Syntax/CppLexer.h"
+#include "Language/Syntax/CppLexer.h"
 
 #include <string>
 #include <vector>

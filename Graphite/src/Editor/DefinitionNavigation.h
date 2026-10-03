@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Lang/Api/LanguageService.h"
+#include "Language/Api/LanguageService.h"
 
 #include <cstdint>
 #include <vector>

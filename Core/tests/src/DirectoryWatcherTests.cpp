@@ -1,6 +1,6 @@
 #include "corepch.h"
 
-#include "Core/Fs/DirectoryWatcher.h"
+#include "Core/FileSystem/DirectoryWatcher.h"
 
 #include "TempDirectory.h"
 

@@ -5,7 +5,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Command/CommandRegistry.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/FileDialog.h"
 
 #include <algorithm>

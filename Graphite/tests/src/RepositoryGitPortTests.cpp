@@ -4,7 +4,7 @@
 
 #include "TempDirectory.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <git2.h>
 

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Server/LanguageServices.h"
+#include "Language/Server/LanguageServices.h"
 #include "TempDirectory.h"
 
 #include <chrono>

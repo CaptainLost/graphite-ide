@@ -3,7 +3,7 @@
 #include "Core/Text/TextBuffer.h"
 #include "Core/UI/Panel.h"
 #include "Editor/EditorSettings.h"
-#include "Lang/Api/LanguageService.h"
+#include "Language/Api/LanguageService.h"
 #include "Search/HitGroups.h"
 #include "Search/HitList.h"
 #include "Search/PreviewContent.h"

@@ -8,7 +8,7 @@
 #include "Core/ImGui/ImGuiKeys.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
-#include "Core/Term/KeyEncoding.h"
+#include "Core/Terminal/KeyEncoding.h"
 #include "Core/Text/Utf8.h"
 
 // For SetKeyOwner: taking the mouse wheel away from the window's own scrolling has no

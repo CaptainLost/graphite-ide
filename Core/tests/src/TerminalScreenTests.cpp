@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Core/Term/TerminalScreen.h"
+#include "Core/Terminal/TerminalScreen.h"
 
 #include <string_view>
 

@@ -7,7 +7,7 @@
 #include "UI/RememberedPlace.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"

@@ -4,9 +4,9 @@
 #include "Panels/SearchPreview.h"
 #include "UI/SplitResults.h"
 
-#include "Lang/Server/LspProtocol.h"
+#include "Language/Server/LspProtocol.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Codec.h"

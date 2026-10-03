@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sln/TextEdit.h"
+#include "Solution/TextEdit.h"
 
 #include <string>
 

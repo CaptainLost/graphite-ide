@@ -1,6 +1,6 @@
 #include "corepch.h"
 
-#include "Core/Fs/ChangeCollector.h"
+#include "Core/FileSystem/ChangeCollector.h"
 
 #include <doctest/doctest.h>
 

@@ -2,7 +2,7 @@
 
 #include "Core/Platform/Shell.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>

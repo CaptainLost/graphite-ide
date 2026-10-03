@@ -2,9 +2,9 @@
 
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
-#include "Lang/Api/TokenKind.h"
-#include "Lang/Syntax/SyntaxCache.h"
-#include "Lang/Syntax/Token.h"
+#include "Language/Api/TokenKind.h"
+#include "Language/Syntax/SyntaxCache.h"
+#include "Language/Syntax/Token.h"
 
 #include <algorithm>
 #include <string>

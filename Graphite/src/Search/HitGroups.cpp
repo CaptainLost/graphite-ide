@@ -1,6 +1,6 @@
 #include "Search/HitGroups.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Search/HitDisplay.h"
 
 #include <utility>

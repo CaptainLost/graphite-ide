@@ -2,7 +2,7 @@
 
 #include "Core/Platform/ChildProcess.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/CommandLine.h"
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Owners.h"

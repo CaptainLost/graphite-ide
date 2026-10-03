@@ -2,7 +2,7 @@
 
 #include "Git/CheckoutQuestion.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 namespace {
 

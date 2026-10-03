@@ -18,11 +18,11 @@
 
 #include "Git/ChangeMarkersModel.h"
 
-#include "Lang/Analysis/AnalysisStore.h"
-#include "Lang/Analysis/WorkspaceAnalysis.h"
-#include "Lang/Diagnostics/DiagnosticsModel.h"
-#include "Lang/Server/LanguageServices.h"
-#include "Lang/Syntax/SyntaxCache.h"
+#include "Language/Analysis/AnalysisStore.h"
+#include "Language/Analysis/WorkspaceAnalysis.h"
+#include "Language/Diagnostics/DiagnosticsModel.h"
+#include "Language/Server/LanguageServices.h"
+#include "Language/Syntax/SyntaxCache.h"
 
 #include "Panels/ReferencesPanel.h"
 #include "Persistence/PersistedState.h"

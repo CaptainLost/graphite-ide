@@ -5,7 +5,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/Platform/ShellProfiles.h"
-#include "Core/Term/TerminalSession.h"
+#include "Core/Terminal/TerminalSession.h"
 
 #include "Editor/EditorPalette.h"
 #include "Panels/TerminalRules.h"

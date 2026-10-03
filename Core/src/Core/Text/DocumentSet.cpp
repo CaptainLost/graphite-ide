@@ -4,7 +4,7 @@
 
 #include "Core/Base/ByteSize.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileProbe.h"
 

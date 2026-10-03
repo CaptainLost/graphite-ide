@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Server/ClangdHover.h"
+#include "Language/Server/ClangdHover.h"
 
 using Graphite::HoverInfo;
 using Graphite::ParseClangdHover;

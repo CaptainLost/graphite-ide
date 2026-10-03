@@ -3,7 +3,7 @@
 #include "Sessions/ClaudeSettings.h"
 
 #include "Core/Base/Ascii.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/TextInput.h"
 
 #include <imgui.h>

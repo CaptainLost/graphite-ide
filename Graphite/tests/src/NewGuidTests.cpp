@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sln/SolutionEditor.h"
+#include "Solution/SolutionEditor.h"
 
 #include <string>
 

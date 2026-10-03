@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Core/Fs/FileSystem.h"
-#include "Lang/Server/LspProtocol.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Language/Server/LspProtocol.h"
 
 #include <filesystem>
 #include <type_traits>

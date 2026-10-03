@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Sln/SolutionReader.h"
-#include "Sln/VcxprojReader.h"
+#include "Solution/SolutionReader.h"
+#include "Solution/VcxprojReader.h"
 
 #include "TempDirectory.h"
 

@@ -11,7 +11,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Command/Binding.h"
 #include "Core/Command/Keymap.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <concepts>
 #include <filesystem>

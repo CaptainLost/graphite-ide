@@ -3,7 +3,7 @@
 #include "Core/Base/Color.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Theme/BuiltInSchemes.h"
 
 #include <format>

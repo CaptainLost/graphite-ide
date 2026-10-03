@@ -2,7 +2,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/ScopeExit.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SubagentLinks.h"

@@ -3,8 +3,8 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Editor/SemanticOverlay.h"
-#include "Lang/Syntax/SyntaxCache.h"
-#include "Lang/Syntax/Token.h"
+#include "Language/Syntax/SyntaxCache.h"
+#include "Language/Syntax/Token.h"
 
 #include <cstddef>
 #include <filesystem>

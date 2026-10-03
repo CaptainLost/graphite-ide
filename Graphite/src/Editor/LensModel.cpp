@@ -3,7 +3,7 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextBuffer.h"
-#include "Lang/Server/LspProtocol.h"
+#include "Language/Server/LspProtocol.h"
 
 #include <algorithm>
 #include <unordered_map>

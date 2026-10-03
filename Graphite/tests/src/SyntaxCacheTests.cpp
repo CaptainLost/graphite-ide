@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/TextBuffer.h"
-#include "Lang/Registry/LanguageRegistry.h"
-#include "Lang/Syntax/SyntaxCache.h"
+#include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/SyntaxCache.h"
 
 #include <string>
 

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Analysis/AnalysisRecord.h"
+#include "Language/Analysis/AnalysisRecord.h"
 
 #include <algorithm>
 #include <chrono>

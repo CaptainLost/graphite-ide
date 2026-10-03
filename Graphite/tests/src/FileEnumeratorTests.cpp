@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Search/FileEnumerator.h"
-#include "Sln/SolutionModel.h"
+#include "Solution/SolutionModel.h"
 #include "TempDirectory.h"
 
 #include <algorithm>

@@ -1,6 +1,6 @@
 #include "Search/FileEnumerator.h"
 
-#include "Sln/SolutionModel.h"
+#include "Solution/SolutionModel.h"
 
 #include <system_error>
 

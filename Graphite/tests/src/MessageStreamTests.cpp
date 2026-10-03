@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Server/MessageStream.h"
+#include "Language/Server/MessageStream.h"
 
 TEST_CASE("MessageStream yields nothing until a whole message has arrived")
 {

@@ -2,7 +2,7 @@
 
 #include "Editor/DocumentWindows.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/DocumentSet.h"
 
 namespace Graphite {

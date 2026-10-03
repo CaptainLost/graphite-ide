@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Editor/HoverToken.h"
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include "Core/Text/Columns.h"
 

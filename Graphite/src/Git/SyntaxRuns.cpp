@@ -1,6 +1,6 @@
 #include "Git/SyntaxRuns.h"
 
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include <algorithm>
 

@@ -3,7 +3,7 @@
 #include "Editor/EditorPalette.h"
 
 #include "Git/GitPalette.h"
-#include "Lang/Api/TokenKind.h"
+#include "Language/Api/TokenKind.h"
 #include "Theme/ColorScheme.h"
 
 #include <imgui.h>

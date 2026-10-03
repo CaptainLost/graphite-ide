@@ -5,7 +5,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Editor/PreviewSemantics.h"
 #include "Editor/SemanticOverlay.h"
-#include "Lang/Syntax/Token.h"
+#include "Language/Syntax/Token.h"
 
 #include "TempDirectory.h"
 

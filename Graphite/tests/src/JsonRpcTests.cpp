@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Server/JsonRpc.h"
+#include "Language/Server/JsonRpc.h"
 
 TEST_CASE("JsonRpc frames a request with an increasing id")
 {

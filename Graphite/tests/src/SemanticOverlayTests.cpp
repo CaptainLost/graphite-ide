@@ -2,7 +2,7 @@
 
 #include "Core/Text/TextBuffer.h"
 #include "Editor/SemanticOverlay.h"
-#include "Lang/Syntax/Token.h"
+#include "Language/Syntax/Token.h"
 
 #include <string>
 #include <vector>

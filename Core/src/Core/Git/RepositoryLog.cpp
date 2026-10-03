@@ -3,7 +3,7 @@
 #include "Core/Git/Repository.h"
 
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/CommitFilter.h"
 #include "Core/Git/LineRangeTracking.h"
 #include "Core/Git/GitHandles.h"

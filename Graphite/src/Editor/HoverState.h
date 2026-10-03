@@ -5,7 +5,7 @@
 #include "Editor/HoverTracker.h"
 #include "Editor/LspAnswerRouter.h"
 
-#include "Lang/Server/ClangdHover.h"
+#include "Language/Server/ClangdHover.h"
 
 #include <imgui.h>
 

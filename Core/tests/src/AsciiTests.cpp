@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Base/Ascii.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 TEST_CASE("LowerAscii lowers the ASCII capitals and leaves every other byte alone")
 {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Editor/LensModel.h"
-#include "Lang/Api/LanguageService.h"
+#include "Language/Api/LanguageService.h"
 #include "Editor/SemanticOverlay.h"
 
 #include <cstddef>

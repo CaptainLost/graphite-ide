@@ -2,7 +2,7 @@
 
 #include "Core/Base/Assert.h"
 #include "Core/Base/Log.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/Process.h"
 
 #include <system_error>

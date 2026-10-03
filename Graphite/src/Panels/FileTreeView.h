@@ -3,7 +3,7 @@
 #include "Workspace/GitIgnoredDisplay.h"
 #include "Workspace/Workspace.h"
 
-#include "Core/Fs/FileTree.h"
+#include "Core/FileSystem/FileTree.h"
 
 #include <imgui.h>
 

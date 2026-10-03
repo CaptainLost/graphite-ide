@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Sln/CsprojReader.h"
-#include "Sln/SolutionReader.h"
+#include "Solution/CsprojReader.h"
+#include "Solution/SolutionReader.h"
 
 #include "TempDirectory.h"
 

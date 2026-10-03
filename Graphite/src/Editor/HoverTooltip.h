@@ -6,7 +6,7 @@
 #include "Editor/HoverTracker.h"
 #include "Editor/Palettes.h"
 
-#include "Lang/Syntax/Token.h"
+#include "Language/Syntax/Token.h"
 
 #include <imgui.h>
 

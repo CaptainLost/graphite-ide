@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Analysis/WorkspaceAnalysis.h"
+#include "Language/Analysis/WorkspaceAnalysis.h"
 
-#include "Lang/Analysis/AnalysisStore.h"
+#include "Language/Analysis/AnalysisStore.h"
 
 #include "Editor/AnalysisCache.h"
 

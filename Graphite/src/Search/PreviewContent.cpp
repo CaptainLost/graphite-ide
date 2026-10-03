@@ -1,11 +1,11 @@
 #include "Search/PreviewContent.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
 #include "Editor/PreviewSemantics.h"
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include <optional>
 #include <string>

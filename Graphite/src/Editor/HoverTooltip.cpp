@@ -6,10 +6,10 @@
 #include "Editor/HoverLayout.h"
 #include "Editor/PreviewSemantics.h"
 
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include "Core/App/Redraw.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 

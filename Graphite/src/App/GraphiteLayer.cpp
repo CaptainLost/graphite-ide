@@ -9,7 +9,7 @@
 #include "Editor/StatusBar.h"
 #include "Editor/StatusLineComposer.h"
 #include "Editor/TextEditorWidget.h"
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include "Git/ChangesPanel.h"
 #include "Git/GitPalette.h"
@@ -60,7 +60,7 @@
 #include "UI/RestrictedModeBar.h"
 #include "Workspace/WorkspaceTrust.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include "Core/Platform/Process.h"
 

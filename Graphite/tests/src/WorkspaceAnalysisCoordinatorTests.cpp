@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Analysis/WorkspaceAnalysisCoordinator.h"
+#include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
 
 #include "Editor/AnalysisCache.h"
 

@@ -37,12 +37,12 @@
 #include "Core/Events/EventBus.h"
 
 // ---Files---------------------------
-#include "Core/Fs/AtomicWrite.h"
-#include "Core/Fs/ChangeCollector.h"
-#include "Core/Fs/DirectoryWatcher.h"
-#include "Core/Fs/FileOperations.h"
-#include "Core/Fs/FileSystem.h"
-#include "Core/Fs/FileTree.h"
+#include "Core/FileSystem/AtomicWrite.h"
+#include "Core/FileSystem/ChangeCollector.h"
+#include "Core/FileSystem/DirectoryWatcher.h"
+#include "Core/FileSystem/FileOperations.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/FileTree.h"
 // -----------------------------------
 
 #include "Core/Git/Repository.h"

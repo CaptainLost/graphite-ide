@@ -1,7 +1,7 @@
 #include "Search/SearchService.h"
 
 #include "Core/App/Redraw.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"

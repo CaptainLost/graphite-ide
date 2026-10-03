@@ -2,7 +2,7 @@
 
 #include "Editor/SemanticOverlay.h"
 
-#include "Lang/Syntax/Token.h"
+#include "Language/Syntax/Token.h"
 
 #include <string_view>
 #include <vector>

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Analysis/AnalysisWalk.h"
+#include "Language/Analysis/AnalysisWalk.h"
 
 #include "TempDirectory.h"
 

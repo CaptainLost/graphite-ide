@@ -5,11 +5,11 @@
 #include "Settings/WorkspaceSettings.h"
 
 #include "Core/Events/EventBus.h"
-#include "Core/Fs/DirectoryWatcher.h"
-#include "Core/Fs/FileTree.h"
+#include "Core/FileSystem/DirectoryWatcher.h"
+#include "Core/FileSystem/FileTree.h"
 #include "Core/Git/Repository.h"
 #include "Core/Platform/AsyncDialog.h"
-#include "Sln/SolutionReader.h"
+#include "Solution/SolutionReader.h"
 
 #include <filesystem>
 #include <memory>

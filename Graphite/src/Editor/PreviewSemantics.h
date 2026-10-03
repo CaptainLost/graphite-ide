@@ -2,8 +2,8 @@
 
 #include "Editor/SemanticOverlay.h"
 
-#include "Lang/Api/LanguageId.h"
-#include "Lang/Server/LanguageServices.h"
+#include "Language/Api/LanguageId.h"
+#include "Language/Server/LanguageServices.h"
 
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"

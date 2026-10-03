@@ -1,6 +1,6 @@
 #include "Editor/HoverToken.h"
 
-#include "Lang/Server/LspProtocol.h"
+#include "Language/Server/LspProtocol.h"
 
 #include "Core/Text/Columns.h"
 

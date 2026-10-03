@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Core/Term/KeyEncoding.h"
+#include "Core/Terminal/KeyEncoding.h"
 
 #include <string>
 

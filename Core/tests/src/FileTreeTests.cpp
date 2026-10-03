@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Core/Fs/FileSystem.h"
-#include "Core/Fs/FileTree.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/FileTree.h"
 
 #include "TempDirectory.h"
 

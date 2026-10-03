@@ -8,9 +8,9 @@
 #include "Editor/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
-#include "Lang/Registry/LanguageRegistry.h"
-#include "Lang/Server/LspClient.h"
-#include "Lang/Server/ServerRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/LspClient.h"
+#include "Language/Server/ServerRegistry.h"
 
 #include "Persistence/CaretRestore.h"
 
@@ -22,7 +22,7 @@
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Clipboard.h"

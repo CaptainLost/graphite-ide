@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Analysis/FileTextSource.h"
+#include "Language/Analysis/FileTextSource.h"
 
 #include "TempDirectory.h"
 

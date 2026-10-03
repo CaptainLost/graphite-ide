@@ -2,8 +2,8 @@
 
 #include "Editor/HoverTracker.h"
 
-#include "Lang/Api/LanguageService.h"
-#include "Lang/Syntax/Token.h"
+#include "Language/Api/LanguageService.h"
+#include "Language/Syntax/Token.h"
 
 #include <cstddef>
 #include <filesystem>

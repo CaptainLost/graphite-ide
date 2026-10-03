@@ -1,10 +1,10 @@
 #include <doctest/doctest.h>
 
 #include "Panels/TreeReveal.h"
-#include "Sln/SolutionModel.h"
+#include "Solution/SolutionModel.h"
 #include "TempDirectory.h"
 
-#include "Core/Fs/FileTree.h"
+#include "Core/FileSystem/FileTree.h"
 
 #include <filesystem>
 #include <vector>

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Lang/Registry/LanguageRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 TEST_CASE("LanguageOfPath maps the C++ extensions")
 {

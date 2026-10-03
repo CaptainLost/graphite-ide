@@ -3,9 +3,9 @@
 #include "Editor/Palettes.h"
 #include "Editor/SelectInDocument.h"
 
-#include "Lang/Server/LspProtocol.h"
+#include "Language/Server/LspProtocol.h"
 
-#include "Core/Fs/FileSystem.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/Text/Caret.h"
