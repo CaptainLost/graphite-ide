@@ -106,3 +106,26 @@ TEST_CASE("Every row's commit index is in range and every commit has a row")
 		CHECK(rows.Rows[row].Commit == commit);
 	}
 }
+
+TEST_CASE("An expanded commit always gets at least one file row")
+{
+	// Zero files is both a diff still being fetched and a commit that changed nothing: the
+	// row that stands in says which.
+	CHECK(Graphite::FileRowsOfExpanded(0) == 1);
+	CHECK(Graphite::FileRowsOfExpanded(1) == 1);
+	CHECK(Graphite::FileRowsOfExpanded(7) == 7);
+}
+
+TEST_CASE("An expanded commit with no files is a commit row and one placeholder file row")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(2, [](std::size_t commit) {
+		return commit == 0 ? Graphite::FileRowsOfExpanded(0) : std::size_t{0};
+	});
+
+	REQUIRE(rows.Rows.size() == 3);
+	CHECK(rows.Rows[1].Kind == CommitRowKind::File);
+	CHECK(rows.Rows[1].Commit == 0);
+	CHECK(rows.Rows[1].File == 0);
+	CHECK(rows.Rows[2].Kind == CommitRowKind::Commit);
+	CHECK(rows.RowOfCommit[1] == 2);
+}

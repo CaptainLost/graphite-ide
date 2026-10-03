@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -29,4 +30,9 @@ namespace Graphite {
 	// two such stashes apart, so it is what a narrow column should keep. A message without
 	// git's prefix is shown as it is. Only its first line, since a row is one line.
 	StashLabel StashRowLabel(std::string_view message, std::string_view when);
+
+	// How the drop question names a stash: `"<message>" (stash@{N})`, or just `stash@{N}` for
+	// a stash with no message of its own. The message is cut to `maxChars` characters with an
+	// ellipsis, on a character boundary, so a long one does not turn the title into a line.
+	std::string DropStashSubject(std::size_t index, std::string_view message, std::size_t maxChars = 48);
 }

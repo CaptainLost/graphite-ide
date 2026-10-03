@@ -64,6 +64,13 @@ namespace Graphite {
 	// nullopt when the name is fine; otherwise the reason to show under the field.
 	std::optional<std::string> BranchNameProblem(const std::string& name, const std::vector<Core::Branch>& branches);
 
+	// Whether the checkout is asked about before it is planned, whatever it would overwrite:
+	// a bare commit leaves HEAD on no branch, which is easy to do by accident and to regret.
+	bool AsksBeforeDetaching(const Core::CheckoutTarget& target);
+
+	// What that question tells the reader, for the commit named by `commitLabel`.
+	std::string DetachedCheckoutBody(const std::string& commitLabel);
+
 	// "feature/x", "origin/x" or a short commit id.
 	std::string CheckoutTargetLabel(const Core::CheckoutTarget& target);
 }

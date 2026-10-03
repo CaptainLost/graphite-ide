@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Git/History/CommitGraphView.h"
+#include "Git/History/CommitRefs.h"
 #include "Theme/GitPalette.h"
 #include "Git/History/GraphGeometry.h"
 
@@ -16,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 
@@ -55,11 +57,17 @@ namespace Graphite {
 		enum class Kind
 		{
 			Checkout,
-			NewBranch
+			NewBranch,
+
+			// Put `Text` on the clipboard. Handed out like the rest so the owner can say it
+			// was done; `What` is how that sentence names the text.
+			Copy
 		};
 
 		Kind Action = Kind::Checkout;
 		Core::Oid Commit;
+		std::string Text;
+		std::string What;
 	};
 
 	// A list of commits with the graph down its left edge. Used by the Git view, and by the
@@ -85,10 +93,14 @@ namespace Graphite {
 		// answer. A pattern such as "*.cpp" marks nothing, since it appears nowhere in the
 		// path it selected — which is the honest outcome rather than marking the extension
 		// the path happens to end with.
+		//
+		// `refs` names the branches that sit on each commit, drawn as labels ahead of its
+		// summary. Held by reference for the call only.
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 					const GitPalette& palette, std::chrono::minutes offset,
 					const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
-					std::string_view highlight = {}, std::string_view pathHighlight = {});
+					const CommitRefMap& refs, std::string_view highlight = {},
+					std::string_view pathHighlight = {});
 
 		// Applied when a new page arrives, by whoever noticed it arrive — the list is handed
 		// pages and does not know one is newer than the last. See SelectionSurviving for
@@ -143,8 +155,9 @@ namespace Graphite {
 
 	private:
 		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
-							 const GitPalette& palette, std::string_view highlight,
-							 std::chrono::sys_seconds now, std::chrono::minutes offset);
+							 const GitPalette& palette, const CommitRefMap& refs,
+							 std::string_view highlight, std::chrono::sys_seconds now,
+							 std::chrono::minutes offset);
 
 		void RenderFileRow(const Core::CommitSummary& commit, std::size_t fileIndex,
 						   const GitPalette& palette,

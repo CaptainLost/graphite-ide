@@ -8,6 +8,7 @@
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
+#include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -58,7 +59,8 @@ namespace Graphite {
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
 					 EditorBuffers& buffers)
 		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
-		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_CheckoutQuestion(modals, "###GitCheckout"),
+		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_DetachQuestion(modals, "###GitDetach"),
+		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
 	{
@@ -171,6 +173,11 @@ namespace Graphite {
 	{
 		// Only a question actually asked, as ChangesPanel does: nothing pending, nothing to
 		// hand back.
+		if (m_DetachQuestion.IsAsked())
+		{
+			m_DetachQuestion.Withdraw();
+		}
+
 		if (m_CheckoutQuestion.IsAsked())
 		{
 			m_CheckoutQuestion.Withdraw();
@@ -294,7 +301,30 @@ namespace Graphite {
 		switch (action->Action)
 		{
 		case CommitAction::Kind::Checkout:
-			BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::Commit, .Commit = action->Commit});
+		{
+			const Core::CheckoutTarget target{.Kind = Core::CheckoutKind::Commit, .Commit = action->Commit};
+
+			// The detached-HEAD question comes first; the one about overwriting changes, if
+			// the plan finds any, is asked after the answer.
+			if (AsksBeforeDetaching(target))
+			{
+				AskOnce(m_DetachQuestion, DetachPayload{.Commit = action->Commit});
+			}
+			else
+			{
+				BeginCheckout(target);
+			}
+
+			break;
+		}
+		case CommitAction::Kind::Copy:
+			ImGui::SetClipboardText(action->Text.c_str());
+
+			if (m_Events != nullptr)
+			{
+				m_Events->Publish(StatusMessageEvent{"Copied " + action->What});
+			}
+
 			break;
 		case CommitAction::Kind::NewBranch:
 			BeginNewBranch(action->Commit.ShortHex(), action->Commit);
@@ -304,6 +334,8 @@ namespace Graphite {
 
 	void GitView::SubscribeTo(Core::EventBus& events)
 	{
+		m_Events = &events;
+
 		// GitModel::Clear() drops the log on both events, and nothing else re-requests it,
 		// so without this a folder opened after another one leaves the history column
 		// loading forever - RenderCommits' own latch would stay set from the first folder.
@@ -411,6 +443,7 @@ namespace Graphite {
 			ImGui::TextUnformatted(error->Message.c_str());
 		}
 
+		RenderDetachDialog();
 		RenderCheckoutDialog();
 		RenderBranchNameDialog(m_NewBranchQuestion);
 		RenderBranchNameDialog(m_RenameBranchQuestion);
@@ -815,8 +848,17 @@ namespace Graphite {
 			};
 
 			m_Commits.SetActionsEnabled(!m_Model.IsWriteInFlight());
-			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, m_Filter.Get().Text,
-							 m_Filter.Get().Path);
+			// The names on each commit, rebuilt when a new branches snapshot has landed.
+			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+
+			if (branches != m_RefsOf)
+			{
+				m_RefsOf = branches;
+				m_CommitRefs = BuildCommitRefs(branches ? *branches : std::vector<Core::Branch>{});
+			}
+
+			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, m_CommitRefs,
+							 m_Filter.Get().Text, m_Filter.Get().Path);
 
 			ApplyCommitAction();
 

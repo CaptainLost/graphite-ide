@@ -74,4 +74,40 @@ namespace Graphite {
 		return StashLabel{.Text = branch.has_value() ? std::format("{} - {}", when, *branch) : std::string(when),
 						  .Named = false};
 	}
+
+	std::string DropStashSubject(std::size_t index, std::string_view message, std::size_t maxChars)
+	{
+		const StashLabel label = StashRowLabel(message, {});
+		const std::string position = std::format("stash@{{{}}}", index);
+
+		if (!label.Named)
+		{
+			return position;
+		}
+
+		// Cut after maxChars characters: a byte that is not a continuation byte starts one.
+		std::size_t end = label.Text.size();
+		std::size_t chars = 0;
+
+		for (std::size_t at = 0; at < label.Text.size(); ++at)
+		{
+			if ((static_cast<unsigned char>(label.Text[at]) & 0xC0) == 0x80)
+			{
+				continue;
+			}
+
+			if (chars == maxChars)
+			{
+				end = at;
+				break;
+			}
+
+			++chars;
+		}
+
+		const std::string_view shown = std::string_view(label.Text).substr(0, end);
+		const std::string_view ellipsis = end < label.Text.size() ? "\xE2\x80\xA6" : "";
+
+		return std::format("\"{}{}\" ({})", shown, ellipsis, position);
+	}
 }

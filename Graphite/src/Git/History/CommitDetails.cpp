@@ -43,6 +43,11 @@ namespace Graphite {
 		return std::format("{:%Y-%m-%d %H:%M}", when + offset);
 	}
 
+	std::string CommitMessageText(const Core::CommitSummary& commit)
+	{
+		return commit.Body.empty() ? commit.Summary : commit.Summary + "\n\n" + commit.Body;
+	}
+
 	bool ShowsCommitter(const Core::CommitSummary& commit)
 	{
 		return commit.Committer.Name != commit.Author.Name ||

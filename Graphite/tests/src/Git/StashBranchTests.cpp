@@ -96,3 +96,25 @@ TEST_CASE("A stash message is trimmed of tabs and a carriage return as well as s
 	CHECK(Graphite::StashRowLabel("On main:\ttmp \r\nmore", "2026-10-02").Text == "tmp");
 	CHECK_FALSE(Graphite::StashRowLabel("On main: \t\r", "2026-10-02").Named);
 }
+
+TEST_CASE("The drop question names a stash by its message and its position")
+{
+	CHECK(Graphite::DropStashSubject(2, "On main: half-done refactor") == "\"half-done refactor\" (stash@{2})");
+}
+
+TEST_CASE("The drop question falls back to the position for a stash with no message of its own")
+{
+	CHECK(Graphite::DropStashSubject(0, "WIP on main: 1a2b3c4 Add the parser") == "stash@{0}");
+	CHECK(Graphite::DropStashSubject(1, "") == "stash@{1}");
+}
+
+TEST_CASE("The drop question cuts a long message on a character boundary")
+{
+	CHECK(Graphite::DropStashSubject(0, "On main: abcdefghij", 4) == "\"abcd\xE2\x80\xA6\" (stash@{0})");
+
+	// Each two-byte pair is one character; four of them are kept whole.
+	const std::string wide = Graphite::DropStashSubject(0, "On main: \xC5\x82\xC5\x82\xC5\x82\xC5\x82\xC5\x82", 4);
+	CHECK(wide == "\"\xC5\x82\xC5\x82\xC5\x82\xC5\x82\xE2\x80\xA6\" (stash@{0})");
+
+	CHECK(Graphite::DropStashSubject(0, "On main: abcd", 4) == "\"abcd\" (stash@{0})");
+}

@@ -194,6 +194,20 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
+	bool AsksBeforeDetaching(const Core::CheckoutTarget& target)
+	{
+		// A remote branch is checked out as a local one that tracks it, so only a bare
+		// commit leaves HEAD pointing at no branch.
+		return target.Kind == Core::CheckoutKind::Commit;
+	}
+
+	std::string DetachedCheckoutBody(const std::string& commitLabel)
+	{
+		return "Checking out " + commitLabel +
+			   " leaves HEAD on that commit with no branch. Commits made there belong to no branch, "
+			   "and are easy to lose once you switch away.";
+	}
+
 	std::string CheckoutTargetLabel(const Core::CheckoutTarget& target)
 	{
 		if (target.Kind == Core::CheckoutKind::Commit)

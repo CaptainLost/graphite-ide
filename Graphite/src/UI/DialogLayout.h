@@ -179,7 +179,10 @@ namespace Graphite {
 			None,
 			Cancel,
 			Safe,
-			Destructive
+			Destructive,
+
+			// The plain button beside Cancel, for a way out that is neither of the two roles.
+			Alternative
 		};
 
 	private:
@@ -222,7 +225,11 @@ namespace Graphite {
 		// Cancel, the safe action in the accent colour, the destructive one in `danger`. Escape is
 		// Cancel; Enter is the safe action, never the destructive one, and nothing at all in a
 		// dialog without a safe action. A click wins over a key pressed in the same frame.
-		static Choice ButtonRow(ButtonSpec safe, ButtonSpec destructive, const ImVec4& danger)
+		//
+		// `alternative`, when it has a label, is a third way out drawn unfilled between Cancel
+		// and the safe action.
+		static Choice ButtonRow(ButtonSpec safe, ButtonSpec destructive, const ImVec4& danger,
+								ButtonSpec alternative = {})
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
 			constexpr const char* cancelLabel = "Cancel";
@@ -230,7 +237,7 @@ namespace Graphite {
 			float labelWidth = ImGui::CalcTextSize(cancelLabel).x;
 			int count = 1;
 
-			for (const ButtonSpec& spec : {safe, destructive})
+			for (const ButtonSpec& spec : {safe, destructive, alternative})
 			{
 				if (spec.Label != nullptr)
 				{
@@ -260,6 +267,20 @@ namespace Graphite {
 			if (!safeOffered)
 			{
 				ImGui::SetItemDefaultFocus();
+			}
+
+			if (alternative.Label != nullptr)
+			{
+				ImGui::SameLine();
+
+				ImGui::BeginDisabled(!alternative.Enabled);
+
+				if (ImGui::Button(alternative.Label, ImVec2(buttonWidth, 0.0f)))
+				{
+					clicked = Choice::Alternative;
+				}
+
+				ImGui::EndDisabled();
 			}
 
 			ImGuiID safeId = 0;

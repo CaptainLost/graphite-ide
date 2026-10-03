@@ -252,3 +252,23 @@ TEST_CASE("A row's tag says what makes it matter, and nothing for a plain change
 	CHECK(Graphite::CheckoutRowTag({.Path = "a.txt", .Unsaved = true, .Blocks = true}) ==
 		  "unsaved, blocks checkout");
 }
+
+TEST_CASE("Only checking out a bare commit asks about detaching")
+{
+	Core::CheckoutTarget commit;
+	commit.Kind = Core::CheckoutKind::Commit;
+	CHECK(Graphite::AsksBeforeDetaching(commit));
+
+	CHECK_FALSE(Graphite::AsksBeforeDetaching({.Kind = Core::CheckoutKind::LocalBranch, .Name = "main"}));
+
+	// A remote branch is checked out as a local one that tracks it, so HEAD keeps a branch.
+	CHECK_FALSE(Graphite::AsksBeforeDetaching({.Kind = Core::CheckoutKind::RemoteBranch, .Name = "origin/x"}));
+}
+
+TEST_CASE("The detached question names the commit and says it belongs to no branch")
+{
+	const std::string body = Graphite::DetachedCheckoutBody("1a2b3c4");
+
+	CHECK(body.find("1a2b3c4") != std::string::npos);
+	CHECK(body.find("no branch") != std::string::npos);
+}

@@ -10,6 +10,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/Icons.h"
+#include "Git/StashBranch.h"
 #include "Theme/Palettes.h"
 #include "UI/DialogLayout.h"
 
@@ -45,6 +46,64 @@ namespace Graphite {
 	ImVec4 GitView::DangerColour() const
 	{
 		return ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);
+	}
+
+	void GitView::RenderDetachDialog()
+	{
+		DialogLayout::BeforeBegin(DialogLayout::kWideWidth);
+
+		const bool open = m_DetachQuestion.Begin([](const DetachPayload&) { return true; },
+												 [](const DetachPayload& payload) {
+													 return "Checkout " + payload.Commit.ShortHex() + " (detached)";
+												 });
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
+		{
+			return;
+		}
+
+		const DetachPayload* current = m_DetachQuestion.GetCurrent();
+
+		if (current == nullptr)
+		{
+			ImGui::CloseCurrentPopup();
+			m_DetachQuestion.End();
+			return;
+		}
+
+		// Copied out before Answer(), which drops the payload `current` points at.
+		const Core::Oid commit = current->Commit;
+
+		DialogLayout::Text(DetachedCheckoutBody(commit.ShortHex()));
+		DialogLayout::Gap();
+
+		// Checking out is the plain answer, so it is the one Enter gives. A branch made at the
+		// commit is what keeps work done there.
+		const bool writable = !m_Model.IsWriteInFlight();
+
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{.Label = "Checkout", .Enabled = writable}, {}, DangerColour(),
+			{.Label = "Create Branch Instead\xE2\x80\xA6", .Enabled = writable});
+
+		if (choice == DialogLayout::Choice::Safe)
+		{
+			// Planned like any checkout, so the overwrite question is asked next if it applies.
+			BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::Commit, .Commit = commit});
+			m_DetachQuestion.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Alternative)
+		{
+			BeginNewBranch(commit.ShortHex(), commit);
+			m_DetachQuestion.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_DetachQuestion.Answer();
+		}
+
+		m_DetachQuestion.End();
 	}
 
 	void GitView::RenderCheckoutDialog()
@@ -378,7 +437,7 @@ namespace Graphite {
 
 		const bool open = m_DropStashQuestion.Begin([](const DropStashPayload&) { return true; },
 													[](const DropStashPayload& payload) {
-														return std::format("Drop stash@{{{}}}", payload.Index);
+														return "Drop " + DropStashSubject(payload.Index, payload.Message);
 													});
 
 		DialogLayout::AfterBegin();
@@ -399,7 +458,8 @@ namespace Graphite {
 
 		const Core::Oid id = current->Id;
 
-		DialogLayout::Text(std::format("Drop stash@{{{}}}? The changes it holds are deleted with it.", current->Index));
+		DialogLayout::Text("Drop " + DropStashSubject(current->Index, current->Message) +
+						   "? The changes it holds are deleted with it.");
 		DialogLayout::Gap();
 		DialogLayout::MutedText("A dropped stash cannot be recovered.");
 		DialogLayout::Gap();

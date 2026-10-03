@@ -37,6 +37,10 @@ namespace Graphite {
 	// already finer than that line's own precision.
 	std::string FormattedTimestamp(std::chrono::sys_seconds when, std::chrono::minutes offset);
 
+	// The message as the reader would paste it: the summary, and the body after a blank line
+	// when there is one.
+	std::string CommitMessageText(const Core::CommitSummary& commit);
+
 	// Whether the committer is worth naming beside the author. Compared by name and email
 	// and not by date: a rebase or an amend leaves the same person with a later committer
 	// date, and a line repeating their name to report that tells the reader nothing they

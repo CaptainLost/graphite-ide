@@ -143,7 +143,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("Drop"))
 		{
-			AskOnce(m_DropStashQuestion, DropStashPayload{.Index = stash.Index, .Id = stash.Id});
+			AskOnce(m_DropStashQuestion, DropStashPayload{.Index = stash.Index, .Id = stash.Id, .Message = stash.Message});
 		}
 
 		ImGui::EndDisabled();

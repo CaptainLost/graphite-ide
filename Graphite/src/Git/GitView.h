@@ -134,10 +134,21 @@ namespace Graphite {
 			bool IsSameQuestion(const DeleteBranchPayload& other) const { return Branch == other.Branch; }
 		};
 
+		// Asked before a commit is checked out, which leaves HEAD on no branch.
+		struct DetachPayload
+		{
+			Core::Oid Commit;
+
+			bool IsSameQuestion(const DetachPayload& other) const { return Commit == other.Commit; }
+		};
+
 		struct DropStashPayload
 		{
 			std::size_t Index = 0;
 			Core::Oid Id;
+
+			// As git recorded it, for the question to name what it would delete.
+			std::string Message;
 
 			bool IsSameQuestion(const DropStashPayload& other) const { return Id == other.Id; }
 		};
@@ -212,6 +223,7 @@ namespace Graphite {
 		// In GitViewDialogs.cpp.
 		ImVec4 DangerColour() const;
 		void RenderCheckoutDialog();
+		void RenderDetachDialog();
 		void RenderBranchNameDialog(ModalQuestion<BranchNamePayload>& question);
 		void RenderDeleteBranchDialog();
 		void RenderDropStashDialog();
@@ -353,6 +365,16 @@ namespace Graphite {
 		// never through GetWriteError, so saying so is this panel's job.
 		std::optional<std::string> m_ActionError;
 
+		// Where a confirmation for the status bar goes. Set by SubscribeTo, the one place this
+		// panel is handed the bus; null before that, when nothing can have been copied.
+		Core::EventBus* m_Events = nullptr;
+
+		// The names on each commit of the branches snapshot they were built from, so they are
+		// rebuilt when the branches change and not on every frame.
+		Core::Ref<const std::vector<Core::Branch>> m_RefsOf;
+		CommitRefMap m_CommitRefs;
+
+		ModalQuestion<DetachPayload> m_DetachQuestion;
 		ModalQuestion<CheckoutQuestionPayload> m_CheckoutQuestion;
 		ModalQuestion<BranchNamePayload> m_NewBranchQuestion;
 		ModalQuestion<BranchNamePayload> m_RenameBranchQuestion;

@@ -152,3 +152,13 @@ TEST_CASE("A committer with the same name on a different address is a different 
 
 	CHECK(Graphite::ShowsCommitter(commit));
 }
+
+TEST_CASE("A commit message to copy is the summary, then the body after a blank line")
+{
+	Core::CommitSummary commit;
+	commit.Summary = "Fix the parser";
+	CHECK(Graphite::CommitMessageText(commit) == "Fix the parser");
+
+	commit.Body = "It read past the end.";
+	CHECK(Graphite::CommitMessageText(commit) == "Fix the parser\n\nIt read past the end.");
+}
