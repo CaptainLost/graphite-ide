@@ -7,10 +7,18 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
 namespace {
+
+	Core::Repository OpenAt(const std::filesystem::path& root)
+	{
+		auto opened = Core::Repository::Open(root);
+		REQUIRE(opened.HasValue());
+		return std::move(opened).GetValue();
+	}
 
 	// The status of one path, or a default-constructed FileStatus when git says the path
 	// is clean. Written as a helper because every case below asks the same question.
@@ -483,4 +491,96 @@ TEST_CASE("Staging a conflicted file clears the conflict")
 	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
 
 	CHECK_FALSE(StatusOf(repository.GetValue(), "a.txt").IsConflicted);
+}
+
+// The tests below hold two handles on one repository: libgit2 caches an index per handle, and
+// the application keeps one handle per worker thread, so one handle can act on the repository
+// after another has changed the index. Each makes the second handle read the index first, so
+// that its cache is populated before the first one writes.
+
+TEST_CASE("Commit through a handle that has not seen a stage commits what was staged")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	Core::Repository staging = OpenAt(fixture.GetPath());
+	Core::Repository committing = OpenAt(fixture.GetPath());
+	REQUIRE(committing.QueryStatus().HasValue());
+
+	fixture.Write("x.txt", "new\n");
+	REQUIRE(staging.Stage({"x.txt"}).HasValue());
+
+	REQUIRE(committing.Commit({.Message = "add x"}).HasValue());
+
+	const Core::Repository check = OpenAt(fixture.GetPath());
+	const Core::FileStatus after = StatusOf(check, "x.txt");
+	CHECK(after.Index == Core::StatusFlags::None);
+	CHECK(after.WorkTree == Core::StatusFlags::None);
+}
+
+TEST_CASE("Stage through a handle that has not seen an amend does not revert the amended file")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	Core::Repository amending = OpenAt(fixture.GetPath());
+	Core::Repository staging = OpenAt(fixture.GetPath());
+	REQUIRE(staging.QueryStatus().HasValue());
+
+	fixture.Write("a.txt", "two\n");
+	REQUIRE(amending.Stage({"a.txt"}).HasValue());
+	REQUIRE(amending.Commit({.Message = "", .Amend = true}).HasValue());
+
+	fixture.Write("b.txt", "other\n");
+	REQUIRE(staging.Stage({"b.txt"}).HasValue());
+
+	const Core::Repository check = OpenAt(fixture.GetPath());
+	CHECK(StatusOf(check, "a.txt").Index == Core::StatusFlags::None);
+	CHECK(Has(StatusOf(check, "b.txt").Index, Core::StatusFlags::New));
+}
+
+TEST_CASE("Unstage through a handle that has not seen a stage keeps that stage")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Write("b.txt", "one\n");
+	fixture.Commit("first");
+
+	Core::Repository staging = OpenAt(fixture.GetPath());
+	Core::Repository unstaging = OpenAt(fixture.GetPath());
+	REQUIRE(unstaging.QueryStatus().HasValue());
+
+	fixture.Write("a.txt", "two\n");
+	REQUIRE(staging.Stage({"a.txt"}).HasValue());
+
+	REQUIRE(unstaging.Unstage({"b.txt"}).HasValue());
+
+	const Core::Repository check = OpenAt(fixture.GetPath());
+	CHECK(Has(StatusOf(check, "a.txt").Index, Core::StatusFlags::Modified));
+}
+
+TEST_CASE("Discarding through a handle that has not seen a stage restores the staged content")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+
+	Core::Repository staging = OpenAt(fixture.GetPath());
+	Core::Repository discarding = OpenAt(fixture.GetPath());
+	REQUIRE(discarding.QueryStatus().HasValue());
+
+	fixture.Write("a.txt", "staged\n");
+	REQUIRE(staging.Stage({"a.txt"}).HasValue());
+	fixture.Write("a.txt", "edited\n");
+
+	REQUIRE(discarding.DiscardWorkTree({"a.txt"}).HasValue());
+
+	std::ifstream in{fixture.GetPath() / "a.txt", std::ios::binary};
+	std::string content{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+	std::erase(content, '\r');
+	CHECK(content == "staged\n");
 }

@@ -15,24 +15,6 @@
 
 namespace Core {
 
-	namespace {
-
-		// Every write below opens the index the same way and reports the same failure when
-		// it cannot, so the three lines live here once.
-		Result<IndexHandle> OpenIndex(git_repository* handle)
-		{
-			IndexHandle index;
-
-			if (git_repository_index(Out(index), handle) != 0)
-			{
-				return Error{ErrorCode::IoFailure,
-							 std::format("cannot read the index: {}", LastLibgit2Message())};
-			}
-
-			return index;
-		}
-	}
-
 	Result<void> Repository::Stage(const std::vector<std::filesystem::path>& paths)
 	{
 		if (m_Handle == nullptr)
@@ -40,7 +22,7 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		auto opened = OpenIndex(m_Handle.get());
+		auto opened = OpenFreshIndex(m_Handle.get());
 
 		if (!opened.HasValue())
 		{
@@ -131,6 +113,12 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
+		// git_reset_default edits the handle's cached index and writes it back.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
+		}
+
 		const PathSpec spec{paths};
 		const git_strarray pathspec = spec.Get();
 
@@ -160,6 +148,13 @@ namespace Core {
 		if (paths.empty())
 		{
 			return Result<void>::Ok();
+		}
+
+		// Checking out the index does not reload it, so a stale one would write old content over
+		// the files.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
 		}
 
 		const PathSpec spec{paths};
@@ -248,7 +243,7 @@ namespace Core {
 						 std::format("cannot determine who is committing: {}", LastLibgit2Message())};
 		}
 
-		auto opened = OpenIndex(m_Handle.get());
+		auto opened = OpenFreshIndex(m_Handle.get());
 
 		if (!opened.HasValue())
 		{

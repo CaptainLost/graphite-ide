@@ -10,6 +10,8 @@
 // in a declaration - so "touched by reference or pointer" describes the other functions
 // here, not that one.
 
+#include "Core/Base/Result.h"
+#include "Core/Git/GitHandles.h"
 #include "Core/Git/Oid.h"
 
 #include <filesystem>
@@ -17,6 +19,7 @@
 #include <vector>
 
 struct git_oid;
+struct git_repository;
 struct git_strarray;
 
 namespace Core {
@@ -56,6 +59,19 @@ namespace Core {
 		std::vector<std::string> m_Text;
 		std::vector<const char*> m_Pointers;
 	};
+
+	// The repository's index, brought up to date with the file on disk first. libgit2 caches
+	// one index per repository handle and reloads it only in some of its own entry points, so a
+	// handle that has not touched the index since another one wrote it holds the old content -
+	// and a commit, a stage or a stash made from that is made from the past. Every operation
+	// that reads or writes the index, or hands the repository to a libgit2 call that does, goes
+	// through this at its start. Not between an operation's own edits and its write: the
+	// reload throws unsaved changes away.
+	Result<IndexHandle> OpenFreshIndex(git_repository* handle);
+
+	// OpenFreshIndex for the operation that does not use the index itself, only needs the
+	// libgit2 call it makes next to see the current one.
+	Result<void> RefreshIndex(git_repository* handle);
 
 	// Idempotent and thread-safe. Every entry point that calls libgit2 without first opening
 	// a Repository needs this, since Repository::Open is otherwise what initialises it.

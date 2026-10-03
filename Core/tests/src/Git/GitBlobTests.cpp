@@ -380,3 +380,23 @@ TEST_CASE("An unborn HEAD names no commit")
 	REQUIRE_FALSE(head.HasValue());
 	CHECK(head.GetError().Code == Core::ErrorCode::NotFound);
 }
+
+TEST_CASE("The index side is read from the index on disk, not from one this handle cached earlier")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "committed\n");
+	fixture.Commit("first");
+
+	// Two handles on one repository, as the application has one per worker thread. The reader
+	// loads the index first, so its cache predates the stage.
+	Repository staging = OpenAt(fixture.GetPath());
+	Repository reading = OpenAt(fixture.GetPath());
+	REQUIRE(reading.ReadIndexBlob("a.txt").HasValue());
+
+	fixture.Write("a.txt", "staged\n");
+	REQUIRE(staging.Stage({"a.txt"}).HasValue());
+
+	const auto staged = reading.ReadIndexBlob("a.txt");
+	REQUIRE(staged.HasValue());
+	CHECK(staged.GetValue() == "staged\n");
+}

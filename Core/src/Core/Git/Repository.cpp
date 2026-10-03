@@ -135,13 +135,16 @@ namespace Core {
 			return false;
 		}
 
-		IndexHandle index;
+		auto opened = OpenFreshIndex(m_Handle.get());
 
-		if (git_repository_index(Out(index), m_Handle.get()) != 0)
+		if (!opened.HasValue())
 		{
-			CORE_TRACE("Cannot read the index to look for a submodule above '{}'", ToGitPath(relative));
+			CORE_TRACE("Cannot read the index to look for a submodule above '{}': {}", ToGitPath(relative),
+					   opened.GetError().Message);
 			return false;
 		}
+
+		const IndexHandle index = std::move(opened).GetValue();
 
 		bool inside = false;
 		std::filesystem::path prefix;
