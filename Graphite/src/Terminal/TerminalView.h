@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Terminal/TerminalSession.h"
 
@@ -25,8 +26,13 @@ namespace Graphite {
 		// without it every IDE shortcut typed over this view would be swallowed and sent to the
 		// shell instead — so it is a constructor parameter rather than something a caller can
 		// forget to set.
-		TerminalView(Core::TerminalSession& session, const Core::Keymap& keys)
-			: m_Session(session), m_Keys(keys)
+		//
+		// The registry comes with it because a chord is the IDE's only when the command bound to
+		// it can fire while a terminal holds the keyboard: an editor-scoped chord cannot, and
+		// the shell gets it.
+		TerminalView(Core::TerminalSession& session, const Core::Keymap& keys,
+					 const Core::CommandRegistry& commands)
+			: m_Session(session), m_Keys(keys), m_Commands(commands)
 		{
 		}
 
@@ -68,6 +74,11 @@ namespace Graphite {
 		void HandleMouse(const ImVec2& origin, const ImVec2& cellSize, int visibleRows,
 						 int columns);
 		void HandleKeyboard();
+
+		// Draws the scrollbar in `track` and moves the view with it. Returns whether the mouse
+		// is using it, so the grid does not also treat the same press as the start of a
+		// selection.
+		bool DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows, int scrollback);
 		ImU32 Resolve(const Core::TerminalColor& color, const EditorPalette& palette,
 					  bool foreground) const;
 
@@ -95,7 +106,12 @@ namespace Graphite {
 
 		Core::TerminalSession& m_Session;
 		const Core::Keymap& m_Keys;
+		const Core::CommandRegistry& m_Commands;
 		int m_ScrollOffset = 0;
+
+		// Where in the thumb the scrollbar was grabbed, in pixels from its top, while a drag is
+		// under way; negative otherwise.
+		float m_ScrollbarGrab = -1.0f;
 		bool m_FollowTail = true;
 		bool m_HasSelection = false;
 		bool m_Sweeping = false;

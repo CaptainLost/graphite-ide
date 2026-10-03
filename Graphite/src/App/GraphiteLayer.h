@@ -322,7 +322,7 @@ namespace Graphite {
 
 		// After m_Keys and m_Workspace, which it refers to. Owns a reader thread per terminal;
 		// they join in its destructor.
-		TerminalWindows m_Terminals{m_Workspace, m_Keys};
+		TerminalWindows m_Terminals{m_Workspace, m_Keys, m_Commands};
 
 		// After every member whose commands it holds - each captures its owner, `this` or a
 		// panel - so it is destroyed before any of them and no stored command outlives what it

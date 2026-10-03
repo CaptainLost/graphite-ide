@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace Graphite {
 
@@ -160,5 +161,72 @@ namespace Graphite {
 		}
 
 		return held & (Core::KeyModifier::Shift | Core::KeyModifier::Super);
+	}
+
+	TerminalScrollbarThumb ComputeTerminalScrollbarThumb(int offset, int rows, int scrollback,
+														 float trackHeight, float minHeight)
+	{
+		const float track = std::max(0.0f, trackHeight);
+
+		if (scrollback <= 0 || track <= 0.0f)
+		{
+			return {0.0f, track};
+		}
+
+		const int visible = std::max(1, rows);
+		const float share = static_cast<float>(visible) / static_cast<float>(visible + scrollback);
+		const float height = std::min(track, std::max(minHeight, track * share));
+
+		const int clamped = std::clamp(offset, 0, scrollback);
+		const float fromTop = static_cast<float>(scrollback - clamped) / static_cast<float>(scrollback);
+
+		return {(track - height) * fromTop, height};
+	}
+
+	int TerminalScrollOffsetForThumbTop(float thumbTop, int scrollback, float trackHeight,
+										float thumbHeight)
+	{
+		const float travel = trackHeight - thumbHeight;
+
+		if (scrollback <= 0 || travel <= 0.0f)
+		{
+			return 0;
+		}
+
+		const float fromTop = std::clamp(thumbTop / travel, 0.0f, 1.0f);
+
+		return std::clamp(
+			scrollback - static_cast<int>(std::lround(fromTop * static_cast<float>(scrollback))), 0,
+			scrollback);
+	}
+
+	TerminalShortcut ClassifyTerminalShortcut(Core::KeyCode key, Core::KeyModifier held,
+											  bool hasSelection)
+	{
+		const bool shift = Core::HasModifier(held, Core::KeyModifier::Shift);
+
+		if (!Core::HasModifier(held, Core::KeyModifier::Control) ||
+			Core::HasModifier(held, Core::KeyModifier::Alt) ||
+			Core::HasModifier(held, Core::KeyModifier::Super))
+		{
+			return TerminalShortcut::None;
+		}
+
+		if (key == Core::KeyCode::C)
+		{
+			if (hasSelection)
+			{
+				return TerminalShortcut::Copy;
+			}
+
+			return shift ? TerminalShortcut::Swallow : TerminalShortcut::Interrupt;
+		}
+
+		if (key == Core::KeyCode::V)
+		{
+			return TerminalShortcut::Paste;
+		}
+
+		return TerminalShortcut::None;
 	}
 }

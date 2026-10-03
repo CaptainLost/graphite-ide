@@ -2,6 +2,9 @@
 
 #include "Core/Command/Keymap.h"
 
+#include "Core/Command/Command.h"
+#include "Core/Command/CommandRegistry.h"
+
 #include <utility>
 
 namespace Core {
@@ -81,6 +84,31 @@ namespace Core {
 		ForEachBinding(
 			[&owner, &chord](const std::string& id, const Binding& binding) {
 				if (owner.empty() && Holds(binding, chord))
+				{
+					owner = id;
+				}
+			});
+
+		return owner;
+	}
+
+	std::string_view Keymap::BoundTo(const Chord& chord, Chord::Scope scope,
+									 const CommandRegistry& commands) const
+	{
+		std::string_view owner;
+
+		ForEachBinding(
+			[&owner, &chord, scope, &commands](const std::string& id, const Binding& binding) {
+				if (!owner.empty() || !Holds(binding, chord))
+				{
+					return;
+				}
+
+				const Command* command = commands.Find(id);
+				const Chord::Scope wanted =
+					command != nullptr ? command->KeyScope : Chord::Scope::Global;
+
+				if (wanted == scope)
 				{
 					owner = id;
 				}

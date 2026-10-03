@@ -199,3 +199,104 @@ TEST_CASE("A key that typed a character sends no Ctrl or Alt along with it")
 	CHECK(TerminalKeyModifiers(KeyModifier::Control | KeyModifier::Super, false) ==
 		  (KeyModifier::Control | KeyModifier::Super));
 }
+
+TEST_CASE("Ctrl+C copies a selection and interrupts without one")
+{
+	using Core::KeyCode;
+	using Core::KeyModifier;
+
+	CHECK(ClassifyTerminalShortcut(KeyCode::C, KeyModifier::Control, true) == TerminalShortcut::Copy);
+	CHECK(ClassifyTerminalShortcut(KeyCode::C, KeyModifier::Control, false) == TerminalShortcut::Interrupt);
+}
+
+TEST_CASE("Ctrl+Shift+C only ever copies and never becomes an interrupt")
+{
+	using Core::KeyCode;
+	using Core::KeyModifier;
+
+	const KeyModifier chord = KeyModifier::Control | KeyModifier::Shift;
+
+	CHECK(ClassifyTerminalShortcut(KeyCode::C, chord, true) == TerminalShortcut::Copy);
+	CHECK(ClassifyTerminalShortcut(KeyCode::C, chord, false) == TerminalShortcut::Swallow);
+}
+
+TEST_CASE("Ctrl+V and Ctrl+Shift+V both paste")
+{
+	using Core::KeyCode;
+	using Core::KeyModifier;
+
+	CHECK(ClassifyTerminalShortcut(KeyCode::V, KeyModifier::Control, false) == TerminalShortcut::Paste);
+	CHECK(ClassifyTerminalShortcut(KeyCode::V, KeyModifier::Control | KeyModifier::Shift, true) ==
+		  TerminalShortcut::Paste);
+}
+
+TEST_CASE("Other chords are not the view's gestures")
+{
+	using Core::KeyCode;
+	using Core::KeyModifier;
+
+	CHECK(ClassifyTerminalShortcut(KeyCode::V, KeyModifier::None, false) == TerminalShortcut::None);
+	CHECK(ClassifyTerminalShortcut(KeyCode::C, KeyModifier::Shift, true) == TerminalShortcut::None);
+	CHECK(ClassifyTerminalShortcut(KeyCode::A, KeyModifier::Control, false) == TerminalShortcut::None);
+
+	// Ctrl+Alt+C is whatever the layout puts there, and Super belongs to the system.
+	CHECK(ClassifyTerminalShortcut(KeyCode::C, KeyModifier::Control | KeyModifier::Alt, true) ==
+		  TerminalShortcut::None);
+	CHECK(ClassifyTerminalShortcut(KeyCode::V, KeyModifier::Control | KeyModifier::Super, false) ==
+		  TerminalShortcut::None);
+}
+
+TEST_CASE("The scrollbar thumb sits at the bottom at the tail and at the top at the oldest line")
+{
+	const auto tail = ComputeTerminalScrollbarThumb(0, 10, 90, 100.0f, 8.0f);
+	CHECK(tail.Height == doctest::Approx(10.0f));
+	CHECK(tail.Top == doctest::Approx(90.0f));
+
+	const auto oldest = ComputeTerminalScrollbarThumb(90, 10, 90, 100.0f, 8.0f);
+	CHECK(oldest.Top == doctest::Approx(0.0f));
+
+	const auto middle = ComputeTerminalScrollbarThumb(45, 10, 90, 100.0f, 8.0f);
+	CHECK(middle.Top == doctest::Approx(45.0f));
+}
+
+TEST_CASE("The scrollbar thumb never shrinks below its minimum and fills the track without history")
+{
+	const auto small = ComputeTerminalScrollbarThumb(0, 10, 9990, 100.0f, 8.0f);
+	CHECK(small.Height == doctest::Approx(8.0f));
+	CHECK(small.Top == doctest::Approx(92.0f));
+
+	const auto none = ComputeTerminalScrollbarThumb(0, 10, 0, 100.0f, 8.0f);
+	CHECK(none.Top == doctest::Approx(0.0f));
+	CHECK(none.Height == doctest::Approx(100.0f));
+
+	// A track shorter than the minimum thumb, and one with no height at all.
+	CHECK(ComputeTerminalScrollbarThumb(0, 10, 50, 5.0f, 8.0f).Height == doctest::Approx(5.0f));
+	CHECK(ComputeTerminalScrollbarThumb(3, 0, 50, 0.0f, 8.0f).Height == doctest::Approx(0.0f));
+
+	// An offset past the history is held to it.
+	CHECK(ComputeTerminalScrollbarThumb(500, 10, 90, 100.0f, 8.0f).Top == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A thumb dragged to a position maps back to the offset it stands for")
+{
+	CHECK(TerminalScrollOffsetForThumbTop(90.0f, 90, 100.0f, 10.0f) == 0);
+	CHECK(TerminalScrollOffsetForThumbTop(0.0f, 90, 100.0f, 10.0f) == 90);
+	CHECK(TerminalScrollOffsetForThumbTop(45.0f, 90, 100.0f, 10.0f) == 45);
+
+	// Dragged past either end.
+	CHECK(TerminalScrollOffsetForThumbTop(-20.0f, 90, 100.0f, 10.0f) == 90);
+	CHECK(TerminalScrollOffsetForThumbTop(500.0f, 90, 100.0f, 10.0f) == 0);
+
+	// Nothing to scroll, or no room to move the thumb in.
+	CHECK(TerminalScrollOffsetForThumbTop(10.0f, 0, 100.0f, 100.0f) == 0);
+	CHECK(TerminalScrollOffsetForThumbTop(10.0f, 90, 100.0f, 100.0f) == 0);
+}
+
+TEST_CASE("Dragging a thumb round-trips through the offset")
+{
+	for (int offset = 0; offset <= 90; ++offset)
+	{
+		const auto thumb = ComputeTerminalScrollbarThumb(offset, 10, 90, 100.0f, 8.0f);
+		CHECK(TerminalScrollOffsetForThumbTop(thumb.Top, 90, 100.0f, thumb.Height) == offset);
+	}
+}

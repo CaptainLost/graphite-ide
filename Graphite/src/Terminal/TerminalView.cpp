@@ -134,13 +134,6 @@ namespace Graphite {
 			return IM_COL32(grey, grey, grey, 255);
 		}
 
-		// A real control chord. Ctrl+C is a copy; Ctrl+Alt+C is whatever the layout puts on that
-		// key. The same decision the editor makes in TextEditorWidget.cpp's ControlOf.
-		bool ControlOf(const ImGuiIO& io)
-		{
-			return io.KeyCtrl && !io.KeyAlt;
-		}
-
 		Core::KeyModifier HeldModifiers(const ImGuiIO& io)
 		{
 			Core::KeyModifier held = Core::KeyModifier::None;
@@ -213,7 +206,14 @@ namespace Graphite {
 		const ImVec2 available = ImGui::GetContentRegionAvail();
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 
-		const int columns = std::max(1, static_cast<int>(available.x / cellSize.x));
+		// The scrollbar's strip is taken whether or not there is history to scroll: the grid
+		// narrowing by a column the moment the first line scrolls off would resize the session
+		// under the reader, and a width that depends on the content is how the fitted size
+		// ends up oscillating.
+		const float scrollbarWidth = ImGui::GetStyle().ScrollbarSize;
+
+		const int columns =
+			std::max(1, static_cast<int>((available.x - scrollbarWidth) / cellSize.x));
 		const int rows = std::max(1, static_cast<int>(available.y / cellSize.y));
 
 		const Core::TerminalScreen& screen = m_Session.GetScreen();
@@ -282,9 +282,23 @@ namespace Graphite {
 		m_ScrollOffset = std::clamp(m_ScrollOffset, 0, static_cast<int>(scrollback));
 		m_FollowTail = m_ScrollOffset == 0;
 
+		// The strip on the right of the grid, as tall as the rows are. Before the mouse is read
+		// for the grid: a press on the track is the scrollbar's and must not also start a
+		// selection under it.
+		const bool onScrollbar = DrawScrollbar(
+			ImVec2(origin.x + available.x - scrollbarWidth, origin.y),
+			ImVec2(origin.x + available.x, origin.y + static_cast<float>(rows) * cellSize.y), rows,
+			static_cast<int>(scrollback));
+
+		m_ScrollOffset = std::clamp(m_ScrollOffset, 0, static_cast<int>(scrollback));
+		m_FollowTail = m_ScrollOffset == 0;
+
 		// Before the rows are drawn, so the highlight goes under the text of the frame the mouse
 		// moved in rather than a frame behind the pointer.
-		HandleMouse(origin, cellSize, rows, columns);
+		if (!onScrollbar)
+		{
+			HandleMouse(origin, cellSize, rows, columns);
+		}
 
 		ImDrawList& drawList = *ImGui::GetWindowDrawList();
 		std::vector<Core::Cell> scratch;
@@ -377,6 +391,75 @@ namespace Graphite {
 		return fitted;
 	}
 
+	bool TerminalView::DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows,
+									 int scrollback)
+	{
+		// Nothing to scroll through: no bar, and a drag that was under way has nothing left to
+		// hold on to.
+		if (scrollback <= 0)
+		{
+			m_ScrollbarGrab = -1.0f;
+			return false;
+		}
+
+		const float trackHeight = trackMax.y - trackMin.y;
+		const float minThumb = ImGui::GetStyle().GrabMinSize;
+		const ImVec2 mouse = ImGui::GetMousePos();
+
+		TerminalScrollbarThumb thumb =
+			ComputeTerminalScrollbarThumb(m_ScrollOffset, rows, scrollback, trackHeight, minThumb);
+
+		const bool overTrack =
+			ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(trackMin, trackMax);
+
+		if (overTrack && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			ImGui::SetWindowFocus();
+
+			const float thumbTop = trackMin.y + thumb.Top;
+
+			// A press on the thumb keeps it under the pointer where it was grabbed; a press on
+			// the track elsewhere brings the thumb to the pointer, centred, and carries on as a
+			// drag - which is what a click and a click-and-drag both want.
+			m_ScrollbarGrab = mouse.y >= thumbTop && mouse.y < thumbTop + thumb.Height
+								  ? mouse.y - thumbTop
+								  : thumb.Height * 0.5f;
+		}
+
+		if (m_ScrollbarGrab >= 0.0f)
+		{
+			if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+			{
+				m_ScrollbarGrab = -1.0f;
+			}
+			else
+			{
+				m_ScrollOffset = TerminalScrollOffsetForThumbTop(
+					mouse.y - trackMin.y - m_ScrollbarGrab, scrollback, trackHeight, thumb.Height);
+
+				thumb = ComputeTerminalScrollbarThumb(m_ScrollOffset, rows, scrollback,
+													  trackHeight, minThumb);
+			}
+		}
+
+		const bool dragging = m_ScrollbarGrab >= 0.0f;
+		const bool overThumb = overTrack && mouse.y >= trackMin.y + thumb.Top &&
+							   mouse.y < trackMin.y + thumb.Top + thumb.Height;
+
+		ImDrawList& drawList = *ImGui::GetWindowDrawList();
+
+		drawList.AddRectFilled(trackMin, trackMax, ImGui::GetColorU32(ImGuiCol_ScrollbarBg));
+		drawList.AddRectFilled(
+			ImVec2(trackMin.x, trackMin.y + thumb.Top),
+			ImVec2(trackMax.x, trackMin.y + thumb.Top + thumb.Height),
+			ImGui::GetColorU32(dragging	  ? ImGuiCol_ScrollbarGrabActive
+							   : overThumb ? ImGuiCol_ScrollbarGrabHovered
+										   : ImGuiCol_ScrollbarGrab),
+			ImGui::GetStyle().ScrollbarRounding);
+
+		return dragging;
+	}
+
 	bool TerminalView::DrawContextMenu()
 	{
 		bool close = false;
@@ -390,7 +473,9 @@ namespace Graphite {
 			return false;
 		}
 
-		if (ImGui::MenuItem("Copy", "Ctrl+C", false, m_HasSelection))
+		// The chords that only ever do what the item says: plain Ctrl+C is an interrupt when
+		// nothing is selected, so it is not the one to advertise. Ctrl+V pastes too.
+		if (ImGui::MenuItem("Copy", "Ctrl+Shift+C", false, m_HasSelection))
 		{
 			Copy();
 		}
@@ -738,41 +823,44 @@ namespace Graphite {
 				continue;
 			}
 
-			// The view's own two gestures, judged before the binding lookup below rather than
-			// after it. Both of Ctrl+C's outcomes resolve here, not just the copy: the interrupt
-			// is the one that must not depend on what the IDE has bound, and letting the empty
-			// selection fall through to the lookup would put it back at the mercy of it. Nothing
-			// binds Ctrl+C today, but ConsolePanel already advertises it as copy, so the day it
-			// is bound the interrupt would die silently. A paste likewise has to arrive as text
-			// on the wire rather than as an editor action.
-			if (ControlOf(io) && !io.KeyShift && *code == Core::KeyCode::C)
+			// The view's own gestures, judged before the binding lookup below rather than after
+			// it. Every outcome of Ctrl+C resolves here, not just the copy: the interrupt is the one
+			// that must not depend on what the IDE has bound, and letting the empty selection fall
+			// through to the lookup would put it back at the mercy of it. A paste likewise has to
+			// arrive as text on the wire rather than as an editor action, which is why Ctrl+V is
+			// settled here and not left to whatever an editor binds to it.
+			switch (ClassifyTerminalShortcut(*code, held, m_HasSelection))
 			{
-				if (m_HasSelection)
-				{
-					Copy();
-				}
-				else if (const std::string bytes = Core::EncodeKey(*code, modifiers);
-						 !bytes.empty())
+			case TerminalShortcut::Copy:
+				Copy();
+				continue;
+			case TerminalShortcut::Paste:
+				PasteFromClipboard();
+				continue;
+			case TerminalShortcut::Interrupt:
+				if (const std::string bytes = Core::EncodeKey(*code, modifiers); !bytes.empty())
 				{
 					m_Session.Send(bytes);
 				}
 
 				continue;
-			}
-
-			if (ControlOf(io) && io.KeyShift && *code == Core::KeyCode::V)
-			{
-				PasteFromClipboard();
+			case TerminalShortcut::Swallow:
 				continue;
+			case TerminalShortcut::None:
+				break;
 			}
 
-			// Anything the IDE has a binding for stays the IDE's. This one rule is what keeps
-			// Ctrl+P opening the file finder while Ctrl+A, Ctrl+E, Ctrl+W and Ctrl+R reach the
-			// shell's line editing: nothing else distinguishes them, and a terminal that took
-			// every key would make the rest of the application unreachable from inside it. The
-			// chord is built the way KeyBindingsSection builds one, so the two agree about what
-			// a binding is.
-			if (!m_Keys.BoundTo(Core::Chord::Key(io.KeyMods | key)).empty())
+			// Anything the IDE would take stays the IDE's: a chord bound to a command that fires
+			// while a terminal holds the keyboard. This one rule is what keeps Ctrl+P opening the
+			// file finder while Ctrl+A, Ctrl+E, Ctrl+W and Ctrl+R reach the shell's line editing:
+			// nothing else distinguishes them, and a terminal that took every key would make the
+			// rest of the application unreachable from inside it. Asked as Global because that is
+			// the scope the shortcut router fires from here; a chord only an editor can use is
+			// bound to nothing as far as this view is concerned. The chord is built the way
+			// KeyBindingsSection builds one, so the two agree about what a binding is.
+			const Core::Chord chord = Core::Chord::Key(io.KeyMods | key);
+
+			if (!m_Keys.BoundTo(chord, Core::Chord::Scope::Global, m_Commands).empty())
 			{
 				continue;
 			}

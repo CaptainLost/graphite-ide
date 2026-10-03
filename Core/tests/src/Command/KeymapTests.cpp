@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 
 #include <algorithm>
@@ -91,6 +92,53 @@ TEST_CASE("BoundTo answers about the effective binding, not the shadowed default
 
 	CHECK(keys.BoundTo(Chord::Key(ImGuiMod_Ctrl | ImGuiKey_U)) == "editor.zoomIn");
 	CHECK(keys.BoundTo(Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal)).empty());
+}
+
+TEST_CASE("BoundTo with a scope ignores commands that cannot fire in it")
+{
+	Core::CommandRegistry commands;
+	commands.Add({.Id = "editor.selectAll", .KeyScope = Scope::FocusedEditor});
+	commands.Add({.Id = "view.findInFiles", .KeyScope = Scope::Global});
+
+	Keymap keys;
+	keys.SetDefault("editor.selectAll", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_A)});
+	keys.SetDefault("view.findInFiles",
+					{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_F)});
+
+	const Core::Chord selectAll = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_A);
+	const Core::Chord findInFiles = Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_F);
+
+	// The terminal asks as Global: an editor-only chord is free for the shell, a global one is
+	// the application's.
+	CHECK(keys.BoundTo(selectAll, Scope::Global, commands).empty());
+	CHECK(keys.BoundTo(findInFiles, Scope::Global, commands) == "view.findInFiles");
+
+	CHECK(keys.BoundTo(selectAll, Scope::FocusedEditor, commands) == "editor.selectAll");
+	CHECK(keys.BoundTo(findInFiles, Scope::FocusedEditor, commands).empty());
+}
+
+TEST_CASE("BoundTo with a scope treats a command nobody registered as Global")
+{
+	Core::CommandRegistry commands;
+
+	Keymap keys;
+	keys.SetDefault("ghost.command", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Q)});
+
+	CHECK(keys.BoundTo(Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Q), Scope::Global, commands) ==
+		  "ghost.command");
+}
+
+TEST_CASE("BoundTo with a scope skips an out-of-scope owner for an in-scope one")
+{
+	Core::CommandRegistry commands;
+	commands.Add({.Id = "a.editor", .KeyScope = Scope::FocusedEditor});
+	commands.Add({.Id = "b.global", .KeyScope = Scope::Global});
+
+	Keymap keys;
+	keys.SetDefault("a.editor", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_J)});
+	keys.SetDefault("b.global", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_J)});
+
+	CHECK(keys.BoundTo(Chord::Key(ImGuiMod_Ctrl | ImGuiKey_J), Scope::Global, commands) == "b.global");
 }
 
 TEST_CASE("FindConflicts names both sides of a chord bound twice")

@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 #include "Core/Base/NonCopyable.h"
+#include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/Platform/ShellProfiles.h"
@@ -62,7 +63,7 @@ namespace Graphite {
 	class TerminalWindows final : Core::NonCopyable
 	{
 	public:
-		TerminalWindows(Workspace& workspace, const Core::Keymap& keys);
+		TerminalWindows(Workspace& workspace, const Core::Keymap& keys, const Core::CommandRegistry& commands);
 
 		// "New Terminal" for the default shell, bound to Ctrl+` by default, and one command
 		// per discovered shell in the terminal.shells group, which the View menu lists.
@@ -157,6 +158,7 @@ namespace Graphite {
 
 		Workspace& m_Workspace;
 		const Core::Keymap& m_Keys;
+		const Core::CommandRegistry& m_Commands;
 		std::vector<Core::ShellProfile> m_Shells;
 
 		// Scoped, so closing one never moves the others: a TerminalView holds its session by

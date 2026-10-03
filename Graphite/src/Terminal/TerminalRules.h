@@ -108,4 +108,47 @@ namespace Graphite {
 	// Control nor Alt: passing them through would make EncodeKey turn `ą` into ESC a on top of
 	// itself. A press that typed nothing - Alt+B, Ctrl+Alt+Left - keeps them, and stays a chord.
 	Core::KeyModifier TerminalKeyModifiers(Core::KeyModifier held, bool producedCharacter);
+
+	// Where a scrollbar's thumb sits within its track, both measured from the top.
+	struct TerminalScrollbarThumb
+	{
+		float Top = 0.0f;
+		float Height = 0.0f;
+	};
+
+	// The thumb for a view `rows` tall that is `offset` lines above the tail of `scrollback`
+	// lines of history. The tail - offset 0 - is the bottom of the track and the oldest line
+	// the top. The thumb is as tall as the visible share of everything there is, never shorter
+	// than `minHeight` so it stays something to grab, and fills the track when there is no
+	// history to scroll through.
+	TerminalScrollbarThumb ComputeTerminalScrollbarThumb(int offset, int rows, int scrollback,
+															 float trackHeight, float minHeight);
+
+	// The inverse: the offset a thumb dragged to `thumbTop` stands for, clamped to the history.
+	int TerminalScrollOffsetForThumbTop(float thumbTop, int scrollback, float trackHeight,
+										float thumbHeight);
+
+	// What the view itself does with a key, before the IDE's bindings or the shell see it.
+	enum class TerminalShortcut
+	{
+		// Not one of the view's gestures: the IDE's bindings, then the shell, decide.
+		None,
+
+		Copy,
+		Paste,
+
+		// Ctrl+C with nothing selected: the interrupt the shell is owed.
+		Interrupt,
+
+		// Consumed and answered with nothing. Ctrl+Shift+C with no selection lands here: it is
+		// the copy chord, and a copy of nothing must never fall through to become a ^C.
+		Swallow
+	};
+
+	// Ctrl+C copies a selection and interrupts without one; Ctrl+Shift+C only ever copies.
+	// Ctrl+V and Ctrl+Shift+V both paste, so the plain chord of every other application works
+	// here as well as the one a terminal needs for itself. Alt or Super in the mix makes it
+	// somebody else's chord.
+	TerminalShortcut ClassifyTerminalShortcut(Core::KeyCode key, Core::KeyModifier held,
+											   bool hasSelection);
 }
