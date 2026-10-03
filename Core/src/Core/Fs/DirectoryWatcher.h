@@ -15,6 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <thread>
 #include <vector>
 
@@ -81,7 +82,8 @@ namespace Core {
 		void CheckForMoveIfDue();
 		void RecordChange(const std::filesystem::path& path);
 
-		void RecordChangesIn(const void* records, std::size_t bytes);
+		// The FILE_NOTIFY_INFORMATION chain a read filled, exactly as many bytes as it reported.
+		void RecordChangesIn(std::span<const std::byte> records);
 
 		void RecordOverflow();
 

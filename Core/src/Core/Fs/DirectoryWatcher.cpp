@@ -299,7 +299,7 @@ namespace Core {
 				continue;
 			}
 
-			RecordChangesIn(buffer.data(), bytes);
+			RecordChangesIn(std::as_bytes(std::span(buffer)).first(bytes));
 
 			// Nothing is settled yet — that takes a quiet period — but a take in the frames
 			// this buys learns when it will be, and asks for a frame then.
@@ -308,12 +308,13 @@ namespace Core {
 #endif
 	}
 
-	void DirectoryWatcher::RecordChangesIn(const void* records, std::size_t bytes)
+	void DirectoryWatcher::RecordChangesIn(std::span<const std::byte> records)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		// Walked with an explicit offset checked against `bytes` rather than by following
 		// NextEntryOffset on trust: a malformed chain would otherwise read past the buffer.
-		const auto* const base = reinterpret_cast<const std::byte*>(records);
+		const std::byte* const base = records.data();
+		const std::size_t bytes = records.size();
 
 		for (std::size_t offset = 0; offset < bytes;)
 		{
@@ -347,7 +348,6 @@ namespace Core {
 		}
 #else
 		(void)records;
-		(void)bytes;
 #endif
 	}
 
