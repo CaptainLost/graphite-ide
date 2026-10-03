@@ -8,13 +8,18 @@ namespace Graphite {
 
 	namespace {
 		// A diff's path is relative to the repository's working directory, which is not known
-		// until git has opened it and may lie above the folder. What can be judged now is that
-		// the path names nothing above wherever it is joined: relative, and not climbing out.
-		// Joined onto the folder for the test only because IsSameOrWithin needs a real place.
-		bool StaysInside(const std::filesystem::path& relative, const std::filesystem::path& root)
+		// until git has opened it and may lie above the folder - so the folder cannot be what it
+		// is judged against. Git never reports a path with ".." in it, so one that has any is
+		// refused outright, and with it every way out of whichever directory it is joined to.
+		bool StaysInside(const std::filesystem::path& relative)
 		{
-			return relative.is_relative() && !relative.has_root_name() && !relative.has_root_directory() &&
-				   Core::IsSameOrWithin(root / relative, root);
+			if (!relative.is_relative() || relative.has_root_name() || relative.has_root_directory())
+			{
+				return false;
+			}
+
+			return std::none_of(relative.begin(), relative.end(),
+								[](const std::filesystem::path& element) { return element == ".."; });
 		}
 	}
 
@@ -32,7 +37,7 @@ namespace Graphite {
 			stored.Active.reset();
 		}
 
-		std::erase_if(stored.Diffs, [&root](const DiffTabState& diff) { return !StaysInside(diff.Path, root); });
+		std::erase_if(stored.Diffs, [](const DiffTabState& diff) { return !StaysInside(diff.Path); });
 
 		return stored;
 	}

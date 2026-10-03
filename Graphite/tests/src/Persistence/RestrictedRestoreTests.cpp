@@ -72,6 +72,49 @@ TEST_CASE("A folder in restricted mode restores only the diffs whose path stays 
 	CHECK(restorable.Diffs == std::vector<DiffTabState>{WorkingDiff("src\\main.cpp")});
 }
 
+TEST_CASE("A folder in restricted mode drops any diff path with a parent step, even one that comes back")
+{
+	// Opened a level below the repository: git joins a diff's path onto the working directory
+	// D:\Work\Repo, so "..\sub\secret" reads D:\Work\sub\secret although, joined onto the folder,
+	// it would look like D:\Work\Repo\sub\secret. Git never reports "..", so none is kept.
+	const std::filesystem::path root = kRoot / "sub";
+
+	WorkspaceState state;
+	state.Diffs = {WorkingDiff("..\\sub\\secret"), WorkingDiff("src\\..\\main.cpp"), WorkingDiff("../sub/x"),
+				   WorkingDiff("sub\\main.cpp")};
+
+	CHECK(RestorableState(state, root, false).Diffs == std::vector<DiffTabState>{WorkingDiff("sub\\main.cpp")});
+}
+
+TEST_CASE("A folder in restricted mode drops a diff path that is drive-relative, root-relative or UNC")
+{
+	WorkspaceState state;
+	state.Diffs = {WorkingDiff("C:foo"), WorkingDiff("\\Windows\\win.ini"), WorkingDiff("\\\\server\\share\\x"),
+				   WorkingDiff("src/main.cpp")};
+
+	CHECK(RestorableState(state, kRoot, false).Diffs == std::vector<DiffTabState>{WorkingDiff("src/main.cpp")});
+}
+
+TEST_CASE("A folder in restricted mode keeps an inside tab however its case and slashes are spelled")
+{
+	WorkspaceState state;
+	state.Tabs = {Tab("d:\\work\\repo\\SRC\\a.cpp"), Tab("D:/Work/Repo/src/b.cpp")};
+
+	CHECK(RestorableState(state, kRoot, false).Tabs == state.Tabs);
+}
+
+TEST_CASE("A folder in restricted mode drops a tab path that names no place inside it")
+{
+	WorkspaceState state;
+	state.Tabs = {Tab("src\\main.cpp"), Tab("C:foo"), Tab("\\\\server\\share\\x"), Tab("\\Windows\\win.ini")};
+	state.Active = "\\Windows\\win.ini";
+
+	const WorkspaceState restorable = RestorableState(state, kRoot, false);
+
+	CHECK(restorable.Tabs.empty());
+	CHECK(restorable.Active == std::nullopt);
+}
+
 TEST_CASE("A folder in restricted mode leaves the rest of its state to the rules that own it")
 {
 	WorkspaceState state = Crafted();
