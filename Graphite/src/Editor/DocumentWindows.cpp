@@ -686,6 +686,11 @@ namespace Graphite {
 			ImGui::SetClipboardText(Core::ToUtf8(usable ? relative : item.Path).c_str());
 		}
 
+		if (ImGui::MenuItem("Copy File Name"))
+		{
+			ImGui::SetClipboardText(Core::ToUtf8(item.Path.filename()).c_str());
+		}
+
 		if (ImGui::MenuItem("Show in Explorer"))
 		{
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)

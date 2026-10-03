@@ -236,6 +236,11 @@ namespace Graphite {
 			ImGui::SetClipboardText(Core::ToUtf8(code ? node.Path : relative).c_str());
 		}
 
+		if (ImGui::MenuItem(node.IsDirectory ? "Copy Folder Name" : "Copy File Name"))
+		{
+			ImGui::SetClipboardText(Core::ToUtf8(node.Path.filename()).c_str());
+		}
+
 		if (!isRoot)
 		{
 			ImGui::Separator();

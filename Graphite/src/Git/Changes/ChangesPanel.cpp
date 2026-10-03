@@ -1044,6 +1044,11 @@ namespace Graphite {
 			ImGui::SetClipboardText(Core::ToUtf8(file.Path).c_str());
 		}
 
+		if (ImGui::MenuItem("Copy File Name"))
+		{
+			ImGui::SetClipboardText(Core::ToUtf8(file.Path.filename()).c_str());
+		}
+
 		ImGui::EndPopup();
 	}
 
