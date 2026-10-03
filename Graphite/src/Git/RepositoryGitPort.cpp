@@ -89,17 +89,7 @@ namespace Graphite {
 		// to be asked something else, or exits. Fixing that would mean a shared,
 		// mutex-guarded map reachable from the UI thread instead of one thread_local map
 		// per worker, which is a different design than the one this cache is.
-		for (auto it = handles.begin(); it != handles.end();)
-		{
-			if (it->first != root)
-			{
-				it = handles.erase(it);
-			}
-			else
-			{
-				++it;
-			}
-		}
+		std::erase_if(handles, [&root](const auto& entry) { return entry.first != root; });
 
 		if (root.empty())
 		{
