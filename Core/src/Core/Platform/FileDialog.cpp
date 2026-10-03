@@ -170,27 +170,22 @@ namespace Core {
 	}
 #endif
 
-	Result<std::filesystem::path> FileDialog::PickFolder(const std::string& title)
+	Result<std::filesystem::path> FileDialog::PickFolder([[maybe_unused]] const std::string& title)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		return Pick(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST, title, {}, "folder");
 #else
-		(void)title;
-
 		return Error{ErrorCode::Unsupported,
 					 "a native folder picker is not implemented on this platform"};
 #endif
 	}
 
-	Result<std::filesystem::path> FileDialog::PickFile(const std::string& title,
-													   const std::vector<Filter>& filters)
+	Result<std::filesystem::path> FileDialog::PickFile([[maybe_unused]] const std::string& title,
+													   [[maybe_unused]] const std::vector<Filter>& filters)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		return Pick(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST, title, filters, "file");
 #else
-		(void)title;
-		(void)filters;
-
 		return Error{ErrorCode::Unsupported,
 					 "a native file picker is not implemented on this platform"};
 #endif

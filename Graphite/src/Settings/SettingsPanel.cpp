@@ -33,10 +33,8 @@ namespace Graphite {
 		m_Active = index;
 	}
 
-	void SettingsPanel::OnUpdate(Core::Timestep ts)
+	void SettingsPanel::OnUpdate(Core::Timestep)
 	{
-		(void)ts;
-
 		const bool drawn = HasBeenDrawn();
 
 		// Latched on the edge, not on the state: hiding the panel deactivates the section once,

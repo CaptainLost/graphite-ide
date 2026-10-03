@@ -74,7 +74,7 @@ namespace Core {
 #endif
 	}
 
-	std::optional<std::filesystem::path> EnvironmentPath(const wchar_t* name)
+	std::optional<std::filesystem::path> EnvironmentPath([[maybe_unused]] const wchar_t* name)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		// Asked twice: once for the length, once for the value. The length includes the
@@ -97,7 +97,6 @@ namespace Core {
 		value.resize(written);
 		return std::filesystem::path{value};
 #else
-		(void)name;
 		return std::nullopt;
 #endif
 	}

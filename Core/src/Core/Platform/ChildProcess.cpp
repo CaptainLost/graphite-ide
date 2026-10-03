@@ -14,9 +14,9 @@
 
 namespace Core {
 
-	Result<Scope<ChildProcess>> ChildProcess::Start(const std::filesystem::path& program,
-													const std::vector<std::string>& arguments,
-													const std::filesystem::path& workingDirectory)
+	Result<Scope<ChildProcess>> ChildProcess::Start([[maybe_unused]] const std::filesystem::path& program,
+													[[maybe_unused]] const std::vector<std::string>& arguments,
+													[[maybe_unused]] const std::filesystem::path& workingDirectory)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		SECURITY_ATTRIBUTES inheritable{};
@@ -166,9 +166,6 @@ namespace Core {
 
 		return process;
 #else
-		(void)program;
-		(void)arguments;
-		(void)workingDirectory;
 		return Error{ErrorCode::Unsupported,
 					 "starting a child process is not implemented on this platform"};
 #endif
@@ -185,7 +182,7 @@ namespace Core {
 #endif
 	}
 
-	std::size_t ChildProcess::Read(std::span<char> buffer)
+	std::size_t ChildProcess::Read([[maybe_unused]] std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		DWORD read = 0;
@@ -200,12 +197,11 @@ namespace Core {
 
 		return static_cast<std::size_t>(read);
 #else
-		(void)buffer;
 		return 0;
 #endif
 	}
 
-	bool ChildProcess::Write(std::string_view bytes)
+	bool ChildProcess::Write([[maybe_unused]] std::string_view bytes)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		std::size_t written = 0;
@@ -227,7 +223,6 @@ namespace Core {
 
 		return true;
 #else
-		(void)bytes;
 		return false;
 #endif
 	}

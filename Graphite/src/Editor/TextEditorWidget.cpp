@@ -3189,7 +3189,7 @@ namespace Graphite {
 			// and an edit this frame has already moved the offsets it holds.
 			if (item.Find.Open)
 			{
-				(void)RefreshFindMatchesIfStale(item, buffer);
+				RefreshFindMatchesIfStale(item, buffer);
 			}
 
 			// Before the caret, deliberately. Both want the scroll this frame, and the caret is

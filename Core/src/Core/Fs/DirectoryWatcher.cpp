@@ -120,7 +120,7 @@ namespace Core {
 	}
 
 	Result<Scope<DirectoryWatcher>> DirectoryWatcher::Start(
-		const std::filesystem::path& root)
+		[[maybe_unused]] const std::filesystem::path& root)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		// FILE_SHARE_DELETE included on purpose: without it, watching a folder stops anyone
@@ -173,7 +173,6 @@ namespace Core {
 
 		return watcher;
 #else
-		(void)root;
 		return Error{ErrorCode::Unsupported,
 					 "watching a directory is not implemented on this platform"};
 #endif
@@ -324,7 +323,7 @@ namespace Core {
 #endif
 	}
 
-	void DirectoryWatcher::RecordChangesIn(std::span<const std::byte> records)
+	void DirectoryWatcher::RecordChangesIn([[maybe_unused]] std::span<const std::byte> records)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		// Walked with an explicit offset checked against `bytes` rather than by following
@@ -365,7 +364,6 @@ namespace Core {
 			offset += record->NextEntryOffset;
 		}
 #else
-		(void)records;
 #endif
 	}
 
@@ -502,7 +500,7 @@ namespace Core {
 		return *component == "HEAD" || *component == "index" || *component == "packed-refs";
 	}
 
-	void DirectoryWatcher::RecordChange(const std::filesystem::path& path)
+	void DirectoryWatcher::RecordChange([[maybe_unused]] const std::filesystem::path& path)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		const std::filesystem::path relative = path.lexically_relative(m_Root);
@@ -540,7 +538,6 @@ namespace Core {
 		std::scoped_lock lock{m_Mutex};
 		m_Collector.Add(directory, ChangeCollector::Clock::now());
 #else
-		(void)path;
 #endif
 	}
 

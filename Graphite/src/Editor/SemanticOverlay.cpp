@@ -4,6 +4,8 @@
 #include "Core/Text/TextBuffer.h"
 #include "Lang/Server/LspProtocol.h"
 
+#include <ranges>
+
 namespace Graphite {
 
 	namespace {
@@ -92,10 +94,8 @@ namespace Graphite {
 
 		std::size_t bytes = 0;
 
-		for (const auto& [line, spans] : m_Lines)
+		for (const auto& spans : m_Lines | std::views::values)
 		{
-			(void)line;
-
 			bytes += kPerLine + spans.capacity() * sizeof(SemanticSpan);
 		}
 

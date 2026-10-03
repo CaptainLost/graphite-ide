@@ -350,7 +350,7 @@ namespace Graphite {
 		// Settled before the tree is re-read: installing or dropping the ignore query
 		// changes what every node should say, and a refresh that ran first would bake in
 		// the previous answer.
-		(void)SyncRepository();
+		SyncRepository();
 
 		RereadEverything();
 	}
@@ -430,7 +430,7 @@ namespace Graphite {
 
 		// Whatever happened during the blind window is gone, and .git may well be what
 		// disappeared, so the repository is settled before the tree is re-read.
-		(void)SyncRepository();
+		SyncRepository();
 		m_Tree.Refresh(m_Tree.GetRoot());
 
 		APP_INFO("Resumed watching '{}' after a failure", Core::ToUtf8(m_Root));

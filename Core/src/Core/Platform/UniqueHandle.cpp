@@ -10,7 +10,7 @@ namespace Core {
 
 	void UniqueHandle::Reset(void* handle)
 	{
-		void* const old = std::exchange(m_Handle, Normalise(handle));
+		[[maybe_unused]] void* const old = std::exchange(m_Handle, Normalise(handle));
 
 #ifdef CORE_PLATFORM_WINDOWS
 		if (old != nullptr)
@@ -19,7 +19,6 @@ namespace Core {
 		}
 #else
 		// Nothing on another platform hands out a Win32 handle, so nothing can be held.
-		(void)old;
 #endif
 	}
 }

@@ -124,9 +124,7 @@ namespace Graphite {
 
 		++m_OpenCount;
 
-		const auto [inserted, wasInserted] =
-			handles.emplace(root, CachedRepository{std::move(opened).GetValue(), generation});
-		(void)wasInserted;
+		const auto inserted = handles.emplace(root, CachedRepository{std::move(opened).GetValue(), generation}).first;
 		return &inserted->second.Repo;
 	}
 

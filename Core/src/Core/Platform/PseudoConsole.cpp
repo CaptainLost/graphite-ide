@@ -310,10 +310,10 @@ namespace Core {
 	}
 #endif
 
-	Result<Scope<PseudoConsole>> PseudoConsole::Start(const std::filesystem::path& program,
-													  const std::vector<std::string>& arguments,
-													  const std::filesystem::path& workingDirectory,
-													  std::uint16_t columns, std::uint16_t rows)
+	Result<Scope<PseudoConsole>> PseudoConsole::Start([[maybe_unused]] const std::filesystem::path& program,
+													  [[maybe_unused]] const std::vector<std::string>& arguments,
+													  [[maybe_unused]] const std::filesystem::path& workingDirectory,
+													  [[maybe_unused]] std::uint16_t columns, [[maybe_unused]] std::uint16_t rows)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		Result<ConsolePipes> pipes = CreatePipes();
@@ -355,11 +355,6 @@ namespace Core {
 
 		return shell;
 #else
-		(void)program;
-		(void)arguments;
-		(void)workingDirectory;
-		(void)columns;
-		(void)rows;
 		return Error{ErrorCode::Unsupported,
 					 "starting a pseudo-console is only implemented on Windows"};
 #endif
@@ -412,7 +407,7 @@ namespace Core {
 #endif
 	}
 
-	std::size_t PseudoConsole::Read(std::span<char> buffer)
+	std::size_t PseudoConsole::Read([[maybe_unused]] std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		if (!m_FromChild || buffer.empty())
@@ -447,12 +442,11 @@ namespace Core {
 
 		return read;
 #else
-		(void)buffer;
 		return 0;
 #endif
 	}
 
-	bool PseudoConsole::Write(std::string_view bytes)
+	bool PseudoConsole::Write([[maybe_unused]] std::string_view bytes)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		if (!m_ToChild)
@@ -478,12 +472,11 @@ namespace Core {
 
 		return true;
 #else
-		(void)bytes;
 		return false;
 #endif
 	}
 
-	Result<void> PseudoConsole::Resize(std::uint16_t columns, std::uint16_t rows)
+	Result<void> PseudoConsole::Resize([[maybe_unused]] std::uint16_t columns, [[maybe_unused]] std::uint16_t rows)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		if (m_Console == nullptr)
@@ -500,8 +493,6 @@ namespace Core {
 
 		return Result<void>::Ok();
 #else
-		(void)columns;
-		(void)rows;
 		return Error{ErrorCode::Unsupported,
 					 "resizing a pseudo-console is only implemented on Windows"};
 #endif

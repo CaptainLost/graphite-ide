@@ -25,12 +25,12 @@ namespace Core {
 
 		virtual ~Panel() = default;
 
-		virtual void OnUpdate(Timestep ts) { (void)ts; }
+		virtual void OnUpdate(Timestep) {}
 		virtual void OnImGuiRender() {}
 
 		// Delivered only to panels whose body ran on the previous frame, so a panel behind
 		// another tab of the same dock node receives nothing.
-		virtual void OnEvent(Event& event) { (void)event; }
+		virtual void OnEvent(Event&) {}
 
 		const std::string& GetId() const { return m_Id; }
 		const std::string& GetTitle() const { return m_Title; }

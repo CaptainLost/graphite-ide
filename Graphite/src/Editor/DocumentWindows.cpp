@@ -800,7 +800,7 @@ namespace Graphite {
 	{
 		commands.Add({.Id = "document.saveAll",
 					  .Label = "Save All",
-					  .Run = [this] { (void)SaveAllModified(); },
+					  .Run = [this] { SaveAllModified(); },
 					  .Enabled = [this] { return HasModifiedDocuments(); }});
 
 		keys.SetDefault("document.saveAll",

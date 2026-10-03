@@ -197,7 +197,7 @@ namespace Graphite {
 
 		for (const auto& [id, visible] : stored.PanelVisibility)
 		{
-			(void)m_Panels.SetVisible(id, visible);
+			m_Panels.SetVisible(id, visible);
 		}
 
 		m_StateKeeper.AdoptGlobal(stored);

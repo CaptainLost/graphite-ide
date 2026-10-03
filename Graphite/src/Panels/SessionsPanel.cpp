@@ -249,10 +249,8 @@ namespace Graphite {
 		m_CacheDirty = false;
 	}
 
-	void SessionsPanel::OnUpdate(Core::Timestep ts)
+	void SessionsPanel::OnUpdate(Core::Timestep)
 	{
-		(void)ts;
-
 		// Started on the first update rather than in the constructor, so an application that
 		// never shows this panel still pays nothing until it is drawn once.
 		if (!m_Started)

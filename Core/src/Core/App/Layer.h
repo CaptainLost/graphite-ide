@@ -17,12 +17,12 @@ namespace Core {
 
 		virtual void OnAttach() {}
 		virtual void OnDetach() {}
-		virtual void OnUpdate(Timestep ts) { (void)ts; }
+		virtual void OnUpdate(Timestep) {}
 		virtual void OnImGuiRender() {}
 
 		// Called as the event arrives, before the frame that produced it draws. Set
 		// event.Handled to stop it reaching the layers below.
-		virtual void OnEvent(Event& event) { (void)event; }
+		virtual void OnEvent(Event&) {}
 
 		// Returning true does not by itself close the window: refusing already cleared the
 		// flag the loop tests, so a layer that has finished asking must call
