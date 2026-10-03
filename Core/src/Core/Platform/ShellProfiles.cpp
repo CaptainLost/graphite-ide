@@ -3,6 +3,7 @@
 #include "Core/Platform/ShellProfiles.h"
 
 #include "Core/Base/PlatformDetection.h"
+#include "Core/Base/ScopeExit.h"
 #include "Core/Platform/Process.h"
 
 #include <array>
@@ -67,14 +68,14 @@ namespace Core {
 				return {};
 			}
 
+			const ScopeExit closeKey{[key] { ::RegCloseKey(key); }};
+
 			wchar_t buffer[MAX_PATH] = {};
 			DWORD size = sizeof(buffer) - sizeof(wchar_t); // leave room to force termination
 			DWORD type = 0;
 
 			const LONG status = ::RegQueryValueExW(key, L"InstallPath", nullptr, &type,
 													reinterpret_cast<BYTE*>(buffer), &size);
-
-			::RegCloseKey(key);
 
 			if (status != ERROR_SUCCESS || type != REG_SZ)
 			{
