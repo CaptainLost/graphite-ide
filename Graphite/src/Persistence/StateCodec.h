@@ -3,6 +3,7 @@
 #include "Persistence/PersistedState.h"
 
 #include <charconv>
+#include <concepts>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -21,7 +22,8 @@ namespace Graphite {
 
 	// The whole text as a number, or nothing: a trailing letter, an empty string and — for an
 	// unsigned target — a minus sign are all absent, never a wrapped or partial value.
-	template <typename Number>
+	template<typename Number>
+		requires std::integral<Number> || std::floating_point<Number>
 	std::optional<Number> ParseNumber(std::string_view text)
 	{
 		if (text.empty())

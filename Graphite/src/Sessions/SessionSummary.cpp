@@ -46,7 +46,7 @@ namespace Graphite {
 			++print.Files;
 		}
 
-		template<typename Visit>
+		template<std::invocable<const std::filesystem::path&> Visit>
 		void ForEachSubagent(const std::filesystem::path& sessionFile, Visit visit)
 		{
 			std::error_code status;

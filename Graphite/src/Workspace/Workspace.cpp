@@ -15,7 +15,7 @@
 namespace Graphite {
 
 	namespace {
-		template<typename Visitor>
+		template<std::invocable<const Project&> Visitor>
 		void ForEachProject(const Folder& folder, Visitor&& visit)
 		{
 			for (const Project& project : folder.Projects)

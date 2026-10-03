@@ -2,8 +2,10 @@
 
 #include "Core/Base/NonCopyable.h"
 
+#include <concepts>
 #include <cstddef>
 #include <functional>
+#include <type_traits>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
@@ -11,17 +13,22 @@
 
 namespace Core {
 
+	template<typename E>
+	concept EventPayload = std::is_class_v<E> && std::same_as<E, std::remove_cvref_t<E>>;
+
 	class EventBus final : NonCopyable
 	{
 	public:
-		template<typename E>
+		// Keyed on typeid(E), so E is a plain class type: a const or reference spelling of one
+		// event would otherwise key a different list from the one it is published to.
+		template<EventPayload E>
 		void Subscribe(std::function<void(const E&)> handler)
 		{
 			m_Handlers[std::type_index(typeid(E))].push_back(
 				[handler = std::move(handler)](const void* payload) { handler(*static_cast<const E*>(payload)); });
 		}
 
-		template<typename E>
+		template<EventPayload E>
 		void Publish(const E& event)
 		{
 			const auto entry = m_Handlers.find(std::type_index(typeid(E)));
@@ -37,7 +44,7 @@ namespace Core {
 				handler(&event);
 		}
 
-		template<typename E>
+		template<EventPayload E>
 		std::size_t GetHandlerCount() const
 		{
 			const auto entry = m_Handlers.find(std::type_index(typeid(E)));

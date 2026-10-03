@@ -94,3 +94,20 @@ TEST_CASE("GetValue on a temporary result returns the value, not a reference int
 
 	CHECK(held == std::string(64, 'x'));
 }
+
+namespace {
+	template<typename T>
+	concept NamesAResult = requires { typename Result<T>; };
+}
+
+// Refused where it is named, rather than as an ambiguous constructor or a variant error deep
+// inside the class.
+TEST_CASE("Result refuses Error and references as its value type")
+{
+	static_assert(NamesAResult<int>);
+	static_assert(NamesAResult<void>);
+	static_assert(!NamesAResult<Error>);
+	static_assert(!NamesAResult<int&>);
+
+	CHECK(true);
+}

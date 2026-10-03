@@ -2,8 +2,10 @@
 
 #include "Core/Base/Assert.h"
 
+#include <concepts>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 
@@ -26,7 +28,12 @@ namespace Core {
 		std::string Message;
 	};
 
+	// T is void - the specialisation below - or an object type that is never Error itself: a
+	// Result<Error> would have two identical constructors, and a reference has no place in a
+	// variant. Not std::movable, though the body needs it: a class may name Result<Self> in its
+	// own definition, where it is still incomplete, and the answer would be remembered as false.
 	template<typename T>
+		requires std::is_void_v<T> || (std::is_object_v<T> && !std::same_as<T, Error>)
 	class [[nodiscard]] Result
 	{
 	public:

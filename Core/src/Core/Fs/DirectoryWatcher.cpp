@@ -66,7 +66,7 @@ namespace Core {
 
 		// Returns only once one of the handles is signalled; the timeout is idle time this
 		// borrows while the read stays outstanding.
-		template<typename OnIdle>
+		template<std::invocable OnIdle>
 		DWORD WaitForChangeOrStop(HANDLE ioEvent, HANDLE stopEvent, DWORD idleMilliseconds,
 								  OnIdle&& onIdle)
 		{

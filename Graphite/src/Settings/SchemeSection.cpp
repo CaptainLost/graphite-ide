@@ -84,6 +84,7 @@ namespace Graphite {
 	}
 
 	template<typename Which>
+		requires std::is_enum_v<Which>
 	void SchemeSection::RenderColorRow(Which which)
 	{
 		const std::size_t index = static_cast<std::size_t>(which);
@@ -147,6 +148,7 @@ namespace Graphite {
 	}
 
 	template<typename Which>
+		requires std::is_enum_v<Which>
 	void SchemeSection::RenderGroup(const char* title, std::size_t count)
 	{
 		if (!ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))

@@ -13,6 +13,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Fs/FileSystem.h"
 
+#include <concepts>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -54,6 +55,7 @@ namespace Graphite {
 
 		// Zero is "absent" for every number stored here, so a malformed one reads as absent too.
 		template<typename Number>
+			requires std::integral<Number> || std::floating_point<Number>
 		Number NumberOrZero(std::string_view stored)
 		{
 			return ParseNumber<Number>(stored).value_or(Number{});

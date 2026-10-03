@@ -17,7 +17,7 @@ namespace Core {
 	namespace {
 		// Collected first and run afterwards, because running a command inside the walk would
 		// let it register another command while the keymap is being iterated.
-		template<typename Matches>
+		template<std::predicate<const Chord&> Matches>
 		std::vector<std::string> CommandsBoundTo(const Keymap& keys, Matches matches)
 		{
 			std::vector<std::string> fired;

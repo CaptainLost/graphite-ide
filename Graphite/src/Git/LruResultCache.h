@@ -1,10 +1,12 @@
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 
@@ -22,6 +24,9 @@ namespace Graphite {
 	// UI thread only. Get is const and still counts as a use, so the recency bookkeeping is
 	// mutable: an entry the reader is looking at every frame must not be the one evicted.
 	template<typename Key, typename T, typename Hash = std::hash<Key>>
+		requires std::copyable<Key> && std::equality_comparable<Key> &&
+				 std::regular_invocable<const Hash&, const Key&> &&
+				 std::convertible_to<std::invoke_result_t<const Hash&, const Key&>, std::size_t>
 	class LruResultCache
 	{
 	public:
