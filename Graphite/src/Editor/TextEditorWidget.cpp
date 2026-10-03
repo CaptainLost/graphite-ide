@@ -3309,7 +3309,8 @@ namespace Graphite {
 
 			if (focused && context.Input != nullptr)
 			{
-				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks, RowsPerPage(metrics), caretAtFrameStart, result);
+				ApplyKeyboard(remaining, buffer, item, view.Indent, sinks,
+							  RowsPerPage(metrics), caretAtFrameStart, result);
 			}
 
 			// Not merely when the window has keyboard focus, which is true on every frame it is

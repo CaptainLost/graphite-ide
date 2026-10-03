@@ -499,8 +499,9 @@ namespace Graphite {
 
 		ModalQuestion<std::filesystem::path> m_CloseConfirm;
 
-		// The document the Close Tab command asked to close, taken by the next frame's loop over
-		// the tabs: a command runs outside any window, and a tab closes from inside its own.
+		// The document the Close Tab command asked to close, taken by that tab, either before
+		// its editor draws (a menu click) or after (a chord, which runs from inside the draw), in
+		// the same frame. A command runs outside any window, and a tab closes from inside its own.
 		std::optional<std::filesystem::path> m_CloseRequested;
 
 		struct TransientMessage

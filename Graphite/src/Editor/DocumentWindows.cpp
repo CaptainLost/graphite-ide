@@ -2263,7 +2263,9 @@ namespace Graphite {
 				open = false;
 			}
 
-			// The close command asks the same, by path: it runs outside any window.
+			// The close command asks the same, by path: it runs outside any window. Looked for
+			// here for a request made before the loop (the menu), and again after the editor
+			// draws for one made during it (the chord).
 			if (m_CloseRequested && *m_CloseRequested == item.Path)
 			{
 				m_CloseRequested.reset();
@@ -2445,6 +2447,14 @@ namespace Graphite {
 				{
 					m_Router.AskPreviewDefinition(*editorResult.AskPreview);
 				}
+			}
+
+			// Again, after the editor has drawn: a chord bound to the command runs from inside its
+			// editor's draw, which is after the check above had already looked for this frame.
+			if (m_CloseRequested && *m_CloseRequested == item.Path)
+			{
+				m_CloseRequested.reset();
+				open = false;
 			}
 
 			ImGui::End();
