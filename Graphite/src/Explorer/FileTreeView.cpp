@@ -49,8 +49,17 @@ namespace Graphite {
 	{
 		if (!m_Workspace.IsOpen())
 		{
+			ForgetRenames();
+			m_KnownRoot.clear();
 			RenderEmptyState();
 			return;
+		}
+
+		// A different folder has none of the paths a rename or a deferred open was about.
+		if (m_Workspace.GetRoot() != m_KnownRoot)
+		{
+			ForgetRenames();
+			m_KnownRoot = m_Workspace.GetRoot();
 		}
 
 		FollowActiveDocument();
@@ -64,6 +73,8 @@ namespace Graphite {
 			Core::FileNode& root = m_Workspace.GetTree().GetRoot();
 			RenderNode(root);
 
+			// The root's own name matching shows its row but no file, so it is the children
+			// that decide, by the same test that draws them.
 			if (m_Filter.IsActive() && !AnyChildPassesFilter(root))
 			{
 				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -208,13 +219,23 @@ namespace Graphite {
 	{
 		for (const Core::FileNode& child : node.Children)
 		{
-			if (PassesFilter(child))
+			if (IsRowShown(child))
 			{
 				return true;
 			}
 		}
 
 		return false;
+	}
+
+	bool FileTreeView::IsRowShown(const Core::FileNode& node) const
+	{
+		if (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Hide)
+		{
+			return false;
+		}
+
+		return PassesFilter(node);
 	}
 
 	void FileTreeView::RenderContextMenu(const Core::FileNode& node)
@@ -395,7 +416,6 @@ namespace Graphite {
 		m_RenamingPath = node.Path;
 		m_FocusRenameField = true;
 		m_RenameSpan = RenameSelection(current, node.IsDirectory);
-		m_ApplyRenameSpan = true;
 
 		std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
 		std::copy_n(current.begin(), current.size(), m_RenameBuffer.begin());
@@ -403,14 +423,48 @@ namespace Graphite {
 
 	void FileTreeView::StartRenamingPath(const std::filesystem::path& path)
 	{
-		if (const Core::FileNode* node = FindNode(path); node != nullptr)
+		const Core::FileNode* node = FindNode(path);
+
+		if (node == nullptr)
 		{
-			StartRenaming(*node);
+			// The refresh that should have added it has not shown it; try again next frame.
+			m_PendingRenamePath = path;
 			return;
 		}
 
-		// The refresh that should have added it has not shown it; try again next frame.
-		m_PendingRenamePath = path;
+		// A row the filter or the ignored-file setting hides never draws its editor, which
+		// would leave the rename running unseen; the caller falls back to not renaming.
+		if (IsReachable(path))
+		{
+			StartRenaming(*node);
+		}
+	}
+
+	bool FileTreeView::IsReachable(const std::filesystem::path& path)
+	{
+		for (std::filesystem::path current = path; !current.empty(); current = current.parent_path())
+		{
+			const Core::FileNode* node = FindNode(current);
+
+			if (node == nullptr || !IsRowShown(*node))
+			{
+				return false;
+			}
+
+			if (!m_Workspace.IsOpen() || current == m_Workspace.GetRoot() || current == current.parent_path())
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	void FileTreeView::ForgetRenames()
+	{
+		m_RenamingPath.clear();
+		m_PendingRenamePath.clear();
+		m_OpenWhenNamed.clear();
 	}
 
 	void FileTreeView::ResolvePendingRename()
@@ -425,7 +479,7 @@ namespace Graphite {
 
 		// One retry only: a node still missing was removed or never created, and a stale
 		// request must not start a rename long after the user moved on.
-		if (const Core::FileNode* node = FindNode(path); node != nullptr)
+		if (const Core::FileNode* node = FindNode(path); node != nullptr && IsReachable(path))
 		{
 			StartRenaming(*node);
 
@@ -730,18 +784,17 @@ namespace Graphite {
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Core::Scaled(kFieldPaddingX), 0.0f));
 		ImGui::SetNextItemWidth(FitWidthToText(m_RenameBuffer.data(), Core::Scaled(kFieldPaddingX)));
 
-		// The callback runs on every frame the field is active; the first one selects the
-		// stem (AutoSelectAll would take the extension too).
+		// The callback runs on every frame the field is active; the frame it activates on
+		// selects the stem (AutoSelectAll would take the extension too).
 		const auto selectStem = [](ImGuiInputTextCallbackData* data)
 		{
 			auto& self = *static_cast<FileTreeView*>(data->UserData);
 
-			if (self.m_ApplyRenameSpan)
+			if (data->EventActivated)
 			{
 				const int end = std::min(static_cast<int>(self.m_RenameSpan.End), data->BufTextLen);
 				const int start = std::min(static_cast<int>(self.m_RenameSpan.Start), end);
 				data->SetSelection(start, end);
-				self.m_ApplyRenameSpan = false;
 			}
 
 			return 0;
@@ -783,12 +836,7 @@ namespace Graphite {
 
 	void FileTreeView::RenderNode(Core::FileNode& node)
 	{
-		if (!PassesFilter(node))
-		{
-			return;
-		}
-
-		if (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Hide)
+		if (!IsRowShown(node))
 		{
 			return;
 		}
@@ -841,12 +889,36 @@ namespace Graphite {
 		// Only the active file is selected. An open file that is not active is told apart by
 		// the accent colour of its name rather than by a background, which would read as a
 		// second selected row.
+		//
+		// Taken from the cursor before the item: Selectable pads its rect out by half the item
+		// spacing, so the rect's corner is not where a folder's label would start. A tree node
+		// draws its text at the cursor plus the label spacing, and so does this.
+		const ImVec2 labelAt(ImGui::GetCursorScreenPos().x + labelOffset, ImGui::GetCursorScreenPos().y);
+
 		const bool clicked = ImGui::Selectable(id.c_str(), isActive, ImGuiSelectableFlags_AllowDoubleClick,
 											   ImVec2(rowWidth, 0.0f));
 
-		const ImVec2 labelAt(ImGui::GetItemRectMin().x + labelOffset, ImGui::GetItemRectMin().y);
-		const ImU32 ink = ImGui::GetColorU32(isOpen && !isActive && !dimmed ? ImGuiCol_CheckMark : ImGuiCol_Text);
-		ImGui::GetWindowDrawList()->AddText(labelAt, ink, label.c_str());
+		if (ImGui::IsItemVisible())
+		{
+			ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+
+			if (isOpen && !isActive)
+			{
+				// An ignored file is greyed; the accent is mixed into the grey so it stays
+				// both dimmed and marked.
+				constexpr float kAccentShare = 0.6f;
+				const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+				const ImVec4 base = ImGui::GetStyleColorVec4(dimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+				const float share = dimmed ? kAccentShare : 1.0f;
+
+				ink = ImGui::GetColorU32(ImVec4(base.x + (accent.x - base.x) * share,
+												base.y + (accent.y - base.y) * share,
+												base.z + (accent.z - base.z) * share,
+												base.w + (accent.w - base.w) * share));
+			}
+
+			ImGui::GetWindowDrawList()->AddText(labelAt, ink, label.c_str());
+		}
 
 		if (!m_ScrollToPath.empty() && m_ScrollToPath == node.Path)
 		{

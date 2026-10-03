@@ -67,6 +67,9 @@ namespace Graphite {
 		void StartRenaming(const Core::FileNode& node);
 		void StartRenamingPath(const std::filesystem::path& path);
 		void ResolvePendingRename();
+		void ForgetRenames();
+		bool IsReachable(const std::filesystem::path& path);
+		bool IsRowShown(const Core::FileNode& node) const;
 		void CopyToClipboard(const std::string& text);
 		void RecordAction(PendingAction action);
 		void ExecutePendingAction();
@@ -108,7 +111,9 @@ namespace Graphite {
 
 		// What the field selects when it opens, applied once by its callback.
 		RenameSpan m_RenameSpan;
-		bool m_ApplyRenameSpan = false;
+
+		// The workspace folder the tree last drew, to notice a different one.
+		std::filesystem::path m_KnownRoot;
 
 		// A node just created or duplicated that the tree did not yet hold when its rename
 		// was asked for; the rename starts on the first frame the node can be found.
