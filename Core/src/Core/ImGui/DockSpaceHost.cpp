@@ -56,6 +56,21 @@ namespace Core {
 			ImGui::DockBuilderFinish(dockSpaceId);
 			CORE_INFO("Built default dock layout");
 		}
+
+		// ImGui selects a docked tab on a right press or release over it, before any owner
+		// gets to ask about the click. The tab bars are submitted inside DockSpace, so locking
+		// the right button for exactly that call keeps a right click from switching tabs; the
+		// lock is lifted straight after, and the tab's own context menu still sees the click.
+		void DockSpaceIgnoringRightClick(ImGuiID dockSpaceId)
+		{
+			ImGuiKeyOwnerData* owner = ImGui::GetKeyOwnerData(ImGui::GetCurrentContext(), ImGuiKey_MouseRight);
+			const ImGuiKeyOwnerData saved = *owner;
+			owner->LockThisFrame = true;
+
+			ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+
+			*owner = saved;
+		}
 	}
 
 	void DockSpaceHost::Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace)
@@ -106,7 +121,7 @@ namespace Core {
 
 		const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);
 		m_DockSpaceId = dockSpaceId;
-		ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+		DockSpaceIgnoringRightClick(dockSpaceId);
 
 		if (m_LayoutBuilt)
 		{

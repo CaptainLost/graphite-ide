@@ -198,3 +198,62 @@ TEST_CASE("DockSpaceHost draws what it is given above the dockspace and gives th
 	REQUIRE(node != nullptr);
 	CHECK(node->Pos.y >= bannerBottom - 1.0f);
 }
+
+namespace {
+	// The center of the tab `name` was given last frame.
+	ImVec2 TabCenter(const char* name)
+	{
+		const ImGuiWindow* window = ImGui::FindWindowByName(name);
+		REQUIRE(window != nullptr);
+
+		const ImRect& tab = window->DC.DockTabItemRect;
+		return ImVec2((tab.Min.x + tab.Max.x) * 0.5f, (tab.Min.y + tab.Max.y) * 0.5f);
+	}
+
+	ImGuiID SelectedTab(const DockSpaceHost& host)
+	{
+		const ImGuiDockNode* node = ImGui::DockBuilderGetNode(host.GetCenterNodeId());
+		REQUIRE(node != nullptr);
+		REQUIRE(node->TabBar != nullptr);
+
+		return node->TabBar->SelectedTabId;
+	}
+}
+
+// ImGui selects a tab on a right press or release over it, so a context menu shows on the tab
+// it was opened for. Here the menu belongs to the tab under the pointer without switching to it.
+TEST_CASE("A right click on a tab that is not selected leaves the selection where it was")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	DockLayout layout = WithExplorer();
+	layout.Center = {"First", "Second"};
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		context.Frame(host, layout);
+	}
+
+	const ImGuiID selected = SelectedTab(host);
+	const char* other = selected == ImGui::FindWindowByName("First")->TabId ? "Second" : "First";
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.AddMousePosEvent(TabCenter(other).x, TabCenter(other).y);
+	context.Frame(host, layout);
+
+	bool pressSeen = false;
+	io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+	context.Frame(host, layout, [&] { pressSeen = ImGui::IsMouseClicked(ImGuiMouseButton_Right); });
+
+	bool releaseSeen = false;
+	io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+	context.Frame(host, layout, [&] { releaseSeen = ImGui::IsMouseReleased(ImGuiMouseButton_Right); });
+
+	context.Frame(host, layout);
+
+	CHECK(SelectedTab(host) == selected);
+
+	// Past the dockspace the click is there as ever: it is what opens the tab's menu.
+	CHECK(pressSeen);
+	CHECK(releaseSeen);
+}
