@@ -58,6 +58,7 @@
 #include "Settings/SearchSection.h"
 #include "Settings/SettingsPanel.h"
 #include "Settings/TrustSection.h"
+#include "UI/DialogLayout.h"
 #include "UI/RestrictedModeBar.h"
 #include "Workspace/WorkspaceTrust.h"
 
@@ -1013,27 +1014,56 @@ namespace Graphite {
 
 	void GraphiteLayer::RenderTrustParentConfirm()
 	{
-		if (!m_TrustParentQuestion.Begin())
+		// Fixed width, so a long parent path wraps rather than widening the dialog.
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+
+		// A question still queued when its folder closed, was replaced, or got trusted some other
+		// way is dropped rather than asked about a parent that no longer has anything to do with
+		// what is open.
+		const bool open = m_TrustParentQuestion.Begin([this](const std::filesystem::path& parent) {
+			if (!m_Workspace.IsOpen())
+			{
+				return false;
+			}
+
+			const std::filesystem::path root = m_Workspace.GetRoot();
+			return !m_Trust.IsTrusted(root) && ParentWorthTrusting(root) == parent;
+		});
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			return;
 		}
 
-		// Copied out: Answer clears what GetCurrent points at, and trusting writes the list.
 		const std::filesystem::path* asked = m_TrustParentQuestion.GetCurrent();
-		const std::filesystem::path parent = asked != nullptr ? *asked : std::filesystem::path{};
 
-		ImGui::TextUnformatted(TrustAllMessage(parent).c_str());
-		ImGui::Separator();
+		if (asked == nullptr)
+		{
+			ImGui::CloseCurrentPopup();
+			m_TrustParentQuestion.End();
+			return;
+		}
 
-		if (ImGui::Button("Trust All"))
+		// Copied out: Answer clears what GetCurrent points at, and trusting writes the list.
+		const std::filesystem::path parent = *asked;
+
+		DialogLayout::Text(TrustAllMessage(parent));
+		DialogLayout::Gap();
+
+		// Trust All is the dangerous choice, so it is the destructive role: Enter does nothing,
+		// and Escape cancels as the Cancel button does.
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{}, {.Label = "Trust All"},
+			ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_ActiveScheme.Get()).DiagnosticError));
+
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			m_Trust.Trust(parent);
 			m_TrustParentQuestion.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_TrustParentQuestion.Answer();
 		}
