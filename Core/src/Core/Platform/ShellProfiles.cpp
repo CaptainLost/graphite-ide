@@ -169,18 +169,20 @@ namespace Core {
 #endif
 	}
 
-	// An installer may write a PATH entry with quotes around it — usually one containing a
-	// space. CreateProcess strips them before it resolves anything, so a segment used
-	// verbatim here would name a directory whose first and last characters are quote marks
-	// and match nothing at all.
-	std::wstring_view StripQuotes(std::wstring_view segment)
-	{
-		if (segment.size() >= 2 && segment.front() == L'"' && segment.back() == L'"')
+	namespace {
+		// An installer may write a PATH entry with quotes around it — usually one containing a
+		// space. CreateProcess strips them before it resolves anything, so a segment used
+		// verbatim here would name a directory whose first and last characters are quote marks
+		// and match nothing at all.
+		std::wstring_view StripQuotes(std::wstring_view segment)
 		{
-			return segment.substr(1, segment.size() - 2);
-		}
+			if (segment.size() >= 2 && segment.front() == L'"' && segment.back() == L'"')
+			{
+				return segment.substr(1, segment.size() - 2);
+			}
 
-		return segment;
+			return segment;
+		}
 	}
 
 	// Finds an executable the same way CreateProcess resolves a bare command name: by
