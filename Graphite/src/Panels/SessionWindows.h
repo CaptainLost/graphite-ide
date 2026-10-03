@@ -173,7 +173,7 @@ namespace Graphite {
 		static bool DrawBreadcrumb(const Entry& entry);
 
 		// Starts reading the subagent started by call `toolUseId`, when the session knows it.
-		static void OpenAgent(Entry& entry, const std::string& toolUseId);
+		void OpenAgent(Entry& entry, const std::string& toolUseId);
 
 		Core::EventBus& m_Events;
 		const ClaudeSettings& m_Settings;
@@ -182,5 +182,9 @@ namespace Graphite {
 		// not depend on where its entry lives: it comes from "###session-<id>", which is what
 		// keeps a tab's dock place as the list around it changes.
 		std::vector<Core::Scope<Entry>> m_Open;
+
+		// The serial the next opened agent's views take. Only grows, so a reopened agent is a
+		// new window state to ImGui as well.
+		std::uint64_t m_NextAgentSerial = 1;
 	};
 }

@@ -356,11 +356,8 @@ namespace Graphite {
 		if (!entry.Main.Live || found == entry.Main.Links.end())
 			return;
 
-		// Only grows, so a reopened agent is a new window state to ImGui as well.
-		static std::uint64_t serial = 0;
-
 		auto agent = Core::CreateScope<OpenedAgent>();
-		agent->Views.Serial = ++serial;
+		agent->Views.Serial = m_NextAgentSerial++;
 
 		// Not the previous agent's: the first frame of this one has no last frame of its own.
 		entry.EscBusy = false;
