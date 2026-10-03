@@ -394,6 +394,61 @@ TEST_CASE("Commit into an unborn HEAD makes a root commit")
 	CHECK_FALSE(parent.GetValue().has_value());
 }
 
+TEST_CASE("Commit with nothing staged refuses and creates no commit")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	const auto before = repository.GetValue().QueryLog({});
+	REQUIRE(before.HasValue());
+
+	const auto committed = repository.GetValue().Commit({.Message = "second"});
+	REQUIRE_FALSE(committed.HasValue());
+	CHECK(committed.GetError().Message == "nothing to commit");
+
+	const auto after = repository.GetValue().QueryLog({});
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue().Commits.size() == before.GetValue().Commits.size());
+}
+
+TEST_CASE("Amend with an unchanged index still succeeds")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	// Rewording is the whole point of an amend with nothing new staged.
+	CHECK(repository.GetValue().Commit({.Message = "first, reworded", .Amend = true}).HasValue());
+}
+
+TEST_CASE("Commit during a merge may keep HEAD's tree")
+{
+	GitFixture fixture;
+	fixture.SetIdentity("Test Author", "test@example.com");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("first");
+
+	auto repository = Core::Repository::Open(fixture.GetPath());
+	REQUIRE(repository.HasValue());
+
+	const auto log = repository.GetValue().QueryLog({});
+	REQUIRE(log.HasValue());
+
+	// A merge whose result is HEAD's own tree is legitimate, so the backstop stands down.
+	fixture.Write(".git/MERGE_HEAD", log.GetValue().Commits.front().Id.ToHex() + "\n");
+
+	CHECK(repository.GetValue().Commit({.Message = "merge"}).HasValue());
+}
+
 TEST_CASE("Amend replaces HEAD and keeps its parent")
 {
 	GitFixture fixture;

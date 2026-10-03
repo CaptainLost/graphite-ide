@@ -283,6 +283,17 @@ namespace Core {
 						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
 		}
 
+		// A commit whose tree is its parent's records nothing, and git refuses it unless asked
+		// to allow it. The panel stops it first; this is the backstop for a caller that did not.
+		// An amend is exempt - rewording a commit changes it with the tree untouched - and so
+		// is a merge, whose result may legitimately be HEAD's own tree: it still joins a
+		// second parent.
+		if (!request.Amend && born && git_oid_equal(&treeId, git_commit_tree_id(head.get())) != 0 &&
+			git_repository_state(m_Handle.get()) != GIT_REPOSITORY_STATE_MERGE)
+		{
+			return Error{ErrorCode::InvalidArgument, "nothing to commit"};
+		}
+
 		Result<Oid> answer = Error{ErrorCode::IoFailure, "unreachable"};
 		git_oid commitId{};
 
