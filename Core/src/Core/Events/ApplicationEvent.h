@@ -22,8 +22,8 @@ namespace Core {
 			return std::format("WindowResizeEvent: {}, {}", m_Width, m_Height);
 		}
 
-		EVENT_CLASS_TYPE(WindowResize)
-		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+		CORE_EVENT_CLASS_TYPE(WindowResize)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 
 	private:
 		int m_Width = 0;
@@ -33,22 +33,22 @@ namespace Core {
 	class WindowCloseEvent final : public Event
 	{
 	public:
-		EVENT_CLASS_TYPE(WindowClose)
-		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+		CORE_EVENT_CLASS_TYPE(WindowClose)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 	};
 
 	class WindowFocusEvent final : public Event
 	{
 	public:
-		EVENT_CLASS_TYPE(WindowFocus)
-		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+		CORE_EVENT_CLASS_TYPE(WindowFocus)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 	};
 
 	class WindowLostFocusEvent final : public Event
 	{
 	public:
-		EVENT_CLASS_TYPE(WindowLostFocus)
-		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+		CORE_EVENT_CLASS_TYPE(WindowLostFocus)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 	};
 
 	// What the window manager handed over when something was dropped on the window: whole
@@ -70,8 +70,8 @@ namespace Core {
 			return std::format("FileDropEvent: {} path(s)", m_Paths.size());
 		}
 
-		EVENT_CLASS_TYPE(FileDrop)
-		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+		CORE_EVENT_CLASS_TYPE(FileDrop)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 
 	private:
 		std::vector<std::filesystem::path> m_Paths;
@@ -87,8 +87,8 @@ namespace Core {
 
 		std::string ToString() const override { return std::format("WindowMovedEvent: {}, {}", m_X, m_Y); }
 
-		EVENT_CLASS_TYPE(WindowMoved)
-		EVENT_CLASS_CATEGORY(EventCategoryApplication)
+		CORE_EVENT_CLASS_TYPE(WindowMoved)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 
 	private:
 		int m_X = 0;

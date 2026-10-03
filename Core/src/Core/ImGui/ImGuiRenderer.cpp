@@ -310,14 +310,14 @@ namespace Core {
 		const bool popupOpen =
 			ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
-		if (event.IsInCategory(EventCategoryKeyboard) && GuiConsumesKeyboard(io.WantTextInput, popupOpen))
+		if (event.IsInCategory(EventCategory::Keyboard) && GuiConsumesKeyboard(io.WantTextInput, popupOpen))
 		{
 			event.Handled = true;
 		}
 
 		// WantCaptureMouse is used directly: keyboard navigation does not inflate it the way
 		// it does WantCaptureKeyboard, so it still means what it says.
-		if (event.IsInCategory(EventCategoryMouse) && io.WantCaptureMouse)
+		if (event.IsInCategory(EventCategory::Mouse) && io.WantCaptureMouse)
 		{
 			event.Handled = true;
 		}

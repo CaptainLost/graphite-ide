@@ -53,7 +53,7 @@ namespace {
 		static Core::EventType GetStaticType() { return Core::EventType::None; }
 		Core::EventType GetEventType() const override { return GetStaticType(); }
 		const char* GetName() const override { return "TestEvent"; }
-		int GetCategoryFlags() const override { return Core::EventCategoryApplication; }
+		Core::EventCategory GetCategoryFlags() const override { return Core::EventCategory::Application; }
 	};
 }
 

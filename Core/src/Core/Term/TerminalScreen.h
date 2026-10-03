@@ -51,12 +51,12 @@ namespace Core {
 	enum class CellFlags : std::uint8_t
 	{
 		None = 0,
-		Bold = BIT(0),
-		Faint = BIT(1),
-		Italic = BIT(2),
-		Underline = BIT(3),
-		Inverse = BIT(4),
-		Hidden = BIT(5)
+		Bold = 1 << 0,
+		Faint = 1 << 1,
+		Italic = 1 << 2,
+		Underline = 1 << 3,
+		Inverse = 1 << 4,
+		Hidden = 1 << 5
 	};
 
 	inline CellFlags operator|(CellFlags left, CellFlags right)

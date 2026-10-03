@@ -17,8 +17,8 @@ namespace Core {
 
 		std::string ToString() const override { return std::format("MouseMovedEvent: {}, {}", m_X, m_Y); }
 
-		EVENT_CLASS_TYPE(MouseMoved)
-		EVENT_CLASS_CATEGORY(EventCategoryMouse | EventCategoryInput)
+		CORE_EVENT_CLASS_TYPE(MouseMoved)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Mouse | EventCategory::Input)
 
 	private:
 		float m_X = 0.0f;
@@ -38,8 +38,8 @@ namespace Core {
 			return std::format("MouseScrolledEvent: {}, {}", m_XOffset, m_YOffset);
 		}
 
-		EVENT_CLASS_TYPE(MouseScrolled)
-		EVENT_CLASS_CATEGORY(EventCategoryMouse | EventCategoryInput)
+		CORE_EVENT_CLASS_TYPE(MouseScrolled)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Mouse | EventCategory::Input)
 
 	private:
 		float m_XOffset = 0.0f;
@@ -51,7 +51,7 @@ namespace Core {
 	public:
 		MouseCode GetMouseButton() const { return m_Button; }
 
-		EVENT_CLASS_CATEGORY(EventCategoryMouse | EventCategoryMouseButton | EventCategoryInput)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Mouse | EventCategory::MouseButton | EventCategory::Input)
 
 	protected:
 		explicit MouseButtonEvent(MouseCode button) : m_Button(button) {}
@@ -70,7 +70,7 @@ namespace Core {
 			return std::format("MouseButtonPressedEvent: {}", static_cast<int>(GetMouseButton()));
 		}
 
-		EVENT_CLASS_TYPE(MouseButtonPressed)
+		CORE_EVENT_CLASS_TYPE(MouseButtonPressed)
 	};
 
 	class MouseButtonReleasedEvent final : public MouseButtonEvent
@@ -83,6 +83,6 @@ namespace Core {
 			return std::format("MouseButtonReleasedEvent: {}", static_cast<int>(GetMouseButton()));
 		}
 
-		EVENT_CLASS_TYPE(MouseButtonReleased)
+		CORE_EVENT_CLASS_TYPE(MouseButtonReleased)
 	};
 }

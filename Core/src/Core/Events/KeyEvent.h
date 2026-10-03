@@ -13,7 +13,7 @@ namespace Core {
 		KeyCode GetKeyCode() const { return m_KeyCode; }
 		KeyModifier GetModifiers() const { return m_Modifiers; }
 
-		EVENT_CLASS_CATEGORY(EventCategoryKeyboard | EventCategoryInput)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Keyboard | EventCategory::Input)
 
 	protected:
 		KeyEvent(KeyCode keyCode, KeyModifier modifiers) : m_KeyCode(keyCode), m_Modifiers(modifiers) {}
@@ -40,7 +40,7 @@ namespace Core {
 			return std::format("KeyPressedEvent: {} (repeat={})", static_cast<int>(GetKeyCode()), m_IsRepeat);
 		}
 
-		EVENT_CLASS_TYPE(KeyPressed)
+		CORE_EVENT_CLASS_TYPE(KeyPressed)
 
 	private:
 		bool m_IsRepeat = false;
@@ -56,7 +56,7 @@ namespace Core {
 			return std::format("KeyReleasedEvent: {}", static_cast<int>(GetKeyCode()));
 		}
 
-		EVENT_CLASS_TYPE(KeyReleased)
+		CORE_EVENT_CLASS_TYPE(KeyReleased)
 	};
 
 	// The character a keystroke produced, after the keyboard layout and any dead keys have had
@@ -71,8 +71,8 @@ namespace Core {
 
 		std::string ToString() const override { return std::format("KeyTypedEvent: {}", m_Codepoint); }
 
-		EVENT_CLASS_TYPE(KeyTyped)
-		EVENT_CLASS_CATEGORY(EventCategoryKeyboard | EventCategoryInput)
+		CORE_EVENT_CLASS_TYPE(KeyTyped)
+		CORE_EVENT_CLASS_CATEGORY(EventCategory::Keyboard | EventCategory::Input)
 
 	private:
 		unsigned int m_Codepoint = 0;

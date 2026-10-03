@@ -6,8 +6,6 @@
 #include <memory>
 #include <utility>
 
-#define BIT(x) (1 << (x))
-
 // Binds a member function as an event handler without spelling out the signature at the
 // call site, which is what lets EventDispatcher deduce the event type from the handler.
 #define CORE_BIND_EVENT_FN(fn)                                  \

@@ -30,24 +30,34 @@ namespace Core {
 
 	// Lets a handler consume a whole class of event without naming every type in it, which is
 	// what the GUI layer does when it has the keyboard.
-	enum EventCategory
+	enum class EventCategory : int
 	{
-		EventCategoryNone = 0,
-		EventCategoryApplication = BIT(0),
-		EventCategoryInput = BIT(1),
-		EventCategoryKeyboard = BIT(2),
-		EventCategoryMouse = BIT(3),
-		EventCategoryMouseButton = BIT(4)
+		None = 0,
+		Application = 1 << 0,
+		Input = 1 << 1,
+		Keyboard = 1 << 2,
+		Mouse = 1 << 3,
+		MouseButton = 1 << 4
 	};
 
-	// clang-format off
-#define EVENT_CLASS_TYPE(type)                                             \
-	static EventType GetStaticType() { return EventType::type; }           \
-	virtual EventType GetEventType() const override { return GetStaticType(); } \
-	virtual const char* GetName() const override { return #type; }
+	constexpr EventCategory operator|(EventCategory left, EventCategory right)
+	{
+		return static_cast<EventCategory>(static_cast<int>(left) | static_cast<int>(right));
+	}
 
-#define EVENT_CLASS_CATEGORY(category) \
-	virtual int GetCategoryFlags() const override { return category; }
+	constexpr EventCategory operator&(EventCategory left, EventCategory right)
+	{
+		return static_cast<EventCategory>(static_cast<int>(left) & static_cast<int>(right));
+	}
+
+	// clang-format off
+#define CORE_EVENT_CLASS_TYPE(type)                                \
+	static EventType GetStaticType() { return EventType::type; }       \
+	EventType GetEventType() const override { return GetStaticType(); } \
+	const char* GetName() const override { return #type; }
+
+#define CORE_EVENT_CLASS_CATEGORY(category) \
+	EventCategory GetCategoryFlags() const override { return category; }
 	// clang-format on
 
 	class Event
@@ -61,10 +71,10 @@ namespace Core {
 
 		virtual EventType GetEventType() const = 0;
 		virtual const char* GetName() const = 0;
-		virtual int GetCategoryFlags() const = 0;
+		virtual EventCategory GetCategoryFlags() const = 0;
 		virtual std::string ToString() const { return GetName(); }
 
-		bool IsInCategory(EventCategory category) const { return (GetCategoryFlags() & category) != 0; }
+		bool IsInCategory(EventCategory category) const { return (GetCategoryFlags() & category) != EventCategory::None; }
 	};
 
 	class EventDispatcher
