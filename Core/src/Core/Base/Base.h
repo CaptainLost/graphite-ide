@@ -1,9 +1,10 @@
 #pragma once
 
+#include "Core/Base/Assert.h"
+#include "Core/Base/Log.h"
 #include "Core/Base/PlatformDetection.h"
+#include "Core/Base/Pointers.h"
 
-#include <concepts>
-#include <memory>
 #include <utility>
 
 // Binds a member function as an event handler without spelling out the signature at the
@@ -12,29 +13,3 @@
 	[this](auto&&... args) -> decltype(auto) {                  \
 		return this->fn(std::forward<decltype(args)>(args)...); \
 	}
-
-namespace Core {
-
-	template<typename T>
-	using Scope = std::unique_ptr<T>;
-
-	template<typename T, typename... Args>
-		requires std::constructible_from<T, Args...>
-	constexpr Scope<T> CreateScope(Args&&... args)
-	{
-		return std::make_unique<T>(std::forward<Args>(args)...);
-	}
-
-	template<typename T>
-	using Ref = std::shared_ptr<T>;
-
-	template<typename T, typename... Args>
-		requires std::constructible_from<T, Args...>
-	constexpr Ref<T> CreateRef(Args&&... args)
-	{
-		return std::make_shared<T>(std::forward<Args>(args)...);
-	}
-}
-// Included last, and it has to be: Log.h uses Ref, so the alias must already be declared.
-#include "Core/Base/Assert.h"
-#include "Core/Base/Log.h"
