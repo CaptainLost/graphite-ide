@@ -545,9 +545,9 @@ namespace Graphite {
 		}
 	}
 
-	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved)
+	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted)
 	{
-		if (OpensDefaultTerminal(saved, m_Open.size()))
+		if (OpensDefaultTerminal(saved, m_Open.size(), trusted))
 		{
 			// Kept only if the shell actually started: a folder that got none because no shell
 			// was found, or it failed, must still ask for its default at the next launch.
@@ -570,7 +570,8 @@ namespace Graphite {
 			*saved, m_Shells, Records(), [&root](const std::filesystem::path& directory) {
 				std::error_code error;
 				return !directory.empty() && std::filesystem::is_directory(directory, error) ? directory : root;
-			});
+			},
+			trusted);
 
 		for (const std::string& id : plan.AlreadyOpen)
 		{

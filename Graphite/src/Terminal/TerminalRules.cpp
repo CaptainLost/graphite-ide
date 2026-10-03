@@ -74,9 +74,15 @@ namespace Graphite {
 	TerminalRestorePlan PlanTerminalRestore(
 		const std::vector<TerminalTabState>& saved, const std::vector<Core::ShellProfile>& shells,
 		const std::vector<OpenTerminal>& open,
-		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory)
+		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory,
+		bool trusted)
 	{
 		TerminalRestorePlan plan;
+
+		if (!trusted)
+		{
+			return plan;
+		}
 
 		const auto isOpen = [&open](const std::string& id) {
 			return std::any_of(open.begin(), open.end(), [&id](const OpenTerminal& terminal) { return terminal.Id == id; });
@@ -120,9 +126,9 @@ namespace Graphite {
 	}
 
 	bool OpensDefaultTerminal(const std::optional<std::vector<TerminalTabState>>& saved,
-							  std::size_t openCount)
+							  std::size_t openCount, bool trusted)
 	{
-		return !saved.has_value() && openCount == 0;
+		return trusted && !saved.has_value() && openCount == 0;
 	}
 
 	bool KeepsTerminals(const std::optional<std::vector<TerminalTabState>>& saved, bool openedDefault)

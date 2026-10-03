@@ -69,16 +69,22 @@ namespace Graphite {
 
 	// `resolveDirectory` turns a saved directory into the one to start in: itself when it still
 	// exists, the folder's root otherwise. Passed in so the rule can be tested without a disk.
+	//
+	// A folder in restricted mode (`trusted` false) plans nothing: its saved list comes from its
+	// own .graphite/workspace.json, so any shell in any directory could be named there, and a
+	// terminal it starts is one the reader never asked for. The reader starts one by hand.
 	TerminalRestorePlan PlanTerminalRestore(
 		const std::vector<TerminalTabState>& saved, const std::vector<Core::ShellProfile>& shells,
 		const std::vector<OpenTerminal>& open,
-		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory);
+		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory,
+		bool trusted);
 
 	// A folder that never kept terminals opens one, as the terminal always did; one that kept an
 	// empty list had them all closed on purpose. Either way, terminals already open - carried
-	// over from the folder before - are enough.
+	// over from the folder before - are enough. A folder in restricted mode opens none, for the
+	// reason PlanTerminalRestore gives.
 	bool OpensDefaultTerminal(const std::optional<std::vector<TerminalTabState>>& saved,
-							  std::size_t openCount);
+							  std::size_t openCount, bool trusted);
 
 	// Whether a folder just opened has a terminal list of its own to keep: one it saved before,
 	// even an empty one, or the default shell it has just opened. A folder opened while another

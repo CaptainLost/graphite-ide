@@ -101,8 +101,9 @@ namespace Graphite {
 
 		// Starts what CaptureState returned last time for the folder being opened, each window
 		// going back to the place imgui.ini remembers. Absent state opens one default shell when
-		// nothing is open (OpensDefaultTerminal).
-		void RestoreState(const std::optional<std::vector<TerminalTabState>>& saved);
+		// nothing is open (OpensDefaultTerminal). A folder in restricted mode starts nothing at
+		// all, and trusting it later starts nothing either: the reader opens a shell by hand.
+		void RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted);
 
 		// View > Reset Layout: every terminal docks again by the rule a new one follows, as the
 		// panels do into the rebuilt layout, instead of being left floating where the removed

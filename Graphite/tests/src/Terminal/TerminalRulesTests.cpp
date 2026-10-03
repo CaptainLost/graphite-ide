@@ -59,7 +59,7 @@ TEST_CASE("Restore starts each saved terminal with its own id, in saved order, b
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "Command Prompt", kRoot / "src"},
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 2);
 	CHECK(plan.Start[0].Id == "{A}");
@@ -75,7 +75,7 @@ TEST_CASE("A saved terminal whose shell is no longer installed is skipped and na
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "Nushell", kRoot},
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 1);
 	CHECK(plan.Start[0].Id == "{B}");
@@ -86,7 +86,7 @@ TEST_CASE("A saved directory that is gone starts the terminal in the folder inst
 {
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot / "gone"}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 1);
 	CHECK(plan.Start[0].WorkingDirectory == kRoot);
@@ -100,7 +100,7 @@ TEST_CASE("A saved terminal that is already open is not started twice")
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
 	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), open, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), open, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 1);
 	CHECK(plan.Start[0].Id == "{B}");
@@ -112,14 +112,34 @@ TEST_CASE("A saved list naming one id twice starts it once")
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot},
 												 TerminalTabState{"{A}", "Command Prompt", kRoot}};
 
-	CHECK(PlanTerminalRestore(saved, Shells(), {}, Resolve).Start.size() == 1);
+	CHECK(PlanTerminalRestore(saved, Shells(), {}, Resolve, true).Start.size() == 1);
 }
 
 TEST_CASE("Only a folder that never kept terminals, with none open, opens a default one")
 {
-	CHECK(OpensDefaultTerminal(std::nullopt, 0));
-	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 2));
-	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0));
+	CHECK(OpensDefaultTerminal(std::nullopt, 0, true));
+	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 2, true));
+	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0, true));
+}
+
+TEST_CASE("A folder in restricted mode starts none of its saved terminals")
+{
+	// The list comes from the folder's own .graphite/workspace.json, which anyone who wrote the
+	// folder could have filled with any shell in any directory.
+	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", "C:\\Windows"},
+												 TerminalTabState{"{B}", "Command Prompt", kRoot}};
+
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, false);
+
+	CHECK(plan.Start.empty());
+	CHECK(plan.AlreadyOpen.empty());
+	CHECK(plan.UnknownProfiles.empty());
+}
+
+TEST_CASE("A folder in restricted mode opens no default terminal")
+{
+	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 0, false));
+	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0, false));
 }
 
 TEST_CASE("A folder whose only terminals were carried over stays absent")
@@ -127,7 +147,7 @@ TEST_CASE("A folder whose only terminals were carried over stays absent")
 	// Opened while another folder's shells were still up: no default shell opened, and the
 	// reader started none here. Writing [] would read back as "all closed on purpose", and the
 	// folder would open with no terminal from then on.
-	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 1));
+	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 1, true));
 	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
 
 	CHECK_FALSE(keeps);
@@ -145,7 +165,7 @@ TEST_CASE("A folder whose own terminals were all closed is kept empty")
 {
 	// It opened its default shell, so it has had a terminal of its own; with that closed the
 	// list is empty rather than absent, and the next launch opens nothing.
-	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 0));
+	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 0, true));
 
 	CHECK(keeps);
 	CHECK(CaptureFolderTerminals({}, keeps) == std::vector<TerminalTabState>{});

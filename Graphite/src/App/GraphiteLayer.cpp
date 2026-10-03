@@ -25,6 +25,7 @@
 #include "Search/ReferencesPanel.h"
 #include "Sessions/SessionsPanel.h"
 #include "Terminal/TerminalWindows.h"
+#include "Persistence/RestrictedRestore.h"
 
 #include <optional>
 
@@ -390,10 +391,17 @@ namespace Graphite {
 			m_SessionWindows.CarryOverOpenSessions();
 			m_Terminals.CarryOverOpenTerminals();
 
+			// Asked once, here: trusting the folder later in the session reopens nothing and
+			// starts nothing, because what restricted mode left closed stays the reader's to open.
+			const bool trusted = m_Trust.IsTrusted(event.Root);
+
+			// The keeper is told what is on disk, as it always is; the windows get only what
+			// restricted mode lets them reopen (ADR 0532).
 			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
-			m_DocumentWindows.RestoreState(stored);
-			m_SessionWindows.RestoreState(stored.Sessions);
-			m_Terminals.RestoreState(stored.Terminals);
+			const WorkspaceState restorable = RestorableState(stored, event.Root, trusted);
+			m_DocumentWindows.RestoreState(restorable);
+			m_SessionWindows.RestoreState(restorable.Sessions);
+			m_Terminals.RestoreState(restorable.Terminals, trusted);
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
@@ -407,7 +415,7 @@ namespace Graphite {
 
 			// After CloseAll, never before: the diffs this folder had open last time are the
 			// only ones that belong to it.
-			m_DiffWindows.RestoreState(stored.Diffs);
+			m_DiffWindows.RestoreState(restorable.Diffs);
 
 			// Same trap, same reason: an expectation registered against the folder this drop
 			// replaced has no business claiming a path in the one that just opened. Dropping a
