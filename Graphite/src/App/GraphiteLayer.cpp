@@ -17,18 +17,18 @@
 #include "Git/GitView.h"
 #include "Git/HistoryPlaceholder.h"
 
-#include "Panels/ConsolePanel.h"
+#include "Console/ConsolePanel.h"
 
-#include "Panels/ExplorerPanel.h"
+#include "Explorer/ExplorerPanel.h"
 
-#include "Panels/ProblemsPanel.h"
-#include "Panels/ReferencesPanel.h"
-#include "Panels/SessionsPanel.h"
-#include "Panels/TerminalWindows.h"
+#include "Language/Diagnostics/ProblemsPanel.h"
+#include "Search/ReferencesPanel.h"
+#include "Sessions/SessionsPanel.h"
+#include "Terminal/TerminalWindows.h"
 
 #include <optional>
 
-#include "Panels/SearchPanel.h"
+#include "Search/SearchPanel.h"
 
 #include "Settings/AppSettings.h"
 

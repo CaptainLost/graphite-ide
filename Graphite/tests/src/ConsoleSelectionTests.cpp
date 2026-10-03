@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Panels/ConsoleSelection.h"
+#include "Console/ConsoleSelection.h"
 
 #include "Core/Base/Log.h"
 

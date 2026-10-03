@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Panels/TreeReveal.h"
+#include "Explorer/TreeReveal.h"
 #include "Solution/SolutionModel.h"
 #include "TempDirectory.h"
 

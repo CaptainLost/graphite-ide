@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Panels/TerminalRules.h"
+#include "Terminal/TerminalRules.h"
 
 #include <filesystem>
 #include <optional>

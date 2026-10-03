@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Panels/ReferencesPanel.h"
+#include "Search/ReferencesPanel.h"
 
 namespace {
 

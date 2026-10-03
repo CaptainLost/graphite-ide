@@ -24,7 +24,7 @@
 #include "Language/Server/LanguageServices.h"
 #include "Language/Syntax/SyntaxCache.h"
 
-#include "Panels/ReferencesPanel.h"
+#include "Search/ReferencesPanel.h"
 #include "Persistence/PersistedState.h"
 #include "Search/PreviewContent.h"
 
